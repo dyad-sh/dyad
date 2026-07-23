@@ -28,6 +28,9 @@ events that may arrive after an operation has been superseded.
   idempotency key through every queue, IPC, and persistence boundary. Make the
   receiving boundary durably deduplicate acceptance, and acknowledge only
   after that acceptance; a renderer-local enqueue is not durable acceptance.
+- Machine-generated queued work must not be editable or removable (including
+  through bulk-clear paths) unless removal explicitly settles or rejects the
+  owning machine request; otherwise reload can resurrect abandoned work.
 - `observeTransition` runs before a controller commits its next snapshot. If
   an observer callback can re-enter the machine (for example, by submitting a
   follow-up turn), defer that callback until the committed state is visible.

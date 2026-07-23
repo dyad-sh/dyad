@@ -60,6 +60,38 @@ describe("useStreamChat queueMessage", () => {
       type: "queue-poked",
     });
   });
+
+  it("does not edit, remove, or clear machine-generated follow-ups", () => {
+    const { store, Wrapper } = makeWrapper();
+    const machineFollowUp = {
+      id: "machine-follow-up",
+      prompt: "Continue after integration",
+      userInputRequestId: "integration:1",
+    };
+    const ordinaryPrompt = {
+      id: "ordinary-prompt",
+      prompt: "Ordinary prompt",
+    };
+    store.set(
+      queuedMessagesByIdAtom,
+      new Map([[CHAT_ID, [machineFollowUp, ordinaryPrompt]]]),
+    );
+    const { result } = renderHook(() => useStreamChat(), {
+      wrapper: Wrapper,
+    });
+
+    act(() => {
+      result.current.updateQueuedMessage(machineFollowUp.id, {
+        prompt: "Changed",
+      });
+      result.current.removeQueuedMessage(machineFollowUp.id);
+      result.current.clearAllQueuedMessages();
+    });
+
+    expect(store.get(queuedMessagesByIdAtom).get(CHAT_ID)).toEqual([
+      machineFollowUp,
+    ]);
+  });
 });
 
 describe("useStreamChat cancelStream", () => {

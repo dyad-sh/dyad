@@ -339,6 +339,8 @@ export function getUserInputProjectionAdapter({
 
     start() {
       if (stop) return stop;
+      const handleWindowFocus = () => dispatchAllDueFollowUps();
+      window.addEventListener("focus", handleWindowFocus);
       const unsubscribes = [
         ipcClient.events.userInput.onRequested((descriptor) => {
           markChanged(descriptor.requestId);
@@ -453,6 +455,7 @@ export function getUserInputProjectionAdapter({
 
       stop = () => {
         ++hydrationGeneration;
+        window.removeEventListener("focus", handleWindowFocus);
         if (settledCleanupTimer) clearTimeout(settledCleanupTimer);
         settledCleanupTimer = undefined;
         for (const unsubscribe of unsubscribes.splice(0).reverse()) {

@@ -613,6 +613,48 @@ describe("user-input renderer projection", () => {
     stop();
   });
 
+  it("retries a due follow-up on window focus after dispatch fails", async () => {
+    const store = createStore();
+    const fake = createFakeIpc();
+    const dispatchError = new Error("accepted chunk transport failed");
+    const submit = vi
+      .fn<() => Promise<void>>()
+      .mockRejectedValueOnce(dispatchError)
+      .mockResolvedValueOnce();
+    const showErrorToast = vi.fn();
+    const adapter = getUserInputProjectionAdapter({
+      store,
+      ipcClient: fake.ipcClient,
+      chatStream: { submit },
+      showErrorToast,
+    });
+    const stop = adapter.start();
+    fake.sendRequested(integrationDescriptor("integration-retry"));
+    fake.sendFollowUpDue({
+      requestId: "integration-retry",
+      chatId: 42,
+      prompt: "Continue. I have completed the supabase integration.",
+    });
+
+    await vi.waitFor(() =>
+      expect(showErrorToast).toHaveBeenCalledWith(dispatchError),
+    );
+    expect(submit).toHaveBeenCalledTimes(1);
+    expect(fake.respond).not.toHaveBeenCalledWith({
+      requestId: "integration-retry",
+      response: { kind: "follow-up-dispatched" },
+    });
+
+    window.dispatchEvent(new Event("focus"));
+
+    await vi.waitFor(() => expect(submit).toHaveBeenCalledTimes(2));
+    expect(fake.respond).toHaveBeenCalledWith({
+      requestId: "integration-retry",
+      response: { kind: "follow-up-dispatched" },
+    });
+    stop();
+  });
+
   it("rehydrates an armed continuation across remount and dispatches after stream end", async () => {
     const store = createStore();
     const fake = createFakeIpc();

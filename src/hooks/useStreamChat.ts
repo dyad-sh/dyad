@@ -147,7 +147,9 @@ export function useStreamChat({
         const next = new Map(prev);
         const existing = prev.get(chatId) ?? [];
         const updated = existing.map((msg) =>
-          msg.id === id ? { ...msg, ...updates } : msg,
+          msg.id === id && !msg.userInputRequestId
+            ? { ...msg, ...updates }
+            : msg,
         );
         next.set(chatId, updated);
         return next;
@@ -162,7 +164,10 @@ export function useStreamChat({
       setQueuedMessagesById((prev) => {
         const next = new Map(prev);
         const existing = prev.get(chatId) ?? [];
-        const filtered = existing.filter((msg) => msg.id !== id);
+        const filtered = existing.filter(
+          (msg) => msg.id !== id || Boolean(msg.userInputRequestId),
+        );
+        if (filtered.length === existing.length) return prev;
         if (filtered.length > 0) {
           next.set(chatId, filtered);
         } else {
@@ -200,8 +205,16 @@ export function useStreamChat({
   const clearAllQueuedMessages = useCallback(() => {
     if (chatId === undefined) return;
     setQueuedMessagesById((prev) => {
+      const retained = (prev.get(chatId) ?? []).filter(
+        (message) => message.userInputRequestId,
+      );
+      if (retained.length === (prev.get(chatId) ?? []).length) return prev;
       const next = new Map(prev);
-      next.delete(chatId);
+      if (retained.length > 0) {
+        next.set(chatId, retained);
+      } else {
+        next.delete(chatId);
+      }
       return next;
     });
   }, [chatId, setQueuedMessagesById]);

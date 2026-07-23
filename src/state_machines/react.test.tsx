@@ -5,6 +5,7 @@ import {
   useControllerSnapshot,
   useKeyedController,
   useManagerLifecycle,
+  useManagerPagehideDisposal,
   type KeyedSnapshotSource,
 } from "./react";
 import { SnapshotStore } from "./snapshot_store";
@@ -95,6 +96,32 @@ describe("useManagerLifecycle", () => {
     hook.unmount();
     await flushMicrotasks();
     expect(second.dispose).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("useManagerPagehideDisposal", () => {
+  it("disposes before non-persisted document teardown", () => {
+    const manager = { dispose: vi.fn() };
+    const hook = renderHook(() => useManagerPagehideDisposal(manager));
+    const pagehide = new Event("pagehide");
+    Object.defineProperty(pagehide, "persisted", { value: false });
+
+    act(() => window.dispatchEvent(pagehide));
+
+    expect(manager.dispose).toHaveBeenCalledTimes(1);
+    hook.unmount();
+  });
+
+  it("keeps the manager alive when the page enters the back-forward cache", () => {
+    const manager = { dispose: vi.fn() };
+    const hook = renderHook(() => useManagerPagehideDisposal(manager));
+    const pagehide = new Event("pagehide");
+    Object.defineProperty(pagehide, "persisted", { value: true });
+
+    act(() => window.dispatchEvent(pagehide));
+
+    expect(manager.dispose).not.toHaveBeenCalled();
+    hook.unmount();
   });
 });
 

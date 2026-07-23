@@ -26,20 +26,17 @@ import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 import { firstPromptSagaAtom } from "@/first_prompt/projection";
-import { useFirstPromptSend } from "@/first_prompt/FirstPromptProvider";
-import { getHomeDefaultChatMode } from "@/lib/homeChatMode";
+import { useFirstPromptProviderResume } from "@/first_prompt/FirstPromptProvider";
 import type { UserSettings } from "@/lib/schemas";
-import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
 
 export const TitleBar = () => {
   const [selectedAppId] = useAtom(selectedAppIdAtom);
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const { hasArmedPayload } = useAtomValue(firstPromptSagaAtom);
-  const sendFirstPrompt = useFirstPromptSend();
+  const resumeFirstPrompt = useFirstPromptProviderResume();
   const { apps } = useLoadApps();
   const { navigate } = useRouter();
-  const { settings, envVars, refreshSettings } = useSettings();
-  const { isQuotaExceeded, isLoading: isQuotaLoading } = useFreeAgentQuota();
+  const { settings, refreshSettings } = useSettings();
   const queryClient = useQueryClient();
   const [isSuccessDialogOpen, setIsSuccessDialogOpen] = useState(false);
   const platform = useSystemPlatform();
@@ -56,16 +53,7 @@ export const TitleBar = () => {
           const refreshedSettings = queryClient.getQueryData<UserSettings>(
             queryKeys.settings.user,
           );
-          sendFirstPrompt({
-            type: "PROVIDER_CONFIGURED",
-            defaultChatMode: refreshedSettings
-              ? getHomeDefaultChatMode(
-                  refreshedSettings,
-                  envVars,
-                  isQuotaLoading ? undefined : !isQuotaExceeded,
-                )
-              : "local-agent",
-          });
+          resumeFirstPrompt(refreshedSettings);
         } else {
           setIsSuccessDialogOpen(true);
         }
@@ -75,14 +63,11 @@ export const TitleBar = () => {
     handleDeepLink();
   }, [
     clearLastDeepLink,
-    envVars,
     lastDeepLink,
     hasArmedPayload,
-    isQuotaExceeded,
-    isQuotaLoading,
     queryClient,
     refreshSettings,
-    sendFirstPrompt,
+    resumeFirstPrompt,
   ]);
 
   const selectedApp = apps.find((app) => app.id === selectedAppId);

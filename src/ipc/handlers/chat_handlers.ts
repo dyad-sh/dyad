@@ -53,7 +53,7 @@ async function mutateChatAfterDrainingStreams({
 }
 
 export function registerChatHandlers() {
-  createTypedHandler(chatContracts.createChat, async (_, input) => {
+  createTypedHandler(chatContracts.createChat, async (event, input) => {
     const { appId, initialChatMode, firstPromptCreationOperationId } =
       typeof input === "number"
         ? {
@@ -63,6 +63,12 @@ export function registerChatHandlers() {
           }
         : input;
 
+    if (firstPromptCreationOperationId) {
+      firstPromptCreationRegistry.track(
+        firstPromptCreationOperationId,
+        event.sender,
+      );
+    }
     let chatId: number | undefined;
     try {
       chatId = await createChatForApp({ appId, initialChatMode });

@@ -1,4 +1,5 @@
 import {
+  useCallback,
   createContext,
   useContext,
   useEffect,
@@ -22,7 +23,6 @@ import { useSelectChat } from "@/hooks/useSelectChat";
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { useOpenPreviewIfSetupRequired } from "@/hooks/useOpenPreviewIfSetupRequired";
 import { queryKeys } from "@/lib/queryKeys";
-import { getHomeDefaultChatMode } from "@/lib/homeChatMode";
 import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
 import { showError } from "@/lib/toast";
 import {
@@ -36,6 +36,7 @@ import { createTraceObserver } from "@/state_machines/trace";
 import {
   useControllerSnapshot,
   useManagerLifecycle,
+  useManagerPagehideDisposal,
 } from "@/state_machines/react";
 import {
   Dialog,
@@ -56,6 +57,8 @@ import {
   projectFirstPromptState,
 } from "./projection";
 import type { FirstPromptEvent, FirstPromptPayload } from "./state";
+import { resolveFirstPromptDefaultChatMode } from "./provider_resume";
+import type { UserSettings } from "@/lib/schemas";
 
 export interface FirstPromptChatStream {
   submit(request: {
@@ -67,7 +70,12 @@ export interface FirstPromptChatStream {
   }): void;
 }
 
-const FirstPromptContext = createContext<FirstPromptController | null>(null);
+interface FirstPromptContextValue {
+  controller: FirstPromptController;
+  resumeAfterProviderConfigured(settings?: UserSettings): void;
+}
+
+const FirstPromptContext = createContext<FirstPromptContextValue | null>(null);
 
 export function FirstPromptProvider({
   children,
@@ -91,7 +99,7 @@ export function FirstPromptProvider({
   const { t } = useTranslation("home");
   const posthog = usePostHog();
   const { settings, envVars } = useSettings();
-  const { isQuotaExceeded, isLoading: isQuotaLoading } = useFreeAgentQuota();
+  const { quotaStatus } = useFreeAgentQuota();
   const { refreshApps } = useLoadApps();
   const { selectChat } = useSelectChat();
   const openPreviewIfSetupRequired = useOpenPreviewIfSetupRequired();
@@ -220,7 +228,55 @@ export function FirstPromptProvider({
       }),
   );
   useManagerLifecycle(controller);
+  useManagerPagehideDisposal(controller);
   const snapshot = useControllerSnapshot(controller);
+  const providerResumeInputsRef = useRef({
+    settings,
+    envVars,
+    quotaStatus,
+  });
+  providerResumeInputsRef.current = { settings, envVars, quotaStatus };
+  const providerResumeAttemptRef = useRef<object | null>(null);
+  const resumeAfterProviderConfigured = useCallback(
+    (settingsOverride?: UserSettings) => {
+      if (
+        controller.getSnapshot().type !== "awaitingProviderSetup" ||
+        providerResumeAttemptRef.current
+      ) {
+        return;
+      }
+      const attempt = {};
+      providerResumeAttemptRef.current = attempt;
+      const inputs = providerResumeInputsRef.current;
+      void (async () => {
+        try {
+          const resolvedSettings = settingsOverride ?? inputs.settings;
+          const defaultChatMode = resolvedSettings
+            ? await resolveFirstPromptDefaultChatMode({
+                settings: resolvedSettings,
+                envVars: inputs.envVars,
+                quotaStatus: inputs.quotaStatus,
+                queryClient,
+              })
+            : undefined;
+          if (
+            providerResumeAttemptRef.current === attempt &&
+            controller.getSnapshot().type === "awaitingProviderSetup"
+          ) {
+            controller.send({
+              type: "PROVIDER_CONFIGURED",
+              defaultChatMode,
+            });
+          }
+        } finally {
+          if (providerResumeAttemptRef.current === attempt) {
+            providerResumeAttemptRef.current = null;
+          }
+        }
+      })();
+    },
+    [controller, queryClient],
+  );
 
   useEffect(() => {
     const project = () =>
@@ -245,25 +301,13 @@ export function FirstPromptProvider({
       !providersLoading &&
       anySetup
     ) {
-      controller.send({
-        type: "PROVIDER_CONFIGURED",
-        defaultChatMode: settings
-          ? getHomeDefaultChatMode(
-              settings,
-              envVars,
-              isQuotaLoading ? undefined : !isQuotaExceeded,
-            )
-          : undefined,
-      });
+      resumeAfterProviderConfigured();
     }
   }, [
     controller,
-    envVars,
     isAnyProviderSetup,
-    isQuotaExceeded,
-    isQuotaLoading,
     providersLoading,
-    settings,
+    resumeAfterProviderConfigured,
     snapshot,
   ]);
 
@@ -282,25 +326,12 @@ export function FirstPromptProvider({
       !awaitingStartedWithProviderRef.current &&
       hasConfiguredProvider
     ) {
-      controller.send({
-        type: "PROVIDER_CONFIGURED",
-        defaultChatMode: settings
-          ? getHomeDefaultChatMode(
-              settings,
-              envVars,
-              isQuotaLoading ? undefined : !isQuotaExceeded,
-            )
-          : undefined,
-      });
+      resumeAfterProviderConfigured();
     }
   }, [
-    controller,
     hasConfiguredProvider,
-    envVars,
-    isQuotaExceeded,
-    isQuotaLoading,
     pathname,
-    settings,
+    resumeAfterProviderConfigured,
     snapshot.type,
   ]);
 
@@ -318,7 +349,9 @@ export function FirstPromptProvider({
   }, [controller, pathname]);
 
   return (
-    <FirstPromptContext.Provider value={controller}>
+    <FirstPromptContext.Provider
+      value={{ controller, resumeAfterProviderConfigured }}
+    >
       {children}
       <Dialog
         open={isSetupDialogOpen}
@@ -348,13 +381,25 @@ export function FirstPromptProvider({
 }
 
 export function useFirstPromptController(): FirstPromptController {
-  const controller = useContext(FirstPromptContext);
-  if (!controller) {
+  const context = useContext(FirstPromptContext);
+  if (!context) {
     throw new Error("useFirstPromptController requires FirstPromptProvider");
   }
-  return controller;
+  return context.controller;
 }
 
 export function useFirstPromptSend(): (event: FirstPromptEvent) => boolean {
   return useFirstPromptController().send;
+}
+
+export function useFirstPromptProviderResume(): (
+  settings?: UserSettings,
+) => void {
+  const context = useContext(FirstPromptContext);
+  if (!context) {
+    throw new Error(
+      "useFirstPromptProviderResume requires FirstPromptProvider",
+    );
+  }
+  return context.resumeAfterProviderConfigured;
 }

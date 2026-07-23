@@ -431,7 +431,13 @@ export function registerAppHandlers() {
     app.quit();
   });
 
-  createTypedHandler(appContracts.createApp, async (_, params) => {
+  createTypedHandler(appContracts.createApp, async (event, params) => {
+    if (params.firstPromptCreationOperationId) {
+      firstPromptCreationRegistry.track(
+        params.firstPromptCreationOperationId,
+        event.sender,
+      );
+    }
     let app!: typeof apps.$inferSelect;
     let fullAppPath!: string;
     try {

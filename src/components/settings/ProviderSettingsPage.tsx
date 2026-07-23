@@ -4,12 +4,11 @@ import { useNavigate } from "@tanstack/react-router";
 import { BackButton } from "@/components/ui/back-button";
 import { useSettings } from "@/hooks/useSettings";
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
-import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 import { useAtomValue } from "jotai";
 import { firstPromptSagaAtom } from "@/first_prompt/projection";
-import { useFirstPromptSend } from "@/first_prompt/FirstPromptProvider";
+import { useFirstPromptProviderResume } from "@/first_prompt/FirstPromptProvider";
 import { ipc, type ProviderApiKeyValidationProvider } from "@/ipc/types";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -34,7 +33,6 @@ import {
   VertexProviderSetting,
   hasDyadProKey,
 } from "@/lib/schemas";
-import { getHomeDefaultChatMode } from "@/lib/homeChatMode";
 import { DyadErrorKind } from "@/errors/dyad_error";
 import {
   findInvalidProviderApiKeyCharacter,
@@ -99,7 +97,6 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
     error: providersError,
     isAnyProviderSetup,
   } = useLanguageModelProviders();
-  const { isQuotaExceeded, isLoading: isQuotaLoading } = useFreeAgentQuota();
 
   // Find the specific provider data from the fetched list
   const providerData = allProviders?.find((p) => p.id === provider);
@@ -133,7 +130,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
   const [highlightPasteButton, setHighlightPasteButton] = useState(false);
   const queryClient = useQueryClient();
   const { hasArmedPayload } = useAtomValue(firstPromptSagaAtom);
-  const sendFirstPrompt = useFirstPromptSend();
+  const resumeFirstPrompt = useFirstPromptProviderResume();
 
   // Use fetched data (or defaults for Dyad)
   const providerDisplayName = isDyad
@@ -271,31 +268,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
         const nextSettings = settings
           ? ({ ...settings, ...settingsUpdate } as UserSettings)
           : undefined;
-        let freeAgentQuotaAvailable = isQuotaLoading
-          ? undefined
-          : !isQuotaExceeded;
-        if (nextSettings && !hasDyadProKey(nextSettings) && isQuotaLoading) {
-          try {
-            const quotaStatus = await queryClient.fetchQuery({
-              queryKey: queryKeys.freeAgentQuota.status,
-              queryFn: () => ipc.freeAgentQuota.getFreeAgentQuotaStatus(),
-            });
-            freeAgentQuotaAvailable = !quotaStatus.isQuotaExceeded;
-          } catch {
-            // Keep the safe Build-mode fallback when quota cannot be resolved.
-          }
-        }
-        const resumeDefaultChatMode = nextSettings
-          ? getHomeDefaultChatMode(
-              nextSettings,
-              envVars,
-              freeAgentQuotaAvailable,
-            )
-          : settingsUpdate.defaultChatMode;
-        sendFirstPrompt({
-          type: "PROVIDER_CONFIGURED",
-          defaultChatMode: resumeDefaultChatMode,
-        });
+        resumeFirstPrompt(nextSettings);
       } else if (isFirstProviderSetup) {
         setShowStartBuildingBanner(true);
       }

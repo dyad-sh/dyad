@@ -56,9 +56,10 @@ export function HomeChatInput({
 
   const handleTranscription = useCallback(
     (text: string) => {
+      if (disabled) return;
       setInputValue((prev: string) => (prev.trim() ? prev + " " + text : text));
     },
-    [setInputValue],
+    [disabled, setInputValue],
   );
 
   const { isRecording, isTranscribing, toggleRecording } = useVoiceToText({
@@ -147,6 +148,7 @@ export function HomeChatInput({
       <div className="p-4" data-testid="home-chat-input-container">
         <div
           aria-disabled={disabled}
+          inert={disabled}
           className={cn(
             "relative flex flex-col border border-border rounded-2xl bg-(--background-lighter) transition-colors duration-200",
             "hover:border-primary/30",
@@ -194,7 +196,7 @@ export function HomeChatInput({
                   render={
                     <button
                       onClick={toggleRecording}
-                      disabled={isTranscribing}
+                      disabled={disabled || isTranscribing}
                       aria-label={
                         isRecording
                           ? "Stop recording"
@@ -235,6 +237,7 @@ export function HomeChatInput({
                       onClick={() =>
                         ipc.system.openExternalUrl("https://dyad.sh/pro")
                       }
+                      disabled={disabled}
                       aria-label="Voice to text (Pro)"
                       className="px-2 py-2 mb-0.5 text-muted-foreground hover:text-primary rounded-lg transition-colors duration-150 cursor-pointer relative"
                     />
@@ -292,7 +295,10 @@ export function HomeChatInput({
                   <TooltipTrigger
                     render={
                       <button
-                        onClick={() => setAppSearchOpen(true)}
+                        onClick={() => {
+                          if (!disabled) setAppSearchOpen(true);
+                        }}
+                        disabled={disabled}
                         className={cn(
                           "cursor-pointer px-2 py-1 ml-1.5 text-xs font-medium rounded-lg transition-colors flex items-center gap-1",
                           selectedApp
@@ -310,6 +316,7 @@ export function HomeChatInput({
                     {selectedApp && (
                       <button
                         type="button"
+                        disabled={disabled}
                         onClick={(e) => {
                           e.stopPropagation();
                           setSelectedApp(null);

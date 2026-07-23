@@ -352,13 +352,44 @@ async function searchAppFilesWithRipgrep({
   });
 }
 
-async function deleteAppById(appId: number): Promise<void> {
+interface DeleteAppByIdOptions {
+  allowMissing?: boolean;
+  knownAppPath?: string;
+}
+
+async function removeAppFiles(appId: number, appPath: string): Promise<void> {
+  try {
+    // Use built-in retries because a dev server we just killed may still be
+    // flushing writes to `.next/` or node_modules for a brief window — that
+    // races with rm and surfaces as ENOTEMPTY/EBUSY without retries.
+    await fsPromises.rm(appPath, {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 200,
+    });
+  } catch (error: any) {
+    logger.error(`Error deleting app files for app ${appId}:`, error);
+    throw new Error(
+      `App deleted from database, but failed to delete app files. Please delete app files from ${appPath} manually.\n\nError: ${error.message}`,
+    );
+  }
+}
+
+async function deleteAppById(
+  appId: number,
+  options: DeleteAppByIdOptions = {},
+): Promise<void> {
   return withLock(appId, async () => {
     const app = await db.query.apps.findFirst({
       where: eq(apps.id, appId),
     });
 
     if (!app) {
+      if (options.allowMissing && options.knownAppPath) {
+        await removeAppFiles(appId, options.knownAppPath);
+        return;
+      }
       throw new DyadError("App not found", DyadErrorKind.NotFound);
     }
 
@@ -388,23 +419,7 @@ async function deleteAppById(appId: number): Promise<void> {
       );
     }
 
-    const appPath = getDyadAppPath(app.path);
-    try {
-      // Use built-in retries because a dev server we just killed may still be
-      // flushing writes to `.next/` or node_modules for a brief window — that
-      // races with rm and surfaces as ENOTEMPTY/EBUSY without retries.
-      await fsPromises.rm(appPath, {
-        recursive: true,
-        force: true,
-        maxRetries: 5,
-        retryDelay: 200,
-      });
-    } catch (error: any) {
-      logger.error(`Error deleting app files for app ${appId}:`, error);
-      throw new Error(
-        `App deleted from database, but failed to delete app files. Please delete app files from ${appPath} manually.\n\nError: ${error.message}`,
-      );
-    }
+    await removeAppFiles(appId, getDyadAppPath(app.path));
   });
 }
 
@@ -417,93 +432,112 @@ export function registerAppHandlers() {
   });
 
   createTypedHandler(appContracts.createApp, async (_, params) => {
-    const appName = sanitizeAppDisplayName(params.name);
+    let app!: typeof apps.$inferSelect;
+    let fullAppPath!: string;
+    try {
+      const appName = sanitizeAppDisplayName(params.name);
 
-    // The display name the user typed conflicting is a hard error (they can
-    // pick another); folder collisions below auto-resolve with a suffix.
-    const nameConflict = await db.query.apps.findFirst({
-      where: eq(apps.name, appName),
-    });
-    if (nameConflict) {
-      throw new DyadError(
-        `An app named "${appName}" already exists.`,
-        DyadErrorKind.Conflict,
+      // The display name the user typed conflicting is a hard error (they can
+      // pick another); folder collisions below auto-resolve with a suffix.
+      const nameConflict = await db.query.apps.findFirst({
+        where: eq(apps.name, appName),
+      });
+      if (nameConflict) {
+        throw new DyadError(
+          `An app named "${appName}" already exists.`,
+          DyadErrorKind.Conflict,
+        );
+      }
+
+      const appPath = await resolveUniqueFolderName(
+        slugifyAppFolderName(appName),
       );
+      fullAppPath = getDyadAppPath(appPath);
+
+      if (!isAppLocationAccessible(fullAppPath)) {
+        throw new Error(
+          `The path ${fullAppPath} is inaccessible. Please check your custom apps folder setting.`,
+        );
+      }
+
+      // Create a new app
+      const settings = readSettings();
+      [app] = await db
+        .insert(apps)
+        .values({
+          name: appName,
+          path: appPath,
+          needsAppBlueprint: settings.enableAppBlueprint,
+          // Opt newly created apps into E2E testing when the user has enabled
+          // the "testing for new apps" setting. Otherwise fall back to the
+          // column default (off).
+          testingEnabled: settings.enableTestingForNewApps ?? false,
+        })
+        .returning();
+    } catch (error) {
+      if (params.firstPromptCreationOperationId) {
+        firstPromptCreationRegistry.commit(
+          params.firstPromptCreationOperationId,
+        );
+      }
+      throw error;
     }
 
-    const appPath = await resolveUniqueFolderName(
-      slugifyAppFolderName(appName),
-    );
-    const fullAppPath = getDyadAppPath(appPath);
+    const cleanupFirstPromptCreation = () =>
+      deleteAppById(app.id, {
+        allowMissing: true,
+        knownAppPath: fullAppPath,
+      });
 
-    if (!isAppLocationAccessible(fullAppPath)) {
-      throw new Error(
-        `The path ${fullAppPath} is inaccessible. Please check your custom apps folder setting.`,
+    try {
+      const initialChatMode = await getInitialChatModeForNewChat(
+        params.initialChatMode,
       );
+
+      // Create an initial chat for this app
+      const [chat] = await db
+        .insert(chats)
+        .values({
+          appId: app.id,
+          chatMode: initialChatMode,
+        })
+        .returning();
+
+      await createFromTemplate({
+        fullAppPath,
+      });
+
+      // Ensure `.dyad/` is gitignored before the initial commit so the agent's
+      // later `ensureDyadGitignored` call is a no-op and the app stays clean.
+      // Otherwise the first template swap (e.g. from app-blueprint approval)
+      // fails the clean-working-tree check.
+      await ensureDyadGitignored(fullAppPath);
+
+      // Initialize git repo and create first commit
+      const commitHash = await gitService.initRepoWithInitialCommit({
+        path: fullAppPath,
+      });
+
+      // Update chat with initial commit hash
+      await db
+        .update(chats)
+        .set({
+          initialCommitHash: commitHash,
+        })
+        .where(eq(chats.id, chat.id));
+
+      return {
+        app: { ...app, resolvedPath: fullAppPath },
+        chatId: chat.id,
+      };
+    } finally {
+      if (params.firstPromptCreationOperationId) {
+        await firstPromptCreationRegistry.complete(
+          params.firstPromptCreationOperationId,
+          cleanupFirstPromptCreation,
+        );
+      }
     }
-
-    // Create a new app
-    const settings = readSettings();
-    const [app] = await db
-      .insert(apps)
-      .values({
-        name: appName,
-        path: appPath,
-        needsAppBlueprint: settings.enableAppBlueprint,
-        // Opt newly created apps into E2E testing when the user has enabled the
-        // "testing for new apps" setting. Otherwise fall back to the column
-        // default (off).
-        testingEnabled: settings.enableTestingForNewApps ?? false,
-      })
-      .returning();
-
-    const initialChatMode = await getInitialChatModeForNewChat(
-      params.initialChatMode,
-    );
-
-    // Create an initial chat for this app
-    const [chat] = await db
-      .insert(chats)
-      .values({
-        appId: app.id,
-        chatMode: initialChatMode,
-      })
-      .returning();
-
-    await createFromTemplate({
-      fullAppPath,
-    });
-
-    // Ensure `.dyad/` is gitignored before the initial commit so the agent's
-    // later `ensureDyadGitignored` call is a no-op and the app stays clean.
-    // Otherwise the first template swap (e.g. from app-blueprint approval) fails
-    // the clean-working-tree check.
-    await ensureDyadGitignored(fullAppPath);
-
-    // Initialize git repo and create first commit
-    const commitHash = await gitService.initRepoWithInitialCommit({
-      path: fullAppPath,
-    });
-
-    // Update chat with initial commit hash
-    await db
-      .update(chats)
-      .set({
-        initialCommitHash: commitHash,
-      })
-      .where(eq(chats.id, chat.id));
-
-    if (params.firstPromptCreationOperationId) {
-      await firstPromptCreationRegistry.complete(
-        params.firstPromptCreationOperationId,
-        () => deleteAppById(app.id),
-      );
-    }
-
-    return {
-      app: { ...app, resolvedPath: fullAppPath },
-      chatId: chat.id,
-    };
   });
 
   createTypedHandler(appContracts.copyApp, async (_, params) => {

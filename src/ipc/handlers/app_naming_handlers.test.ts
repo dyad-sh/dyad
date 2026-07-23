@@ -21,6 +21,12 @@ const TEMP_BASE = path.join(os.tmpdir(), "dyad-app-naming-handler-tests");
 const ipcHandlers = vi.hoisted(
   () => new Map<string, (...args: unknown[]) => Promise<unknown>>(),
 );
+const createFromTemplateMock = vi.hoisted(() =>
+  vi.fn(async ({ fullAppPath }: { fullAppPath: string }) => {
+    await fs.promises.mkdir(fullAppPath, { recursive: true });
+    await fs.promises.writeFile(path.join(fullAppPath, "index.ts"), "// app");
+  }),
+);
 
 vi.mock("electron", () => ({
   ipcMain: {
@@ -63,12 +69,7 @@ vi.mock("@/ipc/services/git_service", () => {
 });
 
 vi.mock("@/ipc/handlers/createFromTemplate", () => ({
-  createFromTemplate: vi.fn(
-    async ({ fullAppPath }: { fullAppPath: string }) => {
-      await fs.promises.mkdir(fullAppPath, { recursive: true });
-      await fs.promises.writeFile(path.join(fullAppPath, "index.ts"), "// app");
-    },
-  ),
+  createFromTemplate: createFromTemplateMock,
 }));
 
 vi.mock("@/ipc/handlers/gitignoreUtils", () => ({
@@ -81,6 +82,7 @@ vi.mock("@/ipc/handlers/chat_mode_resolution", () => ({
 
 import { registerAppHandlers } from "./app_handlers";
 import { registerImportHandlers } from "./import_handlers";
+import { firstPromptCreationRegistry } from "../services/first_prompt_creation_service";
 
 async function invokeImportHandler<TOutput>(
   channel: string,
@@ -118,6 +120,7 @@ describe("app naming handlers", () => {
     fs.rmSync(TEMP_BASE, { recursive: true, force: true });
     fs.mkdirSync(TEMP_BASE, { recursive: true });
     harness = setupHandlerTestHarness();
+    createFromTemplateMock.mockClear();
     registerAppHandlers();
     registerImportHandlers();
   });
@@ -195,6 +198,47 @@ describe("app naming handlers", () => {
       }>("create-app", { name: "My App" });
 
       expect(result.app.path).toBe("my-app-2");
+    });
+
+    it("cleans up a cancelled first-prompt creation when setup fails", async () => {
+      const operationId = "cancelled-failed-create";
+      await firstPromptCreationRegistry.cancel(operationId);
+      createFromTemplateMock.mockRejectedValueOnce(
+        new Error("template failed"),
+      );
+
+      await expect(
+        harness.invokeHandler("create-app", {
+          name: "Cancelled App",
+          firstPromptCreationOperationId: operationId,
+        }),
+      ).rejects.toThrow("template failed");
+
+      expect(
+        harness.db
+          .select()
+          .from(apps)
+          .where(eq(apps.name, "Cancelled App"))
+          .get(),
+      ).toBeUndefined();
+      expect(fs.existsSync(path.join(TEMP_BASE, "cancelled-app"))).toBe(false);
+    });
+
+    it("finishes first-prompt cleanup after the app row is already gone", async () => {
+      const operationId = "cleanup-after-row-delete";
+      const result = await harness.invokeHandler<{
+        app: { id: number; path: string };
+      }>("create-app", {
+        name: "Cleanup Retry",
+        firstPromptCreationOperationId: operationId,
+      });
+      const fullAppPath = path.join(TEMP_BASE, result.app.path);
+      expect(fs.existsSync(fullAppPath)).toBe(true);
+
+      harness.db.delete(apps).where(eq(apps.id, result.app.id)).run();
+      await firstPromptCreationRegistry.cancel(operationId);
+
+      expect(fs.existsSync(fullAppPath)).toBe(false);
     });
   });
 

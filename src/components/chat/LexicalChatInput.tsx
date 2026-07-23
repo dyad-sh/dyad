@@ -173,6 +173,16 @@ function EnterKeyPlugin({
   return null;
 }
 
+function EditableStatePlugin({ editable }: { editable: boolean }) {
+  const [editor] = useLexicalComposerContext();
+
+  useEffect(() => {
+    editor.setEditable(editable);
+  }, [editor, editable]);
+
+  return null;
+}
+
 // Plugin to sync external value prop into the editor
 function ExternalValueSyncPlugin({
   value,
@@ -511,6 +521,7 @@ export function LexicalChatInput({
         />
         <OnChangePlugin onChange={handleEditorChange} />
         <HistoryPlugin />
+        <EditableStatePlugin editable={!disabled} />
         <EnterKeyPlugin
           onSubmit={onSubmit}
           disableSendButton={disableSendButton}

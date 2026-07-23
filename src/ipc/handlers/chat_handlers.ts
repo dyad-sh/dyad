@@ -63,16 +63,25 @@ export function registerChatHandlers() {
           }
         : input;
 
-    const chatId = await createChatForApp({ appId, initialChatMode });
-    if (firstPromptCreationOperationId) {
-      await firstPromptCreationRegistry.complete(
-        firstPromptCreationOperationId,
-        async () => {
-          await db.delete(chats).where(eq(chats.id, chatId));
-        },
-      );
+    let chatId: number | undefined;
+    try {
+      chatId = await createChatForApp({ appId, initialChatMode });
+      return chatId;
+    } finally {
+      if (firstPromptCreationOperationId) {
+        if (chatId === undefined) {
+          firstPromptCreationRegistry.commit(firstPromptCreationOperationId);
+        } else {
+          const createdChatId = chatId;
+          await firstPromptCreationRegistry.complete(
+            firstPromptCreationOperationId,
+            async () => {
+              await db.delete(chats).where(eq(chats.id, createdChatId));
+            },
+          );
+        }
+      }
     }
-    return chatId;
   });
 
   createTypedHandler(chatContracts.getChat, async (_, chatId) => {

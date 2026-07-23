@@ -207,7 +207,7 @@ export function transition(
             },
             commands: [{ type: "ShowSetupDialog" }],
           };
-        case "PROVIDER_CONFIGURED":
+        case "PROVIDER_CONFIGURED": {
           if (!hasPromptContent(state.payload)) {
             return {
               state: { type: "idle" },
@@ -226,6 +226,7 @@ export function transition(
               createCommand(checkingPayload),
             ],
           };
+        }
         case "RESET":
           return {
             state: { type: "idle" },
@@ -237,7 +238,7 @@ export function transition(
 
     case "awaitingProviderSetup":
       switch (event.type) {
-        case "PROVIDER_CONFIGURED":
+        case "PROVIDER_CONFIGURED": {
           if (!hasPromptContent(state.payload)) {
             return { state: { type: "idle" }, commands: [] };
           }
@@ -252,6 +253,7 @@ export function transition(
               createCommand(awaitingPayload),
             ],
           };
+        }
         case "SETUP_DISMISSED":
         case "DISARM":
         case "RESET":

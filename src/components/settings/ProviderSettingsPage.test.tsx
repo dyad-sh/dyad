@@ -12,8 +12,11 @@ const mocks = vi.hoisted(() => ({
   routerBack: vi.fn(),
   updateSettings: vi.fn(),
   validateProviderApiKey: vi.fn(),
+  getFreeAgentQuotaStatus: vi.fn(),
   openExternalUrl: vi.fn(),
   sendFirstPrompt: vi.fn(),
+  isQuotaExceeded: false,
+  isQuotaLoading: false,
   settings: {
     providerSettings: {},
     enableDyadPro: false,
@@ -51,6 +54,13 @@ vi.mock("@/hooks/useLanguageModelProviders", () => ({
         envVarName: "GOOGLE_API_KEY",
         websiteUrl: "https://example.com/api-keys",
       },
+      {
+        id: "anthropic",
+        name: "Anthropic",
+        type: "cloud",
+        envVarName: "ANTHROPIC_API_KEY",
+        websiteUrl: "https://example.com/api-keys",
+      },
     ],
     isLoading: false,
     error: null,
@@ -59,7 +69,10 @@ vi.mock("@/hooks/useLanguageModelProviders", () => ({
 }));
 
 vi.mock("@/hooks/useFreeAgentQuota", () => ({
-  useFreeAgentQuota: () => ({ isQuotaExceeded: false, isLoading: false }),
+  useFreeAgentQuota: () => ({
+    isQuotaExceeded: mocks.isQuotaExceeded,
+    isLoading: mocks.isQuotaLoading,
+  }),
 }));
 
 vi.mock("jotai", async (importOriginal) => ({
@@ -75,6 +88,9 @@ vi.mock("@/ipc/types", () => ({
   ipc: {
     settings: {
       validateProviderApiKey: mocks.validateProviderApiKey,
+    },
+    freeAgentQuota: {
+      getFreeAgentQuotaStatus: mocks.getFreeAgentQuotaStatus,
     },
     system: {
       openExternalUrl: mocks.openExternalUrl,
@@ -125,8 +141,11 @@ describe("ProviderSettingsPage", () => {
     mocks.routerBack.mockReset();
     mocks.updateSettings.mockReset();
     mocks.validateProviderApiKey.mockReset();
+    mocks.getFreeAgentQuotaStatus.mockReset();
     mocks.openExternalUrl.mockReset();
     mocks.sendFirstPrompt.mockReset();
+    mocks.isQuotaExceeded = false;
+    mocks.isQuotaLoading = false;
     mocks.settings = {
       providerSettings: {},
       enableDyadPro: false,
@@ -174,6 +193,54 @@ describe("ProviderSettingsPage", () => {
 
     renderProviderSettingsPage("auto");
     await saveApiKey("Dyad", "auto");
+
+    await waitFor(() =>
+      expect(mocks.sendFirstPrompt).toHaveBeenCalledWith({
+        type: "PROVIDER_CONFIGURED",
+        defaultChatMode: "local-agent",
+      }),
+    );
+  });
+
+  it("waits for quota before resuming an implicit first prompt", async () => {
+    mocks.hasArmedPayload = true;
+    mocks.isQuotaLoading = true;
+    mocks.settings = {
+      providerSettings: {},
+      enableDyadPro: false,
+    };
+    mocks.updateSettings.mockResolvedValue(undefined);
+    let resolveQuota!: (value: {
+      messagesUsed: number;
+      messagesLimit: number;
+      isQuotaExceeded: boolean;
+      windowStartTime: null;
+      resetTime: null;
+      hoursUntilReset: null;
+    }) => void;
+    mocks.getFreeAgentQuotaStatus.mockReturnValue(
+      new Promise((resolve) => {
+        resolveQuota = resolve;
+      }),
+    );
+
+    renderProviderSettingsPage("anthropic");
+    fireEvent.change(screen.getByLabelText("Set Anthropic API Key"), {
+      target: { value: "test-anthropic-key" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save Key" }));
+
+    await waitFor(() => expect(mocks.updateSettings).toHaveBeenCalled());
+    expect(mocks.sendFirstPrompt).not.toHaveBeenCalled();
+
+    resolveQuota({
+      messagesUsed: 0,
+      messagesLimit: 5,
+      isQuotaExceeded: false,
+      windowStartTime: null,
+      resetTime: null,
+      hoursUntilReset: null,
+    });
 
     await waitFor(() =>
       expect(mocks.sendFirstPrompt).toHaveBeenCalledWith({

@@ -265,19 +265,33 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
           settingsUpdate.defaultChatMode = "local-agent";
         }
       }
-      const nextSettings = settings
-        ? ({ ...settings, ...settingsUpdate } as UserSettings)
-        : undefined;
-      const resumeDefaultChatMode = nextSettings
-        ? getHomeDefaultChatMode(
-            nextSettings,
-            envVars,
-            isQuotaLoading ? undefined : !isQuotaExceeded,
-          )
-        : settingsUpdate.defaultChatMode;
       await updateSettings(settingsUpdate);
       setApiKeyInput(""); // Clear input on success
       if (isFirstProviderSetup && hasArmedPayload) {
+        const nextSettings = settings
+          ? ({ ...settings, ...settingsUpdate } as UserSettings)
+          : undefined;
+        let freeAgentQuotaAvailable = isQuotaLoading
+          ? undefined
+          : !isQuotaExceeded;
+        if (nextSettings && !hasDyadProKey(nextSettings) && isQuotaLoading) {
+          try {
+            const quotaStatus = await queryClient.fetchQuery({
+              queryKey: queryKeys.freeAgentQuota.status,
+              queryFn: () => ipc.freeAgentQuota.getFreeAgentQuotaStatus(),
+            });
+            freeAgentQuotaAvailable = !quotaStatus.isQuotaExceeded;
+          } catch {
+            // Keep the safe Build-mode fallback when quota cannot be resolved.
+          }
+        }
+        const resumeDefaultChatMode = nextSettings
+          ? getHomeDefaultChatMode(
+              nextSettings,
+              envVars,
+              freeAgentQuotaAvailable,
+            )
+          : settingsUpdate.defaultChatMode;
         sendFirstPrompt({
           type: "PROVIDER_CONFIGURED",
           defaultChatMode: resumeDefaultChatMode,

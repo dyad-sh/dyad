@@ -71,12 +71,10 @@ export function GithubBranchManager({ appId }: BranchManagerProps) {
   const { data, isFetching, refetch } = useGithubBranchInventory(appId);
   const { projection, send } = useGithubOps(appId);
   const {
-    abortOperation,
     canRequestBranchMutation,
     canRequestBranchSwitch,
     completedOperation,
     conflicts,
-    isCancellingSync,
     isCreatingBranch,
     isDeletingBranch,
     isMergingBranch,
@@ -479,27 +477,6 @@ export function GithubBranchManager({ appId }: BranchManagerProps) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      {conflicts.length > 0 && (
-        <div
-          className="mt-3 p-3 rounded-md border border-yellow-200 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-900/20"
-          data-testid="branch-conflict-status"
-        >
-          <p className="text-sm text-yellow-800 dark:text-yellow-200 mb-3">
-            {conflicts.length} file{conflicts.length > 1 ? "s" : ""} with merge
-            conflicts: {conflicts.join(", ")}
-          </p>
-          <Button
-            variant="outline"
-            onClick={() =>
-              send({ type: "OP_REQUESTED", op: { type: abortOperation } })
-            }
-            disabled={isOperationInFlight}
-          >
-            {isCancellingSync ? "Cancelling..." : "Cancel sync"}
-          </Button>
-        </div>
-      )}
 
       <Card className="transition-all duration-200">
         <CardHeader

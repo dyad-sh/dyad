@@ -82,7 +82,7 @@ describe("GithubBranchManager machine projection", () => {
     });
   });
 
-  it("renders conflict status from the machine without a duplicate resolver", () => {
+  it("leaves conflict recovery presentation to the parent connector", () => {
     mocks.state = {
       type: "conflicted",
       files: ["src/a.ts", "src/b.ts"],
@@ -92,20 +92,13 @@ describe("GithubBranchManager machine projection", () => {
 
     render(<GithubBranchManager appId={1} />);
 
-    expect(screen.getByTestId("branch-conflict-status").textContent).toContain(
-      "src/a.ts, src/b.ts",
-    );
+    expect(screen.queryByTestId("branch-conflict-status")).toBeNull();
     expect(
       screen.queryByRole("button", {
         name: "Resolve merge conflicts with AI",
       }),
     ).toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: "Cancel sync" }));
-    expect(mocks.send).toHaveBeenCalledWith({
-      type: "OP_REQUESTED",
-      op: { type: "merge-abort" },
-    });
+    expect(screen.queryByRole("button", { name: "Cancel sync" })).toBeNull();
   });
 
   it("keeps recovery switching available while disabling branch mutations", () => {
@@ -126,13 +119,6 @@ describe("GithubBranchManager machine projection", () => {
       (screen.getByTestId("branch-actions-menu-trigger") as HTMLButtonElement)
         .disabled,
     ).toBe(true);
-    expect(
-      (
-        screen.getByRole("button", {
-          name: "Cancel sync",
-        }) as HTMLButtonElement
-      ).disabled,
-    ).toBe(false);
   });
 
   it("preserves create input on failure and closes only after success", async () => {
@@ -209,7 +195,7 @@ describe("GithubBranchManager machine projection", () => {
     await waitFor(() =>
       expect(screen.queryByTestId("merge-branch-submit-button")).toBeNull(),
     );
-    expect(screen.getByTestId("branch-conflict-status")).toBeDefined();
+    expect(screen.queryByTestId("branch-conflict-status")).toBeNull();
   });
 
   it("removes all conflict UI once abort-and-switch is running", () => {

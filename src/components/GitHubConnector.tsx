@@ -96,6 +96,8 @@ function ConnectedGitHubConnector({
     showForcePush,
     showRebaseAndSync,
     showRebaseRecoveryOptions,
+    abortOperation,
+    isCancellingSync,
     runningOperation,
   } = projection;
 
@@ -281,9 +283,11 @@ function ConnectedGitHubConnector({
           )}
         </div>
       )}
-      {/* Conflict Resolution Buttons */}
       {conflicts.length > 0 && (
-        <div className="mt-3 p-3 rounded-md border border-yellow-200 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-900/20">
+        <div
+          className="mt-3 p-3 rounded-md border border-yellow-200 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-900/20"
+          data-testid="github-conflict-recovery"
+        >
           <p className="text-sm text-yellow-800 dark:text-yellow-200 mb-3">
             {conflicts.length} file{conflicts.length > 1 ? "s" : ""} with merge
             conflicts: {conflicts.join(", ")}
@@ -291,9 +295,18 @@ function ConnectedGitHubConnector({
           <div className="flex gap-2">
             <Button
               onClick={() => send({ type: "RESOLVE_WITH_AI_STARTED" })}
-              disabled={isResolving}
+              disabled={isCancellingSync || isResolving}
             >
               {isResolving ? "Resolving..." : "Resolve merge conflicts with AI"}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() =>
+                send({ type: "OP_REQUESTED", op: { type: abortOperation } })
+              }
+              disabled={isCancellingSync || isResolving}
+            >
+              {isCancellingSync ? "Cancelling..." : "Cancel sync"}
             </Button>
           </div>
         </div>

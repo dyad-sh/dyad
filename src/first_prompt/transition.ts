@@ -10,7 +10,7 @@ import { hasPromptContent } from "./state";
 
 function ignore(
   state: FirstPromptState,
-  reason: NonNullable<FirstPromptTransitionResult["ignoredReason"]>,
+  reason: Extract<FirstPromptTransitionResult, { kind: "ignored" }>["reason"],
 ): FirstPromptTransitionResult {
   return ignoreTransition(state, reason);
 }
@@ -23,8 +23,9 @@ function createCommand(payload: FirstPromptPayload): FirstPromptCommand {
 
 function startCreating(
   payload: FirstPromptPayload,
-): FirstPromptTransitionResult {
+): Extract<FirstPromptTransitionResult, { kind: "applied" }> {
   return {
+    kind: "applied",
     state: { type: "creating", payload },
     commands: [createCommand(payload)],
   };
@@ -32,8 +33,9 @@ function startCreating(
 
 function startCheckingProviders(
   payload: FirstPromptPayload,
-): FirstPromptTransitionResult {
+): Extract<FirstPromptTransitionResult, { kind: "applied" }> {
   return {
+    kind: "applied",
     state: { type: "checkingProviders", payload },
     commands: [{ type: "ScheduleProviderCheckTimeout" }],
   };
@@ -58,6 +60,7 @@ function resumePartial(
   payload: FirstPromptPayload = state.payload,
 ): FirstPromptTransitionResult {
   return {
+    kind: "applied",
     state: {
       type: "postCreate",
       payload,
@@ -85,6 +88,7 @@ function startDispatching(
   isExistingAppSubmission: boolean,
 ): FirstPromptTransitionResult {
   return {
+    kind: "applied",
     state: {
       type: "dispatching",
       appId,
@@ -104,8 +108,9 @@ function startDispatching(
 
 function finishDispatching(
   state: Extract<FirstPromptState, { type: "dispatching" }>,
-): FirstPromptTransitionResult {
+): Extract<FirstPromptTransitionResult, { kind: "applied" }> {
   return {
+    kind: "applied",
     state: {
       type: "navigating",
       appId: state.appId,
@@ -162,6 +167,7 @@ export function transition(
           return startCheckingProviders(event.payload);
         case "ARM_FOR_SETUP":
           return {
+            kind: "applied",
             state: {
               type: "awaitingProviderSetup",
               payload: event.payload,
@@ -188,6 +194,7 @@ export function transition(
                 ],
               }
             : {
+                kind: "applied",
                 state: {
                   type: "awaitingProviderSetup",
                   payload: state.payload,
@@ -200,6 +207,7 @@ export function transition(
               };
         case "PROVIDER_CHECK_TIMED_OUT":
           return {
+            kind: "applied",
             state: {
               type: "awaitingProviderSetup",
               payload: state.payload,
@@ -210,6 +218,7 @@ export function transition(
         case "PROVIDER_CONFIGURED": {
           if (!hasPromptContent(state.payload)) {
             return {
+              kind: "applied",
               state: { type: "idle" },
               commands: [{ type: "CancelProviderCheckTimeout" }],
             };
@@ -229,6 +238,7 @@ export function transition(
         }
         case "RESET":
           return {
+            kind: "applied",
             state: { type: "idle" },
             commands: [{ type: "CancelProviderCheckTimeout" }],
           };
@@ -240,7 +250,7 @@ export function transition(
       switch (event.type) {
         case "PROVIDER_CONFIGURED": {
           if (!hasPromptContent(state.payload)) {
-            return { state: { type: "idle" }, commands: [] };
+            return { kind: "applied", state: { type: "idle" }, commands: [] };
           }
           const awaitingPayload = applyProviderDefaultChatMode(
             state.payload,
@@ -257,7 +267,7 @@ export function transition(
         case "SETUP_DISMISSED":
         case "DISARM":
         case "RESET":
-          return { state: { type: "idle" }, commands: [] };
+          return { kind: "applied", state: { type: "idle" }, commands: [] };
         default:
           return ignoreEvent(state, event);
       }
@@ -266,6 +276,7 @@ export function transition(
       switch (event.type) {
         case "APP_CREATED":
           return {
+            kind: "applied",
             state: {
               type: "postCreate",
               payload: state.payload,
@@ -290,6 +301,7 @@ export function transition(
         }
         case "CREATE_FAILED":
           return {
+            kind: "applied",
             state: {
               type: "failed",
               payload: state.payload,
@@ -304,7 +316,7 @@ export function transition(
             ],
           };
         case "RESET":
-          return { state: { type: "idle" }, commands: [] };
+          return { kind: "applied", state: { type: "idle" }, commands: [] };
         default:
           return ignoreEvent(state, event);
       }
@@ -315,6 +327,7 @@ export function transition(
           if (state.step !== "neon")
             return ignore(state, "invalid-in-current-state");
           return {
+            kind: "applied",
             state: { ...state, step: "theme" },
             commands: [{ type: "ApplyTheme", appId: state.appId }],
           };
@@ -327,6 +340,7 @@ export function transition(
           );
         case "POST_CREATE_FAILED":
           return {
+            kind: "applied",
             state: {
               type: "failedPartial",
               payload: state.payload,
@@ -345,7 +359,7 @@ export function transition(
             ],
           };
         case "RESET":
-          return { state: { type: "idle" }, commands: [] };
+          return { kind: "applied", state: { type: "idle" }, commands: [] };
         default:
           return ignoreEvent(state, event);
       }
@@ -357,6 +371,7 @@ export function transition(
           return state.previewDecided
             ? finishDispatching(state)
             : {
+                kind: "applied",
                 state: { ...state, settled: true },
                 commands: [],
               };
@@ -366,6 +381,7 @@ export function transition(
           return state.settled
             ? finishDispatching(state)
             : {
+                kind: "applied",
                 state: { ...state, previewDecided: true },
                 commands: [],
               };
@@ -375,6 +391,7 @@ export function transition(
           const result = state.settled
             ? finishDispatching(state)
             : {
+                kind: "applied" as const,
                 state: { ...state, previewDecided: true },
                 commands: [],
               };
@@ -391,7 +408,7 @@ export function transition(
           };
         }
         case "RESET":
-          return { state: { type: "idle" }, commands: [] };
+          return { kind: "applied", state: { type: "idle" }, commands: [] };
         default:
           return ignoreEvent(state, event);
       }
@@ -400,6 +417,7 @@ export function transition(
       switch (event.type) {
         case "REFRESHED":
           return {
+            kind: "applied",
             state: { type: "idle" },
             commands: [
               { type: "SelectChat", appId: state.appId, chatId: state.chatId },
@@ -407,6 +425,7 @@ export function transition(
           };
         case "REFRESH_FAILED":
           return {
+            kind: "applied",
             state: { type: "idle" },
             commands: [
               {
@@ -418,7 +437,7 @@ export function transition(
             ],
           };
         case "RESET":
-          return { state: { type: "idle" }, commands: [] };
+          return { kind: "applied", state: { type: "idle" }, commands: [] };
         default:
           return ignoreEvent(state, event);
       }
@@ -431,7 +450,7 @@ export function transition(
           return startCreating(state.payload);
         case "RESET":
         case "DISARM":
-          return { state: { type: "idle" }, commands: [] };
+          return { kind: "applied", state: { type: "idle" }, commands: [] };
         case "PROVIDER_CONFIGURED":
           return ignore(state, "not-awaiting-setup");
         default:
@@ -448,7 +467,7 @@ export function transition(
           return resumePartial(state);
         case "RESET":
         case "DISARM":
-          return { state: { type: "idle" }, commands: [] };
+          return { kind: "applied", state: { type: "idle" }, commands: [] };
         case "PROVIDER_CONFIGURED":
           return ignore(state, "not-awaiting-setup");
         default:

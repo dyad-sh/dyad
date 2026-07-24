@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { commandsOf, ignoreReasonOf } from "@/state_machines/testing";
 import type {
   UserInputDescriptor,
   UserInputState,
@@ -42,7 +43,7 @@ describe("MCP consent classifier transitions", () => {
       requestId: descriptor.requestId,
       response: { kind: "mcp-consent", decision: "decline" },
     });
-    expect(decline.ignoredReason).toBe("already-settled");
+    expect(ignoreReasonOf(decline)).toBe("already-settled");
     expect(decline.state).toBe(approved.state);
   });
 
@@ -59,7 +60,7 @@ describe("MCP consent classifier transitions", () => {
       requestId: descriptor.requestId,
       approved: true,
     });
-    expect(classifier.ignoredReason).toBe("already-settled");
+    expect(ignoreReasonOf(classifier)).toBe("already-settled");
   });
 
   it("fails closed to review when classification does not approve", () => {
@@ -73,7 +74,7 @@ describe("MCP consent classifier transitions", () => {
       status: "awaiting",
       classifier: "review",
     });
-    expect(result.commands).toContainEqual(
+    expect(commandsOf(result)).toContainEqual(
       expect.objectContaining({
         type: "broadcast-classified",
         reason: "risky",

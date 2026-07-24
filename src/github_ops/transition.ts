@@ -82,6 +82,7 @@ function beginOperation(
   const blockedSwitchResume =
     op.type === "switch" ? getBlockedSwitchResume(state) : undefined;
   return {
+    kind: "applied",
     state: {
       type: "running",
       op,
@@ -115,6 +116,7 @@ function operationSucceeded(
   const mutationCommands = completionCommands(op);
   if (state.next) {
     return {
+      kind: "applied",
       state: {
         type: "running",
         op: state.next,
@@ -126,6 +128,7 @@ function operationSucceeded(
 
   const banner = successBanner(op);
   return {
+    kind: "applied",
     state: { type: "idle", banner },
     commands: mutationCommands,
   };
@@ -191,6 +194,7 @@ function operationFailed(
 
   if (!failure.code && isRebaseOperation(op)) {
     return {
+      kind: "applied",
       state: { type: "idle", banner },
       commands: [
         { type: "notify", kind: "error", message: failure.message },
@@ -200,6 +204,7 @@ function operationFailed(
   }
 
   return {
+    kind: "applied",
     state: { type: "idle", banner },
     commands: [{ type: "notify", kind: "error", message: failure.message }],
   };
@@ -216,6 +221,7 @@ function awaitConflicts(
     state.banner.code === banner.code &&
     state.banner.message === banner.message;
   return {
+    kind: "applied",
     state: samePendingProbe
       ? state
       : {
@@ -237,6 +243,7 @@ function conflictsReceived(
       if (!state.awaitingConflicts) return ignore(state, "no-change");
       if (files.length === 0) {
         return {
+          kind: "applied",
           state: { type: "idle", banner: state.banner },
           commands: state.banner
             ? [
@@ -300,6 +307,7 @@ function gitStateReceived(
       return ignore(state, "op-in-flight");
     case "switch-blocked":
       return {
+        kind: "applied",
         state,
         commands: [{ type: "probe-conflicts" }],
       };
@@ -314,6 +322,7 @@ function gitStateReceived(
       const nextState =
         nextOrigin === state.origin ? state : { ...state, origin: nextOrigin };
       return {
+        kind: "applied",
         state: nextState,
         commands: [{ type: "probe-conflicts" }],
       };
@@ -338,6 +347,7 @@ function gitStateReceived(
           ? { type: "idle", banner: state.banner }
           : state;
       return {
+        kind: "applied",
         state: nextState,
         commands: [{ type: "probe-conflicts" }],
       };
@@ -378,6 +388,7 @@ function startResolvingConflicts(
   switch (state.type) {
     case "conflicted":
       return {
+        kind: "applied",
         state,
         commands: [
           {
@@ -418,6 +429,7 @@ function reconcile(state: GithubOpsState): GithubOpsTransitionResult {
     case "rebase-paused":
     case "switch-blocked":
       return {
+        kind: "applied",
         state,
         commands: [{ type: "probe-git-state" }],
       };
@@ -446,6 +458,7 @@ function abortAndSwitch(state: GithubOpsState): GithubOpsTransitionResult {
       : { type: "merge-abort" };
   const next: GithubOperation = { type: "switch", branch: state.target };
   return {
+    kind: "applied",
     state: { type: "running", op, next, banner: null },
     commands: [{ type: "run-op", op }],
   };
@@ -459,6 +472,7 @@ function enterConflicted(
   const message =
     "Merge conflicts detected. Use the buttons below to resolve them.";
   return {
+    kind: "applied",
     state: {
       type: "conflicted",
       files,
@@ -500,6 +514,7 @@ function blockedSwitch(
   resume?: BlockedSwitchResume,
 ): GithubOpsTransitionResult {
   return {
+    kind: "applied",
     state: {
       type: "switch-blocked",
       target,
@@ -672,7 +687,7 @@ function sameFiles(left: readonly string[], right: readonly string[]): boolean {
 }
 
 function changed(state: GithubOpsState): GithubOpsTransitionResult {
-  return { state, commands: [] };
+  return { kind: "applied", state, commands: [] };
 }
 
 function ignore(

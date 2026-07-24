@@ -334,7 +334,7 @@ export function createMcpOAuthRegistry(options: McpOAuthRegistryOptions) {
   function dispatch(port: number, event: McpOAuthEvent): boolean {
     const previous = getState(port);
     const result = transition(previous, event);
-    if (!result.changed) {
+    if (result.kind === "ignored") {
       observer?.onEventIgnored?.({
         state: previous,
         event,
@@ -395,7 +395,7 @@ export function createMcpOAuthRegistry(options: McpOAuthRegistryOptions) {
       ...callback,
     };
     const result = transition(current, event);
-    if (!result.changed && result.reason === "state-mismatch") {
+    if (result.kind === "ignored" && result.reason === "state-mismatch") {
       observer?.onEventIgnored?.({
         state: current,
         event,

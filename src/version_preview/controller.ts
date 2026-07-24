@@ -105,6 +105,7 @@ export class VersionPreviewController {
     const previous = this.store.getSnapshot();
     const result = transition(previous, event);
     observeTransition(this.observer, previous, event, result);
+    if (result.kind === "ignored") return false;
     if (result.state !== previous) {
       this.store.setState(result.state, () => {
         for (const command of result.commands) this.execute(command);

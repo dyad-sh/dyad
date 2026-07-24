@@ -243,15 +243,24 @@ function cancelStreams(
     const wasWaiting =
       stream.phase === "waiting-chat-barrier" ||
       stream.phase === "waiting-app-barrier";
+    const nextPhase = wasWaiting
+      ? ("unwinding-aborted" as const)
+      : stream.phase;
     const cancelled = {
       ...stream,
       aborted: true,
       cancelNotified: true,
       // The abort listener in waitForAdmissionBlockToClear (lines 284-308)
       // settles the parked await without waiting for barrier release.
-      phase: wasWaiting ? ("unwinding-aborted" as const) : stream.phase,
+      phase: nextPhase,
     };
-    next = replaceStream(next, cancelled);
+    if (
+      !stream.aborted ||
+      !stream.cancelNotified ||
+      nextPhase !== stream.phase
+    ) {
+      next = replaceStream(next, cancelled);
+    }
     if (wasWaiting) {
       const remove = (
         waiters: Readonly<Record<number, readonly number[]>>,
@@ -297,7 +306,7 @@ function cancelStreams(
       origin: "cancel",
     });
   }
-  return { state: next, commands };
+  return { kind: "applied", state: next, commands };
 }
 
 function releaseBarrier(
@@ -338,13 +347,16 @@ export function transitionMainModel(
   state: MainModelState,
   event: MainModelEvent,
 ): MainModelTransitionResult {
-  if (state.quit && event.type !== "quit") return { state, commands: [] };
+  if (state.quit && event.type !== "quit")
+    return { kind: "applied", state, commands: [] };
 
   switch (event.type) {
     case "request-received": {
-      if (state.streams[event.invocationId]) return { state, commands: [] };
+      if (state.streams[event.invocationId])
+        return { kind: "applied", state, commands: [] };
       // Lines 593-615, before the first handler await at 629.
       return {
+        kind: "applied",
         state: replaceStream(state, {
           invocationId: event.invocationId,
           streamId: event.streamId,
@@ -363,7 +375,7 @@ export function transitionMainModel(
     case "handler-advanced": {
       const stream = state.streams[event.invocationId];
       if (!stream || stream.phase === "finalized")
-        return { state, commands: [] };
+        return { kind: "applied", state, commands: [] };
       if (
         stream.aborted &&
         [
@@ -374,6 +386,7 @@ export function transitionMainModel(
         ].includes(stream.phase)
       ) {
         return {
+          kind: "applied",
           state: replaceStream(state, {
             ...stream,
             phase: "unwinding-aborted",
@@ -384,6 +397,7 @@ export function transitionMainModel(
       }
       if (stream.phase === "tracked") {
         return {
+          kind: "applied",
           state: replaceStream(state, {
             ...stream,
             phase: "admission-pending",
@@ -394,6 +408,7 @@ export function transitionMainModel(
       if (stream.phase === "admission-pending") {
         if ((state.chatBarrierCounts[stream.chatId] ?? 0) > 0) {
           return {
+            kind: "applied",
             state: {
               ...replaceStream(state, {
                 ...stream,
@@ -410,6 +425,7 @@ export function transitionMainModel(
         }
         if ((state.appBarrierCounts[stream.appId] ?? 0) > 0) {
           return {
+            kind: "applied",
             state: {
               ...replaceStream(state, {
                 ...stream,
@@ -427,6 +443,7 @@ export function transitionMainModel(
         // Lines 670-708: check + marker clear + start send are atomic.
         const admitted = { ...stream, phase: "admitted" as const };
         return {
+          kind: "applied",
           state: replaceStream(state, admitted),
           commands: [
             {
@@ -440,6 +457,7 @@ export function transitionMainModel(
       if (stream.phase === "admitted") {
         // The first modeled body await begins streaming and may produce a chunk.
         return {
+          kind: "applied",
           state: replaceStream(state, {
             ...stream,
             phase: "streaming",
@@ -461,6 +479,7 @@ export function transitionMainModel(
       ) {
         if (event.throws) {
           return {
+            kind: "applied",
             state: replaceStream(state, {
               ...stream,
               phase: "unwinding-errored",
@@ -470,6 +489,7 @@ export function transitionMainModel(
           };
         }
         return {
+          kind: "applied",
           state: replaceStream(state, {
             ...stream,
             awaitPoint: "post-abort-apply",
@@ -483,6 +503,7 @@ export function transitionMainModel(
       ) {
         if (event.throws) {
           return {
+            kind: "applied",
             state: replaceStream(state, {
               ...stream,
               phase: "unwinding-errored",
@@ -494,6 +515,7 @@ export function transitionMainModel(
         // Lines 2197-2222: apply error + response end is legal; a cancel may
         // have landed after the guard at line 2144.
         return {
+          kind: "applied",
           state: replaceStream(state, {
             ...stream,
             phase: "unwinding-completed",
@@ -525,7 +547,7 @@ export function transitionMainModel(
           ],
         };
       }
-      return { state, commands: [] };
+      return { kind: "applied", state, commands: [] };
     }
     case "barrier-installed": {
       const counts =
@@ -536,6 +558,7 @@ export function transitionMainModel(
         event.scope.type === "chat" ? event.scope.chatId : event.scope.appId;
       const nextCounts = { ...counts, [key]: (counts[key] ?? 0) + 1 };
       return {
+        kind: "applied",
         state:
           event.scope.type === "chat"
             ? { ...state, chatBarrierCounts: nextCounts }
@@ -545,8 +568,12 @@ export function transitionMainModel(
     }
     case "barrier-released":
       return countFor(event.scope, state) === 0
-        ? { state, commands: [] }
-        : { state: releaseBarrier(state, event.scope), commands: [] };
+        ? { kind: "applied", state, commands: [] }
+        : {
+            kind: "applied",
+            state: releaseBarrier(state, event.scope),
+            commands: [],
+          };
     case "cancel-chat":
       return cancelStreams(state, (stream) => stream.chatId === event.chatId);
     case "cancel-app": {
@@ -576,13 +603,14 @@ export function transitionMainModel(
         stream.phase !== "streaming" ||
         stream.awaitPoint !== "llm"
       )
-        return { state, commands: [] };
+        return { kind: "applied", state, commands: [] };
       if (event.outcome === "completed") {
         // Lines 2124-2144: cancellation observed before the final guard skips
         // all normal handler terminals. Empty responses take the same no-end
         // path, even when not aborted.
         if (stream.aborted || event.hasResponse === false) {
           return {
+            kind: "applied",
             state: replaceStream(state, {
               ...stream,
               phase: stream.aborted
@@ -594,6 +622,7 @@ export function transitionMainModel(
           };
         }
         return {
+          kind: "applied",
           state: replaceStream(state, {
             ...stream,
             awaitPoint: "post-abort-db",
@@ -606,6 +635,7 @@ export function transitionMainModel(
       const errored = event.outcome === "errored" && !stream.aborted;
       const phase = errored ? "unwinding-errored" : "unwinding-aborted";
       return {
+        kind: "applied",
         state: replaceStream(state, { ...stream, phase, awaitPoint: null }),
         commands: errored
           ? [handlerError(stream, "modeled handler error")]
@@ -619,11 +649,12 @@ export function transitionMainModel(
         stream.phase !== "streaming" ||
         stream.awaitPoint !== "llm"
       )
-        return { state, commands: [] };
+        return { kind: "applied", state, commands: [] };
       if (state.activeCompactionChats.includes(stream.chatId)) {
         return ignore(state, "compaction-already-active");
       }
       return {
+        kind: "applied",
         state: {
           ...replaceStream(state, { ...stream, awaitPoint: "compaction" }),
           activeCompactionChats: [
@@ -646,8 +677,9 @@ export function transitionMainModel(
         stream.phase !== "streaming" ||
         stream.awaitPoint !== "compaction"
       )
-        return { state, commands: [] };
+        return { kind: "applied", state, commands: [] };
       return {
+        kind: "applied",
         state: {
           ...replaceStream(state, { ...stream, awaitPoint: "llm" }),
           activeCompactionChats: state.activeCompactionChats.filter(
@@ -678,7 +710,7 @@ export function transitionMainModel(
     case "handler-unwound": {
       const stream = state.streams[event.invocationId];
       if (!stream || !stream.phase.startsWith("unwinding-"))
-        return { state, commands: [] };
+        return { kind: "applied", state, commands: [] };
       const finalized = {
         ...stream,
         phase: "finalized" as const,
@@ -698,10 +730,14 @@ export function transitionMainModel(
         invocationId: stream.invocationId,
         origin: "finalizer",
       });
-      return { state: replaceStream(state, finalized), commands };
+      return {
+        kind: "applied",
+        state: replaceStream(state, finalized),
+        commands,
+      };
     }
     case "quit": {
-      if (state.quit) return { state, commands: [] };
+      if (state.quit) return { kind: "applied", state, commands: [] };
       const streams = Object.fromEntries(
         Object.values(state.streams).map((stream) => [
           stream.invocationId,
@@ -716,6 +752,7 @@ export function transitionMainModel(
       // Lines 554-574: quit aborts and clears tracking/barriers/waiters without
       // renderer terminals or resolving the handler-owned completion promises.
       return {
+        kind: "applied",
         state: {
           ...state,
           streams,
@@ -737,6 +774,7 @@ export function assertMainModelTransitionInvariants(
   event: MainModelEvent,
   result: MainModelTransitionResult,
 ): void {
+  if (result.kind === "ignored") return;
   for (const emission of result.commands) {
     if (emission.type === "chat:stream:start") {
       const stream = Object.values(result.state.streams).find(

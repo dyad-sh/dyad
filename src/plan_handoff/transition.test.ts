@@ -9,7 +9,13 @@ import type {
   ReadyHandoffSession,
 } from "./state";
 import { TRANSITION_DISPLAY_MS, transition } from "./transition";
-import { assertReferenceStability } from "@/state_machines/testing";
+import {
+  assertAllCommandsProducible,
+  assertAllStatesReachable,
+  assertReferenceStability,
+  commandsOf,
+  ignoreReasonOf,
+} from "@/state_machines/testing";
 
 const session: HandoffSession = { chatId: 1, appId: 10, acceptInNewChat: true };
 const persistedSession: PersistedHandoffSession = {
@@ -30,7 +36,22 @@ const STATE_TYPES = [
   "awaiting-stream-idle",
   "implementing",
   "failed",
-] as const;
+] as const satisfies readonly HandoffState["type"][];
+const COMMAND_TYPES = [
+  "mark-plan-accepted",
+  "cancel-stream",
+  "wait",
+  "set-preview-mode",
+  "persist-plan",
+  "create-chat",
+  "switch-chat-mode",
+  "navigate-to-chat",
+  "refresh-chat-list",
+  "watch-stream-idle",
+  "unwatch-stream-idle",
+  "start-implementation",
+  "notify-failure",
+] as const satisfies readonly HandoffCommand["type"][];
 
 /** One representative instance per state type — the full state axis. */
 const ALL_STATES: HandoffState[] = [
@@ -47,6 +68,7 @@ const ALL_STATES: HandoffState[] = [
 /** One representative instance per event type — the full event axis. */
 const ALL_EVENTS: HandoffEvent[] = [
   { type: "PLAN_ACCEPTED", chatId: 1, appId: 10, acceptInNewChat: true },
+  { type: "PLAN_ACCEPTED", chatId: 1, appId: 10, acceptInNewChat: false },
   { type: "STREAM_CANCEL_FINISHED" },
   { type: "TRANSITION_DISPLAY_DONE" },
   { type: "PLAN_PERSISTED", planSlug: "slug" },
@@ -85,7 +107,7 @@ function drive(events: HandoffEvent[]): {
   for (const event of events) {
     const result = transition(deepFreeze(state), deepFreeze(event));
     state = result.state;
-    commands.push(...result.commands);
+    commands.push(...commandsOf(result));
   }
   return { state, commands };
 }
@@ -101,13 +123,33 @@ const NEW_CHAT_HAPPY_PATH: HandoffEvent[] = [
 ];
 
 describe("plan handoff transition — totality over state × event", () => {
+  it("reaches every state and produces every command kind", () => {
+    const options = {
+      initialState: { type: "idle" } as HandoffState,
+      events: ALL_EVENTS,
+      transition,
+      stateKey: JSON.stringify,
+      maxStates: 1_000,
+    };
+    assertAllStatesReachable({
+      ...options,
+      inventory: STATE_TYPES,
+      stateKind: (state) => state.type,
+    });
+    assertAllCommandsProducible({
+      ...options,
+      inventory: COMMAND_TYPES,
+      commandKind: (command) => command.type,
+    });
+  });
+
   it("handles every state/event pair without throwing or mutating inputs", () => {
     for (const state of ALL_STATES) {
       for (const event of ALL_EVENTS) {
         // deepFreeze turns any mutation attempt into a TypeError.
         const result = transition(deepFreeze(state), deepFreeze(event));
         expect(STATE_TYPES).toContain(result.state.type);
-        expect(Array.isArray(result.commands)).toBe(true);
+        expect(Array.isArray(commandsOf(result))).toBe(true);
         assertReferenceStability(
           state,
           result,
@@ -122,8 +164,8 @@ describe("plan handoff transition — totality over state × event", () => {
       for (const event of ALL_EVENTS) {
         const result = transition(state, event);
         if (result.state === state) {
-          expect(result.commands).toEqual([]);
-          expect(result.ignoredReason).toBeTruthy();
+          expect(commandsOf(result)).toEqual([]);
+          expect(ignoreReasonOf(result)).toBeTruthy();
         }
       }
     }
@@ -133,7 +175,7 @@ describe("plan handoff transition — totality over state × event", () => {
     for (const state of ALL_STATES) {
       for (const event of ALL_EVENTS) {
         const result = transition(state, event);
-        const fires = result.commands.some(
+        const fires = commandsOf(result).some(
           (c) => c.type === "start-implementation",
         );
         if (fires) {
@@ -197,7 +239,7 @@ describe("plan handoff transition — totality over state × event", () => {
         ) {
           accepts++;
         }
-        starts += result.commands.filter(
+        starts += commandsOf(result).filter(
           (c) => c.type === "start-implementation",
         ).length;
         state = result.state;
@@ -283,7 +325,7 @@ describe("plan handoff transition — scenarios", () => {
         acceptInNewChat: true,
       });
       expect(result.state).toBe(state);
-      expect(result.commands).toEqual([]);
+      expect(commandsOf(result)).toEqual([]);
     }
   });
 
@@ -303,12 +345,12 @@ describe("plan handoff transition — scenarios", () => {
       session: { chatId: 1, appId: 10, acceptInNewChat: false },
     });
     // The stuck watcher is disposed before the new handoff starts.
-    expect(result.commands.map((c) => c.type)).toEqual([
+    expect(commandsOf(result).map((c) => c.type)).toEqual([
       "unwatch-stream-idle",
       "mark-plan-accepted",
       "cancel-stream",
     ]);
-    expect(result.commands[0]).toEqual({
+    expect(commandsOf(result)[0]).toEqual({
       type: "unwatch-stream-idle",
       chatId: readySession.implementationChatId,
     });
@@ -324,7 +366,7 @@ describe("plan handoff transition — scenarios", () => {
       chatId: 99,
     });
     expect(result.state).toBe(state);
-    expect(result.commands).toEqual([]);
+    expect(commandsOf(result)).toEqual([]);
   });
 
   it("fails like the legacy saga when the plan cannot be persisted", () => {
@@ -399,7 +441,7 @@ describe("plan handoff transition — scenarios", () => {
       type: "cancelling-stream",
       session: { chatId: 1, appId: 10, acceptInNewChat: false },
     });
-    expect(result.commands.map((c) => c.type)).toEqual([
+    expect(commandsOf(result).map((c) => c.type)).toEqual([
       "mark-plan-accepted",
       "cancel-stream",
     ]);

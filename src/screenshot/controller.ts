@@ -46,6 +46,7 @@ export class ScreenshotController {
     const previous = this.store.getSnapshot();
     const result = transition(previous, event);
     observeTransition(this.observer, previous, event, result);
+    if (result.kind === "ignored") return;
     const execute = () => {
       for (const command of result.commands) {
         try {

@@ -55,6 +55,7 @@ export function createHandoffController(
     const previous = store.getSnapshot();
     const result = transition(previous, event);
     observeTransition(observer, previous, event, result);
+    if (result.kind === "ignored") return;
     store.setState(result.state);
     if (result.commands.length > 0) {
       queue.push(...result.commands);

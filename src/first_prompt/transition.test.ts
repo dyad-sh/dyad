@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   assertReferenceStability,
+  assertAllCommandsProducible,
+  assertAllStatesReachable,
+  commandsOf,
   exploreReachableStates,
+  ignoreReasonOf,
 } from "@/state_machines/testing";
 import type {
   FirstPromptEvent,
+  FirstPromptCommand,
   FirstPromptPayload,
   FirstPromptState,
 } from "./state";
@@ -19,6 +24,10 @@ const payload: FirstPromptPayload = {
 
 const events: readonly FirstPromptEvent[] = [
   { type: "SUBMIT", payload },
+  {
+    type: "SUBMIT",
+    payload: { ...payload, selectedApp: { id: 1, name: "Existing" } },
+  },
   { type: "ARM_FOR_SETUP", payload },
   { type: "DISARM" },
   { type: "PROVIDERS_LOADED", anySetup: false },
@@ -40,15 +49,63 @@ const events: readonly FirstPromptEvent[] = [
   { type: "RETRY" },
   { type: "RESET" },
 ];
+const STATE_KINDS = [
+  "idle",
+  "checkingProviders",
+  "awaitingProviderSetup",
+  "creating",
+  "postCreate",
+  "dispatching",
+  "navigating",
+  "failed",
+  "failedPartial",
+] as const satisfies readonly FirstPromptState["type"][];
+const COMMAND_KINDS = [
+  "ScheduleProviderCheckTimeout",
+  "CancelProviderCheckTimeout",
+  "CreateApp",
+  "CreateChat",
+  "RunNeonTemplateHook",
+  "ApplyTheme",
+  "OpenPreviewIfSetupRequired",
+  "SubmitPrompt",
+  "ScheduleSettle",
+  "RefreshQueries",
+  "NavigateHome",
+  "SelectChat",
+  "ShowSetupDialog",
+  "ClearEditingBuffer",
+  "ShowError",
+] as const satisfies readonly FirstPromptCommand["type"][];
 
 describe("first-prompt transition", () => {
+  it("reaches every state and produces every command kind", () => {
+    const options = {
+      initialState: { type: "idle" } as FirstPromptState,
+      events,
+      transition,
+      stateKey: JSON.stringify,
+    };
+    assertAllStatesReachable({
+      ...options,
+      inventory: STATE_KINDS,
+      stateKind: (state) => state.type,
+    });
+    assertAllCommandsProducible({
+      ...options,
+      inventory: COMMAND_KINDS,
+      commandKind: (command) => command.type,
+    });
+  });
+
   it("explores every reachable phase, including failedPartial, and is total", () => {
-    const states = exploreReachableStates({
+    const graph = exploreReachableStates({
       initialState: { type: "idle" } as FirstPromptState,
       events,
       transition,
       stateKey: (state) => JSON.stringify(state),
     });
+    const states = graph.nodes.map(({ state }) => state);
 
     expect([...new Set(states.map((state) => state.type))].sort()).toEqual(
       [
@@ -82,8 +139,8 @@ describe("first-prompt transition", () => {
     const result = transition(checking, { type: "SUBMIT", payload });
 
     expect(result.state).toBe(checking);
-    expect(result.commands).toEqual([]);
-    expect(result.ignoredReason).toBe("submission-in-flight");
+    expect(commandsOf(result)).toEqual([]);
+    expect(ignoreReasonOf(result)).toBe("submission-in-flight");
   });
 
   it("ignores provider completion outside provider-check/setup states", () => {
@@ -91,7 +148,7 @@ describe("first-prompt transition", () => {
     const result = transition(idle, { type: "PROVIDER_CONFIGURED" });
 
     expect(result.state).toBe(idle);
-    expect(result.ignoredReason).toBe("not-awaiting-setup");
+    expect(ignoreReasonOf(result)).toBe("not-awaiting-setup");
   });
 
   it.each(["checkingProviders", "awaitingProviderSetup"] as const)(
@@ -110,6 +167,7 @@ describe("first-prompt transition", () => {
       const result = transition(state, { type: "PROVIDER_CONFIGURED" });
 
       expect(result).toEqual({
+        kind: "applied",
         state: { type: "idle" },
         commands:
           type === "checkingProviders"
@@ -135,7 +193,7 @@ describe("first-prompt transition", () => {
       type: "creating",
       payload: { ...payload, chatMode: "local-agent" },
     });
-    expect(result.commands).toEqual([
+    expect(commandsOf(result)).toEqual([
       { type: "NavigateHome" },
       {
         type: "CreateApp",
@@ -171,6 +229,7 @@ describe("first-prompt transition", () => {
     const state: FirstPromptState = { type: "checkingProviders", payload };
 
     expect(transition(state, { type: "PROVIDER_CHECK_TIMED_OUT" })).toEqual({
+      kind: "applied",
       state: {
         type: "awaitingProviderSetup",
         payload,
@@ -198,6 +257,7 @@ describe("first-prompt transition", () => {
     expect(
       transition(state, { type: "SUBMIT", payload: retargetedPayload }),
     ).toEqual({
+      kind: "applied",
       state: { type: "checkingProviders", payload: retargetedPayload },
       commands: [{ type: "ScheduleProviderCheckTimeout" }],
     });

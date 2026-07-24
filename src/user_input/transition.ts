@@ -1,5 +1,5 @@
 /** Pure, total transition function for the user-input round-trip machine. */
-import { ignore } from "../state_machines/types";
+import { change, ignore, type TransitionResult } from "../state_machines/types";
 import type { UserInputCommand } from "./commands";
 import type {
   UserInputDescriptor,
@@ -21,17 +21,17 @@ export type UserInputIgnoreReason =
   | "already-due"
   | "invalid-in-current-state";
 
-export interface UserInputTransitionResult {
-  state: UserInputState;
-  commands: readonly UserInputCommand[];
-  ignoredReason?: UserInputIgnoreReason;
-}
+export type UserInputTransitionResult = TransitionResult<
+  UserInputState,
+  UserInputCommand,
+  UserInputIgnoreReason
+>;
 
 function applied(
   state: UserInputState,
   commands: readonly UserInputCommand[],
 ): UserInputTransitionResult {
-  return { state, commands };
+  return change(state, commands);
 }
 
 function terminalCommands(

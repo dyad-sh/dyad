@@ -16,11 +16,13 @@ export function transition(
           return succeed(state, event, false);
         case "JOB_FAILED":
           return {
+            kind: "applied",
             state: { type: "failed", job: state.job, message: event.message },
             commands: [],
           };
         case "CANCEL_REQUESTED":
           return {
+            kind: "applied",
             state: { type: "cancelling", job: state.job },
             commands: [{ type: "RequestCancel", jobId: state.job.id }],
           };
@@ -36,8 +38,13 @@ export function transition(
           return succeed(state, event, true);
         case "JOB_FAILED":
           return event.kind === "user_cancelled"
-            ? { state: { type: "cancelled", job: state.job }, commands: [] }
+            ? {
+                kind: "applied",
+                state: { type: "cancelled", job: state.job },
+                commands: [],
+              }
             : {
+                kind: "applied",
                 state: {
                   type: "failed",
                   job: state.job,
@@ -51,7 +58,7 @@ export function transition(
           // Applied command-settlement event. `cancelled: false` means main
           // already settled; either way the generation promise remains the
           // authority for the terminal state.
-          return { state, commands: [] };
+          return { kind: "applied", state, commands: [] };
         default:
           return assertNever(event);
       }
@@ -72,6 +79,7 @@ function succeed(
   lateAfterCancel: boolean,
 ): ImageGenerationTransitionResult {
   return {
+    kind: "applied",
     state: {
       type: "succeeded",
       job: state.job,

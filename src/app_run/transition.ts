@@ -36,6 +36,7 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
   switch (event.type) {
     case "START":
       return {
+        kind: "applied",
         state: {
           type: "starting",
           appId: event.appId,
@@ -58,6 +59,7 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
 
     case "RESTART":
       return {
+        kind: "applied",
         state: {
           type: "starting",
           appId: event.appId,
@@ -80,6 +82,7 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
 
     case "REBUILD":
       return {
+        kind: "applied",
         state: {
           type: "starting",
           appId: event.appId,
@@ -102,6 +105,7 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
 
     case "EXTERNAL_RESTART":
       return {
+        kind: "applied",
         state: {
           type: "starting",
           appId: event.appId,
@@ -121,6 +125,7 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
 
     case "STOP":
       return {
+        kind: "applied",
         state: {
           type: "stopping",
           appId: event.appId,
@@ -149,6 +154,7 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
         commands.push({ type: "bumpReloadToken", appId: state.appId });
       }
       return {
+        kind: "applied",
         state: {
           type: "ready",
           appId: state.appId,
@@ -172,6 +178,7 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
         commands.push({ type: "bumpReloadToken", appId: state.appId });
       }
       return {
+        kind: "applied",
         state: {
           type: "errored",
           appId: state.appId,
@@ -187,6 +194,7 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
         return ignore(state, "stale-run-id");
       }
       return {
+        kind: "applied",
         state: {
           type: "stopped",
           appId: state.appId,
@@ -201,6 +209,7 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
         return ignore(state, "stale-run-id");
       }
       return {
+        kind: "applied",
         state: {
           type: "errored",
           appId: state.appId,
@@ -223,11 +232,13 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
             return ignore(state, "no-change");
           }
           return {
+            kind: "applied",
             state: { ...state, pendingUrl: event.url },
             commands: [],
           };
         case "ready":
           return {
+            kind: "applied",
             state: sameRunUrl(state.url, event.url)
               ? state
               : { ...state, url: event.url },
@@ -237,6 +248,7 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
           };
         case "reloading":
           return {
+            kind: "applied",
             state: sameRunUrl(state.url, event.url)
               ? state
               : { ...state, url: event.url },
@@ -255,6 +267,7 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
           // for already-running apps (e.g. after switching back to an app).
           // Re-establish `ready` with the URL, matching prior behavior.
           return {
+            kind: "applied",
             state: {
               type: "ready",
               appId: event.appId,
@@ -275,6 +288,7 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
         event.type === "HMR_DETECTED" ? "hmr" : "manual";
       if (state.type === "ready") {
         return {
+          kind: "applied",
           state: {
             type: "reloading",
             appId: state.appId,
@@ -295,6 +309,7 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
       // Outside `ready`, preserve the historical unconditional reload-token
       // bump without changing run state.
       return {
+        kind: "applied",
         state,
         commands: [{ type: "bumpReloadToken", appId: event.appId }],
       };
@@ -305,6 +320,7 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
         return ignore(state, "stale-run-id");
       }
       return {
+        kind: "applied",
         state: {
           type: "ready",
           appId: state.appId,
@@ -317,6 +333,7 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
     case "APP_EXIT":
       if (state.type === "ready" || state.type === "reloading") {
         return {
+          kind: "applied",
           state: {
             type: "stopped",
             appId: state.appId,
@@ -339,7 +356,7 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
 /** Explicitly ignore an event: same state reference, no commands. */
 export function ignore(
   state: RunState,
-  reason: NonNullable<TransitionResult["ignoredReason"]>,
+  reason: Extract<TransitionResult, { kind: "ignored" }>["reason"],
 ): TransitionResult {
   return ignoreTransition(state, reason);
 }

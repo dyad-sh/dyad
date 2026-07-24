@@ -109,12 +109,14 @@ export function createChatStreamController(
     // synchronously on that write, and its start-implementation command
     // calls chatStream.submit(...) -> send() on this same controller
     // (plan-accept -> implement flow). That re-entry is only safe because
-    // (a) commands are pushed to commandQueue BEFORE setState, so the inner
-    // event's commands cannot overtake this event's, and (b) SnapshotStore
-    // commits the snapshot BEFORE running this callback, so the inner
-    // transition sees committed state. Do not reorder these lines without
-    // adding a re-entrancy buffer (processing flag + pending-event FIFO).
-    commandQueue.push(...result.commands);
+    // (a) applied commands are pushed to commandQueue BEFORE setState, so the
+    // inner event's commands cannot overtake this event's, and (b)
+    // SnapshotStore commits the snapshot BEFORE running this callback, so the
+    // inner transition sees committed state. Do not reorder these lines
+    // without adding a re-entrancy buffer (processing flag + pending-event
+    // FIFO).
+    const commands = result.kind === "applied" ? result.commands : [];
+    commandQueue.push(...commands);
     store.setState(result.state, () => {
       // Keep the legacy isStreaming projection in lockstep with the machine
       // (single writer), then notify React subscribers.

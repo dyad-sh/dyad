@@ -73,6 +73,7 @@ export class ImageGenerationController {
         const previous = this.store.getSnapshot();
         const result = transition(previous, next);
         observeTransition(this.observer, previous, next, result);
+        if (result.kind === "ignored") continue;
         if (result.state !== previous) this.store.setState(result.state);
         for (const command of result.commands) this.run(command);
       }

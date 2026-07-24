@@ -79,6 +79,7 @@ export function transition(
         case "submit": {
           const streamId = state.lastStreamId + 1;
           return {
+            kind: "applied",
             state: {
               type: "starting",
               streamId,
@@ -93,7 +94,11 @@ export function transition(
         case "queue-poked":
           // Resume/unpause while idle: try to drain the queue. The command is
           // a no-op when the queue is empty or paused.
-          return { state, commands: [{ type: "dispatch-next-queued" }] };
+          return {
+            kind: "applied",
+            state,
+            commands: [{ type: "dispatch-next-queued" }],
+          };
         case "cancel":
         case "registered":
         case "stream-context":
@@ -113,6 +118,7 @@ export function transition(
           // A stream is already being started for this chat: queue, never
           // drop (fixes the submit-window message drop).
           return {
+            kind: "applied",
             state,
             commands: [{ type: "enqueue-message", request: event.request }],
           };
@@ -120,6 +126,7 @@ export function transition(
           // Main may not have registered the AbortController yet; go through
           // `cancelling` and reconcile with the real terminal event.
           return {
+            kind: "applied",
             state: {
               type: "cancelling",
               streamId: state.streamId,
@@ -134,6 +141,7 @@ export function transition(
             return ignore(state, "stale-stream-id");
           }
           return {
+            kind: "applied",
             state: {
               type: "streaming",
               streamId: state.streamId,
@@ -148,6 +156,7 @@ export function transition(
             return ignore(state, "already-registered");
           }
           return {
+            kind: "applied",
             state: { ...state, targetAppId: event.targetAppId },
             commands: [],
           };
@@ -156,6 +165,7 @@ export function transition(
           // A chunk implies main registered the stream even if the
           // registration event was missed.
           return {
+            kind: "applied",
             state: {
               type: "streaming",
               streamId: state.streamId,
@@ -167,6 +177,7 @@ export function transition(
         case "stream-ended":
           if (isStale(state, event)) return ignore(state, "stale-stream-id");
           return {
+            kind: "applied",
             state: {
               type: "finalizing",
               streamId: state.streamId,
@@ -187,6 +198,7 @@ export function transition(
         case "stream-errored":
           if (isStale(state, event)) return ignore(state, "stale-stream-id");
           return {
+            kind: "applied",
             state: {
               type: "errored",
               lastStreamId: state.streamId,
@@ -215,11 +227,13 @@ export function transition(
       switch (event.type) {
         case "submit":
           return {
+            kind: "applied",
             state,
             commands: [{ type: "enqueue-message", request: event.request }],
           };
         case "cancel":
           return {
+            kind: "applied",
             state: {
               type: "cancelling",
               streamId: state.streamId,
@@ -232,6 +246,7 @@ export function transition(
         case "stream-ended":
           if (isStale(state, event)) return ignore(state, "stale-stream-id");
           return {
+            kind: "applied",
             state: {
               type: "finalizing",
               streamId: state.streamId,
@@ -252,6 +267,7 @@ export function transition(
         case "stream-errored":
           if (isStale(state, event)) return ignore(state, "stale-stream-id");
           return {
+            kind: "applied",
             state: {
               type: "errored",
               lastStreamId: state.streamId,
@@ -281,6 +297,7 @@ export function transition(
             return ignore(state, "already-registered");
           }
           return {
+            kind: "applied",
             state: { ...state, targetAppId: event.targetAppId },
             commands: [],
           };
@@ -301,6 +318,7 @@ export function transition(
       switch (event.type) {
         case "submit":
           return {
+            kind: "applied",
             state,
             commands: [{ type: "enqueue-message", request: event.request }],
           };
@@ -312,6 +330,7 @@ export function transition(
           // Cancel raced ahead of main's registration: the earlier abort hit
           // nothing, so re-issue it now that the stream actually exists.
           return {
+            kind: "applied",
             state: { ...state, registered: true },
             commands: [{ type: "request-abort" }],
           };
@@ -325,6 +344,7 @@ export function transition(
           // (the stale check on `streamId` already rejects ends belonging
           // to an older generation).
           return {
+            kind: "applied",
             state: {
               type: "finalizing",
               streamId: state.streamId,
@@ -346,6 +366,7 @@ export function transition(
         case "stream-errored":
           if (isStale(state, event)) return ignore(state, "stale-stream-id");
           return {
+            kind: "applied",
             state: {
               type: "errored",
               lastStreamId: state.streamId,
@@ -370,6 +391,7 @@ export function transition(
             return ignore(state, "already-registered");
           }
           return {
+            kind: "applied",
             state: { ...state, targetAppId: event.targetAppId },
             commands: [],
           };
@@ -392,6 +414,7 @@ export function transition(
           // Finalization is still flushing side effects; queue and let the
           // finalize-complete transition dispatch it.
           return {
+            kind: "applied",
             state,
             commands: [{ type: "enqueue-message", request: event.request }],
           };
@@ -399,6 +422,7 @@ export function transition(
           if (isStale(state, event)) return ignore(state, "stale-stream-id");
           const shouldDispatch = event.ok && !state.wasCancelled;
           return {
+            kind: "applied",
             state: { type: "idle", lastStreamId: state.streamId },
             // Queue dispatch is an explicit command emitted ONLY on this
             // transition (single-dispatch by construction; fixes the queue
@@ -421,6 +445,7 @@ export function transition(
             return ignore(state, "already-registered");
           }
           return {
+            kind: "applied",
             state: { ...state, targetAppId: event.targetAppId },
             commands: [],
           };
@@ -442,6 +467,7 @@ export function transition(
         case "submit": {
           const streamId = state.lastStreamId + 1;
           return {
+            kind: "applied",
             state: {
               type: "starting",
               streamId,
@@ -456,7 +482,11 @@ export function transition(
         case "queue-poked":
           // Matches legacy resumeQueue semantics: resuming after an error may
           // drain the queue.
-          return { state, commands: [{ type: "dispatch-next-queued" }] };
+          return {
+            kind: "applied",
+            state,
+            commands: [{ type: "dispatch-next-queued" }],
+          };
         case "cancel":
         case "registered":
         case "stream-context":

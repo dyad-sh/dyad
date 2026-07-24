@@ -131,6 +131,7 @@ function beginRestore(
           targetBranch,
         };
   return {
+    kind: "applied",
     state: { type: "restoring", session: nextSession, fallback },
     commands: [command],
   };
@@ -171,6 +172,7 @@ function beginBranchSwitch(
   commands: PreviewCommand[] = [],
 ): TransitionResult {
   return {
+    kind: "applied",
     state: {
       type: "switching-branch",
       appId: event.appId,
@@ -194,12 +196,13 @@ function settleWithExitIntent(
   fallbackState: (session: PreviewSession) => PreviewState,
 ): TransitionResult {
   if (session.exitIntent.type === "none") {
-    return { state: fallbackState(session), commands: [] };
+    return { kind: "applied", state: fallbackState(session), commands: [] };
   }
   if (session.checkedOutVersionId === null) {
-    return { state: CLOSED_STATE, commands: [] };
+    return { kind: "applied", state: CLOSED_STATE, commands: [] };
   }
   return {
+    kind: "applied",
     state: { type: "returning", session },
     commands: [returnCommand(session)],
   };
@@ -215,9 +218,10 @@ export function transition(
     }
     if (!state.session.isDiffVisible) return ignore(state, "no-change");
     if (state.type === "viewing-diff") {
-      return { state: CLOSED_STATE, commands: [] };
+      return { kind: "applied", state: CLOSED_STATE, commands: [] };
     }
     return {
+      kind: "applied",
       state: {
         ...state,
         session: {
@@ -249,6 +253,7 @@ export function transition(
       return ignore(state, "no-change");
     }
     return {
+      kind: "applied",
       state: {
         ...state,
         session: { ...state.session, selectedDiffFile: event.file },
@@ -261,6 +266,7 @@ export function transition(
     case "closed": {
       if (event.type === "OPEN") {
         return {
+          kind: "applied",
           state: { type: "browsing", session: freshSession(event.appId) },
           commands: [],
         };
@@ -273,6 +279,7 @@ export function transition(
       }
       if (event.type === "VIEW_VERSION_DIFF") {
         return {
+          kind: "applied",
           state: {
             type: "viewing-diff",
             session: {
@@ -291,6 +298,7 @@ export function transition(
     case "viewing-diff": {
       if (event.type === "VIEW_VERSION_DIFF") {
         return {
+          kind: "applied",
           state: {
             type: "viewing-diff",
             session: {
@@ -305,6 +313,7 @@ export function transition(
       }
       if (event.type === "OPEN") {
         return {
+          kind: "applied",
           state: {
             type: "browsing",
             session: {
@@ -325,6 +334,7 @@ export function transition(
           isDiffVisible: true,
         };
         return {
+          kind: "applied",
           state: { type: "resolving-origin", session },
           commands: [{ type: "resolve-origin", appId: session.appId }],
         };
@@ -335,13 +345,15 @@ export function transition(
       if (event.type === "SWITCH_BRANCH") {
         return beginBranchSwitch(state, event);
       }
-      if (exitIntentFor(event)) return { state: CLOSED_STATE, commands: [] };
+      if (exitIntentFor(event))
+        return { kind: "applied", state: CLOSED_STATE, commands: [] };
       return ignoreEvent(state, event);
     }
 
     case "browsing": {
       if (event.type === "VIEW_VERSION_DIFF") {
         return {
+          kind: "applied",
           state: {
             type: "viewing-diff",
             session: {
@@ -362,6 +374,7 @@ export function transition(
           isDiffVisible: true,
         };
         return {
+          kind: "applied",
           state: { type: "resolving-origin", session },
           commands: [{ type: "resolve-origin", appId: session.appId }],
         };
@@ -373,7 +386,7 @@ export function transition(
         return beginBranchSwitch(state, event);
       }
       if (exitIntentFor(event)) {
-        return { state: CLOSED_STATE, commands: [] };
+        return { kind: "applied", state: CLOSED_STATE, commands: [] };
       }
       return ignoreEvent(state, event);
     }
@@ -395,6 +408,7 @@ export function transition(
           isDiffVisible: true,
         };
         return {
+          kind: "applied",
           state: { type: "resolving-origin", session },
           commands: [{ type: "resolve-origin", appId: session.appId }],
         };
@@ -408,6 +422,7 @@ export function transition(
           originBranch: state.session.originBranch ?? event.branch,
         };
         return {
+          kind: "applied",
           state: { type: "checking-out", session },
           commands: [
             {
@@ -430,6 +445,7 @@ export function transition(
         const hasCheckout =
           session.checkedOutVersionId !== null && session.originBranch !== null;
         return {
+          kind: "applied",
           state: hasCheckout
             ? { type: "previewing", session }
             : {
@@ -447,13 +463,14 @@ export function transition(
       if (intent) {
         if (state.session.checkedOutVersionId === null) {
           // No historical checkout has started; closing needs no return.
-          return { state: CLOSED_STATE, commands: [] };
+          return { kind: "applied", state: CLOSED_STATE, commands: [] };
         }
         const session: PreviewSession = {
           ...state.session,
           exitIntent: intent,
         };
         return {
+          kind: "applied",
           state: { type: "returning", session },
           commands: [returnCommand(session)],
         };
@@ -497,6 +514,7 @@ export function transition(
           return ignoreEvent(state, event);
         }
         return {
+          kind: "applied",
           state: {
             type: "checking-out",
             session: { ...state.session, exitIntent: intent },
@@ -517,6 +535,7 @@ export function transition(
             return ignore(state, "no-change");
           }
           return {
+            kind: "applied",
             state: {
               type: "previewing",
               session: {
@@ -535,6 +554,7 @@ export function transition(
           isDiffVisible: true,
         };
         return {
+          kind: "applied",
           state: { type: "checking-out", session },
           commands: [
             {
@@ -558,6 +578,7 @@ export function transition(
           exitIntent: intent,
         };
         return {
+          kind: "applied",
           state: { type: "returning", session },
           commands: [returnCommand(session)],
         };
@@ -570,7 +591,7 @@ export function transition(
         if (event.repositoryOutcome === "target-applied") {
           // The restore landed on the requested branch/version; the session no
           // longer owns a historical checkout, so closing is safe.
-          return { state: CLOSED_STATE, commands: [] };
+          return { kind: "applied", state: CLOSED_STATE, commands: [] };
         }
         const session: PreviewSession = {
           ...state.session,
@@ -607,6 +628,7 @@ export function transition(
           return ignoreEvent(state, event);
         }
         return {
+          kind: "applied",
           state: {
             type: "restoring",
             session: { ...state.session, exitIntent: intent },
@@ -620,10 +642,11 @@ export function transition(
 
     case "returning": {
       if (event.type === "RETURN_SUCCEEDED") {
-        return { state: CLOSED_STATE, commands: [] };
+        return { kind: "applied", state: CLOSED_STATE, commands: [] };
       }
       if (event.type === "RETURN_FAILED") {
         return {
+          kind: "applied",
           state: {
             type: "recovery-required",
             session: state.session,
@@ -645,6 +668,7 @@ export function transition(
           return ignoreEvent(state, event);
         }
         return {
+          kind: "applied",
           state: {
             type: "returning",
             session: { ...state.session, exitIntent: intent },
@@ -657,11 +681,12 @@ export function transition(
 
     case "switching-branch": {
       if (event.type === "SWITCH_BRANCH_SUCCEEDED") {
-        return { state: CLOSED_STATE, commands: [] };
+        return { kind: "applied", state: CLOSED_STATE, commands: [] };
       }
       if (event.type === "SWITCH_BRANCH_FAILED") {
         if (state.fallback.type === "recovery-required") {
           return {
+            kind: "applied",
             state: state.fallback,
             commands: [
               {
@@ -673,6 +698,7 @@ export function transition(
           };
         }
         return {
+          kind: "applied",
           state: state.fallback,
           commands: [],
         };
@@ -683,6 +709,7 @@ export function transition(
     case "recovery-required": {
       if (event.type === "RETRY_RETURN") {
         return {
+          kind: "applied",
           state: { type: "returning", session: state.session },
           commands: [
             { type: "dismiss-recovery", appId: state.session.appId },
@@ -692,6 +719,7 @@ export function transition(
       }
       if (event.type === "OPEN") {
         return {
+          kind: "applied",
           state,
           commands: [
             {

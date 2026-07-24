@@ -5,7 +5,9 @@ import {
   type CosimScenarioAction,
   type CosimSnapshot,
   type CosimStep,
+  type CosimTransitionResult,
 } from "@/state_machines/cosim";
+import { commandsOf } from "@/state_machines/testing";
 import type {
   StreamCommand,
   StreamEvent,
@@ -118,23 +120,24 @@ function participantValue(
 
 function wrapRendererTransition(
   rendererTransition: typeof transition,
-): (
-  state: State,
-  event: Event,
-) => { state: State; commands: readonly Command[] } {
+): (state: State, event: Event) => CosimTransitionResult<State, Command> {
   return (state, event) => {
     if (state.participant !== "renderer" || event.participant !== "renderer") {
-      return { state, commands: [] };
+      return { kind: "applied", state, commands: [] };
     }
     // This is the production transition itself; wrapping only tags the common
     // driver union and does not alter states, events, commands, or ignores.
     const result = rendererTransition(state.value, event.value);
+    if (result.kind === "ignored") {
+      return { kind: "ignored", state, reason: result.reason };
+    }
     return {
+      kind: "applied",
       state:
         result.state === state.value
           ? state
           : { participant: "renderer", value: result.state },
-      commands: result.commands.map(
+      commands: commandsOf(result).map(
         (value) => ({ participant: "renderer", value }) as const,
       ),
     };
@@ -144,13 +147,14 @@ function wrapRendererTransition(
 function scenarioTransition(
   state: State,
   event: Event,
-): { state: State; commands: readonly Command[] } {
+): CosimTransitionResult<State, Command> {
   if (state.participant !== "scenario" || event.participant !== "scenario") {
-    return { state, commands: [] };
+    return { kind: "applied", state, commands: [] };
   }
   switch (event.value.type) {
     case "enqueue":
       return {
+        kind: "applied",
         state: {
           participant: "scenario",
           value: {
@@ -165,6 +169,7 @@ function scenarioTransition(
         (state.value.dispatchesByGeneration[event.value.generation] ?? 0) + 1;
       const next = state.value.queued[0];
       return {
+        kind: "applied",
         state: {
           participant: "scenario",
           value: {
@@ -188,6 +193,7 @@ function scenarioTransition(
     }
     case "schedule-finalize":
       return {
+        kind: "applied",
         state: {
           participant: "scenario",
           value: {
@@ -212,18 +218,25 @@ function scenarioTransition(
   }
 }
 
-function mainTransition(state: State, event: Event) {
+function mainTransition(
+  state: State,
+  event: Event,
+): CosimTransitionResult<State, Command> {
   if (state.participant !== "main" || event.participant !== "main") {
-    return { state, commands: [] };
+    return { kind: "applied", state, commands: [] };
   }
   const result = transitionMainModel(state.value, event.value);
   assertMainModelTransitionInvariants(state.value, event.value, result);
+  if (result.kind === "ignored") {
+    return { kind: "ignored" as const, state, reason: result.reason };
+  }
   return {
+    kind: "applied" as const,
     state:
       result.state === state.value
         ? state
         : { participant: "main" as const, value: result.state },
-    commands: result.commands.map((value) => ({
+    commands: commandsOf(result).map((value) => ({
       participant: "main" as const,
       value,
     })),
@@ -673,15 +686,24 @@ function perStepAssertions(step: Step): void {
       assertMainModelTransitionInvariants(
         item.previousState.value,
         item.event.value,
-        {
-          state: value.value,
-          commands: item.result.commands
-            .filter(
-              (command): command is Extract<Command, { participant: "main" }> =>
-                command.participant === "main",
-            )
-            .map((command) => command.value),
-        },
+        item.result.kind === "ignored"
+          ? {
+              kind: "ignored",
+              state: value.value,
+              reason: "compaction-already-active",
+            }
+          : {
+              kind: "applied",
+              state: value.value,
+              commands: item.result.commands
+                .filter(
+                  (
+                    command,
+                  ): command is Extract<Command, { participant: "main" }> =>
+                    command.participant === "main",
+                )
+                .map((command) => command.value),
+            },
       );
     }
     if (
@@ -828,7 +850,11 @@ describe("chat stream main/renderer co-simulation", () => {
         event.type === "stream-ended" &&
         event.streamId === state.streamId
       ) {
-        return { state, commands: [], ignoredReason: "already-cancelling" };
+        return {
+          kind: "ignored",
+          state,
+          reason: "already-cancelling",
+        };
       }
       return transition(state, event);
     };

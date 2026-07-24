@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  assertAllCommandsProducible,
+  assertAllStatesReachable,
   assertReferenceStability,
   exploreReachableStates,
+  ignoreReasonOf,
 } from "../state_machines/testing";
+import type { UserInputCommand } from "./commands";
 import type {
   UserInputDescriptor,
   UserInputEvent,
@@ -53,6 +57,60 @@ const raceEvents: UserInputEvent[] = [
   { type: "timed-out", requestId: descriptor.requestId },
   { type: "chat-swept", chatId: descriptor.chatId },
 ];
+const EVENTS: UserInputEvent[] = [
+  request,
+  followUpRequest,
+  ...raceEvents,
+  {
+    type: "classifier-decided",
+    requestId: descriptor.requestId,
+    approved: false,
+  },
+  { type: "stream-finished", chatId: descriptor.chatId },
+  { type: "follow-up-dispatched", requestId: descriptor.requestId },
+  {
+    type: "human-decided",
+    requestId: followUpDescriptor.requestId,
+    response: {
+      kind: "integration",
+      provider: "supabase",
+      completed: true,
+    },
+  },
+  { type: "stream-finished", chatId: followUpDescriptor.chatId },
+  {
+    type: "follow-up-dispatched",
+    requestId: followUpDescriptor.requestId,
+  },
+  {
+    type: "human-decided",
+    requestId: descriptor.requestId,
+    response: { kind: "questionnaire", answers: null },
+  },
+  {
+    type: "human-decided",
+    requestId: descriptor.requestId,
+    response: { kind: "mcp-consent", decision: "accept-always" },
+  },
+];
+const STATE_KINDS = [
+  "idle",
+  "awaiting",
+  "armed",
+  "due",
+  "settled",
+] as const satisfies readonly UserInputState["status"][];
+const COMMAND_KINDS = [
+  "broadcast-requested",
+  "broadcast-armed",
+  "broadcast-classified",
+  "broadcast-settled",
+  "broadcast-follow-up-due",
+  "resolve-park",
+  "persist-always",
+  "schedule-deadline",
+  "cancel-deadline",
+] as const satisfies readonly UserInputCommand["type"][];
 
 function permutations<T>(values: readonly T[]): T[][] {
   if (values.length <= 1) return [values.slice()];
@@ -65,43 +123,30 @@ function permutations<T>(values: readonly T[]): T[][] {
 
 describe("user-input transition", () => {
   it("is total and reference-stable over every reachable state and event", () => {
-    const events: UserInputEvent[] = [
-      request,
-      followUpRequest,
-      ...raceEvents,
-      {
-        type: "classifier-decided",
-        requestId: descriptor.requestId,
-        approved: false,
-      },
-      { type: "stream-finished", chatId: descriptor.chatId },
-      { type: "follow-up-dispatched", requestId: descriptor.requestId },
-      {
-        type: "human-decided",
-        requestId: followUpDescriptor.requestId,
-        response: {
-          kind: "integration",
-          provider: "supabase",
-          completed: true,
-        },
-      },
-      { type: "stream-finished", chatId: followUpDescriptor.chatId },
-      {
-        type: "follow-up-dispatched",
-        requestId: followUpDescriptor.requestId,
-      },
-      {
-        type: "human-decided",
-        requestId: descriptor.requestId,
-        response: { kind: "questionnaire", answers: null },
-      },
-    ];
-    const states = exploreReachableStates({
+    const events = EVENTS;
+    const options = {
+      initialState: { status: "idle" } as UserInputState,
+      events,
+      transition,
+      stateKey: JSON.stringify,
+    };
+    assertAllStatesReachable({
+      ...options,
+      inventory: STATE_KINDS,
+      stateKind: (state) => state.status,
+    });
+    assertAllCommandsProducible({
+      ...options,
+      inventory: COMMAND_KINDS,
+      commandKind: (command) => command.type,
+    });
+    const graph = exploreReachableStates({
       initialState: { status: "idle" } as UserInputState,
       events,
       transition,
       stateKey: JSON.stringify,
     });
+    const states = graph.nodes.map(({ state }) => state);
     expect(states.some((state) => state.status === "armed")).toBe(true);
     expect(states.some((state) => state.status === "due")).toBe(true);
 
@@ -118,22 +163,28 @@ describe("user-input transition", () => {
     }
 
     const awaiting = transition({ status: "idle" }, request).state;
-    expect(transition(awaiting, events.at(-1)!).ignoredReason).toBe(
-      "response-kind-mismatch",
-    );
+    expect(
+      ignoreReasonOf(
+        transition(awaiting, {
+          type: "human-decided",
+          requestId: descriptor.requestId,
+          response: { kind: "questionnaire", answers: null },
+        }),
+      ),
+    ).toBe("response-kind-mismatch");
   });
 
   it("makes every terminal ordering first-applied-wins", () => {
     for (const ordering of permutations(raceEvents)) {
       let state = transition({ status: "idle" }, request).state;
       const first = transition(state, ordering[0]);
-      expect(first.ignoredReason).toBeUndefined();
+      expect(ignoreReasonOf(first)).toBeUndefined();
       state = first.state;
       expect(state.status).toBe("settled");
 
       for (const loser of ordering.slice(1)) {
         const result = transition(state, loser);
-        expect(result.ignoredReason).toBe("already-settled");
+        expect(ignoreReasonOf(result)).toBe("already-settled");
         expect(result.state).toBe(state);
       }
     }

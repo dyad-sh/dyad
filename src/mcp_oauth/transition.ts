@@ -1,10 +1,10 @@
 /** Pure, total transition function for one MCP OAuth callback port. */
 
 import {
-  advanceState,
-  ignoreState,
+  change,
+  ignore as ignoreTransition,
   type IgnoreReason as SharedIgnoreReason,
-  type StateTransitionResult,
+  type TransitionResult,
 } from "@/state_machines/types";
 import type {
   McpOAuthEvent,
@@ -20,20 +20,21 @@ export type IgnoreReason = SharedIgnoreReason<
   | "duplicate-connect"
 >;
 
-export type McpOAuthTransitionResult = StateTransitionResult<
+export type McpOAuthTransitionResult = TransitionResult<
   McpOAuthState,
+  never,
   IgnoreReason
 >;
 
 function advance(state: McpOAuthState): McpOAuthTransitionResult {
-  return advanceState(state);
+  return change(state);
 }
 
 function ignore(
   state: McpOAuthState,
   reason: IgnoreReason,
 ): McpOAuthTransitionResult {
-  return ignoreState(state, reason);
+  return ignoreTransition(state, reason);
 }
 
 function eventIdentity(event: Extract<McpOAuthEvent, { type: "CONNECT" }>) {
@@ -184,6 +185,6 @@ export function transition(
   }
 }
 
-function unreachable(state: never): McpOAuthTransitionResult {
-  return state;
+function unreachable(state: never): never {
+  throw new Error(`Unreachable MCP OAuth state: ${JSON.stringify(state)}`);
 }

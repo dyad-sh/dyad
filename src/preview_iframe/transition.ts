@@ -15,7 +15,7 @@ export type PreviewIframeTransitionResult = TransitionResult<
 const applied = (
   state: PreviewIframeState,
   commands: readonly PreviewIframeCommand[] = [],
-): PreviewIframeTransitionResult => ({ state, commands });
+): PreviewIframeTransitionResult => ({ kind: "applied", state, commands });
 
 const navigateCommand = (
   url: string,

@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  assertAllCommandsProducible,
+  assertAllStatesReachable,
   assertReferenceStability,
+  commandsOf,
   exploreReachableStates,
+  ignoreReasonOf,
 } from "@/state_machines/testing";
 import {
   INITIAL_PREVIEW_IFRAME_STATE,
@@ -9,6 +13,7 @@ import {
   selectCanGoForward,
   selectIframeSrc,
   type PreviewIframeEvent,
+  type PreviewIframeCommand,
   type PreviewIframeState,
 } from "./state";
 import { transition } from "./transition";
@@ -35,25 +40,72 @@ const EVENTS: readonly PreviewIframeEvent[] = [
   { type: "SELECTION_RESTORE_QUEUED" },
   { type: "SELECTION_RESTORED" },
 ];
+type PreviewIframeStateKind =
+  | "empty"
+  | "navigated"
+  | "selector-ready"
+  | "picking"
+  | "restore-queued";
+const STATE_KINDS = [
+  "empty",
+  "navigated",
+  "selector-ready",
+  "picking",
+  "restore-queued",
+] as const satisfies readonly PreviewIframeStateKind[];
+const COMMAND_KINDS = [
+  "post-to-iframe",
+  "clear-preview-error",
+] as const satisfies readonly PreviewIframeCommand["type"][];
+
+function stateKind(state: PreviewIframeState): PreviewIframeStateKind {
+  if (state.restoreQueued) return "restore-queued";
+  if (state.picking) return "picking";
+  if (state.selectorReady) return "selector-ready";
+  if (state.currentUrl !== null) return "navigated";
+  return "empty";
+}
+
+function boundedEvents(state: PreviewIframeState): PreviewIframeEvent[] {
+  return EVENTS.filter(
+    (event) =>
+      ((event.type !== "NAVIGATE" &&
+        !(event.type === "NAVIGATED_IN_APP" && event.kind === "pushState")) ||
+        state.history.length < 3) &&
+      (event.type !== "RELOAD_REQUESTED" || state.iframeEpoch < 2),
+  );
+}
 
 describe("preview iframe transition", () => {
-  it("is total across the reachable identity, picker, and restore graph", () => {
-    const states = exploreReachableStates({
+  it("reaches every state aspect and produces every command kind", () => {
+    const options = {
       initialState: INITIAL_PREVIEW_IFRAME_STATE,
-      events: (state) =>
-        EVENTS.filter(
-          (event) =>
-            ((event.type !== "NAVIGATE" &&
-              !(
-                event.type === "NAVIGATED_IN_APP" && event.kind === "pushState"
-              )) ||
-              state.history.length < 3) &&
-            (event.type !== "RELOAD_REQUESTED" || state.iframeEpoch < 2),
-        ),
+      events: boundedEvents,
+      transition,
+      stateKey: JSON.stringify,
+      maxStates: 5_000,
+    };
+    assertAllStatesReachable({
+      ...options,
+      inventory: STATE_KINDS,
+      stateKind,
+    });
+    assertAllCommandsProducible({
+      ...options,
+      inventory: COMMAND_KINDS,
+      commandKind: (command) => command.type,
+    });
+  });
+
+  it("is total across the reachable identity, picker, and restore graph", () => {
+    const graph = exploreReachableStates({
+      initialState: INITIAL_PREVIEW_IFRAME_STATE,
+      events: boundedEvents,
       transition,
       stateKey: JSON.stringify,
       maxStates: 5_000,
     });
+    const states = graph.nodes.map(({ state }) => state);
 
     expect(states.some((state) => state.selectorReady)).toBe(true);
     expect(states.some((state) => state.picking)).toBe(true);
@@ -91,7 +143,7 @@ describe("preview iframe transition", () => {
       type: "PICKER_TOGGLED",
     });
     expect(disabledToggle.state).toBe(reloaded.state);
-    expect(disabledToggle.ignoredReason).toBe("picker-not-ready");
+    expect(ignoreReasonOf(disabledToggle)).toBe("picker-not-ready");
   });
 
   it("returns to the fresh app root after a runtime restart", () => {
@@ -135,7 +187,7 @@ describe("preview iframe transition", () => {
 
     const deactivated = transition(state, { type: "PICKER_DEACTIVATED" });
     expect(deactivated.state.picking).toBe(false);
-    expect(deactivated.commands).toEqual([
+    expect(commandsOf(deactivated)).toEqual([
       {
         type: "post-to-iframe",
         message: { type: "cleanup-all-text-editing" },
@@ -150,7 +202,7 @@ describe("preview iframe transition", () => {
       type: "PICKER_DEACTIVATED",
     });
     expect(repeated.state).toBe(deactivated.state);
-    expect(repeated.ignoredReason).toBe("picker-already-inactive");
+    expect(ignoreReasonOf(repeated)).toBe("picker-already-inactive");
   });
 
   it("queues one restore until readiness and clears only on completion", () => {
@@ -158,7 +210,7 @@ describe("preview iframe transition", () => {
       type: "SELECTION_RESTORE_QUEUED",
     });
     expect(queued.state.restoreQueued).toBe(true);
-    expect(queued.commands).toEqual([]);
+    expect(commandsOf(queued)).toEqual([]);
 
     const replaced = transition(queued.state, {
       type: "IFRAME_REPLACED",
@@ -168,7 +220,7 @@ describe("preview iframe transition", () => {
 
     const ready = transition(replaced.state, { type: "SELECTOR_READY" });
     expect(ready.state.restoreQueued).toBe(true);
-    expect(ready.commands).toEqual([
+    expect(commandsOf(ready)).toEqual([
       { type: "post-to-iframe", message: { type: "restore-overlays" } },
     ]);
     expect(
@@ -208,7 +260,7 @@ describe("preview iframe transition", () => {
       reason: "external",
     });
     expect(replayed.state).toBe(replaced.state);
-    expect(replayed.ignoredReason).toBe("already-replaced");
+    expect(ignoreReasonOf(replayed)).toBe("already-replaced");
   });
 
   it("uses the trusted app URL when preserved navigation is cross-origin", () => {

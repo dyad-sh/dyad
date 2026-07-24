@@ -20,7 +20,7 @@ export const TRANSITION_DISPLAY_MS = 2500;
  */
 function ignore(
   state: HandoffState,
-  reason: NonNullable<TransitionResult["ignoredReason"]>,
+  reason: Extract<TransitionResult, { kind: "ignored" }>["reason"],
 ): TransitionResult {
   return ignoreTransition(state, reason);
 }
@@ -52,13 +52,14 @@ function startHandoff(event: {
   chatId: number;
   appId: number;
   acceptInNewChat: boolean;
-}): TransitionResult {
+}): Extract<TransitionResult, { kind: "applied" }> {
   const session: HandoffSession = {
     chatId: event.chatId,
     appId: event.appId,
     acceptInNewChat: event.acceptInNewChat,
   };
   return {
+    kind: "applied",
     state: { type: "cancelling-stream", session },
     commands: [
       { type: "mark-plan-accepted", chatId: session.chatId },
@@ -97,6 +98,7 @@ export function transition(
       switch (event.type) {
         case "STREAM_CANCEL_FINISHED":
           return {
+            kind: "applied",
             state: { type: "transitioning", session: state.session },
             commands: [{ type: "wait", ms: TRANSITION_DISPLAY_MS }],
           };
@@ -109,6 +111,7 @@ export function transition(
       switch (event.type) {
         case "TRANSITION_DISPLAY_DONE":
           return {
+            kind: "applied",
             state: { type: "persisting", session: state.session },
             commands: [
               // Legacy behavior: the preview switches back even when the
@@ -134,6 +137,7 @@ export function transition(
             planSlug: event.planSlug,
           };
           return {
+            kind: "applied",
             state: { type: "preparing-chat", session },
             commands: [
               session.acceptInNewChat
@@ -144,6 +148,7 @@ export function transition(
         }
         case "PLAN_DATA_MISSING":
           return {
+            kind: "applied",
             state: {
               type: "failed",
               session: state.session,
@@ -155,6 +160,7 @@ export function transition(
           };
         case "PLAN_PERSIST_FAILED":
           return {
+            kind: "applied",
             state: {
               type: "failed",
               session: state.session,
@@ -182,6 +188,7 @@ export function transition(
             implementationChatId: event.implementationChatId,
           };
           return {
+            kind: "applied",
             state: { type: "awaiting-stream-idle", session },
             commands: [
               // Only the new-chat path navigates; continue-in-current-chat
@@ -205,6 +212,7 @@ export function transition(
         }
         case "CHAT_PREPARE_FAILED":
           return {
+            kind: "applied",
             state: {
               type: "failed",
               session: state.session,
@@ -232,6 +240,7 @@ export function transition(
             return ignore(state, "chat-id-mismatch");
           }
           return {
+            kind: "applied",
             state: { type: "implementing", session: state.session },
             commands: [
               {
@@ -250,6 +259,7 @@ export function transition(
           // the handoff so the machine cannot be wedged forever.
           const fresh = startHandoff(event);
           return {
+            kind: "applied",
             state: fresh.state,
             commands: [
               {
@@ -268,7 +278,7 @@ export function transition(
     case "implementing": {
       switch (event.type) {
         case "IMPLEMENTATION_STARTED":
-          return { state: { type: "idle" }, commands: [] };
+          return { kind: "applied", state: { type: "idle" }, commands: [] };
         default:
           return ignoreEvent(state, event);
       }

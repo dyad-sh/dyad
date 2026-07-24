@@ -1,4 +1,8 @@
 import { describe, expect, it } from "vitest";
+import {
+  assertAllCommandsProducible,
+  assertAllStatesReachable,
+} from "@/state_machines/testing";
 
 import {
   CONNECTION_FLOW_PROVIDERS,
@@ -12,6 +16,17 @@ import { transition } from "./transition";
 const FLOW_ID = "flow-1";
 const OTHER_FLOW_ID = "flow-2";
 const PROVIDER = "neon";
+const STATE_KINDS = [
+  "disconnected",
+  "starting",
+  "awaiting-return",
+  "exchanging-token",
+  "loading-resources",
+  "connected",
+  "failed",
+  "cancelled",
+] as const satisfies readonly ConnectionFlowState["status"][];
+const COMMAND_KINDS = [] as const satisfies readonly never[];
 
 /** One representative state per status, all belonging to FLOW_ID. */
 const ALL_STATES: ConnectionFlowState[] = [
@@ -56,6 +71,35 @@ function eventsWithFlowId(flowId: string): ConnectionFlowEvent[] {
 }
 
 describe("transition totality", () => {
+  it("throws when an impossible state reaches the exhaustiveness helper", () => {
+    expect(() =>
+      transition({ status: "future" } as unknown as ConnectionFlowState, {
+        type: "start",
+        flowId: FLOW_ID,
+        provider: PROVIDER,
+      }),
+    ).toThrow(/Unreachable connection-flow state/);
+  });
+
+  it("reaches every state and has an explicit empty command inventory", () => {
+    const options = {
+      initialState: { status: "disconnected" } as ConnectionFlowState,
+      events: eventsWithFlowId(FLOW_ID),
+      transition,
+      stateKey: JSON.stringify,
+    };
+    assertAllStatesReachable({
+      ...options,
+      inventory: STATE_KINDS,
+      stateKind: (state) => state.status,
+    });
+    assertAllCommandsProducible({
+      ...options,
+      inventory: COMMAND_KINDS,
+      commandKind: (command: never) => command,
+    });
+  });
+
   it("handles every state x event combination without throwing", () => {
     const events = [
       ...eventsWithFlowId(FLOW_ID),
@@ -65,7 +109,7 @@ describe("transition totality", () => {
       for (const event of events) {
         const result = transition(state, event);
         expect(result).toBeDefined();
-        if (result.changed) {
+        if (result.kind === "applied") {
           expect(result.state).not.toBe(state);
         } else {
           // Ignored events never mutate state and always carry a reason.
@@ -91,8 +135,8 @@ describe("flowId correlation", () => {
       for (const event of eventsWithFlowId(OTHER_FLOW_ID)) {
         if (event.type === "start") continue; // start allocates a new flowId
         const result = transition(state, event);
-        expect(result.changed).toBe(false);
-        if (!result.changed) {
+        expect(result.kind === "applied").toBe(false);
+        if (result.kind === "ignored") {
           expect(result.reason).toBe("flow-id-mismatch");
         }
       }
@@ -103,8 +147,8 @@ describe("flowId correlation", () => {
     for (const event of eventsWithFlowId(FLOW_ID)) {
       if (event.type === "start") continue;
       const result = transition({ status: "disconnected" }, event);
-      expect(result.changed).toBe(false);
-      if (!result.changed) {
+      expect(result.kind === "applied").toBe(false);
+      if (result.kind === "ignored") {
         expect(result.reason).toBe("no-active-flow");
       }
     }
@@ -119,8 +163,8 @@ describe("double-start protection", () => {
         flowId: OTHER_FLOW_ID,
         provider: PROVIDER,
       });
-      expect(result.changed).toBe(false);
-      if (!result.changed) {
+      expect(result.kind === "applied").toBe(false);
+      if (result.kind === "ignored") {
         expect(result.reason).toBe("flow-already-active");
       }
     }
@@ -133,8 +177,8 @@ describe("double-start protection", () => {
         flowId: OTHER_FLOW_ID,
         provider: PROVIDER,
       });
-      expect(result.changed).toBe(true);
-      if (result.changed) {
+      expect(result.kind === "applied").toBe(true);
+      if (result.kind === "applied") {
         expect(result.state).toEqual({
           status: "starting",
           flowId: OTHER_FLOW_ID,
@@ -154,7 +198,7 @@ describe("timeout / return mutual exclusion", () => {
 
   it("timeout first: the later return is ignored", () => {
     const timedOut = transition(awaiting, { type: "timeout", flowId: FLOW_ID });
-    expect(timedOut.changed).toBe(true);
+    expect(timedOut.kind === "applied").toBe(true);
     expect(timedOut.state).toMatchObject({
       status: "failed",
       reason: "timeout",
@@ -164,7 +208,7 @@ describe("timeout / return mutual exclusion", () => {
       type: "return-received",
       flowId: FLOW_ID,
     });
-    expect(lateReturn.changed).toBe(false);
+    expect(lateReturn.kind === "applied").toBe(false);
     expect(lateReturn.state).toBe(timedOut.state);
   });
 
@@ -173,14 +217,14 @@ describe("timeout / return mutual exclusion", () => {
       type: "return-received",
       flowId: FLOW_ID,
     });
-    expect(returned.changed).toBe(true);
+    expect(returned.kind === "applied").toBe(true);
     expect(returned.state).toMatchObject({ status: "exchanging-token" });
 
     const lateTimeout = transition(returned.state, {
       type: "timeout",
       flowId: FLOW_ID,
     });
-    expect(lateTimeout.changed).toBe(false);
+    expect(lateTimeout.kind === "applied").toBe(false);
     expect(lateTimeout.state).toBe(returned.state);
   });
 
@@ -190,7 +234,7 @@ describe("timeout / return mutual exclusion", () => {
         continue;
       }
       const result = transition(state, { type: "timeout", flowId: FLOW_ID });
-      expect(result.changed).toBe(false);
+      expect(result.kind === "applied").toBe(false);
     }
   });
 });
@@ -201,7 +245,7 @@ describe("happy path", () => {
       let state: ConnectionFlowState = { status: "disconnected" };
       const apply = (event: ConnectionFlowEvent) => {
         const result = transition(state, event);
-        expect(result.changed).toBe(true);
+        expect(result.kind === "applied").toBe(true);
         state = result.state;
       };
 
@@ -230,10 +274,10 @@ describe("cancellation and failure", () => {
     for (const state of ALL_STATES) {
       const result = transition(state, { type: "cancel", flowId: FLOW_ID });
       if (isActiveFlowState(state)) {
-        expect(result.changed).toBe(true);
+        expect(result.kind === "applied").toBe(true);
         expect(result.state.status).toBe("cancelled");
       } else {
-        expect(result.changed).toBe(false);
+        expect(result.kind === "applied").toBe(false);
       }
     }
   });
@@ -247,14 +291,14 @@ describe("cancellation and failure", () => {
         message: "bad token",
       });
       if (isActiveFlowState(state)) {
-        expect(result.changed).toBe(true);
+        expect(result.kind === "applied").toBe(true);
         expect(result.state).toMatchObject({
           status: "failed",
           reason: "token_invalid",
           message: "bad token",
         });
       } else {
-        expect(result.changed).toBe(false);
+        expect(result.kind === "applied").toBe(false);
       }
     }
   });
@@ -266,8 +310,8 @@ describe("cancellation and failure", () => {
         type: "acknowledge",
         flowId: FLOW_ID,
       });
-      expect(result.changed).toBe(isTerminalFlowState(state));
-      if (result.changed) {
+      expect(result.kind === "applied").toBe(isTerminalFlowState(state));
+      if (result.kind === "applied") {
         expect(result.state).toEqual({ status: "disconnected" });
       }
     }

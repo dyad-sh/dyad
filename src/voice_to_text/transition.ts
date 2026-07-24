@@ -21,6 +21,7 @@ export function transition(
       switch (state.type) {
         case "idle":
           return {
+            kind: "applied",
             state: { type: "acquiring", attempt: event.attempt },
             commands: [{ type: "AcquireMedia", attempt: event.attempt }],
           };
@@ -40,11 +41,13 @@ export function transition(
         // This is deliberately applied rather than ignored: stale media is
         // an external resource that must be released.
         return {
+          kind: "applied",
           state,
           commands: [{ type: "ReleaseMedia", attempt: event.attempt }],
         };
       }
       return {
+        kind: "applied",
         state: { type: "recording", attempt: event.attempt },
         commands: [
           { type: "StartRecorder", attempt: event.attempt },
@@ -60,6 +63,7 @@ export function transition(
         return ignore(state, "stale-attempt");
       }
       return {
+        kind: "applied",
         state: { type: "idle" },
         commands: [
           { type: "CancelDurationLimit", attempt: event.attempt },
@@ -88,6 +92,7 @@ export function transition(
         return ignore(state, "stale-attempt");
       }
       return {
+        kind: "applied",
         state: event.hasAudio
           ? { type: "transcribing", attempt: event.attempt }
           : { type: "idle" },
@@ -105,6 +110,7 @@ export function transition(
         return ignore(state, "stale-attempt");
       }
       return {
+        kind: "applied",
         state: { type: "idle" },
         commands: event.text.trim()
           ? [{ type: "DeliverTranscription", text: event.text.trim() }]
@@ -116,6 +122,7 @@ export function transition(
         return ignore(state, "stale-attempt");
       }
       return {
+        kind: "applied",
         state: { type: "idle" },
         commands: [{ type: "NotifyError", message: event.message }],
       };
@@ -137,6 +144,7 @@ function stopRecording(
     commands.push({ type: "NotifyError", message: LIMIT_MESSAGES[reason] });
   }
   return {
+    kind: "applied",
     state: { type: "stopping", attempt: state.attempt, reason },
     commands,
   };

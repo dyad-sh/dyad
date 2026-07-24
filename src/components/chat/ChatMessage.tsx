@@ -289,6 +289,7 @@ const ChatMessage = ({
             <AlertDialogAction
               data-testid="confirm-restore-to-message-button"
               className="w-full"
+              disabled={!canRestoreToMessage}
               onClick={() => handleRestoreToMessage(true)}
             >
               Restore code & fork chat
@@ -296,6 +297,7 @@ const ChatMessage = ({
             <AlertDialogAction
               data-testid="fork-chat-button"
               className={`${buttonVariants({ variant: "outline" })} w-full text-foreground`}
+              disabled={!canRestoreToMessage}
               onClick={() => handleRestoreToMessage(false)}
             >
               Fork chat only

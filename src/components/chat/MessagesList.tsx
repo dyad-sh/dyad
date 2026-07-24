@@ -497,6 +497,7 @@ function FooterComponent({ context }: { context?: FooterContext }) {
               ? currentPendingRevert.uncommittedFileCount
               : 0
           }
+          actionsDisabled={isAnyVersionMutationPending}
           onOpenChange={(open) => {
             if (!open) setPendingRevert(null);
           }}
@@ -504,7 +505,6 @@ function FooterComponent({ context }: { context?: FooterContext }) {
             currentPendingRevert.kind === "retry"
               ? () => {
                   const action = currentPendingRevert;
-                  setPendingRevert(null);
                   if (
                     action.appId !== appId ||
                     action.chatId !== selectedChatId ||
@@ -513,6 +513,7 @@ function FooterComponent({ context }: { context?: FooterContext }) {
                   ) {
                     return;
                   }
+                  setPendingRevert(null);
                   void executeRetry({
                     appId: action.appId,
                     retry: { ...action.retry, redo: true },
@@ -527,7 +528,6 @@ function FooterComponent({ context }: { context?: FooterContext }) {
           }
           onConfirm={() => {
             const action = currentPendingRevert;
-            setPendingRevert(null);
             if (
               action.appId !== appId ||
               action.chatId !== selectedChatId ||
@@ -536,6 +536,7 @@ function FooterComponent({ context }: { context?: FooterContext }) {
             ) {
               return;
             }
+            setPendingRevert(null);
             const operation =
               action.kind === "undo"
                 ? executeUndo(action)

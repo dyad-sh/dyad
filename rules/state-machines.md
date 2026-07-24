@@ -160,9 +160,11 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   event generator can discover the reachable graph. Existing bespoke suites
   need not be migrated mechanically.
 - Use `assertCapabilityTransitionConsistency` with domain-supplied
-  representative valid events for every capability. When payload affects
-  acceptance, include representative invalid payloads; disabled capabilities
-  may also pin their expected ignore reason.
+  representative valid events for every capability. Every enabled
+  capability/state pair must supply at least one valid representative so the
+  assertion cannot pass vacuously. When payload affects acceptance, include
+  representative invalid payloads; disabled capabilities may also pin their
+  expected ignore reason.
 - `boundaries.test.ts` enforces kernel purity and machine-to-machine isolation;
   add new machine directories to its inventory when they are introduced.
 - In `runCosim` suites, `maxSchedules` bounds visited configurations, not only

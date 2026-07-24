@@ -96,6 +96,38 @@ describe("state-machine test kit", () => {
     ).not.toThrow();
   });
 
+  it("rejects enabled capabilities without a representative valid event", () => {
+    expect(() =>
+      assertCapabilityTransitionConsistency({
+        states: [{ phase: "idle" as const }],
+        selectCapabilities: () => ({ canSelect: true }),
+        transition: (state) => ignore(state, "no-change"),
+        cases: {
+          canSelect: {
+            representativeEvents: () => ({ valid: [] }),
+          },
+        },
+      }),
+    ).toThrow(/canSelect[\s\S]*at least one representative valid event/);
+  });
+
+  it("rejects enabled capabilities whose representative event is ignored", () => {
+    expect(() =>
+      assertCapabilityTransitionConsistency({
+        states: [{ phase: "idle" as const }],
+        selectCapabilities: () => ({ canSelect: true }),
+        transition: (state) => ignore(state, "no-change"),
+        cases: {
+          canSelect: {
+            representativeEvents: () => ({
+              valid: [{ type: "select" as const }],
+            }),
+          },
+        },
+      }),
+    ).toThrow(/canSelect[\s\S]*must apply/);
+  });
+
   it("rejects value-equal snapshots with new references", () => {
     const previous = { value: 1 };
     const result: TransitionResult<typeof previous, never> = {

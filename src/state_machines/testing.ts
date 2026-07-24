@@ -176,6 +176,16 @@ export function assertCapabilityTransitionConsistency<
       const capabilityCase = options.cases[capability];
       const representatives = capabilityCase.representativeEvents(state);
 
+      if (capabilities[capability] && representatives.valid.length === 0) {
+        capabilityFailure(
+          capability,
+          "enabled capability must supply at least one representative valid event",
+          state,
+          undefined,
+          undefined,
+        );
+      }
+
       for (const event of representatives.valid) {
         const result = options.transition(state, event);
         if (capabilities[capability]) {

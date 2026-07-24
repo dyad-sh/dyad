@@ -79,6 +79,17 @@ describe("version_preview capabilities", () => {
             }),
             disabledReason: "invalid-in-current-state",
           },
+          canSelectVersion: {
+            representativeEvents: () => ({
+              valid: [
+                {
+                  type: "SELECT_VERSION",
+                  versionId: "v2",
+                } satisfies PreviewEvent,
+              ],
+            }),
+            disabledReason: "invalid-in-current-state",
+          },
           canSwitchBranch: {
             representativeEvents: () => ({
               valid: [
@@ -102,6 +113,7 @@ describe("version_preview capabilities", () => {
     )!;
     expect(selectVersionPreviewCapabilities(recovery)).toEqual({
       canRestore: false,
+      canSelectVersion: false,
       canSwitchBranch: true,
     });
   });

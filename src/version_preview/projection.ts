@@ -2,6 +2,7 @@ import type { PreviewState } from "./state";
 
 export interface VersionPreviewCapabilities {
   readonly canRestore: boolean;
+  readonly canSelectVersion: boolean;
   readonly canSwitchBranch: boolean;
 }
 
@@ -17,19 +18,41 @@ export function selectVersionPreviewCapabilities(
   state: PreviewState,
 ): VersionPreviewCapabilities {
   switch (state.type) {
-    case "closed":
     case "viewing-diff":
     case "browsing":
     case "previewing":
-      return { canRestore: true, canSwitchBranch: true };
-    case "recovery-required":
-      return { canRestore: false, canSwitchBranch: true };
+      return {
+        canRestore: true,
+        canSelectVersion: true,
+        canSwitchBranch: true,
+      };
+    case "closed":
+      return {
+        canRestore: true,
+        canSelectVersion: false,
+        canSwitchBranch: true,
+      };
     case "resolving-origin":
+      return {
+        canRestore: false,
+        canSelectVersion: true,
+        canSwitchBranch: false,
+      };
+    case "recovery-required":
+      return {
+        canRestore: false,
+        canSelectVersion: false,
+        canSwitchBranch: true,
+      };
     case "checking-out":
     case "restoring":
     case "returning":
     case "switching-branch":
-      return { canRestore: false, canSwitchBranch: false };
+      return {
+        canRestore: false,
+        canSelectVersion: false,
+        canSwitchBranch: false,
+      };
   }
 }
 

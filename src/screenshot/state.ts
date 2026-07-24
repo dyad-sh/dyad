@@ -7,10 +7,14 @@
  * machine state; its entries are cleared as soon as CAPTURE_REQUESTED is
  * accepted by the per-app controller.
  *
- * Staleness policy: while work has not reached commit resolution, a newer
- * request supersedes the current source. Once an async capture is in flight,
- * only the latest newer source is queued. Responses with any other requestId
- * are stale and ignored.
+ * Execution and staleness policy: event transactions are handled FIFO and
+ * accepted lifecycle/completion events are never silently dropped. Reserved
+ * commands start immediately and independently, so async effects may overlap,
+ * preserving the controller's original direct-execution model. While work has
+ * not reached commit resolution, a newer request supersedes the current source;
+ * once an async capture is in flight, only the latest newer source is queued.
+ * Replaced settle callbacks are stale by settleToken, and async capture
+ * callbacks with any other requestId are stale and ignored.
  */
 
 export type ScreenshotCaptureSource = "commit" | "stream" | "fallback";
@@ -20,6 +24,7 @@ interface ScreenshotContext {
   readonly iframeLoaded: boolean;
   readonly selectorReady: boolean;
   readonly queuedSource: ScreenshotCaptureSource | null;
+  readonly settleToken?: string;
 }
 
 export type ScreenshotState =
@@ -62,7 +67,7 @@ export const INITIAL_SCREENSHOT_STATE: ScreenshotState = {
   queuedSource: null,
 };
 
-export type ScreenshotEvent =
+export type ScreenshotEvent = (
   | {
       readonly type: "CAPTURE_REQUESTED";
       readonly source: ScreenshotCaptureSource;
@@ -83,10 +88,11 @@ export type ScreenshotEvent =
     }
   | { readonly type: "APP_HIDDEN" }
   | { readonly type: "SAVED" }
-  | { readonly type: "SAVE_FAILED"; readonly requestId?: string };
+  | { readonly type: "SAVE_FAILED"; readonly requestId?: string }
+) & { readonly settleToken?: string };
 
 export type ScreenshotCommand =
-  | { readonly type: "schedule-settle" }
+  | { readonly type: "schedule-settle"; readonly settleToken?: string }
   | { readonly type: "cancel-settle" }
   | {
       readonly type: "resolve-commit-hash";

@@ -254,6 +254,25 @@ describe("screenshot transition", () => {
     ]);
   });
 
+  it("rejects an elapsed event from a replaced settle lease", () => {
+    const waiting: ScreenshotState = {
+      ...READY,
+      selectorReady: false,
+      status: "waitingSelectorReady",
+      source: "commit",
+      settleToken: "settle:current",
+    };
+
+    const stale = transition(waiting, {
+      type: "SETTLE_ELAPSED",
+      requestId: "capture:stale",
+      settleToken: "settle:replaced",
+    });
+
+    expect(stale.state).toBe(waiting);
+    expect(ignoreReasonOf(stale)).toBe("stale-request");
+  });
+
   it.each([
     ["settling", STATES[3]],
     ["resolving commit", STATES[4]],

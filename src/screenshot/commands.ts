@@ -1,8 +1,10 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { ipc } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
-import type { Clock, ClockHandle, IdSource } from "@/state_machines/clock";
+import type { Clock, IdSource } from "@/state_machines/clock";
+import { TimerLeaseScope } from "@/state_machines/timer_lease";
 import type { ScreenshotCommandRunner } from "./controller";
+import type { ScreenshotEvent, ScreenshotState } from "./state";
 
 export const SCREENSHOT_SETTLE_DELAY_MS = 3_000;
 
@@ -20,14 +22,13 @@ export function createScreenshotCommandAdapter(options: {
   idSource: IdSource;
   queryClient: QueryClient;
 }): ScreenshotCommandAdapter {
-  const settleTimers = new Map<number, ClockHandle>();
+  const settleLeases = new TimerLeaseScope<number, string, ScreenshotEvent>(
+    options.clock,
+  );
   const postMessages = new Map<number, ScreenshotPostMessage>();
 
   const cancelSettle = (appId: number) => {
-    const handle = settleTimers.get(appId);
-    if (handle === undefined) return;
-    options.clock.cancel(handle);
-    settleTimers.delete(appId);
+    settleLeases.remove(appId);
   };
 
   return {
@@ -40,16 +41,16 @@ export function createScreenshotCommandAdapter(options: {
     execute(appId, command, emit) {
       switch (command.type) {
         case "schedule-settle":
-          cancelSettle(appId);
-          settleTimers.set(
+          settleLeases.replace(
             appId,
-            options.clock.schedule(() => {
-              settleTimers.delete(appId);
-              emit({
-                type: "SETTLE_ELAPSED",
-                requestId: options.idSource.next("screenshot-capture"),
-              });
-            }, SCREENSHOT_SETTLE_DELAY_MS),
+            command.settleToken ?? "legacy-untagged-settle",
+            SCREENSHOT_SETTLE_DELAY_MS,
+            (settleToken) => ({
+              type: "SETTLE_ELAPSED",
+              requestId: options.idSource.next("screenshot-capture"),
+              settleToken,
+            }),
+            emit,
           );
           return;
         case "cancel-settle":
@@ -128,11 +129,28 @@ export function createScreenshotCommandAdapter(options: {
           return assertNever(command);
       }
     },
+    beforeStateCommit(appId, previous, next) {
+      if (
+        ownsSettleLease(previous) &&
+        (!ownsSettleLease(next) || next.settleToken !== previous.settleToken)
+      ) {
+        cancelSettle(appId);
+      }
+    },
     disposeKey(appId) {
       cancelSettle(appId);
       postMessages.delete(appId);
     },
   };
+}
+
+function ownsSettleLease(
+  state: ScreenshotState,
+): state is Extract<
+  ScreenshotState,
+  { status: "waitingSelectorReady" | "settling" }
+> {
+  return state.status === "waitingSelectorReady" || state.status === "settling";
 }
 
 function assertNever(value: never): never {

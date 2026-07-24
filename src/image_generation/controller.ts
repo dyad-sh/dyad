@@ -1,8 +1,8 @@
-import { SnapshotStore } from "@/state_machines/snapshot_store";
 import {
-  observeTransition,
-  type TransitionObserver,
-} from "@/state_machines/types";
+  TransactionalDispatcher,
+  type DispatcherError,
+} from "@/state_machines/dispatcher";
+import { stay, type TransitionObserver } from "@/state_machines/types";
 import type {
   ImageGenerationCommand,
   ImageGenerationEvent,
@@ -15,13 +15,23 @@ export interface ImageGenerationCommandRunner {
   run(
     command: ImageGenerationCommand,
     emit: (event: ImageGenerationEvent) => void,
+  ): void | Promise<void>;
+  beforeStateCommit?(
+    previous: ImageGenerationState,
+    next: ImageGenerationState,
   ): void;
 }
 
+type ControllerEvent =
+  | ImageGenerationEvent
+  | { readonly type: "START"; readonly job: ImageGenerationJobDetails };
+
 export class ImageGenerationController {
-  private readonly store: SnapshotStore<ImageGenerationState>;
-  private readonly pendingEvents: ImageGenerationEvent[] = [];
-  private processing = false;
+  private readonly dispatcher: TransactionalDispatcher<
+    ImageGenerationState,
+    ControllerEvent,
+    ImageGenerationCommand
+  >;
   private started = false;
   private disposed = false;
 
@@ -33,78 +43,84 @@ export class ImageGenerationController {
       ImageGenerationEvent,
       ImageGenerationCommand
     >,
+    reportError?: (error: DispatcherError<ImageGenerationCommand>) => void,
   ) {
-    this.store = new SnapshotStore({ type: "pending", job });
+    this.dispatcher = new TransactionalDispatcher({
+      initialState: { type: "pending", job } as ImageGenerationState,
+      transition(state, event) {
+        if (event.type === "START") {
+          return stay(state, [
+            {
+              type: "GenerateImage",
+              jobId: event.job.id,
+              params: {
+                prompt: event.job.prompt,
+                themeMode: event.job.themeMode,
+                targetAppId: event.job.targetAppId,
+                targetAppName: event.job.targetAppName,
+                source: event.job.source,
+              },
+            },
+          ]);
+        }
+        return transition(state, event);
+      },
+      runCommand: (command, emit) =>
+        runner.run(command, emit as (event: ImageGenerationEvent) => void),
+      scheduler: {
+        schedule(batch, execute) {
+          for (const command of batch.commands) void execute(command);
+        },
+      },
+      beforeCommit: (previous, next) =>
+        runner.beforeStateCommit?.(previous, next),
+      observer: observer
+        ? {
+            onTransitionApplied(args) {
+              if (args.event.type === "START") return;
+              observer.onTransitionApplied?.({
+                ...args,
+                event: args.event,
+              });
+            },
+            onEventIgnored(args) {
+              if (args.event.type === "START") return;
+              observer.onEventIgnored?.({
+                ...args,
+                event: args.event,
+              });
+            },
+          }
+        : undefined,
+      reportError,
+    });
   }
 
-  getSnapshot = (): ImageGenerationState => this.store.getSnapshot();
+  getSnapshot = (): ImageGenerationState => this.dispatcher.getSnapshot();
 
   subscribe = (listener: () => void): (() => void) =>
-    this.store.subscribe(listener);
+    this.dispatcher.subscribe(listener);
 
   start(): void {
     if (this.started || this.disposed) return;
     this.started = true;
-    const { job } = this.store.getSnapshot();
-    this.run({
-      type: "GenerateImage",
-      jobId: job.id,
-      params: {
-        prompt: job.prompt,
-        themeMode: job.themeMode,
-        targetAppId: job.targetAppId,
-        targetAppName: job.targetAppName,
-        source: job.source,
-      },
-    });
+    const { job } = this.dispatcher.getSnapshot();
+    this.dispatcher.send({ type: "START", job });
   }
 
   send = (event: ImageGenerationEvent): void => {
-    if (this.disposed) return;
-    this.pendingEvents.push(event);
-    if (this.processing) return;
-    this.processing = true;
-    try {
-      for (
-        let next = this.pendingEvents.shift();
-        next !== undefined;
-        next = this.pendingEvents.shift()
-      ) {
-        const previous = this.store.getSnapshot();
-        const result = transition(previous, next);
-        observeTransition(this.observer, previous, next, result);
-        if (result.kind === "ignored") continue;
-        if (result.state !== previous) this.store.setState(result.state);
-        for (const command of result.commands) this.run(command);
-      }
-    } finally {
-      this.processing = false;
-    }
+    this.dispatcher.send(event);
   };
-
-  private run(command: ImageGenerationCommand): void {
-    try {
-      this.runner.run(command, this.send);
-    } catch (error) {
-      console.error("Image-generation command execution failed:", error);
-    }
-  }
 
   dispose(): void {
     if (this.disposed) return;
-    const state = this.store.getSnapshot();
-    if (state.type === "pending") {
-      try {
-        this.runner.run(
-          { type: "RequestCancel", jobId: state.job.id },
-          () => undefined,
-        );
-      } catch (error) {
-        console.error("Image-generation disposal command failed:", error);
-      }
-    }
     this.disposed = true;
-    this.pendingEvents.length = 0;
-    this.store.dispose();
+    const state = this.dispatcher.getSnapshot();
+    this.dispatcher.dispose();
+    if (state.type === "pending") {
+      this.dispatcher.startFinalizers([
+        { type: "RequestCancel", jobId: state.job.id },
+      ]);
+    }
   }
 }

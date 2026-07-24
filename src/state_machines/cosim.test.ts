@@ -447,6 +447,62 @@ describe("interleaving co-simulation", () => {
     expect(snapshots[1]).toBe(snapshots[0]);
   });
 
+  it("does not re-traverse shared state after deeply freezing it", () => {
+    let ownKeysCalls = 0;
+    let callsAfterFirstSnapshot = 0;
+    const state = new Proxy(
+      { value: 0 },
+      {
+        ownKeys: (target) => {
+          ownKeysCalls++;
+          return Reflect.ownKeys(target);
+        },
+      },
+    );
+
+    const result = runCosim<
+      "participant",
+      never,
+      { value: number },
+      "noop",
+      never
+    >({
+      participants: {
+        participant: {
+          initialState: state,
+          stateKey: ({ value }) => String(value),
+          eventKey: (event) => event,
+          commandKey: (command) => command,
+          transition: (current) => ({
+            kind: "applied",
+            state: current,
+            commands: [],
+          }),
+        },
+      },
+      channels: {},
+      scenario: {
+        actions: [
+          {
+            id: "noop",
+            target: "participant",
+            participant: "participant",
+            event: "noop",
+            enabled: () => {
+              callsAfterFirstSnapshot = ownKeysCalls;
+              return true;
+            },
+          },
+        ],
+        routeCommand: () => [],
+      },
+    });
+
+    expect(result.failure).toBeUndefined();
+    expect(callsAfterFirstSnapshot).toBeGreaterThan(0);
+    expect(ownKeysCalls).toBe(callsAfterFirstSnapshot);
+  });
+
   it("rejects a transition result without state before exploring it", () => {
     const result = runCosim<"participant", never, number, "advance", never>({
       participants: {

@@ -170,13 +170,16 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+const deeplyFrozenCallbackValues = new WeakSet<object>();
+
 function freezeForCallback<Value>(value: Value): Value {
   const seen = new WeakSet<object>();
   const freeze = (current: unknown): void => {
     if (
       (typeof current !== "object" && typeof current !== "function") ||
       current === null ||
-      seen.has(current)
+      seen.has(current) ||
+      deeplyFrozenCallbackValues.has(current)
     ) {
       return;
     }
@@ -186,6 +189,7 @@ function freezeForCallback<Value>(value: Value): Value {
       if (descriptor && "value" in descriptor) freeze(descriptor.value);
     }
     Object.freeze(current);
+    deeplyFrozenCallbackValues.add(current);
   };
   freeze(value);
   return value;

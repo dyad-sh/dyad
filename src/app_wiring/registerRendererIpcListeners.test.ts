@@ -51,4 +51,38 @@ describe("user-input chat-stream composition facade", () => {
       reason: "removed from queue",
     });
   });
+
+  it("propagates owner settlement failure to the queue and submitter", async () => {
+    let submitted!: StreamRequest;
+    const chatStreamManager = {
+      ensure: () => ({
+        send: (event: { type: string; request: StreamRequest }) => {
+          submitted = event.request;
+        },
+      }),
+    } as unknown as ChatStreamManager;
+    const settlementError = new Error("reject IPC failed");
+    const facade = createUserInputChatStreamFacade(
+      {
+        userInput: {
+          rejectFollowUp: vi.fn(() => Promise.reject(settlementError)),
+        },
+      } as unknown as Pick<RendererIpcClient, "userInput">,
+      chatStreamManager,
+    );
+    const submission = facade.submit({
+      requestId: "integration:2",
+      chatId: 1,
+      prompt: "continue",
+      selectedComponents: [],
+      requestedChatMode: "local-agent",
+    });
+
+    const rejection = submitted.onAcceptanceRejected?.("removed from queue");
+
+    await Promise.all([
+      expect(rejection).rejects.toBe(settlementError),
+      expect(submission).rejects.toBe(settlementError),
+    ]);
+  });
 });

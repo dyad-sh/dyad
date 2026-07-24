@@ -53,6 +53,7 @@ export function createUserInputChatStreamFacade(
                 resolve({ accepted: false });
               } catch (error) {
                 reject(error);
+                throw error;
               }
             },
           },

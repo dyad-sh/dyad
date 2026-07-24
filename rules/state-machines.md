@@ -68,6 +68,9 @@ Background and before/after examples of why this pattern exists:
   invocation-time items before the await so the queue driver cannot start
   them. Restore failed owners, preserve items enqueued during the await, and
   surface settlement errors without aborting the whole clear.
+- When a callback's direct caller owns rollback or restoration, settlement
+  failure must reject that callback itself. Rejecting only a separate outer
+  promise hides the failure from the component responsible for compensation.
 - Do not persist machine-generated queue entries when their authority or
   acceptance callbacks are memory-only. Let the live authoritative registry
   rehydrate and re-enqueue them; a full restart must not restore orphan shells.

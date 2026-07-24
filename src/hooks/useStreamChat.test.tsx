@@ -112,6 +112,58 @@ describe("useStreamChat queueMessage", () => {
     });
     expect(store.get(queuedMessagesByIdAtom).has(CHAT_ID)).toBe(false);
   });
+
+  it("preserves messages queued while bulk owner rejection is pending", async () => {
+    const { store, Wrapper } = makeWrapper();
+    let finishRejection!: () => void;
+    mocks.rejectUserInputHandoff.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        finishRejection = resolve;
+      }),
+    );
+    store.set(
+      queuedMessagesByIdAtom,
+      new Map([
+        [
+          CHAT_ID,
+          [
+            {
+              id: "owned-at-clear",
+              prompt: "Continue after integration",
+              owner: {
+                kind: "user-input-follow-up",
+                requestId: "integration:clear",
+              },
+            },
+          ],
+        ],
+      ]),
+    );
+    const { result } = renderHook(() => useStreamChat(), {
+      wrapper: Wrapper,
+    });
+
+    let clear!: Promise<void>;
+    act(() => {
+      clear = result.current.clearAllQueuedMessages();
+    });
+    act(() => {
+      store.set(queuedMessagesByIdAtom, (previous) => {
+        const next = new Map(previous);
+        next.set(CHAT_ID, [
+          ...(previous.get(CHAT_ID) ?? []),
+          { id: "queued-during-clear", prompt: "Keep me" },
+        ]);
+        return next;
+      });
+      finishRejection();
+    });
+    await act(async () => clear);
+
+    expect(store.get(queuedMessagesByIdAtom).get(CHAT_ID)).toEqual([
+      { id: "queued-during-clear", prompt: "Keep me" },
+    ]);
+  });
 });
 
 describe("useStreamChat cancelStream", () => {

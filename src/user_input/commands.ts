@@ -66,11 +66,8 @@ export function createUserInputCommandRunner(deps: {
     requestId: string;
     chatId: number;
     prompt: string;
-  }) => void | Promise<void>;
-  rejectFollowUpHandoff?: (
-    requestId: string,
-    reason: string,
-  ) => void | Promise<void>;
+  }) => void;
+  rejectFollowUpHandoff?: (requestId: string, reason: string) => void;
 }): UserInputCommandRunner {
   return {
     run(command) {

@@ -217,6 +217,7 @@ export function useStreamChat({
   const clearAllQueuedMessages = useCallback(async () => {
     if (chatId === undefined) return;
     const current = queuedMessagesById.get(chatId) ?? [];
+    const clearedIds = new Set(current.map((message) => message.id));
     try {
       await Promise.all(
         current.flatMap((message) =>
@@ -235,9 +236,18 @@ export function useStreamChat({
       return;
     }
     setQueuedMessagesById((prev) => {
-      if (!prev.has(chatId)) return prev;
+      const existing = prev.get(chatId);
+      if (!existing) return prev;
+      const remaining = existing.filter(
+        (message) => !clearedIds.has(message.id),
+      );
+      if (remaining.length === existing.length) return prev;
       const next = new Map(prev);
-      next.delete(chatId);
+      if (remaining.length > 0) {
+        next.set(chatId, remaining);
+      } else {
+        next.delete(chatId);
+      }
       return next;
     });
   }, [chatId, chatStreamManager, queuedMessagesById, setQueuedMessagesById]);

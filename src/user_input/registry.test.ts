@@ -96,13 +96,86 @@ describe("user-input registry", () => {
     await park;
     registry.streamFinished(9);
 
-    registry.sweepChat(9);
+    await registry.settleChat(9);
 
     expect(rejectFollowUpHandoff).toHaveBeenCalledWith(
       requestId,
       "Owning user-input request was swept",
     );
     expect(registry.getPending()).toEqual([]);
+  });
+
+  it("does not publish or commit due state when durable creation fails", async () => {
+    const broadcast = vi.fn();
+    const persistenceError = new Error("sqlite is read-only");
+    const registry = createUserInputRegistry({
+      clock: createFakeClock(1_000),
+      idSource: createSequentialIdSource(),
+      broadcast,
+      persistFollowUpCreated: () => {
+        throw persistenceError;
+      },
+    });
+    const requestId = registry.request({
+      kind: "integration",
+      chatId: 9,
+      provider: "supabase",
+      classifier: "none",
+      followUpPrompt: "Continue after integration",
+    });
+    await registry.respond(requestId, {
+      kind: "integration",
+      completed: true,
+      provider: "supabase",
+    });
+
+    registry.streamFinished(9);
+    await Promise.resolve();
+
+    expect(registry.getPending()).toEqual([
+      expect.objectContaining({ status: "armed" }),
+    ]);
+    expect(broadcast).not.toHaveBeenCalledWith(
+      "user-input:follow-up-due",
+      expect.anything(),
+    );
+  });
+
+  it("keeps the owner live when durable settlement fails", async () => {
+    const broadcast = vi.fn();
+    const rejectionError = new Error("sqlite is busy");
+    const registry = createUserInputRegistry({
+      clock: createFakeClock(1_000),
+      idSource: createSequentialIdSource(),
+      broadcast,
+      persistFollowUpCreated: vi.fn(),
+      rejectFollowUpHandoff: () => {
+        throw rejectionError;
+      },
+    });
+    const requestId = registry.request({
+      kind: "integration",
+      chatId: 9,
+      provider: "supabase",
+      classifier: "none",
+      followUpPrompt: "Continue after integration",
+    });
+    await registry.respond(requestId, {
+      kind: "integration",
+      completed: true,
+      provider: "supabase",
+    });
+    registry.streamFinished(9);
+
+    await expect(registry.settleChat(9)).rejects.toBe(rejectionError);
+
+    expect(registry.getPending()).toEqual([
+      expect.objectContaining({ status: "due" }),
+    ]);
+    expect(broadcast).not.toHaveBeenCalledWith("user-input:settled", {
+      requestId,
+      outcome: "swept",
+    });
   });
 
   it("maps human and classifier resolutions into park values", async () => {
@@ -279,7 +352,7 @@ describe("user-input registry", () => {
     registry.streamFinished(18);
     await registry.followUpAccepted(followUp);
 
-    registry.sweepChat(18, followUp);
+    registry.sweepChat(18);
 
     expect(registry.getPending()).toEqual([
       expect.objectContaining({

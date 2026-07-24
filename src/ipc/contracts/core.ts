@@ -1,4 +1,11 @@
 import { z } from "zod";
+import {
+  isInvocationRef,
+  invocationRegistryKey,
+  InvocationRegistry,
+  type InvocationRef,
+  type InvocationClaim,
+} from "../../state_machines/invocation_ref";
 import { DyadError, DyadErrorKind, isDyadError } from "../../errors/dyad_error";
 
 // =============================================================================
@@ -466,18 +473,20 @@ export function createStreamClient<
       onEnd: (data: z.infer<TEnd>) => void;
       onError: (data: z.infer<TError>) => void;
     };
-    /** Monotonic per-client stream generation; identifies this start() call. */
-    streamId: number;
     /** When true (default), the entry is removed on end/error events. */
     autoRelease: boolean;
   }
 
-  const streams = new Map<KeyValue, StreamEntry>();
+  const registryKind = `ipc-stream:${contract.channel}`;
+  const streams = new InvocationRegistry<StreamEntry>();
+  const legacyStructuralSafety = {
+    structuralSafety:
+      "App-update compatibility: an older producer cannot echo InvocationRef, so an identity-less event intentionally claims the current key.",
+  } as const;
 
-  // Monotonic generation counter: every start() gets a fresh streamId. Stream
-  // contracts that echo it in their payloads reject stale chunk/end/error
-  // events even after a same-key entry has been replaced. Payloads without a
-  // streamId retain the legacy key-only routing behavior.
+  // Legacy monotonic generation counter for callers that do not supply an
+  // InvocationRef. Contracts that echo either identity reject stale events.
+  // Payloads without either identity retain legacy key-only routing.
   let nextStreamId = 0;
 
   let listenersSetUp = false;
@@ -493,15 +502,9 @@ export function createStreamClient<
       if (parsed.success) {
         const payload = parsed.data as Record<string, unknown>;
         const key = payload[contract.keyField] as KeyValue;
-        const entry = streams.get(key);
-        if (!entry) return;
-        if (
-          typeof payload.streamId === "number" &&
-          payload.streamId !== entry.streamId
-        ) {
-          return;
-        }
-        entry.callbacks.onChunk(parsed.data);
+        const claim = claimPayload(key, payload);
+        if (claim.kind !== "claimed") return;
+        claim.value.callbacks.onChunk(parsed.data);
       }
     });
 
@@ -510,19 +513,13 @@ export function createStreamClient<
       if (parsed.success) {
         const payload = parsed.data as Record<string, unknown>;
         const key = payload[contract.keyField] as KeyValue;
-        const entry = streams.get(key);
-        if (!entry) return;
-        if (
-          typeof payload.streamId === "number" &&
-          payload.streamId !== entry.streamId
-        ) {
-          return;
-        }
-        entry.callbacks.onEnd(parsed.data);
+        const claim = claimPayload(key, payload);
+        if (claim.kind !== "claimed") return;
+        claim.value.callbacks.onEnd(parsed.data);
         // The terminal callback may synchronously start another stream with
         // the same key. Only clean up the generation that actually ended.
-        if (entry.autoRelease && streams.get(key) === entry) {
-          streams.delete(key);
+        if (claim.value.autoRelease) {
+          streams.delete(claim.ref);
         }
       }
     });
@@ -532,18 +529,12 @@ export function createStreamClient<
       if (parsed.success) {
         const payload = parsed.data as Record<string, unknown>;
         const key = payload[contract.keyField] as KeyValue;
-        const entry = streams.get(key);
-        if (!entry) return;
-        if (
-          typeof payload.streamId === "number" &&
-          payload.streamId !== entry.streamId
-        ) {
-          return;
-        }
-        entry.callbacks.onError(parsed.data);
+        const claim = claimPayload(key, payload);
+        if (claim.kind !== "claimed") return;
+        claim.value.callbacks.onError(parsed.data);
         // The error callback may synchronously replace this stream.
-        if (entry.autoRelease && streams.get(key) === entry) {
-          streams.delete(key);
+        if (claim.value.autoRelease) {
+          streams.delete(claim.ref);
         }
       }
     });
@@ -551,13 +542,46 @@ export function createStreamClient<
     listenersSetUp = true;
   };
 
+  function registryRef(
+    key: KeyValue,
+    correlation: number | InvocationRef,
+  ): InvocationRef<string, KeyValue> {
+    const operationId =
+      typeof correlation === "number"
+        ? `legacy-number:${correlation}`
+        : `invocation:${invocationRegistryKey(correlation)}`;
+    return { kind: registryKind, entityKey: key, operationId };
+  }
+
+  function claimPayload(
+    key: KeyValue,
+    payload: Record<string, unknown>,
+  ): InvocationClaim<StreamEntry> {
+    if (payload.invocationRef !== undefined) {
+      return isInvocationRef(payload.invocationRef)
+        ? streams.claim(registryRef(key, payload.invocationRef))
+        : { kind: "unsolicited" };
+    }
+    if (typeof payload.streamId === "number") {
+      return streams.claim(registryRef(key, payload.streamId));
+    }
+    return streams.claimStructurally(registryKind, key, legacyStructuralSafety);
+  }
+
+  function claimCurrentStructurally(
+    key: KeyValue,
+    structuralSafety: string,
+  ): InvocationClaim<StreamEntry> {
+    return streams.claimStructurally(registryKind, key, { structuralSafety });
+  }
+
   return {
     /**
      * Start a stream with the given input and callbacks.
      *
-     * Returns the monotonic streamId identifying this start() call. With
+     * Returns the correlation identity identifying this start() call. With
      * `autoRelease: false` the entry keeps receiving events after end/error
-     * until `release(key, streamId)` is called (used by the chat stream
+     * until `release(key, correlation)` is called (used by the chat stream
      * controller, which owns terminal reconciliation).
      */
     start(
@@ -567,12 +591,20 @@ export function createStreamClient<
         onEnd: (data: z.infer<TEnd>) => void;
         onError: (data: z.infer<TError>) => void;
       },
-      opts?: { streamId?: number; autoRelease?: boolean },
-    ): number {
+      opts?: {
+        invocationRef?: InvocationRef;
+        streamId?: number;
+        autoRelease?: boolean;
+      },
+    ): InvocationRef | number {
       setupListeners();
 
-      const streamId = opts?.streamId ?? ++nextStreamId;
-      if (streamId > nextStreamId) {
+      const invocationRef = opts?.invocationRef;
+      const streamId =
+        invocationRef === undefined
+          ? (opts?.streamId ?? ++nextStreamId)
+          : undefined;
+      if (streamId !== undefined && streamId > nextStreamId) {
         nextStreamId = streamId;
       }
 
@@ -584,7 +616,7 @@ export function createStreamClient<
           ],
           error: "IPC renderer not available",
         } as any);
-        return streamId;
+        return invocationRef ?? streamId!;
       }
 
       const key = (input as Record<string, unknown>)[
@@ -592,49 +624,78 @@ export function createStreamClient<
       ] as KeyValue;
       const entry: StreamEntry = {
         callbacks,
-        streamId,
         autoRelease: opts?.autoRelease !== false,
       };
-      streams.set(key, entry);
+      const ref = registryRef(key, invocationRef ?? streamId!);
+      streams.register(ref, entry);
 
       ipcRenderer.invoke(contract.channel, input).catch((err: Error) => {
         // Only surface the failure if this start() call still owns the entry.
-        if (streams.get(key) !== entry) return;
+        const claim = streams.claim(ref);
+        if (claim.kind !== "claimed" || claim.value !== entry) return;
         callbacks.onError({
           [contract.keyField]: key,
           error: err.message,
         } as any);
         // The error callback may synchronously replace this stream.
-        if (streams.get(key) === entry) {
-          streams.delete(key);
+        const current = streams.claim(ref);
+        if (current.kind === "claimed" && current.value === entry) {
+          streams.delete(ref);
         }
       });
-      return streamId;
+      return invocationRef ?? streamId!;
     },
 
     /**
      * Cancel a stream by its key value.
      */
     cancel(key: KeyValue): void {
-      streams.delete(key);
+      const claim = claimCurrentStructurally(
+        key,
+        "Domain cancellation targets whichever operation currently owns this stream key.",
+      );
+      if (claim.kind === "claimed") {
+        streams.delete(claim.ref);
+      }
     },
 
     /**
-     * Release a stream entry. When `streamId` is given, only releases if the
-     * current entry belongs to that generation (stale releases are no-ops).
+     * Release a stream entry. When correlation identity is given, only
+     * releases the matching entry (stale releases are no-ops).
      */
-    release(key: KeyValue, streamId?: number): void {
-      const entry = streams.get(key);
-      if (!entry) return;
-      if (streamId !== undefined && entry.streamId !== streamId) return;
-      streams.delete(key);
+    release(
+      key: KeyValue,
+      correlation?: number | { invocationRef: InvocationRef },
+    ): void {
+      const claim =
+        correlation === undefined
+          ? claimCurrentStructurally(
+              key,
+              "Legacy release without correlation targets the current entry for this key.",
+            )
+          : streams.claim(
+              registryRef(
+                key,
+                typeof correlation === "number"
+                  ? correlation
+                  : correlation.invocationRef,
+              ),
+            );
+      if (claim.kind === "claimed") {
+        streams.delete(claim.ref);
+      }
     },
 
     /**
      * Check if a stream is active for a given key.
      */
     isActive(key: KeyValue): boolean {
-      return streams.has(key);
+      return (
+        claimCurrentStructurally(
+          key,
+          "Presence checks observe current ownership but do not consume or mutate it.",
+        ).kind === "claimed"
+      );
     },
   };
 }

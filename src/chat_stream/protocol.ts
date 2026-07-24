@@ -17,13 +17,13 @@ export const CHAT_STREAM_WIRE_EVENTS = {
 export type ChatStreamRequestPayload = ChatStreamParams;
 export type ChatStreamStartPayload = Pick<
   ChatStreamParams,
-  "chatId" | "streamId"
+  "chatId" | "invocationRef" | "streamId"
 >;
 export type ChatStreamChunkPayload = ChatResponseChunk;
 export type ChatStreamEndPayload = ChatResponseEnd;
 export type ChatStreamErrorPayload = Pick<
   ChatResponseEnd,
-  "chatId" | "streamId" | "warningMessages"
+  "chatId" | "invocationRef" | "streamId" | "warningMessages"
 > & { error: string };
 export type ChatStreamTransportEndPayload = Pick<ChatStreamParams, "chatId">;
 
@@ -36,13 +36,14 @@ export const CHAT_STREAM_FIFO_DELIVERY_ASSUMPTION =
   "main-to-renderer chat stream events are delivered FIFO" as const;
 
 /**
- * A request may carry a renderer-allocated `streamId`. Main echoes that value
- * on start, chunk, end, and error payloads. The stream client accepts an absent
- * ID for legacy key-only routing, but drops every present ID that does not match
- * the currently registered generation.
+ * A request may carry a renderer-minted `invocationRef`. Main echoes the full
+ * ref on start, chunk, end, and error payloads. Payloads with a mismatched ref
+ * are reported using the existing `stale-stream-id` trace reason to keep chat
+ * stream telemetry stable. Payloads without a ref retain legacy key-only
+ * routing for in-flight streams crossing an app update.
  */
 export const CHAT_STREAM_GENERATION_ECHO_CONTRACT =
-  "optional streamId is echoed; present-and-mismatched events are dropped" as const;
+  "optional InvocationRef is echoed; present-and-mismatched events are stale-stream-id" as const;
 
 /**
  * Current per-generation emission contract (intentionally not exactly-one):

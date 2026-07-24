@@ -1,6 +1,10 @@
 /** A machine-specific, stable tag explaining why an event was ignored. */
 export type IgnoreReason<Tag extends string = string> = Tag;
 
+/** Canonical trace reason for a completion belonging to another operation. */
+export const STALE_OPERATION_IGNORE_REASON = "stale-operation" as const;
+export type StaleOperationIgnoreReason = typeof STALE_OPERATION_IGNORE_REASON;
+
 /**
  * The common result shape for pure state-machine transitions.
  *

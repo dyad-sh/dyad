@@ -4,6 +4,13 @@ import type {
   ComponentSelection,
   FileAttachment,
 } from "@/ipc/types";
+import type { InvocationRef } from "@/state_machines/invocation_ref";
+
+export const CHAT_STREAM_INVOCATION_KIND = "chat-stream" as const;
+export type ChatStreamInvocationRef = InvocationRef<
+  typeof CHAT_STREAM_INVOCATION_KIND,
+  number
+>;
 
 /**
  * Chat stream lifecycle state machine types.
@@ -77,69 +84,95 @@ export interface StreamRequest {
  *   re-sync, invalidations, file refresh) are running.
  * - `errored`: the stream terminated with an error. A new submit is allowed.
  *
- * `streamId` is a per-chat monotonic generation number; events carrying a
- * stale `streamId` never advance the machine.
+ * `invocationRef` is the complete, globally unique correlation identity.
+ * Events carrying another operation's ref never advance the machine.
  */
 export type StreamState =
-  | { type: "idle"; lastStreamId: number }
+  | { type: "idle" }
   | {
       type: "starting";
-      streamId: number;
+      invocationRef: ChatStreamInvocationRef;
       request: StreamRequest;
       targetAppId: number | null;
     }
   | {
       type: "streaming";
-      streamId: number;
+      invocationRef: ChatStreamInvocationRef;
       request: StreamRequest;
       targetAppId: number | null;
     }
   | {
       type: "cancelling";
-      streamId: number;
+      invocationRef: ChatStreamInvocationRef;
       request: StreamRequest;
       registered: boolean;
       targetAppId: number | null;
     }
   | {
       type: "finalizing";
-      streamId: number;
+      invocationRef: ChatStreamInvocationRef;
       request: StreamRequest;
       wasCancelled: boolean;
       targetAppId: number | null;
     }
-  | { type: "errored"; lastStreamId: number; error: string };
+  | { type: "errored"; error: string };
 
 /** Events fed into the machine (from React, the IPC stream client, or the controller itself). */
 export type StreamEvent =
   /** A caller wants to stream a prompt for this chat. */
-  | { type: "submit"; request: StreamRequest }
+  | {
+      type: "submit";
+      request: StreamRequest;
+      /**
+       * Minted by the controller only when this submission becomes active.
+       * Queued submissions deliberately have no operation identity yet.
+       */
+      invocationRef?: ChatStreamInvocationRef;
+    }
   /** The user asked to cancel the active stream. */
   | { type: "cancel" }
-  /** Main confirmed AbortController registration (`chat:stream:start`). Absent streamId means the current generation. */
-  | { type: "registered"; streamId?: number }
+  /** Main confirmed AbortController registration. An absent ref uses legacy key-only routing. */
+  | { type: "registered"; invocationRef?: ChatStreamInvocationRef }
   /** The command adapter resolved the app targeted by this stream. */
-  | { type: "stream-context"; streamId: number; targetAppId: number | null }
+  | {
+      type: "stream-context";
+      invocationRef: ChatStreamInvocationRef;
+      targetAppId: number | null;
+    }
   /** A content chunk arrived for the given stream generation. */
-  | { type: "chunk-received"; streamId: number }
+  | { type: "chunk-received"; invocationRef: ChatStreamInvocationRef }
   /** The terminal end event arrived for the given stream generation. */
-  | { type: "stream-ended"; streamId: number; response: ChatResponseEnd }
+  | {
+      type: "stream-ended";
+      invocationRef: ChatStreamInvocationRef;
+      response: ChatResponseEnd;
+    }
   /** The terminal error event arrived for the given stream generation. */
   | {
       type: "stream-errored";
-      streamId: number;
+      invocationRef: ChatStreamInvocationRef;
       error: string;
       warningMessages?: string[];
     }
   /** End side effects finished executing (emitted by the controller). */
-  | { type: "finalize-complete"; streamId: number; ok: boolean }
+  | {
+      type: "finalize-complete";
+      invocationRef: ChatStreamInvocationRef;
+      ok: boolean;
+    }
   /** The queue may have become dispatchable (resume clicked, etc.). */
   | { type: "queue-poked" };
+
+export type StreamTransitionEvent = StreamEvent;
 
 /** Commands are pure data returned by `transition`; the controller executes them via `ChatStreamCommands`. */
 export type StreamCommand =
   /** Convert attachments and invoke `chat:stream` for a new stream generation. */
-  | { type: "start-stream"; streamId: number; request: StreamRequest }
+  | {
+      type: "start-stream";
+      invocationRef: ChatStreamInvocationRef;
+      request: StreamRequest;
+    }
   /** Append a submission to the prompt queue (stream already active). */
   | { type: "enqueue-message"; request: StreamRequest }
   /** Ask main to abort the active stream (`chat:cancel`). */
@@ -147,7 +180,7 @@ export type StreamCommand =
   /** Run all end-of-stream side effects (cancellation notice, refreshes, DB re-sync merge, ...). */
   | {
       type: "run-end-side-effects";
-      streamId: number;
+      invocationRef: ChatStreamInvocationRef;
       request: StreamRequest;
       targetAppId: number | null;
       response: ChatResponseEnd;
@@ -155,14 +188,18 @@ export type StreamCommand =
   /** Run all error side effects (error atom, invalidations, DB re-sync). */
   | {
       type: "run-error-side-effects";
-      streamId: number;
+      invocationRef: ChatStreamInvocationRef;
       request: StreamRequest;
       targetAppId: number | null;
       error: string;
       warningMessages?: string[];
     }
   /** Pop the next queued message (if any, and not paused) and submit it. */
-  | { type: "dispatch-next-queued" };
+  | {
+      type: "dispatch-next-queued";
+      /** Operation whose successful finalization authorized this dispatch. */
+      invocationRef?: ChatStreamInvocationRef;
+    };
 
 /** Stable telemetry tags for deliberately ignored stream events. */
 export type ChatStreamIgnoreReason =

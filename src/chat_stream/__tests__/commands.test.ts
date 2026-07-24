@@ -6,6 +6,9 @@ import { chatMessagesByIdAtom } from "@/atoms/chatAtoms";
 import { ipc } from "@/ipc/types";
 
 import { createProductionChatStreamCommands } from "../commands";
+import { makeChatStreamRef } from "./test_refs";
+
+const ref = (index: number) => makeChatStreamRef(index, 9);
 
 describe("chat stream command adapter instances", () => {
   afterEach(() => {
@@ -40,14 +43,14 @@ describe("chat stream command adapter instances", () => {
     await Promise.all([
       first.startStream({
         chatId: 9,
-        streamId: 1,
+        invocationRef: ref(1),
         request: { chatId: 9, appId: 4, prompt: "first" },
         emit: vi.fn(),
         isStale: () => false,
       }),
       second.startStream({
         chatId: 9,
-        streamId: 1,
+        invocationRef: ref(1),
         request: { chatId: 9, appId: 4, prompt: "second" },
         emit: vi.fn(),
         isStale: () => false,
@@ -88,7 +91,7 @@ describe("chat stream command adapter instances", () => {
 
     await createProductionChatStreamCommands(() => deps).startStream({
       chatId: 9,
-      streamId: 1,
+      invocationRef: ref(1),
       request: {
         chatId: 9,
         appId: 4,
@@ -141,7 +144,7 @@ describe("chat stream command adapter instances", () => {
     commands.requestAbort({ chatId: 9 });
     await commands.runEndSideEffects({
       chatId: 9,
-      streamId: 1,
+      invocationRef: ref(1),
       request: { chatId: 9, appId: 4, prompt: "cancel me" },
       targetAppId: 4,
       response: { chatId: 9, updatedFiles: false, wasCancelled: true },

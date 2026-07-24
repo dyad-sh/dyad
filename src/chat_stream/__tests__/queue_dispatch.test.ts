@@ -18,6 +18,8 @@ import {
 } from "../commands";
 import { createChatStreamController } from "../controller";
 import { ChatStreamManager } from "../manager";
+import { createSequentialIdSource } from "@/state_machines/testing";
+import { makeChatStreamRef } from "./test_refs";
 
 const CHAT_ID = 11;
 
@@ -56,6 +58,7 @@ function setup({
   };
   const controller = createChatStreamController({
     chatId,
+    idSource: createSequentialIdSource(),
     getCommands: () => commands,
   });
   return {
@@ -218,7 +221,7 @@ describe("manager disposal", () => {
     const chatId = 77;
     const store = createStore();
     const queryClient = new QueryClient();
-    const manager = new ChatStreamManager(store);
+    const manager = new ChatStreamManager(store, createSequentialIdSource());
     manager.registerRuntimeDeps({
       store,
       queryClient,
@@ -252,7 +255,7 @@ describe("manager disposal", () => {
     });
     expect(replacement.getSnapshot()).toMatchObject({
       type: "starting",
-      streamId: 2,
+      invocationRef: makeChatStreamRef(2, chatId),
     });
     await vi.waitFor(() => {
       expect(manager.peek(chatId)).toBeUndefined();

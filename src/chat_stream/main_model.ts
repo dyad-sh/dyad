@@ -12,6 +12,8 @@ import {
   CHAT_STREAM_INVARIANT_I4,
 } from "./protocol";
 import { ignore, type TransitionResult } from "@/state_machines/types";
+import type { ChatStreamInvocationRef } from "./state";
+import { sameInvocationRef } from "@/state_machines/invocation_ref";
 
 /**
  * Pure executable model of the imperative main-process chat stream engine.
@@ -64,8 +66,10 @@ export type MainStreamPhase =
 export interface MainStream {
   /** Model-only identity, unique across concurrent handler invocations. */
   invocationId: number;
-  /** Renderer generation, unique only within a chat. */
-  streamId: number;
+  /** Renderer-minted correlation identity echoed on every wire emission. */
+  invocationRef: ChatStreamInvocationRef;
+  /** Legacy renderer generation, absent on InvocationRef-native requests. */
+  streamId?: number;
   chatId: number;
   appId: number;
   phase: MainStreamPhase;
@@ -103,7 +107,8 @@ export type MainModelEvent =
   | {
       type: "request-received";
       invocationId: number;
-      streamId: number;
+      invocationRef?: ChatStreamInvocationRef;
+      streamId?: number;
       chatId: number;
       appId: number;
     }
@@ -226,7 +231,12 @@ function waiterRecord(
 function handlerError(stream: MainStream, error: string): MainModelEmission {
   return {
     type: "chat:response:error",
-    payload: { chatId: stream.chatId, streamId: stream.streamId, error },
+    payload: {
+      chatId: stream.chatId,
+      invocationRef: stream.invocationRef,
+      streamId: stream.streamId,
+      error,
+    },
     origin: "handler",
   };
 }
@@ -290,6 +300,7 @@ function cancelStreams(
       type: "chat:response:end",
       payload: {
         chatId: stream.chatId,
+        invocationRef: stream.invocationRef,
         streamId: stream.streamId,
         updatedFiles: false,
         wasCancelled: true,
@@ -359,6 +370,11 @@ export function transitionMainModel(
         kind: "applied",
         state: replaceStream(state, {
           invocationId: event.invocationId,
+          invocationRef: event.invocationRef ?? {
+            kind: "chat-stream",
+            entityKey: event.chatId,
+            operationId: `chat-stream:model:${event.invocationId}`,
+          },
           streamId: event.streamId,
           chatId: event.chatId,
           appId: event.appId,
@@ -448,7 +464,11 @@ export function transitionMainModel(
           commands: [
             {
               type: "chat:stream:start",
-              payload: { chatId: stream.chatId, streamId: stream.streamId },
+              payload: {
+                chatId: stream.chatId,
+                invocationRef: stream.invocationRef,
+                streamId: stream.streamId,
+              },
               origin: "admission",
             },
           ],
@@ -467,7 +487,11 @@ export function transitionMainModel(
           commands: [
             {
               type: "chat:response:chunk",
-              payload: { chatId: stream.chatId, streamId: stream.streamId },
+              payload: {
+                chatId: stream.chatId,
+                invocationRef: stream.invocationRef,
+                streamId: stream.streamId,
+              },
               origin: "handler",
             },
           ],
@@ -528,6 +552,7 @@ export function transitionMainModel(
                     type: "chat:response:error",
                     payload: {
                       chatId: stream.chatId,
+                      invocationRef: stream.invocationRef,
                       streamId: stream.streamId,
                       error: "modeled apply error",
                     },
@@ -539,6 +564,7 @@ export function transitionMainModel(
               type: "chat:response:end",
               payload: {
                 chatId: stream.chatId,
+                invocationRef: stream.invocationRef,
                 streamId: stream.streamId,
                 updatedFiles: false,
               },
@@ -780,7 +806,11 @@ export function assertMainModelTransitionInvariants(
       const stream = Object.values(result.state.streams).find(
         (candidate) =>
           candidate.chatId === emission.payload.chatId &&
-          candidate.streamId === emission.payload.streamId,
+          emission.payload.invocationRef !== undefined &&
+          sameInvocationRef(
+            candidate.invocationRef,
+            emission.payload.invocationRef,
+          ),
       );
       if (!stream || coveringBarrierCount(previous, stream) > 0) {
         throw new Error(

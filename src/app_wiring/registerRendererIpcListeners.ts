@@ -87,7 +87,7 @@ export function registerRendererIpcListeners({
   );
 
   unsubscribes.push(
-    ipcClient.events.misc.onChatStreamStart(({ chatId, streamId }) => {
+    ipcClient.events.misc.onChatStreamStart(({ chatId, invocationRef }) => {
       store.set(agentTodosByChatIdAtom, (prev) => {
         const next = new Map(prev);
         next.delete(chatId);
@@ -96,7 +96,7 @@ export function registerRendererIpcListeners({
       // Registration confirmation for the chat stream machine: main has
       // registered the AbortController for this chat's stream (drives the
       // starting -> streaming transition and cancel reconciliation).
-      chatStreamManager.notifyStreamRegistered(chatId, streamId);
+      chatStreamManager.notifyStreamRegistered(chatId, invocationRef);
     }),
   );
 

@@ -40,7 +40,12 @@ import { showExtraFilesToast, showWarning } from "@/lib/toast";
 import { applyCancellationNoticeToLastAssistantMessage } from "@/shared/chatCancellation";
 import { PNPM_MINIMUM_RELEASE_AGE_WARNING_PREFIX } from "@/shared/packageManagerWarnings";
 
-import type { StreamEvent, StreamRequest, StreamState } from "./state";
+import type {
+  ChatStreamInvocationRef,
+  StreamEvent,
+  StreamRequest,
+  StreamState,
+} from "./state";
 import { isStreamActive } from "./transition";
 
 type JotaiStore = ReturnType<typeof createStore>;
@@ -54,7 +59,7 @@ export interface ChatStreamCommands {
   /** Convert attachments and invoke `chat:stream`; stream events are emitted back via `emit`. */
   startStream(args: {
     chatId: number;
-    streamId: number;
+    invocationRef: ChatStreamInvocationRef;
     request: StreamRequest;
     emit: (event: StreamEvent) => void;
     isStale: () => boolean;
@@ -64,11 +69,14 @@ export interface ChatStreamCommands {
   /** Ask the main process to abort the active stream. */
   requestAbort(args: { chatId: number }): void;
   /** Release renderer-owned stream transport state without aborting main. */
-  releaseTransport(args: { chatId: number; streamId: number }): void;
+  releaseTransport(args: {
+    chatId: number;
+    invocationRef: ChatStreamInvocationRef;
+  }): void;
   /** Run all end-of-stream side effects (throws => finalize-complete { ok: false }). */
   runEndSideEffects(args: {
     chatId: number;
-    streamId: number;
+    invocationRef: ChatStreamInvocationRef;
     request: StreamRequest;
     targetAppId: number | null;
     response: ChatResponseEnd;
@@ -76,7 +84,7 @@ export interface ChatStreamCommands {
   /** Run all stream-error side effects. */
   runErrorSideEffects(args: {
     chatId: number;
-    streamId: number;
+    invocationRef: ChatStreamInvocationRef;
     request: StreamRequest;
     targetAppId: number | null;
     error: string;
@@ -195,18 +203,21 @@ export function createProductionChatStreamCommands(
     showWarning(warningMessage);
   }
 
-  function cleanupStreamTransport(chatId: number, streamId: number): void {
+  function cleanupStreamTransport(
+    chatId: number,
+    invocationRef: ChatStreamInvocationRef,
+  ): void {
     latestChunkByChatId.delete(chatId);
     cancelAckTimer(chatId);
     clearPreviewForChat(
       (update) => deps().store.set(streamingPreviewByChatIdAtom, update),
       chatId,
     );
-    ipc.chatStream.release(chatId, streamId);
+    ipc.chatStream.release(chatId, { invocationRef });
   }
 
   return {
-    async startStream({ chatId, streamId, request, emit, isStale }) {
+    async startStream({ chatId, invocationRef, request, emit, isStale }) {
       const { store, queryClient, getSettings } = deps();
       const settings = getSettings();
 
@@ -246,7 +257,7 @@ export function createProductionChatStreamCommands(
         store.get(selectedAppIdAtom) ??
         null;
 
-      emit({ type: "stream-context", streamId, targetAppId });
+      emit({ type: "stream-context", invocationRef, targetAppId });
 
       const cachedChat =
         request.requestedChatMode === null
@@ -258,7 +269,7 @@ export function createProductionChatStreamCommands(
       ipc.chatStream.start(
         {
           chatId,
-          streamId,
+          invocationRef,
           prompt: request.prompt,
           redo: request.redo,
           attachments: convertedAttachments,
@@ -293,7 +304,7 @@ export function createProductionChatStreamCommands(
               request.onAccepted?.();
             }
 
-            emit({ type: "chunk-received", streamId });
+            emit({ type: "chunk-received", invocationRef });
 
             if (
               handleEffectiveChatModeChunk(
@@ -356,19 +367,24 @@ export function createProductionChatStreamCommands(
                 new Error("Follow-up stream ended before durable acceptance"),
               );
             }
-            emit({ type: "stream-ended", streamId, response });
+            emit({ type: "stream-ended", invocationRef, response });
           },
           onError: ({ error, warningMessages }) => {
             if (!userInputAccepted) {
               request.onAcceptanceError?.(new Error(error));
             }
-            emit({ type: "stream-errored", streamId, error, warningMessages });
+            emit({
+              type: "stream-errored",
+              invocationRef,
+              error,
+              warningMessages,
+            });
           },
         },
         // The controller owns the stream lifetime: keep routing events until
-        // finalization completes and releases the entry (stale-streamId checks
+        // finalization completes and releases the entry (stale-invocationRef checks
         // in the machine drop anything that arrives after the terminal event).
-        { streamId, autoRelease: false },
+        { invocationRef, autoRelease: false },
       );
     },
 
@@ -441,13 +457,13 @@ export function createProductionChatStreamCommands(
         });
     },
 
-    releaseTransport({ chatId, streamId }) {
-      cleanupStreamTransport(chatId, streamId);
+    releaseTransport({ chatId, invocationRef }) {
+      cleanupStreamTransport(chatId, invocationRef);
     },
 
     async runEndSideEffects({
       chatId,
-      streamId,
+      invocationRef,
       request,
       targetAppId,
       response,
@@ -455,7 +471,7 @@ export function createProductionChatStreamCommands(
       const { store, queryClient, getSettings, getPosthog } = deps();
       const settings = getSettings();
 
-      cleanupStreamTransport(chatId, streamId);
+      cleanupStreamTransport(chatId, invocationRef);
 
       try {
         // Only treat as successful if NOT cancelled - wasCancelled flag is set
@@ -584,7 +600,7 @@ export function createProductionChatStreamCommands(
 
     runErrorSideEffects({
       chatId,
-      streamId,
+      invocationRef,
       request,
       targetAppId,
       error,
@@ -592,7 +608,7 @@ export function createProductionChatStreamCommands(
     }) {
       const { store, queryClient, getSettings } = deps();
 
-      cleanupStreamTransport(chatId, streamId);
+      cleanupStreamTransport(chatId, invocationRef);
 
       for (const warningMessage of warningMessages ?? []) {
         showWarningMessage(warningMessage, targetAppId);

@@ -44,7 +44,8 @@ import { useVersionPreview } from "@/hooks/useVersionPreview";
 import { isPaneVisibleState } from "@/version_preview/state";
 import { useChatStreamState } from "@/hooks/useChatStream";
 import { useStreamFinished } from "@/chat_stream/ChatStreamProvider";
-import { streamGeneration } from "@/chat_stream/transition";
+import { streamInvocationRef } from "@/chat_stream/transition";
+import { automaticChatScrollReason } from "./chatPanelScroll";
 
 const TerminalPanel = lazy(() => import("./chat/TerminalPanel"));
 
@@ -140,7 +141,9 @@ export function ChatPanel({
   }, [scrollToBottom]);
 
   // Scroll to bottom when a new stream starts (user sent a message)
-  const streamCount = streamState ? streamGeneration(streamState) : 0;
+  const streamOperationId = streamState
+    ? (streamInvocationRef(streamState)?.operationId ?? "")
+    : "";
   const messages = chatId ? (messagesById.get(chatId) ?? []) : [];
   const streamError = chatId ? (chatErrorById.get(chatId) ?? null) : null;
   const isTerminalOpen = chatId
@@ -149,34 +152,43 @@ export function ChatPanel({
 
   // Track previous chatId to detect chat switches
   const prevChatIdRef = useRef<number | undefined>(undefined);
+  const prevStreamOperationIdRef = useRef("");
+  const pendingInitialScrollChatIdRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     const isChatSwitch = prevChatIdRef.current !== chatId;
+    const reason = automaticChatScrollReason({
+      previousChatId: prevChatIdRef.current,
+      chatId,
+      previousOperationId: prevStreamOperationIdRef.current,
+      operationId: streamOperationId,
+      pendingInitialScrollChatId: pendingInitialScrollChatIdRef.current,
+      messagesLength: messages.length,
+    });
     prevChatIdRef.current = chatId;
+    prevStreamOperationIdRef.current = streamOperationId;
+
+    if (isChatSwitch) {
+      pendingInitialScrollChatIdRef.current =
+        messages.length === 0 ? chatId : undefined;
+    } else if (reason === "initial-messages-loaded") {
+      pendingInitialScrollChatIdRef.current = undefined;
+    }
+
+    if (reason === null) return;
 
     isAtBottomRef.current = true;
     setShowScrollButton(false);
 
-    if (isChatSwitch && messages.length > 0) {
-      // When switching chats with existing messages, wait for Virtuoso to render
-      // then scroll to ensure we're at the bottom
+    // Wait for Virtuoso to render the selected chat or the new stream's
+    // placeholder before scrolling. Clearing an operation ID at completion is
+    // deliberately not a reason, so reading an older message is not disrupted.
+    requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          scrollToBottom("instant");
-        });
+        scrollToBottom(reason === "stream-start" ? "smooth" : "instant");
       });
-    } else if (!isChatSwitch) {
-      // For stream count changes (new message sent), wait for Virtuoso to render
-      // the placeholder message before scrolling
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          scrollToBottom();
-        });
-      });
-    }
-    // Note: if isChatSwitch && messages.length === 0, we don't scroll yet.
-    // The messages will be fetched and this effect will re-run with messages.length > 0.
-  }, [chatId, streamCount, messages.length, scrollToBottom]);
+    });
+  }, [chatId, streamOperationId, messages.length, scrollToBottom]);
 
   useEffect(() => {
     if (

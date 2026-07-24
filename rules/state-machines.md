@@ -104,6 +104,14 @@ Background and before/after examples of why this pattern exists:
 - Before keying a cross-entity registry by a generation counter, verify the
   counter's scope. If generations restart per entity, use a composite key or a
   separate invocation ID and test two entities with the same generation.
+- Cross-lifetime operations use `InvocationRef` from `src/state_machines/`,
+  minted by the injected `IdSource` at the authoritative start boundary and
+  echoed through every available correlation boundary. Registry claims must
+  use the shared ref-enforcing helper; untaggable sources require a documented
+  structural-safety note at the claim site.
+- Correlation identity and durable idempotency identity are separate contracts.
+  Name which property each boundary relies on even when a protocol deliberately
+  uses the same value for both.
 
 ## Deliberate degrees of freedom
 
@@ -146,6 +154,9 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
 - Prefer derived selectors for values computable from the snapshot. Do not add
   generation counters or mirrored booleans beside a machine-owned identity or
   lifecycle state.
+- When replacing a retained generation with an active-only identity, audit
+  React effect dependencies for the new active-to-empty settlement edge.
+  Start-only effects must explicitly require a new non-empty identity.
 - When local form or dialog state dispatches a machine-owned mutation, preserve
   the user's input while the operation runs and after failure. Clear or close
   it only from typed successful-completion state; dispatch itself is not proof

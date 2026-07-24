@@ -844,6 +844,11 @@ describe("handleLocalAgentStream", () => {
 
     it("includes warning messages in the error payload when a tool fails after warning", async () => {
       const { event, getMessagesByChannel } = createFakeEvent();
+      const invocationRef = {
+        kind: "chat-stream",
+        entityKey: 1,
+        operationId: "local-agent-error",
+      } as const;
       mockSettings = buildTestSettings({ enableDyadPro: true });
       mockChatData = buildTestChat();
 
@@ -870,7 +875,7 @@ describe("handleLocalAgentStream", () => {
 
       await handleLocalAgentStream(
         event,
-        { chatId: 1, prompt: "test" },
+        { chatId: 1, prompt: "test", invocationRef },
         new AbortController(),
         {
           placeholderMessageId: 10,
@@ -883,6 +888,7 @@ describe("handleLocalAgentStream", () => {
       expect(errorMessages).toHaveLength(1);
       expect(errorMessages[0].args[0]).toMatchObject({
         chatId: 1,
+        invocationRef,
         error: expect.stringContaining("Simulated tool failure"),
         warningMessages: [warningMessage],
       });
@@ -1857,6 +1863,11 @@ describe("handleLocalAgentStream", () => {
     it("should accumulate text-delta parts and update database", async () => {
       // Arrange
       const { event, getMessagesByChannel } = createFakeEvent();
+      const invocationRef = {
+        kind: "chat-stream",
+        entityKey: 1,
+        operationId: "local-agent-success",
+      } as const;
       mockSettings = buildTestSettings({ enableDyadPro: true });
       mockChatData = buildTestChat({
         messages: [{ id: 1, role: "user", content: "Hello" }],
@@ -1869,7 +1880,7 @@ describe("handleLocalAgentStream", () => {
       // Act
       await handleLocalAgentStream(
         event,
-        { chatId: 1, prompt: "test" },
+        { chatId: 1, prompt: "test", invocationRef },
         new AbortController(),
         {
           placeholderMessageId: 10,
@@ -1881,12 +1892,23 @@ describe("handleLocalAgentStream", () => {
       // Assert - check that chunks were sent
       const chunkMessages = getMessagesByChannel("chat:response:chunk");
       expect(chunkMessages.length).toBeGreaterThan(0);
+      expect(
+        chunkMessages.every(
+          (message) =>
+            (
+              message.args[0] as {
+                invocationRef?: typeof invocationRef;
+              }
+            ).invocationRef === invocationRef,
+        ),
+      ).toBe(true);
 
       // Assert - check that end message was sent
       const endMessages = getMessagesByChannel("chat:response:end");
       expect(endMessages).toHaveLength(1);
       expect(endMessages[0].args[0]).toMatchObject({
         chatId: 1,
+        invocationRef,
         updatedFiles: true,
       });
 

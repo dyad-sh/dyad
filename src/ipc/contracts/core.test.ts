@@ -35,6 +35,13 @@ function setupStreamClient() {
           channel: "test:stream:chunk",
           payload: z.object({
             chatId: z.number(),
+            invocationRef: z
+              .object({
+                kind: z.string(),
+                entityKey: z.number(),
+                operationId: z.string(),
+              })
+              .optional(),
             streamId: z.number().optional(),
             value: z.string(),
           }),
@@ -43,6 +50,13 @@ function setupStreamClient() {
           channel: "test:stream:end",
           payload: z.object({
             chatId: z.number(),
+            invocationRef: z
+              .object({
+                kind: z.string(),
+                entityKey: z.number(),
+                operationId: z.string(),
+              })
+              .optional(),
             streamId: z.number().optional(),
           }),
         },
@@ -50,6 +64,13 @@ function setupStreamClient() {
           channel: "test:stream:error",
           payload: z.object({
             chatId: z.number(),
+            invocationRef: z
+              .object({
+                kind: z.string(),
+                entityKey: z.number(),
+                operationId: z.string(),
+              })
+              .optional(),
             streamId: z.number().optional(),
             error: z.string(),
           }),
@@ -343,5 +364,66 @@ describe("IPC stream callback cleanup", () => {
       streamId: currentStreamId,
       value: "current",
     });
+  });
+
+  it("drops an old InvocationRef after a same-key owner is recreated", () => {
+    const { client, listeners } = setupStreamClient();
+    const oldRef = {
+      kind: "chat-stream",
+      entityKey: 1,
+      operationId: "chat-stream:old-lifetime",
+    };
+    const currentRef = {
+      kind: "chat-stream",
+      entityKey: 1,
+      operationId: "chat-stream:new-lifetime",
+    };
+    const currentCallbacks = {
+      onChunk: vi.fn(),
+      onEnd: vi.fn(),
+      onError: vi.fn(),
+    };
+
+    client.start(
+      { chatId: 1 },
+      { onChunk: vi.fn(), onEnd: vi.fn(), onError: vi.fn() },
+      { invocationRef: oldRef },
+    );
+    client.release(1, { invocationRef: oldRef });
+    client.start({ chatId: 1 }, currentCallbacks, {
+      invocationRef: currentRef,
+    });
+
+    listeners.get("test:stream:end")?.({
+      chatId: 1,
+      invocationRef: oldRef,
+    });
+    listeners.get("test:stream:chunk")?.({
+      chatId: 1,
+      invocationRef: currentRef,
+      value: "current",
+    });
+
+    expect(currentCallbacks.onEnd).not.toHaveBeenCalled();
+    expect(currentCallbacks.onChunk).toHaveBeenCalledOnce();
+  });
+
+  it("keeps key-only legacy routing when a payload has no ref", () => {
+    const { client, listeners } = setupStreamClient();
+    const onEnd = vi.fn();
+    const currentRef = {
+      kind: "chat-stream",
+      entityKey: 1,
+      operationId: "chat-stream:current",
+    };
+
+    client.start(
+      { chatId: 1 },
+      { onChunk: vi.fn(), onEnd, onError: vi.fn() },
+      { invocationRef: currentRef, autoRelease: false },
+    );
+    listeners.get("test:stream:end")?.({ chatId: 1 });
+
+    expect(onEnd).toHaveBeenCalledWith({ chatId: 1 });
   });
 });

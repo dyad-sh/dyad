@@ -26,14 +26,20 @@ export function registerAtomWriter<Store extends object, Atom, Value>(
     registeredWriters.set(storeKey, writers);
   }
   if (writers.has(atom)) {
-    throw new Error("A projection atom already has a registered writer");
+    const message = "A projection atom already has a registered writer";
+    if (process.env.NODE_ENV !== "production") {
+      throw new Error(message);
+    }
+    console.warn(`${message}; adopting the projection in production`);
   }
   writers.set(atom, token);
   let disposed = false;
 
   return {
     write(value) {
-      if (!disposed) set(atom, value);
+      if (!disposed && registeredWriters.get(storeKey)?.get(atom) === token) {
+        set(atom, value);
+      }
     },
     dispose() {
       if (disposed) return;

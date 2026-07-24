@@ -73,10 +73,16 @@ Background and before/after examples of why this pattern exists:
 - When a resume event can come from a global watcher as well as explicit UI
   senders, validate the captured payload in the transition. Caller-only guards
   can be bypassed after navigation or another asynchronous detour.
-- When several adapters enrich the same resume event with derived data, use one
-  shared resolver. Divergent raw/effective values make event races observable.
+- Every waiter settlement path (success, decline, timeout, abort, and sweep)
+  emits a correlated resolved event to every observer.
+- On saga resume or retry, preserve explicit user choices from the snapshot and
+  re-resolve implicit derived values through one shared resolver. Model SUBMIT
+  (a new payload) and RETRY (the retained payload) as distinct events.
 - A machine-owned watchdog timer needs an explicit cancel command on every
   transition that leaves the watched state, plus disposal cleanup.
+- In a cancelling state, finalize on every non-stale terminal event. Reject
+  staleness by identity; never infer event provenance from arrival order.
+- Compensation on abort rolls back only what the aborted operation touched.
 - When a multi-step side effect can fail partway through, retain the exact
   completed/next step in the failure state. Retrying from the start can repeat
   non-idempotent external work or deterministically fail on an existing-resource
@@ -106,12 +112,15 @@ Background and before/after examples of why this pattern exists:
   separate invocation ID and test two entities with the same generation.
 - Cross-lifetime operations use `InvocationRef` from `src/state_machines/`,
   minted by the injected `IdSource` at the authoritative start boundary and
-  echoed through every available correlation boundary. Registry claims must
-  use the shared ref-enforcing helper; untaggable sources require a documented
+  echoed through every available correlation boundary. Registry claims use
+  `InvocationRegistry.claim(ref)`. When a source cannot echo the ref, use
+  `InvocationRegistry.claimStructurally(...)` with a documented
   structural-safety note at the claim site.
 - Correlation identity and durable idempotency identity are separate contracts.
   Name which property each boundary relies on even when a protocol deliberately
   uses the same value for both.
+- When a machine becomes the sole scheduler for a queue, every legacy enqueue
+  path must poke the machine or enqueue through it.
 
 ## Deliberate degrees of freedom
 
@@ -145,7 +154,10 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
 
 - A machine projection has one writer: its controller or manager. Jotai atoms
   exposed to legacy UI are read-only views and are updated from snapshots in
-  one subscription, not opportunistically by individual commands.
+  one subscription through `projectToAtom` or a claim from
+  `registerAtomWriter`, not opportunistically by individual commands. A
+  projection is safe only once the machine is its single writer; interim
+  dual-writer periods are where races live.
 - A machine with interactive controls defines a pure
   `selectCapabilities(state)` whose named booleans express domain UI policy,
   and exposes those capabilities through its projection. Do not derive
@@ -158,9 +170,9 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   React effect dependencies for the new active-to-empty settlement edge.
   Start-only effects must explicitly require a new non-empty identity.
 - When local form or dialog state dispatches a machine-owned mutation, preserve
-  the user's input while the operation runs and after failure. Clear or close
-  it only from typed successful-completion state; dispatch itself is not proof
-  that the mutation succeeded.
+  the user's input while the operation runs and after failure. Close dialogs
+  and clear forms only on authoritative settlement; dispatch itself is not
+  proof that the mutation succeeded.
 - When an epoch keys a mounted resource, capture props such as an iframe `src`
   from the epoch-changing snapshot. Do not let later same-epoch state updates
   rewrite identity-defining DOM attributes and trigger an implicit reload.
@@ -181,6 +193,15 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   On teardown, flush the latest accepted snapshot through a transport that is
   safe for the lifecycle boundary (for example, one-way IPC during pagehide).
 
+## Query keys and recorded decisions
+
+- Machine-adjacent TanStack Query keys nest as `[domain, appId, ...]` so data
+  invalidated together remains scoped per app; do not use sibling keys for
+  those values.
+- Recorded plan decisions are reviewable artifacts. When a review finding is
+  rebutted as working as designed, the cited decision must actually cover the
+  disputed behavior.
+
 ## Tests
 
 - Exercise every reachable state against every event type and assert totality.
@@ -188,6 +209,9 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   transitions do not create value-equal snapshots.
 - Use fake command runners. Tests must get isolation from constructed owners,
   never from a module-global reset helper.
+- Run `runControllerConformanceSuite` for controllers built on the shared
+  dispatcher/lifecycle contract; domain tests remain responsible for domain
+  behavior.
 - Normalize discovered file paths to `/` before asserting literal repository
   paths; `path.relative()` returns `\` on Windows CI.
 - `driveTransitionMatrix` remains available for hand-enumerated totality
@@ -206,3 +230,12 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   quiescent leaves. If one orthogonal action (for example quit at every phase)
   causes a bound hit, split it into a focused exhaustive alphabet instead of
   raising the bound and slowing the primary scenario.
+- Treat snapshots passed to `runCosim` callbacks as frozen immutable views.
+  Do not mutate them, and do not replace the generic callback contract with a
+  serialization-based clone that rejects valid domain values or loses
+  prototypes.
+- Key-aware debug retention must bound both entry payloads and per-key
+  metadata. When aggregate eviction empties a key's ring, prune the ring so
+  one-shot entity IDs cannot accumulate forever, and maintain a global
+  insertion-order index instead of scanning every key on each production
+  trace event.

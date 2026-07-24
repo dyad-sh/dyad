@@ -450,7 +450,7 @@ export const appContracts = {
 
   stopApp: defineContract({
     channel: "stop-app",
-    input: RunAppParamsSchema,
+    input: AppIdParamsSchema,
     output: z.void(),
   }),
 

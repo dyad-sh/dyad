@@ -410,6 +410,43 @@ describe("interleaving co-simulation", () => {
     expect(Object.isFrozen(initialState)).toBe(true);
   });
 
+  it("reuses one frozen snapshot across action guards", () => {
+    const snapshots: object[] = [];
+    const result = runCosim<"participant", never, number, "noop", never>({
+      participants: {
+        participant: {
+          initialState: 0,
+          stateKey: String,
+          eventKey: (event) => event,
+          commandKey: (command) => command,
+          transition: (state) => ({
+            kind: "applied",
+            state,
+            commands: [],
+          }),
+        },
+      },
+      channels: {},
+      scenario: {
+        actions: ["first", "second"].map((id) => ({
+          id,
+          target: "participant" as const,
+          participant: "participant" as const,
+          event: "noop" as const,
+          enabled: (snapshot: object) => {
+            snapshots.push(snapshot);
+            return false;
+          },
+        })),
+        routeCommand: () => [],
+      },
+    });
+
+    expect(result.failure).toBeUndefined();
+    expect(snapshots).toHaveLength(2);
+    expect(snapshots[1]).toBe(snapshots[0]);
+  });
+
   it("rejects a transition result without state before exploring it", () => {
     const result = runCosim<"participant", never, number, "advance", never>({
       participants: {

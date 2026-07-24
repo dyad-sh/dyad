@@ -449,9 +449,13 @@ export function runCosim<
       });
     }
 
+    let currentSnapshot: ReturnType<typeof snapshot> | undefined;
     for (const actionIndex of configuration.remainingActions) {
       const action = options.scenario.actions[actionIndex];
-      if (action.enabled?.(snapshot(configuration)) === false) continue;
+      if (action.enabled) {
+        currentSnapshot ??= snapshot(configuration);
+        if (action.enabled(currentSnapshot) === false) continue;
+      }
       enabled.push({
         apply: () => {
           const remainingActions = configuration.remainingActions.filter(

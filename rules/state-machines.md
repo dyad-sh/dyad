@@ -97,6 +97,12 @@ Background and before/after examples of why this pattern exists:
 - When disposal can race an async command that registers external state after
   an `await`, clean up both immediately and again after the command settles.
   Disposal must also clear any machine-owned legacy projection synchronously.
+- A keyed ownership replacement must adopt the incoming cleanup before running
+  the previous cleanup. Otherwise a throwing unsubscribe/cancel can orphan the
+  already-acquired replacement resource.
+- If command adapters can be replaced while async setup is pending, late
+  compensation must use the adapter captured when setup began. A fresh adapter
+  lookup may release the wrong lifetime's resource.
 - When that external state is created in the main process, renderer disposal
   cannot rely on reply-based IPC cleanup. Mint an operation ID before creation,
   send teardown cancellation one-way, and retain a main-owned cancellation

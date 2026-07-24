@@ -373,6 +373,7 @@ describe("FirstPromptController", () => {
     harness.controller.send({ type: "PROVIDERS_LOADED", anySetup: true });
     await flushCommands();
     harness.controller.dispose();
+    harness.controller.dispose();
 
     creation.resolve({ appId: 11, appName: "Late app", chatId: 12 });
     await flushCommands();

@@ -10,6 +10,10 @@ import { KeyedControllerHost } from "@/state_machines/keyed_host";
 import { uuidIdSource, type IdSource } from "@/state_machines/clock";
 import { createTraceObserver } from "@/state_machines/trace";
 import {
+  createLifecycleScope,
+  type LifecycleScope,
+} from "@/state_machines/lifecycle_scope";
+import {
   registerAtomWriter,
   type AtomProjectionWriter,
 } from "@/state_machines/projection";
@@ -62,6 +66,7 @@ export class ChatStreamManager {
   private readonly streamFinishedListeners = new Set<StreamFinishedListener>();
   private readonly commands;
   private readonly host: KeyedControllerHost<number, ChatStreamController>;
+  private readonly lifecycle: LifecycleScope;
   private projectionWriter: AtomProjectionWriter<unknown> | null = null;
   private projectionEnabled = true;
 
@@ -83,6 +88,18 @@ export class ChatStreamManager {
     this.host = new KeyedControllerHost((chatId) =>
       this.createController(chatId),
     );
+    this.lifecycle = createLifecycleScope({
+      stopAdmission: () => undefined,
+      settleWaiters: () => this.host.dispose(),
+      // Per-controller lifecycle scopes publish their idle projections while
+      // the manager still owns the projection writer.
+      publishFinalProjection: () => undefined,
+      releaseResources: () => {
+        this.stop();
+        this.streamFinishedListeners.clear();
+      },
+      onLateSettlement: () => undefined,
+    });
   }
 
   start(): void {
@@ -139,9 +156,7 @@ export class ChatStreamManager {
   };
 
   dispose(): void {
-    this.stop();
-    this.host.dispose();
-    this.streamFinishedListeners.clear();
+    this.lifecycle.dispose();
     // An in-flight startStream may register its IPC transport after an await.
     // Its controller releases again once setup settles, so retain deps until
     // that promise releases this otherwise-unreferenced manager graph.

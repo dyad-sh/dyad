@@ -91,7 +91,9 @@ function createFakeCommands() {
     dispatchNextQueued: vi.fn(() => {
       log.push("dispatchNextQueued");
     }),
-    syncProjection: vi.fn(),
+    syncProjection: vi.fn(() => {
+      log.push("syncProjection");
+    }),
   };
 
   return { commands, log, startDeferreds, endDeferreds };
@@ -246,6 +248,55 @@ describe("chat stream controller", () => {
       chatId: CHAT_ID,
       invocationRef: ref(1),
     });
+  });
+
+  it("settles callers and publishes the final projection before releasing transport", async () => {
+    const fake = createFakeCommands();
+    const onSettled = vi.fn(() => fake.log.push("settleWaiters"));
+    const { controller } = createController(fake);
+
+    controller.send({
+      type: "submit",
+      request: makeRequest({ onSettled }),
+    });
+    await flush();
+    controller.dispose();
+
+    expect(fake.log.slice(-3)).toEqual([
+      "settleWaiters",
+      "syncProjection",
+      "releaseTransport:chat-stream:1",
+    ]);
+  });
+
+  it("releases late async setup through the adapter that started it", async () => {
+    const first = createFakeCommands();
+    const second = createFakeCommands();
+    let activeCommands = first.commands;
+    const controller = createChatStreamController({
+      chatId: CHAT_ID,
+      idSource: createSequentialIdSource(),
+      getCommands: () => activeCommands,
+    });
+
+    controller.send({ type: "submit", request: makeRequest() });
+    await flush();
+    activeCommands = second.commands;
+    controller.dispose();
+
+    expect(second.commands.releaseTransport).toHaveBeenCalledExactlyOnceWith({
+      chatId: CHAT_ID,
+      invocationRef: ref(1),
+    });
+    expect(first.commands.releaseTransport).not.toHaveBeenCalled();
+
+    first.startDeferreds[0].resolve();
+    await flush();
+    expect(first.commands.releaseTransport).toHaveBeenCalledExactlyOnceWith({
+      chatId: CHAT_ID,
+      invocationRef: ref(1),
+    });
+    expect(second.commands.releaseTransport).toHaveBeenCalledTimes(1);
   });
 
   it("runs the happy path and dispatches the queue exactly once per finalization", async () => {

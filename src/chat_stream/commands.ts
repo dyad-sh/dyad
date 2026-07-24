@@ -1,4 +1,5 @@
 import type { QueryClient } from "@tanstack/react-query";
+import { TaskScope } from "@/state_machines/task_scope";
 import type { createStore } from "jotai";
 import type { PostHog } from "posthog-js";
 
@@ -153,16 +154,17 @@ export function createProductionChatStreamCommands(
   ) => void,
 ): ChatStreamCommands {
   const latestChunkByChatId = new Map<number, number>();
-  const ackTimerByChatId = new Map<number, ReturnType<typeof setTimeout>>();
+  const ackTimers = new TaskScope<number>();
+  const pendingAckChatIds = new Set<number>();
 
   function deps(): ChatStreamRuntimeDeps {
     return getDeps();
   }
 
   function scheduleThrottledAck(chatId: number): void {
-    if (ackTimerByChatId.has(chatId)) return;
+    if (pendingAckChatIds.has(chatId)) return;
     const timer = setTimeout(() => {
-      ackTimerByChatId.delete(chatId);
+      ackTimers.remove(chatId);
       const seq = latestChunkByChatId.get(chatId);
       if (seq === undefined) return;
       void ipc.chat.responseAck({ chatId, lastSeq: seq }).catch(() => {
@@ -170,15 +172,15 @@ export function createProductionChatStreamCommands(
         // under throttling.
       });
     }, ACK_THROTTLE_MS);
-    ackTimerByChatId.set(chatId, timer);
+    pendingAckChatIds.add(chatId);
+    ackTimers.replace(chatId, () => {
+      pendingAckChatIds.delete(chatId);
+      clearTimeout(timer);
+    });
   }
 
   function cancelAckTimer(chatId: number): void {
-    const timer = ackTimerByChatId.get(chatId);
-    if (timer !== undefined) {
-      clearTimeout(timer);
-      ackTimerByChatId.delete(chatId);
-    }
+    ackTimers.remove(chatId);
   }
 
   function showWarningMessage(

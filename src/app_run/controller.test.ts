@@ -445,4 +445,25 @@ describe("AppRunController", () => {
     controller.send({ type: "HMR_DETECTED" });
     expect(notified).toBe(1);
   });
+
+  it("settles waiters during disposal, ignores late work, and disposes twice", async () => {
+    const executor = createFakeExecutor();
+    const published: RunState[] = [];
+    const controller = new AppRunController({
+      appId: APP_ID,
+      executor,
+      onStateChange: (state) => published.push(state),
+    });
+    const pending = controller.dispatch({ type: "START", startedAt: 100 });
+    await flushMicrotasks();
+    const runId = lastStartCommand(executor).runId;
+
+    controller.dispose();
+    controller.dispose();
+    await expect(pending).resolves.toBeUndefined();
+    const publishCount = published.length;
+
+    executor.emit({ type: "RUN_IPC_RESOLVED", runId });
+    expect(published).toHaveLength(publishCount);
+  });
 });

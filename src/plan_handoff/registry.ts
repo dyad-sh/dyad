@@ -46,10 +46,12 @@ export function createPlanHandoffRegistry(
 
     disposeKey(chatId: number): void {
       host.disposeKey(chatId);
+      runCommand.disposeKey?.(chatId);
     },
 
     dispose(): void {
       host.dispose();
+      runCommand.dispose?.();
     },
   };
 }

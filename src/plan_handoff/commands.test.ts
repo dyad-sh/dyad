@@ -112,4 +112,17 @@ describe("plan handoff commands — stream idle watcher", () => {
     setStreaming(7, false);
     expect(events).toEqual([{ type: "STREAM_BECAME_IDLE", chatId: 7 }]);
   });
+
+  it("disposes all watchers idempotently and cleans up late registration", async () => {
+    const { run, events, emit, setStreaming } = setup();
+    setStreaming(7, true);
+    await run({ type: "watch-stream-idle", chatId: 7 }, emit);
+
+    run.dispose?.();
+    run.dispose?.();
+    await run({ type: "watch-stream-idle", chatId: 7 }, emit);
+    setStreaming(7, false);
+
+    expect(events).toEqual([]);
+  });
 });

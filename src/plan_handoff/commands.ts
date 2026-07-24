@@ -8,6 +8,7 @@ import { ipc } from "@/ipc/types";
 import { planClient } from "@/ipc/types/plan";
 import { queryKeys } from "@/lib/queryKeys";
 import { showError } from "@/lib/toast";
+import { TaskScope } from "@/state_machines/task_scope";
 
 import type { HandoffCommandRunner } from "./controller";
 import type { HandoffCommand, HandoffEvent } from "./state";
@@ -61,17 +62,13 @@ export function createPlanHandoffCommandRunner(
   // watcher can be disposed when the machine leaves awaiting-stream-idle for
   // any reason (a superseding accept) instead of leaking a Jotai
   // subscription that waits forever on a stream that may never go idle.
-  const idleWatchers = new Map<number, () => void>();
+  const idleWatchers = new TaskScope<number>();
 
   function disposeIdleWatcher(chatId: number): void {
-    const unsubscribe = idleWatchers.get(chatId);
-    if (unsubscribe) {
-      idleWatchers.delete(chatId);
-      unsubscribe();
-    }
+    idleWatchers.remove(chatId);
   }
 
-  return async function run(
+  const run: HandoffCommandRunner = async function run(
     command: HandoffCommand,
     emit: (event: HandoffEvent) => void,
   ): Promise<void> {
@@ -199,7 +196,7 @@ export function createPlanHandoffCommandRunner(
             emit({ type: "STREAM_BECAME_IDLE", chatId: command.chatId });
           }
         });
-        idleWatchers.set(command.chatId, unsubscribe);
+        idleWatchers.replace(command.chatId, unsubscribe);
         return;
       }
 
@@ -249,4 +246,7 @@ export function createPlanHandoffCommandRunner(
       }
     }
   };
+  run.disposeKey = (chatId) => idleWatchers.remove(chatId);
+  run.dispose = () => idleWatchers.dispose();
+  return run;
 }

@@ -9,6 +9,10 @@ import type {
 import { transition } from "./transition";
 import { SnapshotStore } from "@/state_machines/snapshot_store";
 import {
+  createLifecycleScope,
+  type LifecycleScope,
+} from "@/state_machines/lifecycle_scope";
+import {
   observeTransition,
   type TransitionObserver,
 } from "@/state_machines/types";
@@ -79,8 +83,26 @@ export class AppRunController {
   private processing = false;
   private readonly pendingEvents: RunEvent[] = [];
   private disposed = false;
+  private readonly lifecycle: LifecycleScope;
 
-  constructor(private readonly options: AppRunControllerOptions) {}
+  constructor(private readonly options: AppRunControllerOptions) {
+    this.lifecycle = createLifecycleScope({
+      stopAdmission: () => {
+        this.disposed = true;
+        this.pendingEvents.length = 0;
+      },
+      settleWaiters: () => {
+        for (const resolve of this.waiters.values()) resolve();
+        this.waiters.clear();
+      },
+      publishFinalProjection: () => undefined,
+      releaseResources: () => {
+        this.externalRunIds.clear();
+        this.store.dispose();
+      },
+      onLateSettlement: () => undefined,
+    });
+  }
 
   get appId(): number {
     return this.options.appId;
@@ -226,13 +248,7 @@ export class AppRunController {
 
   /** Permanently detaches this controller from queued and late work. */
   dispose(): void {
-    if (this.disposed) return;
-    this.disposed = true;
-    this.pendingEvents.length = 0;
-    for (const resolve of this.waiters.values()) resolve();
-    this.waiters.clear();
-    this.externalRunIds.clear();
-    this.store.dispose();
+    this.lifecycle.dispose();
   }
 
   private enqueue(commands: readonly RunCommand[]): void {

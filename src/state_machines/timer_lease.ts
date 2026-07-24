@@ -1,4 +1,5 @@
 import type { Clock, ClockHandle } from "./clock";
+import { TaskScope } from "./task_scope";
 
 interface TimerLease<Token, Event> {
   readonly token: Token;
@@ -16,6 +17,7 @@ interface TimerLease<Token, Event> {
  */
 export class TimerLeaseScope<Key, Token, Event> {
   private readonly leases = new Map<Key, TimerLease<Token, Event>>();
+  private readonly ownership = new TaskScope<Key>();
   private disposed = false;
 
   constructor(private readonly clock: Clock) {}
@@ -32,17 +34,19 @@ export class TimerLeaseScope<Key, Token, Event> {
     const handle = this.clock.schedule(() => {
       const lease = this.leases.get(key);
       if (!lease || lease.handle !== handle || lease.token !== token) return;
-      this.leases.delete(key);
+      this.ownership.remove(key);
       lease.emit(lease.createEvent(token));
     }, delayMs);
-    this.leases.set(key, { token, handle, createEvent, emit });
+    const lease = { token, handle, createEvent, emit };
+    this.leases.set(key, lease);
+    this.ownership.replace(key, () => {
+      if (this.leases.get(key) === lease) this.leases.delete(key);
+      this.clock.cancel(handle);
+    });
   }
 
   remove(key: Key): void {
-    const lease = this.leases.get(key);
-    if (!lease) return;
-    this.leases.delete(key);
-    this.clock.cancel(lease.handle);
+    this.ownership.remove(key);
   }
 
   has(key: Key, token?: Token): boolean {
@@ -55,9 +59,6 @@ export class TimerLeaseScope<Key, Token, Event> {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    for (const lease of this.leases.values()) {
-      this.clock.cancel(lease.handle);
-    }
-    this.leases.clear();
+    this.ownership.dispose();
   }
 }

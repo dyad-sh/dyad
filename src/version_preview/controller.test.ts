@@ -321,4 +321,23 @@ describe("VersionPreviewController", () => {
     await flush();
     expect(controller.getSnapshot().type).toBe("recovery-required");
   });
+
+  it("rejects a mutation waiter during disposal and ignores its late settlement", async () => {
+    const { controller, fake } = makeController();
+    await driveToPreviewing(controller, fake);
+    const pending = controller.sendAndWaitForMutation({
+      type: "SELECT_VERSION",
+      versionId: "v2",
+    });
+    const checkout = fake.last("checkout");
+    const snapshot = controller.getSnapshot();
+
+    controller.dispose();
+    controller.dispose();
+    await expect(pending).rejects.toThrow("Version preview was disposed");
+
+    checkout.deferred.resolve(undefined);
+    await flush();
+    expect(controller.getSnapshot()).toBe(snapshot);
+  });
 });

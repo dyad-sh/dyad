@@ -18,6 +18,7 @@ interface TimerLease<Token, Event> {
 export class TimerLeaseScope<Key, Token, Event> {
   private readonly leases = new Map<Key, TimerLease<Token, Event>>();
   private readonly ownership = new TaskScope<Key>();
+  private disposed = false;
 
   constructor(private readonly clock: Clock) {}
 
@@ -29,6 +30,7 @@ export class TimerLeaseScope<Key, Token, Event> {
     emit: (event: Event) => void,
   ): void {
     this.remove(key);
+    if (this.disposed) return;
     const handle = this.clock.schedule(() => {
       const lease = this.leases.get(key);
       if (!lease || lease.handle !== handle || lease.token !== token) return;
@@ -55,6 +57,8 @@ export class TimerLeaseScope<Key, Token, Event> {
   }
 
   dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
     this.ownership.dispose();
   }
 }

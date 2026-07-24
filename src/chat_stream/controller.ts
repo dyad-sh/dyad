@@ -76,6 +76,7 @@ export function createChatStreamController(
   let disposed = false;
   let disposalState: StreamState | undefined;
   let lateStartInvocationRef: ChatStreamInvocationRef | undefined;
+  let lateStartCommands: ChatStreamCommands | undefined;
 
   const controller: ChatStreamController = {
     chatId,
@@ -140,10 +141,9 @@ export function createChatStreamController(
     },
     onLateSettlement() {
       const invocationRef = lateStartInvocationRef;
-      if (!invocationRef) return;
-      runSafely(() =>
-        getCommands().releaseTransport({ chatId, invocationRef }),
-      );
+      const commands = lateStartCommands;
+      if (!invocationRef || !commands) return;
+      runSafely(() => commands.releaseTransport({ chatId, invocationRef }));
     },
   });
 
@@ -226,6 +226,7 @@ export function createChatStreamController(
     switch (command.type) {
       case "start-stream": {
         lateStartInvocationRef = command.invocationRef;
+        lateStartCommands = commands;
         try {
           await lifecycle.trackPromise(
             commands.startStream({

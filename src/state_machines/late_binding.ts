@@ -83,6 +83,7 @@ export function createLateBinding<T>(
     },
     fail(error) {
       assertUsable();
+      if (state.type === "failed") throw state.error;
       if (state.type === "configured") {
         throw new Error("Configured late binding cannot fail");
       }

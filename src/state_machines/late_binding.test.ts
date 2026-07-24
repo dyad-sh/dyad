@@ -60,4 +60,22 @@ describe("createLateBinding", () => {
     expect(() => binding.configure(1)).toThrow(AggregateError);
     expect(later).toHaveBeenCalledWith(1);
   });
+
+  it("keeps the first failure terminal for early and late observers", () => {
+    const binding = createLateBinding<number>();
+    const earlyFailure = vi.fn();
+    const firstError = new Error("first failure");
+    const secondError = new Error("second failure");
+    binding.onConfigured(vi.fn(), earlyFailure);
+
+    binding.fail(firstError);
+
+    expect(() => binding.fail(secondError)).toThrow(firstError);
+    expect(() => binding.get()).toThrow(firstError);
+    expect(earlyFailure).toHaveBeenCalledExactlyOnceWith(firstError);
+
+    const lateFailure = vi.fn();
+    binding.onConfigured(vi.fn(), lateFailure);
+    expect(lateFailure).toHaveBeenCalledExactlyOnceWith(firstError);
+  });
 });

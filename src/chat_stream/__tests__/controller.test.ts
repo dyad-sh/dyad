@@ -269,6 +269,36 @@ describe("chat stream controller", () => {
     ]);
   });
 
+  it("releases late async setup through the adapter that started it", async () => {
+    const first = createFakeCommands();
+    const second = createFakeCommands();
+    let activeCommands = first.commands;
+    const controller = createChatStreamController({
+      chatId: CHAT_ID,
+      idSource: createSequentialIdSource(),
+      getCommands: () => activeCommands,
+    });
+
+    controller.send({ type: "submit", request: makeRequest() });
+    await flush();
+    activeCommands = second.commands;
+    controller.dispose();
+
+    expect(second.commands.releaseTransport).toHaveBeenCalledExactlyOnceWith({
+      chatId: CHAT_ID,
+      invocationRef: ref(1),
+    });
+    expect(first.commands.releaseTransport).not.toHaveBeenCalled();
+
+    first.startDeferreds[0].resolve();
+    await flush();
+    expect(first.commands.releaseTransport).toHaveBeenCalledExactlyOnceWith({
+      chatId: CHAT_ID,
+      invocationRef: ref(1),
+    });
+    expect(second.commands.releaseTransport).toHaveBeenCalledTimes(1);
+  });
+
   it("runs the happy path and dispatches the queue exactly once per finalization", async () => {
     const { controller, commands, startDeferreds, endDeferreds } =
       createController();

@@ -26,6 +26,21 @@ describe("TaskScope", () => {
     expect(second).toHaveBeenCalledOnce();
   });
 
+  it("retains ownership of a replacement when the previous cleanup throws", () => {
+    const scope = new TaskScope<string>();
+    const replacement = vi.fn();
+    scope.replace("resource", () => {
+      throw new Error("old cleanup failed");
+    });
+
+    expect(() => scope.replace("resource", replacement)).toThrow(
+      "old cleanup failed",
+    );
+    scope.dispose();
+
+    expect(replacement).toHaveBeenCalledOnce();
+  });
+
   it("runs registrations after disposal immediately", () => {
     const scope = new TaskScope<string>();
     const cleanup = vi.fn();
@@ -60,6 +75,33 @@ describe("TaskScope", () => {
 
     await expect(tracked).rejects.toThrow("setup failed");
     expect(lateCleanup).toHaveBeenCalledOnce();
+  });
+
+  it("retains setup and cleanup errors when late compensation also fails", async () => {
+    const scope = new TaskScope();
+    const setupError = new Error("setup failed");
+    const cleanupError = new Error("cleanup failed");
+    scope.dispose();
+
+    const tracked = scope.trackPromise(Promise.reject(setupError), () => {
+      throw cleanupError;
+    });
+
+    await expect(tracked).rejects.toMatchObject({
+      errors: [setupError, cleanupError],
+    });
+  });
+
+  it("reports late cleanup failure after successful setup", async () => {
+    const scope = new TaskScope();
+    const cleanupError = new Error("cleanup failed");
+    scope.dispose();
+
+    const tracked = scope.trackPromise(Promise.resolve("ready"), () => {
+      throw cleanupError;
+    });
+
+    await expect(tracked).rejects.toBe(cleanupError);
   });
 
   it("is idempotent and aggregates disposer errors after all cleanup", () => {

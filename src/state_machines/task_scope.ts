@@ -19,12 +19,13 @@ export class TaskScope<Key = PropertyKey> {
   private disposed = false;
 
   replace(key: Key, cleanup: TaskCleanup): void {
-    this.remove(key);
     if (this.disposed) {
       cleanup();
       return;
     }
+    const previous = this.cleanups.get(key);
     this.cleanups.set(key, cleanup);
+    previous?.();
   }
 
   remove(key: Key): void {
@@ -37,7 +38,8 @@ export class TaskScope<Key = PropertyKey> {
   /**
    * Adds compensation for setup that can settle after disposal.
    *
-   * The returned promise preserves the input promise's value or rejection.
+   * The returned promise preserves a successful value unless compensation
+   * fails. If setup and compensation both fail, both errors are retained.
    * Callers must await or otherwise handle it just as they would the input.
    */
   trackPromise<T>(promise: Promise<T>, lateCleanup: TaskCleanup): Promise<T> {
@@ -47,7 +49,16 @@ export class TaskScope<Key = PropertyKey> {
         return value;
       },
       (error: unknown) => {
-        if (this.disposed) lateCleanup();
+        if (this.disposed) {
+          try {
+            lateCleanup();
+          } catch (cleanupError) {
+            throw new AggregateError(
+              [error, cleanupError],
+              "Tracked task and late cleanup failed",
+            );
+          }
+        }
         throw error;
       },
     );

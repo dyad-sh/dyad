@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import type { Clock, ClockHandle } from "./clock";
 import { createFakeClock } from "./testing";
 import { TimerLeaseScope } from "./timer_lease";
 
@@ -72,5 +73,21 @@ describe("TimerLeaseScope", () => {
 
     expect(firstEvents).toEqual(["first:1"]);
     expect(secondEvents).toEqual(["second:1"]);
+  });
+
+  it("does not acquire a timer after disposal", () => {
+    const handle = {} as ClockHandle;
+    const clock: Clock = {
+      now: vi.fn(() => 0),
+      schedule: vi.fn(() => handle),
+      cancel: vi.fn(),
+    };
+    const leases = new TimerLeaseScope<string, string, string>(clock);
+    leases.dispose();
+
+    leases.replace("late", "late:1", 10, (token) => token, vi.fn());
+
+    expect(clock.schedule).not.toHaveBeenCalled();
+    expect(clock.cancel).not.toHaveBeenCalled();
   });
 });

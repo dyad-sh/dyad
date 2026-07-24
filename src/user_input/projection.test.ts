@@ -524,7 +524,7 @@ describe("user-input renderer projection", () => {
     });
     const stop = adapter.start();
     await vi.waitFor(() => expect(fake.getPending).toHaveBeenCalledTimes(1));
-    const submit = vi.fn();
+    const submit = vi.fn(() => ({ accepted: true }));
 
     expect(
       getUserInputProjectionAdapter({
@@ -583,7 +583,7 @@ describe("user-input renderer projection", () => {
   it("dispatches one due follow-up through the injected chat-stream facade", async () => {
     const store = createStore();
     const fake = createFakeIpc();
-    const submit = vi.fn();
+    const submit = vi.fn(() => ({ accepted: true }));
     const adapter = getUserInputProjectionAdapter({
       store,
       ipcClient: fake.ipcClient,
@@ -623,8 +623,8 @@ describe("user-input renderer projection", () => {
     let accept!: () => void;
     const submit = vi.fn(
       () =>
-        new Promise<void>((resolve) => {
-          accept = resolve;
+        new Promise<{ accepted: boolean }>((resolve) => {
+          accept = () => resolve({ accepted: true });
         }),
     );
     const adapter = getUserInputProjectionAdapter({
@@ -655,14 +655,42 @@ describe("user-input renderer projection", () => {
     stop();
   });
 
+  it("does not report a user-rejected follow-up as a dispatch error", async () => {
+    const store = createStore();
+    const fake = createFakeIpc();
+    const submit = vi.fn(() => Promise.resolve({ accepted: false }));
+    const showErrorToast = vi.fn();
+    const adapter = getUserInputProjectionAdapter({
+      store,
+      ipcClient: fake.ipcClient,
+      chatStream: { submit },
+      showErrorToast,
+    });
+    const stop = adapter.start();
+    fake.sendRequested(integrationDescriptor("integration-rejected"));
+    fake.sendFollowUpDue({
+      requestId: "integration-rejected",
+      chatId: 42,
+      prompt: "Continue. I have completed the supabase integration.",
+    });
+
+    await vi.waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+    expect(showErrorToast).not.toHaveBeenCalled();
+    expect(fake.respond).not.toHaveBeenCalledWith({
+      requestId: "integration-rejected",
+      response: { kind: "follow-up-dispatched" },
+    });
+    stop();
+  });
+
   it("retries a due follow-up on window focus after dispatch fails", async () => {
     const store = createStore();
     const fake = createFakeIpc();
     const dispatchError = new Error("accepted chunk transport failed");
     const submit = vi
-      .fn<() => Promise<void>>()
+      .fn<() => Promise<{ accepted: boolean }>>()
       .mockRejectedValueOnce(dispatchError)
-      .mockResolvedValueOnce();
+      .mockResolvedValueOnce({ accepted: true });
     const showErrorToast = vi.fn();
     const adapter = getUserInputProjectionAdapter({
       store,
@@ -709,7 +737,7 @@ describe("user-input renderer projection", () => {
         followUpPrompt: descriptor.followUpPrompt,
       },
     ]);
-    const submit = vi.fn();
+    const submit = vi.fn(() => ({ accepted: true }));
     const adapter = getUserInputProjectionAdapter({
       store,
       ipcClient: fake.ipcClient,
@@ -763,7 +791,7 @@ describe("user-input renderer projection", () => {
         followUpPrompt: descriptor.followUpPrompt,
       },
     ]);
-    const submit = vi.fn();
+    const submit = vi.fn(() => ({ accepted: true }));
     const adapter = getUserInputProjectionAdapter({
       store,
       ipcClient: fake.ipcClient,
@@ -794,8 +822,8 @@ describe("user-input renderer projection", () => {
     let acknowledge!: () => void;
     const submit = vi.fn(
       () =>
-        new Promise<void>((resolve) => {
-          acknowledge = resolve;
+        new Promise<{ accepted: boolean }>((resolve) => {
+          acknowledge = () => resolve({ accepted: true });
         }),
     );
     const adapter = getUserInputProjectionAdapter({

@@ -39,7 +39,7 @@ export function registerRendererIpcListeners({
       selectedComponents: [];
       requestedChatMode: "local-agent";
     }) =>
-      new Promise<void>((resolve, reject) => {
+      new Promise<{ accepted: boolean }>((resolve, reject) => {
         let completed = false;
         chatStreamManager.ensure(request.chatId).send({
           type: "submit",
@@ -49,7 +49,7 @@ export function registerRendererIpcListeners({
             onAccepted: () => {
               if (completed) return;
               completed = true;
-              resolve();
+              resolve({ accepted: true });
             },
             onAcceptanceError: (error) => {
               if (completed) return;
@@ -60,7 +60,7 @@ export function registerRendererIpcListeners({
               if (completed) return;
               await ipcClient.userInput.rejectFollowUp({ requestId, reason });
               completed = true;
-              reject(new Error(reason));
+              resolve({ accepted: false });
             },
           },
         });

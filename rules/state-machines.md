@@ -130,6 +130,9 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
 - Prefer derived selectors for values computable from the snapshot. Do not add
   generation counters or mirrored booleans beside a machine-owned identity or
   lifecycle state.
+- When replacing a retained generation with an active-only identity, audit
+  React effect dependencies for the new active-to-empty settlement edge.
+  Start-only effects must explicitly require a new non-empty identity.
 - When local form or dialog state dispatches a machine-owned mutation, preserve
   the user's input while the operation runs and after failure. Clear or close
   it only from typed successful-completion state; dispatch itself is not proof

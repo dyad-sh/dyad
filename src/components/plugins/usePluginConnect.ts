@@ -220,13 +220,9 @@ export function usePluginConnect() {
     }
     if (!server.oauthEnabled && statusByServer[server.id] === "unauthorized") {
       // If the catalog says this server needs an API key, treat a 401 as
-      // a bad key rather than a sign that OAuth is required. Manual
-      // servers have no entry, so infer that from any headers/env they set.
+      // a bad key rather than a sign that OAuth is required.
       const wantsKey =
-        server.catalogSlug != null
-          ? slugsNeedingKey.has(server.catalogSlug)
-          : Object.keys(server.headersJson ?? {}).length > 0 ||
-            Object.keys(server.envJson ?? {}).length > 0;
+        server.catalogSlug != null && slugsNeedingKey.has(server.catalogSlug);
       if (wantsKey) {
         return {
           serverId: server.id,

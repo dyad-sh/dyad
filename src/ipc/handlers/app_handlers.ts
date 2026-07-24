@@ -59,6 +59,7 @@ import {
 } from "../services/app_runtime_service";
 import { restartApp } from "../services/restart_app";
 import { getPtySessionManager } from "../utils/pty_session_manager";
+import { sameInvocationRef } from "@/state_machines/invocation_ref";
 
 /**
  * Read screenshot entries for a single app directory, filtered by filename
@@ -759,7 +760,7 @@ export function registerAppHandlers() {
   });
 
   createTypedHandler(appContracts.runApp, async (event, params) => {
-    const { appId } = params;
+    const { appId, invocationRef } = params;
     return withLock(appId, async () => {
       // Check if app is already running
       if (runningApps.has(appId)) {
@@ -773,6 +774,9 @@ export function registerAppHandlers() {
             proxyUrl: appInfo.proxyUrl,
             originalUrl: appInfo.originalUrl,
             mode: appInfo.mode,
+            // This is a cached response to the current request, not stdout
+            // from the existing producer, so correlate it to the requester.
+            invocationRef: invocationRef ?? appInfo.invocationRef,
           });
         }
         return;
@@ -799,6 +803,7 @@ export function registerAppHandlers() {
           isNeon: !!app.neonProjectId,
           installCommand: app.installCommand,
           startCommand: app.startCommand,
+          invocationRef,
         });
 
         return;
@@ -888,9 +893,23 @@ export function registerAppHandlers() {
       if (!appInfo || appInfo.mode !== "cloud" || !appInfo.cloudSandboxId) {
         return null;
       }
+      const sandboxId = appInfo.cloudSandboxId;
+      const invocationRef = appInfo.invocationRef;
 
       try {
-        const status = await getCloudSandboxStatus(appInfo.cloudSandboxId);
+        const status = await getCloudSandboxStatus(sandboxId);
+        const latestAppInfo = runningApps.get(appId);
+        const sameInvocation = invocationRef
+          ? !!latestAppInfo?.invocationRef &&
+            sameInvocationRef(latestAppInfo.invocationRef, invocationRef)
+          : !latestAppInfo?.invocationRef;
+        if (
+          latestAppInfo !== appInfo ||
+          latestAppInfo.cloudSandboxId !== sandboxId ||
+          !sameInvocation
+        ) {
+          return null;
+        }
         const previewChanged =
           appInfo.cloudPreviewUrl !== status.previewUrl ||
           appInfo.cloudPreviewAuthToken !== status.previewAuthToken;
@@ -903,6 +922,7 @@ export function registerAppHandlers() {
             event,
             originalUrl: status.previewUrl,
             mode: "cloud",
+            invocationRef,
           });
         } else {
           appInfo.originalUrl = status.previewUrl;

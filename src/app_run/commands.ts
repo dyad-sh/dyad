@@ -78,7 +78,7 @@ export function createIpcRunCommandExecutor(
     command: Extract<RunCommand, { type: "start" }>,
     emit: RunEventSink,
   ) {
-    const { appId, runId, operation, startedAt, options } = command;
+    const { appId, invocationRef, operation, startedAt, options } = command;
     try {
       console.debug(
         operation === "run" ? "Running app" : "Restarting app",
@@ -111,28 +111,37 @@ export function createIpcRunCommandExecutor(
 
       const ipcCall =
         operation === "run"
-          ? ipc.app.runApp({ appId })
+          ? ipc.app.runApp({ appId, invocationRef })
           : ipc.app.restartApp({
               appId,
+              invocationRef,
               removeNodeModules: options.removeNodeModules,
               recreateSandbox: options.recreateSandbox,
             });
       // Deliberately not awaited: settlement is reported as an event so the
       // controller's command queue never blocks behind a slow spawn.
       Promise.resolve(ipcCall).then(
-        () => emit({ type: "RUN_IPC_RESOLVED", runId }),
+        () => emit({ type: "RUN_IPC_RESOLVED", invocationRef }),
         (error) => {
           console.error(
             `Error ${operation === "run" ? "running" : "restarting"} app ${appId}:`,
             error,
           );
-          emit({ type: "RUN_IPC_FAILED", runId, error: toRunErrorInfo(error) });
+          emit({
+            type: "RUN_IPC_FAILED",
+            invocationRef,
+            error: toRunErrorInfo(error),
+          });
         },
       );
     } catch (error) {
       // Prelude failure (e.g. clearLogs): settle the operation as failed.
       console.error(`Error starting app ${appId}:`, error);
-      emit({ type: "RUN_IPC_FAILED", runId, error: toRunErrorInfo(error) });
+      emit({
+        type: "RUN_IPC_FAILED",
+        invocationRef,
+        error: toRunErrorInfo(error),
+      });
     }
   }
 
@@ -161,13 +170,21 @@ export function createIpcRunCommandExecutor(
           // must still settle the operation, otherwise the machine would be
           // stuck in `stopping` with an unresolved dispatch promise.
           try {
-            Promise.resolve(ipc.app.stopApp({ appId: command.appId })).then(
-              () => emit({ type: "STOP_IPC_RESOLVED", runId: command.runId }),
+            Promise.resolve(
+              ipc.app.stopApp({
+                appId: command.appId,
+              }),
+            ).then(
+              () =>
+                emit({
+                  type: "STOP_IPC_RESOLVED",
+                  invocationRef: command.invocationRef,
+                }),
               (error) => {
                 console.error(`Error stopping app ${command.appId}:`, error);
                 emit({
                   type: "STOP_IPC_FAILED",
-                  runId: command.runId,
+                  invocationRef: command.invocationRef,
                   error: toRunErrorInfo(error),
                 });
               },
@@ -176,7 +193,7 @@ export function createIpcRunCommandExecutor(
             console.error(`Error stopping app ${command.appId}:`, error);
             emit({
               type: "STOP_IPC_FAILED",
-              runId: command.runId,
+              invocationRef: command.invocationRef,
               error: toRunErrorInfo(error),
             });
           }
@@ -189,7 +206,10 @@ export function createIpcRunCommandExecutor(
           return;
         case "reload":
           store.set(bumpPreviewReloadTokenForAppAtom, command.appId);
-          emit({ type: "RELOAD_DONE", runId: command.runId });
+          emit({
+            type: "RELOAD_DONE",
+            invocationRef: command.invocationRef,
+          });
           return;
         case "clearError":
           setError(command.appId, undefined);

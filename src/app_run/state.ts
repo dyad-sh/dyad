@@ -1,19 +1,26 @@
 import type { RuntimeMode2 } from "@/lib/schemas";
+import type { InvocationRef } from "@/state_machines/invocation_ref";
+import type { StaleOperationIgnoreReason } from "@/state_machines/types";
+
+export const APP_RUN_INVOCATION_KIND = "app-run" as const;
+export type AppRunInvocationRef = InvocationRef<
+  typeof APP_RUN_INVOCATION_KIND,
+  number
+>;
 
 /**
  * Types for the per-app run-state machine.
  *
  * This file is types-only: no runtime imports, no runtime code. The pure
  * transition function lives in `transition.ts`; side effects live in
- * `commands.ts`; orchestration (runId epochs, serial command execution)
+ * `commands.ts`; orchestration (invocation minting, serial command execution)
  * lives in `controller.ts`.
  *
- * Every non-idle state carries `{ appId, runId }`. The `runId` is an epoch
- * allocated by the controller each time a user-level operation (run /
- * restart / rebuild / stop) starts. Async completions (IPC promise
- * settlement, proxy stdout lines, reload completions) are tagged with the
- * runId they belong to, so completions from a superseded operation are
- * dropped instead of stomping the newer operation's state.
+ * Every non-idle state carries both `appId` and `invocationRef`. The app ID is
+ * domain data; the ref is the globally unique correlation identity for one
+ * run / restart / rebuild / stop operation. Async completions and producer
+ * events echo the ref so callbacks from superseded process lifetimes cannot
+ * advance the current operation.
  */
 
 export type RunOperation = "run" | "restart" | "rebuild";
@@ -41,106 +48,120 @@ export type RunState =
   | {
       type: "starting";
       appId: number;
-      runId: number;
+      invocationRef: AppRunInvocationRef;
       operation: RunOperation;
       startedAt: number;
       /**
-       * Proxy URL that arrived while the run/restart IPC call was still in
-       * flight. It is buffered (never applied directly) so a re-emitted
-       * cached proxy line can't clear a fresh operation's loading state; it
-       * is applied when the IPC call resolves. Cloud restarts legitimately
-       * report the proxy URL before the restart IPC resolves, so buffering
-       * (rather than dropping) is required.
+       * A URL from this same invocation that arrived before the run/restart
+       * IPC settled. Cloud restarts legitimately report the current URL
+       * first, so this distinct ordering race still requires buffering.
        */
       pendingUrl: RunUrl | null;
     }
   | {
       type: "ready";
       appId: number;
-      runId: number;
+      invocationRef: AppRunInvocationRef;
       /**
        * Null when the process spawned but the dev server hasn't reported a
        * URL yet (the run IPC resolves at spawn time, before the server is
-       * reachable). Matches today's behavior where loading clears at IPC
-       * settle while the preview keeps waiting for the URL.
+       * reachable).
        */
       url: RunUrl | null;
     }
   | {
       type: "reloading";
       appId: number;
-      runId: number;
+      invocationRef: AppRunInvocationRef;
       reason: ReloadReason;
       url: RunUrl | null;
     }
   | {
       type: "stopping";
       appId: number;
-      runId: number;
+      invocationRef: AppRunInvocationRef;
       startedAt: number;
     }
   | {
       type: "stopped";
       appId: number;
-      runId: number;
+      invocationRef: AppRunInvocationRef;
       exitCode: number | null;
     }
   | {
       type: "errored";
       appId: number;
-      runId: number;
+      invocationRef: AppRunInvocationRef;
       error: RunErrorInfo;
     };
 
 export type RunEvent =
-  // User-level operations. The controller allocates a fresh runId for each.
-  | { type: "START"; appId: number; runId: number; startedAt: number }
+  | {
+      type: "START";
+      appId: number;
+      invocationRef: AppRunInvocationRef;
+      startedAt: number;
+    }
   | {
       type: "RESTART";
       appId: number;
-      runId: number;
+      invocationRef: AppRunInvocationRef;
       startedAt: number;
       options: RestartOptions;
     }
-  | { type: "REBUILD"; appId: number; runId: number; startedAt: number }
+  | {
+      type: "REBUILD";
+      appId: number;
+      invocationRef: AppRunInvocationRef;
+      startedAt: number;
+    }
   | {
       type: "EXTERNAL_RESTART";
       appId: number;
-      runId: number;
+      invocationRef: AppRunInvocationRef;
       startedAt: number;
       operation: "restart" | "rebuild";
     }
-  | { type: "STOP"; appId: number; runId: number; startedAt: number }
-  // IPC completions, tagged with the runId of the operation they belong to.
-  | { type: "RUN_IPC_RESOLVED"; runId: number }
-  | { type: "RUN_IPC_FAILED"; runId: number; error: RunErrorInfo }
-  | { type: "STOP_IPC_RESOLVED"; runId: number }
-  | { type: "STOP_IPC_FAILED"; runId: number; error: RunErrorInfo }
-  // Producer events derived from app stdout. The proxy line doesn't carry
-  // operation identity on the wire; the controller stamps it with the
-  // current epoch when it arrives.
-  | { type: "PROXY_READY"; appId: number; runId: number; url: RunUrl }
+  | {
+      type: "STOP";
+      appId: number;
+      invocationRef: AppRunInvocationRef;
+      startedAt: number;
+    }
+  | { type: "RUN_IPC_RESOLVED"; invocationRef: AppRunInvocationRef }
+  | {
+      type: "RUN_IPC_FAILED";
+      invocationRef: AppRunInvocationRef;
+      error: RunErrorInfo;
+    }
+  | { type: "STOP_IPC_RESOLVED"; invocationRef: AppRunInvocationRef }
+  | {
+      type: "STOP_IPC_FAILED";
+      invocationRef: AppRunInvocationRef;
+      error: RunErrorInfo;
+    }
+  | {
+      type: "PROXY_READY";
+      appId: number;
+      invocationRef: AppRunInvocationRef;
+      url: RunUrl;
+    }
   | { type: "HMR_DETECTED"; appId: number }
   | { type: "MANUAL_RELOAD"; appId: number }
-  | { type: "RELOAD_DONE"; runId: number }
+  | { type: "RELOAD_DONE"; invocationRef: AppRunInvocationRef }
   | {
       type: "APP_EXIT";
       appId: number;
+      invocationRef: AppRunInvocationRef;
       exitCode: number | null;
       timestamp: number;
     };
 
 export type RunCommand =
-  /**
-   * Run the full start pipeline for run/restart/rebuild: reset per-app
-   * runtime state, clear logs (restart/rebuild), append the startup log
-   * line ("Connecting to app..." etc.), then call the run/restart IPC and
-   * report settlement via RUN_IPC_RESOLVED / RUN_IPC_FAILED.
-   */
   | {
       type: "start";
       appId: number;
-      runId: number;
+      invocationRef: AppRunInvocationRef;
       operation: RunOperation;
       startedAt: number;
       options: RestartOptions;
@@ -150,25 +171,30 @@ export type RunCommand =
       appId: number;
       operation: "restart" | "rebuild";
     }
-  /** Call the stop IPC; report settlement via STOP_IPC_RESOLVED / _FAILED. */
-  | { type: "stop"; appId: number; runId: number }
-  /** Write the app URL atom and bump the preview reload token. */
+  | {
+      type: "stop";
+      appId: number;
+      invocationRef: AppRunInvocationRef;
+    }
   | { type: "applyUrl"; appId: number; url: RunUrl }
-  /** Bump the preview reload token (iframe reload). */
   | { type: "bumpReloadToken"; appId: number }
-  /** Bump the reload token, then report completion via RELOAD_DONE. */
-  | { type: "reload"; appId: number; runId: number; reason: ReloadReason }
-  /** Clear the per-app preview error. */
+  | {
+      type: "reload";
+      appId: number;
+      invocationRef: AppRunInvocationRef;
+      reason: ReloadReason;
+    }
   | { type: "clearError"; appId: number }
-  /** Set the per-app preview error. */
   | { type: "setError"; appId: number; error: RunErrorInfo };
+
+export type AppRunIgnoreReason =
+  | "invalid-in-current-state"
+  | StaleOperationIgnoreReason
+  | "no-change";
 
 export type TransitionResult =
   import("@/state_machines/types").TransitionResult<
     RunState,
     RunCommand,
-    | "invalid-in-current-state"
-    | "stale-run-id"
-    | "stale-proxy-output"
-    | "no-change"
+    AppRunIgnoreReason
   >;

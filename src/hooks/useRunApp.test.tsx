@@ -108,6 +108,7 @@ function makeWrapper(appId: number) {
   store.set(selectedAppIdAtom, appId);
 
   return {
+    manager,
     store,
     Wrapper({ children }: PropsWithChildren) {
       return (
@@ -261,6 +262,67 @@ describe("useAppOutputSubscription", () => {
     });
     expect(store.get(currentConsoleEntriesAtom)).toEqual([]);
 
+    unmount();
+  });
+
+  it("does not project a stale exit from a superseded invocation", async () => {
+    const { manager, store, Wrapper } = makeWrapper(1);
+    let finishRunApp: () => void = () => {};
+    runAppMock.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        finishRunApp = resolve;
+      }),
+    );
+    let finishRestartApp: () => void = () => {};
+    restartAppMock.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        finishRestartApp = resolve;
+      }),
+    );
+    const { unmount } = renderHook(() => useAppOutputSubscription(), {
+      wrapper: Wrapper,
+    });
+
+    const oldRun = manager.dispatch(1, { type: "START", startedAt: 100 });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const firstCall = runAppMock.mock.calls[0];
+    if (!firstCall) throw new Error("expected run IPC call");
+    const oldRef = firstCall[0].invocationRef;
+
+    const replacement = manager.dispatch(1, {
+      type: "RESTART",
+      startedAt: 200,
+      options: { removeNodeModules: false, recreateSandbox: false },
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => {
+      for (const listener of appOutputListeners) {
+        listener({
+          type: "app-exit",
+          message: "Old process failed",
+          appId: 1,
+          invocationRef: oldRef,
+          exitCode: 1,
+          timestamp: 250,
+        });
+      }
+    });
+
+    expect(store.get(currentPreviewAppExitAtom)).toBeNull();
+    expect(manager.getSnapshot(1)).toMatchObject({
+      type: "starting",
+      startedAt: 200,
+    });
+
+    finishRunApp();
+    await oldRun;
+    finishRestartApp();
+    await replacement;
     unmount();
   });
 
@@ -740,6 +802,10 @@ describe("useAppOutputSubscription", () => {
     expect(clearLogsMock).toHaveBeenCalledWith({ appId: 2 });
     expect(restartAppMock).toHaveBeenCalledWith({
       appId: 2,
+      invocationRef: expect.objectContaining({
+        kind: "app-run",
+        entityKey: 2,
+      }),
       removeNodeModules: false,
       recreateSandbox: false,
     });

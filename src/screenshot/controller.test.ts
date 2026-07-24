@@ -164,12 +164,12 @@ type ScreenshotConformanceStep =
 interface ScreenshotConformanceEvent {
   readonly type: "CONFORMANCE_SEQUENCE";
   readonly steps: readonly ScreenshotConformanceStep[];
-  readonly command?: ScreenshotCommand;
 }
 
 function runScreenshotConformanceTransition(
   state: ScreenshotState,
   event: ScreenshotConformanceEvent,
+  mappedCommand?: ScreenshotCommand,
 ): TransitionResult<
   ScreenshotState,
   ScreenshotCommand,
@@ -189,7 +189,11 @@ function runScreenshotConformanceTransition(
     last = transition(current, materializeScreenshotStep(step, current));
     current = last.state;
   }
-  return last;
+  if (mappedCommand === undefined) return last;
+  if (last.kind !== "applied") {
+    throw new Error("Screenshot conformance command event must be applied");
+  }
+  return { ...last, commands: [mappedCommand] };
 }
 
 function materializeScreenshotStep(
@@ -226,6 +230,10 @@ function createScreenshotConformanceAdapter(): ControllerConformanceAdapter<
   ScreenshotCommand,
   ScreenshotIgnoreReason
 > {
+  const commandEvents = new WeakMap<
+    ScreenshotConformanceEvent,
+    ScreenshotCommand
+  >();
   const sequence = (
     ...steps: ScreenshotConformanceStep[]
   ): ScreenshotConformanceEvent => ({
@@ -241,7 +249,12 @@ function createScreenshotConformanceAdapter(): ControllerConformanceAdapter<
 
   return {
     initialState: INITIAL_SCREENSHOT_STATE,
-    transition: runScreenshotConformanceTransition,
+    transition: (state, event) =>
+      runScreenshotConformanceTransition(
+        state,
+        event,
+        commandEvents.get(event),
+      ),
     create(options) {
       let expectedCommand: ScreenshotCommand | undefined;
       let disposed = false;
@@ -284,11 +297,7 @@ function createScreenshotConformanceAdapter(): ControllerConformanceAdapter<
         getSnapshot: controller.getSnapshot,
         subscribe: controller.subscribe,
         send(event) {
-          if (event.command) {
-            expectedCommand = event.command;
-            controller.runConformanceCommand(event.command);
-            return;
-          }
+          expectedCommand = commandEvents.get(event);
           sendConformanceEvent(event);
         },
         dispose() {
@@ -306,14 +315,13 @@ function createScreenshotConformanceAdapter(): ControllerConformanceAdapter<
       };
     },
     events: {
-      enterA: sequence({ type: "SELECTOR_READY" }),
+      enterA: sequence({ type: "CAPTURE_REQUESTED", source: "commit" }),
       enterB: sequence({ type: "IFRAME_LOADED" }),
       finish: sequence({ type: "APP_HIDDEN" }),
       command(command) {
-        return {
-          ...sequence(),
-          command,
-        };
+        const event = sequence({ type: "SELECTOR_READY" });
+        commandEvents.set(event, command);
+        return event;
       },
     },
     errorStage: (error) => (error as DispatcherError<ScreenshotCommand>).stage,

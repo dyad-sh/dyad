@@ -43,7 +43,7 @@ testSkipIfWindows(
     await po.page.getByTestId("preview-recording-name-input").fill("add item");
     await po.page.getByTestId("preview-recording-save-button").click();
 
-    // The spec is written under tests/ and auto-discovered into the panel.
+    // The spec is written under e2e-tests/ and auto-discovered into the panel.
     await po.previewPanel.selectPreviewMode("tests");
     await expect(
       po.page.locator("#preview-panel").getByText("recorded-add-item.spec.ts"),

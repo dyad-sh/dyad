@@ -254,7 +254,6 @@ export function PreviewPanel() {
                     appId={selectedAppId}
                     reloadKey={key}
                   />
-
                 ) : previewMode === "code" ? (
                   <CodeView loading={loading} app={app ?? null} />
                 ) : previewMode === "configure" ? (

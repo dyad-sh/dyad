@@ -16,7 +16,10 @@ import {
   type RecordingState,
 } from "@/atoms/recorderAtoms";
 import { collapseActions } from "@/lib/test_recorder/merge";
-import { generateSpecSource } from "@/lib/test_recorder/codegen";
+import {
+  actionToCodeLine,
+  generateSpecSource,
+} from "@/lib/test_recorder/codegen";
 import { generateTestUserFixtureSource } from "@/lib/test_recorder/fixture_templates";
 import { parseRecorderAction } from "@/lib/test_recorder/types";
 import type { RecordingAuth } from "@/ipc/types";
@@ -97,9 +100,17 @@ export function useTestRecorder({
     appIdRef.current = appId;
   }, [appId]);
 
-  // Count what the spec will actually contain, not the raw stream: typing
-  // "hello" arrives as five growing fills but replays as one step.
-  const entryCount = useMemo(() => collapseActions(entries).length, [entries]);
+  // Collapse the raw stream into what the spec will actually replay: typing
+  // "hello" arrives as five growing fills but becomes one step. Drives both the
+  // step count and the live code the recording banner shows.
+  const collapsedActions = useMemo(() => collapseActions(entries), [entries]);
+  const entryCount = collapsedActions.length;
+  // The Playwright statement generated for each collapsed step, in order. The
+  // last entry is the most recent action the user performed.
+  const steps = useMemo(
+    () => collapsedActions.map(actionToCodeLine),
+    [collapsedActions],
+  );
 
   const postToIframe = useCallback((message: unknown) => {
     iframeElRef.current?.contentWindow?.postMessage(message, "*");
@@ -429,6 +440,7 @@ export function useTestRecorder({
     error: recordingState.error,
     savedSpecPath: recordingState.savedSpecPath,
     entryCount,
+    steps,
     isRecording: recordingState.phase === "recording",
     isBusy:
       recordingState.phase === "starting" ||

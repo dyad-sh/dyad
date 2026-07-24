@@ -50,33 +50,42 @@ export function locatorToCode(locator: LocatorDescriptor): string {
   return call;
 }
 
-function actionToCode(action: RecordedAction): string {
+/**
+ * Render a single recorded action as its Playwright statement WITHOUT leading
+ * indentation or trailing newline — the line the live recording banner shows for
+ * that step, and the exact statement `generateSpecSource` indents into the spec.
+ */
+export function actionToCodeLine(action: RecordedAction): string {
   if (action.kind === "navigate") {
-    return `  await page.goto(${q(action.path)});`;
+    return `await page.goto(${q(action.path)});`;
   }
 
   const target = `page.${locatorToCode(action.locator)}`;
   switch (action.kind) {
     case "click":
-      return `  await ${target}.click();`;
+      return `await ${target}.click();`;
     case "dblclick":
-      return `  await ${target}.dblclick();`;
+      return `await ${target}.dblclick();`;
     case "fill":
-      return `  await ${target}.fill(${q(action.value)});`;
+      return `await ${target}.fill(${q(action.value)});`;
     case "press":
-      return `  await ${target}.press(${q(action.key)});`;
+      return `await ${target}.press(${q(action.key)});`;
     case "check":
-      return `  await ${target}.check();`;
+      return `await ${target}.check();`;
     case "uncheck":
-      return `  await ${target}.uncheck();`;
+      return `await ${target}.uncheck();`;
     case "select": {
       const arg =
         action.values.length === 1
           ? q(action.values[0])
           : `[${action.values.map(q).join(", ")}]`;
-      return `  await ${target}.selectOption(${arg});`;
+      return `await ${target}.selectOption(${arg});`;
     }
   }
+}
+
+function actionToCode(action: RecordedAction): string {
+  return `  ${actionToCodeLine(action)}`;
 }
 
 /**

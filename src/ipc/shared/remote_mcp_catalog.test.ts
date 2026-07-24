@@ -102,6 +102,17 @@ describe("remote_mcp_catalog", () => {
         { kind: "oauthClientSecret" },
       ]);
     }
+    const render = entries[1];
+    if (render.transport === "http") {
+      expect(render.inputs).toEqual([
+        {
+          kind: "header",
+          name: "Authorization",
+          prefix: "Bearer ",
+          label: "API key",
+        },
+      ]);
+    }
   });
 
   it("drops an entry whose input kind this client doesn't know", async () => {

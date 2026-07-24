@@ -55,9 +55,19 @@ Background and before/after examples of why this pattern exists:
   idempotency key through every queue, IPC, and persistence boundary. Make the
   receiving boundary durably deduplicate acceptance, and acknowledge only
   after that acceptance; a renderer-local enqueue is not durable acceptance.
+- When a transition's notification or owner settlement depends on a durable
+  write, run that write as a pre-commit barrier. A fail-open command loop can
+  otherwise publish undurable work or discard the memory owner after rejection
+  persistence failed.
 - Machine-generated queued work must not be editable or removable (including
   through bulk-clear paths) unless removal explicitly settles or rejects the
   owning machine request; otherwise reload can resurrect abandoned work.
+- If queue removal awaits owner settlement, capture the invocation-time item
+  IDs and remove only those IDs afterward. Clearing the latest queue snapshot
+  can silently delete machine work enqueued during the await.
+- Before deleting an entity whose foreign-key cascade removes durable handoff
+  rows, await settlement of its memory owner. Post-delete renderer disposal is
+  residue cleanup and cannot repair an owner whose durable row is already gone.
 - Do not persist machine-generated queue entries when their authority or
   acceptance callbacks are memory-only. Let the live authoritative registry
   rehydrate and re-enqueue them; a full restart must not restore orphan shells.

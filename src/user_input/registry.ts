@@ -65,6 +65,7 @@ export interface UserInputRegistry {
     reason?: string,
   ): Promise<boolean>;
   sweepChat(chatId: number, exceptRequestId?: string): void;
+  settleChat(chatId: number): Promise<void>;
   streamFinished(chatId: number): void;
   followUpAccepted(requestId: string): Promise<void>;
   followUpRetryable(requestId: string): Promise<void>;
@@ -86,11 +87,8 @@ export function createUserInputRegistry(deps: {
     requestId: string;
     chatId: number;
     prompt: string;
-  }) => void | Promise<void>;
-  rejectFollowUpHandoff?: (
-    requestId: string,
-    reason: string,
-  ) => void | Promise<void>;
+  }) => void;
+  rejectFollowUpHandoff?: (requestId: string, reason: string) => void;
   commandRunner?: UserInputCommandRunner;
   observer?: TransitionObserver<
     UserInputState,
@@ -201,8 +199,39 @@ export function createUserInputRegistry(deps: {
   ): Promise<boolean> {
     const previous = states.get(requestId) ?? ({ status: "idle" } as const);
     const result = transition(previous, event);
+    if (result.kind === "ignored") {
+      observeTransition(observer, previous, event, result);
+      return Promise.resolve(false);
+    }
+
+    // These commands are the durability barriers for the pilot protocol.
+    // Run them before committing the memory state or any dependent broadcast:
+    // a failed create leaves the request armed and retryable, while a failed
+    // rejection leaves its owner live so settlement can be retried.
+    for (const command of result.commands) {
+      if (
+        command.type !== "persist-follow-up-created" &&
+        command.type !== "reject-follow-up-handoff"
+      ) {
+        continue;
+      }
+      try {
+        const effect = effects.run(command);
+        if (effect instanceof Promise) {
+          throw new Error(
+            `Durable user-input command must be synchronous: ${command.type}`,
+          );
+        }
+        void Promise.resolve(deps.commandRunner?.run(command)).catch((error) =>
+          deps.onCommandError?.(command, error),
+        );
+      } catch (error) {
+        deps.onCommandError?.(command, error);
+        return Promise.reject(error);
+      }
+    }
+
     observeTransition(observer, previous, event, result);
-    if (result.kind === "ignored") return Promise.resolve(false);
 
     states.set(requestId, result.state);
     if (isLiveUserInputState(result.state)) addToChat(result.state.descriptor);
@@ -245,6 +274,12 @@ export function createUserInputRegistry(deps: {
       }
     };
     for (const command of result.commands) {
+      if (
+        command.type === "persist-follow-up-created" ||
+        command.type === "reject-follow-up-handoff"
+      ) {
+        continue;
+      }
       if (pending) {
         pending = pending.then(() => runCommand(command));
         continue;
@@ -374,8 +409,18 @@ export function createUserInputRegistry(deps: {
     sweepChat(chatId, exceptRequestId) {
       for (const requestId of chatIndex.get(chatId) ?? []) {
         if (requestId === exceptRequestId) continue;
+        const state = states.get(requestId);
+        if (state?.status === "due" || state?.status === "accepted") continue;
         dispatchWithoutWaiting(requestId, { type: "chat-swept", chatId });
       }
+    },
+
+    async settleChat(chatId) {
+      await Promise.all(
+        Array.from(chatIndex.get(chatId) ?? [], (requestId) =>
+          dispatch(requestId, { type: "chat-swept", chatId }),
+        ),
+      );
     },
 
     streamFinished(chatId) {

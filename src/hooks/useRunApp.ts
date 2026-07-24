@@ -196,6 +196,15 @@ export function useAppOutputSubscription() {
       }
 
       if (output.type === "app-exit") {
+        const admitted = manager.send(output.appId, {
+          type: "APP_EXIT",
+          invocationRef: output.invocationRef,
+          exitCode: output.exitCode ?? null,
+          timestamp: output.timestamp ?? Date.now(),
+        });
+        if (!admitted) {
+          return null;
+        }
         setPreviewAppExit({
           appId: output.appId,
           exit: {
@@ -203,12 +212,6 @@ export function useAppOutputSubscription() {
             exitCode: output.exitCode ?? null,
             timestamp: output.timestamp ?? Date.now(),
           },
-        });
-        manager.send(output.appId, {
-          type: "APP_EXIT",
-          invocationRef: output.invocationRef,
-          exitCode: output.exitCode ?? null,
-          timestamp: output.timestamp ?? Date.now(),
         });
         return null;
       }

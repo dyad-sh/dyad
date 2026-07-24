@@ -19,6 +19,7 @@ import { useTemplates } from "@/hooks/useTemplates";
 import { useCustomThemes } from "@/hooks/useCustomThemes";
 import { useThemes } from "@/hooks/useThemes";
 import { useLoadApp } from "@/hooks/useLoadApp";
+import { useRunApp } from "@/hooks/useRunApp";
 import { ipc } from "@/ipc/types";
 import {
   sanitizeAppDisplayName,
@@ -68,6 +69,7 @@ export const DyadAppBlueprintCard: React.FC<DyadAppBlueprintCardProps> = ({
   // hasChatId: false so we don't read it from the router; we pass it explicitly.
   const { streamMessage } = useStreamChat({ hasChatId: false });
   const { app, refreshApp } = useLoadApp(selectedAppId);
+  const { restartApp } = useRunApp();
   const queryClient = useQueryClient();
   const { templates } = useTemplates();
   const { themes } = useThemes();
@@ -510,7 +512,7 @@ export const DyadAppBlueprintCard: React.FC<DyadAppBlueprintCardProps> = ({
 
           if (templateNeedsRestart) {
             try {
-              await ipc.app.restartApp({
+              await restartApp({
                 appId: selectedAppId,
                 removeNodeModules: true,
               });
@@ -631,6 +633,7 @@ export const DyadAppBlueprintCard: React.FC<DyadAppBlueprintCardProps> = ({
       selectedAppId,
       app,
       refreshApp,
+      restartApp,
       queryClient,
       setAppBlueprintState,
       streamMessage,

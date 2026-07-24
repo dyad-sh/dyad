@@ -122,7 +122,16 @@ export class AppRunController {
     if (this.disposed) {
       return Promise.resolve();
     }
-    const invocationRef = this.mintRef();
+    const current = this.store.getSnapshot();
+    // START is also the renderer's ensure-running operation when revisiting a
+    // background app. If this controller still owns a live producer, keep its
+    // identity: main may return a cached URL without spawning a new process,
+    // whose callbacks remain permanently bound to this ref.
+    const invocationRef =
+      input.type === "START" &&
+      (current.type === "ready" || current.type === "reloading")
+        ? current.invocationRef
+        : this.mintRef();
     this.activeRef = invocationRef;
     this.options.onInvocationStarted?.(invocationRef);
     const settled = new Promise<void>((resolve) => {

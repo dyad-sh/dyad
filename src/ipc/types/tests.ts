@@ -71,6 +71,62 @@ export const TestSpecSchema = z.object({
 });
 export type TestSpec = z.infer<typeof TestSpecSchema>;
 
+// =============================================================================
+// Plain-English test steps
+// =============================================================================
+
+/**
+ * One line of a test's plain-English description, produced by a deterministic
+ * AST pass over the spec (never an LLM).
+ *
+ * `kind` drives how the step is rendered:
+ * - `navigation` / `action` / `wait` / `assertion` — `text` is a sentence.
+ * - `group` — `text` is a heading (a `test.step(...)` title, or the
+ *   "Before each test" block); the steps that follow it have a greater `depth`.
+ * - `raw` — the statement couldn't be turned into a sentence, so `text` is the
+ *   original source, collapsed to a single line. Shown verbatim rather than
+ *   dropped so nothing a test does is hidden from the reader.
+ */
+export const TestStepSchema = z.object({
+  kind: z.enum(["navigation", "action", "wait", "assertion", "group", "raw"]),
+  /** The sentence, or the raw source snippet when `kind` is "raw". */
+  text: z.string(),
+  /** 1-based line in the spec file this step came from. */
+  line: z.number(),
+  /** 0 for top-level; 1+ for statements nested inside a group. */
+  depth: z.number(),
+});
+export type TestStep = z.infer<typeof TestStepSchema>;
+
+export const DescribedTestSchema = z.object({
+  /** The test title as written in the file. */
+  title: z.string(),
+  /** 1-based line of the `test(` call — matches `TestCase.line`. */
+  line: z.number(),
+  steps: z.array(TestStepSchema),
+  /** True when the test had more steps than we're willing to describe. */
+  truncated: z.boolean().default(false),
+});
+export type DescribedTest = z.infer<typeof DescribedTestSchema>;
+
+export const DescribeAppTestsParamsSchema = z.object({
+  appId: z.number(),
+  /** Path relative to the app root, e.g. "e2e-tests/signup.spec.ts". */
+  testFile: z.string(),
+});
+
+export const DescribeAppTestsResultSchema = z.object({
+  tests: z.array(DescribedTestSchema),
+  /**
+   * Set when the spec couldn't be parsed at all; `tests` is then empty. This is
+   * not an error — the UI explains it and offers to open the file instead.
+   */
+  parseError: z.string().optional(),
+});
+export type DescribeAppTestsResult = z.infer<
+  typeof DescribeAppTestsResultSchema
+>;
+
 /**
  * On-disk run statuses. "running"/"not-run" are UI-only and never returned
  * by the handler.
@@ -288,6 +344,12 @@ export const testsContracts = {
     channel: "tests:migrate-legacy",
     input: MigrateLegacyTestsParamsSchema,
     output: MigrateLegacyTestsResultSchema,
+  }),
+
+  describeAppTests: defineContract({
+    channel: "tests:describe",
+    input: DescribeAppTestsParamsSchema,
+    output: DescribeAppTestsResultSchema,
   }),
 } as const;
 

@@ -155,6 +155,12 @@ export const queryKeys = {
       ["tests", "list", appId] as const,
     legacy: ({ appId }: { appId: number | null }) =>
       ["tests", "legacy", appId] as const,
+    /** Plain-English steps for one spec file (cached per file, not per test). */
+    steps: ({ appId, file }: { appId: number | null; file: string }) =>
+      ["tests", "steps", appId, file] as const,
+    /** Prefix key for invalidating every spec's steps for an app. */
+    stepsAll: ({ appId }: { appId: number | null }) =>
+      ["tests", "steps", appId] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────

@@ -45,6 +45,7 @@ import {
   PLAYWRIGHT_REPORT_ERROR_FILE,
 } from "../utils/playwright_report";
 import { parseTestCases } from "../utils/parse_test_cases";
+import { describeTestSteps } from "../utils/describe_test_steps";
 import { getPackageManagerCommandEnv } from "../utils/socket_firewall";
 import { sendTelemetryEvent } from "../utils/telemetry";
 import {
@@ -778,6 +779,36 @@ export function registerTestsHandlers() {
     );
     return { specs };
   });
+
+  createTypedHandler(
+    testsContracts.describeAppTests,
+    async (_event, params) => {
+      const app = await getApp(params.appId);
+      const appPath = getDyadAppPath(app.path);
+      const relativePath = normalizeRunTestFile(params.testFile);
+      if (!relativePath) {
+        throw new DyadError(
+          `Invalid test file: ${params.testFile}`,
+          DyadErrorKind.Validation,
+        );
+      }
+      let content: string;
+      try {
+        content = await fs.promises.readFile(
+          safeJoin(appPath, relativePath),
+          "utf8",
+        );
+      } catch {
+        throw new DyadError(
+          `Test file not found: ${relativePath}`,
+          DyadErrorKind.NotFound,
+        );
+      }
+      // A spec we can't parse isn't an error — it comes back as `parseError` so
+      // the panel can explain it and offer the file instead of raising a toast.
+      return describeTestSteps(content);
+    },
+  );
 
   createTypedHandler(testsContracts.stopAppTests, async (_event, params) => {
     testRunControllers.get(params.appId)?.controller.abort();

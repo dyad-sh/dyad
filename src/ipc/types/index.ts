@@ -375,6 +375,9 @@ export type {
   RunAppTestsResult,
   TestIsolation,
   TestOutputPayload,
+  TestStep,
+  DescribedTest,
+  DescribeAppTestsResult,
 } from "./tests";
 export type {
   UserInputDescriptorPayload,

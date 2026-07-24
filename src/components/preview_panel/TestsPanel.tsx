@@ -18,6 +18,7 @@ import {
   EyeOff,
   Zap,
   ShieldCheck,
+  BookOpen,
 } from "lucide-react";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
@@ -44,6 +45,7 @@ import { useStreamFinished } from "@/chat_stream/ChatStreamProvider";
 import { useChatMode } from "@/hooks/useChatMode";
 import { AgentModeRequiredDialog } from "./AgentModeRequiredDialog";
 import { MigrateTestsBanner } from "./MigrateTestsBanner";
+import { TestStepsDialog, type TestStepsTarget } from "./TestStepsDialog";
 import { queryKeys } from "@/lib/queryKeys";
 import { cn } from "@/lib/utils";
 import { showInfo } from "@/lib/toast";
@@ -200,6 +202,35 @@ function RunButton({
   );
 }
 
+/**
+ * Opens the plain-English step list for a test. Hover-revealed like `RunButton`
+ * so the row stays quiet until the user reaches for it.
+ */
+function StepsButton({
+  onClick,
+  label,
+}: {
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      aria-label={label}
+      title="Read what this test does, in plain English"
+      data-testid="test-steps-button"
+      className={cn(
+        "flex items-center gap-1 text-xs px-2 py-1 rounded-md transition-all cursor-pointer",
+        "text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700",
+        "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
+      )}
+    >
+      <BookOpen size={13} />
+      Steps
+    </button>
+  );
+}
+
 function FixButton({ onClick, label }: { onClick: () => void; label: string }) {
   return (
     <button
@@ -233,6 +264,7 @@ interface TestCaseRowProps {
   isLast: boolean;
   onRun: () => void;
   onAskAiToFix: AskAiToFix;
+  onShowSteps: () => void;
 }
 
 function TestCaseRow({
@@ -245,6 +277,7 @@ function TestCaseRow({
   isLast,
   onRun,
   onAskAiToFix,
+  onShowSteps,
 }: TestCaseRowProps) {
   const [expanded, setExpanded] = useState(false);
   const isFailing = status === "failed" || status === "inconclusive";
@@ -303,6 +336,10 @@ function TestCaseRow({
             {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
           </button>
         )}
+        <StepsButton
+          onClick={onShowSteps}
+          label={`Read steps for test: ${testCase.title}`}
+        />
         {isFailing && (
           <FixButton
             onClick={() =>
@@ -356,6 +393,7 @@ interface FileRowProps {
   caseStatus: (testCase: TestCase) => TestStatus;
   caseResult: (testCase: TestCase) => TestCaseResult | undefined;
   onAskAiToFix: AskAiToFix;
+  onShowSteps: (testCase: TestCase) => void;
 }
 
 function FileRow({
@@ -370,6 +408,7 @@ function FileRow({
   caseStatus,
   caseResult,
   onAskAiToFix,
+  onShowSteps,
 }: FileRowProps) {
   const fileName = file.split("/").pop() ?? file;
   const hasTests = tests.length > 0;
@@ -462,6 +501,7 @@ function FileRow({
               isLast={index === tests.length - 1}
               onRun={() => onRunCase(testCase.line)}
               onAskAiToFix={onAskAiToFix}
+              onShowSteps={() => onShowSteps(testCase)}
             />
           ))}
         </div>
@@ -511,6 +551,9 @@ export function TestsPanel() {
     | null
   >(null);
   const lastAgentModeActionRef = useRef<"generate" | "fix">("generate");
+
+  // Which test's plain-English steps are being shown, if any.
+  const [stepsTarget, setStepsTarget] = useState<TestStepsTarget | null>(null);
 
   useEffect(() => {
     if (agentModeDialog) {
@@ -568,6 +611,11 @@ export function TestsPanel() {
     if (finishedChatId === chatId && selectedAppId != null) {
       void queryClient.invalidateQueries({
         queryKey: queryKeys.tests.list({ appId: selectedAppId }),
+      });
+      // The agent may have rewritten a spec, so cached step descriptions for
+      // this app are stale too.
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.tests.stepsAll({ appId: selectedAppId }),
       });
     }
   });
@@ -1179,6 +1227,13 @@ export function TestsPanel() {
                 caseStatus={(testCase) => caseStatus(spec.file, testCase)}
                 caseResult={(testCase) => caseResult(spec.file, testCase)}
                 onAskAiToFix={askAiToFix}
+                onShowSteps={(testCase) =>
+                  setStepsTarget({
+                    file: spec.file,
+                    line: testCase.line,
+                    title: testCase.title,
+                  })
+                }
               />
             ))}
           </div>
@@ -1186,6 +1241,14 @@ export function TestsPanel() {
       </div>
 
       <OutputDrawer open={outputOpen} onToggle={toggleOutput} />
+
+      <TestStepsDialog
+        appId={selectedAppId}
+        target={stepsTarget}
+        onOpenChange={(open) => {
+          if (!open) setStepsTarget(null);
+        }}
+      />
 
       <AgentModeRequiredDialog
         open={agentModeDialog !== null}

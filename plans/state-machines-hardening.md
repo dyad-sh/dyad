@@ -626,121 +626,60 @@ This narrows, but does not reverse, the `plans/machine-followup.md`
 decision: concurrency and staleness _policy_ stay per-machine; transaction
 _mechanics_ stop being reimplemented eleven ways.
 
-## Rollout: nine PRs
+## Rollout
 
-The bundling rule: a PR may be wide only if it cannot change production
-behavior (type-checked mechanical rewrites, test infrastructure). Anything
-that changes runtime semantics stays small and bisectable. Heavier PRs
-(1, 3, 5) compensate with deeper review (`/code-review ultra` or co-sim
-trace comparison) rather than standard review.
+### Phase 1: Types and test tooling (no production semantics change)
 
-### PR 1 — Types and test tooling (no prereqs)
+- Discriminated transition result + constructors.
+- Contract validation intrinsic to matrix and reachable-state helpers;
+  explored-graph output; inventory-driven reachability/producibility
+  assertions.
+- Stronger trace replay.
+- Explicit domain capability selectors plus shared transition-consistency
+  tests.
 
-Discriminated `TransitionResult` + `ignore`/`change`/`stay` constructors,
-with the mechanical migration of all thirteen `transition.ts` files;
-intrinsic contract validation in `driveTransitionMatrix` and
-`exploreReachableStates`; explored-graph output; inventory-driven
-reachability/producibility assertions; replay-grade vs debug trace split
-and strengthened `replayTrace`. Wide but shallow: every change is either
-compile-checked mechanical rewriting or test infrastructure, so the type
-checker and existing transition suites are the reviewers. Must not change
-production scheduling or notification semantics.
+### Phase 2: Transactional dispatcher pilot
 
-### PR 2 — Capability selectors (prereq: PR 1)
+- Implement the dispatcher, timer/watchdog leases, and the conformance
+  suite; document the exact commit, observer, subscriber, and
+  command-start order.
+- Pilot on `voice_to_text`, `image_generation`, and `screenshot` — bounded
+  machines that exercise synchronous emission, timers, cancellation, and
+  late async completion; the timer machines are the ones whose findings
+  (#4029, #4032, #4058) motivated the primitives.
+- Compare traces and existing tests before and after migration.
 
-Capability selector convention + shared transition-consistency test kit,
-adopted in `github_ops` and `version_preview` (the motivating consumers).
-Kept out of PR 1 because it changes production behavior — previously
-enabled no-op controls become disabled — and must be bisectable.
+### Phase 3: Resource scopes and disposal contract
 
-### PR 3 — Transactional dispatcher + first pilot (prereq: PR 1)
+- Add `TaskScope` and the domain-configured lifecycle sequence; migrate
+  timer- and subscription-heavy adapters.
+- Add disposal-during-await and late-registration tests; every manager and
+  scope has idempotent teardown.
+- Prefer composition-root construction at existing
+  `configureChatStream`-style call sites; add the constrained late-binding
+  holder only where lifecycle constraints require it.
 
-The dispatcher, timer/watchdog leases (with a minimal internal
-lease-ownership scope; generalized in PR 5), the controller conformance
-suite, and the `voice_to_text` pilot migration, in one PR: the conformance
-suite is the dispatcher's spec and the pilot is its proof, so the
-dispatcher never exists unexercised on main. Documents the exact commit,
-projection, subscriber, observer, and command-start order. This is the
-semantic-change boundary — it fixes the observers-before-commit ordering
-for migrated machines — so it gets its own revert point and must not be
-folded into Phase-1 work (#4028-class code may depend on the old order).
+### Phase 4: Correlation and durable handoff
 
-### PR 4 — Second pilot: `image_generation` + `screenshot` (prereq: PR 3)
+- Invocation references and boundary correlation helpers; use for new
+  IPC-spanning operations; migrate `chat_stream` and `app_run` (the
+  #4023/#3969 motivating consumers).
+- Design and pilot the durable user-input-to-chat-stream handoff protocol,
+  then generalize only after its persistence and crash semantics are proven.
 
-Migrations with before/after trace comparison. Not folded into PR 3:
-`screenshot` carries the #4058 regression class and its migration diff
-must stay clean. Exercises timers, cancellation, and late async
-completion (#4029, #4032, #4058 motivated these primitives).
+### Phase 5: Incremental adoption and observability polish
 
-### PR 5 — Scopes, disposal contract, composition roots (prereqs: PR 1; PR 3 for lease ownership)
+- Migrate complex existing controllers only when they receive substantive
+  changes; require the conformance suite for new controllers; track
+  remaining custom runtimes and document justified deviations.
+- Land the trace/co-sim/`registerAtomWriter` polish items as small
+  independent PRs.
+- Update `rules/state-machines.md` per the section above.
 
-`TaskScope` + `createLifecycleScope` with the disposal-ordering
-guarantees; timer leases re-homed onto `TaskScope`; migration of timer-
-and subscription-heavy adapters with disposal-during-await and
-late-registration tests; composition-root construction at
-`configureChatStream`-style call sites, adding the constrained
-late-binding holder only where lifecycle genuinely requires it. The
-primitives are inert until adopted and each adapter adoption is
-individually revertable within the PR history.
-
-### PR 6 — Invocation references + `chat_stream` migration (prereq: PR 1; PR 3 recommended for the conformance suite)
-
-`InvocationRef` + correlation/claim helpers + canonical `stale-operation`
-ignore reason, landed with their motivating consumer: the `chat_stream`
-migration that retires hand-rolled `lastStreamIdByChatId`.
-
-### PR 7 — `app_run` migration (prereq: PR 6)
-
-Proxy-stdout parsing bound to the spawned process's invocation reference
-(#3969). Deliberately not merged into PR 6: `chat_stream` and `app_run`
-are the two highest-blast-radius machines and a correlation regression in
-either presents identically ("acts on stale events") — separate PRs keep
-the bisection boundary.
-
-### PR 8 — Durable handoff design + pilot (prereq: PR 6)
-
-The user-input → `chat_stream` handoff protocol: persistence location,
-record shape, acceptance transaction, acknowledgement point, and
-crash/reload sequence, proven against the real queue. Generalization into
-a shared API is deferred until the pilot demonstrates the protocol — it
-may never need its own PR.
-
-### PR 9 — Observability polish + rules doc (no prereqs; rules rewrite lands last)
-
-Trace sequence tiebreaker, per-entity-key rings, dev-gating
-`__dyadMachines`, co-sim snapshot freezing and eager `result.state`
-validation, the `registerAtomWriter` prod-throw decision, and the
-`rules/state-machines.md` rewrite pointing rules at the new primitives
-(alternatively, fold each rules-doc line into the PR that lands its
-primitive and reduce this to the polish items).
-
-### Dependency graph and parallelism
-
-```text
-PR 1 ──┬── PR 2
-       ├── PR 3 ──┬── PR 4
-       │          └── PR 5
-       ├── PR 6 ──┬── PR 7
-       │          └── PR 8
-       └── PR 9 (polish anytime; rules rewrite last)
-```
-
-PR 1 unblocks everything. PRs 2, 3, 6, and the polish half of PR 9 can
-proceed in parallel once it lands; the critical path is
-PR 1 → PR 3 → PR 4/5 and PR 1 → PR 6 → PR 7/8.
-
-The open-ended tail — migrating the remaining complex controllers
-(`version_preview`, `github_ops`, `preview_iframe`, `connection_flow`,
-`user_input`, `mcp_oauth`, `first_prompt`, `plan_handoff`) onto the
-dispatcher — is not counted: those migrate only when they receive
-substantive changes, with the conformance suite required for new
-controllers and remaining custom runtimes tracked with documented
-justified deviations.
-
-Each PR follows the established pattern: kernel change + motivating
-machine migration + named regression tests mirroring the original review
-findings (the A→B→A→B dispose test and the co-sim bound-drain test set
-the precedent).
+Each step is one PR-sized unit in the established pattern: kernel change +
+motivating machine migration + named regression tests mirroring the
+original review findings (the A→B→A→B dispose test and the co-sim
+bound-drain test set the precedent).
 
 ## Success criteria
 

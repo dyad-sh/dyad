@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createSequentialIdSource } from "@/state_machines/testing";
 import type { RunCommandExecutor, RunEventSink } from "./commands";
 import { AppRunController } from "./controller";
 import type { RunCommand, RunState, RunUrl } from "./state";
@@ -35,7 +36,7 @@ function createFakeExecutor({
       fake.executed.push(command);
       fake.emit = emit;
       if (autoCompleteReloads && command.type === "reload") {
-        emit({ type: "RELOAD_DONE", runId: command.runId });
+        emit({ type: "RELOAD_DONE", invocationRef: command.invocationRef });
       }
     },
   };
@@ -59,10 +60,28 @@ async function flushMicrotasks() {
   await Promise.resolve();
 }
 
+async function makeReady(
+  controller: AppRunController,
+  executor: FakeExecutor,
+  url = makeUrl(1),
+) {
+  void controller.dispatch({ type: "START", startedAt: 100 });
+  await flushMicrotasks();
+  const invocationRef = lastStartCommand(executor).invocationRef;
+  controller.send({ type: "PROXY_READY", invocationRef, url });
+  executor.emit({ type: "RUN_IPC_RESOLVED", invocationRef });
+  await flushMicrotasks();
+  return invocationRef;
+}
+
 describe("AppRunController", () => {
-  it("tracks an external restart through the current epoch without issuing start", async () => {
+  it("tracks an external restart through its invocation without issuing start", async () => {
     const executor = createFakeExecutor();
-    const controller = new AppRunController({ appId: APP_ID, executor });
+    const controller = new AppRunController({
+      appId: APP_ID,
+      executor,
+      idSource: createSequentialIdSource(),
+    });
 
     controller.beginExternal({
       requestId: "agent-restart-1",
@@ -96,17 +115,21 @@ describe("AppRunController", () => {
     );
   });
 
-  it("allocates a fresh runId per operation and drops stale completions", async () => {
+  it("allocates a fresh invocationRef per operation and drops stale completions", async () => {
     const executor = createFakeExecutor();
-    const controller = new AppRunController({ appId: APP_ID, executor });
+    const controller = new AppRunController({
+      appId: APP_ID,
+      executor,
+      idSource: createSequentialIdSource(),
+    });
 
     void controller.dispatch({ type: "START", startedAt: 100 });
     await flushMicrotasks();
-    const firstRunId = lastStartCommand(executor).runId;
+    const firstInvocationRef = lastStartCommand(executor).invocationRef;
     expect(controller.getSnapshot()).toMatchObject({
       type: "starting",
       operation: "run",
-      runId: firstRunId,
+      invocationRef: firstInvocationRef,
     });
 
     void controller.dispatch({
@@ -115,30 +138,40 @@ describe("AppRunController", () => {
       options: { removeNodeModules: false, recreateSandbox: false },
     });
     await flushMicrotasks();
-    const secondRunId = lastStartCommand(executor).runId;
-    expect(secondRunId).not.toBe(firstRunId);
+    const secondInvocationRef = lastStartCommand(executor).invocationRef;
+    expect(secondInvocationRef).not.toBe(firstInvocationRef);
     const restarting = controller.getSnapshot();
     expect(restarting).toMatchObject({
       type: "starting",
       operation: "restart",
-      runId: secondRunId,
+      invocationRef: secondInvocationRef,
     });
 
     // The superseded run's IPC resolution must not advance the machine.
-    executor.emit({ type: "RUN_IPC_RESOLVED", runId: firstRunId });
+    executor.emit({
+      type: "RUN_IPC_RESOLVED",
+      invocationRef: firstInvocationRef,
+    });
     expect(controller.getSnapshot()).toBe(restarting);
 
     // The current operation's resolution does.
-    executor.emit({ type: "RUN_IPC_RESOLVED", runId: secondRunId });
+    executor.emit({
+      type: "RUN_IPC_RESOLVED",
+      invocationRef: secondInvocationRef,
+    });
     expect(controller.getSnapshot()).toMatchObject({
       type: "ready",
-      runId: secondRunId,
+      invocationRef: secondInvocationRef,
     });
   });
 
   it("settles dispatch promises when their IPC settles, even when superseded", async () => {
     const executor = createFakeExecutor();
-    const controller = new AppRunController({ appId: APP_ID, executor });
+    const controller = new AppRunController({
+      appId: APP_ID,
+      executor,
+      idSource: createSequentialIdSource(),
+    });
 
     let firstSettled = false;
     let secondSettled = false;
@@ -148,7 +181,7 @@ describe("AppRunController", () => {
         firstSettled = true;
       });
     await flushMicrotasks();
-    const firstRunId = lastStartCommand(executor).runId;
+    const firstInvocationRef = lastStartCommand(executor).invocationRef;
 
     const second = controller
       .dispatch({
@@ -160,12 +193,15 @@ describe("AppRunController", () => {
         secondSettled = true;
       });
     await flushMicrotasks();
-    const secondRunId = lastStartCommand(executor).runId;
+    const secondInvocationRef = lastStartCommand(executor).invocationRef;
 
     expect(firstSettled).toBe(false);
     expect(secondSettled).toBe(false);
 
-    executor.emit({ type: "RUN_IPC_RESOLVED", runId: firstRunId });
+    executor.emit({
+      type: "RUN_IPC_RESOLVED",
+      invocationRef: firstInvocationRef,
+    });
     await first;
     expect(firstSettled).toBe(true);
     expect(secondSettled).toBe(false);
@@ -177,7 +213,7 @@ describe("AppRunController", () => {
 
     executor.emit({
       type: "RUN_IPC_FAILED",
-      runId: secondRunId,
+      invocationRef: secondInvocationRef,
       error: { message: "boom" },
     });
     await second;
@@ -202,7 +238,11 @@ describe("AppRunController", () => {
         order.push(`end:${command.type}:${executions}`);
       },
     };
-    const controller = new AppRunController({ appId: APP_ID, executor });
+    const controller = new AppRunController({
+      appId: APP_ID,
+      executor,
+      idSource: createSequentialIdSource(),
+    });
 
     void controller.dispatch({ type: "START", startedAt: 100 });
     void controller.dispatch({ type: "STOP", startedAt: 150 });
@@ -221,31 +261,40 @@ describe("AppRunController", () => {
     ]);
   });
 
-  it("stamps PROXY_READY with the current epoch and re-establishes ready from idle", async () => {
+  it("ignores a tagged late producer when no invocation is active", async () => {
     const executor = createFakeExecutor();
-    const controller = new AppRunController({ appId: APP_ID, executor });
+    const controller = new AppRunController({
+      appId: APP_ID,
+      executor,
+      idSource: createSequentialIdSource(),
+    });
+    const oldRef = {
+      kind: "app-run",
+      entityKey: APP_ID,
+      operationId: "app-run:disposed",
+    } as const;
 
-    controller.send({ type: "PROXY_READY", url: makeUrl(1) });
-    expect(controller.getSnapshot()).toMatchObject({
-      type: "ready",
-      appId: APP_ID,
+    controller.send({
+      type: "PROXY_READY",
+      invocationRef: oldRef,
       url: makeUrl(1),
     });
+    expect(controller.getSnapshot()).toEqual({ type: "idle" });
     await flushMicrotasks();
-    expect(executor.executed).toContainEqual({
-      type: "applyUrl",
-      appId: APP_ID,
-      url: makeUrl(1),
-    });
+    expect(executor.executed).toEqual([]);
   });
 
   it("buffers a proxy line during starting and applies it at IPC resolution", async () => {
     const executor = createFakeExecutor();
-    const controller = new AppRunController({ appId: APP_ID, executor });
+    const controller = new AppRunController({
+      appId: APP_ID,
+      executor,
+      idSource: createSequentialIdSource(),
+    });
 
     void controller.dispatch({ type: "START", startedAt: 100 });
     await flushMicrotasks();
-    const runId = lastStartCommand(executor).runId;
+    const invocationRef = lastStartCommand(executor).invocationRef;
 
     controller.send({ type: "PROXY_READY", url: makeUrl(2) });
     expect(controller.getSnapshot()).toMatchObject({
@@ -256,7 +305,7 @@ describe("AppRunController", () => {
       0,
     );
 
-    executor.emit({ type: "RUN_IPC_RESOLVED", runId });
+    executor.emit({ type: "RUN_IPC_RESOLVED", invocationRef });
     await flushMicrotasks();
     expect(controller.getSnapshot()).toMatchObject({
       type: "ready",
@@ -271,7 +320,11 @@ describe("AppRunController", () => {
 
   it("does not apply a buffered stale proxy URL when a restart fails", async () => {
     const executor = createFakeExecutor();
-    const controller = new AppRunController({ appId: APP_ID, executor });
+    const controller = new AppRunController({
+      appId: APP_ID,
+      executor,
+      idSource: createSequentialIdSource(),
+    });
 
     void controller.dispatch({
       type: "RESTART",
@@ -279,12 +332,12 @@ describe("AppRunController", () => {
       options: { removeNodeModules: false, recreateSandbox: false },
     });
     await flushMicrotasks();
-    const runId = lastStartCommand(executor).runId;
+    const invocationRef = lastStartCommand(executor).invocationRef;
 
     controller.send({ type: "PROXY_READY", url: makeUrl(2) });
     executor.emit({
       type: "RUN_IPC_FAILED",
-      runId,
+      invocationRef,
       error: { message: "restart failed" },
     });
     await flushMicrotasks();
@@ -307,11 +360,16 @@ describe("AppRunController", () => {
 
   it("runs the HMR reload cycle and drops RELOAD_DONE after a new operation", async () => {
     const executor = createFakeExecutor({ autoCompleteReloads: false });
-    const controller = new AppRunController({ appId: APP_ID, executor });
+    const controller = new AppRunController({
+      appId: APP_ID,
+      executor,
+      idSource: createSequentialIdSource(),
+    });
     const seen: RunState[] = [];
     controller.subscribe(() => seen.push(controller.getSnapshot()));
 
-    controller.send({ type: "PROXY_READY", url: makeUrl(1) });
+    await makeReady(controller, executor);
+    seen.length = 0;
     controller.send({ type: "HMR_DETECTED" });
     expect(controller.getSnapshot()).toMatchObject({
       type: "reloading",
@@ -333,21 +391,21 @@ describe("AppRunController", () => {
     expect(restarting).toMatchObject({ type: "starting" });
 
     // ...so its stale completion must be dropped.
-    executor.emit({ type: "RELOAD_DONE", runId: reload.runId });
+    executor.emit({ type: "RELOAD_DONE", invocationRef: reload.invocationRef });
     expect(controller.getSnapshot()).toBe(restarting);
 
-    expect(seen.map((state) => state.type)).toEqual([
-      "ready",
-      "reloading",
-      "starting",
-    ]);
+    expect(seen.map((state) => state.type)).toEqual(["reloading", "starting"]);
   });
 
   it("completes the reload cycle back to ready when not superseded", async () => {
     const executor = createFakeExecutor();
-    const controller = new AppRunController({ appId: APP_ID, executor });
+    const controller = new AppRunController({
+      appId: APP_ID,
+      executor,
+      idSource: createSequentialIdSource(),
+    });
 
-    controller.send({ type: "PROXY_READY", url: makeUrl(1) });
+    await makeReady(controller, executor);
     controller.send({ type: "MANUAL_RELOAD" });
     await flushMicrotasks();
     expect(controller.getSnapshot()).toMatchObject({
@@ -361,6 +419,7 @@ describe("AppRunController", () => {
     const published: RunState[] = [];
     const controller = new AppRunController({
       appId: APP_ID,
+      idSource: createSequentialIdSource(),
       executor,
       onStateChange: (state) => published.push(state),
     });
@@ -369,7 +428,7 @@ describe("AppRunController", () => {
     await flushMicrotasks();
     executor.emit({
       type: "RUN_IPC_RESOLVED",
-      runId: lastStartCommand(executor).runId,
+      invocationRef: lastStartCommand(executor).invocationRef,
     });
 
     expect(published.map((state) => state.type)).toEqual(["starting", "ready"]);
@@ -382,7 +441,11 @@ describe("AppRunController", () => {
         executed.push(command.type);
       },
     };
-    const controller = new AppRunController({ appId: APP_ID, executor });
+    const controller = new AppRunController({
+      appId: APP_ID,
+      executor,
+      idSource: createSequentialIdSource(),
+    });
 
     const seen: string[] = [];
     let reacted = false;
@@ -407,14 +470,21 @@ describe("AppRunController", () => {
 
   it("keeps command order when onStateChange re-entrantly sends", async () => {
     const executed: string[] = [];
-    const executor: RunCommandExecutor = {
-      async execute(command) {
+    const executor: FakeExecutor = {
+      executed: [],
+      emit: () => {
+        throw new Error("emit captured before execution");
+      },
+      async execute(command, emit) {
+        executor.executed.push(command);
+        executor.emit = emit;
         executed.push(command.type);
       },
     };
     let reacted = false;
     const controller = new AppRunController({
       appId: APP_ID,
+      idSource: createSequentialIdSource(),
       executor,
       onStateChange: (state) => {
         if (state.type === "ready" && !reacted) {
@@ -424,21 +494,25 @@ describe("AppRunController", () => {
       },
     });
 
-    // idle -> ready via proxy line; onStateChange immediately requests a
-    // manual reload. applyUrl (outer) must execute before reload (inner).
-    controller.send({ type: "PROXY_READY", url: makeUrl(1) });
+    // The ready transition publishes its URL commands before onStateChange
+    // re-entrantly requests a manual reload.
+    await makeReady(controller, executor);
     await flushMicrotasks();
 
-    expect(executed).toEqual(["applyUrl", "reload"]);
+    expect(executed.slice(-3)).toEqual(["clearError", "applyUrl", "reload"]);
   });
 
   it("supports unsubscribe", () => {
     const executor = createFakeExecutor();
-    const controller = new AppRunController({ appId: APP_ID, executor });
+    const controller = new AppRunController({
+      appId: APP_ID,
+      executor,
+      idSource: createSequentialIdSource(),
+    });
     let notified = 0;
     const unsubscribe = controller.subscribe(() => notified++);
 
-    controller.send({ type: "PROXY_READY", url: makeUrl(1) });
+    void controller.dispatch({ type: "START", startedAt: 100 });
     expect(notified).toBe(1);
 
     unsubscribe();

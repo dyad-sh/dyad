@@ -7,6 +7,7 @@ import type {
   RunUrl,
   TransitionResult,
 } from "./state";
+import { sameInvocationRef } from "@/state_machines/invocation_ref";
 import { ignore as ignoreTransition } from "@/state_machines/types";
 
 function sameRunUrl(left: RunUrl | null, right: RunUrl): boolean {
@@ -26,11 +27,9 @@ function sameRunUrl(left: RunUrl | null, right: RunUrl): boolean {
  * Ignored events return the SAME state reference so callers can detect
  * no-ops by identity.
  *
- * Stale-runId filtering happens in two layers: the controller drops events
- * whose runId doesn't match the current epoch before they get here, and
- * this function independently ignores completion events whose runId doesn't
- * match the state's runId (defense in depth — a stale runId must never
- * advance the state).
+ * Stale-operation filtering happens in two layers: the controller rejects
+ * producer/completion events that do not claim the active invocation, and
+ * this function independently matches refs as defense in depth.
  */
 export function transition(state: RunState, event: RunEvent): TransitionResult {
   switch (event.type) {
@@ -40,7 +39,7 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
         state: {
           type: "starting",
           appId: event.appId,
-          runId: event.runId,
+          invocationRef: event.invocationRef,
           operation: "run",
           startedAt: event.startedAt,
           pendingUrl: null,
@@ -49,7 +48,7 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
           {
             type: "start",
             appId: event.appId,
-            runId: event.runId,
+            invocationRef: event.invocationRef,
             operation: "run",
             startedAt: event.startedAt,
             options: { removeNodeModules: false, recreateSandbox: false },
@@ -63,7 +62,7 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
         state: {
           type: "starting",
           appId: event.appId,
-          runId: event.runId,
+          invocationRef: event.invocationRef,
           operation: "restart",
           startedAt: event.startedAt,
           pendingUrl: null,
@@ -72,7 +71,7 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
           {
             type: "start",
             appId: event.appId,
-            runId: event.runId,
+            invocationRef: event.invocationRef,
             operation: "restart",
             startedAt: event.startedAt,
             options: event.options,
@@ -86,7 +85,7 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
         state: {
           type: "starting",
           appId: event.appId,
-          runId: event.runId,
+          invocationRef: event.invocationRef,
           operation: "rebuild",
           startedAt: event.startedAt,
           pendingUrl: null,
@@ -95,7 +94,7 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
           {
             type: "start",
             appId: event.appId,
-            runId: event.runId,
+            invocationRef: event.invocationRef,
             operation: "rebuild",
             startedAt: event.startedAt,
             options: { removeNodeModules: true, recreateSandbox: false },
@@ -109,7 +108,7 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
         state: {
           type: "starting",
           appId: event.appId,
-          runId: event.runId,
+          invocationRef: event.invocationRef,
           operation: event.operation,
           startedAt: event.startedAt,
           pendingUrl: null,
@@ -129,15 +128,24 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
         state: {
           type: "stopping",
           appId: event.appId,
-          runId: event.runId,
+          invocationRef: event.invocationRef,
           startedAt: event.startedAt,
         },
-        commands: [{ type: "stop", appId: event.appId, runId: event.runId }],
+        commands: [
+          {
+            type: "stop",
+            appId: event.appId,
+            invocationRef: event.invocationRef,
+          },
+        ],
       };
 
     case "RUN_IPC_RESOLVED": {
-      if (state.type !== "starting" || state.runId !== event.runId) {
-        return ignore(state, "stale-run-id");
+      if (
+        state.type !== "starting" ||
+        !sameInvocationRef(state.invocationRef, event.invocationRef)
+      ) {
+        return ignore(state, "stale-operation");
       }
       const commands: RunCommand[] = [
         { type: "clearError", appId: state.appId },
@@ -158,7 +166,7 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
         state: {
           type: "ready",
           appId: state.appId,
-          runId: state.runId,
+          invocationRef: state.invocationRef,
           url: state.pendingUrl,
         },
         commands,
@@ -166,8 +174,11 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
     }
 
     case "RUN_IPC_FAILED": {
-      if (state.type !== "starting" || state.runId !== event.runId) {
-        return ignore(state, "stale-run-id");
+      if (
+        state.type !== "starting" ||
+        !sameInvocationRef(state.invocationRef, event.invocationRef)
+      ) {
+        return ignore(state, "stale-operation");
       }
       const commands: RunCommand[] = [
         { type: "setError", appId: state.appId, error: event.error },
@@ -182,7 +193,7 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
         state: {
           type: "errored",
           appId: state.appId,
-          runId: state.runId,
+          invocationRef: state.invocationRef,
           error: event.error,
         },
         commands,
@@ -190,30 +201,36 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
     }
 
     case "STOP_IPC_RESOLVED":
-      if (state.type !== "stopping" || state.runId !== event.runId) {
-        return ignore(state, "stale-run-id");
+      if (
+        state.type !== "stopping" ||
+        !sameInvocationRef(state.invocationRef, event.invocationRef)
+      ) {
+        return ignore(state, "stale-operation");
       }
       return {
         kind: "applied",
         state: {
           type: "stopped",
           appId: state.appId,
-          runId: state.runId,
+          invocationRef: state.invocationRef,
           exitCode: null,
         },
         commands: [{ type: "clearError", appId: state.appId }],
       };
 
     case "STOP_IPC_FAILED":
-      if (state.type !== "stopping" || state.runId !== event.runId) {
-        return ignore(state, "stale-run-id");
+      if (
+        state.type !== "stopping" ||
+        !sameInvocationRef(state.invocationRef, event.invocationRef)
+      ) {
+        return ignore(state, "stale-operation");
       }
       return {
         kind: "applied",
         state: {
           type: "errored",
           appId: state.appId,
-          runId: state.runId,
+          invocationRef: state.invocationRef,
           error: event.error,
         },
         commands: [
@@ -222,6 +239,12 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
       };
 
     case "PROXY_READY":
+      if (
+        state.type !== "idle" &&
+        !sameInvocationRef(state.invocationRef, event.invocationRef)
+      ) {
+        return ignore(state, "stale-operation");
+      }
       switch (state.type) {
         case "starting":
           // Buffer: never let a proxy line (possibly a re-emitted cached
@@ -259,7 +282,7 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
         case "stopping":
           // A proxy line while stopping is stale by construction; applying
           // it would stomp the stop operation's state.
-          return ignore(state, "stale-proxy-output");
+          return ignore(state, "stale-operation");
         case "idle":
         case "stopped":
         case "errored":
@@ -271,7 +294,7 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
             state: {
               type: "ready",
               appId: event.appId,
-              runId: event.runId,
+              invocationRef: event.invocationRef,
               url: event.url,
             },
             commands: [
@@ -292,7 +315,7 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
           state: {
             type: "reloading",
             appId: state.appId,
-            runId: state.runId,
+            invocationRef: state.invocationRef,
             reason,
             url: state.url,
           },
@@ -300,7 +323,7 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
             {
               type: "reload",
               appId: state.appId,
-              runId: state.runId,
+              invocationRef: state.invocationRef,
               reason,
             },
           ],
@@ -316,28 +339,37 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
     }
 
     case "RELOAD_DONE":
-      if (state.type !== "reloading" || state.runId !== event.runId) {
-        return ignore(state, "stale-run-id");
+      if (
+        state.type !== "reloading" ||
+        !sameInvocationRef(state.invocationRef, event.invocationRef)
+      ) {
+        return ignore(state, "stale-operation");
       }
       return {
         kind: "applied",
         state: {
           type: "ready",
           appId: state.appId,
-          runId: state.runId,
+          invocationRef: state.invocationRef,
           url: state.url,
         },
         commands: [],
       };
 
     case "APP_EXIT":
+      if (
+        state.type !== "idle" &&
+        !sameInvocationRef(state.invocationRef, event.invocationRef)
+      ) {
+        return ignore(state, "stale-operation");
+      }
       if (state.type === "ready" || state.type === "reloading") {
         return {
           kind: "applied",
           state: {
             type: "stopped",
             appId: state.appId,
-            runId: state.runId,
+            invocationRef: state.invocationRef,
             exitCode: event.exitCode,
           },
           commands: [],

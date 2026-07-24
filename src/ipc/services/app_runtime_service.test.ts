@@ -907,6 +907,59 @@ describe("executeApp", () => {
     expect(killPortMock).not.toHaveBeenCalledWith(42142, "tcp");
   });
 
+  it("stamps a late proxy callback with the spawned process invocation", async () => {
+    let onStarted: ((proxyUrl: string) => void) | undefined;
+    startProxyMock.mockImplementation(async (_originalUrl, opts) => {
+      onStarted = opts.onStarted;
+      return { terminate: vi.fn() };
+    });
+    const oldRef = {
+      kind: "app-run",
+      entityKey: 42,
+      operationId: "app-run:old",
+    } as const;
+    const newRef = {
+      kind: "app-run",
+      entityKey: 42,
+      operationId: "app-run:new",
+    } as const;
+    runningApps.set(42, {
+      process: null,
+      processId: 1,
+      invocationRef: oldRef,
+      mode: "host",
+      lastViewedAt: Date.now(),
+    });
+
+    const event = createEvent();
+    await ensureProxyForRunningApp({
+      appId: 42,
+      event,
+      originalUrl: "http://localhost:32142",
+      mode: "host",
+      invocationRef: oldRef,
+    });
+    runningApps.set(42, {
+      process: null,
+      processId: 2,
+      invocationRef: newRef,
+      mode: "host",
+      lastViewedAt: Date.now(),
+    });
+
+    onStarted?.("http://localhost:42142");
+
+    expect(safeSendMock).toHaveBeenCalledWith(
+      event.sender,
+      "app:output",
+      expect.objectContaining({
+        invocationRef: oldRef,
+        message: expect.stringContaining("http://localhost:42142"),
+      }),
+    );
+    expect(runningApps.get(42)?.proxyUrl).toBeUndefined();
+  });
+
   it("surfaces a proxy port-exhaustion error to the renderer", async () => {
     const terminate = vi.fn();
     startProxyMock.mockImplementation(async (_originalUrl, opts) => {

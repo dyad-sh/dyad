@@ -44,6 +44,10 @@ describe("app lifecycle tools", () => {
 
     expect(restartApp).toHaveBeenCalledWith(ctx.event, {
       appId: 42,
+      invocationRef: expect.objectContaining({
+        kind: "app-run",
+        entityKey: 42,
+      }),
       removeNodeModules: false,
       recreateSandbox: false,
       clearRuntimeLogs: true,
@@ -82,6 +86,10 @@ describe("app lifecycle tools", () => {
 
     expect(restartApp).toHaveBeenCalledWith(ctx.event, {
       appId: 42,
+      invocationRef: expect.objectContaining({
+        kind: "app-run",
+        entityKey: 42,
+      }),
       removeNodeModules: true,
       recreateSandbox: true,
       clearRuntimeLogs: true,

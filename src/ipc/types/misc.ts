@@ -8,6 +8,7 @@ import {
 import { ConsoleEntrySchema } from "./supabase";
 import { ProblemReportSchema } from "./agent";
 import { ChatStreamInvocationRefSchema } from "./chat";
+import { AppRunInvocationRefSchema } from "./app";
 
 // =============================================================================
 // Portal Schemas
@@ -430,6 +431,8 @@ export const AppOutputSchema = z.object({
   ]),
   message: z.string(),
   appId: z.number(),
+  /** Correlation identity of the process/lifecycle producer when available. */
+  invocationRef: AppRunInvocationRefSchema.optional(),
   warningKind: z.enum(["release-age", "pnpm-migration"]).optional(),
   timestamp: z.number().optional(),
   exitCode: z.number().nullable().optional(),

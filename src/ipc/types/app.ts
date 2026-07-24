@@ -2,6 +2,7 @@ import { z } from "zod";
 import { defineContract, createClient } from "../contracts/core";
 import { APP_FRAMEWORK_TYPES } from "../../lib/framework_constants";
 import { ChatModeSchema } from "../../lib/schemas";
+import type { AppRunInvocationRef } from "@/app_run/state";
 
 // =============================================================================
 // App Schemas
@@ -161,11 +162,23 @@ export const AppIdParamsSchema = z.object({
   appId: z.number(),
 });
 
+export const AppRunInvocationRefSchema: z.ZodType<AppRunInvocationRef> =
+  z.object({
+    kind: z.literal("app-run"),
+    entityKey: z.number(),
+    operationId: z.string().min(1),
+  });
+
+export const RunAppParamsSchema = AppIdParamsSchema.extend({
+  invocationRef: AppRunInvocationRefSchema.optional(),
+});
+
 /**
  * Schema for restart app params (with optional removeNodeModules).
  */
 export const RestartAppParamsSchema = z.object({
   appId: z.number(),
+  invocationRef: AppRunInvocationRefSchema.optional(),
   removeNodeModules: z.boolean().optional(),
   recreateSandbox: z.boolean().optional(),
 });
@@ -431,13 +444,13 @@ export const appContracts = {
 
   runApp: defineContract({
     channel: "run-app",
-    input: AppIdParamsSchema,
+    input: RunAppParamsSchema,
     output: z.void(),
   }),
 
   stopApp: defineContract({
     channel: "stop-app",
-    input: AppIdParamsSchema,
+    input: RunAppParamsSchema,
     output: z.void(),
   }),
 

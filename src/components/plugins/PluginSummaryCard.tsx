@@ -10,6 +10,7 @@ import type { ConnectFeedback } from "./usePluginConnect";
 export function PluginSummaryCard({
   server: s,
   needsSetup,
+  setupLocked,
   toolCount,
   enabledToolCount,
   discoveryFailed,
@@ -23,6 +24,8 @@ export function PluginSummaryCard({
   server: McpServer;
   /** A catalog server with declared setup fields still unfilled. */
   needsSetup: boolean;
+  /** Setup is unfinished or its catalog entry hasn't resolved; lock controls. */
+  setupLocked: boolean;
   toolCount: number | null;
   enabledToolCount: number | null;
   /** Discovery settled without a tool list (unreachable or unauthorized). */
@@ -96,7 +99,7 @@ export function PluginSummaryCard({
           </span>
           <div className="flex items-center gap-2">
             <div className="relative z-10 flex items-center gap-2">
-              {s.oauthEnabled && !s.oauthConnected && (
+              {s.oauthEnabled && !s.oauthConnected && !setupLocked && (
                 <Button
                   size="sm"
                   onClick={() => onConnect(s.id)}
@@ -115,6 +118,7 @@ export function PluginSummaryCard({
                 id={`plugin-enabled-${s.id}`}
                 aria-label={`Enabled toggle for ${s.name}`}
                 checked={!!s.enabled}
+                disabled={setupLocked}
                 onCheckedChange={() => onToggleEnabled(s.id, !!s.enabled)}
               />
             </div>

@@ -92,30 +92,39 @@ export function PluginsList({
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {servers.map((s) => (
-            <PluginSummaryCard
-              key={s.id}
-              server={s}
-              needsSetup={
-                !!s.catalogSlug &&
-                serverNeedsSetup(s, inputsBySlug.get(s.catalogSlug) ?? [])
-              }
-              toolCount={toolCountFor(s.id)}
-              enabledToolCount={enabledToolCountFor(s.id)}
-              discoveryFailed={discoveryFailedFor(s.id)}
-              feedback={feedbackFor(s)}
-              isConnecting={connectingServerId === s.id}
-              connectDisabled={connectingServerId !== null}
-              onConnect={onConnect}
-              onToggleEnabled={toggleEnabled}
-              onOpen={(serverId) =>
-                navigate({
-                  to: "/plugins/$serverId",
-                  params: { serverId },
-                })
-              }
-            />
-          ))}
+          {servers.map((s) => {
+            const needsSetup =
+              !!s.catalogSlug &&
+              serverNeedsSetup(s, inputsBySlug.get(s.catalogSlug) ?? []);
+            // A disabled catalog server whose entry hasn't loaded yet
+            // might still need setup, so lock its controls until the
+            // catalog resolves.
+            const setupLocked =
+              needsSetup ||
+              (!!s.catalogSlug && !catalogQuery.data && !s.enabled);
+            return (
+              <PluginSummaryCard
+                key={s.id}
+                server={s}
+                needsSetup={needsSetup}
+                setupLocked={setupLocked}
+                toolCount={toolCountFor(s.id)}
+                enabledToolCount={enabledToolCountFor(s.id)}
+                discoveryFailed={discoveryFailedFor(s.id)}
+                feedback={feedbackFor(s)}
+                isConnecting={connectingServerId === s.id}
+                connectDisabled={connectingServerId !== null}
+                onConnect={onConnect}
+                onToggleEnabled={toggleEnabled}
+                onOpen={(serverId) =>
+                  navigate({
+                    to: "/plugins/$serverId",
+                    params: { serverId },
+                  })
+                }
+              />
+            );
+          })}
           {servers.length === 0 && (
             <div className="col-span-full text-sm text-muted-foreground">
               No plugins added yet.

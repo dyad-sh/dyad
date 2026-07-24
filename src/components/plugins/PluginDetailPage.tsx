@@ -100,6 +100,10 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
   const setupInputs = catalogEntry?.inputs ?? [];
   // Show the guided setup until every declared field has a saved value.
   const needsSetup = serverNeedsSetup(s, setupInputs);
+  // A disabled catalog server whose entry hasn't loaded yet might still
+  // need setup, so keep its controls locked until the catalog resolves.
+  const setupPending = !!s.catalogSlug && !catalogQuery.data && !s.enabled;
+  const setupIncomplete = needsSetup || setupPending;
 
   const onSetToolConsent = async (
     toolName: string,
@@ -154,7 +158,7 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              {s.oauthEnabled && !s.oauthConnected && !needsSetup && (
+              {s.oauthEnabled && !s.oauthConnected && !setupIncomplete && (
                 // Only one OAuth flow can run at a time (shared
                 // connect slot), so Connect is blocked while any
                 // server is connecting; the label only spins for this
@@ -167,7 +171,7 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
                   {connectingServerId === s.id ? "Connecting…" : "Connect"}
                 </Button>
               )}
-              {s.oauthEnabled && s.oauthConnected && !needsSetup && (
+              {s.oauthEnabled && s.oauthConnected && !setupIncomplete && (
                 <Button
                   variant="outline"
                   onClick={() => onDisconnect(s.id)}
@@ -181,6 +185,7 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
               <Switch
                 aria-label={`Enabled toggle for ${s.name}`}
                 checked={!!s.enabled}
+                disabled={setupIncomplete}
                 onCheckedChange={() => toggleEnabled(s.id, !!s.enabled)}
               />
               <DeleteConfirmationDialog
@@ -196,7 +201,7 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
             </div>
           </div>
 
-          {feedback && !needsSetup && (
+          {feedback && !setupIncomplete && (
             <div className="mt-4">
               <Alert variant="destructive">
                 <AlertTitle>{FEEDBACK_TITLES[feedback.kind]}</AlertTitle>
@@ -240,7 +245,15 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
             />
           )}
 
-          {!needsSetup && s.transport === "stdio" && (
+          {setupPending && (
+            <div className="mt-4 text-sm text-muted-foreground">
+              {catalogQuery.isError
+                ? "Couldn't load setup details."
+                : "Loading setup…"}
+            </div>
+          )}
+
+          {!setupIncomplete && s.transport === "stdio" && (
             <div className="mt-6">
               <div className="text-sm font-medium mb-2">
                 Environment Variables
@@ -259,7 +272,7 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
               />
             </div>
           )}
-          {!needsSetup && s.transport === "http" && (
+          {!setupIncomplete && s.transport === "http" && (
             <div className="mt-6">
               <div className="text-sm font-medium mb-2">Headers</div>
               <KeyValueEditor

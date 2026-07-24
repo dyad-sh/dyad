@@ -116,4 +116,20 @@ describe("memory-owned user-input follow-up recovery (integration)", () => {
         ),
     ).toBe(true);
   });
+
+  it("settles a due owner before app deletion cascades its chat", async () => {
+    const chatId = await harness.createChat();
+    const { requestId } = await createDueFollowUp(
+      chatId,
+      "before app deletion",
+    );
+
+    await ipc.app.deleteApp({ appId: harness.appId });
+
+    expect(
+      userInputRegistry
+        .getPending()
+        .some((entry) => entry.descriptor.requestId === requestId),
+    ).toBe(false);
+  });
 });

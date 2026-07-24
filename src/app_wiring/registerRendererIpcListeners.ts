@@ -6,7 +6,10 @@ import type { ChatStreamManager } from "@/chat_stream/manager";
 import { ipc as defaultIpc, type TelemetryEventPayload } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
 import { showError } from "@/lib/toast";
-import { getUserInputProjectionAdapter } from "@/user_input/projection";
+import {
+  getUserInputProjectionAdapter,
+  type UserInputChatStreamFacade,
+} from "@/user_input/projection";
 
 export type RendererIpcClient = typeof defaultIpc;
 type JotaiStore = ReturnType<typeof createStore>;
@@ -19,26 +22,12 @@ export interface RegisterRendererIpcListenersOptions {
   onTelemetryEvent?: (payload: TelemetryEventPayload) => void;
 }
 
-export function registerRendererIpcListeners({
-  ipcClient,
-  store,
-  queryClient,
-  chatStreamManager,
-  onTelemetryEvent,
-}: RegisterRendererIpcListenersOptions): () => void {
-  const unsubscribes: Array<() => void> = [];
-
-  const userInputChatStream = {
-    submit: ({
-      requestId,
-      ...request
-    }: {
-      requestId: string;
-      chatId: number;
-      prompt: string;
-      selectedComponents: [];
-      requestedChatMode: "local-agent";
-    }) =>
+export function createUserInputChatStreamFacade(
+  ipcClient: Pick<RendererIpcClient, "userInput">,
+  chatStreamManager: ChatStreamManager,
+): UserInputChatStreamFacade {
+  return {
+    submit: ({ requestId, ...request }) =>
       new Promise<{ accepted: boolean }>((resolve, reject) => {
         let completed = false;
         chatStreamManager.ensure(request.chatId).send({
@@ -58,14 +47,33 @@ export function registerRendererIpcListeners({
             },
             onAcceptanceRejected: async (reason) => {
               if (completed) return;
-              await ipcClient.userInput.rejectFollowUp({ requestId, reason });
               completed = true;
-              resolve({ accepted: false });
+              try {
+                await ipcClient.userInput.rejectFollowUp({ requestId, reason });
+                resolve({ accepted: false });
+              } catch (error) {
+                reject(error);
+              }
             },
           },
         });
       }),
   };
+}
+
+export function registerRendererIpcListeners({
+  ipcClient,
+  store,
+  queryClient,
+  chatStreamManager,
+  onTelemetryEvent,
+}: RegisterRendererIpcListenersOptions): () => void {
+  const unsubscribes: Array<() => void> = [];
+
+  const userInputChatStream = createUserInputChatStreamFacade(
+    ipcClient,
+    chatStreamManager,
+  );
 
   unsubscribes.push(
     getUserInputProjectionAdapter({

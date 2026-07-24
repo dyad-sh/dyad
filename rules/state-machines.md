@@ -58,6 +58,9 @@ Background and before/after examples of why this pattern exists:
 - Machine-generated queued work must not be editable or removable (including
   through bulk-clear paths) unless removal explicitly settles or rejects the
   owning machine request; otherwise reload can resurrect abandoned work.
+- Settle memory-owned requests on every destructive entity path, including
+  parent-row cascade deletion, bulk deletion, and full reset—not only direct
+  deletion of the child entity the request references.
 - Model user-initiated owner rejection as a typed non-error facade outcome.
   Rejecting the transport promise routes successful cancellation through
   generic failure toasts/retry logic and can incorrectly acknowledge dispatch.

@@ -102,6 +102,29 @@ describe("user-input registry", () => {
     });
   });
 
+  it("settles live follow-ups across all chats before a full reset", async () => {
+    const { registry, broadcast } = setup();
+    const requestIds = [4, 9].map((chatId) =>
+      registry.request({
+        kind: "integration",
+        chatId,
+        provider: "supabase",
+        classifier: "none",
+        followUpPrompt: `Continue chat ${chatId}`,
+      }),
+    );
+
+    await registry.settleAll();
+
+    expect(registry.getPending()).toEqual([]);
+    for (const requestId of requestIds) {
+      expect(broadcast).toHaveBeenCalledWith("user-input:settled", {
+        requestId,
+        outcome: "swept",
+      });
+    }
+  });
+
   it("maps human and classifier resolutions into park values", async () => {
     const { registry } = setup();
     const agent = registry.request({

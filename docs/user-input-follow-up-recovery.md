@@ -34,7 +34,9 @@ Machine-owned queue items are never written to queue persistence. Queue delete
 and bulk-clear atomically claim their current items so the queue driver cannot
 start them, then reject each owner. Failed settlement restores the item and
 surfaces the error. Ordinary chat errors do not sweep a `due` follow-up, while
-explicit chat deletion settles all requests for that chat.
+explicit chat deletion settles all requests for that chat. Parent app deletion
+and full reset likewise settle affected memory owners before database rows are
+deleted, so cascades cannot strand follow-ups targeting missing entities.
 
 ## Restart boundary
 

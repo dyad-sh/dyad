@@ -66,6 +66,7 @@ export interface UserInputRegistry {
   ): Promise<boolean>;
   sweepChat(chatId: number, exceptRequestId?: string): void;
   settleChat(chatId: number): Promise<void>;
+  settleAll(): Promise<void>;
   streamFinished(chatId: number): void;
   followUpDispatched(requestId: string): Promise<void>;
   followUpRejected(requestId: string): Promise<void>;
@@ -370,6 +371,18 @@ export function createUserInputRegistry(deps: {
       await Promise.all(
         Array.from(chatIndex.get(chatId) ?? [], (requestId) =>
           dispatch(requestId, { type: "chat-swept", chatId }),
+        ),
+      );
+    },
+
+    async settleAll() {
+      await Promise.all(
+        Array.from(chatIndex.keys(), (chatId) =>
+          Promise.all(
+            Array.from(chatIndex.get(chatId) ?? [], (requestId) =>
+              dispatch(requestId, { type: "chat-swept", chatId }),
+            ),
+          ),
         ),
       );
     },

@@ -60,6 +60,7 @@ import {
 import { restartApp } from "../services/restart_app";
 import { getPtySessionManager } from "../utils/pty_session_manager";
 import { sameInvocationRef } from "@/state_machines/invocation_ref";
+import { userInputRegistry } from "@/user_input/main";
 
 /**
  * Read screenshot entries for a single app directory, filtered by filename
@@ -408,6 +409,13 @@ async function deleteAppById(
     getPtySessionManager().killForApp(appId);
 
     try {
+      const appChats = await db
+        .select({ id: chats.id })
+        .from(chats)
+        .where(eq(chats.appId, appId));
+      await Promise.all(
+        appChats.map(({ id: chatId }) => userInputRegistry.settleChat(chatId)),
+      );
       await db.delete(apps).where(eq(apps.id, appId));
       // Note: Associated chats will cascade delete
     } catch (error: any) {
@@ -1464,6 +1472,7 @@ export function registerAppHandlers() {
     // To resolve app paths later
     const basePath = getDyadAppsBaseDirectory();
     logger.log("deleting database...");
+    await userInputRegistry.settleAll();
     // 1. Drop the database by closing the singleton and deleting SQLite files
     const dbFilePaths = getDatabaseFilePaths();
     closeDatabase();

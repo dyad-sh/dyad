@@ -155,16 +155,16 @@ describe("machine trace observer", () => {
 
   it("keeps aggregate trace retention bounded across entity keys", () => {
     const machine = machineName("total-cap");
-    for (let key = 0; key < 101; key += 1) {
-      const observer = createTraceObserver<number, number, never>(machine, key);
-      for (let event = 0; event < 100; event += 1) {
-        observer.onTransitionApplied?.({
-          previous: event,
-          event,
-          state: event + 1,
-          commands: [],
-        });
-      }
+    for (let key = 0; key < 10_100; key += 1) {
+      createTraceObserver<number, number, never>(
+        machine,
+        key,
+      ).onTransitionApplied?.({
+        previous: 0,
+        event: key,
+        state: 1,
+        commands: [],
+      });
     }
 
     expect(getTraceLog(machine)).toHaveLength(10_000);

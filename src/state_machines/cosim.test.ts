@@ -316,15 +316,15 @@ describe("interleaving co-simulation", () => {
     ]);
   });
 
-  it("isolates the search from mutations in caller snapshots", () => {
-    const initialState = { value: 0 };
-    const result = runCosim<
-      "participant",
-      never,
-      { value: number },
-      "advance",
-      "finish"
-    >({
+  it("freezes caller snapshots without narrowing generic values", () => {
+    class State {
+      readonly callback = () => this.value;
+
+      constructor(readonly value: number) {}
+    }
+
+    const initialState = new State(0);
+    const result = runCosim<"participant", never, State, "advance", "finish">({
       participants: {
         participant: {
           initialState,
@@ -333,7 +333,7 @@ describe("interleaving co-simulation", () => {
           commandKey: (command) => command,
           transition: (state) => ({
             kind: "applied",
-            state: { value: state.value + 1 },
+            state: new State(state.value + 1),
             commands: ["finish"],
           }),
         },
@@ -347,32 +347,67 @@ describe("interleaving co-simulation", () => {
             participant: "participant",
             event: "advance",
             enabled: (snapshot) => {
-              snapshot.participants.participant.value = 99;
+              expect(snapshot.participants.participant).toBeInstanceOf(State);
+              expect(snapshot.participants.participant.callback()).toBe(0);
+              expect(() => {
+                (
+                  snapshot.participants.participant as {
+                    value: number;
+                  }
+                ).value = 99;
+              }).toThrow(TypeError);
               return true;
             },
           },
         ],
         routeCommand: (_source, snapshot) => {
-          snapshot.participants.participant.value = 99;
+          expect(snapshot.participants.participant).toBeInstanceOf(State);
+          expect(() => {
+            (
+              snapshot.participants.participant as {
+                value: number;
+              }
+            ).value = 99;
+          }).toThrow(TypeError);
           return [];
         },
       },
       assertions: {
         perStep: (step) => {
-          step.snapshot.participants.participant.value = 99;
+          expect(() => {
+            (
+              step.snapshot.participants.participant as {
+                value: number;
+              }
+            ).value = 99;
+          }).toThrow(TypeError);
           if (step.transitions[0]) {
-            step.transitions[0].result.state.value = 99;
+            expect(() => {
+              (
+                step.transitions[0].result.state as {
+                  value: number;
+                }
+              ).value = 99;
+            }).toThrow(TypeError);
           }
         },
         atQuiescence: (snapshot) => {
           expect(snapshot.participants.participant.value).toBe(1);
-          snapshot.participants.participant.value = 99;
+          expect(snapshot.participants.participant).toBeInstanceOf(State);
+          expect(() => {
+            (
+              snapshot.participants.participant as {
+                value: number;
+              }
+            ).value = 99;
+          }).toThrow(TypeError);
         },
       },
     });
 
     expect(result.failure).toBeUndefined();
-    expect(initialState).toEqual({ value: 0 });
+    expect(initialState.value).toBe(0);
+    expect(Object.isFrozen(initialState)).toBe(true);
   });
 
   it("rejects a transition result without state before exploring it", () => {

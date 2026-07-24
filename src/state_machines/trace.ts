@@ -85,23 +85,28 @@ function compareEntries(
 function evictOldestEntry(): void {
   let oldest:
     | {
+        rings: Map<TraceKey, MachineTraceEntry[]>;
+        key: TraceKey;
         entries: MachineTraceEntry[];
         entry: MachineTraceEntry;
       }
     | undefined;
   for (const rings of logs.values()) {
-    for (const entries of rings.values()) {
+    for (const [key, entries] of rings) {
       const entry = entries[0];
       if (
         entry !== undefined &&
         (oldest === undefined || compareEntries(entry, oldest.entry) < 0)
       ) {
-        oldest = { entries, entry };
+        oldest = { rings, key, entries, entry };
       }
     }
   }
   if (oldest !== undefined) {
     oldest.entries.shift();
+    if (oldest.entries.length === 0) {
+      oldest.rings.delete(oldest.key);
+    }
     totalEntries -= 1;
   }
 }

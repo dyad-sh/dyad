@@ -112,8 +112,9 @@ Background and before/after examples of why this pattern exists:
   separate invocation ID and test two entities with the same generation.
 - Cross-lifetime operations use `InvocationRef` from `src/state_machines/`,
   minted by the injected `IdSource` at the authoritative start boundary and
-  echoed through every available correlation boundary. Registry claims must
-  use the shared ref-enforcing helper; untaggable sources require a documented
+  echoed through every available correlation boundary. Registry claims use
+  `InvocationRegistry.claim(ref)`. When a source cannot echo the ref, use
+  `InvocationRegistry.claimStructurally(...)` with a documented
   structural-safety note at the claim site.
 - Correlation identity and durable idempotency identity are separate contracts.
   Name which property each boundary relies on even when a protocol deliberately
@@ -229,3 +230,10 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   quiescent leaves. If one orthogonal action (for example quit at every phase)
   causes a bound hit, split it into a focused exhaustive alphabet instead of
   raising the bound and slowing the primary scenario.
+- Treat snapshots passed to `runCosim` callbacks as frozen immutable views.
+  Do not mutate them, and do not replace the generic callback contract with a
+  serialization-based clone that rejects valid domain values or loses
+  prototypes.
+- Key-aware debug retention must bound both entry payloads and per-key
+  metadata. When aggregate eviction empties a key's ring, prune the ring so
+  one-shot entity IDs cannot accumulate forever.

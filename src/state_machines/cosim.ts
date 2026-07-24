@@ -170,8 +170,25 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function cloneForCallback<Value>(value: Value): Value {
-  return structuredClone(value);
+function freezeForCallback<Value>(value: Value): Value {
+  const seen = new WeakSet<object>();
+  const freeze = (current: unknown): void => {
+    if (
+      (typeof current !== "object" && typeof current !== "function") ||
+      current === null ||
+      seen.has(current)
+    ) {
+      return;
+    }
+    seen.add(current);
+    for (const key of Reflect.ownKeys(current)) {
+      const descriptor = Object.getOwnPropertyDescriptor(current, key);
+      if (descriptor && "value" in descriptor) freeze(descriptor.value);
+    }
+    Object.freeze(current);
+  };
+  freeze(value);
+  return value;
 }
 
 function formatFailure(
@@ -276,7 +293,7 @@ export function runCosim<
   const snapshot = (
     configuration: Config,
   ): CosimSnapshot<ParticipantName, ChannelName, State, Event, Command> =>
-    cloneForCallback({
+    freezeForCallback({
       participants: configuration.states,
       channels: configuration.channels,
       pendingCommands: configuration.commands,
@@ -576,7 +593,7 @@ export function runCosim<
       let invariantFailed = false;
       for (const assertion of assertions(options.assertions?.perStep)) {
         try {
-          assertion(cloneForCallback(applied.step));
+          assertion(freezeForCallback(applied.step));
         } catch (error) {
           invariantFailed = true;
           failure = preferFailure(

@@ -57,7 +57,7 @@ function defaultDescription(value: unknown): unknown {
   if ("status" in value && typeof value.status === "string") {
     return value.status;
   }
-  return "[redacted object]";
+  return value;
 }
 
 function ensureMachine(machine: string): MachineTraceEntry[] {
@@ -180,7 +180,9 @@ export function createReplayTraceObserver<
           outcome: {
             kind: "applied",
             stateKey: serialization.stateKey(state),
-            commands: commands.map(serialization.describeCommand),
+            commands: commands.map((command) =>
+              serialization.describeCommand(command),
+            ),
           },
         });
       },
@@ -208,7 +210,7 @@ declare global {
   }
 }
 
-if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
+if (typeof window !== "undefined") {
   window.__dyadMachines = {
     get index() {
       return [...machineIndex];

@@ -416,31 +416,39 @@ export function replayTrace<State, Event, Command, SerializedEvent>(options: {
     );
   }
   let state = options.initialState;
+  const replayedEvents: Event[] = [];
   for (let index = 0; index < options.trace.entries.length; index += 1) {
     const entry = options.trace.entries[index];
-    const event = options.serialization.deserializeEvent(entry.event);
-    const result = options.transition(state, event);
-    validateTransitionResult(state, event, result, []);
-    const actual =
-      result.kind === "ignored"
-        ? {
-            kind: result.kind,
-            reason: result.reason,
-            stateKey: options.serialization.stateKey(result.state),
-          }
-        : {
-            kind: result.kind,
-            stateKey: options.serialization.stateKey(result.state),
-            commands: result.commands.map(
-              options.serialization.describeCommand,
-            ),
-          };
-    if (!valuesAreEqual(actual, entry.outcome)) {
-      throw new Error(
-        `Replay diverged at prefix ${index + 1}: expected ${describe(entry.outcome)}, received ${describe(actual)}`,
-      );
+    try {
+      const event = options.serialization.deserializeEvent(entry.event);
+      const result = options.transition(state, event);
+      validateTransitionResult(state, event, result, replayedEvents);
+      const actual =
+        result.kind === "ignored"
+          ? {
+              kind: result.kind,
+              reason: result.reason,
+              stateKey: options.serialization.stateKey(result.state),
+            }
+          : {
+              kind: result.kind,
+              stateKey: options.serialization.stateKey(result.state),
+              commands: result.commands.map((command) =>
+                options.serialization.describeCommand(command),
+              ),
+            };
+      if (!valuesAreEqual(actual, entry.outcome)) {
+        throw new Error(
+          `expected ${describe(entry.outcome)}, received ${describe(actual)}`,
+        );
+      }
+      state = result.state;
+      replayedEvents.push(event);
+    } catch (error) {
+      const detail =
+        error instanceof Error ? error.message : `threw ${describe(error)}`;
+      throw new Error(`Replay diverged at prefix ${index + 1}: ${detail}`);
     }
-    state = result.state;
   }
   return state;
 }

@@ -11,7 +11,12 @@ import {
   createTraceObserver,
   getTraceLog,
 } from "./trace";
-import { observeTransition } from "./types";
+import {
+  change,
+  observeTransition,
+  stay,
+  type TransitionResult,
+} from "./types";
 import { replayTrace } from "./testing";
 
 let sequence = 0;
@@ -82,20 +87,24 @@ describe("machine trace observer", () => {
     ]);
   });
 
-  it("redacts untagged objects from production-safe debug traces", () => {
-    const machine = machineName("redacted");
+  it("preserves the existing debug description for untagged objects", () => {
+    const machine = machineName("untagged");
     const observer = createTraceObserver<object, object, object>(machine);
+    const previous = { secret: "before" };
+    const event = { secret: "event" };
+    const state = { secret: "after" };
+    const command = { secret: "command" };
     observer.onTransitionApplied?.({
-      previous: { secret: "before" },
-      event: { secret: "event" },
-      state: { secret: "after" },
-      commands: [{ secret: "command" }],
+      previous,
+      event,
+      state,
+      commands: [command],
     });
     expect(getTraceLog(machine)[0]).toMatchObject({
-      from: "[redacted object]",
-      event: "[redacted object]",
-      to: "[redacted object]",
-      commands: ["[redacted object]"],
+      from: previous,
+      event,
+      to: state,
+      commands: [command],
     });
   });
 
@@ -171,6 +180,43 @@ describe("machine trace observer", () => {
     expect(replayed).toEqual(state);
   });
 
+  it("preserves a method-based command serializer receiver", () => {
+    const serialization = {
+      schemaVersion: 3,
+      serializeEvent(event: string) {
+        return event;
+      },
+      deserializeEvent(event: string) {
+        return event;
+      },
+      stateKey: String,
+      describeCommand(command: string) {
+        return `${this.schemaVersion}:${command}`;
+      },
+    };
+    const replay = createReplayTraceObserver(serialization);
+    replay.observer.onTransitionApplied?.({
+      previous: 0,
+      event: "run",
+      state: 0,
+      commands: ["launch"],
+    });
+
+    expect(replay.getTrace().entries[0].outcome).toEqual({
+      kind: "applied",
+      stateKey: "0",
+      commands: ["3:launch"],
+    });
+    expect(
+      replayTrace({
+        initialState: 0,
+        trace: replay.getTrace(),
+        serialization,
+        transition: (state) => stay(state, ["launch"]),
+      }),
+    ).toBe(0);
+  });
+
   it("reports the shortest divergent replay prefix", () => {
     expect(() =>
       replayTrace({
@@ -225,5 +271,80 @@ describe("machine trace observer", () => {
       }),
     ).toThrow(/schema version 2/);
     expect(transitionSpy).not.toHaveBeenCalled();
+  });
+
+  it("reports the shortest prefix when replay execution throws", () => {
+    expect(() =>
+      replayTrace({
+        initialState: 0,
+        trace: {
+          schemaVersion: 1,
+          entries: [
+            {
+              event: "advance",
+              outcome: { kind: "applied", stateKey: "1", commands: [] },
+            },
+            {
+              event: "explode",
+              outcome: { kind: "applied", stateKey: "2", commands: [] },
+            },
+          ],
+        },
+        serialization: {
+          schemaVersion: 1,
+          serializeEvent: (event: string) => event,
+          deserializeEvent: (event: string) => event,
+          stateKey: String,
+          describeCommand: (command: never) => command,
+        },
+        transition: (state, event) => {
+          if (event === "explode") throw new Error("transition failed");
+          return change(state + 1);
+        },
+      }),
+    ).toThrow(/prefix 2: transition failed/);
+  });
+
+  it("reports the shortest prefix for an invalid replay result", () => {
+    expect(() =>
+      replayTrace({
+        initialState: 0,
+        trace: {
+          schemaVersion: 1,
+          entries: [
+            {
+              event: "advance",
+              outcome: { kind: "applied", stateKey: "1", commands: [] },
+            },
+            {
+              event: "invalid",
+              outcome: {
+                kind: "ignored",
+                reason: "invalid",
+                stateKey: "1",
+              },
+            },
+          ],
+        },
+        serialization: {
+          schemaVersion: 1,
+          serializeEvent: (event: string) => event,
+          deserializeEvent: (event: string) => event,
+          stateKey: String,
+          describeCommand: (command: never) => command,
+        },
+        transition: (state, event) =>
+          event === "invalid"
+            ? ({
+                kind: "ignored",
+                state,
+                reason: "invalid",
+                commands: ["invalid"],
+              } as unknown as TransitionResult<number, never, "invalid">)
+            : change(state + 1),
+      }),
+    ).toThrow(
+      /prefix 2:[\s\S]*Ignored transitions must not emit commands[\s\S]*Explored path: \["advance"\]/,
+    );
   });
 });

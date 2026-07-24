@@ -44,7 +44,7 @@ import { useVersionPreview } from "@/hooks/useVersionPreview";
 import { isPaneVisibleState } from "@/version_preview/state";
 import { useChatStreamState } from "@/hooks/useChatStream";
 import { useStreamFinished } from "@/chat_stream/ChatStreamProvider";
-import { streamGeneration } from "@/chat_stream/transition";
+import { streamInvocationRef } from "@/chat_stream/transition";
 
 const TerminalPanel = lazy(() => import("./chat/TerminalPanel"));
 
@@ -140,7 +140,9 @@ export function ChatPanel({
   }, [scrollToBottom]);
 
   // Scroll to bottom when a new stream starts (user sent a message)
-  const streamCount = streamState ? streamGeneration(streamState) : 0;
+  const streamOperationId = streamState
+    ? (streamInvocationRef(streamState)?.operationId ?? "")
+    : "";
   const messages = chatId ? (messagesById.get(chatId) ?? []) : [];
   const streamError = chatId ? (chatErrorById.get(chatId) ?? null) : null;
   const isTerminalOpen = chatId
@@ -176,7 +178,7 @@ export function ChatPanel({
     }
     // Note: if isChatSwitch && messages.length === 0, we don't scroll yet.
     // The messages will be fetched and this effect will re-run with messages.length > 0.
-  }, [chatId, streamCount, messages.length, scrollToBottom]);
+  }, [chatId, streamOperationId, messages.length, scrollToBottom]);
 
   useEffect(() => {
     if (

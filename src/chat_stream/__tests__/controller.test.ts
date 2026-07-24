@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { ChatResponseEnd } from "@/ipc/types";
 import type { TransitionObserver } from "@/state_machines/types";
+import { createSequentialIdSource } from "@/state_machines/testing";
+import type { IdSource } from "@/state_machines/clock";
 
 import type { ChatStreamCommands } from "../commands";
 import { createChatStreamController } from "../controller";
@@ -12,8 +14,10 @@ import type {
   StreamRequest,
   StreamState,
 } from "../state";
+import { makeChatStreamRef } from "./test_refs";
 
 const CHAT_ID = 42;
+const ref = (index: number) => makeChatStreamRef(index, CHAT_ID);
 
 function makeRequest(overrides: Partial<StreamRequest> = {}): StreamRequest {
   return { prompt: "hello", chatId: CHAT_ID, ...overrides };
@@ -60,8 +64,8 @@ function createFakeCommands() {
   const endDeferreds: Deferred[] = [];
 
   const commands: ChatStreamCommands = {
-    startStream: vi.fn(async ({ streamId }) => {
-      log.push(`startStream:${streamId}`);
+    startStream: vi.fn(async ({ invocationRef }) => {
+      log.push(`startStream:${invocationRef.operationId}`);
       const d = deferred();
       startDeferreds.push(d);
       return d.promise;
@@ -72,11 +76,11 @@ function createFakeCommands() {
     requestAbort: vi.fn(() => {
       log.push("requestAbort");
     }),
-    releaseTransport: vi.fn(({ streamId }) => {
-      log.push(`releaseTransport:${streamId}`);
+    releaseTransport: vi.fn(({ invocationRef }) => {
+      log.push(`releaseTransport:${invocationRef.operationId}`);
     }),
-    runEndSideEffects: vi.fn(({ streamId }) => {
-      log.push(`runEnd:${streamId}`);
+    runEndSideEffects: vi.fn(({ invocationRef }) => {
+      log.push(`runEnd:${invocationRef.operationId}`);
       const d = deferred();
       endDeferreds.push(d);
       return d.promise;
@@ -101,9 +105,11 @@ function createController(
     StreamCommand,
     ChatStreamIgnoreReason
   >,
+  idSource: IdSource = createSequentialIdSource(),
 ) {
   const controller = createChatStreamController({
     chatId: CHAT_ID,
+    idSource,
     getCommands: () => fake.commands,
     observer,
   });
@@ -111,6 +117,51 @@ function createController(
 }
 
 describe("chat stream controller", () => {
+  it("rejects a terminal payload from a disposed controller lifetime", () => {
+    const ids = createSequentialIdSource();
+    const old = createController(createFakeCommands(), undefined, ids);
+    old.controller.send({ type: "submit", request: makeRequest() });
+    old.controller.dispose();
+
+    const observer = {
+      onEventIgnored: vi.fn(),
+    } satisfies TransitionObserver<
+      StreamState,
+      StreamEvent,
+      StreamCommand,
+      ChatStreamIgnoreReason
+    >;
+    const replacement = createController(createFakeCommands(), observer, ids);
+    replacement.controller.send({ type: "submit", request: makeRequest() });
+
+    replacement.controller.send({
+      type: "stream-ended",
+      invocationRef: ref(1),
+      response: endResponse(),
+    });
+
+    expect(observer.onEventIgnored).toHaveBeenLastCalledWith({
+      state: expect.objectContaining({
+        type: "starting",
+        invocationRef: ref(2),
+      }),
+      event: {
+        type: "stream-ended",
+        invocationRef: ref(1),
+        response: endResponse(),
+      },
+      reason: "stale-stream-id",
+    });
+    expect(replacement.controller.getSnapshot()).toEqual(
+      expect.objectContaining({
+        type: "starting",
+        invocationRef: ref(2),
+      }),
+    );
+
+    replacement.controller.dispose();
+  });
+
   it("reports applied and ignored events without conflating command-only transitions", () => {
     const observer = {
       onTransitionApplied: vi.fn(),
@@ -125,7 +176,7 @@ describe("chat stream controller", () => {
 
     controller.send({ type: "cancel" });
     expect(observer.onEventIgnored).toHaveBeenCalledExactlyOnceWith({
-      state: { type: "idle", lastStreamId: 0 },
+      state: { type: "idle" },
       event: { type: "cancel" },
       reason: "no-active-stream",
     });
@@ -171,16 +222,19 @@ describe("chat stream controller", () => {
     expect(onSettled).toHaveBeenCalledExactlyOnceWith({ success: false });
     expect(commands.syncProjection).toHaveBeenLastCalledWith({
       chatId: CHAT_ID,
-      state: { type: "idle", lastStreamId: 1 },
+      state: { type: "idle" },
     });
     expect(commands.releaseTransport).toHaveBeenCalledExactlyOnceWith({
       chatId: CHAT_ID,
-      streamId: 1,
+      invocationRef: ref(1),
     });
 
     controller.send({ type: "registered" });
     expect(observer.onEventIgnored).toHaveBeenLastCalledWith({
-      state: expect.objectContaining({ type: "starting", streamId: 1 }),
+      state: expect.objectContaining({
+        type: "starting",
+        invocationRef: ref(1),
+      }),
       event: { type: "registered" },
       reason: "no-active-stream",
     });
@@ -190,7 +244,7 @@ describe("chat stream controller", () => {
     expect(commands.releaseTransport).toHaveBeenCalledTimes(2);
     expect(commands.releaseTransport).toHaveBeenLastCalledWith({
       chatId: CHAT_ID,
-      streamId: 1,
+      invocationRef: ref(1),
     });
   });
 
@@ -209,7 +263,7 @@ describe("chat stream controller", () => {
 
     controller.send({
       type: "stream-ended",
-      streamId: 1,
+      invocationRef: ref(1),
       response: endResponse(),
     });
     await flush();
@@ -219,7 +273,7 @@ describe("chat stream controller", () => {
 
     endDeferreds[0].resolve();
     await flush();
-    expect(controller.getSnapshot()).toEqual({ type: "idle", lastStreamId: 1 });
+    expect(controller.getSnapshot()).toEqual({ type: "idle" });
     expect(commands.dispatchNextQueued).toHaveBeenCalledTimes(1);
     expect(controller.isSettled()).toBe(true);
   });
@@ -234,11 +288,15 @@ describe("chat stream controller", () => {
 
     controller.send({
       type: "stream-ended",
-      streamId: 1,
+      invocationRef: ref(1),
       response: endResponse(),
     });
-    controller.send({ type: "finalize-complete", streamId: 1, ok: true });
-    expect(firstStart.isStale()).toBe(false);
+    controller.send({
+      type: "finalize-complete",
+      invocationRef: ref(1),
+      ok: true,
+    });
+    expect(firstStart.isStale()).toBe(true);
 
     controller.send({ type: "submit", request: makeRequest() });
     expect(firstStart.isStale()).toBe(true);
@@ -283,10 +341,14 @@ describe("chat stream controller", () => {
     // Stale events from a different generation never advance the machine.
     controller.send({
       type: "stream-ended",
-      streamId: 999,
+      invocationRef: ref(999),
       response: endResponse(),
     });
-    controller.send({ type: "stream-errored", streamId: 999, error: "old" });
+    controller.send({
+      type: "stream-errored",
+      invocationRef: ref(999),
+      error: "old",
+    });
     await flush();
     expect(controller.getSnapshot().type).toBe("streaming");
     expect(commands.runEndSideEffects).not.toHaveBeenCalled();
@@ -295,7 +357,7 @@ describe("chat stream controller", () => {
     // Complete for real, then replay the same terminal event: ignored.
     controller.send({
       type: "stream-ended",
-      streamId: 1,
+      invocationRef: ref(1),
       response: endResponse(),
     });
     await flush();
@@ -305,7 +367,7 @@ describe("chat stream controller", () => {
 
     controller.send({
       type: "stream-ended",
-      streamId: 1,
+      invocationRef: ref(1),
       response: endResponse(),
     });
     await flush();
@@ -333,14 +395,14 @@ describe("chat stream controller", () => {
     // cancelled turn.
     controller.send({
       type: "stream-ended",
-      streamId: 1,
+      invocationRef: ref(1),
       response: endResponse(true),
     });
     await flush();
     expect(commands.runEndSideEffects).toHaveBeenCalledTimes(1);
     endDeferreds[0].resolve();
     await flush();
-    expect(controller.getSnapshot()).toEqual({ type: "idle", lastStreamId: 1 });
+    expect(controller.getSnapshot()).toEqual({ type: "idle" });
     expect(commands.dispatchNextQueued).not.toHaveBeenCalled();
   });
 
@@ -366,14 +428,14 @@ describe("chat stream controller", () => {
     // The terminal event of the now-aborted stream finalizes exactly once.
     controller.send({
       type: "stream-ended",
-      streamId: 1,
+      invocationRef: ref(1),
       response: endResponse(true),
     });
     await flush();
     expect(commands.runEndSideEffects).toHaveBeenCalledTimes(1);
     endDeferreds[0].resolve();
     await flush();
-    expect(controller.getSnapshot()).toEqual({ type: "idle", lastStreamId: 1 });
+    expect(controller.getSnapshot()).toEqual({ type: "idle" });
     expect(commands.dispatchNextQueued).not.toHaveBeenCalled();
   });
 
@@ -387,7 +449,7 @@ describe("chat stream controller", () => {
     controller.send({ type: "registered" });
     controller.send({
       type: "stream-ended",
-      streamId: 1,
+      invocationRef: ref(1),
       response: endResponse(),
     });
     await flush();
@@ -403,7 +465,7 @@ describe("chat stream controller", () => {
 
     endDeferreds[0].resolve();
     await flush();
-    const runEndIndex = log.indexOf("runEnd:1");
+    const runEndIndex = log.indexOf("runEnd:chat-stream:1");
     const enqueueIndex = log.indexOf("enqueue:during-finalize");
     expect(runEndIndex).toBeGreaterThanOrEqual(0);
     expect(enqueueIndex).toBeGreaterThan(runEndIndex);
@@ -418,14 +480,14 @@ describe("chat stream controller", () => {
     startDeferreds[0].resolve();
     controller.send({
       type: "stream-ended",
-      streamId: 1,
+      invocationRef: ref(1),
       response: endResponse(),
     });
     await flush();
     endDeferreds[0].reject(new Error("finalize exploded"));
     await flush();
 
-    expect(controller.getSnapshot()).toEqual({ type: "idle", lastStreamId: 1 });
+    expect(controller.getSnapshot()).toEqual({ type: "idle" });
     expect(commands.dispatchNextQueued).not.toHaveBeenCalled();
   });
 
@@ -467,7 +529,7 @@ describe("chat stream controller", () => {
     startDeferreds[0].resolve();
     controller.send({
       type: "stream-ended",
-      streamId: 1,
+      invocationRef: ref(1),
       response: endResponse(),
     });
     await flush();
@@ -478,7 +540,7 @@ describe("chat stream controller", () => {
     expect(commands.startStream).toHaveBeenCalledTimes(2);
     expect(commands.startStream).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        streamId: 2,
+        invocationRef: ref(2),
         request: expect.objectContaining({ prompt: "from-queue" }),
       }),
     );
@@ -500,7 +562,7 @@ describe("chat stream controller", () => {
 
     expect(seen).toEqual(["starting", "streaming"]);
     // Old snapshots are never mutated in place.
-    expect(snapshotBefore).toEqual({ type: "idle", lastStreamId: 0 });
+    expect(snapshotBefore).toEqual({ type: "idle" });
 
     unsubscribe();
     controller.send({ type: "cancel" });

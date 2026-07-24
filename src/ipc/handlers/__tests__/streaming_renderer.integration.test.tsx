@@ -89,7 +89,7 @@ describe("streaming renderer (integration)", () => {
     await waitFor(() => expect(screen.queryByText("Writing...")).toBeNull());
   }, 60_000);
 
-  it("echoes one stream generation through registration, chunks, and completion", async () => {
+  it("echoes one invocation ref through registration, chunks, and completion", async () => {
     const chatId = await harness.createChat();
     harness.mount({ chatId });
     const eventStart = harness.bridge.sentEvents.length;
@@ -112,15 +112,29 @@ describe("streaming renderer (integration)", () => {
           "chat:response:end",
         ].includes(event.channel),
       )
-      .map((event) => event.args[0] as { chatId?: number; streamId?: number })
+      .map(
+        (event) =>
+          event.args[0] as {
+            chatId?: number;
+            invocationRef?: {
+              kind: string;
+              entityKey: number;
+              operationId: string;
+            };
+          },
+      )
       .filter((payload) => payload.chatId === chatId);
 
-    expect(payloads.some((payload) => payload.streamId !== undefined)).toBe(
-      true,
-    );
-    expect(new Set(payloads.map((payload) => payload.streamId)).size).toBe(1);
+    expect(payloads.length).toBeGreaterThan(0);
+    expect(payloads.every((payload) => payload.invocationRef)).toBe(true);
     expect(
-      payloads.every((payload) => typeof payload.streamId === "number"),
-    ).toBe(true);
+      new Set(payloads.map((payload) => JSON.stringify(payload.invocationRef)))
+        .size,
+    ).toBe(1);
+    expect(payloads[0]?.invocationRef).toMatchObject({
+      kind: "chat-stream",
+      entityKey: chatId,
+      operationId: expect.any(String),
+    });
   }, 60_000);
 });

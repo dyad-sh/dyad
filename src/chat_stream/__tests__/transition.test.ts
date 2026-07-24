@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { TransitionResult } from "@/state_machines/types";
+import { sameInvocationRef } from "@/state_machines/invocation_ref";
 import {
   assertAllCommandsProducible,
   assertAllStatesReachable,
@@ -15,14 +16,16 @@ import type {
   StreamRequest,
   StreamState,
 } from "../state";
+import { makeChatStreamRef } from "./test_refs";
 import {
   initialStreamState,
   isStreamActive,
-  streamGeneration,
+  streamInvocationRef,
   transition,
 } from "../transition";
 
 const CHAT_ID = 7;
+const ref = (index: number) => makeChatStreamRef(index, CHAT_ID);
 const STATE_KINDS = [
   "idle",
   "starting",
@@ -53,63 +56,71 @@ function endResponse(wasCancelled?: boolean) {
 }
 
 const STATE_FACTORIES: Record<StreamState["type"], () => StreamState> = {
-  idle: () => ({ type: "idle", lastStreamId: 3 }),
+  idle: () => ({ type: "idle" }),
   starting: () => ({
     type: "starting",
-    streamId: 4,
+    invocationRef: ref(4),
     request: makeRequest(),
     targetAppId: null,
   }),
   streaming: () => ({
     type: "streaming",
-    streamId: 4,
+    invocationRef: ref(4),
     request: makeRequest(),
     targetAppId: null,
   }),
   cancelling: () => ({
     type: "cancelling",
-    streamId: 4,
+    invocationRef: ref(4),
     request: makeRequest(),
     registered: false,
     targetAppId: null,
   }),
   finalizing: () => ({
     type: "finalizing",
-    streamId: 4,
+    invocationRef: ref(4),
     request: makeRequest(),
     wasCancelled: false,
     targetAppId: null,
   }),
-  errored: () => ({ type: "errored", lastStreamId: 4, error: "boom" }),
+  errored: () => ({ type: "errored", error: "boom" }),
 };
 
-/** Representative payloads for every event type. Events that carry a streamId
+/** Representative payloads for every event type. Events that carry a invocationRef
  * get both a matching (4) and a stale (999) variant. */
 function eventVariants(): StreamEvent[] {
   return [
-    { type: "submit", request: makeRequest({ prompt: "queued" }) },
+    {
+      type: "submit",
+      invocationRef: ref(5),
+      request: makeRequest({ prompt: "queued" }),
+    },
     { type: "cancel" },
     { type: "registered" },
-    { type: "stream-context", streamId: 4, targetAppId: 9 },
-    { type: "stream-context", streamId: 999, targetAppId: 9 },
-    { type: "chunk-received", streamId: 4 },
-    { type: "chunk-received", streamId: 999 },
-    { type: "stream-ended", streamId: 4, response: endResponse() },
-    { type: "stream-ended", streamId: 4, response: endResponse(true) },
-    { type: "stream-ended", streamId: 999, response: endResponse() },
-    { type: "stream-errored", streamId: 4, error: "kaput" },
-    { type: "stream-errored", streamId: 999, error: "kaput" },
-    { type: "finalize-complete", streamId: 4, ok: true },
-    { type: "finalize-complete", streamId: 4, ok: false },
-    { type: "finalize-complete", streamId: 999, ok: true },
+    { type: "stream-context", invocationRef: ref(4), targetAppId: 9 },
+    { type: "stream-context", invocationRef: ref(999), targetAppId: 9 },
+    { type: "chunk-received", invocationRef: ref(4) },
+    { type: "chunk-received", invocationRef: ref(999) },
+    { type: "stream-ended", invocationRef: ref(4), response: endResponse() },
+    {
+      type: "stream-ended",
+      invocationRef: ref(4),
+      response: endResponse(true),
+    },
+    { type: "stream-ended", invocationRef: ref(999), response: endResponse() },
+    { type: "stream-errored", invocationRef: ref(4), error: "kaput" },
+    { type: "stream-errored", invocationRef: ref(999), error: "kaput" },
+    { type: "finalize-complete", invocationRef: ref(4), ok: true },
+    { type: "finalize-complete", invocationRef: ref(4), ok: false },
+    { type: "finalize-complete", invocationRef: ref(999), ok: true },
     { type: "queue-poked" },
   ];
 }
 
 function reachabilityEvents(state: StreamState): StreamEvent[] {
-  const streamId = streamGeneration(state);
+  const invocationRef = streamInvocationRef(state) ?? ref(5);
   return eventVariants().map((event) =>
-    "streamId" in event ? { ...event, streamId } : event,
+    "invocationRef" in event ? { ...event, invocationRef } : event,
   );
 }
 
@@ -131,14 +142,14 @@ const ALL_IGNORE_REASONS = new Set<ChatStreamIgnoreReason>([
   "too-late-to-cancel",
 ]);
 
-describe("streamGeneration", () => {
-  it("selects the active or last terminal generation", () => {
-    expect(streamGeneration(STATE_FACTORIES.idle())).toBe(3);
-    expect(streamGeneration(STATE_FACTORIES.starting())).toBe(4);
-    expect(streamGeneration(STATE_FACTORIES.streaming())).toBe(4);
-    expect(streamGeneration(STATE_FACTORIES.cancelling())).toBe(4);
-    expect(streamGeneration(STATE_FACTORIES.finalizing())).toBe(4);
-    expect(streamGeneration(STATE_FACTORIES.errored())).toBe(4);
+describe("streamInvocationRef", () => {
+  it("selects the active operation and omits terminal states", () => {
+    expect(streamInvocationRef(STATE_FACTORIES.idle())).toBeUndefined();
+    expect(streamInvocationRef(STATE_FACTORIES.starting())).toEqual(ref(4));
+    expect(streamInvocationRef(STATE_FACTORIES.streaming())).toEqual(ref(4));
+    expect(streamInvocationRef(STATE_FACTORIES.cancelling())).toEqual(ref(4));
+    expect(streamInvocationRef(STATE_FACTORIES.finalizing())).toEqual(ref(4));
+    expect(streamInvocationRef(STATE_FACTORIES.errored())).toBeUndefined();
   });
 });
 
@@ -179,12 +190,10 @@ function checkInvariants(
           true,
         );
         expect(event.type, label).toBe("submit");
-        // The new generation is strictly monotonic.
-        expect(command.streamId, label).toBeGreaterThan(
-          prev.type === "idle" || prev.type === "errored"
-            ? prev.lastStreamId
-            : -1,
-        );
+        expect(event.type, label).toBe("submit");
+        if (event.type === "submit") {
+          expect(command.invocationRef, label).toEqual(event.invocationRef);
+        }
         break;
       case "enqueue-message":
         // Submissions while a stream is in flight are queued, never dropped.
@@ -215,11 +224,13 @@ function checkInvariants(
     }
   }
 
-  // A stale streamId event never advances state nor emits commands.
+  // A stale invocationRef event never advances state nor emits commands.
   if (
-    "streamId" in event &&
-    "streamId" in prev &&
-    event.streamId !== prev.streamId
+    event.type !== "submit" &&
+    "invocationRef" in event &&
+    "invocationRef" in prev &&
+    event.invocationRef !== undefined &&
+    !sameInvocationRef(event.invocationRef, prev.invocationRef)
   ) {
     expect(result.state, label).toBe(prev);
     expect(commandsOf(result), label).toEqual([]);
@@ -291,9 +302,9 @@ describe("transition totality", () => {
     expect(step(idle, { type: "registered" }).state).toBe(idle);
 
     const streaming = STATE_FACTORIES.streaming();
-    expect(step(streaming, { type: "chunk-received", streamId: 4 }).state).toBe(
-      streaming,
-    );
+    expect(
+      step(streaming, { type: "chunk-received", invocationRef: ref(4) }).state,
+    ).toBe(streaming);
     expect(step(streaming, { type: "registered" }).state).toBe(streaming);
   });
 });
@@ -302,11 +313,12 @@ describe("happy path", () => {
   it("walks idle -> starting -> streaming -> finalizing -> idle", () => {
     let result = step(initialStreamState(), {
       type: "submit",
+      invocationRef: ref(1),
       request: makeRequest(),
     });
     expect(result.state.type).toBe("starting");
     expect(commandsOf(result)).toEqual([
-      { type: "start-stream", streamId: 1, request: makeRequest() },
+      { type: "start-stream", invocationRef: ref(1), request: makeRequest() },
     ]);
     expect(isStreamActive(result.state)).toBe(true);
 
@@ -315,7 +327,7 @@ describe("happy path", () => {
 
     result = step(result.state, {
       type: "stream-ended",
-      streamId: 1,
+      invocationRef: ref(1),
       response: endResponse(),
     });
     expect(result.state.type).toBe("finalizing");
@@ -324,21 +336,24 @@ describe("happy path", () => {
 
     result = step(result.state, {
       type: "finalize-complete",
-      streamId: 1,
+      invocationRef: ref(1),
       ok: true,
     });
-    expect(result.state).toEqual({ type: "idle", lastStreamId: 1 });
-    expect(commandsOf(result)).toEqual([{ type: "dispatch-next-queued" }]);
+    expect(result.state).toEqual({ type: "idle" });
+    expect(commandsOf(result)).toEqual([
+      { type: "dispatch-next-queued", invocationRef: ref(1) },
+    ]);
   });
 
   it("retains resolved stream context across registration and terminal commands", () => {
     let result = step(initialStreamState(), {
       type: "submit",
+      invocationRef: ref(1),
       request: makeRequest(),
     });
     result = step(result.state, {
       type: "stream-context",
-      streamId: 1,
+      invocationRef: ref(1),
       targetAppId: 23,
     });
     expect(result.state).toMatchObject({
@@ -354,7 +369,7 @@ describe("happy path", () => {
 
     result = step(result.state, {
       type: "stream-ended",
-      streamId: 1,
+      invocationRef: ref(1),
       response: endResponse(),
     });
     expect(commandsOf(result)[0]).toMatchObject({
@@ -367,14 +382,14 @@ describe("happy path", () => {
     const streaming = STATE_FACTORIES.streaming();
     const stale = step(streaming, {
       type: "stream-context",
-      streamId: 999,
+      invocationRef: ref(999),
       targetAppId: 23,
     });
     expect(ignoreReasonOf(stale)).toBe("stale-stream-id");
 
     const current = step(streaming, {
       type: "stream-context",
-      streamId: 4,
+      invocationRef: ref(4),
       targetAppId: 23,
     });
     expect(current.state).toMatchObject({
@@ -385,14 +400,17 @@ describe("happy path", () => {
 
   it("promotes starting -> streaming on the first chunk when the registration event was missed", () => {
     const starting = STATE_FACTORIES.starting();
-    const result = step(starting, { type: "chunk-received", streamId: 4 });
+    const result = step(starting, {
+      type: "chunk-received",
+      invocationRef: ref(4),
+    });
     expect(result.state.type).toBe("streaming");
   });
 
   it("ignores a stale registration while accepting legacy registrations without an id", () => {
     const starting = STATE_FACTORIES.starting();
 
-    const stale = step(starting, { type: "registered", streamId: 3 });
+    const stale = step(starting, { type: "registered", invocationRef: ref(3) });
     expect(stale.state).toBe(starting);
     expect(ignoreReasonOf(stale)).toBe("stale-stream-id");
 
@@ -404,21 +422,24 @@ describe("happy path", () => {
     const streaming = STATE_FACTORIES.streaming();
     let result = step(streaming, {
       type: "stream-errored",
-      streamId: 4,
+      invocationRef: ref(4),
       error: "kaput",
     });
     expect(result.state).toEqual({
       type: "errored",
-      lastStreamId: 4,
       error: "kaput",
     });
     expect(commandsOf(result)[0]?.type).toBe("run-error-side-effects");
 
-    result = step(result.state, { type: "submit", request: makeRequest() });
+    result = step(result.state, {
+      type: "submit",
+      invocationRef: ref(5),
+      request: makeRequest(),
+    });
     expect(result.state.type).toBe("starting");
     expect(commandsOf(result)[0]).toMatchObject({
       type: "start-stream",
-      streamId: 5,
+      invocationRef: ref(5),
     });
   });
 });
@@ -427,7 +448,11 @@ describe("bug 1: submit while a stream is active queues instead of dropping", ()
   it("queues a submit during starting (the isStreaming render-lag window)", () => {
     const starting = STATE_FACTORIES.starting();
     const request = makeRequest({ prompt: "second message" });
-    const result = step(starting, { type: "submit", request });
+    const result = step(starting, {
+      type: "submit",
+      invocationRef: ref(5),
+      request,
+    });
     expect(result.state).toBe(starting);
     expect(commandsOf(result)).toEqual([{ type: "enqueue-message", request }]);
   });
@@ -436,7 +461,11 @@ describe("bug 1: submit while a stream is active queues instead of dropping", ()
     for (const type of ["streaming", "cancelling", "finalizing"] as const) {
       const state = STATE_FACTORIES[type]();
       const request = makeRequest({ prompt: `queued during ${type}` });
-      const result = step(state, { type: "submit", request });
+      const result = step(state, {
+        type: "submit",
+        invocationRef: ref(5),
+        request,
+      });
       expect(result.state).toBe(state);
       expect(commandsOf(result)).toEqual([
         { type: "enqueue-message", request },
@@ -451,6 +480,7 @@ describe("bug 2: cancel before main registers the stream", () => {
     // registration yet).
     let result = step(initialStreamState(), {
       type: "submit",
+      invocationRef: ref(1),
       request: makeRequest(),
     });
     result = step(result.state, { type: "cancel" });
@@ -466,7 +496,7 @@ describe("bug 2: cancel before main registers the stream", () => {
     // machine must finalize now or deadlock in `cancelling` forever.
     result = step(result.state, {
       type: "stream-ended",
-      streamId: 1,
+      invocationRef: ref(1),
       response: endResponse(true),
     });
     expect(result.state).toMatchObject({
@@ -478,10 +508,10 @@ describe("bug 2: cancel before main registers the stream", () => {
     // Cancelled turns do not dispatch the queue.
     result = step(result.state, {
       type: "finalize-complete",
-      streamId: 1,
+      invocationRef: ref(1),
       ok: true,
     });
-    expect(result.state).toEqual({ type: "idle", lastStreamId: 1 });
+    expect(result.state).toEqual({ type: "idle" });
     expect(commandsOf(result)).toEqual([]);
   });
 
@@ -490,6 +520,7 @@ describe("bug 2: cancel before main registers the stream", () => {
     // sent nothing, and the stream proceeds to registration.
     let result = step(initialStreamState(), {
       type: "submit",
+      invocationRef: ref(1),
       request: makeRequest(),
     });
     result = step(result.state, { type: "cancel" });
@@ -510,7 +541,7 @@ describe("bug 2: cancel before main registers the stream", () => {
     // exactly once.
     result = step(result.state, {
       type: "stream-ended",
-      streamId: 1,
+      invocationRef: ref(1),
       response: endResponse(true),
     });
     expect(result.state).toMatchObject({
@@ -523,6 +554,7 @@ describe("bug 2: cancel before main registers the stream", () => {
   it("finalizes with the real outcome when the stream completed before the abort landed", () => {
     let result = step(initialStreamState(), {
       type: "submit",
+      invocationRef: ref(1),
       request: makeRequest(),
     });
     result = step(result.state, { type: "cancel" });
@@ -531,7 +563,7 @@ describe("bug 2: cancel before main registers the stream", () => {
     // invalidations run.
     result = step(result.state, {
       type: "stream-ended",
-      streamId: 1,
+      invocationRef: ref(1),
       response: endResponse(false),
     });
     expect(result.state).toMatchObject({
@@ -550,7 +582,7 @@ describe("bug 2: cancel before main registers the stream", () => {
     });
     result = step(result.state, {
       type: "stream-ended",
-      streamId: 4,
+      invocationRef: ref(4),
       response: endResponse(true),
     });
     expect(result.state).toMatchObject({
@@ -565,16 +597,18 @@ describe("bug 3: queue dispatch is single-shot by construction", () => {
     const finalizing = STATE_FACTORIES.finalizing();
     const result = step(finalizing, {
       type: "finalize-complete",
-      streamId: 4,
+      invocationRef: ref(4),
       ok: true,
     });
-    expect(result.state).toEqual({ type: "idle", lastStreamId: 4 });
-    expect(commandsOf(result)).toEqual([{ type: "dispatch-next-queued" }]);
+    expect(result.state).toEqual({ type: "idle" });
+    expect(commandsOf(result)).toEqual([
+      { type: "dispatch-next-queued", invocationRef: ref(4) },
+    ]);
 
     // A replayed/duplicate finalize-complete is ignored: no second dispatch.
     const replay = step(result.state, {
       type: "finalize-complete",
-      streamId: 4,
+      invocationRef: ref(4),
       ok: true,
     });
     expect(replay.state).toBe(result.state);
@@ -590,7 +624,7 @@ describe("bug 3: queue dispatch is single-shot by construction", () => {
       commandsOf(
         step(cancelled, {
           type: "finalize-complete",
-          streamId: 4,
+          invocationRef: ref(4),
           ok: true,
         }),
       ),
@@ -598,7 +632,7 @@ describe("bug 3: queue dispatch is single-shot by construction", () => {
 
     const failed = step(STATE_FACTORIES.finalizing(), {
       type: "finalize-complete",
-      streamId: 4,
+      invocationRef: ref(4),
       ok: false,
     });
     expect(failed.state.type).toBe("idle");
@@ -621,14 +655,18 @@ describe("bug 3: queue dispatch is single-shot by construction", () => {
 });
 
 describe("stale generation rejection", () => {
-  it("never advances state on events tagged with a stale streamId", () => {
+  it("never advances state on events tagged with a stale invocationRef", () => {
     for (const type of ACTIVE_OR_FINALIZING) {
       const state = STATE_FACTORIES[type]();
       const staleEvents: StreamEvent[] = [
-        { type: "chunk-received", streamId: 999 },
-        { type: "stream-ended", streamId: 999, response: endResponse() },
-        { type: "stream-errored", streamId: 999, error: "old" },
-        { type: "finalize-complete", streamId: 999, ok: true },
+        { type: "chunk-received", invocationRef: ref(999) },
+        {
+          type: "stream-ended",
+          invocationRef: ref(999),
+          response: endResponse(),
+        },
+        { type: "stream-errored", invocationRef: ref(999), error: "old" },
+        { type: "finalize-complete", invocationRef: ref(999), ok: true },
       ];
       for (const event of staleEvents) {
         const result = step(state, event);

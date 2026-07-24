@@ -12,6 +12,8 @@ import { ipc } from "@/ipc/types";
 import { resolveAppIdForChat } from "@/lib/chatUtils";
 
 import { ChatStreamManager } from "../manager";
+import { createSequentialIdSource } from "@/state_machines/testing";
+import { makeChatStreamRef } from "./test_refs";
 
 vi.mock("@/lib/chatUtils", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/chatUtils")>()),
@@ -19,6 +21,7 @@ vi.mock("@/lib/chatUtils", async (importOriginal) => ({
 }));
 
 const CHAT_ID = 17;
+const ref = (index: number) => makeChatStreamRef(index, CHAT_ID);
 
 async function flush(): Promise<void> {
   for (let i = 0; i < 10; i++) {
@@ -32,7 +35,10 @@ afterEach(() => {
 
 describe("ChatStreamManager", () => {
   it("owns one controller per chat and releases unobserved terminal controllers", () => {
-    const manager = new ChatStreamManager(createStore());
+    const manager = new ChatStreamManager(
+      createStore(),
+      createSequentialIdSource(),
+    );
     const controller = manager.ensure(CHAT_ID);
 
     expect(manager.ensure(CHAT_ID)).toBe(controller);
@@ -43,7 +49,10 @@ describe("ChatStreamManager", () => {
   });
 
   it("does not create a controller for registration-only notifications", () => {
-    const manager = new ChatStreamManager(createStore());
+    const manager = new ChatStreamManager(
+      createStore(),
+      createSequentialIdSource(),
+    );
 
     manager.notifyStreamRegistered(CHAT_ID);
 
@@ -53,7 +62,7 @@ describe("ChatStreamManager", () => {
   it("emits one terminal event per generation with its outcome", async () => {
     vi.mocked(resolveAppIdForChat).mockReturnValue(new Promise(() => {}));
     const store = createStore();
-    const manager = new ChatStreamManager(store);
+    const manager = new ChatStreamManager(store, createSequentialIdSource());
     manager.registerRuntimeDeps({
       store,
       queryClient: new QueryClient(),
@@ -71,11 +80,19 @@ describe("ChatStreamManager", () => {
     });
     controller.send({
       type: "stream-ended",
-      streamId: 1,
+      invocationRef: ref(1),
       response: { chatId: CHAT_ID, updatedFiles: false },
     });
-    controller.send({ type: "finalize-complete", streamId: 1, ok: true });
-    controller.send({ type: "finalize-complete", streamId: 1, ok: true });
+    controller.send({
+      type: "finalize-complete",
+      invocationRef: ref(1),
+      ok: true,
+    });
+    controller.send({
+      type: "finalize-complete",
+      invocationRef: ref(1),
+      ok: true,
+    });
 
     controller.send({
       type: "submit",
@@ -83,10 +100,14 @@ describe("ChatStreamManager", () => {
     });
     controller.send({
       type: "stream-ended",
-      streamId: 2,
+      invocationRef: ref(2),
       response: { chatId: CHAT_ID, updatedFiles: false, wasCancelled: true },
     });
-    controller.send({ type: "finalize-complete", streamId: 2, ok: true });
+    controller.send({
+      type: "finalize-complete",
+      invocationRef: ref(2),
+      ok: true,
+    });
 
     controller.send({
       type: "submit",
@@ -94,20 +115,20 @@ describe("ChatStreamManager", () => {
     });
     controller.send({
       type: "stream-errored",
-      streamId: 2,
+      invocationRef: ref(2),
       error: "stale",
     });
     controller.send({
       type: "stream-errored",
-      streamId: 3,
+      invocationRef: ref(3),
       error: "boom",
     });
     await flush();
 
     expect(listener.mock.calls.map(([event]) => event)).toEqual([
-      { chatId: CHAT_ID, streamId: 1, outcome: "completed" },
-      { chatId: CHAT_ID, streamId: 2, outcome: "cancelled" },
-      { chatId: CHAT_ID, streamId: 3, outcome: "errored" },
+      { chatId: CHAT_ID, invocationRef: ref(1), outcome: "completed" },
+      { chatId: CHAT_ID, invocationRef: ref(2), outcome: "cancelled" },
+      { chatId: CHAT_ID, invocationRef: ref(3), outcome: "errored" },
     ]);
 
     keepAlive();
@@ -117,7 +138,7 @@ describe("ChatStreamManager", () => {
   it("stops delivering terminal events after unsubscribe", async () => {
     vi.mocked(resolveAppIdForChat).mockReturnValue(new Promise(() => {}));
     const store = createStore();
-    const manager = new ChatStreamManager(store);
+    const manager = new ChatStreamManager(store, createSequentialIdSource());
     manager.registerRuntimeDeps({
       store,
       queryClient: new QueryClient(),
@@ -135,7 +156,7 @@ describe("ChatStreamManager", () => {
     });
     controller.send({
       type: "stream-errored",
-      streamId: 1,
+      invocationRef: ref(1),
       error: "boom",
     });
     await flush();
@@ -146,7 +167,7 @@ describe("ChatStreamManager", () => {
 
   it("disposes the controller and clears all stream residue for a deleted chat", () => {
     const store = createStore();
-    const manager = new ChatStreamManager(store);
+    const manager = new ChatStreamManager(store, createSequentialIdSource());
     manager.ensure(CHAT_ID);
     store.set(queuedMessagesByIdAtom, new Map([[CHAT_ID, []]]));
     store.set(queuePausedByIdAtom, new Map([[CHAT_ID, true]]));
@@ -172,7 +193,7 @@ describe("ChatStreamManager", () => {
     vi.spyOn(ipc.chatStream, "start").mockReturnValue(1);
     const release = vi.spyOn(ipc.chatStream, "release");
     const store = createStore();
-    const manager = new ChatStreamManager(store);
+    const manager = new ChatStreamManager(store, createSequentialIdSource());
     manager.registerRuntimeDeps({
       store,
       queryClient: new QueryClient(),
@@ -195,6 +216,8 @@ describe("ChatStreamManager", () => {
 
     expect(ipc.chatStream.start).toHaveBeenCalledOnce();
     expect(release).toHaveBeenCalledTimes(2);
-    expect(release).toHaveBeenLastCalledWith(CHAT_ID, 1);
+    expect(release).toHaveBeenLastCalledWith(CHAT_ID, {
+      invocationRef: ref(1),
+    });
   });
 });

@@ -7,6 +7,7 @@ import {
 } from "../contracts/core";
 import { ConsoleEntrySchema } from "./supabase";
 import { ProblemReportSchema } from "./agent";
+import { ChatStreamInvocationRefSchema } from "./chat";
 
 // =============================================================================
 // Portal Schemas
@@ -539,6 +540,7 @@ export const miscEvents = {
     channel: "chat:stream:start",
     payload: z.object({
       chatId: z.number(),
+      invocationRef: ChatStreamInvocationRefSchema.optional(),
       streamId: z.number().optional(),
     }),
   }),

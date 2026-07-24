@@ -8,7 +8,9 @@ import {
   type CosimTransitionResult,
 } from "@/state_machines/cosim";
 import { commandsOf } from "@/state_machines/testing";
+import { sameInvocationRef } from "@/state_machines/invocation_ref";
 import type {
+  ChatStreamInvocationRef,
   StreamCommand,
   StreamEvent,
   StreamRequest,
@@ -17,7 +19,7 @@ import type {
 import {
   initialStreamState,
   isStreamActive,
-  streamGeneration,
+  streamInvocationRef,
   transition,
 } from "../transition";
 import {
@@ -30,6 +32,7 @@ import {
   type MainModelState,
 } from "../main_model";
 import { CHAT_STREAM_WIRE_EVENTS } from "../protocol";
+import { makeChatStreamRef } from "./test_refs";
 
 /**
  * Bounded exhaustive alphabet: one chat, two total submits (the second queues),
@@ -45,8 +48,8 @@ type ChannelName = "main-to-renderer";
 
 interface ScenarioState {
   queued: StreamRequest[];
-  dispatchesByGeneration: Readonly<Record<number, number>>;
-  finalizeScheduled: readonly number[];
+  dispatchesByGeneration: Readonly<Record<string, number>>;
+  finalizeScheduled: readonly ChatStreamInvocationRef[];
 }
 
 type State =
@@ -61,8 +64,12 @@ type Event =
       participant: "scenario";
       value:
         | { type: "enqueue"; request: StreamRequest }
-        | { type: "dispatch"; generation: number }
-        | { type: "schedule-finalize"; streamId: number; ok: boolean };
+        | { type: "dispatch"; generation: string }
+        | {
+            type: "schedule-finalize";
+            invocationRef: ChatStreamInvocationRef;
+            ok: boolean;
+          };
     };
 
 type Command =
@@ -72,7 +79,11 @@ type Command =
       participant: "scenario";
       value:
         | { type: "submit-queued"; request: StreamRequest }
-        | { type: "deliver-finalize"; streamId: number; ok: boolean };
+        | {
+            type: "deliver-finalize";
+            invocationRef: ChatStreamInvocationRef;
+            ok: boolean;
+          };
     };
 
 type Snapshot = CosimSnapshot<
@@ -96,6 +107,13 @@ const request = (prompt: string): StreamRequest => ({
   chatId: 7,
   appId: 9,
 });
+const ref = (index: number) => makeChatStreamRef(index, 7);
+const refIndex = (invocationRef: ChatStreamInvocationRef): number =>
+  Number(
+    invocationRef.operationId.slice(
+      invocationRef.operationId.lastIndexOf(":") + 1,
+    ),
+  );
 const rendererEvent = (value: StreamEvent): Event => ({
   participant: "renderer",
   value,
@@ -200,7 +218,7 @@ function scenarioTransition(
             ...state.value,
             finalizeScheduled: [
               ...state.value.finalizeScheduled,
-              event.value.streamId,
+              event.value.invocationRef,
             ],
           },
         },
@@ -209,7 +227,7 @@ function scenarioTransition(
             participant: "scenario",
             value: {
               type: "deliver-finalize",
-              streamId: event.value.streamId,
+              invocationRef: event.value.invocationRef,
               ok: event.value.ok,
             },
           },
@@ -248,22 +266,29 @@ function emissionToRenderer(
 ): StreamEvent | undefined {
   switch (emission.type) {
     case CHAT_STREAM_WIRE_EVENTS.start:
-      return { type: "registered", streamId: emission.payload.streamId };
+      return {
+        type: "registered",
+        invocationRef:
+          emission.payload.invocationRef ?? ref(emission.payload.streamId ?? 0),
+      };
     case CHAT_STREAM_WIRE_EVENTS.chunk:
       return {
         type: "chunk-received",
-        streamId: emission.payload.streamId ?? 0,
+        invocationRef:
+          emission.payload.invocationRef ?? ref(emission.payload.streamId ?? 0),
       };
     case CHAT_STREAM_WIRE_EVENTS.end:
       return {
         type: "stream-ended",
-        streamId: emission.payload.streamId ?? 0,
+        invocationRef:
+          emission.payload.invocationRef ?? ref(emission.payload.streamId ?? 0),
         response: emission.payload,
       };
     case CHAT_STREAM_WIRE_EVENTS.error:
       return {
         type: "stream-errored",
-        streamId: emission.payload.streamId ?? 0,
+        invocationRef:
+          emission.payload.invocationRef ?? ref(emission.payload.streamId ?? 0),
         error: emission.payload.error,
         warningMessages: emission.payload.warningMessages,
       };
@@ -299,6 +324,7 @@ function routeCommand(
             event: rendererEvent({
               type: "submit",
               request: command.value.request,
+              invocationRef: ref(2),
             }),
           },
         ]
@@ -308,7 +334,7 @@ function routeCommand(
             participant: "renderer" as const,
             event: rendererEvent({
               type: "finalize-complete",
-              streamId: command.value.streamId,
+              invocationRef: command.value.invocationRef,
               ok: command.value.ok,
             }),
           },
@@ -327,8 +353,9 @@ function routeCommand(
             // This bounded scenario has one chat, so its generation is also a
             // unique invocation identity. Multi-chat collisions are covered
             // by main_model.test.ts with distinct invocation IDs.
-            invocationId: value.streamId,
-            streamId: value.streamId,
+            invocationId: refIndex(value.invocationRef),
+            invocationRef: value.invocationRef,
+            streamId: refIndex(value.invocationRef),
             chatId: value.request.chatId,
             appId: value.request.appId ?? 9,
           }),
@@ -354,8 +381,11 @@ function routeCommand(
         },
       ];
     case "dispatch-next-queued": {
-      const renderer = participantValue(snapshot, "renderer");
-      const generation = streamGeneration(renderer);
+      const generation =
+        value.invocationRef?.operationId ??
+        streamInvocationRef(participantValue(snapshot, "renderer"))
+          ?.operationId ??
+        "terminal";
       return [
         {
           target: "participant" as const,
@@ -378,7 +408,7 @@ function routeCommand(
             participant: "scenario" as const,
             value: {
               type: "schedule-finalize" as const,
-              streamId: value.streamId,
+              invocationRef: value.invocationRef,
               ok: true,
             },
           },
@@ -399,7 +429,11 @@ function actions(fullAlphabet: boolean): Action[] {
       id: "submit-1",
       target: "participant",
       participant: "renderer",
-      event: rendererEvent({ type: "submit", request: request("first") }),
+      event: rendererEvent({
+        type: "submit",
+        request: request("first"),
+        invocationRef: ref(1),
+      }),
     },
     {
       id: "cancel",
@@ -515,7 +549,11 @@ function errorActions(scenario: ErrorScenario): Action[] {
       id: "submit-error-stream",
       target: "participant",
       participant: "renderer",
-      event: rendererEvent({ type: "submit", request: request(scenario) }),
+      event: rendererEvent({
+        type: "submit",
+        request: request(scenario),
+        invocationRef: ref(1),
+      }),
     },
   ];
   for (let index = 0; index < 3; index += 1) {
@@ -715,8 +753,13 @@ function perStepAssertions(step: Step): void {
       if (event.type !== "stream-ended" && event.type !== "stream-errored")
         continue;
       const previous = item.previousState.value;
-      const generation = streamGeneration(previous);
-      if (event.streamId !== generation) continue;
+      const generation = streamInvocationRef(previous);
+      if (
+        generation === undefined ||
+        !sameInvocationRef(event.invocationRef, generation)
+      ) {
+        continue;
+      }
       const wasActive = isStreamActive(previous);
       if (wasActive && item.result.state === item.previousState) {
         throw new Error(
@@ -848,7 +891,7 @@ describe("chat stream main/renderer co-simulation", () => {
         state.type === "cancelling" &&
         !state.registered &&
         event.type === "stream-ended" &&
-        event.streamId === state.streamId
+        sameInvocationRef(event.invocationRef, state.invocationRef)
       ) {
         return {
           kind: "ignored",

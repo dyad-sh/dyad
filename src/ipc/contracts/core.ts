@@ -1,4 +1,9 @@
 import { z } from "zod";
+import {
+  isInvocationRef,
+  sameInvocationRef,
+  type InvocationRef,
+} from "../../state_machines/invocation_ref";
 import { DyadError, DyadErrorKind, isDyadError } from "../../errors/dyad_error";
 
 // =============================================================================
@@ -466,18 +471,19 @@ export function createStreamClient<
       onEnd: (data: z.infer<TEnd>) => void;
       onError: (data: z.infer<TError>) => void;
     };
-    /** Monotonic per-client stream generation; identifies this start() call. */
-    streamId: number;
+    /** Correlation identity echoed by producers that support InvocationRef. */
+    invocationRef?: InvocationRef;
+    /** Legacy numeric correlation identity used by older stream contracts. */
+    streamId?: number;
     /** When true (default), the entry is removed on end/error events. */
     autoRelease: boolean;
   }
 
   const streams = new Map<KeyValue, StreamEntry>();
 
-  // Monotonic generation counter: every start() gets a fresh streamId. Stream
-  // contracts that echo it in their payloads reject stale chunk/end/error
-  // events even after a same-key entry has been replaced. Payloads without a
-  // streamId retain the legacy key-only routing behavior.
+  // Legacy monotonic generation counter for callers that do not supply an
+  // InvocationRef. Contracts that echo either identity reject stale events.
+  // Payloads without either identity retain legacy key-only routing.
   let nextStreamId = 0;
 
   let listenersSetUp = false;
@@ -495,12 +501,7 @@ export function createStreamClient<
         const key = payload[contract.keyField] as KeyValue;
         const entry = streams.get(key);
         if (!entry) return;
-        if (
-          typeof payload.streamId === "number" &&
-          payload.streamId !== entry.streamId
-        ) {
-          return;
-        }
+        if (!matchesStreamEntry(entry, payload)) return;
         entry.callbacks.onChunk(parsed.data);
       }
     });
@@ -512,12 +513,7 @@ export function createStreamClient<
         const key = payload[contract.keyField] as KeyValue;
         const entry = streams.get(key);
         if (!entry) return;
-        if (
-          typeof payload.streamId === "number" &&
-          payload.streamId !== entry.streamId
-        ) {
-          return;
-        }
+        if (!matchesStreamEntry(entry, payload)) return;
         entry.callbacks.onEnd(parsed.data);
         // The terminal callback may synchronously start another stream with
         // the same key. Only clean up the generation that actually ended.
@@ -534,12 +530,7 @@ export function createStreamClient<
         const key = payload[contract.keyField] as KeyValue;
         const entry = streams.get(key);
         if (!entry) return;
-        if (
-          typeof payload.streamId === "number" &&
-          payload.streamId !== entry.streamId
-        ) {
-          return;
-        }
+        if (!matchesStreamEntry(entry, payload)) return;
         entry.callbacks.onError(parsed.data);
         // The error callback may synchronously replace this stream.
         if (entry.autoRelease && streams.get(key) === entry) {
@@ -551,13 +542,33 @@ export function createStreamClient<
     listenersSetUp = true;
   };
 
+  function matchesStreamEntry(
+    entry: StreamEntry,
+    payload: Record<string, unknown>,
+  ): boolean {
+    if (payload.invocationRef !== undefined) {
+      return (
+        isInvocationRef(payload.invocationRef) &&
+        entry.invocationRef !== undefined &&
+        sameInvocationRef(entry.invocationRef, payload.invocationRef)
+      );
+    }
+    if (typeof payload.streamId === "number") {
+      return (
+        entry.streamId !== undefined && payload.streamId === entry.streamId
+      );
+    }
+    // Backward compatibility for producers that cannot echo either identity.
+    return true;
+  }
+
   return {
     /**
      * Start a stream with the given input and callbacks.
      *
-     * Returns the monotonic streamId identifying this start() call. With
+     * Returns the correlation identity identifying this start() call. With
      * `autoRelease: false` the entry keeps receiving events after end/error
-     * until `release(key, streamId)` is called (used by the chat stream
+     * until `release(key, correlation)` is called (used by the chat stream
      * controller, which owns terminal reconciliation).
      */
     start(
@@ -567,12 +578,20 @@ export function createStreamClient<
         onEnd: (data: z.infer<TEnd>) => void;
         onError: (data: z.infer<TError>) => void;
       },
-      opts?: { streamId?: number; autoRelease?: boolean },
-    ): number {
+      opts?: {
+        invocationRef?: InvocationRef;
+        streamId?: number;
+        autoRelease?: boolean;
+      },
+    ): InvocationRef | number {
       setupListeners();
 
-      const streamId = opts?.streamId ?? ++nextStreamId;
-      if (streamId > nextStreamId) {
+      const invocationRef = opts?.invocationRef;
+      const streamId =
+        invocationRef === undefined
+          ? (opts?.streamId ?? ++nextStreamId)
+          : undefined;
+      if (streamId !== undefined && streamId > nextStreamId) {
         nextStreamId = streamId;
       }
 
@@ -584,7 +603,7 @@ export function createStreamClient<
           ],
           error: "IPC renderer not available",
         } as any);
-        return streamId;
+        return invocationRef ?? streamId!;
       }
 
       const key = (input as Record<string, unknown>)[
@@ -592,6 +611,7 @@ export function createStreamClient<
       ] as KeyValue;
       const entry: StreamEntry = {
         callbacks,
+        invocationRef,
         streamId,
         autoRelease: opts?.autoRelease !== false,
       };
@@ -609,7 +629,7 @@ export function createStreamClient<
           streams.delete(key);
         }
       });
-      return streamId;
+      return invocationRef ?? streamId!;
     },
 
     /**
@@ -620,13 +640,25 @@ export function createStreamClient<
     },
 
     /**
-     * Release a stream entry. When `streamId` is given, only releases if the
-     * current entry belongs to that generation (stale releases are no-ops).
+     * Release a stream entry. When correlation identity is given, only
+     * releases the matching entry (stale releases are no-ops).
      */
-    release(key: KeyValue, streamId?: number): void {
+    release(
+      key: KeyValue,
+      correlation?: number | { invocationRef: InvocationRef },
+    ): void {
       const entry = streams.get(key);
       if (!entry) return;
-      if (streamId !== undefined && entry.streamId !== streamId) return;
+      if (typeof correlation === "number" && entry.streamId !== correlation) {
+        return;
+      }
+      if (
+        typeof correlation === "object" &&
+        (entry.invocationRef === undefined ||
+          !sameInvocationRef(entry.invocationRef, correlation.invocationRef))
+      ) {
+        return;
+      }
       streams.delete(key);
     },
 

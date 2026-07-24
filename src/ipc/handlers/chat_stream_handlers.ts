@@ -37,6 +37,7 @@ import { buildNeonPromptForApp } from "../../neon_admin/neon_prompt_context";
 import { getDyadAppPath } from "../../paths/paths";
 import { buildDyadMediaUrl } from "../../lib/dyadMediaUrl";
 import type { ChatStreamParams } from "@/ipc/types";
+import type { ChatStreamInvocationRef } from "@/chat_stream/state";
 import type {
   ChatStreamChunkPayload,
   ChatStreamEndPayload,
@@ -169,11 +170,13 @@ const logger = log.scope("chat_stream_handlers");
 // src/chat_stream/main_model.ts and its co-simulation suite.
 interface TrackedStream {
   abortController: AbortController;
+  invocationRef?: ChatStreamInvocationRef;
+  /** @deprecated Correlation used only by pre-InvocationRef renderers. */
   streamId?: number;
 }
 
-// Track active streams for cancellation together with the renderer generation
-// that owns each controller. Legacy callers may omit streamId.
+// Track active streams for cancellation together with the renderer correlation
+// identity. Legacy callers may omit InvocationRef and/or use numeric streamId.
 const activeStreams = new Map<number, Set<TrackedStream>>();
 const admissionPendingStreams = new Set<AbortController>();
 
@@ -378,13 +381,17 @@ async function cancelTrackedStreams(
   // A new stream the renderer starts for a chat under an active restore barrier
   // simply waits at admission, so notifying early stays safe.
   for (const { chatId, streams } of trackedStreams) {
-    const generations =
+    const correlations =
       streams.length > 0
-        ? streams.map(({ streamId }) => streamId)
-        : [undefined];
-    for (const streamId of generations) {
+        ? streams.map(({ invocationRef, streamId }) => ({
+            invocationRef,
+            streamId,
+          }))
+        : [{ invocationRef: undefined, streamId: undefined }];
+    for (const { invocationRef, streamId } of correlations) {
       safeSend(sender, "chat:response:end", {
         chatId,
+        invocationRef,
         streamId,
         updatedFiles: false,
         wasCancelled: true,
@@ -625,7 +632,11 @@ export function registerChatStreamHandlers() {
       req = parsedRequest.data;
 
       let dyadRequestId: string | undefined;
-      trackedStream = { abortController, streamId: req.streamId };
+      trackedStream = {
+        abortController,
+        invocationRef: req.invocationRef,
+        streamId: req.streamId,
+      };
       addTrackedValue(activeStreams, req.chatId, trackedStream);
       admissionPendingStreams.add(abortController);
 
@@ -721,6 +732,7 @@ export function registerChatStreamHandlers() {
       // keeping the submitted prompt owned by the stream instead of dropping it.
       safeSend(event.sender, "chat:stream:start", {
         chatId: req.chatId,
+        invocationRef: req.invocationRef,
         streamId: req.streamId,
       } satisfies ChatStreamStartPayload);
 
@@ -1096,11 +1108,13 @@ ${componentSnippet}
         replayedAcceptedFollowUp = true;
         safeSend(event.sender, "chat:response:chunk", {
           chatId: req.chatId,
+          invocationRef: req.invocationRef,
           streamId: req.streamId,
           acceptedUserInputRequestId: req.userInputRequestId,
         } satisfies ChatStreamChunkPayload);
         safeSend(event.sender, "chat:response:end", {
           chatId: req.chatId,
+          invocationRef: req.invocationRef,
           streamId: req.streamId,
           updatedFiles: false,
         } satisfies ChatStreamEndPayload);
@@ -1126,6 +1140,7 @@ ${componentSnippet}
       if (req.userInputRequestId) {
         safeSend(event.sender, "chat:response:chunk", {
           chatId: req.chatId,
+          invocationRef: req.invocationRef,
           streamId: req.streamId,
           acceptedUserInputRequestId: req.userInputRequestId,
         } satisfies ChatStreamChunkPayload);
@@ -1155,6 +1170,7 @@ ${componentSnippet}
         );
       safeSend(event.sender, "chat:response:chunk", {
         chatId: req.chatId,
+        invocationRef: req.invocationRef,
         streamId: req.streamId,
         effectiveChatMode: selectedChatMode,
         chatModeFallbackReason,
@@ -1201,6 +1217,7 @@ ${componentSnippet}
       // Send the messages right away so that the loading state is shown for the message.
       safeSend(event.sender, "chat:response:chunk", {
         chatId: req.chatId,
+        invocationRef: req.invocationRef,
         streamId: req.streamId,
         messages: updatedChat.messages.map(toRendererMessage),
       } satisfies ChatStreamChunkPayload);
@@ -1778,6 +1795,7 @@ This conversation includes one or more image attachments. When the user uploads 
               );
               event.sender.send("chat:response:error", {
                 chatId: req.chatId,
+                invocationRef: req.invocationRef,
                 streamId: req.streamId,
                 error: `${AI_STREAMING_ERROR_MESSAGE_PREFIX}${requestIdPrefix}${message}`,
               } satisfies ChatStreamErrorPayload);
@@ -1835,6 +1853,7 @@ This conversation includes one or more image attachments. When the user uploads 
           }
           safeSend(event.sender, "chat:response:chunk", {
             chatId: req.chatId,
+            invocationRef: req.invocationRef,
             streamId: req.streamId,
             streamingMessageId: placeholderAssistantMessage.id,
             streamingPatch: patch,
@@ -1932,6 +1951,7 @@ This conversation includes one or more image attachments. When the user uploads 
             if (quotaStatus.isQuotaExceeded) {
               safeSend(event.sender, "chat:response:error", {
                 chatId: req.chatId,
+                invocationRef: req.invocationRef,
                 streamId: req.streamId,
                 error: JSON.stringify({
                   type: "FREE_AGENT_QUOTA_EXCEEDED",
@@ -2255,6 +2275,7 @@ This conversation includes one or more image attachments. When the user uploads 
 
           safeSend(event.sender, "chat:response:chunk", {
             chatId: req.chatId,
+            invocationRef: req.invocationRef,
             streamId: req.streamId,
             messages: chat!.messages.map(toRendererMessage),
           } satisfies ChatStreamChunkPayload);
@@ -2262,6 +2283,7 @@ This conversation includes one or more image attachments. When the user uploads 
           if (status.error) {
             safeSend(event.sender, "chat:response:error", {
               chatId: req.chatId,
+              invocationRef: req.invocationRef,
               streamId: req.streamId,
               error: `Sorry, there was an error applying the AI's changes: ${status.error}`,
               warningMessages: status.warningMessages,
@@ -2271,6 +2293,7 @@ This conversation includes one or more image attachments. When the user uploads 
           // Signal that the stream has completed
           safeSend(event.sender, "chat:response:end", {
             chatId: req.chatId,
+            invocationRef: req.invocationRef,
             streamId: req.streamId,
             updatedFiles: status.updatedFiles ?? false,
             extraFiles: status.extraFiles,
@@ -2281,6 +2304,7 @@ This conversation includes one or more image attachments. When the user uploads 
         } else {
           safeSend(event.sender, "chat:response:end", {
             chatId: req.chatId,
+            invocationRef: req.invocationRef,
             streamId: req.streamId,
             updatedFiles: false,
             chatSummary,
@@ -2296,6 +2320,7 @@ This conversation includes one or more image attachments. When the user uploads 
       const errorMessage = isDyadError(error) ? error.message : String(error);
       safeSend(event.sender, "chat:response:error", {
         chatId: req.chatId,
+        invocationRef: req.invocationRef,
         streamId: req.streamId,
         error: `Sorry, there was an error processing your request: ${errorMessage}`,
       } satisfies ChatStreamErrorPayload);

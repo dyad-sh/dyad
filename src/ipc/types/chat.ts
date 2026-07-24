@@ -16,6 +16,7 @@ import {
   MAX_CHAT_ATTACHMENTS,
   validateSerializedChatAttachments,
 } from "../../shared/chatAttachmentLimits";
+import type { ChatStreamInvocationRef } from "@/chat_stream/state";
 
 // =============================================================================
 // Chat Schemas
@@ -134,9 +135,19 @@ const ChatAttachmentsSchema = z
 /**
  * Schema for chat stream parameters.
  */
+export const ChatStreamInvocationRefSchema: z.ZodType<ChatStreamInvocationRef> =
+  z.object({
+    kind: z.literal("chat-stream"),
+    entityKey: z.number(),
+    operationId: z.string().min(1),
+  });
+
 export const ChatStreamParamsSchema = z
   .object({
     chatId: z.number(),
+    /** Correlation identity for new renderers. */
+    invocationRef: ChatStreamInvocationRefSchema.optional(),
+    /** @deprecated Compatibility with renderer generations predating InvocationRef. */
     streamId: z.number().optional(),
     prompt: z.string(),
     redo: z.boolean().optional(),
@@ -216,6 +227,8 @@ export type StreamingPreview = z.infer<typeof StreamingPreviewSchema>;
  */
 export const ChatResponseChunkSchema = z.object({
   chatId: z.number(),
+  invocationRef: ChatStreamInvocationRefSchema.optional(),
+  /** @deprecated Compatibility with main processes predating InvocationRef. */
   streamId: z.number().optional(),
   messages: z.array(MessageSchema).optional(),
   streamingMessageId: z.number().optional(),
@@ -237,6 +250,8 @@ export type ChatResponseChunk = z.infer<typeof ChatResponseChunkSchema>;
  */
 export const ChatResponseEndSchema = z.object({
   chatId: z.number(),
+  invocationRef: ChatStreamInvocationRefSchema.optional(),
+  /** @deprecated Compatibility with main processes predating InvocationRef. */
   streamId: z.number().optional(),
   updatedFiles: z.boolean(),
   extraFiles: z.array(z.string()).optional(),
@@ -258,6 +273,8 @@ export type ChatResponseEnd = z.infer<typeof ChatResponseEndSchema>;
  */
 export const ChatResponseErrorSchema = z.object({
   chatId: z.number(),
+  invocationRef: ChatStreamInvocationRefSchema.optional(),
+  /** @deprecated Compatibility with main processes predating InvocationRef. */
   streamId: z.number().optional(),
   error: z.string(),
   warningMessages: z.array(z.string()).optional(),

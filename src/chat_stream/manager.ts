@@ -7,6 +7,7 @@ import {
   queuedMessagesByIdAtom,
 } from "@/atoms/chatAtoms";
 import { KeyedControllerHost } from "@/state_machines/keyed_host";
+import { uuidIdSource, type IdSource } from "@/state_machines/clock";
 import { createTraceObserver } from "@/state_machines/trace";
 import {
   registerAtomWriter,
@@ -21,13 +22,18 @@ import {
   createChatStreamController,
   type ChatStreamController,
 } from "./controller";
-import type { StreamCommand, StreamEvent, StreamState } from "./state";
+import type {
+  ChatStreamInvocationRef,
+  StreamCommand,
+  StreamEvent,
+  StreamState,
+} from "./state";
 
 type JotaiStore = ReturnType<typeof createStore>;
 
 export interface StreamFinishedEvent {
   chatId: number;
-  streamId: number;
+  invocationRef: ChatStreamInvocationRef;
   outcome: "completed" | "cancelled" | "errored";
 }
 
@@ -47,21 +53,22 @@ function withoutChatId<Value>(
  * Constructed owner for every per-chat stream controller and its adapter.
  *
  * Terminal, settled controllers self-release once only the host subscription
- * remains. This is the intentional release path for idle chats that are never
- * deleted; their last generation is retained so replacement controllers do
- * not reuse IDs while delayed IPC events may still be in flight. Deleted chats
- * are disposed explicitly through `disposeKey`.
+ * remains. Globally unique operation IDs allow terminal controllers to be
+ * released without retaining per-chat generation state across lifetimes.
+ * Deleted chats are disposed explicitly through `disposeKey`.
  */
 export class ChatStreamManager {
   private runtimeDeps: ChatStreamRuntimeDeps | null = null;
-  private readonly lastStreamIdByChatId = new Map<number, number>();
   private readonly streamFinishedListeners = new Set<StreamFinishedListener>();
   private readonly commands;
   private readonly host: KeyedControllerHost<number, ChatStreamController>;
   private projectionWriter: AtomProjectionWriter<unknown> | null = null;
   private projectionEnabled = true;
 
-  constructor(private readonly store: JotaiStore) {
+  constructor(
+    private readonly store: JotaiStore,
+    private readonly idSource: IdSource = uuidIdSource,
+  ) {
     this.commands = createProductionChatStreamCommands(
       () => {
         if (!this.runtimeDeps) {
@@ -101,8 +108,11 @@ export class ChatStreamManager {
     return this.host.get(chatId);
   }
 
-  notifyStreamRegistered(chatId: number, streamId?: number): void {
-    this.host.get(chatId)?.send({ type: "registered", streamId });
+  notifyStreamRegistered(
+    chatId: number,
+    invocationRef?: ChatStreamInvocationRef,
+  ): void {
+    this.host.get(chatId)?.send({ type: "registered", invocationRef });
   }
 
   subscribeStreamFinished(listener: StreamFinishedListener): () => void {
@@ -114,7 +124,6 @@ export class ChatStreamManager {
 
   disposeKey = (chatId: number): void => {
     this.host.disposeKey(chatId);
-    this.lastStreamIdByChatId.delete(chatId);
     this.store.set(queuedMessagesByIdAtom, (previous) =>
       withoutChatId(previous, chatId),
     );
@@ -161,7 +170,7 @@ export class ChatStreamManager {
     });
     return createChatStreamController({
       chatId,
-      initialLastStreamId: this.lastStreamIdByChatId.get(chatId),
+      idSource: this.idSource,
       getCommands: () => this.commands,
       onQuiescent: (controller) => this.releaseIfQuiescent(controller),
       observer: {
@@ -190,7 +199,7 @@ export class ChatStreamManager {
     if (previous.type === "finalizing" && state.type === "idle") {
       finished = {
         chatId,
-        streamId: previous.streamId,
+        invocationRef: previous.invocationRef,
         outcome: previous.wasCancelled ? "cancelled" : "completed",
       };
     } else if (
@@ -201,7 +210,7 @@ export class ChatStreamManager {
     ) {
       finished = {
         chatId,
-        streamId: event.streamId,
+        invocationRef: event.invocationRef,
         outcome: "errored",
       };
     }
@@ -233,7 +242,6 @@ export class ChatStreamManager {
       controller.isSettled() &&
       controller.subscriberCount() <= 1
     ) {
-      this.lastStreamIdByChatId.set(controller.chatId, snapshot.lastStreamId);
       this.host.disposeKey(controller.chatId);
     }
   }

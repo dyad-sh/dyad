@@ -1,11 +1,22 @@
 import type { ChatStreamCommands } from "./commands";
 import type {
+  ChatStreamInvocationRef,
   ChatStreamIgnoreReason,
   StreamCommand,
   StreamEvent,
   StreamState,
 } from "./state";
-import { initialStreamState, streamGeneration, transition } from "./transition";
+import { CHAT_STREAM_INVOCATION_KIND } from "./state";
+import {
+  initialStreamState,
+  streamInvocationRef,
+  transition,
+} from "./transition";
+import type { IdSource } from "@/state_machines/clock";
+import {
+  createInvocationRef,
+  sameInvocationRef,
+} from "@/state_machines/invocation_ref";
 import { SnapshotStore } from "@/state_machines/snapshot_store";
 import {
   observeTransition,
@@ -40,8 +51,7 @@ export interface ChatStreamController {
 
 export interface ChatStreamControllerOptions {
   chatId: number;
-  /** Last generation used by a previous controller for this chat. */
-  initialLastStreamId?: number;
+  idSource: IdSource;
   /** Read fresh on every command so tests / the runtime can swap adapters. */
   getCommands: () => ChatStreamCommands;
   /** Invoked whenever the controller becomes fully quiescent (no pending commands). */
@@ -57,12 +67,9 @@ export interface ChatStreamControllerOptions {
 export function createChatStreamController(
   options: ChatStreamControllerOptions,
 ): ChatStreamController {
-  const { chatId, initialLastStreamId, getCommands, onQuiescent, observer } =
-    options;
+  const { chatId, idSource, getCommands, onQuiescent, observer } = options;
 
-  const store = new SnapshotStore<StreamState>(
-    initialStreamState(initialLastStreamId),
-  );
+  const store = new SnapshotStore<StreamState>(initialStreamState());
   const commandQueue: StreamCommand[] = [];
   let draining = false;
   let disposed = false;
@@ -101,8 +108,20 @@ export function createChatStreamController(
       return;
     }
 
-    const result = transition(previous, event);
-    observeTransition(observer, previous, event, result);
+    const transitionEvent =
+      event.type === "submit" &&
+      (previous.type === "idle" || previous.type === "errored")
+        ? {
+            ...event,
+            invocationRef: createInvocationRef(
+              CHAT_STREAM_INVOCATION_KIND,
+              chatId,
+              idSource,
+            ),
+          }
+        : event;
+    const result = transition(previous, transitionEvent);
+    observeTransition(observer, previous, transitionEvent, result);
     // ORDERING INVARIANT — send() can be re-entered synchronously while
     // setState below is still on the stack: syncProjection writes
     // isStreamingByIdAtom, plan_handoff's watch-stream-idle Jotai sub fires
@@ -153,12 +172,15 @@ export function createChatStreamController(
         try {
           await commands.startStream({
             chatId,
-            streamId: command.streamId,
+            invocationRef: command.invocationRef,
             request: command.request,
             emit: send,
             isStale: () =>
               disposed ||
-              streamGeneration(store.getSnapshot()) !== command.streamId,
+              !matchesActiveInvocation(
+                streamInvocationRef(store.getSnapshot()),
+                command.invocationRef,
+              ),
           });
         } catch (error) {
           // Failures inside the stream (invoke rejection, IPC errors) come
@@ -166,7 +188,7 @@ export function createChatStreamController(
           // setup failures (e.g. attachment conversion).
           send({
             type: "stream-errored",
-            streamId: command.streamId,
+            invocationRef: command.invocationRef,
             error: error instanceof Error ? error.message : String(error),
           });
         } finally {
@@ -175,7 +197,10 @@ export function createChatStreamController(
           // again after setup settles so that late registration cannot leak.
           if (disposed) {
             runSafely(() =>
-              commands.releaseTransport({ chatId, streamId: command.streamId }),
+              commands.releaseTransport({
+                chatId,
+                invocationRef: command.invocationRef,
+              }),
             );
           }
         }
@@ -196,7 +221,7 @@ export function createChatStreamController(
         try {
           await commands.runEndSideEffects({
             chatId,
-            streamId: command.streamId,
+            invocationRef: command.invocationRef,
             request: command.request,
             targetAppId: command.targetAppId,
             response: command.response,
@@ -206,14 +231,18 @@ export function createChatStreamController(
           // to idle (without dispatching the queue).
           ok = false;
         }
-        send({ type: "finalize-complete", streamId: command.streamId, ok });
+        send({
+          type: "finalize-complete",
+          invocationRef: command.invocationRef,
+          ok,
+        });
         return;
       }
       case "run-error-side-effects": {
         runSafely(() =>
           commands.runErrorSideEffects({
             chatId,
-            streamId: command.streamId,
+            invocationRef: command.invocationRef,
             request: command.request,
             targetAppId: command.targetAppId,
             error: command.error,
@@ -255,7 +284,7 @@ export function createChatStreamController(
       try {
         getCommands().syncProjection({
           chatId,
-          state: { type: "idle", lastStreamId: state.streamId },
+          state: { type: "idle" },
         });
       } catch (error) {
         console.error(
@@ -272,11 +301,21 @@ export function createChatStreamController(
         );
       }
       runSafely(() =>
-        getCommands().releaseTransport({ chatId, streamId: state.streamId }),
+        getCommands().releaseTransport({
+          chatId,
+          invocationRef: state.invocationRef,
+        }),
       );
     }
 
     store.dispose();
+  }
+
+  function matchesActiveInvocation(
+    active: ChatStreamInvocationRef | undefined,
+    expected: ChatStreamInvocationRef,
+  ): boolean {
+    return active !== undefined && sameInvocationRef(active, expected);
   }
 
   return controller;

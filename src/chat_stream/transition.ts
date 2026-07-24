@@ -1,9 +1,13 @@
 import type {
   ChatStreamIgnoreReason,
   StreamCommand,
-  StreamEvent,
+  StreamTransitionEvent,
   StreamState,
 } from "./state";
+import {
+  matchCompletionToActiveOperation,
+  sameInvocationRef,
+} from "@/state_machines/invocation_ref";
 import {
   ignore as ignoreTransition,
   type TransitionResult,
@@ -28,15 +32,17 @@ export function isStreamActive(state: StreamState): boolean {
 }
 
 /** Initial state for a freshly created controller. */
-export function initialStreamState(lastStreamId = 0): StreamState {
-  return { type: "idle", lastStreamId };
+export function initialStreamState(): StreamState {
+  return { type: "idle" };
 }
 
-/** Monotonic generation for both active and terminal stream states. */
-export function streamGeneration(state: StreamState): number {
-  return state.type === "idle" || state.type === "errored"
-    ? state.lastStreamId
-    : state.streamId;
+/** Active correlation identity, absent in terminal states. */
+export function streamInvocationRef(
+  state: StreamState,
+):
+  | Extract<StreamState, { invocationRef: unknown }>["invocationRef"]
+  | undefined {
+  return "invocationRef" in state ? state.invocationRef : undefined;
 }
 
 /** Explicit marker for deliberately ignored (state, event) pairs. */
@@ -47,47 +53,58 @@ function ignore(
   return ignoreTransition(state, reason);
 }
 
-/** Stale-generation guard: events tagged with a streamId other than the active one never advance the machine. */
+/** Stale-generation guard: events tagged with a invocationRef other than the active one never advance the machine. */
 function isStale(
   state: Extract<
     StreamState,
     { type: "starting" | "streaming" | "cancelling" | "finalizing" }
   >,
-  event: Extract<StreamEvent, { streamId: number }>,
+  event: Extract<StreamTransitionEvent, { invocationRef: unknown }>,
 ): boolean {
-  return event.streamId !== state.streamId;
+  return (
+    matchCompletionToActiveOperation(state.invocationRef, event.invocationRef)
+      .kind !== "matched"
+  );
 }
 
-/** Registration events from older clients omit streamId and target the current generation. */
+/** Registration events from older clients omit invocationRef and target the current generation. */
 function isStaleRegistration(
   state: Extract<
     StreamState,
     { type: "starting" | "streaming" | "cancelling" | "finalizing" }
   >,
-  event: Extract<StreamEvent, { type: "registered" }>,
+  event: Extract<StreamTransitionEvent, { type: "registered" }>,
 ): boolean {
-  return event.streamId !== undefined && event.streamId !== state.streamId;
+  return (
+    event.invocationRef !== undefined &&
+    !sameInvocationRef(event.invocationRef, state.invocationRef)
+  );
 }
 
 export function transition(
   state: StreamState,
-  event: StreamEvent,
+  event: StreamTransitionEvent,
 ): TransitionResult<StreamState, StreamCommand, ChatStreamIgnoreReason> {
   switch (state.type) {
     case "idle": {
       switch (event.type) {
         case "submit": {
-          const streamId = state.lastStreamId + 1;
+          if (!event.invocationRef) {
+            throw new Error(
+              "An active chat stream must be submitted with an InvocationRef",
+            );
+          }
+          const invocationRef = event.invocationRef;
           return {
             kind: "applied",
             state: {
               type: "starting",
-              streamId,
+              invocationRef,
               request: event.request,
               targetAppId: null,
             },
             commands: [
-              { type: "start-stream", streamId, request: event.request },
+              { type: "start-stream", invocationRef, request: event.request },
             ],
           };
         }
@@ -129,7 +146,7 @@ export function transition(
             kind: "applied",
             state: {
               type: "cancelling",
-              streamId: state.streamId,
+              invocationRef: state.invocationRef,
               request: state.request,
               registered: false,
               targetAppId: state.targetAppId,
@@ -144,7 +161,7 @@ export function transition(
             kind: "applied",
             state: {
               type: "streaming",
-              streamId: state.streamId,
+              invocationRef: state.invocationRef,
               request: state.request,
               targetAppId: state.targetAppId,
             },
@@ -168,7 +185,7 @@ export function transition(
             kind: "applied",
             state: {
               type: "streaming",
-              streamId: state.streamId,
+              invocationRef: state.invocationRef,
               request: state.request,
               targetAppId: state.targetAppId,
             },
@@ -180,7 +197,7 @@ export function transition(
             kind: "applied",
             state: {
               type: "finalizing",
-              streamId: state.streamId,
+              invocationRef: state.invocationRef,
               request: state.request,
               wasCancelled: event.response.wasCancelled === true,
               targetAppId: state.targetAppId,
@@ -188,7 +205,7 @@ export function transition(
             commands: [
               {
                 type: "run-end-side-effects",
-                streamId: state.streamId,
+                invocationRef: state.invocationRef,
                 request: state.request,
                 targetAppId: state.targetAppId,
                 response: event.response,
@@ -201,13 +218,12 @@ export function transition(
             kind: "applied",
             state: {
               type: "errored",
-              lastStreamId: state.streamId,
               error: event.error,
             },
             commands: [
               {
                 type: "run-error-side-effects",
-                streamId: state.streamId,
+                invocationRef: state.invocationRef,
                 request: state.request,
                 targetAppId: state.targetAppId,
                 error: event.error,
@@ -236,7 +252,7 @@ export function transition(
             kind: "applied",
             state: {
               type: "cancelling",
-              streamId: state.streamId,
+              invocationRef: state.invocationRef,
               request: state.request,
               registered: true,
               targetAppId: state.targetAppId,
@@ -249,7 +265,7 @@ export function transition(
             kind: "applied",
             state: {
               type: "finalizing",
-              streamId: state.streamId,
+              invocationRef: state.invocationRef,
               request: state.request,
               wasCancelled: event.response.wasCancelled === true,
               targetAppId: state.targetAppId,
@@ -257,7 +273,7 @@ export function transition(
             commands: [
               {
                 type: "run-end-side-effects",
-                streamId: state.streamId,
+                invocationRef: state.invocationRef,
                 request: state.request,
                 targetAppId: state.targetAppId,
                 response: event.response,
@@ -270,13 +286,12 @@ export function transition(
             kind: "applied",
             state: {
               type: "errored",
-              lastStreamId: state.streamId,
               error: event.error,
             },
             commands: [
               {
                 type: "run-error-side-effects",
-                streamId: state.streamId,
+                invocationRef: state.invocationRef,
                 request: state.request,
                 targetAppId: state.targetAppId,
                 error: event.error,
@@ -341,13 +356,13 @@ export function transition(
           // SOLE terminal `wasCancelled` end; a stream aborted before
           // admission never sends `chat:stream:start`, so waiting for
           // registration here would deadlock the machine in `cancelling`
-          // (the stale check on `streamId` already rejects ends belonging
+          // (the stale check on `invocationRef` already rejects ends belonging
           // to an older generation).
           return {
             kind: "applied",
             state: {
               type: "finalizing",
-              streamId: state.streamId,
+              invocationRef: state.invocationRef,
               request: state.request,
               wasCancelled: event.response.wasCancelled === true,
               targetAppId: state.targetAppId,
@@ -355,7 +370,7 @@ export function transition(
             commands: [
               {
                 type: "run-end-side-effects",
-                streamId: state.streamId,
+                invocationRef: state.invocationRef,
                 request: state.request,
                 targetAppId: state.targetAppId,
                 response: event.response,
@@ -369,13 +384,12 @@ export function transition(
             kind: "applied",
             state: {
               type: "errored",
-              lastStreamId: state.streamId,
               error: event.error,
             },
             commands: [
               {
                 type: "run-error-side-effects",
-                streamId: state.streamId,
+                invocationRef: state.invocationRef,
                 request: state.request,
                 targetAppId: state.targetAppId,
                 error: event.error,
@@ -423,11 +437,18 @@ export function transition(
           const shouldDispatch = event.ok && !state.wasCancelled;
           return {
             kind: "applied",
-            state: { type: "idle", lastStreamId: state.streamId },
+            state: { type: "idle" },
             // Queue dispatch is an explicit command emitted ONLY on this
             // transition (single-dispatch by construction; fixes the queue
             // double-dispatch race).
-            commands: shouldDispatch ? [{ type: "dispatch-next-queued" }] : [],
+            commands: shouldDispatch
+              ? [
+                  {
+                    type: "dispatch-next-queued",
+                    invocationRef: state.invocationRef,
+                  },
+                ]
+              : [],
           };
         }
         case "cancel":
@@ -465,17 +486,22 @@ export function transition(
     case "errored": {
       switch (event.type) {
         case "submit": {
-          const streamId = state.lastStreamId + 1;
+          if (!event.invocationRef) {
+            throw new Error(
+              "An active chat stream must be submitted with an InvocationRef",
+            );
+          }
+          const invocationRef = event.invocationRef;
           return {
             kind: "applied",
             state: {
               type: "starting",
-              streamId,
+              invocationRef,
               request: event.request,
               targetAppId: null,
             },
             commands: [
-              { type: "start-stream", streamId, request: event.request },
+              { type: "start-stream", invocationRef, request: event.request },
             ],
           };
         }

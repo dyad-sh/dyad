@@ -4,7 +4,8 @@ import {
   MAX_AUDIO_RECORDING_BYTES,
   MAX_AUDIO_RECORDING_DURATION_MS,
 } from "@/ipc/types/audio";
-import type { Clock, ClockHandle, IdSource } from "@/state_machines/clock";
+import type { Clock, IdSource } from "@/state_machines/clock";
+import { TimerLeaseScope } from "@/state_machines/timer_lease";
 import type { VoiceCommandRunner } from "./controller";
 import type { VoiceCommand, VoiceEvent } from "./state";
 
@@ -22,7 +23,6 @@ interface AttemptResources {
   recorder?: MediaRecorder;
   chunks: Blob[];
   recordedBytes: number;
-  durationHandle?: ClockHandle;
 }
 
 export function createBrowserVoiceCommandRunner(options: {
@@ -35,6 +35,9 @@ export function createBrowserVoiceCommandRunner(options: {
   const releasedAttempts = new Set<string>();
   const cancelledAttempts = new Set<string>();
   let callbacks = options.callbacks;
+  const durationLeases = new TimerLeaseScope<string, string, VoiceEvent>(
+    options.clock,
+  );
 
   function emitFailure(
     emit: (event: VoiceEvent) => void,
@@ -50,10 +53,7 @@ export function createBrowserVoiceCommandRunner(options: {
   }
 
   function cancelDuration(attempt: string) {
-    const resources = attempts.get(attempt);
-    if (!resources?.durationHandle) return;
-    options.clock.cancel(resources.durationHandle);
-    resources.durationHandle = undefined;
+    durationLeases.remove(attempt);
   }
 
   function release(attempt: string) {
@@ -167,11 +167,13 @@ export function createBrowserVoiceCommandRunner(options: {
       case "ScheduleDurationLimit": {
         const resources = attempts.get(command.attempt);
         if (!resources) return;
-        cancelDuration(command.attempt);
-        resources.durationHandle = options.clock.schedule(() => {
-          resources.durationHandle = undefined;
-          emit({ type: "DURATION_ELAPSED", attempt: command.attempt });
-        }, MAX_AUDIO_RECORDING_DURATION_MS);
+        durationLeases.replace(
+          command.attempt,
+          command.attempt,
+          MAX_AUDIO_RECORDING_DURATION_MS,
+          (attempt) => ({ type: "DURATION_ELAPSED", attempt }),
+          emit,
+        );
         return;
       }
 
@@ -240,6 +242,17 @@ export function createBrowserVoiceCommandRunner(options: {
 
   return {
     run,
+    beforeStateCommit(previous, next) {
+      if (
+        previous.type === "recording" &&
+        (next.type !== "recording" || next.attempt !== previous.attempt)
+      ) {
+        cancelDuration(previous.attempt);
+      }
+    },
+    dispose() {
+      durationLeases.dispose();
+    },
     updateCallbacks(nextCallbacks) {
       callbacks = nextCallbacks;
     },

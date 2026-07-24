@@ -1,8 +1,8 @@
-import { SnapshotStore } from "@/state_machines/snapshot_store";
 import {
-  observeTransition,
-  type TransitionObserver,
-} from "@/state_machines/types";
+  TransactionalDispatcher,
+  type DispatcherError,
+} from "@/state_machines/dispatcher";
+import type { TransitionObserver } from "@/state_machines/types";
 import type { IdSource } from "@/state_machines/clock";
 import type {
   VoiceCommand,
@@ -13,13 +13,19 @@ import type {
 import { transition } from "./transition";
 
 export interface VoiceCommandRunner {
-  run(command: VoiceCommand, emit: (event: VoiceEvent) => void): void;
+  run(
+    command: VoiceCommand,
+    emit: (event: VoiceEvent) => void,
+  ): void | Promise<void>;
+  beforeStateCommit?(previous: VoiceState, next: VoiceState): void;
+  dispose?(): void;
 }
 
 export interface VoiceToTextControllerOptions {
   idSource: IdSource;
   runner: VoiceCommandRunner;
   observer?: TransitionObserver<VoiceState, VoiceEvent, VoiceCommand>;
+  reportError?(error: DispatcherError<VoiceCommand>): void;
 }
 
 /**
@@ -29,64 +35,50 @@ export interface VoiceToTextControllerOptions {
  * capture. Commands may complete concurrently; attempt IDs reject late work.
  */
 export class VoiceToTextController {
-  private readonly store = new SnapshotStore<VoiceState>({ type: "idle" });
-  private readonly pendingEvents: VoiceEvent[] = [];
-  private processing = false;
+  private readonly dispatcher: TransactionalDispatcher<
+    VoiceState,
+    VoiceEvent,
+    VoiceCommand
+  >;
   private disposed = false;
 
-  constructor(private readonly options: VoiceToTextControllerOptions) {}
+  constructor(private readonly options: VoiceToTextControllerOptions) {
+    this.dispatcher = new TransactionalDispatcher({
+      initialState: { type: "idle" },
+      transition,
+      runCommand: (command, emit) => options.runner.run(command, emit),
+      scheduler: {
+        schedule(batch, execute) {
+          for (const command of batch.commands) void execute(command);
+        },
+      },
+      beforeCommit: (previous, next) =>
+        options.runner.beforeStateCommit?.(previous, next),
+      observer: options.observer,
+      reportError: options.reportError,
+    });
+  }
 
-  getSnapshot = this.store.getSnapshot;
+  getSnapshot = (): VoiceState => this.dispatcher.getSnapshot();
 
-  subscribe = this.store.subscribe;
+  subscribe = (listener: () => void): (() => void) =>
+    this.dispatcher.subscribe(listener);
 
   toggle = (): void => {
-    this.send({
+    this.dispatcher.send({
       type: "TOGGLE",
       attempt: this.options.idSource.next("voice-attempt"),
     });
   };
 
-  send = (event: VoiceEvent): void => {
-    if (this.disposed) return;
-    this.pendingEvents.push(event);
-    if (this.processing) return;
-    this.processing = true;
-    try {
-      for (
-        let next = this.pendingEvents.shift();
-        next !== undefined;
-        next = this.pendingEvents.shift()
-      ) {
-        this.processOne(next);
-      }
-    } finally {
-      this.processing = false;
-    }
-  };
-
-  private processOne(event: VoiceEvent): void {
-    if (this.disposed) return;
-    const previous = this.store.getSnapshot();
-    const result = transition(previous, event);
-    observeTransition(this.options.observer, previous, event, result);
-    if (result.kind === "ignored") return;
-    if (result.state !== previous) this.store.setState(result.state);
-    for (const command of result.commands) {
-      try {
-        this.options.runner.run(command, this.send);
-      } catch (error) {
-        console.error("Voice-to-text command execution failed:", error);
-      }
-    }
-  }
+  send = (event: VoiceEvent): void => this.dispatcher.send(event);
 
   /** Stop browser resources and permanently discard all late completions. */
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    this.pendingEvents.length = 0;
-    const state = this.store.getSnapshot();
+    const state = this.dispatcher.getSnapshot();
+    this.dispatcher.dispose();
     if (state.type !== "idle") {
       const commands: VoiceCommand[] = [
         { type: "CancelDurationLimit", attempt: state.attempt },
@@ -97,15 +89,9 @@ export class VoiceToTextController {
         },
         { type: "ReleaseMedia", attempt: state.attempt },
       ];
-      for (const command of commands) {
-        try {
-          this.options.runner.run(command, () => undefined);
-        } catch (error) {
-          console.error("Voice-to-text disposal command failed:", error);
-        }
-      }
+      this.dispatcher.startFinalizers(commands);
     }
-    this.store.dispose();
+    this.options.runner.dispose?.();
   }
 }
 

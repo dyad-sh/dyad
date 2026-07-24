@@ -19,6 +19,30 @@ Background and before/after examples of why this pattern exists:
 
 ## Invariants
 
+- Controllers migrated to `TransactionalDispatcher` use one event transaction:
+  enqueue FIFO; run the pure transition exactly once; validate; reserve the
+  command batch without running domain code; cancel exiting state-owned leases;
+  commit the snapshot (the linearization point); update the authoritative
+  projection; notify snapshot subscribers; notify transition observers; then
+  hand the reserved batch to the injected domain scheduler. Re-entrant sends
+  from any callback append to the FIFO and run after the current transaction.
+  Ignored events skip commit, projection, subscribers, and commands, but notify
+  observers at the equivalent point in FIFO order.
+- The dispatcher isolates and reports projection, subscriber, observer,
+  scheduler, and command failures. Adapters convert expected command failures
+  to typed domain events; unexpected throws/rejections may be mapped by the
+  domain and never create a universal failure event. Scheduler injection owns
+  concurrency policy.
+- A pre-commit lease-cancellation failure is also isolated and reported, but
+  does not veto commit. Unlike pure transition and validation failures, an
+  effectful cleanup hook may have partially completed; rejecting at that point
+  would drop the event against a partially modified old state. Cancellation is
+  required resource hygiene, while operation/state-instance token checks are
+  the correctness backstop that rejects any stale callback which still fires.
+- Use `TimerLeaseScope` for migrated watchdogs. Carry the lease's operation or
+  state-instance token in its event, cancel it in the dispatcher's pre-commit
+  lease hook before exiting state, explicitly replace it on self-re-entry, and
+  dispose it with its controller.
 - Never return a value-equal state with a new reference. One-shot effects are
   commands, not identity signals.
 - Snapshots are immutable and reference-stable. Notify subscribers only when

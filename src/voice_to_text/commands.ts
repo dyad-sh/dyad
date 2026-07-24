@@ -35,10 +35,8 @@ export function createBrowserVoiceCommandRunner(options: {
   const releasedAttempts = new Set<string>();
   const cancelledAttempts = new Set<string>();
   let callbacks = options.callbacks;
-  let emitEvent: (event: VoiceEvent) => void = () => undefined;
   const durationLeases = new TimerLeaseScope<string, string, VoiceEvent>(
     options.clock,
-    (event) => emitEvent(event),
   );
 
   function emitFailure(
@@ -70,7 +68,6 @@ export function createBrowserVoiceCommandRunner(options: {
   }
 
   function run(command: VoiceCommand, emit: (event: VoiceEvent) => void) {
-    emitEvent = emit;
     switch (command.type) {
       case "AcquireMedia":
         pendingAcquisitions.add(command.attempt);
@@ -175,6 +172,7 @@ export function createBrowserVoiceCommandRunner(options: {
           command.attempt,
           MAX_AUDIO_RECORDING_DURATION_MS,
           (attempt) => ({ type: "DURATION_ELAPSED", attempt }),
+          emit,
         );
         return;
       }

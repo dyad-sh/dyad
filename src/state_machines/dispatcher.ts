@@ -1,5 +1,5 @@
-import { validateTransitionResult } from "./testing";
 import { SnapshotStore } from "./snapshot_store";
+import { validateTransitionResult } from "./transition_validation";
 import type {
   IgnoreReason,
   TransitionObserver,

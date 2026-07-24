@@ -1,8 +1,10 @@
 import type { Clock, ClockHandle } from "./clock";
 
-interface TimerLease<Token> {
+interface TimerLease<Token, Event> {
   readonly token: Token;
   readonly handle: ClockHandle;
+  readonly createEvent: (token: Token) => Event;
+  readonly emit: (event: Event) => void;
 }
 
 /**
@@ -13,19 +15,17 @@ interface TimerLease<Token> {
  * carry the token in the event and reject stale events in their transition.
  */
 export class TimerLeaseScope<Key, Token, Event> {
-  private readonly leases = new Map<Key, TimerLease<Token>>();
+  private readonly leases = new Map<Key, TimerLease<Token, Event>>();
   private disposed = false;
 
-  constructor(
-    private readonly clock: Clock,
-    private readonly emit: (event: Event) => void,
-  ) {}
+  constructor(private readonly clock: Clock) {}
 
   replace(
     key: Key,
     token: Token,
     delayMs: number,
     createEvent: (token: Token) => Event,
+    emit: (event: Event) => void,
   ): void {
     this.remove(key);
     if (this.disposed) return;
@@ -33,9 +33,9 @@ export class TimerLeaseScope<Key, Token, Event> {
       const lease = this.leases.get(key);
       if (!lease || lease.handle !== handle || lease.token !== token) return;
       this.leases.delete(key);
-      this.emit(createEvent(token));
+      lease.emit(lease.createEvent(token));
     }, delayMs);
-    this.leases.set(key, { token, handle });
+    this.leases.set(key, { token, handle, createEvent, emit });
   }
 
   remove(key: Key): void {

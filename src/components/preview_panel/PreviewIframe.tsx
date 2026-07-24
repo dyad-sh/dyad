@@ -89,6 +89,7 @@ import { useAttachments } from "@/hooks/useAttachments";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { Annotator } from "@/pro/ui/components/Annotator/Annotator";
 import { VisualEditingToolbar } from "./VisualEditingToolbar";
+import { RecordingCodePreview } from "./RecordingCodePreview";
 import { resolvePreviewBrowserUrl } from "./previewBrowserUrl";
 import { PreviewLoadingScreen } from "./PreviewLoadingScreen";
 import { useTranslation } from "react-i18next";
@@ -1672,6 +1673,10 @@ export const PreviewIframe = ({
             </span>
           )}
         </div>
+      )}
+
+      {recorder.isRecording && !annotatorMode && (
+        <RecordingCodePreview steps={recorder.steps} />
       )}
 
       <div className="relative flex-grow overflow-hidden">

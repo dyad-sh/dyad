@@ -35,7 +35,7 @@ const INTEGRATION_DEADLINE_MS = 30 * 60 * 1_000;
 const MAX_SETTLED_TOMBSTONES = 1_000;
 
 export interface PendingUserInputSnapshot {
-  status: "awaiting" | "armed" | "due";
+  status: "awaiting" | "armed" | "due" | "accepted";
   descriptor: UserInputDescriptor;
   deadlineAt: number;
   classifier?: "none" | "racing" | "review";
@@ -64,9 +64,13 @@ export interface UserInputRegistry {
     approved: boolean,
     reason?: string,
   ): Promise<boolean>;
-  sweepChat(chatId: number): void;
+  sweepChat(chatId: number, exceptRequestId?: string): void;
+  settleChat(chatId: number): Promise<void>;
   streamFinished(chatId: number): void;
-  followUpDispatched(requestId: string): Promise<void>;
+  followUpAccepted(requestId: string): Promise<void>;
+  followUpRetryable(requestId: string): Promise<void>;
+  followUpAcknowledged(requestId: string): Promise<void>;
+  followUpRejected(requestId: string): Promise<void>;
   getPending(): PendingUserInputSnapshot[];
   dispose(): void;
 }
@@ -79,6 +83,12 @@ export function createUserInputRegistry(deps: {
     descriptor: UserInputDescriptor,
     response: UserInputResponse,
   ) => void | Promise<void>;
+  persistFollowUpCreated?: (input: {
+    requestId: string;
+    chatId: number;
+    prompt: string;
+  }) => void;
+  rejectFollowUpHandoff?: (requestId: string, reason: string) => void;
   commandRunner?: UserInputCommandRunner;
   observer?: TransitionObserver<
     UserInputState,
@@ -97,6 +107,8 @@ export function createUserInputRegistry(deps: {
   const effects = createUserInputCommandRunner({
     broadcast: deps.broadcast,
     persistAlways: deps.persistAlways ?? (() => undefined),
+    persistFollowUpCreated: deps.persistFollowUpCreated,
+    rejectFollowUpHandoff: deps.rejectFollowUpHandoff,
   });
 
   function deadlineMs(kind: UserInputDescriptor["kind"]): number {
@@ -166,6 +178,8 @@ export function createUserInputRegistry(deps: {
       case "broadcast-settled":
       case "broadcast-follow-up-due":
       case "persist-always":
+      case "persist-follow-up-created":
+      case "reject-follow-up-handoff":
         break;
       default: {
         const exhaustive: never = command;
@@ -185,8 +199,39 @@ export function createUserInputRegistry(deps: {
   ): Promise<boolean> {
     const previous = states.get(requestId) ?? ({ status: "idle" } as const);
     const result = transition(previous, event);
+    if (result.kind === "ignored") {
+      observeTransition(observer, previous, event, result);
+      return Promise.resolve(false);
+    }
+
+    // These commands are the durability barriers for the pilot protocol.
+    // Run them before committing the memory state or any dependent broadcast:
+    // a failed create leaves the request armed and retryable, while a failed
+    // rejection leaves its owner live so settlement can be retried.
+    for (const command of result.commands) {
+      if (
+        command.type !== "persist-follow-up-created" &&
+        command.type !== "reject-follow-up-handoff"
+      ) {
+        continue;
+      }
+      try {
+        const effect = effects.run(command);
+        if (effect instanceof Promise) {
+          throw new Error(
+            `Durable user-input command must be synchronous: ${command.type}`,
+          );
+        }
+        void Promise.resolve(deps.commandRunner?.run(command)).catch((error) =>
+          deps.onCommandError?.(command, error),
+        );
+      } catch (error) {
+        deps.onCommandError?.(command, error);
+        return Promise.reject(error);
+      }
+    }
+
     observeTransition(observer, previous, event, result);
-    if (result.kind === "ignored") return Promise.resolve(false);
 
     states.set(requestId, result.state);
     if (isLiveUserInputState(result.state)) addToChat(result.state.descriptor);
@@ -229,6 +274,12 @@ export function createUserInputRegistry(deps: {
       }
     };
     for (const command of result.commands) {
+      if (
+        command.type === "persist-follow-up-created" ||
+        command.type === "reject-follow-up-handoff"
+      ) {
+        continue;
+      }
       if (pending) {
         pending = pending.then(() => runCommand(command));
         continue;
@@ -355,10 +406,21 @@ export function createUserInputRegistry(deps: {
       });
     },
 
-    sweepChat(chatId) {
+    sweepChat(chatId, exceptRequestId) {
       for (const requestId of chatIndex.get(chatId) ?? []) {
+        if (requestId === exceptRequestId) continue;
+        const state = states.get(requestId);
+        if (state?.status === "due" || state?.status === "accepted") continue;
         dispatchWithoutWaiting(requestId, { type: "chat-swept", chatId });
       }
+    },
+
+    async settleChat(chatId) {
+      await Promise.all(
+        Array.from(chatIndex.get(chatId) ?? [], (requestId) =>
+          dispatch(requestId, { type: "chat-swept", chatId }),
+        ),
+      );
     },
 
     streamFinished(chatId) {
@@ -367,14 +429,63 @@ export function createUserInputRegistry(deps: {
       }
     },
 
-    async followUpDispatched(requestId) {
+    async followUpAccepted(requestId) {
+      if (states.get(requestId)?.status === "accepted") return;
       const applied = await dispatch(requestId, {
-        type: "follow-up-dispatched",
+        type: "follow-up-accepted",
         requestId,
       });
       if (!applied) {
         throw new DyadError(
           `No due user-input request: ${requestId}`,
+          DyadErrorKind.NotFound,
+        );
+      }
+    },
+
+    async followUpRetryable(requestId) {
+      const state = states.get(requestId);
+      if (!state || state.status !== "accepted") {
+        throw new DyadError(
+          `No accepted user-input request: ${requestId}`,
+          DyadErrorKind.NotFound,
+        );
+      }
+      await dispatch(requestId, { type: "follow-up-retryable", requestId });
+    },
+
+    async followUpAcknowledged(requestId) {
+      const existing = states.get(requestId);
+      if (
+        existing?.status === "settled" &&
+        existing.outcome === "acknowledged"
+      ) {
+        return;
+      }
+      const applied = await dispatch(requestId, {
+        type: "follow-up-acknowledged",
+        requestId,
+      });
+      if (!applied) {
+        throw new DyadError(
+          `No accepted user-input request: ${requestId}`,
+          DyadErrorKind.NotFound,
+        );
+      }
+    },
+
+    async followUpRejected(requestId) {
+      const existing = states.get(requestId);
+      if (existing?.status === "settled" && existing.outcome === "rejected") {
+        return;
+      }
+      const applied = await dispatch(requestId, {
+        type: "follow-up-rejected",
+        requestId,
+      });
+      if (!applied) {
+        throw new DyadError(
+          `No live user-input follow-up: ${requestId}`,
           DyadErrorKind.NotFound,
         );
       }
@@ -393,7 +504,9 @@ export function createUserInputRegistry(deps: {
           classifierReason:
             state.status === "awaiting" ? state.classifierReason : undefined,
           followUpPrompt:
-            state.status === "armed" || state.status === "due"
+            state.status === "armed" ||
+            state.status === "due" ||
+            state.status === "accepted"
               ? state.followUpPrompt
               : undefined,
         });

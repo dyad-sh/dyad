@@ -5,6 +5,7 @@ import type {
   FileAttachment,
 } from "@/ipc/types";
 import type { InvocationRef } from "@/state_machines/invocation_ref";
+import type { UserInputFollowUpQueueOwner } from "@/state_machines/handoff_types";
 
 export const CHAT_STREAM_INVOCATION_KIND = "chat-stream" as const;
 export type ChatStreamInvocationRef = InvocationRef<
@@ -54,11 +55,12 @@ export interface StreamRequest {
    * `streamMessage` contract.
    */
   requestedChatMode?: Chat["chatMode"] | null;
-  /** Stable idempotency key for a machine-generated user-input follow-up. */
-  userInputRequestId?: string;
+  /** Typed owner; its request ID is the durable idempotency identity. */
+  owner?: UserInputFollowUpQueueOwner;
   /** Resolves only after main durably accepts the idempotent user message. */
   onAccepted?: () => void;
   onAcceptanceError?: (error: Error) => void;
+  onAcceptanceRejected?: (reason: string) => void;
   onSettled?: (result: StreamSettledResult) => void;
 }
 

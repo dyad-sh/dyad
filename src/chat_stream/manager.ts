@@ -28,6 +28,7 @@ import type {
   StreamEvent,
   StreamState,
 } from "./state";
+import type { UserInputFollowUpQueueOwner } from "@/state_machines/handoff_types";
 
 type JotaiStore = ReturnType<typeof createStore>;
 
@@ -38,6 +39,13 @@ export interface StreamFinishedEvent {
 }
 
 type StreamFinishedListener = (event: StreamFinishedEvent) => void;
+
+export interface ChatStreamUserInputHandoffFacade {
+  reject(
+    owner: UserInputFollowUpQueueOwner,
+    reason: string,
+  ): void | Promise<void>;
+}
 
 function withoutChatId<Value>(
   previous: Map<number, Value>,
@@ -64,6 +72,7 @@ export class ChatStreamManager {
   private readonly host: KeyedControllerHost<number, ChatStreamController>;
   private projectionWriter: AtomProjectionWriter<unknown> | null = null;
   private projectionEnabled = true;
+  private userInputHandoff: ChatStreamUserInputHandoffFacade | null = null;
 
   constructor(
     private readonly store: JotaiStore,
@@ -98,6 +107,22 @@ export class ChatStreamManager {
 
   registerRuntimeDeps(deps: ChatStreamRuntimeDeps): void {
     this.runtimeDeps = deps;
+  }
+
+  configureUserInputHandoff(facade: ChatStreamUserInputHandoffFacade): void {
+    this.userInputHandoff = facade;
+  }
+
+  rejectUserInputHandoff(
+    owner: UserInputFollowUpQueueOwner,
+    reason: string,
+  ): Promise<void> {
+    if (!this.userInputHandoff) {
+      return Promise.reject(
+        new Error("User-input handoff facade is not configured"),
+      );
+    }
+    return Promise.resolve(this.userInputHandoff.reject(owner, reason));
   }
 
   ensure(chatId: number): ChatStreamController {

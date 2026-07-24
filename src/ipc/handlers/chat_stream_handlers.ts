@@ -2352,7 +2352,10 @@ This conversation includes one or more image attachments. When the user uploads 
         } else if (!activeStreams.has(req.chatId)) {
           // Errors and cancellation sweep pending user inputs; only successful
           // natural completion can arm a follow-up dispatch.
-          userInputRegistry.sweepChat(req.chatId);
+          // A durable follow-up owns its own retry/reject leg through the
+          // injected facade. Sweeping it here would settle the memory registry
+          // before the renderer can return an execution failure to `accepted`.
+          userInputRegistry.sweepChat(req.chatId, req.userInputRequestId);
         }
       }
 

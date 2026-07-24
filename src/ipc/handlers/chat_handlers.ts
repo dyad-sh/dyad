@@ -20,6 +20,7 @@ import {
 } from "../utils/renderer_chat_message";
 import { createChatForApp } from "../utils/chat_creation_utils";
 import { firstPromptCreationRegistry } from "../services/first_prompt_creation_service";
+import { userInputRegistry } from "@/user_input/main";
 
 const logger = log.scope("chat_handlers");
 
@@ -188,6 +189,7 @@ export function registerChatHandlers() {
       chatId,
       sender: event.sender,
       mutation: async () => {
+        await userInputRegistry.settleChat(chatId);
         await db.delete(chats).where(eq(chats.id, chatId));
       },
     });

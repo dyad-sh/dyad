@@ -40,17 +40,63 @@ export function registerRendererIpcListeners({
       requestedChatMode: "local-agent";
     }) =>
       new Promise<void>((resolve, reject) => {
-        chatStreamManager.ensure(request.chatId).send({
-          type: "submit",
-          request: {
-            ...request,
-            userInputRequestId: requestId,
-            onAccepted: resolve,
-            onAcceptanceError: reject,
-          },
-        });
+        let completed = false;
+        void ipcClient.userInput
+          .acceptFollowUp({
+            requestId,
+            chatId: request.chatId,
+            prompt: request.prompt,
+          })
+          .then(() => {
+            chatStreamManager.ensure(request.chatId).send({
+              type: "submit",
+              request: {
+                ...request,
+                owner: { kind: "user-input-follow-up", requestId },
+                onAccepted: () => {
+                  if (completed) return;
+                  completed = true;
+                  resolve();
+                },
+                onAcceptanceError: (error) => {
+                  if (completed) return;
+                  completed = true;
+                  void ipcClient.userInput
+                    .retryFollowUp({ requestId, error: error.message })
+                    .then(
+                      () => reject(error),
+                      (retryError) => reject(retryError),
+                    );
+                },
+                onAcceptanceRejected: (reason) => {
+                  if (completed) return;
+                  completed = true;
+                  void ipcClient.userInput
+                    .rejectFollowUp({ requestId, reason })
+                    .then(
+                      () => reject(new Error(reason)),
+                      (rejectionError) => reject(rejectionError),
+                    );
+                },
+              },
+            });
+          })
+          .catch((error) => {
+            completed = true;
+            reject(error);
+          });
+      }),
+    reject: (
+      owner: { kind: "user-input-follow-up"; requestId: string },
+      reason: string,
+    ) =>
+      ipcClient.userInput.rejectFollowUp({
+        requestId: owner.requestId,
+        reason,
       }),
   };
+
+  chatStreamManager.configureUserInputHandoff(userInputChatStream);
 
   unsubscribes.push(
     getUserInputProjectionAdapter({

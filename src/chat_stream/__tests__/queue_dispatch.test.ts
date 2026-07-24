@@ -182,7 +182,10 @@ describe("queued request fidelity", () => {
       request: {
         chatId: CHAT_ID,
         prompt: "continue",
-        userInputRequestId: "integration:1",
+        owner: {
+          kind: "user-input-follow-up",
+          requestId: "integration:1",
+        },
         onAccepted: firstAccepted,
       },
     });
@@ -191,7 +194,10 @@ describe("queued request fidelity", () => {
       request: {
         chatId: CHAT_ID,
         prompt: "continue",
-        userInputRequestId: "integration:1",
+        owner: {
+          kind: "user-input-follow-up",
+          requestId: "integration:1",
+        },
         onAccepted: replayAccepted,
       },
     });

@@ -4,8 +4,17 @@ import {
   createFakeClock,
   createSequentialIdSource,
 } from "@/state_machines/testing";
+import type { TransitionObserver } from "@/state_machines/types";
 import { createScreenshotCommandAdapter } from "./commands";
 import { ScreenshotController } from "./controller";
+import type {
+  ScreenshotCommand,
+  ScreenshotEvent,
+  ScreenshotIgnoreReason,
+  ScreenshotState,
+} from "./state";
+import { INITIAL_SCREENSHOT_STATE } from "./state";
+import { transition } from "./transition";
 
 vi.mock("@/ipc/types", () => ({
   ipc: {
@@ -18,6 +27,118 @@ vi.mock("@/ipc/types", () => ({
     },
   },
 }));
+
+interface ScreenshotTrace {
+  outcomes: string[];
+  states: ScreenshotState[];
+  commands: ScreenshotCommand[];
+}
+
+class RecordedScreenshotController {
+  private state = INITIAL_SCREENSHOT_STATE;
+
+  constructor(
+    private readonly runner: {
+      execute(
+        appId: number,
+        command: ScreenshotCommand,
+        emit: (event: ScreenshotEvent) => void,
+      ): void;
+    },
+    private readonly observer: TransitionObserver<
+      ScreenshotState,
+      ScreenshotEvent,
+      ScreenshotCommand,
+      ScreenshotIgnoreReason
+    >,
+  ) {}
+
+  getSnapshot(): ScreenshotState {
+    return this.state;
+  }
+
+  send = (event: ScreenshotEvent): void => {
+    const previous = this.state;
+    const result = transition(previous, event);
+    if (result.kind === "ignored") {
+      this.observer.onEventIgnored?.({
+        state: previous,
+        event,
+        reason: result.reason,
+      });
+      return;
+    }
+    this.observer.onTransitionApplied?.({
+      previous,
+      event,
+      state: result.state,
+      commands: result.commands,
+    });
+    this.state = result.state;
+    for (const command of result.commands) {
+      this.runner.execute(7, command, this.send);
+    }
+  };
+}
+
+function recordScreenshotScenario(
+  kind: "reference" | "controller",
+): ScreenshotTrace {
+  const trace: ScreenshotTrace = { outcomes: [], states: [], commands: [] };
+  let settleId = 0;
+  const observer: TransitionObserver<
+    ScreenshotState,
+    ScreenshotEvent,
+    ScreenshotCommand,
+    ScreenshotIgnoreReason
+  > = {
+    onTransitionApplied({ event, state }) {
+      trace.outcomes.push(`applied:${event.type}`);
+      trace.states.push(state);
+    },
+    onEventIgnored({ event, state, reason }) {
+      trace.outcomes.push(`ignored:${event.type}:${reason}`);
+      trace.states.push(state);
+    },
+  };
+  const runner = {
+    execute(
+      _appId: number,
+      command: ScreenshotCommand,
+      emit: (event: ScreenshotEvent) => void,
+    ) {
+      trace.commands.push(command);
+      if (command.type === "schedule-settle") {
+        settleId += 1;
+        emit({ type: "SETTLE_ELAPSED", requestId: `capture:${settleId}` });
+      } else if (command.type === "resolve-commit-hash") {
+        emit({
+          type: "COMMIT_RESOLVED",
+          requestId: command.requestId,
+          hash: "abc123",
+        });
+      }
+    },
+    disposeKey() {},
+  };
+  const controller =
+    kind === "reference"
+      ? new RecordedScreenshotController(runner, observer)
+      : new ScreenshotController(7, runner, observer);
+
+  controller.send({ type: "IFRAME_LOADED" });
+  controller.send({ type: "SELECTOR_READY" });
+  controller.send({ type: "CAPTURE_REQUESTED", source: "commit" });
+  controller.send({ type: "CAPTURE_REQUESTED", source: "stream" });
+  controller.send({
+    type: "RESPONSE",
+    requestId: "capture:stale",
+    ok: false,
+  });
+  controller.send({ type: "RESPONSE", requestId: "capture:1", ok: false });
+  trace.states.push(controller.getSnapshot());
+  return trace;
+}
 
 describe("screenshot controller", () => {
   it("uses the injected clock for the settle delay", async () => {
@@ -189,5 +310,11 @@ describe("screenshot controller", () => {
       status: "settling",
       source: "stream",
     });
+  });
+
+  it("matches the recorded pre-migration event, state, and command trace", () => {
+    expect(recordScreenshotScenario("controller")).toEqual(
+      recordScreenshotScenario("reference"),
+    );
   });
 });

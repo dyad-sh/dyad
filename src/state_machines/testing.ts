@@ -597,16 +597,21 @@ export async function runControllerConformanceSuite<
 
   {
     const command = adapter.commands.emit(adapter.events.enterB);
+    const commandEvent = adapter.events.command(command);
     const controller = adapter.create({
       runCommand(current, emit) {
         if (Object.is(current, command)) emit(adapter.events.enterB);
       },
     });
-    controller.send(adapter.events.command(command));
+    controller.send(commandEvent);
+    const commandState = adapter.transition(
+      adapter.initialState,
+      commandEvent,
+    ).state;
     conformanceAssert(
       adapter.stateKey(controller.getSnapshot()) ===
         adapter.stateKey(
-          adapter.transition(adapter.initialState, adapter.events.enterB).state,
+          adapter.transition(commandState, adapter.events.enterB).state,
         ),
       "synchronous command emission",
       "the emitted event was not drained",
@@ -616,6 +621,7 @@ export async function runControllerConformanceSuite<
   {
     const errors: unknown[] = [];
     const command = adapter.commands.emit(adapter.events.enterB);
+    const commandEvent = adapter.events.command(command);
     const controller = adapter.create({
       beforeCommit() {
         throw new Error("conformance before-commit throw");
@@ -623,7 +629,11 @@ export async function runControllerConformanceSuite<
       runCommand: () => undefined,
       reportError: (error) => errors.push(error),
     });
-    controller.send(adapter.events.command(command));
+    controller.send(commandEvent);
+    const commandState = adapter.transition(
+      adapter.initialState,
+      commandEvent,
+    ).state;
     conformanceAssert(
       errors.length === 2 &&
         errors.every(
@@ -631,8 +641,7 @@ export async function runControllerConformanceSuite<
         ) &&
         adapter.stateKey(controller.getSnapshot()) ===
           adapter.stateKey(
-            adapter.transition(adapter.initialState, adapter.events.enterB)
-              .state,
+            adapter.transition(commandState, adapter.events.enterB).state,
           ),
       "before-commit failure preserves progress",
       "the failure was not reported, commit was vetoed, or synchronous follow-up work stopped",
@@ -684,6 +693,7 @@ export async function runControllerConformanceSuite<
 
   {
     const deferred = adapter.commands.awaitThen(adapter.events.enterB);
+    const commandEvent = adapter.events.command(deferred.command);
     const controller = adapter.create({
       runCommand(command, emit) {
         if (!Object.is(command, deferred.command)) return;
@@ -697,13 +707,14 @@ export async function runControllerConformanceSuite<
         });
       },
     });
-    controller.send(adapter.events.command(deferred.command));
+    controller.send(commandEvent);
+    const snapshotAtDispose = controller.getSnapshot();
     controller.dispose();
     deferred.resolve();
     await flushConformancePromises();
     conformanceAssert(
       adapter.stateKey(controller.getSnapshot()) ===
-        adapter.stateKey(adapter.initialState),
+        adapter.stateKey(snapshotAtDispose),
       "dispose during await",
       "a completion changed state after disposal",
     );

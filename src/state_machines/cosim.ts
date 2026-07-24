@@ -170,6 +170,10 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function cloneForCallback<Value>(value: Value): Value {
+  return structuredClone(value);
+}
+
 function formatFailure(
   phase: CosimFailure["phase"],
   message: string,
@@ -271,14 +275,15 @@ export function runCosim<
 
   const snapshot = (
     configuration: Config,
-  ): CosimSnapshot<ParticipantName, ChannelName, State, Event, Command> => ({
-    participants: configuration.states,
-    channels: configuration.channels,
-    pendingCommands: configuration.commands,
-    remainingActionIds: configuration.remainingActions.map(
-      (index) => options.scenario.actions[index].id,
-    ),
-  });
+  ): CosimSnapshot<ParticipantName, ChannelName, State, Event, Command> =>
+    cloneForCallback({
+      participants: configuration.states,
+      channels: configuration.channels,
+      pendingCommands: configuration.commands,
+      remainingActionIds: configuration.remainingActions.map(
+        (index) => options.scenario.actions[index].id,
+      ),
+    });
 
   const configurationKey = (configuration: Config): string =>
     JSON.stringify({
@@ -315,8 +320,10 @@ export function runCosim<
     const previousState = configuration.states[participantName];
     const result = participant.transition(previousState, event);
     if (
+      typeof result !== "object" ||
       result === undefined ||
       result === null ||
+      !("state" in result) ||
       (result.kind !== "ignored" && result.kind !== "applied") ||
       (result.kind === "applied" && !Array.isArray(result.commands)) ||
       (result.kind === "ignored" && result.state !== previousState)
@@ -425,10 +432,9 @@ export function runCosim<
       });
     }
 
-    const currentSnapshot = snapshot(configuration);
     for (const actionIndex of configuration.remainingActions) {
       const action = options.scenario.actions[actionIndex];
-      if (action.enabled?.(currentSnapshot) === false) continue;
+      if (action.enabled?.(snapshot(configuration)) === false) continue;
       enabled.push({
         apply: () => {
           const remainingActions = configuration.remainingActions.filter(
@@ -570,7 +576,7 @@ export function runCosim<
       let invariantFailed = false;
       for (const assertion of assertions(options.assertions?.perStep)) {
         try {
-          assertion(applied.step);
+          assertion(cloneForCallback(applied.step));
         } catch (error) {
           invariantFailed = true;
           failure = preferFailure(

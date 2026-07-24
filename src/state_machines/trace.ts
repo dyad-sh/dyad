@@ -22,6 +22,8 @@ export interface ReplayTrace<SerializedEvent> {
 
 export interface MachineTraceEntry {
   readonly at: number;
+  /** Monotonic process-local ordering for entries with the same timestamp. */
+  readonly sequence: number;
   readonly machine: string;
   readonly key?: string | number;
   readonly from: unknown;
@@ -32,7 +34,7 @@ export interface MachineTraceEntry {
 }
 
 export interface TraceObserverOptions<State, Event, Command> {
-  /** Maximum entries retained for this machine. Defaults to 100. */
+  /** Maximum entries retained for this machine/entity key. Defaults to 100. */
   maxEntries?: number;
   describeState?: (state: State) => unknown;
   describeEvent?: (event: Event) => unknown;
@@ -48,8 +50,12 @@ export interface MachineTraceDevtools {
 }
 
 const DEFAULT_MAX_ENTRIES = 100;
-const logs = new Map<string, MachineTraceEntry[]>();
+const MAX_TOTAL_ENTRIES = 10_000;
+type TraceKey = string | number | undefined;
+const logs = new Map<string, Map<TraceKey, MachineTraceEntry[]>>();
 const machineIndex: string[] = [];
+let nextSequence = 0;
+let totalEntries = 0;
 
 function defaultDescription(value: unknown): unknown {
   if (typeof value !== "object" || value === null) return value;
@@ -57,24 +63,66 @@ function defaultDescription(value: unknown): unknown {
   if ("status" in value && typeof value.status === "string") {
     return value.status;
   }
-  return value;
+  return "[redacted untagged object]";
 }
 
-function ensureMachine(machine: string): MachineTraceEntry[] {
+function ensureMachine(machine: string): Map<TraceKey, MachineTraceEntry[]> {
   const existing = logs.get(machine);
   if (existing) return existing;
-  const entries: MachineTraceEntry[] = [];
-  logs.set(machine, entries);
+  const rings = new Map<TraceKey, MachineTraceEntry[]>();
+  logs.set(machine, rings);
   machineIndex.push(machine);
-  return entries;
+  return rings;
+}
+
+function compareEntries(
+  left: MachineTraceEntry,
+  right: MachineTraceEntry,
+): number {
+  return left.at - right.at || left.sequence - right.sequence;
+}
+
+function evictOldestEntry(): void {
+  let oldest:
+    | {
+        entries: MachineTraceEntry[];
+        entry: MachineTraceEntry;
+      }
+    | undefined;
+  for (const rings of logs.values()) {
+    for (const entries of rings.values()) {
+      const entry = entries[0];
+      if (
+        entry !== undefined &&
+        (oldest === undefined || compareEntries(entry, oldest.entry) < 0)
+      ) {
+        oldest = { entries, entry };
+      }
+    }
+  }
+  if (oldest !== undefined) {
+    oldest.entries.shift();
+    totalEntries -= 1;
+  }
 }
 
 function record(entry: MachineTraceEntry, maxEntries: number): void {
   if (maxEntries === 0) return;
-  const entries = ensureMachine(entry.machine);
+  const rings = ensureMachine(entry.machine);
+  let entries = rings.get(entry.key);
+  if (!entries) {
+    entries = [];
+    rings.set(entry.key, entries);
+  }
   entries.push(entry);
+  totalEntries += 1;
   if (entries.length > maxEntries) {
-    entries.splice(0, entries.length - maxEntries);
+    const removed = entries.length - maxEntries;
+    entries.splice(0, removed);
+    totalEntries -= removed;
+  }
+  while (totalEntries > MAX_TOTAL_ENTRIES) {
+    evictOldestEntry();
   }
 }
 
@@ -88,8 +136,12 @@ function record(entry: MachineTraceEntry, maxEntries: number): void {
  * through a pure transition function.
  */
 export function getTraceLog(machine?: string): readonly MachineTraceEntry[] {
-  if (machine !== undefined) return [...(logs.get(machine) ?? [])];
-  return [...logs.values()].flat().sort((a, b) => a.at - b.at);
+  if (machine !== undefined) {
+    return [...(logs.get(machine)?.values() ?? [])].flat().sort(compareEntries);
+  }
+  return [...logs.values()]
+    .flatMap((rings) => [...rings.values()].flat())
+    .sort(compareEntries);
 }
 
 export function createTraceObserver<
@@ -117,6 +169,7 @@ export function createTraceObserver<
       record(
         {
           at: Date.now(),
+          sequence: nextSequence++,
           machine,
           key,
           from: describeState(previous),
@@ -132,6 +185,7 @@ export function createTraceObserver<
       record(
         {
           at: Date.now(),
+          sequence: nextSequence++,
           machine,
           key,
           from: describeState(state),
@@ -210,7 +264,9 @@ declare global {
   }
 }
 
-if (typeof window !== "undefined") {
+const isDebugBuild = process.env.NODE_ENV !== "production";
+
+if (typeof window !== "undefined" && isDebugBuild) {
   window.__dyadMachines = {
     get index() {
       return [...machineIndex];

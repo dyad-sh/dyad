@@ -41,11 +41,39 @@ import { Button } from "@/components/ui/button";
 import { useSettings } from "@/hooks/useSettings";
 import { showError } from "@/lib/toast";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { useTestRecorder } from "@/hooks/useTestRecorder";
 
 interface ConsoleHeaderProps {
   isOpen: boolean;
   onToggle: () => void;
   latestMessage?: string;
+}
+
+function RecorderPreview({
+  loading,
+  appId,
+  reloadKey,
+}: {
+  loading: boolean;
+  appId: number | null;
+  reloadKey: number;
+}) {
+  // The recorder handshake must outlive PreviewIframe's keyed remount. Neon
+  // isolation restarts the dev server, which bumps reloadKey while
+  // startRecording is awaiting the iframe's authentication acknowledgement.
+  const [recorderReloadKey, setRecorderReloadKey] = useState(0);
+  const reloadPreview = useCallback(
+    () => setRecorderReloadKey((current) => current + 1),
+    [],
+  );
+  const recorder = useTestRecorder({ reloadPreview });
+  return (
+    <PreviewIframe
+      key={`${appId}-${reloadKey}:${recorderReloadKey}`}
+      loading={loading}
+      recorder={recorder}
+    />
+  );
 }
 
 // Console header component
@@ -226,9 +254,10 @@ export function PreviewPanel() {
                     }}
                   />
                 ) : previewMode === "preview" ? (
-                  <PreviewIframe
-                    key={`${selectedAppId}-${key}`}
+                  <RecorderPreview
                     loading={loading}
+                    appId={selectedAppId}
+                    reloadKey={key}
                   />
                 ) : previewMode === "code" ? (
                   <CodeView loading={loading} app={app ?? null} />

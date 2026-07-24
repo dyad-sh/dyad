@@ -394,14 +394,20 @@ Because the isolated session starts effectively empty (a fresh copy, or a brand-
 - Do NOT seed by connecting to the database directly from the test, and do NOT run SQL/migrations against the database while authoring the test — that would write to the user's REAL data, outside the isolated session.
 - Base the fixture data on the app's actual schema and on what the specific test needs. Keep it minimal: seed only what the test asserts on.
 
+### Improving a recorded test
+
+When asked to add assertions to (or otherwise improve) a test Dyad's recorder generated, PRESERVE its recorded interactions, locators, and its \`signIn\` fixture usage — your job is to ADD meaningful \`expect(...)\` assertions after the key steps so the flow's outcomes are verified, not to rewrite the flow or re-pick the selectors.
+
 ### Authenticated tests (signing in a test user)
 
 This section applies ONLY when the specific flow under test genuinely requires a logged-in user. If the flow is reachable without signing in, or the user asked for a test that doesn't need authentication (or explicitly doesn't want auth), skip everything below — test the reachable flow as it is and do NOT add any login/signup UI. Note that \`process.env.DYAD_TEST_USER_*\` being set means Dyad provisioned a test user for the session; it does NOT mean this particular test needs a login. If a flow truly can't be tested without a sign-in that the app doesn't have yet, say so and ask the user before building auth — don't add it silently.
 
 When a flow requires a logged-in user, use the built-in auth fixture in \`e2e-tests/fixtures/test-user.ts\` instead of hand-rolling credentials. Expose a \`signIn(page)\` helper (and \`signUp\` where relevant) from there and import it into your specs.
-- If \`process.env.DYAD_TEST_USER_EMAIL\` and \`process.env.DYAD_TEST_USER_PASSWORD\` are set, Dyad has ALREADY provisioned an isolated test user — read the credentials from those env vars and sign that user in by driving the app's OWN login UI. Do NOT sign them up; they already exist. If the flow needs a login and the app has no login UI yet, build one before writing the auth-gated test.
+- If \`e2e-tests/fixtures/test-user.ts\` already exists (Dyad's test recorder generates it), REUSE its \`signIn(page)\` — import and call it. Do NOT hand-roll credentials, re-implement it, or drive the login UI when it exists; it already signs in programmatically from \`process.env.DYAD_TEST_USER_*\`.
+- Otherwise, if \`process.env.DYAD_TEST_USER_EMAIL\` and \`process.env.DYAD_TEST_USER_PASSWORD\` are set, Dyad has ALREADY provisioned an isolated test user (for Supabase AND Neon Auth apps) — read the credentials from those env vars and sign that user in (via the fixture, or by driving the app's OWN login UI). Do NOT sign them up; they already exist. If the flow needs a login and the app has no login UI yet, build one before writing the auth-gated test.
 - Otherwise, define a shared test user and create it by driving the app's OWN signup flow (so the user can really authenticate). If the flow needs a login and the app has no signup flow yet, build one (or an equivalent way to create a user) first. Say so clearly if you add it.
-- Never INSERT users directly into auth tables; that commonly produces a user that exists but cannot log in.`;
+- Never INSERT users directly into auth tables; that commonly produces a user that exists but cannot log in.
+- If you sign in programmatically with \`page.request.*\` against the app's own auth endpoint, remember that \`page.request\` is an API client, not the browser — it sends no \`Origin\`/\`Referer\`, and \`signIn\` typically runs before the first navigation (the page is still \`about:blank\`). Auth servers with a CSRF / trusted-origin check (e.g. Better Auth) answer that with a 403. Pass the app's own origin explicitly: \`const origin = new URL(process.env.DYAD_TEST_BASE_URL || "http://localhost:32100").origin;\` then send \`headers: { origin, referer: origin + "/" }\`. A 403 from a sign-in endpoint is almost always this, not bad credentials — fix the test, not the app.`;
 
 /**
  * Guidance for running tests and iterating on failures with the `run_tests`

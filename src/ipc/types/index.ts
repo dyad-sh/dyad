@@ -109,6 +109,7 @@ export { terminalClient } from "./terminal";
 export { testsClient, testsEventClient } from "./tests";
 export { userInputClient, userInputEventClient } from "./user_input";
 export { firstPromptClient } from "./first_prompt";
+export { recordingClient, recordingEventClient } from "./recording";
 
 // =============================================================================
 // Type Exports
@@ -382,6 +383,14 @@ export type {
   PendingUserInputPayload,
 } from "./user_input";
 
+// Recording types
+export type {
+  RecordingAuth,
+  StartRecordingResult,
+  RecordingSetupProgressPayload,
+  RecordingEndedPayload,
+} from "./recording";
+
 // App blueprint types
 export type {
   AppBlueprintVisual,
@@ -461,6 +470,7 @@ import { appBlueprintClient, appBlueprintEventClient } from "./app_blueprint";
 import { appCollectionClient } from "./app_collections";
 import { terminalClient } from "./terminal";
 import { testsClient, testsEventClient } from "./tests";
+import { recordingClient, recordingEventClient } from "./recording";
 import { queueClient } from "./queue";
 import { userInputClient, userInputEventClient } from "./user_input";
 import { firstPromptClient } from "./first_prompt";
@@ -529,6 +539,7 @@ export const ipc = {
   appCollection: appCollectionClient,
   terminal: terminalClient,
   tests: testsClient,
+  recording: recordingClient,
   queue: queueClient,
   userInput: userInputClient,
   firstPrompt: firstPromptClient,
@@ -542,5 +553,6 @@ export const ipc = {
     appBlueprint: appBlueprintEventClient,
     tests: testsEventClient,
     userInput: userInputEventClient,
+    recording: recordingEventClient,
   },
 } as const;

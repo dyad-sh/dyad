@@ -8,12 +8,14 @@ import {
   createTempTestBranch,
   deleteTempTestBranch,
 } from "../utils/neon_test_branch";
+import { createNeonTestAccount } from "../utils/neon_test_account";
 import {
   checkRls,
   createTempTestUser,
   deleteTempTestUser,
   type TempTestUser,
 } from "../utils/supabase_test_user";
+import { getPublishableKey } from "../../supabase_admin/supabase_context";
 import {
   getEnvFilePath,
   readEnvFileIfExists,
@@ -39,16 +41,38 @@ const SERVER_READY_POLL_MS = 500;
  * shows the message. `teardown` always restores the app to its real database,
  * and is safe to call exactly once whether preparation succeeded or failed.
  */
+/**
+ * Everything the preview recorder needs to establish an authenticated session
+ * in-iframe BEFORE recording, and that the generated `signIn` fixture mirrors at
+ * replay time. Absent when the app has no supported auth or provisioning failed
+ * (the flow then proceeds unauthenticated).
+ */
+export type IsolationAuthSetup =
+  | { mode: "neon-better-auth"; email: string; password: string }
+  | {
+      mode: "supabase-password";
+      email: string;
+      password: string;
+      projectUrl: string;
+      anonKey: string;
+    };
+
 export interface PreparedIsolation {
   isolation: TestIsolation;
   infraError?: { message: string };
   /**
-   * Extra env vars to inject into the test runner (e.g. Supabase test-user
-   * credentials the generated test signs in with). Never contains privileged
-   * keys — the service_role key stays in the main process. Undefined for the
-   * Neon/no-DB paths.
+   * Extra env vars to inject into the test runner (e.g. the isolated test
+   * user's credentials the generated test signs in with). Never contains
+   * privileged keys — the service_role key stays in the main process. Set on the
+   * Supabase path and, when Neon Auth is provisioned, the Neon path too.
    */
   testCredentials?: Record<string, string>;
+  /**
+   * Credentials + endpoint the recorder uses to sign the preview in before
+   * recording. Undefined when the app has no supported auth or provisioning
+   * failed. Never contains privileged keys.
+   */
+  authSetup?: IsolationAuthSetup;
   teardown: () => Promise<void>;
 }
 
@@ -198,8 +222,42 @@ export async function prepareIsolatedTestDatabase({
     const processId = await restartAppInPlace({ app, appPath, event });
     await waitForServerReady(app.id, signal, processId);
 
+    // 5. If the app uses Neon Auth, provision a throwaway Better Auth account on
+    //    the branch so auth-gated recordings/tests can sign in. Best-effort: on
+    //    failure we run unauthenticated rather than dead-ending (non-auth flows
+    //    still work). No teardown needed — the account dies with the branch.
+    let testCredentials: Record<string, string> | undefined;
+    let authSetup: IsolationAuthSetup | undefined;
+    if (branch.neonAuthBaseUrl) {
+      try {
+        const account = await createNeonTestAccount({
+          neonAuthBaseUrl: branch.neonAuthBaseUrl,
+          appId: app.id,
+        });
+        testCredentials = {
+          DYAD_TEST_USER_EMAIL: account.email,
+          DYAD_TEST_USER_PASSWORD: account.password,
+        };
+        authSetup = {
+          mode: "neon-better-auth",
+          email: account.email,
+          password: account.password,
+        };
+      } catch (error) {
+        logger.warn(
+          `Couldn't provision a Neon test account for app ${app.id}; continuing unauthenticated: ${error}`,
+        );
+        emit(
+          "Couldn't create a test account for sign-in — continuing without authentication.\n",
+          "setup",
+        );
+      }
+    }
+
     return {
       isolation: { mode: "neon-branch" },
+      testCredentials,
+      authSetup,
       teardown,
     };
   } catch (error) {
@@ -298,13 +356,44 @@ async function prepareSupabaseTestUserIsolation({
     }
     emit("Creating an isolated test user…\n", "setup");
     testUser = await createTempTestUser(app);
+
+    // Fetch the project's anon (publishable) key so the recorder and the
+    // generated `signIn` fixture can sign in via the password grant. Best-effort:
+    // without it, auth is unavailable and the flow proceeds unauthenticated.
+    let anonKey: string | undefined;
+    try {
+      anonKey = await getPublishableKey({ projectId, organizationSlug });
+    } catch (error) {
+      logger.warn(
+        `Couldn't fetch the Supabase anon key for app ${app.id}; continuing unauthenticated: ${error}`,
+      );
+      emit(
+        "Couldn't fetch the Supabase key for sign-in — continuing without authentication.\n",
+        "setup",
+      );
+    }
+
+    const testCredentials: Record<string, string> = {
+      DYAD_TEST_USER_EMAIL: testUser.email,
+      DYAD_TEST_USER_PASSWORD: testUser.password,
+      DYAD_TEST_SUPABASE_URL: testUser.projectUrl,
+    };
+    let authSetup: IsolationAuthSetup | undefined;
+    if (anonKey) {
+      testCredentials.DYAD_TEST_SUPABASE_ANON_KEY = anonKey;
+      authSetup = {
+        mode: "supabase-password",
+        email: testUser.email,
+        password: testUser.password,
+        projectUrl: testUser.projectUrl,
+        anonKey,
+      };
+    }
+
     return {
       isolation: { mode: "supabase-test-user", reason: warning },
-      testCredentials: {
-        DYAD_TEST_USER_EMAIL: testUser.email,
-        DYAD_TEST_USER_PASSWORD: testUser.password,
-        DYAD_TEST_SUPABASE_URL: testUser.projectUrl,
-      },
+      testCredentials,
+      authSetup,
       teardown,
     };
   } catch (error) {

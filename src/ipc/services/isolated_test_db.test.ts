@@ -3,9 +3,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   createTempTestBranch: vi.fn(),
   deleteTempTestBranch: vi.fn().mockResolvedValue(undefined),
+  createNeonTestAccount: vi.fn(),
   createTempTestUser: vi.fn(),
   deleteTempTestUser: vi.fn().mockResolvedValue(undefined),
   checkRls: vi.fn().mockResolvedValue({ tablesWithoutRls: [] }),
+  getPublishableKey: vi.fn(),
   updateNeonEnvVars: vi.fn().mockResolvedValue(undefined),
   readEnvFileIfExists: vi.fn().mockResolvedValue(null),
   executeApp: vi.fn().mockResolvedValue(undefined),
@@ -17,6 +19,12 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../utils/neon_test_branch", () => ({
   createTempTestBranch: mocks.createTempTestBranch,
   deleteTempTestBranch: mocks.deleteTempTestBranch,
+}));
+vi.mock("../utils/neon_test_account", () => ({
+  createNeonTestAccount: mocks.createNeonTestAccount,
+}));
+vi.mock("../../supabase_admin/supabase_context", () => ({
+  getPublishableKey: mocks.getPublishableKey,
 }));
 vi.mock("../utils/supabase_test_user", () => ({
   createTempTestUser: mocks.createTempTestUser,
@@ -86,6 +94,11 @@ beforeEach(() => {
     email: "dyad-test+1@dyad.test",
     password: "pw",
     projectUrl: "https://sb-1.supabase.co",
+  });
+  mocks.getPublishableKey.mockResolvedValue("anon-key-123");
+  mocks.createNeonTestAccount.mockResolvedValue({
+    email: "neon-test@dyad.test",
+    password: "neon-pw",
   });
 });
 
@@ -325,5 +338,145 @@ describe("prepareIsolatedTestDatabase — Neon happy path", () => {
     // Branch creation failed before the env was swapped, so there is nothing to
     // restore — teardown correctly skips the restart (no executeApp call).
     expect(mocks.executeApp).not.toHaveBeenCalled();
+  });
+});
+
+describe("prepareIsolatedTestDatabase — auth provisioning", () => {
+  function withServerUp() {
+    mocks.runningApps.set(1, { proxyUrl: "http://localhost:42100" });
+    return vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("ok"));
+  }
+
+  it("provisions a Neon Better Auth account when the branch has auth", async () => {
+    mocks.createTempTestBranch.mockResolvedValue({
+      branchId: "test-br",
+      databaseUrl: "postgres://temp",
+      neonAuthBaseUrl: "https://auth",
+      cookieSecret: "secret",
+    });
+    const fetchSpy = withServerUp();
+    try {
+      const prepared = await prepareIsolatedTestDatabase({
+        app: makeApp({ neonProjectId: "proj-1" }),
+        event,
+        emit,
+        runtimeMode: "host",
+      });
+
+      expect(mocks.createNeonTestAccount).toHaveBeenCalledWith({
+        neonAuthBaseUrl: "https://auth",
+        appId: 1,
+      });
+      expect(prepared.testCredentials).toEqual({
+        DYAD_TEST_USER_EMAIL: "neon-test@dyad.test",
+        DYAD_TEST_USER_PASSWORD: "neon-pw",
+      });
+      expect(prepared.authSetup).toEqual({
+        mode: "neon-better-auth",
+        email: "neon-test@dyad.test",
+        password: "neon-pw",
+      });
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it("continues unauthenticated when Neon account provisioning fails", async () => {
+    mocks.createTempTestBranch.mockResolvedValue({
+      branchId: "test-br",
+      databaseUrl: "postgres://temp",
+      neonAuthBaseUrl: "https://auth",
+      cookieSecret: "secret",
+    });
+    mocks.createNeonTestAccount.mockRejectedValue(new Error("signup blocked"));
+    const fetchSpy = withServerUp();
+    try {
+      const prepared = await prepareIsolatedTestDatabase({
+        app: makeApp({ neonProjectId: "proj-1" }),
+        event,
+        emit,
+        runtimeMode: "host",
+      });
+
+      // Still isolated (never dead-ends on best-effort auth), just no auth.
+      expect(prepared.isolation).toEqual({ mode: "neon-branch" });
+      expect(prepared.infraError).toBeUndefined();
+      expect(prepared.testCredentials).toBeUndefined();
+      expect(prepared.authSetup).toBeUndefined();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it("skips account provisioning for a Neon app without Neon Auth", async () => {
+    mocks.createTempTestBranch.mockResolvedValue({
+      branchId: "test-br",
+      databaseUrl: "postgres://temp",
+      // No neonAuthBaseUrl → the app doesn't use Neon Auth.
+    });
+    const fetchSpy = withServerUp();
+    try {
+      const prepared = await prepareIsolatedTestDatabase({
+        app: makeApp({ neonProjectId: "proj-1" }),
+        event,
+        emit,
+        runtimeMode: "host",
+      });
+
+      expect(mocks.createNeonTestAccount).not.toHaveBeenCalled();
+      expect(prepared.authSetup).toBeUndefined();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it("includes the Supabase anon key and authSetup when it can be fetched", async () => {
+    const prepared = await prepareIsolatedTestDatabase({
+      app: makeApp({
+        supabaseProjectId: "sb-1",
+        supabaseOrganizationSlug: "org-1",
+      }),
+      event,
+      emit,
+      runtimeMode: "host",
+    });
+
+    expect(mocks.getPublishableKey).toHaveBeenCalledWith({
+      projectId: "sb-1",
+      organizationSlug: "org-1",
+    });
+    expect(prepared.testCredentials).toMatchObject({
+      DYAD_TEST_SUPABASE_ANON_KEY: "anon-key-123",
+    });
+    expect(prepared.authSetup).toEqual({
+      mode: "supabase-password",
+      email: "dyad-test+1@dyad.test",
+      password: "pw",
+      projectUrl: "https://sb-1.supabase.co",
+      anonKey: "anon-key-123",
+    });
+  });
+
+  it("continues unauthenticated when the Supabase anon key can't be fetched", async () => {
+    mocks.getPublishableKey.mockRejectedValue(new Error("no key"));
+    const prepared = await prepareIsolatedTestDatabase({
+      app: makeApp({
+        supabaseProjectId: "sb-1",
+        supabaseOrganizationSlug: "org-1",
+      }),
+      event,
+      emit,
+      runtimeMode: "host",
+    });
+
+    // Still isolated via the test user; just no programmatic sign-in.
+    expect(prepared.isolation.mode).toBe("supabase-test-user");
+    expect(prepared.authSetup).toBeUndefined();
+    expect(prepared.testCredentials).not.toHaveProperty(
+      "DYAD_TEST_SUPABASE_ANON_KEY",
+    );
+    expect(prepared.testCredentials).toMatchObject({
+      DYAD_TEST_USER_EMAIL: "dyad-test+1@dyad.test",
+    });
   });
 });

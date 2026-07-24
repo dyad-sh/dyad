@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { useEffect, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -16,6 +22,9 @@ const mocks = vi.hoisted(() => ({
   nodeVersion: "v22.14.0",
   openExternalUrl: vi.fn(),
   previewModeAtom: Symbol("previewModeAtom"),
+  previewReloadToken: 0,
+  recorderMountCount: 0,
+  reloadRecorderPreview: null as (() => void) | null,
   refetchNodeStatus: vi.fn(),
   reloadEnvPath: vi.fn(),
   runApp: vi.fn(),
@@ -40,7 +49,7 @@ vi.mock("jotai", async (importOriginal) => ({
       return mocks.selectedAppId;
     }
     if (atom === mocks.currentPreviewReloadTokenAtom) {
-      return 0;
+      return mocks.previewReloadToken;
     }
     if (atom === mocks.currentConsoleEntriesAtom) {
       return [];
@@ -109,6 +118,17 @@ vi.mock("@/hooks/useRunApp", () => ({
   }),
 }));
 
+vi.mock("@/hooks/useTestRecorder", async () => {
+  const React = await vi.importActual<typeof import("react")>("react");
+  return {
+    useTestRecorder: ({ reloadPreview }: { reloadPreview: () => void }) => {
+      mocks.reloadRecorderPreview = reloadPreview;
+      const [instanceId] = React.useState(() => ++mocks.recorderMountCount);
+      return { instanceId };
+    },
+  };
+});
+
 vi.mock("@/hooks/useLoadApp", () => ({
   useLoadApp: () => ({
     app: { id: mocks.selectedAppId },
@@ -139,12 +159,16 @@ vi.mock("react-resizable-panels", () => ({
 }));
 
 vi.mock("./PreviewIframe", () => ({
-  PreviewIframe: () => {
+  PreviewIframe: ({ recorder }: { recorder: { instanceId: number } }) => {
     useEffect(() => {
       mocks.previewIframeMounted();
       return () => mocks.previewIframeUnmounted();
     }, []);
-    return <div>Preview iframe</div>;
+    return (
+      <div data-testid="preview-iframe" data-recorder={recorder.instanceId}>
+        Preview iframe
+      </div>
+    );
   },
 }));
 
@@ -193,6 +217,9 @@ describe("PreviewPanel", () => {
     mocks.managedNodeSupported = true;
     mocks.nodeVersion = "v22.14.0";
     mocks.openExternalUrl.mockReset();
+    mocks.previewReloadToken = 0;
+    mocks.recorderMountCount = 0;
+    mocks.reloadRecorderPreview = null;
     mocks.refetchNodeStatus.mockReset();
     mocks.reloadEnvPath.mockReset();
     mocks.runApp.mockReset();
@@ -229,6 +256,23 @@ describe("PreviewPanel", () => {
 
     expect(mocks.previewIframeUnmounted).toHaveBeenCalledTimes(1);
     expect(mocks.previewIframeMounted).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the recorder coordinator mounted when the preview reloads", () => {
+    const { rerender } = render(<PreviewPanel />);
+
+    expect(screen.getByTestId("preview-iframe").dataset.recorder).toBe("1");
+
+    mocks.previewReloadToken = 1;
+    rerender(<PreviewPanel />);
+
+    expect(screen.getByTestId("preview-iframe").dataset.recorder).toBe("1");
+    expect(mocks.recorderMountCount).toBe(1);
+
+    act(() => mocks.reloadRecorderPreview?.());
+
+    expect(screen.getByTestId("preview-iframe").dataset.recorder).toBe("1");
+    expect(mocks.recorderMountCount).toBe(1);
   });
 
   it("auto-starts managed Node install and skips running the app when Node.js is missing", async () => {

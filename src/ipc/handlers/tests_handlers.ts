@@ -52,6 +52,7 @@ import {
   type PreparedIsolation,
 } from "../services/isolated_test_db";
 import { readTestScreenshotDataUrl } from "../utils/test_screenshot";
+import { isRecordingActive } from "../services/recording_registry";
 import { readSettings } from "@/main/settings";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 
@@ -148,6 +149,15 @@ interface TestRun {
   done: Promise<void>;
 }
 const testRunControllers = new Map<number, TestRun>();
+
+/**
+ * Whether a test run is in flight for the app. Consulted by the recording
+ * handler for mutual exclusion — a recording session and a test run must never
+ * run at once (both restart the dev server and share the Neon test-branch slot).
+ */
+export function isTestRunActive(appId: number): boolean {
+  return testRunControllers.has(appId);
+}
 
 async function getApp(appId: number) {
   const app = await db.query.apps.findFirst({
@@ -548,6 +558,18 @@ export async function runAppTestsWithIsolation({
       appId,
       results: [],
       infraError: { message: `Invalid test file: ${testFile}` },
+    };
+  }
+
+  // A recording session holds the same per-app lock and isolation; refuse to
+  // run rather than queue invisibly behind it.
+  if (isRecordingActive(appId)) {
+    return {
+      appId,
+      results: [],
+      infraError: {
+        message: "Stop the recording session before running tests.",
+      },
     };
   }
 

@@ -36,6 +36,9 @@ import {
   Pen,
   MoreVertical,
   Trash2,
+  CircleDot,
+  Square,
+  Loader2,
 } from "lucide-react";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { CopyErrorMessage } from "@/components/CopyErrorMessage";
@@ -77,7 +80,9 @@ import { useSettings } from "@/hooks/useSettings";
 import { useShortcut } from "@/hooks/useShortcut";
 import { cn } from "@/lib/utils";
 import { normalizePath } from "../../../shared/normalizePath";
-import { showError, showSuccess } from "@/lib/toast";
+import { showError, showInfo, showSuccess } from "@/lib/toast";
+import type { TestRecorderController } from "@/hooks/useTestRecorder";
+import { useLoadApp } from "@/hooks/useLoadApp";
 import type { DeviceMode } from "@/lib/schemas";
 import {
   boundPreviewConsoleEntry,
@@ -90,6 +95,7 @@ import { useAttachments } from "@/hooks/useAttachments";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { Annotator } from "@/pro/ui/components/Annotator/Annotator";
 import { VisualEditingToolbar } from "./VisualEditingToolbar";
+import { RecordingCodePreview } from "./RecordingCodePreview";
 import { resolvePreviewBrowserUrl } from "./previewBrowserUrl";
 import { PreviewLoadingScreen } from "./PreviewLoadingScreen";
 import { useTranslation } from "react-i18next";
@@ -213,7 +219,13 @@ const PREVIEW_TOOLBAR_BUTTON_CLASSES =
   "flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-40";
 
 // Preview iframe component
-export const PreviewIframe = ({ loading }: { loading: boolean }) => {
+export const PreviewIframe = ({
+  loading,
+  recorder,
+}: {
+  loading: boolean;
+  recorder: TestRecorderController;
+}) => {
   const { t } = useTranslation("home");
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const { appUrl, originalUrl, mode } = useAtomValue(currentAppUrlAtom);
@@ -251,6 +263,13 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   );
   const setPreviewIframeRef = useSetAtom(previewIframeRefAtom);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const handleIframeRef = useCallback(
+    (iframe: HTMLIFrameElement | null) => {
+      iframeRef.current = iframe;
+      setPreviewIframeRef(iframe);
+    },
+    [setPreviewIframeRef],
+  );
   const componentMessageHandlerRef = useRef<(event: MessageEvent) => void>(
     () => undefined,
   );
@@ -281,6 +300,36 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const canGoBack = selectCanGoBack(iframeState);
   const canGoForward = selectCanGoForward(iframeState);
   const [annotatorMode, setAnnotatorMode] = useAtom(annotatorModeAtom);
+  const { app: loadedApp } = useLoadApp(selectedAppId);
+  const [recordName, setRecordName] = useState("");
+
+  const handleRecordClick = () => {
+    if (recorder.phase !== "idle") return;
+    if (!loadedApp?.testingEnabled) {
+      showInfo(
+        "Enable testing for this app in the Tests panel before recording a test.",
+      );
+      return;
+    }
+    setRecordName("");
+    void recorder.startRecording();
+  };
+
+  const handleEnhanceWithAI = (specPath: string) => {
+    if (!selectedChatId) {
+      showInfo("Open a chat to enhance the recorded test with AI.");
+      return;
+    }
+    streamMessage({
+      prompt:
+        `I recorded a Playwright test at \`${specPath}\`. Read it, keep the recorded ` +
+        `interactions and the \`signIn\` fixture usage intact, and add meaningful ` +
+        `assertions (\`expect(...)\`) after the key steps so the test verifies the ` +
+        `flow's outcomes. Rewrite the whole file.`,
+      chatId: selectedChatId,
+    });
+    recorder.dismissSaved();
+  };
   const previewToolbarRef = useRef<HTMLDivElement>(null);
   const [previewToolbarWidth, setPreviewToolbarWidth] = useState<number | null>(
     null,
@@ -569,11 +618,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       setCurrentComponentCoordinates(null);
     };
   }, [selectedAppId]);
-
-  // Update iframe ref atom
-  useEffect(() => {
-    setPreviewIframeRef(iframeRef.current);
-  }, [iframeRef.current, setPreviewIframeRef]);
 
   // Send pro mode status to iframe
   useEffect(() => {
@@ -1168,6 +1212,48 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 {annotatorMode ? "Annotator mode active" : "Activate annotator"}
               </TooltipContent>
             </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    onClick={handleRecordClick}
+                    aria-label={
+                      recorder.isRecording ? "Recording test" : "Record test"
+                    }
+                    aria-pressed={recorder.phase !== "idle"}
+                    className={cn(
+                      PREVIEW_TOOLBAR_BUTTON_CLASSES,
+                      "rounded-none border-l border-border",
+                      recorder.phase !== "idle"
+                        ? "bg-red-500 text-white hover:bg-red-600 hover:text-white dark:bg-red-600 dark:hover:bg-red-700"
+                        : "text-red-700 hover:bg-red-100 hover:text-red-800 dark:text-red-300 dark:hover:bg-red-900/50 dark:hover:text-red-200",
+                    )}
+                    disabled={
+                      loading ||
+                      !selectedAppId ||
+                      !appUrl ||
+                      isPicking ||
+                      annotatorMode ||
+                      recorder.phase !== "idle"
+                    }
+                    data-testid="preview-record-button"
+                  />
+                }
+              >
+                {recorder.isBusy ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : recorder.isRecording ? (
+                  <Square size={16} />
+                ) : (
+                  <CircleDot size={16} />
+                )}
+              </TooltipTrigger>
+              <TooltipContent>
+                {recorder.phase === "idle"
+                  ? "Record a test"
+                  : "Recording — use the bar below to stop"}
+              </TooltipContent>
+            </Tooltip>
           </div>
 
           {/* Browser navigation group */}
@@ -1494,6 +1580,107 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         </div>
       )}
 
+      {recorder.phase !== "idle" && !annotatorMode && (
+        <div
+          className="flex flex-wrap items-center gap-2 border-b border-red-200 bg-red-50 px-3 py-2 text-sm dark:border-red-900/50 dark:bg-red-950/30"
+          data-testid="preview-recording-bar"
+        >
+          {recorder.isRecording ? (
+            <>
+              <span className="flex items-center gap-1.5 font-medium text-red-700 dark:text-red-300">
+                <CircleDot size={14} className="animate-pulse" />
+                Recording
+              </span>
+              <span
+                className="text-muted-foreground"
+                data-testid="preview-recording-step-count"
+              >
+                {recorder.entryCount} step{recorder.entryCount === 1 ? "" : "s"}
+              </span>
+              {recorder.isolation && recorder.isolation.mode !== "none" && (
+                <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-xs text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                  isolated data
+                </span>
+              )}
+              {recorder.isolation &&
+                recorder.isolation.mode !== "none" &&
+                recorder.auth?.mode === "none" && (
+                  <span
+                    className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground"
+                    data-testid="preview-recording-signed-out-badge"
+                  >
+                    signed out
+                  </span>
+                )}
+              <input
+                value={recordName}
+                onChange={(e) => setRecordName(e.target.value)}
+                placeholder="Test name"
+                aria-label="Test name"
+                data-testid="preview-recording-name-input"
+                className="ml-auto min-w-0 max-w-48 flex-1 rounded-sm border border-border bg-(--background-lighter) px-2 py-1 text-xs outline-none"
+              />
+              <button
+                onClick={() => void recorder.stopAndSave(recordName)}
+                data-testid="preview-recording-save-button"
+                className="flex items-center gap-1 rounded-md bg-red-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-700"
+              >
+                <Square size={12} /> Stop &amp; Save
+              </button>
+              <button
+                onClick={() => void recorder.cancelRecording()}
+                data-testid="preview-recording-cancel-button"
+                className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
+              >
+                Cancel
+              </button>
+            </>
+          ) : recorder.phase === "saved" ? (
+            <>
+              <span className="min-w-0 truncate font-medium text-emerald-700 dark:text-emerald-300">
+                Saved {recorder.savedSpecPath}
+              </span>
+              <button
+                onClick={() =>
+                  recorder.savedSpecPath &&
+                  handleEnhanceWithAI(recorder.savedSpecPath)
+                }
+                data-testid="preview-recording-enhance-button"
+                className="ml-auto flex items-center gap-1 rounded-md bg-purple-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-purple-700"
+              >
+                <Sparkles size={12} /> Add assertions with AI
+              </button>
+              <button
+                onClick={() => recorder.dismissSaved()}
+                data-testid="preview-recording-done-button"
+                className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
+              >
+                Done
+              </button>
+            </>
+          ) : (
+            <span className="flex items-center gap-1.5 text-muted-foreground">
+              <Loader2 size={14} className="animate-spin" />
+              {recorder.progress ??
+                (recorder.phase === "saving"
+                  ? "Saving the recorded test…"
+                  : recorder.phase === "authenticating"
+                    ? "Signing in the test user…"
+                    : "Setting up the recording session…")}
+            </span>
+          )}
+          {recorder.warning && (
+            <span className="w-full text-xs text-amber-600 dark:text-amber-400">
+              {recorder.warning}
+            </span>
+          )}
+        </div>
+      )}
+
+      {recorder.isRecording && !annotatorMode && (
+        <RecordingCodePreview steps={recorder.steps} />
+      )}
+
       <div className="relative flex-grow overflow-hidden">
         {!loading && (
           <ErrorBanner
@@ -1548,7 +1735,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                   onLoad={() => {
                     onIframeLoaded();
                   }}
-                  ref={iframeRef}
+                  ref={handleIframeRef}
                   key={iframeState.iframeEpoch}
                   title={`Preview for App ${selectedAppId}`}
                   className="w-full h-full border-none bg-white dark:bg-gray-950"

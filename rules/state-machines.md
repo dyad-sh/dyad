@@ -188,6 +188,9 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   transitions do not create value-equal snapshots.
 - Use fake command runners. Tests must get isolation from constructed owners,
   never from a module-global reset helper.
+- A `runControllerConformanceSuite` command fixture must be command-only (stay
+  in the current state), because its dispose-during-command scenario compares
+  the final snapshot with the initial snapshot.
 - Normalize discovered file paths to `/` before asserting literal repository
   paths; `path.relative()` returns `\` on Windows CI.
 - `driveTransitionMatrix` remains available for hand-enumerated totality

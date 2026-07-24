@@ -9,6 +9,28 @@ import { z } from "zod";
 // it without pulling the main-process catalog client into the renderer
 // bundle.
 
+// A value the user must supply during setup. `kind` selects the input to
+// render and where the value is stored. Discriminated union: an unknown
+// kind fails validation and drops the whole entry, so newer field kinds
+// don't break this client.
+export const CatalogInputSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("oauthClientId") }),
+  z.object({ kind: z.literal("oauthClientSecret") }),
+  z.object({
+    kind: z.literal("header"),
+    name: z.string().min(1),
+    prefix: z.string().optional(),
+    label: z.string().min(1),
+  }),
+  z.object({
+    kind: z.literal("env"),
+    name: z.string().min(1),
+    label: z.string().min(1),
+  }),
+]);
+
+export type CatalogInput = z.infer<typeof CatalogInputSchema>;
+
 const baseEntry = {
   slug: z
     .string()
@@ -19,6 +41,8 @@ const baseEntry = {
   category: z.string().optional(),
   // Surfaced in a Featured section as well as its category.
   featured: z.boolean().optional(),
+  // Values the user must supply on the plugin's setup page.
+  inputs: z.array(CatalogInputSchema).optional(),
 } as const;
 
 export const HttpCatalogEntrySchema = z.object({

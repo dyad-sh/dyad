@@ -268,4 +268,51 @@ describe("Plugins catalog (integration)", () => {
       clearMcpCatalogCacheForTests();
     }
   }, 40_000);
+
+  it("adds a field-requiring entry disabled, then setup enables it", async () => {
+    const previousPayload = catalogPayload;
+    catalogPayload = {
+      servers: [
+        {
+          slug: "integration-apikey",
+          name: "Integration API-key Server",
+          category: "Testing",
+          transport: "http",
+          url: `http://localhost:${mcpPort}/mcp`,
+          inputs: [
+            {
+              kind: "header",
+              name: "Authorization",
+              prefix: "Bearer ",
+              label: "API key",
+            },
+          ],
+        },
+      ],
+    };
+    clearMcpCatalogCacheForTests();
+    try {
+      // A declared-input entry is added disabled so it can't connect
+      // before the user fills in the key.
+      const created = await ipc.mcp.addFromCatalog({
+        slug: "integration-apikey",
+      });
+      expect(created.enabled).toBe(false);
+      expect(created.catalogSlug).toBe("integration-apikey");
+
+      // Saving the setup fields writes the header and enables the server.
+      const updated = await ipc.mcp.updateServer({
+        id: created.id,
+        enabled: true,
+        headersJson: { Authorization: "Bearer secret-key" },
+      });
+      expect(updated.enabled).toBe(true);
+      expect(updated.headersJson).toEqual({
+        Authorization: "Bearer secret-key",
+      });
+    } finally {
+      catalogPayload = previousPayload;
+      clearMcpCatalogCacheForTests();
+    }
+  }, 40_000);
 });

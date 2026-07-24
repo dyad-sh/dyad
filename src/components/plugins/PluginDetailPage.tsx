@@ -14,9 +14,12 @@ import {
 import { DeleteConfirmationDialog } from "@/components/DeleteConfirmationDialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useMcp } from "@/hooks/useMcp";
+import { useMcpCatalog } from "@/hooks/useMcpCatalog";
 import type { McpToolConsent } from "@/ipc/types";
 import { CatalogBadge } from "./CatalogBadge";
 import { KeyValueEditor, arrayToJsonObject } from "./KeyValueEditor";
+import { PluginSetupSection } from "./PluginSetupSection";
+import { serverNeedsSetup } from "./pluginSetup";
 import { usePluginConnect, type ConnectFeedback } from "./usePluginConnect";
 
 // Keyed on the full kind union so adding a feedback kind forces a
@@ -24,6 +27,7 @@ import { usePluginConnect, type ConnectFeedback } from "./usePluginConnect";
 const FEEDBACK_TITLES: Record<ConnectFeedback["kind"], string> = {
   unauthorized: "Server requires authentication",
   discovery_failed: "Server doesn't support OAuth",
+  credentials: "Authentication failed",
 };
 
 export function PluginDetailPage({ serverId }: { serverId: number }) {
@@ -49,6 +53,10 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
     onEnableOAuthAndRetry,
     onDisableOAuthAndRetry,
   } = usePluginConnect();
+
+  // The server's catalog entry supplies the declared setup fields. It's a
+  // cached read that returns nothing for manually-added servers.
+  const catalogQuery = useMcpCatalog();
 
   const s = servers.find((srv) => srv.id === serverId);
 
@@ -85,6 +93,13 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
   const discoveredTools = toolsByServer[s.id];
   const tools = discoveredTools ?? [];
   const feedback = feedbackFor(s);
+
+  const catalogEntry = s.catalogSlug
+    ? catalogQuery.data?.entries.find((e) => e.slug === s.catalogSlug)
+    : undefined;
+  const setupInputs = catalogEntry?.inputs ?? [];
+  // Show the guided setup until every declared field has a saved value.
+  const needsSetup = serverNeedsSetup(s, setupInputs);
 
   const onSetToolConsent = async (
     toolName: string,
@@ -139,7 +154,7 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              {s.oauthEnabled && !s.oauthConnected && (
+              {s.oauthEnabled && !s.oauthConnected && !needsSetup && (
                 // Only one OAuth flow can run at a time (shared
                 // connect slot), so Connect is blocked while any
                 // server is connecting; the label only spins for this
@@ -152,7 +167,7 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
                   {connectingServerId === s.id ? "Connecting…" : "Connect"}
                 </Button>
               )}
-              {s.oauthEnabled && s.oauthConnected && (
+              {s.oauthEnabled && s.oauthConnected && !needsSetup && (
                 <Button
                   variant="outline"
                   onClick={() => onDisconnect(s.id)}
@@ -181,7 +196,7 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
             </div>
           </div>
 
-          {feedback && (
+          {feedback && !needsSetup && (
             <div className="mt-4">
               <Alert variant="destructive">
                 <AlertTitle>{FEEDBACK_TITLES[feedback.kind]}</AlertTitle>
@@ -210,7 +225,22 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
             </div>
           )}
 
-          {s.transport === "stdio" && (
+          {needsSetup && (
+            <PluginSetupSection
+              server={s}
+              inputs={setupInputs}
+              isSaving={isUpdatingServer}
+              onSave={async (update) => {
+                await updateServer(update);
+                // An OAuth server goes straight into its connect flow
+                // after setup, like the one-click add; key-based servers
+                // just enable and discover.
+                if (s.oauthEnabled) void onConnect(s.id);
+              }}
+            />
+          )}
+
+          {!needsSetup && s.transport === "stdio" && (
             <div className="mt-6">
               <div className="text-sm font-medium mb-2">
                 Environment Variables
@@ -229,7 +259,7 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
               />
             </div>
           )}
-          {s.transport === "http" && (
+          {!needsSetup && s.transport === "http" && (
             <div className="mt-6">
               <div className="text-sm font-medium mb-2">Headers</div>
               <KeyValueEditor

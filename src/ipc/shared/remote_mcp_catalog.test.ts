@@ -72,6 +72,49 @@ describe("remote_mcp_catalog", () => {
     expect(entries.map((e) => e.slug)).toEqual(["figma"]);
   });
 
+  it("keeps entries that declare setup inputs and carries them through", async () => {
+    mockCatalogResponse([
+      {
+        ...VALID_ENTRY,
+        slug: "asana",
+        inputs: [{ kind: "oauthClientId" }, { kind: "oauthClientSecret" }],
+      },
+      {
+        ...VALID_ENTRY,
+        slug: "render",
+        oauth: undefined,
+        inputs: [
+          {
+            kind: "header",
+            name: "Authorization",
+            prefix: "Bearer ",
+            label: "API key",
+          },
+        ],
+      },
+    ]);
+    const entries = await getRemoteMcpCatalog();
+    expect(entries.map((e) => e.slug)).toEqual(["asana", "render"]);
+    const asana = entries[0];
+    if (asana.transport === "http") {
+      expect(asana.inputs).toEqual([
+        { kind: "oauthClientId" },
+        { kind: "oauthClientSecret" },
+      ]);
+    }
+  });
+
+  it("drops an entry whose input kind this client doesn't know", async () => {
+    // A whole entry drops if any input kind is unrecognized, so a newer
+    // field type can't cause a half-configured add on this client.
+    mockCatalogResponse([
+      { ...VALID_ENTRY, slug: "future", inputs: [{ kind: "instanceUrl" }] },
+      VALID_ENTRY,
+    ]);
+    const entries = await getRemoteMcpCatalog();
+    expect(entries.map((e) => e.slug)).toEqual(["figma"]);
+  });
+
   it("keeps stdio entries alongside http ones", async () => {
     mockCatalogResponse([
       VALID_STDIO_ENTRY,

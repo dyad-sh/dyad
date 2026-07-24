@@ -99,6 +99,7 @@ function toMcpServer(dbServer: typeof mcpServers.$inferSelect): McpServer {
     // `oauthStateHasTokens` checks for a real access token.
     oauthConnected: oauthStateHasTokens(dbServer.oauthState),
     oauthCallbackPort: dbServer.oauthCallbackPort,
+    oauthClientId: dbServer.oauthClientId,
     catalogSlug: dbServer.catalogSlug,
     createdAt: dbServer.createdAt,
     updatedAt: dbServer.updatedAt,
@@ -182,6 +183,10 @@ export function registerMcpHandlers() {
         );
       }
 
+      // An entry that declares inputs needs the user to fill them on the
+      // setup page first, so it's added disabled and doesn't connect or
+      // spawn until configured.
+      const needsSetup = (entry.inputs?.length ?? 0) > 0;
       const values =
         entry.transport === "stdio"
           ? {
@@ -190,7 +195,7 @@ export function registerMcpHandlers() {
               command: entry.command,
               args: entry.args,
               envJson: entry.env ?? null,
-              enabled: true,
+              enabled: !needsSetup,
               catalogSlug: entry.slug,
             }
           : {
@@ -198,7 +203,7 @@ export function registerMcpHandlers() {
               transport: "http" as const,
               url: entry.url,
               headersJson: entry.headers ?? null,
-              enabled: true,
+              enabled: !needsSetup,
               oauthEnabled: entry.oauth != null,
               oauthScope: entry.oauth?.scope ?? null,
               catalogSlug: entry.slug,
@@ -322,6 +327,22 @@ export function registerMcpHandlers() {
         update.oauthCallbackPort = null;
       }
     }
+    // New client credentials must take effect: clear any persisted
+    // client-registration blob so the provider re-seeds from these
+    // columns instead of a stale registered client shadowing them.
+    if (
+      params.oauthClientId !== undefined ||
+      params.oauthClientSecret !== undefined
+    ) {
+      update.oauthState = null;
+    }
+    if (params.oauthClientId !== undefined)
+      update.oauthClientId = params.oauthClientId;
+    if (params.oauthClientSecret !== undefined)
+      update.oauthClientSecret = params.oauthClientSecret
+        ? encryptToString(params.oauthClientSecret)
+        : null;
+    if (params.oauthScope !== undefined) update.oauthScope = params.oauthScope;
 
     const result = await db
       .update(mcpServers)

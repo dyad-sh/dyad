@@ -1,9 +1,7 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { Star } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { ipc } from "@/ipc/types";
-import { queryKeys } from "@/lib/queryKeys";
+import { useMcpCatalog } from "@/hooks/useMcpCatalog";
 import { CatalogCard } from "./CatalogCard";
 import { StdioCatalogConsentDialog } from "./StdioCatalogConsentDialog";
 import { useAddFromCatalog } from "./useAddFromCatalog";
@@ -18,16 +16,7 @@ export function CatalogSection() {
     cancelPendingStdio,
   } = useAddFromCatalog();
 
-  const catalogQuery = useQuery({
-    queryKey: queryKeys.mcp.catalog,
-    queryFn: () => ipc.mcp.listCatalog(),
-    // Cache a populated catalog for an hour, but expire an empty result
-    // quickly so a transient fetch failure doesn't hide the section
-    // until the next remount.
-    staleTime: (query) =>
-      query.state.data?.entries.length ? 60 * 60 * 1000 : 30 * 1000,
-    refetchOnWindowFocus: false,
-  });
+  const catalogQuery = useMcpCatalog();
 
   const entries = catalogQuery.data?.entries ?? [];
   const addedSlugs = useMemo(

@@ -219,6 +219,26 @@ describe("user-input registry", () => {
     expect(registry.getPending()).toEqual([]);
   });
 
+  it("treats rejection after dispatch as an idempotent no-op", async () => {
+    const { registry } = setup();
+    const requestId = registry.request({
+      kind: "integration",
+      chatId: 4,
+      provider: "supabase",
+      classifier: "none",
+      followUpPrompt: "continue",
+    });
+    await registry.respond(requestId, {
+      kind: "integration",
+      provider: "supabase",
+      completed: true,
+    });
+    registry.streamFinished(4);
+    await registry.followUpDispatched(requestId);
+
+    await expect(registry.followUpRejected(requestId)).resolves.toBeUndefined();
+  });
+
   it("never makes an armed continuation due after the chat is swept", async () => {
     const { registry, broadcast } = setup();
     const requestId = registry.request({

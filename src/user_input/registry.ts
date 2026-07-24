@@ -395,7 +395,7 @@ export function createUserInputRegistry(deps: {
 
     async followUpRejected(requestId) {
       const existing = states.get(requestId);
-      if (existing?.status === "settled" && existing.outcome === "rejected") {
+      if (existing?.status === "settled") {
         return;
       }
       const applied = await dispatch(requestId, {

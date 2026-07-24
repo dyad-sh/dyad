@@ -269,11 +269,6 @@ export function createProductionChatStreamCommands(
       const setMessagesById = makeSetMessagesById(store);
       const userInputRequestId = request.owner?.requestId;
       let userInputAccepted = userInputRequestId === undefined;
-      if (userInputRequestId) {
-        await ipc.userInput.beginFollowUpExecution({
-          requestId: userInputRequestId,
-        });
-      }
       ipc.chatStream.start(
         {
           chatId,
@@ -377,7 +372,7 @@ export function createProductionChatStreamCommands(
                 );
               } else {
                 request.onAcceptanceError?.(
-                  new Error("Follow-up stream ended before durable acceptance"),
+                  new Error("Follow-up stream ended before acceptance"),
                 );
               }
             }

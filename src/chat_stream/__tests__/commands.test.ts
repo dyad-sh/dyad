@@ -69,11 +69,8 @@ describe("chat stream command adapter instances", () => {
     });
   });
 
-  it("reports machine follow-up acceptance only after main confirms its durable request id", async () => {
+  it("reports machine follow-up acceptance only after main confirms its request id", async () => {
     const onAccepted = vi.fn();
-    const beginExecution = vi
-      .spyOn(ipc.userInput, "beginFollowUpExecution")
-      .mockResolvedValue(undefined);
     const deps = {
       store: createStore(),
       queryClient: new QueryClient(),
@@ -110,9 +107,6 @@ describe("chat stream command adapter instances", () => {
     });
 
     expect(onAccepted).toHaveBeenCalledOnce();
-    expect(beginExecution).toHaveBeenCalledExactlyOnceWith({
-      requestId: "integration:durable",
-    });
   });
 
   it("replaces transient content after the cancelled handler unwinds", async () => {

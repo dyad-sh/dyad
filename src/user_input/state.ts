@@ -84,7 +84,7 @@ export type UserInputOutcome =
   | "timed-out"
   | "swept"
   | "superseded"
-  | "acknowledged"
+  | "dispatched"
   | "rejected";
 
 export type UserInputState =
@@ -102,11 +102,6 @@ export type UserInputState =
     }
   | {
       status: "due";
-      descriptor: UserInputDescriptor & { followUpPrompt: string };
-      followUpPrompt: string;
-    }
-  | {
-      status: "accepted";
       descriptor: UserInputDescriptor & { followUpPrompt: string };
       followUpPrompt: string;
     }
@@ -137,9 +132,7 @@ export type UserInputEvent =
   | { type: "timed-out"; requestId: string }
   | { type: "chat-swept"; chatId: number }
   | { type: "stream-finished"; chatId: number }
-  | { type: "follow-up-accepted"; requestId: string }
-  | { type: "follow-up-retryable"; requestId: string }
-  | { type: "follow-up-acknowledged"; requestId: string }
+  | { type: "follow-up-dispatched"; requestId: string }
   | { type: "follow-up-rejected"; requestId: string };
 
 export function isLiveUserInputState(
@@ -148,7 +141,6 @@ export function isLiveUserInputState(
   return (
     state.status === "awaiting" ||
     state.status === "armed" ||
-    state.status === "due" ||
-    state.status === "accepted"
+    state.status === "due"
   );
 }

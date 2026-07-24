@@ -18,7 +18,6 @@ export type UserInputIgnoreReason =
   | "response-kind-mismatch"
   | "follow-up-not-armed"
   | "follow-up-not-due"
-  | "follow-up-not-accepted"
   | "already-due"
   | "invalid-in-current-state";
 
@@ -91,8 +90,7 @@ export function transition(
     if (
       state.status === "awaiting" ||
       state.status === "armed" ||
-      state.status === "due" ||
-      state.status === "accepted"
+      state.status === "due"
     ) {
       commands.push(...terminalCommands(state.descriptor, "superseded", null));
     }
@@ -197,20 +195,7 @@ export function transition(
     case "timed-out":
       return settle(descriptor, "timed-out", null);
     case "chat-swept":
-      return settle(
-        descriptor,
-        "swept",
-        null,
-        state.status === "due" || state.status === "accepted"
-          ? [
-              {
-                type: "reject-follow-up-handoff",
-                requestId: descriptor.requestId,
-                reason: "Owning user-input request was swept",
-              },
-            ]
-          : [],
-      );
+      return settle(descriptor, "swept", null);
     case "stream-finished": {
       if (state.status === "armed") {
         return applied(
@@ -220,12 +205,6 @@ export function transition(
             followUpPrompt: state.followUpPrompt,
           },
           [
-            {
-              type: "persist-follow-up-created",
-              requestId: descriptor.requestId,
-              chatId: descriptor.chatId,
-              prompt: state.followUpPrompt,
-            },
             {
               type: "broadcast-follow-up-due",
               requestId: descriptor.requestId,
@@ -238,29 +217,12 @@ export function transition(
       if (state.status === "due") return ignore(state, "already-due");
       return ignore(state, "follow-up-not-armed");
     }
-    case "follow-up-accepted":
+    case "follow-up-dispatched":
       return state.status === "due"
-        ? applied(
-            {
-              status: "accepted",
-              descriptor: state.descriptor,
-              followUpPrompt: state.followUpPrompt,
-            },
-            [],
-          )
-        : state.status === "accepted"
-          ? ignore(state, "already-settled")
-          : ignore(state, "follow-up-not-due");
-    case "follow-up-retryable":
-      return state.status === "accepted"
-        ? ignore(state, "already-due")
-        : ignore(state, "follow-up-not-accepted");
-    case "follow-up-acknowledged":
-      return state.status === "accepted"
-        ? settle(descriptor, "acknowledged", null)
-        : ignore(state, "follow-up-not-accepted");
+        ? settle(descriptor, "dispatched", null)
+        : ignore(state, "follow-up-not-due");
     case "follow-up-rejected":
-      return state.status === "due" || state.status === "accepted"
+      return state.status === "due"
         ? settle(descriptor, "rejected", null)
         : ignore(state, "follow-up-not-due");
     default: {

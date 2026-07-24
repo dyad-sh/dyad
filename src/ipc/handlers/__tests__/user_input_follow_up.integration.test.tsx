@@ -2,9 +2,8 @@ import { cleanup } from "@testing-library/react";
 import { and, eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
-import { messages, userInputFollowUpHandoffs } from "@/db/schema";
+import { messages } from "@/db/schema";
 import { ipc } from "@/ipc/types";
-import { userInputClient } from "@/ipc/types/user_input";
 import {
   setupHybridChatHarness,
   type HybridChatHarness,
@@ -12,7 +11,7 @@ import {
 import { h } from "@/testing/hybrid.setup";
 import { userInputRegistry } from "@/user_input/main";
 
-describe("durable user-input follow-up handoff (integration)", () => {
+describe("memory-owned user-input follow-up recovery (integration)", () => {
   let harness: HybridChatHarness;
 
   beforeAll(async () => {
@@ -36,7 +35,7 @@ describe("durable user-input follow-up handoff (integration)", () => {
     await harness?.dispose();
   });
 
-  async function createAcceptedFollowUp(chatId: number, suffix: string) {
+  async function createDueFollowUp(chatId: number, suffix: string) {
     const followUpPrompt =
       "Continue. I have completed the supabase integration.";
     const requestId = userInputRegistry.request({
@@ -54,17 +53,12 @@ describe("durable user-input follow-up handoff (integration)", () => {
     });
     await parked;
     userInputRegistry.streamFinished(chatId);
-    await userInputClient.acceptFollowUp({
-      requestId,
-      chatId,
-      prompt: followUpPrompt,
-    });
     return { requestId, followUpPrompt };
   }
 
-  it("dispatches one accepted follow-up after renderer hydration", async () => {
+  it("dispatches one due follow-up after renderer hydration", async () => {
     const chatId = await harness.createChat();
-    const { requestId } = await createAcceptedFollowUp(chatId, "after reload");
+    const { requestId } = await createDueFollowUp(chatId, "after reload");
 
     harness.mount({ chatId });
     await harness.waitForStreamEnd(chatId);
@@ -89,16 +83,15 @@ describe("durable user-input follow-up handoff (integration)", () => {
     expect(acceptedMessages).toHaveLength(1);
     expect(starts).toHaveLength(1);
     expect(
-      await harness.db
-        .select({ status: userInputFollowUpHandoffs.status })
-        .from(userInputFollowUpHandoffs)
-        .where(eq(userInputFollowUpHandoffs.requestId, requestId)),
-    ).toEqual([{ status: "acknowledged" }]);
+      userInputRegistry
+        .getPending()
+        .some((entry) => entry.descriptor.requestId === requestId),
+    ).toBe(false);
   }, 30_000);
 
-  it("settles an accepted owner before chat deletion cascades its row", async () => {
+  it("settles a due owner before deleting its chat", async () => {
     const chatId = await harness.createChat();
-    const { requestId } = await createAcceptedFollowUp(chatId, "before delete");
+    const { requestId } = await createDueFollowUp(chatId, "before delete");
     const eventBaseline = harness.bridge.sentEvents.length;
 
     await ipc.chat.deleteChat(chatId);
@@ -122,11 +115,5 @@ describe("durable user-input follow-up handoff (integration)", () => {
             (event.args[0] as { outcome?: string }).outcome === "swept",
         ),
     ).toBe(true);
-    expect(
-      await harness.db
-        .select()
-        .from(userInputFollowUpHandoffs)
-        .where(eq(userInputFollowUpHandoffs.requestId, requestId)),
-    ).toEqual([]);
   });
 });

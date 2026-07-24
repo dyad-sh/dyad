@@ -55,9 +55,9 @@ export interface StreamRequest {
    * `streamMessage` contract.
    */
   requestedChatMode?: Chat["chatMode"] | null;
-  /** Typed owner; its request ID is the durable idempotency identity. */
+  /** Typed memory owner; its request ID is the receiver idempotency key. */
   owner?: UserInputFollowUpQueueOwner;
-  /** Resolves only after main durably accepts the idempotent user message. */
+  /** Resolves only after main accepts the idempotent user message. */
   onAccepted?: () => void;
   onAcceptanceError?: (error: Error) => void;
   onAcceptanceRejected?: (reason: string) => void;

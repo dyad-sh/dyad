@@ -20,7 +20,7 @@ export function findRestorableQueueItems(
   const seenIds = new Set(existing.map((item) => item.id));
 
   return persisted.filter((item) => {
-    // Durable machine-owned follow-ups are reconstructed from the authoritative
+    // Memory-owned follow-ups are reconstructed from the authoritative
     // user-input registry, including fresh renderer callbacks. Legacy entries
     // have only a memory-owned request ID. Restoring either serialized shell
     // would create a duplicate or an immutable orphan after a full restart.
@@ -151,7 +151,7 @@ export function useQueuePersistence() {
           }
           // The user queued prompts for this chat while hydration was in
           // flight: keep both, persisted (older) items first. Queue item IDs
-          // prevent ordinary double hydration; the durable user-input request
+          // prevent ordinary double hydration; the user-input request
           // ID also collapses a continuation independently enqueued while
           // hydration was in flight.
           const restoredItems = findRestorableQueueItems(items, existing);

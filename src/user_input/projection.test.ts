@@ -32,7 +32,7 @@ type SettledListener = (payload: {
     | "timed-out"
     | "swept"
     | "superseded"
-    | "acknowledged"
+    | "dispatched"
     | "rejected";
 }) => void;
 type FollowUpDueListener = (payload: {
@@ -122,9 +122,6 @@ function createFakeIpc() {
       Promise.resolve([]),
   );
   const respond = vi.fn((): Promise<void> => Promise.resolve());
-  const acceptFollowUp = vi.fn((): Promise<void> => Promise.resolve());
-  const beginFollowUpExecution = vi.fn((): Promise<void> => Promise.resolve());
-  const retryFollowUp = vi.fn((): Promise<void> => Promise.resolve());
   const rejectFollowUp = vi.fn((): Promise<void> => Promise.resolve());
 
   const subscribe = <T>(listeners: Set<T>, listener: T) => {
@@ -135,9 +132,6 @@ function createFakeIpc() {
     userInput: {
       getPending,
       respond,
-      acceptFollowUp,
-      beginFollowUpExecution,
-      retryFollowUp,
       rejectFollowUp,
     },
     events: {
@@ -623,7 +617,7 @@ describe("user-input renderer projection", () => {
     stop();
   });
 
-  it("acknowledges a follow-up only after the facade reports durable acceptance", async () => {
+  it("settles a follow-up only after the facade reports acceptance", async () => {
     const store = createStore();
     const fake = createFakeIpc();
     let accept!: () => void;
@@ -785,13 +779,13 @@ describe("user-input renderer projection", () => {
     stop();
   });
 
-  it("replays one accepted handoff after renderer reload while dedup is pending", async () => {
+  it("does not duplicate a due handoff while renderer acceptance is pending", async () => {
     const store = createStore();
     const fake = createFakeIpc();
-    const descriptor = integrationDescriptor("integration-accepted");
+    const descriptor = integrationDescriptor("integration-pending");
     fake.getPending.mockResolvedValueOnce([
       {
-        status: "accepted",
+        status: "due",
         descriptor,
         deadlineAt: descriptor.deadlineAt,
         followUpPrompt: descriptor.followUpPrompt,
@@ -818,7 +812,7 @@ describe("user-input renderer projection", () => {
     acknowledge();
     await vi.waitFor(() =>
       expect(fake.respond).toHaveBeenCalledWith({
-        requestId: "integration-accepted",
+        requestId: "integration-pending",
         response: { kind: "follow-up-dispatched" },
       }),
     );

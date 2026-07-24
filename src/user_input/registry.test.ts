@@ -11,12 +11,10 @@ function setup() {
   const clock = createFakeClock(1_000);
   const recording = createRecordingCommandRunner<UserInputCommand, never>();
   const broadcast = vi.fn();
-  const rejectFollowUpHandoff = vi.fn();
   const registry = createUserInputRegistry({
     clock,
     idSource: createSequentialIdSource(),
     broadcast,
-    rejectFollowUpHandoff,
     commandRunner: {
       run: (command) => recording.run(command, () => undefined),
     },
@@ -26,7 +24,6 @@ function setup() {
     clock,
     recording,
     broadcast,
-    rejectFollowUpHandoff,
   };
 }
 
@@ -78,8 +75,8 @@ describe("user-input registry", () => {
     ).toHaveLength(2);
   });
 
-  it("rejects the durable owner when a due follow-up is swept", async () => {
-    const { registry, rejectFollowUpHandoff } = setup();
+  it("settles a due follow-up when its chat is deleted", async () => {
+    const { registry, broadcast } = setup();
     const requestId = registry.request({
       kind: "integration",
       chatId: 9,
@@ -98,81 +95,8 @@ describe("user-input registry", () => {
 
     await registry.settleChat(9);
 
-    expect(rejectFollowUpHandoff).toHaveBeenCalledWith(
-      requestId,
-      "Owning user-input request was swept",
-    );
     expect(registry.getPending()).toEqual([]);
-  });
-
-  it("does not publish or commit due state when durable creation fails", async () => {
-    const broadcast = vi.fn();
-    const persistenceError = new Error("sqlite is read-only");
-    const registry = createUserInputRegistry({
-      clock: createFakeClock(1_000),
-      idSource: createSequentialIdSource(),
-      broadcast,
-      persistFollowUpCreated: () => {
-        throw persistenceError;
-      },
-    });
-    const requestId = registry.request({
-      kind: "integration",
-      chatId: 9,
-      provider: "supabase",
-      classifier: "none",
-      followUpPrompt: "Continue after integration",
-    });
-    await registry.respond(requestId, {
-      kind: "integration",
-      completed: true,
-      provider: "supabase",
-    });
-
-    registry.streamFinished(9);
-    await Promise.resolve();
-
-    expect(registry.getPending()).toEqual([
-      expect.objectContaining({ status: "armed" }),
-    ]);
-    expect(broadcast).not.toHaveBeenCalledWith(
-      "user-input:follow-up-due",
-      expect.anything(),
-    );
-  });
-
-  it("keeps the owner live when durable settlement fails", async () => {
-    const broadcast = vi.fn();
-    const rejectionError = new Error("sqlite is busy");
-    const registry = createUserInputRegistry({
-      clock: createFakeClock(1_000),
-      idSource: createSequentialIdSource(),
-      broadcast,
-      persistFollowUpCreated: vi.fn(),
-      rejectFollowUpHandoff: () => {
-        throw rejectionError;
-      },
-    });
-    const requestId = registry.request({
-      kind: "integration",
-      chatId: 9,
-      provider: "supabase",
-      classifier: "none",
-      followUpPrompt: "Continue after integration",
-    });
-    await registry.respond(requestId, {
-      kind: "integration",
-      completed: true,
-      provider: "supabase",
-    });
-    registry.streamFinished(9);
-
-    await expect(registry.settleChat(9)).rejects.toBe(rejectionError);
-
-    expect(registry.getPending()).toEqual([
-      expect.objectContaining({ status: "due" }),
-    ]);
-    expect(broadcast).not.toHaveBeenCalledWith("user-input:settled", {
+    expect(broadcast).toHaveBeenCalledWith("user-input:settled", {
       requestId,
       outcome: "swept",
     });
@@ -291,11 +215,7 @@ describe("user-input registry", () => {
         ([channel]) => channel === "user-input:follow-up-due",
       ),
     ).toHaveLength(1);
-    await registry.followUpAccepted(requestId);
-    expect(registry.getPending()[0].status).toBe("accepted");
-    await registry.followUpAccepted(requestId);
-    await registry.followUpAcknowledged(requestId);
-    await registry.followUpAcknowledged(requestId);
+    await registry.followUpDispatched(requestId);
     expect(registry.getPending()).toEqual([]);
   });
 
@@ -329,7 +249,7 @@ describe("user-input registry", () => {
     });
   });
 
-  it("keeps the executing follow-up retryable while sweeping other chat inputs", async () => {
+  it("keeps a due follow-up retryable while sweeping other chat inputs", async () => {
     const { registry } = setup();
     const followUp = registry.request({
       kind: "integration",
@@ -350,13 +270,11 @@ describe("user-input registry", () => {
       completed: true,
     });
     registry.streamFinished(18);
-    await registry.followUpAccepted(followUp);
-
     registry.sweepChat(18);
 
     expect(registry.getPending()).toEqual([
       expect.objectContaining({
-        status: "accepted",
+        status: "due",
         descriptor: expect.objectContaining({ requestId: followUp }),
       }),
     ]);

@@ -29,7 +29,7 @@ type UserInputOutcome =
   | "timed-out"
   | "swept"
   | "superseded"
-  | "acknowledged"
+  | "dispatched"
   | "rejected";
 
 const MAX_SETTLED_TOMBSTONES = 1_000;
@@ -37,7 +37,7 @@ const QUESTIONNAIRE_CONFIRMATION_MS = 2_000;
 
 export type ProjectedUserInputRequest =
   | {
-      status: "awaiting" | "armed" | "due" | "accepted";
+      status: "awaiting" | "armed" | "due";
       descriptor: UserInputDescriptorPayload;
       deadlineAt: number;
       classifier?: "none" | "racing" | "review";
@@ -228,7 +228,7 @@ export function getUserInputProjectionAdapter({
     const request = store.get(writableUserInputRequestsAtom).get(requestId);
     if (
       !request ||
-      (request.status !== "due" && request.status !== "accepted") ||
+      request.status !== "due" ||
       request.descriptor.kind !== "integration" ||
       !request.followUpPrompt
     ) {
@@ -273,7 +273,7 @@ export function getUserInputProjectionAdapter({
     for (const [requestId, request] of store.get(
       writableUserInputRequestsAtom,
     )) {
-      if (request.status === "due" || request.status === "accepted") {
+      if (request.status === "due") {
         void dispatchDueFollowUp(requestId);
       }
     }

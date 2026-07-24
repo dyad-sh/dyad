@@ -85,7 +85,7 @@ export const UserInputResponseSchema = z.discriminatedUnion("kind", [
 ]);
 
 const PendingSnapshotSchema = z.object({
-  status: z.enum(["awaiting", "armed", "due", "accepted"]),
+  status: z.enum(["awaiting", "armed", "due"]),
   descriptor: UserInputDescriptorSchema,
   deadlineAt: z.number(),
   classifier: z.enum(["none", "racing", "review"]).optional(),
@@ -98,7 +98,7 @@ const OutcomeSchema = z.enum([
   "timed-out",
   "swept",
   "superseded",
-  "acknowledged",
+  "dispatched",
   "rejected",
 ]);
 
@@ -115,25 +115,6 @@ export const userInputContracts = {
     channel: "user-input:get-pending",
     input: z.void(),
     output: z.array(PendingSnapshotSchema),
-  }),
-  acceptFollowUp: defineContract({
-    channel: "user-input:accept-follow-up",
-    input: z.object({
-      requestId: z.string(),
-      chatId: z.number(),
-      prompt: z.string(),
-    }),
-    output: z.void(),
-  }),
-  beginFollowUpExecution: defineContract({
-    channel: "user-input:begin-follow-up-execution",
-    input: z.object({ requestId: z.string() }),
-    output: z.void(),
-  }),
-  retryFollowUp: defineContract({
-    channel: "user-input:retry-follow-up",
-    input: z.object({ requestId: z.string(), error: z.string() }),
-    output: z.void(),
   }),
   rejectFollowUp: defineContract({
     channel: "user-input:reject-follow-up",

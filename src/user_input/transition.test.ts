@@ -67,9 +67,7 @@ const EVENTS: UserInputEvent[] = [
     approved: false,
   },
   { type: "stream-finished", chatId: descriptor.chatId },
-  { type: "follow-up-accepted", requestId: descriptor.requestId },
-  { type: "follow-up-retryable", requestId: descriptor.requestId },
-  { type: "follow-up-acknowledged", requestId: descriptor.requestId },
+  { type: "follow-up-dispatched", requestId: descriptor.requestId },
   { type: "follow-up-rejected", requestId: descriptor.requestId },
   {
     type: "human-decided",
@@ -82,11 +80,7 @@ const EVENTS: UserInputEvent[] = [
   },
   { type: "stream-finished", chatId: followUpDescriptor.chatId },
   {
-    type: "follow-up-accepted",
-    requestId: followUpDescriptor.requestId,
-  },
-  {
-    type: "follow-up-acknowledged",
+    type: "follow-up-dispatched",
     requestId: followUpDescriptor.requestId,
   },
   {
@@ -105,7 +99,6 @@ const STATE_KINDS = [
   "awaiting",
   "armed",
   "due",
-  "accepted",
   "settled",
 ] as const satisfies readonly UserInputState["status"][];
 const COMMAND_KINDS = [
@@ -114,7 +107,6 @@ const COMMAND_KINDS = [
   "broadcast-classified",
   "broadcast-settled",
   "broadcast-follow-up-due",
-  "persist-follow-up-created",
   "resolve-park",
   "persist-always",
   "schedule-deadline",

@@ -15,13 +15,18 @@ function queuedItem(id: string, requestId?: string): QueuedMessageItem {
 }
 
 describe("findRestorableQueueItems", () => {
-  it("drops machine-owned continuations during hydration", () => {
+  it("drops callback-less machine continuations after a full restart", () => {
     const persisted = [
       queuedItem("persisted", "integration:1"),
+      {
+        id: "legacy-persisted",
+        prompt: "legacy",
+        userInputRequestId: "integration:legacy",
+      },
       queuedItem("ordinary"),
     ];
 
-    expect(findRestorableQueueItems(persisted, [])).toEqual([persisted[1]]);
+    expect(findRestorableQueueItems(persisted, [])).toEqual([persisted[2]]);
   });
 
   it("deduplicates ordinary prompts by queue item id", () => {

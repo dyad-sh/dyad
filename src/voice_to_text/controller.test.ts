@@ -233,6 +233,47 @@ describe("VoiceToTextController", () => {
     });
   });
 
+  it("commits after lease-cleanup failure and rejects the stale timer event", () => {
+    const failures: string[] = [];
+    const ignored: string[] = [];
+    const controller = new VoiceToTextController({
+      idSource: createSequentialIdSource(),
+      runner: {
+        run(command, emit) {
+          if (command.type === "AcquireMedia") {
+            emit({ type: "MEDIA_ACQUIRED", attempt: command.attempt });
+          }
+        },
+        beforeStateCommit(previous, next) {
+          if (previous.type === "recording" && next.type === "stopping") {
+            throw new Error("lease cleanup failed");
+          }
+        },
+      },
+      observer: {
+        onEventIgnored({ event, reason }) {
+          ignored.push(`${event.type}:${reason}`);
+        },
+      },
+      reportError: (error) => failures.push(error.stage),
+    });
+    controller.toggle();
+
+    controller.toggle();
+    controller.send({
+      type: "DURATION_ELAPSED",
+      attempt: "voice-attempt:1",
+    });
+
+    expect(controller.getSnapshot()).toEqual({
+      type: "stopping",
+      attempt: "voice-attempt:1",
+      reason: "user",
+    });
+    expect(failures).toEqual(["before-commit"]);
+    expect(ignored).toEqual(["DURATION_ELAPSED:stale-attempt"]);
+  });
+
   it("matches the recorded pre-migration event, state, and command trace", () => {
     expect(recordVoiceScenario("dispatcher")).toEqual(
       recordVoiceScenario("reference"),

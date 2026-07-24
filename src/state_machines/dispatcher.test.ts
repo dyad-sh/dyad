@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { TransactionalDispatcher } from "./dispatcher";
+import { TransactionalDispatcher, type DispatcherError } from "./dispatcher";
 import {
   runControllerConformanceSuite,
   type ControllerConformanceAdapter,
@@ -69,6 +69,7 @@ function createConformanceAdapter(): ControllerConformanceAdapter<
         },
         scheduler: independentScheduler(),
         observer: options.observer,
+        beforeCommit: options.beforeCommit,
         project: options.project,
         reportError: options.reportError,
       });
@@ -96,6 +97,7 @@ function createConformanceAdapter(): ControllerConformanceAdapter<
       finish: { type: "FINISH" },
       command: (command) => ({ type: "COMMAND", command }),
     },
+    errorStage: (error) => (error as DispatcherError<TestCommand>).stage,
     commands: {
       emit: (event) => ({ type: "emit", event }),
       syncThrow: { type: "sync-throw" },
@@ -312,7 +314,7 @@ describe("TransactionalDispatcher", () => {
     expect(runCommand).not.toHaveBeenCalled();
   });
 
-  it("passes the reusable twelve-scenario conformance suite", async () => {
+  it("passes the reusable adversarial conformance suite", async () => {
     const adapter = createConformanceAdapter();
     const originalCreate = adapter.create;
     adapter.create = (options) =>

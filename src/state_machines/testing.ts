@@ -474,6 +474,7 @@ export interface ControllerConformanceAdapter<
       Command,
       Reason
     >;
+    beforeCommit?(previous: State, next: State): void;
     project?(state: State): void;
     reportError?(error: unknown): void;
     disposeCommands?(state: State): readonly Command[];
@@ -487,6 +488,7 @@ export interface ControllerConformanceAdapter<
     finish: Event;
     command(command: Command): Event;
   };
+  errorStage(error: unknown): string | undefined;
   commands: {
     emit(event: Event): Command;
     syncThrow: Command;
@@ -608,6 +610,32 @@ export async function runControllerConformanceSuite<
         ),
       "synchronous command emission",
       "the emitted event was not drained",
+    );
+  }
+
+  {
+    const errors: unknown[] = [];
+    const command = adapter.commands.emit(adapter.events.enterB);
+    const controller = adapter.create({
+      beforeCommit() {
+        throw new Error("conformance before-commit throw");
+      },
+      runCommand: () => undefined,
+      reportError: (error) => errors.push(error),
+    });
+    controller.send(adapter.events.command(command));
+    conformanceAssert(
+      errors.length === 2 &&
+        errors.every(
+          (error) => adapter.errorStage(error) === "before-commit",
+        ) &&
+        adapter.stateKey(controller.getSnapshot()) ===
+          adapter.stateKey(
+            adapter.transition(adapter.initialState, adapter.events.enterB)
+              .state,
+          ),
+      "before-commit failure preserves progress",
+      "the failure was not reported, commit was vetoed, or synchronous follow-up work stopped",
     );
   }
 

@@ -62,6 +62,11 @@ export interface TransactionalDispatcherOptions<
    * Runs after validation and reservation but immediately before commit.
    * This narrow hook exists for cancelling state-owned leases before the old
    * state exits. It must not start commands or publish application state.
+   *
+   * A throw is reported but does not veto commit: this effectful hook may
+   * already have partially completed, so pretending to reject atomically
+   * would instead drop the event against a partially modified old state.
+   * Domains must also reject stale callbacks by operation/state-instance token.
    */
   beforeCommit?(previous: State, next: State): void;
   project?(snapshot: State): void;

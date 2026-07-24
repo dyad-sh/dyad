@@ -33,6 +33,12 @@ Background and before/after examples of why this pattern exists:
   to typed domain events; unexpected throws/rejections may be mapped by the
   domain and never create a universal failure event. Scheduler injection owns
   concurrency policy.
+- A pre-commit lease-cancellation failure is also isolated and reported, but
+  does not veto commit. Unlike pure transition and validation failures, an
+  effectful cleanup hook may have partially completed; rejecting at that point
+  would drop the event against a partially modified old state. Cancellation is
+  required resource hygiene, while operation/state-instance token checks are
+  the correctness backstop that rejects any stale callback which still fires.
 - Use `TimerLeaseScope` for migrated watchdogs. Carry the lease's operation or
   state-instance token in its event, cancel it in the dispatcher's pre-commit
   lease hook before exiting state, explicitly replace it on self-re-entry, and

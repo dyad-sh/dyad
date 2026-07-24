@@ -563,18 +563,19 @@ describe("AppRunController", () => {
     const controller = new AppRunController({
       appId: APP_ID,
       executor,
+      idSource: createSequentialIdSource(),
       onStateChange: (state) => published.push(state),
     });
     const pending = controller.dispatch({ type: "START", startedAt: 100 });
     await flushMicrotasks();
-    const runId = lastStartCommand(executor).runId;
+    const invocationRef = lastStartCommand(executor).invocationRef;
 
     controller.dispose();
     controller.dispose();
     await expect(pending).resolves.toBeUndefined();
     const publishCount = published.length;
 
-    executor.emit({ type: "RUN_IPC_RESOLVED", runId });
+    executor.emit({ type: "RUN_IPC_RESOLVED", invocationRef });
     expect(published).toHaveLength(publishCount);
   });
 });

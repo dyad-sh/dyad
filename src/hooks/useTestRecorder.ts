@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -96,6 +96,10 @@ export function useTestRecorder({
   useEffect(() => {
     appIdRef.current = appId;
   }, [appId]);
+
+  // Count what the spec will actually contain, not the raw stream: typing
+  // "hello" arrives as five growing fills but replays as one step.
+  const entryCount = useMemo(() => collapseActions(entries).length, [entries]);
 
   const postToIframe = useCallback((message: unknown) => {
     iframeElRef.current?.contentWindow?.postMessage(message, "*");
@@ -424,7 +428,7 @@ export function useTestRecorder({
     progress: recordingState.progress,
     error: recordingState.error,
     savedSpecPath: recordingState.savedSpecPath,
-    entryCount: entries.length,
+    entryCount,
     isRecording: recordingState.phase === "recording",
     isBusy:
       recordingState.phase === "starting" ||

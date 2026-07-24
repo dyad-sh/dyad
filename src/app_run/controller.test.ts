@@ -165,6 +165,43 @@ describe("AppRunController", () => {
     });
   });
 
+  it("keeps the producer ref when START only ensures a ready app is running", async () => {
+    const executor = createFakeExecutor();
+    const controller = new AppRunController({
+      appId: APP_ID,
+      executor,
+      idSource: createSequentialIdSource(),
+    });
+    const producerRef = await makeReady(controller, executor);
+
+    const ensured = controller.dispatch({ type: "START", startedAt: 200 });
+    await flushMicrotasks();
+    expect(lastStartCommand(executor).invocationRef).toEqual(producerRef);
+
+    controller.send({
+      type: "PROXY_READY",
+      invocationRef: producerRef,
+      url: makeUrl(2),
+    });
+    executor.emit({
+      type: "RUN_IPC_RESOLVED",
+      invocationRef: producerRef,
+    });
+    await ensured;
+
+    controller.send({
+      type: "APP_EXIT",
+      invocationRef: producerRef,
+      exitCode: 1,
+      timestamp: 300,
+    });
+    expect(controller.getSnapshot()).toMatchObject({
+      type: "stopped",
+      invocationRef: producerRef,
+      exitCode: 1,
+    });
+  });
+
   it("settles dispatch promises when their IPC settles, even when superseded", async () => {
     const executor = createFakeExecutor();
     const controller = new AppRunController({

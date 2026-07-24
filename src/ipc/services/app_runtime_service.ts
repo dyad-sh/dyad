@@ -374,6 +374,15 @@ export async function ensureProxyForRunningApp({
   if (!appInfo) {
     return;
   }
+  if (
+    invocationRef &&
+    (!appInfo.invocationRef ||
+      !sameInvocationRef(appInfo.invocationRef, invocationRef))
+  ) {
+    // Producer callbacks are bound to their spawned process's ref. Reject an
+    // old callback before it can terminate or replace the current proxy.
+    return;
+  }
 
   const proxyAuthToken =
     mode === "cloud" ? appInfo.cloudPreviewAuthToken : undefined;

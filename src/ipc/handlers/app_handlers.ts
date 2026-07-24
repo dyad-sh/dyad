@@ -59,6 +59,7 @@ import {
 } from "../services/app_runtime_service";
 import { restartApp } from "../services/restart_app";
 import { getPtySessionManager } from "../utils/pty_session_manager";
+import { sameInvocationRef } from "@/state_machines/invocation_ref";
 
 /**
  * Read screenshot entries for a single app directory, filtered by filename
@@ -892,9 +893,23 @@ export function registerAppHandlers() {
       if (!appInfo || appInfo.mode !== "cloud" || !appInfo.cloudSandboxId) {
         return null;
       }
+      const sandboxId = appInfo.cloudSandboxId;
+      const invocationRef = appInfo.invocationRef;
 
       try {
-        const status = await getCloudSandboxStatus(appInfo.cloudSandboxId);
+        const status = await getCloudSandboxStatus(sandboxId);
+        const latestAppInfo = runningApps.get(appId);
+        const sameInvocation = invocationRef
+          ? !!latestAppInfo?.invocationRef &&
+            sameInvocationRef(latestAppInfo.invocationRef, invocationRef)
+          : !latestAppInfo?.invocationRef;
+        if (
+          latestAppInfo !== appInfo ||
+          latestAppInfo.cloudSandboxId !== sandboxId ||
+          !sameInvocation
+        ) {
+          return null;
+        }
         const previewChanged =
           appInfo.cloudPreviewUrl !== status.previewUrl ||
           appInfo.cloudPreviewAuthToken !== status.previewAuthToken;
@@ -907,6 +922,7 @@ export function registerAppHandlers() {
             event,
             originalUrl: status.previewUrl,
             mode: "cloud",
+            invocationRef,
           });
         } else {
           appInfo.originalUrl = status.previewUrl;

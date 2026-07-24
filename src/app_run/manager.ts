@@ -79,24 +79,31 @@ export class AppRunManager {
     return this.host.ensure(appId).dispatch(input);
   }
 
-  send(appId: number, input: RunProducerInput): void {
+  /**
+   * Routes producer work and reports whether its identity was admitted.
+   * Legacy ref-less events retain key-only routing for app-update
+   * compatibility.
+   */
+  send(appId: number, input: RunProducerInput): boolean {
     if ("invocationRef" in input && input.invocationRef) {
       if (input.invocationRef.entityKey !== appId) {
         // Keep the routing key and InvocationRef entity key distinct: a
         // malformed producer event must never claim another app's controller.
         this.host.get(appId)?.send(input);
-        return;
+        return false;
       }
       const claim = this.invocations.claim(input.invocationRef);
       if (claim.kind === "claimed") {
         claim.value.send(input);
+        return true;
       } else {
         // Preserve ignored-event tracing without admitting stale work.
         this.host.get(appId)?.send(input);
+        return false;
       }
-      return;
     }
     this.host.ensure(appId).send(input);
+    return true;
   }
 
   beginExternal(appId: number, input: ExternalRunOperationInput): void {

@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import type { ChildProcess } from "node:child_process";
+import type { Worker } from "node:worker_threads";
 import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -958,6 +959,48 @@ describe("executeApp", () => {
       }),
     );
     expect(runningApps.get(42)?.proxyUrl).toBeUndefined();
+  });
+
+  it("does not let an old invocation terminate the replacement proxy", async () => {
+    const oldRef = {
+      kind: "app-run",
+      entityKey: 42,
+      operationId: "app-run:old",
+    } as const;
+    const newRef = {
+      kind: "app-run",
+      entityKey: 42,
+      operationId: "app-run:new",
+    } as const;
+    const terminateReplacement = vi.fn();
+    runningApps.set(42, {
+      process: null,
+      processId: 2,
+      invocationRef: newRef,
+      mode: "host",
+      proxyWorker: {
+        terminate: terminateReplacement,
+      } as unknown as Worker,
+      proxyUrl: "http://localhost:42142",
+      originalUrl: "http://localhost:32142",
+      lastViewedAt: Date.now(),
+    });
+
+    await ensureProxyForRunningApp({
+      appId: 42,
+      event: createEvent(),
+      originalUrl: "http://localhost:39999",
+      mode: "host",
+      invocationRef: oldRef,
+    });
+
+    expect(terminateReplacement).not.toHaveBeenCalled();
+    expect(startProxyMock).not.toHaveBeenCalled();
+    expect(runningApps.get(42)).toMatchObject({
+      invocationRef: newRef,
+      proxyUrl: "http://localhost:42142",
+      originalUrl: "http://localhost:32142",
+    });
   });
 
   it("surfaces a proxy port-exhaustion error to the renderer", async () => {

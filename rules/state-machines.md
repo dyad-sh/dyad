@@ -58,11 +58,10 @@ Background and before/after examples of why this pattern exists:
 - Machine-generated queued work must not be editable or removable (including
   through bulk-clear paths) unless removal explicitly settles or rejects the
   owning machine request; otherwise reload can resurrect abandoned work.
-- If queue removal awaits owner settlement, capture the invocation-time item
-  IDs and remove only those IDs afterward. Clearing the latest queue snapshot
-  can silently delete machine work enqueued during the await. Settle owners
-  independently: remove ordinary and successfully settled items, preserve
-  failed owners, and surface their errors instead of aborting the whole clear.
+- If queue removal awaits owner settlement, atomically claim/remove the
+  invocation-time items before the await so the queue driver cannot start
+  them. Restore failed owners, preserve items enqueued during the await, and
+  surface settlement errors without aborting the whole clear.
 - Do not persist machine-generated queue entries when their authority or
   acceptance callbacks are memory-only. Let the live authoritative registry
   rehydrate and re-enqueue them; a full restart must not restore orphan shells.

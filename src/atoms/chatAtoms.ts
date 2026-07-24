@@ -620,7 +620,7 @@ export interface QueuedMessageItem {
   userInputRequestId?: string;
   onAccepted?: () => void;
   onAcceptanceError?: (error: Error) => void;
-  onAcceptanceRejected?: (reason: string) => void;
+  onAcceptanceRejected?: (reason: string) => void | Promise<void>;
 }
 
 // Map<chatId, QueuedMessageItem[]>

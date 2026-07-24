@@ -31,10 +31,10 @@ idempotent user-message insert. The renderer then settles the memory owner as
 renderer remount, focus, or another retry pass can submit it again safely.
 
 Machine-owned queue items are never written to queue persistence. Queue delete
-and bulk-clear reject the owner before removing its item; failed settlement
-preserves the item and surfaces the error. Ordinary chat errors do not sweep a
-`due` follow-up, while explicit chat deletion settles all requests for that
-chat.
+and bulk-clear atomically claim their current items so the queue driver cannot
+start them, then reject each owner. Failed settlement restores the item and
+surfaces the error. Ordinary chat errors do not sweep a `due` follow-up, while
+explicit chat deletion settles all requests for that chat.
 
 ## Restart boundary
 

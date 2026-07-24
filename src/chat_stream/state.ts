@@ -60,7 +60,7 @@ export interface StreamRequest {
   /** Resolves only after main accepts the idempotent user message. */
   onAccepted?: () => void;
   onAcceptanceError?: (error: Error) => void;
-  onAcceptanceRejected?: (reason: string) => void;
+  onAcceptanceRejected?: (reason: string) => void | Promise<void>;
   onSettled?: (result: StreamSettledResult) => void;
 }
 

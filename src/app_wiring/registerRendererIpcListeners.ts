@@ -56,30 +56,16 @@ export function registerRendererIpcListeners({
               completed = true;
               reject(error);
             },
-            onAcceptanceRejected: (reason) => {
+            onAcceptanceRejected: async (reason) => {
               if (completed) return;
+              await ipcClient.userInput.rejectFollowUp({ requestId, reason });
               completed = true;
-              void ipcClient.userInput
-                .rejectFollowUp({ requestId, reason })
-                .then(
-                  () => reject(new Error(reason)),
-                  (rejectionError) => reject(rejectionError),
-                );
+              reject(new Error(reason));
             },
           },
         });
       }),
-    reject: (
-      owner: { kind: "user-input-follow-up"; requestId: string },
-      reason: string,
-    ) =>
-      ipcClient.userInput.rejectFollowUp({
-        requestId: owner.requestId,
-        reason,
-      }),
   };
-
-  chatStreamManager.configureUserInputHandoff(userInputChatStream);
 
   unsubscribes.push(
     getUserInputProjectionAdapter({

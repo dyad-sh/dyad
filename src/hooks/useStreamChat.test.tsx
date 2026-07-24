@@ -11,7 +11,6 @@ const CHAT_ID = 42;
 
 const mocks = vi.hoisted(() => ({
   controllerSend: vi.fn(),
-  rejectUserInputHandoff: vi.fn(),
   showError: vi.fn(),
 }));
 
@@ -22,7 +21,6 @@ vi.mock("@tanstack/react-router", () => ({
 vi.mock("@/chat_stream/ChatStreamProvider", () => ({
   useChatStreamManager: () => ({
     ensure: () => ({ send: mocks.controllerSend }),
-    rejectUserInputHandoff: mocks.rejectUserInputHandoff,
   }),
 }));
 
@@ -41,8 +39,6 @@ function makeWrapper() {
 describe("useStreamChat queueMessage", () => {
   beforeEach(() => {
     mocks.controllerSend.mockReset();
-    mocks.rejectUserInputHandoff.mockReset();
-    mocks.rejectUserInputHandoff.mockResolvedValue(undefined);
     mocks.showError.mockReset();
   });
 
@@ -71,7 +67,7 @@ describe("useStreamChat queueMessage", () => {
     });
   });
 
-  it("does not edit machine follow-ups and settles them before removal", async () => {
+  it("does not edit machine follow-ups and explicitly rejects removal", async () => {
     const { store, Wrapper } = makeWrapper();
     const machineFollowUp = {
       id: "machine-follow-up",
@@ -80,6 +76,7 @@ describe("useStreamChat queueMessage", () => {
         kind: "user-input-follow-up" as const,
         requestId: "integration:1",
       },
+      onAcceptanceRejected: vi.fn().mockResolvedValue(undefined),
     };
     const ordinaryPrompt = {
       id: "ordinary-prompt",
@@ -105,8 +102,7 @@ describe("useStreamChat queueMessage", () => {
     await act(async () => {
       await result.current.removeQueuedMessage(machineFollowUp.id);
     });
-    expect(mocks.rejectUserInputHandoff).toHaveBeenCalledWith(
-      machineFollowUp.owner,
+    expect(machineFollowUp.onAcceptanceRejected).toHaveBeenCalledWith(
       "removed from queue",
     );
     expect(store.get(queuedMessagesByIdAtom).get(CHAT_ID)).toEqual([
@@ -122,10 +118,11 @@ describe("useStreamChat queueMessage", () => {
   it("preserves messages queued while bulk owner rejection is pending", async () => {
     const { store, Wrapper } = makeWrapper();
     let finishRejection!: () => void;
-    mocks.rejectUserInputHandoff.mockReturnValueOnce(
-      new Promise<void>((resolve) => {
-        finishRejection = resolve;
-      }),
+    const onAcceptanceRejected = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishRejection = resolve;
+        }),
     );
     store.set(
       queuedMessagesByIdAtom,
@@ -140,6 +137,7 @@ describe("useStreamChat queueMessage", () => {
                 kind: "user-input-follow-up",
                 requestId: "integration:clear",
               },
+              onAcceptanceRejected,
             },
           ],
         ],
@@ -153,6 +151,7 @@ describe("useStreamChat queueMessage", () => {
     act(() => {
       clear = result.current.clearAllQueuedMessages();
     });
+    expect(store.get(queuedMessagesByIdAtom).has(CHAT_ID)).toBe(false);
     act(() => {
       store.set(queuedMessagesByIdAtom, (previous) => {
         const next = new Map(previous);
@@ -166,6 +165,7 @@ describe("useStreamChat queueMessage", () => {
     });
     await act(async () => clear);
 
+    expect(onAcceptanceRejected).toHaveBeenCalledWith("queue cleared");
     expect(store.get(queuedMessagesByIdAtom).get(CHAT_ID)).toEqual([
       { id: "queued-during-clear", prompt: "Keep me" },
     ]);
@@ -178,11 +178,8 @@ describe("useStreamChat queueMessage", () => {
       requestId: "integration:failed",
     };
     const rejectionError = new Error("renderer IPC unavailable");
-    mocks.rejectUserInputHandoff.mockImplementation((owner) =>
-      owner.requestId === failedOwner.requestId
-        ? Promise.reject(rejectionError)
-        : Promise.resolve(),
-    );
+    const settledRejection = vi.fn().mockResolvedValue(undefined);
+    const failedRejection = vi.fn().mockRejectedValue(rejectionError);
     store.set(
       queuedMessagesByIdAtom,
       new Map([
@@ -197,11 +194,13 @@ describe("useStreamChat queueMessage", () => {
                 kind: "user-input-follow-up",
                 requestId: "integration:settled",
               },
+              onAcceptanceRejected: settledRejection,
             },
             {
               id: "failed-owner",
               prompt: "Failed follow-up",
               owner: failedOwner,
+              onAcceptanceRejected: failedRejection,
             },
           ],
         ],
@@ -220,6 +219,7 @@ describe("useStreamChat queueMessage", () => {
         id: "failed-owner",
         prompt: "Failed follow-up",
         owner: failedOwner,
+        onAcceptanceRejected: failedRejection,
       },
     ]);
     expect(mocks.showError).toHaveBeenCalledWith(rejectionError);

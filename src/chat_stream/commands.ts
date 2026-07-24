@@ -367,9 +367,15 @@ export function createProductionChatStreamCommands(
           onEnd: (response) => {
             if (!userInputAccepted) {
               if (response.wasCancelled) {
-                request.onAcceptanceRejected?.(
-                  "cancelled during follow-up execution",
-                );
+                void Promise.resolve(
+                  request.onAcceptanceRejected?.(
+                    "cancelled during follow-up execution",
+                  ),
+                ).catch((error) => {
+                  request.onAcceptanceError?.(
+                    error instanceof Error ? error : new Error(String(error)),
+                  );
+                });
               } else {
                 request.onAcceptanceError?.(
                   new Error("Follow-up stream ended before acceptance"),

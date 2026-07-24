@@ -19,6 +19,17 @@ export function getRandomNumberId() {
   return Math.floor(Math.random() * 1_000_000_000_000_000);
 }
 
+async function rejectQueuedOwner(
+  item: QueuedMessageItem,
+  reason: string,
+): Promise<void> {
+  if (!item.owner) return;
+  if (!item.onAcceptanceRejected) {
+    throw new Error("Machine-owned queue item has no rejection callback");
+  }
+  await item.onAcceptanceRejected(reason);
+}
+
 /**
  * Chat streaming facade for React components.
  *
@@ -161,34 +172,50 @@ export function useStreamChat({
   const removeQueuedMessage = useCallback(
     async (id: string) => {
       if (chatId === undefined) return;
-      const item = queuedMessagesById
-        .get(chatId)
-        ?.find((message) => message.id === id);
-      if (item?.owner) {
-        try {
-          await chatStreamManager.rejectUserInputHandoff(
-            item.owner,
-            "removed from queue",
-          );
-        } catch (error) {
-          showError(error);
-          return;
-        }
-      }
+      let claimed:
+        | { item: QueuedMessageItem; originalIndex: number }
+        | undefined;
       setQueuedMessagesById((prev) => {
-        const next = new Map(prev);
         const existing = prev.get(chatId) ?? [];
-        const filtered = existing.filter((msg) => msg.id !== id);
-        if (filtered.length === existing.length) return prev;
-        if (filtered.length > 0) {
-          next.set(chatId, filtered);
+        const originalIndex = existing.findIndex(
+          (message) => message.id === id,
+        );
+        if (originalIndex < 0) return prev;
+        claimed = { item: existing[originalIndex], originalIndex };
+        const remaining = existing.filter((message) => message.id !== id);
+        const next = new Map(prev);
+        if (remaining.length > 0) {
+          next.set(chatId, remaining);
         } else {
           next.delete(chatId);
         }
         return next;
       });
+
+      const claimedEntry = claimed;
+      if (!claimedEntry) return;
+      try {
+        await rejectQueuedOwner(claimedEntry.item, "removed from queue");
+      } catch (error) {
+        showError(error);
+        setQueuedMessagesById((prev) => {
+          const existing = prev.get(chatId) ?? [];
+          if (existing.some((message) => message.id === claimedEntry.item.id)) {
+            return prev;
+          }
+          const restored = [...existing];
+          restored.splice(
+            Math.min(claimedEntry.originalIndex, restored.length),
+            0,
+            claimedEntry.item,
+          );
+          const next = new Map(prev);
+          next.set(chatId, restored);
+          return next;
+        });
+      }
     },
-    [chatId, chatStreamManager, queuedMessagesById, setQueuedMessagesById],
+    [chatId, setQueuedMessagesById],
   );
 
   const reorderQueuedMessages = useCallback(
@@ -216,43 +243,50 @@ export function useStreamChat({
 
   const clearAllQueuedMessages = useCallback(async () => {
     if (chatId === undefined) return;
-    const current = queuedMessagesById.get(chatId) ?? [];
+    let claimed: Array<{ item: QueuedMessageItem; originalIndex: number }> = [];
+    setQueuedMessagesById((prev) => {
+      const existing = prev.get(chatId);
+      if (!existing?.length) return prev;
+      claimed = existing.map((item, originalIndex) => ({
+        item,
+        originalIndex,
+      }));
+      const next = new Map(prev);
+      next.delete(chatId);
+      return next;
+    });
+    if (claimed.length === 0) return;
+
     const settlements = await Promise.allSettled(
-      current.map((message) =>
-        message.owner
-          ? chatStreamManager.rejectUserInputHandoff(
-              message.owner,
-              "queue cleared",
-            )
-          : Promise.resolve(),
-      ),
+      claimed.map(({ item }) => rejectQueuedOwner(item, "queue cleared")),
     );
-    const clearedIds = new Set<string>();
+    const failed: Array<{ item: QueuedMessageItem; originalIndex: number }> =
+      [];
     let firstError: unknown;
     for (const [index, settlement] of settlements.entries()) {
-      if (settlement.status === "fulfilled") {
-        clearedIds.add(current[index].id);
-      } else {
+      if (settlement.status === "rejected") {
+        failed.push(claimed[index]);
         firstError ??= settlement.reason;
       }
     }
     if (firstError !== undefined) showError(firstError);
+    if (failed.length === 0) return;
+
     setQueuedMessagesById((prev) => {
-      const existing = prev.get(chatId);
-      if (!existing) return prev;
-      const remaining = existing.filter(
-        (message) => !clearedIds.has(message.id),
-      );
-      if (remaining.length === existing.length) return prev;
-      const next = new Map(prev);
-      if (remaining.length > 0) {
-        next.set(chatId, remaining);
-      } else {
-        next.delete(chatId);
+      const restored = [...(prev.get(chatId) ?? [])];
+      for (const entry of failed) {
+        if (restored.some((message) => message.id === entry.item.id)) continue;
+        restored.splice(
+          Math.min(entry.originalIndex, restored.length),
+          0,
+          entry.item,
+        );
       }
+      const next = new Map(prev);
+      next.set(chatId, restored);
       return next;
     });
-  }, [chatId, chatStreamManager, queuedMessagesById, setQueuedMessagesById]);
+  }, [chatId, setQueuedMessagesById]);
 
   return {
     streamMessage,

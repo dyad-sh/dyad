@@ -53,9 +53,16 @@ const DEFAULT_MAX_ENTRIES = 100;
 const MAX_TOTAL_ENTRIES = 10_000;
 type TraceKey = string | number | undefined;
 const logs = new Map<string, Map<TraceKey, MachineTraceEntry[]>>();
+const entriesBySequence = new Map<
+  number,
+  {
+    machine: string;
+    key: TraceKey;
+    entry: MachineTraceEntry;
+  }
+>();
 const machineIndex: string[] = [];
 let nextSequence = 0;
-let totalEntries = 0;
 
 function defaultDescription(value: unknown): unknown {
   if (typeof value !== "object" || value === null) return value;
@@ -83,32 +90,13 @@ function compareEntries(
 }
 
 function evictOldestEntry(): void {
-  let oldest:
-    | {
-        rings: Map<TraceKey, MachineTraceEntry[]>;
-        key: TraceKey;
-        entries: MachineTraceEntry[];
-        entry: MachineTraceEntry;
-      }
-    | undefined;
-  for (const rings of logs.values()) {
-    for (const [key, entries] of rings) {
-      const entry = entries[0];
-      if (
-        entry !== undefined &&
-        (oldest === undefined || compareEntries(entry, oldest.entry) < 0)
-      ) {
-        oldest = { rings, key, entries, entry };
-      }
-    }
-  }
-  if (oldest !== undefined) {
-    oldest.entries.shift();
-    if (oldest.entries.length === 0) {
-      oldest.rings.delete(oldest.key);
-    }
-    totalEntries -= 1;
-  }
+  const oldest = entriesBySequence.values().next().value;
+  if (oldest === undefined) return;
+  entriesBySequence.delete(oldest.entry.sequence);
+  const rings = logs.get(oldest.machine);
+  const entries = rings?.get(oldest.key);
+  if (entries?.[0] === oldest.entry) entries.shift();
+  if (entries?.length === 0) rings?.delete(oldest.key);
 }
 
 function record(entry: MachineTraceEntry, maxEntries: number): void {
@@ -120,13 +108,18 @@ function record(entry: MachineTraceEntry, maxEntries: number): void {
     rings.set(entry.key, entries);
   }
   entries.push(entry);
-  totalEntries += 1;
+  entriesBySequence.set(entry.sequence, {
+    machine: entry.machine,
+    key: entry.key,
+    entry,
+  });
   if (entries.length > maxEntries) {
     const removed = entries.length - maxEntries;
-    entries.splice(0, removed);
-    totalEntries -= removed;
+    for (const removedEntry of entries.splice(0, removed)) {
+      entriesBySequence.delete(removedEntry.sequence);
+    }
   }
-  while (totalEntries > MAX_TOTAL_ENTRIES) {
+  while (entriesBySequence.size > MAX_TOTAL_ENTRIES) {
     evictOldestEntry();
   }
 }

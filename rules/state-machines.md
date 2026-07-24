@@ -236,4 +236,6 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   prototypes.
 - Key-aware debug retention must bound both entry payloads and per-key
   metadata. When aggregate eviction empties a key's ring, prune the ring so
-  one-shot entity IDs cannot accumulate forever.
+  one-shot entity IDs cannot accumulate forever, and maintain a global
+  insertion-order index instead of scanning every key on each production
+  trace event.

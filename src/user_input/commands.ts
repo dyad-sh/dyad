@@ -23,6 +23,17 @@ export type UserInputCommand =
       outcome: UserInputOutcome;
     }
   | {
+      type: "persist-follow-up-created";
+      requestId: string;
+      chatId: number;
+      prompt: string;
+    }
+  | {
+      type: "reject-follow-up-handoff";
+      requestId: string;
+      reason: string;
+    }
+  | {
       type: "broadcast-follow-up-due";
       requestId: string;
       chatId: number;
@@ -50,6 +61,15 @@ export function createUserInputCommandRunner(deps: {
   persistAlways: (
     descriptor: UserInputDescriptor,
     response: UserInputResponse,
+  ) => void | Promise<void>;
+  persistFollowUpCreated?: (input: {
+    requestId: string;
+    chatId: number;
+    prompt: string;
+  }) => void | Promise<void>;
+  rejectFollowUpHandoff?: (
+    requestId: string,
+    reason: string,
   ) => void | Promise<void>;
 }): UserInputCommandRunner {
   return {
@@ -89,6 +109,13 @@ export function createUserInputCommandRunner(deps: {
           return;
         case "persist-always":
           return deps.persistAlways(command.descriptor, command.response);
+        case "persist-follow-up-created":
+          return deps.persistFollowUpCreated?.(command);
+        case "reject-follow-up-handoff":
+          return deps.rejectFollowUpHandoff?.(
+            command.requestId,
+            command.reason,
+          );
         case "resolve-park":
         case "schedule-deadline":
         case "cancel-deadline":

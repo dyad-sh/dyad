@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 
-import { apps, chats, messages } from "@/db/schema";
+import { apps, chats, messages, userInputFollowUpHandoffs } from "@/db/schema";
 import { createInMemoryTestDb, type TestDb } from "@/testing/test_db";
+import { DyadErrorKind } from "@/errors/dyad_error";
 import { acceptChatTurn } from "./chat_turn_acceptance";
 
 describe("acceptChatTurn", () => {
@@ -59,5 +60,73 @@ describe("acceptChatTurn", () => {
         .where(eq(messages.chatId, chatId))
         .all(),
     ).toHaveLength(2);
+  });
+
+  it("acknowledges the handoff in the same transaction as message acceptance", () => {
+    db.insert(userInputFollowUpHandoffs)
+      .values({
+        requestId: "handoff-1",
+        ownerSessionId: "session-1",
+        chatId,
+        prompt: "continue",
+        status: "executing",
+      })
+      .run();
+
+    acceptChatTurn(db, {
+      chatId,
+      storedChatMode: null,
+      selectedChatMode: "build",
+      content: "continue",
+      userInputRequestId: "handoff-1",
+    });
+
+    expect(
+      db
+        .select()
+        .from(userInputFollowUpHandoffs)
+        .where(eq(userInputFollowUpHandoffs.requestId, "handoff-1"))
+        .get(),
+    ).toMatchObject({ status: "acknowledged" });
+  });
+
+  it("rejects a handoff acknowledgement with a mismatched durable payload", () => {
+    db.insert(userInputFollowUpHandoffs)
+      .values({
+        requestId: "handoff-1",
+        ownerSessionId: "session-1",
+        chatId,
+        prompt: "continue",
+        status: "executing",
+      })
+      .run();
+
+    let error: unknown;
+    try {
+      acceptChatTurn(db, {
+        chatId,
+        storedChatMode: null,
+        selectedChatMode: "build",
+        content: "different prompt",
+        userInputRequestId: "handoff-1",
+      });
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(error).toMatchObject({
+      name: "DyadError",
+      kind: DyadErrorKind.Conflict,
+    });
+    expect(
+      db.select().from(messages).where(eq(messages.chatId, chatId)).all(),
+    ).toEqual([]);
+    expect(
+      db
+        .select()
+        .from(userInputFollowUpHandoffs)
+        .where(eq(userInputFollowUpHandoffs.requestId, "handoff-1"))
+        .get(),
+    ).toMatchObject({ status: "executing" });
   });
 });

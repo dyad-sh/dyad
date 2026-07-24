@@ -8,9 +8,50 @@ import { readSettings, writeSettings } from "../main/settings";
 import { systemClock, uuidIdSource } from "../state_machines/clock";
 import { safeSend } from "../ipc/utils/safe_sender";
 import { createUserInputRegistry } from "./registry";
+import {
+  createUserInputFollowUpHandoffStore,
+  type UserInputFollowUpHandoffPayload,
+} from "./follow_up_handoff";
 
 const subscribers = new Set<WebContents>();
 const logger = log.scope("user_input");
+const ownerSessionId = uuidIdSource.next("user-input-owner");
+const followUpHandoffs = createUserInputFollowUpHandoffStore(
+  db,
+  ownerSessionId,
+);
+let handoffsRecovered = false;
+
+export function prepareUserInputHandoffs(): void {
+  if (handoffsRecovered) return;
+  followUpHandoffs.recoverOwnerSession();
+  handoffsRecovered = true;
+}
+
+export function acceptUserInputFollowUp(
+  payload: UserInputFollowUpHandoffPayload,
+): void {
+  prepareUserInputHandoffs();
+  followUpHandoffs.accept(payload);
+}
+
+export function beginUserInputFollowUpExecution(requestId: string): void {
+  prepareUserInputHandoffs();
+  followUpHandoffs.beginExecution(requestId);
+}
+
+export function retryUserInputFollowUp(requestId: string, error: string): void {
+  prepareUserInputHandoffs();
+  followUpHandoffs.retry(requestId, error);
+}
+
+export function rejectUserInputFollowUp(
+  requestId: string,
+  reason: string,
+): void {
+  prepareUserInputHandoffs();
+  followUpHandoffs.reject(requestId, reason);
+}
 
 export function rememberUserInputSubscriber(sender: WebContents): void {
   if (subscribers.has(sender)) return;
@@ -31,6 +72,13 @@ export const userInputRegistry = createUserInputRegistry({
   clock: systemClock,
   idSource: uuidIdSource,
   broadcast,
+  persistFollowUpCreated(input) {
+    prepareUserInputHandoffs();
+    followUpHandoffs.create(input);
+  },
+  rejectFollowUpHandoff(requestId, reason) {
+    rejectUserInputFollowUp(requestId, reason);
+  },
   async persistAlways(descriptor, response) {
     if (
       descriptor.kind === "mcp-consent" &&

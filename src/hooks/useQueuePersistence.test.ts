@@ -5,15 +5,12 @@ import {
   getPersistableQueueItems,
 } from "./useQueuePersistence";
 
-function queuedItem(
-  id: string,
-  userInputRequestId?: string,
-): QueuedMessageItem {
+function queuedItem(id: string, requestId?: string): QueuedMessageItem {
   return {
     id,
     prompt: id,
     selectedComponents: [],
-    userInputRequestId,
+    owner: requestId ? { kind: "user-input-follow-up", requestId } : undefined,
   };
 }
 

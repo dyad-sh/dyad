@@ -147,7 +147,7 @@ export function useStreamChat({
         const next = new Map(prev);
         const existing = prev.get(chatId) ?? [];
         const updated = existing.map((msg) =>
-          msg.id === id && !msg.userInputRequestId
+          msg.id === id && !msg.owner && !msg.userInputRequestId
             ? { ...msg, ...updates }
             : msg,
         );
@@ -159,14 +159,26 @@ export function useStreamChat({
   );
 
   const removeQueuedMessage = useCallback(
-    (id: string) => {
+    async (id: string) => {
       if (chatId === undefined) return;
+      const item = queuedMessagesById
+        .get(chatId)
+        ?.find((message) => message.id === id);
+      if (item?.owner) {
+        try {
+          await chatStreamManager.rejectUserInputHandoff(
+            item.owner,
+            "removed from queue",
+          );
+        } catch (error) {
+          showError(error);
+          return;
+        }
+      }
       setQueuedMessagesById((prev) => {
         const next = new Map(prev);
         const existing = prev.get(chatId) ?? [];
-        const filtered = existing.filter(
-          (msg) => msg.id !== id || Boolean(msg.userInputRequestId),
-        );
+        const filtered = existing.filter((msg) => msg.id !== id);
         if (filtered.length === existing.length) return prev;
         if (filtered.length > 0) {
           next.set(chatId, filtered);
@@ -176,7 +188,7 @@ export function useStreamChat({
         return next;
       });
     },
-    [chatId, setQueuedMessagesById],
+    [chatId, chatStreamManager, queuedMessagesById, setQueuedMessagesById],
   );
 
   const reorderQueuedMessages = useCallback(
@@ -202,22 +214,33 @@ export function useStreamChat({
     [chatId, setQueuedMessagesById],
   );
 
-  const clearAllQueuedMessages = useCallback(() => {
+  const clearAllQueuedMessages = useCallback(async () => {
     if (chatId === undefined) return;
-    setQueuedMessagesById((prev) => {
-      const retained = (prev.get(chatId) ?? []).filter(
-        (message) => message.userInputRequestId,
+    const current = queuedMessagesById.get(chatId) ?? [];
+    try {
+      await Promise.all(
+        current.flatMap((message) =>
+          message.owner
+            ? [
+                chatStreamManager.rejectUserInputHandoff(
+                  message.owner,
+                  "queue cleared",
+                ),
+              ]
+            : [],
+        ),
       );
-      if (retained.length === (prev.get(chatId) ?? []).length) return prev;
+    } catch (error) {
+      showError(error);
+      return;
+    }
+    setQueuedMessagesById((prev) => {
+      if (!prev.has(chatId)) return prev;
       const next = new Map(prev);
-      if (retained.length > 0) {
-        next.set(chatId, retained);
-      } else {
-        next.delete(chatId);
-      }
+      next.delete(chatId);
       return next;
     });
-  }, [chatId, setQueuedMessagesById]);
+  }, [chatId, chatStreamManager, queuedMessagesById, setQueuedMessagesById]);
 
   return {
     streamMessage,

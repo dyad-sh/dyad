@@ -11,6 +11,7 @@ const CHAT_ID = 42;
 
 const mocks = vi.hoisted(() => ({
   controllerSend: vi.fn(),
+  rejectUserInputHandoff: vi.fn(),
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -20,6 +21,7 @@ vi.mock("@tanstack/react-router", () => ({
 vi.mock("@/chat_stream/ChatStreamProvider", () => ({
   useChatStreamManager: () => ({
     ensure: () => ({ send: mocks.controllerSend }),
+    rejectUserInputHandoff: mocks.rejectUserInputHandoff,
   }),
 }));
 
@@ -34,6 +36,8 @@ function makeWrapper() {
 describe("useStreamChat queueMessage", () => {
   beforeEach(() => {
     mocks.controllerSend.mockReset();
+    mocks.rejectUserInputHandoff.mockReset();
+    mocks.rejectUserInputHandoff.mockResolvedValue(undefined);
   });
 
   it("pokes the stream machine after manually appending the queued message", () => {
@@ -61,12 +65,15 @@ describe("useStreamChat queueMessage", () => {
     });
   });
 
-  it("does not edit, remove, or clear machine-generated follow-ups", () => {
+  it("does not edit machine follow-ups and settles them before removal", async () => {
     const { store, Wrapper } = makeWrapper();
     const machineFollowUp = {
       id: "machine-follow-up",
       prompt: "Continue after integration",
-      userInputRequestId: "integration:1",
+      owner: {
+        kind: "user-input-follow-up" as const,
+        requestId: "integration:1",
+      },
     };
     const ordinaryPrompt = {
       id: "ordinary-prompt",
@@ -84,13 +91,26 @@ describe("useStreamChat queueMessage", () => {
       result.current.updateQueuedMessage(machineFollowUp.id, {
         prompt: "Changed",
       });
-      result.current.removeQueuedMessage(machineFollowUp.id);
-      result.current.clearAllQueuedMessages();
     });
+    expect(store.get(queuedMessagesByIdAtom).get(CHAT_ID)?.[0].prompt).toBe(
+      machineFollowUp.prompt,
+    );
 
+    await act(async () => {
+      await result.current.removeQueuedMessage(machineFollowUp.id);
+    });
+    expect(mocks.rejectUserInputHandoff).toHaveBeenCalledWith(
+      machineFollowUp.owner,
+      "removed from queue",
+    );
     expect(store.get(queuedMessagesByIdAtom).get(CHAT_ID)).toEqual([
-      machineFollowUp,
+      ordinaryPrompt,
     ]);
+
+    await act(async () => {
+      await result.current.clearAllQueuedMessages();
+    });
+    expect(store.get(queuedMessagesByIdAtom).has(CHAT_ID)).toBe(false);
   });
 });
 

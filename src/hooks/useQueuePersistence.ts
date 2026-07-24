@@ -20,11 +20,15 @@ export function findRestorableQueueItems(
   const seenIds = new Set(existing.map((item) => item.id));
 
   return persisted.filter((item) => {
-    // Machine-owned follow-ups depend on an in-memory main-process request and
-    // renderer acceptance callbacks. A live registry re-enqueues them through
-    // the user-input projection; restoring the serialized shell after a full
-    // restart would create an immutable orphan.
-    if (item.userInputRequestId !== undefined || seenIds.has(item.id)) {
+    // Durable machine-owned follow-ups are reconstructed from the authoritative
+    // user-input registry, including fresh renderer callbacks. Legacy entries
+    // have only a memory-owned request ID. Restoring either serialized shell
+    // would create a duplicate or an immutable orphan after a full restart.
+    if (
+      item.owner !== undefined ||
+      item.userInputRequestId !== undefined ||
+      seenIds.has(item.id)
+    ) {
       return false;
     }
     seenIds.add(item.id);
@@ -35,7 +39,9 @@ export function findRestorableQueueItems(
 export function getPersistableQueueItems(
   items: QueuedMessageItem[],
 ): QueuedMessageItem[] {
-  return items.filter((item) => item.userInputRequestId === undefined);
+  return items.filter(
+    (item) => item.owner === undefined && item.userInputRequestId === undefined,
+  );
 }
 
 /**

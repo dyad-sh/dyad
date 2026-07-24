@@ -192,6 +192,43 @@ export const messages = sqliteTable(
   ],
 );
 
+export type UserInputFollowUpHandoffStatus =
+  | "created"
+  | "accepted"
+  | "executing"
+  | "acknowledged"
+  | "rejected";
+
+export const userInputFollowUpHandoffs = sqliteTable(
+  "user_input_follow_up_handoffs",
+  {
+    requestId: text("request_id").primaryKey(),
+    schemaVersion: integer("schema_version").notNull().default(1),
+    ownerSessionId: text("owner_session_id").notNull(),
+    chatId: integer("chat_id")
+      .notNull()
+      .references(() => chats.id, { onDelete: "cascade" }),
+    prompt: text("prompt").notNull(),
+    status: text("status").$type<UserInputFollowUpHandoffStatus>().notNull(),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    lastError: text("last_error"),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    settledAt: integer("settled_at", { mode: "timestamp" }),
+  },
+  (table) => [
+    index("user_input_follow_up_owner_status_idx").on(
+      table.ownerSessionId,
+      table.status,
+    ),
+    index("user_input_follow_up_settled_at_idx").on(table.settledAt),
+  ],
+);
+
 export const versions = sqliteTable(
   "versions",
   {

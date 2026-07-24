@@ -17,7 +17,7 @@ function transitionTo(
   state: ScreenshotState,
   commands: readonly ScreenshotCommand[] = [],
 ): Result {
-  return { state, commands };
+  return { kind: "applied", state, commands };
 }
 
 function startSettling(

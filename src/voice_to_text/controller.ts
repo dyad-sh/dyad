@@ -70,6 +70,7 @@ export class VoiceToTextController {
     const previous = this.store.getSnapshot();
     const result = transition(previous, event);
     observeTransition(this.options.observer, previous, event, result);
+    if (result.kind === "ignored") return;
     if (result.state !== previous) this.store.setState(result.state);
     for (const command of result.commands) {
       try {

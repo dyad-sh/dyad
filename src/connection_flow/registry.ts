@@ -166,7 +166,7 @@ export function createConnectionFlowRegistry(
   ): boolean {
     const previous = getState(provider);
     const result = transition(previous, event);
-    if (!result.changed) {
+    if (result.kind === "ignored") {
       notifyIgnored(provider, previous, event, result.reason);
       return false;
     }

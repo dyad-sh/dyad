@@ -37,23 +37,26 @@ function runToyProtocol(fixed: boolean, maxSchedules = 10_000): CosimResult {
           if (state.party !== "sender") throw new Error("wrong sender state");
           if (event.type === "start" && state.phase === "idle") {
             return {
+              kind: "applied",
               state: { party: "sender", phase: "waiting" },
               commands: [{ type: "send-data", attempt: 1 }],
             };
           }
           if (event.type === "retry" && state.phase === "waiting") {
             return {
+              kind: "applied",
               state,
               commands: [{ type: "send-data", attempt: 2 }],
             };
           }
           if (event.type === "ack" && state.phase === "waiting") {
             return {
+              kind: "applied",
               state: { party: "sender", phase: "done" },
               commands: [],
             };
           }
-          return { state, commands: [] };
+          return { kind: "applied", state, commands: [] };
         },
       },
       receiver: {
@@ -71,19 +74,22 @@ function runToyProtocol(fixed: boolean, maxSchedules = 10_000): CosimResult {
           if (state.party !== "receiver") {
             throw new Error("wrong receiver state");
           }
-          if (event.type !== "data") return { state, commands: [] };
+          if (event.type !== "data")
+            return { kind: "applied", state, commands: [] };
           if (!state.received) {
             return {
+              kind: "applied",
               state: { party: "receiver", received: true },
               commands: [{ type: "send-ack", attempt: event.attempt }],
             };
           }
-          return {
-            state,
-            commands: fixed
-              ? [{ type: "send-ack", attempt: event.attempt }]
-              : [],
-          };
+          return fixed
+            ? {
+                kind: "applied",
+                state,
+                commands: [{ type: "send-ack", attempt: event.attempt }],
+              }
+            : { kind: "ignored", state, reason: "duplicate-data" };
         },
       },
     },
@@ -144,7 +150,6 @@ function runToyProtocol(fixed: boolean, maxSchedules = 10_000): CosimResult {
         for (const transition of transitions) {
           if (transition.ignored) {
             expect(transition.result.state).toBe(transition.previousState);
-            expect(transition.result.commands).toHaveLength(0);
           }
         }
       },
@@ -223,6 +228,7 @@ describe("interleaving co-simulation", () => {
           eventKey: (event) => event,
           commandKey: (command) => command,
           transition: (state, event) => ({
+            kind: "applied",
             state:
               event === "first"
                 ? "after-first"
@@ -283,7 +289,7 @@ describe("interleaving co-simulation", () => {
           stateKey: String,
           eventKey: (event) => event.type,
           commandKey: (command) => command,
-          transition: () => ({ state: true, commands: [] }),
+          transition: () => ({ kind: "applied", state: true, commands: [] }),
         },
       },
       channels: {},

@@ -8,36 +8,13 @@ export type IgnoreReason<Tag extends string = string> = Tag;
  * commands. Ignored transitions always keep the state reference and emit no
  * commands.
  */
-export interface TransitionResult<
+export type TransitionResult<
   State,
   Command,
   Reason extends IgnoreReason = IgnoreReason,
-> {
-  state: State;
-  commands: readonly Command[];
-  ignoredReason?: Reason;
-}
-
-/** Result shape for commandless registries that expose an explicit flag. */
-export type StateTransitionResult<
-  State,
-  Reason extends IgnoreReason = IgnoreReason,
 > =
-  | { changed: true; state: State }
-  | { changed: false; state: State; reason: Reason };
-
-export function advanceState<State>(
-  state: State,
-): StateTransitionResult<State, never> {
-  return { changed: true, state };
-}
-
-export function ignoreState<State, Reason extends IgnoreReason = IgnoreReason>(
-  state: State,
-  reason: Reason,
-): StateTransitionResult<State, Reason> {
-  return { changed: false, state, reason };
-}
+  | { kind: "ignored"; state: State; reason: Reason }
+  | { kind: "applied"; state: State; commands: readonly Command[] };
 
 /** Explicitly marks a deliberate no-op in a total transition matrix. */
 export function ignore<
@@ -45,7 +22,23 @@ export function ignore<
   Command = never,
   Reason extends IgnoreReason = IgnoreReason,
 >(state: State, reason: Reason): TransitionResult<State, Command, Reason> {
-  return { state, commands: [], ignoredReason: reason };
+  return { kind: "ignored", state, reason };
+}
+
+/** Apply a transition to a next state, optionally emitting commands. */
+export function change<State, Command = never>(
+  nextState: State,
+  commands: readonly Command[] = [],
+): TransitionResult<State, Command, never> {
+  return { kind: "applied", state: nextState, commands };
+}
+
+/** Apply commands while deliberately retaining the current state reference. */
+export function stay<State, Command>(
+  state: State,
+  commands: readonly Command[],
+): TransitionResult<State, Command, never> {
+  return { kind: "applied", state, commands };
 }
 
 export interface AppliedTransition<State, Event, Command> {
@@ -86,11 +79,11 @@ export function observeTransition<
   event: Event,
   result: TransitionResult<State, Command, Reason>,
 ): void {
-  if (result.ignoredReason !== undefined) {
+  if (result.kind === "ignored") {
     observer?.onEventIgnored?.({
       state: previous,
       event,
-      reason: result.ignoredReason,
+      reason: result.reason,
     });
     return;
   }

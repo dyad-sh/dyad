@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   assertReferenceStability,
+  assertAllCommandsProducible,
+  assertAllStatesReachable,
+  commandsOf,
   driveTransitionMatrix,
+  ignoreReasonOf,
 } from "@/state_machines/testing";
 import type {
   ImageGenerationEvent,
+  ImageGenerationCommand,
   ImageGenerationJobDetails,
   ImageGenerationState,
 } from "./state";
@@ -41,8 +46,44 @@ const events: ImageGenerationEvent[] = [
   { type: "CANCEL_CONFIRMED", cancelled: true },
   { type: "CANCEL_CONFIRMED", cancelled: false },
 ];
+const STATE_KINDS = [
+  "pending",
+  "cancelling",
+  "succeeded",
+  "failed",
+  "cancelled",
+] as const satisfies readonly ImageGenerationState["type"][];
+const COMMAND_KINDS = [
+  "GenerateImage",
+  "RequestCancel",
+  "InvalidateMediaQueries",
+] as const satisfies readonly ImageGenerationCommand["type"][];
 
 describe("image-generation transition", () => {
+  it("reaches every state and produces every command kind", () => {
+    const options = {
+      initialState: { type: "pending", job } as ImageGenerationState,
+      events,
+      transition,
+      stateKey: JSON.stringify,
+    };
+    assertAllStatesReachable({
+      ...options,
+      inventory: STATE_KINDS,
+      stateKind: (state) => state.type,
+    });
+    assertAllCommandsProducible({
+      ...options,
+      inventory: COMMAND_KINDS,
+      commandKind: (command) => command.type,
+      exclusions: [
+        {
+          kind: "GenerateImage",
+          reason: "pre-existing, tracked for follow-up",
+        },
+      ],
+    });
+  });
   it("is total across every state and event kind", () => {
     const results = driveTransitionMatrix({ states, events, transition });
     expect(results).toHaveLength(states.length * events.length);
@@ -63,14 +104,14 @@ describe("image-generation transition", () => {
     const state: ImageGenerationState = { type: "cancelling", job };
     const next = transition(state, { type: "JOB_SUCCEEDED", result });
 
-    expect(next.ignoredReason).toBeUndefined();
+    expect(ignoreReasonOf(next)).toBeUndefined();
     expect(next.state).toEqual({
       type: "succeeded",
       job,
       result,
       lateAfterCancel: true,
     });
-    expect(next.commands).toEqual([{ type: "InvalidateMediaQueries" }]);
+    expect(commandsOf(next)).toEqual([{ type: "InvalidateMediaQueries" }]);
   });
 
   it("waits for the generation result after cancellation bookkeeping settles", () => {
@@ -80,7 +121,7 @@ describe("image-generation transition", () => {
       cancelled: false,
     });
     expect(confirmation.state).toBe(state);
-    expect(confirmation.ignoredReason).toBeUndefined();
+    expect(ignoreReasonOf(confirmation)).toBeUndefined();
 
     const cancelled = transition(state, {
       type: "JOB_FAILED",

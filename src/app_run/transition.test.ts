@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { RunCommand, RunEvent, RunState, RunUrl } from "./state";
 import { ignore, projectRunState, transition } from "./transition";
-import { assertReferenceStability } from "@/state_machines/testing";
+import {
+  assertReferenceStability,
+  assertAllCommandsProducible,
+  assertAllStatesReachable,
+  commandsOf,
+  ignoreReasonOf,
+} from "@/state_machines/testing";
 
 const APP_ID = 7;
 const CURRENT_RUN_ID = 3;
@@ -117,6 +123,25 @@ const STATE_TYPES = new Set([
   "stopped",
   "errored",
 ]);
+const STATE_KINDS = [
+  "idle",
+  "starting",
+  "ready",
+  "reloading",
+  "stopping",
+  "stopped",
+  "errored",
+] as const satisfies readonly RunState["type"][];
+const COMMAND_KINDS = [
+  "start",
+  "prepareExternalStart",
+  "stop",
+  "applyUrl",
+  "bumpReloadToken",
+  "reload",
+  "clearError",
+  "setError",
+] as const satisfies readonly RunCommand["type"][];
 
 const MUTATING_COMMAND_TYPES = new Set([
   "start",
@@ -133,6 +158,37 @@ const COMPLETION_EVENT_TYPES = new Set([
 ]);
 
 describe("transition totality and invariants", () => {
+  it("reaches every state and produces every command kind", () => {
+    const options = {
+      initialState: { type: "idle" } as RunState,
+      events: (state: RunState) =>
+        makeEventFixtures(FRESH_RUN_ID).filter(
+          (event) =>
+            state.type === "idle" ||
+            ![
+              "START",
+              "RESTART",
+              "REBUILD",
+              "EXTERNAL_RESTART",
+              "STOP",
+            ].includes(event.type),
+        ),
+      transition,
+      stateKey: JSON.stringify,
+      maxStates: 1_000,
+    };
+    assertAllStatesReachable({
+      ...options,
+      inventory: STATE_KINDS,
+      stateKind: (state) => state.type,
+    });
+    assertAllCommandsProducible({
+      ...options,
+      inventory: COMMAND_KINDS,
+      commandKind: (command) => command.type,
+    });
+  });
+
   const allEvents = [
     ...makeEventFixtures(CURRENT_RUN_ID),
     ...makeEventFixtures(STALE_RUN_ID),
@@ -146,9 +202,9 @@ describe("transition totality and invariants", () => {
         // Totality: every pair produces a well-formed result.
         expect(result).toBeDefined();
         expect(STATE_TYPES.has(result.state.type)).toBe(true);
-        expect(Array.isArray(result.commands)).toBe(true);
-        if (result.state === state && result.commands.length === 0) {
-          expect(result.ignoredReason).toBeTruthy();
+        expect(Array.isArray(commandsOf(result))).toBe(true);
+        if (result.state === state && commandsOf(result).length === 0) {
+          expect(ignoreReasonOf(result)).toBeTruthy();
         }
         assertReferenceStability(
           state,
@@ -157,13 +213,13 @@ describe("transition totality and invariants", () => {
         );
 
         // At most one mutating (process-affecting IPC) command per result.
-        const mutating = result.commands.filter((command: RunCommand) =>
+        const mutating = commandsOf(result).filter((command: RunCommand) =>
           MUTATING_COMMAND_TYPES.has(command.type),
         );
         expect(mutating.length).toBeLessThanOrEqual(1);
 
         // appUrl is only applied when the machine lands in ready/reloading.
-        if (result.commands.some((command) => command.type === "applyUrl")) {
+        if (commandsOf(result).some((command) => command.type === "applyUrl")) {
           expect(["ready", "reloading"]).toContain(result.state.type);
         }
 
@@ -184,8 +240,8 @@ describe("transition totality and invariants", () => {
         }
         const result = transition(state, event);
         expect(result.state).toBe(state);
-        expect(result.commands).toEqual([]);
-        expect(result.ignoredReason).toBe("stale-run-id");
+        expect(commandsOf(result)).toEqual([]);
+        expect(ignoreReasonOf(result)).toBe("stale-run-id");
       }
     }
   });
@@ -229,7 +285,7 @@ describe("transition scenarios", () => {
       runId: 1,
     });
     expect(staleResolution.state).toBe(restart.state);
-    expect(staleResolution.commands).toEqual([]);
+    expect(commandsOf(staleResolution)).toEqual([]);
 
     // The restart's own resolution advances to ready.
     const resolution = transition(restart.state, {
@@ -260,7 +316,7 @@ describe("transition scenarios", () => {
       type: "starting",
       pendingUrl: makeUrl(1),
     });
-    expect(buffered.commands).toEqual([]);
+    expect(commandsOf(buffered)).toEqual([]);
 
     // The buffered URL is applied once the restart IPC resolves.
     const resolved = transition(buffered.state, {
@@ -268,7 +324,7 @@ describe("transition scenarios", () => {
       runId: CURRENT_RUN_ID,
     });
     expect(resolved.state).toMatchObject({ type: "ready", url: makeUrl(1) });
-    expect(resolved.commands).toContainEqual({
+    expect(commandsOf(resolved)).toContainEqual({
       type: "applyUrl",
       appId: APP_ID,
       url: makeUrl(1),
@@ -306,7 +362,7 @@ describe("transition scenarios", () => {
       url: { ...url },
     });
     expect(readyResult.state).toBe(ready);
-    expect(readyResult.commands).toHaveLength(1);
+    expect(commandsOf(readyResult)).toHaveLength(1);
 
     const starting: RunState = {
       type: "starting",
@@ -323,7 +379,7 @@ describe("transition scenarios", () => {
       url: { ...url },
     });
     expect(startingResult.state).toBe(starting);
-    expect(startingResult.ignoredReason).toBe("no-change");
+    expect(ignoreReasonOf(startingResult)).toBe("no-change");
   });
 
   it("handles stop during starting: stale run completion is ignored", () => {
@@ -337,7 +393,7 @@ describe("transition scenarios", () => {
       type: "stopping",
       runId: FRESH_RUN_ID,
     });
-    expect(stop.commands).toEqual([
+    expect(commandsOf(stop)).toEqual([
       { type: "stop", appId: APP_ID, runId: FRESH_RUN_ID },
     ]);
 
@@ -366,7 +422,7 @@ describe("transition scenarios", () => {
       appId: APP_ID,
     });
     expect(reloading.state).toMatchObject({ type: "reloading", reason: "hmr" });
-    expect(reloading.commands).toEqual([
+    expect(commandsOf(reloading)).toEqual([
       {
         type: "reload",
         appId: APP_ID,
@@ -392,7 +448,7 @@ describe("transition scenarios", () => {
         appId: APP_ID,
       });
       expect(result.state).toBe(state);
-      expect(result.commands).toEqual([
+      expect(commandsOf(result)).toEqual([
         { type: "bumpReloadToken", appId: APP_ID },
       ]);
     }
@@ -409,7 +465,7 @@ describe("transition scenarios", () => {
         options: { removeNodeModules: true, recreateSandbox: true },
       },
     );
-    expect(result.commands).toEqual([
+    expect(commandsOf(result)).toEqual([
       {
         type: "start",
         appId: APP_ID,
@@ -446,7 +502,7 @@ describe("transition scenarios", () => {
       startedAt: 200,
       pendingUrl: null,
     });
-    expect(result.commands).toEqual([
+    expect(commandsOf(result)).toEqual([
       {
         type: "prepareExternalStart",
         appId: APP_ID,
@@ -460,7 +516,7 @@ describe("transition scenarios", () => {
       { type: "idle" },
       { type: "REBUILD", appId: APP_ID, runId: 1, startedAt: 100 },
     );
-    expect(result.commands).toEqual([
+    expect(commandsOf(result)).toEqual([
       {
         type: "start",
         appId: APP_ID,
@@ -484,7 +540,7 @@ describe("transition scenarios", () => {
         url: makeUrl(5),
       });
       expect(result.state).toMatchObject({ type: "ready", url: makeUrl(5) });
-      expect(result.commands).toEqual([
+      expect(commandsOf(result)).toEqual([
         { type: "applyUrl", appId: APP_ID, url: makeUrl(5) },
       ]);
     }
@@ -504,7 +560,7 @@ describe("transition scenarios", () => {
       url: makeUrl(5),
     });
     expect(result.state).toBe(stopping);
-    expect(result.commands).toEqual([]);
+    expect(commandsOf(result)).toEqual([]);
   });
 
   it("records app exit from ready/reloading and ignores it elsewhere", () => {
@@ -520,7 +576,7 @@ describe("transition scenarios", () => {
       } else {
         expect(result.state).toBe(state);
       }
-      expect(result.commands).toEqual([]);
+      expect(commandsOf(result)).toEqual([]);
     }
   });
 
@@ -542,7 +598,7 @@ describe("transition scenarios", () => {
       type: "errored",
       error: { message: "boom" },
     });
-    expect(result.commands).toEqual([
+    expect(commandsOf(result)).toEqual([
       { type: "setError", appId: APP_ID, error: { message: "boom" } },
       { type: "bumpReloadToken", appId: APP_ID },
     ]);
@@ -568,7 +624,7 @@ describe("transition scenarios", () => {
       type: "errored",
       error: { message: "boom" },
     });
-    expect(result.commands).toEqual([
+    expect(commandsOf(result)).toEqual([
       { type: "setError", appId: APP_ID, error: { message: "boom" } },
       { type: "bumpReloadToken", appId: APP_ID },
     ]);
@@ -580,7 +636,9 @@ describe("transition scenarios", () => {
       runId: CURRENT_RUN_ID,
     });
     expect(resolved.state).toMatchObject({ type: "ready", url: null });
-    expect(resolved.commands).toEqual([{ type: "clearError", appId: APP_ID }]);
+    expect(commandsOf(resolved)).toEqual([
+      { type: "clearError", appId: APP_ID },
+    ]);
   });
 });
 
@@ -640,9 +698,9 @@ describe("ignore", () => {
   it("returns the same state reference with no commands", () => {
     const state: RunState = { type: "idle" };
     expect(ignore(state, "invalid-in-current-state")).toEqual({
+      kind: "ignored",
       state,
-      commands: [],
-      ignoredReason: "invalid-in-current-state",
+      reason: "invalid-in-current-state",
     });
     expect(ignore(state, "invalid-in-current-state").state).toBe(state);
   });

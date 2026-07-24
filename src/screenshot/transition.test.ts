@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
   assertReferenceStability,
+  assertAllCommandsProducible,
+  assertAllStatesReachable,
+  commandsOf,
   driveTransitionMatrix,
+  ignoreReasonOf,
 } from "@/state_machines/testing";
 import {
   INITIAL_SCREENSHOT_STATE,
   type ScreenshotEvent,
+  type ScreenshotCommand,
   type ScreenshotState,
 } from "./state";
 import { transition } from "./transition";
@@ -72,8 +77,50 @@ const EVENTS: readonly ScreenshotEvent[] = [
   { type: "SAVED" },
   { type: "SAVE_FAILED" },
 ];
+const STATE_KINDS = [
+  "idle",
+  "pending",
+  "waitingSelectorReady",
+  "settling",
+  "resolvingCommit",
+  "awaitingResponse",
+  "saving",
+] as const satisfies readonly ScreenshotState["status"][];
+const COMMAND_KINDS = [
+  "schedule-settle",
+  "cancel-settle",
+  "resolve-commit-hash",
+  "post-capture-request",
+  "save-screenshot",
+  "check-existing-screenshots",
+] as const satisfies readonly ScreenshotCommand["type"][];
 
 describe("screenshot transition", () => {
+  it("reaches every state and produces every command kind", () => {
+    const options = {
+      initialState: INITIAL_SCREENSHOT_STATE,
+      events: (state: ScreenshotState) =>
+        EVENTS.filter(
+          (event) =>
+            event.type !== "APP_HIDDEN" ||
+            state.iframeLoaded ||
+            state.selectorReady,
+        ),
+      transition,
+      stateKey: JSON.stringify,
+      maxStates: 5_000,
+    };
+    assertAllStatesReachable({
+      ...options,
+      inventory: STATE_KINDS,
+      stateKind: (state) => state.status,
+    });
+    assertAllCommandsProducible({
+      ...options,
+      inventory: COMMAND_KINDS,
+      commandKind: (command) => command.type,
+    });
+  });
   it("is total and reference-stable across every state and event type", () => {
     const results = driveTransitionMatrix({
       states: STATES,
@@ -112,7 +159,7 @@ describe("screenshot transition", () => {
       dataUrl: "data:image/png;base64,old",
     });
     expect(stale.state).toBe(awaiting);
-    expect(stale.ignoredReason).toBe("stale-request");
+    expect(ignoreReasonOf(stale)).toBe("stale-request");
   });
 
   it("keeps only the latest request while a capture is in flight", () => {
@@ -155,13 +202,13 @@ describe("screenshot transition", () => {
       iframeLoaded: false,
       selectorReady: false,
     });
-    expect(hidden.commands).toEqual([{ type: "cancel-settle" }]);
+    expect(commandsOf(hidden)).toEqual([{ type: "cancel-settle" }]);
 
     const loaded = transition(hidden.state, { type: "IFRAME_LOADED" });
-    expect(loaded.commands).toEqual([{ type: "schedule-settle" }]);
+    expect(commandsOf(loaded)).toEqual([{ type: "schedule-settle" }]);
     const ready = transition(loaded.state, { type: "SELECTOR_READY" });
     expect(ready.state.status).toBe("settling");
-    expect(ready.commands).toEqual([]);
+    expect(commandsOf(ready)).toEqual([]);
 
     const resolving = transition(ready.state, {
       type: "SETTLE_ELAPSED",
@@ -189,7 +236,7 @@ describe("screenshot transition", () => {
     });
     const loaded = transition(pending.state, { type: "IFRAME_LOADED" });
     expect(loaded.state.status).toBe("waitingSelectorReady");
-    expect(loaded.commands).toEqual([{ type: "schedule-settle" }]);
+    expect(commandsOf(loaded)).toEqual([{ type: "schedule-settle" }]);
 
     const elapsed = transition(loaded.state, {
       type: "SETTLE_ELAPSED",
@@ -199,7 +246,7 @@ describe("screenshot transition", () => {
       status: "resolvingCommit",
       requestId: "capture:untagged",
     });
-    expect(elapsed.commands).toEqual([
+    expect(commandsOf(elapsed)).toEqual([
       {
         type: "resolve-commit-hash",
         requestId: "capture:untagged",
@@ -220,7 +267,7 @@ describe("screenshot transition", () => {
         iframeLoaded: true,
         selectorReady: false,
       });
-      expect(reloaded.commands).toEqual([{ type: "schedule-settle" }]);
+      expect(commandsOf(reloaded)).toEqual([{ type: "schedule-settle" }]);
 
       const elapsed = transition(reloaded.state, {
         type: "SETTLE_ELAPSED",
@@ -253,26 +300,26 @@ describe("screenshot transition", () => {
       requestId: "capture:first",
     });
     expect(staleSuccess.state).toBe(second.state);
-    expect(staleSuccess.ignoredReason).toBe("stale-request");
+    expect(ignoreReasonOf(staleSuccess)).toBe("stale-request");
 
     const staleFailure = transition(second.state, {
       type: "SAVE_FAILED",
       requestId: "capture:first",
     });
     expect(staleFailure.state).toBe(second.state);
-    expect(staleFailure.ignoredReason).toBe("stale-request");
+    expect(ignoreReasonOf(staleFailure)).toBe("stale-request");
   });
 
   it("runs the fallback screenshot probe only once per app controller", () => {
     const first = transition(INITIAL_SCREENSHOT_STATE, {
       type: "SELECTOR_READY",
     });
-    expect(first.commands).toEqual([{ type: "check-existing-screenshots" }]);
+    expect(commandsOf(first)).toEqual([{ type: "check-existing-screenshots" }]);
     expect(first.state.fallbackChecked).toBe(true);
 
     const reloaded = transition(first.state, { type: "IFRAME_LOADED" });
     const second = transition(reloaded.state, { type: "SELECTOR_READY" });
-    expect(second.commands).toEqual([]);
+    expect(commandsOf(second)).toEqual([]);
     expect(second.state.fallbackChecked).toBe(true);
   });
 });

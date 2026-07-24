@@ -21,9 +21,9 @@ import type { TransitionResult } from "./types";
  * a bounded run reports the shortest failure observed before the bound.
  */
 
-export type CosimTransitionResult<State, Command> = Pick<
-  TransitionResult<State, Command>,
-  "state" | "commands"
+export type CosimTransitionResult<State, Command> = TransitionResult<
+  State,
+  Command
 >;
 
 export interface CosimParticipant<State, Event, Command> {
@@ -317,7 +317,9 @@ export function runCosim<
     if (
       result === undefined ||
       result === null ||
-      !Array.isArray(result.commands)
+      (result.kind !== "ignored" && result.kind !== "applied") ||
+      (result.kind === "applied" && !Array.isArray(result.commands)) ||
+      (result.kind === "ignored" && result.state !== previousState)
     ) {
       throw new Error(
         `Participant "${participantName}" returned an invalid transition result`,
@@ -331,7 +333,7 @@ export function runCosim<
             ? configuration.states
             : { ...configuration.states, [participantName]: result.state },
         commands:
-          result.commands.length === 0
+          result.kind === "ignored" || result.commands.length === 0
             ? configuration.commands
             : {
                 ...configuration.commands,
@@ -346,7 +348,7 @@ export function runCosim<
         previousState,
         event,
         result,
-        ignored: result.state === previousState && result.commands.length === 0,
+        ignored: result.kind === "ignored",
       },
     };
   };

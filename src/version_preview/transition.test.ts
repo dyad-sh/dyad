@@ -1,4 +1,10 @@
 import { describe, expect, it } from "vitest";
+import {
+  assertAllCommandsProducible,
+  assertAllStatesReachable,
+  commandsOf,
+  ignoreReasonOf,
+} from "@/state_machines/testing";
 import type {
   PreviewCommand,
   PreviewEvent,
@@ -72,6 +78,29 @@ const EVENT_SAMPLES: PreviewEvent[] = [
   { type: "SWITCH_BRANCH_SUCCEEDED" },
   { type: "SWITCH_BRANCH_FAILED", error: { message: "switch failed" } },
 ];
+const STATE_KINDS = [
+  "closed",
+  "viewing-diff",
+  "browsing",
+  "resolving-origin",
+  "checking-out",
+  "previewing",
+  "restoring",
+  "returning",
+  "switching-branch",
+  "recovery-required",
+] as const satisfies readonly PreviewState["type"][];
+const COMMAND_KINDS = [
+  "resolve-origin",
+  "checkout",
+  "return",
+  "switch-branch",
+  "restore",
+  "restore-to-message",
+  "notify-error",
+  "notify-recovery",
+  "dismiss-recovery",
+] as const satisfies readonly PreviewCommand["type"][];
 
 const STATE_SAMPLES: PreviewState[] = [
   CLOSED_STATE,
@@ -214,11 +243,11 @@ function assertInvariants(
 
   // At most one mutating command per result, and mutating commands must
   // land in the matching mutation state.
-  const mutating = result.commands.filter((c) =>
+  const mutating = commandsOf(result).filter((c) =>
     MUTATING_COMMAND_TYPES.has(c.type),
   );
   expect(mutating.length, label).toBeLessThanOrEqual(1);
-  for (const command of result.commands) {
+  for (const command of commandsOf(result)) {
     if (command.type === "checkout") {
       expect(next.type, label).toBe("checking-out");
     }
@@ -264,7 +293,7 @@ function run(events: PreviewEvent[], from: PreviewState = CLOSED_STATE) {
   for (const event of events) {
     const result = step(state, event);
     state = result.state;
-    allCommands.push(...result.commands);
+    allCommands.push(...commandsOf(result));
   }
   return { state, commands: allCommands };
 }
@@ -284,15 +313,42 @@ const RESOLVED: PreviewEvent = {
 };
 
 describe("transition totality", () => {
+  it("reaches every state and produces every command kind", () => {
+    const options = {
+      initialState: CLOSED_STATE,
+      events: (state: PreviewState) =>
+        EVENT_SAMPLES.filter(
+          (event) =>
+            event.type !== "VIEW_VERSION_DIFF" ||
+            state.type !== "viewing-diff" ||
+            state.session.targetVersionId !== event.versionId ||
+            state.session.selectedDiffFile?.path !== event.file?.path,
+        ),
+      transition,
+      stateKey: JSON.stringify,
+      maxStates: 5_000,
+    };
+    assertAllStatesReachable({
+      ...options,
+      inventory: STATE_KINDS,
+      stateKind: (state) => state.type,
+    });
+    assertAllCommandsProducible({
+      ...options,
+      inventory: COMMAND_KINDS,
+      commandKind: (command) => command.type,
+    });
+  });
+
   it("handles every state/event pair without throwing and upholds invariants", () => {
     for (const state of STATE_SAMPLES) {
       for (const event of EVENT_SAMPLES) {
         const result = step(state, event);
         expect(result).toBeDefined();
         expect(result.state).toBeDefined();
-        expect(Array.isArray(result.commands)).toBe(true);
-        if (result.state === state && result.commands.length === 0) {
-          expect(result.ignoredReason).toBeTruthy();
+        expect(Array.isArray(commandsOf(result))).toBe(true);
+        if (result.state === state && commandsOf(result).length === 0) {
+          expect(ignoreReasonOf(result)).toBeTruthy();
         }
         if (result.state !== state) {
           expect(result.state, `${state.type} + ${event.type}`).not.toEqual(
@@ -307,8 +363,8 @@ describe("transition totality", () => {
     const previewing = STATE_SAMPLES.find((s) => s.type === "previewing")!;
     const result = transition(previewing, { type: "RETURN_SUCCEEDED" });
     expect(result.state).toBe(previewing);
-    expect(result.commands).toEqual([]);
-    expect(result.ignoredReason).toBe("invalid-in-current-state");
+    expect(commandsOf(result)).toEqual([]);
+    expect(ignoreReasonOf(result)).toBe("invalid-in-current-state");
   });
 });
 
@@ -542,7 +598,7 @@ describe("presentation selection", () => {
         isDiffVisible: true,
       },
     });
-    expect(result.commands).toEqual([]);
+    expect(commandsOf(result)).toEqual([]);
     expect(isPaneVisibleState(result.state)).toBe(false);
     expect(diffVersionIdForState(result.state)).toBe("v1");
   });
@@ -557,7 +613,7 @@ describe("presentation selection", () => {
     const result = step(previewing, { type: "CLOSE_VERSION_DIFF" });
     expect(result.state.type).toBe("previewing");
     expect(diffVersionIdForState(result.state)).toBeNull();
-    expect(result.commands).toEqual([]);
+    expect(commandsOf(result)).toEqual([]);
   });
 
   it("hides the historical diff while returning and during recovery", () => {
@@ -610,7 +666,7 @@ describe("presentation selection", () => {
       branch: "main",
       fallback: { type: "closed" },
     });
-    expect(result.commands).toEqual([
+    expect(commandsOf(result)).toEqual([
       { type: "switch-branch", appId: APP_ID, branch: "main" },
     ]);
   });
@@ -632,7 +688,7 @@ describe("presentation selection", () => {
       error: { message: "checkout failed" },
     });
     expect(failed.state).toBe(previewing);
-    expect(failed.commands).toEqual([]);
+    expect(commandsOf(failed)).toEqual([]);
   });
 
   it("selects a diff file without changing phase or emitting commands", () => {
@@ -649,7 +705,7 @@ describe("presentation selection", () => {
       file: { versionId: "v1", path: "src/a.ts" },
     });
     expect(result.state.type).toBe("viewing-diff");
-    expect(result.commands).toEqual([]);
+    expect(commandsOf(result)).toEqual([]);
   });
 
   it("clears a diff-file selection when selecting a version", () => {
@@ -704,7 +760,7 @@ describe("restore", () => {
       type: "restoring",
       fallback: "closed",
     });
-    expect(result.commands).toEqual([
+    expect(commandsOf(result)).toEqual([
       {
         type: "restore",
         appId: APP_ID,
@@ -724,7 +780,7 @@ describe("restore", () => {
       messageId: 3,
       restoreCodebase: true,
     });
-    expect(result.commands).toEqual([
+    expect(commandsOf(result)).toEqual([
       {
         type: "restore-to-message",
         appId: APP_ID,
@@ -857,7 +913,7 @@ describe("return failure and recovery", () => {
     ]);
     const result = step(recovery.state, SELECT_V1);
     expect(result.state).toBe(recovery.state);
-    expect(result.commands).toEqual([]);
+    expect(commandsOf(result)).toEqual([]);
   });
 
   it("re-surfaces recovery through a command without changing state", () => {
@@ -867,7 +923,7 @@ describe("return failure and recovery", () => {
     ]);
     const result = step(recovery.state, OPEN);
     expect(result.state).toBe(recovery.state);
-    expect(result.commands).toEqual([
+    expect(commandsOf(result)).toEqual([
       {
         type: "notify-recovery",
         appId: APP_ID,

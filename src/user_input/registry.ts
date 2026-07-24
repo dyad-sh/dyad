@@ -186,7 +186,7 @@ export function createUserInputRegistry(deps: {
     const previous = states.get(requestId) ?? ({ status: "idle" } as const);
     const result = transition(previous, event);
     observeTransition(observer, previous, event, result);
-    if (result.ignoredReason !== undefined) return Promise.resolve(false);
+    if (result.kind === "ignored") return Promise.resolve(false);
 
     states.set(requestId, result.state);
     if (isLiveUserInputState(result.state)) addToChat(result.state.descriptor);

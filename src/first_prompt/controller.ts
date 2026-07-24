@@ -53,7 +53,7 @@ export class FirstPromptController {
     const previous = this.store.getSnapshot();
     const result = transition(previous, event);
     observeTransition(this.options.observer, previous, event, result);
-    if (result.ignoredReason !== undefined) return false;
+    if (result.kind === "ignored") return false;
     this.store.setState(result.state);
     if (result.commands.length > 0) {
       this.commandQueue.push(...result.commands);

@@ -211,6 +211,7 @@ export class AppRunController {
     const previous = this.store.getSnapshot();
     const result = transition(previous, event);
     observeTransition(this.options.observer, previous, event, result);
+    if (result.kind === "ignored") return;
     // Enqueue commands before notifying listeners so a listener reacting to
     // the new state cannot get its own commands ahead of this event's.
     if (result.commands.length > 0) {

@@ -1,11 +1,27 @@
 import { describe, expect, it } from "vitest";
-import { exploreReachableStates } from "@/state_machines/testing";
+import {
+  assertAllCommandsProducible,
+  assertAllStatesReachable,
+  exploreReachableStates,
+} from "@/state_machines/testing";
 import {
   IDLE_MCP_OAUTH_STATE,
   type McpOAuthEvent,
   type McpOAuthState,
 } from "./state";
 import { transition } from "./transition";
+
+const STATE_KINDS = [
+  "idle",
+  "binding",
+  "awaitingCallback",
+  "exchanging",
+  "superseding",
+  "connected",
+  "failed",
+  "timedOut",
+] as const satisfies readonly McpOAuthState["status"][];
+const COMMAND_KINDS = [] as const satisfies readonly never[];
 
 const flow = (flowId: string) => ({
   flowId,
@@ -76,23 +92,44 @@ function stateKey(state: McpOAuthState): string {
 }
 
 describe("MCP OAuth transition", () => {
-  it("is total over every event in every reachable phase", () => {
-    const states = exploreReachableStates({
+  it("throws when an impossible state reaches the exhaustiveness helper", () => {
+    expect(() =>
+      transition({ status: "future" } as unknown as McpOAuthState, {
+        type: "CONNECT",
+        ...flow("flow-1"),
+      }),
+    ).toThrow(/Unreachable MCP OAuth state/);
+  });
+
+  it("reaches every state and has an explicit empty command inventory", () => {
+    const options = {
       initialState: IDLE_MCP_OAUTH_STATE,
       events: eventsFor,
-      transition: (state, event) => {
-        const result = transition(state, event);
-        return result.changed
-          ? { state: result.state, commands: [] }
-          : {
-              state: result.state,
-              commands: [],
-              ignoredReason: result.reason,
-            };
-      },
+      transition,
+      stateKey,
+      maxStates: 100,
+    };
+    assertAllStatesReachable({
+      ...options,
+      inventory: STATE_KINDS,
+      stateKind: (state) => state.status,
+    });
+    assertAllCommandsProducible({
+      ...options,
+      inventory: COMMAND_KINDS,
+      commandKind: (command: never) => command,
+    });
+  });
+
+  it("is total over every event in every reachable phase", () => {
+    const graph = exploreReachableStates({
+      initialState: IDLE_MCP_OAUTH_STATE,
+      events: eventsFor,
+      transition,
       stateKey,
       maxStates: 100,
     });
+    const states = graph.nodes.map(({ state }) => state);
 
     expect(states.map((state) => state.status)).toEqual(
       expect.arrayContaining([
@@ -110,7 +147,7 @@ describe("MCP OAuth transition", () => {
       for (const event of eventsFor(state)) {
         const result = transition(state, event);
         expect(result).toBeDefined();
-        if (result.changed) {
+        if (result.kind === "applied") {
           expect(result.state).not.toEqual(state);
         } else {
           expect(result.state).toBe(state);
@@ -132,7 +169,7 @@ describe("MCP OAuth transition", () => {
     });
 
     expect(result).toEqual({
-      changed: false,
+      kind: "ignored",
       state,
       reason: "state-mismatch",
     });
@@ -145,7 +182,7 @@ describe("MCP OAuth transition", () => {
       type: "CONNECT",
       ...flow("flow-2"),
     });
-    expect(second.changed).toBe(true);
+    expect(second.kind === "applied").toBe(true);
     const third = transition(second.state, {
       type: "CONNECT",
       ...flow("flow-3"),
@@ -171,7 +208,7 @@ describe("MCP OAuth transition", () => {
     });
 
     expect(result).toEqual({
-      changed: false,
+      kind: "ignored",
       state,
       reason: "duplicate-connect",
     });

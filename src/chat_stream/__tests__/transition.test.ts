@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import type { TransitionResult } from "@/state_machines/types";
+import {
+  assertAllCommandsProducible,
+  assertAllStatesReachable,
+  commandsOf,
+  ignoreReasonOf,
+} from "@/state_machines/testing";
 
 import type {
   ChatStreamIgnoreReason,
@@ -17,6 +23,22 @@ import {
 } from "../transition";
 
 const CHAT_ID = 7;
+const STATE_KINDS = [
+  "idle",
+  "starting",
+  "streaming",
+  "cancelling",
+  "finalizing",
+  "errored",
+] as const satisfies readonly StreamState["type"][];
+const COMMAND_KINDS = [
+  "start-stream",
+  "enqueue-message",
+  "request-abort",
+  "run-end-side-effects",
+  "run-error-side-effects",
+  "dispatch-next-queued",
+] as const satisfies readonly StreamCommand["type"][];
 
 function makeRequest(overrides: Partial<StreamRequest> = {}): StreamRequest {
   return { prompt: "hello", chatId: CHAT_ID, ...overrides };
@@ -84,6 +106,13 @@ function eventVariants(): StreamEvent[] {
   ];
 }
 
+function reachabilityEvents(state: StreamState): StreamEvent[] {
+  const streamId = streamGeneration(state);
+  return eventVariants().map((event) =>
+    "streamId" in event ? { ...event, streamId } : event,
+  );
+}
+
 const ACTIVE_OR_FINALIZING: StreamState["type"][] = [
   "starting",
   "streaming",
@@ -124,7 +153,7 @@ function checkInvariants(
   const label = `state=${prev.type} event=${event.type}`;
 
   // Never two mutating commands in one transition.
-  const mutating = result.commands.filter(
+  const mutating = commandsOf(result).filter(
     (c) =>
       c.type === "start-stream" ||
       c.type === "request-abort" ||
@@ -132,17 +161,17 @@ function checkInvariants(
   );
   expect(mutating.length, label).toBeLessThanOrEqual(1);
   // Never more than one side-effecting command overall.
-  expect(result.commands.length, label).toBeLessThanOrEqual(1);
+  expect(commandsOf(result).length, label).toBeLessThanOrEqual(1);
 
-  if (result.ignoredReason !== undefined) {
-    expect(ALL_IGNORE_REASONS, label).toContain(result.ignoredReason);
+  if (ignoreReasonOf(result) !== undefined) {
+    expect(ALL_IGNORE_REASONS, label).toContain(ignoreReasonOf(result));
     expect(result.state, label).toBe(prev);
-    expect(result.commands, label).toEqual([]);
-  } else if (result.state === prev && result.commands.length === 0) {
+    expect(commandsOf(result), label).toEqual([]);
+  } else if (result.state === prev && commandsOf(result).length === 0) {
     throw new Error(`${label} returned a reasonless ignore`);
   }
 
-  for (const command of result.commands) {
+  for (const command of commandsOf(result)) {
     switch (command.type) {
       case "start-stream":
         // Streams start only from a terminal state, on submit.
@@ -193,7 +222,7 @@ function checkInvariants(
     event.streamId !== prev.streamId
   ) {
     expect(result.state, label).toBe(prev);
-    expect(result.commands, label).toEqual([]);
+    expect(commandsOf(result), label).toEqual([]);
   }
 
   // Terminal-state events never reach terminal states' stream handling.
@@ -205,7 +234,7 @@ function checkInvariants(
       event.type === "finalize-complete"
     ) {
       expect(result.state, label).toBe(prev);
-      expect(result.commands, label).toEqual([]);
+      expect(commandsOf(result), label).toEqual([]);
     }
   }
 }
@@ -220,6 +249,25 @@ function step(
 }
 
 describe("transition totality", () => {
+  it("reaches every state and produces every command kind", () => {
+    const options = {
+      initialState: initialStreamState(),
+      events: reachabilityEvents,
+      transition,
+      stateKey: (state: StreamState) => state.type,
+    };
+    assertAllStatesReachable({
+      ...options,
+      inventory: STATE_KINDS,
+      stateKind: (state) => state.type,
+    });
+    assertAllCommandsProducible({
+      ...options,
+      inventory: COMMAND_KINDS,
+      commandKind: (command) => command.type,
+    });
+  });
+
   it("handles the full state x event matrix without throwing and upholds all invariants", () => {
     const seenIgnoreReasons = new Set<ChatStreamIgnoreReason>();
     for (const makeState of Object.values(STATE_FACTORIES)) {
@@ -227,9 +275,10 @@ describe("transition totality", () => {
         const state = makeState();
         const result = step(state, event);
         expect(result.state).toBeDefined();
-        expect(Array.isArray(result.commands)).toBe(true);
-        if (result.ignoredReason !== undefined) {
-          seenIgnoreReasons.add(result.ignoredReason);
+        expect(Array.isArray(commandsOf(result))).toBe(true);
+        const reason = ignoreReasonOf(result);
+        if (reason !== undefined) {
+          seenIgnoreReasons.add(reason);
         }
       }
     }
@@ -256,7 +305,7 @@ describe("happy path", () => {
       request: makeRequest(),
     });
     expect(result.state.type).toBe("starting");
-    expect(result.commands).toEqual([
+    expect(commandsOf(result)).toEqual([
       { type: "start-stream", streamId: 1, request: makeRequest() },
     ]);
     expect(isStreamActive(result.state)).toBe(true);
@@ -270,7 +319,7 @@ describe("happy path", () => {
       response: endResponse(),
     });
     expect(result.state.type).toBe("finalizing");
-    expect(result.commands[0]?.type).toBe("run-end-side-effects");
+    expect(commandsOf(result)[0]?.type).toBe("run-end-side-effects");
     expect(isStreamActive(result.state)).toBe(false);
 
     result = step(result.state, {
@@ -279,7 +328,7 @@ describe("happy path", () => {
       ok: true,
     });
     expect(result.state).toEqual({ type: "idle", lastStreamId: 1 });
-    expect(result.commands).toEqual([{ type: "dispatch-next-queued" }]);
+    expect(commandsOf(result)).toEqual([{ type: "dispatch-next-queued" }]);
   });
 
   it("retains resolved stream context across registration and terminal commands", () => {
@@ -308,7 +357,7 @@ describe("happy path", () => {
       streamId: 1,
       response: endResponse(),
     });
-    expect(result.commands[0]).toMatchObject({
+    expect(commandsOf(result)[0]).toMatchObject({
       type: "run-end-side-effects",
       targetAppId: 23,
     });
@@ -321,7 +370,7 @@ describe("happy path", () => {
       streamId: 999,
       targetAppId: 23,
     });
-    expect(stale.ignoredReason).toBe("stale-stream-id");
+    expect(ignoreReasonOf(stale)).toBe("stale-stream-id");
 
     const current = step(streaming, {
       type: "stream-context",
@@ -345,7 +394,7 @@ describe("happy path", () => {
 
     const stale = step(starting, { type: "registered", streamId: 3 });
     expect(stale.state).toBe(starting);
-    expect(stale.ignoredReason).toBe("stale-stream-id");
+    expect(ignoreReasonOf(stale)).toBe("stale-stream-id");
 
     const legacy = step(starting, { type: "registered" });
     expect(legacy.state.type).toBe("streaming");
@@ -363,11 +412,11 @@ describe("happy path", () => {
       lastStreamId: 4,
       error: "kaput",
     });
-    expect(result.commands[0]?.type).toBe("run-error-side-effects");
+    expect(commandsOf(result)[0]?.type).toBe("run-error-side-effects");
 
     result = step(result.state, { type: "submit", request: makeRequest() });
     expect(result.state.type).toBe("starting");
-    expect(result.commands[0]).toMatchObject({
+    expect(commandsOf(result)[0]).toMatchObject({
       type: "start-stream",
       streamId: 5,
     });
@@ -380,7 +429,7 @@ describe("bug 1: submit while a stream is active queues instead of dropping", ()
     const request = makeRequest({ prompt: "second message" });
     const result = step(starting, { type: "submit", request });
     expect(result.state).toBe(starting);
-    expect(result.commands).toEqual([{ type: "enqueue-message", request }]);
+    expect(commandsOf(result)).toEqual([{ type: "enqueue-message", request }]);
   });
 
   it("queues a submit during streaming, cancelling, and finalizing", () => {
@@ -389,7 +438,9 @@ describe("bug 1: submit while a stream is active queues instead of dropping", ()
       const request = makeRequest({ prompt: `queued during ${type}` });
       const result = step(state, { type: "submit", request });
       expect(result.state).toBe(state);
-      expect(result.commands).toEqual([{ type: "enqueue-message", request }]);
+      expect(commandsOf(result)).toEqual([
+        { type: "enqueue-message", request },
+      ]);
     }
   });
 });
@@ -407,7 +458,7 @@ describe("bug 2: cancel before main registers the stream", () => {
       type: "cancelling",
       registered: false,
     });
-    expect(result.commands).toEqual([{ type: "request-abort" }]);
+    expect(commandsOf(result)).toEqual([{ type: "request-abort" }]);
 
     // Main tracked the AbortController synchronously, so the abort hit the
     // real stream pre-admission. Main sends the SOLE terminal wasCancelled
@@ -422,7 +473,7 @@ describe("bug 2: cancel before main registers the stream", () => {
       type: "finalizing",
       wasCancelled: true,
     });
-    expect(result.commands[0]?.type).toBe("run-end-side-effects");
+    expect(commandsOf(result)[0]?.type).toBe("run-end-side-effects");
 
     // Cancelled turns do not dispatch the queue.
     result = step(result.state, {
@@ -431,7 +482,7 @@ describe("bug 2: cancel before main registers the stream", () => {
       ok: true,
     });
     expect(result.state).toEqual({ type: "idle", lastStreamId: 1 });
-    expect(result.commands).toEqual([]);
+    expect(commandsOf(result)).toEqual([]);
   });
 
   it("re-issues the abort on registration when the cancel raced ahead of the stream request", () => {
@@ -453,7 +504,7 @@ describe("bug 2: cancel before main registers the stream", () => {
       type: "cancelling",
       registered: true,
     });
-    expect(result.commands).toEqual([{ type: "request-abort" }]);
+    expect(commandsOf(result)).toEqual([{ type: "request-abort" }]);
 
     // The terminal event of the (now aborted) stream drives finalization
     // exactly once.
@@ -466,7 +517,7 @@ describe("bug 2: cancel before main registers the stream", () => {
       type: "finalizing",
       wasCancelled: true,
     });
-    expect(result.commands[0]?.type).toBe("run-end-side-effects");
+    expect(commandsOf(result)[0]?.type).toBe("run-end-side-effects");
   });
 
   it("finalizes with the real outcome when the stream completed before the abort landed", () => {
@@ -487,7 +538,7 @@ describe("bug 2: cancel before main registers the stream", () => {
       type: "finalizing",
       wasCancelled: false,
     });
-    expect(result.commands[0]?.type).toBe("run-end-side-effects");
+    expect(commandsOf(result)[0]?.type).toBe("run-end-side-effects");
   });
 
   it("treats an end after registration as real even while cancelling", () => {
@@ -518,7 +569,7 @@ describe("bug 3: queue dispatch is single-shot by construction", () => {
       ok: true,
     });
     expect(result.state).toEqual({ type: "idle", lastStreamId: 4 });
-    expect(result.commands).toEqual([{ type: "dispatch-next-queued" }]);
+    expect(commandsOf(result)).toEqual([{ type: "dispatch-next-queued" }]);
 
     // A replayed/duplicate finalize-complete is ignored: no second dispatch.
     const replay = step(result.state, {
@@ -527,7 +578,7 @@ describe("bug 3: queue dispatch is single-shot by construction", () => {
       ok: true,
     });
     expect(replay.state).toBe(result.state);
-    expect(replay.commands).toEqual([]);
+    expect(commandsOf(replay)).toEqual([]);
   });
 
   it("does not dispatch after a cancelled or failed finalization", () => {
@@ -536,8 +587,13 @@ describe("bug 3: queue dispatch is single-shot by construction", () => {
       wasCancelled: true,
     } as StreamState;
     expect(
-      step(cancelled, { type: "finalize-complete", streamId: 4, ok: true })
-        .commands,
+      commandsOf(
+        step(cancelled, {
+          type: "finalize-complete",
+          streamId: 4,
+          ok: true,
+        }),
+      ),
     ).toEqual([]);
 
     const failed = step(STATE_FACTORIES.finalizing(), {
@@ -546,19 +602,19 @@ describe("bug 3: queue dispatch is single-shot by construction", () => {
       ok: false,
     });
     expect(failed.state.type).toBe("idle");
-    expect(failed.commands).toEqual([]);
+    expect(commandsOf(failed)).toEqual([]);
   });
 
   it("dispatches on an explicit poke only while terminal", () => {
     expect(
-      step(STATE_FACTORIES.idle(), { type: "queue-poked" }).commands,
+      commandsOf(step(STATE_FACTORIES.idle(), { type: "queue-poked" })),
     ).toEqual([{ type: "dispatch-next-queued" }]);
     expect(
-      step(STATE_FACTORIES.errored(), { type: "queue-poked" }).commands,
+      commandsOf(step(STATE_FACTORIES.errored(), { type: "queue-poked" })),
     ).toEqual([{ type: "dispatch-next-queued" }]);
     for (const type of ACTIVE_OR_FINALIZING) {
       expect(
-        step(STATE_FACTORIES[type](), { type: "queue-poked" }).commands,
+        commandsOf(step(STATE_FACTORIES[type](), { type: "queue-poked" })),
       ).toEqual([]);
     }
   });
@@ -577,7 +633,7 @@ describe("stale generation rejection", () => {
       for (const event of staleEvents) {
         const result = step(state, event);
         expect(result.state).toBe(state);
-        expect(result.commands).toEqual([]);
+        expect(commandsOf(result)).toEqual([]);
       }
     }
   });

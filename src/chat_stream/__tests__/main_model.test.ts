@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { exploreReachableStates } from "@/state_machines/testing";
+import {
+  commandsOf,
+  exploreReachableStates,
+  ignoreReasonOf,
+} from "@/state_machines/testing";
 import {
   assertMainModelQuiescence,
   assertMainModelTransitionInvariants,
@@ -90,7 +94,7 @@ function reachableStates(): MainModelState[] {
     transition: transitionMainModel,
     stateKey: mainModelStateKey,
     maxStates: 20_000,
-  });
+  }).nodes.map(({ state }) => state);
 }
 
 describe("main chat stream model", () => {
@@ -145,7 +149,7 @@ describe("main chat stream model", () => {
       cancelled,
     );
     expect(
-      cancelled.commands.filter(
+      commandsOf(cancelled).filter(
         (command) => command.type === "chat:response:end",
       ),
     ).toEqual([
@@ -164,7 +168,7 @@ describe("main chat stream model", () => {
       type: "handler-unwound",
       invocationId: 1,
     });
-    expect(finalized.commands.map((command) => command.type)).toEqual([
+    expect(commandsOf(finalized).map((command) => command.type)).toEqual([
       "completion-resolved",
     ]);
   });
@@ -186,7 +190,7 @@ describe("main chat stream model", () => {
       type: "cancel-chat",
       chatId: 7,
     });
-    expect(cancelled.commands.map((command) => command.type)).toEqual([
+    expect(commandsOf(cancelled).map((command) => command.type)).toEqual([
       "chat:response:end",
       "chat:stream:end",
     ]);
@@ -253,7 +257,7 @@ describe("main chat stream model", () => {
     )) {
       const result = transitionMainModel(state, { type: "quit" });
       expect(result.state.quit).toBe(true);
-      expect(result.commands).toEqual([]);
+      expect(commandsOf(result)).toEqual([]);
       for (const stream of Object.values(result.state.streams)) {
         expect(stream.phase).toBe("quit-cleared");
         expect(stream.aborted).toBe(true);
@@ -308,11 +312,11 @@ describe("main chat stream model", () => {
       invocationId: 1,
       applyError: true,
     });
-    expect(result.commands.map((command) => command.type)).toEqual([
+    expect(commandsOf(result).map((command) => command.type)).toEqual([
       "chat:response:error",
       "chat:response:end",
     ]);
-    expect(result.commands[1]).toMatchObject({
+    expect(commandsOf(result)[1]).toMatchObject({
       payload: { updatedFiles: false },
       origin: "handler",
     });
@@ -327,7 +331,7 @@ describe("main chat stream model", () => {
       outcome: "completed",
     });
     expect(result.state.streams[1].phase).toBe("unwinding-aborted");
-    expect(result.commands).toEqual([]);
+    expect(commandsOf(result)).toEqual([]);
 
     const errored = transitionMainModel(state, {
       type: "llm-settled",
@@ -335,7 +339,7 @@ describe("main chat stream model", () => {
       outcome: "errored",
     });
     expect(errored.state.streams[1].phase).toBe("unwinding-aborted");
-    expect(errored.commands).toEqual([]);
+    expect(commandsOf(errored)).toEqual([]);
   });
 
   it("models empty responses without a handler response-end", () => {
@@ -347,7 +351,7 @@ describe("main chat stream model", () => {
       hasResponse: false,
     });
     expect(result.state.streams[1].phase).toBe("unwinding-completed");
-    expect(result.commands).toEqual([]);
+    expect(commandsOf(result)).toEqual([]);
   });
 
   it.each(["post-abort-db", "post-abort-apply"] as const)(
@@ -369,7 +373,7 @@ describe("main chat stream model", () => {
         throws: true,
       });
       expect(result.state.streams[1].phase).toBe("unwinding-errored");
-      expect(result.commands).toEqual([
+      expect(commandsOf(result)).toEqual([
         expect.objectContaining({
           type: "chat:response:error",
           origin: "handler",
@@ -385,7 +389,7 @@ describe("main chat stream model", () => {
       type: "cancel-chat",
       chatId: 7,
     });
-    expect(first.commands.map((command) => command.type)).toEqual([
+    expect(commandsOf(first).map((command) => command.type)).toEqual([
       "chat:response:end",
       "chat:response:end",
       "chat:stream:end",
@@ -394,7 +398,8 @@ describe("main chat stream model", () => {
       type: "cancel-chat",
       chatId: 7,
     });
-    expect(second.commands.map((command) => command.type)).toEqual([
+    expect(second.state).toBe(first.state);
+    expect(commandsOf(second).map((command) => command.type)).toEqual([
       "chat:response:end",
       "chat:response:end",
       "chat:stream:end",
@@ -413,7 +418,7 @@ describe("main chat stream model", () => {
       appId: 9,
     });
     expect(
-      cancelled.commands
+      commandsOf(cancelled)
         .filter((command) => command.type === "chat:response:end")
         .map((command) => [command.payload.chatId, command.payload.streamId]),
     ).toEqual([
@@ -421,7 +426,7 @@ describe("main chat stream model", () => {
       [8, 1],
     ]);
     expect(
-      cancelled.commands
+      commandsOf(cancelled)
         .filter((command) => command.type === "chat:stream:end")
         .map((command) => command.payload.chatId),
     ).toEqual([7, 8]);
@@ -436,8 +441,8 @@ describe("main chat stream model", () => {
       invocationId: 2,
     });
     expect(loser.state).toBe(state);
-    expect(loser.commands).toEqual([]);
-    expect(loser.ignoredReason).toBe("compaction-already-active");
+    expect(commandsOf(loser)).toEqual([]);
+    expect(ignoreReasonOf(loser)).toBe("compaction-already-active");
     state = loser.state;
     expect(state.streams[1].awaitPoint).toBe("compaction");
     expect(state.streams[2].awaitPoint).toBe("llm");

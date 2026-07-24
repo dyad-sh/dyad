@@ -1,5 +1,25 @@
 import type { IgnoreReason, TransitionObserver } from "./types";
 
+export interface ReplayTraceEntry<SerializedEvent> {
+  readonly event: SerializedEvent;
+  readonly outcome:
+    | {
+        readonly kind: "ignored";
+        readonly reason: IgnoreReason;
+        stateKey: string;
+      }
+    | {
+        readonly kind: "applied";
+        readonly stateKey: string;
+        readonly commands: readonly unknown[];
+      };
+}
+
+export interface ReplayTrace<SerializedEvent> {
+  readonly schemaVersion: number;
+  readonly entries: readonly ReplayTraceEntry<SerializedEvent>[];
+}
+
 export interface MachineTraceEntry {
   readonly at: number;
   readonly machine: string;
@@ -37,7 +57,7 @@ function defaultDescription(value: unknown): unknown {
   if ("status" in value && typeof value.status === "string") {
     return value.status;
   }
-  return value;
+  return "[redacted object]";
 }
 
 function ensureMachine(machine: string): MachineTraceEntry[] {
@@ -126,13 +146,69 @@ export function createTraceObserver<
   };
 }
 
+export interface ReplaySerialization<State, Event, Command, SerializedEvent> {
+  readonly schemaVersion: number;
+  serializeEvent(event: Event): SerializedEvent;
+  deserializeEvent(event: SerializedEvent): Event;
+  stateKey(state: State): string;
+  describeCommand(command: Command): unknown;
+}
+
+/**
+ * Creates an explicitly opt-in replay-grade recorder for development and
+ * tests. Unlike debug traces, entries retain complete domain-serialized
+ * events and are not exposed through production devtools.
+ */
+export function createReplayTraceObserver<
+  State,
+  Event,
+  Command,
+  SerializedEvent,
+  Reason extends IgnoreReason = IgnoreReason,
+>(
+  serialization: ReplaySerialization<State, Event, Command, SerializedEvent>,
+): {
+  observer: TransitionObserver<State, Event, Command, Reason>;
+  getTrace(): ReplayTrace<SerializedEvent>;
+} {
+  const entries: ReplayTraceEntry<SerializedEvent>[] = [];
+  return {
+    observer: {
+      onTransitionApplied: ({ event, state, commands }) => {
+        entries.push({
+          event: serialization.serializeEvent(event),
+          outcome: {
+            kind: "applied",
+            stateKey: serialization.stateKey(state),
+            commands: commands.map(serialization.describeCommand),
+          },
+        });
+      },
+      onEventIgnored: ({ state, event, reason }) => {
+        entries.push({
+          event: serialization.serializeEvent(event),
+          outcome: {
+            kind: "ignored",
+            reason,
+            stateKey: serialization.stateKey(state),
+          },
+        });
+      },
+    },
+    getTrace: () => ({
+      schemaVersion: serialization.schemaVersion,
+      entries: [...entries],
+    }),
+  };
+}
+
 declare global {
   interface Window {
     __dyadMachines?: MachineTraceDevtools;
   }
 }
 
-if (typeof window !== "undefined") {
+if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
   window.__dyadMachines = {
     get index() {
       return [...machineIndex];

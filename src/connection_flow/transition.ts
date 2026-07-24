@@ -13,10 +13,10 @@
 
 import type { ConnectionFlowEvent, ConnectionFlowState } from "./state";
 import {
-  advanceState,
-  ignoreState,
+  change,
+  ignore as ignoreTransition,
   type IgnoreReason as SharedIgnoreReason,
-  type StateTransitionResult,
+  type TransitionResult as SharedTransitionResult,
 } from "@/state_machines/types";
 
 /** Why an event was ignored instead of transitioning the machine. */
@@ -27,13 +27,14 @@ export type IgnoreReason = SharedIgnoreReason<
   | "invalid-in-current-state"
 >;
 
-export type TransitionResult = StateTransitionResult<
+export type TransitionResult = SharedTransitionResult<
   ConnectionFlowState,
+  never,
   IgnoreReason
 >;
 
 function advance(state: ConnectionFlowState): TransitionResult {
-  return advanceState(state);
+  return change(state);
 }
 
 /** Explicitly ignore an event, keeping the current state. */
@@ -41,7 +42,7 @@ function ignore(
   state: ConnectionFlowState,
   reason: IgnoreReason,
 ): TransitionResult {
-  return ignoreState(state, reason);
+  return ignoreTransition(state, reason);
 }
 
 export function transition(
@@ -296,6 +297,8 @@ export function transition(
   }
 }
 
-function unreachableState(state: never): TransitionResult {
-  return state;
+function unreachableState(state: never): never {
+  throw new Error(
+    `Unreachable connection-flow state: ${JSON.stringify(state)}`,
+  );
 }

@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
   assertReferenceStability,
+  assertAllCommandsProducible,
+  assertAllStatesReachable,
+  commandsOf,
   exploreReachableStates,
+  ignoreReasonOf,
 } from "@/state_machines/testing";
 import {
   INITIAL_GITHUB_OPS_STATE,
   type GithubOperation,
   type GithubOpsEvent,
+  type GithubOpsCommand,
   type GithubOpsState,
 } from "./state";
 import { transition } from "./transition";
@@ -40,6 +45,22 @@ const REPRESENTATIVE_OPS: readonly GithubOperation[] = [
     thenAutoPush: true,
   },
 ];
+const STATE_KINDS = [
+  "idle",
+  "running",
+  "conflicted",
+  "rebase-paused",
+  "switch-blocked",
+] as const satisfies readonly GithubOpsState["type"][];
+const COMMAND_KINDS = [
+  "run-op",
+  "probe-git-state",
+  "probe-conflicts",
+  "invalidate-branches",
+  "refresh-app",
+  "notify",
+  "start-conflict-resolution",
+] as const satisfies readonly GithubOpsCommand["type"][];
 
 function eventsFor(state: GithubOpsState): readonly GithubOpsEvent[] {
   const activeOp =
@@ -97,14 +118,35 @@ function eventsFor(state: GithubOpsState): readonly GithubOpsEvent[] {
 }
 
 describe("github_ops transition", () => {
+  it("reaches every state and produces every command kind", () => {
+    const options = {
+      initialState: INITIAL_GITHUB_OPS_STATE,
+      events: eventsFor,
+      transition,
+      stateKey: JSON.stringify,
+      maxStates: 500,
+    };
+    assertAllStatesReachable({
+      ...options,
+      inventory: STATE_KINDS,
+      stateKind: (state) => state.type,
+    });
+    assertAllCommandsProducible({
+      ...options,
+      inventory: COMMAND_KINDS,
+      commandKind: (command) => command.type,
+    });
+  });
+
   it("is total over the reachable composite and recovery graph", () => {
-    const states = exploreReachableStates({
+    const graph = exploreReachableStates({
       initialState: INITIAL_GITHUB_OPS_STATE,
       events: eventsFor,
       transition,
       stateKey: (state) => JSON.stringify(state),
       maxStates: 500,
     });
+    const states = graph.nodes.map(({ state }) => state);
 
     expect(states.some((state) => state.type === "conflicted")).toBe(true);
     expect(states.some((state) => state.type === "rebase-paused")).toBe(true);
@@ -156,14 +198,14 @@ describe("github_ops transition", () => {
     });
 
     expect(result.state).toBe(running);
-    expect(result.ignoredReason).toBe("op-in-flight");
+    expect(ignoreReasonOf(result)).toBe("op-in-flight");
   });
 
   it("sequences reconciliation so rebase provenance reaches conflicts", () => {
     const reconcile = transition(INITIAL_GITHUB_OPS_STATE, {
       type: "RECONCILE_REQUESTED",
     });
-    expect(reconcile.commands).toEqual([{ type: "probe-git-state" }]);
+    expect(commandsOf(reconcile)).toEqual([{ type: "probe-git-state" }]);
 
     const gitState = transition(reconcile.state, {
       type: "GIT_STATE",
@@ -171,7 +213,7 @@ describe("github_ops transition", () => {
       rebaseInProgress: true,
     });
     expect(gitState.state.type).toBe("rebase-paused");
-    expect(gitState.commands).toEqual([{ type: "probe-conflicts" }]);
+    expect(commandsOf(gitState)).toEqual([{ type: "probe-conflicts" }]);
 
     const conflicts = transition(gitState.state, {
       type: "CONFLICTS",
@@ -201,7 +243,7 @@ describe("github_ops transition", () => {
       ...conflicted,
       origin: { type: "rebase" },
     });
-    expect(result.commands).toEqual([{ type: "probe-conflicts" }]);
+    expect(commandsOf(result)).toEqual([{ type: "probe-conflicts" }]);
   });
 
   it("replaces stale success context when reconciliation finds a paused rebase", () => {
@@ -224,7 +266,7 @@ describe("github_ops transition", () => {
         code: "REBASE_IN_PROGRESS",
       },
     });
-    expect(result.commands).toEqual([{ type: "probe-conflicts" }]);
+    expect(commandsOf(result)).toEqual([{ type: "probe-conflicts" }]);
   });
 
   it.each([
@@ -248,7 +290,7 @@ describe("github_ops transition", () => {
         type: "idle",
         banner: { kind: "error", message: "git failed" },
       });
-      expect(failed.commands).toEqual([
+      expect(commandsOf(failed)).toEqual([
         { type: "notify", kind: "error", message: "git failed" },
         { type: "probe-git-state" },
       ]);
@@ -259,7 +301,7 @@ describe("github_ops transition", () => {
         rebaseInProgress: true,
       });
       expect(reconciled.state.type).toBe("rebase-paused");
-      expect(reconciled.commands).toEqual([{ type: "probe-conflicts" }]);
+      expect(commandsOf(reconciled)).toEqual([{ type: "probe-conflicts" }]);
     },
   );
 
@@ -276,7 +318,7 @@ describe("github_ops transition", () => {
     });
 
     expect(started.state).toBe(conflicted);
-    expect(started.commands).toEqual([
+    expect(commandsOf(started)).toEqual([
       {
         type: "start-conflict-resolution",
         files: conflicted.files,
@@ -478,7 +520,7 @@ describe("github_ops transition", () => {
       "Pulled latest changes from remote",
     );
     expect(completed.state.banner?.completedOperation).toBe("pull");
-    expect(completed.commands).toEqual([
+    expect(commandsOf(completed)).toEqual([
       { type: "invalidate-branches" },
       { type: "refresh-app" },
     ]);

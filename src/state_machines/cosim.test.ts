@@ -315,4 +315,95 @@ describe("interleaving co-simulation", () => {
       'inject "start": send start to "participant"',
     ]);
   });
+
+  it("isolates the search from mutations in caller snapshots", () => {
+    const initialState = { value: 0 };
+    const result = runCosim<
+      "participant",
+      never,
+      { value: number },
+      "advance",
+      "finish"
+    >({
+      participants: {
+        participant: {
+          initialState,
+          stateKey: (state) => String(state.value),
+          eventKey: (event) => event,
+          commandKey: (command) => command,
+          transition: (state) => ({
+            kind: "applied",
+            state: { value: state.value + 1 },
+            commands: ["finish"],
+          }),
+        },
+      },
+      channels: {},
+      scenario: {
+        actions: [
+          {
+            id: "advance",
+            target: "participant",
+            participant: "participant",
+            event: "advance",
+            enabled: (snapshot) => {
+              snapshot.participants.participant.value = 99;
+              return true;
+            },
+          },
+        ],
+        routeCommand: (_source, snapshot) => {
+          snapshot.participants.participant.value = 99;
+          return [];
+        },
+      },
+      assertions: {
+        perStep: (step) => {
+          step.snapshot.participants.participant.value = 99;
+          if (step.transitions[0]) {
+            step.transitions[0].result.state.value = 99;
+          }
+        },
+        atQuiescence: (snapshot) => {
+          expect(snapshot.participants.participant.value).toBe(1);
+          snapshot.participants.participant.value = 99;
+        },
+      },
+    });
+
+    expect(result.failure).toBeUndefined();
+    expect(initialState).toEqual({ value: 0 });
+  });
+
+  it("rejects a transition result without state before exploring it", () => {
+    const result = runCosim<"participant", never, number, "advance", never>({
+      participants: {
+        participant: {
+          initialState: 0,
+          stateKey: String,
+          eventKey: (event) => event,
+          commandKey: (command) => command,
+          transition: () => ({ kind: "applied", commands: [] }) as never,
+        },
+      },
+      channels: {},
+      scenario: {
+        actions: [
+          {
+            id: "advance",
+            target: "participant",
+            participant: "participant",
+            event: "advance",
+          },
+        ],
+        routeCommand: () => [],
+      },
+    });
+
+    expect(result.failure).toMatchObject({
+      phase: "driver",
+      trace: [],
+    });
+    expect(result.failure?.message).toContain("invalid transition result");
+  });
 });

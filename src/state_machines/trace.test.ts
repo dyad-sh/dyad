@@ -28,28 +28,73 @@ function machineName(label: string): string {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
 });
 
 describe("machine trace observer", () => {
-  it("caps each machine ring at the configured entry count", () => {
+  it("caps each entity-key ring independently", () => {
     const machine = machineName("cap");
-    const observer = createTraceObserver<number, string, string>(machine, 7, {
+    const first = createTraceObserver<number, string, string>(machine, 7, {
+      maxEntries: 2,
+    });
+    const second = createTraceObserver<number, string, string>(machine, 8, {
       maxEntries: 2,
     });
 
     for (let value = 0; value < 3; value += 1) {
-      observer.onTransitionApplied?.({
+      first.onTransitionApplied?.({
         previous: value,
-        event: `event-${value}`,
+        event: `first-${value}`,
         state: value + 1,
-        commands: [`command-${value}`],
+        commands: [],
+      });
+      second.onTransitionApplied?.({
+        previous: value,
+        event: `second-${value}`,
+        state: value + 1,
+        commands: [],
       });
     }
 
     expect(getTraceLog(machine)).toMatchObject([
-      { machine, key: 7, from: 1, event: "event-1", to: 2 },
-      { machine, key: 7, from: 2, event: "event-2", to: 3 },
+      { machine, key: 7, from: 1, event: "first-1", to: 2 },
+      { machine, key: 8, from: 1, event: "second-1", to: 2 },
+      { machine, key: 7, from: 2, event: "first-2", to: 3 },
+      { machine, key: 8, from: 2, event: "second-2", to: 3 },
     ]);
+  });
+
+  it("uses sequence numbers to preserve same-millisecond causal order", () => {
+    vi.spyOn(Date, "now").mockReturnValue(42);
+    const firstMachine = machineName("ordered-first");
+    const secondMachine = machineName("ordered-second");
+    const first = createTraceObserver<number, string, never>(firstMachine);
+    const second = createTraceObserver<number, string, never>(secondMachine);
+
+    second.onTransitionApplied?.({
+      previous: 0,
+      event: "second",
+      state: 1,
+      commands: [],
+    });
+    first.onTransitionApplied?.({
+      previous: 0,
+      event: "first",
+      state: 1,
+      commands: [],
+    });
+
+    const entries = getTraceLog().filter(
+      (entry) =>
+        entry.machine === firstMachine || entry.machine === secondMachine,
+    );
+    expect(
+      entries.map(({ machine, sequence }) => ({ machine, sequence })),
+    ).toEqual([
+      { machine: secondMachine, sequence: entries[0].sequence },
+      { machine: firstMachine, sequence: entries[1].sequence },
+    ]);
+    expect(entries[1].sequence).toBeGreaterThan(entries[0].sequence);
   });
 
   it("captures ignored reasons and supports compact descriptions and muting", () => {
@@ -87,7 +132,7 @@ describe("machine trace observer", () => {
     ]);
   });
 
-  it("preserves the existing debug description for untagged objects", () => {
+  it("redacts untagged objects instead of retaining them", () => {
     const machine = machineName("untagged");
     const observer = createTraceObserver<object, object, object>(machine);
     const previous = { secret: "before" };
@@ -101,11 +146,28 @@ describe("machine trace observer", () => {
       commands: [command],
     });
     expect(getTraceLog(machine)[0]).toMatchObject({
-      from: previous,
-      event,
-      to: state,
-      commands: [command],
+      from: "[redacted untagged object]",
+      event: "[redacted untagged object]",
+      to: "[redacted untagged object]",
+      commands: ["[redacted untagged object]"],
     });
+  });
+
+  it("keeps aggregate trace retention bounded across entity keys", () => {
+    const machine = machineName("total-cap");
+    for (let key = 0; key < 101; key += 1) {
+      const observer = createTraceObserver<number, number, never>(machine, key);
+      for (let event = 0; event < 100; event += 1) {
+        observer.onTransitionApplied?.({
+          previous: event,
+          event,
+          state: event + 1,
+          commands: [],
+        });
+      }
+    }
+
+    expect(getTraceLog(machine)).toHaveLength(10_000);
   });
 
   it("is safe to import in a main-process environment without window", async () => {
@@ -141,6 +203,19 @@ describe("machine trace observer", () => {
 
     expect(window.__dyadMachines?.index).toContain(machine);
     expect(window.__dyadMachines?.dump(machine)).toEqual([]);
+  });
+
+  it("does not expose machine devtools in production builds", async () => {
+    Reflect.deleteProperty(window, "__dyadMachines");
+    vi.stubEnv("NODE_ENV", "production");
+    vi.resetModules();
+    await import("./trace");
+
+    expect(window.__dyadMachines).toBeUndefined();
+
+    vi.unstubAllEnvs();
+    vi.resetModules();
+    await import("./trace");
   });
 
   it("records and replays full serialized events through every transition", () => {

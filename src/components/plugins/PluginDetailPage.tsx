@@ -100,9 +100,11 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
   const setupInputs = catalogEntry?.inputs ?? [];
   // Show the guided setup until every declared field has a saved value.
   const needsSetup = serverNeedsSetup(s, setupInputs);
-  // A disabled catalog server whose entry hasn't loaded yet might still
-  // need setup, so keep its controls locked until the catalog resolves.
-  const setupPending = !!s.catalogSlug && !catalogQuery.data && !s.enabled;
+  // A disabled catalog server might still need setup while its catalog is
+  // loading, so keep its controls locked until the fetch settles. Once it
+  // settles (even on error) the toggle works again, so a slow or failing
+  // catalog can't strand an already-configured server.
+  const setupPending = !!s.catalogSlug && catalogQuery.isLoading && !s.enabled;
   const setupIncomplete = needsSetup || setupPending;
 
   const onSetToolConsent = async (
@@ -247,9 +249,7 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
 
           {setupPending && (
             <div className="mt-4 text-sm text-muted-foreground">
-              {catalogQuery.isError
-                ? "Couldn't load setup details."
-                : "Loading setup…"}
+              Loading setup…
             </div>
           )}
 

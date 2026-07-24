@@ -96,12 +96,12 @@ export function PluginsList({
             const needsSetup =
               !!s.catalogSlug &&
               serverNeedsSetup(s, inputsBySlug.get(s.catalogSlug) ?? []);
-            // A disabled catalog server whose entry hasn't loaded yet
-            // might still need setup, so lock its controls until the
-            // catalog resolves.
+            // A disabled catalog server might still need setup while its
+            // catalog is loading, so lock its controls until the fetch
+            // settles rather than for as long as data is missing.
             const setupLocked =
               needsSetup ||
-              (!!s.catalogSlug && !catalogQuery.data && !s.enabled);
+              (!!s.catalogSlug && catalogQuery.isLoading && !s.enabled);
             return (
               <PluginSummaryCard
                 key={s.id}

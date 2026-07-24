@@ -88,7 +88,7 @@ export type RecordingSetupProgressPayload = z.infer<
 
 export const RecordingEndedPayloadSchema = z.object({
   appId: z.number(),
-  reason: z.enum(["stopped", "app-stopped", "error"]),
+  reason: z.enum(["stopped", "app-stopped", "error", "timed-out"]),
   message: z.string().optional(),
 });
 export type RecordingEndedPayload = z.infer<typeof RecordingEndedPayloadSchema>;

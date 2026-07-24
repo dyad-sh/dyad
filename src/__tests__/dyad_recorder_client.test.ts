@@ -193,6 +193,22 @@ describe("dyad recorder client", () => {
     ]);
   });
 
+  it("redacts a typed password instead of capturing the plaintext value", () => {
+    const r = setup();
+    r.setHtml(`<input type="password" aria-label="Password" />`);
+    r.activate();
+    const input = r.doc.querySelector("input");
+    r.typeInto(input, "hunter2");
+
+    expect(r.actions).toEqual([
+      {
+        kind: "fill",
+        locator: { kind: "label", value: "Password" },
+        value: "REPLACE_WITH_PASSWORD",
+      },
+    ]);
+  });
+
   it("records Enter and modifier shortcuts as presses", () => {
     const r = setup();
     r.setHtml(`<input placeholder="Search" />`);

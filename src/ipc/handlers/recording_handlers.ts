@@ -29,8 +29,13 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("recording_handlers");
 
-/** Auto-stop a forgotten recording session so its lock can't leak forever. */
-const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
+/**
+ * Absolute cap on a single recording session so its per-app lock can't leak
+ * forever if the renderer forgets to stop. This is a hard session limit, not an
+ * inactivity timer: recorded actions are buffered in the renderer, so the main
+ * process sees no per-action signal to reset against.
+ */
+const MAX_SESSION_MS = 30 * 60 * 1000;
 
 const NO_AUTH: RecordingAuth = { mode: "none" };
 
@@ -125,10 +130,7 @@ export function registerRecordingHandlers() {
       // Safety nets so the long-held lock can never leak if the renderer dies.
       const onDestroyed = () => stop("app-stopped");
       event.sender.once?.("destroyed", onDestroyed);
-      const inactivityTimer = setTimeout(
-        () => stop("stopped"),
-        INACTIVITY_TIMEOUT_MS,
-      );
+      const sessionTimer = setTimeout(() => stop("timed-out"), MAX_SESSION_MS);
 
       // Hold the per-app lock across the whole session (prepare → record →
       // teardown). The handler resolves on `ready` (set once isolation is up);
@@ -188,6 +190,10 @@ export function registerRecordingHandlers() {
 
           // Hold the lock and isolation until the session is stopped.
           endReason = await stopped.promise;
+          if (endReason === "timed-out") {
+            endMessage =
+              "Recording stopped after reaching the 30-minute session limit.";
+          }
         } catch (error) {
           const message =
             error instanceof Error ? error.message : String(error);
@@ -210,7 +216,7 @@ export function registerRecordingHandlers() {
             }
           }
           activeRecordings.delete(appId);
-          clearTimeout(inactivityTimer);
+          clearTimeout(sessionTimer);
           event.sender.removeListener?.("destroyed", onDestroyed);
           if (started) {
             safeSend(event.sender, "recording:ended", {

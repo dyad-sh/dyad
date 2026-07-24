@@ -2296,8 +2296,12 @@ export function registerAppHandlers() {
           })
           .where(eq(apps.name, appName))
           .returning({ id: apps.id });
-        if (result.length === 0) {
-          throw new Error(`No app found for name=${appName}`);
+        // apps.name is not unique — insist on exactly one match so a duplicate
+        // name can't silently mutate the wrong (or multiple) apps.
+        if (result.length !== 1) {
+          throw new Error(
+            `Expected exactly one app named ${appName}, but matched ${result.length}`,
+          );
         }
       },
     );

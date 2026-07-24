@@ -37,7 +37,17 @@ function setup({
 
   const localStorage = makeStorage(preLocal);
   const sessionStorage = makeStorage(
-    pending ? { __dyad_auth_pending__: JSON.stringify(pending) } : {},
+    pending
+      ? {
+          // Markers written by login() carry a `startedAt`; default to a fresh
+          // one so verify tests aren't treated as stale. The stale-marker test
+          // overrides it with an old timestamp.
+          __dyad_auth_pending__: JSON.stringify({
+            startedAt: Date.now(),
+            ...pending,
+          }),
+        }
+      : {},
   );
   const reload = vi.fn();
   let currentPathname = pathname;
@@ -140,13 +150,15 @@ describe("dyad auth bootstrap", () => {
     );
     const stored = h.localStorage.getItem("sb-ref123-auth-token");
     expect(stored).toContain("access_token");
-    expect(
-      JSON.parse(h.sessionStorage.getItem("__dyad_auth_pending__")!),
-    ).toEqual({
+    const marker = JSON.parse(
+      h.sessionStorage.getItem("__dyad_auth_pending__")!,
+    );
+    expect(marker).toMatchObject({
       mode: "supabase-password",
       ref: "ref123",
       homeRedirects: 0,
     });
+    expect(typeof marker.startedAt).toBe("number");
   });
 
   it("signs in via the app's own Better Auth endpoint and lands on the homepage (Neon)", async () => {
@@ -255,10 +267,32 @@ describe("dyad auth bootstrap", () => {
     ).toBe(false);
     expect(
       JSON.parse(h.sessionStorage.getItem("__dyad_auth_pending__")!),
-    ).toEqual({
+    ).toMatchObject({
       mode: "supabase-password",
       ref: "ref123",
       homeRedirects: 1,
     });
+  });
+
+  it("ignores a stale pending marker left by a previous session", () => {
+    const h = setup({
+      pending: {
+        mode: "neon-better-auth",
+        homeRedirects: 0,
+        // Older than PENDING_TTL_MS (15s) — leftover from a prior session.
+        startedAt: Date.now() - 60_000,
+      },
+    });
+
+    // Rather than verifying the (non-existent) session and reporting failure,
+    // the bootstrap drops the marker and announces readiness for a fresh login.
+    expect(h.posts.some((p) => p.type === "dyad-auth-bootstrap-ready")).toBe(
+      true,
+    );
+    expect(
+      h.posts.some((p) => p.type === "dyad-auth-ready" && p.ok === false),
+    ).toBe(false);
+    expect(h.sessionStorage.getItem("__dyad_auth_pending__")).toBeNull();
+    expect(h.fetchMock).not.toHaveBeenCalled();
   });
 });

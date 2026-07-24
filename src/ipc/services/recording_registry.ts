@@ -7,7 +7,11 @@
  * single per-app Neon test-branch slot) without an import cycle.
  */
 
-export type RecordingEndReason = "stopped" | "app-stopped" | "error";
+export type RecordingEndReason =
+  | "stopped"
+  | "app-stopped"
+  | "error"
+  | "timed-out";
 
 export interface ActiveRecording {
   appId: number;

@@ -21,6 +21,15 @@
   const PENDING_KEY = "__dyad_auth_pending__";
   const HOME_SETTLE_DELAY_MS = 500;
   const MAX_HOME_REDIRECTS = 3;
+  // sessionStorage for the preview origin is scoped to the long-lived Dyad
+  // window, so it survives the iframe remount between recordings and is not
+  // touched by the main process's clearStorageData. A marker left behind by a
+  // cancelled / timed-out / crashed session would otherwise make the NEXT
+  // recording verify a non-existent session (cookies were cleared) and report a
+  // false sign-in failure. The legitimate marker is consumed within a second or
+  // two (sign-in → reload → verify → settle), so treat anything older than this
+  // as leftover and ignore it.
+  const PENDING_TTL_MS = 15_000;
 
   function post(ok, error) {
     window.parent.postMessage({ type: "dyad-auth-ready", ok, error }, "*");
@@ -80,6 +89,13 @@
 
   function clearPending() {
     sessionStorage.removeItem(PENDING_KEY);
+  }
+
+  /** A marker older than the TTL is leftover from a previous session. */
+  function isPendingStale(pending) {
+    const startedAt =
+      typeof pending.startedAt === "number" ? pending.startedAt : 0;
+    return Date.now() - startedAt > PENDING_TTL_MS;
   }
 
   function failPending(error) {
@@ -145,7 +161,11 @@
         await neonSignIn(auth);
         sessionStorage.setItem(
           PENDING_KEY,
-          JSON.stringify({ mode: auth.mode, homeRedirects: 0 }),
+          JSON.stringify({
+            mode: auth.mode,
+            homeRedirects: 0,
+            startedAt: Date.now(),
+          }),
         );
         goHome();
         return;
@@ -158,6 +178,7 @@
             mode: auth.mode,
             ref: projectRef(auth.projectUrl),
             homeRedirects: 0,
+            startedAt: Date.now(),
           }),
         );
         goHome();
@@ -222,6 +243,12 @@
       const raw = sessionStorage.getItem(PENDING_KEY);
       if (raw) pending = JSON.parse(raw);
     } catch {
+      pending = null;
+    }
+    if (pending && isPendingStale(pending)) {
+      // Leftover from an earlier session — drop it so it can't hijack this
+      // load's sign-in (or trigger a spurious redirect to "/").
+      clearPending();
       pending = null;
     }
     if (!pending) {

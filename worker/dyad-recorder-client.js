@@ -46,6 +46,12 @@
   // single-click becomes a dblclick well before this).
   const DEDUPE_MS = 50;
 
+  // Never copy a typed password verbatim into the generated spec — it would land
+  // on disk (and likely be committed) as a plaintext secret. Record the `fill`
+  // step so the flow/locator is preserved, but substitute a placeholder the user
+  // replaces with a real value (or an env var) before running the test.
+  const PASSWORD_PLACEHOLDER = "REPLACE_WITH_PASSWORD";
+
   const INTERACTIVE_SELECTOR =
     "button, a, input, select, textarea, summary, " +
     '[role="button"], [role="link"], [role="checkbox"], [role="radio"], ' +
@@ -105,6 +111,11 @@
     if (!el || el.tagName !== "INPUT") return false;
     const type = (el.getAttribute("type") || "text").toLowerCase();
     return type === "checkbox" || type === "radio";
+  }
+
+  function isPasswordField(el) {
+    if (!el || el.tagName !== "INPUT") return false;
+    return (el.getAttribute("type") || "text").toLowerCase() === "password";
   }
 
   function isEditable(el) {
@@ -494,6 +505,15 @@
     if (!t || t.nodeType !== 1) return;
     if (t.tagName === "SELECT") return; // handled by `change`
     if (!isEditable(t)) return;
+    if (isPasswordField(t)) {
+      // Redact at capture time so the plaintext never leaves the iframe.
+      emit({
+        kind: "fill",
+        locator: selectorFor(t),
+        value: PASSWORD_PLACEHOLDER,
+      });
+      return;
+    }
     const value = t.isContentEditable ? t.innerText : t.value;
     emit({
       kind: "fill",

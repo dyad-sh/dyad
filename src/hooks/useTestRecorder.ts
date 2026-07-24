@@ -7,6 +7,7 @@ import { queryKeys } from "@/lib/queryKeys";
 import { showError, showSuccess } from "@/lib/toast";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { previewIframeRefAtom } from "@/atoms/previewAtoms";
+import { currentAppUrlAtom } from "@/atoms/previewRuntimeAtoms";
 import {
   appendRecordedEntryAtom,
   clearRecordedEntriesForAppAtom,
@@ -64,6 +65,7 @@ export function useTestRecorder({
 }) {
   const appId = useAtomValue(selectedAppIdAtom);
   const iframeEl = useAtomValue(previewIframeRefAtom);
+  const appUrl = useAtomValue(currentAppUrlAtom).appUrl;
   const recordingState = useAtomValue(currentRecordingStateAtom);
   const entries = useAtomValue(currentRecordedEntriesAtom);
 
@@ -78,6 +80,7 @@ export function useTestRecorder({
   const stateRef = useRef(recordingState);
   const entriesRef = useRef(entries);
   const appIdRef = useRef(appId);
+  const appUrlRef = useRef(appUrl);
   const authReadyRef = useRef<
     ((data: { ok?: boolean; error?: string }) => void) | null
   >(null);
@@ -99,6 +102,9 @@ export function useTestRecorder({
   useEffect(() => {
     appIdRef.current = appId;
   }, [appId]);
+  useEffect(() => {
+    appUrlRef.current = appUrl;
+  }, [appUrl]);
 
   // Collapse the raw stream into what the spec will actually replay: typing
   // "hello" arrives as five growing fills but becomes one step. Drives both the
@@ -112,8 +118,25 @@ export function useTestRecorder({
     [collapsedActions],
   );
 
-  const postToIframe = useCallback((message: unknown) => {
-    iframeElRef.current?.contentWindow?.postMessage(message, "*");
+  const postToIframe = useCallback((message: unknown, targetOrigin = "*") => {
+    iframeElRef.current?.contentWindow?.postMessage(message, targetOrigin);
+  }, []);
+
+  // Credentials must only be delivered to the running app's own origin. Pinning
+  // the targetOrigin means a preview that has navigated cross-origin (an
+  // external link, an OAuth redirect) can never receive the test user's login.
+  // Falls back to "*" only when the app URL isn't known yet (never during an
+  // active session, since recording requires the dev server to be running).
+  const previewOrigin = useCallback(() => {
+    const url = appUrlRef.current;
+    if (url) {
+      try {
+        return new URL(url).origin;
+      } catch {
+        // fall through to the wildcard
+      }
+    }
+    return "*";
   }, []);
 
   const patchState = useCallback(
@@ -157,10 +180,10 @@ export function useTestRecorder({
           // the credentials. This closes the race where our first send lands in
           // the gap during a dev-server restart and would otherwise be lost.
           if (pendingAuthRef.current) {
-            postToIframe({
-              type: "dyad-auth-login",
-              auth: pendingAuthRef.current,
-            });
+            postToIframe(
+              { type: "dyad-auth-login", auth: pendingAuthRef.current },
+              previewOrigin(),
+            );
           }
           break;
         }
@@ -187,23 +210,25 @@ export function useTestRecorder({
     };
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
-  }, [appendEntry, postToIframe]);
+  }, [appendEntry, postToIframe, previewOrigin]);
 
-  // Reset the UI if a session ends outside our control (app stopped / crash).
+  // Reset the UI if a session ends outside our control (app stopped / crash /
+  // hitting the session cap). A failure reason is surfaced as a toast — the
+  // recording bar unmounts on idle, so a state field alone would go unseen.
   useEffect(() => {
     const unsub = ipc.events.recording.onEnded(
       ({ appId: endedAppId, reason, message }) => {
         if (endedAppId == null) return;
-        patchState(endedAppId, (prev) => {
-          if (prev.phase === "idle") return prev;
-          return {
-            phase: "idle",
-            error:
-              reason === "error"
-                ? (message ?? "The recording session ended unexpectedly.")
-                : undefined,
-          };
-        });
+        const failureMessage =
+          reason === "error" || reason === "timed-out"
+            ? (message ?? "The recording session ended unexpectedly.")
+            : undefined;
+        patchState(endedAppId, (prev) =>
+          prev.phase === "idle"
+            ? prev
+            : { phase: "idle", error: failureMessage },
+        );
+        if (failureMessage) showError(failureMessage);
       },
     );
     return unsub;
@@ -256,9 +281,9 @@ export function useTestRecorder({
         authReadyRef.current = (result) =>
           finish(Boolean(result.ok), result.error);
         reloadPreview();
-        postToIframe({ type: "dyad-auth-login", auth });
+        postToIframe({ type: "dyad-auth-login", auth }, previewOrigin());
       }),
-    [postToIframe, reloadPreview],
+    [postToIframe, previewOrigin, reloadPreview],
   );
 
   const startRecording = useCallback(async () => {
@@ -335,27 +360,32 @@ export function useTestRecorder({
     }));
   }, [appId, authenticate, clearEntries, patchState, postToIframe]);
 
+  const appFileExists = useCallback(
+    async (targetAppId: number, filePath: string) => {
+      try {
+        await ipc.app.readAppFile({ appId: targetAppId, filePath });
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [],
+  );
+
   const ensureFixture = useCallback(
     async (
       targetAppId: number,
       mode: "neon-better-auth" | "supabase-password",
     ) => {
-      try {
-        await ipc.app.readAppFile({
-          appId: targetAppId,
-          filePath: FIXTURE_PATH,
-        });
-        return; // already exists — never overwrite the user's edits
-      } catch {
-        // Not found — generate it.
-      }
+      // Already exists — never overwrite the user's edits.
+      if (await appFileExists(targetAppId, FIXTURE_PATH)) return;
       await ipc.app.editAppFile({
         appId: targetAppId,
         filePath: FIXTURE_PATH,
         content: generateTestUserFixtureSource(mode),
       });
     },
-    [],
+    [appFileExists],
   );
 
   const stopAndSave = useCallback(
@@ -376,7 +406,15 @@ export function useTestRecorder({
       });
       // The runner only discovers specs under `E2E_TEST_DIR`; `slugify` already
       // reduces the name to `[a-z0-9-]`, so the path can't traverse out of it.
-      const specPath = `${E2E_TEST_DIR}/recorded-${slugify(name)}.spec.ts`;
+      // Don't clobber an existing recorded spec (a re-recording, or a different
+      // flow that slugifies to the same name, or repeated blank-name saves that
+      // all default to "recorded test") — disambiguate with a numeric suffix,
+      // mirroring ensureFixture's non-destructive behavior.
+      const baseSlug = slugify(name);
+      let specPath = `${E2E_TEST_DIR}/recorded-${baseSlug}.spec.ts`;
+      for (let n = 2; await appFileExists(targetAppId, specPath); n++) {
+        specPath = `${E2E_TEST_DIR}/recorded-${baseSlug}-${n}.spec.ts`;
+      }
 
       let saved = false;
       try {
@@ -414,7 +452,15 @@ export function useTestRecorder({
       patchState(targetAppId, { phase: "idle" });
       return null;
     },
-    [appId, clearEntries, ensureFixture, patchState, postToIframe, queryClient],
+    [
+      appId,
+      appFileExists,
+      clearEntries,
+      ensureFixture,
+      patchState,
+      postToIframe,
+      queryClient,
+    ],
   );
 
   const dismissSaved = useCallback(() => {

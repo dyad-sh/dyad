@@ -46,7 +46,9 @@ function QueuedMessageItemRow({
   onMoveUp,
   onMoveDown,
 }: QueuedMessageItemRowProps) {
-  const isMachineFollowUp = Boolean(message.userInputRequestId);
+  const isMachineFollowUp = Boolean(
+    message.owner || message.userInputRequestId,
+  );
 
   return (
     <li className="flex items-center gap-2 text-sm py-1.5 px-2 bg-muted/50 rounded group">
@@ -94,16 +96,14 @@ function QueuedMessageItemRow({
         >
           <ArrowDown size={14} className="text-muted-foreground" />
         </button>
-        {!isMachineFollowUp && (
-          <button
-            type="button"
-            onClick={onDelete}
-            className="p-1 hover:bg-muted rounded cursor-pointer"
-            title="Delete"
-          >
-            <Trash2 size={14} className="text-red-500" />
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={onDelete}
+          className="p-1 hover:bg-muted rounded cursor-pointer"
+          title={isMachineFollowUp ? "Reject and delete" : "Delete"}
+        >
+          <Trash2 size={14} className="text-red-500" />
+        </button>
       </div>
     </li>
   );

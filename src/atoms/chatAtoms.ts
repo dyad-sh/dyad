@@ -615,9 +615,12 @@ export interface QueuedMessageItem {
   redo?: boolean;
   appId?: number;
   requestedChatMode?: Chat["chatMode"] | null;
+  owner?: import("@/state_machines/handoff_types").UserInputFollowUpQueueOwner;
+  /** Legacy persisted marker; never written by current queue code. */
   userInputRequestId?: string;
   onAccepted?: () => void;
   onAcceptanceError?: (error: Error) => void;
+  onAcceptanceRejected?: (reason: string) => void;
 }
 
 // Map<chatId, QueuedMessageItem[]>

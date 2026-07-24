@@ -186,10 +186,20 @@ export function createChatStreamController(
           // Failures inside the stream (invoke rejection, IPC errors) come
           // back as stream-errored events from the client; this catches
           // setup failures (e.g. attachment conversion).
+          const normalizedError =
+            error instanceof Error ? error : new Error(String(error));
+          try {
+            command.request.onAcceptanceError?.(normalizedError);
+          } catch (callbackError) {
+            console.error(
+              `[chat-stream] Failed to report acceptance error for chat ${chatId}:`,
+              callbackError,
+            );
+          }
           send({
             type: "stream-errored",
             invocationRef: command.invocationRef,
-            error: error instanceof Error ? error.message : String(error),
+            error: normalizedError.message,
           });
         } finally {
           // Disposal may have released the transport before startStream

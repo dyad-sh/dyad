@@ -32,7 +32,8 @@ type SettledListener = (payload: {
     | "timed-out"
     | "swept"
     | "superseded"
-    | "dispatched";
+    | "acknowledged"
+    | "rejected";
 }) => void;
 type FollowUpDueListener = (payload: {
   requestId: string;
@@ -121,13 +122,24 @@ function createFakeIpc() {
       Promise.resolve([]),
   );
   const respond = vi.fn((): Promise<void> => Promise.resolve());
+  const acceptFollowUp = vi.fn((): Promise<void> => Promise.resolve());
+  const beginFollowUpExecution = vi.fn((): Promise<void> => Promise.resolve());
+  const retryFollowUp = vi.fn((): Promise<void> => Promise.resolve());
+  const rejectFollowUp = vi.fn((): Promise<void> => Promise.resolve());
 
   const subscribe = <T>(listeners: Set<T>, listener: T) => {
     listeners.add(listener);
     return () => listeners.delete(listener);
   };
   const ipcClient = {
-    userInput: { getPending, respond },
+    userInput: {
+      getPending,
+      respond,
+      acceptFollowUp,
+      beginFollowUpExecution,
+      retryFollowUp,
+      rejectFollowUp,
+    },
     events: {
       userInput: {
         onRequested: (listener: RequestedListener) =>
@@ -770,6 +782,46 @@ describe("user-input renderer projection", () => {
       requestId: "integration-3",
       response: { kind: "follow-up-dispatched" },
     });
+    stop();
+  });
+
+  it("replays one accepted handoff after renderer reload while dedup is pending", async () => {
+    const store = createStore();
+    const fake = createFakeIpc();
+    const descriptor = integrationDescriptor("integration-accepted");
+    fake.getPending.mockResolvedValueOnce([
+      {
+        status: "accepted",
+        descriptor,
+        deadlineAt: descriptor.deadlineAt,
+        followUpPrompt: descriptor.followUpPrompt,
+      },
+    ]);
+    let acknowledge!: () => void;
+    const submit = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          acknowledge = resolve;
+        }),
+    );
+    const adapter = getUserInputProjectionAdapter({
+      store,
+      ipcClient: fake.ipcClient,
+      chatStream: { submit },
+    });
+    const stop = adapter.start();
+
+    await vi.waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+    window.dispatchEvent(new Event("focus"));
+    expect(submit).toHaveBeenCalledTimes(1);
+
+    acknowledge();
+    await vi.waitFor(() =>
+      expect(fake.respond).toHaveBeenCalledWith({
+        requestId: "integration-accepted",
+        response: { kind: "follow-up-dispatched" },
+      }),
+    );
     stop();
   });
 });

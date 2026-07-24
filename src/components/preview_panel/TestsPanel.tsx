@@ -956,7 +956,10 @@ export function TestsPanel() {
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
 
   const confirmDelete = useCallback(async () => {
-    if (selectedAppId == null || pendingDelete == null) return;
+    // No deletes while a run is in flight — the backend serializes on the same
+    // per-app lock, but re-check here so a run that started after the dialog
+    // opened can't slip a delete through the confirmation window.
+    if (selectedAppId == null || pendingDelete == null || isRunning) return;
     const appId = selectedAppId;
     const file = pendingDelete;
     try {
@@ -978,7 +981,13 @@ export function TestsPanel() {
         return { ...prev, results };
       },
     });
-  }, [deleteTestAsync, pendingDelete, selectedAppId, setRunState]);
+  }, [deleteTestAsync, isRunning, pendingDelete, selectedAppId, setRunState]);
+
+  // If a run starts while the delete confirmation is open, close it — deleting
+  // a spec out from under an in-flight run isn't allowed.
+  useEffect(() => {
+    if (isRunning) setPendingDelete(null);
+  }, [isRunning]);
   const toggleOutput = useCallback(() => {
     setOutputOpen((v) => !v);
   }, []);
@@ -1431,8 +1440,8 @@ function DeleteTestFileDialog({
                   testCount === 1 ? "test" : "tests"
                 } in it. `
               : "This deletes the test file. "}
-            The deletion is staged in git, so you can still restore it from your
-            uncommitted changes.
+            If it's tracked in git, the deletion is staged so you can restore it
+            from your uncommitted changes.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

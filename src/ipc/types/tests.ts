@@ -198,6 +198,12 @@ export const DeleteAppTestParamsSchema = z.object({
 export const DeleteAppTestResultSchema = z.object({
   /** The normalized spec path that was deleted. */
   file: z.string(),
+  /**
+   * Whether the deletion was staged in git. False when the file was untracked
+   * (or git staging otherwise failed), meaning it is not recoverable from the
+   * uncommitted-changes flow.
+   */
+  staged: z.boolean(),
 });
 
 // =============================================================================

@@ -85,12 +85,12 @@ describe("tests:delete", () => {
     const appId = seedApp("app");
     const specPath = writeSpec("app", "e2e-tests/signup.spec.ts");
 
-    const result = await harness.invokeHandler<{ file: string }>(
-      "tests:delete",
-      { appId, testFile: "e2e-tests/signup.spec.ts" },
-    );
+    const result = await harness.invokeHandler<{
+      file: string;
+      staged: boolean;
+    }>("tests:delete", { appId, testFile: "e2e-tests/signup.spec.ts" });
 
-    expect(result).toEqual({ file: "e2e-tests/signup.spec.ts" });
+    expect(result).toEqual({ file: "e2e-tests/signup.spec.ts", staged: true });
     expect(fs.existsSync(specPath)).toBe(false);
     expect(gitRemoveMock).toHaveBeenCalledWith({
       path: path.join(TEMP_BASE, "app"),
@@ -107,12 +107,20 @@ describe("tests:delete", () => {
     const specPath = writeSpec("app", "e2e-tests/nested/checkout.spec.ts");
     gitRemoveMock.mockRejectedValueOnce(new Error("not tracked"));
 
-    const result = await harness.invokeHandler<{ file: string }>(
-      "tests:delete",
-      { appId, testFile: "e2e-tests/nested/checkout.spec.ts" },
-    );
+    const result = await harness.invokeHandler<{
+      file: string;
+      staged: boolean;
+    }>("tests:delete", {
+      appId,
+      testFile: "e2e-tests/nested/checkout.spec.ts",
+    });
 
-    expect(result).toEqual({ file: "e2e-tests/nested/checkout.spec.ts" });
+    // gitRemove failed, so the deletion isn't staged — the UI relies on this to
+    // avoid promising a recovery path that doesn't exist for untracked files.
+    expect(result).toEqual({
+      file: "e2e-tests/nested/checkout.spec.ts",
+      staged: false,
+    });
     expect(fs.existsSync(specPath)).toBe(false);
   });
 

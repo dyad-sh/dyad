@@ -845,9 +845,13 @@ export function registerTestsHandlers() {
       // Stage the deletion without committing, so the user reviews it through
       // the normal uncommitted-changes flow. Best-effort: the file is already
       // gone from disk, so a git failure (untracked file, non-repo app, lock
-      // contention) must not report the delete itself as failed.
+      // contention) must not report the delete itself as failed. We surface
+      // whether staging succeeded so the UI doesn't promise a recovery path
+      // that doesn't exist for untracked files.
+      let staged = false;
       try {
         await gitRemove({ path: appPath, filepath: testFile });
+        staged = true;
       } catch (error) {
         logger.warn(
           `Deleted ${testFile} but couldn't git-remove it (likely untracked): ${error}`,
@@ -857,7 +861,7 @@ export function registerTestsHandlers() {
         appId: params.appId,
         deletedPaths: [testFile],
       });
-      return { file: testFile };
+      return { file: testFile, staged };
     });
   });
 

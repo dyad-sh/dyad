@@ -173,7 +173,6 @@ export function createIpcRunCommandExecutor(
             Promise.resolve(
               ipc.app.stopApp({
                 appId: command.appId,
-                invocationRef: command.invocationRef,
               }),
             ).then(
               () =>

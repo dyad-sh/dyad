@@ -127,10 +127,14 @@ export class AppRunController {
     // background app. If this controller still owns a live producer, keep its
     // identity: main may return a cached URL without spawning a new process,
     // whose callbacks remain permanently bound to this ref.
-    const invocationRef =
+    const reusableRef =
       input.type === "START" &&
       (current.type === "ready" || current.type === "reloading")
         ? current.invocationRef
+        : undefined;
+    const invocationRef =
+      reusableRef && !this.waiters.has(invocationRegistryKey(reusableRef))
+        ? reusableRef
         : this.mintRef();
     this.activeRef = invocationRef;
     this.options.onInvocationStarted?.(invocationRef);

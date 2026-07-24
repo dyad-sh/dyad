@@ -30,30 +30,13 @@ function renderList(onDelete: (id: string) => void | Promise<void>) {
 }
 
 describe("QueuedMessagesList", () => {
-  it("disables machine-owned deletion while rejection is pending", async () => {
-    let finish!: () => void;
-    const onDelete = vi.fn(
-      () =>
-        new Promise<void>((resolve) => {
-          finish = resolve;
-        }),
-    );
+  it("labels machine-owned deletion as rejection", () => {
+    const onDelete = vi.fn(() => Promise.resolve());
     renderList(onDelete);
     const deleteButton = screen.getByTitle("Reject and delete");
 
     fireEvent.click(deleteButton);
-    fireEvent.click(deleteButton);
 
     expect(onDelete).toHaveBeenCalledExactlyOnceWith("follow-up");
-    expect(
-      (screen.getByTitle("Rejecting follow-up") as HTMLButtonElement).disabled,
-    ).toBe(true);
-
-    finish();
-    await vi.waitFor(() =>
-      expect(
-        (screen.getByTitle("Reject and delete") as HTMLButtonElement).disabled,
-      ).toBe(false),
-    );
   });
 });

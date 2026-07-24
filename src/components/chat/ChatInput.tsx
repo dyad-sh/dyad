@@ -518,7 +518,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       if (editingQueuedMessageId === id) {
         resetEditingState();
       }
-      removeQueuedMessage(id);
+      return removeQueuedMessage(id);
     },
     [editingQueuedMessageId, removeQueuedMessage, resetEditingState],
   );

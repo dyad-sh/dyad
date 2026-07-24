@@ -83,7 +83,7 @@ function actionToCode(action: RecordedAction): string {
  * Generate a complete Playwright spec from a collapsed action list. The spec
  * navigates to `/` (the base URL is configured by Dyad's Playwright bootstrap)
  * and replays each action. When `includeSignIn` is set it first establishes an
- * authenticated session through the generated `tests/fixtures/test-user.ts`
+ * authenticated session through the generated `e2e-tests/fixtures/test-user.ts`
  * helper. Assertions are added later by the optional AI pass.
  */
 export function generateSpecSource(

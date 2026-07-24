@@ -20,10 +20,10 @@ import { generateSpecSource } from "@/lib/test_recorder/codegen";
 import { generateTestUserFixtureSource } from "@/lib/test_recorder/fixture_templates";
 import { parseRecorderAction } from "@/lib/test_recorder/types";
 import type { RecordingAuth } from "@/ipc/types";
-import { normalizeTestPath } from "@/ipc/utils/normalize_test_path";
+import { E2E_TEST_DIR } from "@/ipc/types/tests";
 
 const AUTH_READY_TIMEOUT_MS = 30_000;
-const FIXTURE_PATH = "tests/fixtures/test-user.ts";
+const FIXTURE_PATH = `${E2E_TEST_DIR}/fixtures/test-user.ts`;
 
 function slugify(name: string): string {
   const slug = name
@@ -47,7 +47,7 @@ function toAppPath(raw: unknown): string | null {
 /**
  * Drives a preview recording session: starts isolation + auto sign-in, arms the
  * injected recorder, buffers observed actions, and on save generates a
- * Playwright spec (plus the shared `signIn` fixture) into the app's `tests/`.
+ * Playwright spec (plus the shared `signIn` fixture) into the app's `e2e-tests/`.
  *
  * Incoming iframe messages (recorder actions, auth readiness, SPA navigations)
  * are handled here so the Record UI stays thin. Meant to be mounted once inside
@@ -359,7 +359,9 @@ export function useTestRecorder({
         testName: name,
         includeSignIn,
       });
-      const specPath = normalizeTestPath(`recorded-${slugify(name)}`);
+      // The runner only discovers specs under `E2E_TEST_DIR`; `slugify` already
+      // reduces the name to `[a-z0-9-]`, so the path can't traverse out of it.
+      const specPath = `${E2E_TEST_DIR}/recorded-${slugify(name)}.spec.ts`;
 
       let saved = false;
       try {

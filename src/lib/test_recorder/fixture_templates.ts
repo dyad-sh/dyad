@@ -1,5 +1,5 @@
 /**
- * Templates for the generated `tests/fixtures/test-user.ts` sign-in helper.
+ * Templates for the generated `e2e-tests/fixtures/test-user.ts` sign-in helper.
  *
  * Recorded (and AI-written) auth-gated specs call `await signIn(page)` instead
  * of driving the login UI or hand-rolling credentials. The helper is generated
@@ -87,7 +87,7 @@ const SUPABASE_PASSWORD_FIXTURE: string[] = [
   ``,
 ];
 
-/** Generate the `tests/fixtures/test-user.ts` source for the given auth mode. */
+/** Generate the `e2e-tests/fixtures/test-user.ts` source for the given auth mode. */
 export function generateTestUserFixtureSource(
   mode: Exclude<RecorderAuthMode, "none">,
 ): string {

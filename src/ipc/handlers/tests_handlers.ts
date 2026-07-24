@@ -46,6 +46,7 @@ import {
 } from "../utils/playwright_report";
 import { parseTestCases } from "../utils/parse_test_cases";
 import { getPackageManagerCommandEnv } from "../utils/socket_firewall";
+import { queueCloudSandboxSnapshotSync } from "../utils/cloud_sandbox_provider";
 import { sendTelemetryEvent } from "../utils/telemetry";
 import {
   prepareIsolatedTestDatabase,
@@ -804,6 +805,61 @@ export function registerTestsHandlers() {
       return runAppTestsWithIsolation({ event, source: "panel", ...params });
     },
   );
+
+  createTypedHandler(testsContracts.deleteAppTest, async (_event, params) => {
+    const app = await getApp(params.appId);
+    const appPath = getDyadAppPath(app.path);
+    // Only ever delete something that looks like one of the spec paths
+    // `listAppTests` produces — the same guard the runner uses, so a
+    // compromised renderer can't turn this into an arbitrary file delete.
+    const testFile = normalizeRunTestFile(params.testFile);
+    if (!testFile) {
+      throw new DyadError(
+        `Invalid test file: ${params.testFile}`,
+        DyadErrorKind.Validation,
+      );
+    }
+
+    // Same per-app lock the runs take, so a delete can't remove a spec out
+    // from under an in-flight run (or interleave with its env swap).
+    return await withLock(params.appId, async () => {
+      // Canonical check on top of the pattern match: a symlinked `e2e-tests/`
+      // (or a symlinked spec) must not let the delete escape the app folder.
+      await assertMutationPathAllowed({
+        appPath,
+        relativePath: testFile,
+        followFinalSymlink: false,
+      });
+      const fullPath = safeJoin(appPath, testFile);
+      try {
+        await fs.promises.unlink(fullPath);
+      } catch (error: any) {
+        if (error?.code === "ENOENT") {
+          throw new DyadError(
+            `Test file not found: ${testFile}`,
+            DyadErrorKind.NotFound,
+          );
+        }
+        throw error;
+      }
+      // Stage the deletion without committing, so the user reviews it through
+      // the normal uncommitted-changes flow. Best-effort: the file is already
+      // gone from disk, so a git failure (untracked file, non-repo app, lock
+      // contention) must not report the delete itself as failed.
+      try {
+        await gitRemove({ path: appPath, filepath: testFile });
+      } catch (error) {
+        logger.warn(
+          `Deleted ${testFile} but couldn't git-remove it (likely untracked): ${error}`,
+        );
+      }
+      queueCloudSandboxSnapshotSync({
+        appId: params.appId,
+        deletedPaths: [testFile],
+      });
+      return { file: testFile };
+    });
+  });
 
   createTypedHandler(
     testsContracts.detectLegacyTests,

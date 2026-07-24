@@ -189,6 +189,17 @@ export const GetTestScreenshotResultSchema = z.object({
   dataUrl: z.string().nullable(),
 });
 
+export const DeleteAppTestParamsSchema = z.object({
+  appId: z.number(),
+  /** Spec path relative to the app root, e.g. "e2e-tests/signup.spec.ts". */
+  testFile: z.string(),
+});
+
+export const DeleteAppTestResultSchema = z.object({
+  /** The normalized spec path that was deleted. */
+  file: z.string(),
+});
+
 // =============================================================================
 // Legacy test migration (`tests/` -> `e2e-tests/`)
 // =============================================================================
@@ -276,6 +287,12 @@ export const testsContracts = {
     channel: "tests:screenshot",
     input: GetTestScreenshotParamsSchema,
     output: GetTestScreenshotResultSchema,
+  }),
+
+  deleteAppTest: defineContract({
+    channel: "tests:delete",
+    input: DeleteAppTestParamsSchema,
+    output: DeleteAppTestResultSchema,
   }),
 
   detectLegacyTests: defineContract({

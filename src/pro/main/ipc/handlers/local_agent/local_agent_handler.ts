@@ -485,6 +485,7 @@ export async function handleLocalAgentStream(
     sendResponseChunk(
       event,
       req.chatId,
+      req.invocationRef,
       req.streamId,
       chat,
       response,
@@ -499,6 +500,7 @@ export async function handleLocalAgentStream(
   const sendPreview = (content: string) => {
     safeSend(event.sender, "chat:response:chunk", {
       chatId: req.chatId,
+      invocationRef: req.invocationRef,
       streamId: req.streamId,
       streamingPreview: { content },
     });
@@ -553,6 +555,7 @@ export async function handleLocalAgentStream(
         : "Agent v2 requires Dyad Pro. Please enable Dyad Pro in Settings → Pro.";
     safeSend(event.sender, "chat:response:error", {
       chatId: req.chatId,
+      invocationRef: req.invocationRef,
       streamId: req.streamId,
       error: errorMessage,
     });
@@ -1865,6 +1868,7 @@ export async function handleLocalAgentStream(
     // Send completion
     safeSend(event.sender, "chat:response:end", {
       chatId: req.chatId,
+      invocationRef: req.invocationRef,
       streamId: req.streamId,
       updatedFiles:
         !readOnly &&
@@ -1904,6 +1908,7 @@ export async function handleLocalAgentStream(
     logger.error("Local agent error:", error);
     safeSend(event.sender, "chat:response:error", {
       chatId: req.chatId,
+      invocationRef: req.invocationRef,
       streamId: req.streamId,
       error: `Error: ${getErrorMessageWithDetails(error)}`,
       warningMessages:
@@ -2116,6 +2121,7 @@ async function updateResponseInDb(messageId: number, content: string) {
 function sendResponseChunk(
   event: IpcMainInvokeEvent,
   chatId: number,
+  invocationRef: ChatStreamParams["invocationRef"],
   streamId: number | undefined,
   chat: any,
   fullResponse: string,
@@ -2138,6 +2144,7 @@ function sendResponseChunk(
     }
     safeSend(event.sender, "chat:response:chunk", {
       chatId,
+      invocationRef,
       streamId,
       messages: currentMessages,
     });
@@ -2160,6 +2167,7 @@ function sendResponseChunk(
       sendResponseChunk(
         event,
         chatId,
+        invocationRef,
         streamId,
         chat,
         fullResponse,
@@ -2173,6 +2181,7 @@ function sendResponseChunk(
     lastSentRef.value = fullResponse;
     safeSend(event.sender, "chat:response:chunk", {
       chatId,
+      invocationRef,
       streamId,
       streamingMessageId: placeholderMessageId,
       streamingPatch: patch,

@@ -355,7 +355,6 @@ function routeCommand(
             // by main_model.test.ts with distinct invocation IDs.
             invocationId: refIndex(value.invocationRef),
             invocationRef: value.invocationRef,
-            streamId: refIndex(value.invocationRef),
             chatId: value.request.chatId,
             appId: value.request.appId ?? 9,
           }),

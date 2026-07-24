@@ -1,8 +1,10 @@
 import { z } from "zod";
 import {
   isInvocationRef,
-  sameInvocationRef,
+  invocationRegistryKey,
+  InvocationRegistry,
   type InvocationRef,
+  type InvocationClaim,
 } from "../../state_machines/invocation_ref";
 import { DyadError, DyadErrorKind, isDyadError } from "../../errors/dyad_error";
 
@@ -471,15 +473,16 @@ export function createStreamClient<
       onEnd: (data: z.infer<TEnd>) => void;
       onError: (data: z.infer<TError>) => void;
     };
-    /** Correlation identity echoed by producers that support InvocationRef. */
-    invocationRef?: InvocationRef;
-    /** Legacy numeric correlation identity used by older stream contracts. */
-    streamId?: number;
     /** When true (default), the entry is removed on end/error events. */
     autoRelease: boolean;
   }
 
-  const streams = new Map<KeyValue, StreamEntry>();
+  const registryKind = `ipc-stream:${contract.channel}`;
+  const streams = new InvocationRegistry<StreamEntry>();
+  const legacyStructuralSafety = {
+    structuralSafety:
+      "App-update compatibility: an older producer cannot echo InvocationRef, so an identity-less event intentionally claims the current key.",
+  } as const;
 
   // Legacy monotonic generation counter for callers that do not supply an
   // InvocationRef. Contracts that echo either identity reject stale events.
@@ -499,10 +502,9 @@ export function createStreamClient<
       if (parsed.success) {
         const payload = parsed.data as Record<string, unknown>;
         const key = payload[contract.keyField] as KeyValue;
-        const entry = streams.get(key);
-        if (!entry) return;
-        if (!matchesStreamEntry(entry, payload)) return;
-        entry.callbacks.onChunk(parsed.data);
+        const claim = claimPayload(key, payload);
+        if (claim.kind !== "claimed") return;
+        claim.value.callbacks.onChunk(parsed.data);
       }
     });
 
@@ -511,14 +513,13 @@ export function createStreamClient<
       if (parsed.success) {
         const payload = parsed.data as Record<string, unknown>;
         const key = payload[contract.keyField] as KeyValue;
-        const entry = streams.get(key);
-        if (!entry) return;
-        if (!matchesStreamEntry(entry, payload)) return;
-        entry.callbacks.onEnd(parsed.data);
+        const claim = claimPayload(key, payload);
+        if (claim.kind !== "claimed") return;
+        claim.value.callbacks.onEnd(parsed.data);
         // The terminal callback may synchronously start another stream with
         // the same key. Only clean up the generation that actually ended.
-        if (entry.autoRelease && streams.get(key) === entry) {
-          streams.delete(key);
+        if (claim.value.autoRelease) {
+          streams.delete(claim.ref);
         }
       }
     });
@@ -528,13 +529,12 @@ export function createStreamClient<
       if (parsed.success) {
         const payload = parsed.data as Record<string, unknown>;
         const key = payload[contract.keyField] as KeyValue;
-        const entry = streams.get(key);
-        if (!entry) return;
-        if (!matchesStreamEntry(entry, payload)) return;
-        entry.callbacks.onError(parsed.data);
+        const claim = claimPayload(key, payload);
+        if (claim.kind !== "claimed") return;
+        claim.value.callbacks.onError(parsed.data);
         // The error callback may synchronously replace this stream.
-        if (entry.autoRelease && streams.get(key) === entry) {
-          streams.delete(key);
+        if (claim.value.autoRelease) {
+          streams.delete(claim.ref);
         }
       }
     });
@@ -542,24 +542,37 @@ export function createStreamClient<
     listenersSetUp = true;
   };
 
-  function matchesStreamEntry(
-    entry: StreamEntry,
+  function registryRef(
+    key: KeyValue,
+    correlation: number | InvocationRef,
+  ): InvocationRef<string, KeyValue> {
+    const operationId =
+      typeof correlation === "number"
+        ? `legacy-number:${correlation}`
+        : `invocation:${invocationRegistryKey(correlation)}`;
+    return { kind: registryKind, entityKey: key, operationId };
+  }
+
+  function claimPayload(
+    key: KeyValue,
     payload: Record<string, unknown>,
-  ): boolean {
+  ): InvocationClaim<StreamEntry> {
     if (payload.invocationRef !== undefined) {
-      return (
-        isInvocationRef(payload.invocationRef) &&
-        entry.invocationRef !== undefined &&
-        sameInvocationRef(entry.invocationRef, payload.invocationRef)
-      );
+      return isInvocationRef(payload.invocationRef)
+        ? streams.claim(registryRef(key, payload.invocationRef))
+        : { kind: "unsolicited" };
     }
     if (typeof payload.streamId === "number") {
-      return (
-        entry.streamId !== undefined && payload.streamId === entry.streamId
-      );
+      return streams.claim(registryRef(key, payload.streamId));
     }
-    // Backward compatibility for producers that cannot echo either identity.
-    return true;
+    return streams.claimStructurally(registryKind, key, legacyStructuralSafety);
+  }
+
+  function claimCurrentStructurally(
+    key: KeyValue,
+    structuralSafety: string,
+  ): InvocationClaim<StreamEntry> {
+    return streams.claimStructurally(registryKind, key, { structuralSafety });
   }
 
   return {
@@ -611,22 +624,23 @@ export function createStreamClient<
       ] as KeyValue;
       const entry: StreamEntry = {
         callbacks,
-        invocationRef,
-        streamId,
         autoRelease: opts?.autoRelease !== false,
       };
-      streams.set(key, entry);
+      const ref = registryRef(key, invocationRef ?? streamId!);
+      streams.register(ref, entry);
 
       ipcRenderer.invoke(contract.channel, input).catch((err: Error) => {
         // Only surface the failure if this start() call still owns the entry.
-        if (streams.get(key) !== entry) return;
+        const claim = streams.claim(ref);
+        if (claim.kind !== "claimed" || claim.value !== entry) return;
         callbacks.onError({
           [contract.keyField]: key,
           error: err.message,
         } as any);
         // The error callback may synchronously replace this stream.
-        if (streams.get(key) === entry) {
-          streams.delete(key);
+        const current = streams.claim(ref);
+        if (current.kind === "claimed" && current.value === entry) {
+          streams.delete(ref);
         }
       });
       return invocationRef ?? streamId!;
@@ -636,7 +650,13 @@ export function createStreamClient<
      * Cancel a stream by its key value.
      */
     cancel(key: KeyValue): void {
-      streams.delete(key);
+      const claim = claimCurrentStructurally(
+        key,
+        "Domain cancellation targets whichever operation currently owns this stream key.",
+      );
+      if (claim.kind === "claimed") {
+        streams.delete(claim.ref);
+      }
     },
 
     /**
@@ -647,26 +667,35 @@ export function createStreamClient<
       key: KeyValue,
       correlation?: number | { invocationRef: InvocationRef },
     ): void {
-      const entry = streams.get(key);
-      if (!entry) return;
-      if (typeof correlation === "number" && entry.streamId !== correlation) {
-        return;
+      const claim =
+        correlation === undefined
+          ? claimCurrentStructurally(
+              key,
+              "Legacy release without correlation targets the current entry for this key.",
+            )
+          : streams.claim(
+              registryRef(
+                key,
+                typeof correlation === "number"
+                  ? correlation
+                  : correlation.invocationRef,
+              ),
+            );
+      if (claim.kind === "claimed") {
+        streams.delete(claim.ref);
       }
-      if (
-        typeof correlation === "object" &&
-        (entry.invocationRef === undefined ||
-          !sameInvocationRef(entry.invocationRef, correlation.invocationRef))
-      ) {
-        return;
-      }
-      streams.delete(key);
     },
 
     /**
      * Check if a stream is active for a given key.
      */
     isActive(key: KeyValue): boolean {
-      return streams.has(key);
+      return (
+        claimCurrentStructurally(
+          key,
+          "Presence checks observe current ownership but do not consume or mutate it.",
+        ).kind === "claimed"
+      );
     },
   };
 }

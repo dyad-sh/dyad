@@ -13,6 +13,7 @@ import {
 } from "./protocol";
 import { ignore, type TransitionResult } from "@/state_machines/types";
 import type { ChatStreamInvocationRef } from "./state";
+import { sameInvocationRef } from "@/state_machines/invocation_ref";
 
 /**
  * Pure executable model of the imperative main-process chat stream engine.
@@ -67,8 +68,8 @@ export interface MainStream {
   invocationId: number;
   /** Renderer-minted correlation identity echoed on every wire emission. */
   invocationRef: ChatStreamInvocationRef;
-  /** Renderer generation, unique only within a chat. */
-  streamId: number;
+  /** Legacy renderer generation, absent on InvocationRef-native requests. */
+  streamId?: number;
   chatId: number;
   appId: number;
   phase: MainStreamPhase;
@@ -107,7 +108,7 @@ export type MainModelEvent =
       type: "request-received";
       invocationId: number;
       invocationRef?: ChatStreamInvocationRef;
-      streamId: number;
+      streamId?: number;
       chatId: number;
       appId: number;
     }
@@ -805,7 +806,11 @@ export function assertMainModelTransitionInvariants(
       const stream = Object.values(result.state.streams).find(
         (candidate) =>
           candidate.chatId === emission.payload.chatId &&
-          candidate.streamId === emission.payload.streamId,
+          emission.payload.invocationRef !== undefined &&
+          sameInvocationRef(
+            candidate.invocationRef,
+            emission.payload.invocationRef,
+          ),
       );
       if (!stream || coveringBarrierCount(previous, stream) > 0) {
         throw new Error(

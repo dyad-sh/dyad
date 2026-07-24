@@ -1233,6 +1233,7 @@ ${componentSnippet}
         fullResponse = await streamTestResponse(
           event,
           req.chatId,
+          req.invocationRef,
           req.streamId,
           testResponse,
           abortController,

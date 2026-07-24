@@ -1,6 +1,7 @@
 import { safeSend } from "../utils/safe_sender";
 import { cleanFullResponse } from "../utils/cleanFullResponse";
 import { computeStreamingPatch } from "../utils/stream_text_utils";
+import type { ChatStreamInvocationRef } from "@/chat_stream/state";
 
 /**
  * Maximum number of unacked chunks the canned test stream is allowed to
@@ -205,6 +206,7 @@ const CHUNK_SIZE = 500;
 export async function streamTestResponse(
   event: Electron.IpcMainInvokeEvent,
   chatId: number,
+  invocationRef: ChatStreamInvocationRef | undefined,
   streamId: number | undefined,
   testResponse: string,
   abortController: AbortController,
@@ -238,6 +240,7 @@ export async function streamTestResponse(
         if (patch) {
           safeSend(event.sender, "chat:response:chunk", {
             chatId,
+            invocationRef,
             streamId,
             streamingMessageId: placeholderAssistantMessageId,
             streamingPatch: patch,
@@ -258,6 +261,7 @@ export async function streamTestResponse(
       if (patch) {
         safeSend(event.sender, "chat:response:chunk", {
           chatId,
+          invocationRef,
           streamId,
           streamingMessageId: placeholderAssistantMessageId,
           streamingPatch: patch,

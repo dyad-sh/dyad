@@ -535,6 +535,333 @@ export function ignoreReasonOf<State, Command, Reason extends IgnoreReason>(
   return result.kind === "ignored" ? result.reason : undefined;
 }
 
+export interface ConformanceController<State, Event> {
+  getSnapshot(): State;
+  subscribe(listener: () => void): () => void;
+  send(event: Event): void;
+  dispose(): void;
+}
+
+export interface ControllerConformanceAdapter<
+  State,
+  Event,
+  Command,
+  Reason extends IgnoreReason,
+> {
+  initialState: State;
+  transition(
+    state: State,
+    event: Event,
+  ): TransitionResult<State, Command, Reason>;
+  create(options: {
+    runCommand(
+      command: Command,
+      emit: (event: Event) => void,
+    ): void | Promise<void>;
+    observer?: import("./types").TransitionObserver<
+      State,
+      Event,
+      Command,
+      Reason
+    >;
+    project?(state: State): void;
+    reportError?(error: unknown): void;
+    onDispose?(
+      state: State,
+      startFinalizers: (commands: readonly Command[]) => void,
+    ): void;
+  }): ConformanceController<State, Event>;
+  events: {
+    enterA: Event;
+    enterB: Event;
+    finish: Event;
+    command(command: Command): Event;
+  };
+  commands: {
+    emit(event: Event): Command;
+    syncThrow: Command;
+    asyncReject: Command;
+    awaitThen(event: Event): {
+      command: Command;
+      resolve(): void;
+    };
+    cleanup(state: State): readonly Command[];
+  };
+  stateKey(state: State): string;
+}
+
+function conformanceAssert(
+  condition: unknown,
+  scenario: string,
+  detail: string,
+): asserts condition {
+  if (!condition) {
+    throw new Error(`Controller conformance failed: ${scenario}: ${detail}`);
+  }
+}
+
+async function flushConformancePromises(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
+/**
+ * Runs the shared adversarial controller contract.
+ *
+ * Domains provide representative states/events/commands, keeping concurrency,
+ * cleanup, and staleness policy outside the harness. Failures name the exact
+ * scenario so deliberately broken reference implementations fail usefully.
+ */
+export async function runControllerConformanceSuite<
+  State,
+  Event,
+  Command,
+  Reason extends IgnoreReason,
+>(
+  adapter: ControllerConformanceAdapter<State, Event, Command, Reason>,
+): Promise<void> {
+  {
+    const order: string[] = [];
+    let controller: ConformanceController<State, Event>;
+    controller = adapter.create({
+      runCommand: () => undefined,
+      observer: {
+        onTransitionApplied({ event }) {
+          order.push(`observe:${describe(event)}`);
+          if (order.length === 1) controller.send(adapter.events.enterB);
+        },
+      },
+    });
+    controller.send(adapter.events.enterA);
+    conformanceAssert(
+      adapter.stateKey(controller.getSnapshot()) ===
+        adapter.stateKey(
+          adapter.transition(
+            adapter.transition(adapter.initialState, adapter.events.enterA)
+              .state,
+            adapter.events.enterB,
+          ).state,
+        ),
+      "re-entrant observer dispatch",
+      "the observer's event did not run after the committed outer event",
+    );
+  }
+
+  {
+    const seen: string[] = [];
+    const controller = adapter.create({ runCommand: () => undefined });
+    controller.subscribe(() => {
+      seen.push(adapter.stateKey(controller.getSnapshot()));
+      if (seen.length === 1) controller.send(adapter.events.enterB);
+    });
+    controller.send(adapter.events.enterA);
+    conformanceAssert(
+      seen.length >= 2,
+      "re-entrant subscriber dispatch",
+      "the subscriber's event was lost",
+    );
+  }
+
+  {
+    const command = adapter.commands.emit(adapter.events.enterB);
+    const controller = adapter.create({
+      runCommand(current, emit) {
+        if (Object.is(current, command)) emit(adapter.events.enterB);
+      },
+    });
+    controller.send(adapter.events.command(command));
+    conformanceAssert(
+      adapter.stateKey(controller.getSnapshot()) ===
+        adapter.stateKey(
+          adapter.transition(adapter.initialState, adapter.events.enterB).state,
+        ),
+      "synchronous command emission",
+      "the emitted event was not drained",
+    );
+  }
+
+  {
+    const errors: unknown[] = [];
+    const controller = adapter.create({
+      runCommand(command) {
+        if (Object.is(command, adapter.commands.syncThrow)) {
+          throw new Error("conformance sync throw");
+        }
+      },
+      reportError: (error) => errors.push(error),
+    });
+    controller.send(adapter.events.command(adapter.commands.syncThrow));
+    controller.send(adapter.events.enterA);
+    conformanceAssert(
+      errors.length === 1 &&
+        adapter.stateKey(controller.getSnapshot()) !==
+          adapter.stateKey(adapter.initialState),
+      "synchronous runner throw",
+      "the error was not reported or the queue wedged",
+    );
+  }
+
+  {
+    const errors: unknown[] = [];
+    const controller = adapter.create({
+      runCommand(command) {
+        if (Object.is(command, adapter.commands.asyncReject)) {
+          return Promise.reject(new Error("conformance async rejection"));
+        }
+      },
+      reportError: (error) => errors.push(error),
+    });
+    controller.send(adapter.events.command(adapter.commands.asyncReject));
+    controller.send(adapter.events.enterA);
+    await flushConformancePromises();
+    conformanceAssert(
+      errors.length === 1 &&
+        adapter.stateKey(controller.getSnapshot()) !==
+          adapter.stateKey(adapter.initialState),
+      "asynchronous runner rejection",
+      "the rejection was not reported or later events stopped",
+    );
+  }
+
+  {
+    const deferred = adapter.commands.awaitThen(adapter.events.enterB);
+    const controller = adapter.create({
+      runCommand(command, emit) {
+        if (!Object.is(command, deferred.command)) return;
+        return new Promise<void>((resolve) => {
+          const originalResolve = deferred.resolve;
+          deferred.resolve = () => {
+            originalResolve();
+            emit(adapter.events.enterB);
+            resolve();
+          };
+        });
+      },
+    });
+    controller.send(adapter.events.command(deferred.command));
+    controller.dispose();
+    deferred.resolve();
+    await flushConformancePromises();
+    conformanceAssert(
+      adapter.stateKey(controller.getSnapshot()) ===
+        adapter.stateKey(adapter.initialState),
+      "dispose during await",
+      "a completion changed state after disposal",
+    );
+  }
+
+  {
+    const controller = adapter.create({ runCommand: () => undefined });
+    controller.dispose();
+    controller.send(adapter.events.enterA);
+    conformanceAssert(
+      adapter.stateKey(controller.getSnapshot()) ===
+        adapter.stateKey(adapter.initialState),
+      "post-dispose emit",
+      "an event was admitted after disposal",
+    );
+  }
+
+  {
+    const stale = adapter.commands.awaitThen(adapter.events.enterB);
+    const old = adapter.create({
+      runCommand(command, emit) {
+        if (!Object.is(command, stale.command)) return;
+        const originalResolve = stale.resolve;
+        stale.resolve = () => {
+          originalResolve();
+          emit(adapter.events.enterB);
+        };
+      },
+    });
+    old.send(adapter.events.command(stale.command));
+    old.dispose();
+    const replacement = adapter.create({ runCommand: () => undefined });
+    replacement.send(adapter.events.enterA);
+    stale.resolve();
+    conformanceAssert(
+      adapter.stateKey(replacement.getSnapshot()) ===
+        adapter.stateKey(
+          adapter.transition(adapter.initialState, adapter.events.enterA).state,
+        ),
+      "key dispose/recreate with stale events",
+      "an old controller affected its replacement",
+    );
+  }
+
+  {
+    const replayed = adapter.create({ runCommand: () => undefined });
+    const unsubscribe = replayed.subscribe(() => undefined);
+    unsubscribe();
+    const secondSubscription = replayed.subscribe(() => undefined);
+    replayed.send(adapter.events.enterA);
+    secondSubscription();
+    conformanceAssert(
+      adapter.stateKey(replayed.getSnapshot()) !==
+        adapter.stateKey(adapter.initialState),
+      "StrictMode replay",
+      "subscription cleanup/replay disabled the live controller",
+    );
+  }
+
+  {
+    const a1 = adapter.create({ runCommand: () => undefined });
+    const b1 = adapter.create({ runCommand: () => undefined });
+    a1.dispose();
+    b1.dispose();
+    const a2 = adapter.create({ runCommand: () => undefined });
+    a2.dispose();
+    const b2 = adapter.create({ runCommand: () => undefined });
+    b2.send(adapter.events.enterB);
+    conformanceAssert(
+      adapter.stateKey(b2.getSnapshot()) !==
+        adapter.stateKey(adapter.initialState),
+      "A to B to A to B replacement",
+      "a prior generation disposed the final replacement",
+    );
+  }
+
+  {
+    const order: string[] = [];
+    const controller = adapter.create({
+      runCommand: () => undefined,
+      onDispose() {
+        order.push("projection-cleanup");
+        order.push("writer-release");
+      },
+    });
+    controller.dispose();
+    conformanceAssert(
+      order.join(",") === "projection-cleanup,writer-release",
+      "projection cleanup before writer release",
+      `observed ${order.join(",")}`,
+    );
+  }
+
+  for (const event of [adapter.events.enterA, adapter.events.enterB]) {
+    const finalizers: Command[] = [];
+    let disposeCount = 0;
+    const controller = adapter.create({
+      runCommand(command) {
+        finalizers.push(command);
+      },
+      onDispose(state, startFinalizers) {
+        disposeCount += 1;
+        startFinalizers(adapter.commands.cleanup(state));
+      },
+    });
+    controller.send(event);
+    controller.dispose();
+    controller.dispose();
+    await flushConformancePromises();
+    conformanceAssert(
+      disposeCount === 1 && finalizers.length > 0,
+      "dispose from every reachable non-terminal state",
+      `state ${adapter.stateKey(controller.getSnapshot())} did not release exactly once`,
+    );
+  }
+}
+
 export function replayTrace<State, Event, Command, SerializedEvent>(options: {
   initialState: State;
   trace: ReplayTrace<SerializedEvent>;

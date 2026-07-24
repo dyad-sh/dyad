@@ -3,8 +3,128 @@ import {
   createFakeClock,
   createSequentialIdSource,
 } from "@/state_machines/testing";
-import type { VoiceCommand, VoiceEvent } from "./state";
+import type { TransitionObserver } from "@/state_machines/types";
+import type {
+  VoiceCommand,
+  VoiceEvent,
+  VoiceState,
+  VoiceTransitionResult,
+} from "./state";
 import { VoiceToTextController } from "./controller";
+import { transition } from "./transition";
+
+interface VoiceTrace {
+  outcomes: string[];
+  states: VoiceState[];
+  commands: VoiceCommand[];
+}
+
+class RecordedReferenceController {
+  private state: VoiceState = { type: "idle" };
+  private readonly events: VoiceEvent[] = [];
+  private processing = false;
+
+  constructor(
+    private readonly runner: {
+      run(command: VoiceCommand, emit: (event: VoiceEvent) => void): void;
+    },
+    private readonly observer: TransitionObserver<
+      VoiceState,
+      VoiceEvent,
+      VoiceCommand
+    >,
+  ) {}
+
+  getSnapshot(): VoiceState {
+    return this.state;
+  }
+
+  send = (event: VoiceEvent): void => {
+    this.events.push(event);
+    if (this.processing) return;
+    this.processing = true;
+    try {
+      for (
+        let next = this.events.shift();
+        next !== undefined;
+        next = this.events.shift()
+      ) {
+        const previous = this.state;
+        const result: VoiceTransitionResult = transition(previous, next);
+        if (result.kind === "ignored") {
+          this.observer.onEventIgnored?.({
+            state: previous,
+            event: next,
+            reason: result.reason,
+          });
+          continue;
+        }
+        this.observer.onTransitionApplied?.({
+          previous,
+          event: next,
+          state: result.state,
+          commands: result.commands,
+        });
+        this.state = result.state;
+        for (const command of result.commands) {
+          this.runner.run(command, this.send);
+        }
+      }
+    } finally {
+      this.processing = false;
+    }
+  };
+}
+
+function recordVoiceScenario(kind: "reference" | "dispatcher"): VoiceTrace {
+  const trace: VoiceTrace = { outcomes: [], states: [], commands: [] };
+  const observer: TransitionObserver<VoiceState, VoiceEvent, VoiceCommand> = {
+    onTransitionApplied({ event, state }) {
+      trace.outcomes.push(`applied:${event.type}`);
+      trace.states.push(state);
+    },
+    onEventIgnored({ event, state, reason }) {
+      trace.outcomes.push(`ignored:${event.type}:${reason}`);
+      trace.states.push(state);
+    },
+  };
+  const runner = {
+    run(command: VoiceCommand, emit: (event: VoiceEvent) => void) {
+      trace.commands.push(command);
+      if (command.type === "AcquireMedia") {
+        emit({ type: "MEDIA_ACQUIRED", attempt: command.attempt });
+      }
+    },
+  };
+  const controller =
+    kind === "reference"
+      ? new RecordedReferenceController(runner, observer)
+      : new VoiceToTextController({
+          idSource: createSequentialIdSource(),
+          runner,
+          observer,
+        });
+
+  controller.send({ type: "TOGGLE", attempt: "voice-attempt:1" });
+  controller.send({ type: "TOGGLE", attempt: "voice-attempt:2" });
+  controller.send({
+    type: "RECORDER_STOPPED",
+    attempt: "voice-attempt:1",
+    hasAudio: true,
+  });
+  controller.send({
+    type: "TRANSCRIPTION_OK",
+    attempt: "voice-attempt:1",
+    text: "  transcript  ",
+  });
+  controller.send({
+    type: "MEDIA_DENIED",
+    attempt: "stale-attempt",
+    message: "late",
+  });
+  trace.states.push(controller.getSnapshot());
+  return trace;
+}
 
 describe("VoiceToTextController", () => {
   it("allocates attempts and applies synchronous command events serially", () => {
@@ -43,6 +163,13 @@ describe("VoiceToTextController", () => {
         run(command, emit) {
           commands.push(command);
           lateEmit = emit;
+          if (command.type === "StopRecorder") {
+            emit({
+              type: "RECORDER_STOPPED",
+              attempt: command.attempt,
+              hasAudio: true,
+            });
+          }
         },
       },
     });
@@ -104,5 +231,11 @@ describe("VoiceToTextController", () => {
       attempt: "voice-attempt:1",
       reason: "duration",
     });
+  });
+
+  it("matches the recorded pre-migration event, state, and command trace", () => {
+    expect(recordVoiceScenario("dispatcher")).toEqual(
+      recordVoiceScenario("reference"),
+    );
   });
 });

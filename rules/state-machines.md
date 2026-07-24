@@ -64,7 +64,9 @@ Background and before/after examples of why this pattern exists:
   owning machine request; otherwise reload can resurrect abandoned work.
 - If queue removal awaits owner settlement, capture the invocation-time item
   IDs and remove only those IDs afterward. Clearing the latest queue snapshot
-  can silently delete machine work enqueued during the await.
+  can silently delete machine work enqueued during the await. Settle owners
+  independently: remove ordinary and successfully settled items, preserve
+  failed owners, and surface their errors instead of aborting the whole clear.
 - Before deleting an entity whose foreign-key cascade removes durable handoff
   rows, await settlement of its memory owner. Post-delete renderer disposal is
   residue cleanup and cannot repair an owner whose durable row is already gone.

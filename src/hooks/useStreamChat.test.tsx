@@ -12,6 +12,7 @@ const CHAT_ID = 42;
 const mocks = vi.hoisted(() => ({
   controllerSend: vi.fn(),
   rejectUserInputHandoff: vi.fn(),
+  showError: vi.fn(),
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -23,6 +24,10 @@ vi.mock("@/chat_stream/ChatStreamProvider", () => ({
     ensure: () => ({ send: mocks.controllerSend }),
     rejectUserInputHandoff: mocks.rejectUserInputHandoff,
   }),
+}));
+
+vi.mock("@/lib/toast", () => ({
+  showError: mocks.showError,
 }));
 
 function makeWrapper() {
@@ -38,6 +43,7 @@ describe("useStreamChat queueMessage", () => {
     mocks.controllerSend.mockReset();
     mocks.rejectUserInputHandoff.mockReset();
     mocks.rejectUserInputHandoff.mockResolvedValue(undefined);
+    mocks.showError.mockReset();
   });
 
   it("pokes the stream machine after manually appending the queued message", () => {
@@ -163,6 +169,60 @@ describe("useStreamChat queueMessage", () => {
     expect(store.get(queuedMessagesByIdAtom).get(CHAT_ID)).toEqual([
       { id: "queued-during-clear", prompt: "Keep me" },
     ]);
+  });
+
+  it("clears successful items and preserves only owners whose rejection failed", async () => {
+    const { store, Wrapper } = makeWrapper();
+    const failedOwner = {
+      kind: "user-input-follow-up" as const,
+      requestId: "integration:failed",
+    };
+    const rejectionError = new Error("renderer IPC unavailable");
+    mocks.rejectUserInputHandoff.mockImplementation((owner) =>
+      owner.requestId === failedOwner.requestId
+        ? Promise.reject(rejectionError)
+        : Promise.resolve(),
+    );
+    store.set(
+      queuedMessagesByIdAtom,
+      new Map([
+        [
+          CHAT_ID,
+          [
+            { id: "ordinary", prompt: "Ordinary prompt" },
+            {
+              id: "settled-owner",
+              prompt: "Settled follow-up",
+              owner: {
+                kind: "user-input-follow-up",
+                requestId: "integration:settled",
+              },
+            },
+            {
+              id: "failed-owner",
+              prompt: "Failed follow-up",
+              owner: failedOwner,
+            },
+          ],
+        ],
+      ]),
+    );
+    const { result } = renderHook(() => useStreamChat(), {
+      wrapper: Wrapper,
+    });
+
+    await act(async () => {
+      await result.current.clearAllQueuedMessages();
+    });
+
+    expect(store.get(queuedMessagesByIdAtom).get(CHAT_ID)).toEqual([
+      {
+        id: "failed-owner",
+        prompt: "Failed follow-up",
+        owner: failedOwner,
+      },
+    ]);
+    expect(mocks.showError).toHaveBeenCalledWith(rejectionError);
   });
 });
 

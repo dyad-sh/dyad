@@ -8,6 +8,7 @@ import {
   Trash2,
   ArrowUp,
   ArrowDown,
+  Loader2,
   Paperclip,
   PlayIcon,
   PauseIcon,
@@ -17,7 +18,7 @@ import { cn } from "@/lib/utils";
 interface QueuedMessagesListProps {
   messages: QueuedMessageItem[];
   onEdit: (id: string) => void;
-  onDelete: (id: string) => void;
+  onDelete: (id: string) => void | Promise<void>;
   onMoveUp: (id: string) => void;
   onMoveDown: (id: string) => void;
   isStreaming: boolean;
@@ -32,7 +33,7 @@ interface QueuedMessageItemRowProps {
   index: number;
   total: number;
   onEdit: () => void;
-  onDelete: () => void;
+  onDelete: () => void | Promise<void>;
   onMoveUp: () => void;
   onMoveDown: () => void;
 }
@@ -46,9 +47,19 @@ function QueuedMessageItemRow({
   onMoveUp,
   onMoveDown,
 }: QueuedMessageItemRowProps) {
+  const [isDeleting, setIsDeleting] = useState(false);
   const isMachineFollowUp = Boolean(
     message.owner || message.userInputRequestId,
   );
+  const handleDelete = async () => {
+    if (isDeleting) return;
+    setIsDeleting(true);
+    try {
+      await onDelete();
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   return (
     <li className="flex items-center gap-2 text-sm py-1.5 px-2 bg-muted/50 rounded group">
@@ -98,11 +109,24 @@ function QueuedMessageItemRow({
         </button>
         <button
           type="button"
-          onClick={onDelete}
-          className="p-1 hover:bg-muted rounded cursor-pointer"
-          title={isMachineFollowUp ? "Reject and delete" : "Delete"}
+          onClick={() => void handleDelete()}
+          disabled={isDeleting}
+          className="p-1 hover:bg-muted rounded cursor-pointer disabled:cursor-wait disabled:opacity-60"
+          title={
+            isDeleting
+              ? isMachineFollowUp
+                ? "Rejecting follow-up"
+                : "Deleting"
+              : isMachineFollowUp
+                ? "Reject and delete"
+                : "Delete"
+          }
         >
-          <Trash2 size={14} className="text-red-500" />
+          {isDeleting ? (
+            <Loader2 size={14} className="text-muted-foreground animate-spin" />
+          ) : (
+            <Trash2 size={14} className="text-red-500" />
+          )}
         </button>
       </div>
     </li>

@@ -234,6 +234,12 @@ export function transition(
       );
     case "SELECTION_RESTORED":
       if (!state.restoreQueued) return ignore(state, "restore-not-queued");
+      // MUST stay command-free: the restore-overlays command emits this
+      // event synchronously while the controller is still mid-setState for
+      // the outer event, and the controller has no re-entrancy buffer.
+      // Returning commands here would execute them against a half-notified
+      // store. Add a processing-flag + pending-event FIFO to the controller
+      // before attaching commands to this transition.
       return applied({ ...state, restoreQueued: false });
     default:
       return assertNever(event);

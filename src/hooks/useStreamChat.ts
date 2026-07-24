@@ -217,24 +217,26 @@ export function useStreamChat({
   const clearAllQueuedMessages = useCallback(async () => {
     if (chatId === undefined) return;
     const current = queuedMessagesById.get(chatId) ?? [];
-    const clearedIds = new Set(current.map((message) => message.id));
-    try {
-      await Promise.all(
-        current.flatMap((message) =>
-          message.owner
-            ? [
-                chatStreamManager.rejectUserInputHandoff(
-                  message.owner,
-                  "queue cleared",
-                ),
-              ]
-            : [],
-        ),
-      );
-    } catch (error) {
-      showError(error);
-      return;
+    const settlements = await Promise.allSettled(
+      current.map((message) =>
+        message.owner
+          ? chatStreamManager.rejectUserInputHandoff(
+              message.owner,
+              "queue cleared",
+            )
+          : Promise.resolve(),
+      ),
+    );
+    const clearedIds = new Set<string>();
+    let firstError: unknown;
+    for (const [index, settlement] of settlements.entries()) {
+      if (settlement.status === "fulfilled") {
+        clearedIds.add(current[index].id);
+      } else {
+        firstError ??= settlement.reason;
+      }
     }
+    if (firstError !== undefined) showError(firstError);
     setQueuedMessagesById((prev) => {
       const existing = prev.get(chatId);
       if (!existing) return prev;

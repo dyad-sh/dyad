@@ -2,7 +2,7 @@ import {
   TransactionalDispatcher,
   type DispatcherError,
 } from "@/state_machines/dispatcher";
-import type { TransitionObserver } from "@/state_machines/types";
+import { stay, type TransitionObserver } from "@/state_machines/types";
 import {
   INITIAL_SCREENSHOT_STATE,
   type ScreenshotCommand,
@@ -26,10 +26,17 @@ export interface ScreenshotCommandRunner {
   disposeKey(appId: number): void;
 }
 
+type ControllerEvent =
+  | ScreenshotEvent
+  | {
+      readonly type: "RUN_CONFORMANCE_COMMAND";
+      readonly command: ScreenshotCommand;
+    };
+
 export class ScreenshotController {
   private readonly dispatcher: TransactionalDispatcher<
     ScreenshotState,
-    ScreenshotEvent,
+    ControllerEvent,
     ScreenshotCommand,
     ScreenshotIgnoreReason
   >;
@@ -49,17 +56,20 @@ export class ScreenshotController {
   ) {
     this.dispatcher = new TransactionalDispatcher<
       ScreenshotState,
-      ScreenshotEvent,
+      ControllerEvent,
       ScreenshotCommand,
       ScreenshotIgnoreReason
     >({
       initialState: INITIAL_SCREENSHOT_STATE,
-      transition,
+      transition(state, event) {
+        if (event.type === "RUN_CONFORMANCE_COMMAND") {
+          return stay(state, [event.command]);
+        }
+        return transition(state, event);
+      },
       runCommand: (command, emit) =>
-        runner.execute(
-          this.appId,
-          command,
-          emit as (event: ScreenshotEvent) => void,
+        runner.execute(this.appId, command, (event) =>
+          emit(this.withSettleToken(event)),
         ),
       scheduler: {
         schedule(batch, execute) {
@@ -68,8 +78,26 @@ export class ScreenshotController {
       },
       beforeCommit: (previous, next) =>
         runner.beforeStateCommit?.(this.appId, previous, next),
-      observer,
-      mapUnexpectedCommandError: () => ({ type: "SAVE_FAILED" }),
+      observer: observer
+        ? {
+            onTransitionApplied(args) {
+              if (args.event.type === "RUN_CONFORMANCE_COMMAND") return;
+              observer.onTransitionApplied?.({
+                ...args,
+                event: args.event,
+              });
+            },
+            onEventIgnored(args) {
+              if (args.event.type === "RUN_CONFORMANCE_COMMAND") return;
+              observer.onEventIgnored?.({
+                ...args,
+                event: args.event,
+              });
+            },
+          }
+        : undefined,
+      mapUnexpectedCommandError: () =>
+        this.withSettleToken({ type: "SAVE_FAILED" }),
       reportError,
     });
   }
@@ -79,13 +107,22 @@ export class ScreenshotController {
     this.dispatcher.subscribe(listener);
 
   send = (event: ScreenshotEvent): void => {
+    this.dispatcher.send(this.withSettleToken(event));
+  };
+
+  /** @internal Used only by the shared controller conformance adapter. */
+  runConformanceCommand(command: ScreenshotCommand): void {
+    this.dispatcher.send({ type: "RUN_CONFORMANCE_COMMAND", command });
+  }
+
+  private withSettleToken(event: ScreenshotEvent): ScreenshotEvent {
     const settleToken =
       event.settleToken ??
       (event.type === "SETTLE_ELAPSED"
         ? undefined
         : `screenshot-settle:${this.appId}:${this.nextSettleToken++}`);
-    this.dispatcher.send({ ...event, settleToken });
-  };
+    return { ...event, settleToken };
+  }
 
   dispose(): void {
     if (this.disposed) return;

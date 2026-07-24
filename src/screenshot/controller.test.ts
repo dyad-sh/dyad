@@ -281,11 +281,14 @@ function createScreenshotConformanceAdapter(): ControllerConformanceAdapter<
         }
       };
       return {
-        getSnapshot: () =>
-          disposed ? INITIAL_SCREENSHOT_STATE : controller.getSnapshot(),
+        getSnapshot: controller.getSnapshot,
         subscribe: controller.subscribe,
         send(event) {
-          expectedCommand = event.command;
+          if (event.command) {
+            expectedCommand = event.command;
+            controller.runConformanceCommand(event.command);
+            return;
+          }
           sendConformanceEvent(event);
         },
         dispose() {
@@ -308,7 +311,7 @@ function createScreenshotConformanceAdapter(): ControllerConformanceAdapter<
       finish: sequence({ type: "APP_HIDDEN" }),
       command(command) {
         return {
-          ...sequence({ type: "SELECTOR_READY" }),
+          ...sequence(),
           command,
         };
       },
@@ -521,6 +524,43 @@ describe("screenshot controller", () => {
     });
 
     expect(controller.getSnapshot().status).toBe("waitingSelectorReady");
+    expect(ignored).toHaveBeenLastCalledWith(
+      expect.objectContaining({ reason: "stale-request" }),
+    );
+  });
+
+  it("tags settle work started by a command-emitted fallback event", () => {
+    const ignored = vi.fn();
+    const runner = {
+      execute: vi.fn(
+        (
+          _appId: number,
+          command: ScreenshotCommand,
+          emit: (event: ScreenshotEvent) => void,
+        ) => {
+          if (command.type === "check-existing-screenshots") {
+            emit({ type: "CAPTURE_REQUESTED", source: "fallback" });
+          }
+        },
+      ),
+      disposeKey: vi.fn(),
+    };
+    const controller = new ScreenshotController(7, runner, {
+      onEventIgnored: ignored,
+    });
+
+    controller.send({ type: "SELECTOR_READY" });
+    const activeToken = controller.getSnapshot().settleToken;
+    expect(controller.getSnapshot().status).toBe("settling");
+    expect(activeToken).toBeDefined();
+
+    controller.send({
+      type: "SETTLE_ELAPSED",
+      requestId: "capture:stale",
+      settleToken: "stale-command-emitted-token",
+    });
+
+    expect(controller.getSnapshot().status).toBe("settling");
     expect(ignored).toHaveBeenLastCalledWith(
       expect.objectContaining({ reason: "stale-request" }),
     );

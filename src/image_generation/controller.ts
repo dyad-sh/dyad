@@ -20,7 +20,6 @@ export interface ImageGenerationCommandRunner {
     previous: ImageGenerationState,
     next: ImageGenerationState,
   ): void;
-  dispose?(): void;
 }
 
 type ControllerEvent =
@@ -123,6 +122,5 @@ export class ImageGenerationController {
         { type: "RequestCancel", jobId: state.job.id },
       ]);
     }
-    this.runner.dispose?.();
   }
 }

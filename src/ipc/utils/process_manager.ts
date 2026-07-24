@@ -10,6 +10,7 @@ import {
   unregisterRunningCloudSandbox,
 } from "./cloud_sandbox_provider";
 import { readSettings } from "../../main/settings";
+import type { AppRunInvocationRef } from "@/app_run/state";
 
 const logger = log.scope("process_manager");
 
@@ -17,6 +18,8 @@ const logger = log.scope("process_manager");
 export interface RunningAppInfo {
   process: ChildProcess | null;
   processId: number;
+  /** Correlation identity of the run/restart that owns this producer. */
+  invocationRef?: AppRunInvocationRef;
   mode: RuntimeMode2;
   rendererSender?: Electron.WebContents;
   containerName?: string;

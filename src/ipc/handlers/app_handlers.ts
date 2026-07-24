@@ -759,7 +759,7 @@ export function registerAppHandlers() {
   });
 
   createTypedHandler(appContracts.runApp, async (event, params) => {
-    const { appId } = params;
+    const { appId, invocationRef } = params;
     return withLock(appId, async () => {
       // Check if app is already running
       if (runningApps.has(appId)) {
@@ -773,6 +773,9 @@ export function registerAppHandlers() {
             proxyUrl: appInfo.proxyUrl,
             originalUrl: appInfo.originalUrl,
             mode: appInfo.mode,
+            // This is a cached response to the current request, not stdout
+            // from the existing producer, so correlate it to the requester.
+            invocationRef: invocationRef ?? appInfo.invocationRef,
           });
         }
         return;
@@ -799,6 +802,7 @@ export function registerAppHandlers() {
           isNeon: !!app.neonProjectId,
           installCommand: app.installCommand,
           startCommand: app.startCommand,
+          invocationRef,
         });
 
         return;

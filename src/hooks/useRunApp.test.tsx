@@ -740,6 +740,10 @@ describe("useAppOutputSubscription", () => {
     expect(clearLogsMock).toHaveBeenCalledWith({ appId: 2 });
     expect(restartAppMock).toHaveBeenCalledWith({
       appId: 2,
+      invocationRef: expect.objectContaining({
+        kind: "app-run",
+        entityKey: 2,
+      }),
       removeNodeModules: false,
       recreateSandbox: false,
     });

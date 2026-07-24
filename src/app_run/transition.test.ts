@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { RunCommand, RunEvent, RunState, RunUrl } from "./state";
+import type {
+  AppRunInvocationRef,
+  RunCommand,
+  RunEvent,
+  RunState,
+  RunUrl,
+} from "./state";
 import { ignore, projectRunState, transition } from "./transition";
 import {
   assertReferenceStability,
@@ -10,9 +16,16 @@ import {
 } from "@/state_machines/testing";
 
 const APP_ID = 7;
-const CURRENT_RUN_ID = 3;
-const STALE_RUN_ID = 2;
-const FRESH_RUN_ID = 4;
+const makeRef = (operationId: string): AppRunInvocationRef => ({
+  kind: "app-run",
+  entityKey: APP_ID,
+  operationId,
+});
+const REF_1 = makeRef("app-run:1");
+const REF_2 = makeRef("app-run:2");
+const CURRENT_REF = makeRef("app-run:3");
+const STALE_REF = makeRef("app-run:stale");
+const FRESH_REF = makeRef("app-run:4");
 
 function makeUrl(n: number): RunUrl {
   return {
@@ -27,7 +40,7 @@ const STATE_FIXTURES: RunState[] = [
   {
     type: "starting",
     appId: APP_ID,
-    runId: CURRENT_RUN_ID,
+    invocationRef: CURRENT_REF,
     operation: "run",
     startedAt: 100,
     pendingUrl: null,
@@ -35,7 +48,7 @@ const STATE_FIXTURES: RunState[] = [
   {
     type: "starting",
     appId: APP_ID,
-    runId: CURRENT_RUN_ID,
+    invocationRef: CURRENT_REF,
     operation: "run",
     startedAt: 100,
     pendingUrl: makeUrl(1),
@@ -43,7 +56,7 @@ const STATE_FIXTURES: RunState[] = [
   {
     type: "starting",
     appId: APP_ID,
-    runId: CURRENT_RUN_ID,
+    invocationRef: CURRENT_REF,
     operation: "restart",
     startedAt: 100,
     pendingUrl: null,
@@ -51,66 +64,95 @@ const STATE_FIXTURES: RunState[] = [
   {
     type: "starting",
     appId: APP_ID,
-    runId: CURRENT_RUN_ID,
+    invocationRef: CURRENT_REF,
     operation: "rebuild",
     startedAt: 100,
     pendingUrl: makeUrl(1),
   },
-  { type: "ready", appId: APP_ID, runId: CURRENT_RUN_ID, url: makeUrl(1) },
-  { type: "ready", appId: APP_ID, runId: CURRENT_RUN_ID, url: null },
+  { type: "ready", appId: APP_ID, invocationRef: CURRENT_REF, url: makeUrl(1) },
+  { type: "ready", appId: APP_ID, invocationRef: CURRENT_REF, url: null },
   {
     type: "reloading",
     appId: APP_ID,
-    runId: CURRENT_RUN_ID,
+    invocationRef: CURRENT_REF,
     reason: "hmr",
     url: makeUrl(1),
   },
   {
     type: "reloading",
     appId: APP_ID,
-    runId: CURRENT_RUN_ID,
+    invocationRef: CURRENT_REF,
     reason: "manual",
     url: null,
   },
-  { type: "stopping", appId: APP_ID, runId: CURRENT_RUN_ID, startedAt: 100 },
-  { type: "stopped", appId: APP_ID, runId: CURRENT_RUN_ID, exitCode: 0 },
-  { type: "stopped", appId: APP_ID, runId: CURRENT_RUN_ID, exitCode: null },
+  {
+    type: "stopping",
+    appId: APP_ID,
+    invocationRef: CURRENT_REF,
+    startedAt: 100,
+  },
+  { type: "stopped", appId: APP_ID, invocationRef: CURRENT_REF, exitCode: 0 },
+  {
+    type: "stopped",
+    appId: APP_ID,
+    invocationRef: CURRENT_REF,
+    exitCode: null,
+  },
   {
     type: "errored",
     appId: APP_ID,
-    runId: CURRENT_RUN_ID,
+    invocationRef: CURRENT_REF,
     error: { message: "boom" },
   },
 ];
 
-function makeEventFixtures(runId: number): RunEvent[] {
+function makeEventFixtures(invocationRef: AppRunInvocationRef): RunEvent[] {
   return [
-    { type: "START", appId: APP_ID, runId: FRESH_RUN_ID, startedAt: 200 },
+    { type: "START", appId: APP_ID, invocationRef: FRESH_REF, startedAt: 200 },
     {
       type: "RESTART",
       appId: APP_ID,
-      runId: FRESH_RUN_ID,
+      invocationRef: FRESH_REF,
       startedAt: 200,
       options: { removeNodeModules: true, recreateSandbox: true },
     },
-    { type: "REBUILD", appId: APP_ID, runId: FRESH_RUN_ID, startedAt: 200 },
+    {
+      type: "REBUILD",
+      appId: APP_ID,
+      invocationRef: FRESH_REF,
+      startedAt: 200,
+    },
     {
       type: "EXTERNAL_RESTART",
       appId: APP_ID,
-      runId: FRESH_RUN_ID,
+      invocationRef: FRESH_REF,
       startedAt: 200,
       operation: "rebuild",
     },
-    { type: "STOP", appId: APP_ID, runId: FRESH_RUN_ID, startedAt: 200 },
-    { type: "RUN_IPC_RESOLVED", runId },
-    { type: "RUN_IPC_FAILED", runId, error: { message: "spawn failed" } },
-    { type: "STOP_IPC_RESOLVED", runId },
-    { type: "STOP_IPC_FAILED", runId, error: { message: "stop failed" } },
-    { type: "PROXY_READY", appId: APP_ID, runId, url: makeUrl(9) },
+    { type: "STOP", appId: APP_ID, invocationRef: FRESH_REF, startedAt: 200 },
+    { type: "RUN_IPC_RESOLVED", invocationRef },
+    {
+      type: "RUN_IPC_FAILED",
+      invocationRef,
+      error: { message: "spawn failed" },
+    },
+    { type: "STOP_IPC_RESOLVED", invocationRef },
+    {
+      type: "STOP_IPC_FAILED",
+      invocationRef,
+      error: { message: "stop failed" },
+    },
+    { type: "PROXY_READY", appId: APP_ID, invocationRef, url: makeUrl(9) },
     { type: "HMR_DETECTED", appId: APP_ID },
     { type: "MANUAL_RELOAD", appId: APP_ID },
-    { type: "RELOAD_DONE", runId },
-    { type: "APP_EXIT", appId: APP_ID, exitCode: 1, timestamp: 300 },
+    { type: "RELOAD_DONE", invocationRef },
+    {
+      type: "APP_EXIT",
+      appId: APP_ID,
+      invocationRef,
+      exitCode: 1,
+      timestamp: 300,
+    },
   ];
 }
 
@@ -162,7 +204,7 @@ describe("transition totality and invariants", () => {
     const options = {
       initialState: { type: "idle" } as RunState,
       events: (state: RunState) =>
-        makeEventFixtures(FRESH_RUN_ID).filter(
+        makeEventFixtures(FRESH_REF).filter(
           (event) =>
             state.type === "idle" ||
             ![
@@ -190,8 +232,8 @@ describe("transition totality and invariants", () => {
   });
 
   const allEvents = [
-    ...makeEventFixtures(CURRENT_RUN_ID),
-    ...makeEventFixtures(STALE_RUN_ID),
+    ...makeEventFixtures(CURRENT_REF),
+    ...makeEventFixtures(STALE_REF),
   ];
 
   it("is total over the state x event matrix and upholds invariants", () => {
@@ -223,25 +265,28 @@ describe("transition totality and invariants", () => {
           expect(["ready", "reloading"]).toContain(result.state.type);
         }
 
-        // Every non-idle state carries appId and runId.
+        // Every non-idle state carries appId and invocationRef.
         if (result.state.type !== "idle") {
           expect(result.state.appId).toBe(APP_ID);
-          expect(typeof result.state.runId).toBe("number");
+          expect(result.state.invocationRef).toMatchObject({
+            kind: "app-run",
+            entityKey: APP_ID,
+          });
         }
       }
     }
   });
 
-  it("never advances state on a completion event with a stale runId", () => {
+  it("never advances state on a completion event with a stale invocation ref", () => {
     for (const state of STATE_FIXTURES) {
-      for (const event of makeEventFixtures(STALE_RUN_ID)) {
+      for (const event of makeEventFixtures(STALE_REF)) {
         if (!COMPLETION_EVENT_TYPES.has(event.type)) {
           continue;
         }
         const result = transition(state, event);
         expect(result.state).toBe(state);
         expect(commandsOf(result)).toEqual([]);
-        expect(ignoreReasonOf(result)).toBe("stale-run-id");
+        expect(ignoreReasonOf(result)).toBe("stale-operation");
       }
     }
   });
@@ -251,7 +296,7 @@ describe("transition scenarios", () => {
   const startingRun: RunState = {
     type: "starting",
     appId: APP_ID,
-    runId: CURRENT_RUN_ID,
+    invocationRef: CURRENT_REF,
     operation: "run",
     startedAt: 100,
     pendingUrl: null,
@@ -261,28 +306,28 @@ describe("transition scenarios", () => {
     // A run is in flight...
     const run = transition(
       { type: "idle" },
-      { type: "START", appId: APP_ID, runId: 1, startedAt: 100 },
+      { type: "START", appId: APP_ID, invocationRef: REF_1, startedAt: 100 },
     );
-    expect(run.state).toMatchObject({ type: "starting", runId: 1 });
+    expect(run.state).toMatchObject({ type: "starting", invocationRef: REF_1 });
 
     // ...then a restart supersedes it before the run IPC settles.
     const restart = transition(run.state, {
       type: "RESTART",
       appId: APP_ID,
-      runId: 2,
+      invocationRef: REF_2,
       startedAt: 150,
       options: { removeNodeModules: false, recreateSandbox: false },
     });
     expect(restart.state).toMatchObject({
       type: "starting",
       operation: "restart",
-      runId: 2,
+      invocationRef: REF_2,
     });
 
     // The old run's `finally`-equivalent must not stomp the restart.
     const staleResolution = transition(restart.state, {
       type: "RUN_IPC_RESOLVED",
-      runId: 1,
+      invocationRef: REF_1,
     });
     expect(staleResolution.state).toBe(restart.state);
     expect(commandsOf(staleResolution)).toEqual([]);
@@ -290,16 +335,19 @@ describe("transition scenarios", () => {
     // The restart's own resolution advances to ready.
     const resolution = transition(restart.state, {
       type: "RUN_IPC_RESOLVED",
-      runId: 2,
+      invocationRef: REF_2,
     });
-    expect(resolution.state).toMatchObject({ type: "ready", runId: 2 });
+    expect(resolution.state).toMatchObject({
+      type: "ready",
+      invocationRef: REF_2,
+    });
   });
 
   it("buffers a proxy line during a restart instead of clearing its loading state", () => {
     const restarting: RunState = {
       type: "starting",
       appId: APP_ID,
-      runId: CURRENT_RUN_ID,
+      invocationRef: CURRENT_REF,
       operation: "restart",
       startedAt: 100,
       pendingUrl: null,
@@ -308,7 +356,7 @@ describe("transition scenarios", () => {
     const buffered = transition(restarting, {
       type: "PROXY_READY",
       appId: APP_ID,
-      runId: CURRENT_RUN_ID,
+      invocationRef: CURRENT_REF,
       url: makeUrl(1),
     });
     // Still starting (loading stays up), no URL applied yet.
@@ -321,7 +369,7 @@ describe("transition scenarios", () => {
     // The buffered URL is applied once the restart IPC resolves.
     const resolved = transition(buffered.state, {
       type: "RUN_IPC_RESOLVED",
-      runId: CURRENT_RUN_ID,
+      invocationRef: CURRENT_REF,
     });
     expect(resolved.state).toMatchObject({ type: "ready", url: makeUrl(1) });
     expect(commandsOf(resolved)).toContainEqual({
@@ -335,13 +383,13 @@ describe("transition scenarios", () => {
     const first = transition(startingRun, {
       type: "PROXY_READY",
       appId: APP_ID,
-      runId: CURRENT_RUN_ID,
+      invocationRef: CURRENT_REF,
       url: makeUrl(1),
     });
     const second = transition(first.state, {
       type: "PROXY_READY",
       appId: APP_ID,
-      runId: CURRENT_RUN_ID,
+      invocationRef: CURRENT_REF,
       url: makeUrl(2),
     });
     expect(second.state).toMatchObject({ pendingUrl: makeUrl(2) });
@@ -352,13 +400,13 @@ describe("transition scenarios", () => {
     const ready: RunState = {
       type: "ready",
       appId: APP_ID,
-      runId: CURRENT_RUN_ID,
+      invocationRef: CURRENT_REF,
       url,
     };
     const readyResult = transition(ready, {
       type: "PROXY_READY",
       appId: APP_ID,
-      runId: CURRENT_RUN_ID,
+      invocationRef: CURRENT_REF,
       url: { ...url },
     });
     expect(readyResult.state).toBe(ready);
@@ -367,7 +415,7 @@ describe("transition scenarios", () => {
     const starting: RunState = {
       type: "starting",
       appId: APP_ID,
-      runId: CURRENT_RUN_ID,
+      invocationRef: CURRENT_REF,
       operation: "run",
       startedAt: 100,
       pendingUrl: url,
@@ -375,7 +423,7 @@ describe("transition scenarios", () => {
     const startingResult = transition(starting, {
       type: "PROXY_READY",
       appId: APP_ID,
-      runId: CURRENT_RUN_ID,
+      invocationRef: CURRENT_REF,
       url: { ...url },
     });
     expect(startingResult.state).toBe(starting);
@@ -386,26 +434,26 @@ describe("transition scenarios", () => {
     const stop = transition(startingRun, {
       type: "STOP",
       appId: APP_ID,
-      runId: FRESH_RUN_ID,
+      invocationRef: FRESH_REF,
       startedAt: 200,
     });
     expect(stop.state).toMatchObject({
       type: "stopping",
-      runId: FRESH_RUN_ID,
+      invocationRef: FRESH_REF,
     });
     expect(commandsOf(stop)).toEqual([
-      { type: "stop", appId: APP_ID, runId: FRESH_RUN_ID },
+      { type: "stop", appId: APP_ID, invocationRef: FRESH_REF },
     ]);
 
     const staleRun = transition(stop.state, {
       type: "RUN_IPC_RESOLVED",
-      runId: CURRENT_RUN_ID,
+      invocationRef: CURRENT_REF,
     });
     expect(staleRun.state).toBe(stop.state);
 
     const stopped = transition(stop.state, {
       type: "STOP_IPC_RESOLVED",
-      runId: FRESH_RUN_ID,
+      invocationRef: FRESH_REF,
     });
     expect(stopped.state).toMatchObject({ type: "stopped", exitCode: null });
   });
@@ -414,7 +462,7 @@ describe("transition scenarios", () => {
     const ready: RunState = {
       type: "ready",
       appId: APP_ID,
-      runId: CURRENT_RUN_ID,
+      invocationRef: CURRENT_REF,
       url: makeUrl(1),
     };
     const reloading = transition(ready, {
@@ -426,14 +474,14 @@ describe("transition scenarios", () => {
       {
         type: "reload",
         appId: APP_ID,
-        runId: CURRENT_RUN_ID,
+        invocationRef: CURRENT_REF,
         reason: "hmr",
       },
     ]);
 
     const done = transition(reloading.state, {
       type: "RELOAD_DONE",
-      runId: CURRENT_RUN_ID,
+      invocationRef: CURRENT_REF,
     });
     expect(done.state).toMatchObject({ type: "ready", url: makeUrl(1) });
   });
@@ -460,7 +508,7 @@ describe("transition scenarios", () => {
       {
         type: "RESTART",
         appId: APP_ID,
-        runId: 1,
+        invocationRef: REF_1,
         startedAt: 100,
         options: { removeNodeModules: true, recreateSandbox: true },
       },
@@ -469,7 +517,7 @@ describe("transition scenarios", () => {
       {
         type: "start",
         appId: APP_ID,
-        runId: 1,
+        invocationRef: REF_1,
         operation: "restart",
         startedAt: 100,
         options: { removeNodeModules: true, recreateSandbox: true },
@@ -482,13 +530,13 @@ describe("transition scenarios", () => {
       {
         type: "errored",
         appId: APP_ID,
-        runId: CURRENT_RUN_ID,
+        invocationRef: CURRENT_REF,
         error: { message: "old" },
       },
       {
         type: "EXTERNAL_RESTART",
         appId: APP_ID,
-        runId: FRESH_RUN_ID,
+        invocationRef: FRESH_REF,
         startedAt: 200,
         operation: "rebuild",
       },
@@ -497,7 +545,7 @@ describe("transition scenarios", () => {
     expect(result.state).toEqual({
       type: "starting",
       appId: APP_ID,
-      runId: FRESH_RUN_ID,
+      invocationRef: FRESH_REF,
       operation: "rebuild",
       startedAt: 200,
       pendingUrl: null,
@@ -514,13 +562,13 @@ describe("transition scenarios", () => {
   it("uses rebuild flags (removeNodeModules only) for REBUILD", () => {
     const result = transition(
       { type: "idle" },
-      { type: "REBUILD", appId: APP_ID, runId: 1, startedAt: 100 },
+      { type: "REBUILD", appId: APP_ID, invocationRef: REF_1, startedAt: 100 },
     );
     expect(commandsOf(result)).toEqual([
       {
         type: "start",
         appId: APP_ID,
-        runId: 1,
+        invocationRef: REF_1,
         operation: "rebuild",
         startedAt: 100,
         options: { removeNodeModules: true, recreateSandbox: false },
@@ -536,7 +584,7 @@ describe("transition scenarios", () => {
       const result = transition(state, {
         type: "PROXY_READY",
         appId: APP_ID,
-        runId: CURRENT_RUN_ID,
+        invocationRef: CURRENT_REF,
         url: makeUrl(5),
       });
       expect(result.state).toMatchObject({ type: "ready", url: makeUrl(5) });
@@ -550,13 +598,13 @@ describe("transition scenarios", () => {
     const stopping: RunState = {
       type: "stopping",
       appId: APP_ID,
-      runId: CURRENT_RUN_ID,
+      invocationRef: CURRENT_REF,
       startedAt: 100,
     };
     const result = transition(stopping, {
       type: "PROXY_READY",
       appId: APP_ID,
-      runId: CURRENT_RUN_ID,
+      invocationRef: CURRENT_REF,
       url: makeUrl(5),
     });
     expect(result.state).toBe(stopping);
@@ -568,6 +616,7 @@ describe("transition scenarios", () => {
       const result = transition(state, {
         type: "APP_EXIT",
         appId: APP_ID,
+        invocationRef: CURRENT_REF,
         exitCode: 137,
         timestamp: 300,
       });
@@ -584,14 +633,14 @@ describe("transition scenarios", () => {
     const restarting: RunState = {
       type: "starting",
       appId: APP_ID,
-      runId: CURRENT_RUN_ID,
+      invocationRef: CURRENT_REF,
       operation: "restart",
       startedAt: 100,
       pendingUrl: null,
     };
     const result = transition(restarting, {
       type: "RUN_IPC_FAILED",
-      runId: CURRENT_RUN_ID,
+      invocationRef: CURRENT_REF,
       error: { message: "boom" },
     });
     expect(result.state).toMatchObject({
@@ -610,14 +659,14 @@ describe("transition scenarios", () => {
     const restarting: RunState = {
       type: "starting",
       appId: APP_ID,
-      runId: CURRENT_RUN_ID,
+      invocationRef: CURRENT_REF,
       operation: "restart",
       startedAt: 100,
       pendingUrl: makeUrl(3),
     };
     const result = transition(restarting, {
       type: "RUN_IPC_FAILED",
-      runId: CURRENT_RUN_ID,
+      invocationRef: CURRENT_REF,
       error: { message: "boom" },
     });
     expect(result.state).toMatchObject({
@@ -633,7 +682,7 @@ describe("transition scenarios", () => {
   it("does not bump the reload token when a plain run settles without a URL", () => {
     const resolved = transition(startingRun, {
       type: "RUN_IPC_RESOLVED",
-      runId: CURRENT_RUN_ID,
+      invocationRef: CURRENT_REF,
     });
     expect(resolved.state).toMatchObject({ type: "ready", url: null });
     expect(commandsOf(resolved)).toEqual([
@@ -648,7 +697,7 @@ describe("projectRunState", () => {
       projectRunState({
         type: "starting",
         appId: APP_ID,
-        runId: 1,
+        invocationRef: REF_1,
         operation: "run",
         startedAt: 42,
         pendingUrl: null,
@@ -658,7 +707,7 @@ describe("projectRunState", () => {
       projectRunState({
         type: "starting",
         appId: APP_ID,
-        runId: 1,
+        invocationRef: REF_1,
         operation: "restart",
         startedAt: 42,
         pendingUrl: null,
@@ -668,7 +717,7 @@ describe("projectRunState", () => {
       projectRunState({
         type: "starting",
         appId: APP_ID,
-        runId: 1,
+        invocationRef: REF_1,
         operation: "rebuild",
         startedAt: 42,
         pendingUrl: null,
@@ -678,7 +727,7 @@ describe("projectRunState", () => {
       projectRunState({
         type: "stopping",
         appId: APP_ID,
-        runId: 1,
+        invocationRef: REF_1,
         startedAt: 42,
       }),
     ).toEqual({ operation: "stop", startedAt: 42 });

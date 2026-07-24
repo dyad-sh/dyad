@@ -93,6 +93,7 @@ export function useAppOutputSubscription() {
           const mode = (modeMatch?.[1] as RuntimeMode2 | undefined) ?? "host";
           manager.send(output.appId, {
             type: "PROXY_READY",
+            invocationRef: output.invocationRef,
             url: {
               appUrl: proxyUrl,
               originalUrl: originalUrl!,
@@ -116,6 +117,7 @@ export function useAppOutputSubscription() {
           requestId: output.lifecycleRequestId,
           operation: output.lifecycleOperation,
           startedAt: output.timestamp ?? Date.now(),
+          invocationRef: output.invocationRef,
         });
         return null;
       }
@@ -128,6 +130,7 @@ export function useAppOutputSubscription() {
         manager.settleExternal(
           output.appId,
           output.lifecycleRequestId,
+          output.invocationRef,
           output.type === "agent-lifecycle-failed"
             ? { message: output.message }
             : undefined,
@@ -203,6 +206,7 @@ export function useAppOutputSubscription() {
         });
         manager.send(output.appId, {
           type: "APP_EXIT",
+          invocationRef: output.invocationRef,
           exitCode: output.exitCode ?? null,
           timestamp: output.timestamp ?? Date.now(),
         });

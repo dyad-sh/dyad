@@ -13,6 +13,8 @@ import {
   type RuntimeMode2,
 } from "@/lib/schemas";
 import type { AppOutput } from "@/ipc/types/misc";
+import type { AppRunInvocationRef } from "@/app_run/state";
+import { sameInvocationRef } from "@/state_machines/invocation_ref";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { addLog } from "@/lib/log_store";
 import { safeSend } from "@/ipc/utils/safe_sender";
@@ -249,6 +251,7 @@ export async function executeApp({
   isNeon,
   installCommand,
   startCommand,
+  invocationRef,
 }: {
   appPath: string;
   appId: number;
@@ -256,6 +259,7 @@ export async function executeApp({
   isNeon: boolean;
   installCommand?: string | null;
   startCommand?: string | null;
+  invocationRef?: AppRunInvocationRef;
 }): Promise<void> {
   const settings = readSettings();
   const runtimeMode = settings.runtimeMode2 ?? "host";
@@ -268,6 +272,7 @@ export async function executeApp({
       isNeon,
       installCommand,
       startCommand,
+      invocationRef,
     });
   } else if (runtimeMode === "cloud") {
     await executeAppInCloud({
@@ -276,6 +281,7 @@ export async function executeApp({
       event,
       installCommand,
       startCommand,
+      invocationRef,
     });
   } else {
     notifyPnpmVersionMigrationAvailable({ appPath, appId, event });
@@ -286,6 +292,7 @@ export async function executeApp({
       isNeon,
       installCommand,
       startCommand,
+      invocationRef,
     });
   }
 }
@@ -333,17 +340,20 @@ export function emitProxyServerStarted({
   proxyUrl,
   originalUrl,
   mode,
+  invocationRef,
 }: {
   appId: number;
   event: Electron.IpcMainInvokeEvent;
   proxyUrl: string;
   originalUrl: string;
   mode: RuntimeMode2;
+  invocationRef?: AppRunInvocationRef;
 }) {
   safeSend(event.sender, "app:output", {
     type: "stdout",
     message: `[dyad-proxy-server]started=[${proxyUrl}] original=[${originalUrl}] mode=[${mode}]`,
     appId,
+    invocationRef,
   });
 }
 
@@ -352,11 +362,13 @@ export async function ensureProxyForRunningApp({
   event,
   originalUrl,
   mode,
+  invocationRef,
 }: {
   appId: number;
   event: Electron.IpcMainInvokeEvent;
   originalUrl: string;
   mode: RuntimeMode2;
+  invocationRef?: AppRunInvocationRef;
 }): Promise<void> {
   const appInfo = runningApps.get(appId);
   if (!appInfo) {
@@ -378,6 +390,7 @@ export async function ensureProxyForRunningApp({
       proxyUrl: appInfo.proxyUrl,
       originalUrl,
       mode,
+      invocationRef,
     });
     return;
   }
@@ -399,7 +412,12 @@ export async function ensureProxyForRunningApp({
     port: proxyPort,
     onStarted: (proxyUrl) => {
       const latestAppInfo = runningApps.get(appId);
-      if (latestAppInfo) {
+      if (
+        latestAppInfo &&
+        (!invocationRef ||
+          (latestAppInfo.invocationRef &&
+            sameInvocationRef(latestAppInfo.invocationRef, invocationRef)))
+      ) {
         latestAppInfo.proxyUrl = proxyUrl;
         latestAppInfo.originalUrl = originalUrl;
         latestAppInfo.proxyAuthToken = proxyAuthToken;
@@ -410,6 +428,7 @@ export async function ensureProxyForRunningApp({
         proxyUrl,
         originalUrl,
         mode,
+        invocationRef,
       });
     },
     onError: (error) => {
@@ -429,7 +448,12 @@ export async function ensureProxyForRunningApp({
   });
 
   const latestAppInfo = runningApps.get(appId);
-  if (latestAppInfo) {
+  if (
+    latestAppInfo &&
+    (!invocationRef ||
+      (latestAppInfo.invocationRef &&
+        sameInvocationRef(latestAppInfo.invocationRef, invocationRef)))
+  ) {
     latestAppInfo.proxyWorker = proxyWorker;
     latestAppInfo.originalUrl = originalUrl;
     latestAppInfo.proxyAuthToken = proxyAuthToken;
@@ -445,6 +469,7 @@ async function executeAppLocalNode({
   isNeon,
   installCommand,
   startCommand,
+  invocationRef,
   ignoredBuildsSelfHealAttempted = false,
 }: {
   appPath: string;
@@ -453,6 +478,7 @@ async function executeAppLocalNode({
   isNeon: boolean;
   installCommand?: string | null;
   startCommand?: string | null;
+  invocationRef?: AppRunInvocationRef;
   ignoredBuildsSelfHealAttempted?: boolean;
 }): Promise<void> {
   const command = await getCommand({
@@ -523,6 +549,7 @@ Details: ${details || "n/a"}
   runningApps.set(appId, {
     process: spawnedProcess,
     processId: currentProcessId,
+    invocationRef,
     mode: "host",
     rendererSender: event.sender,
     lastViewedAt: Date.now(),
@@ -534,6 +561,7 @@ Details: ${details || "n/a"}
     appPath,
     isNeon,
     event,
+    invocationRef,
     onPnpmIgnoredBuildsFailure:
       command.isCustom && !ignoredBuildsSelfHealAttempted
         ? async (output) => {
@@ -562,6 +590,7 @@ Details: ${details || "n/a"}
               isNeon,
               installCommand,
               startCommand,
+              invocationRef,
               ignoredBuildsSelfHealAttempted: true,
             });
             return true;
@@ -692,6 +721,7 @@ function listenToProcess({
   appPath,
   isNeon,
   event,
+  invocationRef,
   onPnpmIgnoredBuildsFailure,
 }: {
   process: ChildProcess;
@@ -699,6 +729,7 @@ function listenToProcess({
   appPath?: string;
   isNeon: boolean;
   event: Electron.IpcMainInvokeEvent;
+  invocationRef?: AppRunInvocationRef;
   onPnpmIgnoredBuildsFailure?: (output: string) => Promise<boolean>;
 }) {
   // Rolling tail, kept only while a self-heal callback could still use it:
@@ -768,6 +799,7 @@ function listenToProcess({
           event,
           originalUrl,
           mode: "host",
+          invocationRef,
         });
       }
     }
@@ -831,6 +863,7 @@ function listenToProcess({
           type: "app-exit",
           message: `App process exited with code ${code ?? "null"}`,
           appId,
+          invocationRef,
           exitCode: code,
           signal,
           timestamp: Date.now(),
@@ -901,6 +934,7 @@ async function executeAppInDocker({
   isNeon,
   installCommand,
   startCommand,
+  invocationRef,
   ignoredBuildsSelfHealAttempted = false,
 }: {
   appPath: string;
@@ -909,6 +943,7 @@ async function executeAppInDocker({
   isNeon: boolean;
   installCommand?: string | null;
   startCommand?: string | null;
+  invocationRef?: AppRunInvocationRef;
   ignoredBuildsSelfHealAttempted?: boolean;
 }): Promise<void> {
   const containerName = `dyad-app-${appId}`;
@@ -1080,6 +1115,7 @@ ${errorOutput || "(empty)"}`,
   runningApps.set(appId, {
     process,
     processId: currentProcessId,
+    invocationRef,
     mode: "docker",
     rendererSender: event.sender,
     containerName,
@@ -1097,6 +1133,7 @@ ${errorOutput || "(empty)"}`,
     appPath,
     isNeon,
     event,
+    invocationRef,
     onPnpmIgnoredBuildsFailure:
       hasCustomCommands && !ignoredBuildsSelfHealAttempted
         ? async (output) => {
@@ -1124,6 +1161,7 @@ ${errorOutput || "(empty)"}`,
               isNeon,
               installCommand,
               startCommand,
+              invocationRef,
               ignoredBuildsSelfHealAttempted: true,
             });
             return true;
@@ -1138,12 +1176,14 @@ async function executeAppInCloud({
   event,
   installCommand,
   startCommand,
+  invocationRef,
 }: {
   appPath: string;
   appId: number;
   event: Electron.IpcMainInvokeEvent;
   installCommand?: string | null;
   startCommand?: string | null;
+  invocationRef?: AppRunInvocationRef;
 }): Promise<void> {
   const currentProcessId = processCounter.increment();
   let sandboxId: string | undefined;
@@ -1195,6 +1235,7 @@ async function executeAppInCloud({
   runningApps.set(appId, {
     process: null,
     processId: currentProcessId,
+    invocationRef,
     mode: "cloud",
     rendererSender: event.sender,
     cloudSandboxId: sandboxId,
@@ -1215,6 +1256,7 @@ async function executeAppInCloud({
     event,
     originalUrl: resolvedPreviewUrl,
     mode: "cloud",
+    invocationRef,
   });
 
   startCloudSandboxLogStream({

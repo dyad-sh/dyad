@@ -2,6 +2,8 @@ import { createStore } from "jotai";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { previewRunStateByAppIdAtom } from "@/atoms/previewRuntimeAtoms";
 import { AppRunManager } from "./manager";
+import type { AppRunInvocationRef } from "./state";
+import { createSequentialIdSource } from "@/state_machines/testing";
 
 const { addLogMock, clearLogsMock, restartAppMock, runAppMock, stopAppMock } =
   vi.hoisted(() => ({
@@ -115,6 +117,65 @@ describe("AppRunManager", () => {
     runB.resolve();
     await pendingB;
     expect(manager.getSnapshot(2)).toMatchObject({ type: "ready" });
+    manager.dispose();
+  });
+
+  it("ignores an old ref after disposeKey creates a replacement controller", async () => {
+    const oldRun = deferred();
+    const replacementRun = deferred();
+    runAppMock
+      .mockReturnValueOnce(oldRun.promise)
+      .mockReturnValueOnce(replacementRun.promise);
+    const store = createStore();
+    const onEventIgnored = vi.fn();
+    const manager = new AppRunManager(
+      store,
+      { onEventIgnored },
+      createSequentialIdSource(),
+    );
+
+    const oldPending = manager.dispatch(7, { type: "START", startedAt: 100 });
+    await Promise.resolve();
+    const firstRunCall = runAppMock.mock.calls[0];
+    if (!firstRunCall) {
+      throw new Error("expected the first run IPC call");
+    }
+    const oldRef = (
+      firstRunCall[0] as {
+        invocationRef: AppRunInvocationRef;
+      }
+    ).invocationRef;
+
+    manager.disposeKey(7);
+    await oldPending;
+    const replacementPending = manager.dispatch(7, {
+      type: "START",
+      startedAt: 200,
+    });
+    await Promise.resolve();
+    const replacement = manager.getSnapshot(7);
+    expect(replacement).toMatchObject({
+      type: "starting",
+      startedAt: 200,
+    });
+
+    manager.send(7, {
+      type: "PROXY_READY",
+      invocationRef: oldRef,
+      url: {
+        appUrl: "http://old-proxy",
+        originalUrl: "http://old-origin",
+        mode: "host",
+      },
+    });
+    expect(manager.getSnapshot(7)).toBe(replacement);
+    expect(onEventIgnored).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: "stale-operation" }),
+    );
+
+    replacementRun.resolve();
+    await replacementPending;
+    oldRun.resolve();
     manager.dispose();
   });
 });

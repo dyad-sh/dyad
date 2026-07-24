@@ -24,11 +24,13 @@ import {
   runningApps,
   stopAppByInfo,
 } from "../utils/process_manager";
+import type { AppRunInvocationRef } from "@/app_run/state";
 
 const logger = log.scope("restart_app");
 
 export interface RestartAppOptions {
   appId: number;
+  invocationRef?: AppRunInvocationRef;
   removeNodeModules?: boolean;
   recreateSandbox?: boolean;
   clearRuntimeLogs?: boolean;
@@ -43,6 +45,7 @@ export async function restartApp(
   event: IpcMainInvokeEvent,
   {
     appId,
+    invocationRef,
     removeNodeModules = false,
     recreateSandbox = false,
     clearRuntimeLogs = false,
@@ -75,6 +78,7 @@ export async function restartApp(
         appInfo.cloudPreviewUrl = restartResult.previewUrl;
         appInfo.cloudPreviewAuthToken = restartResult.previewAuthToken;
         appInfo.lastViewedAt = Date.now();
+        appInfo.invocationRef = invocationRef;
 
         appInfo.cloudLogAbortController = new AbortController();
 
@@ -87,6 +91,7 @@ export async function restartApp(
           event,
           originalUrl: restartResult.previewUrl,
           mode: "cloud",
+          invocationRef,
         });
 
         startCloudSandboxLogStream({
@@ -159,6 +164,7 @@ export async function restartApp(
         isNeon: !!app.neonProjectId,
         installCommand: app.installCommand,
         startCommand: app.startCommand,
+        invocationRef,
       });
     } catch (error) {
       logger.error(`Error restarting app ${appId}:`, error);

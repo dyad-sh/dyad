@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { McpCatalogEntry } from "@/ipc/types/mcp_catalog";
 import { ipc } from "@/ipc/types";
@@ -8,6 +9,7 @@ import { usePluginConnect } from "../usePluginConnect";
 
 export function useAddFromCatalog() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [addingSlug, setAddingSlug] = useState<string | null>(null);
   // A stdio entry awaiting the user's run-locally consent. Null when no
   // consent is pending.
@@ -60,6 +62,17 @@ export function useAddFromCatalog() {
     }
     if (!created) return;
     showSuccess(`Added "${created.name}"`);
+
+    // A server that declares inputs was added disabled and needs the user
+    // to fill them in, so send them to its setup page instead of
+    // connecting.
+    if ((entry.inputs?.length ?? 0) > 0) {
+      navigate({
+        to: "/plugins/$serverId",
+        params: { serverId: String(created.id) },
+      });
+      return;
+    }
 
     // Only required-OAuth servers connect automatically. Optional ones
     // work anonymously and offer Connect on their card. The connect

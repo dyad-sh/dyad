@@ -3,10 +3,13 @@ import { useNavigate } from "@tanstack/react-router";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useMcp } from "@/hooks/useMcp";
+import { useMcpCatalog } from "@/hooks/useMcpCatalog";
+import type { CatalogInput } from "@/ipc/types/mcp_catalog";
 import { AddPluginDialog, useOauthStorageEncrypted } from "./AddPluginDialog";
 import { OauthPlaintextStorageAlert } from "./OauthPlaintextStorageAlert";
 import { PluginSummaryCard } from "./PluginSummaryCard";
 import { PluginsStats } from "./PluginsStats";
+import { serverNeedsSetup } from "./pluginSetup";
 import { usePluginConnect } from "./usePluginConnect";
 
 export function PluginsList({
@@ -31,6 +34,17 @@ export function PluginsList({
     usePluginConnect();
 
   const oauthStorageEncrypted = useOauthStorageEncrypted();
+
+  const catalogQuery = useMcpCatalog();
+  // Declared setup fields per catalog slug, so a card can tell whether
+  // its server still has any unfilled.
+  const inputsBySlug = useMemo(() => {
+    const map = new Map<string, CatalogInput[]>();
+    for (const e of catalogQuery.data?.entries ?? []) {
+      if (e.inputs?.length) map.set(e.slug, e.inputs);
+    }
+    return map;
+  }, [catalogQuery.data]);
 
   const hasOauthServer = useMemo(
     () => (servers || []).some((s) => s.transport === "http" && s.oauthEnabled),
@@ -82,6 +96,10 @@ export function PluginsList({
             <PluginSummaryCard
               key={s.id}
               server={s}
+              needsSetup={
+                !!s.catalogSlug &&
+                serverNeedsSetup(s, inputsBySlug.get(s.catalogSlug) ?? [])
+              }
               toolCount={toolCountFor(s.id)}
               enabledToolCount={enabledToolCountFor(s.id)}
               discoveryFailed={discoveryFailedFor(s.id)}

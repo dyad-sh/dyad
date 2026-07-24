@@ -35,6 +35,10 @@ export const McpServerSchema = z.object({
   oauthConnected: z.boolean(),
   // Null falls back to DEFAULT_OAUTH_CALLBACK_PORT.
   oauthCallbackPort: z.number().nullable(),
+  // Public OAuth client id (not a secret). Surfaced so the UI can tell
+  // whether a pre-registered client has been configured; the secret is
+  // never sent to the renderer.
+  oauthClientId: z.string().nullable(),
   // Set when the server was added from the curated catalog.
   catalogSlug: z.string().nullable(),
   createdAt: z.date(),
@@ -103,6 +107,11 @@ export const McpServerUpdateSchema = z.object({
   url: z.string().optional(),
   enabled: z.boolean().optional(),
   oauthEnabled: z.boolean().optional(),
+  oauthClientId: z.string().nullable().optional(),
+  // Plaintext on update; the handler encrypts it before storing and never
+  // returns it via `McpServerSchema`.
+  oauthClientSecret: z.string().nullable().optional(),
+  oauthScope: z.string().nullable().optional(),
 });
 
 export type McpServerUpdate = z.infer<typeof McpServerUpdateSchema>;

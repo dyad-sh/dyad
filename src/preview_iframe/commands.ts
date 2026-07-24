@@ -64,6 +64,10 @@ export function createPreviewIframeCommandAdapter(
                   },
               "*",
             );
+            // This emit re-enters the controller's send() synchronously
+            // while the outer send() is still inside setState (commands run
+            // in beforeNotify). Safe only because the SELECTION_RESTORED
+            // transition is command-free — see the note in transition.ts.
             emit({ type: "SELECTION_RESTORED" });
           }
           return;

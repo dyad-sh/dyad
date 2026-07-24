@@ -1,19 +1,30 @@
 import { expect } from "@playwright/test";
-import { execFileSync, execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
 import { PageObject, testSkipIfWindows, Timeout } from "./helpers/test_helper";
+
+const SCREENSHOT_FILENAME_REGEX = /^[0-9a-f]{40}\.png$/;
 
 function git(cwd: string, ...args: string[]) {
   return execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
 }
 
 async function makeRuntimeTreeClean(po: PageObject, appPath: string) {
-  const status = execSync("git status --short -- pnpm-workspace.yaml", {
-    cwd: appPath,
-    encoding: "utf8",
-  }).trim();
+  const screenshotDir = path.join(appPath, ".dyad", "screenshot");
+  await expect(async () => {
+    const entries = fs.existsSync(screenshotDir)
+      ? fs.readdirSync(screenshotDir)
+      : [];
+    expect(entries.some((entry) => SCREENSHOT_FILENAME_REGEX.test(entry))).toBe(
+      true,
+    );
+  }).toPass({ timeout: Timeout.MEDIUM });
+
+  const status = git(appPath, "status", "--short");
   if (!status) return;
   await po.appManagement.configureGitUser();
-  execFileSync("git", ["add", "--", "pnpm-workspace.yaml"], { cwd: appPath });
+  execFileSync("git", ["add", "--all"], { cwd: appPath });
   execFileSync("git", ["commit", "--amend", "--no-edit", "--no-gpg-sign"], {
     cwd: appPath,
   });

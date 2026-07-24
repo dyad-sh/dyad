@@ -140,8 +140,20 @@ testSkipIfWindows("upgrade app to select component", async ({ po }) => {
   });
   await po.snapshotAppFiles({ name: "app-upgraded" });
   await po.appManagement.clickOpenInChatButton();
-  // There should be another version from the upgrade being committed.
-  await expect(po.page.getByText("Version 2")).toBeVisible();
+  // The upgrade commit should be reflected in the current version. Runtime
+  // file commits can advance the exact version number.
+  const versionButton = po.page.getByRole("button", {
+    name: /^Version \d+$/,
+  });
+  await expect
+    .poll(
+      async () => {
+        const label = await versionButton.textContent();
+        return Number(label?.match(/^Version (\d+)$/)?.[1] ?? 0);
+      },
+      { timeout: Timeout.MEDIUM },
+    )
+    .toBeGreaterThanOrEqual(2);
   await po.clickRestart();
 
   await po.previewPanel.clickPreviewPickElement();

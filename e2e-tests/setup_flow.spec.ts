@@ -104,6 +104,7 @@ testSetup.describe("Setup Flow", () => {
       await expectInitialBuildMode(po);
       const prompt = "Build a tiny meal planner";
       const dialog = await openAiSetupDialog(po, prompt);
+      await restoreLocalAgentDefault(po);
 
       await dialog.getByRole("button", { name: "OpenRouter" }).click();
       await expect(
@@ -284,6 +285,7 @@ testSetup.describe("Setup Flow", () => {
       await expectInitialBuildMode(po);
       const prompt = "Build a tiny workout planner";
       await openAiSetupDialog(po, prompt);
+      await restoreLocalAgentDefault(po);
 
       await triggerDyadProReturnDeepLink(electronApp);
 
@@ -302,11 +304,25 @@ testSetup.describe("Setup Flow", () => {
 });
 
 async function expectInitialBuildMode(po: PageObject) {
+  await po.pinBuildChatModeForSetup();
   await po.navigation.goToAppsTab();
   await expect(po.page.getByTestId("chat-mode-selector")).toContainText(
     "Build",
     { timeout: Timeout.MEDIUM },
   );
+}
+
+async function restoreLocalAgentDefault(po: PageObject) {
+  await po.page.evaluate(async () => {
+    await (window as any).electron.ipcRenderer.invoke("set-user-settings", {
+      defaultChatMode: "local-agent",
+    });
+  });
+  await expect
+    .poll(() => po.settings.recordSettings().defaultChatMode, {
+      timeout: Timeout.MEDIUM,
+    })
+    .toBe("local-agent");
 }
 
 async function expectLocalAgentMode(

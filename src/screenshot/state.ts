@@ -20,6 +20,7 @@ interface ScreenshotContext {
   readonly iframeLoaded: boolean;
   readonly selectorReady: boolean;
   readonly queuedSource: ScreenshotCaptureSource | null;
+  readonly settleToken?: string;
 }
 
 export type ScreenshotState =
@@ -62,7 +63,7 @@ export const INITIAL_SCREENSHOT_STATE: ScreenshotState = {
   queuedSource: null,
 };
 
-export type ScreenshotEvent =
+export type ScreenshotEvent = (
   | {
       readonly type: "CAPTURE_REQUESTED";
       readonly source: ScreenshotCaptureSource;
@@ -83,10 +84,11 @@ export type ScreenshotEvent =
     }
   | { readonly type: "APP_HIDDEN" }
   | { readonly type: "SAVED" }
-  | { readonly type: "SAVE_FAILED"; readonly requestId?: string };
+  | { readonly type: "SAVE_FAILED"; readonly requestId?: string }
+) & { readonly settleToken?: string };
 
 export type ScreenshotCommand =
-  | { readonly type: "schedule-settle" }
+  | { readonly type: "schedule-settle"; readonly settleToken?: string }
   | { readonly type: "cancel-settle" }
   | {
       readonly type: "resolve-commit-hash";

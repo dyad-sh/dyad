@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { TransitionObserver } from "@/state_machines/types";
+import type { DispatcherError } from "@/state_machines/dispatcher";
+import {
+  runControllerConformanceSuite,
+  type ControllerConformanceAdapter,
+} from "@/state_machines/testing";
+import { stay, type TransitionObserver } from "@/state_machines/types";
 import type {
   ImageGenerationCommand,
   ImageGenerationEvent,
@@ -165,6 +170,112 @@ function recordImageGenerationScenario(
   return trace;
 }
 
+function createImageGenerationConformanceAdapter(): ControllerConformanceAdapter<
+  ImageGenerationState,
+  ImageGenerationEvent,
+  ImageGenerationCommand,
+  import("./state").ImageGenerationIgnoreReason
+> {
+  const commandEvents = new WeakMap<object, ImageGenerationCommand>();
+  const makeCommand = (suffix: string): ImageGenerationCommand => ({
+    type: "RequestCancel",
+    jobId: `conformance:${suffix}`,
+  });
+  const syncThrow = makeCommand("sync-throw");
+  const asyncReject = makeCommand("async-reject");
+  const emitCommand = makeCommand("emit");
+  let deferredId = 0;
+
+  return {
+    initialState: { type: "pending", job },
+    transition(state, event) {
+      const command = commandEvents.get(event as object);
+      return command === undefined
+        ? transition(state, event)
+        : stay(state, [command]);
+    },
+    create(options) {
+      let expectedCommand: ImageGenerationCommand | undefined;
+      let disposed = false;
+      const controller = new ImageGenerationController(
+        {
+          run(command, emit) {
+            const presented = expectedCommand ?? command;
+            expectedCommand = undefined;
+            if (presented === emitCommand) {
+              emit({ type: "JOB_SUCCEEDED", result });
+              return;
+            }
+            return options.runCommand(presented, emit);
+          },
+          beforeStateCommit: options.beforeCommit,
+        },
+        job,
+        options.observer,
+        options.reportError,
+      );
+      return {
+        getSnapshot: controller.getSnapshot,
+        subscribe: controller.subscribe,
+        send(event) {
+          expectedCommand = commandEvents.get(event as object);
+          if (expectedCommand === undefined) controller.send(event);
+          else controller.start();
+        },
+        dispose() {
+          if (disposed) return;
+          disposed = true;
+          const state = controller.getSnapshot();
+          controller.dispose();
+          for (const command of options.disposeCommands?.(state) ?? []) {
+            void options.runCommand(command, () => undefined);
+          }
+          options.cleanupProjection?.();
+          options.releaseWriter?.();
+          options.onDisposed?.();
+        },
+      };
+    },
+    events: {
+      enterA: { type: "CANCEL_REQUESTED" },
+      enterB: { type: "JOB_SUCCEEDED", result },
+      finish: {
+        type: "JOB_FAILED",
+        message: "finished",
+        kind: "other",
+      },
+      command(command) {
+        const event: ImageGenerationEvent = { type: "CANCEL_REQUESTED" };
+        commandEvents.set(event, command);
+        return event;
+      },
+    },
+    errorStage: (error) =>
+      (error as DispatcherError<ImageGenerationCommand>).stage,
+    commands: {
+      emit: () => emitCommand,
+      syncThrow,
+      asyncReject,
+      awaitThen() {
+        deferredId += 1;
+        return {
+          command: makeCommand(`deferred:${deferredId}`),
+          resolve: () => undefined,
+        };
+      },
+      cleanup: () => [makeCommand("cleanup")],
+    },
+    nonTerminalEvents: [
+      {
+        name: "pending",
+        event: { type: "CANCEL_CONFIRMED", cancelled: false },
+      },
+      { name: "cancelling", event: { type: "CANCEL_REQUESTED" } },
+    ],
+    stateKey: (state) => state.type,
+  };
+}
+
 describe("ImageGenerationController", () => {
   it("keeps a failed best-effort cancel pending until a late success arrives", () => {
     const commands: ImageGenerationCommand[] = [];
@@ -251,5 +362,11 @@ describe("ImageGenerationController", () => {
     expect(recordImageGenerationScenario("controller")).toEqual(
       recordImageGenerationScenario("reference"),
     );
+  });
+
+  it("passes the shared controller conformance suite", async () => {
+    await expect(
+      runControllerConformanceSuite(createImageGenerationConformanceAdapter()),
+    ).resolves.toBeUndefined();
   });
 });

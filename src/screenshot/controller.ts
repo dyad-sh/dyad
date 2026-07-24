@@ -1,8 +1,8 @@
-import { SnapshotStore } from "@/state_machines/snapshot_store";
 import {
-  observeTransition,
-  type TransitionObserver,
-} from "@/state_machines/types";
+  TransactionalDispatcher,
+  type DispatcherError,
+} from "@/state_machines/dispatcher";
+import type { TransitionObserver } from "@/state_machines/types";
 import {
   INITIAL_SCREENSHOT_STATE,
   type ScreenshotCommand,
@@ -17,15 +17,24 @@ export interface ScreenshotCommandRunner {
     appId: number,
     command: ScreenshotCommand,
     emit: (event: ScreenshotEvent) => void,
+  ): void | Promise<void>;
+  beforeStateCommit?(
+    appId: number,
+    previous: ScreenshotState,
+    next: ScreenshotState,
   ): void;
   disposeKey(appId: number): void;
 }
 
 export class ScreenshotController {
-  private readonly store = new SnapshotStore<ScreenshotState>(
-    INITIAL_SCREENSHOT_STATE,
-  );
+  private readonly dispatcher: TransactionalDispatcher<
+    ScreenshotState,
+    ScreenshotEvent,
+    ScreenshotCommand,
+    ScreenshotIgnoreReason
+  >;
   private disposed = false;
+  private nextSettleToken = 1;
 
   constructor(
     readonly appId: number,
@@ -36,38 +45,52 @@ export class ScreenshotController {
       ScreenshotCommand,
       ScreenshotIgnoreReason
     >,
-  ) {}
+    reportError?: (error: DispatcherError<ScreenshotCommand>) => void,
+  ) {
+    this.dispatcher = new TransactionalDispatcher<
+      ScreenshotState,
+      ScreenshotEvent,
+      ScreenshotCommand,
+      ScreenshotIgnoreReason
+    >({
+      initialState: INITIAL_SCREENSHOT_STATE,
+      transition,
+      runCommand: (command, emit) =>
+        runner.execute(
+          this.appId,
+          command,
+          emit as (event: ScreenshotEvent) => void,
+        ),
+      scheduler: {
+        schedule(batch, execute) {
+          for (const command of batch.commands) void execute(command);
+        },
+      },
+      beforeCommit: (previous, next) =>
+        runner.beforeStateCommit?.(this.appId, previous, next),
+      observer,
+      mapUnexpectedCommandError: () => ({ type: "SAVE_FAILED" }),
+      reportError,
+    });
+  }
 
-  getSnapshot = this.store.getSnapshot;
-  subscribe = this.store.subscribe;
+  getSnapshot = (): ScreenshotState => this.dispatcher.getSnapshot();
+  subscribe = (listener: () => void): (() => void) =>
+    this.dispatcher.subscribe(listener);
 
   send = (event: ScreenshotEvent): void => {
-    if (this.disposed) return;
-    const previous = this.store.getSnapshot();
-    const result = transition(previous, event);
-    observeTransition(this.observer, previous, event, result);
-    if (result.kind === "ignored") return;
-    const execute = () => {
-      for (const command of result.commands) {
-        try {
-          this.runner.execute(this.appId, command, this.send);
-        } catch (error) {
-          console.error(
-            `Screenshot command execution failed for app ${this.appId}:`,
-            error,
-          );
-          this.send({ type: "SAVE_FAILED" });
-        }
-      }
-    };
-    if (result.state !== previous) this.store.setState(result.state, execute);
-    else execute();
+    const settleToken =
+      event.settleToken ??
+      (event.type === "SETTLE_ELAPSED"
+        ? undefined
+        : `screenshot-settle:${this.appId}:${this.nextSettleToken++}`);
+    this.dispatcher.send({ ...event, settleToken });
   };
 
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.dispatcher.dispose();
     this.runner.disposeKey(this.appId);
-    this.store.dispose();
   }
 }

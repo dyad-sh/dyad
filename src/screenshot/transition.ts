@@ -23,6 +23,7 @@ function transitionTo(
 function startSettling(
   state: ScreenshotState,
   source: ScreenshotCaptureSource,
+  settleToken?: string,
 ): Result {
   return transitionTo(
     {
@@ -30,14 +31,16 @@ function startSettling(
       status: "settling",
       source,
       queuedSource: null,
+      settleToken,
     },
-    [{ type: "schedule-settle" }],
+    [scheduleSettle(settleToken)],
   );
 }
 
 function waitForIframe(
   state: ScreenshotState,
   source: ScreenshotCaptureSource,
+  settleToken?: string,
 ): Result {
   const iframeLoaded = state.iframeLoaded;
   return transitionTo(
@@ -46,17 +49,18 @@ function waitForIframe(
       status: iframeLoaded ? "waitingSelectorReady" : "pending",
       source,
       queuedSource: null,
+      settleToken: iframeLoaded ? settleToken : undefined,
     },
-    iframeLoaded ? [{ type: "schedule-settle" }] : [],
+    iframeLoaded ? [scheduleSettle(settleToken)] : [],
   );
 }
 
-function finishCapture(state: ScreenshotState): Result {
+function finishCapture(state: ScreenshotState, settleToken?: string): Result {
   const source = state.queuedSource;
   if (source !== null) {
     return state.selectorReady
-      ? startSettling(state, source)
-      : waitForIframe(state, source);
+      ? startSettling(state, source, settleToken)
+      : waitForIframe(state, source, settleToken);
   }
   return transitionTo({
     status: "idle",
@@ -70,12 +74,13 @@ function finishCapture(state: ScreenshotState): Result {
 function captureRequested(
   state: ScreenshotState,
   source: ScreenshotCaptureSource,
+  settleToken?: string,
 ): Result {
   switch (state.status) {
     case "idle":
       return state.selectorReady
-        ? startSettling(state, source)
-        : waitForIframe(state, source);
+        ? startSettling(state, source, settleToken)
+        : waitForIframe(state, source, settleToken);
     case "pending":
       if (
         !state.selectorReady &&
@@ -85,8 +90,8 @@ function captureRequested(
         return ignore(state, "request-already-current");
       }
       return state.selectorReady
-        ? startSettling(state, source)
-        : waitForIframe(state, source);
+        ? startSettling(state, source, settleToken)
+        : waitForIframe(state, source, settleToken);
     case "waitingSelectorReady":
       if (state.source === source) {
         return ignore(state, "request-already-current");
@@ -109,7 +114,7 @@ function captureRequested(
   }
 }
 
-function iframeLoaded(state: ScreenshotState): Result {
+function iframeLoaded(state: ScreenshotState, settleToken?: string): Result {
   switch (state.status) {
     case "idle":
       if (state.iframeLoaded && !state.selectorReady) {
@@ -127,8 +132,9 @@ function iframeLoaded(state: ScreenshotState): Result {
           status: "waitingSelectorReady",
           iframeLoaded: true,
           selectorReady: false,
+          settleToken,
         },
-        [{ type: "schedule-settle" }],
+        [scheduleSettle(settleToken)],
       );
     case "waitingSelectorReady":
       if (state.iframeLoaded && !state.selectorReady) {
@@ -140,8 +146,9 @@ function iframeLoaded(state: ScreenshotState): Result {
           status: "waitingSelectorReady",
           iframeLoaded: true,
           selectorReady: false,
+          settleToken,
         },
-        [{ type: "schedule-settle" }],
+        [scheduleSettle(settleToken)],
       );
     case "settling":
       return transitionTo(
@@ -150,8 +157,9 @@ function iframeLoaded(state: ScreenshotState): Result {
           status: "waitingSelectorReady",
           iframeLoaded: true,
           selectorReady: false,
+          settleToken,
         },
-        [{ type: "schedule-settle" }],
+        [scheduleSettle(settleToken)],
       );
     case "resolvingCommit":
     case "awaitingResponse":
@@ -163,8 +171,9 @@ function iframeLoaded(state: ScreenshotState): Result {
           queuedSource: null,
           iframeLoaded: true,
           selectorReady: false,
+          settleToken,
         },
-        [{ type: "schedule-settle" }],
+        [scheduleSettle(settleToken)],
       );
     case "saving":
       if (state.iframeLoaded && !state.selectorReady) {
@@ -180,7 +189,7 @@ function iframeLoaded(state: ScreenshotState): Result {
   }
 }
 
-function selectorReady(state: ScreenshotState): Result {
+function selectorReady(state: ScreenshotState, settleToken?: string): Result {
   switch (state.status) {
     case "idle":
       if (state.selectorReady && state.fallbackChecked) {
@@ -199,6 +208,7 @@ function selectorReady(state: ScreenshotState): Result {
       return startSettling(
         { ...state, iframeLoaded: true, selectorReady: true },
         state.source,
+        settleToken,
       );
     case "waitingSelectorReady":
       return transitionTo({
@@ -290,11 +300,11 @@ export function transition(
 ): Result {
   switch (event.type) {
     case "CAPTURE_REQUESTED":
-      return captureRequested(state, event.source);
+      return captureRequested(state, event.source, event.settleToken);
     case "IFRAME_LOADED":
-      return iframeLoaded(state);
+      return iframeLoaded(state, event.settleToken);
     case "SELECTOR_READY":
-      return selectorReady(state);
+      return selectorReady(state, event.settleToken);
     case "APP_HIDDEN":
       return appHidden(state);
     case "SETTLE_ELAPSED":
@@ -303,6 +313,12 @@ export function transition(
         state.status !== "settling"
       ) {
         return ignore(state, "capture-not-active");
+      }
+      if (
+        state.settleToken !== undefined &&
+        event.settleToken !== state.settleToken
+      ) {
+        return ignore(state, "stale-request");
       }
       return transitionTo(
         {
@@ -345,7 +361,9 @@ export function transition(
       ) {
         return ignore(state, "stale-request");
       }
-      if (!event.ok || !event.dataUrl) return finishCapture(state);
+      if (!event.ok || !event.dataUrl) {
+        return finishCapture(state, event.settleToken);
+      }
       return transitionTo(
         {
           ...state,
@@ -362,7 +380,7 @@ export function transition(
       );
     case "SAVED":
       return state.status === "saving"
-        ? finishCapture(state)
+        ? finishCapture(state, event.settleToken)
         : ignore(state, "not-saving");
     case "SAVE_FAILED":
       if (event.requestId !== undefined) {
@@ -373,17 +391,23 @@ export function transition(
         ) {
           return ignore(state, "stale-request");
         }
-        return finishCapture(state);
+        return finishCapture(state, event.settleToken);
       }
       return state.status === "settling" ||
         state.status === "resolvingCommit" ||
         state.status === "awaitingResponse" ||
         state.status === "saving"
-        ? finishCapture(state)
+        ? finishCapture(state, event.settleToken)
         : ignore(state, "capture-not-active");
     default:
       return assertNever(event);
   }
+}
+
+function scheduleSettle(settleToken?: string): ScreenshotCommand {
+  return settleToken === undefined
+    ? { type: "schedule-settle" }
+    : { type: "schedule-settle", settleToken };
 }
 
 function assertNever(value: never): never {

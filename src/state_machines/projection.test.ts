@@ -67,4 +67,36 @@ describe("projection kit", () => {
       warn.mockRestore();
     }
   });
+
+  it("lets a superseded production writer resume after the adopter disposes", () => {
+    const previousNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const atom = {};
+      const store = { set: vi.fn() };
+      const first = registerAtomWriter<typeof store, typeof atom, number>(
+        store,
+        atom,
+      );
+      const second = registerAtomWriter<typeof store, typeof atom, number>(
+        store,
+        atom,
+      );
+
+      first.write(1);
+      second.write(2);
+      second.dispose();
+      first.write(3);
+
+      expect(store.set.mock.calls).toEqual([
+        [atom, 2],
+        [atom, 3],
+      ]);
+      first.dispose();
+    } finally {
+      process.env.NODE_ENV = previousNodeEnv;
+      warn.mockRestore();
+    }
+  });
 });

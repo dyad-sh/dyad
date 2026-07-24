@@ -37,9 +37,14 @@ export function registerAtomWriter<Store extends object, Atom, Value>(
 
   return {
     write(value) {
-      if (!disposed && registeredWriters.get(storeKey)?.get(atom) === token) {
-        set(atom, value);
+      if (disposed) return;
+      let current = registeredWriters.get(storeKey);
+      if (!current) {
+        current = new Map();
+        registeredWriters.set(storeKey, current);
       }
+      if (!current.has(atom)) current.set(atom, token);
+      if (current.get(atom) === token) set(atom, value);
     },
     dispose() {
       if (disposed) return;

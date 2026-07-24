@@ -52,7 +52,6 @@ import {
   stripCancelledResponseNotice,
 } from "@/shared/chatCancellation";
 import { useVersionPreview } from "@/hooks/useVersionPreview";
-import { isVersionActionBlockedState } from "@/version_preview/state";
 
 /** Extract <dyad-attachment> tags from message content and return parsed attachment data. */
 function extractAttachments(content: string): {
@@ -112,9 +111,12 @@ const ChatMessage = ({
   const { isStreaming } = useStreamChat();
   const appId = useAtomValue(selectedAppIdAtom);
   const { versions: liveVersions } = useVersions(appId);
-  const { state: previewState, send: sendPreviewEvent } =
-    useVersionPreview(appId);
-  const isAnyVersionMutationPending = isVersionActionBlockedState(previewState);
+  const {
+    state: previewState,
+    projection: previewProjection,
+    send: sendPreviewEvent,
+  } = useVersionPreview(appId);
+  const canRestoreToMessage = previewProjection.capabilities.canRestore;
   const isRestoringToMessage = previewState.type === "restoring";
   const assistantTextContent =
     message.role === "assistant"
@@ -246,7 +248,7 @@ const ChatMessage = ({
             <button
               data-testid="restore-to-message-button"
               onClick={() => setShowRestoreConfirm(true)}
-              disabled={isAnyVersionMutationPending}
+              disabled={!canRestoreToMessage}
               aria-label="Restore to this point"
               className="absolute -top-2 -right-2 z-10 flex h-6 w-6 items-center justify-center rounded-full border bg-(--background) text-gray-500 shadow-sm transition-colors duration-200 hover:text-gray-700 disabled:cursor-not-allowed dark:text-gray-400 dark:hover:text-gray-200"
             />

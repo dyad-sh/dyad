@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   assertAllCommandsProducible,
   assertAllStatesReachable,
+  assertCapabilityTransitionConsistency,
   assertReferenceStability,
   commandsOf,
   createRecordingCommandRunner,
@@ -49,6 +50,50 @@ describe("state-machine test kit", () => {
       transition: (state) => ignore(state, "test-ignore"),
     });
     expect(results).toHaveLength(4);
+  });
+
+  it("checks enabled, disabled, and payload-dependent capability cases", () => {
+    type State = { phase: "idle" | "busy"; selected: string };
+    type Event = { type: "select"; value: string };
+    const states: State[] = [
+      { phase: "idle", selected: "current" },
+      { phase: "busy", selected: "current" },
+    ];
+
+    expect(() =>
+      assertCapabilityTransitionConsistency({
+        states,
+        selectCapabilities: (state) => ({
+          canSelect: state.phase === "idle",
+        }),
+        transition: (state: State, event: Event) =>
+          state.phase === "busy"
+            ? ignore(state, "busy")
+            : event.value === state.selected
+              ? ignore(state, "no-change")
+              : change({ ...state, selected: event.value }),
+        cases: {
+          canSelect: {
+            representativeEvents: (state) => ({
+              valid: [{ type: "select", value: "next" } satisfies Event],
+              invalid:
+                state.phase === "idle"
+                  ? [
+                      {
+                        event: {
+                          type: "select",
+                          value: state.selected,
+                        } satisfies Event,
+                        reason: "no-change" as const,
+                      },
+                    ]
+                  : [],
+            }),
+            disabledReason: "busy",
+          },
+        },
+      }),
+    ).not.toThrow();
   });
 
   it("rejects value-equal snapshots with new references", () => {

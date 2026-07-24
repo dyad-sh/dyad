@@ -27,10 +27,7 @@ import { useSettings } from "@/hooks/useSettings";
 import { ModifiedFilesCard } from "./ModifiedFilesCard";
 import { isCancelledResponseContent } from "@/shared/chatCancellation";
 import { useVersionPreview } from "@/hooks/useVersionPreview";
-import {
-  isVersionActionBlockedState,
-  type PreviewEvent,
-} from "@/version_preview/state";
+import type { PreviewEvent } from "@/version_preview/state";
 import { ExtraCommitsRevertDialog } from "./ExtraCommitsRevertDialog";
 import { getExtraRevertedCommits } from "./revertImpact";
 
@@ -580,10 +577,13 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
   function MessagesList({ messages, messagesEndRef, onAtBottomChange }, ref) {
     const appId = useAtomValue(selectedAppIdAtom);
     const { refreshVersions } = useVersions(appId);
-    const { state: previewState, sendAndWaitForMutation: sendPreviewMutation } =
-      useVersionPreview(appId);
+    const {
+      state: previewState,
+      projection: previewProjection,
+      sendAndWaitForMutation: sendPreviewMutation,
+    } = useVersionPreview(appId);
     const isAnyVersionMutationPending =
-      isVersionActionBlockedState(previewState);
+      !previewProjection.capabilities.canRestore;
     const restoreTargetBranch =
       previewState.type === "previewing" &&
       previewState.session.checkedOutVersionId !== null

@@ -15,7 +15,6 @@ import {
   CLOSED_STATE,
   diffVersionIdForState,
   isPaneVisibleState,
-  isVersionActionBlockedState,
   selectedDiffFileForState,
 } from "./state";
 import {
@@ -636,22 +635,6 @@ describe("presentation selection", () => {
       expect(diffVersionIdForState(state)).toBeNull();
       expect(selectedDiffFileForState(state)).toBeNull();
     }
-  });
-
-  it("blocks new version actions while recovery is required", () => {
-    const recovery: PreviewState = {
-      type: "recovery-required",
-      session: session(),
-      error: { message: "return failed" },
-    };
-
-    expect(isVersionActionBlockedState(recovery)).toBe(true);
-    expect(
-      isVersionActionBlockedState({
-        type: "browsing",
-        session: session(),
-      }),
-    ).toBe(false);
   });
 
   it("switches to an explicit branch from a closed machine", () => {

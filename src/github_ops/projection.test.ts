@@ -52,19 +52,20 @@ describe("projectGithubOps", () => {
   );
 
   it("disables primary sync outside idle", () => {
-    expect(projectGithubOps(INITIAL_GITHUB_OPS_STATE).canRequestSync).toBe(
-      true,
-    );
+    expect(
+      projectGithubOps(INITIAL_GITHUB_OPS_STATE).capabilities.canSync,
+    ).toBe(true);
     expect(
       projectGithubOps({
         type: "conflicted",
         files: ["src/conflicted.ts"],
         origin: { type: "reconcile" },
         banner: null,
-      }).canRequestSync,
+      }).capabilities.canSync,
     ).toBe(false);
     expect(
-      projectGithubOps({ type: "rebase-paused", banner: null }).canRequestSync,
+      projectGithubOps({ type: "rebase-paused", banner: null }).capabilities
+        .canSync,
     ).toBe(false);
   });
 
@@ -80,9 +81,25 @@ describe("projectGithubOps", () => {
       banner: null,
     });
 
-    expect(conflicted.canRequestBranchSwitch).toBe(true);
-    expect(rebasePaused.canRequestBranchSwitch).toBe(true);
-    expect(conflicted.canRequestBranchMutation).toBe(false);
-    expect(rebasePaused.canRequestBranchMutation).toBe(false);
+    expect(conflicted.capabilities.canSwitchBranches).toBe(true);
+    expect(rebasePaused.capabilities.canSwitchBranches).toBe(true);
+    expect(conflicted.capabilities.canMutateBranches).toBe(false);
+    expect(rebasePaused.capabilities.canMutateBranches).toBe(false);
+  });
+
+  it("disables disconnect while conflict or rebase recovery owns Git", () => {
+    const conflicted = projectGithubOps({
+      type: "conflicted",
+      files: ["src/conflicted.ts"],
+      origin: { type: "reconcile" },
+      banner: null,
+    });
+    const rebasePaused = projectGithubOps({
+      type: "rebase-paused",
+      banner: null,
+    });
+
+    expect(conflicted.capabilities.canDisconnect).toBe(false);
+    expect(rebasePaused.capabilities.canDisconnect).toBe(false);
   });
 });

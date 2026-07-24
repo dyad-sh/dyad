@@ -70,8 +70,11 @@ export function ChatHeader({
     refetchBranchInfo,
   } = useCurrentBranch(appId);
 
-  const { state: versionPreviewState, send: sendVersionPreviewEvent } =
-    useVersionPreview(appId);
+  const {
+    state: versionPreviewState,
+    projection: versionPreviewProjection,
+    send: sendVersionPreviewEvent,
+  } = useVersionPreview(appId);
   const isCheckingOutVersion = isMutatingState(versionPreviewState);
   const { renameBranch, isRenamingBranch } = useRenameBranch();
 
@@ -193,7 +196,10 @@ export function ChatHeader({
               variant="outline"
               size="sm"
               onClick={handleCheckoutMainBranch}
-              disabled={isCheckingOutVersion || branchInfoLoading}
+              disabled={
+                !versionPreviewProjection.capabilities.canSwitchBranch ||
+                branchInfoLoading
+              }
             >
               {isCheckingOutVersion
                 ? t("header.checkingOut")

@@ -115,6 +115,127 @@ function validationFailure(
   );
 }
 
+export interface CapabilityRepresentativeEvents<Event, Reason> {
+  /** Valid payloads that must apply whenever the capability is enabled. */
+  readonly valid: readonly Event[];
+  /**
+   * Invalid payloads whose rejection is independent of whether the control is
+   * enabled. Omit them for states where another guard takes precedence.
+   */
+  readonly invalid?: readonly {
+    readonly event: Event;
+    readonly reason: Reason;
+  }[];
+}
+
+export interface CapabilityConsistencyCase<State, Event, Reason> {
+  readonly representativeEvents: (
+    state: State,
+  ) => CapabilityRepresentativeEvents<Event, Reason>;
+  /**
+   * When supplied, valid payloads for disabled states must be ignored for this
+   * reason. Return undefined when the domain does not promise a reason for a
+   * particular disabled state.
+   */
+  readonly disabledReason?: Reason | ((state: State) => Reason | undefined);
+}
+
+/**
+ * Checks that explicit UI capability policy stays consistent with the real
+ * transition function. Capability policy remains domain-owned: this helper
+ * never probes synthetic events to derive it.
+ */
+export function assertCapabilityTransitionConsistency<
+  State,
+  Event,
+  Command,
+  Reason extends IgnoreReason,
+  Capabilities extends {
+    readonly [Capability in keyof Capabilities]: boolean;
+  },
+>(options: {
+  states: readonly State[];
+  selectCapabilities: (state: State) => Capabilities;
+  transition: (
+    state: State,
+    event: Event,
+  ) => TransitionResult<State, Command, Reason>;
+  cases: {
+    readonly [Capability in keyof Capabilities]: CapabilityConsistencyCase<
+      State,
+      Event,
+      Reason
+    >;
+  };
+}): void {
+  for (const state of options.states) {
+    const capabilities = options.selectCapabilities(state);
+    for (const capability of Object.keys(
+      capabilities,
+    ) as (keyof Capabilities)[]) {
+      const capabilityCase = options.cases[capability];
+      const representatives = capabilityCase.representativeEvents(state);
+
+      for (const event of representatives.valid) {
+        const result = options.transition(state, event);
+        if (capabilities[capability]) {
+          if (result.kind !== "applied") {
+            capabilityFailure(
+              capability,
+              "enabled capability must apply its representative valid event",
+              state,
+              event,
+              result,
+            );
+          }
+          continue;
+        }
+
+        const disabledReason =
+          typeof capabilityCase.disabledReason === "function"
+            ? capabilityCase.disabledReason(state)
+            : capabilityCase.disabledReason;
+        if (disabledReason !== undefined) {
+          if (result.kind !== "ignored" || result.reason !== disabledReason) {
+            capabilityFailure(
+              capability,
+              `disabled capability must be ignored with reason ${describe(disabledReason)}`,
+              state,
+              event,
+              result,
+            );
+          }
+        }
+      }
+
+      for (const invalid of representatives.invalid ?? []) {
+        const result = options.transition(state, invalid.event);
+        if (result.kind !== "ignored" || result.reason !== invalid.reason) {
+          capabilityFailure(
+            capability,
+            `invalid representative payload must be ignored with reason ${describe(invalid.reason)}`,
+            state,
+            invalid.event,
+            result,
+          );
+        }
+      }
+    }
+  }
+}
+
+function capabilityFailure(
+  capability: PropertyKey,
+  message: string,
+  state: unknown,
+  event: unknown,
+  result: unknown,
+): never {
+  throw new Error(
+    `Capability ${String(capability)}: ${message}\nSource state: ${describe(state)}\nEvent: ${describe(event)}\nResult: ${describe(result)}`,
+  );
+}
+
 export function validateTransitionResult<
   State,
   Event,

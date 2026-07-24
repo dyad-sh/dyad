@@ -28,7 +28,6 @@ import { Virtuoso } from "react-virtuoso";
 import { useVersionPreview } from "@/hooks/useVersionPreview";
 import {
   diffVersionIdForState,
-  isMutatingState,
   isPaneVisibleState,
 } from "@/version_preview/state";
 
@@ -354,12 +353,17 @@ export function VersionPane() {
 
   // Repository state lives in the version preview machine; this component
   // only renders it and sends events.
-  const { state: previewState, send } = useVersionPreview(appId);
+  const {
+    state: previewState,
+    projection: previewProjection,
+    send,
+  } = useVersionPreview(appId);
   const isVisible = isPaneVisibleState(previewState);
   const isResolvingPreviewBranch = previewState.type === "resolving-origin";
   const isCheckingOutVersion = previewState.type === "checking-out";
   const isRevertingVersion = previewState.type === "restoring";
-  const isAnyVersionMutationPending = isMutatingState(previewState);
+  const isAnyVersionMutationPending =
+    !previewProjection.capabilities.canRestore;
   const selectedVersionId = diffVersionIdForState(previewState);
 
   const [cachedVersions, setCachedVersions] = useState<Version[]>([]);

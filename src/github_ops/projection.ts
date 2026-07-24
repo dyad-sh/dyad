@@ -1,11 +1,15 @@
 import type { GithubOperation, GithubOpsBanner, GithubOpsState } from "./state";
+import {
+  selectGithubOpsCapabilities,
+  type GithubOpsCapabilities,
+} from "./capabilities";
 
 export interface GithubOpsProjection {
   readonly state: GithubOpsState;
+  readonly capabilities: GithubOpsCapabilities;
   readonly banner: GithubOpsBanner | null;
   readonly completedOperation: GithubOperation["type"] | null;
   readonly isOperationInFlight: boolean;
-  readonly canRequestSync: boolean;
   readonly isSyncing: boolean;
   readonly conflicts: readonly string[];
   readonly rebaseInProgress: boolean;
@@ -22,8 +26,6 @@ export interface GithubOpsProjection {
   readonly isMergingBranch: boolean;
   readonly isPulling: boolean;
   readonly isCancellingSync: boolean;
-  readonly canRequestBranchMutation: boolean;
-  readonly canRequestBranchSwitch: boolean;
   readonly switchBlocked: {
     readonly target: string;
     readonly blockingOp: "merge" | "rebase";
@@ -42,13 +44,13 @@ export function projectGithubOps(state: GithubOpsState): GithubOpsProjection {
   const runningOperation = state.type === "running" ? state.op : null;
   const projection: GithubOpsProjection = {
     state,
+    capabilities: selectGithubOpsCapabilities(state),
     banner: state.banner,
     completedOperation:
       state.banner?.kind === "success"
         ? (state.banner.completedOperation ?? null)
         : null,
     isOperationInFlight: state.type === "running",
-    canRequestSync: state.type === "idle",
     isSyncing:
       state.type === "running" &&
       (state.op.type === "push" || state.op.type === "rebase"),
@@ -89,11 +91,6 @@ export function projectGithubOps(state: GithubOpsState): GithubOpsProjection {
     isCancellingSync:
       runningOperation?.type === "merge-abort" ||
       runningOperation?.type === "rebase-abort",
-    canRequestBranchMutation: state.type === "idle",
-    canRequestBranchSwitch:
-      state.type === "idle" ||
-      state.type === "conflicted" ||
-      state.type === "rebase-paused",
     switchBlocked:
       state.type === "switch-blocked"
         ? {

@@ -272,6 +272,26 @@ describe("VersionPane", () => {
     });
   });
 
+  it("allows the latest version selection to win while origin resolution is pending", async () => {
+    const firstVersion = makeVersion(1);
+    const secondVersion = makeVersion(2);
+    versionsMock.push(firstVersion, secondVersion);
+    refreshVersionsMock.mockResolvedValue({ data: versionsMock });
+
+    render(<VersionPane />, { wrapper: makeWrapper() });
+    openPane();
+
+    fireEvent.click(await screen.findByTestId("version-row-1"));
+    expect(fake.ofType("resolve")).toHaveLength(1);
+
+    fireEvent.click(screen.getByTestId("version-row-2"));
+    expect(fake.ofType("resolve")).toHaveLength(2);
+    expect(manager.getSnapshot(APP_ID)).toMatchObject({
+      type: "resolving-origin",
+      session: { targetVersionId: firstVersion.oid },
+    });
+  });
+
   it("keeps diff selection in the app-scoped machine session", async () => {
     const version = makeVersion(1);
     versionsMock.push(version);

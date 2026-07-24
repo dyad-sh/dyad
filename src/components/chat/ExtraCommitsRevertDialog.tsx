@@ -19,6 +19,7 @@ export function ExtraCommitsRevertDialog({
   extraCommits,
   onConfirm,
   onRetryFromCurrentCode,
+  actionsDisabled = false,
   uncommittedFileCount = 0,
 }: {
   open: boolean;
@@ -27,6 +28,7 @@ export function ExtraCommitsRevertDialog({
   extraCommits: Version[];
   onConfirm: () => void;
   onRetryFromCurrentCode?: () => void;
+  actionsDisabled?: boolean;
   uncommittedFileCount?: number;
 }) {
   const action = kind === "undo" ? "Undo" : "Retry";
@@ -102,6 +104,7 @@ export function ExtraCommitsRevertDialog({
             <AlertDialogAction
               data-testid="retry-from-current-code-button"
               className="w-full"
+              disabled={actionsDisabled}
               onClick={onRetryFromCurrentCode}
             >
               Retry from current code
@@ -111,6 +114,7 @@ export function ExtraCommitsRevertDialog({
             <AlertDialogAction
               data-testid="confirm-revert-anyway-button"
               className={`${buttonVariants({ variant: "destructive" })} w-full`}
+              disabled={actionsDisabled}
               onClick={onConfirm}
             >
               {isRetry ? "Restore and retry" : `${action} anyway`}

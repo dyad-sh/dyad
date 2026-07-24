@@ -7,11 +7,16 @@ import {
   type PreviewState,
 } from "@/version_preview/state";
 import type { VersionPreviewRecoveryEntry } from "@/version_preview/manager";
+import {
+  projectVersionPreview,
+  type VersionPreviewProjection,
+} from "@/version_preview/projection";
 
 const NULL_APP_ID = -1;
 
 export function useVersionPreview(appId: number | null): {
   state: PreviewState;
+  projection: VersionPreviewProjection;
   send: (event: PreviewEvent) => void;
   sendAndWaitForMutation: (event: PreviewEvent) => Promise<void>;
 } {
@@ -30,8 +35,10 @@ export function useVersionPreview(appId: number | null): {
         : manager.sendAndWaitForMutation(appId, event),
     [appId, manager],
   );
+  const effectiveState = appId === null ? CLOSED_STATE : state;
   return {
-    state: appId === null ? CLOSED_STATE : state,
+    state: effectiveState,
+    projection: projectVersionPreview(effectiveState),
     send,
     sendAndWaitForMutation,
   };

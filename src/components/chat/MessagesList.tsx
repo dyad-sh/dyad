@@ -27,10 +27,7 @@ import { useSettings } from "@/hooks/useSettings";
 import { ModifiedFilesCard } from "./ModifiedFilesCard";
 import { isCancelledResponseContent } from "@/shared/chatCancellation";
 import { useVersionPreview } from "@/hooks/useVersionPreview";
-import {
-  isVersionActionBlockedState,
-  type PreviewEvent,
-} from "@/version_preview/state";
+import type { PreviewEvent } from "@/version_preview/state";
 import { ExtraCommitsRevertDialog } from "./ExtraCommitsRevertDialog";
 import { getExtraRevertedCommits } from "./revertImpact";
 
@@ -500,6 +497,7 @@ function FooterComponent({ context }: { context?: FooterContext }) {
               ? currentPendingRevert.uncommittedFileCount
               : 0
           }
+          actionsDisabled={isAnyVersionMutationPending}
           onOpenChange={(open) => {
             if (!open) setPendingRevert(null);
           }}
@@ -507,7 +505,6 @@ function FooterComponent({ context }: { context?: FooterContext }) {
             currentPendingRevert.kind === "retry"
               ? () => {
                   const action = currentPendingRevert;
-                  setPendingRevert(null);
                   if (
                     action.appId !== appId ||
                     action.chatId !== selectedChatId ||
@@ -516,6 +513,7 @@ function FooterComponent({ context }: { context?: FooterContext }) {
                   ) {
                     return;
                   }
+                  setPendingRevert(null);
                   void executeRetry({
                     appId: action.appId,
                     retry: { ...action.retry, redo: true },
@@ -530,7 +528,6 @@ function FooterComponent({ context }: { context?: FooterContext }) {
           }
           onConfirm={() => {
             const action = currentPendingRevert;
-            setPendingRevert(null);
             if (
               action.appId !== appId ||
               action.chatId !== selectedChatId ||
@@ -539,6 +536,7 @@ function FooterComponent({ context }: { context?: FooterContext }) {
             ) {
               return;
             }
+            setPendingRevert(null);
             const operation =
               action.kind === "undo"
                 ? executeUndo(action)
@@ -580,10 +578,13 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
   function MessagesList({ messages, messagesEndRef, onAtBottomChange }, ref) {
     const appId = useAtomValue(selectedAppIdAtom);
     const { refreshVersions } = useVersions(appId);
-    const { state: previewState, sendAndWaitForMutation: sendPreviewMutation } =
-      useVersionPreview(appId);
+    const {
+      state: previewState,
+      projection: previewProjection,
+      sendAndWaitForMutation: sendPreviewMutation,
+    } = useVersionPreview(appId);
     const isAnyVersionMutationPending =
-      isVersionActionBlockedState(previewState);
+      !previewProjection.capabilities.canRestore;
     const restoreTargetBranch =
       previewState.type === "previewing" &&
       previewState.session.checkedOutVersionId !== null

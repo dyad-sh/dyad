@@ -28,7 +28,6 @@ import { Virtuoso } from "react-virtuoso";
 import { useVersionPreview } from "@/hooks/useVersionPreview";
 import {
   diffVersionIdForState,
-  isMutatingState,
   isPaneVisibleState,
 } from "@/version_preview/state";
 
@@ -86,6 +85,7 @@ interface VersionRowProps {
   isResolvingPreviewBranch: boolean;
   isRevertingVersion: boolean;
   isAnyVersionMutationPending: boolean;
+  canSelectVersion: boolean;
   showNoteEditor: boolean;
   shouldAutoFocusNote: boolean;
   versionNumberByOid: Map<string, number>;
@@ -108,6 +108,7 @@ function VersionRow({
   isResolvingPreviewBranch,
   isRevertingVersion,
   isAnyVersionMutationPending,
+  canSelectVersion,
   showNoteEditor,
   shouldAutoFocusNote,
   versionNumberByOid,
@@ -150,7 +151,7 @@ function VersionRow({
           "opacity-50 cursor-not-allowed",
       )}
       onClick={() => {
-        if (!isCheckingOutVersion && !isAnyVersionMutationPending) {
+        if (canSelectVersion) {
           onVersionClick(version);
         }
       }}
@@ -354,12 +355,18 @@ export function VersionPane() {
 
   // Repository state lives in the version preview machine; this component
   // only renders it and sends events.
-  const { state: previewState, send } = useVersionPreview(appId);
+  const {
+    state: previewState,
+    projection: previewProjection,
+    send,
+  } = useVersionPreview(appId);
   const isVisible = isPaneVisibleState(previewState);
   const isResolvingPreviewBranch = previewState.type === "resolving-origin";
   const isCheckingOutVersion = previewState.type === "checking-out";
   const isRevertingVersion = previewState.type === "restoring";
-  const isAnyVersionMutationPending = isMutatingState(previewState);
+  const isAnyVersionMutationPending =
+    !previewProjection.capabilities.canRestore;
+  const { canSelectVersion } = previewProjection.capabilities;
   const selectedVersionId = diffVersionIdForState(previewState);
 
   const [cachedVersions, setCachedVersions] = useState<Version[]>([]);
@@ -785,6 +792,7 @@ export function VersionPane() {
                   isResolvingPreviewBranch={isResolvingPreviewBranch}
                   isRevertingVersion={isRevertingVersion}
                   isAnyVersionMutationPending={isAnyVersionMutationPending}
+                  canSelectVersion={canSelectVersion}
                   showNoteEditor={
                     expandedNoteVersionIds.has(version.oid) || !!version.note
                   }

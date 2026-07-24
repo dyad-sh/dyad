@@ -88,8 +88,18 @@ function ConnectedGitHubConnector({
   const { projection, send } = useGithubOps(appId);
   const {
     banner,
+    capabilities: {
+      canAbortRebase,
+      canCancelSync,
+      canContinueRebase,
+      canDisconnect,
+      canForcePush,
+      canRebaseAndSync,
+      canResolveConflicts,
+      canSafeForcePush,
+      canSync,
+    },
     isOperationInFlight,
-    canRequestSync,
     isSyncing,
     conflicts,
     rebaseAction,
@@ -140,7 +150,7 @@ function ConnectedGitHubConnector({
               op: { type: "push", mode: "normal" },
             })
           }
-          disabled={!canRequestSync}
+          disabled={!canSync}
         >
           {isSyncing ? (
             <>
@@ -175,7 +185,7 @@ function ConnectedGitHubConnector({
           onClick={() =>
             send({ type: "OP_REQUESTED", op: { type: "disconnect" } })
           }
-          disabled={isOperationInFlight}
+          disabled={!canDisconnect}
           variant="outline"
         >
           {isDisconnecting ? "Disconnecting..." : "Disconnect from repo"}
@@ -214,7 +224,7 @@ function ConnectedGitHubConnector({
                   }
                   variant="outline"
                   size="sm"
-                  disabled={isRebaseActionPending}
+                  disabled={!canAbortRebase || isRebaseActionPending}
                 >
                   <AlertTriangle className="h-4 w-4 mr-2" />
                   {rebaseAction === "abort" ? "Aborting..." : "Abort rebase"}
@@ -228,7 +238,7 @@ function ConnectedGitHubConnector({
                   }
                   variant="outline"
                   size="sm"
-                  disabled={isRebaseActionPending}
+                  disabled={!canContinueRebase || isRebaseActionPending}
                 >
                   <GitMerge className="h-4 w-4 mr-2" />
                   {rebaseAction === "continue"
@@ -244,7 +254,7 @@ function ConnectedGitHubConnector({
                   }
                   variant="outline"
                   size="sm"
-                  disabled={isRebaseActionPending}
+                  disabled={!canSafeForcePush || isRebaseActionPending}
                   className="text-orange-600 border-orange-600 hover:bg-orange-50"
                 >
                   <AlertTriangle className="h-4 w-4 mr-2" />
@@ -260,7 +270,7 @@ function ConnectedGitHubConnector({
               onClick={() => setShowForceDialog(true)}
               variant="outline"
               size="sm"
-              disabled={isRebaseActionPending}
+              disabled={!canForcePush || isRebaseActionPending}
               className="text-orange-600 border-orange-600 hover:bg-orange-50"
             >
               <AlertTriangle className="h-4 w-4 mr-2" />
@@ -274,7 +284,7 @@ function ConnectedGitHubConnector({
               }
               variant="outline"
               size="sm"
-              disabled={isRebaseActionPending}
+              disabled={!canRebaseAndSync || isRebaseActionPending}
               className="mt-2 ml-2"
             >
               <GitMerge className="h-4 w-4 mr-2" />
@@ -295,7 +305,7 @@ function ConnectedGitHubConnector({
           <div className="flex gap-2">
             <Button
               onClick={() => send({ type: "RESOLVE_WITH_AI_STARTED" })}
-              disabled={isCancellingSync || isResolving}
+              disabled={!canResolveConflicts || isCancellingSync || isResolving}
             >
               {isResolving ? "Resolving..." : "Resolve merge conflicts with AI"}
             </Button>
@@ -304,7 +314,7 @@ function ConnectedGitHubConnector({
               onClick={() =>
                 send({ type: "OP_REQUESTED", op: { type: abortOperation } })
               }
-              disabled={isCancellingSync || isResolving}
+              disabled={!canCancelSync || isCancellingSync || isResolving}
             >
               {isCancellingSync ? "Cancelling..." : "Cancel sync"}
             </Button>
@@ -367,7 +377,7 @@ function ConnectedGitHubConnector({
                   op: { type: "push", mode: "force" },
                 });
               }}
-              disabled={isOperationInFlight}
+              disabled={!canForcePush || isOperationInFlight}
             >
               {isSyncing ? "Force Pushing..." : "Force Push"}
             </Button>
@@ -389,6 +399,7 @@ export function UnconnectedGitHubConnector({
   const { projection, send } = useGithubOps(appId, {
     reconcileOnMount: linkedRepo !== undefined,
   });
+  const { canConnectRepository } = projection.capabilities;
   // --- Collapsible State ---
   const [isExpanded, setIsExpanded] = useState(expanded || false);
 
@@ -955,6 +966,7 @@ export function UnconnectedGitHubConnector({
             <Button
               type="submit"
               disabled={
+                !canConnectRepository ||
                 isCreatingRepo ||
                 (repoSetupMode === "create" &&
                   (repoAvailable === false || !repoName)) ||

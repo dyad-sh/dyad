@@ -114,6 +114,11 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
 - A machine projection has one writer: its controller or manager. Jotai atoms
   exposed to legacy UI are read-only views and are updated from snapshots in
   one subscription, not opportunistically by individual commands.
+- A machine with interactive controls defines a pure
+  `selectCapabilities(state)` whose named booleans express domain UI policy,
+  and exposes those capabilities through its projection. Do not derive
+  capability by probing the transition with a synthetic event: acceptance may
+  depend on payload, and accepted idempotent work may still warrant hidden UI.
 - Prefer derived selectors for values computable from the snapshot. Do not add
   generation counters or mirrored booleans beside a machine-owned identity or
   lifecycle state.
@@ -154,6 +159,12 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   tests; new machines may instead use `exploreReachableStates` when a finite
   event generator can discover the reachable graph. Existing bespoke suites
   need not be migrated mechanically.
+- Use `assertCapabilityTransitionConsistency` with domain-supplied
+  representative valid events for every capability. Every enabled
+  capability/state pair must supply at least one valid representative so the
+  assertion cannot pass vacuously. When payload affects acceptance, include
+  representative invalid payloads; disabled capabilities may also pin their
+  expected ignore reason.
 - `boundaries.test.ts` enforces kernel purity and machine-to-machine isolation;
   add new machine directories to its inventory when they are introduced.
 - In `runCosim` suites, `maxSchedules` bounds visited configurations, not only

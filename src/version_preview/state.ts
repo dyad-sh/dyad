@@ -179,11 +179,6 @@ export function isMutatingState(state: PreviewState): boolean {
   }
 }
 
-/** States where starting another user-triggered version action is unsafe. */
-export function isVersionActionBlockedState(state: PreviewState): boolean {
-  return isMutatingState(state) || state.type === "recovery-required";
-}
-
 function canShowDiff(
   state: PreviewState,
 ): state is Exclude<

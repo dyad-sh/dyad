@@ -17,6 +17,7 @@ import {
   createInvocationRef,
   sameInvocationRef,
 } from "@/state_machines/invocation_ref";
+import { createLifecycleScope } from "@/state_machines/lifecycle_scope";
 import { SnapshotStore } from "@/state_machines/snapshot_store";
 import {
   observeTransition,
@@ -73,6 +74,8 @@ export function createChatStreamController(
   const commandQueue: StreamCommand[] = [];
   let draining = false;
   let disposed = false;
+  let disposalState: StreamState | undefined;
+  let lateStartInvocationRef: ChatStreamInvocationRef | undefined;
 
   const controller: ChatStreamController = {
     chatId,
@@ -90,6 +93,59 @@ export function createChatStreamController(
     subscriberCount: () => store.subscriberCount(),
     dispose,
   };
+  const lifecycle = createLifecycleScope({
+    stopAdmission() {
+      disposed = true;
+      commandQueue.length = 0;
+      disposalState = store.getSnapshot();
+    },
+    settleWaiters() {
+      const state = disposalState;
+      if (!state || !isTransportOwned(state)) return;
+      try {
+        state.request.onSettled?.({ success: false });
+      } catch (error) {
+        console.error(
+          `[chat-stream] Failed to settle disposed stream for chat ${chatId}:`,
+          error,
+        );
+      }
+    },
+    publishFinalProjection() {
+      const state = disposalState;
+      if (!state || !isTransportOwned(state)) return;
+      try {
+        getCommands().syncProjection({
+          chatId,
+          state: { type: "idle" },
+        });
+      } catch (error) {
+        console.error(
+          `[chat-stream] Failed to clear projection for disposed chat ${chatId}:`,
+          error,
+        );
+      }
+    },
+    releaseResources() {
+      const state = disposalState;
+      if (state && isTransportOwned(state)) {
+        runSafely(() =>
+          getCommands().releaseTransport({
+            chatId,
+            invocationRef: state.invocationRef,
+          }),
+        );
+      }
+      store.dispose();
+    },
+    onLateSettlement() {
+      const invocationRef = lateStartInvocationRef;
+      if (!invocationRef) return;
+      runSafely(() =>
+        getCommands().releaseTransport({ chatId, invocationRef }),
+      );
+    },
+  });
 
   function notifyQuiescentIfIdle(): void {
     if (!disposed && controller.isSettled()) {
@@ -169,19 +225,22 @@ export function createChatStreamController(
     const commands = getCommands();
     switch (command.type) {
       case "start-stream": {
+        lateStartInvocationRef = command.invocationRef;
         try {
-          await commands.startStream({
-            chatId,
-            invocationRef: command.invocationRef,
-            request: command.request,
-            emit: send,
-            isStale: () =>
-              disposed ||
-              !matchesActiveInvocation(
-                streamInvocationRef(store.getSnapshot()),
-                command.invocationRef,
-              ),
-          });
+          await lifecycle.trackPromise(
+            commands.startStream({
+              chatId,
+              invocationRef: command.invocationRef,
+              request: command.request,
+              emit: send,
+              isStale: () =>
+                disposed ||
+                !matchesActiveInvocation(
+                  streamInvocationRef(store.getSnapshot()),
+                  command.invocationRef,
+                ),
+            }),
+          );
         } catch (error) {
           // Failures inside the stream (invoke rejection, IPC errors) come
           // back as stream-errored events from the client; this catches
@@ -191,18 +250,6 @@ export function createChatStreamController(
             invocationRef: command.invocationRef,
             error: error instanceof Error ? error.message : String(error),
           });
-        } finally {
-          // Disposal may have released the transport before startStream
-          // finished its async setup and registered the IPC entry. Release
-          // again after setup settles so that late registration cannot leak.
-          if (disposed) {
-            runSafely(() =>
-              commands.releaseTransport({
-                chatId,
-                invocationRef: command.invocationRef,
-              }),
-            );
-          }
         }
         return;
       }
@@ -271,44 +318,20 @@ export function createChatStreamController(
   }
 
   function dispose(): void {
-    if (disposed) return;
-    disposed = true;
-    commandQueue.length = 0;
+    lifecycle.dispose();
+  }
 
-    const state = store.getSnapshot();
-    if (
+  function isTransportOwned(
+    state: StreamState,
+  ): state is Extract<
+    StreamState,
+    { type: "starting" | "streaming" | "cancelling" }
+  > {
+    return (
       state.type === "starting" ||
       state.type === "streaming" ||
       state.type === "cancelling"
-    ) {
-      try {
-        getCommands().syncProjection({
-          chatId,
-          state: { type: "idle" },
-        });
-      } catch (error) {
-        console.error(
-          `[chat-stream] Failed to clear projection for disposed chat ${chatId}:`,
-          error,
-        );
-      }
-      try {
-        state.request.onSettled?.({ success: false });
-      } catch (error) {
-        console.error(
-          `[chat-stream] Failed to settle disposed stream for chat ${chatId}:`,
-          error,
-        );
-      }
-      runSafely(() =>
-        getCommands().releaseTransport({
-          chatId,
-          invocationRef: state.invocationRef,
-        }),
-      );
-    }
-
-    store.dispose();
+    );
   }
 
   function matchesActiveInvocation(

@@ -207,9 +207,18 @@ describe("ChatStreamManager", () => {
       request: { chatId: CHAT_ID, prompt: "hello" },
     });
     await flush();
+    expect(store.get(isStreamingByIdAtom).get(CHAT_ID)).toBe(true);
 
     manager.dispose();
+    manager.dispose();
     expect(release).toHaveBeenCalledOnce();
+    expect(store.get(isStreamingByIdAtom).get(CHAT_ID)).toBe(false);
+    const replacement = new ChatStreamManager(
+      store,
+      createSequentialIdSource(),
+    );
+    expect(() => replacement.start()).not.toThrow();
+    replacement.dispose();
 
     resolveAppId(4);
     await flush();

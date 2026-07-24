@@ -12,10 +12,14 @@ import {
  * or arbitrarily later (e.g. `wait`). The production implementation lives in
  * `commands.ts`; tests substitute fakes.
  */
-export type HandoffCommandRunner = (
-  command: HandoffCommand,
-  emit: (event: HandoffEvent) => void,
-) => void | Promise<void>;
+export interface HandoffCommandRunner {
+  (
+    command: HandoffCommand,
+    emit: (event: HandoffEvent) => void,
+  ): void | Promise<void>;
+  disposeKey?(chatId: number): void;
+  dispose?(): void;
+}
 
 export interface HandoffController {
   /** Current state. Stable reference between transitions. */

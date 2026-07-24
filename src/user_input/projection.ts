@@ -19,7 +19,9 @@ import type {
 } from "@/ipc/types/user_input";
 import { ipc as defaultIpc } from "@/ipc/types";
 import { showError } from "@/lib/toast";
+import { createLateBinding } from "@/state_machines/late_binding";
 import { registerAtomWriter } from "@/state_machines/projection";
+import { TaskScope } from "@/state_machines/task_scope";
 
 type UserInputOutcome =
   | "human"
@@ -131,7 +133,7 @@ export function getUserInputProjectionAdapter({
   }
 
   let stop: (() => void) | undefined;
-  let settledCleanupTimer: ReturnType<typeof setTimeout> | undefined;
+  let activeTasks: TaskScope<string> | undefined;
   let hydrationGeneration = 0;
   const revisions = new Map<string, number>();
   const pendingClassifications = new Map<
@@ -148,7 +150,9 @@ export function getUserInputProjectionAdapter({
   >();
   const pendingResponses = new Map<string, UserInputResponsePayload>();
   const dispatchingFollowUps = new Set<string>();
-  let activeChatStream = chatStream;
+  const chatStreamBinding =
+    createLateBinding<UserInputChatStreamFacade>("replaceable");
+  if (chatStream) chatStreamBinding.configure(chatStream);
   const requestsWriter = registerAtomWriter<
     typeof store,
     typeof writableUserInputRequestsAtom,
@@ -186,9 +190,9 @@ export function getUserInputProjectionAdapter({
   };
 
   const scheduleSettledCleanup = () => {
-    if (!stop) return;
-    if (settledCleanupTimer) clearTimeout(settledCleanupTimer);
-    settledCleanupTimer = undefined;
+    const tasks = activeTasks;
+    if (!tasks) return;
+    tasks.remove("settled-cleanup");
 
     const now = Date.now();
     let nextExpiry = Number.POSITIVE_INFINITY;
@@ -210,10 +214,11 @@ export function getUserInputProjectionAdapter({
     });
 
     if (Number.isFinite(nextExpiry)) {
-      settledCleanupTimer = setTimeout(
+      const timer = setTimeout(
         scheduleSettledCleanup,
         Math.max(0, nextExpiry - Date.now()),
       );
+      tasks.replace("settled-cleanup", () => clearTimeout(timer));
     }
   };
 
@@ -224,15 +229,28 @@ export function getUserInputProjectionAdapter({
       !request ||
       request.status !== "due" ||
       request.descriptor.kind !== "integration" ||
-      !request.followUpPrompt ||
-      !activeChatStream
+      !request.followUpPrompt
     ) {
       return;
     }
+    let chatStream: UserInputChatStreamFacade;
+    try {
+      chatStream = chatStreamBinding.get();
+    } catch {
+      activeTasks?.replace(
+        `follow-up:${requestId}`,
+        chatStreamBinding.onConfigured(
+          () => void dispatchDueFollowUp(requestId),
+          showErrorToast,
+        ),
+      );
+      return;
+    }
+    activeTasks?.remove(`follow-up:${requestId}`);
 
     dispatchingFollowUps.add(requestId);
     try {
-      await activeChatStream.submit({
+      await chatStream.submit({
         requestId,
         chatId: request.descriptor.chatId,
         prompt: request.followUpPrompt,
@@ -346,135 +364,160 @@ export function getUserInputProjectionAdapter({
 
   const adapter: UserInputProjectionAdapter = {
     configureChatStream(nextChatStream) {
-      activeChatStream = nextChatStream;
+      chatStreamBinding.configure(nextChatStream);
       dispatchAllDueFollowUps();
     },
 
     start() {
       if (stop) return stop;
+      const tasks = new TaskScope<string>();
+      activeTasks = tasks;
       const handleWindowFocus = () => dispatchAllDueFollowUps();
       window.addEventListener("focus", handleWindowFocus);
-      const unsubscribes = [
-        ipcClient.events.userInput.onRequested((descriptor) => {
-          markChanged(descriptor.requestId);
-          pendingClassifications.delete(descriptor.requestId);
-          pendingArmed.delete(descriptor.requestId);
-          pendingFollowUps.delete(descriptor.requestId);
-          updateRequests((current) => {
-            const next = new Map(current);
-            next.set(descriptor.requestId, {
-              status: "awaiting",
-              descriptor,
-              deadlineAt: descriptor.deadlineAt,
-              classifier: descriptor.classifier,
+      tasks.replace("window-focus", () =>
+        window.removeEventListener("focus", handleWindowFocus),
+      );
+      const subscriptions = [
+        [
+          "requested",
+          ipcClient.events.userInput.onRequested((descriptor) => {
+            markChanged(descriptor.requestId);
+            pendingClassifications.delete(descriptor.requestId);
+            pendingArmed.delete(descriptor.requestId);
+            pendingFollowUps.delete(descriptor.requestId);
+            updateRequests((current) => {
+              const next = new Map(current);
+              next.set(descriptor.requestId, {
+                status: "awaiting",
+                descriptor,
+                deadlineAt: descriptor.deadlineAt,
+                classifier: descriptor.classifier,
+              });
+              return next;
             });
-            return next;
-          });
-        }),
-        ipcClient.events.userInput.onArmed(({ requestId, followUpPrompt }) => {
-          const revision = markChanged(requestId);
-          pendingArmed.set(requestId, { followUpPrompt, revision });
-          updateRequests((current) => {
-            const entry = current.get(requestId);
-            if (
-              !entry ||
-              entry.status !== "awaiting" ||
-              entry.descriptor.kind !== "integration"
-            ) {
-              return new Map(current);
-            }
-            const next = new Map(current);
-            next.set(requestId, {
-              ...entry,
-              status: "armed",
-              followUpPrompt,
+          }),
+        ],
+        [
+          "armed",
+          ipcClient.events.userInput.onArmed(
+            ({ requestId, followUpPrompt }) => {
+              const revision = markChanged(requestId);
+              pendingArmed.set(requestId, { followUpPrompt, revision });
+              updateRequests((current) => {
+                const entry = current.get(requestId);
+                if (
+                  !entry ||
+                  entry.status !== "awaiting" ||
+                  entry.descriptor.kind !== "integration"
+                ) {
+                  return new Map(current);
+                }
+                const next = new Map(current);
+                next.set(requestId, {
+                  ...entry,
+                  status: "armed",
+                  followUpPrompt,
+                });
+                return next;
+              });
+              removeResponding(requestId);
+            },
+          ),
+        ],
+        [
+          "classified",
+          ipcClient.events.userInput.onClassified(({ requestId, reason }) => {
+            const revision = markChanged(requestId);
+            pendingClassifications.set(requestId, { reason, revision });
+            updateRequests((current) => {
+              const entry = current.get(requestId);
+              if (!entry || entry.status !== "awaiting")
+                return new Map(current);
+              const next = new Map(current);
+              next.set(requestId, {
+                ...entry,
+                classifier: "review",
+                classifierReason: reason,
+              });
+              return next;
             });
-            return next;
-          });
-          removeResponding(requestId);
-        }),
-        ipcClient.events.userInput.onClassified(({ requestId, reason }) => {
-          const revision = markChanged(requestId);
-          pendingClassifications.set(requestId, { reason, revision });
-          updateRequests((current) => {
-            const entry = current.get(requestId);
-            if (!entry || entry.status !== "awaiting") return new Map(current);
-            const next = new Map(current);
-            next.set(requestId, {
-              ...entry,
-              classifier: "review",
-              classifierReason: reason,
+          }),
+        ],
+        [
+          "settled",
+          ipcClient.events.userInput.onSettled(({ requestId, outcome }) => {
+            markChanged(requestId);
+            pendingClassifications.delete(requestId);
+            pendingArmed.delete(requestId);
+            pendingFollowUps.delete(requestId);
+            const pendingResponse = pendingResponses.get(requestId);
+            pendingResponses.delete(requestId);
+            removeResponding(requestId);
+            updateRequests((current) => {
+              const previous = current.get(requestId);
+              const next = new Map(current);
+              next.set(requestId, {
+                status: "settled",
+                requestId,
+                outcome,
+                settledAt: Date.now(),
+                descriptor:
+                  previous && previous.status !== "settled"
+                    ? previous.descriptor
+                    : previous?.descriptor,
+                deadlineAt: previous?.deadlineAt,
+                questionnaireSubmitted:
+                  outcome === "human" &&
+                  pendingResponse?.kind === "questionnaire" &&
+                  pendingResponse.answers !== null,
+              });
+              const tombstones = Array.from(next.entries()).filter(
+                ([, entry]) => entry.status === "settled",
+              );
+              for (
+                let index = 0;
+                index < tombstones.length - MAX_SETTLED_TOMBSTONES;
+                index++
+              ) {
+                next.delete(tombstones[index][0]);
+              }
+              return next;
             });
-            return next;
-          });
-        }),
-        ipcClient.events.userInput.onSettled(({ requestId, outcome }) => {
-          markChanged(requestId);
-          pendingClassifications.delete(requestId);
-          pendingArmed.delete(requestId);
-          pendingFollowUps.delete(requestId);
-          const pendingResponse = pendingResponses.get(requestId);
-          pendingResponses.delete(requestId);
-          removeResponding(requestId);
-          updateRequests((current) => {
-            const previous = current.get(requestId);
-            const next = new Map(current);
-            next.set(requestId, {
-              status: "settled",
-              requestId,
-              outcome,
-              settledAt: Date.now(),
-              descriptor:
-                previous && previous.status !== "settled"
-                  ? previous.descriptor
-                  : previous?.descriptor,
-              deadlineAt: previous?.deadlineAt,
-              questionnaireSubmitted:
-                outcome === "human" &&
-                pendingResponse?.kind === "questionnaire" &&
-                pendingResponse.answers !== null,
+            scheduleSettledCleanup();
+          }),
+        ],
+        [
+          "follow-up-due",
+          ipcClient.events.userInput.onFollowUpDue(({ requestId, prompt }) => {
+            const revision = markChanged(requestId);
+            pendingFollowUps.set(requestId, { prompt, revision });
+            updateRequests((current) => {
+              const entry = current.get(requestId);
+              if (!entry || entry.status === "settled") return new Map(current);
+              const next = new Map(current);
+              next.set(requestId, {
+                ...entry,
+                status: "due",
+                followUpPrompt: prompt,
+              });
+              return next;
             });
-            const tombstones = Array.from(next.entries()).filter(
-              ([, entry]) => entry.status === "settled",
-            );
-            for (
-              let index = 0;
-              index < tombstones.length - MAX_SETTLED_TOMBSTONES;
-              index++
-            ) {
-              next.delete(tombstones[index][0]);
-            }
-            return next;
-          });
-          scheduleSettledCleanup();
-        }),
-        ipcClient.events.userInput.onFollowUpDue(({ requestId, prompt }) => {
-          const revision = markChanged(requestId);
-          pendingFollowUps.set(requestId, { prompt, revision });
-          updateRequests((current) => {
-            const entry = current.get(requestId);
-            if (!entry || entry.status === "settled") return new Map(current);
-            const next = new Map(current);
-            next.set(requestId, {
-              ...entry,
-              status: "due",
-              followUpPrompt: prompt,
-            });
-            return next;
-          });
-          void dispatchDueFollowUp(requestId);
-        }),
-      ];
+            void dispatchDueFollowUp(requestId);
+          }),
+        ],
+      ] satisfies ReadonlyArray<readonly [string, () => void]>;
+      for (const [key, unsubscribe] of subscriptions) {
+        tasks.replace(`subscription:${key}`, unsubscribe);
+      }
 
       stop = () => {
         ++hydrationGeneration;
-        window.removeEventListener("focus", handleWindowFocus);
-        if (settledCleanupTimer) clearTimeout(settledCleanupTimer);
-        settledCleanupTimer = undefined;
-        for (const unsubscribe of unsubscribes.splice(0).reverse()) {
-          unsubscribe();
+        try {
+          tasks.dispose();
+        } finally {
+          if (activeTasks === tasks) activeTasks = undefined;
+          stop = undefined;
         }
-        stop = undefined;
       };
       scheduleSettledCleanup();
       void hydrate().catch((error) => showErrorToast(error));

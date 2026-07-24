@@ -19,6 +19,10 @@ import { CLOSED_STATE } from "./state";
 import { transition } from "./transition";
 import { SnapshotStore } from "@/state_machines/snapshot_store";
 import {
+  createLifecycleScope,
+  type LifecycleScope,
+} from "@/state_machines/lifecycle_scope";
+import {
   observeTransition,
   type TransitionObserver,
 } from "@/state_machines/types";
@@ -79,6 +83,7 @@ export class VersionPreviewController {
     resolve: () => void;
     reject: (error: unknown) => void;
   } | null = null;
+  private readonly lifecycle: LifecycleScope;
 
   constructor(
     readonly appId: number,
@@ -88,7 +93,21 @@ export class VersionPreviewController {
       PreviewEvent,
       PreviewCommand
     >,
-  ) {}
+  ) {
+    this.lifecycle = createLifecycleScope({
+      stopAdmission: () => {
+        this.disposed = true;
+        this.resolveEpoch += 1;
+      },
+      settleWaiters: () => {
+        this.mutationWaiter?.reject(new Error("Version preview was disposed"));
+        this.mutationWaiter = null;
+      },
+      publishFinalProjection: () => undefined,
+      releaseResources: () => this.store.dispose(),
+      onLateSettlement: () => undefined,
+    });
+  }
 
   getSnapshot = this.store.getSnapshot;
 
@@ -140,11 +159,7 @@ export class VersionPreviewController {
 
   /** Permanently detaches this controller from late async completions. */
   dispose(): void {
-    this.disposed = true;
-    this.resolveEpoch += 1;
-    this.store.dispose();
-    this.mutationWaiter?.reject(new Error("Version preview was disposed"));
-    this.mutationWaiter = null;
+    this.lifecycle.dispose();
   }
 
   private execute(command: PreviewCommand): void {

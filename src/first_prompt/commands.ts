@@ -1,4 +1,5 @@
 import type { Clock, ClockHandle, IdSource } from "@/state_machines/clock";
+import { TaskScope } from "@/state_machines/task_scope";
 import type {
   FirstPromptChatMode,
   FirstPromptCommand,
@@ -62,8 +63,7 @@ export function createFirstPromptCommandRunner(options: {
   getSettleDelayMs: () => number;
   getDeps: () => FirstPromptDeps;
 }): FirstPromptCommandRunner {
-  const settleHandles = new Set<ClockHandle>();
-  let providerCheckHandle: ClockHandle | undefined;
+  const tasks = new TaskScope<ClockHandle | "provider-check">();
   let disposed = false;
   let ownedCreationOperationId: string | undefined;
   let cancelledCreationOperationId: string | undefined;
@@ -90,22 +90,16 @@ export function createFirstPromptCommandRunner(options: {
       const deps = options.getDeps();
       switch (command.type) {
         case "ScheduleProviderCheckTimeout": {
-          if (providerCheckHandle !== undefined) {
-            options.clock.cancel(providerCheckHandle);
-          }
           const handle = options.clock.schedule(() => {
-            providerCheckHandle = undefined;
+            tasks.remove("provider-check");
             if (!disposed) emit({ type: "PROVIDER_CHECK_TIMED_OUT" });
           }, PROVIDER_CHECK_TIMEOUT_MS);
-          providerCheckHandle = handle;
+          tasks.replace("provider-check", () => options.clock.cancel(handle));
           return;
         }
 
         case "CancelProviderCheckTimeout":
-          if (providerCheckHandle !== undefined) {
-            options.clock.cancel(providerCheckHandle);
-            providerCheckHandle = undefined;
-          }
+          tasks.remove("provider-check");
           return;
 
         case "CreateApp": {
@@ -231,10 +225,10 @@ export function createFirstPromptCommandRunner(options: {
         case "ScheduleSettle":
           {
             const handle = options.clock.schedule(() => {
-              settleHandles.delete(handle);
+              tasks.remove(handle);
               if (!disposed) emit({ type: "SETTLED" });
             }, options.getSettleDelayMs());
-            settleHandles.add(handle);
+            tasks.replace(handle, () => options.clock.cancel(handle));
           }
           return;
 
@@ -276,12 +270,7 @@ export function createFirstPromptCommandRunner(options: {
     dispose() {
       if (disposed) return;
       disposed = true;
-      if (providerCheckHandle !== undefined) {
-        options.clock.cancel(providerCheckHandle);
-        providerCheckHandle = undefined;
-      }
-      for (const handle of settleHandles) options.clock.cancel(handle);
-      settleHandles.clear();
+      tasks.dispose();
       if (ownedCreationOperationId) {
         cancelledCreationOperationId = ownedCreationOperationId;
         options.getDeps().cancelCreation(ownedCreationOperationId);

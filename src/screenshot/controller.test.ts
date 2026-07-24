@@ -595,6 +595,28 @@ describe("screenshot controller", () => {
     expect(runner.disposeKey).toHaveBeenCalledWith(7);
   });
 
+  it("cancels owned timers when disposed and tolerates double disposal", () => {
+    const clock = createFakeClock();
+    const adapter = createScreenshotCommandAdapter({
+      clock,
+      idSource: createSequentialIdSource(),
+      queryClient: {
+        invalidateQueries: vi.fn(() => Promise.resolve()),
+      } as unknown as QueryClient,
+    });
+    const controller = new ScreenshotController(7, adapter);
+    controller.send({ type: "CAPTURE_REQUESTED", source: "commit" });
+    controller.send({ type: "IFRAME_LOADED" });
+    expect(clock.pendingTimerCount()).toBe(1);
+
+    controller.dispose();
+    controller.dispose();
+
+    expect(clock.pendingTimerCount()).toBe(0);
+    clock.advanceBy(3_000);
+    expect(controller.getSnapshot().status).toBe("waitingSelectorReady");
+  });
+
   it("reports stale adapter correlation without disturbing the active request", () => {
     const ignored = vi.fn();
     const runner = {

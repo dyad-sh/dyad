@@ -2,6 +2,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import { ipc } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
 import type { Clock, IdSource } from "@/state_machines/clock";
+import { TaskScope } from "@/state_machines/task_scope";
 import { TimerLeaseScope } from "@/state_machines/timer_lease";
 import type { ScreenshotCommandRunner } from "./controller";
 import type { ScreenshotEvent, ScreenshotState } from "./state";
@@ -25,6 +26,7 @@ export function createScreenshotCommandAdapter(options: {
   const settleLeases = new TimerLeaseScope<number, string, ScreenshotEvent>(
     options.clock,
   );
+  const attachments = new TaskScope<number>();
   const postMessages = new Map<number, ScreenshotPostMessage>();
 
   const cancelSettle = (appId: number) => {
@@ -34,8 +36,11 @@ export function createScreenshotCommandAdapter(options: {
   return {
     attach(appId, postMessage) {
       postMessages.set(appId, postMessage);
-      return () => {
+      attachments.replace(appId, () => {
         if (postMessages.get(appId) === postMessage) postMessages.delete(appId);
+      });
+      return () => {
+        if (postMessages.get(appId) === postMessage) attachments.remove(appId);
       };
     },
     execute(appId, command, emit) {
@@ -139,7 +144,7 @@ export function createScreenshotCommandAdapter(options: {
     },
     disposeKey(appId) {
       cancelSettle(appId);
-      postMessages.delete(appId);
+      attachments.remove(appId);
     },
   };
 }

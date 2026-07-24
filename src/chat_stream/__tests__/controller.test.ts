@@ -91,7 +91,9 @@ function createFakeCommands() {
     dispatchNextQueued: vi.fn(() => {
       log.push("dispatchNextQueued");
     }),
-    syncProjection: vi.fn(),
+    syncProjection: vi.fn(() => {
+      log.push("syncProjection");
+    }),
   };
 
   return { commands, log, startDeferreds, endDeferreds };
@@ -246,6 +248,25 @@ describe("chat stream controller", () => {
       chatId: CHAT_ID,
       invocationRef: ref(1),
     });
+  });
+
+  it("settles callers and publishes the final projection before releasing transport", async () => {
+    const fake = createFakeCommands();
+    const onSettled = vi.fn(() => fake.log.push("settleWaiters"));
+    const { controller } = createController(fake);
+
+    controller.send({
+      type: "submit",
+      request: makeRequest({ onSettled }),
+    });
+    await flush();
+    controller.dispose();
+
+    expect(fake.log.slice(-3)).toEqual([
+      "settleWaiters",
+      "syncProjection",
+      "releaseTransport:chat-stream:1",
+    ]);
   });
 
   it("runs the happy path and dispatches the queue exactly once per finalization", async () => {

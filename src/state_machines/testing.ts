@@ -1,5 +1,6 @@
 import type { IgnoreReason, TransitionResult } from "./types";
 import type { Clock, ClockHandle, IdSource } from "./clock";
+import { KeyedControllerHost } from "./keyed_host";
 import type { ReplaySerialization, ReplayTrace } from "./trace";
 
 export interface FakeClock extends Clock {
@@ -566,10 +567,10 @@ export interface ControllerConformanceAdapter<
     >;
     project?(state: State): void;
     reportError?(error: unknown): void;
-    onDispose?(
-      state: State,
-      startFinalizers: (commands: readonly Command[]) => void,
-    ): void;
+    disposeCommands?(state: State): readonly Command[];
+    cleanupProjection?(): void;
+    releaseWriter?(): void;
+    onDisposed?(): void;
   }): ConformanceController<State, Event>;
   events: {
     enterA: Event;
@@ -587,6 +588,8 @@ export interface ControllerConformanceAdapter<
     };
     cleanup(state: State): readonly Command[];
   };
+  /** One representative event for every reachable non-terminal state. */
+  nonTerminalEvents: readonly { name: string; event: Event }[];
   stateKey(state: State): string;
 }
 
@@ -603,6 +606,25 @@ function conformanceAssert(
 async function flushConformancePromises(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
+}
+
+function createDeferredLifecycleDriver<
+  Controller extends { dispose(): void },
+>() {
+  const generations = new Map<Controller, number>();
+  return {
+    mount(controller: Controller): () => void {
+      const generation = (generations.get(controller) ?? 0) + 1;
+      generations.set(controller, generation);
+      return () => {
+        queueMicrotask(() => {
+          if (generations.get(controller) !== generation) return;
+          generations.delete(controller);
+          controller.dispose();
+        });
+      };
+    },
+  };
 }
 
 /**
@@ -764,19 +786,27 @@ export async function runControllerConformanceSuite<
 
   {
     const stale = adapter.commands.awaitThen(adapter.events.enterB);
-    const old = adapter.create({
-      runCommand(command, emit) {
-        if (!Object.is(command, stale.command)) return;
-        const originalResolve = stale.resolve;
-        stale.resolve = () => {
-          originalResolve();
-          emit(adapter.events.enterB);
-        };
-      },
+    let generation = 0;
+    const host = new KeyedControllerHost<
+      string,
+      ConformanceController<State, Event>
+    >(() => {
+      generation += 1;
+      return adapter.create({
+        runCommand(command, emit) {
+          if (generation !== 1 || !Object.is(command, stale.command)) return;
+          const originalResolve = stale.resolve;
+          stale.resolve = () => {
+            originalResolve();
+            emit(adapter.events.enterB);
+          };
+        },
+      });
     });
+    const old = host.ensure("entity");
     old.send(adapter.events.command(stale.command));
-    old.dispose();
-    const replacement = adapter.create({ runCommand: () => undefined });
+    host.disposeKey("entity");
+    const replacement = host.ensure("entity");
     replacement.send(adapter.events.enterA);
     stale.resolve();
     conformanceAssert(
@@ -787,37 +817,77 @@ export async function runControllerConformanceSuite<
       "key dispose/recreate with stale events",
       "an old controller affected its replacement",
     );
+    host.dispose();
   }
 
   {
-    const replayed = adapter.create({ runCommand: () => undefined });
-    const unsubscribe = replayed.subscribe(() => undefined);
-    unsubscribe();
-    const secondSubscription = replayed.subscribe(() => undefined);
+    const disposal = { count: 0 };
+    const disposalCount = () => disposal.count;
+    const replayed = adapter.create({
+      runCommand: () => undefined,
+      onDisposed: () => {
+        disposal.count += 1;
+      },
+    });
+    const lifecycle = createDeferredLifecycleDriver();
+    const cleanupFirstMount = lifecycle.mount(replayed);
+    cleanupFirstMount();
+    const cleanupReplay = lifecycle.mount(replayed);
+    await flushConformancePromises();
     replayed.send(adapter.events.enterA);
-    secondSubscription();
     conformanceAssert(
-      adapter.stateKey(replayed.getSnapshot()) !==
-        adapter.stateKey(adapter.initialState),
+      disposalCount() === 0 &&
+        adapter.stateKey(replayed.getSnapshot()) !==
+          adapter.stateKey(adapter.initialState),
       "StrictMode replay",
-      "subscription cleanup/replay disabled the live controller",
+      "the replayed setup did not cancel deferred disposal",
+    );
+    cleanupReplay();
+    await flushConformancePromises();
+    conformanceAssert(
+      disposalCount() === 1,
+      "StrictMode replay",
+      "final cleanup did not dispose exactly once",
     );
   }
 
   {
-    const a1 = adapter.create({ runCommand: () => undefined });
-    const b1 = adapter.create({ runCommand: () => undefined });
-    a1.dispose();
-    b1.dispose();
-    const a2 = adapter.create({ runCommand: () => undefined });
-    a2.dispose();
-    const b2 = adapter.create({ runCommand: () => undefined });
-    b2.send(adapter.events.enterB);
+    const disposals = { a: 0, b: 0 };
+    const aDisposeCount = () => disposals.a;
+    const bDisposeCount = () => disposals.b;
+    const a = adapter.create({
+      runCommand: () => undefined,
+      onDisposed: () => {
+        disposals.a += 1;
+      },
+    });
+    const b = adapter.create({
+      runCommand: () => undefined,
+      onDisposed: () => {
+        disposals.b += 1;
+      },
+    });
+    const lifecycle = createDeferredLifecycleDriver();
+    lifecycle.mount(a)();
+    lifecycle.mount(b)();
+    lifecycle.mount(a)();
+    const cleanupFinalB = lifecycle.mount(b);
+    await flushConformancePromises();
+    b.send(adapter.events.enterB);
     conformanceAssert(
-      adapter.stateKey(b2.getSnapshot()) !==
-        adapter.stateKey(adapter.initialState),
+      aDisposeCount() === 1 &&
+        bDisposeCount() === 0 &&
+        adapter.stateKey(b.getSnapshot()) !==
+          adapter.stateKey(adapter.initialState),
       "A to B to A to B replacement",
       "a prior generation disposed the final replacement",
+    );
+    cleanupFinalB();
+    await flushConformancePromises();
+    conformanceAssert(
+      bDisposeCount() === 1,
+      "A to B to A to B replacement",
+      "the final replacement did not dispose exactly once",
     );
   }
 
@@ -825,10 +895,8 @@ export async function runControllerConformanceSuite<
     const order: string[] = [];
     const controller = adapter.create({
       runCommand: () => undefined,
-      onDispose() {
-        order.push("projection-cleanup");
-        order.push("writer-release");
-      },
+      cleanupProjection: () => order.push("projection-cleanup"),
+      releaseWriter: () => order.push("writer-release"),
     });
     controller.dispose();
     conformanceAssert(
@@ -838,16 +906,24 @@ export async function runControllerConformanceSuite<
     );
   }
 
-  for (const event of [adapter.events.enterA, adapter.events.enterB]) {
+  for (const { name, event } of adapter.nonTerminalEvents) {
     const finalizers: Command[] = [];
     let disposeCount = 0;
+    let projectionCleanupCount = 0;
+    let writerReleaseCount = 0;
     const controller = adapter.create({
       runCommand(command) {
         finalizers.push(command);
       },
-      onDispose(state, startFinalizers) {
+      disposeCommands: (state) => adapter.commands.cleanup(state),
+      cleanupProjection() {
+        projectionCleanupCount += 1;
+      },
+      releaseWriter() {
+        writerReleaseCount += 1;
+      },
+      onDisposed() {
         disposeCount += 1;
-        startFinalizers(adapter.commands.cleanup(state));
       },
     });
     controller.send(event);
@@ -855,9 +931,12 @@ export async function runControllerConformanceSuite<
     controller.dispose();
     await flushConformancePromises();
     conformanceAssert(
-      disposeCount === 1 && finalizers.length > 0,
+      disposeCount === 1 &&
+        projectionCleanupCount === 1 &&
+        writerReleaseCount === 1 &&
+        finalizers.length > 0,
       "dispose from every reachable non-terminal state",
-      `state ${adapter.stateKey(controller.getSnapshot())} did not release exactly once`,
+      `${name} (${adapter.stateKey(controller.getSnapshot())}) did not clean projection/resources exactly once`,
     );
   }
 }

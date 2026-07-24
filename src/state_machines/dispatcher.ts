@@ -1,4 +1,5 @@
 import { validateTransitionResult } from "./testing";
+import { SnapshotStore } from "./snapshot_store";
 import type {
   IgnoreReason,
   TransitionObserver,
@@ -86,9 +87,8 @@ export class TransactionalDispatcher<
   Command,
   Reason extends IgnoreReason = IgnoreReason,
 > {
-  private readonly subscribers = new Set<() => void>();
   private readonly pendingEvents: Event[] = [];
-  private state: State;
+  private readonly store: SnapshotStore<State>;
   private processing = false;
   private disposed = false;
   private nextBatchSequence = 1;
@@ -101,15 +101,20 @@ export class TransactionalDispatcher<
       Reason
     >,
   ) {
-    this.state = options.initialState;
+    this.store = new SnapshotStore(options.initialState);
   }
 
-  getSnapshot = (): State => this.state;
+  getSnapshot = (): State => this.store.getSnapshot();
 
   subscribe = (subscriber: () => void): (() => void) => {
     if (this.disposed) return () => undefined;
-    this.subscribers.add(subscriber);
-    return () => this.subscribers.delete(subscriber);
+    return this.store.subscribe(() => {
+      try {
+        subscriber();
+      } catch (error) {
+        this.report({ stage: "subscriber", error });
+      }
+    });
   };
 
   send = (event: Event): void => {
@@ -145,7 +150,7 @@ export class TransactionalDispatcher<
     if (this.disposed) return;
     this.disposed = true;
     this.pendingEvents.length = 0;
-    this.subscribers.clear();
+    this.store.dispose();
   }
 
   isDisposed(): boolean {
@@ -153,7 +158,7 @@ export class TransactionalDispatcher<
   }
 
   private processOne(event: Event): void {
-    const previous = this.state;
+    const previous = this.store.getSnapshot();
     let result: TransitionResult<State, Command, Reason>;
     try {
       result = this.options.transition(previous, event);
@@ -183,24 +188,10 @@ export class TransactionalDispatcher<
     }
 
     // Linearization point. Every callback below reads this committed snapshot.
-    this.state = result.state;
-
-    if (this.options.project) {
-      try {
-        this.options.project(this.state);
-      } catch (error) {
-        this.report({ stage: "projection", error });
-      }
-    }
-
-    if (this.state !== previous) {
-      for (const subscriber of this.subscribers) {
-        try {
-          subscriber();
-        } catch (error) {
-          this.report({ stage: "subscriber", error });
-        }
-      }
+    if (result.state === previous) {
+      this.project(result.state);
+    } else {
+      this.store.setState(result.state, () => this.project(result.state));
     }
 
     this.notifyObserver(previous, event, result);
@@ -229,6 +220,7 @@ export class TransactionalDispatcher<
   }
 
   private executeCommand: CommandExecutor<Command> = async (command) => {
+    if (this.disposed) return;
     await this.runGuardedCommand(command, this.send, true);
   };
 
@@ -269,7 +261,7 @@ export class TransactionalDispatcher<
     try {
       if (result.kind === "ignored") {
         this.options.observer?.onEventIgnored?.({
-          state: this.state,
+          state: this.store.getSnapshot(),
           event,
           reason: result.reason,
         });
@@ -277,12 +269,21 @@ export class TransactionalDispatcher<
         this.options.observer?.onTransitionApplied?.({
           previous,
           event,
-          state: this.state,
+          state: this.store.getSnapshot(),
           commands: result.commands,
         });
       }
     } catch (error) {
       this.report({ stage: "observer", error });
+    }
+  }
+
+  private project(snapshot: State): void {
+    if (!this.options.project) return;
+    try {
+      this.options.project(snapshot);
+    } catch (error) {
+      this.report({ stage: "projection", error });
     }
   }
 

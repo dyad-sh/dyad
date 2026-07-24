@@ -162,9 +162,9 @@ describe("VoiceToTextController", () => {
       runner: {
         run(command, emit) {
           commands.push(command);
-          lateEmit = emit;
+          if (command.type === "AcquireMedia") lateEmit = emit;
           if (command.type === "StopRecorder") {
-            emit({
+            lateEmit?.({
               type: "RECORDER_STOPPED",
               attempt: command.attempt,
               hasAudio: true,

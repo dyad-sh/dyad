@@ -80,10 +80,13 @@ function createConformanceAdapter(): ControllerConformanceAdapter<
         dispose() {
           if (disposed) return;
           disposed = true;
-          options.onDispose?.(dispatcher.getSnapshot(), (commands) =>
-            dispatcher.startFinalizers(commands),
-          );
+          const state = dispatcher.getSnapshot();
           dispatcher.dispose();
+          options.cleanupProjection?.();
+          const commands = options.disposeCommands?.(state) ?? [];
+          dispatcher.startFinalizers(commands);
+          options.releaseWriter?.();
+          options.onDisposed?.();
         },
       };
     },
@@ -105,6 +108,12 @@ function createConformanceAdapter(): ControllerConformanceAdapter<
       },
       cleanup: (state) => [{ type: "cleanup", state: state.value }],
     },
+    nonTerminalEvents: [
+      { name: "initial", event: { type: "IGNORE" } },
+      { name: "A", event: { type: "SET", value: 1 } },
+      { name: "B", event: { type: "SET", value: 2 } },
+      { name: "finished-work", event: { type: "FINISH" } },
+    ],
     stateKey: (state) => String(state.value),
   };
 }
@@ -281,6 +290,28 @@ describe("TransactionalDispatcher", () => {
     expect(dispatcher.getSnapshot()).toEqual({ value: 7 });
   });
 
+  it("does not let a deferred scheduler start normal commands after disposal", async () => {
+    let deferredStart: (() => Promise<void>) | undefined;
+    const runCommand = vi.fn();
+    const command: TestCommand = { type: "cleanup", state: 1 };
+    const dispatcher = new TransactionalDispatcher({
+      initialState: { value: 0 },
+      transition: testTransition,
+      scheduler: {
+        schedule(batch, execute) {
+          deferredStart = () => execute(batch.commands[0]);
+        },
+      },
+      runCommand,
+    });
+    dispatcher.send({ type: "COMMAND", command });
+
+    dispatcher.dispose();
+    await deferredStart?.();
+
+    expect(runCommand).not.toHaveBeenCalled();
+  });
+
   it("passes the reusable twelve-scenario conformance suite", async () => {
     const adapter = createConformanceAdapter();
     const originalCreate = adapter.create;
@@ -336,6 +367,21 @@ describe("TransactionalDispatcher", () => {
 
     await expect(runControllerConformanceSuite(adapter)).rejects.toThrow(
       "re-entrant observer dispatch",
+    );
+  });
+
+  it("fails lifecycle conformance when writer release precedes projection cleanup", async () => {
+    const adapter = createConformanceAdapter();
+    const originalCreate = adapter.create;
+    adapter.create = (options) =>
+      originalCreate({
+        ...options,
+        cleanupProjection: options.releaseWriter,
+        releaseWriter: options.cleanupProjection,
+      });
+
+    await expect(runControllerConformanceSuite(adapter)).rejects.toThrow(
+      "projection cleanup before writer release",
     );
   });
 });

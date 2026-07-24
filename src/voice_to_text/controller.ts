@@ -78,6 +78,7 @@ export class VoiceToTextController {
     if (this.disposed) return;
     this.disposed = true;
     const state = this.dispatcher.getSnapshot();
+    this.dispatcher.dispose();
     if (state.type !== "idle") {
       const commands: VoiceCommand[] = [
         { type: "CancelDurationLimit", attempt: state.attempt },
@@ -90,7 +91,6 @@ export class VoiceToTextController {
       ];
       this.dispatcher.startFinalizers(commands);
     }
-    this.dispatcher.dispose();
     this.options.runner.dispose?.();
   }
 }

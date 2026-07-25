@@ -4,7 +4,10 @@ import {
   useState,
   type PropsWithChildren,
 } from "react";
-import { useManagerLifecycle } from "@/state_machines/react";
+import {
+  useManagerLifecycle,
+  useRegisterEntityDisposer,
+} from "@/state_machines/react";
 
 export interface PreviewAppErrorSource {
   setAppError(appId: number, message: string): void;
@@ -20,6 +23,7 @@ export interface PreviewAppErrorSource {
  */
 export class DeferredPreviewErrorFacade {
   private readonly sources = new Set<PreviewAppErrorSource>();
+  private readonly disposedAppIds = new Set<number>();
   private disposed = false;
 
   registerSource(source: PreviewAppErrorSource): () => void {
@@ -30,32 +34,42 @@ export class DeferredPreviewErrorFacade {
 
   /** Remote intent: state-sensitive presentation update. */
   setAppError = (appId: number, message: string): void => {
-    this.defer((source) => source.setAppError(appId, message));
+    this.defer(appId, (source) => source.setAppError(appId, message));
   };
 
   /** Remote intent: idempotent presentation clear. */
   clearAppError = (appId: number): void => {
-    this.defer((source) => source.clearAppError(appId));
+    this.defer(appId, (source) => source.clearAppError(appId));
   };
 
   /** Remote intent: state-sensitive presentation update. */
   setSyncError = (appId: number, message: string): void => {
-    this.defer((source) => source.setSyncError(appId, message));
+    this.defer(appId, (source) => source.setSyncError(appId, message));
   };
 
   /** Remote intent: idempotent presentation recovery. */
   clearSyncError = (appId: number): void => {
-    this.defer((source) => source.clearSyncError(appId));
+    this.defer(appId, (source) => source.clearSyncError(appId));
+  };
+
+  /** Permanently rejects queued and late presentation work for a deleted app. */
+  disposeKey = (appId: number): void => {
+    this.disposedAppIds.add(appId);
   };
 
   dispose(): void {
     this.disposed = true;
     this.sources.clear();
+    this.disposedAppIds.clear();
   }
 
-  private defer(deliver: (source: PreviewAppErrorSource) => void): void {
+  private defer(
+    appId: number,
+    deliver: (source: PreviewAppErrorSource) => void,
+  ): void {
+    if (this.disposedAppIds.has(appId)) return;
     queueMicrotask(() => {
-      if (this.disposed) return;
+      if (this.disposed || this.disposedAppIds.has(appId)) return;
       for (const source of this.sources) deliver(source);
     });
   }
@@ -70,6 +84,7 @@ export function PreviewErrorFacadeProvider({
   const [ownedFacade] = useState(() => new DeferredPreviewErrorFacade());
   const facade = injectedFacade ?? ownedFacade;
   useManagerLifecycle(facade);
+  useRegisterEntityDisposer("app", facade.disposeKey);
   return <Context.Provider value={facade}>{children}</Context.Provider>;
 }
 

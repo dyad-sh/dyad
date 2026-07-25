@@ -14,7 +14,10 @@ import {
   usePreviewIframeController,
   useSendPreviewIframeEvent,
 } from "./usePreviewIframe";
-import { PreviewErrorFacadeProvider } from "@/app_wiring/preview_error_facade";
+import {
+  PreviewErrorFacadeProvider,
+  usePreviewErrorFacade,
+} from "@/app_wiring/preview_error_facade";
 
 function makeWrapper(store = createStore()) {
   const appRunManager = new AppRunManager(store);
@@ -150,5 +153,27 @@ describe("useSendPreviewIframeEvent", () => {
       currentUrl: null,
       preservedUrl: null,
     });
+  });
+
+  it("does not recreate preview state from queued or late errors after disposal", async () => {
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(
+      () => ({
+        preview: usePreviewIframeController(1),
+        previewErrors: usePreviewErrorFacade(),
+        entityDisposal: useEntityDisposal(),
+      }),
+      { wrapper: Wrapper },
+    );
+
+    await act(async () => {
+      result.current.previewErrors.setAppError(1, "queued");
+      result.current.entityDisposal.disposeForApp(1);
+      await Promise.resolve();
+      result.current.previewErrors.setSyncError(1, "late");
+      await Promise.resolve();
+    });
+
+    expect(result.current.preview.state.error).toBeUndefined();
   });
 });

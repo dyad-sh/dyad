@@ -253,6 +253,7 @@ export class AppRunManager {
       this.notifyReloadToken(appId);
     }
     this.clearAdmittedExit(appId);
+    this.previewConsole.disposeKey(appId);
     this.host.disposeKey(appId);
     this.admittedExitStores.get(appId)?.dispose();
     this.admittedExitStores.delete(appId);

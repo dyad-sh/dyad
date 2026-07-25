@@ -124,6 +124,9 @@ Background and before/after examples of why this pattern exists:
 - When disposal can race an async command that registers external state after
   an `await`, clean up both immediately and again after the command settles.
   Disposal must also clear any machine-owned legacy projection synchronously.
+- When a cross-owner facade defers keyed delivery to a microtask, entity
+  disposal must invalidate both queued and future deliveries for that key.
+  Otherwise the deferred callback can recreate a controller after deletion.
 - A keyed ownership replacement must adopt the incoming cleanup before running
   the previous cleanup. Otherwise a throwing unsubscribe/cancel can orphan the
   already-acquired replacement resource.

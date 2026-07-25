@@ -146,6 +146,36 @@ describe("AppRunManager", () => {
     manager.dispose();
   });
 
+  it("disposes only the requested app's preview console buffer", () => {
+    const manager = new AppRunManager(createStore());
+    manager.previewConsole.append(7, [
+      {
+        level: "info",
+        type: "server",
+        message: "deleted",
+        timestamp: 1,
+        appId: 7,
+      },
+    ]);
+    manager.previewConsole.append(8, [
+      {
+        level: "info",
+        type: "server",
+        message: "retained",
+        timestamp: 2,
+        appId: 8,
+      },
+    ]);
+
+    manager.disposeKey(7);
+
+    expect(manager.previewConsole.getSnapshot(7)).toEqual([]);
+    expect(manager.previewConsole.getSnapshot(8)).toEqual([
+      expect.objectContaining({ message: "retained" }),
+    ]);
+    manager.dispose();
+  });
+
   it("notifies reload-token listeners after the matching URL commits", async () => {
     const manager = new AppRunManager(createStore());
     const observedSnapshots: unknown[] = [];

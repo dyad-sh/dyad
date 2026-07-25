@@ -25,14 +25,16 @@ import { ChatTabs } from "@/components/chat/ChatTabs";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
-import { firstPromptSagaAtom } from "@/first_prompt/projection";
-import { useFirstPromptProviderResume } from "@/first_prompt/FirstPromptProvider";
+import {
+  useFirstPromptProviderResume,
+  useFirstPromptSaga,
+} from "@/first_prompt/FirstPromptProvider";
 import type { UserSettings } from "@/lib/schemas";
 
 export const TitleBar = () => {
   const [selectedAppId] = useAtom(selectedAppIdAtom);
   const selectedChatId = useAtomValue(selectedChatIdAtom);
-  const { hasArmedPayload } = useAtomValue(firstPromptSagaAtom);
+  const { hasArmedPayload } = useFirstPromptSaga();
   const resumeFirstPrompt = useFirstPromptProviderResume();
   const { apps } = useLoadApps();
   const { navigate } = useRouter();

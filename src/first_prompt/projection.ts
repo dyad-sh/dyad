@@ -1,4 +1,3 @@
-import { atom } from "jotai";
 import type { FirstPromptState } from "./state";
 import { hasPromptContent } from "./state";
 
@@ -9,22 +8,6 @@ export interface FirstPromptSagaProjection {
   readonly hasArmedPayload: boolean;
   readonly isExistingAppSubmission: boolean;
 }
-
-export const IDLE_FIRST_PROMPT_PROJECTION: FirstPromptSagaProjection = {
-  phase: "idle",
-  hasArmedPayload: false,
-  isExistingAppSubmission: false,
-};
-
-export const firstPromptSagaProjectionWriteAtom =
-  atom<FirstPromptSagaProjection>(IDLE_FIRST_PROMPT_PROJECTION);
-firstPromptSagaProjectionWriteAtom.debugLabel =
-  "firstPromptSagaProjectionWriteAtom";
-
-export const firstPromptSagaAtom = atom((get) =>
-  get(firstPromptSagaProjectionWriteAtom),
-);
-firstPromptSagaAtom.debugLabel = "firstPromptSagaAtom";
 
 export function projectFirstPromptState(
   state: FirstPromptState,

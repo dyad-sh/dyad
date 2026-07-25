@@ -1,6 +1,5 @@
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "@tanstack/react-router";
-import { useAtomValue } from "jotai";
 import {
   CircleCheck,
   ChevronRight,
@@ -8,7 +7,7 @@ import {
   Play,
   Settings,
 } from "lucide-react";
-import { firstPromptSagaAtom } from "@/first_prompt/projection";
+import { useFirstPromptSaga } from "@/first_prompt/FirstPromptProvider";
 import { providerSettingsRoute } from "@/routes/settings/providers/$provider";
 import { SECTION_IDS } from "@/lib/settingsSearchIndex";
 
@@ -38,8 +37,7 @@ export function SetupBanner({
   const { t } = useTranslation("home");
   const posthog = usePostHog();
   const navigate = useNavigate();
-  const { hasArmedPayload: hasPendingPrompt } =
-    useAtomValue(firstPromptSagaAtom);
+  const { hasArmedPayload: hasPendingPrompt } = useFirstPromptSaga();
   const { isAnyProviderSetup, isLoading: loading } =
     useLanguageModelProviders();
 

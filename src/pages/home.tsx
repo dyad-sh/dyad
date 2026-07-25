@@ -27,8 +27,10 @@ import {
 import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { RefreshCw, Zap } from "lucide-react";
-import { useFirstPromptSend } from "@/first_prompt/FirstPromptProvider";
-import { firstPromptSagaAtom } from "@/first_prompt/projection";
+import {
+  useFirstPromptSaga,
+  useFirstPromptSend,
+} from "@/first_prompt/FirstPromptProvider";
 import { getHomeDefaultChatMode } from "@/lib/homeChatMode";
 
 // Adding an export for attachments
@@ -42,7 +44,7 @@ export default function HomePage() {
   const [inputValue, setInputValue] = useAtom(homeChatInputValueAtom);
   const selectedApp = useAtomValue(homeSelectedAppAtom);
   const attachments = useAtomValue(attachmentsAtom);
-  const firstPromptSaga = useAtomValue(firstPromptSagaAtom);
+  const firstPromptSaga = useFirstPromptSaga();
   const sendFirstPrompt = useFirstPromptSend();
   const navigate = useNavigate();
   const search = useSearch({ from: "/" });

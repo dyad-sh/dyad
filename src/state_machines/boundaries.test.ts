@@ -69,34 +69,6 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
   },
   {
     rule: "writable-projection-export",
-    atom: "chatCompletionEventAtom",
-    file: "atoms/chatAtoms.ts",
-    detail: "exported writable atom",
-    deletionPr: "A2",
-  },
-  {
-    rule: "writable-projection-export",
-    atom: "publishChatCompletionEventAtom",
-    file: "atoms/chatAtoms.ts",
-    detail: "exported writable atom",
-    deletionPr: "A2",
-  },
-  {
-    rule: "writable-projection-export",
-    atom: "activeCheckoutCounterAtom",
-    file: "store/appAtoms.ts",
-    detail: "exported writable atom",
-    deletionPr: "A2",
-  },
-  {
-    rule: "writable-projection-export",
-    atom: "firstPromptSagaProjectionWriteAtom",
-    file: "first_prompt/projection.ts",
-    detail: "exported writable atom",
-    deletionPr: "A2",
-  },
-  {
-    rule: "writable-projection-export",
     atom: "streamingPreviewByChatIdAtom",
     file: "atoms/chatAtoms.ts",
     detail: "exported writable atom",
@@ -1114,22 +1086,5 @@ describe("state-machine boundaries", () => {
       .map((filePath) => toPortablePath(path.relative(SOURCE_ROOT, filePath)));
 
     expect(writers).toEqual(["image_generation/ImageGenerationProvider.tsx"]);
-  });
-
-  it("keeps the first-prompt projection writer inside its provider", () => {
-    const projectionAtomModule = path.join(
-      SOURCE_ROOT,
-      "first_prompt/projection.ts",
-    );
-    const writers = productionFiles(SOURCE_ROOT)
-      .filter((filePath) => filePath !== projectionAtomModule)
-      .filter((filePath) =>
-        fs
-          .readFileSync(filePath, "utf8")
-          .includes("firstPromptSagaProjectionWriteAtom"),
-      )
-      .map((filePath) => toPortablePath(path.relative(SOURCE_ROOT, filePath)));
-
-    expect(writers).toEqual(["first_prompt/FirstPromptProvider.tsx"]);
   });
 });

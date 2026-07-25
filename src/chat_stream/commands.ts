@@ -6,7 +6,6 @@ import type { PostHog } from "posthog-js";
 import {
   chatErrorByIdAtom,
   chatMessagesByIdAtom,
-  publishChatCompletionEventAtom,
   queuePausedByIdAtom,
   queuedMessagesByIdAtom,
   streamingPreviewByChatIdAtom,
@@ -513,13 +512,6 @@ export function createProductionChatStreamCommands(
             const next = new Map(prev);
             next.set(chatId, true);
             return next;
-          });
-        }
-
-        if (!response.wasCancelled) {
-          store.set(publishChatCompletionEventAtom, {
-            chatId,
-            title: response.chatSummary,
           });
         }
 

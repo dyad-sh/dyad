@@ -10,7 +10,7 @@ import {
   AlertTriangle,
   Loader2,
 } from "lucide-react";
-import type { PendingToolConsent } from "@/atoms/chatAtoms";
+import type { PendingToolConsent } from "@/user_input/projection";
 import {
   Tooltip,
   TooltipContent,

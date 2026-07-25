@@ -116,6 +116,7 @@ export type StreamState =
       request: StreamRequest;
       wasCancelled: boolean;
       targetAppId: number | null;
+      chatSummary?: string;
     }
   | { type: "errored"; error: string };
 

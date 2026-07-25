@@ -13,13 +13,14 @@ import type { ConsoleEntry } from "@/ipc/types";
 import {
   currentConsoleEntriesAtom,
   currentPreviewAppExitAtom,
-  currentPreviewRunStartedAtAtom,
   type PreviewAppExit,
 } from "@/atoms/previewRuntimeAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useRunApp } from "@/hooks/useRunApp";
+import { useAppRunState } from "@/hooks/useAppRun";
 import { useStreamChat } from "@/hooks/useStreamChat";
+import { projectRunState } from "@/app_run/transition";
 import { cn } from "@/lib/utils";
 
 const STARTUP_LOG_MESSAGES = new Set([
@@ -159,8 +160,9 @@ export function PreviewLoadingScreen({
   const { t } = useTranslation("home");
   const consoleEntries = useAtomValue(currentConsoleEntriesAtom);
   const previewAppExit = useAtomValue(currentPreviewAppExitAtom);
-  const previewRunStartedAt = useAtomValue(currentPreviewRunStartedAtAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
+  const previewRunStartedAt =
+    projectRunState(useAppRunState(selectedAppId))?.startedAt ?? null;
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const { streamMessage, isStreaming } = useStreamChat();
   const { restartApp } = useRunApp();

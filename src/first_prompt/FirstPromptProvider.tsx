@@ -3,6 +3,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -53,9 +54,8 @@ import {
 } from "./commands";
 import { FirstPromptController } from "./controller";
 import {
-  firstPromptSagaProjectionWriteAtom,
-  IDLE_FIRST_PROMPT_PROJECTION,
   projectFirstPromptState,
+  type FirstPromptSagaProjection,
 } from "./projection";
 import type { FirstPromptEvent, FirstPromptPayload } from "./state";
 import { resolveFirstPromptDefaultChatMode } from "./provider_resume";
@@ -221,11 +221,6 @@ export function FirstPromptProvider({
           },
         }),
         observer: createTraceObserver("first_prompt"),
-        onDispose: () =>
-          store.set(
-            firstPromptSagaProjectionWriteAtom,
-            IDLE_FIRST_PROMPT_PROJECTION,
-          ),
       }),
   );
   useManagerLifecycle(controller);
@@ -278,16 +273,6 @@ export function FirstPromptProvider({
     },
     [controller, queryClient],
   );
-
-  useEffect(() => {
-    const project = () =>
-      store.set(
-        firstPromptSagaProjectionWriteAtom,
-        projectFirstPromptState(controller.getSnapshot()),
-      );
-    project();
-    return controller.subscribe(project);
-  }, [controller, store]);
 
   useEffect(() => {
     const anySetup = isAnyProviderSetup();
@@ -387,6 +372,11 @@ export function useFirstPromptController(): FirstPromptController {
     throw new Error("useFirstPromptController requires FirstPromptProvider");
   }
   return context.controller;
+}
+
+export function useFirstPromptSaga(): FirstPromptSagaProjection {
+  const snapshot = useControllerSnapshot(useFirstPromptController());
+  return useMemo(() => projectFirstPromptState(snapshot), [snapshot]);
 }
 
 export function useFirstPromptSend(): (event: FirstPromptEvent) => boolean {

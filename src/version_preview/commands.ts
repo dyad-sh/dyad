@@ -4,7 +4,6 @@ import { toast } from "sonner";
 import { ipc, type VersionCommandResult } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
 import { showError } from "@/lib/toast";
-import { activeCheckoutCounterAtom } from "@/store/appAtoms";
 import { chatMessagesByIdAtom } from "@/atoms/chatAtoms";
 import type { VersionPreviewRuntime } from "./controller";
 
@@ -31,12 +30,7 @@ export function createVersionPreviewRuntime({
       | { purpose: "preview"; appId: number; versionId: string }
       | { purpose: "return"; appId: number; branch: string },
   ) {
-    store.set(activeCheckoutCounterAtom, (count) => count + 1);
-    try {
-      return await ipc.version.checkoutVersion(input);
-    } finally {
-      store.set(activeCheckoutCounterAtom, (count) => count - 1);
-    }
+    return ipc.version.checkoutVersion(input);
   }
 
   async function invalidateGitQueries(appId: number) {

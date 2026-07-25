@@ -1,7 +1,6 @@
 import { QueryClient } from "@tanstack/react-query";
 import { createStore } from "jotai";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { activeCheckoutCounterAtom } from "@/store/appAtoms";
 import { chatMessagesByIdAtom } from "@/atoms/chatAtoms";
 import type { VersionCommandResult } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
@@ -84,7 +83,7 @@ describe("createVersionPreviewRuntime", () => {
   });
 
   it("uses semantic preview and return checkout intents", async () => {
-    const { runtime, store } = setup();
+    const { runtime } = setup();
     await runtime.commands.checkoutVersion({ appId: 7, versionId: "abc" });
     await runtime.commands.returnToBranch({ appId: 7, branch: "feature/x" });
     await runtime.commands.switchBranch({ appId: 7, branch: "main" });
@@ -104,7 +103,6 @@ describe("createVersionPreviewRuntime", () => {
       appId: 7,
       branch: "main",
     });
-    expect(store.get(activeCheckoutCounterAtom)).toBe(0);
   });
 
   it("invalidates current and inventory branches for the affected app", async () => {

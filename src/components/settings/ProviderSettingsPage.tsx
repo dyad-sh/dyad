@@ -6,9 +6,10 @@ import { useSettings } from "@/hooks/useSettings";
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
-import { useAtomValue } from "jotai";
-import { firstPromptSagaAtom } from "@/first_prompt/projection";
-import { useFirstPromptProviderResume } from "@/first_prompt/FirstPromptProvider";
+import {
+  useFirstPromptProviderResume,
+  useFirstPromptSaga,
+} from "@/first_prompt/FirstPromptProvider";
 import { ipc, type ProviderApiKeyValidationProvider } from "@/ipc/types";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -129,7 +130,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
   const [awaitingKeyFromWebsite, setAwaitingKeyFromWebsite] = useState(false);
   const [highlightPasteButton, setHighlightPasteButton] = useState(false);
   const queryClient = useQueryClient();
-  const { hasArmedPayload } = useAtomValue(firstPromptSagaAtom);
+  const { hasArmedPayload } = useFirstPromptSaga();
   const resumeFirstPrompt = useFirstPromptProviderResume();
 
   // Use fetched data (or defaults for Dyad)

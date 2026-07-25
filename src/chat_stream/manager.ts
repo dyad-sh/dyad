@@ -39,6 +39,7 @@ export interface StreamFinishedEvent {
   chatId: number;
   invocationRef: ChatStreamInvocationRef;
   outcome: "completed" | "cancelled" | "errored";
+  chatSummary?: string;
 }
 
 type StreamFinishedListener = (event: StreamFinishedEvent) => void;
@@ -216,6 +217,9 @@ export class ChatStreamManager {
         chatId,
         invocationRef: previous.invocationRef,
         outcome: previous.wasCancelled ? "cancelled" : "completed",
+        ...(previous.chatSummary === undefined
+          ? {}
+          : { chatSummary: previous.chatSummary }),
       };
     } else if (
       state.type === "errored" &&

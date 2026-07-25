@@ -87,21 +87,6 @@ export const dismissedPackageManagerWarningAppIdsAtom = atom<Set<number>>(
   new Set<number>(),
 );
 
-export const currentPreviewRunStateAtom = atom((get) => {
-  const appId = get(selectedAppIdAtom);
-  return appId === null
-    ? undefined
-    : get(previewRunStateByAppIdAtom).get(appId);
-});
-
-export const currentPreviewLoadingAtom = atom(
-  (get) => get(currentPreviewRunStateAtom) !== undefined,
-);
-
-export const currentPreviewRunStartedAtAtom = atom(
-  (get) => get(currentPreviewRunStateAtom)?.startedAt ?? null,
-);
-
 export const currentPreviewErrorAtom = atom((get) => {
   const appId = get(selectedAppIdAtom);
   return appId === null ? undefined : get(previewErrorByAppIdAtom).get(appId);

@@ -72,6 +72,11 @@ vi.mock("jotai", async (importOriginal) => ({
 
 vi.mock("@/first_prompt/FirstPromptProvider", () => ({
   useFirstPromptProviderResume: () => mocks.sendFirstPrompt,
+  useFirstPromptSaga: () => ({
+    phase: "idle",
+    hasArmedPayload: mocks.hasArmedPayload,
+    isExistingAppSubmission: false,
+  }),
 }));
 
 vi.mock("@/ipc/types", () => ({

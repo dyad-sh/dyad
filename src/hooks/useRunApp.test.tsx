@@ -9,10 +9,8 @@ import {
   currentPackageManagerWarningAtom,
   currentPreviewAppExitAtom,
   currentPreviewErrorAtom,
-  currentPreviewLoadingAtom,
   currentPreviewReloadTokenAtom,
   setConsoleEntriesForAppAtom,
-  setPreviewRunStateForAppAtom,
 } from "@/atoms/previewRuntimeAtoms";
 import {
   useAppOutputSubscription,
@@ -327,20 +325,12 @@ describe("useAppOutputSubscription", () => {
   });
 
   it("reloads the preview when the proxy reports a ready URL", () => {
-    const { store, Wrapper } = makeWrapper(1);
+    const { manager, store, Wrapper } = makeWrapper(1);
     const { unmount } = renderHook(() => useAppOutputSubscription(), {
       wrapper: Wrapper,
     });
 
     expect(store.get(currentPreviewReloadTokenAtom)).toBe(0);
-    act(() => {
-      store.set(setPreviewRunStateForAppAtom, {
-        appId: 1,
-        state: { operation: "run", startedAt: 100 },
-      });
-    });
-    expect(store.get(currentPreviewLoadingAtom)).toBe(true);
-
     act(() => {
       for (const listener of appOutputListeners) {
         listener({
@@ -359,7 +349,7 @@ describe("useAppOutputSubscription", () => {
       mode: "host",
     });
     expect(store.get(currentPreviewReloadTokenAtom)).toBe(1);
-    expect(store.get(currentPreviewLoadingAtom)).toBe(false);
+    expect(manager.getSnapshot(1).type).toBe("ready");
 
     unmount();
   });
@@ -607,7 +597,7 @@ describe("useAppOutputSubscription", () => {
   });
 
   it("keeps a restart's loading state when a cached proxy line arrives, then applies the buffered URL", async () => {
-    const { store, Wrapper } = makeWrapper(1);
+    const { manager, store, Wrapper } = makeWrapper(1);
     let finishRestartApp: () => void = () => {};
     restartAppMock.mockReturnValueOnce(
       new Promise<void>((resolve) => {
@@ -646,7 +636,7 @@ describe("useAppOutputSubscription", () => {
 
     // It must NOT clear the restart's loading state or apply the URL yet.
     expect(result.current.loading).toBe(true);
-    expect(store.get(currentPreviewLoadingAtom)).toBe(true);
+    expect(manager.getSnapshot(1).type).toBe("starting");
     expect(store.get(currentAppUrlAtom).appUrl).toBeNull();
 
     await act(async () => {
@@ -669,7 +659,7 @@ describe("useAppOutputSubscription", () => {
   });
 
   it("ignores a superseded run's late resolution after a restart begins", async () => {
-    const { store, Wrapper } = makeWrapper(1);
+    const { manager, Wrapper } = makeWrapper(1);
     let finishRunApp: () => void = () => {};
     runAppMock.mockReturnValueOnce(
       new Promise<void>((resolve) => {
@@ -708,7 +698,7 @@ describe("useAppOutputSubscription", () => {
       await runPromise;
     });
     expect(result.current.loading).toBe(true);
-    expect(store.get(currentPreviewLoadingAtom)).toBe(true);
+    expect(manager.getSnapshot(1).type).toBe("starting");
 
     await act(async () => {
       finishRestartApp();
@@ -720,7 +710,7 @@ describe("useAppOutputSubscription", () => {
   });
 
   it("settles stopApp and clears loading when the stop IPC throws synchronously", async () => {
-    const { store, Wrapper } = makeWrapper(1);
+    const { manager, store, Wrapper } = makeWrapper(1);
     stopAppMock.mockImplementationOnce(() => {
       throw new Error("ipc channel broken");
     });
@@ -735,7 +725,7 @@ describe("useAppOutputSubscription", () => {
     });
 
     expect(result.current.loading).toBe(false);
-    expect(store.get(currentPreviewLoadingAtom)).toBe(false);
+    expect(manager.getSnapshot(1).type).toBe("errored");
     expect(store.get(currentPreviewErrorAtom)).toEqual({
       message: "ipc channel broken",
       source: "dyad-app",

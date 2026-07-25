@@ -30,8 +30,6 @@ import {
   chatInputValuesByIdAtom,
   chatMessagesByIdAtom,
   selectedChatIdAtom,
-  pendingToolConsentsAtom,
-  type PendingToolConsent,
   agentTodosByChatIdAtom,
   needsFreshPlanChatAtom,
 } from "@/atoms/chatAtoms";
@@ -114,7 +112,8 @@ import { useChatMode } from "@/hooks/useChatMode";
 import { useOpenPreviewIfSetupRequired } from "@/hooks/useOpenPreviewIfSetupRequired";
 import {
   getUserInputProjectionAdapter,
-  respondingRequestIdsAtom,
+  type PendingToolConsent,
+  usePendingToolConsents,
 } from "@/user_input/projection";
 import { useSendPreviewIframeEvent } from "@/preview_iframe/usePreviewIframe";
 
@@ -196,13 +195,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const sendPreviewIframeEvent = useSendPreviewIframeEvent(appId);
   const store = useStore();
   const userInputProjection = getUserInputProjectionAdapter({ store });
-  const pendingToolConsents = useAtomValue(pendingToolConsentsAtom);
-  const respondingRequestIds = useAtomValue(respondingRequestIdsAtom);
-  // Get the first consent in the queue for this chat (if any)
-  const consentsForThisChat = pendingToolConsents.filter(
-    (c) => c.chatId === chatId && !respondingRequestIds.has(c.requestId),
-  );
-  const pendingToolConsent = consentsForThisChat[0] ?? null;
+  const pendingToolConsents = usePendingToolConsents(chatId);
+  const pendingToolConsent = pendingToolConsents[0] ?? null;
 
   // The projection adapter owns optimistic hiding, rollback, and stale-request
   // reconciliation so the request atom retains exactly one writer.
@@ -803,7 +797,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           {pendingToolConsent && (
             <AgentConsentBanner
               consent={pendingToolConsent}
-              queueTotal={consentsForThisChat.length}
+              queueTotal={pendingToolConsents.length}
               onDecision={(decision) =>
                 decideConsent(pendingToolConsent, decision)
               }

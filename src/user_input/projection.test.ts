@@ -10,7 +10,9 @@ import type {
 import {
   getUserInputProjectionAdapter,
   respondingRequestIdsAtom,
+  selectPendingToolConsents,
   userInputRequestsAtom,
+  type ProjectedUserInputRequest,
   type UserInputProjectionIpc,
   type UserInputRequests,
 } from "./projection";
@@ -166,6 +168,41 @@ function createFakeIpc() {
 }
 
 describe("user-input renderer projection", () => {
+  it("selects unresolved, non-responding tool consents for one chat", () => {
+    const otherChat = {
+      ...agentDescriptor("other-chat"),
+      chatId: 8,
+    };
+    const requests: UserInputRequests = new Map<
+      string,
+      ProjectedUserInputRequest
+    >([
+      ["agent-responding", pending(agentDescriptor("agent-responding"))],
+      ["mcp-visible", pending(mcpDescriptor("mcp-visible"))],
+      ["other-chat", pending(otherChat)],
+      [
+        "settled",
+        {
+          status: "settled",
+          requestId: "settled",
+          outcome: "human",
+          settledAt: 1,
+          descriptor: agentDescriptor("settled"),
+        },
+      ],
+    ]);
+
+    expect(
+      selectPendingToolConsents(requests, new Set(["agent-responding"]), 7),
+    ).toEqual([
+      expect.objectContaining({
+        kind: "mcp",
+        requestId: "mcp-visible",
+        classifierPending: true,
+      }),
+    ]);
+  });
+
   it("lets events received during hydration win by requestId", async () => {
     const store = createStore();
     const fake = createFakeIpc();

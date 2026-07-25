@@ -201,6 +201,9 @@ export function transition(
               request: state.request,
               wasCancelled: event.response.wasCancelled === true,
               targetAppId: state.targetAppId,
+              ...(event.response.chatSummary === undefined
+                ? {}
+                : { chatSummary: event.response.chatSummary }),
             },
             commands: [
               {
@@ -269,6 +272,9 @@ export function transition(
               request: state.request,
               wasCancelled: event.response.wasCancelled === true,
               targetAppId: state.targetAppId,
+              ...(event.response.chatSummary === undefined
+                ? {}
+                : { chatSummary: event.response.chatSummary }),
             },
             commands: [
               {
@@ -366,6 +372,9 @@ export function transition(
               request: state.request,
               wasCancelled: event.response.wasCancelled === true,
               targetAppId: state.targetAppId,
+              ...(event.response.chatSummary === undefined
+                ? {}
+                : { chatSummary: event.response.chatSummary }),
             },
             commands: [
               {

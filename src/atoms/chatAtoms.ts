@@ -6,35 +6,10 @@ import type {
   ComponentSelection,
 } from "@/ipc/types";
 import type { ListedApp } from "@/ipc/types/app";
-import type { SqlConsentMetadata } from "@/shared/sqlConsentMetadata";
 import type { Getter, Setter } from "jotai";
 import { atom } from "jotai";
-import { userInputRequestsAtom } from "@/user_input/projection";
 import { atomWithStorage } from "jotai/utils";
 import { planAcceptInNewChatByChatIdAtom } from "@/atoms/planAtoms";
-
-// Chat completion events - used to notify when a stream has completed
-export type ChatCompletionEvent = {
-  sequence: number;
-  chatId: number;
-  title?: string;
-};
-
-let nextChatCompletionSequence = 0;
-
-//  atom that holds the latest chat completion event
-export const chatCompletionEventAtom = atom<ChatCompletionEvent | null>(null);
-
-// Atom to publish new chat completion events
-export const publishChatCompletionEventAtom = atom(
-  null,
-  (_get, set, payload: Omit<ChatCompletionEvent, "sequence">) => {
-    set(chatCompletionEventAtom, {
-      sequence: ++nextChatCompletionSequence,
-      ...payload,
-    });
-  },
-);
 
 // Per-chat atoms implemented with maps keyed by chatId
 export const chatMessagesByIdAtom = atom<Map<number, Message[]>>(new Map());
@@ -543,57 +518,6 @@ export const removeChatIdFromAllTrackingAtom = atom(
 
 export const attachmentsAtom = atom<FileAttachment[]>([]);
 attachmentsAtom.debugLabel = "attachmentsAtom";
-
-// Tool consent request queue. Holds both agent-tool and MCP-tool consents;
-// `kind` routes the decision back to the right IPC channel.
-export interface PendingToolConsent {
-  kind: "agent" | "mcp";
-  requestId: string;
-  chatId: number;
-  toolName: string;
-  toolDescription?: string | null;
-  inputPreview?: string | null;
-  metadata?: SqlConsentMetadata | null;
-  // MCP-only fields.
-  serverId?: number;
-  serverName?: string | null;
-  classifierReason?: string | null;
-  // True while the auto-approve classifier is still deciding (shows a spinner).
-  classifierPending?: boolean;
-}
-
-export const pendingToolConsentsAtom = atom<PendingToolConsent[]>((get) => {
-  const consents: PendingToolConsent[] = [];
-  for (const request of get(userInputRequestsAtom).values()) {
-    if (request.status === "settled") continue;
-    const descriptor = request.descriptor;
-    if (descriptor.kind === "agent-consent") {
-      consents.push({
-        kind: "agent",
-        requestId: descriptor.requestId,
-        chatId: descriptor.chatId,
-        toolName: descriptor.toolName,
-        toolDescription: descriptor.toolDescription,
-        inputPreview: descriptor.inputPreview,
-        metadata: descriptor.metadata as SqlConsentMetadata | null | undefined,
-      });
-    } else if (descriptor.kind === "mcp-consent") {
-      consents.push({
-        kind: "mcp",
-        requestId: descriptor.requestId,
-        chatId: descriptor.chatId,
-        serverId: descriptor.serverId,
-        serverName: descriptor.serverName,
-        toolName: descriptor.toolName,
-        toolDescription: descriptor.toolDescription,
-        inputPreview: descriptor.inputPreview,
-        classifierReason: request.classifierReason,
-        classifierPending: request.classifier === "racing",
-      });
-    }
-  }
-  return consents;
-});
 
 // Agent todos per chat
 export const agentTodosByChatIdAtom = atom<Map<number, AgentTodo[]>>(new Map());

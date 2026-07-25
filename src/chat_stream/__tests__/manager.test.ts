@@ -72,7 +72,9 @@ describe("ChatStreamManager", () => {
     const controller = manager.ensure(CHAT_ID);
     const keepAlive = controller.subscribe(() => undefined);
     const listener = vi.fn();
+    const secondListener = vi.fn();
     manager.subscribeStreamFinished(listener);
+    manager.subscribeStreamFinished(secondListener);
 
     controller.send({
       type: "submit",
@@ -81,7 +83,11 @@ describe("ChatStreamManager", () => {
     controller.send({
       type: "stream-ended",
       invocationRef: ref(1),
-      response: { chatId: CHAT_ID, updatedFiles: false },
+      response: {
+        chatId: CHAT_ID,
+        updatedFiles: false,
+        chatSummary: "Built the requested app",
+      },
     });
     controller.send({
       type: "finalize-complete",
@@ -126,10 +132,16 @@ describe("ChatStreamManager", () => {
     await flush();
 
     expect(listener.mock.calls.map(([event]) => event)).toEqual([
-      { chatId: CHAT_ID, invocationRef: ref(1), outcome: "completed" },
+      {
+        chatId: CHAT_ID,
+        invocationRef: ref(1),
+        outcome: "completed",
+        chatSummary: "Built the requested app",
+      },
       { chatId: CHAT_ID, invocationRef: ref(2), outcome: "cancelled" },
       { chatId: CHAT_ID, invocationRef: ref(3), outcome: "errored" },
     ]);
+    expect(secondListener.mock.calls).toEqual(listener.mock.calls);
 
     keepAlive();
     manager.dispose();

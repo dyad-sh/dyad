@@ -10,7 +10,6 @@ import {
   currentConsoleEntriesAtom,
   currentPackageManagerWarningAtom,
   currentPreviewErrorAtom,
-  currentPreviewLoadingAtom,
   dismissPackageManagerWarningsAtom,
   previewRunStateByAppIdAtom,
   setAppUrlForAppAtom,
@@ -45,14 +44,10 @@ function consoleEntry(
 }
 
 describe("preview runtime atoms", () => {
-  it("derives current preview state from the selected app", () => {
+  it("derives current console entries from the selected app", () => {
     const store = createStore();
     store.set(selectedAppIdAtom, 1);
 
-    store.set(setPreviewRunStateForAppAtom, {
-      appId: 1,
-      state: { operation: "run", startedAt: 100 },
-    });
     store.set(appendConsoleEntriesForAppAtom, {
       appId: 2,
       entries: [
@@ -66,12 +61,10 @@ describe("preview runtime atoms", () => {
       ],
     });
 
-    expect(store.get(currentPreviewLoadingAtom)).toBe(true);
     expect(store.get(currentConsoleEntriesAtom)).toEqual([]);
 
     store.set(selectedAppIdAtom, 2);
 
-    expect(store.get(currentPreviewLoadingAtom)).toBe(false);
     expect(
       store.get(currentConsoleEntriesAtom).map((entry) => entry.message),
     ).toEqual(["App 2 log"]);
@@ -208,7 +201,6 @@ describe("preview runtime atoms", () => {
       entries: [consoleEntry("other app log", 100, 2)],
     });
 
-    expect(store.get(currentPreviewLoadingAtom)).toBe(true);
     expect(store.get(currentAppUrlAtom).appUrl).toBe("http://localhost:3000");
     expect(store.get(currentPackageManagerWarningAtom)).toEqual({
       kind: "release-age",
@@ -219,7 +211,6 @@ describe("preview runtime atoms", () => {
     store.set(clearPreviewRuntimeForAppAtom, 1);
 
     expect(store.get(previewRunStateByAppIdAtom).has(1)).toBe(false);
-    expect(store.get(currentPreviewLoadingAtom)).toBe(false);
     expect(store.get(currentAppUrlAtom).appUrl).toBeNull();
     expect(store.get(currentPackageManagerWarningAtom)).toBeUndefined();
     expect(store.get(consoleEntriesByAppIdAtom).has(1)).toBe(false);

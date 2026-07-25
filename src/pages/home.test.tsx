@@ -30,18 +30,16 @@ vi.mock("jotai", async (importOriginal) => ({
     if (atom.debugLabel === "hasManuallySelectedChatModeAtom") {
       return mocks.hasManuallySelectedChatMode;
     }
-    if (atom.debugLabel === "firstPromptSagaAtom") {
-      return {
-        phase: mocks.phase,
-        hasArmedPayload: false,
-        isExistingAppSubmission: mocks.isExistingAppSubmission,
-      };
-    }
     return undefined;
   },
 }));
 
 vi.mock("@/first_prompt/FirstPromptProvider", () => ({
+  useFirstPromptSaga: () => ({
+    phase: mocks.phase,
+    hasArmedPayload: false,
+    isExistingAppSubmission: mocks.isExistingAppSubmission,
+  }),
   useFirstPromptSend: () => mocks.send,
 }));
 

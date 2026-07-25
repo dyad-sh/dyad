@@ -9,7 +9,8 @@
  * facade is injected at the application composition root; this module never
  * imports the chat-stream manager or controller.
  */
-import { atom, type createStore } from "jotai";
+import { useMemo } from "react";
+import { atom, type createStore, useAtomValue } from "jotai";
 
 import { DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import type {
@@ -19,6 +20,7 @@ import type {
 } from "@/ipc/types/user_input";
 import { ipc as defaultIpc } from "@/ipc/types";
 import { showError } from "@/lib/toast";
+import type { SqlConsentMetadata } from "@/shared/sqlConsentMetadata";
 import { createLateBinding } from "@/state_machines/late_binding";
 import { registerAtomWriter } from "@/state_machines/projection";
 import { TaskScope } from "@/state_machines/task_scope";
@@ -73,6 +75,76 @@ export const userInputRequestsAtom = atom<UserInputRequests>((get) =>
 export const respondingRequestIdsAtom = atom<ReadonlySet<string>>((get) =>
   get(writableRespondingRequestIdsAtom),
 );
+
+// Tool consent request queue. `kind` routes the decision back to the right IPC
+// channel; responding requests are hidden optimistically by the projection.
+export interface PendingToolConsent {
+  kind: "agent" | "mcp";
+  requestId: string;
+  chatId: number;
+  toolName: string;
+  toolDescription?: string | null;
+  inputPreview?: string | null;
+  metadata?: SqlConsentMetadata | null;
+  serverId?: number;
+  serverName?: string | null;
+  classifierReason?: string | null;
+  classifierPending?: boolean;
+}
+
+export function selectPendingToolConsents(
+  requests: UserInputRequests,
+  respondingRequestIds: ReadonlySet<string>,
+  chatId: number | undefined,
+): PendingToolConsent[] {
+  const consents: PendingToolConsent[] = [];
+  for (const request of requests.values()) {
+    if (request.status === "settled") continue;
+    const descriptor = request.descriptor;
+    if (
+      descriptor.chatId !== chatId ||
+      respondingRequestIds.has(descriptor.requestId)
+    ) {
+      continue;
+    }
+    if (descriptor.kind === "agent-consent") {
+      consents.push({
+        kind: "agent",
+        requestId: descriptor.requestId,
+        chatId: descriptor.chatId,
+        toolName: descriptor.toolName,
+        toolDescription: descriptor.toolDescription,
+        inputPreview: descriptor.inputPreview,
+        metadata: descriptor.metadata as SqlConsentMetadata | null | undefined,
+      });
+    } else if (descriptor.kind === "mcp-consent") {
+      consents.push({
+        kind: "mcp",
+        requestId: descriptor.requestId,
+        chatId: descriptor.chatId,
+        serverId: descriptor.serverId,
+        serverName: descriptor.serverName,
+        toolName: descriptor.toolName,
+        toolDescription: descriptor.toolDescription,
+        inputPreview: descriptor.inputPreview,
+        classifierReason: request.classifierReason,
+        classifierPending: request.classifier === "racing",
+      });
+    }
+  }
+  return consents;
+}
+
+export function usePendingToolConsents(
+  chatId: number | undefined,
+): PendingToolConsent[] {
+  const requests = useAtomValue(userInputRequestsAtom);
+  const respondingRequestIds = useAtomValue(respondingRequestIdsAtom);
+  return useMemo(
+    () => selectPendingToolConsents(requests, respondingRequestIds, chatId),
+    [chatId, requests, respondingRequestIds],
+  );
+}
 
 export type UserInputProjectionIpc = Pick<typeof defaultIpc, "userInput"> & {
   events: Pick<typeof defaultIpc.events, "userInput">;

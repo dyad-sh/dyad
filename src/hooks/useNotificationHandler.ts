@@ -2,7 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef } from "react";
 import { useAtomValue } from "jotai";
 import { useRouterState } from "@tanstack/react-router";
-import { chatCompletionEventAtom } from "@/atoms/chatAtoms";
+import { useStreamFinished } from "@/chat_stream/ChatStreamProvider";
 import { userInputRequestsAtom } from "@/user_input/projection";
 import { useSelectChat } from "./useSelectChat";
 import { ipc } from "../ipc/types";
@@ -323,12 +323,8 @@ export function useNotificationHandler() {
     }
   }, [projectedUserInputRequests, startConsentNotification]);
 
-  const completionEvent = useAtomValue(chatCompletionEventAtom);
-
-  useEffect(() => {
-    if (!completionEvent) return;
-
-    const { chatId, title: summary } = completionEvent;
+  useStreamFinished(({ chatId, chatSummary: summary, outcome }) => {
+    if (outcome !== "completed") return;
     const isViewingThisChat =
       currentRouteRef.current.pathname === "/chat" &&
       currentRouteRef.current.chatIdFromRoute === chatId;
@@ -421,12 +417,7 @@ export function useNotificationHandler() {
         return;
       }
     })();
-  }, [
-    completionEvent,
-    queryClient,
-    showNativeNotification,
-    requestNotificationPermission,
-  ]);
+  });
 
   // Actionable user-input notifications arrive through the generic protocol.
   useEffect(() => {

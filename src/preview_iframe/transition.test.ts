@@ -40,6 +40,16 @@ const EVENTS: readonly PreviewIframeEvent[] = [
   { type: "SELECTION_RESTORE_QUEUED" },
   { type: "SELECTION_RESTORED" },
 ];
+const ERROR_EVENTS: readonly PreviewIframeEvent[] = [
+  { type: "IFRAME_ERROR", message: "iframe failed", source: "preview-app" },
+  { type: "IFRAME_ERROR", message: "sandbox failed", source: "dyad-app" },
+  { type: "SYNC_ERROR", message: "sync failed" },
+  { type: "SYNC_RECOVERED" },
+  { type: "APP_ERROR", message: "run failed" },
+  { type: "APP_ERROR_CLEARED" },
+  { type: "DISMISS" },
+];
+const ALL_EVENTS = [...EVENTS, ...ERROR_EVENTS];
 type PreviewIframeStateKind =
   | "empty"
   | "navigated"
@@ -55,7 +65,6 @@ const STATE_KINDS = [
 ] as const satisfies readonly PreviewIframeStateKind[];
 const COMMAND_KINDS = [
   "post-to-iframe",
-  "clear-preview-error",
 ] as const satisfies readonly PreviewIframeCommand["type"][];
 
 function stateKind(state: PreviewIframeState): PreviewIframeStateKind {
@@ -112,7 +121,7 @@ describe("preview iframe transition", () => {
     expect(states.some((state) => state.restoreQueued)).toBe(true);
 
     for (const state of states) {
-      for (const event of EVENTS) {
+      for (const event of ALL_EVENTS) {
         const result = transition(state, event);
         expect(result).toBeDefined();
         assertReferenceStability(
@@ -281,5 +290,61 @@ describe("preview iframe transition", () => {
     };
     expect(selectCanGoBack(state)).toBe(true);
     expect(selectCanGoForward(state)).toBe(true);
+  });
+
+  it("keeps higher-priority iframe and app errors ahead of sync errors", () => {
+    for (const source of ["preview-app", "dyad-app"] as const) {
+      const errored = transition(INITIAL_PREVIEW_IFRAME_STATE, {
+        type: "IFRAME_ERROR",
+        message: `${source} failed`,
+        source,
+      });
+      const sync = transition(errored.state, {
+        type: "SYNC_ERROR",
+        message: "sync failed",
+      });
+      expect(sync.state).toBe(errored.state);
+      expect(ignoreReasonOf(sync)).toBe("higher-priority-error");
+    }
+  });
+
+  it("only clears sync-owned errors on recovery and dismisses any source", () => {
+    const appError = transition(INITIAL_PREVIEW_IFRAME_STATE, {
+      type: "APP_ERROR",
+      message: "run failed",
+    });
+    expect(transition(appError.state, { type: "SYNC_RECOVERED" }).state).toBe(
+      appError.state,
+    );
+    expect(transition(appError.state, { type: "DISMISS" }).state.error).toBe(
+      undefined,
+    );
+
+    const syncError = transition(INITIAL_PREVIEW_IFRAME_STATE, {
+      type: "SYNC_ERROR",
+      message: "sync failed",
+    });
+    expect(
+      transition(syncError.state, { type: "SYNC_RECOVERED" }).state.error,
+    ).toBeUndefined();
+  });
+
+  it("serializes app-run sets and iframe clears by event arrival", () => {
+    const clearedBeforeSet = transition(INITIAL_PREVIEW_IFRAME_STATE, {
+      type: "IFRAME_LOADED",
+    });
+    const setAfterClear = transition(clearedBeforeSet.state, {
+      type: "APP_ERROR",
+      message: "late run failure",
+    });
+    expect(setAfterClear.state.error?.message).toBe("late run failure");
+
+    const setBeforeClear = transition(INITIAL_PREVIEW_IFRAME_STATE, {
+      type: "APP_ERROR",
+      message: "early run failure",
+    });
+    expect(
+      transition(setBeforeClear.state, { type: "IFRAME_LOADED" }).state.error,
+    ).toBeUndefined();
   });
 });

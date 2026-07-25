@@ -1,10 +1,4 @@
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import {
-  appendConsoleEntriesForAppAtom,
-  currentPreviewErrorAtom,
-  setPreviewErrorForAppAtom,
-  type PreviewErrorUpdate,
-} from "@/atoms/previewRuntimeAtoms";
 import { useCurrentAppUrl } from "@/hooks/useAppRun";
 import { useAtomValue, useSetAtom, useAtom } from "jotai";
 import {
@@ -99,11 +93,16 @@ import {
 } from "./previewAddressPath";
 import { getPreviewToolbarActionVisibility } from "./previewToolbarLayout";
 import { usePreviewIframe } from "@/preview_iframe/usePreviewIframe";
-import { selectCanGoBack, selectCanGoForward } from "@/preview_iframe/state";
+import {
+  selectCanGoBack,
+  selectCanGoForward,
+  selectPreviewError,
+} from "@/preview_iframe/state";
 import {
   useScreenshot,
   type ScreenshotAdapterEvent,
 } from "@/screenshot/useScreenshot";
+import { useAppRunManager } from "@/app_run/AppRunProvider";
 
 interface ErrorBannerProps {
   error:
@@ -217,18 +216,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const { t } = useTranslation("home");
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const { appUrl, originalUrl, mode } = useCurrentAppUrl(selectedAppId);
-  const appendConsoleEntries = useSetAtom(appendConsoleEntriesForAppAtom);
-  const errorMessage = useAtomValue(currentPreviewErrorAtom);
-  const setPreviewErrorForApp = useSetAtom(setPreviewErrorForAppAtom);
-  const setErrorMessage = useCallback(
-    (update: PreviewErrorUpdate) => {
-      if (selectedAppId === null) {
-        return;
-      }
-      setPreviewErrorForApp({ appId: selectedAppId, error: update });
-    },
-    [selectedAppId, setPreviewErrorForApp],
-  );
+  const appRunManager = useAppRunManager();
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const { streamMessage } = useStreamChat();
   const {
@@ -270,6 +258,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     onSharedMachineEvent: (event) => screenshotAdapterHandlerRef.current(event),
     onComponentMessage: (event) => componentMessageHandlerRef.current(event),
   });
+  const errorMessage = selectPreviewError(iframeState);
   screenshotAdapterHandlerRef.current = useScreenshot({
     appId: selectedAppId,
     postMessage: postPreviewMessage,
@@ -412,7 +401,8 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         cloudSandboxStatus.lastErrorCode === "sandbox_credits_exhausted" ||
         cloudSandboxStatus.lastErrorCode === "sandbox_billing_unavailable")
     ) {
-      setErrorMessage({
+      sendIframeEvent({
+        type: "IFRAME_ERROR",
         message: cloudSandboxStatus.lastErrorMessage
           ? cloudSandboxStatus.lastErrorMessage.includes("Dyad stopped")
             ? cloudSandboxStatus.lastErrorMessage
@@ -425,7 +415,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         source: "dyad-app",
       });
     }
-  }, [cloudSandboxStatus, isCloudMode, setErrorMessage]);
+  }, [cloudSandboxStatus, isCloudMode, sendIframeEvent]);
 
   useEffect(() => {
     if (!isCloudMode || !cloudSandboxStatus) {
@@ -435,21 +425,15 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     const localSyncErrorMessage = cloudSandboxStatus.localSyncErrorMessage;
 
     if (localSyncErrorMessage) {
-      setErrorMessage((current) =>
-        current && current.source !== "dyad-sync"
-          ? current
-          : {
-              message: localSyncErrorMessage,
-              source: "dyad-sync",
-            },
-      );
+      sendIframeEvent({
+        type: "SYNC_ERROR",
+        message: localSyncErrorMessage,
+      });
       return;
     }
 
-    setErrorMessage((current) =>
-      current?.source === "dyad-sync" ? undefined : current,
-    );
-  }, [cloudSandboxStatus, isCloudMode, setErrorMessage]);
+    sendIframeEvent({ type: "SYNC_RECOVERED" });
+  }, [cloudSandboxStatus, isCloudMode, sendIframeEvent]);
 
   useEffect(() => {
     if (!isCloudMode || !cloudSandboxStatus) {
@@ -621,7 +605,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         ipc.misc.addLog(logEntry);
 
         // Also update UI state
-        appendConsoleEntries({ appId: logEntry.appId, entries: [logEntry] });
+        appRunManager.previewConsole.append(logEntry.appId, [logEntry]);
         return;
       }
 
@@ -644,7 +628,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         ipc.misc.addLog(logEntry);
 
         // Also update UI state
-        appendConsoleEntries({ appId: logEntry.appId, entries: [logEntry] });
+        appRunManager.previewConsole.append(logEntry.appId, [logEntry]);
         return;
       }
 
@@ -678,7 +662,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         ipc.misc.addLog(logEntry);
 
         // Also update UI state
-        appendConsoleEntries({ appId: logEntry.appId, entries: [logEntry] });
+        appRunManager.previewConsole.append(logEntry.appId, [logEntry]);
         return;
       }
 
@@ -710,7 +694,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         ipc.misc.addLog(logEntry);
 
         // Also update UI state
-        appendConsoleEntries({ appId: logEntry.appId, entries: [logEntry] });
+        appRunManager.previewConsole.append(logEntry.appId, [logEntry]);
         return;
       }
 
@@ -881,7 +865,11 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
             : payload?.stack;
         const errorMessage = `Error ${payload?.message || payload?.reason}\nStack trace: ${stack}`;
         console.error("Iframe error:", errorMessage);
-        setErrorMessage({ message: errorMessage, source: "preview-app" });
+        sendIframeEvent({
+          type: "IFRAME_ERROR",
+          message: errorMessage,
+          source: "preview-app",
+        });
         const logEntry = boundPreviewConsoleEntry({
           level: "error" as const,
           type: "client" as const,
@@ -894,11 +882,15 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         ipc.misc.addLog(logEntry);
 
         // Also update UI state
-        appendConsoleEntries({ appId: logEntry.appId, entries: [logEntry] });
+        appRunManager.previewConsole.append(logEntry.appId, [logEntry]);
       } else if (type === "build-error-report") {
         console.debug(`Build error report: ${payload}`);
         const errorMessage = `${payload?.message} from file ${payload?.file}.\n\nSource code:\n${payload?.frame}`;
-        setErrorMessage({ message: errorMessage, source: "preview-app" });
+        sendIframeEvent({
+          type: "IFRAME_ERROR",
+          message: errorMessage,
+          source: "preview-app",
+        });
         const logEntry = boundPreviewConsoleEntry({
           level: "error" as const,
           type: "client" as const,
@@ -917,13 +909,13 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         ipc.misc.addLog(logEntry);
 
         // Also update UI state
-        appendConsoleEntries({ appId: logEntry.appId, entries: [logEntry] });
+        appRunManager.previewConsole.append(logEntry.appId, [logEntry]);
       }
     },
     [
       selectedAppId,
-      appendConsoleEntries,
-      setErrorMessage,
+      appRunManager,
+      sendIframeEvent,
       setSelectedComponentsPreview,
       setVisualEditingSelectedComponent,
       queryClient,
@@ -1498,7 +1490,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         {!loading && (
           <ErrorBanner
             error={errorMessage}
-            onDismiss={() => setErrorMessage(undefined)}
+            onDismiss={() => sendIframeEvent({ type: "DISMISS" })}
             onAIFix={() => {
               if (selectedChatId) {
                 streamMessage({

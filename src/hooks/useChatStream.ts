@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useStore } from "jotai";
 import { usePostHog } from "posthog-js/react";
+import { usePackageManagerWarningStore } from "@/package_manager_warnings/PackageManagerWarningProvider";
 import type { ChatStreamRuntimeDeps } from "@/chat_stream/commands";
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
@@ -88,6 +89,7 @@ export function useChatStreamRuntime(
   const queryClient = useQueryClient();
   const { settings } = useSettings();
   const posthog = usePostHog();
+  const packageWarnings = usePackageManagerWarningStore();
 
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
@@ -102,11 +104,14 @@ export function useChatStreamRuntime(
       getPosthog: () => posthogRef.current ?? null,
       requestPreviewReload: facades.requestPreviewReload,
       requestCapture: facades.requestCapture,
+      setPackageManagerWarning:
+        packageWarnings.setWarning.bind(packageWarnings),
     });
   }, [
     facades.requestCapture,
     facades.requestPreviewReload,
     manager,
+    packageWarnings,
     store,
     queryClient,
   ]);

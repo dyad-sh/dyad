@@ -5,10 +5,20 @@ import {
   useRegisterEntityDisposer,
 } from "@/state_machines/react";
 import { AppRunManager } from "./manager";
+import { usePreviewErrorFacade } from "@/app_wiring/preview_error_facade";
+import { usePackageManagerWarningStore } from "@/package_manager_warnings/PackageManagerWarningProvider";
 
 function useOwnedAppRunManager(): AppRunManager {
   const store = useStore();
-  const [manager] = useState(() => new AppRunManager(store));
+  const previewErrors = usePreviewErrorFacade();
+  const packageWarnings = usePackageManagerWarningStore();
+  const [manager] = useState(
+    () =>
+      new AppRunManager(store, undefined, undefined, {
+        previewErrors,
+        packageWarnings,
+      }),
+  );
   return manager;
 }
 

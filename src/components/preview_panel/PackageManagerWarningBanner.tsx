@@ -1,10 +1,4 @@
-import { useAtomValue, useSetAtom } from "jotai";
-import {
-  clearPackageManagerWarningForAppAtom,
-  currentPackageManagerWarningAtom,
-  dismissPackageManagerWarningsAtom,
-  type PackageManagerWarning,
-} from "@/atoms/previewRuntimeAtoms";
+import type { PackageManagerWarning } from "@/package_manager_warnings/store";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -26,6 +20,12 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import {
+  usePackageManagerWarning,
+  usePackageManagerWarningStore,
+} from "@/package_manager_warnings/PackageManagerWarningProvider";
+import { useAtomValue } from "jotai";
+import { selectedAppIdAtom } from "@/atoms/appAtoms";
 
 type InstallStatus = "idle" | "installing" | "success" | "error";
 
@@ -40,7 +40,8 @@ function getInstallErrorMessage(error: unknown): string {
 }
 
 export function PackageManagerWarningBanner() {
-  const warning = useAtomValue(currentPackageManagerWarningAtom);
+  const selectedAppId = useAtomValue(selectedAppIdAtom);
+  const warning = usePackageManagerWarning(selectedAppId);
 
   if (!warning) {
     return null;
@@ -61,8 +62,7 @@ function PackageManagerWarningBannerContent({
 }: {
   warning: PackageManagerWarning;
 }) {
-  const clearWarning = useSetAtom(clearPackageManagerWarningForAppAtom);
-  const dismissWarnings = useSetAtom(dismissPackageManagerWarningsAtom);
+  const warningStore = usePackageManagerWarningStore();
   const rebuildAppAfterPnpmInstall = useRebuildAppAfterPnpmInstall();
   const { restartApp, stopApp } = useRunApp();
   const { updateSettings } = useSettings();
@@ -109,7 +109,7 @@ function PackageManagerWarningBannerContent({
       await rebuildAppAfterPnpmInstall(warning.appId);
       setInstallStatus("success");
       clearTimerRef.current = window.setTimeout(
-        () => clearWarning(warning.appId),
+        () => warningStore.clear(warning.appId),
         2_000,
       );
     } catch (error) {
@@ -234,7 +234,7 @@ function PackageManagerWarningBannerContent({
           size="icon"
           variant="ghost"
           className="size-7"
-          onClick={() => dismissWarnings(warning.appId)}
+          onClick={() => warningStore.dismiss(warning.appId)}
           aria-label="Dismiss pnpm warning"
         >
           <X className="size-3.5" />

@@ -15,7 +15,7 @@ import type {
   PreviewReloadRequestFacade,
   ScreenshotRequestFacade,
 } from "@/app_wiring/cross_machine_facades";
-import { setPackageManagerWarningForAppAtom } from "@/atoms/previewRuntimeAtoms";
+import type { PackageManagerWarningSource } from "@/package_manager_warnings/store";
 import { ipc } from "@/ipc/types";
 import type { Chat, ChatResponseEnd, Message } from "@/ipc/types";
 import { applyStreamingPatch } from "@/lib/applyStreamingPatch";
@@ -101,6 +101,7 @@ export interface ChatStreamRuntimeDeps {
   getPosthog: () => PostHog | null;
   requestPreviewReload: PreviewReloadRequestFacade["requestManualReload"];
   requestCapture: ScreenshotRequestFacade["requestCapture"];
+  setPackageManagerWarning?: PackageManagerWarningSource["setWarning"];
   getIsStreaming(chatId: number): boolean;
 }
 
@@ -188,9 +189,9 @@ export function createProductionChatStreamCommands(
         return;
       }
       if (warningAppId !== null) {
-        deps().store.set(setPackageManagerWarningForAppAtom, {
-          appId: warningAppId,
-          warning: { kind: "release-age", message: warningMessage },
+        deps().setPackageManagerWarning?.(warningAppId, {
+          kind: "release-age",
+          message: warningMessage,
         });
       } else {
         showWarning(warningMessage);

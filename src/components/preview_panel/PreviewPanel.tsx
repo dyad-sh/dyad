@@ -1,6 +1,5 @@
 import { useAtomValue } from "jotai";
 import { previewModeAtom, selectedAppIdAtom } from "../../atoms/appAtoms";
-import { currentConsoleEntriesAtom } from "@/atoms/previewRuntimeAtoms";
 import { usePreviewReloadToken } from "@/hooks/useAppRun";
 
 import { CodeView } from "./CodeView";
@@ -39,6 +38,7 @@ import { Button } from "@/components/ui/button";
 import { useSettings } from "@/hooks/useSettings";
 import { showError } from "@/lib/toast";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { useLatestConsoleEntry } from "@/preview_console/hooks";
 
 interface ConsoleHeaderProps {
   isOpen: boolean;
@@ -85,7 +85,7 @@ export function PreviewPanel() {
   const { settings, updateSettings } = useSettings();
   const queryClient = useQueryClient();
   const key = usePreviewReloadToken(selectedAppId);
-  const consoleEntries = useAtomValue(currentConsoleEntriesAtom);
+  const latestConsoleEntry = useLatestConsoleEntry(selectedAppId);
   const {
     data: nodeSystemInfo,
     isLoading: isCheckingNode,
@@ -103,10 +103,7 @@ export function PreviewPanel() {
     !isCheckingNode &&
     !nodeVersion;
 
-  const latestMessage =
-    consoleEntries.length > 0
-      ? consoleEntries[consoleEntries.length - 1]?.message
-      : undefined;
+  const latestMessage = latestConsoleEntry?.message;
 
   // Notify backend about app selection changes (for garbage collection tracking)
   const notifyAppSelected = useCallback(async (appId: number | null) => {

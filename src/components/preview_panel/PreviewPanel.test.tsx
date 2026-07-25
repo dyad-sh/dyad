@@ -7,7 +7,6 @@ import {
 } from "./PreviewPanel";
 
 const mocks = vi.hoisted(() => ({
-  currentConsoleEntriesAtom: Symbol("currentConsoleEntriesAtom"),
   cancelManagedNodeInstall: vi.fn(),
   installManagedNode: vi.fn(),
   nodeCheckFailed: false,
@@ -38,9 +37,6 @@ vi.mock("jotai", async (importOriginal) => ({
     if (atom === mocks.selectedAppIdAtom) {
       return mocks.selectedAppId;
     }
-    if (atom === mocks.currentConsoleEntriesAtom) {
-      return [];
-    }
     return undefined;
   },
 }));
@@ -50,8 +46,8 @@ vi.mock("../../atoms/appAtoms", () => ({
   selectedAppIdAtom: mocks.selectedAppIdAtom,
 }));
 
-vi.mock("@/atoms/previewRuntimeAtoms", () => ({
-  currentConsoleEntriesAtom: mocks.currentConsoleEntriesAtom,
+vi.mock("@/preview_console/hooks", () => ({
+  useLatestConsoleEntry: () => undefined,
 }));
 
 vi.mock("@/hooks/useAppRun", () => ({

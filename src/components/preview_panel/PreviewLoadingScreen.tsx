@@ -10,7 +10,6 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { ConsoleEntry } from "@/ipc/types";
-import { currentConsoleEntriesAtom } from "@/atoms/previewRuntimeAtoms";
 import type { AppExit } from "@/app_run/selectors";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
@@ -19,6 +18,7 @@ import { useAppExit, useAppRunState } from "@/hooks/useAppRun";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { projectRunState } from "@/app_run/transition";
 import { cn } from "@/lib/utils";
+import { useConsoleEntries } from "@/preview_console/hooks";
 
 const STARTUP_LOG_MESSAGES = new Set([
   "Connecting to app...",
@@ -71,7 +71,7 @@ export function getPreviewLoadingSessionStartedAt({
   consoleEntries,
   runStartedAt,
 }: {
-  consoleEntries: ConsoleEntry[];
+  consoleEntries: readonly ConsoleEntry[];
   runStartedAt: number;
 }) {
   for (let i = consoleEntries.length - 1; i >= 0; i--) {
@@ -155,8 +155,8 @@ export function PreviewLoadingScreen({
   hasStartupError,
 }: PreviewLoadingScreenProps) {
   const { t } = useTranslation("home");
-  const consoleEntries = useAtomValue(currentConsoleEntriesAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
+  const consoleEntries = useConsoleEntries(selectedAppId);
   const runState = useAppRunState(selectedAppId);
   const previewAppExit = useAppExit(selectedAppId);
   const previewRunStartedAt = projectRunState(runState)?.startedAt ?? null;

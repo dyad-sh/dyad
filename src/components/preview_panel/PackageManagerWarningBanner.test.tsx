@@ -4,11 +4,9 @@ import type { PropsWithChildren } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import {
-  currentPackageManagerWarningAtom,
-  setPackageManagerWarningForAppAtom,
-} from "@/atoms/previewRuntimeAtoms";
 import { PackageManagerWarningBanner } from "./PackageManagerWarningBanner";
+import { PackageManagerWarningStore } from "@/package_manager_warnings/store";
+import { PackageManagerWarningProvider } from "@/package_manager_warnings/PackageManagerWarningProvider";
 
 const {
   getNodejsStatusMock,
@@ -96,13 +94,11 @@ describe("PackageManagerWarningBanner", () => {
     message?: string;
   } = {}) {
     const store = createStore();
+    const warningStore = new PackageManagerWarningStore();
     store.set(selectedAppIdAtom, 1);
-    store.set(setPackageManagerWarningForAppAtom, {
-      appId: 1,
-      warning: {
-        kind,
-        message,
-      },
+    warningStore.setWarning(1, {
+      kind,
+      message,
     });
 
     const queryClient = new QueryClient({
@@ -115,25 +111,29 @@ describe("PackageManagerWarningBanner", () => {
 
     const Wrapper = ({ children }: PropsWithChildren) => (
       <QueryClientProvider client={queryClient}>
-        <Provider store={store}>{children}</Provider>
+        <Provider store={store}>
+          <PackageManagerWarningProvider manager={warningStore}>
+            {children}
+          </PackageManagerWarningProvider>
+        </Provider>
       </QueryClientProvider>
     );
 
     render(<PackageManagerWarningBanner />, { wrapper: Wrapper });
-    return store;
+    return { store, warningStore };
   }
 
   it("dismisses the warning for the current session", () => {
-    const store = renderBanner();
+    const { warningStore } = renderBanner();
 
     fireEvent.click(screen.getByLabelText("Dismiss pnpm warning"));
 
     expect(updateSettingsMock).not.toHaveBeenCalled();
-    expect(store.get(currentPackageManagerWarningAtom)).toBeUndefined();
+    expect(warningStore.getSnapshot(1)).toBeUndefined();
   });
 
   it("only shows the warning for the selected app", () => {
-    const store = renderBanner();
+    const { store } = renderBanner();
 
     act(() => {
       store.set(selectedAppIdAtom, 2);
@@ -151,7 +151,7 @@ describe("PackageManagerWarningBanner", () => {
   });
 
   it("installs pnpm, rebuilds the app, and clears the banner after success", async () => {
-    const store = renderBanner();
+    const { warningStore } = renderBanner();
 
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /install/i }));
@@ -169,11 +169,11 @@ describe("PackageManagerWarningBanner", () => {
       vi.advanceTimersByTime(2_000);
     });
 
-    expect(store.get(currentPackageManagerWarningAtom)).toBeUndefined();
+    expect(warningStore.getSnapshot(1)).toBeUndefined();
   });
 
   it("resets install state when a new warning is shown", async () => {
-    const store = renderBanner();
+    const { warningStore } = renderBanner();
 
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /install/i }));
@@ -184,12 +184,9 @@ describe("PackageManagerWarningBanner", () => {
     });
 
     act(() => {
-      store.set(setPackageManagerWarningForAppAtom, {
-        appId: 1,
-        warning: {
-          kind: "release-age",
-          message: "Install pnpm 10.16.0 or newer for the strongest protection",
-        },
+      warningStore.setWarning(1, {
+        kind: "release-age",
+        message: "Install pnpm 10.16.0 or newer for the strongest protection",
       });
     });
 
@@ -280,5 +277,25 @@ describe("PackageManagerWarningBanner", () => {
     expect(executeAppUpgradeMock.mock.invocationCallOrder[0]).toBeLessThan(
       restartAppMock.mock.invocationCallOrder[0],
     );
+  });
+
+  it("keeps release-age warnings ahead of pnpm migration warnings", () => {
+    const { warningStore } = renderBanner({
+      kind: "pnpm-migration",
+      message: "Migrate to pnpm 11",
+    });
+
+    act(() => {
+      warningStore.setWarning(1, {
+        kind: "release-age",
+        message: "Install pnpm 10.16.0 or newer",
+      });
+      warningStore.setWarning(1, {
+        kind: "pnpm-migration",
+        message: "Migrate to pnpm 11",
+      });
+    });
+
+    screen.getByText("Install pnpm 10.16.0 or newer");
   });
 });

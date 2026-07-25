@@ -4,12 +4,6 @@ import type { PropsWithChildren } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import {
-  currentConsoleEntriesAtom,
-  currentPackageManagerWarningAtom,
-  currentPreviewErrorAtom,
-  setConsoleEntriesForAppAtom,
-} from "@/atoms/previewRuntimeAtoms";
-import {
   useAppOutputSubscription,
   useRebuildAppAfterPnpmInstall,
   useRunApp,
@@ -17,6 +11,15 @@ import {
 import { AppRunProvider } from "@/app_run/AppRunProvider";
 import { selectAppExit, selectAppUrl } from "@/app_run/selectors";
 import { AppRunManager } from "@/app_run/manager";
+import {
+  DeferredPreviewErrorFacade,
+  PreviewErrorFacadeProvider,
+} from "@/app_wiring/preview_error_facade";
+import { PackageManagerWarningProvider } from "@/package_manager_warnings/PackageManagerWarningProvider";
+import { PackageManagerWarningStore } from "@/package_manager_warnings/store";
+import { PreviewIframeManager } from "@/preview_iframe/manager";
+import { PreviewIframeProvider } from "@/preview_iframe/PreviewIframeProvider";
+import { createPreviewIframeCommandAdapter } from "@/preview_iframe/commands";
 
 const {
   addLogMock,
@@ -100,16 +103,37 @@ vi.mock("./useSettings", () => ({
 
 function makeWrapper(appId: number) {
   const store = createStore();
-  const manager = new AppRunManager(store);
+  const previewErrors = new DeferredPreviewErrorFacade();
+  const packageWarnings = new PackageManagerWarningStore();
+  const manager = new AppRunManager(store, undefined, undefined, {
+    previewErrors,
+    packageWarnings,
+  });
+  const previewIframeManager = new PreviewIframeManager(
+    createPreviewIframeCommandAdapter(store),
+  );
   store.set(selectedAppIdAtom, appId);
 
   return {
     manager,
+    packageWarnings,
+    previewIframeManager,
     store,
     Wrapper({ children }: PropsWithChildren) {
       return (
         <Provider store={store}>
-          <AppRunProvider manager={manager}>{children}</AppRunProvider>
+          <PreviewErrorFacadeProvider facade={previewErrors}>
+            <PackageManagerWarningProvider manager={packageWarnings}>
+              <AppRunProvider manager={manager}>
+                <PreviewIframeProvider
+                  appRunState={manager}
+                  manager={previewIframeManager}
+                >
+                  {children}
+                </PreviewIframeProvider>
+              </AppRunProvider>
+            </PackageManagerWarningProvider>
+          </PreviewErrorFacadeProvider>
         </Provider>
       );
     },
@@ -139,8 +163,8 @@ describe("useAppOutputSubscription", () => {
     vi.useRealTimers();
   });
 
-  it("shows throttled sync failure toasts and clears sync errors after recovery", () => {
-    const { store, Wrapper } = makeWrapper(1);
+  it("shows throttled sync failure toasts and clears sync errors after recovery", async () => {
+    const { manager, previewIframeManager, Wrapper } = makeWrapper(1);
     const { unmount } = renderHook(() => useAppOutputSubscription(), {
       wrapper: Wrapper,
     });
@@ -165,13 +189,16 @@ describe("useAppOutputSubscription", () => {
       message: "Cloud sandbox sync failed: network down",
       appId: 1,
     });
+    await act(async () => {
+      await Promise.resolve();
+    });
 
     expect(showErrorMock).toHaveBeenCalledTimes(1);
-    expect(store.get(currentPreviewErrorAtom)).toEqual({
+    expect(previewIframeManager.getSnapshot(1).error).toEqual({
       message: "Cloud sandbox sync failed: network down",
       source: "dyad-sync",
     });
-    expect(store.get(currentConsoleEntriesAtom)).toHaveLength(1);
+    expect(manager.previewConsole.getSnapshot(1)).toHaveLength(1);
 
     emitOutput({
       type: "sync-error",
@@ -199,10 +226,13 @@ describe("useAppOutputSubscription", () => {
         "Cloud sandbox sync recovered. Local changes are uploading again.",
       appId: 1,
     });
+    await act(async () => {
+      await Promise.resolve();
+    });
 
-    expect(store.get(currentPreviewErrorAtom)).toBeUndefined();
+    expect(previewIframeManager.getSnapshot(1).error).toBeUndefined();
     expect(
-      store.get(currentConsoleEntriesAtom).map((entry) => entry.message),
+      manager.previewConsole.getSnapshot(1).map((entry) => entry.message),
     ).toContain(
       "Cloud sandbox sync recovered. Local changes are uploading again.",
     );
@@ -234,7 +264,7 @@ describe("useAppOutputSubscription", () => {
   });
 
   it("tracks app process exit without adding an extra console log", async () => {
-    const { manager, store, Wrapper } = makeWrapper(1);
+    const { manager, Wrapper } = makeWrapper(1);
     const { unmount } = renderHook(() => useAppOutputSubscription(), {
       wrapper: Wrapper,
     });
@@ -242,7 +272,7 @@ describe("useAppOutputSubscription", () => {
     await act(async () => {
       await manager.dispatch(1, { type: "START", startedAt: 100 });
     });
-    const consoleEntriesBeforeExit = store.get(currentConsoleEntriesAtom);
+    const consoleEntriesBeforeExit = manager.previewConsole.getSnapshot(1);
 
     act(() => {
       for (const listener of appOutputListeners) {
@@ -261,7 +291,9 @@ describe("useAppOutputSubscription", () => {
       exitCode: 1,
       timestamp: 123,
     });
-    expect(store.get(currentConsoleEntriesAtom)).toBe(consoleEntriesBeforeExit);
+    expect(manager.previewConsole.getSnapshot(1)).toBe(
+      consoleEntriesBeforeExit,
+    );
 
     unmount();
   });
@@ -410,7 +442,7 @@ describe("useAppOutputSubscription", () => {
     settingsMock.current = {
       enablePnpmMinimumReleaseAgeWarning: true,
     };
-    const { store, Wrapper } = makeWrapper(1);
+    const { packageWarnings, Wrapper } = makeWrapper(1);
     const { unmount } = renderHook(() => useAppOutputSubscription(), {
       wrapper: Wrapper,
     });
@@ -426,7 +458,7 @@ describe("useAppOutputSubscription", () => {
       }
     });
 
-    expect(store.get(currentPackageManagerWarningAtom)).toEqual({
+    expect(packageWarnings.getSnapshot(1)).toEqual({
       kind: "release-age",
       message: "Install pnpm 10.16.0 or newer for the strongest protection",
       appId: 1,
@@ -436,7 +468,7 @@ describe("useAppOutputSubscription", () => {
   });
 
   it("does not store pnpm warning state when the experiment is disabled", () => {
-    const { store, Wrapper } = makeWrapper(1);
+    const { packageWarnings, Wrapper } = makeWrapper(1);
     const { unmount } = renderHook(() => useAppOutputSubscription(), {
       wrapper: Wrapper,
     });
@@ -452,7 +484,7 @@ describe("useAppOutputSubscription", () => {
       }
     });
 
-    expect(store.get(currentPackageManagerWarningAtom)).toBeUndefined();
+    expect(packageWarnings.getSnapshot(1)).toBeUndefined();
 
     unmount();
   });
@@ -461,7 +493,7 @@ describe("useAppOutputSubscription", () => {
     settingsMock.current = {
       hidePnpmMinimumReleaseAgeWarning: true,
     };
-    const { store, Wrapper } = makeWrapper(1);
+    const { packageWarnings, Wrapper } = makeWrapper(1);
     const { unmount } = renderHook(() => useAppOutputSubscription(), {
       wrapper: Wrapper,
     });
@@ -478,7 +510,7 @@ describe("useAppOutputSubscription", () => {
       }
     });
 
-    expect(store.get(currentPackageManagerWarningAtom)).toEqual({
+    expect(packageWarnings.getSnapshot(1)).toEqual({
       kind: "pnpm-migration",
       message:
         "This app pins an older pnpm that can't read the lockfile Dyad writes.",
@@ -492,7 +524,7 @@ describe("useAppOutputSubscription", () => {
     settingsMock.current = {
       enablePnpmMinimumReleaseAgeWarning: true,
     };
-    const { store, Wrapper } = makeWrapper(1);
+    const { packageWarnings, store, Wrapper } = makeWrapper(1);
     const { unmount } = renderHook(() => useAppOutputSubscription(), {
       wrapper: Wrapper,
     });
@@ -508,13 +540,13 @@ describe("useAppOutputSubscription", () => {
       }
     });
 
-    expect(store.get(currentPackageManagerWarningAtom)).toBeUndefined();
+    expect(packageWarnings.getSnapshot(1)).toBeUndefined();
 
     act(() => {
       store.set(selectedAppIdAtom, 2);
     });
 
-    expect(store.get(currentPackageManagerWarningAtom)).toEqual({
+    expect(packageWarnings.getSnapshot(2)).toEqual({
       kind: "release-age",
       message: "Install pnpm 10.16.0 or newer for the strongest protection",
       appId: 2,
@@ -524,7 +556,7 @@ describe("useAppOutputSubscription", () => {
   });
 
   it("stores app output by app so background logs do not overwrite the selected app", () => {
-    const { store, Wrapper } = makeWrapper(1);
+    const { manager, store, Wrapper } = makeWrapper(1);
     const { unmount } = renderHook(() => useAppOutputSubscription(), {
       wrapper: Wrapper,
     });
@@ -541,14 +573,14 @@ describe("useAppOutputSubscription", () => {
       }
     });
 
-    expect(store.get(currentConsoleEntriesAtom)).toEqual([]);
+    expect(manager.previewConsole.getSnapshot(1)).toEqual([]);
 
     act(() => {
       store.set(selectedAppIdAtom, 2);
     });
 
     expect(
-      store.get(currentConsoleEntriesAtom).map((entry) => entry.message),
+      manager.previewConsole.getSnapshot(2).map((entry) => entry.message),
     ).toEqual(["Background app log"]);
 
     unmount();
@@ -558,7 +590,7 @@ describe("useAppOutputSubscription", () => {
     settingsMock.current = {
       enablePnpmMinimumReleaseAgeWarning: true,
     };
-    const { store, Wrapper } = makeWrapper(1);
+    const { manager, packageWarnings, store, Wrapper } = makeWrapper(1);
     const { unmount } = renderHook(() => useAppOutputSubscription(), {
       wrapper: Wrapper,
     });
@@ -573,30 +605,27 @@ describe("useAppOutputSubscription", () => {
         });
       }
       store.set(selectedAppIdAtom, 2);
-      store.set(setConsoleEntriesForAppAtom, {
-        appId: 2,
-        entries: [
-          {
-            level: "info",
-            type: "server",
-            message: "Current app log",
-            appId: 2,
-            timestamp: Date.now(),
-          },
-        ],
-      });
+      manager.previewConsole.replace(2, [
+        {
+          level: "info",
+          type: "server",
+          message: "Current app log",
+          appId: 2,
+          timestamp: Date.now(),
+        },
+      ]);
     });
 
-    expect(store.get(currentPackageManagerWarningAtom)).toBeUndefined();
+    expect(packageWarnings.getSnapshot(2)).toBeUndefined();
     expect(
-      store.get(currentConsoleEntriesAtom).map((entry) => entry.message),
+      manager.previewConsole.getSnapshot(2).map((entry) => entry.message),
     ).toEqual(["Current app log"]);
 
     act(() => {
       store.set(selectedAppIdAtom, 1);
     });
 
-    expect(store.get(currentPackageManagerWarningAtom)).toEqual({
+    expect(packageWarnings.getSnapshot(1)).toEqual({
       kind: "release-age",
       message: "Install pnpm 10.16.0 or newer for the strongest protection",
       appId: 1,
@@ -760,7 +789,7 @@ describe("useAppOutputSubscription", () => {
   });
 
   it("settles stopApp and clears loading when the stop IPC throws synchronously", async () => {
-    const { manager, store, Wrapper } = makeWrapper(1);
+    const { manager, previewIframeManager, Wrapper } = makeWrapper(1);
     stopAppMock.mockImplementationOnce(() => {
       throw new Error("ipc channel broken");
     });
@@ -773,10 +802,13 @@ describe("useAppOutputSubscription", () => {
       // Must resolve (not hang) even though stopApp threw synchronously.
       await result.current.stopApp(1);
     });
+    await act(async () => {
+      await Promise.resolve();
+    });
 
     expect(result.current.loading).toBe(false);
     expect(manager.getSnapshot(1).type).toBe("errored");
-    expect(store.get(currentPreviewErrorAtom)).toEqual({
+    expect(previewIframeManager.getSnapshot(1).error).toEqual({
       message: "ipc channel broken",
       source: "dyad-app",
     });

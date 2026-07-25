@@ -1,9 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import { useAtom, useAtomValue } from "jotai";
 import { useEffect, useRef } from "react";
 import { lastLogTimestampAtom } from "@/atoms/supabaseAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import { appendConsoleEntriesForAppAtom } from "@/atoms/previewRuntimeAtoms";
 import {
   ipc,
   ConsoleEntry,
@@ -16,6 +15,7 @@ import {
 import { useSettings } from "./useSettings";
 import { isSupabaseConnected } from "@/lib/schemas";
 import { queryKeys } from "@/lib/queryKeys";
+import { useAppRunManager } from "@/app_run/AppRunProvider";
 
 const EDGE_LOGS_POLL_INTERVAL_MS = 5_000;
 
@@ -39,7 +39,7 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
   const { settings } = useSettings();
   const isConnected = isSupabaseConnected(settings);
 
-  const appendConsoleEntries = useSetAtom(appendConsoleEntriesForAppAtom);
+  const appRunManager = useAppRunManager();
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const [lastLogTimestamp, setLastLogTimestamp] = useAtom(lastLogTimestampAtom);
 
@@ -201,7 +201,7 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
     newLogs.forEach((log) => {
       ipc.misc.addLog(log);
     });
-    appendConsoleEntries({ appId, entries: newLogs });
+    appRunManager.previewConsole.append(appId, newLogs);
 
     const latestLog = newLogs.reduce((latest, log) =>
       log.timestamp > latest.timestamp ? log : latest,

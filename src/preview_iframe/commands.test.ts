@@ -1,7 +1,6 @@
 import { createStore } from "jotai";
 import { describe, expect, it, vi } from "vitest";
 import { selectedComponentsPreviewAtom } from "@/atoms/previewAtoms";
-import { previewErrorByAppIdAtom } from "@/atoms/previewRuntimeAtoms";
 import {
   PREVIEW_IFRAME_MESSAGE_ROUTES,
   createPreviewIframeCommandAdapter,
@@ -159,20 +158,5 @@ describe("preview iframe command adapter", () => {
     );
     expect(emit).toHaveBeenCalledOnce();
     expect(emit).toHaveBeenCalledWith({ type: "SELECTION_RESTORED" });
-  });
-
-  it("clears only the addressed app's preview error", () => {
-    const store = createStore();
-    store.set(
-      previewErrorByAppIdAtom,
-      new Map([
-        [7, { message: "old", source: "preview-app" as const }],
-        [8, { message: "keep", source: "preview-app" as const }],
-      ]),
-    );
-    const adapter = createPreviewIframeCommandAdapter(store);
-    adapter.execute(7, { type: "clear-preview-error" }, vi.fn());
-    expect(store.get(previewErrorByAppIdAtom).has(7)).toBe(false);
-    expect(store.get(previewErrorByAppIdAtom).has(8)).toBe(true);
   });
 });

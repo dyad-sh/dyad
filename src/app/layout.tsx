@@ -45,6 +45,8 @@ import {
   useScreenshotManager,
 } from "@/screenshot/ScreenshotProvider";
 import { useSyncDefaultChatMode } from "@/hooks/useSyncDefaultChatMode";
+import { PreviewErrorFacadeProvider } from "@/app_wiring/preview_error_facade";
+import { PackageManagerWarningProvider } from "@/package_manager_warnings/PackageManagerWarningProvider";
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   const chatStreamManager = useChatStreamManager();
@@ -79,24 +81,28 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     [streamMessage],
   );
   return (
-    <AppRunProvider>
-      <ScreenshotProvider>
-        <GithubOpsProvider>
-          <ImageGenerationProvider>
-            <FirstPromptProvider
-              chatStream={firstPromptChatStream}
-              clock={systemClock}
-              idSource={uuidIdSource}
-              settleDelayMs={settings?.isTestMode ? 0 : 2_000}
-            >
-              <PlanHandoffProvider chatStream={planHandoffChatStream}>
-                <RootLayoutContent>{children}</RootLayoutContent>
-              </PlanHandoffProvider>
-            </FirstPromptProvider>
-          </ImageGenerationProvider>
-        </GithubOpsProvider>
-      </ScreenshotProvider>
-    </AppRunProvider>
+    <PreviewErrorFacadeProvider>
+      <PackageManagerWarningProvider>
+        <AppRunProvider>
+          <ScreenshotProvider>
+            <GithubOpsProvider>
+              <ImageGenerationProvider>
+                <FirstPromptProvider
+                  chatStream={firstPromptChatStream}
+                  clock={systemClock}
+                  idSource={uuidIdSource}
+                  settleDelayMs={settings?.isTestMode ? 0 : 2_000}
+                >
+                  <PlanHandoffProvider chatStream={planHandoffChatStream}>
+                    <RootLayoutContent>{children}</RootLayoutContent>
+                  </PlanHandoffProvider>
+                </FirstPromptProvider>
+              </ImageGenerationProvider>
+            </GithubOpsProvider>
+          </ScreenshotProvider>
+        </AppRunProvider>
+      </PackageManagerWarningProvider>
+    </PreviewErrorFacadeProvider>
   );
 }
 

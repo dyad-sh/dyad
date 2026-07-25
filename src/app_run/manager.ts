@@ -14,9 +14,31 @@ import { selectAppExit, type AppExit } from "./selectors";
 import type { AppRunInvocationRef, RunState } from "./state";
 import type { RunCommand, RunEvent } from "./state";
 import type { TransitionObserver } from "@/state_machines/types";
+import type { DeferredPreviewErrorFacade } from "@/app_wiring/preview_error_facade";
+import type { PackageManagerWarningSource } from "@/package_manager_warnings/store";
+import { PreviewConsoleStore } from "@/preview_console/store";
 
 const IDLE_STATE: RunState = { type: "idle" };
 export type RunStateChangedListener = (appId: number, state: RunState) => void;
+
+export interface AppRunPresentationServices {
+  previewErrors: Pick<
+    DeferredPreviewErrorFacade,
+    "setAppError" | "clearAppError"
+  >;
+  packageWarnings: PackageManagerWarningSource;
+}
+
+const NOOP_PRESENTATION_SERVICES: AppRunPresentationServices = {
+  previewErrors: {
+    setAppError: () => undefined,
+    clearAppError: () => undefined,
+  },
+  packageWarnings: {
+    setWarning: () => undefined,
+    clear: () => undefined,
+  },
+};
 
 /**
  * Provider-owned facade for the app-keyed run-state controllers.
@@ -35,12 +57,14 @@ export class AppRunManager {
   private readonly runStateListeners = new Set<RunStateChangedListener>();
   private readonly reloadTokens = new Map<number, number>();
   private readonly reloadTokenListeners = new Map<number, Set<() => void>>();
+  readonly previewConsole = new PreviewConsoleStore();
   private disposed = false;
 
   constructor(
     store: JotaiStore,
     observer?: TransitionObserver<RunState, RunEvent, RunCommand>,
     private readonly idSource: IdSource = uuidIdSource,
+    presentation: AppRunPresentationServices = NOOP_PRESENTATION_SERVICES,
   ) {
     this.host = new KeyedControllerHost((appId) => {
       let controller: AppRunController;
@@ -58,6 +82,9 @@ export class AppRunManager {
               }
             });
           },
+          previewErrors: presentation.previewErrors,
+          previewConsole: this.previewConsole,
+          packageWarnings: presentation.packageWarnings,
         }),
         onInvocationStarted: (ref) => {
           this.invocations.register(ref, controller);
@@ -204,6 +231,7 @@ export class AppRunManager {
   beginExternal(appId: number, input: ExternalRunOperationInput): void {
     this.host.ensure(appId).beginExternal(input);
     this.clearAdmittedExit(appId);
+    this.previewConsole.disposeKey(appId);
   }
 
   settleExternal(
@@ -241,6 +269,7 @@ export class AppRunManager {
     this.reloadTokens.clear();
     this.runStateListeners.clear();
     this.reloadTokenListeners.clear();
+    this.previewConsole.dispose();
     this.host.dispose();
     for (const store of this.admittedExitStores.values()) store.dispose();
     this.admittedExitStores.clear();

@@ -14,6 +14,7 @@ import {
   usePreviewIframeController,
   useSendPreviewIframeEvent,
 } from "./usePreviewIframe";
+import { PreviewErrorFacadeProvider } from "@/app_wiring/preview_error_facade";
 
 function makeWrapper(store = createStore()) {
   const appRunManager = new AppRunManager(store);
@@ -23,11 +24,13 @@ function makeWrapper(store = createStore()) {
       return (
         <EntityDisposalProvider>
           <Provider store={store}>
-            <AppRunProvider manager={appRunManager}>
-              <PreviewIframeProvider appRunState={appRunManager}>
-                {children}
-              </PreviewIframeProvider>
-            </AppRunProvider>
+            <PreviewErrorFacadeProvider>
+              <AppRunProvider manager={appRunManager}>
+                <PreviewIframeProvider appRunState={appRunManager}>
+                  {children}
+                </PreviewIframeProvider>
+              </AppRunProvider>
+            </PreviewErrorFacadeProvider>
           </Provider>
         </EntityDisposalProvider>
       );

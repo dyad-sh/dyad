@@ -1,11 +1,8 @@
 import type { createStore } from "jotai";
 import { ipc } from "@/ipc/types";
-import {
-  appendConsoleEntriesForAppAtom,
-  clearPackageManagerWarningForAppAtom,
-  setConsoleEntriesForAppAtom,
-  setPreviewErrorForAppAtom,
-} from "@/atoms/previewRuntimeAtoms";
+import type { DeferredPreviewErrorFacade } from "@/app_wiring/preview_error_facade";
+import type { PackageManagerWarningSource } from "@/package_manager_warnings/store";
+import type { PreviewConsoleSource } from "@/preview_console/store";
 import type { RunCommand, RunErrorInfo, RunEvent, RunOperation } from "./state";
 
 export type JotaiStore = ReturnType<typeof createStore>;
@@ -48,20 +45,26 @@ export function toRunErrorInfo(error: unknown): RunErrorInfo {
  * preserving the old run/restart/rebuild/stop ordering.
  */
 export function createIpcRunCommandExecutor(
-  store: JotaiStore,
-  options: { onReloadTokenBumped: (appId: number) => void },
+  _store: JotaiStore,
+  services: {
+    onReloadTokenBumped: (appId: number) => void;
+    previewErrors: Pick<
+      DeferredPreviewErrorFacade,
+      "setAppError" | "clearAppError"
+    >;
+    previewConsole: PreviewConsoleSource;
+    packageWarnings: PackageManagerWarningSource;
+  },
 ): RunCommandExecutor {
   function setError(appId: number, error: RunErrorInfo | undefined) {
-    store.set(setPreviewErrorForAppAtom, {
-      appId,
-      error: error ? { message: error.message, source: "dyad-app" } : undefined,
-    });
+    if (error) services.previewErrors.setAppError(appId, error.message);
+    else services.previewErrors.clearAppError(appId);
   }
 
   function applyUrl(command: Extract<RunCommand, { type: "applyUrl" }>) {
     // The URL was committed to RunState before this command was scheduled.
     // Preserve the legacy bump-after-url ordering for iframe remounts.
-    options.onReloadTokenBumped(command.appId);
+    services.onReloadTokenBumped(command.appId);
   }
 
   async function executeStart(
@@ -79,11 +82,11 @@ export function createIpcRunCommandExecutor(
 
       if (operation !== "rebuild") {
         // The pnpm rebuild flow keeps its banner visible while rebuilding.
-        store.set(clearPackageManagerWarningForAppAtom, appId);
+        services.packageWarnings.clear(appId);
       }
       if (operation !== "run") {
         await ipc.misc.clearLogs({ appId });
-        store.set(setConsoleEntriesForAppAtom, { appId, entries: [] });
+        services.previewConsole.clear(appId);
       }
 
       const logEntry = {
@@ -94,7 +97,7 @@ export function createIpcRunCommandExecutor(
         timestamp: startedAt,
       };
       ipc.misc.addLog(logEntry);
-      store.set(appendConsoleEntriesForAppAtom, { appId, entries: [logEntry] });
+      services.previewConsole.append(appId, [logEntry]);
 
       const ipcCall =
         operation === "run"
@@ -139,10 +142,7 @@ export function createIpcRunCommandExecutor(
           await executeStart(command, emit);
           return;
         case "prepareExternalStart":
-          store.set(setConsoleEntriesForAppAtom, {
-            appId: command.appId,
-            entries: [],
-          });
+          services.previewConsole.clear(command.appId);
           return;
         case "stop":
           // Mirrors executeStart: a synchronous throw from the IPC surface
@@ -181,10 +181,10 @@ export function createIpcRunCommandExecutor(
           applyUrl(command);
           return;
         case "bumpReloadToken":
-          options.onReloadTokenBumped(command.appId);
+          services.onReloadTokenBumped(command.appId);
           return;
         case "reload":
-          options.onReloadTokenBumped(command.appId);
+          services.onReloadTokenBumped(command.appId);
           emit({
             type: "RELOAD_DONE",
             invocationRef: command.invocationRef,

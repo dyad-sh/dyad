@@ -396,7 +396,8 @@ from the Remote intent policy — idempotent, state-sensitive, cancellation,
 or presentation — so the C-wave conversion to receipts/revisions is
 mechanical and misclassifications surface now.
 
-**A5 — Multi-producer channels with explicit non-machine owners: pending.**
+**A5 — Multi-producer channels with explicit non-machine owners: complete
+(#TBD).**
 
 - preview errors split/owned with source-priority and dismissal semantics
   characterized first;

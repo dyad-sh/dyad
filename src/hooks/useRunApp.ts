@@ -1,12 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import { ipc, type AppOutput } from "@/ipc/types";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import {
-  appendConsoleEntriesForAppAtom,
-  setPackageManagerWarningForAppAtom,
-  setPreviewErrorForAppAtom,
-} from "@/atoms/previewRuntimeAtoms";
-import { useAtomValue, useSetAtom } from "jotai";
+import { useAtomValue } from "jotai";
 import { showError, showInputRequest } from "@/lib/toast";
 import {
   shouldShowPnpmMinimumReleaseAgeWarning,
@@ -15,6 +10,8 @@ import {
 import { useAppRunManager } from "@/app_run/AppRunProvider";
 import { useAppRunState } from "./useAppRun";
 import { useSettings } from "./useSettings";
+import { usePreviewErrorFacade } from "@/app_wiring/preview_error_facade";
+import { usePackageManagerWarningStore } from "@/package_manager_warnings/PackageManagerWarningProvider";
 
 const CLOUD_SYNC_ERROR_TOAST_WINDOW_MS = 30_000;
 
@@ -39,11 +36,8 @@ export function useRebuildAppAfterPnpmInstall() {
 export function useAppOutputSubscription() {
   const { settings } = useSettings();
   const manager = useAppRunManager();
-  const appendConsoleEntries = useSetAtom(appendConsoleEntriesForAppAtom);
-  const setPreviewError = useSetAtom(setPreviewErrorForAppAtom);
-  const setPackageManagerWarning = useSetAtom(
-    setPackageManagerWarningForAppAtom,
-  );
+  const previewErrors = usePreviewErrorFacade();
+  const packageWarnings = usePackageManagerWarningStore();
   const appId = useAtomValue(selectedAppIdAtom);
   const selectedAppIdRef = useRef(appId);
   const pnpmWarningSettingRef = useRef({
@@ -170,27 +164,12 @@ export function useAppOutputSubscription() {
           });
         }
 
-        setPreviewError({
-          appId: output.appId,
-          error: (current) => {
-            if (current && current.source !== "dyad-sync") {
-              return current;
-            }
-            return {
-              message: output.message,
-              source: "dyad-sync",
-            };
-          },
-        });
+        previewErrors.setSyncError(output.appId, output.message);
       }
 
       if (output.type === "sync-recovered") {
         syncErrorToastRef.current.delete(output.appId);
-        setPreviewError({
-          appId: output.appId,
-          error: (current) =>
-            current?.source === "dyad-sync" ? undefined : current,
-        });
+        previewErrors.clearSyncError(output.appId);
       }
 
       if (output.type === "app-exit") {
@@ -212,12 +191,9 @@ export function useAppOutputSubscription() {
           (pnpmWarningSettingRef.current.hasSettings &&
             pnpmWarningSettingRef.current.showWarning))
       ) {
-        setPackageManagerWarning({
-          appId: output.appId,
-          warning: {
-            kind: output.warningKind ?? "release-age",
-            message: output.message,
-          },
+        packageWarnings.setWarning(output.appId, {
+          kind: output.warningKind ?? "release-age",
+          message: output.message,
         });
       }
 
@@ -251,27 +227,19 @@ export function useAppOutputSubscription() {
 
       return logEntry;
     },
-    [
-      processProxyServerOutput,
-      setPackageManagerWarning,
-      setPreviewError,
-      manager,
-    ],
+    [processProxyServerOutput, packageWarnings, previewErrors, manager],
   );
 
   useEffect(() => {
     const unsubscribe = ipc.events.misc.onAppOutput((output) => {
       const entry = processAppOutput(output);
       if (entry) {
-        appendConsoleEntries({
-          appId: output.appId,
-          entries: [entry],
-        });
+        manager.previewConsole.append(output.appId, [entry]);
       }
     });
 
     return unsubscribe;
-  }, [appendConsoleEntries, processAppOutput]);
+  }, [manager, processAppOutput]);
 
   useEffect(() => {
     const unsubscribe = ipc.events.misc.onAppOutputBatch((outputs) => {
@@ -289,12 +257,12 @@ export function useAppOutputSubscription() {
       }
 
       for (const [appId, entries] of entriesByAppId) {
-        appendConsoleEntries({ appId, entries });
+        manager.previewConsole.append(appId, entries);
       }
     });
 
     return unsubscribe;
-  }, [appendConsoleEntries, processAppOutput]);
+  }, [manager, processAppOutput]);
 }
 
 export function useRunApp() {

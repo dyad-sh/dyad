@@ -77,10 +77,6 @@ import {
 } from "@/atoms/chatAtoms";
 import { selectedComponentsPreviewAtom } from "@/atoms/previewAtoms";
 import {
-  clearPreviewRuntimeForAppAtom,
-  previewErrorByAppIdAtom,
-} from "@/atoms/previewRuntimeAtoms";
-import {
   clearTestRuntimeForAppAtom,
   testRunOutputByAppIdAtom,
 } from "@/atoms/testRuntimeAtoms";
@@ -98,6 +94,14 @@ import { createVersionPreviewRuntime } from "@/version_preview/commands";
 import { VersionPreviewManager } from "@/version_preview/manager";
 import { VersionPreviewProvider } from "@/version_preview/VersionPreviewProvider";
 import { PreviewIframeProvider } from "@/preview_iframe/PreviewIframeProvider";
+import { PreviewIframeManager } from "@/preview_iframe/manager";
+import { createPreviewIframeCommandAdapter } from "@/preview_iframe/commands";
+import {
+  DeferredPreviewErrorFacade,
+  PreviewErrorFacadeProvider,
+} from "@/app_wiring/preview_error_facade";
+import { PackageManagerWarningProvider } from "@/package_manager_warnings/PackageManagerWarningProvider";
+import { PackageManagerWarningStore } from "@/package_manager_warnings/store";
 import {
   ScreenshotProvider,
   useScreenshotManager,
@@ -557,7 +561,6 @@ function HybridAppEventWiring({
 function HybridEntityDisposalWiring({ store }: { store: JotaiStore }) {
   const clearAppRuntime = useCallback(
     (appId: number) => {
-      store.set(clearPreviewRuntimeForAppAtom, appId);
       store.set(clearTestRuntimeForAppAtom, appId);
     },
     [store],
@@ -655,6 +658,7 @@ export async function setupHybridChatHarness(
     const queryClients: QueryClient[] = [];
     const chatStreamManagers: ChatStreamManager[] = [];
     let activeChatStreamManager: ChatStreamManager | undefined;
+    let activePreviewIframeManager: PreviewIframeManager | undefined;
     const assertNoMissingChannels = options.assertNoMissingChannels ?? true;
 
     const getActiveStore = (): JotaiStore => {
@@ -971,7 +975,16 @@ export async function setupHybridChatHarness(
         },
       });
       queryClients.push(queryClient);
-      const appRunManager = new AppRunManager(store);
+      const previewErrors = new DeferredPreviewErrorFacade();
+      const packageWarnings = new PackageManagerWarningStore();
+      const appRunManager = new AppRunManager(store, undefined, undefined, {
+        previewErrors,
+        packageWarnings,
+      });
+      const previewIframeManager = new PreviewIframeManager(
+        createPreviewIframeCommandAdapter(store),
+      );
+      activePreviewIframeManager = previewIframeManager;
       const imageGenerationManager = new ImageGenerationManager({
         clock: systemClock,
         idSource: uuidIdSource,
@@ -999,35 +1012,52 @@ export async function setupHybridChatHarness(
           <Provider store={store}>
             <EntityDisposalProvider>
               <HybridEntityDisposalWiring store={store} />
-              <ChatStreamProvider manager={chatStreamManager}>
-                <AppRunProvider manager={appRunManager}>
-                  <GithubOpsProvider>
-                    <ImageGenerationProvider manager={imageGenerationManager}>
-                      <VersionPreviewProvider manager={versionPreviewManager}>
-                        <PreviewIframeProvider appRunState={appRunManager}>
-                          <ScreenshotProvider>
-                            <ThemeProvider>
-                              <DeepLinkProvider>
-                                <SidebarProvider defaultOpen={false}>
-                                  {opts.wireAppEvents !== false && (
-                                    <HybridAppEventWiring
-                                      store={store}
-                                      queryClient={queryClient}
-                                      chatStreamManager={chatStreamManager}
-                                    />
-                                  )}
-                                  <RouterProvider router={router as never} />
-                                  <Toaster richColors expand duration={500} />
-                                </SidebarProvider>
-                              </DeepLinkProvider>
-                            </ThemeProvider>
-                          </ScreenshotProvider>
-                        </PreviewIframeProvider>
-                      </VersionPreviewProvider>
-                    </ImageGenerationProvider>
-                  </GithubOpsProvider>
-                </AppRunProvider>
-              </ChatStreamProvider>
+              <PreviewErrorFacadeProvider facade={previewErrors}>
+                <PackageManagerWarningProvider manager={packageWarnings}>
+                  <ChatStreamProvider manager={chatStreamManager}>
+                    <AppRunProvider manager={appRunManager}>
+                      <GithubOpsProvider>
+                        <ImageGenerationProvider
+                          manager={imageGenerationManager}
+                        >
+                          <VersionPreviewProvider
+                            manager={versionPreviewManager}
+                          >
+                            <PreviewIframeProvider
+                              appRunState={appRunManager}
+                              manager={previewIframeManager}
+                            >
+                              <ScreenshotProvider>
+                                <ThemeProvider>
+                                  <DeepLinkProvider>
+                                    <SidebarProvider defaultOpen={false}>
+                                      {opts.wireAppEvents !== false && (
+                                        <HybridAppEventWiring
+                                          store={store}
+                                          queryClient={queryClient}
+                                          chatStreamManager={chatStreamManager}
+                                        />
+                                      )}
+                                      <RouterProvider
+                                        router={router as never}
+                                      />
+                                      <Toaster
+                                        richColors
+                                        expand
+                                        duration={500}
+                                      />
+                                    </SidebarProvider>
+                                  </DeepLinkProvider>
+                                </ThemeProvider>
+                              </ScreenshotProvider>
+                            </PreviewIframeProvider>
+                          </VersionPreviewProvider>
+                        </ImageGenerationProvider>
+                      </GithubOpsProvider>
+                    </AppRunProvider>
+                  </ChatStreamProvider>
+                </PackageManagerWarningProvider>
+              </PreviewErrorFacadeProvider>
             </EntityDisposalProvider>
           </Provider>
         </QueryClientProvider>,
@@ -1084,11 +1114,16 @@ export async function setupHybridChatHarness(
 
     const seedAppRuntimeResidue = (appId: number) => {
       const store = getActiveStore();
+      const previewIframeManager = activePreviewIframeManager;
+      if (!previewIframeManager) {
+        throw new Error("Preview iframe manager is not mounted");
+      }
       act(() => {
-        store.set(
-          previewErrorByAppIdAtom,
-          new Map([[appId, { message: "seeded", source: "preview-app" }]]),
-        );
+        previewIframeManager.send(appId, {
+          type: "IFRAME_ERROR",
+          message: "seeded",
+          source: "preview-app",
+        });
         store.set(testRunOutputByAppIdAtom, new Map([[appId, "seeded"]]));
       });
     };
@@ -1096,7 +1131,7 @@ export async function setupHybridChatHarness(
     const hasAppRuntimeResidue = (appId: number) => {
       const store = getActiveStore();
       return (
-        store.get(previewErrorByAppIdAtom).has(appId) ||
+        activePreviewIframeManager?.getSnapshot(appId).error !== undefined ||
         store.get(testRunOutputByAppIdAtom).has(appId)
       );
     };

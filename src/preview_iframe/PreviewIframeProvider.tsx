@@ -9,6 +9,7 @@ import {
 } from "react";
 import { useStore } from "jotai";
 import type { AppRunStateSubscriptionFacade } from "@/app_wiring/cross_machine_facades";
+import { usePreviewErrorFacade } from "@/app_wiring/preview_error_facade";
 import {
   useManagerLifecycle,
   useRegisterEntityDisposer,
@@ -21,13 +22,18 @@ const PreviewIframeContext = createContext<PreviewIframeManager | null>(null);
 export function PreviewIframeProvider({
   children,
   appRunState,
+  manager: injectedManager,
 }: {
   children: ReactNode;
   appRunState: AppRunStateSubscriptionFacade;
+  manager?: PreviewIframeManager;
 }) {
   const store = useStore();
+  const previewErrors = usePreviewErrorFacade();
   const [manager] = useState(
-    () => new PreviewIframeManager(createPreviewIframeCommandAdapter(store)),
+    () =>
+      injectedManager ??
+      new PreviewIframeManager(createPreviewIframeCommandAdapter(store)),
   );
   const handledRestartInvocationIds = useRef(new Map<number, string>());
   const disposeApp = useCallback(
@@ -57,6 +63,21 @@ export function PreviewIframeProvider({
       manager.send(appId, { type: "RUNTIME_RESTARTED" });
     });
   }, [appRunState, manager]);
+
+  useEffect(
+    () =>
+      previewErrors.registerSource({
+        setAppError: (appId, message) =>
+          manager.send(appId, { type: "APP_ERROR", message }),
+        clearAppError: (appId) =>
+          manager.send(appId, { type: "APP_ERROR_CLEARED" }),
+        setSyncError: (appId, message) =>
+          manager.send(appId, { type: "SYNC_ERROR", message }),
+        clearSyncError: (appId) =>
+          manager.send(appId, { type: "SYNC_RECOVERED" }),
+      }),
+    [manager, previewErrors],
+  );
 
   useManagerLifecycle(manager);
   useRegisterEntityDisposer("app", disposeApp);

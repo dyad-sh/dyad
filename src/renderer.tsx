@@ -38,7 +38,6 @@ import {
   EntityDisposalProvider,
   useRegisterEntityDisposer,
 } from "./state_machines/react";
-import { clearPreviewRuntimeForAppAtom } from "./atoms/previewRuntimeAtoms";
 import { clearTestRuntimeForAppAtom } from "./atoms/testRuntimeAtoms";
 
 // @ts-ignore
@@ -150,7 +149,6 @@ function RendererServices() {
   const chatStreamManager = useChatStreamManager();
   const clearAppRuntime = useCallback(
     (appId: number) => {
-      store.set(clearPreviewRuntimeForAppAtom, appId);
       store.set(clearTestRuntimeForAppAtom, appId);
     },
     [store],

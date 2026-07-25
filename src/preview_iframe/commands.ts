@@ -1,6 +1,5 @@
 import type { createStore } from "jotai";
 import { selectedComponentsPreviewAtom } from "@/atoms/previewAtoms";
-import { setPreviewErrorForAppAtom } from "@/atoms/previewRuntimeAtoms";
 import type { PreviewIframeCommandRunner } from "./controller";
 import type { PreviewIframeEvent, PreviewIframePostMessage } from "./state";
 
@@ -40,49 +39,31 @@ export function createPreviewIframeCommandAdapter(
       };
     },
     execute(appId, command, emit) {
-      switch (command.type) {
-        case "clear-preview-error":
-          store.set(setPreviewErrorForAppAtom, { appId, error: undefined });
-          return;
-        case "post-to-iframe":
-          if (command.message.type !== "restore-overlays") {
-            post(appId, command.message);
-            return;
-          }
-          {
-            const target = targets.get(appId)?.();
-            if (!target) return;
-            const componentIds = store
-              .get(selectedComponentsPreviewAtom)
-              .map((component) => component.id);
-            target.postMessage(
-              componentIds.length === 0
-                ? { type: "clear-dyad-component-overlays" }
-                : {
-                    type: "restore-dyad-component-overlays",
-                    componentIds,
-                  },
-              "*",
-            );
-            // This emit re-enters the controller's send() synchronously
-            // while the outer send() is still inside setState (commands run
-            // in beforeNotify). Safe only because the SELECTION_RESTORED
-            // transition is command-free — see the note in transition.ts.
-            emit({ type: "SELECTION_RESTORED" });
-          }
-          return;
-        default:
-          return assertNever(command);
+      if (command.message.type !== "restore-overlays") {
+        post(appId, command.message);
+        return;
       }
+      const target = targets.get(appId)?.();
+      if (!target) return;
+      const componentIds = store
+        .get(selectedComponentsPreviewAtom)
+        .map((component) => component.id);
+      target.postMessage(
+        componentIds.length === 0
+          ? { type: "clear-dyad-component-overlays" }
+          : {
+              type: "restore-dyad-component-overlays",
+              componentIds,
+            },
+        "*",
+      );
+      // This emit re-enters the controller's send() synchronously while the
+      // outer send() is still inside setState (commands run in beforeNotify).
+      // Safe only because SELECTION_RESTORED is command-free.
+      emit({ type: "SELECTION_RESTORED" });
     },
     post,
   };
-}
-
-function assertNever(value: never): never {
-  throw new Error(
-    `Unexpected preview iframe command: ${JSON.stringify(value)}`,
-  );
 }
 
 export type PreviewIframeMachineMessageType =

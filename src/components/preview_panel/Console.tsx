@@ -1,10 +1,6 @@
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import {
-  currentConsoleEntriesAtom,
-  setConsoleEntriesForAppAtom,
-} from "@/atoms/previewRuntimeAtoms";
 import type { ConsoleEntry } from "@/ipc/types";
-import { useAtomValue, useSetAtom } from "jotai";
+import { useAtomValue } from "jotai";
 import { ipc } from "@/ipc/types";
 import { useEffect, useRef, useState, useMemo, useCallback, memo } from "react";
 import { Virtuoso, VirtuosoHandle } from "react-virtuoso";
@@ -12,6 +8,8 @@ import { ConsoleEntryComponent } from "./ConsoleEntry";
 import { ConsoleFilters } from "./ConsoleFilters";
 import { useSettings } from "@/hooks/useSettings";
 import { showError } from "@/lib/toast";
+import { useConsoleEntries } from "@/preview_console/hooks";
+import { useAppRunManager } from "@/app_run/AppRunProvider";
 
 // Placeholder component shown during fast scrolling
 const ScrollSeekPlaceholder = () => {
@@ -69,9 +67,9 @@ ConsoleItem.displayName = "ConsoleItem";
 
 // Console component
 export const Console = () => {
-  const consoleEntries = useAtomValue(currentConsoleEntriesAtom);
-  const setConsoleEntries = useSetAtom(setConsoleEntriesForAppAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
+  const consoleEntries = useConsoleEntries(selectedAppId);
+  const appRunManager = useAppRunManager();
   const { settings } = useSettings();
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -113,14 +111,14 @@ export const Console = () => {
         // Clear logs from backend store
         await ipc.misc.clearLogs({ appId: selectedAppId });
         // Clear logs from UI
-        setConsoleEntries({ appId: selectedAppId, entries: [] });
+        appRunManager.previewConsole.clear(selectedAppId);
       } catch (error) {
         showError(
           error instanceof Error ? error.message : "Failed to clear logs",
         );
       }
     }
-  }, [selectedAppId, setConsoleEntries]);
+  }, [appRunManager, selectedAppId]);
 
   useEffect(() => {
     const container = containerRef.current?.parentElement;

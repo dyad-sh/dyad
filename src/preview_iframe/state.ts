@@ -17,6 +17,12 @@ export interface PreviewIframeState {
   readonly selectorReady: boolean;
   readonly picking: boolean;
   readonly restoreQueued: boolean;
+  readonly error: PreviewError | undefined;
+}
+
+export interface PreviewError {
+  readonly message: string;
+  readonly source: "preview-app" | "dyad-app" | "dyad-sync";
 }
 
 export const INITIAL_PREVIEW_IFRAME_STATE: PreviewIframeState = {
@@ -28,6 +34,7 @@ export const INITIAL_PREVIEW_IFRAME_STATE: PreviewIframeState = {
   selectorReady: false,
   picking: false,
   restoreQueued: false,
+  error: undefined,
 };
 
 export type PreviewIframeEvent =
@@ -48,7 +55,17 @@ export type PreviewIframeEvent =
   | { type: "PICKER_TOGGLED" }
   | { type: "PICKER_DEACTIVATED" }
   | { type: "SELECTION_RESTORE_QUEUED" }
-  | { type: "SELECTION_RESTORED" };
+  | { type: "SELECTION_RESTORED" }
+  | {
+      type: "IFRAME_ERROR";
+      message: string;
+      source: "preview-app" | "dyad-app";
+    }
+  | { type: "SYNC_ERROR"; message: string }
+  | { type: "SYNC_RECOVERED" }
+  | { type: "APP_ERROR"; message: string }
+  | { type: "APP_ERROR_CLEARED" }
+  | { type: "DISMISS" };
 
 export type PreviewIframePostMessage =
   | {
@@ -63,9 +80,10 @@ export type PreviewIframePostMessage =
   | { type: "cleanup-all-text-editing" }
   | { type: "restore-overlays" };
 
-export type PreviewIframeCommand =
-  | { type: "post-to-iframe"; message: PreviewIframePostMessage }
-  | { type: "clear-preview-error" };
+export type PreviewIframeCommand = {
+  type: "post-to-iframe";
+  message: PreviewIframePostMessage;
+};
 
 export type PreviewIframeIgnoreReason =
   | "already-current-app-url"
@@ -78,13 +96,21 @@ export type PreviewIframeIgnoreReason =
   | "already-selector-ready"
   | "already-replaced"
   | "restore-already-queued"
-  | "restore-not-queued";
+  | "restore-not-queued"
+  | "higher-priority-error"
+  | "no-sync-error"
+  | "same-preview-error"
+  | "no-preview-error";
 
 export const selectCanGoBack = (state: PreviewIframeState): boolean =>
   state.position > 0;
 
 export const selectCanGoForward = (state: PreviewIframeState): boolean =>
   state.position < state.history.length - 1;
+
+export const selectPreviewError = (
+  state: PreviewIframeState,
+): PreviewError | undefined => state.error;
 
 export const selectIframeSrc = (
   state: PreviewIframeState,

@@ -138,15 +138,13 @@ export function transition(
         picking: false,
       });
     case "RELOAD_REQUESTED":
-      return applied(
-        {
-          ...state,
-          iframeEpoch: state.iframeEpoch + 1,
-          selectorReady: false,
-          picking: false,
-        },
-        [{ type: "clear-preview-error" }],
-      );
+      return applied({
+        ...state,
+        iframeEpoch: state.iframeEpoch + 1,
+        selectorReady: false,
+        picking: false,
+        error: undefined,
+      });
     case "IFRAME_REPLACED": {
       const history = state.currentUrl ? [state.currentUrl] : [];
       if (
@@ -169,7 +167,61 @@ export function transition(
       });
     }
     case "IFRAME_LOADED":
-      return applied(state, [{ type: "clear-preview-error" }]);
+      return state.error === undefined
+        ? ignore(state, "no-preview-error")
+        : applied({ ...state, error: undefined });
+    case "IFRAME_ERROR":
+      if (
+        state.error?.source === event.source &&
+        state.error.message === event.message
+      ) {
+        return ignore(state, "same-preview-error");
+      }
+      return applied({
+        ...state,
+        error: { message: event.message, source: event.source },
+      });
+    case "SYNC_ERROR":
+      if (state.error && state.error.source !== "dyad-sync") {
+        return ignore(state, "higher-priority-error");
+      }
+      if (
+        state.error?.source === "dyad-sync" &&
+        state.error.message === event.message
+      ) {
+        return ignore(state, "same-preview-error");
+      }
+      return applied({
+        ...state,
+        error: { message: event.message, source: "dyad-sync" },
+      });
+    case "SYNC_RECOVERED":
+      return state.error?.source === "dyad-sync"
+        ? applied({ ...state, error: undefined })
+        : ignore(state, "no-sync-error");
+    case "APP_ERROR":
+      if (
+        state.error?.source === "dyad-app" &&
+        state.error.message === event.message
+      ) {
+        return ignore(state, "same-preview-error");
+      }
+      return applied({
+        ...state,
+        error: { message: event.message, source: "dyad-app" },
+      });
+    case "APP_ERROR_CLEARED":
+      // Error operations are serialized by event arrival. App-run facade
+      // delivery is microtask-deferred: an iframe clear that happens first is
+      // followed by a queued app error, while a later app clear deliberately
+      // clears whichever source is visible, matching the retired Jotai write.
+      return state.error === undefined
+        ? ignore(state, "no-preview-error")
+        : applied({ ...state, error: undefined });
+    case "DISMISS":
+      return state.error === undefined
+        ? ignore(state, "no-preview-error")
+        : applied({ ...state, error: undefined });
     case "SELECTOR_READY":
       if (state.selectorReady) {
         return ignore(state, "already-selector-ready");

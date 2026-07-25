@@ -159,6 +159,7 @@ function isCurrentInvocation(
 interface AppRunActorState {
   readonly runState: RunState;
   readonly previewReloadEpoch: number;
+  readonly pendingOperationId: string | null;
   readonly lastSettlement: {
     readonly operationId: string;
     readonly kind: "run" | "stop";
@@ -167,33 +168,52 @@ interface AppRunActorState {
 }
 
 function settlementFor(
+  state: AppRunActorState,
   event: AppRunWireEvent,
 ): AppRunActorState["lastSettlement"] {
+  const operationId =
+    "invocationRef" in event &&
+    isCurrentInvocation(state.runState, event.invocationRef)
+      ? (state.pendingOperationId ?? event.invocationRef.operationId)
+      : "invocationRef" in event
+        ? event.invocationRef.operationId
+        : null;
   switch (event.type) {
     case "PROCESS_SPAWNED":
       return {
-        operationId: event.invocationRef.operationId,
+        operationId: operationId!,
         kind: "run",
         outcome: "succeeded",
       };
     case "PROCESS_FAILED":
       return {
-        operationId: event.invocationRef.operationId,
+        operationId: operationId!,
         kind: "run",
         outcome: "failed",
       };
     case "PROCESS_STOPPED":
       return {
-        operationId: event.invocationRef.operationId,
+        operationId: operationId!,
         kind: "stop",
         outcome: "succeeded",
       };
     case "PROCESS_STOP_FAILED":
       return {
-        operationId: event.invocationRef.operationId,
+        operationId: operationId!,
         kind: "stop",
         outcome: "failed",
       };
+    default:
+      return null;
+  }
+}
+
+function pendingOperationFor(event: AppRunWireEvent): string | null {
+  switch (event.type) {
+    case "START":
+    case "RESTART":
+    case "STOP_REQUESTED":
+      return event.operationId;
     default:
       return null;
   }
@@ -217,12 +237,16 @@ function transitionActor(
     state.runState,
     toDomainEvent(key, state.runState, event),
   );
-  const settlement = settlementFor(event);
+  const settlement = settlementFor(state, event);
   if (result.kind === "ignored") {
     return settlement
       ? {
           kind: "applied" as const,
-          state: { ...state, lastSettlement: settlement },
+          state: {
+            ...state,
+            pendingOperationId: null,
+            lastSettlement: settlement,
+          },
           commands: [],
         }
       : { ...result, state };
@@ -242,6 +266,9 @@ function transitionActor(
             runState: result.state,
             previewReloadEpoch:
               state.previewReloadEpoch + (bumpsPreviewReload ? 1 : 0),
+            pendingOperationId: settlement
+              ? null
+              : (pendingOperationFor(event) ?? state.pendingOperationId),
             lastSettlement: settlement ?? state.lastSettlement,
           },
     commands: result.commands,
@@ -360,6 +387,7 @@ export const appRunDefinition = {
   initialState: (): AppRunActorState => ({
     runState: { type: "idle" },
     previewReloadEpoch: 0,
+    pendingOperationId: null,
     lastSettlement: null,
   }),
   transition: (state, event, key) => transitionActor(key, state, event),

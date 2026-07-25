@@ -169,6 +169,25 @@ describe("main-hosted app-run actor", () => {
     expect(actorB.getSnapshot()).toStrictEqual(actorA.getSnapshot());
     expect(runtime.start).toHaveBeenCalledTimes(1);
 
+    const ensureRunning = await actorB.dispatch({
+      type: "START",
+      operationId: "ensure-running",
+      startedAt: 15,
+      expectedRevision: actorB.getSnapshot().revision,
+    });
+    expect(ensureRunning.kind).toBe("applied");
+    await flush();
+    expect(actorA.getSnapshot()).toMatchObject({
+      phase: "ready",
+      invocationRef: { operationId: "start-a" },
+      lastSettlement: {
+        operationId: "ensure-running",
+        kind: "run",
+        outcome: "succeeded",
+      },
+    });
+    expect(runtime.start).toHaveBeenCalledTimes(2);
+
     const restart = await actorB.dispatch({
       type: "RESTART",
       operation: "restart",
@@ -270,6 +289,35 @@ describe("main-hosted app-run actor", () => {
         recreateSandbox: false,
       }),
     );
+    manager.dispose();
+  });
+
+  it("treats a concurrent ensure-running revision conflict as success", async () => {
+    const { duplex, host } = createHarness();
+    const connection = duplex.connect();
+    connection.dispatch = vi.fn(async (envelope) => {
+      host.ensure(appRunDefinition, appRunKey(7)).send({
+        type: "START",
+        operationId: "other-window",
+        startedAt: 9,
+        expectedRevision: 0,
+      });
+      return {
+        kind: "rejected" as const,
+        messageId: envelope.messageId,
+        reason: "revision-conflict" as const,
+      };
+    });
+    const manager = new AppRunRemoteManager(
+      createSequentialIdSource(),
+      connection,
+    );
+    manager.start();
+
+    await expect(
+      manager.dispatch(7, { type: "START", startedAt: 10 }),
+    ).resolves.toBeUndefined();
+    expect(runtime.start).toHaveBeenCalledTimes(1);
     manager.dispose();
   });
 

@@ -1,4 +1,8 @@
-import { appRunKey, type AppRunProducerEvent } from "@/app_run/transport";
+import {
+  appRunKey,
+  type AppRunIntentEvent,
+  type AppRunProducerEvent,
+} from "@/app_run/transport";
 import { appRunDefinition } from "@/app_run/definition";
 import { MainAppRuntimeOutput } from "./main_app_runtime_output";
 import type { AppRunInvocationRef } from "@/app_run/state";
@@ -32,12 +36,12 @@ class AppRunActorService {
       expectedRevision?: number;
     },
   ): Promise<void> {
-    await this.actor(appId).enqueue({
+    await this.dispatchAndWait(appId, input.operationId, {
       type: "START",
       operationId: input.operationId,
       startedAt: input.startedAt,
       expectedRevision: input.expectedRevision ?? 0,
-    }).settled;
+    });
   }
 
   async dispatchRestart(
@@ -56,18 +60,14 @@ class AppRunActorService {
       startedAt: input.startedAt,
       expectedRevision: input.expectedRevision ?? 0,
     };
-    await this.actor(appId).enqueue(
-      input.removeNodeModules
-        ? { ...common, operation: "rebuild" }
-        : {
-            ...common,
-            operation: "restart",
-            options: {
-              removeNodeModules: false,
-              recreateSandbox: input.recreateSandbox,
-            },
-          },
-    ).settled;
+    await this.dispatchAndWait(appId, input.operationId, {
+      ...common,
+      operation: "restart",
+      options: {
+        removeNodeModules: input.removeNodeModules,
+        recreateSandbox: input.recreateSandbox,
+      },
+    });
   }
 
   async dispatchStop(
@@ -78,12 +78,12 @@ class AppRunActorService {
       activeInvocationRef: AppRunInvocationRef;
     },
   ): Promise<void> {
-    await this.actor(appId).enqueue({
+    await this.dispatchAndWait(appId, input.operationId, {
       type: "STOP_REQUESTED",
       operationId: input.operationId,
       startedAt: input.startedAt,
       activeInvocationRef: input.activeInvocationRef,
-    }).settled;
+    });
   }
 
   async executeExternalLifecycle(options: {
@@ -112,6 +112,53 @@ class AppRunActorService {
 
   dispose(): Promise<void> {
     return remoteMachineHost.dispose();
+  }
+
+  private async dispatchAndWait(
+    appId: number,
+    operationId: string,
+    event: AppRunIntentEvent,
+  ): Promise<void> {
+    const actor = this.actor(appId);
+    const outcome = await actor.enqueue(event).settled;
+    if (outcome.kind === "failed") throw outcome.error;
+    if (outcome.kind === "disposed") {
+      throw new Error("App run actor was disposed");
+    }
+    if (outcome.kind === "ignored") {
+      throw new Error(`App run request ignored: ${outcome.reason}`);
+    }
+
+    const readSettlement = () => {
+      const settlement = actor.getSnapshot().lastSettlement;
+      return settlement?.operationId === operationId ? settlement : null;
+    };
+    const initialSettlement = readSettlement();
+    const settlement =
+      initialSettlement ??
+      (await new Promise<NonNullable<ReturnType<typeof readSettlement>>>(
+        (resolve) => {
+          const unsubscribe = actor.subscribe(() => {
+            const current = readSettlement();
+            if (!current) return;
+            unsubscribe();
+            resolve(current);
+          });
+          const current = readSettlement();
+          if (current) {
+            unsubscribe();
+            resolve(current);
+          }
+        },
+      ));
+    if (settlement.outcome === "failed") {
+      const runState = actor.getSnapshot().runState;
+      throw new Error(
+        runState.type === "errored"
+          ? runState.error.message
+          : "App runtime operation failed",
+      );
+    }
   }
 }
 

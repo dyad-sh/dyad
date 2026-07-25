@@ -308,6 +308,10 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   When callers sequence work on the outcome, project a bounded,
   operation-correlated settlement acknowledgment. Superseded completions must
   settle their original waiters without advancing the current lifecycle.
+  Keep the request correlation ID separate from a reused runtime invocation
+  identity (for example, an idempotent ensure-running request targeting an
+  existing process), and subscribe before the final settlement recheck so a
+  completion cannot land between the initial read and listener registration.
 - Keep transport revisions separate from semantic presentation epochs. A
   revision may advance for bookkeeping-only transitions, while a reload token
   must advance exactly once for each user-visible remount.

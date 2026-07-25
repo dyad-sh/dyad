@@ -157,8 +157,28 @@ export class AppRunRemoteManager {
         };
         break;
     }
-    const settlement = this.waitForSettlement(appId, event.operationId);
-    const receipt = await actor.dispatch(event);
+    let settlement = this.waitForSettlement(appId, event.operationId);
+    let receipt = await actor.dispatch(event);
+    if (
+      input.type === "START" &&
+      event.type === "START" &&
+      receipt.kind === "rejected" &&
+      receipt.reason === "revision-conflict"
+    ) {
+      settlement.cancel();
+      await actor.resync();
+      const latest = actor.getSnapshot();
+      if (
+        latest.phase === "starting" ||
+        latest.phase === "ready" ||
+        latest.phase === "reloading"
+      ) {
+        return;
+      }
+      event = { ...event, expectedRevision: latest.revision };
+      settlement = this.waitForSettlement(appId, event.operationId);
+      receipt = await actor.dispatch(event);
+    }
     if (receipt.kind === "rejected") {
       settlement.cancel();
       throw new Error(`App run request rejected: ${receipt.reason}`);

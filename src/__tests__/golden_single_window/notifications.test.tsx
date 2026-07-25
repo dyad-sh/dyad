@@ -17,8 +17,12 @@ const mocks = vi.hoisted(() => ({
   settledListener: undefined as
     | ((event: { requestId: string }) => void)
     | undefined,
+  focusWindow: vi.fn(),
   resolveAppNameForAppId: vi.fn(),
+  resolveAppIdForChat: vi.fn(),
   resolveChatSummary: vi.fn(),
+  selectChat: vi.fn(),
+  showWarning: vi.fn(),
 }));
 
 vi.mock("@/chat_stream/ChatStreamProvider", () => ({
@@ -42,7 +46,7 @@ vi.mock("@tanstack/react-router", () => ({
 }));
 
 vi.mock("@/hooks/useSelectChat", () => ({
-  useSelectChat: () => ({ selectChat: vi.fn() }),
+  useSelectChat: () => ({ selectChat: mocks.selectChat }),
 }));
 
 vi.mock("@/hooks/useSettings", () => ({
@@ -69,18 +73,18 @@ vi.mock("@/ipc/types", () => ({
         },
       },
     },
-    system: { focusWindow: vi.fn().mockResolvedValue(undefined) },
+    system: { focusWindow: mocks.focusWindow },
   },
 }));
 
 vi.mock("@/lib/chatUtils", () => ({
-  resolveAppIdForChat: vi.fn(),
+  resolveAppIdForChat: mocks.resolveAppIdForChat,
   resolveAppNameForAppId: mocks.resolveAppNameForAppId,
   resolveChatSummary: mocks.resolveChatSummary,
 }));
 
 vi.mock("@/lib/toast", () => ({
-  showWarning: vi.fn(),
+  showWarning: mocks.showWarning,
 }));
 
 class FakeNotification {
@@ -111,6 +115,8 @@ describe("golden single-window: notification routing", () => {
       appId: 7,
       title: "Golden chat",
     });
+    mocks.focusWindow.mockResolvedValue(undefined);
+    mocks.resolveAppIdForChat.mockResolvedValue(7);
     mocks.resolveAppNameForAppId.mockResolvedValue("Golden app");
     FakeNotification.instances = [];
     Object.defineProperty(window, "Notification", {
@@ -140,6 +146,14 @@ describe("golden single-window: notification routing", () => {
         tag: "dyad-chat-complete-42",
       },
     });
+    await act(async () => FakeNotification.instances[0].onclick?.());
+    expect(mocks.focusWindow).toHaveBeenCalledOnce();
+    expect(mocks.selectChat).toHaveBeenCalledExactlyOnceWith({
+      chatId: 42,
+      appId: 7,
+    });
+    expect(FakeNotification.instances[0].close).toHaveBeenCalledOnce();
+    expect(mocks.showWarning).not.toHaveBeenCalled();
     hook.unmount();
   });
 
@@ -176,7 +190,41 @@ describe("golden single-window: notification routing", () => {
         tag,
         requireInteraction: true,
       });
+      await act(async () => FakeNotification.instances[0].onclick?.());
+      expect(mocks.focusWindow).toHaveBeenCalledOnce();
+      expect(mocks.selectChat).toHaveBeenCalledExactlyOnceWith({
+        chatId: 42,
+        appId: 7,
+      });
+      expect(FakeNotification.instances[0].close).toHaveBeenCalledOnce();
+      expect(mocks.showWarning).not.toHaveBeenCalled();
       hook.unmount();
     },
   );
+
+  it("waits for racing MCP consent classification before notifying once", async () => {
+    const hook = renderHook(() => useNotificationHandler());
+
+    act(() =>
+      mocks.requestedListener?.({
+        kind: "mcp-consent",
+        requestId: "mcp-consent:1",
+        chatId: 42,
+        toolName: "search",
+        serverName: "golden-server",
+        classifier: "racing",
+        deadlineAt: 1_000,
+      }),
+    );
+    expect(FakeNotification.instances).toHaveLength(0);
+
+    act(() => mocks.classifiedListener?.({ requestId: "mcp-consent:1" }));
+
+    await waitFor(() => expect(FakeNotification.instances).toHaveLength(1));
+    expect(FakeNotification.instances[0].options).toMatchObject({
+      tag: "dyad-mcp-consent-mcp-consent:1",
+      requireInteraction: true,
+    });
+    hook.unmount();
+  });
 });

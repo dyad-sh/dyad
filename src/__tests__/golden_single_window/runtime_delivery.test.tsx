@@ -1,4 +1,4 @@
-import { act, renderHook } from "@testing-library/react";
+import { act, render, renderHook, waitFor } from "@testing-library/react";
 import { QueryClient } from "@tanstack/react-query";
 import { createStore, Provider } from "jotai";
 import type { PropsWithChildren } from "react";
@@ -10,13 +10,24 @@ import {
   currentConsoleEntriesAtom,
   currentPackageManagerWarningAtom,
 } from "@/atoms/previewRuntimeAtoms";
-import { useAppOutputSubscription } from "@/hooks/useRunApp";
+import { useAppOutputSubscription, useRunApp } from "@/hooks/useRunApp";
 import { createImageGenerationCommandRunner } from "@/image_generation/commands";
+import { ImageGenerationProvider } from "@/image_generation/ImageGenerationProvider";
+import { ImageGenerationManager } from "@/image_generation/manager";
+import {
+  createFakeClock,
+  createSequentialIdSource,
+} from "@/state_machines/testing";
 import { createVersionPreviewRuntime } from "@/version_preview/commands";
 
 const mocks = vi.hoisted(() => ({
   appOutputBatchListeners: new Set<(outputs: any[]) => void>(),
   appOutputListeners: new Set<(output: any) => void>(),
+  dismissImageGenerationToast: vi.fn(),
+  generateImage: vi.fn(),
+  runApp: vi.fn(),
+  showImageGeneratingToast: vi.fn(),
+  showImageSuccessToast: vi.fn(),
   showInputRequest: vi.fn(),
   toastError: vi.fn(),
 }));
@@ -29,6 +40,7 @@ vi.mock("@/ipc/types", async (importOriginal) => {
       ...original.ipc,
       app: {
         ...original.ipc.app,
+        runApp: mocks.runApp,
         respondToAppInput: vi.fn().mockResolvedValue(undefined),
       },
       events: {
@@ -46,7 +58,7 @@ vi.mock("@/ipc/types", async (importOriginal) => {
       },
       imageGeneration: {
         ...original.ipc.imageGeneration,
-        generateImage: vi.fn(),
+        generateImage: mocks.generateImage,
         cancelImageGeneration: vi.fn(),
       },
       misc: {
@@ -66,6 +78,12 @@ vi.mock("@/hooks/useSettings", () => ({
 vi.mock("@/lib/toast", () => ({
   showError: vi.fn(),
   showInputRequest: mocks.showInputRequest,
+}));
+
+vi.mock("@/components/ImageGenerationToast", () => ({
+  dismissImageGenerationToast: mocks.dismissImageGenerationToast,
+  showImageGeneratingToast: mocks.showImageGeneratingToast,
+  showImageSuccessToast: mocks.showImageSuccessToast,
 }));
 
 vi.mock("sonner", () => ({
@@ -96,15 +114,7 @@ describe("golden single-window: runtime presentation delivery", () => {
     vi.clearAllMocks();
     mocks.appOutputBatchListeners.clear();
     mocks.appOutputListeners.clear();
-  });
-
-  it("retains the first console line emitted immediately after subscription", () => {
-    const { store, Wrapper } = makeRunWrapper();
-    const hook = renderHook(() => useAppOutputSubscription(), {
-      wrapper: Wrapper,
-    });
-
-    act(() => {
+    mocks.runApp.mockImplementation(() => {
       for (const listener of mocks.appOutputListeners) {
         listener({
           type: "stdout",
@@ -113,12 +123,31 @@ describe("golden single-window: runtime presentation delivery", () => {
           timestamp: 123,
         });
       }
+      return Promise.resolve();
+    });
+  });
+
+  it("retains the first console line emitted at the app-start boundary", async () => {
+    const { store, Wrapper } = makeRunWrapper();
+    const hook = renderHook(
+      () => {
+        useAppOutputSubscription();
+        return useRunApp();
+      },
+      { wrapper: Wrapper },
+    );
+
+    await act(async () => {
+      await hook.result.current.runApp(7);
     });
 
     // Protects the Phase B interest-keyed console fan-out.
-    expect(store.get(currentConsoleEntriesAtom)).toEqual([
-      expect.objectContaining({ message: "first line", timestamp: 123 }),
-    ]);
+    expect(mocks.runApp).toHaveBeenCalledOnce();
+    expect(
+      store
+        .get(currentConsoleEntriesAtom)
+        .filter((entry) => entry.message === "first line"),
+    ).toEqual([expect.objectContaining({ timestamp: 123 })]);
     hook.unmount();
   });
 
@@ -156,17 +185,46 @@ describe("golden single-window: runtime presentation delivery", () => {
     hook.unmount();
   });
 
-  it("invalidates media exactly once when image generation settles", () => {
+  it("invalidates media and presents success once when generation settles", async () => {
     const queryClient = new QueryClient();
     const invalidate = vi
       .spyOn(queryClient, "invalidateQueries")
       .mockResolvedValue(undefined);
-    const runner = createImageGenerationCommandRunner({ queryClient });
+    const result = {
+      fileName: "generated.png",
+      filePath: "/tmp/generated.png",
+      appPath: "app",
+      appId: 7,
+      appName: "Golden app",
+    };
+    mocks.generateImage.mockResolvedValue(result);
+    const manager = new ImageGenerationManager({
+      clock: createFakeClock(10),
+      idSource: createSequentialIdSource(),
+      runner: createImageGenerationCommandRunner({ queryClient }),
+    });
+    const view = render(
+      <ImageGenerationProvider manager={manager}>
+        <div />
+      </ImageGenerationProvider>,
+    );
 
-    runner.run({ type: "InvalidateMediaQueries" }, vi.fn());
+    act(() => {
+      manager.submit({
+        prompt: "A lighthouse",
+        themeMode: "plain",
+        targetAppId: 7,
+        targetAppName: "Golden app",
+      });
+    });
 
-    expect(invalidate).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(invalidate).toHaveBeenCalledTimes(1));
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["media"] });
+    expect(mocks.showImageSuccessToast).toHaveBeenCalledExactlyOnceWith(
+      result,
+      expect.any(Function),
+    );
+    view.unmount();
   });
 
   it("shows one stable recovery toast for version-preview recovery", () => {

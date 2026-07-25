@@ -37,6 +37,23 @@ describe("golden single-window: reload and quit teardown", () => {
     await act(() => Promise.resolve());
   });
 
+  it("stops a window-local manager before disposing it on final unmount", async () => {
+    const order: string[] = [];
+    const manager = {
+      start: vi.fn(() => order.push("start")),
+      stop: vi.fn(() => order.push("stop")),
+      dispose: vi.fn(() => order.push("dispose")),
+    };
+    const hook = renderHook(() => useManagerLifecycle(manager));
+
+    hook.unmount();
+    expect(order).toEqual(["start", "stop"]);
+    await act(() => Promise.resolve());
+
+    // Protects final-unmount ordering after the Phase B pagehide split.
+    expect(order).toEqual(["start", "stop", "dispose"]);
+  });
+
   it("releases quit resources before allowing Electron to resume quit", async () => {
     const order: string[] = [];
     const pendingCleanup = deferred();

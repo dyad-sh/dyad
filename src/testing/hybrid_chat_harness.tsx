@@ -313,6 +313,9 @@ export interface HybridChatHarness extends ChatFlowHarness {
   /** Current private router location, for navigation assertions. */
   currentLocation: () => HybridRouter["state"]["location"];
 
+  /** Query client owned by the most recently mounted renderer tree. */
+  queryClient: () => QueryClient;
+
   /** Set the active selected app in the mounted Jotai store. */
   setSelectedAppId: (appId: number | null) => void;
 
@@ -652,6 +655,7 @@ export async function setupHybridChatHarness(
       bridge;
 
     let activeStore: JotaiStore | undefined;
+    let activeQueryClient: QueryClient | undefined;
     const queryClients: QueryClient[] = [];
     const chatStreamManagers: ChatStreamManager[] = [];
     let activeChatStreamManager: ChatStreamManager | undefined;
@@ -970,6 +974,7 @@ export async function setupHybridChatHarness(
           mutations: { retry: false },
         },
       });
+      activeQueryClient = queryClient;
       queryClients.push(queryClient);
       const appRunManager = new AppRunManager(store);
       const imageGenerationManager = new ImageGenerationManager({
@@ -1598,6 +1603,7 @@ export async function setupHybridChatHarness(
           manager.dispose();
         }
         activeStore = undefined;
+        activeQueryClient = undefined;
         activeRouter = undefined;
         bridge.uninstall();
         // Server ids restart at 1 in the next harness's fresh db, so a cached
@@ -1646,6 +1652,14 @@ export async function setupHybridChatHarness(
       advanceFirstPromptClock,
       router: getActiveRouter,
       currentLocation: () => getActiveRouter().state.location,
+      queryClient: () => {
+        if (!activeQueryClient) {
+          throw new Error(
+            "setupHybridChatHarness.mount() must be called before reading the query client",
+          );
+        }
+        return activeQueryClient;
+      },
       setSelectedAppId,
       setPlanAcceptInNewChat,
       getPlanAcceptInNewChat,

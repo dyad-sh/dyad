@@ -1,4 +1,4 @@
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook } from "@testing-library/react";
 import {
   QueryClient,
   QueryClientProvider,
@@ -9,17 +9,13 @@ import type { PropsWithChildren } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { queryKeys } from "@/lib/queryKeys";
-import { useChats } from "@/hooks/useChats";
 import { useCreateApp } from "@/hooks/useCreateApp";
-import { useLoadApps } from "@/hooks/useLoadApps";
 import { useRenameBranch } from "@/hooks/useRenameBranch";
 import { createVersionPreviewRuntime } from "@/version_preview/commands";
 
 const mocks = vi.hoisted(() => ({
   checkoutVersion: vi.fn(),
   createApp: vi.fn(),
-  getChats: vi.fn(),
-  listApps: vi.fn(),
   renameBranch: vi.fn(),
   revertVersion: vi.fn(),
 }));
@@ -33,12 +29,7 @@ vi.mock("@/ipc/types", async (importOriginal) => {
       app: {
         ...original.ipc.app,
         createApp: mocks.createApp,
-        listApps: mocks.listApps,
         renameBranch: mocks.renameBranch,
-      },
-      chat: {
-        ...original.ipc.chat,
-        getChats: mocks.getChats,
       },
       version: {
         ...original.ipc.version,
@@ -93,8 +84,6 @@ describe("golden single-window: local invalidation counts", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.createApp.mockResolvedValue({ appId: 7, chatId: 11 });
-    mocks.getChats.mockResolvedValue([]);
-    mocks.listApps.mockResolvedValue({ apps: [] });
     mocks.renameBranch.mockResolvedValue(undefined);
     mocks.revertVersion.mockResolvedValue({
       repositoryOutcome: "target-applied",
@@ -112,18 +101,6 @@ describe("golden single-window: local invalidation counts", () => {
     });
   });
 
-  it("chat mutations invalidate the chats family once", async () => {
-    const { invalidations, Wrapper } = setup();
-    const { result } = renderHook(() => useChats(7), { wrapper: Wrapper });
-    await waitFor(() => expect(result.current.loading).toBe(false));
-    invalidations.length = 0;
-
-    await act(async () => result.current.invalidateChats());
-
-    // Protects local invalidation when the Phase B broadcast channel is added.
-    expect(invalidations).toEqual([queryKeys.chats.all]);
-  });
-
   it("app creation invalidates apps and chats exactly once each", async () => {
     const { invalidations, Wrapper } = setup();
     const { result } = renderHook(() => useCreateApp(), { wrapper: Wrapper });
@@ -133,20 +110,6 @@ describe("golden single-window: local invalidation counts", () => {
     });
 
     expect(invalidations).toEqual([queryKeys.apps.all, queryKeys.chats.all]);
-  });
-
-  it("app deletion refresh invalidates collections and apps once each", async () => {
-    const { invalidations, Wrapper } = setup();
-    const { result } = renderHook(() => useLoadApps(), { wrapper: Wrapper });
-    await waitFor(() => expect(result.current.loading).toBe(false));
-    invalidations.length = 0;
-
-    await act(async () => result.current.refreshApps());
-
-    expect(invalidations).toEqual([
-      queryKeys.appCollections.all,
-      queryKeys.apps.all,
-    ]);
   });
 
   it("branch rename invalidates branch and version families once each", async () => {

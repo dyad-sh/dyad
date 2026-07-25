@@ -523,7 +523,8 @@ window on app quit; active jobs are not persisted or automatically resumed
 after app restart. The accepted G1 study now supplies the completed
 `chat_stream` lifecycle row and intent classification.
 
-**B1 — WindowRegistry, routing, cache coherence, and test harness: in flight.**
+**B1 — WindowRegistry, routing, cache coherence, and test harness: in flight
+(#4102).**
 
 - stable `WindowSessionId` and `TabInstanceId`;
 - ephemeral `webContents` registration/cleanup;

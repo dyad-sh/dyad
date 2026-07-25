@@ -428,6 +428,74 @@ function importedMachineFor(
   return machineForFile(resolved);
 }
 
+function resolvesWithin(
+  filePath: string,
+  source: string,
+  root: string,
+): boolean {
+  if (source.startsWith("@/")) {
+    return isWithin(root, path.join(SOURCE_ROOT, source.slice(2)));
+  }
+  return (
+    source.startsWith(".") &&
+    isWithin(root, path.resolve(path.dirname(filePath), source))
+  );
+}
+
+function isJotaiModule(source: string): boolean {
+  return source === "jotai" || source.startsWith("jotai/");
+}
+
+function isJotaiAtomCall(
+  call: ts.CallExpression,
+  bindings: Map<string, { imported: string; source: string }>,
+): boolean {
+  if (ts.isIdentifier(call.expression)) {
+    const binding = bindings.get(call.expression.text);
+    return binding?.imported === "atom" && isJotaiModule(binding.source);
+  }
+  if (
+    ts.isPropertyAccessExpression(call.expression) &&
+    ts.isIdentifier(call.expression.expression)
+  ) {
+    const binding = bindings.get(call.expression.expression.text);
+    return (
+      binding?.imported === "*" &&
+      isJotaiModule(binding.source) &&
+      call.expression.name.text === "atom"
+    );
+  }
+  return false;
+}
+
+function isProjectionModuleImport(filePath: string, source: string): boolean {
+  if (source === "@/state_machines/projection") return true;
+  if (!source.startsWith(".")) return false;
+  const resolved = path.resolve(path.dirname(filePath), source);
+  const projectionModule = path.join(SOURCE_ROOT, "state_machines/projection");
+  return resolved === projectionModule || resolved === `${projectionModule}.ts`;
+}
+
+function isForbiddenPureMachineImport(
+  filePath: string,
+  machine: MachineDirectory,
+  source: string,
+): boolean {
+  const importedMachine = importedMachineFor(filePath, source);
+  return (
+    source === "react" ||
+    source.startsWith("react/") ||
+    source === "electron" ||
+    source.startsWith("electron/") ||
+    source.startsWith("@electron/") ||
+    source === "jotai" ||
+    source.startsWith("jotai/") ||
+    resolvesWithin(filePath, source, path.join(SOURCE_ROOT, "atoms")) ||
+    resolvesWithin(filePath, source, path.join(SOURCE_ROOT, "ipc")) ||
+    (importedMachine !== undefined && importedMachine !== machine)
+  );
+}
+
 function allowlistAtom(
   rule: BoundaryRule,
   file: string,
@@ -609,6 +677,20 @@ describe("state-machine boundaries", () => {
     ]);
   });
 
+  it("recognizes relative and platform imports forbidden in pure modules", () => {
+    const stateFile = path.join(SOURCE_ROOT, "app_run/state.ts");
+    expect(
+      [
+        "../atoms/previewRuntimeAtoms",
+        "../ipc/types",
+        "electron",
+        "@electron/remote",
+      ].every((source) =>
+        isForbiddenPureMachineImport(stateFile, "app_run", source),
+      ),
+    ).toBe(true);
+  });
+
   it("requires machine-to-machine calls to cross an injected facade", () => {
     for (const machine of MACHINE_DIRECTORIES) {
       const machineRoot = path.join(SOURCE_ROOT, machine);
@@ -645,18 +727,9 @@ describe("state-machine boundaries", () => {
         const filePath = path.join(SOURCE_ROOT, machine, name);
         if (!fs.existsSync(filePath)) continue;
         for (const source of importsIn(filePath)) {
-          const importedMachine = importedMachineFor(filePath, source);
-          const forbidden =
-            source === "react" ||
-            source.startsWith("react/") ||
-            source === "jotai" ||
-            source.startsWith("jotai/") ||
-            source === "@/atoms" ||
-            source.startsWith("@/atoms/") ||
-            source === "@/ipc" ||
-            source.startsWith("@/ipc/") ||
-            (importedMachine !== undefined && importedMachine !== machine);
-          if (!forbidden) continue;
+          if (!isForbiddenPureMachineImport(filePath, machine, source)) {
+            continue;
+          }
           const file = relativeSourcePath(filePath);
           violations.push({
             rule: "pure-machine-module",
@@ -708,28 +781,61 @@ describe("state-machine boundaries", () => {
     for (const filePath of projectionFiles) {
       const sourceFile = sourceFileFor(filePath);
       const bindings = importedBindings(sourceFile);
+      const exportedNames = new Set<string>();
       for (const statement of sourceFile.statements) {
+        if (
+          ts.isVariableStatement(statement) &&
+          statement.modifiers?.some(
+            (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword,
+          )
+        ) {
+          for (const declaration of statement.declarationList.declarations) {
+            if (ts.isIdentifier(declaration.name)) {
+              exportedNames.add(declaration.name.text);
+            }
+          }
+        } else if (
+          ts.isExportDeclaration(statement) &&
+          !statement.moduleSpecifier &&
+          statement.exportClause &&
+          ts.isNamedExports(statement.exportClause)
+        ) {
+          for (const element of statement.exportClause.elements) {
+            exportedNames.add(element.propertyName?.text ?? element.name.text);
+          }
+        }
+      }
+      for (const statement of sourceFile.statements) {
+        if (
+          ts.isExportAssignment(statement) &&
+          !statement.isExportEquals &&
+          ts.isCallExpression(statement.expression) &&
+          isJotaiAtomCall(statement.expression, bindings)
+        ) {
+          violations.push({
+            rule: "writable-projection-export",
+            atom: "<default>",
+            file: relativeSourcePath(filePath),
+            detail: "exported writable atom",
+          });
+          continue;
+        }
         if (!ts.isVariableStatement(statement)) continue;
-        const exported = statement.modifiers?.some(
-          (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword,
-        );
-        if (!exported) continue;
         for (const declaration of statement.declarationList.declarations) {
           if (
             !ts.isIdentifier(declaration.name) ||
+            !exportedNames.has(declaration.name.text) ||
             !declaration.initializer ||
             !ts.isCallExpression(declaration.initializer) ||
-            importedCallName(declaration.initializer, bindings, "jotai") !==
-              "atom"
+            !isJotaiAtomCall(declaration.initializer, bindings)
           ) {
             continue;
           }
           const [read, write] = declaration.initializer.arguments;
           const writable =
             write !== undefined ||
-            (read !== undefined &&
-              !ts.isArrowFunction(read) &&
-              !ts.isFunctionExpression(read));
+            read === undefined ||
+            (!ts.isArrowFunction(read) && !ts.isFunctionExpression(read));
           if (!writable) continue;
           const file = relativeSourcePath(filePath);
           const atom = declaration.name.text;
@@ -766,13 +872,77 @@ describe("state-machine boundaries", () => {
       const file = relativeSourcePath(filePath);
       const sourceFile = sourceFileFor(filePath);
       const bindings = importedBindings(sourceFile);
+      const helperBindings = new Map<string, string>();
+      const namespaceBindings = new Set<string>();
+      for (const [localName, binding] of bindings) {
+        if (!isProjectionModuleImport(filePath, binding.source)) continue;
+        if (
+          binding.imported === "registerAtomWriter" ||
+          binding.imported === "projectToAtom"
+        ) {
+          helperBindings.set(localName, binding.imported);
+        } else if (binding.imported === "*") {
+          namespaceBindings.add(localName);
+        }
+      }
+      const helperReference = (node: ts.Expression): string | undefined => {
+        if (ts.isIdentifier(node)) return helperBindings.get(node.text);
+        if (
+          ts.isPropertyAccessExpression(node) &&
+          ts.isIdentifier(node.expression) &&
+          namespaceBindings.has(node.expression.text) &&
+          (node.name.text === "registerAtomWriter" ||
+            node.name.text === "projectToAtom")
+        ) {
+          return node.name.text;
+        }
+        return undefined;
+      };
+      for (const statement of sourceFile.statements) {
+        if (
+          !ts.isExportDeclaration(statement) ||
+          !statement.moduleSpecifier ||
+          !ts.isStringLiteralLike(statement.moduleSpecifier) ||
+          !isProjectionModuleImport(filePath, statement.moduleSpecifier.text)
+        ) {
+          continue;
+        }
+        const names =
+          statement.exportClause && ts.isNamedExports(statement.exportClause)
+            ? statement.exportClause.elements
+                .map(
+                  (element) => element.propertyName?.text ?? element.name.text,
+                )
+                .filter(
+                  (name) =>
+                    name === "registerAtomWriter" || name === "projectToAtom",
+                )
+            : ["*"];
+        for (const name of names) {
+          violations.push({
+            rule: "atom-projection-call",
+            atom: "<escaped>",
+            file,
+            detail: `${name}:re-export`,
+          });
+        }
+      }
       const visit = (node: ts.Node) => {
         if (ts.isCallExpression(node)) {
-          const callName = importedCallName(
-            node,
-            bindings,
-            "state_machines/projection",
-          );
+          if (
+            node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+            node.arguments.length === 1 &&
+            ts.isStringLiteralLike(node.arguments[0]) &&
+            isProjectionModuleImport(filePath, node.arguments[0].text)
+          ) {
+            violations.push({
+              rule: "atom-projection-call",
+              atom: "<escaped>",
+              file,
+              detail: "*:dynamic-import",
+            });
+          }
+          const callName = helperReference(node.expression);
           if (
             callName !== "registerAtomWriter" &&
             callName !== "projectToAtom"
@@ -786,6 +956,50 @@ describe("state-machine boundaries", () => {
             file,
             detail: callName,
           });
+        }
+        if (ts.isIdentifier(node) && helperBindings.has(node.text)) {
+          const parent = node.parent;
+          const isImportName =
+            ts.isImportSpecifier(parent) ||
+            (ts.isImportClause(parent) && parent.name === node);
+          const isDirectCall =
+            ts.isCallExpression(parent) && parent.expression === node;
+          if (!isImportName && !isDirectCall) {
+            violations.push({
+              rule: "atom-projection-call",
+              atom: "<escaped>",
+              file,
+              detail: `${helperBindings.get(node.text)}:indirect-reference`,
+            });
+          }
+        } else if (ts.isIdentifier(node) && namespaceBindings.has(node.text)) {
+          const parent = node.parent;
+          const isImportName = ts.isNamespaceImport(parent);
+          const isHelperProperty =
+            ts.isPropertyAccessExpression(parent) &&
+            parent.expression === node &&
+            helperReference(parent) !== undefined;
+          if (!isImportName && !isHelperProperty) {
+            violations.push({
+              rule: "atom-projection-call",
+              atom: "<escaped>",
+              file,
+              detail: "*:indirect-reference",
+            });
+          }
+        } else if (
+          ts.isPropertyAccessExpression(node) &&
+          helperReference(node)
+        ) {
+          const parent = node.parent;
+          if (!(ts.isCallExpression(parent) && parent.expression === node)) {
+            violations.push({
+              rule: "atom-projection-call",
+              atom: "<escaped>",
+              file,
+              detail: `${helperReference(node)}:indirect-reference`,
+            });
+          }
         }
         ts.forEachChild(node, visit);
       };
@@ -803,9 +1017,12 @@ describe("state-machine boundaries", () => {
     };
     const accesses: AtomAccess[] = [];
     for (const machine of MACHINE_DIRECTORIES) {
-      for (const basename of ["commands.ts", "controller.ts", "manager.ts"]) {
-        const filePath = path.join(SOURCE_ROOT, machine, basename);
-        if (!fs.existsSync(filePath)) continue;
+      for (const filePath of productionFiles(path.join(SOURCE_ROOT, machine))) {
+        const collectsReads = [
+          "commands.ts",
+          "controller.ts",
+          "manager.ts",
+        ].includes(path.basename(filePath));
         const sourceFile = sourceFileFor(filePath);
         const bindings = importedBindings(sourceFile);
         const visit = (node: ts.Node) => {
@@ -817,12 +1034,13 @@ describe("state-machine boundaries", () => {
               node.expression.name.text === "sub")
           ) {
             const atom = importedArgumentName(node, 0, bindings);
-            if (atom) {
+            const method = node.expression.name.text;
+            if (atom && (method === "set" || collectsReads)) {
               accesses.push({
                 atom,
                 file: relativeSourcePath(filePath),
                 machine,
-                method: node.expression.name.text,
+                method,
               });
             }
           }

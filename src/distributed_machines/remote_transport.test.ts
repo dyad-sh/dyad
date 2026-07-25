@@ -243,6 +243,59 @@ describe("remote machine transport", () => {
     });
   });
 
+  it("retains pending deduplication entries and bounds unrelated in-flight work", async () => {
+    let authorize!: () => void;
+    let authorizationStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      authorizationStarted = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      authorize = resolve;
+    });
+    let authorizationCount = 0;
+    const base = createRemoteTestMachine();
+    const machine = {
+      ...base,
+      remote: {
+        ...base.remote,
+        async authorizeDispatch(
+          context: Parameters<typeof base.remote.authorizeDispatch>[0],
+        ) {
+          authorizationCount += 1;
+          if (authorizationCount === 1) {
+            authorizationStarted();
+            await gate;
+          }
+          return base.remote.authorizeDispatch(context);
+        },
+      },
+    };
+    const { duplex } = createHarness({
+      machine,
+      maxDeduplicationEntries: 1,
+      deduplicationRetentionMs: 0,
+    });
+    const renderer = duplex.connect();
+    const envelope = dispatch({ type: "INCREMENT" });
+    const first = renderer.dispatch(envelope);
+    await started;
+    const retry = renderer.dispatch(envelope);
+
+    await expect(
+      renderer.dispatch(dispatch({ type: "INCREMENT" })),
+    ).rejects.toThrow("Remote machine in-flight dispatch limit exceeded");
+    expect(authorizationCount).toBe(1);
+
+    authorize();
+    await expect(Promise.all([first, retry])).resolves.toEqual([
+      expect.objectContaining({ kind: "applied", revision: 1 }),
+      expect.objectContaining({ kind: "applied", revision: 1 }),
+    ]);
+    await expect(
+      renderer.dispatch(dispatch({ type: "INCREMENT" })),
+    ).resolves.toMatchObject({ kind: "applied", revision: 2 });
+  });
+
   it("applies declared revision policy and requires cancellation identity", async () => {
     const { duplex } = createHarness();
     const renderer = duplex.connect();

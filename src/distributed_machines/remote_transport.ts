@@ -62,6 +62,7 @@ interface SubscriptionEntry {
 interface DeduplicationEntry {
   readonly createdAt: number;
   readonly receipt: Promise<MachineDispatchReceipt>;
+  settled: boolean;
 }
 
 const DEFAULT_DEDUPLICATION_RETENTION_MS = 60_000;
@@ -215,12 +216,29 @@ export class RemoteMachineTransport {
     const deduplicationKey = `${sender.id}\0${envelope.messageId}`;
     const previous = this.deduplication.get(deduplicationKey);
     if (previous) return previous.receipt;
+    if (!this.reserveDeduplicationCapacity()) {
+      return Promise.reject(
+        new DyadError(
+          "Remote machine in-flight dispatch limit exceeded",
+          DyadErrorKind.RateLimited,
+        ),
+      );
+    }
     const receipt = this.dispatchOnce(sender, windowSessionId, envelope);
-    this.deduplication.set(deduplicationKey, {
+    const entry: DeduplicationEntry = {
       createdAt: this.options.clock.now(),
       receipt,
-    });
-    this.pruneDeduplication();
+      settled: false,
+    };
+    this.deduplication.set(deduplicationKey, entry);
+    void receipt.then(
+      () => {
+        entry.settled = true;
+      },
+      () => {
+        entry.settled = true;
+      },
+    );
     return receipt;
   }
 
@@ -579,13 +597,20 @@ export class RemoteMachineTransport {
     const oldestAllowed =
       this.options.clock.now() - this.deduplicationRetentionMs;
     for (const [key, entry] of this.deduplication) {
-      if (entry.createdAt >= oldestAllowed) break;
-      this.deduplication.delete(key);
+      if (entry.settled && entry.createdAt < oldestAllowed) {
+        this.deduplication.delete(key);
+      }
     }
-    while (this.deduplication.size > this.maxDeduplicationEntries) {
-      const oldest = this.deduplication.keys().next().value;
-      if (oldest === undefined) break;
-      this.deduplication.delete(oldest);
+  }
+
+  private reserveDeduplicationCapacity(): boolean {
+    while (this.deduplication.size >= this.maxDeduplicationEntries) {
+      const oldestSettled = [...this.deduplication].find(
+        ([, entry]) => entry.settled,
+      );
+      if (!oldestSettled) return false;
+      this.deduplication.delete(oldestSettled[0]);
     }
+    return true;
   }
 }

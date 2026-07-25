@@ -68,10 +68,13 @@ Background and before/after examples of why this pattern exists:
   idempotency key through every queue, IPC, and persistence boundary. Make the
   receiving boundary durably deduplicate acceptance, and acknowledge only
   after that acceptance; a renderer-local enqueue is not durable acceptance.
+  Bounded dedup caches may evict settled history, never unresolved receipts;
+  reject excess in-flight work through a separate bounded admission limit.
 - Make remote subscribe/bootstrap idempotent per window, machine, and key.
   Resync and reconnect retries must refresh the bootstrap without incrementing
   ownership; projection/encoding failure rolls back only ownership acquired by
-  that call, or failed retries and cleanup can leave the actor retained.
+  that call. Renderer bootstrap applies both codecs and refuses disposed actor
+  lifetimes, or failed retries and delayed responses can retain stale state.
 - After asynchronous remote authorization, revalidate both the sender's window
   session and the actor instance/revision used for the decision. Re-authorize
   changed state (or reject it), then keep admission synchronous.
@@ -81,9 +84,6 @@ Background and before/after examples of why this pattern exists:
 - Capture receipt metadata synchronously when that dispatch ticket settles.
   Reading mutable actor metadata after awaiting the ticket can observe a
   re-entrant follow-up transaction instead of the acknowledged event.
-- Validate bootstrap snapshots with both outer and per-machine codecs on the
-  renderer, and consult disposed-actor tombstones before installing a delayed
-  bootstrap so an ended lifetime cannot be resurrected.
 - Machine-generated queued work must not be editable or removable (including
   through bulk-clear paths) unless removal explicitly settles or rejects the
   owning machine request; otherwise reload can resurrect abandoned work.

@@ -8,6 +8,7 @@ import type { InvocationRef } from "@/state_machines/invocation_ref";
 import type { TaskScope } from "@/state_machines/task_scope";
 import type { TimerLeaseScope } from "@/state_machines/timer_lease";
 import type {
+  DispatchContext,
   IgnoreReason,
   TransitionObserver,
   TransitionResult,
@@ -179,7 +180,7 @@ export interface LocalActorRef<State, Event> {
   getSnapshot(): State;
   getMetadata(): ActorRuntimeMetadata;
   subscribe(listener: () => void): () => void;
-  send(event: Event): void;
+  send(event: Event, dispatchContext?: DispatchContext): void;
 }
 
 export interface HostedActorRef<
@@ -187,7 +188,10 @@ export interface HostedActorRef<
   Event,
   Reason extends IgnoreReason,
 > extends LocalActorRef<State, Event> {
-  enqueue(event: Event): ActorDispatchTicket<State, Reason>;
+  enqueue(
+    event: Event,
+    dispatchContext?: DispatchContext,
+  ): ActorDispatchTicket<State, Reason>;
 }
 
 export interface ActorDispatchTicket<

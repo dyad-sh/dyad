@@ -32,6 +32,29 @@ afterEach(() => {
 });
 
 describe("machine trace observer", () => {
+  it("records dispatch correlation and causation metadata", () => {
+    const machine = machineName("dispatch-context");
+    const observer = createTraceObserver<number, string, never>(machine);
+
+    observer.onTransitionApplied?.({
+      previous: 0,
+      event: "advance",
+      state: 1,
+      commands: [],
+      dispatchContext: {
+        messageId: "message-1",
+        correlationId: "correlation-1",
+        causationId: "causation-1",
+      },
+    });
+
+    expect(getTraceLog(machine)[0]).toMatchObject({
+      messageId: "message-1",
+      correlationId: "correlation-1",
+      causationId: "causation-1",
+    });
+  });
+
   it("caps each entity-key ring independently", () => {
     const machine = machineName("cap");
     const first = createTraceObserver<number, string, string>(machine, 7, {

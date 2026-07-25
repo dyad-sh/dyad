@@ -1,4 +1,8 @@
-import type { IgnoreReason, TransitionObserver } from "./types";
+import type {
+  DispatchContext,
+  IgnoreReason,
+  TransitionObserver,
+} from "./types";
 
 export interface ReplayTraceEntry<SerializedEvent> {
   readonly event: SerializedEvent;
@@ -31,6 +35,9 @@ export interface MachineTraceEntry {
   readonly to: unknown;
   readonly commands: readonly unknown[];
   readonly ignoredReason?: IgnoreReason;
+  readonly messageId?: string;
+  readonly correlationId?: string;
+  readonly causationId?: string;
 }
 
 export interface TraceObserverOptions<State, Event, Command> {
@@ -124,6 +131,17 @@ function record(entry: MachineTraceEntry, maxEntries: number): void {
   }
 }
 
+function describeDispatchContext(
+  dispatchContext: DispatchContext | undefined,
+): Pick<MachineTraceEntry, "messageId" | "correlationId" | "causationId"> {
+  if (!dispatchContext) return {};
+  return {
+    messageId: dispatchContext.messageId,
+    correlationId: dispatchContext.correlationId,
+    causationId: dispatchContext.causationId,
+  };
+}
+
 /**
  * Return a snapshot of captured traces. Without a machine name, entries from
  * every machine are merged chronologically.
@@ -162,7 +180,13 @@ export function createTraceObserver<
   const describeCommand = options.describeCommand ?? defaultDescription;
 
   return {
-    onTransitionApplied: ({ previous, event, state, commands }) => {
+    onTransitionApplied: ({
+      previous,
+      event,
+      state,
+      commands,
+      dispatchContext,
+    }) => {
       if (options.mute?.(event)) return;
       record(
         {
@@ -174,11 +198,12 @@ export function createTraceObserver<
           event: describeEvent(event),
           to: describeState(state),
           commands: commands.map(describeCommand),
+          ...describeDispatchContext(dispatchContext),
         },
         maxEntries,
       );
     },
-    onEventIgnored: ({ state, event, reason }) => {
+    onEventIgnored: ({ state, event, reason, dispatchContext }) => {
       if (options.mute?.(event)) return;
       record(
         {
@@ -191,6 +216,7 @@ export function createTraceObserver<
           to: describeState(state),
           commands: [],
           ignoredReason: reason,
+          ...describeDispatchContext(dispatchContext),
         },
         maxEntries,
       );

@@ -1,5 +1,6 @@
 import type { IgnoreReason } from "@/state_machines/types";
 import type { DistributedMachineDefinition } from "./definition";
+import { MachineIdentitySchema } from "./remote_protocol";
 
 export type AnyRemoteMachineDefinition = DistributedMachineDefinition<
   string,
@@ -32,6 +33,15 @@ export function createRemoteMachineManifest(
 ): RemoteMachineManifest {
   const byId = new Map<string, AnyRemoteMachineDefinition>();
   for (const definition of definitions) {
+    const identity = MachineIdentitySchema.safeParse({
+      machineId: definition.id,
+      protocolVersion: definition.remote.protocolVersion,
+    });
+    if (!identity.success) {
+      throw new Error(
+        `Invalid remote machine identity for ${definition.id || "<empty>"}: ${identity.error.message}`,
+      );
+    }
     if (byId.has(definition.id)) {
       throw new Error(`Duplicate remote machine ID: ${definition.id}`);
     }

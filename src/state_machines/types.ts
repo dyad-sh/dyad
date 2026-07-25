@@ -5,6 +5,13 @@ export type IgnoreReason<Tag extends string = string> = Tag;
 export const STALE_OPERATION_IGNORE_REASON = "stale-operation" as const;
 export type StaleOperationIgnoreReason = typeof STALE_OPERATION_IGNORE_REASON;
 
+/** Transport-neutral metadata that links one dispatch to its causal chain. */
+export interface DispatchContext {
+  readonly messageId: string;
+  readonly correlationId?: string;
+  readonly causationId?: string;
+}
+
 /**
  * The common result shape for pure state-machine transitions.
  *
@@ -50,12 +57,14 @@ export interface AppliedTransition<State, Event, Command> {
   event: Event;
   state: State;
   commands: readonly Command[];
+  dispatchContext?: DispatchContext;
 }
 
 export interface IgnoredEvent<State, Event, Reason extends IgnoreReason> {
   state: State;
   event: Event;
   reason: Reason;
+  dispatchContext?: DispatchContext;
 }
 
 /** Optional telemetry hooks shared by controllers and registries. */
@@ -82,12 +91,14 @@ export function observeTransition<
   previous: State,
   event: Event,
   result: TransitionResult<State, Command, Reason>,
+  dispatchContext?: DispatchContext,
 ): void {
   if (result.kind === "ignored") {
     observer?.onEventIgnored?.({
       state: previous,
       event,
       reason: result.reason,
+      ...(dispatchContext ? { dispatchContext } : {}),
     });
     return;
   }
@@ -96,5 +107,6 @@ export function observeTransition<
     event,
     state: result.state,
     commands: result.commands,
+    ...(dispatchContext ? { dispatchContext } : {}),
   });
 }

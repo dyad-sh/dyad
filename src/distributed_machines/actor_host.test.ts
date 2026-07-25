@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { change, ignore, stay } from "@/state_machines/types";
+import {
+  change,
+  ignore,
+  stay,
+  type DispatchContext,
+} from "@/state_machines/types";
 import {
   createFakeClock,
   createSequentialIdSource,
@@ -90,6 +95,35 @@ function host(
 }
 
 describe("ActorHost", () => {
+  it("passes dispatch context through host dispatch to observers", async () => {
+    const observed = vi.fn();
+    const definition = {
+      ...machine("dispatch-context"),
+      createObserver: () => ({
+        onTransitionApplied: observed,
+      }),
+    };
+    const actorHost = host();
+    actorHost.register(definition);
+    const dispatchContext: DispatchContext = {
+      messageId: "message-1",
+      correlationId: "correlation-1",
+      causationId: "causation-1",
+    };
+
+    await actorHost.dispatch(
+      definition,
+      "entity",
+      { type: "SET", value: 1 },
+      undefined,
+      dispatchContext,
+    ).settled;
+
+    expect(observed).toHaveBeenCalledWith(
+      expect.objectContaining({ dispatchContext }),
+    );
+  });
+
   it("passes the reusable local host conformance suite", async () => {
     await expect(runLocalActorHostConformanceSuite()).resolves.toBeUndefined();
   });

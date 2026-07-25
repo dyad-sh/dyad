@@ -1,6 +1,7 @@
 import { SnapshotStore } from "./snapshot_store";
 import { validateTransitionResult } from "./transition_validation";
 import type {
+  DispatchContext,
   IgnoreReason,
   TransitionObserver,
   TransitionResult,
@@ -48,6 +49,7 @@ export interface DispatchTicket<State, Reason extends IgnoreReason> {
 
 interface PendingDispatch<State, Event> {
   readonly event: Event;
+  readonly dispatchContext?: DispatchContext;
   readonly onSettled?: (
     outcome: DispatchTicketOutcome<State, IgnoreReason>,
   ) => void;
@@ -159,6 +161,7 @@ export class TransactionalDispatcher<
   enqueue = (
     event: Event,
     onSettled?: (outcome: DispatchTicketOutcome<State, Reason>) => void,
+    dispatchContext?: DispatchContext,
   ): DispatchTicket<State, Reason> => {
     let settle!: (outcome: DispatchTicketOutcome<State, Reason>) => void;
     const settled = new Promise<DispatchTicketOutcome<State, Reason>>(
@@ -173,6 +176,7 @@ export class TransactionalDispatcher<
     }
     this.pendingEvents.push({
       event,
+      dispatchContext,
       onSettled: onSettled as
         | ((outcome: DispatchTicketOutcome<State, IgnoreReason>) => void)
         | undefined,
@@ -200,8 +204,8 @@ export class TransactionalDispatcher<
     return ticket;
   };
 
-  send = (event: Event): void => {
-    void this.enqueue(event);
+  send = (event: Event, dispatchContext?: DispatchContext): void => {
+    void this.enqueue(event, undefined, dispatchContext);
   };
 
   /**
@@ -240,6 +244,7 @@ export class TransactionalDispatcher<
 
   private processOne({
     event,
+    dispatchContext,
     onSettled,
     settle,
   }: PendingDispatch<State, Event>): void {
@@ -268,7 +273,7 @@ export class TransactionalDispatcher<
     }
 
     if (result.kind === "ignored") {
-      this.notifyObserver(previous, event, result);
+      this.notifyObserver(previous, event, result, dispatchContext);
       settleCurrent({
         kind: "ignored",
         state: this.store.getSnapshot(),
@@ -296,7 +301,7 @@ export class TransactionalDispatcher<
       this.store.setState(result.state, () => this.project(result.state));
     }
 
-    this.notifyObserver(previous, event, result);
+    this.notifyObserver(previous, event, result, dispatchContext);
     this.startBatch(batch);
     settleCurrent({ kind: "applied", state: this.store.getSnapshot() });
   }
@@ -360,6 +365,7 @@ export class TransactionalDispatcher<
     previous: State,
     event: Event,
     result: TransitionResult<State, Command, Reason>,
+    dispatchContext?: DispatchContext,
   ): void {
     try {
       if (result.kind === "ignored") {
@@ -367,6 +373,7 @@ export class TransactionalDispatcher<
           state: this.store.getSnapshot(),
           event,
           reason: result.reason,
+          ...(dispatchContext ? { dispatchContext } : {}),
         });
       } else {
         this.options.observer?.onTransitionApplied?.({
@@ -374,6 +381,7 @@ export class TransactionalDispatcher<
           event,
           state: this.store.getSnapshot(),
           commands: result.commands,
+          ...(dispatchContext ? { dispatchContext } : {}),
         });
       }
     } catch (error) {

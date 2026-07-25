@@ -1,3 +1,4 @@
+import { serialize } from "node:v8";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import type { Clock } from "@/state_machines/clock";
 import type { WindowSessionId } from "@/window_infrastructure/types";
@@ -40,6 +41,9 @@ export interface RemoteMachineTransportOptions {
   readonly deduplicationRetentionMs?: number;
   readonly maxDeduplicationEntries?: number;
   readonly maxSubscriptionsPerWindow?: number;
+  readonly maxDispatchEnvelopeBytes?: number;
+  readonly maxSnapshotEnvelopeBytes?: number;
+  readonly measureSerializedBytes?: (value: unknown) => number;
   readonly onProtocolMismatch?: (context: {
     readonly sender: RemoteMachineSender;
     readonly machineId: string;
@@ -68,6 +72,9 @@ interface DeduplicationEntry {
 const DEFAULT_DEDUPLICATION_RETENTION_MS = 60_000;
 const DEFAULT_MAX_DEDUPLICATION_ENTRIES = 1_024;
 const DEFAULT_MAX_SUBSCRIPTIONS_PER_WINDOW = 256;
+const DEFAULT_MAX_DISPATCH_ENVELOPE_BYTES = 256 * 1_024;
+const DEFAULT_MAX_SNAPSHOT_ENVELOPE_BYTES = 1_024 * 1_024;
+const MAX_AUTHORIZATION_STABILIZATION_ATTEMPTS = 3;
 
 export class RemoteMachineTransport {
   private readonly subscriptions = new Map<string, SubscriptionEntry>();
@@ -79,6 +86,9 @@ export class RemoteMachineTransport {
   private readonly deduplicationRetentionMs: number;
   private readonly maxDeduplicationEntries: number;
   private readonly maxSubscriptionsPerWindow: number;
+  private readonly maxDispatchEnvelopeBytes: number;
+  private readonly maxSnapshotEnvelopeBytes: number;
+  private readonly measureSerializedBytes: (value: unknown) => number;
 
   constructor(private readonly options: RemoteMachineTransportOptions) {
     this.deduplicationRetentionMs =
@@ -87,6 +97,13 @@ export class RemoteMachineTransport {
       options.maxDeduplicationEntries ?? DEFAULT_MAX_DEDUPLICATION_ENTRIES;
     this.maxSubscriptionsPerWindow =
       options.maxSubscriptionsPerWindow ?? DEFAULT_MAX_SUBSCRIPTIONS_PER_WINDOW;
+    this.maxDispatchEnvelopeBytes =
+      options.maxDispatchEnvelopeBytes ?? DEFAULT_MAX_DISPATCH_ENVELOPE_BYTES;
+    this.maxSnapshotEnvelopeBytes =
+      options.maxSnapshotEnvelopeBytes ?? DEFAULT_MAX_SNAPSHOT_ENVELOPE_BYTES;
+    this.measureSerializedBytes =
+      options.measureSerializedBytes ??
+      ((value) => serialize(value).byteLength);
     for (const definition of options.manifest.definitions) {
       options.host.register(definition);
     }
@@ -158,12 +175,12 @@ export class RemoteMachineTransport {
     let entry = existingEntry;
     if (!entry) {
       const canonicalKey = this.actorKeys.get(address) ?? key;
-      this.actorKeys.set(address, canonicalKey);
       const encodedKey = this.encodeKey(definition, canonicalKey);
       const actor = this.options.host.localRef(
         definition,
         canonicalKey,
       ) as HostedActorRef<unknown, unknown, string>;
+      this.actorKeys.set(address, canonicalKey);
       entry = {
         address,
         definition,
@@ -212,8 +229,15 @@ export class RemoteMachineTransport {
     envelope: MachineDispatchEnvelope,
   ): Promise<MachineDispatchReceipt> {
     const windowSessionId = this.options.windows.ensureRegistered(sender);
+    if (
+      !this.isWithinSerializedLimit(envelope, this.maxDispatchEnvelopeBytes)
+    ) {
+      return Promise.resolve(
+        this.rejected(envelope.messageId, "invalid-event"),
+      );
+    }
     this.pruneDeduplication();
-    const deduplicationKey = `${sender.id}\0${envelope.messageId}`;
+    const deduplicationKey = `${windowSessionId}\0${envelope.messageId}`;
     const previous = this.deduplication.get(deduplicationKey);
     if (previous) return previous.receipt;
     if (!this.reserveDeduplicationCapacity()) {
@@ -299,7 +323,11 @@ export class RemoteMachineTransport {
       definition.id,
       key,
     );
-    for (;;) {
+    for (
+      let attempt = 0;
+      attempt < MAX_AUTHORIZATION_STABILIZATION_ATTEMPTS;
+      attempt += 1
+    ) {
       const authorizedActorInstanceId = current?.getMetadata().actorInstanceId;
       const authorizedRevision = current?.getMetadata().snapshotRevision;
       try {
@@ -330,11 +358,18 @@ export class RemoteMachineTransport {
         current = authorizedCurrent;
         break;
       }
+      if (attempt === MAX_AUTHORIZATION_STABILIZATION_ATTEMPTS - 1) {
+        return this.rejected(envelope.messageId, "revision-conflict");
+      }
       current = authorizedCurrent;
     }
 
+    if (!current) {
+      return this.rejected(envelope.messageId, "stale-actor");
+    }
     const revisionPolicy = definition.remote.revisionPolicy(eventResult.data);
-    const currentRevision = current?.getMetadata().snapshotRevision ?? 0;
+    const currentMetadata = current.getMetadata();
+    const currentRevision = currentMetadata.snapshotRevision;
     if (
       revisionPolicy === "reject-stale" &&
       (envelope.expectedRevision === undefined ||
@@ -343,12 +378,16 @@ export class RemoteMachineTransport {
       return this.rejected(envelope.messageId, "revision-conflict");
     }
 
-    this.actorKeys.set(address, key);
     const ticket = this.options.host.dispatch(
       definition,
       key,
       eventResult.data,
-      envelope.expectedActorInstanceId,
+      envelope.expectedActorInstanceId ?? currentMetadata.actorInstanceId,
+      {
+        messageId: envelope.messageId,
+        correlationId: envelope.correlationId,
+        causationId: envelope.causationId,
+      },
     );
     const dispatchedActor = this.options.host.peek<unknown, unknown, string>(
       definition.id,
@@ -403,7 +442,7 @@ export class RemoteMachineTransport {
         `Remote snapshot projection failed for ${entry.definition.id}: ${parsed.error.message}`,
       );
     }
-    return {
+    const envelope: MachineSnapshotEnvelope = {
       protocolVersion: entry.definition.remote.protocolVersion,
       machineId: entry.definition.id,
       encodedKey: entry.encodedKey,
@@ -411,6 +450,15 @@ export class RemoteMachineTransport {
       revision: metadata.snapshotRevision,
       encodedState: parsed.data,
     };
+    if (
+      !this.isWithinSerializedLimit(envelope, this.maxSnapshotEnvelopeBytes)
+    ) {
+      throw new DyadError(
+        `Remote snapshot exceeds the transport limit for ${entry.definition.id}`,
+        DyadErrorKind.RateLimited,
+      );
+    }
+    return envelope;
   }
 
   private broadcastSnapshot(entry: SubscriptionEntry): void {
@@ -591,6 +639,14 @@ export class RemoteMachineTransport {
     reason: MachineRejectedReason,
   ): MachineDispatchReceipt {
     return { kind: "rejected", messageId, reason };
+  }
+
+  private isWithinSerializedLimit(value: unknown, limit: number): boolean {
+    try {
+      return this.measureSerializedBytes(value) <= limit;
+    } catch {
+      return false;
+    }
   }
 
   private pruneDeduplication(): void {

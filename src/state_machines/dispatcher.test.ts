@@ -4,7 +4,13 @@ import {
   runControllerConformanceSuite,
   type ControllerConformanceAdapter,
 } from "./testing";
-import { change, ignore, stay, type TransitionResult } from "./types";
+import {
+  change,
+  ignore,
+  stay,
+  type DispatchContext,
+  type TransitionResult,
+} from "./types";
 
 type TestState = { value: number };
 type TestCommand =
@@ -121,6 +127,37 @@ function createConformanceAdapter(): ControllerConformanceAdapter<
 }
 
 describe("TransactionalDispatcher", () => {
+  it("passes dispatch context to applied and ignored observers", async () => {
+    const applied = vi.fn();
+    const ignored = vi.fn();
+    const dispatcher = new TransactionalDispatcher({
+      initialState: { value: 0 },
+      transition: testTransition,
+      scheduler: independentScheduler(),
+      runCommand: () => undefined,
+      observer: {
+        onTransitionApplied: applied,
+        onEventIgnored: ignored,
+      },
+    });
+    const context: DispatchContext = {
+      messageId: "message-1",
+      correlationId: "correlation-1",
+      causationId: "causation-1",
+    };
+
+    await dispatcher.enqueue({ type: "SET", value: 1 }, undefined, context)
+      .settled;
+    await dispatcher.enqueue({ type: "IGNORE" }, undefined, context).settled;
+
+    expect(applied).toHaveBeenCalledWith(
+      expect.objectContaining({ dispatchContext: context }),
+    );
+    expect(ignored).toHaveBeenCalledWith(
+      expect.objectContaining({ dispatchContext: context }),
+    );
+  });
+
   it("settles re-entrant enqueue tickets on their exact FIFO turns", async () => {
     const tickets: ReturnType<
       TransactionalDispatcher<

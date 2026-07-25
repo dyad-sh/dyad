@@ -17,6 +17,7 @@ import {
 } from "../remote_transport";
 
 interface FakeRemoteView {
+  readonly generation: number;
   readonly address: MachineAddress;
   readonly snapshotCodec: z.ZodType;
   actorInstanceId?: string;
@@ -26,6 +27,7 @@ interface FakeRemoteView {
   readonly buffered: MachineSnapshotEnvelope[];
   readonly disposedActorIds: Set<string>;
   resyncs: number;
+  resyncGeneration: number;
   malformedSnapshots: number;
 }
 
@@ -77,6 +79,7 @@ export class FakeDuplexRemoteTransport {
 
 export class FakeRemoteRenderer {
   private readonly views = new Map<string, FakeRemoteView>();
+  private nextViewGeneration = 1;
   private readonly removeReceiveListener: () => void;
   private holdBootstrap = false;
   private readonly bootstrapReleases: Array<() => void> = [];
@@ -112,42 +115,56 @@ export class FakeRemoteRenderer {
     const definition = this.duplex.manifest.get(address.machineId);
     if (!definition)
       throw new Error(`Unknown fake machine ${address.machineId}`);
+    const addressKey = this.addressKey(address);
     const view: FakeRemoteView = {
+      generation: this.nextViewGeneration++,
       address,
       snapshotCodec: definition.remote.snapshotCodec,
       bootstrapped: false,
       buffered: [],
       disposedActorIds: new Set(),
       resyncs: 0,
+      resyncGeneration: 0,
       malformedSnapshots: 0,
     };
-    this.views.set(this.addressKey(address), view);
+    this.views.set(addressKey, view);
     const generation = this.connectionGeneration();
-    const bootstrap = await this.duplex.main.subscribe(
-      this.endpoint(),
-      address,
-    );
-    if (this.holdBootstrap) {
-      await new Promise<void>((resolve) =>
-        this.bootstrapReleases.push(resolve),
-      );
-    }
-    this.assertGeneration(generation);
+    let mainSubscribed = false;
     try {
+      const bootstrap = await this.duplex.main.subscribe(
+        this.endpoint(),
+        address,
+      );
+      mainSubscribed = true;
+      if (this.holdBootstrap) {
+        await new Promise<void>((resolve) =>
+          this.bootstrapReleases.push(resolve),
+        );
+      }
+      this.assertGeneration(generation);
+      if (!this.isCurrentView(view)) {
+        throw new Error(
+          `Remote subscription was superseded (generation ${view.generation})`,
+        );
+      }
       const validated = this.validateSnapshot(view, bootstrap, address);
       this.applyBootstrap(view, validated);
       return validated;
     } catch (error) {
-      this.views.delete(this.addressKey(address));
-      await this.duplex.main.unsubscribe(this.endpoint(), address);
+      if (this.isCurrentView(view)) {
+        this.views.delete(addressKey);
+        await this.compensateSubscription(address);
+      } else if (mainSubscribed && !this.views.has(addressKey)) {
+        await this.compensateSubscription(address);
+      }
       throw error;
     }
   }
 
   async unsubscribe(address: MachineAddress): Promise<void> {
     this.assertConnected();
-    await this.duplex.main.unsubscribe(this.endpoint(), address);
     this.views.delete(this.addressKey(address));
+    await this.duplex.main.unsubscribe(this.endpoint(), address);
   }
 
   async dispatch(
@@ -170,6 +187,7 @@ export class FakeRemoteRenderer {
   disconnect(): void {
     if (!this.connected) return;
     this.connected = false;
+    this.views.clear();
     this.removeReceiveListener();
     this.duplex.windows.destroy(this.sessionId);
     this.releaseBootstrapResponses();
@@ -234,8 +252,13 @@ export class FakeRemoteRenderer {
     bootstrap: MachineSnapshotEnvelope,
   ): void {
     if (view.disposedActorIds.has(bootstrap.actorInstanceId)) {
-      view.bootstrapped = true;
-      view.buffered.splice(0);
+      throw new Error("Remote bootstrap references a disposed actor");
+    }
+    if (
+      view.bootstrapped &&
+      view.actorInstanceId === bootstrap.actorInstanceId &&
+      bootstrap.revision <= (view.revision ?? -1)
+    ) {
       return;
     }
     view.actorInstanceId = bootstrap.actorInstanceId;
@@ -267,16 +290,43 @@ export class FakeRemoteRenderer {
   }
 
   private async resync(view: FakeRemoteView): Promise<void> {
+    const requestGeneration = ++view.resyncGeneration;
+    let mainSubscribed = false;
     try {
       const bootstrap = await this.duplex.main.subscribe(
         this.endpoint(),
         view.address,
       );
-      if (!this.connected) return;
+      mainSubscribed = true;
+      if (!this.isCurrentView(view)) {
+        if (!this.views.has(this.addressKey(view.address))) {
+          await this.compensateSubscription(view.address);
+        }
+        return;
+      }
+      if (requestGeneration !== view.resyncGeneration) return;
       const validated = this.validateSnapshot(view, bootstrap, view.address);
       this.applyBootstrap(view, validated);
     } catch {
+      if (mainSubscribed && !this.isCurrentView(view)) {
+        await this.compensateSubscription(view.address);
+      }
       // The fake exposes the resync count; connection handling belongs to B4.
+    }
+  }
+
+  private isCurrentView(view: FakeRemoteView): boolean {
+    return (
+      this.connected && this.views.get(this.addressKey(view.address)) === view
+    );
+  }
+
+  private async compensateSubscription(address: MachineAddress): Promise<void> {
+    if (!this.connected) return;
+    try {
+      await this.duplex.main.unsubscribe(this.endpoint(), address);
+    } catch {
+      // A destroyed endpoint is already cleaned up by the main transport.
     }
   }
 

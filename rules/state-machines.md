@@ -70,6 +70,8 @@ Background and before/after examples of why this pattern exists:
   after that acceptance; a renderer-local enqueue is not durable acceptance.
   Bounded dedup caches may evict settled history, never unresolved receipts;
   reject excess in-flight work through a separate bounded admission limit.
+  Scope renderer retries to the stable window-session identity, not an
+  ephemeral `webContents.id`, so reconnect cannot bypass deduplication.
 - Make remote subscribe/bootstrap idempotent per window, machine, and key.
   Resync and reconnect retries must refresh the bootstrap without incrementing
   ownership; projection/encoding failure rolls back only ownership acquired by
@@ -77,10 +79,14 @@ Background and before/after examples of why this pattern exists:
   lifetimes, or failed retries and delayed responses can retain stale state.
 - After asynchronous remote authorization, revalidate both the sender's window
   session and the actor instance/revision used for the decision. Re-authorize
-  changed state (or reject it), then keep admission synchronous.
+  changed state only a bounded number of times (then reject it), and keep
+  admission synchronous. Remote dispatch may address only an existing actor
+  created by subscription and must lock admission to that actor instance.
 - Remote key codecs need an explicit encoder as well as a decoder. Use the
   canonical encoded value in every wire envelope; never emit the decoded domain
-  key, which may be transformed or non-serializable.
+  key, which may be transformed or non-serializable. Bound dispatch and
+  snapshot envelopes with a structured-clone-compatible byte measurement;
+  JSON sizing is not wire-compatible with values such as `bigint`.
 - Capture receipt metadata synchronously when that dispatch ticket settles.
   Reading mutable actor metadata after awaiting the ticket can observe a
   re-entrant follow-up transaction instead of the acknowledged event.

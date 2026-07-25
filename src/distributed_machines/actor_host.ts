@@ -7,7 +7,11 @@ import { TaskScope, collectDisposalError } from "@/state_machines/task_scope";
 import { TimerLeaseScope } from "@/state_machines/timer_lease";
 import { createTraceObserver } from "@/state_machines/trace";
 import type { Clock, ClockHandle, IdSource } from "@/state_machines/clock";
-import type { IgnoreReason, TransitionObserver } from "@/state_machines/types";
+import type {
+  DispatchContext,
+  IgnoreReason,
+  TransitionObserver,
+} from "@/state_machines/types";
 import type {
   ActorDisposalCause,
   ActorDispatchTicket,
@@ -247,16 +251,23 @@ class HostedActor<
     };
   };
 
-  send = (event: Event): void => {
-    void this.enqueue(event);
+  send = (event: Event, dispatchContext?: DispatchContext): void => {
+    void this.enqueue(event, dispatchContext);
   };
 
-  enqueue = (event: Event): ActorDispatchTicket<State, Reason> => {
+  enqueue = (
+    event: Event,
+    dispatchContext?: DispatchContext,
+  ): ActorDispatchTicket<State, Reason> => {
     if (this.isAdmissionClosed()) this.stopAdmission();
     let settledMetadata: ActorRuntimeMetadata | undefined;
-    const ticket = this.dispatcher.enqueue(event, () => {
-      settledMetadata = this.getMetadata();
-    });
+    const ticket = this.dispatcher.enqueue(
+      event,
+      () => {
+        settledMetadata = this.getMetadata();
+      },
+      dispatchContext,
+    );
     void ticket.settled
       .then((outcome) => {
         if (outcome.kind !== "disposed") this.reconcileRetention();
@@ -271,6 +282,7 @@ class HostedActor<
   enqueueExpected(
     event: Event,
     expectedActorInstanceId?: ActorInstanceId,
+    dispatchContext?: DispatchContext,
   ): ActorDispatchTicket<State, Reason> {
     if (
       expectedActorInstanceId !== undefined &&
@@ -285,7 +297,7 @@ class HostedActor<
         ),
       });
     }
-    return this.enqueue(event);
+    return this.enqueue(event, dispatchContext);
   }
 
   stopAdmission(): void {
@@ -690,6 +702,7 @@ export class ActorHost {
     key: Key,
     event: Event,
     expectedActorInstanceId?: ActorInstanceId,
+    dispatchContext?: DispatchContext,
   ): ActorDispatchTicket<State, Reason> {
     this.assertRegistered(definition);
     if (this.disposed) {
@@ -777,7 +790,11 @@ export class ActorHost {
         });
       }
     }
-    return actor.enqueueExpected(event, expectedActorInstanceId);
+    return actor.enqueueExpected(
+      event,
+      expectedActorInstanceId,
+      dispatchContext,
+    );
   }
 
   async disposeKey(

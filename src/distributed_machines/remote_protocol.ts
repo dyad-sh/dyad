@@ -8,9 +8,12 @@ const messageIdSchema = z.string().min(1).max(256);
 const actorInstanceIdSchema = z.string().min(1).max(256);
 const revisionSchema = z.number().int().nonnegative();
 
-export const MachineAddressSchema = z.object({
+export const MachineIdentitySchema = z.object({
   protocolVersion: protocolVersionSchema,
   machineId: machineIdSchema,
+});
+
+export const MachineAddressSchema = MachineIdentitySchema.extend({
   encodedKey: z.unknown(),
 });
 

@@ -23,6 +23,36 @@ export interface DispatcherError<Command = unknown> {
   readonly command?: Command;
 }
 
+export type DispatchTicketOutcome<State, Reason extends IgnoreReason> =
+  | {
+      readonly kind: "applied";
+      readonly state: State;
+    }
+  | {
+      readonly kind: "ignored";
+      readonly state: State;
+      readonly reason: Reason;
+    }
+  | {
+      readonly kind: "failed";
+      readonly stage: "transition" | "validation" | "before-admission";
+      readonly error: unknown;
+    }
+  | {
+      readonly kind: "disposed";
+    };
+
+export interface DispatchTicket<State, Reason extends IgnoreReason> {
+  readonly settled: Promise<DispatchTicketOutcome<State, Reason>>;
+}
+
+interface PendingDispatch<State, Event> {
+  readonly event: Event;
+  readonly settle: (
+    outcome: DispatchTicketOutcome<State, IgnoreReason>,
+  ) => void;
+}
+
 export interface ReservedCommandBatch<Command> {
   readonly sequence: number;
   readonly commands: readonly Command[];
@@ -92,9 +122,10 @@ export class TransactionalDispatcher<
   Command,
   Reason extends IgnoreReason = IgnoreReason,
 > {
-  private readonly pendingEvents: Event[] = [];
+  private readonly pendingEvents: PendingDispatch<State, Event>[] = [];
   private readonly store: SnapshotStore<State>;
   private processing = false;
+  private accepting = true;
   private disposed = false;
   private nextBatchSequence = 1;
 
@@ -112,7 +143,7 @@ export class TransactionalDispatcher<
   getSnapshot = (): State => this.store.getSnapshot();
 
   subscribe = (subscriber: () => void): (() => void) => {
-    if (this.disposed) return () => undefined;
+    if (!this.accepting) return () => undefined;
     return this.store.subscribe(() => {
       try {
         subscriber();
@@ -122,10 +153,24 @@ export class TransactionalDispatcher<
     });
   };
 
-  send = (event: Event): void => {
-    if (this.disposed) return;
-    this.pendingEvents.push(event);
-    if (this.processing) return;
+  enqueue = (event: Event): DispatchTicket<State, Reason> => {
+    let settle!: (outcome: DispatchTicketOutcome<State, Reason>) => void;
+    const settled = new Promise<DispatchTicketOutcome<State, Reason>>(
+      (resolve) => {
+        settle = resolve;
+      },
+    );
+    const ticket = { settled };
+    if (!this.accepting) {
+      settle({ kind: "disposed" });
+      return ticket;
+    }
+    this.pendingEvents.push({
+      event,
+      settle: (outcome) =>
+        settle(outcome as DispatchTicketOutcome<State, Reason>),
+    });
+    if (this.processing) return ticket;
     this.processing = true;
     try {
       for (
@@ -133,13 +178,21 @@ export class TransactionalDispatcher<
         next !== undefined;
         next = this.pendingEvents.shift()
       ) {
-        if (this.disposed) break;
+        if (!this.accepting) {
+          next.settle({ kind: "disposed" });
+          break;
+        }
         this.processOne(next);
       }
     } finally {
       this.processing = false;
-      if (this.disposed) this.pendingEvents.length = 0;
+      if (!this.accepting) this.settlePendingAsDisposed();
     }
+    return ticket;
+  };
+
+  send = (event: Event): void => {
+    void this.enqueue(event);
   };
 
   /**
@@ -153,22 +206,37 @@ export class TransactionalDispatcher<
 
   dispose(): void {
     if (this.disposed) return;
+    this.stopAdmission();
     this.disposed = true;
-    this.pendingEvents.length = 0;
     this.store.dispose();
+  }
+
+  /**
+   * Stops new events and settles queued entries while preserving the current
+   * snapshot and subscriptions for an owner's ordered disposal projection.
+   */
+  stopAdmission(): void {
+    if (!this.accepting) return;
+    this.accepting = false;
+    this.settlePendingAsDisposed();
+  }
+
+  isAccepting(): boolean {
+    return this.accepting;
   }
 
   isDisposed(): boolean {
     return this.disposed;
   }
 
-  private processOne(event: Event): void {
+  private processOne({ event, settle }: PendingDispatch<State, Event>): void {
     const previous = this.store.getSnapshot();
     let result: TransitionResult<State, Command, Reason>;
     try {
       result = this.options.transition(previous, event);
     } catch (error) {
       this.report({ stage: "transition", error });
+      settle({ kind: "failed", stage: "transition", error });
       return;
     }
 
@@ -176,11 +244,17 @@ export class TransactionalDispatcher<
       validateTransitionResult(previous, event, result);
     } catch (error) {
       this.report({ stage: "validation", error });
+      settle({ kind: "failed", stage: "validation", error });
       return;
     }
 
     if (result.kind === "ignored") {
       this.notifyObserver(previous, event, result);
+      settle({
+        kind: "ignored",
+        state: this.store.getSnapshot(),
+        reason: result.reason,
+      });
       return;
     }
 
@@ -201,6 +275,7 @@ export class TransactionalDispatcher<
 
     this.notifyObserver(previous, event, result);
     this.startBatch(batch);
+    settle({ kind: "applied", state: this.store.getSnapshot() });
   }
 
   private reserve(commands: readonly Command[]): ReservedCommandBatch<Command> {
@@ -225,7 +300,7 @@ export class TransactionalDispatcher<
   }
 
   private executeCommand: CommandExecutor<Command> = async (command) => {
-    if (this.disposed) return;
+    if (!this.accepting) return;
     await this.runGuardedCommand(command, this.send, true);
   };
 
@@ -304,6 +379,16 @@ export class TransactionalDispatcher<
       this.options.reportError(error);
     } catch {
       // Error reporting must never become another queue failure.
+    }
+  }
+
+  private settlePendingAsDisposed(): void {
+    for (
+      let pending = this.pendingEvents.shift();
+      pending !== undefined;
+      pending = this.pendingEvents.shift()
+    ) {
+      pending.settle({ kind: "disposed" });
     }
   }
 }

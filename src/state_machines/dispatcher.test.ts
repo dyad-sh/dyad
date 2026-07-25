@@ -121,6 +121,172 @@ function createConformanceAdapter(): ControllerConformanceAdapter<
 }
 
 describe("TransactionalDispatcher", () => {
+  it("settles re-entrant enqueue tickets on their exact FIFO turns", async () => {
+    const tickets: ReturnType<
+      TransactionalDispatcher<
+        TestState,
+        TestEvent,
+        TestCommand,
+        TestReason
+      >["enqueue"]
+    >[] = [];
+    let dispatcher: TransactionalDispatcher<
+      TestState,
+      TestEvent,
+      TestCommand,
+      TestReason
+    >;
+    dispatcher = new TransactionalDispatcher({
+      initialState: { value: 0 },
+      transition: testTransition,
+      scheduler: independentScheduler(),
+      runCommand: () => undefined,
+      observer: {
+        onTransitionApplied({ state }) {
+          if (state.value === 1) {
+            tickets.push(dispatcher.enqueue({ type: "IGNORE" }));
+            tickets.push(dispatcher.enqueue({ type: "SET", value: 2 }));
+          }
+        },
+      },
+    });
+
+    const first = dispatcher.enqueue({ type: "SET", value: 1 });
+    await expect(first.settled).resolves.toEqual({
+      kind: "applied",
+      state: { value: 1 },
+    });
+    await expect(tickets[0].settled).resolves.toEqual({
+      kind: "ignored",
+      state: { value: 1 },
+      reason: "ignored",
+    });
+    await expect(tickets[1].settled).resolves.toEqual({
+      kind: "applied",
+      state: { value: 2 },
+    });
+  });
+
+  it("settles transition and validation failures without wedging later entries", async () => {
+    const transitionError = new Error("bad event");
+    const dispatcher = new TransactionalDispatcher({
+      initialState: { value: 0 },
+      transition(state, event: TestEvent) {
+        if (event.type === "IGNORE") throw transitionError;
+        if (event.type === "SET" && event.value === 1) {
+          return change({ value: state.value });
+        }
+        return testTransition(state, event);
+      },
+      scheduler: independentScheduler(),
+      runCommand: () => undefined,
+      reportError: () => undefined,
+    });
+
+    const failedTransition = dispatcher.enqueue({ type: "IGNORE" });
+    const failedValidation = dispatcher.enqueue({ type: "SET", value: 1 });
+    const applied = dispatcher.enqueue({ type: "SET", value: 2 });
+
+    await expect(failedTransition.settled).resolves.toEqual({
+      kind: "failed",
+      stage: "transition",
+      error: transitionError,
+    });
+    await expect(failedValidation.settled).resolves.toMatchObject({
+      kind: "failed",
+      stage: "validation",
+    });
+    await expect(applied.settled).resolves.toEqual({
+      kind: "applied",
+      state: { value: 2 },
+    });
+  });
+
+  it("settles queued work as disposed when disposal occurs re-entrantly", async () => {
+    let queued:
+      | ReturnType<
+          TransactionalDispatcher<
+            TestState,
+            TestEvent,
+            TestCommand,
+            TestReason
+          >["enqueue"]
+        >
+      | undefined;
+    let dispatcher: TransactionalDispatcher<
+      TestState,
+      TestEvent,
+      TestCommand,
+      TestReason
+    >;
+    dispatcher = new TransactionalDispatcher({
+      initialState: { value: 0 },
+      transition: testTransition,
+      scheduler: independentScheduler(),
+      runCommand: () => undefined,
+      observer: {
+        onTransitionApplied() {
+          queued = dispatcher.enqueue({ type: "SET", value: 2 });
+          dispatcher.dispose();
+        },
+      },
+    });
+
+    const committed = dispatcher.enqueue({ type: "SET", value: 1 });
+
+    await expect(committed.settled).resolves.toEqual({
+      kind: "applied",
+      state: { value: 1 },
+    });
+    await expect(queued?.settled).resolves.toEqual({ kind: "disposed" });
+    await expect(
+      dispatcher.enqueue({ type: "SET", value: 3 }).settled,
+    ).resolves.toEqual({ kind: "disposed" });
+  });
+
+  it("can stop admission before final snapshot and subscriber disposal", async () => {
+    const subscriber = vi.fn();
+    const dispatcher = new TransactionalDispatcher({
+      initialState: { value: 0 },
+      transition: testTransition,
+      scheduler: independentScheduler(),
+      runCommand: () => undefined,
+    });
+    const unsubscribe = dispatcher.subscribe(subscriber);
+
+    dispatcher.stopAdmission();
+
+    expect(dispatcher.getSnapshot()).toEqual({ value: 0 });
+    expect(dispatcher.isAccepting()).toBe(false);
+    await expect(
+      dispatcher.enqueue({ type: "SET", value: 1 }).settled,
+    ).resolves.toEqual({ kind: "disposed" });
+    unsubscribe();
+    dispatcher.dispose();
+    expect(dispatcher.isDisposed()).toBe(true);
+  });
+
+  it("keeps an applied ticket applied when its command later fails", async () => {
+    const commandError = new Error("command failed");
+    const dispatcher = new TransactionalDispatcher({
+      initialState: { value: 0 },
+      transition: testTransition,
+      scheduler: independentScheduler(),
+      runCommand: () => Promise.reject(commandError),
+      reportError: () => undefined,
+    });
+
+    const ticket = dispatcher.enqueue({
+      type: "COMMAND",
+      command: { type: "async-reject" },
+    });
+
+    await expect(ticket.settled).resolves.toEqual({
+      kind: "applied",
+      state: { value: 0 },
+    });
+  });
+
   it("runs the transaction in commit, projection, subscriber, observer, command order", () => {
     const order: string[] = [];
     let dispatcher: TransactionalDispatcher<

@@ -159,8 +159,7 @@ export function PreviewLoadingScreen({
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const runState = useAppRunState(selectedAppId);
   const previewAppExit = useAppExit(selectedAppId);
-  const previewRunStartedAt =
-    projectRunState(runState)?.startedAt ?? null;
+  const previewRunStartedAt = projectRunState(runState)?.startedAt ?? null;
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const { streamMessage, isStreaming } = useStreamChat();
   const { restartApp } = useRunApp();

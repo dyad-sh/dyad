@@ -69,7 +69,9 @@ vi.mock("../lib/chatUtils", () => ({
   resolveChatSummary: mocks.resolveChatSummary,
 }));
 
-vi.mock("../lib/toast", () => ({
+vi.mock("../lib/toast", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/toast")>()),
+  showError: vi.fn(),
   showWarning: vi.fn(),
 }));
 

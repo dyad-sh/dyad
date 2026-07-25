@@ -26,6 +26,34 @@ function isSecret(input: CatalogInput): boolean {
   return input.kind !== "oauthClientId";
 }
 
+// Pre-fill values the renderer already has for a partially-configured
+// server (a stored header/env value or the client id) so re-entering
+// setup doesn't force re-typing them. The client secret never reaches
+// the renderer, so it stays blank.
+function seedValues(
+  server: McpServer,
+  inputs: CatalogInput[],
+): Record<string, string> {
+  const seed: Record<string, string> = {};
+  for (const input of inputs) {
+    if (input.kind === "header") {
+      const stored = server.headersJson?.[input.name];
+      if (stored != null) {
+        seed[keyOf(input)] =
+          input.prefix && stored.startsWith(input.prefix)
+            ? stored.slice(input.prefix.length)
+            : stored;
+      }
+    } else if (input.kind === "env") {
+      const stored = server.envJson?.[input.name];
+      if (stored != null) seed[keyOf(input)] = stored;
+    } else if (input.kind === "oauthClientId" && server.oauthClientId) {
+      seed[keyOf(input)] = server.oauthClientId;
+    }
+  }
+  return seed;
+}
+
 /**
  * Collects the values a catalog entry declares it needs, writes each to
  * its column, and enables the server. Shown while a field-requiring
@@ -42,7 +70,9 @@ export function PluginSetupSection({
   isSaving: boolean;
   onSave: (update: McpServerUpdate) => Promise<void>;
 }) {
-  const [values, setValues] = useState<Record<string, string>>({});
+  const [values, setValues] = useState<Record<string, string>>(() =>
+    seedValues(server, inputs),
+  );
   const allFilled = inputs.every((input) =>
     (values[keyOf(input)] ?? "").trim(),
   );

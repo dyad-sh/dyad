@@ -163,7 +163,13 @@ export class AppRunRemoteManager {
         break;
     }
     let settlement = this.waitForSettlement(appId, event.operationId);
-    let receipt = await actor.dispatch(event);
+    let receipt: Awaited<ReturnType<typeof actor.dispatch>>;
+    try {
+      receipt = await actor.dispatch(event);
+    } catch (error) {
+      settlement.cancel();
+      throw error;
+    }
     if (
       input.type === "START" &&
       event.type === "START" &&
@@ -182,7 +188,12 @@ export class AppRunRemoteManager {
       }
       event = { ...event, expectedRevision: latest.revision };
       settlement = this.waitForSettlement(appId, event.operationId);
-      receipt = await actor.dispatch(event);
+      try {
+        receipt = await actor.dispatch(event);
+      } catch (error) {
+        settlement.cancel();
+        throw error;
+      }
     }
     if (receipt.kind === "rejected") {
       settlement.cancel();

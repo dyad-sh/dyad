@@ -27,6 +27,11 @@ describe("MainAppRuntimeOutput", () => {
       message: "App exited",
       exitCode: 1,
       timestamp: 50,
+      invocationRef: {
+        kind: "app-run",
+        entityKey: 7,
+        operationId: "untrusted-other-run",
+      },
     });
 
     expect(send.mock.calls.map(([event]) => event)).toEqual([

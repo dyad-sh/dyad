@@ -3,11 +3,12 @@ import {
   type AppRunIntentEvent,
   type AppRunProducerEvent,
 } from "@/app_run/transport";
-import { appRunDefinition } from "@/app_run/definition";
+import { appRunDefinition, requireApp } from "@/app_run/definition";
 import { MainAppRuntimeOutput } from "./main_app_runtime_output";
 import type { AppRunInvocationRef } from "@/app_run/state";
 import { appRuntimeService } from "./app_runtime_service";
 import { remoteMachineHost } from "./distributed_machine_host";
+import { DyadError } from "@/errors/dyad_error";
 
 class AppRunActorService {
   actor(appId: number) {
@@ -16,7 +17,12 @@ class AppRunActorService {
 
   sendProducer(appId: number, event: AppRunProducerEvent): void {
     if (event.invocationRef.entityKey !== appId) return;
-    this.actor(appId).send(event);
+    remoteMachineHost.peek(appRunDefinition.id, appRunKey(appId))?.send(event);
+  }
+
+  async getRunState(appId: number) {
+    await requireApp(appId);
+    return this.actor(appId).getSnapshot().runState;
   }
 
   outputFor(
@@ -36,6 +42,7 @@ class AppRunActorService {
       expectedRevision?: number;
     },
   ): Promise<void> {
+    await requireApp(appId);
     await this.dispatchAndWait(appId, input.operationId, {
       type: "START",
       operationId: input.operationId,
@@ -54,6 +61,7 @@ class AppRunActorService {
       expectedRevision?: number;
     },
   ): Promise<void> {
+    await requireApp(appId);
     const common = {
       type: "RESTART" as const,
       operationId: input.operationId,
@@ -78,6 +86,7 @@ class AppRunActorService {
       activeInvocationRef: AppRunInvocationRef;
     },
   ): Promise<void> {
+    await requireApp(appId);
     await this.dispatchAndWait(appId, input.operationId, {
       type: "STOP_REQUESTED",
       operationId: input.operationId,
@@ -92,6 +101,8 @@ class AppRunActorService {
     abortSignal?: AbortSignal;
     timeoutMs?: number;
   }): Promise<void> {
+    await requireApp(options.appId);
+    this.actor(options.appId);
     const invocationRef = appRuntimeService.createExternalLifecycleRef(
       options.appId,
     );
@@ -153,6 +164,9 @@ class AppRunActorService {
       ));
     if (settlement.outcome === "failed") {
       const runState = actor.getSnapshot().runState;
+      if (runState.type === "errored" && runState.error.kind) {
+        throw new DyadError(runState.error.message, runState.error.kind);
+      }
       throw new Error(
         runState.type === "errored"
           ? runState.error.message

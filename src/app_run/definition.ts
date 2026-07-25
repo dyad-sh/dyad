@@ -4,7 +4,7 @@ import type {
   DistributedMachineDefinition,
   MachineHostContext,
 } from "@/distributed_machines/definition";
-import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { addLog, clearLogs } from "@/lib/log_store";
 import { appRuntimeService } from "@/ipc/services/app_runtime_service";
 import { REMOTE_MACHINE_PROTOCOL_VERSION } from "@/distributed_machines/remote_protocol";
@@ -14,6 +14,7 @@ import type {
   AppRunIgnoreReason,
   AppRunInvocationRef,
   RunCommand,
+  RunErrorInfo,
   RunEvent,
   RunState,
 } from "./state";
@@ -159,7 +160,10 @@ function isCurrentInvocation(
 interface AppRunActorState {
   readonly runState: RunState;
   readonly previewReloadEpoch: number;
-  readonly pendingOperationId: string | null;
+  readonly pendingOperations: readonly {
+    operationId: string;
+    invocationRef: AppRunInvocationRef;
+  }[];
   readonly lastSettlement: {
     readonly operationId: string;
     readonly kind: "run" | "stop";
@@ -171,10 +175,10 @@ function settlementFor(
   state: AppRunActorState,
   event: AppRunWireEvent,
 ): AppRunActorState["lastSettlement"] {
+  const pendingIndex = pendingIndexFor(state, event);
   const operationId =
-    "invocationRef" in event &&
-    isCurrentInvocation(state.runState, event.invocationRef)
-      ? (state.pendingOperationId ?? event.invocationRef.operationId)
+    pendingIndex >= 0
+      ? state.pendingOperations[pendingIndex].operationId
       : "invocationRef" in event
         ? event.invocationRef.operationId
         : null;
@@ -208,12 +212,45 @@ function settlementFor(
   }
 }
 
+function pendingIndexFor(
+  state: AppRunActorState,
+  event: AppRunWireEvent,
+): number {
+  return "invocationRef" in event
+    ? state.pendingOperations.findIndex(
+        ({ invocationRef }) =>
+          invocationRef.kind === event.invocationRef.kind &&
+          invocationRef.entityKey === event.invocationRef.entityKey &&
+          invocationRef.operationId === event.invocationRef.operationId,
+      )
+    : -1;
+}
+
 function pendingOperationFor(event: AppRunWireEvent): string | null {
   switch (event.type) {
     case "START":
     case "RESTART":
     case "STOP_REQUESTED":
       return event.operationId;
+    default:
+      return null;
+  }
+}
+
+function pendingInvocationFor(
+  key: AppRunKey,
+  state: AppRunActorState,
+  event: AppRunWireEvent,
+): AppRunInvocationRef | null {
+  switch (event.type) {
+    case "START":
+      return state.runState.type === "ready" ||
+        state.runState.type === "reloading"
+        ? state.runState.invocationRef
+        : invocation(key.appId, event.operationId);
+    case "RESTART":
+    case "STOP_REQUESTED":
+      return invocation(key.appId, event.operationId);
     default:
       return null;
   }
@@ -238,13 +275,30 @@ function transitionActor(
     toDomainEvent(key, state.runState, event),
   );
   const settlement = settlementFor(state, event);
+  const settledPendingIndex = settlement ? pendingIndexFor(state, event) : -1;
+  const pendingOperationId = pendingOperationFor(event);
+  const pendingInvocation = pendingInvocationFor(key, state, event);
+  const pendingOperations =
+    settledPendingIndex >= 0
+      ? state.pendingOperations.filter(
+          (_, index) => index !== settledPendingIndex,
+        )
+      : pendingOperationId && pendingInvocation
+        ? [
+            ...state.pendingOperations,
+            {
+              operationId: pendingOperationId,
+              invocationRef: pendingInvocation,
+            },
+          ]
+        : state.pendingOperations;
   if (result.kind === "ignored") {
     return settlement
       ? {
           kind: "applied" as const,
           state: {
             ...state,
-            pendingOperationId: null,
+            pendingOperations,
             lastSettlement: settlement,
           },
           commands: [],
@@ -266,21 +320,26 @@ function transitionActor(
             runState: result.state,
             previewReloadEpoch:
               state.previewReloadEpoch + (bumpsPreviewReload ? 1 : 0),
-            pendingOperationId: settlement
-              ? null
-              : (pendingOperationFor(event) ?? state.pendingOperationId),
+            pendingOperations,
             lastSettlement: settlement ?? state.lastSettlement,
           },
     commands: result.commands,
   };
 }
 
-async function requireApp(appId: number): Promise<void> {
+export async function requireApp(appId: number): Promise<void> {
   const app = await db.query.apps.findFirst({
     columns: { id: true },
     where: eq(apps.id, appId),
   });
   if (!app) throw new DyadError("App not found", DyadErrorKind.Auth);
+}
+
+function runErrorInfo(error: unknown): RunErrorInfo {
+  return {
+    message: error instanceof Error ? error.message : String(error),
+    ...(isDyadError(error) ? { kind: error.kind } : {}),
+  };
 }
 
 function createCommandRunner(
@@ -341,9 +400,7 @@ function createCommandRunner(
             emit({
               type: "PROCESS_FAILED",
               invocationRef: command.invocationRef,
-              error: {
-                message: error instanceof Error ? error.message : String(error),
-              },
+              error: runErrorInfo(error),
             }),
         );
         return;
@@ -359,9 +416,7 @@ function createCommandRunner(
             emit({
               type: "PROCESS_STOP_FAILED",
               invocationRef: command.invocationRef,
-              error: {
-                message: error instanceof Error ? error.message : String(error),
-              },
+              error: runErrorInfo(error),
             }),
         );
         return;
@@ -387,7 +442,7 @@ export const appRunDefinition = {
   initialState: (): AppRunActorState => ({
     runState: { type: "idle" },
     previewReloadEpoch: 0,
-    pendingOperationId: null,
+    pendingOperations: [],
     lastSettlement: null,
   }),
   transition: (state, event, key) => transitionActor(key, state, event),

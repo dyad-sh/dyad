@@ -1,4 +1,5 @@
 import type { RuntimeMode2 } from "@/lib/schemas";
+import type { DyadErrorKind } from "@/errors/dyad_error";
 import type { InvocationRef } from "@/state_machines/invocation_ref";
 import type { StaleOperationIgnoreReason } from "@/state_machines/types";
 
@@ -40,6 +41,7 @@ export interface RestartOptions {
 
 export interface RunErrorInfo {
   message: string;
+  kind?: DyadErrorKind;
 }
 
 /** A ready dev-server URL as reported by the dyad proxy server. */

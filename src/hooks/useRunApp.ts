@@ -301,7 +301,7 @@ export function useRunApp() {
       if (targetAppId === null) {
         return;
       }
-      if (!removeNodeModules) packageWarnings.clear(targetAppId);
+      packageWarnings.clear(targetAppId);
       await manager.dispatch(targetAppId, {
         type: "RESTART",
         startedAt: Date.now(),

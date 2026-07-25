@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { RuntimeMode2Schema } from "@/lib/schemas";
+import { DyadErrorKind } from "@/errors/dyad_error";
 import type { RunState } from "./state";
 import { APP_RUN_INVOCATION_KIND } from "./state";
 
@@ -73,6 +74,7 @@ const runErrorSchema = z
     z
       .object({
         message: z.string(),
+        kind: z.enum(DyadErrorKind).optional(),
       })
       .strict(),
   );

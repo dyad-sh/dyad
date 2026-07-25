@@ -50,12 +50,12 @@ export class MainAppRuntimeOutput implements AppRuntimeOutput {
     return {
       ...output,
       appId: this.appId,
-      invocationRef: output.invocationRef ?? this.invocationRef,
+      invocationRef: this.invocationRef,
     };
   }
 
   private admitLifecycle(output: AppOutput): void {
-    const invocationRef = output.invocationRef ?? this.invocationRef;
+    const invocationRef = this.invocationRef;
     if (output.type === "app-exit") {
       this.producer.send({
         type: "PROCESS_EXITED",

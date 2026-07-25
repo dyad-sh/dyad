@@ -223,6 +223,9 @@ Background and before/after examples of why this pattern exists:
 - When a cross-owner facade defers keyed delivery to a microtask, entity
   disposal must invalidate both queued and future deliveries for that key.
   Otherwise the deferred callback can recreate a controller after deletion.
+- Producer callbacks that arrive after entity disposal must use a non-creating
+  actor lookup. Never route late output through `ensure()`, which can recreate
+  retained authority for a deleted entity.
 - A keyed ownership replacement must adopt the incoming cleanup before running
   the previous cleanup. Otherwise a throwing unsubscribe/cancel can orphan the
   already-acquired replacement resource.
@@ -312,6 +315,10 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   identity (for example, an idempotent ensure-running request targeting an
   existing process), and subscribe before the final settlement recheck so a
   completion cannot land between the initial read and listener registration.
+  Track every in-flight request, not only the latest: a reused invocation can
+  be superseded before its producer settles, but its original waiter must
+  still complete. A producer sink captured for one invocation must also ignore
+  or overwrite any conflicting invocation identity supplied by its payload.
 - Keep transport revisions separate from semantic presentation epochs. A
   revision may advance for bookkeeping-only transitions, while a reload token
   must advance exactly once for each user-visible remount.

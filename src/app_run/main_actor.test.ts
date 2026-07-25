@@ -307,6 +307,52 @@ describe("main-hosted app-run actor", () => {
     manager.dispose();
   });
 
+  it("settles a superseded ensure-running request under its request ID", async () => {
+    const { actorA } = createHarness();
+    await actorA.resync();
+    await actorA.dispatch({
+      type: "START",
+      operationId: "initial",
+      startedAt: 1,
+      expectedRevision: 0,
+    });
+    await flush();
+
+    const pendingEnsure = deferred<void>();
+    runtime.start.mockReturnValueOnce(pendingEnsure.promise);
+    await actorA.dispatch({
+      type: "START",
+      operationId: "ensure-running",
+      startedAt: 2,
+      expectedRevision: actorA.getSnapshot().revision,
+    });
+    await actorA.dispatch({
+      type: "RESTART",
+      operation: "restart",
+      operationId: "replacement",
+      startedAt: 3,
+      expectedRevision: actorA.getSnapshot().revision,
+      options: { removeNodeModules: false, recreateSandbox: false },
+    });
+    await flush();
+    expect(actorA.getSnapshot()).toMatchObject({
+      phase: "ready",
+      invocationRef: { operationId: "replacement" },
+      lastSettlement: { operationId: "replacement" },
+    });
+
+    pendingEnsure.resolve();
+    await flush();
+    expect(actorA.getSnapshot()).toMatchObject({
+      phase: "ready",
+      invocationRef: { operationId: "replacement" },
+      lastSettlement: {
+        operationId: "ensure-running",
+        outcome: "succeeded",
+      },
+    });
+  });
+
   it("treats a concurrent ensure-running revision conflict as success", async () => {
     const { duplex, host } = createHarness();
     const connection = duplex.connect();
@@ -333,6 +379,31 @@ describe("main-hosted app-run actor", () => {
       manager.dispatch(7, { type: "START", startedAt: 10 }),
     ).resolves.toBeUndefined();
     expect(runtime.start).toHaveBeenCalledTimes(1);
+    manager.dispose();
+  });
+
+  it("removes the settlement waiter when remote dispatch throws", async () => {
+    const { duplex } = createHarness();
+    const connection = duplex.connect();
+    connection.dispatch = vi.fn(async () => {
+      throw new Error("transport disconnected");
+    });
+    const manager = new AppRunRemoteManager(
+      createSequentialIdSource(),
+      connection,
+    );
+    manager.start();
+
+    await expect(
+      manager.dispatch(7, { type: "START", startedAt: 10 }),
+    ).rejects.toThrow("transport disconnected");
+    expect(
+      (
+        manager as unknown as {
+          settlementWaiters: Map<string, unknown>;
+        }
+      ).settlementWaiters.size,
+    ).toBe(0);
     manager.dispose();
   });
 

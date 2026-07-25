@@ -309,6 +309,13 @@ export function projectAppRunRemoteSnapshot(
   revision: number,
   state: RunState,
 ): AppRunRemoteSnapshot {
+  if (
+    state.type !== "idle" &&
+    (state.appId !== appId || state.invocationRef.entityKey !== appId)
+  ) {
+    throw new Error("App-run projection state does not match its actor key");
+  }
+
   const base = {
     appId,
     revision,

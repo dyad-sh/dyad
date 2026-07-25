@@ -191,6 +191,19 @@ describe("app-run transport codecs", () => {
     ).toBe(true);
   });
 
+  it("rejects projection state from a different app", () => {
+    const state: RunState = {
+      type: "ready",
+      appId: APP_ID,
+      invocationRef,
+      url,
+    };
+
+    expect(() =>
+      projectAppRunRemoteSnapshot(APP_ID + 1, 11, state),
+    ).toThrowError("App-run projection state does not match its actor key");
+  });
+
   it("rejects unknown events and unknown payload fields", () => {
     expect(() =>
       AppRunWireEventSchema.parse({ type: "PROCESS_HANDLE_ATTACHED" }),

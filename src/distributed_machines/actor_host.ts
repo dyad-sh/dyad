@@ -80,6 +80,10 @@ function composeObservers<State, Event, Command, Reason extends IgnoreReason>(
   };
 }
 
+interface RetentionTimerLease {
+  handle?: ClockHandle;
+}
+
 class HostedActor<
   Key,
   State,
@@ -100,8 +104,8 @@ class HostedActor<
   private revision = 0;
   private transactionSequence = 0;
   private subscriberCount = 0;
-  private idleTimer: ClockHandle | undefined;
-  private terminalTimer: ClockHandle | undefined;
+  private idleTimer: RetentionTimerLease | undefined;
+  private terminalTimer: RetentionTimerLease | undefined;
   private readonly admissionStopErrors: unknown[] = [];
   private disposing = false;
   private disposal: Promise<void> | undefined;
@@ -118,6 +122,7 @@ class HostedActor<
     >,
     readonly key: Key,
     private readonly options: ActorHostOptions,
+    private readonly isAdmissionClosed: () => boolean,
     private readonly removeFromHost: (
       actor: HostedActor<Key, State, Event, Command, Reason>,
     ) => void,
@@ -175,7 +180,11 @@ class HostedActor<
         reportError: (failure) => this.reportFailure(failure),
       });
       this.dispatcher = dispatcher;
-      for (const event of bufferedEvents) void this.enqueue(event);
+      if (this.isAdmissionClosed()) {
+        this.dispatcher.stopAdmission();
+      } else {
+        for (const event of bufferedEvents) void this.enqueue(event);
+      }
     } catch (error) {
       const cleanupErrors: unknown[] = [];
       collectDisposalError(cleanupErrors, () => this.timers.dispose());
@@ -275,6 +284,12 @@ class HostedActor<
   }
 
   dispose(cause: ActorDisposalCause): Promise<void> {
+    const disposal = this.reserveDisposal(cause);
+    this.stopAdmission();
+    return disposal;
+  }
+
+  reserveDisposal(cause: ActorDisposalCause): Promise<void> {
     if (this.disposal) return this.disposal;
     this.disposing = true;
     const context: ActorDisposalContext<Key, State> = {
@@ -286,7 +301,6 @@ class HostedActor<
     this.disposal = Promise.resolve()
       .then(() => this.finishDisposal(context))
       .finally(() => this.removeFromHost(this));
-    this.stopAdmission();
     return this.disposal;
   }
 
@@ -342,17 +356,28 @@ class HostedActor<
     ) {
       return;
     }
-    let timer!: ClockHandle;
-    timer = this.options.clock.schedule(() => {
-      if (this.idleTimer !== timer) return;
-      this.idleTimer = undefined;
-      if (this.subscriberCount === 0) {
-        void this.dispose("idle").catch((failure) =>
-          this.reportFailure(failure),
-        );
-      }
-    }, policy.delayMs);
-    this.idleTimer = timer;
+    const lease: RetentionTimerLease = {};
+    this.idleTimer = lease;
+    let handle: ClockHandle;
+    try {
+      handle = this.options.clock.schedule(() => {
+        if (this.idleTimer !== lease) return;
+        this.idleTimer = undefined;
+        if (this.subscriberCount === 0) {
+          void this.dispose("idle").catch((failure) =>
+            this.reportFailure(failure),
+          );
+        }
+      }, policy.delayMs);
+    } catch (failure) {
+      if (this.idleTimer === lease) this.idleTimer = undefined;
+      throw failure;
+    }
+    if (this.idleTimer !== lease) {
+      this.cancelUnownedTimer(handle);
+      return;
+    }
+    lease.handle = handle;
   }
 
   private scheduleTerminalDisposal(): void {
@@ -360,24 +385,35 @@ class HostedActor<
     this.cancelIdleEviction();
     if (policy.kind === "retain" || this.disposing) return;
     if (this.terminalTimer !== undefined) return;
-    let timer!: ClockHandle;
-    timer = this.options.clock.schedule(() => {
-      if (this.terminalTimer !== timer) return;
-      this.terminalTimer = undefined;
-      try {
-        if (!this.definition.lifecycle.isTerminal?.(this.getSnapshot())) {
-          this.reconcileRetention();
+    const lease: RetentionTimerLease = {};
+    this.terminalTimer = lease;
+    let handle: ClockHandle;
+    try {
+      handle = this.options.clock.schedule(() => {
+        if (this.terminalTimer !== lease) return;
+        this.terminalTimer = undefined;
+        try {
+          if (!this.definition.lifecycle.isTerminal?.(this.getSnapshot())) {
+            this.reconcileRetention();
+            return;
+          }
+        } catch (failure) {
+          this.reportFailure(failure);
           return;
         }
-      } catch (failure) {
-        this.reportFailure(failure);
-        return;
-      }
-      void this.dispose("terminal").catch((failure) =>
-        this.reportFailure(failure),
-      );
-    }, policy.delayMs);
-    this.terminalTimer = timer;
+        void this.dispose("terminal").catch((failure) =>
+          this.reportFailure(failure),
+        );
+      }, policy.delayMs);
+    } catch (failure) {
+      if (this.terminalTimer === lease) this.terminalTimer = undefined;
+      throw failure;
+    }
+    if (this.terminalTimer !== lease) {
+      this.cancelUnownedTimer(handle);
+      return;
+    }
+    lease.handle = handle;
   }
 
   private reconcileRetention(): void {
@@ -395,10 +431,11 @@ class HostedActor<
       this.reportFailure(failure),
   ): void {
     if (this.idleTimer === undefined) return;
-    const timer = this.idleTimer;
+    const { handle } = this.idleTimer;
     this.idleTimer = undefined;
+    if (handle === undefined) return;
     try {
-      this.options.clock.cancel(timer);
+      this.options.clock.cancel(handle);
     } catch (failure) {
       onError(failure);
     }
@@ -417,12 +454,25 @@ class HostedActor<
       this.reportFailure(failure),
   ): void {
     if (this.terminalTimer === undefined) return;
-    const timer = this.terminalTimer;
+    const { handle } = this.terminalTimer;
     this.terminalTimer = undefined;
+    if (handle === undefined) return;
     try {
-      this.options.clock.cancel(timer);
+      this.options.clock.cancel(handle);
     } catch (failure) {
       onError(failure);
+    }
+  }
+
+  private cancelUnownedTimer(handle: ClockHandle): void {
+    try {
+      this.options.clock.cancel(handle);
+    } catch (failure) {
+      if (this.disposing) {
+        this.admissionStopErrors.push(failure);
+      } else {
+        this.reportFailure(failure);
+      }
     }
   }
 
@@ -547,6 +597,9 @@ export class ActorHost {
     key: Key,
   ): HostedActorRef<State, Event, Reason> {
     this.assertRegistered(definition);
+    if (this.disposed) {
+      throw new ActorAdmissionError("host-disposed", "ActorHost is disposed");
+    }
     if (this.machineDisposals.has(definition.id)) {
       this.throwMachineDisposing(definition.id);
     }
@@ -690,6 +743,7 @@ export class ActorHost {
     this.machineDisposals.set(machineId, disposal);
     this.machineConstructionDisposals.set(machineId, constructionDisposals);
     actors = [...(this.actors.get(machineId)?.values() ?? [])];
+    for (const actor of actors) actor.reserveDisposal("machine-disposal");
     for (const actor of actors) actor.stopAdmission();
     return disposal;
   }
@@ -702,6 +756,7 @@ export class ActorHost {
       this.finishHostDisposal(actors),
     );
     actors = [...this.actors.values()].flatMap((keyed) => [...keyed.values()]);
+    for (const actor of actors) actor.reserveDisposal("shutdown");
     for (const actor of actors) actor.stopAdmission();
     return this.disposal;
   }
@@ -774,6 +829,7 @@ export class ActorHost {
         definition,
         key,
         this.options,
+        () => this.disposed || this.machineDisposals.has(definition.id),
         (disposedActor) => {
           if (keyed?.get(key) === disposedActor) keyed.delete(key);
           if (keyed?.size === 0) this.actors.delete(definition.id);

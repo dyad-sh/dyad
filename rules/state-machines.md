@@ -122,18 +122,23 @@ Background and before/after examples of why this pattern exists:
 - Bulk or machine-scoped disposal must publish one collection barrier before
   snapshotting members and block new member admission until it settles. Enroll
   members whose synchronous construction began before the barrier but finishes
-  after publication, and await their cleanup as part of that same barrier. If
-  the definition remains registered, reopen admission only after final cleanup.
+  after publication, suppress their buffered factory-time ingress, and await
+  their cleanup as part of that same barrier. Reserve every snapshotted member's
+  disposal cause before stopping any member: one member's injected cancellation
+  hook may otherwise re-enter and claim another member's barrier with the wrong
+  cause. If the definition remains registered, reopen admission only after
+  final cleanup.
 - Treat bounded retention as an edge-triggered deadline. Once a snapshot
   qualifies for delayed disposal, traffic that leaves it qualifying must not
   refresh the timer; cancel the deadline only when the authoritative snapshot
   stops qualifying.
 - Reject bounded terminal-retention policies that do not provide a terminal
   classifier; otherwise the configured deadline can never become eligible.
-- Retention callbacks must verify that they still own the current timer handle
-  before acting. Clock cancellation can throw without physically removing the
-  callback, so clearing local ownership alone is not a sufficient stale-work
-  guard.
+- Retention scheduling must publish a provisional ownership token before
+  calling the injected clock, then attach the returned handle only if ownership
+  survived synchronous re-entry. Callbacks verify that token before acting, and
+  cancellation clears it before touching the clock; a clock may re-enter or
+  throw without physically removing the callback.
 - Route every actor event ingress—including command and timer callbacks—through
   the host's shared enqueue wrapper. Bypassing it may preserve FIFO ordering
   while skipping retention, tracing, or other host-owned settlement bookkeeping.

@@ -326,6 +326,7 @@ describe("ActorHost", () => {
     let definition!: ReturnType<typeof machine>;
     let disposal: Promise<void> | undefined;
     let release!: () => void;
+    const runCommand = vi.fn();
     const baseDefinition = machine(
       "machine-construction-disposal",
       lifecycle({
@@ -337,10 +338,12 @@ describe("ActorHost", () => {
     );
     definition = {
       ...baseDefinition,
-      createObserver() {
+      createObserver(context) {
         disposal = actorHost.disposeMachine(definition.id);
+        context.send({ type: "COMMAND" });
         return {};
       },
+      createCommandRunner: () => runCommand,
     };
     actorHost = host();
     actorHost.register(definition);
@@ -358,6 +361,7 @@ describe("ActorHost", () => {
 
     release();
     await disposal;
+    expect(runCommand).not.toHaveBeenCalled();
     expect(actorHost.peek(definition.id, "entity")).toBeUndefined();
   });
 
@@ -366,6 +370,7 @@ describe("ActorHost", () => {
     let definition!: ReturnType<typeof machine>;
     let disposal: Promise<void> | undefined;
     let release!: () => void;
+    const runCommand = vi.fn();
     const baseDefinition = machine(
       "host-construction-disposal",
       lifecycle({
@@ -377,10 +382,12 @@ describe("ActorHost", () => {
     );
     definition = {
       ...baseDefinition,
-      createObserver() {
+      createObserver(context) {
         disposal = actorHost.dispose();
+        context.send({ type: "COMMAND" });
         return {};
       },
+      createCommandRunner: () => runCommand,
     };
     actorHost = host();
     actorHost.register(definition);
@@ -398,6 +405,7 @@ describe("ActorHost", () => {
 
     release();
     await disposal;
+    expect(runCommand).not.toHaveBeenCalled();
     expect(actorHost.peek(definition.id, "entity")).toBeUndefined();
   });
 
@@ -578,6 +586,78 @@ describe("ActorHost", () => {
     expect(reentrantDisposal).toBe(disposal);
   });
 
+  it("reserves every shutdown cause before clock cancellation can re-enter", async () => {
+    const baseClock = createFakeClock();
+    const flush = vi.fn();
+    const causes: string[] = [];
+    let actorHost!: ActorHost;
+    let reentered = false;
+    const definition = machine(
+      "shutdown-cause-reentry",
+      lifecycle({
+        idleEviction: { kind: "dispose-after", delayMs: 5 },
+        flushOnShutdown: false,
+        flush,
+        onDisposed: ({ cause, key }) => {
+          causes.push(`${key}:${cause}`);
+        },
+      }),
+    );
+    const clock = {
+      ...baseClock,
+      cancel(handle: Parameters<typeof baseClock.cancel>[0]) {
+        baseClock.cancel(handle);
+        if (!reentered) {
+          reentered = true;
+          void actorHost.disposeKey(definition.id, "b", "explicit");
+        }
+      },
+    };
+    actorHost = host(clock);
+    actorHost.register(definition);
+    actorHost.ensure(definition, "a");
+    actorHost.ensure(definition, "b");
+
+    await actorHost.dispose();
+
+    expect(flush).not.toHaveBeenCalled();
+    expect(causes).toEqual(["a:shutdown", "b:shutdown"]);
+  });
+
+  it("reserves every machine-disposal cause before clock cancellation can re-enter", async () => {
+    const baseClock = createFakeClock();
+    const causes: string[] = [];
+    let actorHost!: ActorHost;
+    let reentered = false;
+    const definition = machine(
+      "machine-cause-reentry",
+      lifecycle({
+        idleEviction: { kind: "dispose-after", delayMs: 5 },
+        onDisposed: ({ cause, key }) => {
+          causes.push(`${key}:${cause}`);
+        },
+      }),
+    );
+    const clock = {
+      ...baseClock,
+      cancel(handle: Parameters<typeof baseClock.cancel>[0]) {
+        baseClock.cancel(handle);
+        if (!reentered) {
+          reentered = true;
+          void actorHost.disposeKey(definition.id, "b", "explicit");
+        }
+      },
+    };
+    actorHost = host(clock);
+    actorHost.register(definition);
+    actorHost.ensure(definition, "a");
+    actorHost.ensure(definition, "b");
+
+    await actorHost.disposeMachine(definition.id);
+
+    expect(causes).toEqual(["a:machine-disposal", "b:machine-disposal"]);
+  });
+
   it("aggregates retention cancellation failures behind host disposal", async () => {
     const cancelFailure = new Error("cancel failed");
     const onDisposed = vi.fn();
@@ -613,6 +693,9 @@ describe("ActorHost", () => {
     actorHost.register(definition);
 
     const disposal = actorHost.dispose();
+    expect(() => actorHost.localRef(definition, "missing")).toThrow(
+      expect.objectContaining({ code: "host-disposed" }),
+    );
     await expect(
       actorHost.dispatch(definition, "missing", { type: "SET", value: 1 })
         .settled,
@@ -622,6 +705,9 @@ describe("ActorHost", () => {
       error: expect.objectContaining({ code: "host-disposed" }),
     });
     await disposal;
+    expect(() => actorHost.localRef(definition, "missing")).toThrow(
+      expect.objectContaining({ code: "host-disposed" }),
+    );
     await expect(
       actorHost.dispatch(definition, "missing", { type: "SET", value: 2 })
         .settled,
@@ -680,6 +766,43 @@ describe("ActorHost", () => {
 
     expect(actorHost.peek(definition.id, "entity")).toBe(actor);
     await actorHost.dispose();
+  });
+
+  it("cancels a retention timer installed after scheduling re-enters disposal", async () => {
+    const baseClock = createFakeClock();
+    const onDisposed = vi.fn();
+    let actorHost!: ActorHost;
+    let disposal: Promise<void> | undefined;
+    let reentered = false;
+    const clock = {
+      ...baseClock,
+      schedule(
+        callback: Parameters<typeof baseClock.schedule>[0],
+        delayMs: number,
+      ) {
+        const handle = baseClock.schedule(callback, delayMs);
+        if (!reentered) {
+          reentered = true;
+          disposal = actorHost.dispose();
+        }
+        return handle;
+      },
+    };
+    const definition = machine(
+      "schedule-reentry",
+      lifecycle({
+        idleEviction: { kind: "dispose-after", delayMs: 5 },
+        onDisposed,
+      }),
+    );
+    actorHost = host(clock);
+    actorHost.register(definition);
+
+    actorHost.ensure(definition, "entity");
+    await disposal;
+
+    expect(onDisposed).toHaveBeenCalledOnce();
+    expect(baseClock.pendingTimerCount()).toBe(0);
   });
 
   it("applies terminal retention when the last subscriber leaves", async () => {

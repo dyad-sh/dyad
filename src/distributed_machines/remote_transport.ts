@@ -61,21 +61,12 @@ interface SubscriptionEntry {
 
 interface DeduplicationEntry {
   readonly createdAt: number;
-  readonly signature: string;
   readonly receipt: Promise<MachineDispatchReceipt>;
 }
 
 const DEFAULT_DEDUPLICATION_RETENTION_MS = 60_000;
 const DEFAULT_MAX_DEDUPLICATION_ENTRIES = 1_024;
 const DEFAULT_MAX_SUBSCRIPTIONS_PER_WINDOW = 256;
-
-function safeSignature(value: unknown): string | undefined {
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return undefined;
-  }
-}
 
 export class RemoteMachineTransport {
   private readonly subscriptions = new Map<string, SubscriptionEntry>();
@@ -128,7 +119,7 @@ export class RemoteMachineTransport {
     sender: RemoteTransportEndpoint,
     input: MachineAddress,
   ): Promise<MachineSnapshotEnvelope> {
-    this.options.windows.ensureRegistered(sender);
+    const windowSessionId = this.options.windows.ensureRegistered(sender);
     const definition = this.requireDefinition(input.machineId);
     this.assertProtocol(sender, definition, input.protocolVersion);
     const key = this.decodeKey(definition, input.encodedKey);
@@ -147,6 +138,7 @@ export class RemoteMachineTransport {
         },
       );
     }
+    this.assertCurrentSender(sender, windowSessionId);
 
     const currentReferences = this.referencesPerWindow.get(sender.id) ?? 0;
     const address = this.address(definition, key);
@@ -166,6 +158,7 @@ export class RemoteMachineTransport {
     if (!entry) {
       const canonicalKey = this.actorKeys.get(address) ?? key;
       this.actorKeys.set(address, canonicalKey);
+      const encodedKey = this.encodeKey(definition, canonicalKey);
       const actor = this.options.host.localRef(
         definition,
         canonicalKey,
@@ -174,7 +167,7 @@ export class RemoteMachineTransport {
         address,
         definition,
         key: canonicalKey,
-        encodedKey: canonicalKey,
+        encodedKey,
         actor,
         windows: new Map(),
         unsubscribeActor: () => undefined,
@@ -192,7 +185,12 @@ export class RemoteMachineTransport {
 
     // Atomic bootstrap invariant: there is deliberately no await between
     // subscriber registration above and this snapshot capture.
-    return this.snapshotEnvelope(entry);
+    try {
+      return this.snapshotEnvelope(entry);
+    } catch (error) {
+      if (!alreadySubscribed) this.removeWindowReference(entry, sender.id);
+      throw error;
+    }
   }
 
   async unsubscribe(
@@ -212,25 +210,14 @@ export class RemoteMachineTransport {
     sender: RemoteTransportEndpoint,
     envelope: MachineDispatchEnvelope,
   ): Promise<MachineDispatchReceipt> {
-    this.options.windows.ensureRegistered(sender);
+    const windowSessionId = this.options.windows.ensureRegistered(sender);
     this.pruneDeduplication();
     const deduplicationKey = `${sender.id}\0${envelope.messageId}`;
-    const signature = safeSignature(envelope);
     const previous = this.deduplication.get(deduplicationKey);
-    if (previous) {
-      if (signature !== undefined && previous.signature === signature) {
-        return previous.receipt;
-      }
-      return Promise.resolve({
-        kind: "rejected",
-        messageId: envelope.messageId,
-        reason: "invalid-event",
-      });
-    }
-    const receipt = this.dispatchOnce(sender, envelope);
+    if (previous) return previous.receipt;
+    const receipt = this.dispatchOnce(sender, windowSessionId, envelope);
     this.deduplication.set(deduplicationKey, {
       createdAt: this.options.clock.now(),
-      signature: signature ?? "",
       receipt,
     });
     this.pruneDeduplication();
@@ -266,6 +253,7 @@ export class RemoteMachineTransport {
 
   private async dispatchOnce(
     sender: RemoteTransportEndpoint,
+    windowSessionId: WindowSessionId,
     envelope: MachineDispatchEnvelope,
   ): Promise<MachineDispatchReceipt> {
     const definition = this.options.manifest.get(envelope.machineId);
@@ -287,31 +275,52 @@ export class RemoteMachineTransport {
       return this.rejected(envelope.messageId, "invalid-event");
     }
     const address = this.address(definition, keyResult.data);
-    const key = this.actorKeys.get(address) ?? keyResult.data;
     const senderContext = this.senderContext(sender);
-    const existing = this.options.host.peek<unknown, unknown, string>(
+    let key = this.actorKeys.get(address) ?? keyResult.data;
+    let current = this.options.host.peek<unknown, unknown, string>(
       definition.id,
       key,
     );
-    try {
-      await definition.remote.authorizeDispatch({
-        sender: senderContext,
-        key,
-        event: eventResult.data,
-        currentState: existing?.getSnapshot(),
-      });
-    } catch {
-      return this.rejected(envelope.messageId, "unauthorized");
+    for (;;) {
+      const authorizedActorInstanceId = current?.getMetadata().actorInstanceId;
+      const authorizedRevision = current?.getMetadata().snapshotRevision;
+      try {
+        await definition.remote.authorizeDispatch({
+          sender: senderContext,
+          key,
+          event: eventResult.data,
+          currentState: current?.getSnapshot(),
+        });
+      } catch {
+        return this.rejected(envelope.messageId, "unauthorized");
+      }
+      if (!this.isCurrentSender(sender, windowSessionId)) {
+        return this.rejected(envelope.messageId, "host-disposing");
+      }
+
+      key = this.actorKeys.get(address) ?? key;
+      const authorizedCurrent = this.options.host.peek<
+        unknown,
+        unknown,
+        string
+      >(definition.id, key);
+      const metadata = authorizedCurrent?.getMetadata();
+      if (
+        metadata?.actorInstanceId === authorizedActorInstanceId &&
+        metadata?.snapshotRevision === authorizedRevision
+      ) {
+        current = authorizedCurrent;
+        break;
+      }
+      current = authorizedCurrent;
     }
 
-    const current = this.options.host.peek<unknown, unknown, string>(
-      definition.id,
-      key,
-    );
+    const revisionPolicy = definition.remote.revisionPolicy(eventResult.data);
+    const currentRevision = current?.getMetadata().snapshotRevision ?? 0;
     if (
-      definition.remote.revisionPolicy(eventResult.data) === "reject-stale" &&
-      envelope.expectedRevision !== undefined &&
-      current?.getMetadata().snapshotRevision !== envelope.expectedRevision
+      revisionPolicy === "reject-stale" &&
+      (envelope.expectedRevision === undefined ||
+        currentRevision !== envelope.expectedRevision)
     ) {
       return this.rejected(envelope.messageId, "revision-conflict");
     }
@@ -341,7 +350,10 @@ export class RemoteMachineTransport {
       this.actorKeys.delete(address);
       return this.rejected(envelope.messageId, "host-disposing");
     }
-    const metadata = dispatchedActor.getMetadata();
+    const metadata = ticket.getSettledMetadata();
+    if (!metadata) {
+      return this.rejected(envelope.messageId, "host-disposing");
+    }
     if (outcome.kind === "ignored") {
       return {
         kind: "ignored",
@@ -465,6 +477,21 @@ export class RemoteMachineTransport {
     return parsed.data;
   }
 
+  private encodeKey(
+    definition: AnyRemoteMachineDefinition,
+    key: unknown,
+  ): unknown {
+    const encodedKey = definition.remote.encodeKey(key);
+    const roundTrip = definition.remote.keyCodec.safeParse(encodedKey);
+    if (
+      !roundTrip.success ||
+      this.address(definition, roundTrip.data) !== this.address(definition, key)
+    ) {
+      throw new Error(`Remote key encoding failed for ${definition.id}`);
+    }
+    return encodedKey;
+  }
+
   private requireDefinition(machineId: string): AnyRemoteMachineDefinition {
     const definition = this.options.manifest.get(machineId);
     if (!definition) {
@@ -508,12 +535,37 @@ export class RemoteMachineTransport {
     definition: AnyRemoteMachineDefinition,
     received: number,
   ): void {
-    this.options.onProtocolMismatch?.({
-      sender: this.senderContext(sender),
-      machineId: definition.id,
-      expected: definition.remote.protocolVersion,
-      received,
-    });
+    try {
+      this.options.onProtocolMismatch?.({
+        sender: this.senderContext(sender),
+        machineId: definition.id,
+        expected: definition.remote.protocolVersion,
+        received,
+      });
+    } catch (error) {
+      this.options.onError?.(error);
+    }
+  }
+
+  private assertCurrentSender(
+    sender: RemoteTransportEndpoint,
+    sessionId: WindowSessionId,
+  ): void {
+    if (this.isCurrentSender(sender, sessionId)) return;
+    throw new DyadError(
+      "Remote machine sender was destroyed during authorization",
+      DyadErrorKind.Precondition,
+    );
+  }
+
+  private isCurrentSender(
+    sender: RemoteTransportEndpoint,
+    sessionId: WindowSessionId,
+  ): boolean {
+    return (
+      !sender.isDestroyed() &&
+      this.options.windows.sessionForWebContents(sender.id) === sessionId
+    );
   }
 
   private rejected(

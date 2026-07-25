@@ -48,6 +48,9 @@ export interface DispatchTicket<State, Reason extends IgnoreReason> {
 
 interface PendingDispatch<State, Event> {
   readonly event: Event;
+  readonly onSettled?: (
+    outcome: DispatchTicketOutcome<State, IgnoreReason>,
+  ) => void;
   readonly settle: (
     outcome: DispatchTicketOutcome<State, IgnoreReason>,
   ) => void;
@@ -153,7 +156,10 @@ export class TransactionalDispatcher<
     });
   };
 
-  enqueue = (event: Event): DispatchTicket<State, Reason> => {
+  enqueue = (
+    event: Event,
+    onSettled?: (outcome: DispatchTicketOutcome<State, Reason>) => void,
+  ): DispatchTicket<State, Reason> => {
     let settle!: (outcome: DispatchTicketOutcome<State, Reason>) => void;
     const settled = new Promise<DispatchTicketOutcome<State, Reason>>(
       (resolve) => {
@@ -167,6 +173,9 @@ export class TransactionalDispatcher<
     }
     this.pendingEvents.push({
       event,
+      onSettled: onSettled as
+        | ((outcome: DispatchTicketOutcome<State, IgnoreReason>) => void)
+        | undefined,
       settle: (outcome) =>
         settle(outcome as DispatchTicketOutcome<State, Reason>),
     });
@@ -229,14 +238,24 @@ export class TransactionalDispatcher<
     return this.disposed;
   }
 
-  private processOne({ event, settle }: PendingDispatch<State, Event>): void {
+  private processOne({
+    event,
+    onSettled,
+    settle,
+  }: PendingDispatch<State, Event>): void {
+    const settleCurrent = (
+      outcome: DispatchTicketOutcome<State, Reason>,
+    ): void => {
+      onSettled?.(outcome);
+      settle(outcome);
+    };
     const previous = this.store.getSnapshot();
     let result: TransitionResult<State, Command, Reason>;
     try {
       result = this.options.transition(previous, event);
     } catch (error) {
       this.report({ stage: "transition", error });
-      settle({ kind: "failed", stage: "transition", error });
+      settleCurrent({ kind: "failed", stage: "transition", error });
       return;
     }
 
@@ -244,13 +263,13 @@ export class TransactionalDispatcher<
       validateTransitionResult(previous, event, result);
     } catch (error) {
       this.report({ stage: "validation", error });
-      settle({ kind: "failed", stage: "validation", error });
+      settleCurrent({ kind: "failed", stage: "validation", error });
       return;
     }
 
     if (result.kind === "ignored") {
       this.notifyObserver(previous, event, result);
-      settle({
+      settleCurrent({
         kind: "ignored",
         state: this.store.getSnapshot(),
         reason: result.reason,
@@ -266,7 +285,7 @@ export class TransactionalDispatcher<
       this.report({ stage: "before-commit", error });
     }
     if (!this.accepting) {
-      settle({ kind: "disposed" });
+      settleCurrent({ kind: "disposed" });
       return;
     }
 
@@ -279,7 +298,7 @@ export class TransactionalDispatcher<
 
     this.notifyObserver(previous, event, result);
     this.startBatch(batch);
-    settle({ kind: "applied", state: this.store.getSnapshot() });
+    settleCurrent({ kind: "applied", state: this.store.getSnapshot() });
   }
 
   private reserve(commands: readonly Command[]): ReservedCommandBatch<Command> {

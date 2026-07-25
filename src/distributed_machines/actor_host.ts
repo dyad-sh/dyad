@@ -1,6 +1,5 @@
 import {
   TransactionalDispatcher,
-  type DispatchTicket,
   type DispatchTicketOutcome,
   type DispatcherError,
 } from "@/state_machines/dispatcher";
@@ -11,6 +10,7 @@ import type { Clock, ClockHandle, IdSource } from "@/state_machines/clock";
 import type { IgnoreReason, TransitionObserver } from "@/state_machines/types";
 import type {
   ActorDisposalCause,
+  ActorDispatchTicket,
   ActorDisposalContext,
   ActorInstanceId,
   ActorRuntimeMetadata,
@@ -68,8 +68,11 @@ export class ActorAdmissionError extends Error {
 
 function settledTicket<State, Reason extends IgnoreReason>(
   outcome: DispatchTicketOutcome<State, Reason>,
-): DispatchTicket<State, Reason> {
-  return { settled: Promise.resolve(outcome) };
+): ActorDispatchTicket<State, Reason> {
+  return {
+    settled: Promise.resolve(outcome),
+    getSettledMetadata: () => undefined,
+  };
 }
 
 function composeObservers<State, Event, Command, Reason extends IgnoreReason>(
@@ -248,21 +251,27 @@ class HostedActor<
     void this.enqueue(event);
   };
 
-  enqueue = (event: Event): DispatchTicket<State, Reason> => {
+  enqueue = (event: Event): ActorDispatchTicket<State, Reason> => {
     if (this.isAdmissionClosed()) this.stopAdmission();
-    const ticket = this.dispatcher.enqueue(event);
+    let settledMetadata: ActorRuntimeMetadata | undefined;
+    const ticket = this.dispatcher.enqueue(event, () => {
+      settledMetadata = this.getMetadata();
+    });
     void ticket.settled
       .then((outcome) => {
         if (outcome.kind !== "disposed") this.reconcileRetention();
       })
       .catch((failure) => this.reportFailure(failure));
-    return ticket;
+    return {
+      settled: ticket.settled,
+      getSettledMetadata: () => settledMetadata,
+    };
   };
 
   enqueueExpected(
     event: Event,
     expectedActorInstanceId?: ActorInstanceId,
-  ): DispatchTicket<State, Reason> {
+  ): ActorDispatchTicket<State, Reason> {
     if (
       expectedActorInstanceId !== undefined &&
       expectedActorInstanceId !== this.actorInstanceId
@@ -681,7 +690,7 @@ export class ActorHost {
     key: Key,
     event: Event,
     expectedActorInstanceId?: ActorInstanceId,
-  ): DispatchTicket<State, Reason> {
+  ): ActorDispatchTicket<State, Reason> {
     this.assertRegistered(definition);
     if (this.disposed) {
       return settledTicket({

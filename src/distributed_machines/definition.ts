@@ -121,6 +121,7 @@ export type RemoteRevisionPolicy = "allow-stale" | "reject-stale";
 export interface RemoteMachineContract<Key, State, Event> {
   readonly protocolVersion: number;
   readonly keyCodec: z.ZodType<Key>;
+  readonly encodeKey: (key: Key) => unknown;
   readonly eventCodec: z.ZodType<Event>;
   readonly snapshotCodec: z.ZodType;
   readonly keyToString: (key: Key) => string;
@@ -186,5 +187,12 @@ export interface HostedActorRef<
   Event,
   Reason extends IgnoreReason,
 > extends LocalActorRef<State, Event> {
-  enqueue(event: Event): DispatchTicket<State, Reason>;
+  enqueue(event: Event): ActorDispatchTicket<State, Reason>;
+}
+
+export interface ActorDispatchTicket<
+  State,
+  Reason extends IgnoreReason,
+> extends DispatchTicket<State, Reason> {
+  getSettledMetadata(): ActorRuntimeMetadata | undefined;
 }

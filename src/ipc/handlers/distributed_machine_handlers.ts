@@ -28,13 +28,15 @@ export const remoteMachineTransport = new RemoteMachineTransport({
   clock: systemClock,
   onProtocolMismatch: ({ sender, machineId, expected, received }) => {
     if (!sender.windowSessionId) return;
-    windowRegistry
-      .endpointForSession(sender.windowSessionId as WindowSessionId)
-      ?.send("distributed-machine:protocol-mismatch", {
-        machineId,
-        expectedProtocolVersion: expected,
-        receivedProtocolVersion: received,
-      });
+    const endpoint = windowRegistry.endpointForSession(
+      sender.windowSessionId as WindowSessionId,
+    );
+    if (!endpoint || endpoint.isDestroyed()) return;
+    endpoint.send("distributed-machine:protocol-mismatch", {
+      machineId,
+      expectedProtocolVersion: expected,
+      receivedProtocolVersion: received,
+    });
   },
 });
 

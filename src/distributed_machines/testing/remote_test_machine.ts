@@ -18,6 +18,18 @@ const InvocationRefSchema = z
 
 export const RemoteTestEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("INCREMENT") }).strict(),
+  z
+    .object({
+      type: z.literal("SET"),
+      value: z.number().int(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("ADD_BIGINT"),
+      amount: z.bigint(),
+    })
+    .strict(),
   z.object({ type: z.literal("IGNORE") }).strict(),
   z
     .object({
@@ -32,6 +44,7 @@ export const RemoteTestEventSchema = z.discriminatedUnion("type", [
     })
     .strict(),
   z.object({ type: z.literal("FAIL_COMMAND") }).strict(),
+  z.object({ type: z.literal("CHAIN_INCREMENT") }).strict(),
 ]);
 
 export const RemoteTestSnapshotSchema = z
@@ -48,7 +61,9 @@ export interface RemoteTestState {
 }
 
 export type RemoteTestEvent = z.infer<typeof RemoteTestEventSchema>;
-type RemoteTestCommand = { readonly type: "FAIL" };
+type RemoteTestCommand =
+  | { readonly type: "FAIL" }
+  | { readonly type: "EMIT_INCREMENT" };
 type RemoteTestReason = "ignored" | "stale-invocation";
 
 export function remoteTestLifecycle(
@@ -99,6 +114,13 @@ export function createRemoteTestMachine(
       switch (event.type) {
         case "INCREMENT":
           return change({ ...state, value: state.value + 1 });
+        case "SET":
+          return change({ ...state, value: event.value });
+        case "ADD_BIGINT":
+          return change({
+            ...state,
+            value: state.value + Number(event.amount),
+          });
         case "IGNORE":
           return ignore(state, "ignored");
         case "START":
@@ -113,6 +135,8 @@ export function createRemoteTestMachine(
             : ignore(state, "stale-invocation");
         case "FAIL_COMMAND":
           return stay(state, [{ type: "FAIL" }]);
+        case "CHAIN_INCREMENT":
+          return stay(state, [{ type: "EMIT_INCREMENT" }]);
       }
     },
     createScheduler: () => ({
@@ -120,13 +144,18 @@ export function createRemoteTestMachine(
         for (const command of batch.commands) void execute(command);
       },
     }),
-    createCommandRunner: () => async () => {
+    createCommandRunner: () => (command, emit) => {
+      if (command.type === "EMIT_INCREMENT") {
+        emit({ type: "INCREMENT" });
+        return;
+      }
       throw new Error("synthetic command failure");
     },
     lifecycle,
     remote: {
       protocolVersion: REMOTE_MACHINE_PROTOCOL_VERSION,
       keyCodec: z.string().min(1).max(128),
+      encodeKey: (key) => key,
       eventCodec: RemoteTestEventSchema,
       snapshotCodec: RemoteTestSnapshotSchema,
       keyToString: (key) => key,
@@ -135,7 +164,7 @@ export function createRemoteTestMachine(
         activeInvocationRef: state.activeInvocationRef,
       }),
       revisionPolicy: (event) =>
-        event.type === "INCREMENT" ? "reject-stale" : "allow-stale",
+        event.type === "SET" ? "reject-stale" : "allow-stale",
       authorizeSubscribe({ key }) {
         if (key === "forbidden") throw new Error("forbidden key");
       },

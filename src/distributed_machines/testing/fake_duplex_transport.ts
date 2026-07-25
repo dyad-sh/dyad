@@ -133,8 +133,15 @@ export class FakeRemoteRenderer {
       );
     }
     this.assertGeneration(generation);
-    this.applyBootstrap(view, bootstrap);
-    return bootstrap;
+    try {
+      const validated = this.validateSnapshot(view, bootstrap, address);
+      this.applyBootstrap(view, validated);
+      return validated;
+    } catch (error) {
+      this.views.delete(this.addressKey(address));
+      await this.duplex.main.unsubscribe(this.endpoint(), address);
+      throw error;
+    }
   }
 
   async unsubscribe(address: MachineAddress): Promise<void> {
@@ -193,16 +200,19 @@ export class FakeRemoteRenderer {
     }
     const view = this.views.get(this.addressKey(outer.data));
     if (!view) return;
-    if (!view.snapshotCodec.safeParse(outer.data.encodedState).success) {
+    let validated: MachineSnapshotEnvelope;
+    try {
+      validated = this.validateSnapshot(view, outer.data, view.address);
+    } catch {
       view.malformedSnapshots += 1;
       return;
     }
     if (!view.bootstrapped) {
-      view.buffered.push(outer.data);
+      view.buffered.push(validated);
       if (view.buffered.length > 16) view.buffered.shift();
       return;
     }
-    this.applySnapshot(view, outer.data);
+    this.applySnapshot(view, validated);
   }
 
   private receiveDisposed(payload: unknown): void {
@@ -223,6 +233,11 @@ export class FakeRemoteRenderer {
     view: FakeRemoteView,
     bootstrap: MachineSnapshotEnvelope,
   ): void {
+    if (view.disposedActorIds.has(bootstrap.actorInstanceId)) {
+      view.bootstrapped = true;
+      view.buffered.splice(0);
+      return;
+    }
     view.actorInstanceId = bootstrap.actorInstanceId;
     view.revision = bootstrap.revision;
     view.state = bootstrap.encodedState;
@@ -258,7 +273,8 @@ export class FakeRemoteRenderer {
         view.address,
       );
       if (!this.connected) return;
-      this.applyBootstrap(view, bootstrap);
+      const validated = this.validateSnapshot(view, bootstrap, view.address);
+      this.applyBootstrap(view, validated);
     } catch {
       // The fake exposes the resync count; connection handling belongs to B4.
     }
@@ -273,7 +289,30 @@ export class FakeRemoteRenderer {
   private addressKey(
     address: Pick<MachineAddress, "machineId" | "encodedKey">,
   ) {
-    return `${address.machineId}\0${JSON.stringify(address.encodedKey)}`;
+    const definition = this.duplex.manifest.get(address.machineId);
+    const decoded = definition?.remote.keyCodec.safeParse(address.encodedKey);
+    if (!definition || !decoded?.success) {
+      return `${address.machineId}\0<invalid-key>`;
+    }
+    return `${address.machineId}\0${definition.remote.keyToString(decoded.data)}`;
+  }
+
+  private validateSnapshot(
+    view: FakeRemoteView,
+    payload: unknown,
+    expectedAddress: MachineAddress,
+  ): MachineSnapshotEnvelope {
+    const outer = MachineSnapshotEnvelopeSchema.safeParse(payload);
+    if (
+      !outer.success ||
+      outer.data.protocolVersion !== expectedAddress.protocolVersion ||
+      this.addressKey(outer.data) !== this.addressKey(expectedAddress)
+    ) {
+      throw new Error("Invalid remote snapshot envelope");
+    }
+    const state = view.snapshotCodec.safeParse(outer.data.encodedState);
+    if (!state.success) throw new Error("Invalid remote snapshot state");
+    return { ...outer.data, encodedState: state.data };
   }
 
   private connectionGeneration(): number {

@@ -111,6 +111,7 @@ class HostedActor<
   private revision = 0;
   private transactionSequence = 0;
   private subscriberCount = 0;
+  private readonly bufferedEvents: Event[] = [];
   private idleTimer: RetentionTimerLease | undefined;
   private terminalTimer: RetentionTimerLease | undefined;
   private readonly admissionStopErrors: unknown[] = [];
@@ -142,7 +143,6 @@ class HostedActor<
     let dispatcher:
       | TransactionalDispatcher<State, Event, Command, Reason>
       | undefined;
-    const bufferedEvents: Event[] = [];
     const context: MachineHostContext<Key, State, Event> = {
       key,
       actorInstanceId: this.actorInstanceId,
@@ -155,7 +155,7 @@ class HostedActor<
         if (dispatcher) {
           void this.enqueue(event);
         } else {
-          bufferedEvents.push(event);
+          this.bufferedEvents.push(event);
         }
       },
     };
@@ -189,8 +189,6 @@ class HostedActor<
       this.dispatcher = dispatcher;
       if (this.isAdmissionClosed()) {
         this.dispatcher.stopAdmission();
-      } else {
-        for (const event of bufferedEvents) void this.enqueue(event);
       }
     } catch (error) {
       const cleanupErrors: unknown[] = [];
@@ -242,6 +240,7 @@ class HostedActor<
   };
 
   enqueue = (event: Event): DispatchTicket<State, Reason> => {
+    if (this.isAdmissionClosed()) this.stopAdmission();
     const ticket = this.dispatcher.enqueue(event);
     void ticket.settled
       .then((outcome) => {
@@ -279,6 +278,8 @@ class HostedActor<
   }
 
   activate(): void {
+    const bufferedEvents = this.bufferedEvents.splice(0);
+    for (const event of bufferedEvents) void this.enqueue(event);
     try {
       this.reconcileRetention();
     } catch (failure) {
@@ -728,7 +729,16 @@ export class ActorHost {
           ),
         });
       }
-      actor = this.ensureRegistered(definition, key);
+      try {
+        actor = this.ensureRegistered(definition, key);
+      } catch (error) {
+        if (!(error instanceof ActorAdmissionError)) throw error;
+        return settledTicket({
+          kind: "failed",
+          stage: "before-admission",
+          error,
+        });
+      }
     }
     return actor.enqueueExpected(event, expectedActorInstanceId);
   }
@@ -941,6 +951,18 @@ export class ActorHost {
     }
     keyed.set(key, actor);
     actor.activate();
+    if (this.disposed) {
+      throw new ActorAdmissionError("host-disposed", "ActorHost is disposed");
+    }
+    if (this.machineDisposals.has(definition.id)) {
+      this.throwMachineDisposing(definition.id);
+    }
+    if (
+      actor.isDisposing() ||
+      this.isConstructionDisposing(definition.id, key)
+    ) {
+      this.throwActorDisposing(definition.id);
+    }
     return actor;
   }
 

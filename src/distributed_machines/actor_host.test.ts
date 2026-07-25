@@ -409,6 +409,38 @@ describe("ActorHost", () => {
     expect(actorHost.peek(definition.id, "entity")).toBeUndefined();
   });
 
+  it("stops buffered factory ingress when activation starts host disposal", async () => {
+    let actorHost!: ActorHost;
+    let disposal: Promise<void> | undefined;
+    const appliedValues: number[] = [];
+    const baseDefinition = machine("buffered-activation-disposal");
+    const definition = {
+      ...baseDefinition,
+      createObserver(
+        context: Parameters<typeof baseDefinition.createCommandRunner>[0],
+      ) {
+        context.send({ type: "SET", value: 1 });
+        context.send({ type: "SET", value: 2 });
+        return {
+          onTransitionApplied({ event }: { readonly event: Event }) {
+            if (event.type !== "SET") return;
+            appliedValues.push(event.value);
+            if (event.value === 1) disposal = actorHost.dispose();
+          },
+        };
+      },
+    };
+    actorHost = host();
+    actorHost.register(definition);
+
+    expect(() => actorHost.ensure(definition, "entity")).toThrow(
+      expect.objectContaining({ code: "host-disposed" }),
+    );
+    expect(appliedValues).toEqual([1]);
+    await disposal;
+    expect(actorHost.peek(definition.id, "entity")).toBeUndefined();
+  });
+
   it("keeps key disposal pending through construction cleanup", async () => {
     let actorHost!: ActorHost;
     let definition!: ReturnType<typeof machine>;
@@ -861,10 +893,49 @@ describe("ActorHost", () => {
     actorHost = host(clock);
     actorHost.register(definition);
 
-    actorHost.ensure(definition, "entity");
+    expect(() => actorHost.ensure(definition, "entity")).toThrow(
+      expect.objectContaining({ code: "host-disposed" }),
+    );
     await disposal;
 
     expect(onDisposed).toHaveBeenCalledOnce();
+    expect(baseClock.pendingTimerCount()).toBe(0);
+  });
+
+  it("returns a before-admission failure when activation disposes a dispatch-created actor", async () => {
+    const baseClock = createFakeClock();
+    let actorHost!: ActorHost;
+    let disposal: Promise<void> | undefined;
+    const clock = {
+      ...baseClock,
+      schedule(
+        callback: Parameters<typeof baseClock.schedule>[0],
+        delayMs: number,
+      ) {
+        const handle = baseClock.schedule(callback, delayMs);
+        disposal = actorHost.dispose();
+        return handle;
+      },
+    };
+    const definition = machine(
+      "dispatch-activation-reentry",
+      lifecycle({
+        idleEviction: { kind: "dispose-after", delayMs: 5 },
+      }),
+    );
+    actorHost = host(clock);
+    actorHost.register(definition);
+
+    await expect(
+      actorHost.dispatch(definition, "entity", { type: "SET", value: 1 })
+        .settled,
+    ).resolves.toMatchObject({
+      kind: "failed",
+      stage: "before-admission",
+      error: expect.objectContaining({ code: "host-disposed" }),
+    });
+    await disposal;
+    expect(actorHost.peek(definition.id, "entity")).toBeUndefined();
     expect(baseClock.pendingTimerCount()).toBe(0);
   });
 

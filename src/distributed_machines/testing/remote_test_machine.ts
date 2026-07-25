@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import type { InvocationRef } from "@/state_machines/invocation_ref";
 import { sameInvocationRef } from "@/state_machines/invocation_ref";
 import { change, ignore, stay } from "@/state_machines/types";
@@ -166,15 +167,22 @@ export function createRemoteTestMachine(
       revisionPolicy: (event) =>
         event.type === "SET" ? "reject-stale" : "allow-stale",
       authorizeSubscribe({ key }) {
-        if (key === "forbidden") throw new Error("forbidden key");
+        if (key === "forbidden") {
+          throw new DyadError("forbidden key", DyadErrorKind.Auth);
+        }
       },
       authorizeDispatch({ key, event }) {
-        if (key === "forbidden") throw new Error("forbidden key");
+        if (key === "forbidden") {
+          throw new DyadError("forbidden key", DyadErrorKind.Auth);
+        }
         if (
           (event.type === "START" || event.type === "CANCEL") &&
           event.invocationRef.entityKey !== key
         ) {
-          throw new Error("invocation ref belongs to another actor");
+          throw new DyadError(
+            "invocation ref belongs to another actor",
+            DyadErrorKind.Auth,
+          );
         }
       },
     },

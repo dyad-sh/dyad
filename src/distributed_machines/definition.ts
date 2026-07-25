@@ -128,10 +128,12 @@ export interface RemoteMachineContract<Key, State, Event> {
   readonly keyToString: (key: Key) => string;
   readonly projectSnapshot: (state: State, key: Key) => unknown;
   readonly revisionPolicy: (event: Event) => RemoteRevisionPolicy;
+  /** Throw DyadErrorKind.Auth for an expected access denial. */
   readonly authorizeSubscribe: (context: {
     readonly sender: RemoteMachineSender;
     readonly key: Key;
   }) => void | Promise<void>;
+  /** Throw DyadErrorKind.Auth for an expected access denial. */
   readonly authorizeDispatch: (context: {
     readonly sender: RemoteMachineSender;
     readonly key: Key;

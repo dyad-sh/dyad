@@ -59,6 +59,7 @@ function createHarness(
     deduplicationRetentionMs?: number;
     maxDeduplicationEntries?: number;
     maxSubscriptionsPerWindow?: number;
+    maxAddressEnvelopeBytes?: number;
     maxDispatchEnvelopeBytes?: number;
     maxSnapshotEnvelopeBytes?: number;
     protocolMismatch?: ReturnType<typeof vi.fn>;
@@ -84,6 +85,7 @@ function createHarness(
     deduplicationRetentionMs: options.deduplicationRetentionMs,
     maxDeduplicationEntries: options.maxDeduplicationEntries,
     maxSubscriptionsPerWindow: options.maxSubscriptionsPerWindow,
+    maxAddressEnvelopeBytes: options.maxAddressEnvelopeBytes,
     maxDispatchEnvelopeBytes: options.maxDispatchEnvelopeBytes,
     maxSnapshotEnvelopeBytes: options.maxSnapshotEnvelopeBytes,
     onProtocolMismatch: options.protocolMismatch,
@@ -259,6 +261,43 @@ describe("remote machine transport", () => {
     expect(renderer.view(address())).toBeUndefined();
   });
 
+  it("preserves unexpected authorization failures", async () => {
+    const subscribeFailure = new Error(
+      "Synthetic subscription backend failure",
+    );
+    const dispatchFailure = new Error("Synthetic dispatch backend failure");
+    const base = createRemoteTestMachine();
+    const subscribeMachine = {
+      ...base,
+      remote: {
+        ...base.remote,
+        authorizeSubscribe() {
+          throw subscribeFailure;
+        },
+      },
+    };
+    const subscribeHarness = createHarness({ machine: subscribeMachine });
+    await expect(
+      subscribeHarness.duplex.connect().subscribe(address()),
+    ).rejects.toBe(subscribeFailure);
+
+    const dispatchMachine = {
+      ...base,
+      remote: {
+        ...base.remote,
+        authorizeDispatch() {
+          throw dispatchFailure;
+        },
+      },
+    };
+    const dispatchHarness = createHarness({ machine: dispatchMachine });
+    const renderer = dispatchHarness.duplex.connect();
+    await renderer.subscribe(address());
+    await expect(
+      renderer.dispatch(dispatch({ type: "INCREMENT" })),
+    ).rejects.toBe(dispatchFailure);
+  });
+
   it("deduplicates duplicate delivery and retry after a dropped receipt", async () => {
     const { clock, duplex } = createHarness({
       deduplicationRetentionMs: 10,
@@ -394,6 +433,23 @@ describe("remote machine transport", () => {
   });
 
   it("bounds structured-clone dispatch and snapshot envelopes", async () => {
+    const addressHarness = createHarness({ maxAddressEnvelopeBytes: 256 });
+    const addressRenderer = addressHarness.duplex.connect();
+    const oversizedAddress = address("x".repeat(1_024));
+    await expect(
+      addressRenderer.subscribe(oversizedAddress),
+    ).rejects.toMatchObject({
+      name: "DyadError",
+      kind: DyadErrorKind.Validation,
+    });
+    await expect(
+      addressRenderer.unsubscribe(oversizedAddress),
+    ).rejects.toMatchObject({
+      name: "DyadError",
+      kind: DyadErrorKind.Validation,
+    });
+    expect(addressHarness.transport.inspectSubscriptions()).toEqual([]);
+
     const dispatchHarness = createHarness({ maxDispatchEnvelopeBytes: 128 });
     const renderer = dispatchHarness.duplex.connect();
     await renderer.subscribe(address());
@@ -575,9 +631,13 @@ describe("remote machine transport", () => {
         dispatch({ type: "INCREMENT" }, { encodedKey: "forbidden" }),
       ),
     ).resolves.toMatchObject({ kind: "rejected", reason: "unauthorized" });
-    await expect(renderer.subscribe(address("forbidden"))).rejects.toThrow(
-      "Remote machine subscription is unauthorized",
-    );
+    await expect(
+      renderer.subscribe(address("forbidden")),
+    ).rejects.toMatchObject({
+      name: "DyadError",
+      kind: DyadErrorKind.Auth,
+      message: "forbidden key",
+    });
     expect(renderer.view(address("forbidden"))).toBeUndefined();
     expect(host.peek(machine.id, "forbidden")).toBeUndefined();
     await expect(
@@ -743,9 +803,11 @@ describe("remote machine transport", () => {
     const { duplex, host } = createHarness({ machine });
     const renderer = duplex.connect();
     await renderer.subscribe(address());
-    const pending = renderer.dispatch(dispatch({ type: "INCREMENT" }));
+    const envelope = dispatch({ type: "INCREMENT" });
+    const pending = renderer.dispatch(envelope);
     await started;
-    renderer.disconnect();
+    const replacement = renderer.reconnect();
+    await replacement.subscribe(address());
     authorize();
 
     await expect(pending).rejects.toBeInstanceOf(
@@ -754,9 +816,11 @@ describe("remote machine transport", () => {
     expect(host.peek(machine.id, "actor")?.getSnapshot()).toMatchObject({
       value: 0,
     });
-    const replacement = renderer.reconnect();
-    await replacement.subscribe(address());
-    expect(replacement.view(address())?.state).toEqual({ value: 0 });
+    await expect(replacement.dispatch(envelope)).resolves.toMatchObject({
+      kind: "applied",
+      revision: 1,
+    });
+    expect(replacement.view(address())?.state).toEqual({ value: 1 });
   });
 
   it("does not install a subscription after its window is destroyed during authorization", async () => {
@@ -999,7 +1063,10 @@ describe("remote machine transport", () => {
             await gate;
           }
           if (context.currentState?.value !== 0) {
-            throw new Error("state no longer permits SET");
+            throw new DyadError(
+              "state no longer permits SET",
+              DyadErrorKind.Auth,
+            );
           }
         },
       },

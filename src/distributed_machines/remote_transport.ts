@@ -41,6 +41,7 @@ export interface RemoteMachineTransportOptions {
   readonly deduplicationRetentionMs?: number;
   readonly maxDeduplicationEntries?: number;
   readonly maxSubscriptionsPerWindow?: number;
+  readonly maxAddressEnvelopeBytes?: number;
   readonly maxDispatchEnvelopeBytes?: number;
   readonly maxSnapshotEnvelopeBytes?: number;
   readonly measureSerializedBytes?: (value: unknown) => number;
@@ -80,6 +81,7 @@ interface PendingSubscription {
 const DEFAULT_DEDUPLICATION_RETENTION_MS = 60_000;
 const DEFAULT_MAX_DEDUPLICATION_ENTRIES = 1_024;
 const DEFAULT_MAX_SUBSCRIPTIONS_PER_WINDOW = 256;
+const DEFAULT_MAX_ADDRESS_ENVELOPE_BYTES = 64 * 1_024;
 const DEFAULT_MAX_DISPATCH_ENVELOPE_BYTES = 256 * 1_024;
 const DEFAULT_MAX_SNAPSHOT_ENVELOPE_BYTES = 1_024 * 1_024;
 const MAX_AUTHORIZATION_STABILIZATION_ATTEMPTS = 3;
@@ -99,6 +101,7 @@ export class RemoteMachineTransport {
   private readonly deduplicationRetentionMs: number;
   private readonly maxDeduplicationEntries: number;
   private readonly maxSubscriptionsPerWindow: number;
+  private readonly maxAddressEnvelopeBytes: number;
   private readonly maxDispatchEnvelopeBytes: number;
   private readonly maxSnapshotEnvelopeBytes: number;
   private readonly measureSerializedBytes: (value: unknown) => number;
@@ -111,6 +114,8 @@ export class RemoteMachineTransport {
       options.maxDeduplicationEntries ?? DEFAULT_MAX_DEDUPLICATION_ENTRIES;
     this.maxSubscriptionsPerWindow =
       options.maxSubscriptionsPerWindow ?? DEFAULT_MAX_SUBSCRIPTIONS_PER_WINDOW;
+    this.maxAddressEnvelopeBytes =
+      options.maxAddressEnvelopeBytes ?? DEFAULT_MAX_ADDRESS_ENVELOPE_BYTES;
     this.maxDispatchEnvelopeBytes =
       options.maxDispatchEnvelopeBytes ?? DEFAULT_MAX_DISPATCH_ENVELOPE_BYTES;
     this.maxSnapshotEnvelopeBytes =
@@ -153,6 +158,7 @@ export class RemoteMachineTransport {
     input: MachineAddress,
   ): Promise<MachineSnapshotEnvelope> {
     this.assertOpen();
+    this.assertAddressWithinLimit(input);
     const windowSessionId = this.options.windows.ensureRegistered(sender);
     const definition = this.requireDefinition(input.machineId);
     this.assertProtocol(sender, definition, input.protocolVersion);
@@ -199,13 +205,7 @@ export class RemoteMachineTransport {
       });
     } catch (error) {
       if (isDyadError(error)) throw error;
-      throw new DyadError(
-        "Remote machine subscription is unauthorized",
-        DyadErrorKind.Auth,
-        {
-          cause: error,
-        },
-      );
+      throw error;
     } finally {
       this.finishPendingSubscription(pending);
     }
@@ -287,6 +287,7 @@ export class RemoteMachineTransport {
     input: MachineAddress,
   ): Promise<void> {
     this.assertOpen();
+    this.assertAddressWithinLimit(input);
     this.options.windows.ensureRegistered(sender);
     const definition = this.requireDefinition(input.machineId);
     this.assertProtocol(sender, definition, input.protocolVersion);
@@ -329,7 +330,16 @@ export class RemoteMachineTransport {
     };
     this.deduplication.set(deduplicationKey, entry);
     void receipt.then(
-      () => {
+      (settledReceipt) => {
+        if (
+          settledReceipt.kind === "rejected" &&
+          settledReceipt.reason === "host-disposing"
+        ) {
+          if (this.deduplication.get(deduplicationKey) === entry) {
+            this.deduplication.delete(deduplicationKey);
+          }
+          return;
+        }
         entry.settledAt = this.options.clock.now();
       },
       () => {
@@ -427,8 +437,11 @@ export class RemoteMachineTransport {
           event: eventResult.data,
           currentState: current?.getSnapshot(),
         });
-      } catch {
-        return this.rejected(envelope.messageId, "unauthorized");
+      } catch (error) {
+        if (isDyadError(error) && error.kind === DyadErrorKind.Auth) {
+          return this.rejected(envelope.messageId, "unauthorized");
+        }
+        throw error;
       }
       if (this.disposed || !this.isCurrentSender(sender, windowSessionId)) {
         return this.rejected(envelope.messageId, "host-disposing");
@@ -841,6 +854,16 @@ export class RemoteMachineTransport {
     } catch {
       return false;
     }
+  }
+
+  private assertAddressWithinLimit(address: MachineAddress): void {
+    if (this.isWithinSerializedLimit(address, this.maxAddressEnvelopeBytes)) {
+      return;
+    }
+    throw new DyadError(
+      "Remote machine address exceeds the transport limit",
+      DyadErrorKind.Validation,
+    );
   }
 
   private pruneDeduplication(): void {

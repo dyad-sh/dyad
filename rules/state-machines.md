@@ -73,7 +73,10 @@ Background and before/after examples of why this pattern exists:
   Scope renderer retries to the stable window-session identity, not an
   ephemeral `webContents.id`, so reconnect cannot bypass deduplication. Start
   the retention window when the receipt settles, not when slow authorization
-  begins, or a lost receipt can be immediately evicted after acceptance.
+  begins, or a lost receipt can be immediately evicted after acceptance. Evict
+  transient pre-admission transport-lifetime rejections after settlement, with
+  an identity check against the cached entry, so reconnect can retry work that
+  was never admitted while concurrent in-flight duplicates still coalesce.
 - Make remote subscribe/bootstrap idempotent per window, machine, and key.
   Resync and reconnect retries must refresh the bootstrap without incrementing
   ownership; projection/encoding failure rolls back only ownership acquired by
@@ -91,9 +94,15 @@ Background and before/after examples of why this pattern exists:
   created by subscription and must lock admission to that actor instance.
 - Remote key codecs need an explicit encoder as well as a decoder. Use the
   canonical encoded value in every wire envelope; never emit the decoded domain
-  key, which may be transformed or non-serializable. Bound dispatch and
-  snapshot envelopes with a structured-clone-compatible byte measurement;
-  JSON sizing is not wire-compatible with values such as `bigint`.
+  key, which may be transformed or non-serializable. Bound every untrusted
+  envelope before its codec runs, including subscribe/unsubscribe addresses,
+  and bound snapshot envelopes before delivery. Use a
+  structured-clone-compatible byte measurement; JSON sizing is not
+  wire-compatible with values such as `bigint`.
+- Remote authorization hooks use `DyadErrorKind.Auth` for expected access
+  denial. Convert only that explicit classification to an unauthorized receipt;
+  propagate unexpected hook failures so telemetry can distinguish dependency
+  failures and bugs from ordinary refusal.
 - Capture receipt metadata synchronously when that dispatch ticket settles.
   Reading mutable actor metadata after awaiting the ticket can observe a
   re-entrant follow-up transaction instead of the acknowledged event.

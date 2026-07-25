@@ -4,13 +4,14 @@ import { usePostHog } from "posthog-js/react";
 import { useEffect, useRef, useState } from "react";
 
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import { chatMessagesByIdAtom, isStreamingByIdAtom } from "@/atoms/chatAtoms";
+import { isStreamingByIdAtom } from "@/atoms/chatAtoms";
 import { DyadProTrialDialog } from "@/components/DyadProTrialDialog";
 import { useSettings } from "@/hooks/useSettings";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { ipc, type UserBudgetInfo } from "@/ipc/types";
 import { hasDyadProKey, type UserSettings } from "@/lib/schemas";
 import { cn } from "@/lib/utils";
+import { useChatMessageCount } from "@/hooks/useChatMessages";
 
 export interface PromoMessageConfig {
   /** Stable id used for the promo_click event and UTM attribution. */
@@ -151,11 +152,9 @@ export function usePromoMessage(chatId?: number): PromoMessageState {
   const { settings } = useSettings();
   const { userBudget } = useUserBudgetInfo();
   const appId = useAtomValue(selectedAppIdAtom);
-  const messagesById = useAtomValue(chatMessagesByIdAtom);
+  const messagesLength = useChatMessageCount(chatId);
   const isStreamingById = useAtomValue(isStreamingByIdAtom);
 
-  const messagesLength =
-    chatId !== undefined ? (messagesById.get(chatId)?.length ?? 0) : 0;
   const isStreaming =
     chatId !== undefined ? (isStreamingById.get(chatId) ?? false) : false;
 

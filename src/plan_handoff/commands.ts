@@ -1,7 +1,11 @@
 import type { getDefaultStore } from "jotai";
 import type { QueryClient } from "@tanstack/react-query";
 
-import { planStateAtom, type PlanState } from "@/atoms/planAtoms";
+import {
+  planStateAtom,
+  type PlanData,
+  type PlanState,
+} from "@/atoms/planAtoms";
 import { previewModeAtom } from "@/atoms/appAtoms";
 import { isStreamingByIdAtom, selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { ipc } from "@/ipc/types";
@@ -28,6 +32,7 @@ type JotaiStore = ReturnType<typeof getDefaultStore>;
  */
 export interface PlanHandoffDeps {
   store: JotaiStore;
+  getPlanData: (chatId: number) => PlanData | undefined;
   queryClient: QueryClient;
   navigate: (options: {
     to: "/chat";
@@ -110,9 +115,7 @@ export function createPlanHandoffCommandRunner(
       case "persist-plan": {
         // Read the freshest plan content at persist time, exactly like the
         // legacy saga (the plan may have been updated while transitioning).
-        const planData = store
-          .get(planStateAtom)
-          .plansByChatId.get(command.chatId);
+        const planData = deps.getPlanData(command.chatId);
         if (!planData) {
           emit({ type: "PLAN_DATA_MISSING" });
           return;

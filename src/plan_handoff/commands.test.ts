@@ -19,6 +19,7 @@ function setup() {
   const store = createStore();
   const deps: PlanHandoffDeps = {
     store,
+    getPlanData: vi.fn(),
     queryClient: {
       invalidateQueries: vi.fn(),
     } as unknown as PlanHandoffDeps["queryClient"],
@@ -41,6 +42,15 @@ function setup() {
 }
 
 describe("plan handoff commands — stream idle watcher", () => {
+  it("reads plan data through the injected facade at persist time", async () => {
+    const { run, deps, events, emit } = setup();
+
+    await run({ type: "persist-plan", chatId: 7, appId: 3 }, emit);
+
+    expect(deps.getPlanData).toHaveBeenCalledWith(7);
+    expect(events).toEqual([{ type: "PLAN_DATA_MISSING" }]);
+  });
+
   it("submits implementation through the injected chat-stream facade", async () => {
     const { run, deps, events, emit } = setup();
     await run(

@@ -46,6 +46,10 @@ import { useChatStreamState } from "@/hooks/useChatStream";
 import { useStreamFinished } from "@/chat_stream/ChatStreamProvider";
 import { streamInvocationRef } from "@/chat_stream/transition";
 import { automaticChatScrollReason } from "./chatPanelScroll";
+import {
+  useChatMessages,
+  useChatMessagesLoaded,
+} from "@/hooks/useChatMessages";
 
 const TerminalPanel = lazy(() => import("./chat/TerminalPanel"));
 
@@ -61,7 +65,8 @@ export function ChatPanel({
   onTogglePreview,
 }: ChatPanelProps) {
   const { t } = useTranslation("chat");
-  const messagesById = useAtomValue(chatMessagesByIdAtom);
+  const messages = useChatMessages(chatId);
+  const messagesLoaded = useChatMessagesLoaded(chatId);
   const chatErrorById = useAtomValue(chatErrorByIdAtom);
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const setScrollToBottomRequestedChatIds = useSetAtom(
@@ -144,7 +149,6 @@ export function ChatPanel({
   const streamOperationId = streamState
     ? (streamInvocationRef(streamState)?.operationId ?? "")
     : "";
-  const messages = chatId ? (messagesById.get(chatId) ?? []) : [];
   const streamError = chatId ? (chatErrorById.get(chatId) ?? null) : null;
   const isTerminalOpen = chatId
     ? (terminalOpenByChatId.get(chatId) ?? false)
@@ -193,7 +197,7 @@ export function ChatPanel({
   useEffect(() => {
     if (
       chatId == null ||
-      !messagesById.has(chatId) ||
+      !messagesLoaded ||
       !isScrollToBottomRequestedForChat
     ) {
       return;
@@ -250,7 +254,7 @@ export function ChatPanel({
   }, [
     chatId,
     messages.length,
-    messagesById,
+    messagesLoaded,
     isVersionPaneOpen,
     scrollToBottom,
     isScrollToBottomRequestedForChat,

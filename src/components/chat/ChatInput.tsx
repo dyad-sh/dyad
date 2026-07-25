@@ -25,6 +25,7 @@ import { useTranslation } from "react-i18next";
 import { getNpmPackagePageUrl } from "./npmPackageUrl";
 
 import { useSettings } from "@/hooks/useSettings";
+import { useChatMessageCount, useChatMessages } from "@/hooks/useChatMessages";
 import { ipc } from "@/ipc/types";
 import {
   chatInputValuesByIdAtom,
@@ -172,7 +173,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const [editingQueuedMessageId, setEditingQueuedMessageId] = useState<
     string | null
   >(null);
-  const messagesById = useAtomValue(chatMessagesByIdAtom);
+  const messages = useChatMessages(chatId);
+  const messageCount = useChatMessageCount(chatId);
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
   const [showTokenBar, setShowTokenBar] = useAtom(showTokenBarAtom);
@@ -267,7 +269,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const { proposal, messageId } = proposalResult ?? {};
   useChatModeToggle();
 
-  const lastMessage = (chatId ? (messagesById.get(chatId) ?? []) : []).at(-1);
+  const lastMessage = messages.at(-1);
   const disableSendButton =
     effectiveMode !== "local-agent" &&
     lastMessage?.role === "assistant" &&
@@ -278,13 +280,11 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
   // Extract user message history for terminal-style navigation
   const userMessageHistory = useMemo(() => {
-    if (!chatId) return [];
-    const messages = messagesById.get(chatId) ?? [];
     return messages
       .filter((msg) => msg.role === "user")
       .map((msg) => msg.content)
       .reverse(); // Most recent first
-  }, [chatId, messagesById]);
+  }, [messages]);
 
   const { userBudget } = useUserBudgetInfo();
   const isProEnabled = settings ? isDyadProEnabled(settings) : false;
@@ -327,8 +327,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     prevModeRef.current = currentMode;
 
     if (prevMode && prevMode !== "plan" && currentMode === "plan") {
-      const messages = chatId ? (messagesById.get(chatId) ?? []) : [];
-      if (messages.length > 0) {
+      if (messageCount > 0) {
         setNeedsFreshPlanChat(true);
       }
     }
@@ -336,7 +335,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     chatMode,
     chatId,
     isChatModeLoading,
-    messagesById,
+    messageCount,
     setNeedsFreshPlanChat,
   ]);
 

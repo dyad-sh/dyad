@@ -25,11 +25,9 @@ import { detectIsMac } from "@/hooks/useChatModeToggle";
 import { useRouterState } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { LocalAgentNewChatToast } from "./LocalAgentNewChatToast";
-import { useAtomValue, useSetAtom } from "jotai";
-import {
-  chatMessagesByIdAtom,
-  hasManuallySelectedChatModeAtom,
-} from "@/atoms/chatAtoms";
+import { useSetAtom } from "jotai";
+import { hasManuallySelectedChatModeAtom } from "@/atoms/chatAtoms";
+import { useChatMessageCount } from "@/hooks/useChatMessages";
 import { Hammer, Bot, MessageCircle, Lightbulb } from "lucide-react";
 import { useEffect, useRef } from "react";
 import {
@@ -42,9 +40,8 @@ export function ChatModeSelector() {
   const { updateSettings } = useSettings();
   const routerState = useRouterState();
   const isChatRoute = routerState.location.pathname === "/chat";
-  const messagesById = useAtomValue(chatMessagesByIdAtom);
   const chatId = routerState.location.search.id as number | undefined;
-  const currentChatMessages = chatId ? (messagesById.get(chatId) ?? []) : [];
+  const currentChatMessageCount = useChatMessageCount(chatId);
   const {
     selectedMode,
     effectiveMode,
@@ -123,7 +120,7 @@ export function ChatModeSelector() {
     if (
       newMode === "local-agent" &&
       isChatRoute &&
-      currentChatMessages.length > 0 &&
+      currentChatMessageCount > 0 &&
       !settings?.hideLocalAgentNewChatToast
     ) {
       toast.custom(

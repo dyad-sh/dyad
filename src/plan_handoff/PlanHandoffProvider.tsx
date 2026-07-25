@@ -11,6 +11,7 @@ import {
   type PlanHandoffDeps,
 } from "./commands";
 import { createPlanHandoffRegistry } from "./registry";
+import { readPlanDocument } from "@/hooks/usePlanDocument";
 
 export type PlanHandoffManager = ReturnType<typeof createPlanHandoffRegistry>;
 
@@ -27,6 +28,7 @@ function useOwnedPlanHandoffManager({
   const dependencies = useRef<PlanHandoffDeps | null>(null);
   dependencies.current = {
     store,
+    getPlanData: (chatId) => readPlanDocument(store, chatId),
     queryClient,
     navigate: (options) => void navigate(options),
     chatStream,

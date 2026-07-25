@@ -6,6 +6,7 @@ import { planStateAtom } from "@/atoms/planAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { planClient } from "@/ipc/types/plan";
 import { queryKeys } from "@/lib/queryKeys";
+import { usePlanDocument } from "@/hooks/usePlanDocument";
 
 /**
  * Loads a saved plan from disk and syncs it into memory state for the current chat.
@@ -15,10 +16,10 @@ import { queryKeys } from "@/lib/queryKeys";
 export function usePlan({ enabled = true }: { enabled?: boolean } = {}) {
   const chatId = useAtomValue(selectedChatIdAtom);
   const appId = useAtomValue(selectedAppIdAtom);
-  const planState = useAtomValue(planStateAtom);
+  const planDocument = usePlanDocument(chatId);
   const setPlanState = useSetAtom(planStateAtom);
 
-  const hasPlanInMemory = chatId ? planState.plansByChatId.has(chatId) : false;
+  const hasPlanInMemory = planDocument !== undefined;
 
   const { data: savedPlan, isLoading } = useQuery({
     queryKey: queryKeys.plans.forChat({

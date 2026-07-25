@@ -13,13 +13,13 @@ import {
   clearPlanAnnotations,
   planAcceptInNewChatByChatIdAtom,
   planAnnotationsAtom,
-  planStateAtom,
 } from "@/atoms/planAtoms";
 import { previewModeAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { usePlan } from "@/hooks/usePlan";
 import { useChatMode } from "@/hooks/useChatMode";
+import { useIsPlanAccepted, usePlanDocument } from "@/hooks/usePlanDocument";
 import { SelectionCommentButton } from "./plan/SelectionCommentButton";
 import { CommentsFloatingButton } from "./plan/CommentsFloatingButton";
 import { CommentPopover } from "./plan/CommentPopover";
@@ -30,7 +30,8 @@ import {
 
 export const PlanPanel: React.FC = () => {
   const chatId = useAtomValue(selectedChatIdAtom);
-  const planState = useAtomValue(planStateAtom);
+  const planData = usePlanDocument(chatId);
+  const isAccepted = useIsPlanAccepted(chatId);
   const previewMode = useAtomValue(previewModeAtom);
   const setPreviewMode = useSetAtom(previewModeAtom);
   const { streamMessage, isStreaming } = useStreamChat();
@@ -41,11 +42,9 @@ export const PlanPanel: React.FC = () => {
   const planContentRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  const planData = chatId ? planState.plansByChatId.get(chatId) : null;
   const currentPlan = planData?.content ?? null;
   const currentTitle = planData?.title ?? null;
   const currentSummary = planData?.summary ?? null;
-  const isAccepted = chatId ? planState.acceptedChatIds.has(chatId) : false;
   // A persisted plan only counts as accepted once its status says so. Drafts
   // are persisted too (so they survive a restart) but must still offer the
   // accept buttons. We also require the saved-plan content to match what's

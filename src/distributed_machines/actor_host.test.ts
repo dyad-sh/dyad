@@ -682,6 +682,29 @@ describe("ActorHost", () => {
     await actorHost.dispose();
   });
 
+  it("applies terminal retention when the last subscriber leaves", async () => {
+    const clock = createFakeClock();
+    const definition = machine(
+      "terminal-unsubscribe",
+      lifecycle({
+        idleEviction: { kind: "dispose-after", delayMs: 5 },
+        terminalRetention: { kind: "retain" },
+      }),
+    );
+    const actorHost = host(clock);
+    actorHost.register(definition);
+    const actor = actorHost.ensure(definition, "entity");
+    const unsubscribe = actor.subscribe(() => undefined);
+
+    await actor.enqueue({ type: "TERMINAL" }).settled;
+    unsubscribe();
+    clock.advanceBy(5);
+    await Promise.resolve();
+
+    expect(actorHost.peek(definition.id, "entity")).toBe(actor);
+    await actorHost.dispose();
+  });
+
   it("ignores an earlier terminal deadline when cancellation fails", async () => {
     const baseClock = createFakeClock();
     const clock = {

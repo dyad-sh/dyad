@@ -211,7 +211,13 @@ class HostedActor<
       subscribed = false;
       unsubscribe();
       this.subscriberCount -= 1;
-      if (this.subscriberCount === 0) this.scheduleIdleEviction();
+      if (this.subscriberCount === 0) {
+        try {
+          this.reconcileRetention();
+        } catch (failure) {
+          this.reportFailure(failure);
+        }
+      }
     };
   };
 

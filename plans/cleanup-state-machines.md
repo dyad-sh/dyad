@@ -570,7 +570,7 @@ either, and test adopt-then-remove tab transfer.
 - selector-aware hooks from A1;
 - synthetic machines only.
 
-**B3 — Contract-driven remote transport.**
+**B3 — Contract-driven remote transport: implemented.**
 
 - static manifest;
 - trusted typed handlers;

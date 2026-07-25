@@ -35,7 +35,7 @@ describe("distributed machine boundaries", () => {
     }
   });
 
-  it("has no production dependents outside the kernel and new module", () => {
+  it("is consumed only by the explicit main-process transport composition root", () => {
     const offenders = productionTypeScriptFiles(SOURCE_ROOT)
       .filter((file) => !file.startsWith(DISTRIBUTED_ROOT))
       .filter((file) =>
@@ -43,6 +43,6 @@ describe("distributed machine boundaries", () => {
       )
       .map((file) => path.relative(SOURCE_ROOT, file).replaceAll("\\", "/"));
 
-    expect(offenders).toEqual([]);
+    expect(offenders).toEqual(["ipc/handlers/distributed_machine_handlers.ts"]);
   });
 });

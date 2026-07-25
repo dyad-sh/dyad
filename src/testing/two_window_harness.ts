@@ -47,6 +47,9 @@ class HarnessEndpoint implements WindowEndpoint {
   private destroyed = false;
   private readonly destroyedListeners = new Set<() => void>();
   readonly received: Array<{ channel: string; payload: unknown }> = [];
+  private readonly receiveListeners = new Set<
+    (channel: string, payload: unknown) => void
+  >();
 
   constructor(
     readonly id: number,
@@ -61,6 +64,7 @@ class HarnessEndpoint implements WindowEndpoint {
     if (this.destroyed) return;
     this.received.push({ channel, payload });
     this.onSend(channel, payload);
+    for (const listener of this.receiveListeners) listener(channel, payload);
   }
 
   once(event: "destroyed", listener: () => void): this {
@@ -73,6 +77,12 @@ class HarnessEndpoint implements WindowEndpoint {
     this.destroyed = true;
     for (const listener of this.destroyedListeners) listener();
     this.destroyedListeners.clear();
+    this.receiveListeners.clear();
+  }
+
+  onReceive(listener: (channel: string, payload: unknown) => void): () => void {
+    this.receiveListeners.add(listener);
+    return () => this.receiveListeners.delete(listener);
   }
 }
 
@@ -183,6 +193,17 @@ export class TwoWindowHarness {
 
   webContentsId(sessionId: WindowSessionId): number {
     return this.requireWindow(sessionId).endpoint.id;
+  }
+
+  endpoint(sessionId: WindowSessionId): WindowEndpoint {
+    return this.requireWindow(sessionId).endpoint;
+  }
+
+  onReceive(
+    sessionId: WindowSessionId,
+    listener: (channel: string, payload: unknown) => void,
+  ): () => void {
+    return this.requireWindow(sessionId).endpoint.onReceive(listener);
   }
 
   async subscribe(

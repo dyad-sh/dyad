@@ -63,6 +63,10 @@ import {
   windowInfrastructureContracts,
   windowInfrastructureEvents,
 } from "../types/window_infrastructure";
+import {
+  distributedMachineContracts,
+  distributedMachineEvents,
+} from "../types/distributed_machines";
 
 // =============================================================================
 // Invoke Channels (derived from all contracts)
@@ -131,6 +135,7 @@ export const VALID_INVOKE_CHANNELS = [
   ...getInvokeChannels(queueContracts),
   ...getInvokeChannels(userInputContracts),
   ...getInvokeChannels(windowInfrastructureContracts),
+  ...getInvokeChannels(distributedMachineContracts),
 
   // Test-only channels
   ...TEST_INVOKE_CHANNELS,
@@ -172,6 +177,7 @@ export const VALID_RECEIVE_CHANNELS = [
   ...getReceiveChannels(testsEvents),
   ...getReceiveChannels(userInputEvents),
   ...getReceiveChannels(windowInfrastructureEvents),
+  ...getReceiveChannels(distributedMachineEvents),
 ] as const;
 
 // =============================================================================

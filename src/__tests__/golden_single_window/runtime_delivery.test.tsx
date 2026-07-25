@@ -10,6 +10,8 @@ import { useAppOutputSubscription, useRunApp } from "@/hooks/useRunApp";
 import { createImageGenerationCommandRunner } from "@/image_generation/commands";
 import { ImageGenerationProvider } from "@/image_generation/ImageGenerationProvider";
 import { ImageGenerationManager } from "@/image_generation/manager";
+import { PackageManagerWarningProvider } from "@/package_manager_warnings/PackageManagerWarningProvider";
+import { PackageManagerWarningStore } from "@/package_manager_warnings/store";
 import {
   createFakeClock,
   createSequentialIdSource,
@@ -19,8 +21,6 @@ import {
   DeferredPreviewErrorFacade,
   PreviewErrorFacadeProvider,
 } from "@/app_wiring/preview_error_facade";
-import { PackageManagerWarningProvider } from "@/package_manager_warnings/PackageManagerWarningProvider";
-import { PackageManagerWarningStore } from "@/package_manager_warnings/store";
 
 const mocks = vi.hoisted(() => ({
   appOutputBatchListeners: new Set<(outputs: any[]) => void>(),

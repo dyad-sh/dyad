@@ -41,6 +41,14 @@ export interface ActorHostOptions {
   readonly reportError?: (error: ActorHostError) => void;
 }
 
+export interface ActorDisposedEvent {
+  readonly machineId: string;
+  readonly key: unknown;
+  readonly metadata: ActorRuntimeMetadata;
+  readonly snapshot: unknown;
+  readonly cause: ActorDisposalCause;
+}
+
 export class ActorAdmissionError extends Error {
   constructor(
     readonly code:
@@ -134,6 +142,7 @@ class HostedActor<
     private readonly removeFromHost: (
       actor: HostedActor<Key, State, Event, Command, Reason>,
     ) => void,
+    private readonly notifyDisposed: (event: ActorDisposedEvent) => void,
   ) {
     this.actorInstanceId = options.ids.next(`${definition.id}-actor`);
     const initialState = definition.initialState(key);
@@ -336,6 +345,17 @@ class HostedActor<
     await this.runDisposalStep(errors, () =>
       this.definition.lifecycle.onDisposed?.(context),
     );
+    try {
+      this.notifyDisposed({
+        machineId: this.definition.id,
+        key: this.key,
+        metadata: context.metadata,
+        snapshot: context.snapshot,
+        cause: context.cause,
+      });
+    } catch (error) {
+      errors.push(error);
+    }
     if (errors.length > 0) {
       throw new AggregateError(
         errors,
@@ -517,8 +537,16 @@ export class ActorHost {
   private readonly hostConstructionDisposals: Promise<void>[] = [];
   private disposed = false;
   private disposal: Promise<void> | undefined;
+  private readonly disposalListeners = new Set<
+    (event: ActorDisposedEvent) => void
+  >();
 
   constructor(private readonly options: ActorHostOptions) {}
+
+  onActorDisposed(listener: (event: ActorDisposedEvent) => void): () => void {
+    this.disposalListeners.add(listener);
+    return () => this.disposalListeners.delete(listener);
+  }
 
   register<
     Id extends string,
@@ -884,6 +912,15 @@ export class ActorHost {
         (disposedActor) => {
           if (keyed?.get(key) === disposedActor) keyed.delete(key);
           if (keyed?.size === 0) this.actors.delete(definition.id);
+        },
+        (event) => {
+          for (const listener of this.disposalListeners) {
+            try {
+              listener(event);
+            } catch (failure) {
+              this.reportFailure(definition.id, key, failure);
+            }
+          }
         },
       );
     } catch (error) {

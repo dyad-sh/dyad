@@ -69,6 +69,10 @@ export {
   windowInfrastructureContracts,
   windowInfrastructureEvents,
 } from "./window_infrastructure";
+export {
+  distributedMachineContracts,
+  distributedMachineEvents,
+} from "./distributed_machines";
 
 // =============================================================================
 // Client Exports
@@ -117,6 +121,10 @@ export {
   windowInfrastructureClient,
   windowInfrastructureEventClient,
 } from "./window_infrastructure";
+export {
+  distributedMachineClient,
+  distributedMachineEventClient,
+} from "./distributed_machines";
 
 // =============================================================================
 // Type Exports
@@ -476,6 +484,10 @@ import {
   windowInfrastructureClient,
   windowInfrastructureEventClient,
 } from "./window_infrastructure";
+import {
+  distributedMachineClient,
+  distributedMachineEventClient,
+} from "./distributed_machines";
 
 /**
  * Unified IPC client with all domains organized by namespace.
@@ -545,6 +557,7 @@ export const ipc = {
   userInput: userInputClient,
   firstPrompt: firstPromptClient,
   windowInfrastructure: windowInfrastructureClient,
+  distributedMachine: distributedMachineClient,
 
   // Event clients for main->renderer pub/sub
   events: {
@@ -556,5 +569,6 @@ export const ipc = {
     tests: testsEventClient,
     userInput: userInputEventClient,
     windowInfrastructure: windowInfrastructureEventClient,
+    distributedMachine: distributedMachineEventClient,
   },
 } as const;

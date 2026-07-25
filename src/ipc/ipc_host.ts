@@ -53,6 +53,7 @@ import { registerQueueHandlers } from "./handlers/queue_handlers";
 import { registerUserInputHandlers } from "./handlers/user_input_handlers";
 import { registerFirstPromptHandlers } from "./handlers/first_prompt_handlers";
 import { registerWindowInfrastructureHandlers } from "./handlers/window_infrastructure_handlers";
+import { registerDistributedMachineHandlers } from "./handlers/distributed_machine_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -111,4 +112,5 @@ export function registerIpcHandlers() {
   registerUserInputHandlers();
   registerFirstPromptHandlers();
   registerWindowInfrastructureHandlers();
+  registerDistributedMachineHandlers();
 }

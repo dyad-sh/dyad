@@ -1,4 +1,5 @@
 import type { IdSource } from "@/state_machines/clock";
+import type { z } from "zod";
 import type {
   CommandScheduler,
   DispatchTicket,
@@ -110,11 +111,31 @@ export interface MachinePersistencePolicy<Key, State> {
  * Remote transport is a definition-time contract only in B2. Codecs,
  * authorization, and transport execution are introduced in B3.
  */
+export interface RemoteMachineSender {
+  readonly webContentsId: number;
+  readonly windowSessionId?: string;
+}
+
+export type RemoteRevisionPolicy = "allow-stale" | "reject-stale";
+
 export interface RemoteMachineContract<Key, State, Event> {
   readonly protocolVersion: number;
-  readonly keyType?: Key;
-  readonly stateType?: State;
-  readonly eventType?: Event;
+  readonly keyCodec: z.ZodType<Key>;
+  readonly eventCodec: z.ZodType<Event>;
+  readonly snapshotCodec: z.ZodType;
+  readonly keyToString: (key: Key) => string;
+  readonly projectSnapshot: (state: State, key: Key) => unknown;
+  readonly revisionPolicy: (event: Event) => RemoteRevisionPolicy;
+  readonly authorizeSubscribe: (context: {
+    readonly sender: RemoteMachineSender;
+    readonly key: Key;
+  }) => void | Promise<void>;
+  readonly authorizeDispatch: (context: {
+    readonly sender: RemoteMachineSender;
+    readonly key: Key;
+    readonly event: Event;
+    readonly currentState: State | undefined;
+  }) => void | Promise<void>;
 }
 
 export interface DistributedMachineDefinition<

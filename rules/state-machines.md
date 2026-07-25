@@ -68,6 +68,9 @@ Background and before/after examples of why this pattern exists:
   idempotency key through every queue, IPC, and persistence boundary. Make the
   receiving boundary durably deduplicate acceptance, and acknowledge only
   after that acceptance; a renderer-local enqueue is not durable acceptance.
+- Make remote subscribe/bootstrap idempotent per window, machine, and key.
+  Resync and reconnect retries must refresh the bootstrap without incrementing
+  ownership, or one unsubscribe/window cleanup can leave the actor retained.
 - Machine-generated queued work must not be editable or removable (including
   through bulk-clear paths) unless removal explicitly settles or rejects the
   owning machine request; otherwise reload can resurrect abandoned work.

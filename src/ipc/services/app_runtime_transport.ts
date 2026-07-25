@@ -1,8 +1,8 @@
 import type { WebContents } from "electron";
 
 import type { AppOutput } from "@/ipc/types/misc";
+import type { AppRuntimeOutput } from "@/ipc/types/app_runtime";
 import { safeSend } from "@/ipc/utils/safe_sender";
-import type { AppRuntimeOutput } from "./app_runtime_service";
 
 const APP_OUTPUT_FLUSH_INTERVAL_MS = 100;
 

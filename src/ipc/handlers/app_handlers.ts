@@ -382,8 +382,8 @@ async function deleteAppById(
 
     if (!app) {
       if (options.allowMissing && options.knownAppPath) {
-        await removeAppFiles(appId, options.knownAppPath);
         appRuntimeService.cleanup(appId);
+        await removeAppFiles(appId, options.knownAppPath);
         return;
       }
       throw new DyadError("App not found", DyadErrorKind.NotFound);
@@ -422,8 +422,8 @@ async function deleteAppById(
       );
     }
 
-    await removeAppFiles(appId, getDyadAppPath(app.path));
     appRuntimeService.cleanup(appId);
+    await removeAppFiles(appId, getDyadAppPath(app.path));
   });
 }
 
@@ -1340,6 +1340,7 @@ export function registerAppHandlers() {
 
   createTypedHandler(systemContracts.resetAll, async () => {
     logger.log("start: resetting all apps and settings.");
+    appRuntimeService.cleanupAll();
     // Stop all running apps first
     logger.log("stopping all running apps...");
     const runningAppIds = Array.from(runningApps.keys());

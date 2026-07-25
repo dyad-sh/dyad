@@ -11,7 +11,7 @@ import {
 } from "./cloud_sandbox_provider";
 import { readSettings } from "../../main/settings";
 import type { AppRunInvocationRef } from "@/app_run/state";
-import type { AppRuntimeOutput } from "@/ipc/services/app_runtime_service";
+import type { AppRuntimeOutput } from "@/ipc/types/app_runtime";
 
 const logger = log.scope("process_manager");
 

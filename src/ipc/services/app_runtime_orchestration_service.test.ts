@@ -29,6 +29,7 @@ function createOutput() {
 function createHarness() {
   const calls: string[] = [];
   let running: RunningAppInfo | undefined;
+  let runtimeMode: RuntimeMode2 = "host";
   let id = 0;
   const dependencies: AppRuntimeServiceDependencies = {
     withLock: async (_appId, operation) => {
@@ -74,7 +75,7 @@ function createHarness() {
     clearLogs: vi.fn(() => {
       calls.push("clear-logs");
     }),
-    readRuntimeMode: () => "host" satisfies RuntimeMode2,
+    readRuntimeMode: () => runtimeMode,
     removeNodeModules: vi.fn(async () => {
       calls.push("remove-node-modules");
     }),
@@ -91,6 +92,9 @@ function createHarness() {
     service: new AppRuntimeService(dependencies),
     setRunning(value: RunningAppInfo | undefined) {
       running = value;
+    },
+    setRuntimeMode(value: RuntimeMode2) {
+      runtimeMode = value;
     },
   };
 }
@@ -155,6 +159,28 @@ describe("AppRuntimeService", () => {
       }),
     );
     expect(harness.dependencies.startProcess).not.toHaveBeenCalled();
+  });
+
+  it("snapshots runtime mode before removing dependencies during rebuild", async () => {
+    const harness = createHarness();
+    const { output } = createOutput();
+    harness.setRuntimeMode("docker");
+    vi.mocked(harness.dependencies.removeNodeModules).mockImplementation(
+      async () => {
+        harness.setRuntimeMode("host");
+      },
+    );
+
+    await harness.service.restart({
+      appId: APP_ID,
+      output,
+      invocationRef: REF,
+      removeNodeModules: true,
+    });
+
+    expect(harness.dependencies.removeDockerVolumes).toHaveBeenCalledWith(
+      APP_ID,
+    );
   });
 
   it("owns external lifecycle claims from start through readiness", async () => {
@@ -274,5 +300,52 @@ describe("AppRuntimeService", () => {
 
     expect(claim).toBeDefined();
     expect(sent).toHaveLength(1);
+  });
+
+  it("cleans up all claims so late lifecycle settlements cannot publish", async () => {
+    const harness = createHarness();
+    const first = createOutput();
+    const second = createOutput();
+    let releaseReady!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      releaseReady = resolve;
+    });
+    vi.mocked(harness.dependencies.waitForReady).mockImplementation(
+      async () => ready,
+    );
+    const secondRef: AppRunInvocationRef = {
+      kind: "app-run",
+      entityKey: APP_ID + 1,
+      operationId: "app-run:other-app",
+    };
+
+    const executions = [
+      harness.service.executeExternalLifecycle({
+        appId: APP_ID,
+        output: first.output,
+        operation: "restart",
+        invocationRef: REF,
+      }),
+      harness.service.executeExternalLifecycle({
+        appId: APP_ID + 1,
+        output: second.output,
+        operation: "restart",
+        invocationRef: secondRef,
+      }),
+    ];
+    await vi.waitFor(() =>
+      expect(harness.dependencies.waitForReady).toHaveBeenCalledTimes(2),
+    );
+
+    harness.service.cleanupAll();
+    releaseReady();
+    await Promise.all(executions);
+
+    expect(first.sent).toEqual([
+      expect.objectContaining({ type: "agent-lifecycle-started" }),
+    ]);
+    expect(second.sent).toEqual([
+      expect.objectContaining({ type: "agent-lifecycle-started" }),
+    ]);
   });
 });

@@ -16,7 +16,7 @@ import {
   shouldShowPnpmMinimumReleaseAgeWarning,
   type RuntimeMode2,
 } from "@/lib/schemas";
-import type { AppOutput } from "@/ipc/types/misc";
+import type { AppRuntimeOutput } from "@/ipc/types/app_runtime";
 import type { AppRunInvocationRef } from "@/app_run/state";
 import {
   CancellationTombstones,
@@ -83,11 +83,7 @@ const pnpmVersionMigrationNotifiedAppIds = new Set<number>();
  * IPC is one adapter today; the future main-hosted actor can consume these
  * callbacks directly without manufacturing an Electron event.
  */
-export interface AppRuntimeOutput {
-  send(output: AppOutput): void;
-  enqueue(output: AppOutput): void;
-  flush(): void;
-}
+export type { AppRuntimeOutput } from "@/ipc/types/app_runtime";
 
 // Needed, otherwise Electron on macOS/Linux may not find node/pnpm.
 fixPath();
@@ -1618,8 +1614,9 @@ export class AppRuntimeService {
 
       await this.dependencies.cleanPort(getAppPort(appId));
       if (removeNodeModules) {
+        const runtimeMode = this.dependencies.readRuntimeMode();
         await this.dependencies.removeNodeModules(appPath);
-        if (this.dependencies.readRuntimeMode() === "docker") {
+        if (runtimeMode === "docker") {
           try {
             await this.dependencies.removeDockerVolumes(appId);
           } catch (error) {
@@ -1790,6 +1787,12 @@ export class AppRuntimeService {
       this.externalClaims.delete(invocationRegistryKey(claim.invocationRef));
     }
     this.externalClaimsByApp.delete(appId);
+  }
+
+  cleanupAll(): void {
+    for (const appId of this.externalClaimsByApp.keys()) {
+      this.cleanup(appId);
+    }
   }
 
   private async requireApp(appId: number): Promise<RuntimeAppRecord> {

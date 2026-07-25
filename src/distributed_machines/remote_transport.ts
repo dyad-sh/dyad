@@ -1,5 +1,5 @@
 import { serialize } from "node:v8";
-import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import type { Clock } from "@/state_machines/clock";
 import type { WindowSessionId } from "@/window_infrastructure/types";
 import { ActorAdmissionError, type ActorHost } from "./actor_host";
@@ -198,6 +198,7 @@ export class RemoteMachineTransport {
         key,
       });
     } catch (error) {
+      if (isDyadError(error)) throw error;
       throw new DyadError(
         "Remote machine subscription is unauthorized",
         DyadErrorKind.Auth,

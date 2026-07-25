@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { DyadErrorKind } from "@/errors/dyad_error";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
   createFakeClock,
   createSequentialIdSource,
@@ -234,6 +234,28 @@ describe("remote machine transport", () => {
       name: "DyadError",
       kind: DyadErrorKind.Precondition,
     });
+    expect(renderer.view(address())).toBeUndefined();
+  });
+
+  it("preserves classified subscription authorization errors", async () => {
+    const expected = new DyadError(
+      "Synthetic subscription quota",
+      DyadErrorKind.RateLimited,
+    );
+    const base = createRemoteTestMachine();
+    const machine = {
+      ...base,
+      remote: {
+        ...base.remote,
+        authorizeSubscribe() {
+          throw expected;
+        },
+      },
+    };
+    const { duplex } = createHarness({ machine });
+    const renderer = duplex.connect();
+
+    await expect(renderer.subscribe(address())).rejects.toBe(expected);
     expect(renderer.view(address())).toBeUndefined();
   });
 

@@ -207,6 +207,15 @@ describe("app-run transport codecs", () => {
         invocationRef: { ...invocationRef, operationId: "" },
       }),
     ).toThrow();
+    expect(() =>
+      AppRunIntentEventSchema.parse({
+        ...intentEvents[3],
+        activeInvocationRef: {
+          ...invocationRef,
+          entityKey: APP_ID + 1,
+        },
+      }),
+    ).toThrow();
   });
 
   it("rejects malformed keys, events, and snapshots", () => {

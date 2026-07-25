@@ -108,7 +108,16 @@ const stopRequestedIntentSchema = z
     startedAt: finiteTimestampSchema,
     activeInvocationRef: AppRunInvocationRefSchema,
   })
-  .strict();
+  .strict()
+  .superRefine((intent, context) => {
+    if (intent.activeInvocationRef.entityKey !== intent.appId) {
+      context.addIssue({
+        code: "custom",
+        path: ["activeInvocationRef", "entityKey"],
+        message: "Cancellation target must belong to the routed app",
+      });
+    }
+  });
 
 const manualReloadIntentSchema = z
   .object({

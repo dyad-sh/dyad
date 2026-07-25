@@ -374,7 +374,7 @@ shape C2 will later publish remotely — this is preparation for the host
 move, not a temporary API.
 
 **A4 — Cross-machine signal edges that do not preselect chat storage:
-in flight.**
+in flight (#4093).**
 
 - app-run lifecycle/URL edges consumed through typed post-commit facades so
   their source can later swap to a remote actor;

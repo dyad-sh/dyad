@@ -424,6 +424,43 @@ describe("ActorHost", () => {
     expect(actorHost.peek(definition.id, "entity")).toBeUndefined();
   });
 
+  it("reconciles retention after asynchronous command emissions", async () => {
+    const clock = createFakeClock();
+    const onDisposed = vi.fn();
+    const baseDefinition = machine(
+      "command-terminal",
+      lifecycle({
+        terminalRetention: { kind: "dispose-after", delayMs: 5 },
+        onDisposed,
+      }),
+    );
+    const definition = {
+      ...baseDefinition,
+      createCommandRunner:
+        (context: Parameters<typeof baseDefinition.createCommandRunner>[0]) =>
+        (_command: Command, emit: (event: Event) => void) => {
+          context.timers.replace(
+            "terminal",
+            "token",
+            1,
+            () => ({ type: "TERMINAL" }),
+            emit,
+          );
+        },
+    };
+    const actorHost = host(clock);
+    actorHost.register(definition);
+    const actor = actorHost.localRef(definition, "entity");
+
+    actor.send({ type: "COMMAND" });
+    clock.advanceBy(1);
+    await Promise.resolve();
+    clock.advanceBy(5);
+
+    await vi.waitFor(() => expect(onDisposed).toHaveBeenCalledOnce());
+    expect(actorHost.peek(definition.id, "entity")).toBeUndefined();
+  });
+
   it("does not postpone idle eviction for idle-eligible traffic", async () => {
     const clock = createFakeClock();
     const onDisposed = vi.fn();

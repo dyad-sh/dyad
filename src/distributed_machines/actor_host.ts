@@ -147,6 +147,7 @@ class HostedActor<
     try {
       const domainObserver = definition.createObserver?.(context);
       const beforeCommit = definition.createBeforeCommit?.(context);
+      const runCommand = definition.createCommandRunner(context);
       const traceObserver = createTraceObserver<State, Event, Command, Reason>(
         definition.id,
         typeof key === "string" || typeof key === "number" ? key : String(key),
@@ -159,7 +160,7 @@ class HostedActor<
           return definition.transition(state, event);
         },
         scheduler: definition.createScheduler(key),
-        runCommand: definition.createCommandRunner(context),
+        runCommand: (command) => runCommand(command, context.send),
         beforeCommit,
         project: (snapshot) => {
           if (snapshot !== this.lastProjectedSnapshot) {

@@ -247,6 +247,21 @@ describe("main-hosted app-run actor", () => {
     manager.dispose();
   });
 
+  it("rejects renderer dispatch when the runtime settlement fails", async () => {
+    runtime.start.mockRejectedValue(new Error("spawn failed"));
+    const { duplex } = createHarness();
+    const manager = new AppRunRemoteManager(
+      createSequentialIdSource(),
+      duplex.connect(),
+    );
+    manager.start();
+
+    await expect(
+      manager.dispatch(7, { type: "START", startedAt: 10 }),
+    ).rejects.toThrow("spawn failed");
+    manager.dispose();
+  });
+
   it("returns a reference-stable exit snapshot for React subscribers", () => {
     const { duplex } = createHarness();
     const manager = new AppRunRemoteManager(

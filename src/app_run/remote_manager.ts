@@ -27,6 +27,11 @@ type RunOperationInput =
   | { type: "REBUILD"; startedAt: number }
   | { type: "STOP"; startedAt: number };
 
+interface SettlementResult {
+  settlement: NonNullable<AppRunRemoteSnapshot["lastSettlement"]> | null;
+  errorMessage?: string;
+}
+
 /**
  * Per-window adapter over main-hosted app-run actors.
  *
@@ -47,7 +52,7 @@ export class AppRunRemoteManager {
   >();
   private readonly settlementWaiters = new Map<
     string,
-    { appId: number; resolve: () => void }
+    { appId: number; resolve: (result: SettlementResult) => void }
   >();
   private stopConnection?: () => void;
   private disposed = false;
@@ -187,7 +192,10 @@ export class AppRunRemoteManager {
       settlement.cancel();
       return;
     }
-    await settlement.promise;
+    const result = await settlement.promise;
+    if (!result.settlement || result.settlement.outcome === "failed") {
+      throw new Error(result.errorMessage ?? "App runtime operation failed");
+    }
   }
 
   requestManualReload = (appId: number): void => {
@@ -224,7 +232,12 @@ export class AppRunRemoteManager {
     this.appExitSnapshots.clear();
     this.listeners.clear();
     this.previewConsole.dispose();
-    for (const waiter of this.settlementWaiters.values()) waiter.resolve();
+    for (const waiter of this.settlementWaiters.values()) {
+      waiter.resolve({
+        settlement: null,
+        errorMessage: "App run manager was disposed",
+      });
+    }
     this.settlementWaiters.clear();
     this.client.dispose();
   }
@@ -236,7 +249,10 @@ export class AppRunRemoteManager {
         const snapshot = actor.getSnapshot();
         const settlement = snapshot.lastSettlement;
         if (settlement) {
-          this.settlementWaiters.get(settlement.operationId)?.resolve();
+          this.settlementWaiters.get(settlement.operationId)?.resolve({
+            settlement,
+            errorMessage: snapshot.operationError?.message,
+          });
           this.settlementWaiters.delete(settlement.operationId);
         }
         for (const listener of this.listeners) {
@@ -253,8 +269,8 @@ export class AppRunRemoteManager {
   }
 
   private waitForSettlement(appId: number, operationId: string) {
-    let resolvePromise!: () => void;
-    const promise = new Promise<void>((resolve) => {
+    let resolvePromise!: (result: SettlementResult) => void;
+    const promise = new Promise<SettlementResult>((resolve) => {
       resolvePromise = resolve;
     });
     const waiter = { appId, resolve: resolvePromise };
@@ -272,7 +288,10 @@ export class AppRunRemoteManager {
   private resolveSettlementsForApp(appId: number): void {
     for (const [operationId, waiter] of this.settlementWaiters) {
       if (waiter.appId !== appId) continue;
-      waiter.resolve();
+      waiter.resolve({
+        settlement: null,
+        errorMessage: "App run subscription was disposed",
+      });
       this.settlementWaiters.delete(operationId);
     }
   }

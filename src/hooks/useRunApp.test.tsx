@@ -8,6 +8,7 @@ import {
   useRebuildAppAfterPnpmInstall,
   useRunApp,
 } from "@/hooks/useRunApp";
+import { useAppRunState } from "@/hooks/useAppRun";
 import { AppRunProvider } from "@/app_run/AppRunProvider";
 import { selectAppExit, selectAppUrl } from "@/app_run/selectors";
 import { AppRunManager } from "@/app_run/manager";
@@ -139,6 +140,20 @@ function makeWrapper(appId: number) {
     },
   };
 }
+
+describe("useAppRunState", () => {
+  it("does not subscribe to a real app when no app is selected", () => {
+    const { manager, Wrapper } = makeWrapper(1);
+    const subscribe = vi.spyOn(manager, "subscribeKey");
+
+    const { result } = renderHook(() => useAppRunState(null), {
+      wrapper: Wrapper,
+    });
+
+    expect(result.current.phase).toBe("idle");
+    expect(subscribe).not.toHaveBeenCalled();
+  });
+});
 
 describe("useAppOutputSubscription", () => {
   beforeEach(() => {

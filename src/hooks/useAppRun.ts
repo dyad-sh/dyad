@@ -11,7 +11,6 @@ import {
 } from "@/app_run/transport";
 import type { RunState } from "@/app_run/state";
 import { NO_APP_RUN_REMOTE_SNAPSHOT } from "@/app_run/remote_manager";
-import { useKeyedController } from "@/state_machines/react";
 
 /**
  * Subscribes to the run-state machine snapshot for an app. Returns the
@@ -19,17 +18,21 @@ import { useKeyedController } from "@/state_machines/react";
  */
 export function useAppRunState(appId: number | null): AppRunRemoteSnapshot {
   const manager = useAppRunManager();
-  const snapshot = useKeyedController(
-    manager as {
-      getSnapshot(appId: number): AppRunRemoteSnapshot | RunState;
-      subscribeKey(appId: number, listener: () => void): () => void;
-    },
-    appId ?? 1,
+  const subscribe = useCallback(
+    (listener: () => void) =>
+      appId === null ? () => undefined : manager.subscribeKey(appId, listener),
+    [appId, manager],
   );
+  const getSnapshot = useCallback(
+    () =>
+      appId === null ? NO_APP_RUN_REMOTE_SNAPSHOT : manager.getSnapshot(appId),
+    [appId, manager],
+  );
+  const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   if (appId === null) return NO_APP_RUN_REMOTE_SNAPSHOT;
   return "phase" in snapshot
     ? snapshot
-    : projectAppRunRemoteSnapshot(appId, 0, snapshot);
+    : projectAppRunRemoteSnapshot(appId, 0, snapshot as RunState);
 }
 
 /** Reads identity-admitted process exits from the manager-owned read model. */

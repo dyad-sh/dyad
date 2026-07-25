@@ -69,7 +69,7 @@ export function useAddFromCatalog() {
     if ((entry.inputs?.length ?? 0) > 0) {
       navigate({
         to: "/plugins/$serverId",
-        params: { serverId: String(created.id) },
+        params: { serverId: created.id },
       });
       return;
     }

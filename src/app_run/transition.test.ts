@@ -622,7 +622,7 @@ describe("transition scenarios", () => {
     expect(commandsOf(result)).toEqual([]);
   });
 
-  it("records app exit from ready/reloading and ignores it elsewhere", () => {
+  it("records app exit from every active process state", () => {
     for (const state of STATE_FIXTURES) {
       const result = transition(state, {
         type: "APP_EXIT",
@@ -631,7 +631,12 @@ describe("transition scenarios", () => {
         exitCode: 137,
         timestamp: 300,
       });
-      if (state.type === "ready" || state.type === "reloading") {
+      if (
+        state.type === "starting" ||
+        state.type === "ready" ||
+        state.type === "reloading" ||
+        state.type === "stopping"
+      ) {
         expect(result.state).toMatchObject({
           type: "stopped",
           exitCode: 137,

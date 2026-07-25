@@ -77,6 +77,11 @@ Background and before/after examples of why this pattern exists:
 - `observeTransition` runs before a controller commits its next snapshot. If
   an observer callback can re-enter the machine (for example, by submitting a
   follow-up turn), defer that callback until the committed state is visible.
+- In custom controllers that start an async command batch before committing,
+  the batch executes synchronously through its first `await`. Defer any
+  command callback that promises post-commit delivery (or reserve the batch
+  until after commit), and test the snapshot observed inside the callback—not
+  only the snapshot after the event returns.
 - When a manager needs machine-specific observer behavior, compose it with the
   production trace observer (including ignored events) instead of replacing
   trace coverage.

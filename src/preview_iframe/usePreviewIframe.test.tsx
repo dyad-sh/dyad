@@ -4,6 +4,11 @@ import { describe, expect, it } from "vitest";
 import type { ReactNode } from "react";
 import { AppRunProvider } from "@/app_run/AppRunProvider";
 import { AppRunManager } from "@/app_run/manager";
+import type { AppRunInvocationRef } from "@/app_run/state";
+import {
+  EntityDisposalProvider,
+  useEntityDisposal,
+} from "@/state_machines/react";
 import { PreviewIframeProvider } from "./PreviewIframeProvider";
 import {
   usePreviewIframeController,
@@ -16,13 +21,15 @@ function makeWrapper(store = createStore()) {
     appRunManager,
     Wrapper({ children }: { children: ReactNode }) {
       return (
-        <Provider store={store}>
-          <AppRunProvider manager={appRunManager}>
-            <PreviewIframeProvider appRunState={appRunManager}>
-              {children}
-            </PreviewIframeProvider>
-          </AppRunProvider>
-        </Provider>
+        <EntityDisposalProvider>
+          <Provider store={store}>
+            <AppRunProvider manager={appRunManager}>
+              <PreviewIframeProvider appRunState={appRunManager}>
+                {children}
+              </PreviewIframeProvider>
+            </AppRunProvider>
+          </Provider>
+        </EntityDisposalProvider>
       );
     },
   };
@@ -45,36 +52,97 @@ describe("useSendPreviewIframeEvent", () => {
     expect(renderCount).toBe(initialRenderCount);
   });
 
-  it("resets preserved navigation when a restart begins", async () => {
+  it.each(["restart", "rebuild"] as const)(
+    "resets preserved navigation when a %s begins",
+    async (operation) => {
+      const store = createStore();
+      const { Wrapper, appRunManager } = makeWrapper(store);
+      const { result } = renderHook(() => usePreviewIframeController(1), {
+        wrapper: Wrapper,
+      });
+
+      act(() => {
+        result.current.send({
+          type: "APP_URL_CHANGED",
+          url: "http://localhost:3000",
+        });
+        result.current.send({
+          type: "NAVIGATED_IN_APP",
+          kind: "pushState",
+          url: "http://localhost:3000/about",
+        });
+      });
+      expect(result.current.state.currentUrl).toBe(
+        "http://localhost:3000/about",
+      );
+
+      await act(async () => {
+        appRunManager.beginExternal(1, {
+          requestId: `${operation}-1`,
+          operation,
+          startedAt: 1_000,
+        });
+        await Promise.resolve();
+      });
+
+      expect(result.current.state).toMatchObject({
+        history: [],
+        currentUrl: null,
+        preservedUrl: null,
+      });
+    },
+  );
+
+  it("clears restart dedupe metadata when the app is disposed", async () => {
     const store = createStore();
     const { Wrapper, appRunManager } = makeWrapper(store);
-    const { result } = renderHook(() => usePreviewIframeController(1), {
-      wrapper: Wrapper,
-    });
+    const { result } = renderHook(
+      () => ({
+        preview: usePreviewIframeController(1),
+        entityDisposal: useEntityDisposal(),
+      }),
+      { wrapper: Wrapper },
+    );
+    const invocationRef: AppRunInvocationRef = {
+      kind: "app-run",
+      entityKey: 1,
+      operationId: "reused-operation",
+    };
 
-    act(() => {
-      result.current.send({
+    await act(async () => {
+      appRunManager.beginExternal(1, {
+        requestId: "restart-before-delete",
+        operation: "restart",
+        startedAt: 1_000,
+        invocationRef,
+      });
+      await Promise.resolve();
+      result.current.entityDisposal.disposeForApp(1);
+      result.current.preview.send({
         type: "APP_URL_CHANGED",
         url: "http://localhost:3000",
       });
-      result.current.send({
+      result.current.preview.send({
         type: "NAVIGATED_IN_APP",
         kind: "pushState",
         url: "http://localhost:3000/about",
       });
     });
-    expect(result.current.state.currentUrl).toBe("http://localhost:3000/about");
+    expect(result.current.preview.state.currentUrl).toBe(
+      "http://localhost:3000/about",
+    );
 
     await act(async () => {
       appRunManager.beginExternal(1, {
-        requestId: "restart-1",
+        requestId: "restart-after-delete",
         operation: "restart",
-        startedAt: 1_000,
+        startedAt: 2_000,
+        invocationRef,
       });
       await Promise.resolve();
     });
 
-    expect(result.current.state).toMatchObject({
+    expect(result.current.preview.state).toMatchObject({
       history: [],
       currentUrl: null,
       preservedUrl: null,

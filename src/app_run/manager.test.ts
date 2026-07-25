@@ -146,6 +146,33 @@ describe("AppRunManager", () => {
     manager.dispose();
   });
 
+  it("notifies reload-token listeners after the matching URL commits", async () => {
+    const manager = new AppRunManager(createStore());
+    const observedSnapshots: unknown[] = [];
+    manager.subscribeReloadToken(7, () => {
+      observedSnapshots.push(manager.getSnapshot(7));
+    });
+
+    manager.send(7, {
+      type: "PROXY_READY",
+      url: {
+        appUrl: "http://new-proxy",
+        originalUrl: "http://new-origin",
+        mode: "host",
+      },
+    });
+    expect(observedSnapshots).toEqual([]);
+
+    await Promise.resolve();
+    expect(observedSnapshots).toEqual([
+      expect.objectContaining({
+        type: "ready",
+        url: expect.objectContaining({ appUrl: "http://new-proxy" }),
+      }),
+    ]);
+    manager.dispose();
+  });
+
   it("disposeKey for app A leaves app B's in-flight run untouched", async () => {
     const runA = deferred();
     const runB = deferred();

@@ -364,7 +364,12 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
       ) {
         return ignore(state, "stale-operation");
       }
-      if (state.type === "ready" || state.type === "reloading") {
+      if (
+        state.type === "starting" ||
+        state.type === "ready" ||
+        state.type === "reloading" ||
+        state.type === "stopping"
+      ) {
         return {
           kind: "applied",
           state: {
@@ -377,9 +382,8 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
           commands: [],
         };
       }
-      // During starting/stopping the IPC settlement drives the state (as
-      // before); in idle/stopped/errored there is nothing to do. The exit
-      // read-model fallback is written at the manager admission boundary.
+      // In idle/stopped/errored there is no active process lifecycle to
+      // replace. Active states retain the exit fact directly in RunState.
       return ignore(state, "invalid-in-current-state");
 
     default:

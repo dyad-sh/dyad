@@ -29,15 +29,18 @@ export function PreviewIframeProvider({
   const [manager] = useState(
     () => new PreviewIframeManager(createPreviewIframeCommandAdapter(store)),
   );
+  const handledRestartInvocationIds = useRef(new Map<number, string>());
   const disposeApp = useCallback(
-    (appId: number) => manager.disposeKey(appId),
+    (appId: number) => {
+      handledRestartInvocationIds.current.delete(appId);
+      manager.disposeKey(appId);
+    },
     [manager],
   );
-  const handledRestartInvocationIds = useRef(new Map<number, string>());
 
   useEffect(() => {
     return appRunState.subscribeRunStateChanged((appId, runState) => {
-      if (runState.type !== "starting" || runState.operation !== "restart") {
+      if (runState.type !== "starting" || runState.operation === "run") {
         handledRestartInvocationIds.current.delete(appId);
         return;
       }

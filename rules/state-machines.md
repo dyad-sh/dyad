@@ -71,15 +71,19 @@ Background and before/after examples of why this pattern exists:
   Bounded dedup caches may evict settled history, never unresolved receipts;
   reject excess in-flight work through a separate bounded admission limit.
   Scope renderer retries to the stable window-session identity, not an
-  ephemeral `webContents.id`, so reconnect cannot bypass deduplication.
+  ephemeral `webContents.id`, so reconnect cannot bypass deduplication. Start
+  the retention window when the receipt settles, not when slow authorization
+  begins, or a lost receipt can be immediately evicted after acceptance.
 - Make remote subscribe/bootstrap idempotent per window, machine, and key.
   Resync and reconnect retries must refresh the bootstrap without incrementing
   ownership; projection/encoding failure rolls back only ownership acquired by
-  that call. Track pending attach identity so unsubscribe or transport disposal
-  invalidates an authorization still in flight; after every await, reject a
-  cancelled or closed lifetime before admission. Renderer bootstrap applies
-  both codecs and refuses disposed actor lifetimes, or failed retries and
-  delayed responses can retain stale state.
+  that call. Coalesce concurrent retries of the same logical attach behind one
+  pending quota reservation and admission result. Track pending attach identity
+  so unsubscribe, window destruction, actor disposal, or transport disposal
+  invalidates authorization still in flight; after every await, reject a
+  cancelled or closed lifetime before admission. Renderer bootstrap applies both
+  codecs and refuses disposed actor lifetimes, or failed retries and delayed
+  responses can retain stale state.
 - After asynchronous remote authorization, revalidate both the sender's window
   session and the actor instance/revision used for the decision. Re-authorize
   changed state only a bounded number of times (then reject it), and keep

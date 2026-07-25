@@ -64,9 +64,8 @@ interface SubscriptionEntry {
 }
 
 interface DeduplicationEntry {
-  readonly createdAt: number;
   readonly receipt: Promise<MachineDispatchReceipt>;
-  settled: boolean;
+  settledAt?: number;
 }
 
 interface PendingSubscription {
@@ -74,6 +73,8 @@ interface PendingSubscription {
   readonly webContentsId: number;
   readonly countsTowardLimit: boolean;
   cancelled: boolean;
+  accountingReleased: boolean;
+  promise?: Promise<MachineSnapshotEnvelope>;
 }
 
 const DEFAULT_DEDUPLICATION_RETENTION_MS = 60_000;
@@ -89,7 +90,7 @@ export class RemoteMachineTransport {
   private readonly referencesPerWindow = new Map<number, number>();
   private readonly pendingSubscriptions = new Map<
     string,
-    Set<PendingSubscription>
+    PendingSubscription
   >();
   private readonly pendingReferencesPerWindow = new Map<number, number>();
   private readonly deduplication = new Map<string, DeduplicationEntry>();
@@ -127,6 +128,7 @@ export class RemoteMachineTransport {
       const definition = options.manifest.get(event.machineId);
       if (!definition) return;
       const address = this.address(definition, event.key);
+      this.cancelPendingSubscriptionsForAddress(address);
       this.actorKeys.delete(address);
       const entry = this.subscriptions.get(address);
       if (!entry) return;
@@ -159,11 +161,36 @@ export class RemoteMachineTransport {
     const existingBeforeAuthorization = this.subscriptions.get(address);
     const alreadySubscribedBeforeAuthorization =
       existingBeforeAuthorization?.windows.has(sender.id) === true;
+    const pendingKey = this.pendingSubscriptionKey(sender.id, address);
+    const existingPending = this.pendingSubscriptions.get(pendingKey);
+    if (existingPending?.promise) return existingPending.promise;
     const pending = this.beginPendingSubscription(
       sender.id,
       address,
       !alreadySubscribedBeforeAuthorization,
     );
+    const promise = Promise.resolve().then(() =>
+      this.completeSubscription(
+        sender,
+        windowSessionId,
+        definition,
+        key,
+        address,
+        pending,
+      ),
+    );
+    pending.promise = promise;
+    return promise;
+  }
+
+  private async completeSubscription(
+    sender: RemoteTransportEndpoint,
+    windowSessionId: WindowSessionId,
+    definition: AnyRemoteMachineDefinition,
+    key: unknown,
+    address: string,
+    pending: PendingSubscription,
+  ): Promise<MachineSnapshotEnvelope> {
     const senderContext = this.senderContext(sender);
     try {
       await definition.remote.authorizeSubscribe({
@@ -297,17 +324,15 @@ export class RemoteMachineTransport {
     }
     const receipt = this.dispatchOnce(sender, windowSessionId, envelope);
     const entry: DeduplicationEntry = {
-      createdAt: this.options.clock.now(),
       receipt,
-      settled: false,
     };
     this.deduplication.set(deduplicationKey, entry);
     void receipt.then(
       () => {
-        entry.settled = true;
+        entry.settledAt = this.options.clock.now();
       },
       () => {
-        entry.settled = true;
+        entry.settledAt = this.options.clock.now();
       },
     );
     return receipt;
@@ -330,14 +355,24 @@ export class RemoteMachineTransport {
     }));
   }
 
+  inspectPendingSubscriptions(): readonly {
+    address: string;
+    webContentsId: number;
+    countsTowardLimit: boolean;
+  }[] {
+    return [...this.pendingSubscriptions.values()].map((pending) => ({
+      address: pending.address,
+      webContentsId: pending.webContentsId,
+      countsTowardLimit: pending.countsTowardLimit,
+    }));
+  }
+
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
     for (const pending of this.pendingSubscriptions.values()) {
-      for (const subscription of pending) subscription.cancelled = true;
+      this.cancelPendingSubscription(pending);
     }
-    this.pendingSubscriptions.clear();
-    this.pendingReferencesPerWindow.clear();
     this.removeWindowListener();
     this.removeDisposalListener();
     for (const entry of this.subscriptions.values()) entry.unsubscribeActor();
@@ -542,6 +577,11 @@ export class RemoteMachineTransport {
   }
 
   private removeWindow(webContentsId: number): void {
+    for (const pending of this.pendingSubscriptions.values()) {
+      if (pending.webContentsId === webContentsId) {
+        this.cancelPendingSubscription(pending);
+      }
+    }
     for (const entry of this.subscriptions.values()) {
       const count = entry.windows.get(webContentsId);
       if (count === undefined) continue;
@@ -725,13 +765,10 @@ export class RemoteMachineTransport {
       webContentsId,
       countsTowardLimit,
       cancelled: false,
+      accountingReleased: false,
     };
     const pendingKey = this.pendingSubscriptionKey(webContentsId, address);
-    const pending =
-      this.pendingSubscriptions.get(pendingKey) ??
-      new Set<PendingSubscription>();
-    pending.add(subscription);
-    this.pendingSubscriptions.set(pendingKey, pending);
+    this.pendingSubscriptions.set(pendingKey, subscription);
     if (countsTowardLimit) {
       this.pendingReferencesPerWindow.set(webContentsId, pendingReferences + 1);
     }
@@ -739,15 +776,7 @@ export class RemoteMachineTransport {
   }
 
   private finishPendingSubscription(subscription: PendingSubscription): void {
-    const pendingKey = this.pendingSubscriptionKey(
-      subscription.webContentsId,
-      subscription.address,
-    );
-    const pending = this.pendingSubscriptions.get(pendingKey);
-    pending?.delete(subscription);
-    if (pending?.size === 0) this.pendingSubscriptions.delete(pendingKey);
-    if (!subscription.countsTowardLimit) return;
-    this.decrementPendingWindowReferences(subscription.webContentsId);
+    this.releasePendingSubscriptionAccounting(subscription);
   }
 
   private cancelPendingSubscriptions(
@@ -758,7 +787,35 @@ export class RemoteMachineTransport {
       this.pendingSubscriptionKey(webContentsId, address),
     );
     if (!pending) return;
-    for (const subscription of pending) subscription.cancelled = true;
+    this.cancelPendingSubscription(pending);
+  }
+
+  private cancelPendingSubscriptionsForAddress(address: string): void {
+    for (const pending of this.pendingSubscriptions.values()) {
+      if (pending.address === address) this.cancelPendingSubscription(pending);
+    }
+  }
+
+  private cancelPendingSubscription(subscription: PendingSubscription): void {
+    subscription.cancelled = true;
+    this.releasePendingSubscriptionAccounting(subscription);
+  }
+
+  private releasePendingSubscriptionAccounting(
+    subscription: PendingSubscription,
+  ): void {
+    if (subscription.accountingReleased) return;
+    subscription.accountingReleased = true;
+    const pendingKey = this.pendingSubscriptionKey(
+      subscription.webContentsId,
+      subscription.address,
+    );
+    if (this.pendingSubscriptions.get(pendingKey) === subscription) {
+      this.pendingSubscriptions.delete(pendingKey);
+    }
+    if (subscription.countsTowardLimit) {
+      this.decrementPendingWindowReferences(subscription.webContentsId);
+    }
   }
 
   private pendingSubscriptionKey(
@@ -789,7 +846,7 @@ export class RemoteMachineTransport {
     const oldestAllowed =
       this.options.clock.now() - this.deduplicationRetentionMs;
     for (const [key, entry] of this.deduplication) {
-      if (entry.settled && entry.createdAt < oldestAllowed) {
+      if (entry.settledAt !== undefined && entry.settledAt < oldestAllowed) {
         this.deduplication.delete(key);
       }
     }
@@ -798,7 +855,7 @@ export class RemoteMachineTransport {
   private reserveDeduplicationCapacity(): boolean {
     while (this.deduplication.size >= this.maxDeduplicationEntries) {
       const oldestSettled = [...this.deduplication].find(
-        ([, entry]) => entry.settled,
+        ([, entry]) => entry.settledAt !== undefined,
       );
       if (!oldestSettled) return false;
       this.deduplication.delete(oldestSettled[0]);

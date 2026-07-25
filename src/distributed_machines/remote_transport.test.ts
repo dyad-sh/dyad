@@ -58,6 +58,7 @@ function createHarness(
     machine?: AnyRemoteMachineDefinition;
     deduplicationRetentionMs?: number;
     maxDeduplicationEntries?: number;
+    maxSubscriptionsPerWindow?: number;
     maxDispatchEnvelopeBytes?: number;
     maxSnapshotEnvelopeBytes?: number;
     protocolMismatch?: ReturnType<typeof vi.fn>;
@@ -82,6 +83,7 @@ function createHarness(
     clock,
     deduplicationRetentionMs: options.deduplicationRetentionMs,
     maxDeduplicationEntries: options.maxDeduplicationEntries,
+    maxSubscriptionsPerWindow: options.maxSubscriptionsPerWindow,
     maxDispatchEnvelopeBytes: options.maxDispatchEnvelopeBytes,
     maxSnapshotEnvelopeBytes: options.maxSnapshotEnvelopeBytes,
     onProtocolMismatch: options.protocolMismatch,
@@ -303,6 +305,54 @@ describe("remote machine transport", () => {
     const reconnected = renderer.reconnect();
     await reconnected.subscribe(address());
     await expect(reconnected.dispatch(envelope)).resolves.toMatchObject({
+      kind: "applied",
+      revision: 1,
+    });
+    expect(host.peek(machine.id, "actor")?.getSnapshot()).toMatchObject({
+      value: 1,
+    });
+  });
+
+  it("starts deduplication retention when a slow dispatch settles", async () => {
+    let releaseAuthorization!: () => void;
+    let authorizationStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      authorizationStarted = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      releaseAuthorization = resolve;
+    });
+    const base = createRemoteTestMachine();
+    const machine = {
+      ...base,
+      remote: {
+        ...base.remote,
+        async authorizeDispatch(
+          context: Parameters<typeof base.remote.authorizeDispatch>[0],
+        ) {
+          authorizationStarted();
+          await gate;
+          return base.remote.authorizeDispatch(context);
+        },
+      },
+    };
+    const { clock, duplex, host } = createHarness({
+      machine,
+      deduplicationRetentionMs: 10,
+    });
+    const renderer = duplex.connect();
+    await renderer.subscribe(address());
+    const envelope = dispatch({ type: "INCREMENT" });
+    duplex.dropNextReceipt();
+    const pending = renderer.dispatch(envelope);
+    await started;
+    clock.advanceBy(11);
+    releaseAuthorization();
+
+    await expect(pending).rejects.toBeInstanceOf(
+      FakeTransportDisconnectedError,
+    );
+    await expect(renderer.dispatch(envelope)).resolves.toMatchObject({
       kind: "applied",
       revision: 1,
     });
@@ -715,13 +765,62 @@ describe("remote machine transport", () => {
     const pending = renderer.subscribe(address());
     await started;
     renderer.disconnect();
+    expect(transport.inspectPendingSubscriptions()).toEqual([]);
     authorize();
 
     await expect(pending).rejects.toThrow(
-      "Remote machine sender was destroyed during authorization",
+      "Remote machine subscription was cancelled",
     );
     expect(transport.inspectSubscriptions()).toEqual([]);
     expect(host.peek(machine.id, "actor")).toBeUndefined();
+  });
+
+  it("coalesces concurrent pending subscribe retries behind one quota slot", async () => {
+    let releaseAuthorization!: () => void;
+    let authorizationStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      authorizationStarted = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      releaseAuthorization = resolve;
+    });
+    let authorizationCount = 0;
+    const base = createRemoteTestMachine();
+    const machine = {
+      ...base,
+      remote: {
+        ...base.remote,
+        async authorizeSubscribe(
+          context: Parameters<typeof base.remote.authorizeSubscribe>[0],
+        ) {
+          authorizationCount += 1;
+          authorizationStarted();
+          await gate;
+          return base.remote.authorizeSubscribe(context);
+        },
+      },
+    };
+    const { transport, windows } = createHarness({
+      machine,
+      maxSubscriptionsPerWindow: 1,
+    });
+    const sessionId = windows.createTrustedRendererWindow();
+    const endpoint = windows.endpoint(sessionId);
+
+    const first = transport.subscribe(endpoint, address());
+    await started;
+    const retry = transport.subscribe(endpoint, address());
+    expect(authorizationCount).toBe(1);
+    expect(transport.inspectPendingSubscriptions()).toHaveLength(1);
+    releaseAuthorization();
+
+    await expect(Promise.all([first, retry])).resolves.toEqual([
+      expect.objectContaining({ revision: 0 }),
+      expect.objectContaining({ revision: 0 }),
+    ]);
+    expect(transport.inspectSubscriptions()).toEqual([
+      expect.objectContaining({ totalReferences: 1 }),
+    ]);
   });
 
   it("cancels a pending subscribe when unsubscribe completes first", async () => {
@@ -802,6 +901,52 @@ describe("remote machine transport", () => {
     await expect(
       renderer.dispatch(dispatch({ type: "INCREMENT" })),
     ).rejects.toThrow("Remote machine transport is disposed");
+    expect(transport.inspectSubscriptions()).toEqual([]);
+    expect(host.peek(machine.id, "actor")).toBeUndefined();
+  });
+
+  it("does not recreate an actor when disposal crosses pending resync authorization", async () => {
+    let releaseAuthorization!: () => void;
+    let authorizationStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      authorizationStarted = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      releaseAuthorization = resolve;
+    });
+    let authorizationCount = 0;
+    const base = createRemoteTestMachine();
+    const machine = {
+      ...base,
+      remote: {
+        ...base.remote,
+        async authorizeSubscribe(
+          context: Parameters<typeof base.remote.authorizeSubscribe>[0],
+        ) {
+          authorizationCount += 1;
+          if (authorizationCount > 1) {
+            authorizationStarted();
+            await gate;
+          }
+          return base.remote.authorizeSubscribe(context);
+        },
+      },
+    };
+    const { host, transport, windows } = createHarness({ machine });
+    const sessionId = windows.createTrustedRendererWindow();
+    const endpoint = windows.endpoint(sessionId);
+    await transport.subscribe(endpoint, address());
+    const pendingResync = transport.subscribe(endpoint, address());
+    await started;
+
+    await host.disposeKey(machine.id, "actor");
+    expect(transport.inspectPendingSubscriptions()).toEqual([]);
+    expect(host.peek(machine.id, "actor")).toBeUndefined();
+    releaseAuthorization();
+
+    await expect(pendingResync).rejects.toThrow(
+      "Remote machine subscription was cancelled",
+    );
     expect(transport.inspectSubscriptions()).toEqual([]);
     expect(host.peek(machine.id, "actor")).toBeUndefined();
   });

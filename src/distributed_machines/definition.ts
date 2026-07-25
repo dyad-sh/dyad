@@ -35,8 +35,15 @@ export interface MachineHostContext<Key, State, Event> {
   readonly ids: IdSource;
   readonly tasks: TaskScope<PropertyKey>;
   readonly timers: TimerLeaseScope<PropertyKey, unknown, Event>;
+  /**
+   * Factory-safe: reads the initial snapshot until construction completes.
+   */
   getMetadata(): ActorRuntimeMetadata;
   getSnapshot(): State;
+  /**
+   * Factory-safe: events emitted during construction are drained after the
+   * dispatcher and every definition callback are installed.
+   */
   send(event: Event): void;
 }
 
@@ -129,6 +136,13 @@ export interface DistributedMachineDefinition<
   readonly createCommandRunner: (
     context: MachineHostContext<Key, State, Event>,
   ) => CommandRunner<Command, Event>;
+  /**
+   * Narrow hook for cancelling leases owned by the state being exited.
+   * It runs after validation/reservation and before the snapshot commit.
+   */
+  readonly createBeforeCommit?: (
+    context: MachineHostContext<Key, State, Event>,
+  ) => (previous: State, next: State) => void;
   readonly createObserver?: (
     context: MachineHostContext<Key, State, Event>,
   ) => TransitionObserver<State, Event, Command, Reason>;

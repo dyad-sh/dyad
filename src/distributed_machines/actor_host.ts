@@ -124,7 +124,10 @@ class HostedActor<
     this.lastProjectedSnapshot = initialState;
     this.timers = new TimerLeaseScope(options.clock);
 
-    let dispatcher!: TransactionalDispatcher<State, Event, Command, Reason>;
+    let dispatcher:
+      | TransactionalDispatcher<State, Event, Command, Reason>
+      | undefined;
+    const bufferedEvents: Event[] = [];
     const context: MachineHostContext<Key, State, Event> = {
       key,
       actorInstanceId: this.actorInstanceId,
@@ -132,38 +135,55 @@ class HostedActor<
       tasks: this.tasks,
       timers: this.timers,
       getMetadata: () => this.getMetadata(),
-      getSnapshot: () => dispatcher.getSnapshot(),
-      send: (event) => dispatcher.send(event),
-    };
-    const domainObserver = definition.createObserver?.(context);
-    const traceObserver = createTraceObserver<State, Event, Command, Reason>(
-      definition.id,
-      typeof key === "string" || typeof key === "number" ? key : String(key),
-    );
-
-    dispatcher = new TransactionalDispatcher({
-      initialState,
-      transition: (state, event) => {
-        this.transactionSequence += 1;
-        return definition.transition(state, event);
-      },
-      scheduler: definition.createScheduler(key),
-      runCommand: definition.createCommandRunner(context),
-      project: (snapshot) => {
-        if (snapshot !== this.lastProjectedSnapshot) {
-          this.lastProjectedSnapshot = snapshot;
-          this.revision += 1;
+      getSnapshot: () => dispatcher?.getSnapshot() ?? initialState,
+      send: (event) => {
+        if (dispatcher) {
+          dispatcher.send(event);
+        } else {
+          bufferedEvents.push(event);
         }
       },
-      observer: composeObservers([traceObserver, domainObserver]),
-      reportError: (failure) =>
-        options.reportError?.({
-          machineId: definition.id,
-          key,
-          failure,
-        }),
-    });
-    this.dispatcher = dispatcher;
+    };
+    try {
+      const domainObserver = definition.createObserver?.(context);
+      const beforeCommit = definition.createBeforeCommit?.(context);
+      const traceObserver = createTraceObserver<State, Event, Command, Reason>(
+        definition.id,
+        typeof key === "string" || typeof key === "number" ? key : String(key),
+      );
+
+      dispatcher = new TransactionalDispatcher({
+        initialState,
+        transition: (state, event) => {
+          this.transactionSequence += 1;
+          return definition.transition(state, event);
+        },
+        scheduler: definition.createScheduler(key),
+        runCommand: definition.createCommandRunner(context),
+        beforeCommit,
+        project: (snapshot) => {
+          if (snapshot !== this.lastProjectedSnapshot) {
+            this.lastProjectedSnapshot = snapshot;
+            this.revision += 1;
+          }
+        },
+        observer: composeObservers([traceObserver, domainObserver]),
+        reportError: (failure) => this.reportFailure(failure),
+      });
+      this.dispatcher = dispatcher;
+      for (const event of bufferedEvents) dispatcher.send(event);
+    } catch (error) {
+      const cleanupErrors: unknown[] = [];
+      collectDisposalError(cleanupErrors, () => this.timers.dispose());
+      collectDisposalError(cleanupErrors, () => this.tasks.dispose());
+      if (cleanupErrors.length > 0) {
+        throw new AggregateError(
+          [error, ...cleanupErrors],
+          `Actor ${definition.id} construction failed`,
+        );
+      }
+      throw error;
+    }
   }
 
   getSnapshot = (): State => this.dispatcher.getSnapshot();
@@ -198,16 +218,11 @@ class HostedActor<
   enqueue = (event: Event): DispatchTicket<State, Reason> => {
     this.cancelIdleEviction();
     const ticket = this.dispatcher.enqueue(event);
-    void ticket.settled.then((outcome) => {
-      if (
-        outcome.kind === "applied" &&
-        this.definition.lifecycle.isTerminal?.(outcome.state)
-      ) {
-        this.scheduleTerminalDisposal();
-      } else if (outcome.kind !== "disposed" && this.subscriberCount === 0) {
-        this.scheduleIdleEviction();
-      }
-    });
+    void ticket.settled
+      .then((outcome) => {
+        if (outcome.kind !== "disposed") this.reconcileRetention();
+      })
+      .catch((failure) => this.reportFailure(failure));
     return ticket;
   };
 
@@ -236,18 +251,31 @@ class HostedActor<
     this.cancelRetentionTimers();
   }
 
+  activate(): void {
+    try {
+      this.reconcileRetention();
+    } catch (failure) {
+      this.reportFailure(failure);
+    }
+  }
+
+  isDisposing(): boolean {
+    return this.disposing;
+  }
+
   dispose(cause: ActorDisposalCause): Promise<void> {
     if (this.disposal) return this.disposal;
     this.disposing = true;
     this.stopAdmission();
-    this.removeFromHost(this);
     const context: ActorDisposalContext<Key, State> = {
       key: this.key,
       cause,
       metadata: this.getMetadata(),
       snapshot: this.getSnapshot(),
     };
-    this.disposal = this.finishDisposal(context);
+    this.disposal = this.finishDisposal(context).finally(() =>
+      this.removeFromHost(this),
+    );
     return this.disposal;
   }
 
@@ -302,11 +330,7 @@ class HostedActor<
       this.idleTimer = undefined;
       if (this.subscriberCount === 0) {
         void this.dispose("idle").catch((failure) =>
-          this.options.reportError?.({
-            machineId: this.definition.id,
-            key: this.key,
-            failure,
-          }),
+          this.reportFailure(failure),
         );
       }
     }, policy.delayMs);
@@ -314,20 +338,36 @@ class HostedActor<
 
   private scheduleTerminalDisposal(): void {
     const policy = this.definition.lifecycle.terminalRetention;
+    this.cancelIdleEviction();
     if (policy.kind === "retain" || this.disposing) return;
     if (this.terminalTimer !== undefined) {
       this.options.clock.cancel(this.terminalTimer);
     }
     this.terminalTimer = this.options.clock.schedule(() => {
       this.terminalTimer = undefined;
+      try {
+        if (!this.definition.lifecycle.isTerminal?.(this.getSnapshot())) {
+          this.reconcileRetention();
+          return;
+        }
+      } catch (failure) {
+        this.reportFailure(failure);
+        return;
+      }
       void this.dispose("terminal").catch((failure) =>
-        this.options.reportError?.({
-          machineId: this.definition.id,
-          key: this.key,
-          failure,
-        }),
+        this.reportFailure(failure),
       );
     }, policy.delayMs);
+  }
+
+  private reconcileRetention(): void {
+    if (this.disposing) return;
+    if (this.definition.lifecycle.isTerminal?.(this.getSnapshot())) {
+      this.scheduleTerminalDisposal();
+      return;
+    }
+    this.cancelTerminalDisposal();
+    if (this.subscriberCount === 0) this.scheduleIdleEviction();
   }
 
   private cancelIdleEviction(): void {
@@ -338,9 +378,25 @@ class HostedActor<
 
   private cancelRetentionTimers(): void {
     this.cancelIdleEviction();
+    this.cancelTerminalDisposal();
+  }
+
+  private cancelTerminalDisposal(): void {
     if (this.terminalTimer === undefined) return;
     this.options.clock.cancel(this.terminalTimer);
     this.terminalTimer = undefined;
+  }
+
+  private reportFailure(failure: unknown): void {
+    try {
+      this.options.reportError?.({
+        machineId: this.definition.id,
+        key: this.key,
+        failure,
+      });
+    } catch {
+      // Failure reporting must not become another lifecycle failure.
+    }
   }
 }
 
@@ -351,6 +407,7 @@ export class ActorHost {
     Map<unknown, HostedActor<any, any, any, any, any>>
   >();
   private disposed = false;
+  private disposal: Promise<void> | undefined;
 
   constructor(private readonly options: ActorHostOptions) {}
 
@@ -411,7 +468,8 @@ export class ActorHost {
     machineId: string,
     key: unknown,
   ): HostedActorRef<State, Event, Reason> | undefined {
-    return this.actors.get(machineId)?.get(key);
+    const actor = this.actors.get(machineId)?.get(key);
+    return actor?.isDisposing() ? undefined : actor;
   }
 
   localRef<
@@ -433,8 +491,13 @@ export class ActorHost {
     key: Key,
   ): HostedActorRef<State, Event, Reason> {
     this.assertRegistered(definition);
-    const existing = this.peek<State, Event, Reason>(definition.id, key);
-    if (existing) return existing;
+    const existing = this.actors.get(definition.id)?.get(key) as
+      | HostedActor<Key, State, Event, Command, Reason>
+      | undefined;
+    if (existing) {
+      if (existing.isDisposing()) this.throwActorDisposing(definition.id);
+      return existing;
+    }
     if (!definition.lifecycle.subscriptionCreates) {
       throw new ActorAdmissionError(
         "subscription-does-not-create",
@@ -468,6 +531,16 @@ export class ActorHost {
     let actor = this.actors.get(definition.id)?.get(key) as
       | HostedActor<Key, State, Event, Command, Reason>
       | undefined;
+    if (actor?.isDisposing()) {
+      return settledTicket({
+        kind: "failed",
+        stage: "before-admission",
+        error: new ActorAdmissionError(
+          "actor-disposing",
+          `Actor ${definition.id} is disposing`,
+        ),
+      });
+    }
     if (!actor) {
       if (expectedActorInstanceId !== undefined) {
         return settledTicket({
@@ -514,13 +587,20 @@ export class ActorHost {
     await this.disposeActors(actors, "machine-disposal");
   }
 
-  async dispose(): Promise<void> {
-    if (this.disposed) return;
+  dispose(): Promise<void> {
+    if (this.disposal) return this.disposal;
     this.disposed = true;
     const actors = [...this.actors.values()].flatMap((keyed) => [
       ...keyed.values(),
     ]);
     for (const actor of actors) actor.stopAdmission();
+    this.disposal = this.finishHostDisposal(actors);
+    return this.disposal;
+  }
+
+  private async finishHostDisposal(
+    actors: readonly HostedActor<any, any, any, any, any>[],
+  ): Promise<void> {
     try {
       await this.disposeActors(actors, "shutdown");
     } finally {
@@ -557,18 +637,35 @@ export class ActorHost {
     const existing = keyed.get(key) as
       | HostedActor<Key, State, Event, Command, Reason>
       | undefined;
-    if (existing) return existing;
-    const actor = new HostedActor(
-      definition,
-      key,
-      this.options,
-      (disposedActor) => {
-        if (keyed?.get(key) === disposedActor) keyed.delete(key);
-        if (keyed?.size === 0) this.actors.delete(definition.id);
-      },
-    );
+    if (existing) {
+      if (existing.isDisposing()) this.throwActorDisposing(definition.id);
+      return existing;
+    }
+    let actor: HostedActor<Key, State, Event, Command, Reason>;
+    try {
+      actor = new HostedActor(
+        definition,
+        key,
+        this.options,
+        (disposedActor) => {
+          if (keyed?.get(key) === disposedActor) keyed.delete(key);
+          if (keyed?.size === 0) this.actors.delete(definition.id);
+        },
+      );
+    } catch (error) {
+      if (keyed.size === 0) this.actors.delete(definition.id);
+      throw error;
+    }
     keyed.set(key, actor);
+    actor.activate();
     return actor;
+  }
+
+  private throwActorDisposing(machineId: string): never {
+    throw new ActorAdmissionError(
+      "actor-disposing",
+      `Actor ${machineId} is disposing`,
+    );
   }
 
   private assertRegistered(definition: { readonly id: string }): void {

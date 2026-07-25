@@ -347,4 +347,24 @@ export async function runLocalActorHostConformanceSuite(
     );
     await host.dispose();
   }
+
+  {
+    const clock = createFakeClock();
+    const machine = definition({
+      id: "initial-idle",
+      lifecycle: lifecycle({
+        idleEviction: { kind: "dispose-after", delayMs: 10 },
+      }),
+    });
+    const { host } = createHarness(factory, machine, clock);
+    host.localRef(machine, "untouched");
+    clock.advanceBy(10);
+    await host.disposeKey(machine.id, "untouched");
+    assert(
+      host.peek(machine.id, "untouched") === undefined,
+      "initial bounded idle eviction",
+      "an untouched zero-subscriber actor survived its idle bound",
+    );
+    await host.dispose();
+  }
 }

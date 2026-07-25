@@ -111,6 +111,12 @@ Background and before/after examples of why this pattern exists:
 - Controllers are disposable and their owner must call `dispose()` on provider
   unmount or entity deletion. Renderer controller collections belong to a
   provider-owned `KeyedControllerHost`; never keep them in module globals.
+- Async keyed disposal must stop admission synchronously but keep the lifetime
+  addressable until its final cleanup promise settles. Every disposal caller
+  awaits that same barrier, and same-key recreation stays blocked behind it.
+- When a host passes live scopes or snapshot/send methods into definition
+  factories, make factory-time access safe and construction failure-atomic.
+  Dispose every acquired task/timer resource if any later factory step throws.
 - When registering a manager method as a disposal callback, wrap it in a stable
   closure or bind it if it reads `this`; passing a bare prototype method loses
   its receiver when the registry invokes it.

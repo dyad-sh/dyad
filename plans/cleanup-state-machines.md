@@ -543,7 +543,7 @@ The harness can create two trusted renderer windows, assign session IDs,
 reload/destroy either independently, inspect subscriptions, dispatch from
 either, and test adopt-then-remove tab transfer.
 
-**B2 — Definition + local ActorHost kernel: in flight (this PR).**
+**B2 — Definition + local ActorHost kernel: in flight (#4100).**
 
 - machine definition;
 - actor instance identity, snapshot revision, and transaction sequence;

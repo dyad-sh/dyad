@@ -54,6 +54,14 @@ const intentEvents = [
     options: restartOptions,
   },
   {
+    type: "RESTART",
+    appId: APP_ID,
+    operationId: "intent:rebuild:1",
+    startedAt: 115,
+    expectedRevision: 1,
+    operation: "rebuild",
+  },
+  {
     type: "STOP_REQUESTED",
     appId: APP_ID,
     operationId: "intent:stop:1",
@@ -149,6 +157,40 @@ describe("app-run transport codecs", () => {
     });
   });
 
+  it("projects only observed process exits", () => {
+    const stopSettled: RunState = {
+      type: "stopped",
+      appId: APP_ID,
+      invocationRef,
+      exitCode: null,
+      timestamp: null,
+    };
+    expect(projectAppRunRemoteSnapshot(APP_ID, 8, stopSettled).exit).toBeNull();
+
+    const processExited: RunState = {
+      ...stopSettled,
+      exitCode: 137,
+      timestamp: 450,
+    };
+    expect(projectAppRunRemoteSnapshot(APP_ID, 9, processExited).exit).toEqual({
+      exitCode: 137,
+      timestamp: 450,
+    });
+  });
+
+  it("keeps stop available after an operation error", () => {
+    const state: RunState = {
+      type: "errored",
+      appId: APP_ID,
+      invocationRef,
+      error: { message: "stop failed" },
+    };
+
+    expect(
+      projectAppRunRemoteSnapshot(APP_ID, 10, state).capabilities.canStop,
+    ).toBe(true);
+  });
+
   it("rejects unknown events and unknown payload fields", () => {
     expect(() =>
       AppRunWireEventSchema.parse({ type: "PROCESS_HANDLE_ATTACHED" }),
@@ -173,6 +215,12 @@ describe("app-run transport codecs", () => {
       AppRunIntentEventSchema.parse({
         ...intentEvents[1],
         expectedRevision: -1,
+      }),
+    ).toThrow();
+    expect(() =>
+      AppRunIntentEventSchema.parse({
+        ...intentEvents[1],
+        operation: "rebuild",
       }),
     ).toThrow();
     expect(() =>
@@ -204,7 +252,7 @@ describe("app-run transport codecs", () => {
 
   it("classifies every remotely dispatchable event", () => {
     expect(Object.keys(APP_RUN_REMOTE_INTENT_CLASS).sort()).toEqual(
-      intentEvents.map((event) => event.type).sort(),
+      [...new Set(intentEvents.map((event) => event.type))].sort(),
     );
   });
 });
@@ -225,7 +273,10 @@ expectTypeOf<
 >().toEqualTypeOf<never>();
 expectTypeOf<AppRunWireInvocationRef>().toEqualTypeOf<AppRunInvocationRef>();
 expectTypeOf<
-  Extract<AppRunIntentEvent, { type: "RESTART" }>["options"]
+  Extract<
+    AppRunIntentEvent,
+    { type: "RESTART"; operation: "restart" }
+  >["options"]
 >().toEqualTypeOf<RestartOptions>();
 expectTypeOf<
   Extract<AppRunProducerEvent, { type: "PROXY_READY" }>["url"]

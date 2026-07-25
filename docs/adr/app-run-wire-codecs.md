@@ -21,22 +21,22 @@ presentation consumers in C1.3 rather than a second domain mutation path.
 
 Every current event has an explicit refined destination:
 
-| Current `RunEvent` | Refined wire event             | Admission                                       |
-| ------------------ | ------------------------------ | ----------------------------------------------- |
-| START              | START                          | state-sensitive intent                          |
-| RESTART            | RESTART (`operation: restart`) | state-sensitive intent                          |
-| REBUILD            | RESTART (`operation: rebuild`) | state-sensitive intent                          |
-| STOP               | STOP_REQUESTED                 | cancellation intent; active invocation required |
-| MANUAL_RELOAD      | MANUAL_RELOAD                  | idempotent intent                               |
-| EXTERNAL_RESTART   | EXTERNAL_RESTART_STARTED       | host-only producer admission                    |
-| RUN_IPC_RESOLVED   | PROCESS_SPAWNED                | host-only settlement                            |
-| RUN_IPC_FAILED     | PROCESS_FAILED                 | host-only settlement                            |
-| STOP_IPC_RESOLVED  | PROCESS_STOPPED                | host-only settlement                            |
-| STOP_IPC_FAILED    | PROCESS_STOP_FAILED            | host-only settlement                            |
-| PROXY_READY        | PROXY_READY                    | host-only producer                              |
-| HMR_DETECTED       | HMR_DETECTED                   | host-only producer                              |
-| RELOAD_DONE        | RELOAD_COMPLETED               | host-only settlement                            |
-| APP_EXIT           | PROCESS_EXITED                 | host-only producer                              |
+| Current `RunEvent` | Refined wire event                         | Admission                                       |
+| ------------------ | ------------------------------------------ | ----------------------------------------------- |
+| START              | START                                      | state-sensitive intent                          |
+| RESTART            | RESTART (`operation: restart`)             | state-sensitive intent                          |
+| REBUILD            | RESTART (`operation: rebuild`, no options) | state-sensitive intent                          |
+| STOP               | STOP_REQUESTED                             | cancellation intent; active invocation required |
+| MANUAL_RELOAD      | MANUAL_RELOAD                              | idempotent intent                               |
+| EXTERNAL_RESTART   | EXTERNAL_RESTART_STARTED                   | host-only producer admission                    |
+| RUN_IPC_RESOLVED   | PROCESS_SPAWNED                            | host-only settlement                            |
+| RUN_IPC_FAILED     | PROCESS_FAILED                             | host-only settlement                            |
+| STOP_IPC_RESOLVED  | PROCESS_STOPPED                            | host-only settlement                            |
+| STOP_IPC_FAILED    | PROCESS_STOP_FAILED                        | host-only settlement                            |
+| PROXY_READY        | PROXY_READY                                | host-only producer                              |
+| HMR_DETECTED       | HMR_DETECTED                               | host-only producer                              |
+| RELOAD_DONE        | RELOAD_COMPLETED                           | host-only settlement                            |
+| APP_EXIT           | PROCESS_EXITED                             | host-only producer                              |
 
 The spawn result remains distinct from PROXY_READY. A proxy URL may arrive
 first and is buffered in `RunState.pendingUrl`; PROCESS_SPAWNED later commits
@@ -45,6 +45,15 @@ HMR_DETECTED is the one refinement that needs producer work in C1.3: current
 log parsing supplies only `appId`, so the main producer must attach the active
 invocation ref at capture time. Ref-less legacy producer compatibility is not
 part of the new allowlist, as decided by B0.
+
+APP_EXIT also has one ordering that cannot be represented by unchanged
+`RunState`: after STOP_IPC_RESOLVED creates `stopped` with null exit details, a
+matching late APP_EXIT is deliberately ignored by the transition and retained
+in the manager's `admittedExitStores` sidecar. C1.3 deletes that sidecar, so a
+matching PROCESS_EXITED received after PROCESS_STOPPED must enrich the
+authoritative stopped state (or an equivalent single-owner read-model fact)
+before projection. This is required C1.3 input; C1.2 does not change the
+transition.
 
 ## Safe remote read model
 
@@ -61,11 +70,13 @@ part of the new allowlist, as decided by B0.
 Idle has no invocation. Starting exposes its operation and timestamp but not a
 buffered `pendingUrl`; that URL becomes public only after spawn settlement.
 Ready and reloading expose their URL. Reloading reports operation `reload`,
-while stopped exposes its nullable exit code and timestamp. Errored exposes
-only the operation error. The existing state does not retain the initiating
-operation or timestamp after settlement, so those fields are null in ready,
-stopped, and errored unless C1.3 deliberately enriches the authoritative
-state.
+while stopped exposes only an observed process exit. Errored exposes only the
+operation error and conservatively keeps stop available because a failed stop
+can leave the process alive. A stopped state with no observed exit timestamp
+exposes `exit: null`, matching the current UI read model. The existing state
+does not retain the initiating operation or timestamp after settlement, so
+those fields are null in ready, stopped, and errored unless C1.3 deliberately
+enriches the authoritative state.
 
 The projection explicitly excludes child-process/process handles, internal
 paths (app path, cwd, executable paths), command/runtime data, producer
@@ -93,3 +104,7 @@ Open cutover questions are limited to integration choices:
    identity from timestamps.
 3. Which main output adapter attaches the active invocation to legacy
    HMR-shaped log lines before the ref-less compatibility path is removed.
+
+C1.3 must additionally settle the non-optional late-exit representation
+described above; it is a known behavior-preservation requirement rather than
+an open product choice.

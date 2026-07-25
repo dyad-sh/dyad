@@ -72,17 +72,29 @@ const startIntentSchema = z
   })
   .strict();
 
-const restartIntentSchema = z
-  .object({
-    type: z.literal("RESTART"),
-    appId: z.number().int().positive(),
-    operationId: operationIdSchema,
-    startedAt: finiteTimestampSchema,
-    expectedRevision: expectedRevisionSchema,
-    operation: z.enum(["restart", "rebuild"]),
-    options: restartOptionsSchema,
-  })
-  .strict();
+const restartIntentBase = {
+  type: z.literal("RESTART"),
+  appId: z.number().int().positive(),
+  operationId: operationIdSchema,
+  startedAt: finiteTimestampSchema,
+  expectedRevision: expectedRevisionSchema,
+};
+
+const restartIntentSchema = z.union([
+  z
+    .object({
+      ...restartIntentBase,
+      operation: z.literal("restart"),
+      options: restartOptionsSchema,
+    })
+    .strict(),
+  z
+    .object({
+      ...restartIntentBase,
+      operation: z.literal("rebuild"),
+    })
+    .strict(),
+]);
 
 const stopRequestedIntentSchema = z
   .object({
@@ -111,7 +123,7 @@ const manualReloadIntentSchema = z
  * The complete renderer-dispatch allowlist for app-run. Adding a remote
  * intent requires adding a strict variant here and classifying it below.
  */
-export const AppRunIntentEventSchema = z.discriminatedUnion("type", [
+export const AppRunIntentEventSchema = z.union([
   startIntentSchema,
   restartIntentSchema,
   stopRequestedIntentSchema,
@@ -319,10 +331,13 @@ export function projectAppRunRemoteSnapshot(
     case "stopped":
       return {
         ...base,
-        exit: {
-          exitCode: state.exitCode,
-          timestamp: state.timestamp,
-        },
+        exit:
+          state.timestamp === null
+            ? null
+            : {
+                exitCode: state.exitCode,
+                timestamp: state.timestamp,
+              },
       };
     case "errored":
       return { ...base, operationError: state.error };
@@ -381,7 +396,10 @@ function selectRemoteCapabilities(
         canStart: true,
         canRestart: true,
         canRebuild: true,
-        canStop: false,
+        // A failed stop can leave a cloud sandbox/process registered. Since
+        // errored state does not retain failure provenance, keep cancellation
+        // available conservatively; stopping an absent process is idempotent.
+        canStop: true,
         canReload: false,
       };
     default:

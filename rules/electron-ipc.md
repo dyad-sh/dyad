@@ -205,7 +205,9 @@ When creating hooks/components that call IPC handlers:
 - Async keyed subscription attach must use a generation/current-state check
   after awaiting bootstrap and roll back that generation on rejection.
   Otherwise detach or replacement during bootstrap can deliver stale data, and
-  a rejected bootstrap can leave later payloads buffered forever.
+  a rejected bootstrap can leave later payloads buffered forever. Pending
+  delivery queues must also retain the interest/generation key so replacement
+  can discard superseded payloads before sending its bootstrap.
 - Wrap reads in `useQuery`, using keys from `queryKeys` factory (see above), async `queryFn` that calls the relevant domain client (e.g., `appClient.getApp(...)`) or unified `ipc` namespace, and conditionally use `enabled`/`initialData`/`meta` as needed.
 - Wrap writes in `useMutation`; validate inputs locally, call the domain client, and invalidate related queries on success. Use shared utilities (e.g., toast helpers) in `onError`.
 - When a mutation changes fields exposed by both `apps.detail(...)` and `apps.all` (for example linking or unlinking a GitHub repository), invalidate both query families. Refreshing only the detail query can leave parent pages that derive conditional UI from the apps list stale.

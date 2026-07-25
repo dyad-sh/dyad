@@ -104,4 +104,26 @@ describe("HighVolumeWindowInterests", () => {
     expect(renderer.send).toHaveBeenNthCalledWith(1, "output", ["recovered"]);
     expect(renderer.send).toHaveBeenNthCalledWith(2, "output", ["live"]);
   });
+
+  it("discards queued payloads from a replaced subscription generation", async () => {
+    const registry = new WindowRegistry();
+    const renderer = endpoint(1);
+    registry.register(renderer, randomUUID() as WindowSessionId);
+    const interests = new HighVolumeWindowInterests<string>(
+      registry,
+      "output",
+      1_000,
+    );
+    const interest = { kind: "app-output" as const, appId: 7 };
+
+    await interests.attach(1, interest, () => []);
+    interests.enqueue(interest, "superseded-pending");
+    await interests.attach(1, interest, () => ["replacement-bootstrap"]);
+    interests.flushAll();
+
+    expect(renderer.send).toHaveBeenCalledTimes(1);
+    expect(renderer.send).toHaveBeenCalledWith("output", [
+      "replacement-bootstrap",
+    ]);
+  });
 });

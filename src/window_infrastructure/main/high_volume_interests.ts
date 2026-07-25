@@ -7,10 +7,18 @@ interface SubscriptionState<T> {
   bufferedDuringAttach: T[];
 }
 
+interface PendingPayload<T> {
+  interestKey: string;
+  payload: T;
+}
+
 export class HighVolumeWindowInterests<T> {
   private readonly interestsByWebContents = new Map<number, Set<string>>();
   private readonly subscriptionStates = new Map<string, SubscriptionState<T>>();
-  private readonly pendingByDestination = new Map<number, T[]>();
+  private readonly pendingByDestination = new Map<
+    number,
+    PendingPayload<T>[]
+  >();
   private flushTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(
@@ -30,6 +38,9 @@ export class HighVolumeWindowInterests<T> {
     const stateKey = this.subscriptionKey(webContentsId, key);
     const interests =
       this.interestsByWebContents.get(webContentsId) ?? new Set<string>();
+    if (interests.has(key)) {
+      this.discardPending(webContentsId, key);
+    }
     interests.add(key);
     this.interestsByWebContents.set(webContentsId, interests);
     const state: SubscriptionState<T> = {
@@ -84,7 +95,7 @@ export class HighVolumeWindowInterests<T> {
         continue;
       }
       const pending = this.pendingByDestination.get(webContentsId) ?? [];
-      pending.push(payload);
+      pending.push({ interestKey: key, payload });
       this.pendingByDestination.set(webContentsId, pending);
     }
     this.flushTimer ??= setTimeout(() => this.flushAll(), this.flushDelayMs);
@@ -114,7 +125,23 @@ export class HighVolumeWindowInterests<T> {
     const payloads = this.pendingByDestination.get(webContentsId);
     if (!payloads?.length) return;
     this.pendingByDestination.delete(webContentsId);
-    this.sendNow(webContentsId, payloads);
+    this.sendNow(
+      webContentsId,
+      payloads.map(({ payload }) => payload),
+    );
+  }
+
+  private discardPending(webContentsId: number, interestKey: string): void {
+    const payloads = this.pendingByDestination.get(webContentsId);
+    if (!payloads) return;
+    const retained = payloads.filter(
+      (pending) => pending.interestKey !== interestKey,
+    );
+    if (retained.length === 0) {
+      this.pendingByDestination.delete(webContentsId);
+    } else {
+      this.pendingByDestination.set(webContentsId, retained);
+    }
   }
 
   private sendNow(webContentsId: number, payloads: readonly T[]): void {

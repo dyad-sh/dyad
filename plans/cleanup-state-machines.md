@@ -243,16 +243,16 @@ work, not only snapshot fan-out.
 
 Each C-wave PR completes this matrix before implementation:
 
-| Machine            | No subscribers                               | Window reload                    | Last window closes                                 | App quit                           | App restart                           | Entity deletion                      |
-| ------------------ | -------------------------------------------- | -------------------------------- | -------------------------------------------------- | ---------------------------------- | ------------------------------------- | ------------------------------------ |
-| `app_run`          | Active process retained; idle policy bounded | Reattach to main snapshot/output | Platform convention; active work retained on macOS | Bounded child-process teardown     | Ephemeral unless separately recovered | Stop/dispose actor and process       |
-| `user_input`       | Live waiter retained to deadline             | Rehydrate read model             | Continue while application remains alive           | Settle/sweep by shutdown policy    | Recover only durable pending records  | Settle requests for deleted entity   |
-| `connection_flow`  | Continue to timeout                          | Reattach read model              | Continue while application remains alive           | Cancel listeners/timers safely     | Domain-specific unsolicited return    | N/A/provider cleanup                 |
-| `mcp_oauth`        | Continue to timeout                          | Reattach status if exposed       | Continue while application remains alive           | Close listeners and settle waiters | No implicit recovery                  | Dispose server/flow-owned resources  |
-| `github_ops`       | Active mutation retained                     | Reattach                         | Continue while application remains alive           | Finish or enter explicit recovery  | Reconcile repository state            | Dispose actor after safe settlement  |
-| `version_preview`  | Active checkout/recovery retained            | Reattach                         | Continue while application remains alive           | Preserve/enter recovery contract   | Reconcile branch/checkout state       | Dispose after safe return/settlement |
-| `image_generation` | Active jobs retained                         | Reattach                         | Continue while application remains alive           | Domain policy must be recorded     | Persistence decision required         | Cancel/prune jobs for deleted entity |
-| `chat_stream`      | Feasibility study decides                    | Feasibility study decides        | Feasibility study decides                          | Feasibility study decides          | Durable acceptance study required     | Settle queue/owners before deletion  |
+| Machine            | No subscribers                               | Window reload                    | Last window closes                                 | App quit                           | App restart                                 | Entity deletion                          |
+| ------------------ | -------------------------------------------- | -------------------------------- | -------------------------------------------------- | ---------------------------------- | ------------------------------------------- | ---------------------------------------- |
+| `app_run`          | Active process retained; idle policy bounded | Reattach to main snapshot/output | Platform convention; active work retained on macOS | Bounded child-process teardown     | Ephemeral unless separately recovered       | Stop/dispose actor and process           |
+| `user_input`       | Live waiter retained to deadline             | Rehydrate read model             | Continue while application remains alive           | Settle/sweep by shutdown policy    | Recover only durable pending records        | Settle requests for deleted entity       |
+| `connection_flow`  | Continue to timeout                          | Reattach read model              | Continue while application remains alive           | Cancel listeners/timers safely     | Domain-specific unsolicited return          | N/A/provider cleanup                     |
+| `mcp_oauth`        | Continue to timeout                          | Reattach status if exposed       | Continue while application remains alive           | Close listeners and settle waiters | No implicit recovery                        | Dispose server/flow-owned resources      |
+| `github_ops`       | Active mutation retained                     | Reattach                         | Continue while application remains alive           | Finish or enter explicit recovery  | Reconcile repository state                  | Dispose actor after safe settlement      |
+| `version_preview`  | Active checkout/recovery retained            | Reattach                         | Continue while application remains alive           | Preserve/enter recovery contract   | Reconcile branch/checkout state             | Dispose after safe return/settlement     |
+| `image_generation` | Active jobs retained                         | Reattach                         | Continue while application remains alive           | Best-effort cancel; bounded settle | No active-job persistence or auto-run       | Cancel/prune jobs for deleted entity     |
+| `chat_stream`      | Active stream and queue continue             | Bootstrap all read models        | Follow real platform shutdown boundary             | Interrupt; abort; bounded unwind   | Hydrate queue paused; reconcile interrupted | Settle owners and unwind before deletion |
 
 Renderer-local machines always die with their renderer resources, but must
 settle or compensate their callers. The matrix records product semantics; it
@@ -506,7 +506,8 @@ deletion by a host move.
 
 ### Phase B — multi-window and distributed infrastructure
 
-**B0 — ADR, recorded decisions, and deletion budgets.**
+**B0 — ADR, recorded decisions, and deletion budgets: in flight
+(`cleanup-b0-adr`).**
 
 - copy the five approved product decisions from this plan;
 - record one-authority, commit-versus-completion, and no-multi-primary rules;
@@ -515,6 +516,13 @@ deletion by a host move.
   decision** (they do not survive B0 as TBD);
 - define app-run pilot deletion list;
 - classify every remote event's intent/admission policy.
+
+Decision record:
+[`docs/adr/main-owned-state-machines.md`](../docs/adr/main-owned-state-machines.md).
+Image generation uses best-effort cancellation with a bounded settlement
+window on app quit; active jobs are not persisted or automatically resumed
+after app restart. The accepted G1 study now supplies the completed
+`chat_stream` lifecycle row and intent classification.
 
 **B1 — WindowRegistry, routing, cache coherence, and test harness.**
 

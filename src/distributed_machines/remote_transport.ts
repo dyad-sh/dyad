@@ -417,12 +417,14 @@ export class RemoteMachineTransport {
       return this.rejected(envelope.messageId, "invalid-event");
     }
     const address = this.address(definition, keyResult.data);
+    const admittedEntry = this.subscriptions.get(address);
+    if (!admittedEntry) {
+      return this.rejected(envelope.messageId, "stale-actor");
+    }
     const senderContext = this.senderContext(sender);
-    let key = this.actorKeys.get(address) ?? keyResult.data;
-    let current = this.options.host.peek<unknown, unknown, string>(
-      definition.id,
-      key,
-    );
+    const key = admittedEntry.key;
+    let current: HostedActorRef<unknown, unknown, string> | undefined =
+      admittedEntry.actor;
     for (
       let attempt = 0;
       attempt < MAX_AUTHORIZATION_STABILIZATION_ATTEMPTS;
@@ -446,8 +448,10 @@ export class RemoteMachineTransport {
       if (this.disposed || !this.isCurrentSender(sender, windowSessionId)) {
         return this.rejected(envelope.messageId, "host-disposing");
       }
+      if (this.subscriptions.get(address) !== admittedEntry) {
+        return this.rejected(envelope.messageId, "stale-actor");
+      }
 
-      key = this.actorKeys.get(address) ?? key;
       const authorizedCurrent = this.options.host.peek<
         unknown,
         unknown,

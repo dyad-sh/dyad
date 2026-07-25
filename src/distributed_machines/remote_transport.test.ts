@@ -424,12 +424,15 @@ describe("remote machine transport", () => {
 
   it("rejects dispatch to an actor that no subscription created", async () => {
     const { duplex, host, machine } = createHarness();
+    host.localRef(machine, "actor");
     const renderer = duplex.connect();
 
     await expect(
       renderer.dispatch(dispatch({ type: "INCREMENT" })),
     ).resolves.toMatchObject({ kind: "rejected", reason: "stale-actor" });
-    expect(host.peek(machine.id, "actor")).toBeUndefined();
+    expect(host.peek(machine.id, "actor")?.getSnapshot()).toMatchObject({
+      value: 0,
+    });
   });
 
   it("bounds structured-clone dispatch and snapshot envelopes", async () => {
@@ -630,7 +633,7 @@ describe("remote machine transport", () => {
       renderer.dispatch(
         dispatch({ type: "INCREMENT" }, { encodedKey: "forbidden" }),
       ),
-    ).resolves.toMatchObject({ kind: "rejected", reason: "unauthorized" });
+    ).resolves.toMatchObject({ kind: "rejected", reason: "stale-actor" });
     await expect(
       renderer.subscribe(address("forbidden")),
     ).rejects.toMatchObject({

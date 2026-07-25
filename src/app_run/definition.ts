@@ -265,6 +265,12 @@ function transitionActor(
     return ignore(state, "stale-operation");
   }
   if (
+    event.type === "STOP_REQUESTED" &&
+    !isCurrentInvocation(state.runState, event.activeInvocationRef)
+  ) {
+    return ignore(state, "stale-operation");
+  }
+  if (
     event.type === "HMR_DETECTED" &&
     !isCurrentInvocation(state.runState, event.invocationRef)
   ) {

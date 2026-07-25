@@ -408,7 +408,7 @@ describe("main-hosted app-run actor", () => {
   });
 
   it("rejects a stale restart and requires stop to target the active invocation", async () => {
-    const { actorA, actorB } = createHarness();
+    const { actorA, actorB, host } = createHarness();
     await actorA.resync();
     await actorB.resync();
     const [started, stale] = await Promise.all([
@@ -448,6 +448,24 @@ describe("main-hosted app-run actor", () => {
       kind: "rejected",
       reason: "unauthorized",
     });
+
+    const directStaleCancel = await host
+      .ensure(appRunDefinition, appRunKey(7))
+      .enqueue({
+        type: "STOP_REQUESTED",
+        operationId: "direct-stop",
+        startedAt: 40,
+        activeInvocationRef: {
+          kind: "app-run",
+          entityKey: 7,
+          operationId: "not-active",
+        },
+      }).settled;
+    expect(directStaleCancel).toMatchObject({
+      kind: "ignored",
+      reason: "stale-operation",
+    });
+    expect(runtime.stop).not.toHaveBeenCalled();
   });
 
   it("retains work when the initiating window releases its subscription", async () => {

@@ -4,7 +4,6 @@ import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import {
   appendConsoleEntriesForAppAtom,
   setPackageManagerWarningForAppAtom,
-  setPreviewAppExitForAppAtom,
   setPreviewErrorForAppAtom,
 } from "@/atoms/previewRuntimeAtoms";
 import { useAtomValue, useSetAtom } from "jotai";
@@ -42,7 +41,6 @@ export function useAppOutputSubscription() {
   const manager = useAppRunManager();
   const appendConsoleEntries = useSetAtom(appendConsoleEntriesForAppAtom);
   const setPreviewError = useSetAtom(setPreviewErrorForAppAtom);
-  const setPreviewAppExit = useSetAtom(setPreviewAppExitForAppAtom);
   const setPackageManagerWarning = useSetAtom(
     setPackageManagerWarningForAppAtom,
   );
@@ -205,14 +203,6 @@ export function useAppOutputSubscription() {
         if (!admitted) {
           return null;
         }
-        setPreviewAppExit({
-          appId: output.appId,
-          exit: {
-            appId: output.appId,
-            exitCode: output.exitCode ?? null,
-            timestamp: output.timestamp ?? Date.now(),
-          },
-        });
         return null;
       }
 
@@ -264,7 +254,6 @@ export function useAppOutputSubscription() {
     [
       processProxyServerOutput,
       setPackageManagerWarning,
-      setPreviewAppExit,
       setPreviewError,
       manager,
     ],

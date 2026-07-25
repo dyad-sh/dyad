@@ -83,20 +83,6 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
   },
   {
     rule: "writable-projection-export",
-    atom: "previewAppExitByAppIdAtom",
-    file: "atoms/previewRuntimeAtoms.ts",
-    detail: "exported writable atom",
-    deletionPr: "A3",
-  },
-  {
-    rule: "writable-projection-export",
-    atom: "setPreviewAppExitForAppAtom",
-    file: "atoms/previewRuntimeAtoms.ts",
-    detail: "exported writable atom",
-    deletionPr: "A3",
-  },
-  {
-    rule: "writable-projection-export",
     atom: "pendingScreenshotAppIdsAtom",
     file: "atoms/previewAtoms.ts",
     detail: "exported writable atom",

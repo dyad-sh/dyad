@@ -91,12 +91,19 @@ const STATE_FIXTURES: RunState[] = [
     invocationRef: CURRENT_REF,
     startedAt: 100,
   },
-  { type: "stopped", appId: APP_ID, invocationRef: CURRENT_REF, exitCode: 0 },
+  {
+    type: "stopped",
+    appId: APP_ID,
+    invocationRef: CURRENT_REF,
+    exitCode: 0,
+    timestamp: 100,
+  },
   {
     type: "stopped",
     appId: APP_ID,
     invocationRef: CURRENT_REF,
     exitCode: null,
+    timestamp: null,
   },
   {
     type: "errored",
@@ -455,7 +462,11 @@ describe("transition scenarios", () => {
       type: "STOP_IPC_RESOLVED",
       invocationRef: FRESH_REF,
     });
-    expect(stopped.state).toMatchObject({ type: "stopped", exitCode: null });
+    expect(stopped.state).toMatchObject({
+      type: "stopped",
+      exitCode: null,
+      timestamp: null,
+    });
   });
 
   it("cycles ready -> reloading -> ready on HMR", () => {
@@ -621,7 +632,11 @@ describe("transition scenarios", () => {
         timestamp: 300,
       });
       if (state.type === "ready" || state.type === "reloading") {
-        expect(result.state).toMatchObject({ type: "stopped", exitCode: 137 });
+        expect(result.state).toMatchObject({
+          type: "stopped",
+          exitCode: 137,
+          timestamp: 300,
+        });
       } else {
         expect(result.state).toBe(state);
       }

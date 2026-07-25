@@ -7,7 +7,6 @@ import {
   currentConsoleEntriesAtom,
   currentAppUrlAtom,
   currentPackageManagerWarningAtom,
-  currentPreviewAppExitAtom,
   currentPreviewErrorAtom,
   currentPreviewReloadTokenAtom,
   setConsoleEntriesForAppAtom,
@@ -18,6 +17,7 @@ import {
   useRunApp,
 } from "@/hooks/useRunApp";
 import { AppRunProvider } from "@/app_run/AppRunProvider";
+import { selectAppExit } from "@/app_run/selectors";
 import { AppRunManager } from "@/app_run/manager";
 
 const {
@@ -235,11 +235,16 @@ describe("useAppOutputSubscription", () => {
     unmount();
   });
 
-  it("tracks app process exit without adding an extra console log", () => {
-    const { store, Wrapper } = makeWrapper(1);
+  it("tracks app process exit without adding an extra console log", async () => {
+    const { manager, store, Wrapper } = makeWrapper(1);
     const { unmount } = renderHook(() => useAppOutputSubscription(), {
       wrapper: Wrapper,
     });
+
+    await act(async () => {
+      await manager.dispatch(1, { type: "START", startedAt: 100 });
+    });
+    const consoleEntriesBeforeExit = store.get(currentConsoleEntriesAtom);
 
     act(() => {
       for (const listener of appOutputListeners) {
@@ -253,18 +258,18 @@ describe("useAppOutputSubscription", () => {
       }
     });
 
-    expect(store.get(currentPreviewAppExitAtom)).toEqual({
+    expect(selectAppExit(manager.getSnapshot(1))).toEqual({
       appId: 1,
       exitCode: 1,
       timestamp: 123,
     });
-    expect(store.get(currentConsoleEntriesAtom)).toEqual([]);
+    expect(store.get(currentConsoleEntriesAtom)).toBe(consoleEntriesBeforeExit);
 
     unmount();
   });
 
   it("does not project a stale exit from a superseded invocation", async () => {
-    const { manager, store, Wrapper } = makeWrapper(1);
+    const { manager, Wrapper } = makeWrapper(1);
     let finishRunApp: () => void = () => {};
     runAppMock.mockReturnValueOnce(
       new Promise<void>((resolve) => {
@@ -311,7 +316,7 @@ describe("useAppOutputSubscription", () => {
       }
     });
 
-    expect(store.get(currentPreviewAppExitAtom)).toBeNull();
+    expect(selectAppExit(manager.getSnapshot(1))).toBeNull();
     expect(manager.getSnapshot(1)).toMatchObject({
       type: "starting",
       startedAt: 200,

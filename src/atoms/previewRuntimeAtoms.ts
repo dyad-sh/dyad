@@ -32,12 +32,6 @@ export interface PreviewRunState {
   startedAt: number;
 }
 
-export interface PreviewAppExit {
-  appId: number;
-  exitCode: number | null;
-  timestamp: number;
-}
-
 export interface PreviewErrorMessage {
   message: string;
   source: "preview-app" | "dyad-app" | "dyad-sync";
@@ -70,9 +64,6 @@ export const previewRunStateByAppIdAtom = atom<Map<number, PreviewRunState>>(
 export const previewErrorByAppIdAtom = atom<Map<number, PreviewErrorMessage>>(
   new Map(),
 );
-export const previewAppExitByAppIdAtom = atom<Map<number, PreviewAppExit>>(
-  new Map(),
-);
 export const appUrlByAppIdAtom = atom<Map<number, AppUrlState>>(new Map());
 export const previewReloadTokenByAppIdAtom = atom<Map<number, number>>(
   new Map(),
@@ -90,13 +81,6 @@ export const dismissedPackageManagerWarningAppIdsAtom = atom<Set<number>>(
 export const currentPreviewErrorAtom = atom((get) => {
   const appId = get(selectedAppIdAtom);
   return appId === null ? undefined : get(previewErrorByAppIdAtom).get(appId);
-});
-
-export const currentPreviewAppExitAtom = atom((get) => {
-  const appId = get(selectedAppIdAtom);
-  return appId === null
-    ? null
-    : (get(previewAppExitByAppIdAtom).get(appId) ?? null);
 });
 
 export const currentAppUrlAtom = atom((get) => {
@@ -163,25 +147,6 @@ export const setPreviewErrorForAppAtom = atom(
       const next = new Map(prev);
       if (nextError) {
         next.set(appId, nextError);
-      } else {
-        next.delete(appId);
-      }
-      return next;
-    });
-  },
-);
-
-export const setPreviewAppExitForAppAtom = atom(
-  null,
-  (
-    _get,
-    set,
-    { appId, exit }: { appId: number; exit: PreviewAppExit | null },
-  ) => {
-    set(previewAppExitByAppIdAtom, (prev) => {
-      const next = new Map(prev);
-      if (exit) {
-        next.set(appId, exit);
       } else {
         next.delete(appId);
       }
@@ -321,11 +286,6 @@ export const clearPreviewRuntimeForAppAtom = atom(
       return next;
     });
     set(previewErrorByAppIdAtom, (prev) => {
-      const next = new Map(prev);
-      next.delete(appId);
-      return next;
-    });
-    set(previewAppExitByAppIdAtom, (prev) => {
       const next = new Map(prev);
       next.delete(appId);
       return next;

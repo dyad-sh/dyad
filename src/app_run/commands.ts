@@ -7,7 +7,6 @@ import {
   clearPackageManagerWarningForAppAtom,
   setAppUrlForAppAtom,
   setConsoleEntriesForAppAtom,
-  setPreviewAppExitForAppAtom,
   setPreviewErrorForAppAtom,
 } from "@/atoms/previewRuntimeAtoms";
 import type { RunCommand, RunErrorInfo, RunEvent, RunOperation } from "./state";
@@ -87,7 +86,6 @@ export function createIpcRunCommandExecutor(
         options.removeNodeModules ? "with node_modules cleanup" : "",
       );
 
-      store.set(setPreviewAppExitForAppAtom, { appId, exit: null });
       if (operation !== "rebuild") {
         // The pnpm rebuild flow keeps its banner visible while rebuilding.
         store.set(clearPackageManagerWarningForAppAtom, appId);
@@ -152,10 +150,6 @@ export function createIpcRunCommandExecutor(
           await executeStart(command, emit);
           return;
         case "prepareExternalStart":
-          store.set(setPreviewAppExitForAppAtom, {
-            appId: command.appId,
-            exit: null,
-          });
           store.set(setAppUrlForAppAtom, {
             appId: command.appId,
             appUrl: EMPTY_APP_URL,

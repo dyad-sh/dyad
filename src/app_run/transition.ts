@@ -214,6 +214,7 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
           appId: state.appId,
           invocationRef: state.invocationRef,
           exitCode: null,
+          timestamp: null,
         },
         commands: [{ type: "clearError", appId: state.appId }],
       };
@@ -371,6 +372,7 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
             appId: state.appId,
             invocationRef: state.invocationRef,
             exitCode: event.exitCode,
+            timestamp: event.timestamp,
           },
           commands: [],
         };

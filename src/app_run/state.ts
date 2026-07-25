@@ -87,6 +87,8 @@ export type RunState =
       appId: number;
       invocationRef: AppRunInvocationRef;
       exitCode: number | null;
+      /** Present only when the process reported APP_EXIT. */
+      timestamp: number | null;
     }
   | {
       type: "errored";

@@ -650,12 +650,34 @@ state.
 
 Architecture tests do not wait for this UX: B1's test harness exists first.
 
-### Phase D — delete transitional infrastructure
+### Phase D — delete transitional infrastructure (rolling, per wave)
 
-- remove superseded controllers/managers and only those registries actually
-  replaced;
-- remove projection writers and atom mailboxes;
-- narrow legacy IPC channels after the supported update window;
+Correction recorded 2026-07-25: there is **no live-IPC version-skew window
+in production**. Dyad updates via `update-electron-app`/Squirrel
+(src/main.ts) — updates apply on restart, main and renderer always ship
+from one bundle, and a mid-session renderer reload loads the running
+bundle, not the staged one. Version discipline therefore applies to
+**persisted state only** (durable records, persisted snapshots, tab
+sessions — written by vN, read by vN+1 after restart); live transport
+carries a cheap protocol-version assert (mismatch → log + reload; a
+dev-only HMR phenomenon), not a compatibility matrix. The earlier
+"supported update window" constraint on deletions is void.
+
+Deletion is therefore **rolling and immediate**: each C wave's temporary
+adapters and legacy channels are deleted in a **separate PR landing right
+behind the cutover** (same day is fine). Corrections recorded 2026-07-25:
+(1) no update window — one bundle, updates apply on restart; (2) no
+runtime toggle exists, so retained adapters are dead code enabling no
+runtime rollback, and straggler callers are compile-time-detectable via
+typed IPC contracts; (3) no bake period either — dead-code deletion
+cannot regress runtime once typecheck/CI pass, and a later cutover
+revert simply reverts both PRs (two clean commands). The separation
+exists ONLY for review clarity: the high-scrutiny cutover diff stays
+pure, undiluted by mechanical deletions. The final Phase D shrinks to:
+
+- remove any remaining superseded controllers/managers and only those
+  registries actually replaced;
+- remove remaining projection writers and atom mailboxes;
 - remove temporary boundary allowlist entries;
 - update `rules/state-machines.md`, `rules/electron-ipc.md`,
   `rules/jotai-state.md`, and `docs/why-state-machines.md`;

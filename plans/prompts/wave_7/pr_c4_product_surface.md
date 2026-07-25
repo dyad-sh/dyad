@@ -35,3 +35,9 @@ two-window E2E (open second window, drag a tab, close initiating window
 mid-work, restore a two-window session); golden suite green (single
 window unchanged). /deep-review on the tab-transfer protocol. Branch
 prefix c4-\*; update plan status.
+
+Rebatch note (see DEPENDENCIES.md): this wave is SPLIT. C4a (window
+creation, explicit duplication, per-window session restore, focus routing
+for app surfaces) needs only C1 and may run parallel with C2/C3. C4b (chat
+tab drag/transfer and chat-surface routing) waits for C3. Scope each PR to
+one half.

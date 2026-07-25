@@ -37,3 +37,17 @@ and land in the smallest reviewable steps the study's sequence allows.
 Branch prefix c3-chat-\*; update plan status + matrix rows as reality
 diverges; the study document gets a postmortem section noting where
 implementation contradicted the design.
+
+Trailing deletion (part of this wave, per the plan's rolling Phase D):
+land the wave's adapter/channel deletion as a SEPARATE PR immediately
+behind the cutover (same day is fine — no bake, no soak; per the plan's
+recorded corrections: no update window, no runtime toggle, stragglers
+are compile-time-detectable, and dead-code deletion cannot regress
+runtime once typecheck/CI pass). The separation exists ONLY to keep the
+high-scrutiny cutover diff pure for review; a later cutover revert
+simply reverts both PRs. The wave is not complete until it lands.
+
+Rebatch note (see DEPENDENCIES.md): C3 does NOT wait for C2 — design and
+implementation prep start once C1 is accepted (and G1 is marked accepted),
+parallel with C2 waves; only the C3 cutover staggers through the single
+cutover slot.

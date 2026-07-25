@@ -21,7 +21,12 @@ production machine is remotely addressable after this PR):
    (messageId dedup within a bounded window; expectedActorInstanceId;
    optional expectedRevision honoring the B0 intent classification;
    correlation/causation IDs). Double validation: outer envelope contract,
-   then the machine's codecs.
+   then the machine's codecs. Protocol version is a cheap ASSERT
+   (mismatch → rejected receipt + renderer reload prompt), NOT a
+   compatibility matrix — per the plan's recorded correction, live-IPC
+   version skew cannot occur in production (one bundle, updates apply on
+   restart); it is a dev-only HMR phenomenon. Schema versioning/migration
+   applies to PERSISTED state only.
 4. Atomic subscribe/bootstrap: NO await between subscriber registration
    and snapshot capture; broadcasts before invoke-resolution are buffered
    renderer-side (bounded) and applied monotonically; revision gaps →

@@ -1,115 +1,90 @@
-# Dependency graph — cleanup-state-machines rollout
+# Dependency graph and rebatched schedule — cleanup-state-machines rollout
 
-Companion to `plans/cleanup-state-machines.md` and this prompt library.
-Statuses as of 2026-07-24: A1 done (#4090), A2 done (#4091), A3 in
-flight (#4092), G1a decided. Update markers as PRs land (the plan's
-status lines remain the source of truth; this file is the picture).
+Companion to `plans/cleanup-state-machines.md`. Statuses as of 2026-07-25:
+A1 #4090, A2 #4091, A3 #4092, A4 #4093, A6b-safe-subset #4094 merged;
+A6a in flight (#4095); G1a decided; G1 study written
+(`plans/g1-chat-stream-study.md` — mark accepted in the plan to open the
+C3 gate; remainder of A6b folded into C3 per its verdict). The plan's
+status lines are the source of truth; this file is the picture.
+
+## Two standing rules
+
+1. **One-cutover rule.** Prep work (design, codecs, service extraction,
+   read models, stores) parallelizes freely. At most ONE authority
+   cutover is in flight at any time — cutovers are the only step where
+   "which process owns X" can be ambiguous, and bisection must stay
+   clean.
+2. **Rolling deletion.** Every cutover wave lands its adapter deletion
+   as a separate PR immediately behind the cutover (same day is fine —
+   no bake, no soak; see the plan's Phase D corrections). The separation
+   is for review clarity only: the cutover diff stays pure. A later
+   cutover revert simply reverts both PRs.
+
+## Rebatched schedule
+
+| Batch   | Parallel items                                                                                                                                   | Waits on                               |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------- |
+| 1 (now) | A5 · golden suite · B0 ADR · **C1.1 main app-runtime service extraction** · C2 main-registries audit (docs) · finish A6a                         | nothing                                |
+| 2       | B1 ∥ B2 · C1.2 (app_run codecs + safe projection design)                                                                                         | golden+B0 → B1; B0 → B2, C1.2          |
+| 3       | B3 (core against fake transport; B1-harness scenarios land last) ∥ audit-rewiring (pagehide item first — C1 prereq)                              | B2 → B3; B1+golden → rewiring          |
+| 4       | B4 (may begin against B3's envelope types during B3's tail)                                                                                      | B3                                     |
+| 5       | **C1.3 app_run cutover** (the wave's only cutover slot)                                                                                          | B4 + pagehide + C1.1/C1.2              |
+| 6       | C2-github_ops (next cutover slot) ∥ C3 design→implementation prep ∥ C4a (window creation/session-restore/app surface)                            | C1 accepted; C3 also needs G1 accepted |
+| 7       | C2-version_preview ∥ C2-image_generation ∥ C2-registries disposition — preps parallel, cutovers staggered through the single slot ∥ C3 continued | github_ops pattern set                 |
+| 8       | C3 cutover → C4b (chat tab drag/transfer)                                                                                                        | C3 gates (G1-go · C1 · A6b-subset ✓)   |
+| rolling | each wave's deletion PR, immediately behind its cutover                                                                                          | per wave                               |
+| final   | A7 → Phase D remainder (docs, boundaries, leftovers)                                                                                             | all allowlist owners landed            |
+
+Key changes vs the original wave table: C1 is split (its longest step has
+no transport dependency and starts NOW); B2 runs beside B1; B3/B4 overlap
+tails; C2 fans out after github_ops instead of chaining; **C3 runs
+parallel with C2** (they never depended on each other — only cutovers
+serialize); C4 splits into a (after C1) and b (after C3).
+
+## Graph
 
 ```text
-        LEGEND   [x] merged   [~] in flight   ( ) pending   * gate/decision   = critical path
+ LEGEND  [x] merged  [~] in flight  ( ) pending  * gate  = critical path
 
- PHASE A (ownership)                 DESIGN            PHASE B (window + actor infra)          PHASE C (host moves)              PHASE D
----------------------               --------          --------------------------------        ---------------------            ---------
+ [x] A1 -> [x] A2 -> [x] A3    [x] A4    [x] A6b-subset    [~] A6a    [x] G1a    G1 study written -> * accept -> gates C3
+ ( ) A5 (independent)          ( ) A7 (after all allowlist owners land)
 
- [x] A1 boundaries+bindings (#4090)
-   |
-   +------------+-----------------------------+
-   v            v                             |
- [x] A2       [~] A3 stores (#4092)           |
- mirrors        |                             |
- (#4091)        | (rebase over)               |
-   |            |                             |
-   +------+-----+--+                          |
-   v      |        v                          v
- ( ) A4 ==+=> ( ) A6a status        * G1a DECIDED (ok) --> (unblocks A6a)
- edges    |   kills #4077
-   |      |        |                ( ) G1 chat study ---------------------------------+
-   v      |        |                  (start now, no code)                             |
- ( ) A5 ==+        |                       |                                           |
- channels |        |                       v                                           |
-   |      |        |                * G1 accepted? --> ( ) A6b chat storage ======+    |
-   |      |        |                                        ^                     |    |
-   |      |        +------------------------(A6a facade seam)---------------------+----+
-   |      |                                                                       |    |
-   |      +==(A4 preview_iframe facade seam)=====================+                |    |
-   v                                                             |                |    |
- ( ) A7 compat removal <-----(after A2-A6 + relevant C waves)----+-----------+    |    |
-                                                                 |           |    |    |
-              ( ) GOLDEN SUITE ===+==> ( ) B1 window infra ======+==+        |    |    |
-              (before ANY         |      registry/routing/       |  |        |    |    |
-               B wiring)          |      coherence/harness       |  |        |    |    |
-                                  |        |                     |  |        |    |    |
-              ( ) B0 ADR ========-+--------+--> ( ) B2 kernel    |  |        |    |    |
-              (matrix, intent,    |        |         |           |  |        |    |    |
-               deletion lists)    |        +=====+   |           |  |        |    |    |
-                                  |              v   v           |  |        |    |    |
-                                  |        ( ) B3 transport      |  |        |    |    |
-                                  |              |               |  |        |    |    |
-                                  |              v               |  |        |    |    |
-                                  |        ( ) B4 remote client  |  |        |    |    |
-                                  |              |               |  |        |    |    |
-                                  +==> ( ) AUDIT REWIRING <======+  |        |    |    |
-                                         (parallel with B2-B4)      |        |    |    |
-                                            | (pagehide item)       |        |    |    |
-                                            v                       v        |    |    |
-                                       ( ) C1 app_run pilot <=======+        |    |    |
-                                            |                                |    |    |
-                                            * C1 accepted?                   |    |    |
-                                            +==> ( ) C2 github_ops           |    |    |
-                                            |         |                      |    |    |
-                                            |         v                      |    |    |
-                                            |    ( ) C2 version_preview      |    |    |
-                                            |         |                      |    |    |
-                                            |         v                      |    |    |
-                                            |    ( ) C2 image_generation     |    |    |
-                                            |      (needs B0 ADR calls)      |    |    |
-                                            +--> ( ) C2 main registries      |    |    |
-                                            |      (conditional/docs-ok)     |    |    |
-                                            |                                |    |    |
-                                            +==> ( ) C3 chat wave <----------+----+----+
-                                                      |   (3 gates: G1 go,   |
-                                                      |    C1, A6b)          |
-                                                      v                      |
-                                                 ( ) C4 product surface      |
-                                                      |                      |
-                                                      v                      v
-                                                 ( ) Phase D deletion <--- (A7, + soak)
+ ( ) GOLDEN ==+==> ( ) B1 =========+============================+
+ ( ) B0 ======+      |             | (harness-only scenarios)   |
+      |              v             v                            |
+      +=======> ( ) B2 =====> ( ) B3 =====> ( ) B4 =============+==> ( ) C1.3 cutover ==> * C1 accepted
+      |          (beside B1)  (core on      (overlaps                     ^                     |
+      |                       fake          B3 tail)                      |                     |
+      |                       transport)                    C1.1 (START NOW) + C1.2 (<- B0)     |
+      +--> ( ) audit-rewiring (<- B1+golden; pagehide item is a C1 prereq)                      |
+                                                                                                v
+   after C1 accepted, parallel:   C2-gh cutover --> preps: C2-vp || C2-ig || C2-registries      |
+                                  (later cutovers staggered through the single cutover slot)    |
+                                  C3 design/impl (needs * G1 accepted) ... C3 cutover <---------+
+                                  C4a (app-window surface) ............... C4b (after C3)
+
+   rolling: each cutover + 1 release -> its trailing deletion PR
+   final:   A7 -> D remainder (docs, boundary hardening, leftovers)
 ```
-
-## Critical path (double lines)
-
-Golden suite / B0 -> B1 -> B3 -> B4 -> C1 -> C2 chain -> C3 -> C4 -> D.
-Phase B is strictly serial in the middle (B1 -> B3 -> B4; B2 can start
-alongside B1 since it only needs B0, but B3 needs both).
-
-## Parallel-now set
-
-After #4092 merges: A4, A6a, and the G1 study are three independent
-tracks. The golden suite and B0 ADR are also startable immediately —
-nothing in Phase A blocks them (golden must merely land before B1's
-wiring; B0 is docs-only).
 
 ## Cross-phase edges easy to miss
 
-- **A4 -> C1**: the app_run -> preview_iframe facade built in A4 is the
-  seam C1 swaps to the remote read model; C1 assumes it exists.
-- **A6a -> C3**: same pattern — the isIdle/watchIdle facade is what C3
-  re-sources without touching callers.
-- **Audit rewiring (pagehide item) -> C1**: the disposal/subscription
-  split is a hard C1 prerequisite; the rest of that PR is merely
-  parallel with B2–B4.
-- **B0 -> C2 image_generation**: the ADR's app-quit and
-  restart-persistence calls are binding inputs to that wave, made months
-  earlier.
-- **G1 study -> B0** (soft): the ADR's chat_stream lifecycle row and
-  intent classes stay "study-pending" if B0 lands first; the B0 prompt
-  handles it.
-- **A7 sits late deliberately**: it cannot close until every boundary
-  allowlist entry's owner has landed — including A6b and possibly
-  C-wave deletions.
+- **A4 -> C1**: the app_run -> preview_iframe facade is the seam C1.3
+  swaps to the remote read model.
+- **A6a -> C3**: the isIdle/watchIdle facade is what C3 re-sources
+  without touching callers.
+- **Audit rewiring (pagehide) -> C1.3**: hard prerequisite; the rest of
+  that PR is merely parallel.
+- **B0 -> C1.2 and C2-image_generation**: intent classes feed the codecs;
+  the ADR's app-quit/restart-persistence calls bind the image_generation
+  wave.
+- **G1 acceptance -> C3 only**: if it stalls, everything else proceeds;
+  chat work is the only queue behind it.
+- **A7 sits late**: it closes only when every boundary-allowlist entry's
+  owner has landed, including C-wave deletions.
 
-## Bottleneck note
+## Critical path
 
-G1 acceptance gates only A6b and C3. If the study drags, all of Phase B
-and C1/C2 proceed unaffected — chat work is the only queue behind it.
-That isolation is by design: the hardest decision blocks the least.
+GOLDEN/B0 -> B1 -> B3(harness tail) -> B4 -> C1.3 -> C2-gh cutover ->
+C3 cutover -> C4b -> final D. Everything else hangs off it in parallel;
+the cutover slot is the scarce resource, not the code.

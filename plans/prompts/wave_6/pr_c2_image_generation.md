@@ -29,3 +29,16 @@ decision 2); chat-strip auto-attach behavior unchanged (the
 lateAfterCancel regression class); quit/restart per the ADR decisions.
 Golden suite green. /deep-review. Branch c2-image-generation; /pr-push;
 update plan status + matrix.
+
+Trailing deletion (part of this wave, per the plan's rolling Phase D):
+land the wave's adapter/channel deletion as a SEPARATE PR immediately
+behind the cutover (same day is fine — no bake, no soak; per the plan's
+recorded corrections: no update window, no runtime toggle, stragglers
+are compile-time-detectable, and dead-code deletion cannot regress
+runtime once typecheck/CI pass). The separation exists ONLY to keep the
+high-scrutiny cutover diff pure for review; a later cutover revert
+simply reverts both PRs. The wave is not complete until it lands.
+
+Rebatch note (see DEPENDENCIES.md): after github_ops sets the pattern,
+version_preview and image_generation PREP runs in parallel (disjoint
+domains); only the cutovers stagger through the single cutover slot.

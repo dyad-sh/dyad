@@ -730,8 +730,12 @@ Each remote machine contract has:
 - optional migration for persisted state;
 - compatibility policy during an app update.
 
-The main and renderer normally ship together, but in-flight renderer reloads
-and update transitions can briefly cross versions. On incompatibility:
+CORRECTION (2026-07-25, see plans/cleanup-state-machines.md Phase D): main
+and renderer ALWAYS ship together in production — dyad updates via
+update-electron-app/Squirrel, applied on restart; renderer reloads load
+the running bundle. Live-IPC version skew is dev-only (HMR). Schema
+versioning below applies to persisted state; for live transport a
+version assert (reject + reload) suffices. On incompatibility:
 
 - reject dispatch before transition;
 - stop applying snapshots;

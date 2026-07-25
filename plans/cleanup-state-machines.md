@@ -506,8 +506,7 @@ deletion by a host move.
 
 ### Phase B — multi-window and distributed infrastructure
 
-**B0 — ADR, recorded decisions, and deletion budgets: in flight
-(`cleanup-b0-adr`).**
+**B0 — ADR, recorded decisions, and deletion budgets: in flight (#4096).**
 
 - copy the five approved product decisions from this plan;
 - record one-authority, commit-versus-completion, and no-multi-primary rules;

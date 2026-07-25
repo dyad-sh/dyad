@@ -69,6 +69,13 @@ interface DeduplicationEntry {
   settled: boolean;
 }
 
+interface PendingSubscription {
+  readonly address: string;
+  readonly webContentsId: number;
+  readonly countsTowardLimit: boolean;
+  cancelled: boolean;
+}
+
 const DEFAULT_DEDUPLICATION_RETENTION_MS = 60_000;
 const DEFAULT_MAX_DEDUPLICATION_ENTRIES = 1_024;
 const DEFAULT_MAX_SUBSCRIPTIONS_PER_WINDOW = 256;
@@ -80,6 +87,11 @@ export class RemoteMachineTransport {
   private readonly subscriptions = new Map<string, SubscriptionEntry>();
   private readonly actorKeys = new Map<string, unknown>();
   private readonly referencesPerWindow = new Map<number, number>();
+  private readonly pendingSubscriptions = new Map<
+    string,
+    Set<PendingSubscription>
+  >();
+  private readonly pendingReferencesPerWindow = new Map<number, number>();
   private readonly deduplication = new Map<string, DeduplicationEntry>();
   private readonly removeWindowListener: () => void;
   private readonly removeDisposalListener: () => void;
@@ -89,6 +101,7 @@ export class RemoteMachineTransport {
   private readonly maxDispatchEnvelopeBytes: number;
   private readonly maxSnapshotEnvelopeBytes: number;
   private readonly measureSerializedBytes: (value: unknown) => number;
+  private disposed = false;
 
   constructor(private readonly options: RemoteMachineTransportOptions) {
     this.deduplicationRetentionMs =
@@ -137,10 +150,20 @@ export class RemoteMachineTransport {
     sender: RemoteTransportEndpoint,
     input: MachineAddress,
   ): Promise<MachineSnapshotEnvelope> {
+    this.assertOpen();
     const windowSessionId = this.options.windows.ensureRegistered(sender);
     const definition = this.requireDefinition(input.machineId);
     this.assertProtocol(sender, definition, input.protocolVersion);
     const key = this.decodeKey(definition, input.encodedKey);
+    const address = this.address(definition, key);
+    const existingBeforeAuthorization = this.subscriptions.get(address);
+    const alreadySubscribedBeforeAuthorization =
+      existingBeforeAuthorization?.windows.has(sender.id) === true;
+    const pending = this.beginPendingSubscription(
+      sender.id,
+      address,
+      !alreadySubscribedBeforeAuthorization,
+    );
     const senderContext = this.senderContext(sender);
     try {
       await definition.remote.authorizeSubscribe({
@@ -155,11 +178,19 @@ export class RemoteMachineTransport {
           cause: error,
         },
       );
+    } finally {
+      this.finishPendingSubscription(pending);
+    }
+    this.assertOpen();
+    if (pending.cancelled) {
+      throw new DyadError(
+        "Remote machine subscription was cancelled",
+        DyadErrorKind.Precondition,
+      );
     }
     this.assertCurrentSender(sender, windowSessionId);
 
     const currentReferences = this.referencesPerWindow.get(sender.id) ?? 0;
-    const address = this.address(definition, key);
     const existingEntry = this.subscriptions.get(address);
     const alreadySubscribed = existingEntry?.windows.has(sender.id) === true;
     if (
@@ -176,10 +207,22 @@ export class RemoteMachineTransport {
     if (!entry) {
       const canonicalKey = this.actorKeys.get(address) ?? key;
       const encodedKey = this.encodeKey(definition, canonicalKey);
-      const actor = this.options.host.localRef(
-        definition,
-        canonicalKey,
-      ) as HostedActorRef<unknown, unknown, string>;
+      let actor: HostedActorRef<unknown, unknown, string>;
+      try {
+        actor = this.options.host.localRef(
+          definition,
+          canonicalKey,
+        ) as HostedActorRef<unknown, unknown, string>;
+      } catch (error) {
+        if (error instanceof ActorAdmissionError) {
+          throw new DyadError(
+            `Remote machine subscription was refused: ${error.message}`,
+            DyadErrorKind.Precondition,
+            { cause: error },
+          );
+        }
+        throw error;
+      }
       this.actorKeys.set(address, canonicalKey);
       entry = {
         address,
@@ -215,11 +258,14 @@ export class RemoteMachineTransport {
     sender: RemoteTransportEndpoint,
     input: MachineAddress,
   ): Promise<void> {
+    this.assertOpen();
     this.options.windows.ensureRegistered(sender);
     const definition = this.requireDefinition(input.machineId);
     this.assertProtocol(sender, definition, input.protocolVersion);
     const key = this.decodeKey(definition, input.encodedKey);
-    const entry = this.subscriptions.get(this.address(definition, key));
+    const address = this.address(definition, key);
+    this.cancelPendingSubscriptions(sender.id, address);
+    const entry = this.subscriptions.get(address);
     if (!entry) return;
     this.removeWindowReference(entry, sender.id);
   }
@@ -228,6 +274,7 @@ export class RemoteMachineTransport {
     sender: RemoteTransportEndpoint,
     envelope: MachineDispatchEnvelope,
   ): Promise<MachineDispatchReceipt> {
+    this.assertOpen();
     const windowSessionId = this.options.windows.ensureRegistered(sender);
     if (
       !this.isWithinSerializedLimit(envelope, this.maxDispatchEnvelopeBytes)
@@ -284,6 +331,13 @@ export class RemoteMachineTransport {
   }
 
   dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    for (const pending of this.pendingSubscriptions.values()) {
+      for (const subscription of pending) subscription.cancelled = true;
+    }
+    this.pendingSubscriptions.clear();
+    this.pendingReferencesPerWindow.clear();
     this.removeWindowListener();
     this.removeDisposalListener();
     for (const entry of this.subscriptions.values()) entry.unsubscribeActor();
@@ -340,7 +394,7 @@ export class RemoteMachineTransport {
       } catch {
         return this.rejected(envelope.messageId, "unauthorized");
       }
-      if (!this.isCurrentSender(sender, windowSessionId)) {
+      if (this.disposed || !this.isCurrentSender(sender, windowSessionId)) {
         return this.rejected(envelope.messageId, "host-disposing");
       }
 
@@ -639,6 +693,88 @@ export class RemoteMachineTransport {
     reason: MachineRejectedReason,
   ): MachineDispatchReceipt {
     return { kind: "rejected", messageId, reason };
+  }
+
+  private assertOpen(): void {
+    if (!this.disposed) return;
+    throw new DyadError(
+      "Remote machine transport is disposed",
+      DyadErrorKind.Precondition,
+    );
+  }
+
+  private beginPendingSubscription(
+    webContentsId: number,
+    address: string,
+    countsTowardLimit: boolean,
+  ): PendingSubscription {
+    const currentReferences = this.referencesPerWindow.get(webContentsId) ?? 0;
+    const pendingReferences =
+      this.pendingReferencesPerWindow.get(webContentsId) ?? 0;
+    if (
+      countsTowardLimit &&
+      currentReferences + pendingReferences >= this.maxSubscriptionsPerWindow
+    ) {
+      throw new DyadError(
+        "Remote machine subscription limit exceeded",
+        DyadErrorKind.RateLimited,
+      );
+    }
+    const subscription: PendingSubscription = {
+      address,
+      webContentsId,
+      countsTowardLimit,
+      cancelled: false,
+    };
+    const pendingKey = this.pendingSubscriptionKey(webContentsId, address);
+    const pending =
+      this.pendingSubscriptions.get(pendingKey) ??
+      new Set<PendingSubscription>();
+    pending.add(subscription);
+    this.pendingSubscriptions.set(pendingKey, pending);
+    if (countsTowardLimit) {
+      this.pendingReferencesPerWindow.set(webContentsId, pendingReferences + 1);
+    }
+    return subscription;
+  }
+
+  private finishPendingSubscription(subscription: PendingSubscription): void {
+    const pendingKey = this.pendingSubscriptionKey(
+      subscription.webContentsId,
+      subscription.address,
+    );
+    const pending = this.pendingSubscriptions.get(pendingKey);
+    pending?.delete(subscription);
+    if (pending?.size === 0) this.pendingSubscriptions.delete(pendingKey);
+    if (!subscription.countsTowardLimit) return;
+    this.decrementPendingWindowReferences(subscription.webContentsId);
+  }
+
+  private cancelPendingSubscriptions(
+    webContentsId: number,
+    address: string,
+  ): void {
+    const pending = this.pendingSubscriptions.get(
+      this.pendingSubscriptionKey(webContentsId, address),
+    );
+    if (!pending) return;
+    for (const subscription of pending) subscription.cancelled = true;
+  }
+
+  private pendingSubscriptionKey(
+    webContentsId: number,
+    address: string,
+  ): string {
+    return `${webContentsId}\0${address}`;
+  }
+
+  private decrementPendingWindowReferences(webContentsId: number): void {
+    const next = (this.pendingReferencesPerWindow.get(webContentsId) ?? 0) - 1;
+    if (next > 0) {
+      this.pendingReferencesPerWindow.set(webContentsId, next);
+    } else {
+      this.pendingReferencesPerWindow.delete(webContentsId);
+    }
   }
 
   private isWithinSerializedLimit(value: unknown, limit: number): boolean {

@@ -75,8 +75,11 @@ Background and before/after examples of why this pattern exists:
 - Make remote subscribe/bootstrap idempotent per window, machine, and key.
   Resync and reconnect retries must refresh the bootstrap without incrementing
   ownership; projection/encoding failure rolls back only ownership acquired by
-  that call. Renderer bootstrap applies both codecs and refuses disposed actor
-  lifetimes, or failed retries and delayed responses can retain stale state.
+  that call. Track pending attach identity so unsubscribe or transport disposal
+  invalidates an authorization still in flight; after every await, reject a
+  cancelled or closed lifetime before admission. Renderer bootstrap applies
+  both codecs and refuses disposed actor lifetimes, or failed retries and
+  delayed responses can retain stale state.
 - After asynchronous remote authorization, revalidate both the sender's window
   session and the actor instance/revision used for the decision. Re-authorize
   changed state only a bounded number of times (then reject it), and keep

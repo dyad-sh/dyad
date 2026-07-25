@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
+import { DyadErrorKind } from "@/errors/dyad_error";
 import {
   createFakeClock,
   createSequentialIdSource,
@@ -217,6 +218,21 @@ describe("remote machine transport", () => {
     clock.advanceBy(1);
     await flush();
     expect(host.peek(machine.id, "actor")).toBeUndefined();
+  });
+
+  it("classifies expected subscription admission refusals", async () => {
+    const machine = createRemoteTestMachine(
+      "remote-test",
+      remoteTestLifecycle({ subscriptionCreates: false }),
+    );
+    const { duplex } = createHarness({ machine });
+    const renderer = duplex.connect();
+
+    await expect(renderer.subscribe(address())).rejects.toMatchObject({
+      name: "DyadError",
+      kind: DyadErrorKind.Precondition,
+    });
+    expect(renderer.view(address())).toBeUndefined();
   });
 
   it("deduplicates duplicate delivery and retry after a dropped receipt", async () => {
@@ -704,6 +720,88 @@ describe("remote machine transport", () => {
     await expect(pending).rejects.toThrow(
       "Remote machine sender was destroyed during authorization",
     );
+    expect(transport.inspectSubscriptions()).toEqual([]);
+    expect(host.peek(machine.id, "actor")).toBeUndefined();
+  });
+
+  it("cancels a pending subscribe when unsubscribe completes first", async () => {
+    let releaseAuthorization!: () => void;
+    let authorizationStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      authorizationStarted = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      releaseAuthorization = resolve;
+    });
+    const base = createRemoteTestMachine();
+    const machine = {
+      ...base,
+      remote: {
+        ...base.remote,
+        async authorizeSubscribe(
+          context: Parameters<typeof base.remote.authorizeSubscribe>[0],
+        ) {
+          authorizationStarted();
+          await gate;
+          return base.remote.authorizeSubscribe(context);
+        },
+      },
+    };
+    const { duplex, host, transport } = createHarness({ machine });
+    const renderer = duplex.connect();
+    const pending = renderer.subscribe(address());
+    await started;
+
+    await renderer.unsubscribe(address());
+    releaseAuthorization();
+
+    await expect(pending).rejects.toThrow(
+      "Remote machine subscription was cancelled",
+    );
+    expect(transport.inspectSubscriptions()).toEqual([]);
+    expect(host.peek(machine.id, "actor")).toBeUndefined();
+  });
+
+  it("prevents pending and future admissions after transport disposal", async () => {
+    let releaseAuthorization!: () => void;
+    let authorizationStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      authorizationStarted = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      releaseAuthorization = resolve;
+    });
+    const base = createRemoteTestMachine();
+    const machine = {
+      ...base,
+      remote: {
+        ...base.remote,
+        async authorizeSubscribe(
+          context: Parameters<typeof base.remote.authorizeSubscribe>[0],
+        ) {
+          authorizationStarted();
+          await gate;
+          return base.remote.authorizeSubscribe(context);
+        },
+      },
+    };
+    const { duplex, host, transport } = createHarness({ machine });
+    const renderer = duplex.connect();
+    const pending = renderer.subscribe(address());
+    await started;
+
+    transport.dispose();
+    releaseAuthorization();
+
+    await expect(pending).rejects.toThrow(
+      "Remote machine transport is disposed",
+    );
+    await expect(renderer.subscribe(address())).rejects.toThrow(
+      "Remote machine transport is disposed",
+    );
+    await expect(
+      renderer.dispatch(dispatch({ type: "INCREMENT" })),
+    ).rejects.toThrow("Remote machine transport is disposed");
     expect(transport.inspectSubscriptions()).toEqual([]);
     expect(host.peek(machine.id, "actor")).toBeUndefined();
   });

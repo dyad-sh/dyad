@@ -54,4 +54,54 @@ describe("HighVolumeWindowInterests", () => {
     first.destroy();
     expect(interests.inspect(1)).toEqual([]);
   });
+
+  it("does not deliver a stale bootstrap after detach or replacement", async () => {
+    const registry = new WindowRegistry();
+    const renderer = endpoint(1);
+    registry.register(renderer, randomUUID() as WindowSessionId);
+    const interests = new HighVolumeWindowInterests<string>(
+      registry,
+      "output",
+      1_000,
+    );
+    const interest = { kind: "app-output" as const, appId: 7 };
+    let releaseFirst!: (value: readonly string[]) => void;
+    const firstBootstrap = new Promise<readonly string[]>((resolve) => {
+      releaseFirst = resolve;
+    });
+
+    const staleAttach = interests.attach(1, interest, () => firstBootstrap);
+    interests.detach(1, interest);
+    await interests.attach(1, interest, () => ["replacement"]);
+    releaseFirst(["stale"]);
+    await staleAttach;
+
+    expect(renderer.send).toHaveBeenCalledTimes(1);
+    expect(renderer.send).toHaveBeenCalledWith("output", ["replacement"]);
+  });
+
+  it("rolls back a failed bootstrap without wedging later delivery", async () => {
+    const registry = new WindowRegistry();
+    const renderer = endpoint(1);
+    registry.register(renderer, randomUUID() as WindowSessionId);
+    const interests = new HighVolumeWindowInterests<string>(
+      registry,
+      "output",
+      1_000,
+    );
+    const interest = { kind: "chat-chunk" as const, chatId: 9 };
+
+    await expect(
+      interests.attach(1, interest, () =>
+        Promise.reject(new Error("bootstrap failed")),
+      ),
+    ).rejects.toThrow("bootstrap failed");
+    expect(interests.inspect(1)).toEqual([]);
+
+    await interests.attach(1, interest, () => ["recovered"]);
+    interests.enqueue(interest, "live");
+    interests.terminalFlush(interest);
+    expect(renderer.send).toHaveBeenNthCalledWith(1, "output", ["recovered"]);
+    expect(renderer.send).toHaveBeenNthCalledWith(2, "output", ["live"]);
+  });
 });

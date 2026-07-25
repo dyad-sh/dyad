@@ -265,6 +265,17 @@ export class WindowRegistry {
     records: readonly WindowRecord[],
   ): WindowSessionId | null {
     if (request.effect === "important-completion") return null;
+    if (
+      request.effect === "operation-toast" ||
+      request.effect === "navigation"
+    ) {
+      return request.initiatorWindowSessionId &&
+        records.some(
+          (record) => record.sessionId === request.initiatorWindowSessionId,
+        )
+        ? request.initiatorWindowSessionId
+        : null;
+    }
     if (request.initiatorWindowSessionId) {
       const initiator = records.find(
         (record) => record.sessionId === request.initiatorWindowSessionId,
@@ -278,7 +289,7 @@ export class WindowRegistry {
     const focused = [...records].sort(
       (left, right) => right.focusSequence - left.focusSequence,
     )[0];
-    return focused?.sessionId ?? records[0]?.sessionId ?? null;
+    return focused && focused.focusSequence > 0 ? focused.sessionId : null;
   }
 
   private liveRecords(): WindowRecord[] {

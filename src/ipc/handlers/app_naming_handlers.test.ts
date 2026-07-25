@@ -83,6 +83,7 @@ vi.mock("@/ipc/handlers/chat_mode_resolution", () => ({
 import { registerAppHandlers } from "./app_handlers";
 import { registerImportHandlers } from "./import_handlers";
 import { firstPromptCreationRegistry } from "../services/first_prompt_creation_service";
+import { queryInvalidationBus } from "@/window_infrastructure/main/query_invalidation_bus";
 
 async function invokeImportHandler<TOutput>(
   channel: string,
@@ -239,6 +240,23 @@ describe("app naming handlers", () => {
       await firstPromptCreationRegistry.cancel(operationId);
 
       expect(fs.existsSync(fullAppPath)).toBe(false);
+    });
+
+    it("publishes a second invalidation when first-prompt creation rolls back", async () => {
+      const operationId = "rollback-invalidates";
+      const epochBeforeCreate = queryInvalidationBus.currentEpoch();
+      const result = await harness.invokeHandler<{
+        app: { id: number };
+      }>("create-app", {
+        name: "Rollback Invalidates",
+        firstPromptCreationOperationId: operationId,
+      });
+      expect(queryInvalidationBus.currentEpoch()).toBe(epochBeforeCreate + 1);
+
+      await firstPromptCreationRegistry.cancel(operationId);
+
+      expect(getAppRow(result.app.id)).toBeUndefined();
+      expect(queryInvalidationBus.currentEpoch()).toBe(epochBeforeCreate + 2);
     });
   });
 

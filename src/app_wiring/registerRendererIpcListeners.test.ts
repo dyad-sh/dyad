@@ -1,3 +1,5 @@
+import { QueryClient } from "@tanstack/react-query";
+import { randomUUID } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 
 import type { ChatStreamManager } from "@/chat_stream/manager";
@@ -5,8 +7,82 @@ import type { StreamRequest } from "@/chat_stream/state";
 
 import {
   createUserInputChatStreamFacade,
+  registerQueryInvalidationListener,
   type RendererIpcClient,
 } from "./registerRendererIpcListeners";
+import { queryKeys } from "@/lib/queryKeys";
+import type {
+  QueryInvalidationBatch,
+  WindowSessionId,
+} from "@/window_infrastructure/types";
+
+describe("query invalidation listener", () => {
+  it("replays startup batches and carries its epoch across re-registration", async () => {
+    let onInvalidations!: (batch: QueryInvalidationBatch) => void;
+    let resolveBootstrap!: (value: {
+      windowSessionId: WindowSessionId;
+      currentQueryInvalidationEpoch: number;
+      missedInvalidations: QueryInvalidationBatch["invalidations"];
+      recoveryScopes: QueryInvalidationBatch["recoveryScopes"];
+    }) => void;
+    const bootstrap = vi.fn(
+      () =>
+        new Promise<{
+          windowSessionId: WindowSessionId;
+          currentQueryInvalidationEpoch: number;
+          missedInvalidations: QueryInvalidationBatch["invalidations"];
+          recoveryScopes: QueryInvalidationBatch["recoveryScopes"];
+        }>((resolve) => {
+          resolveBootstrap = resolve;
+        }),
+    );
+    const ipcClient = {
+      windowInfrastructure: { bootstrap },
+      events: {
+        windowInfrastructure: {
+          onQueryInvalidations: vi.fn((listener) => {
+            onInvalidations = listener;
+            return vi.fn();
+          }),
+        },
+      },
+    } as unknown as Pick<RendererIpcClient, "windowInfrastructure" | "events">;
+    const queryClient = new QueryClient();
+    const invalidateQueries = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue();
+    const sessionId = randomUUID() as WindowSessionId;
+    const event = { epoch: 1, scopes: [{ family: "apps" as const }] };
+
+    const dispose = registerQueryInvalidationListener(ipcClient, queryClient);
+    expect(bootstrap).toHaveBeenCalledWith({
+      lastSeenQueryInvalidationEpoch: 0,
+    });
+    onInvalidations({ invalidations: [event], recoveryScopes: [] });
+    resolveBootstrap({
+      windowSessionId: sessionId,
+      currentQueryInvalidationEpoch: 1,
+      missedInvalidations: [event],
+      recoveryScopes: [],
+    });
+    await vi.waitFor(() => {
+      expect(invalidateQueries).toHaveBeenCalledWith({
+        queryKey: queryKeys.apps.all,
+      });
+    });
+    expect(invalidateQueries).toHaveBeenCalledTimes(1);
+    dispose();
+
+    const disposeReplacement = registerQueryInvalidationListener(
+      ipcClient,
+      queryClient,
+    );
+    expect(bootstrap).toHaveBeenLastCalledWith({
+      lastSeenQueryInvalidationEpoch: 1,
+    });
+    disposeReplacement();
+  });
+});
 
 describe("user-input chat-stream composition facade", () => {
   it("claims rejection before awaiting owner settlement", async () => {

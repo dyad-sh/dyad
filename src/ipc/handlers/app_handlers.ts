@@ -497,11 +497,16 @@ export function registerAppHandlers() {
       throw error;
     }
 
-    const cleanupFirstPromptCreation = () =>
-      deleteAppById(app.id, {
-        allowMissing: true,
-        knownAppPath: fullAppPath,
-      });
+    const cleanupFirstPromptCreation = async () => {
+      try {
+        await deleteAppById(app.id, {
+          allowMissing: true,
+          knownAppPath: fullAppPath,
+        });
+      } finally {
+        queryInvalidationBus.publish([{ family: "apps" }, { family: "chats" }]);
+      }
+    };
 
     try {
       const initialChatMode = await getInitialChatModeForNewChat(

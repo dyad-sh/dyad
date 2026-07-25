@@ -37,16 +37,38 @@ export class HighVolumeWindowInterests<T> {
       bufferedDuringAttach: [],
     };
     this.subscriptionStates.set(stateKey, state);
-    const initial = await bootstrap();
-    this.sendNow(webContentsId, [...initial, ...state.bufferedDuringAttach]);
-    state.attaching = false;
-    state.bufferedDuringAttach = [];
+    try {
+      const initial = await bootstrap();
+      if (
+        this.subscriptionStates.get(stateKey) !== state ||
+        !this.interestsByWebContents.get(webContentsId)?.has(key)
+      ) {
+        return;
+      }
+      this.sendNow(webContentsId, [...initial, ...state.bufferedDuringAttach]);
+      state.attaching = false;
+      state.bufferedDuringAttach = [];
+    } catch (error) {
+      if (this.subscriptionStates.get(stateKey) === state) {
+        this.subscriptionStates.delete(stateKey);
+        const interests = this.interestsByWebContents.get(webContentsId);
+        interests?.delete(key);
+        if (interests?.size === 0) {
+          this.interestsByWebContents.delete(webContentsId);
+        }
+      }
+      throw error;
+    }
   }
 
   detach(webContentsId: number, interest: WindowInterest): void {
     const key = windowInterestKey(interest);
     this.flushDestination(webContentsId);
-    this.interestsByWebContents.get(webContentsId)?.delete(key);
+    const interests = this.interestsByWebContents.get(webContentsId);
+    interests?.delete(key);
+    if (interests?.size === 0) {
+      this.interestsByWebContents.delete(webContentsId);
+    }
     this.subscriptionStates.delete(this.subscriptionKey(webContentsId, key));
   }
 

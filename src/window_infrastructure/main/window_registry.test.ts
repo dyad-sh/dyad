@@ -77,6 +77,31 @@ describe("WindowRegistry", () => {
     ).toBeNull();
   });
 
+  it("keeps initiator-only effects local and does not invent a focused fallback", () => {
+    const registry = new WindowRegistry();
+    const first = session();
+    const second = session();
+    registry.register(endpoint(1), first);
+    registry.register(endpoint(2), second);
+
+    expect(
+      registry.routePresentation({
+        effect: "operation-toast",
+        initiatorWindowSessionId: first,
+      }),
+    ).toBe(first);
+    expect(
+      registry.routePresentation({
+        effect: "navigation",
+        initiatorWindowSessionId: session(),
+      }),
+    ).toBeNull();
+    expect(registry.routePresentation({ effect: "ordinary" })).toBeNull();
+
+    registry.setFocused(second);
+    expect(registry.routePresentation({ effect: "ordinary" })).toBe(second);
+  });
+
   it("revokes screenshot leases on iframe epoch changes and destruction", () => {
     const registry = new WindowRegistry();
     const windowSession = session();

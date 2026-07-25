@@ -16,12 +16,68 @@ import type { QueryInvalidationBatch } from "@/window_infrastructure/types";
 export type RendererIpcClient = typeof defaultIpc;
 type JotaiStore = ReturnType<typeof createStore>;
 
+const lastQueryInvalidationEpochByClient = new WeakMap<QueryClient, number>();
+
 export interface RegisterRendererIpcListenersOptions {
   ipcClient: RendererIpcClient;
   store: JotaiStore;
   queryClient: QueryClient;
   chatStreamManager: ChatStreamManager;
   onTelemetryEvent?: (payload: TelemetryEventPayload) => void;
+}
+
+export function registerQueryInvalidationListener(
+  ipcClient: Pick<RendererIpcClient, "windowInfrastructure" | "events">,
+  queryClient: QueryClient,
+): () => void {
+  const pendingBatches: QueryInvalidationBatch[] = [];
+  let consumer: RendererQueryInvalidationConsumer | undefined;
+  let disposed = false;
+  const rememberEpoch = () => {
+    if (consumer) {
+      lastQueryInvalidationEpochByClient.set(queryClient, consumer.epoch());
+    }
+  };
+  const unsubscribe =
+    ipcClient.events.windowInfrastructure.onQueryInvalidations((batch) => {
+      if (consumer) {
+        consumer.consume(batch);
+        rememberEpoch();
+      } else {
+        pendingBatches.push(batch);
+      }
+    });
+
+  void ipcClient.windowInfrastructure
+    .bootstrap({
+      lastSeenQueryInvalidationEpoch:
+        lastQueryInvalidationEpochByClient.get(queryClient) ?? 0,
+    })
+    .then((bootstrap) => {
+      if (disposed) return;
+      consumer = new RendererQueryInvalidationConsumer(
+        queryClient,
+        bootstrap.windowSessionId,
+      );
+      consumer.recover(
+        bootstrap.currentQueryInvalidationEpoch,
+        bootstrap.missedInvalidations,
+        bootstrap.recoveryScopes,
+      );
+      for (const batch of pendingBatches.splice(0)) {
+        consumer.consume(batch);
+      }
+      rememberEpoch();
+    })
+    .catch((error) => {
+      console.error("Failed to bootstrap window infrastructure", error);
+    });
+
+  return () => {
+    disposed = true;
+    rememberEpoch();
+    unsubscribe();
+  };
 }
 
 export function createUserInputChatStreamFacade(
@@ -72,39 +128,7 @@ export function registerRendererIpcListeners({
   onTelemetryEvent,
 }: RegisterRendererIpcListenersOptions): () => void {
   const unsubscribes: Array<() => void> = [];
-  const pendingInvalidationBatches: QueryInvalidationBatch[] = [];
-  let invalidationConsumer: RendererQueryInvalidationConsumer | undefined;
-  let disposed = false;
-
-  unsubscribes.push(
-    ipcClient.events.windowInfrastructure.onQueryInvalidations((batch) => {
-      if (invalidationConsumer) {
-        invalidationConsumer.consume(batch);
-      } else {
-        pendingInvalidationBatches.push(batch);
-      }
-    }),
-  );
-  void ipcClient.windowInfrastructure
-    .bootstrap({})
-    .then((bootstrap) => {
-      if (disposed) return;
-      invalidationConsumer = new RendererQueryInvalidationConsumer(
-        queryClient,
-        bootstrap.windowSessionId,
-      );
-      invalidationConsumer.recover(
-        bootstrap.currentQueryInvalidationEpoch,
-        bootstrap.missedInvalidations,
-        bootstrap.recoveryScopes,
-      );
-      for (const batch of pendingInvalidationBatches.splice(0)) {
-        invalidationConsumer.consume(batch);
-      }
-    })
-    .catch((error) => {
-      console.error("Failed to bootstrap window infrastructure", error);
-    });
+  unsubscribes.push(registerQueryInvalidationListener(ipcClient, queryClient));
 
   const userInputChatStream = createUserInputChatStreamFacade(
     ipcClient,
@@ -175,7 +199,6 @@ export function registerRendererIpcListeners({
   );
 
   return () => {
-    disposed = true;
     for (const unsubscribe of unsubscribes.splice(0).reverse()) {
       unsubscribe();
     }

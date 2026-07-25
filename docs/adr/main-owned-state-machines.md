@@ -1,9 +1,10 @@
 # Main-owned state machines
 
-Status: Accepted  
-Date: 2026-07-24  
-Plan: [Cleanup of the State-Machine Layer](../../plans/cleanup-state-machines.md)  
-Related study: [Chat-stream/main feasibility study](../../plans/g1-chat-stream-study.md)
+- Status: Accepted
+- Date: 2026-07-24
+- Plan: [Cleanup of the State-Machine Layer](../../plans/cleanup-state-machines.md)
+- Related study:
+  [Chat-stream/main feasibility study](../../plans/g1-chat-stream-study.md)
 
 ## Context and decision
 

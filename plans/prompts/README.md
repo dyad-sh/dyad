@@ -16,6 +16,9 @@ Every prompt carries the same contract:
 - Behavior-preserving rules, intent-class tagging, allowlist-entry
   removal, and /deep-review-before-push apply to every code PR.
 
+Full dependency graph with cross-phase edges and the critical path:
+`DEPENDENCIES.md` (in this directory).
+
 Wave order and gates:
 
 | Wave | Items                                                              | Gate                                              |

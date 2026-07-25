@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppRunInvocationRef } from "@/app_run/state";
 import type { RuntimeMode2 } from "@/lib/schemas";
 import type { RunningAppInfo } from "@/ipc/utils/process_manager";
-import { DyadErrorKind } from "@/errors/dyad_error";
 import {
   AppRuntimeService,
   type AppRuntimeOutput,
@@ -219,11 +218,10 @@ describe("AppRuntimeService", () => {
     expect(harness.dependencies.waitForReady).toHaveBeenCalledWith(
       APP_ID,
       600_000,
-      undefined,
     );
   });
 
-  it("cancels an in-flight external lifecycle claim on abort", async () => {
+  it("settles the real outcome when abort happens after restart begins", async () => {
     const harness = createHarness();
     const { output, sent } = createOutput();
     const abortController = new AbortController();
@@ -242,19 +240,17 @@ describe("AppRuntimeService", () => {
       invocationRef: REF,
       abortSignal: abortController.signal,
     });
-    const rejection = expect(execution).rejects.toMatchObject({
-      kind: DyadErrorKind.UserCancelled,
-    });
     await vi.waitFor(() =>
       expect(harness.dependencies.waitForReady).toHaveBeenCalledTimes(1),
     );
 
     abortController.abort();
     releaseReady();
-    await rejection;
+    await execution;
 
     expect(sent).toEqual([
       expect.objectContaining({ type: "agent-lifecycle-started" }),
+      expect.objectContaining({ type: "agent-lifecycle-succeeded" }),
     ]);
   });
 

@@ -1472,11 +1472,7 @@ export interface AppRuntimeServiceDependencies {
   readRuntimeMode(): RuntimeMode2;
   removeNodeModules(appPath: string): Promise<void>;
   removeDockerVolumes(appId: number): Promise<void>;
-  waitForReady(
-    appId: number,
-    timeoutMs?: number,
-    abortSignal?: AbortSignal,
-  ): Promise<void>;
+  waitForReady(appId: number, timeoutMs?: number): Promise<void>;
   createId(): string;
   now(): number;
 }
@@ -1686,13 +1682,9 @@ export class AppRuntimeService {
 
   waitForReady(
     appId: number,
-    options: { timeoutMs?: number; abortSignal?: AbortSignal } = {},
+    options: { timeoutMs?: number } = {},
   ): Promise<void> {
-    return this.dependencies.waitForReady(
-      appId,
-      options.timeoutMs,
-      options.abortSignal,
-    );
+    return this.dependencies.waitForReady(appId, options.timeoutMs);
   }
 
   createExternalLifecycleRef(appId: number): AppRunInvocationRef {
@@ -1765,11 +1757,6 @@ export class AppRuntimeService {
         DyadErrorKind.UserCancelled,
       );
     }
-    const handleAbort = () => {
-      this.cancelExternalLifecycle(invocationRef);
-    };
-    options.abortSignal?.addEventListener("abort", handleAbort, { once: true });
-
     try {
       await this.restart({
         appId: options.appId,
@@ -1781,20 +1768,11 @@ export class AppRuntimeService {
       });
       await this.waitForReady(options.appId, {
         timeoutMs: options.timeoutMs,
-        abortSignal: options.abortSignal,
       });
-      if (options.abortSignal?.aborted) {
-        throw lifecycleCancellationError();
-      }
       this.settleExternalClaim(claim);
     } catch (error) {
       this.settleExternalClaim(claim, error);
-      if (options.abortSignal?.aborted) {
-        throw lifecycleCancellationError();
-      }
       throw error;
-    } finally {
-      options.abortSignal?.removeEventListener("abort", handleAbort);
     }
   }
 
@@ -1914,23 +1892,12 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function lifecycleCancellationError(): DyadError {
-  return new DyadError(
-    "The app lifecycle operation was cancelled",
-    DyadErrorKind.UserCancelled,
-  );
-}
-
 async function waitForAppReady(
   appId: number,
   timeoutMs = DEFAULT_APP_READY_TIMEOUT_MS,
-  abortSignal?: AbortSignal,
 ): Promise<void> {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
-    if (abortSignal?.aborted) {
-      throw lifecycleCancellationError();
-    }
     const appInfo = runningApps.get(appId);
     if (!appInfo) {
       throw new DyadError(

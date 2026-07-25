@@ -1,378 +1,780 @@
-# Cleanup of the State-Machine Layer
+# Cleanup of the State-Machine Layer — Main-Owned Authority, Multi-Window Ready
 
 ## Status
 
-Proposal. This is the unified successor to two overlapping plans and the
-committed cleanup trajectory:
+Committed direction (supersedes the previous revision of this file, which
+treated the distributed runtime as an open option). The decision input that
+changed: **multi-window support is on the product roadmap** (multiple
+windows showing different chats/tabs, browser-style). Multi-window breaks
+the architecture's hidden axiom — that there is exactly one renderer, so
+"renderer-hosted machine" and "the authority" can be the same thing. Any
+shared lifecycle that must be observed and controlled from more than one
+window cannot be renderer-owned without becoming multi-primary.
+Authority for those shared-entity lifecycles therefore moves to the main
+process; windows become views over read models. Window-specific lifecycles
+such as iframe navigation remain renderer-owned even when another window
+shows the same underlying app.
 
-- `plans/codex-cleanup-state-machines.md` — ownership model, target renderer
-  APIs, boundary enforcement, runtime consolidation. Its architecture and
-  rules are adopted here; its rollout is superseded by this plan's.
-- `plans/claude-cleanup-machines.md` — the verified atom-level inventory
-  (116 atoms classified; 152 trace claims adversarially checked, 20
-  corrected) and per-atom migration recipes. It remains the **execution
-  appendix** for this plan: every atom retirement below is specified
-  reader-by-reader there, and its file:line traces are authoritative where
-  the two source plans disagreed.
-- `plans/distrbuted-machines.md` — the actor-runtime alternative. Not
-  adopted now, **deliberately kept open**. This plan sequences the cleanup
-  so that nothing done here is discarded if the distributed runtime is
-  pursued, and names the hold-points where work would be.
+Source plans and their roles:
 
-Follows `plans/state-machines-hardening.md` (all nine PRs landed). The
-hardening work made the layer safe; this plan makes it small and truthful:
-one authoritative owner per lifecycle fact, typed cross-machine edges, and
-no second Jotai representation of machine state.
+- `plans/claude-cleanup-machines.md` — verified atom inventory (116 atoms;
+  152 trace claims checked, 20 corrected) and per-atom migration recipes.
+  Remains the **evidence appendix** for Phase A; its file:line traces are
+  authoritative, while this plan owns PR scope and sequencing.
+- `plans/codex-cleanup-state-machines.md` — ownership model, boundary
+  enforcement, target renderer APIs. Its architecture rules are adopted;
+  its renderer-runtime consolidation rollout is superseded (those
+  controllers are now moving to main, not being polished in place).
+- `plans/distrbuted-machines.md` — **adopted as the destination
+  architecture**, resequenced by this plan. Its transport was designed
+  per-`webContents` (subscription ownership, `webContents.destroyed`
+  cleanup, reference counting, revisioned snapshot broadcasts) — it is a
+  multi-window fan-out protocol and is now built as one, with multi-window
+  scenarios as first-class acceptance criteria rather than a future.
+
+Follows `plans/state-machines-hardening.md` (landed). The hardening work
+made the layer safe; this plan makes ownership truthful and multi-window
+capable: one authoritative owner per lifecycle fact, hosted beside the
+resource it controls, projected to every window that looks.
+
+## Recorded product decisions
+
+These decisions are architecture inputs, not defaults. They are approved
+for this plan and must be copied into the Phase B ADR before implementation.
+
+1. **Same-entity concurrency: shared views, both windows may dispatch.**
+   The same chat or app may be visible in multiple windows. Main serializes
+   events through one actor. Idempotent intent may apply normally;
+   state-sensitive or destructive intent uses the current revision and/or
+   invocation identity; cancellation identifies the active invocation.
+2. **Window close: main-owned work continues.** Closing or reloading the
+   initiating window releases its subscriptions and presentation resources
+   but does not implicitly cancel streams, runs, checkouts, image jobs, or
+   other main-owned work. Explicit Cancel/Stop remains a user action.
+   Renderer-owned work tied to destroyed resources settles or stops according
+   to its local machine policy.
+3. **Last-window close: platform convention.** On macOS, zero windows does
+   not itself mean app quit. On Windows/Linux, last-window close may cause
+   actual app quit. Main actors respond to the real application-shutdown
+   boundary, not merely subscriber count.
+4. **Tabs: independent instances over shared entities, with transfer and
+   explicit duplication.** A tab has a stable `TabInstanceId` and belongs
+   to one `WindowSessionId`. Dragging moves that same tab instance and
+   preserves transferable presentation state. Explicit “Open in New Window”
+   or duplication creates a new tab instance that may reference the same
+   entity; ordinary navigation may focus an existing tab in the current
+   window. Independent instances do not automatically share scroll position,
+   selected file, iframe history, panels, dialogs, or drafts.
+5. **Presentation routing: initiator first, with typed fallbacks.** Persistent
+   lifecycle facts render in every subscribed view. Transient effects route
+   by type: operation toasts and navigation stay in the initiating window;
+   inline shared errors render in every relevant view; actionable user-input
+   requests may render in every relevant window with first-response-wins;
+   headless important completion uses a native notification. The fallback for
+   ordinary effects is initiating window → most-recent focused window showing
+   the entity → any window showing the entity → focused app window →
+   notification or no transient effect.
+
+Two implementation consequences are mandatory:
+
+- a stale window action is never accepted merely because it came from a
+  trusted renderer; every remote machine records whether each event requires
+  no revision, an `expectedRevision`, or an invocation ref;
+- moving a tab is an acknowledged handoff: capture transferable state, adopt
+  it in the destination, then remove the source. Adoption failure leaves the
+  source tab intact.
 
 ## Target architecture
 
 ```text
-producer event
-    |
-    v
-typed machine facade            (carries operation identity;
-    |                            delivers post-commit, deferred
-    v                            when crossing into another machine)
-dispatch -> committed immutable snapshot -> pure selectors
-    |                                          |
-    v                                          v
-command adapter                        React domain hook
-    |                                          |
-    v                                          v
-IPC / Query / UI-only runtime stores        component
+                    main process (authority)
+   app_run · chat_stream* · github_ops · version_preview ·
+   image_generation · user_input · connection_flow · mcp_oauth
+        |                                   ^
+        | revisioned snapshot read models    | validated, authorized,
+        | + typed post-commit events         | deduplicated dispatch
+        v                                   |
+  +-------------- window 1 --------------+  +-------- window 2 --------+
+  | remote refs -> selectors -> hooks    |  | (same read models,       |
+  | per-window machines:                 |  |  same dispatch API)      |
+  |   preview_iframe · screenshot ·      |  |                          |
+  |   voice_to_text · first_prompt       |  |                          |
+  | per-window Jotai (UI-only atoms)     |  |                          |
+  +--------------------------------------+  +--------------------------+
 ```
 
-The central rule:
+\* `chat_stream` pending its feasibility study (below) — its _placement_
+is decided (main), its _design_ is not yet.
+
+Placement table (final intent; per-machine moves still gate on their
+pilot/study):
+
+| Machine            | Host                 | Reason                                                                                 |
+| ------------------ | -------------------- | -------------------------------------------------------------------------------------- |
+| `app_run`          | main                 | Owns child process, producer identity; app is global across windows                    |
+| `user_input`       | main                 | Already main; owns waiters; survives window lifecycle                                  |
+| `connection_flow`  | main                 | Already main; OAuth flows, deep-link claims                                            |
+| `mcp_oauth`        | main                 | Already main; loopback listeners                                                       |
+| `github_ops`       | main                 | Git mutation/recovery is per-app, not per-window; mid-rebase must survive window close |
+| `version_preview`  | main                 | Checkout/branch recovery is per-app; mid-checkout must survive window close            |
+| `image_generation` | main                 | Jobs are per-chat, visible from any window                                             |
+| `chat_stream`      | main, pending study  | Stream lifecycle is per-chat; admission already main-owned; design study required      |
+| `plan_handoff`     | main, pending study  | Cross-chat workflow; rides the chat_stream decision                                    |
+| `preview_iframe`   | renderer, per-window | Owns a window's DOM/iframe identity                                                    |
+| `screenshot`       | renderer, per-window | Captures a window's iframe                                                             |
+| `voice_to_text`    | renderer, per-window | Owns a window's media resources                                                        |
+| `first_prompt`     | renderer, per-window | Presentation saga tied to a window's home view                                         |
+
+Per-window machines key by (window-local host, entity). Main-hosted
+machines key by entity; windows subscribe.
+
+Core rules (unchanged from the hardening/cleanup lineage, now with a
+process boundary in the middle):
 
 > A lifecycle fact represented in a machine snapshot is not also stored in
-> Jotai.
+> Jotai. A lifecycle fact owned by main is not also authoritative in any
+> window.
 
-Jotai remains correct for client-only state no machine owns: edit buffers,
-navigation, tabs, dismissals, visual-editor selections, high-frequency
-console/stream content, independent diagnostics. React Query remains
-authoritative for IPC-backed entities. Main-process machines may expose
-renderer read models across IPC — a process boundary is not a second
-same-process authority.
+- Jotai is per-window UI state only (drafts, tabs, selections,
+  dismissals). Each window has its own store; nothing machine-owned lives
+  there. The tab/session family becomes per-window state exactly like a
+  browser's.
+- React Query remains authoritative for IPC-backed entities; invalidation
+  becomes broadcast-aware (a mutation in window A invalidates window B's
+  cache — main emits typed invalidation events).
+- Facade rules from the distributed plan bind every edge now: events carry
+  operation identity (invocation refs), never timestamp/map-edge
+  inference; delivery is post-commit, deferred across machine boundaries;
+  location is explicit (local `send` vs remote `dispatch` returning a
+  receipt); commit is not completion.
 
-Every cross-machine facade introduced by this plan follows two rules taken
-from the distributed proposal, so the facades are shaped like the actor
-references that might replace them:
+### Remote intent policy
 
-1. **Events carry operation identity** (invocation refs), never inferred
-   from timestamps or map edges.
-2. **Delivery is post-commit**, and microtask-deferred on any edge that
-   would otherwise run inside another machine's dispatch.
+Every remotely dispatchable event is classified in its machine definition:
 
-## The inventory (verified)
+| Intent class                | Admission contract                                                                       |
+| --------------------------- | ---------------------------------------------------------------------------------------- |
+| Idempotent/current-agnostic | No expected revision; transition still validates payload and current state               |
+| State-sensitive mutation    | Carries `expectedRevision`; stale intent is a typed rejected/ignored receipt             |
+| Cancellation                | Carries the active invocation ref; entity key or initiating window alone is insufficient |
+| Durable handoff             | Carries a domain idempotency key; commit receipt is not durable receiver acceptance      |
+| Presentation-only           | Routes through the window router after authoritative commit; never changes domain state  |
 
-Full tables, per-atom traces, and corrections live in
-`plans/claude-cleanup-machines.md`. Summary:
+Capabilities account for remote connection status. A control rendered from
+revision N may still lose a race before dispatch; the receipt is the
+authoritative answer, and dialogs/forms settle only from authoritative state.
 
-- **116 atoms** across `src/atoms/*`, `src/store/appAtoms.ts`, and machine
-  projection modules.
-- **69 UI-only — keep as Jotai.** Includes documented deliberate keeps
-  (machine writes into UI-owned atoms: plan*handoff navigation writes,
-  first_prompt post-submit clears, isPreviewOpenAtom) and machine \_reads*
-  of UI atoms (inputs, not projections — out of scope).
-- **32 machine-mirror — retire.** Machine is the writer; the atom
-  duplicates snapshot state (isStreaming-adjacent flags, saga projections,
-  image-gen job copies, app_run's preview-runtime family, user_input's
-  renderer adapter atoms).
-- **12 cross-machine + 3 mixed-ownership — retire; worst class.** Atoms as
-  mailboxes or status buses between machines: `pendingScreenshotAppIdsAtom`
-  (producer mailbox), `previewRunStateByAppIdAtom` (preview_iframe infers
-  app_run restarts), `isStreamingByIdAtom` (plan_handoff subscribes — the
-  #4077 ORDERING INVARIANT re-entrancy hazard), plus mixed-owner primary
-  stores that need owned stores and facades (`chatMessagesByIdAtom` — which
-  version_preview also writes; the queue pair; `planStateAtom` split).
+### Window identity and routing
 
-Load-bearing verification corrections (already folded into the appendix
-recipes; repeated here because getting them wrong inverts behavior):
-release-age outranks pnpm-migration in the warning priority rule; six (not
-two) preview-error writer sites, four of them in `PreviewIframe.tsx`
-including `dyad-app`-sourced cloud-sandbox errors; `subscribeStreamFinished`
-is microtask-deferred but does not fire on `disposeKey`, so the plan_handoff
-`watchIdle` facade must also observe disposal; provider mount order
-(`ChatStreamProvider` above the router, deps registered under
-`AppRunProvider` but above `ScreenshotProvider`) constrains facade wiring.
+Phase B introduces a main-owned `WindowRegistry` before remote machine
+transport is used by production:
+
+```ts
+interface WindowRegistry {
+  register(webContentsId: number, windowSessionId: WindowSessionId): void;
+  unregister(webContentsId: number): void;
+  setFocused(windowSessionId: WindowSessionId): void;
+  setVisibleEntities(
+    windowSessionId: WindowSessionId,
+    entities: readonly VisibleEntity[],
+  ): void;
+  findWindowsShowing(entity: VisibleEntity): readonly WindowSessionId[];
+  routePresentation(request: PresentationRouteRequest): WindowSessionId | null;
+  claimCapability(request: WindowCapabilityRequest): WindowCapabilityLease;
+}
+```
+
+- `webContents.id` identifies one ephemeral renderer lifetime.
+- `WindowSessionId` identifies a restorable window session.
+- `TabInstanceId` identifies one movable/transferable tab presentation.
+- Main actor keys never include a window ID unless the domain resource itself
+  is window-owned.
+- Subscription ownership uses `webContents`; session/tab restoration uses
+  stable IDs.
+- Visibility/focus metadata is advisory for presentation routing, never
+  authority for domain mutations.
+
+Window-owned resources use explicit capability leases. For example, a
+main-hosted workflow requesting a screenshot asks the registry for a window
+currently advertising `{kind: "screenshot", appId, iframeEpoch}`. The request
+targets that lease and settles/retries if the window or iframe disappears.
+Never broadcast a resource request and accept whichever window responds first.
+
+### Cross-window React Query coherence
+
+Machine snapshots do not make IPC-backed entity caches coherent. Phase B adds
+a separate typed invalidation channel:
+
+```ts
+interface QueryInvalidationEvent {
+  epoch: number;
+  scope: QueryInvalidationScope;
+  originWindowSessionId?: WindowSessionId;
+}
+```
+
+Requirements:
+
+- scopes map to the central `queryKeys` factory; arbitrary renderer-supplied
+  query keys are not transported;
+- main broadcasts invalidations after the authoritative mutation commits;
+- events may batch multiple scopes;
+- origin windows invalidate too unless they have already installed equivalent
+  mutation data;
+- the epoch is **one global counter**, not per-scope: a gap conservatively
+  invalidates the affected query families; per-scope epochs are an
+  unproven optimization, deferred until measured;
+- each window tracks the last seen epoch;
+- reconnect or an epoch gap triggers conservative invalidation of the affected
+  query families;
+- machine snapshot revision and query invalidation epoch are distinct;
+- non-machine IPC mutations use the same channel.
+
+### High-volume window subscriptions
+
+Console output and LLM chunks stay off machine snapshots, but they are not
+blindly broadcast to every renderer. Main maintains keyed `appId`/`chatId`
+interest per `webContents`, batches per destination, and removes interest on
+window destruction. Subscription bootstrap and terminal flush close the
+attach/detach race. Performance gates measure messages delivered and renderer
+work, not only snapshot fan-out.
+
+### Actor lifecycle matrix
+
+Each C-wave PR completes this matrix before implementation:
+
+| Machine            | No subscribers                               | Window reload                    | Last window closes                                 | App quit                           | App restart                           | Entity deletion                      |
+| ------------------ | -------------------------------------------- | -------------------------------- | -------------------------------------------------- | ---------------------------------- | ------------------------------------- | ------------------------------------ |
+| `app_run`          | Active process retained; idle policy bounded | Reattach to main snapshot/output | Platform convention; active work retained on macOS | Bounded child-process teardown     | Ephemeral unless separately recovered | Stop/dispose actor and process       |
+| `user_input`       | Live waiter retained to deadline             | Rehydrate read model             | Continue while application remains alive           | Settle/sweep by shutdown policy    | Recover only durable pending records  | Settle requests for deleted entity   |
+| `connection_flow`  | Continue to timeout                          | Reattach read model              | Continue while application remains alive           | Cancel listeners/timers safely     | Domain-specific unsolicited return    | N/A/provider cleanup                 |
+| `mcp_oauth`        | Continue to timeout                          | Reattach status if exposed       | Continue while application remains alive           | Close listeners and settle waiters | No implicit recovery                  | Dispose server/flow-owned resources  |
+| `github_ops`       | Active mutation retained                     | Reattach                         | Continue while application remains alive           | Finish or enter explicit recovery  | Reconcile repository state            | Dispose actor after safe settlement  |
+| `version_preview`  | Active checkout/recovery retained            | Reattach                         | Continue while application remains alive           | Preserve/enter recovery contract   | Reconcile branch/checkout state       | Dispose after safe return/settlement |
+| `image_generation` | Active jobs retained                         | Reattach                         | Continue while application remains alive           | Domain policy must be recorded     | Persistence decision required         | Cancel/prune jobs for deleted entity |
+| `chat_stream`      | Feasibility study decides                    | Feasibility study decides        | Feasibility study decides                          | Feasibility study decides          | Durable acceptance study required     | Settle queue/owners before deletion  |
+
+Renderer-local machines always die with their renderer resources, but must
+settle or compensate their callers. The matrix records product semantics; it
+does not imply every main actor is persisted.
+
+## Verified inventory
+
+Summary (full tables and recipes in `plans/claude-cleanup-machines.md`):
+116 atoms — 69 UI-only (keep, per-window), 32 machine-mirror (retire),
+12 cross-machine + 3 mixed (retire, worst class). Load-bearing verified
+corrections that Phase A recipes already encode: release-age outranks
+pnpm-migration in the warning priority; six preview-error writer sites
+(four in `PreviewIframe.tsx`, including `dyad-app`-sourced cloud-sandbox
+errors); `subscribeStreamFinished` is deferred but does not fire on
+`disposeKey` (watchIdle facades must observe disposal); provider mount
+order constrains facade injection sites.
+
+Multi-window raises Phase A's value but changes its sequencing: per-window
+Jotai stores cannot represent shared machine state even in principle, so
+unambiguous projection retirement remains valuable. Work that chooses a new
+renderer-owned store for a future main-owned domain is not automatically
+no-regrets; the chat feasibility gate and per-wave host decisions run before
+those storage conversions.
 
 ## Ownership model
 
-Adopted verbatim from the codex plan; classification is mandatory before
-code changes:
+As in the codex plan, with one amendment. Categories: machine-owned
+lifecycle state (snapshot only, hooks/selectors/facades, never mirrored);
+external entity data (React Query / main persistence); UI/runtime state
+(per-window Jotai or local React state); **cross-process read models —
+now the normal case for every main-hosted machine, not an allowlisted
+exception**: named read models, one adapter owning hydration/ordering,
+read-only public APIs, revisioned, per-window subscription; derived
+indexes (read-only external-store selectors, real consumers only).
 
-- **Machine-owned lifecycle state** — stored only in the snapshot; read via
-  domain hooks/facades; derived with pure selectors; never mirrored into a
-  writable atom; never reconstructed by watching command side effects.
-- **External entity data** — React Query / main persistence; adapters
-  invalidate; copied into machine state only when a stable operation
-  snapshot is required for correctness.
-- **UI/runtime state** — Jotai (shared/surviving unmounts) or local React
-  state; never promoted into a machine solely to reduce atom count.
-- **Cross-process projections** — named read models with one adapter owning
-  hydration/ordering/writes; read-only public APIs; may stay Jotai-backed
-  where composition is materially useful (`user_input` is the allowlisted
-  case).
-- **Derived indexes** — read-only external-store selectors over
-  authoritative keyed snapshots; exposed only for real cross-key consumers;
-  never independently mutated.
+`user_input`'s renderer adapter stops being the special case and becomes
+the reference implementation of the pattern.
 
-## Shared infrastructure
+## Single-window assumptions audit
 
-1. **Selector-aware external-store bindings** in `src/state_machines/react.ts`:
-   `useMachineSelector`, `useKeyedMachineSelector`, `useProjectionSource` —
-   no resubscription on selector-closure change, reference-stable snapshots,
-   optional equality, StrictMode/unrelated-key tests, no Jotai dependency.
-2. **Standard manager facade** (`getSnapshot(key)` / `subscribeKey` /
-   `send` / `disposeKey` / `dispose`) — a naming/shape convention over
-   `KeyedControllerHost`; domain extensions stay domain-owned.
-3. **Projection-free provider convention** — providers own managers and
-   lifecycle only; they do not copy snapshots to atoms. Domain hooks live
-   beside the provider.
-4. **Composition-root wiring** for the typed edges this plan creates:
-   `app_run → preview_iframe`, `chat_stream → plan_handoff`,
-   producers `→ screenshot`, `user_input → chat_stream` (existing
-   direction preserved). Dependency graph recorded in module headers and an
-   architecture test; must remain acyclic. Respect the verified mount-order
-   constraints when choosing injection sites.
-5. **Ownership boundary test** (extends `boundaries.test.ts`):
-   `state.ts`/`transition.ts` cannot import `@/atoms`, Jotai, React, IPC, or
-   another machine; machine directories cannot import another machine's
-   owners; lifecycle projection modules cannot export writable atoms;
-   cross-process projections are allowlisted with reasons; new
-   `registerAtomWriter`/`projectToAtom` uses outside the allowlist fail.
-   Temporary exceptions carry an owner and a deletion PR number.
+A tracked checklist; each item gets an owner and lands with the phase
+noted. Known items (from the inventory and review record):
+
+- **`event.sender` vs broadcast**: #4033 already widened consent
+  broadcasts to all windows — correct for multi-window reads; audit every
+  remaining `event.sender`-targeted emission. _Responses_ are claimed by
+  requestId (first-applied-wins already exists in user_input). [Phase B]
+- **Deep-link / OAuth-return routing** to "the" window: claims are
+  main-owned (`connection_flow`/`mcp_oauth` already are); the focus target
+  follows the recorded presentation-routing matrix. [Phase B]
+- **Notification click focus**: must target the window showing the chat,
+  or open one. [Phase C, chat wave]
+- **`useManagerPagehideDisposal`**: one window's pagehide must dispose
+  only window-local machines, never main-hosted state. Split into
+  per-window disposal (renderer machines) and subscription release
+  (remote refs). [Phase B]
+- **`EntityDisposalRegistry` scope**: app/chat deletion initiated in
+  window A must dispose window-local controllers in _all_ windows
+  (broadcast) and the main actor once. [Phase B]
+- **Module-level `getDefaultStore()`** escape hatches: each window has its
+  own Jotai store; all such call sites are bugs under multi-window. Phase
+  A already removes the known one (ImageGenerationToast); boundary test
+  forbids new ones. [Phase A]
+- **Chat-tab session persistence** (`chatTabSessionStorageAtom`): schema
+  becomes per-window using `WindowSessionId` + `TabInstanceId`, like browser
+  session restore. Moving a tab uses acknowledged adopt-then-remove.
+  [Phase C]
+- **Trusted-main-frame IPC enforcement**: verify it is per-window, not
+  per-"the window". [Phase B]
+- **React Query invalidation**: inventory every mutation path that currently
+  invalidates only the initiating window and route it through the typed
+  invalidation channel. Include an inventory of origin-window
+  `setQueryData` call sites — the "unless they have already installed
+  equivalent mutation data" carve-out requires knowing every one. [Phase B]
+- **High-volume event destinations**: audit app output, chat chunks, terminal
+  output, and progress streams for singleton-window or global-broadcast
+  assumptions; convert to keyed interest fan-out. [Phase B/C wave]
+- **Window-owned capability routing**: screenshot, iframe, focus, dialog, and
+  navigation requests identify a target/lease through `WindowRegistry`;
+  no first-responder broadcast. [Phase B]
 
 ## Rollout
 
-Two phases. Phase A is **no-regrets**: valuable in every future, including
-the distributed one (its deletions are prerequisites for a host move, not
-casualties of it). Phase B is **hold-point-gated**: runtime consolidation
-that a main-hosting decision could discard, done opportunistically or after
-the gate.
+### Phase A — no-regrets ownership cleanup
 
-Rules for every PR (merged from both source plans):
+This section is the self-contained execution index. Detailed per-atom writer,
+reader, and test traces remain in `plans/claude-cleanup-machines.md`; this
+plan, not deleted Git history, defines PR scope and status.
 
-- Consumer migration precedes projection deletion **in the same PR**; no
-  indefinite dual consumption; a compatibility projection has exactly one
-  writer until deletion.
-- Behavior-preserving under existing suites; intentional deltas enumerated
-  in the PR description (known set: notification timing +1 microtask,
-  checkout loading-bar span, MANUAL_RELOAD transient `reloading`, machine
-  URL dropping on stop). A PR that must change a transition test is out of
-  scope by definition.
-- When replacing an atom edge with a subscription, close the
-  read-before-subscribe race: check before and immediately after
-  subscribing.
-- One-shot events run only after the authoritative snapshot commit and
-  preserve operation identity.
-- Every removed keyed atom has an explicit entity-deletion/provider
-  disposal replacement (`clearPreviewRuntimeForAppAtom` shrinks map-by-map
-  and is deleted last).
-- Do not mix controller-runtime migration with ownership/behavior changes.
+**A1 — Boundary enforcement and selector bindings: completed in #4090.**
 
-### Phase A — ownership cleanup (no-regrets)
+- ownership boundary tests and temporary violation allowlist;
+- selector-aware keyed React bindings;
+- no intended production behavior change.
 
-Per-atom recipes for A2–A6 are in `plans/claude-cleanup-machines.md`
-(sections named per atom); each PR below names its scope and what it
-subsumes from the codex rollout.
+**A2 — S-tier mirrors, no new stores: pending.**
 
-**PR A1 — Boundary enforcement and bindings** _(codex PR 1)_
-Ownership table into repo docs; boundary-test rules with allowlisted
-current violations mapped to their deletion PRs (A2–A6); selector-aware
-React bindings + tests. No production behavior change.
+- completion-event pair via `useStreamFinished`;
+- first-prompt saga projection pair;
+- version-preview checkout counter pair;
+- `pendingToolConsentsAtom`;
+- app-run run-state derived trio.
 
-**PR A2 — S-tier mirrors, no new stores** _(claude PR 1; subsumes codex
-PRs 2 and 9)_
-Completion-event pair (via `useStreamFinished` + chatSummary threading),
-firstPromptSaga pair, version_preview checkout-counter pair (delete
-`src/store/appAtoms.ts`), pendingToolConsentsAtom, app_run run-state
-derived trio (two of three have zero production readers).
+These deletions do not choose a future host or transport.
 
-**PR A3 — Single-machine store conversions** _(claude PR 2; subsumes codex
-PR 3)_
-image_generation projection family (manager snapshot exposed directly;
-dismissal atom stays UI); user_input renderer adapter → one SnapshotStore
-holding requests + responding set (stays the allowlisted cross-process
-read model — renamed and documented as such, per codex §J);
-streamingPreviewByChatIdAtom → per-chat sidecar store (high-frequency
-content stays out of StreamState); previewAppExit family (timestamp onto
-`stopped`, the template for A5's error work).
+**A3 — Single-machine projections with stable direct owners: pending.**
 
-**PR A4 — Cross-machine signal edges** _(claude PR 3; subsumes codex PR 4
-and the facade half of PR 5)_
-`pendingScreenshotAppIdsAtom` → `ScreenshotRequestFacade.requestCapture(appId, source)`,
-both producers migrated in one change, coalescing policy explicit in the
-machine; `previewRunStateByAppIdAtom` → app_run lifecycle facade to
-preview_iframe (**microtask-deferred**; edge-triggered or
-invocation-identified, never `startedAt`-deduped); reload-token family
-(chat_stream bump → `MANUAL_RELOAD` facade, then a manager-owned counter);
-appUrl family (URL read from RunState).
+- image-generation projection exposed directly by its manager; keep dismissal
+  UI state;
+- user-input renderer read model moved to one `SnapshotStore` containing
+  requests + responding set while preserving hydrate revision handling;
+- high-frequency streaming preview moved to a per-chat sidecar;
+- app-exit details captured by app-run state rather than a hand-written atom
+  projection.
 
-**PR A5 — Multi-producer channels get owned stores** _(claude PR 4;
-completes codex PR 5's atom deletions)_
-previewError channel → preview_iframe-owned state with all six writer
-sites landing together (app_run's set/clear crosses via a deferred facade;
-source-priority and dismiss semantics encoded in transitions); console
-trio → keyed PreviewConsoleStore, five producers atomically;
-package-manager warning unit → standalone store porting the dismissed-set
-guard and the **release-age-wins** priority rule with its characterization
-test. `previewRuntimeAtoms.ts` and `clearPreviewRuntimeForAppAtom` reach
-empty and are deleted.
+A3 proceeds now: image_generation sits third in C2's order, well behind
+A3, and its manager's snapshot/subscribe surface **is** the read-model
+shape C2 will later publish remotely — this is preparation for the host
+move, not a temporary API.
 
-**PR A6 — chat_stream / plan_handoff core** _(claude PR 5; subsumes codex
-PR 7 and the facade half of PR 8)_
-Ordered stack: (a) `isStreamingByIdAtom` — useStreamChat first (~15
-components come free), ChatTabs aggregate selector, plan_handoff
-`isIdle`/`watchIdle` facade **with disposal observation**, resyncChat
-injection, then delete the atom, syncProjection, and **both #4077
-protective comments** — retiring this atom deletes the re-entrancy hazard
-itself; (b) chatErrorByIdAtom bundled (same files; external-error machine
-event; lastError durability); (c) chatMessagesByIdAtom — chat_stream-owned
-messages store landed behind the existing write pattern, version_preview
-`replaceChatMessages` facade with a stream-active guard, hydrate command,
-readers flipped, atom deleted last (highest regression risk; full
-streaming E2E suite required); (d) queue pair → one QueueStore (atomic
-dequeue, pause read-before-pop, restore-as-paused hydration, item identity
-preserved); (e) planStateAtom split (acceptedChatIds → plan_handoff
-projection; plansByChatId → renamed UI-owned documents atom).
+**A4 — Cross-machine signal edges that do not preselect chat storage:
+pending.**
 
-**PR A7 — Compatibility infrastructure removal** _(codex PR 12)_
-Delete or narrow `registerAtomWriter`/`projectToAtom` (only the
-allowlisted cross-process projection may retain a renamed private copy);
-remove boundary-test allowlist entries; update `rules/state-machines.md`,
-`rules/jotai-state.md`, `docs/why-state-machines.md`; add the test
-asserting no lifecycle atom names from this plan return.
+- app-run lifecycle/URL edges consumed through typed post-commit facades so
+  their source can later swap to a remote actor;
+- reload intent uses a typed app-run event rather than an atom counter edge;
+- screenshot ingress: both producers (window-local commit requests AND
+  chat_stream's end-of-stream capture) migrate to the same local
+  `requestCapture` facade injected via deps, and the mailbox atom is
+  deleted in this PR — the no-dual-consumption rule holds. The chat_stream
+  call site carries an allowlist-style marker tied to B1: when the window
+  capability router lands, it replaces the facade's *implementation*
+  (lease-targeted routing instead of the singleton manager), not its call
+  sites. Facade indirection is what prevents permanent singleton binding;
+  keeping the atom alive until B1 would be the worse binding.
 
-Dependencies: A1 first; A2/A3 parallel; A4 after A2 (derived trio gone);
-A5 after A4 (facade + app-exit template); A6 after A2/A3 (patterns
-settled); A7 last.
+All facade callback registries support multiple consumers. Events carry
+invocation/actor identity, not timestamps. Every facade method added in
+A4–A5 is tagged (in types or doc comments) with its remote intent class
+from the Remote intent policy — idempotent, state-sensitive, cancellation,
+or presentation — so the C-wave conversion to receipts/revisions is
+mechanical and misclassifications surface now.
 
-### Phase B — runtime consolidation (hold-point-gated)
+**A5 — Multi-producer channels with explicit non-machine owners: pending.**
 
-The remaining custom controller loops (app_run, chat_stream, first_prompt,
-github_ops, plan_handoff, preview_iframe, version_preview) and main
-registries still predate `TransactionalDispatcher`. Uniformity is worth
-having — but the distributed proposal's candidate-placement table marks
-app_run, github_ops, version_preview, chat_stream, and plan_handoff as
-possible main-hosted machines, and a host move deletes the renderer
-controller wholesale. Mechanically migrating those five ahead of the
-placement decision is potential throwaway work (this is exactly the
-distributed plan's "superseded by this plan" list).
+- preview errors split/owned with source-priority and dismissal semantics
+  characterized first;
+- console buffer receives a keyed owner while preserving batching/tail bounds;
+- package-manager warnings receive a standalone owner preserving
+  release-age-wins priority and dismissed guards;
+- `clearPreviewRuntimeForAppAtom` shrinks only as each replacement registers
+  equivalent entity cleanup.
 
-Policy:
+Stores created here expose source interfaces that a later remote/main producer
+can feed; they are not described as authoritative shared lifecycle.
 
-- **Migrate freely, opportunistically** (when the machine is touched for
-  other reasons): `preview_iframe`, `screenshot`-adjacent leftovers,
-  `first_prompt`, `voice_to_text`-style renderer-forever domains. Each
-  migration = trace comparison + controller conformance suite, one
-  high-blast-radius controller per PR.
-- **Hold** bulk dispatcher migration of `app_run`, `github_ops`,
-  `version_preview`, `chat_stream`, `plan_handoff` renderer controllers,
-  and any new bespoke per-domain IPC read models, until the Phase C gate
-  is decided. (Dispatcher adoption _inside main registries_ —
-  connection_flow, mcp_oauth — is distributed-compatible, since the actor
-  host composes the dispatcher; migrate those opportunistically with the
-  codex §J constraints: resource ownership stays in the registry,
-  synchronous claim contracts documented if they block direct use.)
+**Design gate G1a — Streaming-status authority: DECIDED 2026-07-24.**
 
-### Phase C — the distributed decision gate
+Split out of G1 because it is invariant across every G1 outcome: under any
+host placement, an authoritative per-chat `StreamState` snapshot exists
+(renderer controller today; main actor read model if chat moves), and
+streaming status is read from it. Recorded decisions:
 
-Not scheduled; a recorded decision procedure for when (if) to open
-`plans/distrbuted-machines.md`:
+1. **Authority and read surface.** The `StreamState` snapshot is the sole
+   status authority. Reads use pure selectors (`isStreamActive`,
+   `selectCanCancel`, `selectStreamError`) over `useChatStreamState(chatId)`
+   with a `?? {type:"idle"}` fallback everywhere — **no controller means
+   idle** (matches the retired atom's absent-key semantics). ChatTabs
+   aggregates via per-tab keyed subscriptions first; a manager-owned
+   read-only index is added only if measurement shows overhead.
+2. **Facade contract** (injected via `PlanHandoffDeps`; intent classes:
+   idempotent read / subscription):
+   - `isIdle(chatId): boolean` over the snapshot;
+   - `watchIdle(chatId, cb): () => void` — fires at most once;
+     check-subscribe-recheck; **delivery always asynchronous (microtask),
+     even when already idle** — uniform async timing makes the #4077
+     re-entry class impossible by contract, and matches future remote
+     read-model behavior; **observes controller disposal** (the verified
+     `subscribeStreamFinished` gap): fires on any transition to
+     not-active, disposal included.
+   - Source swap to a remote read model (snapshot + actor-disposed
+     envelopes) changes the facade implementation only, never callers.
+   - `resyncChat` receives `getIsStreaming(chatId)` through chat_stream
+     command deps — same authority.
+3. **chatError: single owner via machine event.** ChatInput's
+   consent-failure writes route through a new additive `external-error`
+   event — A6a's one sanctioned transition delta (isolated commit, called
+   out in the PR description). Last-error durability: a bounded
+   `lastErrorByChatId` map on the manager (cleared on next submit and on
+   chat deletion) — no controller pinning, no atom. Revisitable by full
+   G1 if errors move into the read model.
+4. **Not decided here:** message storage, queue authority, planState
+   split, completion-history location, chat host placement — all G1.
 
-1. **Forcing function: `app_run`.** After Phase A, app_run's remaining
-   pain is structural — the renderer owns the lifecycle of a main-owned
-   process; producer correlation, IPC settlement, and reload-teardown all
-   compensate for that split. If that pain justifies action, the first
-   step is **not** the generic runtime: it is a one-off main-hosted
-   app_run machine built on existing primitives (dispatcher,
-   InvocationRef, leases) with hand-written typed contracts, the way
-   user_input already is — using the distributed plan's Pilot 1 section
-   (event model, safe remote projection, acceptance scenarios 1–12) as
-   its design doc. Phase A's facade shapes (post-commit, identity-carrying)
-   mean preview_iframe and other consumers only swap event sources.
-2. **Rule of three for the runtime.** Extract
-   `src/distributed_machines/` only when a third main-hosted machine is
-   hand-rolling mechanically identical transport/read-model plumbing
-   (user_input and a main-hosted app_run would be two). At that point the
-   distributed plan's Phases 0–3 (ADR, deletion budget, kernel, transport)
-   run as written — extraction from proven copies, not speculation. This
-   is the same method that produced the micro-kernel
-   (`plans/machine-followup.md`) and it is the house rule.
-3. **If the gate never triggers**, Phase B's holds convert to ordinary
-   opportunistic migrations and the codex plan's end-state stands as the
-   final architecture.
+**A6a — Streaming status and error retirement: unblocked by G1a.**
+
+The `isStreamingByIdAtom` + `chatErrorByIdAtom` stack from the appendix
+recipe: useStreamChat first (~15 components follow), ChatTabs aggregate
+selector, plan_handoff facade with disposal observation, resyncChat
+injection, then delete both atoms, syncProjection, and **both #4077
+protective comments** — this removes the only known synchronous
+re-entrancy vector and must not wait on the storage study. No new stores
+are built; readers convert from atom to snapshot source.
+
+**Design gate G1 — Chat-stream/main feasibility study: starts now, in
+parallel with A2–A5; gates A6b only.** Assign an owner when this plan is
+adopted. Its inputs (recorded decision 5, the remote intent policy, the
+appendix reader inventory) all exist. The study decides:
+
+- authoritative owner of optimistic versus durably accepted messages;
+- lifecycle snapshot versus high-frequency chunk transport;
+- editable queue authority and persistence;
+- callbacks-to-receipts conversion;
+- user-input durable handoff;
+- plan-handoff placement;
+- renderer reload/window-close behavior;
+- notification and screenshot routing;
+- whether completion history belongs in lifecycle or a read model;
+- revision/bootstrap semantics for every renderer read model.
+
+It must produce a serializability inventory, target state/read-model schemas,
+acceptance transaction, migration sequence, and deletion budget. Do not build
+temporary “revision-free read-model-shaped” renderer stores in anticipation.
+
+**A6b — Chat storage implementation: blocked on G1.**
+
+Messages, queue pair, and planState split. Only the study-approved design
+proceeds. The appendix's proposed renderer `MessagesStore`, `QueueStore`,
+and accepted-plan projection are recipes to evaluate—not preapproved
+destination architecture.
+
+**A7 — Compatibility infrastructure removal: after A2–A6 and relevant C
+waves.**
+
+- delete or narrow `registerAtomWriter`/`projectToAtom`;
+- remove boundary allowlist entries only when their owner is gone;
+- update rules/docs;
+- assert retired lifecycle atom names do not return.
+
+Dependencies: A1 is complete; A2 and A3 proceed in parallel; A4 follows
+the relevant A2 deletion; A5 follows characterized ownership; G1a is a
+same-week decision unblocking A6a; G1 starts immediately in parallel and
+gates only A6b; A7 is last and may span Phase D.
+
+Status legend for this section: **pending** / **in flight (#PR)** /
+**done (#PR)**. Update statuses as PRs land — this file is the
+plan-of-record that reviews cite.
+
+No Phase A PR polishes a shared-entity renderer controller scheduled for
+deletion by a host move.
+
+### Phase B — multi-window and distributed infrastructure
+
+**B0 — ADR, recorded decisions, and deletion budgets.**
+
+- copy the five approved product decisions from this plan;
+- record one-authority, commit-versus-completion, and no-multi-primary rules;
+- complete the initial actor lifecycle matrix, **including the named open
+  cells: `image_generation` app-quit policy and app-restart persistence
+  decision** (they do not survive B0 as TBD);
+- define app-run pilot deletion list;
+- classify every remote event's intent/admission policy.
+
+**B1 — WindowRegistry, routing, cache coherence, and test harness.**
+
+- stable `WindowSessionId` and `TabInstanceId`;
+- ephemeral `webContents` registration/cleanup;
+- focus and visible-entity tracking;
+- presentation routing matrix;
+- window capability leases — minimal semantics, screenshot-scoped only:
+  single holder per `(kind, appId)`, revoked on `webContents.destroyed` or
+  iframe-epoch change, requester retries or settles per its declared
+  policy. Dialogs/navigation/focus stay on plain presentation routing; a
+  second real lease consumer must exist before the mechanism generalizes
+  (rule of three applies to leases too);
+- typed React Query invalidation epochs and reconnect-gap behavior;
+- keyed high-volume output/chunk interest;
+- a test-only two-window Electron harness independent of final product UX.
+
+The harness can create two trusted renderer windows, assign session IDs,
+reload/destroy either independently, inspect subscriptions, dispatch from
+either, and test adopt-then-remove tab transfer.
+
+**B2 — Definition + local ActorHost kernel.**
+
+- machine definition;
+- actor instance identity, snapshot revision, and transaction sequence;
+- `ActorHost` and local refs;
+- lifecycle policies;
+- dispatcher tickets that settle their exact FIFO event;
+- host conformance suite;
+- selector-aware hooks from A1;
+- synthetic machines only.
+
+**B3 — Contract-driven remote transport.**
+
+- static manifest;
+- trusted typed handlers;
+- outer and per-definition Zod validation;
+- per-definition authorization;
+- applied/ignored/rejected/disposed receipts;
+- atomic subscribe/bootstrap;
+- snapshot/disposed broadcasts;
+- bounded message deduplication;
+- per-window and cross-window reference counting.
+
+Conformance includes:
+
+- two windows subscribe to one actor and independently disconnect;
+- `webContents.destroyed` removes only that window;
+- lost unsubscribe cannot retain a destroyed window;
+- window B dispatches after window A initiated work;
+- stale-revision mutation is rejected/ignored by declared policy;
+- cancellation requires the invocation ref;
+- no-subscriber lifecycle follows the definition, not an implicit global rule.
+
+**B4 — Remote client, hydration, and React.**
+
+- one `RemoteMachineClient` per renderer window;
+- revisioned stores;
+- pre-bootstrap buffering;
+- revision-gap resync;
+- reconnect and window recreation;
+- explicit `connecting/ready/disconnected/incompatible` capability state;
+- StrictMode and provider replacement tests.
+
+Phase B has no intended user-visible behavior change until a production
+machine enters Phase C. Kernel and transport remain separate revert points.
+
+### Phase C — host migrations
+
+**C1 — `app_run` pilot.**
+
+Main owns process lifecycle and binds producer output to the invocation at
+creation. Renderer windows keep local console views and `preview_iframe`
+machines while consuming one remote lifecycle read model.
+
+Required deletions:
+
+- renderer `AppRunController` and `AppRunManager`;
+- renderer invocation registry for producer routing;
+- app-run lifecycle projections;
+- renderer-to-main lifecycle command adapter;
+- timestamp/map-edge restart inference.
+
+Acceptance adds to the distributed pilot:
+
+- same app in two windows, one process, both update;
+- restart from B after start from A;
+- stale action from an old revision follows declared policy;
+- cancellation targets the invocation;
+- closing A during pending start continues work;
+- reload B while A stays attached;
+- keyed console fan-out reaches interested windows only;
+- screenshot/iframe effects target a valid window capability lease.
+
+**C2 — Resource-owner waves, one machine per PR.**
+
+Candidate order: `github_ops`, `version_preview`, `image_generation`.
+Each requires serializability audit, safe remote projection, lifecycle-matrix
+completion, deletion budget, crash/reload tests, same-entity-two-window tests,
+and window-close-mid-operation tests.
+
+`connection_flow` and `mcp_oauth` are already correctly main-authoritative.
+First expose them through the common remote reference/read-model contract if
+needed. Their listener, timer, waiter, claim, and close-barrier registries stay
+intact unless ActorHost adoption demonstrably deletes code or fixes a known
+deficiency. They are not mechanical migrations, and documented resource
+registries are an acceptable end state.
+
+**C3 — Chat-stream and plan-handoff execution.**
+
+Implement the G1 design only after the app-run transport proves remote
+hydration and multi-window dispatch. Preserve existing batched chunk channels;
+snapshots carry lifecycle, not stream bytes. This wave owns durable acceptance,
+editable queue semantics, notification routing, window reload, and
+window-close behavior as one reviewed protocol.
+
+**C4 — Multi-window product surface.**
+
+Window creation, explicit duplication, tab drag/transfer, per-window session
+restore, and focus routing. Moving a tab preserves serializable presentation
+state—including scroll anchor/position, selected file and cursor, preview
+history, open panels/modes, draft input, and relevant selections—using
+destination-adopt acknowledgement before source removal. DOM-only resources
+such as iframe, Monaco, and terminal views are recreated to equivalent visible
+state.
+
+Architecture tests do not wait for this UX: B1's test harness exists first.
+
+### Phase D — delete transitional infrastructure
+
+- remove superseded controllers/managers and only those registries actually
+  replaced;
+- remove projection writers and atom mailboxes;
+- narrow legacy IPC channels after the supported update window;
+- remove temporary boundary allowlist entries;
+- update `rules/state-machines.md`, `rules/electron-ipc.md`,
+  `rules/jotai-state.md`, and `docs/why-state-machines.md`;
+- add boundaries preventing lifecycle mirrors, untyped window routing, and
+  module-global renderer stores.
 
 ## Verification strategy
 
-From the codex plan, with the appendix's concrete test lists per atom:
+### Single-window protection
 
-- **Pure transition tests** unchanged (reachability, inventories,
-  ignored-reference identity, capability consistency, stale invocations).
-  Projection removal requiring a transition change means the projection
-  exposed a missing domain fact — isolate and review it as behavior.
-- **Controller conformance** (`runControllerConformanceSuite`) for every
-  migrated runtime.
-- **Renderer tests** per deleted atom: replacement hook under a test-owned
-  manager; unrelated-entity transitions do not rerender keyed consumers;
-  StrictMode replay; provider replacement; deletion cleanup. Tests and the
-  hybrid harness drive the machine boundary — never write a lifecycle atom
-  to simulate machine state after migration.
-- **Integration scenarios** (codex list): run/restart/stop from one
-  committed snapshot path; stale proxy/exit after controller replacement;
-  double-submit queues; cancel around registration; stream completion
-  wakes plan handoff without an atom edge; screenshot from completion and
-  commit; concurrent image jobs; concurrent version mutations; first-prompt
-  resume without projection atoms.
-- **Performance checks**: keyed subscribers notified only for their
-  entity; stream chunks do not rerender lifecycle consumers; console
-  appends do not rerender run controls; aggregates reference-stable;
-  controller retention bounded. If per-tab subscriptions measure too hot,
-  add a manager-owned read-only index — never a writable atom.
+Multi-window infrastructure must not regress the current product. Two
+standing rules:
+
+- **Golden single-window characterization suite**, captured **before any
+  Phase B wiring touches production paths** and run by every PR that
+  reroutes an existing flow through new infrastructure (presentation
+  routing, invalidation channel, interest-keyed fan-out, pagehide/disposal
+  split, tab-session schema). Contents: toast/notification delivery per
+  flow; invalidation-triggered refetch counts per mutation; console
+  first-line-after-subscribe timing; quit/reload teardown order; tab
+  session restore from a captured real session blob. Mostly a named
+  collection of assertions that already exist scattered across suites —
+  regressions become diffs, not bug reports.
+- **N=1 identity rule.** With exactly one window, the presentation router
+  short-circuits to that window unconditionally; a dev-mode assert
+  computes the full fallback chain and flags any divergence from the
+  short-circuit (a permanent shadow comparison, at zero production risk).
+  Likewise, origin windows keep their synchronous local React Query
+  invalidation permanently — the broadcast channel is additive for other
+  windows and deduped by epoch; wiring the channel never deletes a local
+  `invalidateQueries` call.
+
+Everything from the codex plan (pure transition tests, controller/host
+conformance, renderer tests that never mock Jotai for machine state,
+integration scenarios, performance checks) plus the multi-window layer:
+
+- B1 harness tests window identity, focus/visibility routing, capability lease
+  loss, adopt-then-remove tab transfer, invalidation epoch gaps, and keyed
+  high-volume interest;
+- transport conformance always runs the two-window scenarios from B3;
+- every C-wave migration adds: same-entity-two-windows, cross-window
+  dispatch, stale-revision intent, invocation-targeted cancellation,
+  window-close-mid-operation, and one-window reload;
+- E2E: packaged Electron tests open a second window for the app_run and
+  chat waves (start in A, observe/control in B; close A; reload B);
+- performance: snapshot fan-out to N windows is measured for app_run and
+  chat before their waves; high-volume content (chunks, console) stays on
+  keyed batched channels and never rides snapshots;
+- cache-coherence integration tests mutate in A, observe query invalidation
+  and fresh data in B, disconnect B across an invalidation, and verify
+  conservative recovery from the epoch gap;
+- window-owned effect tests close the leased screenshot/iframe window during
+  execution and assert the declared retry/rejection path rather than
+  first-responder behavior.
+
+Review constraints from the distributed plan hold: kernel, transport, and
+each pilot are separate revert points; no PR mixes generic transport with
+domain behavior change; every remote definition gets security review
+(static manifest, event codecs as allowlist, per-definition authorization,
+commands never cross from renderer, projections exclude main-only data);
+high-blast-radius waves get deep multi-agent review.
 
 ## Non-goals
 
-- XState or any statechart framework; a generic pub/sub bus.
-- Moving UI-only atoms into machines, or console logs / streamed chunks /
-  form buffers into snapshots.
-- Replacing React Query.
-- Adopting the distributed runtime in this plan (Phase C is a gate, not a
-  commitment); building transport/actor infrastructure ahead of the rule
-  of three.
-- Rewriting stable transitions to normalize names; changing visible
-  product behavior as part of mechanical cleanup.
-- Fixing the usePlan/usePlanEvents dual-source write race (moves intact,
-  commented); retiring machine _reads_ of UI-owned atoms.
+- Multi-primary state, CRDTs, shared memory, or transparent sync IPC —
+  one authoritative host per actor, windows are subscribers.
+- Moving per-window machines to main for symmetry; moving UI-only atoms
+  into machines; snapshots carrying console logs or LLM chunks.
+- Replacing React Query; XState; actor hierarchies/supervision trees;
+  exactly-once command execution claims.
+- Networked/multi-instance Dyad; hot-moving live actors between processes.
+- Visual polish and full window-management UX beyond C4's required creation,
+  explicit duplication, transfer, restoration, and routing behavior.
+
+## Risks (deltas from the source plans)
+
+- **Transport is the largest new mechanics surface.** Mitigation is to build
+  it once behind adversarial conformance suites and a fake-transport crash
+  harness; the kernel/dispatcher record shows this pattern holds.
+- **Fan-out cost.** N windows × snapshot frequency; mitigated by
+  lifecycle-only snapshots, per-window reference counting, keyed
+  high-volume interest, and measured gates before app_run/chat waves.
+- **chat_stream complexity.** The single biggest unknown; contained by
+  G1's study-before-storage gate and C3 implementing only the approved
+  design.
+- **Window routing becomes hidden authority.** Focus/visibility metadata
+  must never authorize domain work; it selects only presentation or a
+  window-resource capability lease. Main actor state remains authoritative.
+- **Cross-window cache drift.** Machine snapshots can be correct while React
+  Query data is stale; invalidation epochs and reconnect-gap recovery are
+  required before production host migrations.
+- **Two authorities during migration.** Each C wave keeps one command
+  authority at every step; shadow transitions are pure and effect-free;
+  cutover and deletion land in the wave's PR sequence with tests asserting
+  a single lifecycle-command issuer.
+- **Roadmap risk: multi-window slips or is cut.** Phase A and B1 remain
+  fully justified (cleanup + window correctness); B2–B4's actor/transport
+  runtime is the at-risk investment—which is why C1 (`app_run`) follows
+  immediately and is independently justified by the single-window bug
+  record (#3969 class, reload teardown). If multi-window dies entirely,
+  stop after C1/C2 and retain the useful result: app-run authority beside
+  its main-owned process, without committing to every later migration.
 
 ## Success criteria
 
-Phase A is complete when:
+Phase A: as before — zero same-process machine-written atoms outside
+documented keeps or G1-approved transitional read models; typed
+identity-carrying facades; #4077 comments deleted only when the hazard is
+actually gone; boundary tests prevent reintroduction.
 
-- Zero same-process machine-written Jotai atoms remain except the
-  documented deliberate keeps (each commented at the write site);
-  `registerAtomWriter`/`projectToAtom` have no production callers outside
-  the cross-process allowlist.
-- Cross-machine communication uses typed facades or owned stores only —
-  post-commit, identity-carrying, deferred where crossing into another
-  machine's dispatch. No machine reads or subscribes to an atom written by
-  another machine.
-- The #4077 protective comments are deleted because the re-entrancy vector
-  no longer exists.
-- `previewRuntimeAtoms.ts`, `store/appAtoms.ts`, the first_prompt and
-  user_input projection atoms, and `clearPreviewRuntimeForAppAtom` are
-  gone; cleanup rides `useRegisterEntityDisposer` + `disposeKey`.
-- Boundary tests prevent reintroduction; all listed suites pass ported,
-  not weakened; the streaming E2E suite and
-  `e2e-tests/package_manager.spec.ts` pass unchanged; the
-  priority-direction characterization test exists against the new store.
-- A contributor can answer — where a lifecycle fact is stored, which
-  transition changes it, which selector exposes it, which command performs
-  its effects, which typed facade connects another machine — without
-  finding a second atom, counter, ref, or effect that must agree.
+Phase B: window-routing/cache-coherence and actor/transport conformance suites
+green including all two-window scenarios; no intended user-visible behavior
+change before C1; dispatch tickets/receipts distinguish sent / committed /
+ignored / rejected / disposed.
 
-Phase B/C add: migrated controllers pass conformance with trace parity;
-every remaining custom runtime has a documented reason (resource
-ownership, synchronous contract, or a pending Phase C hold); and if the
-gate triggers, the distributed pilots are judged by that plan's own
-acceptance criteria and deletion budget.
+Phase C, per wave: the machine has exactly one authoritative host; its
+renderer controller and compensating plumbing are deleted (deletion budget
+met); same-entity-two-windows and window-close-mid-operation tests pass;
+no regression in the wave's product flows.
+
+End state: authority lives beside the resource it controls; ordinary actors
+share the transition/transaction kernel across both processes while narrow
+documented resource registries may retain specialized internals; windows are
+views, and ordinary shared actors require no machine-specific transport
+plumbing; window-owned resources use explicit routing adapters; Jotai holds
+only per-window UI state; renderer reload and window close are supported
+lifecycle events, not teardown hazards; contributors can explain sent,
+committed, completed, and durably accepted as distinct states; and the
+rules/docs describe this architecture, not the transitional one.

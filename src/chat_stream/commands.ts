@@ -13,8 +13,7 @@ import {
 } from "@/atoms/chatAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
-import { pendingScreenshotAppIdsAtom } from "@/atoms/previewAtoms";
-import { bumpPreviewReloadTokenForAppAtom } from "@/atoms/previewRuntimeAtoms";
+import type { ScreenshotCaptureSource } from "@/screenshot/state";
 import { setPackageManagerWarningForAppAtom } from "@/atoms/previewRuntimeAtoms";
 import { ipc } from "@/ipc/types";
 import type { Chat, ChatResponseEnd, Message } from "@/ipc/types";
@@ -103,6 +102,10 @@ export interface ChatStreamRuntimeDeps {
   queryClient: QueryClient;
   getSettings: () => UserSettings | null | undefined;
   getPosthog: () => PostHog | null;
+  /** Remote intent: idempotent/current-agnostic MANUAL_RELOAD. */
+  requestPreviewReload: (appId: number) => void;
+  /** Remote intent: idempotent/current-agnostic screenshot capture. */
+  requestCapture: (appId: number, source: ScreenshotCaptureSource) => void;
 }
 
 // =============================================================================
@@ -479,7 +482,14 @@ export function createProductionChatStreamCommands(
       targetAppId,
       response,
     }) {
-      const { store, queryClient, getSettings, getPosthog } = deps();
+      const {
+        store,
+        queryClient,
+        getSettings,
+        getPosthog,
+        requestPreviewReload,
+        requestCapture,
+      } = deps();
       const settings = getSettings();
 
       cleanupStreamTransport(chatId, invocationRef);
@@ -513,12 +523,11 @@ export function createProductionChatStreamCommands(
             store.set(isPreviewOpenAtom, true);
           }
           if (targetAppId !== null) {
-            store.set(bumpPreviewReloadTokenForAppAtom, targetAppId);
-            store.set(pendingScreenshotAppIdsAtom, (pending) => {
-              const next = new Map(pending);
-              next.set(targetAppId, "stream");
-              return next;
-            });
+            requestPreviewReload(targetAppId);
+            // Phase B1 marker: the window-capability router replaces the
+            // facade implementation with lease-targeted routing. Call sites
+            // continue to express the same idempotent capture intent.
+            requestCapture(targetAppId, "stream");
           }
         }
 

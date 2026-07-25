@@ -11,7 +11,8 @@ import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { showError } from "@/lib/toast";
 import { ipc } from "@/ipc/types";
 import { useAtomValue } from "jotai";
-import { currentAppUrlAtom } from "@/atoms/previewRuntimeAtoms";
+import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { useCurrentAppUrl } from "@/hooks/useAppRun";
 import { useTranslation } from "react-i18next";
 import type { RuntimeMode2 } from "@/lib/schemas";
 import { useState } from "react";
@@ -40,7 +41,8 @@ export function RuntimeModeSelector() {
   const { settings, updateSettings } = useSettings();
   const { t } = useTranslation(["settings", "common"]);
   const { userBudget } = useUserBudgetInfo();
-  const currentAppUrl = useAtomValue(currentAppUrlAtom);
+  const selectedAppId = useAtomValue(selectedAppIdAtom);
+  const currentAppUrl = useCurrentAppUrl(selectedAppId);
   const [pendingRuntimeMode, setPendingRuntimeMode] =
     useState<RuntimeMode2 | null>(null);
   const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);

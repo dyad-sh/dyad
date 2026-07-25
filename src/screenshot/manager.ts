@@ -4,6 +4,7 @@ import type { ScreenshotCommandAdapter } from "./commands";
 import { ScreenshotController } from "./controller";
 import {
   INITIAL_SCREENSHOT_STATE,
+  type ScreenshotCaptureSource,
   type ScreenshotEvent,
   type ScreenshotState,
 } from "./state";
@@ -31,6 +32,19 @@ export class ScreenshotManager {
   send(appId: number, event: ScreenshotEvent): void {
     this.host.ensure(appId).send(event);
   }
+
+  /**
+   * Remote intent: idempotent/current-agnostic.
+   *
+   * Repeated capture requests are admitted against the controller's current
+   * queue/supersession policy, so callers do not need lifecycle revisions.
+   */
+  requestCapture = (
+    appId: number,
+    source: ScreenshotCaptureSource,
+  ): void => {
+    this.send(appId, { type: "CAPTURE_REQUESTED", source });
+  };
 
   disposeKey = (appId: number): void => {
     this.host.disposeKey(appId);

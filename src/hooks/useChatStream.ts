@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useStore } from "jotai";
 import { usePostHog } from "posthog-js/react";
+import type { ChatStreamRuntimeDeps } from "@/chat_stream/commands";
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
 
@@ -76,7 +77,12 @@ export function useChatStreamHasPreview(chatId: number | null): boolean {
  * to execute stream side effects — including background queue dispatch for
  * chats whose page is not open.
  */
-export function useChatStreamRuntime(): void {
+export function useChatStreamRuntime(
+  facades: Pick<
+    ChatStreamRuntimeDeps,
+    "requestPreviewReload" | "requestCapture"
+  >,
+): void {
   const manager = useChatStreamManager();
   const store = useStore();
   const queryClient = useQueryClient();
@@ -94,8 +100,10 @@ export function useChatStreamRuntime(): void {
       queryClient,
       getSettings: () => settingsRef.current,
       getPosthog: () => posthogRef.current ?? null,
+      requestPreviewReload: facades.requestPreviewReload,
+      requestCapture: facades.requestCapture,
     });
-  }, [manager, store, queryClient]);
+  }, [facades.requestCapture, facades.requestPreviewReload, manager, store, queryClient]);
 
   // Register synchronously on the first render too: child components mount
   // (and can submit) before the parent layout's effects run.

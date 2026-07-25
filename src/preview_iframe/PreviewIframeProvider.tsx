@@ -7,8 +7,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useAtomValue, useStore } from "jotai";
-import { previewRunStateByAppIdAtom } from "@/atoms/previewRuntimeAtoms";
+import { useStore } from "jotai";
+import { useAppRunManager } from "@/app_run/AppRunProvider";
 import {
   useManagerLifecycle,
   useRegisterEntityDisposer,
@@ -20,7 +20,7 @@ const PreviewIframeContext = createContext<PreviewIframeManager | null>(null);
 
 export function PreviewIframeProvider({ children }: { children: ReactNode }) {
   const store = useStore();
-  const runStates = useAtomValue(previewRunStateByAppIdAtom);
+  const appRunManager = useAppRunManager();
   const [manager] = useState(
     () => new PreviewIframeManager(createPreviewIframeCommandAdapter(store)),
   );
@@ -28,26 +28,27 @@ export function PreviewIframeProvider({ children }: { children: ReactNode }) {
     (appId: number) => manager.disposeKey(appId),
     [manager],
   );
-  const handledRestartStartedAt = useRef(new Map<number, number>());
+  const handledRestartInvocationIds = useRef(new Map<number, string>());
 
   useEffect(() => {
-    for (const [appId, runState] of runStates) {
-      if (runState.operation !== "restart") {
-        handledRestartStartedAt.current.delete(appId);
-        continue;
+    return appRunManager.subscribeRunStateChanged((appId, runState) => {
+      if (runState.type !== "starting" || runState.operation !== "restart") {
+        handledRestartInvocationIds.current.delete(appId);
+        return;
       }
-      if (handledRestartStartedAt.current.get(appId) === runState.startedAt) {
-        continue;
+      if (
+        handledRestartInvocationIds.current.get(appId) ===
+        runState.invocationRef.operationId
+      ) {
+        return;
       }
-      handledRestartStartedAt.current.set(appId, runState.startedAt);
+      handledRestartInvocationIds.current.set(
+        appId,
+        runState.invocationRef.operationId,
+      );
       manager.send(appId, { type: "RUNTIME_RESTARTED" });
-    }
-    for (const appId of handledRestartStartedAt.current.keys()) {
-      if (!runStates.has(appId)) {
-        handledRestartStartedAt.current.delete(appId);
-      }
-    }
-  }, [manager, runStates]);
+    });
+  }, [appRunManager, manager]);
 
   useManagerLifecycle(manager);
   useRegisterEntityDisposer("app", disposeApp);

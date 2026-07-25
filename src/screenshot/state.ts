@@ -1,11 +1,10 @@
 /**
  * Per-app preview screenshot pipeline.
  *
- * Dependency graph: producer inbox -> screenshot -> shared preview adapter.
+ * Dependency graph: producer facade -> screenshot -> shared preview adapter.
  * The screenshot machine never imports another machine's controller. The
- * pendingScreenshotAppIdsAtom is a consumed producer mailbox, not tracked
- * machine state; its entries are cleared as soon as CAPTURE_REQUESTED is
- * accepted by the per-app controller.
+ * requestCapture facade admits CAPTURE_REQUESTED directly to the per-app
+ * controller.
  *
  * Execution and staleness policy: event transactions are handled FIFO and
  * accepted lifecycle/completion events are never silently dropped. Reserved

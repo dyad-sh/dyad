@@ -1,36 +1,7 @@
 import { atom } from "jotai";
 import type { ConsoleEntry } from "@/ipc/types";
-import type { RuntimeMode2 } from "@/lib/schemas";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { createPreviewConsoleTail } from "@/lib/preview_console_buffer";
-
-export type AppUrlState =
-  | {
-      appUrl: string;
-      appId: number;
-      originalUrl: string;
-      mode: RuntimeMode2;
-    }
-  | {
-      appUrl: null;
-      appId: null;
-      originalUrl: null;
-      mode: null;
-    };
-
-export const EMPTY_APP_URL: AppUrlState = {
-  appUrl: null,
-  appId: null,
-  originalUrl: null,
-  mode: null,
-};
-
-export type PreviewRunOperation = "run" | "restart" | "stop";
-
-export interface PreviewRunState {
-  operation: PreviewRunOperation;
-  startedAt: number;
-}
 
 export interface PreviewErrorMessage {
   message: string;
@@ -58,14 +29,7 @@ export type PreviewErrorUpdate =
       current: PreviewErrorMessage | undefined,
     ) => PreviewErrorMessage | undefined);
 
-export const previewRunStateByAppIdAtom = atom<Map<number, PreviewRunState>>(
-  new Map(),
-);
 export const previewErrorByAppIdAtom = atom<Map<number, PreviewErrorMessage>>(
-  new Map(),
-);
-export const appUrlByAppIdAtom = atom<Map<number, AppUrlState>>(new Map());
-export const previewReloadTokenByAppIdAtom = atom<Map<number, number>>(
   new Map(),
 );
 export const consoleEntriesByAppIdAtom = atom<Map<number, ConsoleEntry[]>>(
@@ -81,20 +45,6 @@ export const dismissedPackageManagerWarningAppIdsAtom = atom<Set<number>>(
 export const currentPreviewErrorAtom = atom((get) => {
   const appId = get(selectedAppIdAtom);
   return appId === null ? undefined : get(previewErrorByAppIdAtom).get(appId);
-});
-
-export const currentAppUrlAtom = atom((get) => {
-  const appId = get(selectedAppIdAtom);
-  return appId === null
-    ? EMPTY_APP_URL
-    : (get(appUrlByAppIdAtom).get(appId) ?? EMPTY_APP_URL);
-});
-
-export const currentPreviewReloadTokenAtom = atom((get) => {
-  const appId = get(selectedAppIdAtom);
-  return appId === null
-    ? 0
-    : (get(previewReloadTokenByAppIdAtom).get(appId) ?? 0);
 });
 
 export const currentConsoleEntriesAtom = atom((get) => {
@@ -115,25 +65,6 @@ export const currentPackageManagerWarningAtom = atom(
   },
 );
 
-export const setPreviewRunStateForAppAtom = atom(
-  null,
-  (
-    _get,
-    set,
-    { appId, state }: { appId: number; state: PreviewRunState | undefined },
-  ) => {
-    set(previewRunStateByAppIdAtom, (prev) => {
-      const next = new Map(prev);
-      if (state) {
-        next.set(appId, state);
-      } else {
-        next.delete(appId);
-      }
-      return next;
-    });
-  },
-);
-
 export const setPreviewErrorForAppAtom = atom(
   null,
   (
@@ -150,32 +81,6 @@ export const setPreviewErrorForAppAtom = atom(
       } else {
         next.delete(appId);
       }
-      return next;
-    });
-  },
-);
-
-export const setAppUrlForAppAtom = atom(
-  null,
-  (_get, set, { appId, appUrl }: { appId: number; appUrl: AppUrlState }) => {
-    set(appUrlByAppIdAtom, (prev) => {
-      const next = new Map(prev);
-      if (appUrl.appUrl === null) {
-        next.delete(appId);
-      } else {
-        next.set(appId, appUrl);
-      }
-      return next;
-    });
-  },
-);
-
-export const bumpPreviewReloadTokenForAppAtom = atom(
-  null,
-  (_get, set, appId: number) => {
-    set(previewReloadTokenByAppIdAtom, (prev) => {
-      const next = new Map(prev);
-      next.set(appId, (next.get(appId) ?? 0) + 1);
       return next;
     });
   },
@@ -280,22 +185,7 @@ export const clearPackageManagerWarningForAppAtom = atom(
 export const clearPreviewRuntimeForAppAtom = atom(
   null,
   (_get, set, appId: number) => {
-    set(previewRunStateByAppIdAtom, (prev) => {
-      const next = new Map(prev);
-      next.delete(appId);
-      return next;
-    });
     set(previewErrorByAppIdAtom, (prev) => {
-      const next = new Map(prev);
-      next.delete(appId);
-      return next;
-    });
-    set(appUrlByAppIdAtom, (prev) => {
-      const next = new Map(prev);
-      next.delete(appId);
-      return next;
-    });
-    set(previewReloadTokenByAppIdAtom, (prev) => {
       const next = new Map(prev);
       next.delete(appId);
       return next;

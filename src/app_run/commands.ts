@@ -1,11 +1,8 @@
 import type { createStore } from "jotai";
 import { ipc } from "@/ipc/types";
 import {
-  EMPTY_APP_URL,
   appendConsoleEntriesForAppAtom,
-  bumpPreviewReloadTokenForAppAtom,
   clearPackageManagerWarningForAppAtom,
-  setAppUrlForAppAtom,
   setConsoleEntriesForAppAtom,
   setPreviewErrorForAppAtom,
 } from "@/atoms/previewRuntimeAtoms";
@@ -52,6 +49,7 @@ export function toRunErrorInfo(error: unknown): RunErrorInfo {
  */
 export function createIpcRunCommandExecutor(
   store: JotaiStore,
+  options: { onReloadTokenBumped: (appId: number) => void },
 ): RunCommandExecutor {
   function setError(appId: number, error: RunErrorInfo | undefined) {
     store.set(setPreviewErrorForAppAtom, {
@@ -61,16 +59,9 @@ export function createIpcRunCommandExecutor(
   }
 
   function applyUrl(command: Extract<RunCommand, { type: "applyUrl" }>) {
-    store.set(setAppUrlForAppAtom, {
-      appId: command.appId,
-      appUrl: {
-        appUrl: command.url.appUrl,
-        appId: command.appId,
-        originalUrl: command.url.originalUrl,
-        mode: command.url.mode,
-      },
-    });
-    store.set(bumpPreviewReloadTokenForAppAtom, command.appId);
+    // The URL was committed to RunState before this command was scheduled.
+    // Preserve the legacy bump-after-url ordering for iframe remounts.
+    options.onReloadTokenBumped(command.appId);
   }
 
   async function executeStart(
@@ -90,8 +81,6 @@ export function createIpcRunCommandExecutor(
         // The pnpm rebuild flow keeps its banner visible while rebuilding.
         store.set(clearPackageManagerWarningForAppAtom, appId);
       }
-      store.set(setAppUrlForAppAtom, { appId, appUrl: EMPTY_APP_URL });
-
       if (operation !== "run") {
         await ipc.misc.clearLogs({ appId });
         store.set(setConsoleEntriesForAppAtom, { appId, entries: [] });
@@ -150,10 +139,6 @@ export function createIpcRunCommandExecutor(
           await executeStart(command, emit);
           return;
         case "prepareExternalStart":
-          store.set(setAppUrlForAppAtom, {
-            appId: command.appId,
-            appUrl: EMPTY_APP_URL,
-          });
           store.set(setConsoleEntriesForAppAtom, {
             appId: command.appId,
             entries: [],
@@ -196,10 +181,10 @@ export function createIpcRunCommandExecutor(
           applyUrl(command);
           return;
         case "bumpReloadToken":
-          store.set(bumpPreviewReloadTokenForAppAtom, command.appId);
+          options.onReloadTokenBumped(command.appId);
           return;
         case "reload":
-          store.set(bumpPreviewReloadTokenForAppAtom, command.appId);
+          options.onReloadTokenBumped(command.appId);
           emit({
             type: "RELOAD_DONE",
             invocationRef: command.invocationRef,

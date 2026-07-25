@@ -68,6 +68,8 @@ describe("ChatStreamManager", () => {
       queryClient: new QueryClient(),
       getSettings: () => undefined,
       getPosthog: () => null,
+      requestPreviewReload: vi.fn(),
+      requestCapture: vi.fn(),
     });
     const controller = manager.ensure(CHAT_ID);
     const keepAlive = controller.subscribe(() => undefined);
@@ -156,6 +158,8 @@ describe("ChatStreamManager", () => {
       queryClient: new QueryClient(),
       getSettings: () => undefined,
       getPosthog: () => null,
+      requestPreviewReload: vi.fn(),
+      requestCapture: vi.fn(),
     });
     const listener = vi.fn();
     const unsubscribe = manager.subscribeStreamFinished(listener);
@@ -211,6 +215,8 @@ describe("ChatStreamManager", () => {
       queryClient: new QueryClient(),
       getSettings: () => undefined,
       getPosthog: () => null,
+      requestPreviewReload: vi.fn(),
+      requestCapture: vi.fn(),
     });
     const controller = manager.ensure(CHAT_ID);
 

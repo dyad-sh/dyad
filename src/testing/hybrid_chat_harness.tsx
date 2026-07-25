@@ -100,9 +100,15 @@ import { createVersionPreviewRuntime } from "@/version_preview/commands";
 import { VersionPreviewManager } from "@/version_preview/manager";
 import { VersionPreviewProvider } from "@/version_preview/VersionPreviewProvider";
 import { PreviewIframeProvider } from "@/preview_iframe/PreviewIframeProvider";
-import { ScreenshotProvider } from "@/screenshot/ScreenshotProvider";
+import {
+  ScreenshotProvider,
+  useScreenshotManager,
+} from "@/screenshot/ScreenshotProvider";
 import { AppRunManager } from "@/app_run/manager";
-import { AppRunProvider } from "@/app_run/AppRunProvider";
+import {
+  AppRunProvider,
+  useAppRunManager,
+} from "@/app_run/AppRunProvider";
 import { PlanHandoffProvider } from "@/plan_handoff/PlanHandoffProvider";
 import { ChatStreamManager } from "@/chat_stream/manager";
 import { ChatStreamProvider } from "@/chat_stream/ChatStreamProvider";
@@ -569,7 +575,12 @@ function HybridEntityDisposalWiring({ store }: { store: JotaiStore }) {
 // dispatch keep working even when the chat page is closed. Mount the SAME
 // hook here rather than replicating its logic.
 function HybridAppShellHooks() {
-  useChatStreamRuntime();
+  const appRunManager = useAppRunManager();
+  const screenshotManager = useScreenshotManager();
+  useChatStreamRuntime({
+    requestPreviewReload: appRunManager.requestManualReload,
+    requestCapture: screenshotManager.requestCapture,
+  });
   usePlanEvents();
   useAppBlueprintEvents();
   return null;

@@ -1,5 +1,4 @@
 import { ComponentSelection, VisualEditingChange } from "@/ipc/types";
-import type { ScreenshotCaptureSource } from "@/screenshot/state";
 import { atom } from "jotai";
 
 export const selectedComponentsPreviewAtom = atom<ComponentSelection[]>([]);
@@ -22,9 +21,3 @@ export const screenshotDataUrlAtom = atom<string | null>(null);
 export const pendingVisualChangesAtom = atom<Map<string, VisualEditingChange>>(
   new Map(),
 );
-
-// Producer-facing screenshot request inbox. The screenshot provider consumes
-// entries into per-app machines and clears them immediately.
-export const pendingScreenshotAppIdsAtom = atom<
-  Map<number, ScreenshotCaptureSource>
->(new Map());

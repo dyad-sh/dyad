@@ -42,6 +42,8 @@ function setup({
     queryClient,
     getSettings: () => undefined,
     getPosthog: () => null,
+    requestPreviewReload: vi.fn(),
+    requestCapture: vi.fn(),
   };
   if (queue.length > 0) {
     store.set(queuedMessagesByIdAtom, new Map([[chatId, queue]]));
@@ -233,6 +235,8 @@ describe("manager disposal", () => {
       queryClient,
       getSettings: () => undefined,
       getPosthog: () => null,
+      requestPreviewReload: vi.fn(),
+      requestCapture: vi.fn(),
     });
     // Seed the chats-list cache so app-id resolution stays cache-only.
     queryClient.setQueryData(queryKeys.chats.list({ appId: null }), [

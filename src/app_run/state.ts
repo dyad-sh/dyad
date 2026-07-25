@@ -24,6 +24,12 @@ export type AppRunInvocationRef = InvocationRef<
  */
 
 export type RunOperation = "run" | "restart" | "rebuild";
+export type PreviewRunOperation = "run" | "restart" | "stop";
+
+export interface PreviewRunState {
+  operation: PreviewRunOperation;
+  startedAt: number;
+}
 
 export type ReloadReason = "hmr" | "manual";
 

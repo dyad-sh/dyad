@@ -2,12 +2,11 @@ import { ipc } from "@/ipc/types";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { showError, showSuccess } from "@/lib/toast";
 import { queryKeys } from "@/lib/queryKeys";
-import { useSetAtom } from "jotai";
-import { pendingScreenshotAppIdsAtom } from "@/atoms/previewAtoms";
+import { useScreenshotManager } from "@/screenshot/ScreenshotProvider";
 
 export function useCommitChanges() {
   const queryClient = useQueryClient();
-  const setPendingScreenshotAppIds = useSetAtom(pendingScreenshotAppIdsAtom);
+  const screenshotManager = useScreenshotManager();
 
   const { mutateAsync: commitChanges, isPending: isCommitting } = useMutation({
     mutationFn: async ({
@@ -21,11 +20,7 @@ export function useCommitChanges() {
     },
     onSuccess: (_, { appId }) => {
       showSuccess("Changes committed successfully");
-      setPendingScreenshotAppIds((pending) => {
-        const next = new Map(pending);
-        next.set(appId, "commit");
-        return next;
-      });
+      screenshotManager.requestCapture(appId, "commit");
       // Invalidate uncommitted files query
       queryClient.invalidateQueries({
         queryKey: queryKeys.uncommittedFiles.byApp({ appId }),

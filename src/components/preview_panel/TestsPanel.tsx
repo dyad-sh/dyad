@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
-import { currentAppUrlAtom } from "@/atoms/previewRuntimeAtoms";
+import { useCurrentAppUrl } from "@/hooks/useAppRun";
 import {
   applyTestRunFinishedAtom,
   applyTestRunStartedAtom,
@@ -474,7 +474,7 @@ export function TestsPanel() {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const specs = useAtomValue(currentTestSpecsAtom);
   const runState = useAtomValue(currentTestRunStateAtom);
-  const appUrl = useAtomValue(currentAppUrlAtom);
+  const appUrl = useCurrentAppUrl(selectedAppId);
   const setSpecs = useSetAtom(setTestSpecsForAppAtom);
   const setRunState = useSetAtom(setTestRunStateForAppAtom);
   // For lazy, subscription-free reads of the streamed output (askAiToFix runs

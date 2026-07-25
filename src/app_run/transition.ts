@@ -1,5 +1,5 @@
-import type { PreviewRunState } from "@/atoms/previewRuntimeAtoms";
 import type {
+  PreviewRunState,
   ReloadReason,
   RunCommand,
   RunEvent,
@@ -396,10 +396,8 @@ export function ignore(
 }
 
 /**
- * Projection of the machine state onto the legacy `PreviewRunState` shape
- * stored in `previewRunStateByAppIdAtom`. `undefined` means "not loading",
- * exactly as before: the atom entry only exists while a run/restart/stop
- * operation is in flight.
+ * Selects the in-flight operation details used by preview loading UI.
+ * `undefined` means that no run/restart/stop operation is in flight.
  */
 export function projectRunState(state: RunState): PreviewRunState | undefined {
   switch (state.type) {

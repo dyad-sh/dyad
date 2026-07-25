@@ -34,6 +34,8 @@ describe("chat stream command adapter instances", () => {
         queryClient: new QueryClient(),
         getSettings: () => undefined,
         getPosthog: () => null,
+        requestPreviewReload: vi.fn(),
+        requestCapture: vi.fn(),
       };
       return createProductionChatStreamCommands(() => deps);
     };
@@ -76,6 +78,8 @@ describe("chat stream command adapter instances", () => {
       queryClient: new QueryClient(),
       getSettings: () => undefined,
       getPosthog: () => null,
+      requestPreviewReload: vi.fn(),
+      requestCapture: vi.fn(),
     };
     vi.spyOn(ipc.chatStream, "start").mockImplementation(
       ({ chatId, userInputRequestId }, callbacks) => {
@@ -137,6 +141,8 @@ describe("chat stream command adapter instances", () => {
       queryClient: new QueryClient(),
       getSettings: () => undefined,
       getPosthog: () => null,
+      requestPreviewReload: vi.fn(),
+      requestCapture: vi.fn(),
     };
     deps.store.set(
       chatMessagesByIdAtom,

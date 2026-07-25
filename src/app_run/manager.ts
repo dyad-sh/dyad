@@ -1,13 +1,7 @@
-import { setPreviewRunStateForAppAtom } from "@/atoms/previewRuntimeAtoms";
 import { KeyedControllerHost } from "@/state_machines/keyed_host";
 import { uuidIdSource, type IdSource } from "@/state_machines/clock";
 import { InvocationRegistry } from "@/state_machines/invocation_ref";
-import { SnapshotStore } from "@/state_machines/snapshot_store";
 import { createTraceObserver } from "@/state_machines/trace";
-import {
-  registerAtomWriter,
-  type AtomProjectionWriter,
-} from "@/state_machines/projection";
 import { createIpcRunCommandExecutor, type JotaiStore } from "./commands";
 import {
   AppRunController,
@@ -15,28 +9,30 @@ import {
   type RunOperationInput,
   type RunProducerInput,
 } from "./controller";
-import { selectAppExit, type AppExit } from "./selectors";
 import type { AppRunInvocationRef, RunState } from "./state";
 import type { RunCommand, RunEvent } from "./state";
 import type { TransitionObserver } from "@/state_machines/types";
-import { projectRunState } from "./transition";
 
 const IDLE_STATE: RunState = { type: "idle" };
+export type RunStateChangedListener = (appId: number, state: RunState) => void;
 
-/** Provider-owned facade for the app-keyed run-state controllers. */
+/**
+ * Provider-owned facade for the app-keyed run-state controllers.
+ *
+ * Machine dependency graph: app_run -> preview_iframe through the injected
+ * AppRunStateSubscriptionFacade assembled outside both machine directories.
+ */
 export class AppRunManager {
   private readonly host: KeyedControllerHost<number, AppRunController>;
   private readonly invocations = new InvocationRegistry<AppRunController>();
   private readonly activeRefs = new Map<number, AppRunInvocationRef>();
-  private readonly admittedExitStores = new Map<
-    number,
-    SnapshotStore<AppExit | null>
-  >();
-  private projectionWriter: AtomProjectionWriter<unknown> | null = null;
-  private projectionEnabled = true;
+  private readonly runStateListeners = new Set<RunStateChangedListener>();
+  private readonly reloadTokens = new Map<number, number>();
+  private readonly reloadTokenListeners = new Map<number, Set<() => void>>();
+  private disposed = false;
 
   constructor(
-    private readonly store: JotaiStore,
+    store: JotaiStore,
     observer?: TransitionObserver<RunState, RunEvent, RunCommand>,
     private readonly idSource: IdSource = uuidIdSource,
   ) {
@@ -45,17 +41,35 @@ export class AppRunManager {
       controller = new AppRunController({
         appId,
         idSource: this.idSource,
-        executor: createIpcRunCommandExecutor(store),
+        executor: createIpcRunCommandExecutor(store, {
+          onReloadTokenBumped: (bumpedAppId) => {
+            // Commands begin executing before AppRunController publishes the
+            // transition snapshot. Defer the token edge so URL/run state is
+            // committed before reload consumers observe the new counter.
+            queueMicrotask(() => {
+              if (!this.disposed && this.host.get(appId) === controller) {
+                this.bumpReloadToken(bumpedAppId);
+              }
+            });
+          },
+        }),
         onInvocationStarted: (ref) => {
           this.invocations.register(ref, controller);
           this.activeRefs.set(appId, ref);
         },
         onStateChange: (state) => {
-          // The machine is the sole writer of the legacy run-state
-          // projection consumed by preview runtime atoms.
-          this.writeProjection({
-            appId,
-            state: projectRunState(state),
+          // AppRunController invokes this during its committed snapshot
+          // notification. The preview_iframe controller has no re-entrancy
+          // buffer, so every cross-machine callback crosses a microtask.
+          queueMicrotask(() => {
+            if (this.disposed || this.host.get(appId) !== controller) return;
+            for (const listener of this.runStateListeners) {
+              try {
+                listener(appId, state);
+              } catch (error) {
+                console.error("[app-run] Run-state listener failed:", error);
+              }
+            }
           });
         },
         observer: observer ?? createTraceObserver("app_run", appId),
@@ -65,14 +79,11 @@ export class AppRunManager {
   }
 
   start(): void {
-    this.projectionEnabled = true;
-    this.ensureProjectionWriter();
+    // The manager has no external subscription to acquire.
   }
 
   stop(): void {
-    this.projectionEnabled = false;
-    this.projectionWriter?.dispose();
-    this.projectionWriter = null;
+    // Final resources are released by dispose().
   }
 
   getSnapshot = (appId: number): RunState =>
@@ -82,28 +93,40 @@ export class AppRunManager {
     this.host.subscribeKey(appId, listener);
 
   /**
-   * APP_EXIT read model. `RunState.stopped` is authoritative when the
-   * transition applies; the manager-owned fallback preserves admitted
-   * legacy/fast-start exits that the unchanged transition table ignores.
+   * Remote intent: read/subscription.
+   *
+   * Notifications are post-commit and microtask-deferred. RunState carries
+   * the authoritative invocation ref used to correlate lifecycle edges.
    */
-  getAppExitSnapshot = (appId: number): AppExit | null =>
-    this.admittedExitStores.get(appId)?.getSnapshot() ??
-    selectAppExit(this.getSnapshot(appId));
+  subscribeRunStateChanged = (
+    listener: RunStateChangedListener,
+  ): (() => void) => {
+    if (this.disposed) return () => undefined;
+    this.runStateListeners.add(listener);
+    return () => this.runStateListeners.delete(listener);
+  };
 
-  subscribeAppExit = (appId: number, listener: () => void): (() => void) => {
-    const unsubscribeState = this.subscribeKey(appId, listener);
-    const unsubscribeFallback =
-      this.ensureAdmittedExitStore(appId).subscribe(listener);
+  getReloadToken = (appId: number): number => this.reloadTokens.get(appId) ?? 0;
+
+  subscribeReloadToken = (
+    appId: number,
+    listener: () => void,
+  ): (() => void) => {
+    if (this.disposed) return () => undefined;
+    let listeners = this.reloadTokenListeners.get(appId);
+    if (!listeners) {
+      listeners = new Set();
+      this.reloadTokenListeners.set(appId, listeners);
+    }
+    listeners.add(listener);
     return () => {
-      unsubscribeState();
-      unsubscribeFallback();
+      listeners?.delete(listener);
+      if (listeners?.size === 0) this.reloadTokenListeners.delete(appId);
     };
   };
 
   dispatch(appId: number, input: RunOperationInput): Promise<void> {
-    const pending = this.host.ensure(appId).dispatch(input);
-    if (input.type !== "STOP") this.clearAdmittedExit(appId);
-    return pending;
+    return this.host.ensure(appId).dispatch(input);
   }
 
   /**
@@ -122,9 +145,6 @@ export class AppRunManager {
       const claim = this.invocations.claim(input.invocationRef);
       if (claim.kind === "claimed") {
         claim.value.send(input);
-        if (input.type === "APP_EXIT") {
-          this.recordUnrepresentedExit(appId, input, claim.value);
-        }
         return true;
       } else {
         // Preserve ignored-event tracing without admitting stale work.
@@ -132,17 +152,23 @@ export class AppRunManager {
         return false;
       }
     }
-    const controller = this.host.ensure(appId);
-    controller.send(input);
-    if (input.type === "APP_EXIT") {
-      this.recordUnrepresentedExit(appId, input, controller);
-    }
+    this.host.ensure(appId).send(input);
     return true;
   }
 
+  /**
+   * Remote intent: idempotent/current-agnostic.
+   *
+   * This deliberately reuses MANUAL_RELOAD instead of introducing a token-only
+   * event: callers request the same preview reload as the existing manual UI.
+   * In ready state that includes the intentional transient `reloading` state.
+   */
+  requestManualReload = (appId: number): void => {
+    this.send(appId, { type: "MANUAL_RELOAD" });
+  };
+
   beginExternal(appId: number, input: ExternalRunOperationInput): void {
     this.host.ensure(appId).beginExternal(input);
-    this.clearAdmittedExit(appId);
   }
 
   settleExternal(
@@ -160,68 +186,38 @@ export class AppRunManager {
       this.invocations.delete(ref);
       this.activeRefs.delete(appId);
     }
-    this.clearAdmittedExit(appId);
+    if (this.reloadTokens.delete(appId)) {
+      this.notifyReloadToken(appId);
+    }
     this.host.disposeKey(appId);
-    this.admittedExitStores.get(appId)?.dispose();
-    this.admittedExitStores.delete(appId);
   };
 
   dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
     this.stop();
     for (const ref of this.activeRefs.values()) {
       this.invocations.delete(ref);
     }
     this.activeRefs.clear();
+    this.reloadTokens.clear();
+    this.runStateListeners.clear();
+    this.reloadTokenListeners.clear();
     this.host.dispose();
-    for (const store of this.admittedExitStores.values()) store.dispose();
-    this.admittedExitStores.clear();
   }
 
-  private ensureAdmittedExitStore(
-    appId: number,
-  ): SnapshotStore<AppExit | null> {
-    let store = this.admittedExitStores.get(appId);
-    if (!store) {
-      store = new SnapshotStore<AppExit | null>(null);
-      this.admittedExitStores.set(appId, store);
+  private bumpReloadToken(appId: number): void {
+    this.reloadTokens.set(appId, this.getReloadToken(appId) + 1);
+    this.notifyReloadToken(appId);
+  }
+
+  private notifyReloadToken(appId: number): void {
+    for (const listener of this.reloadTokenListeners.get(appId) ?? []) {
+      try {
+        listener();
+      } catch (error) {
+        console.error("[app-run] Reload-token listener failed:", error);
+      }
     }
-    return store;
-  }
-
-  private clearAdmittedExit(appId: number): void {
-    this.admittedExitStores.get(appId)?.setState(null);
-  }
-
-  private recordUnrepresentedExit(
-    appId: number,
-    input: Extract<RunProducerInput, { type: "APP_EXIT" }>,
-    controller: AppRunController,
-  ): void {
-    const stateExit = selectAppExit(controller.getSnapshot());
-    if (
-      stateExit?.exitCode === input.exitCode &&
-      stateExit.timestamp === input.timestamp
-    ) {
-      this.clearAdmittedExit(appId);
-      return;
-    }
-    this.ensureAdmittedExitStore(appId).setState({
-      appId,
-      exitCode: input.exitCode,
-      timestamp: input.timestamp,
-    });
-  }
-
-  private writeProjection(value: unknown): void {
-    if (!this.projectionEnabled) return;
-    this.ensureProjectionWriter().write(value);
-  }
-
-  private ensureProjectionWriter(): AtomProjectionWriter<unknown> {
-    this.projectionWriter ??= registerAtomWriter(
-      this.store,
-      setPreviewRunStateForAppAtom,
-    );
-    return this.projectionWriter;
   }
 }

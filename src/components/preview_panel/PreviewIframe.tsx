@@ -1,11 +1,11 @@
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import {
   appendConsoleEntriesForAppAtom,
-  currentAppUrlAtom,
   currentPreviewErrorAtom,
   setPreviewErrorForAppAtom,
   type PreviewErrorUpdate,
 } from "@/atoms/previewRuntimeAtoms";
+import { useCurrentAppUrl } from "@/hooks/useAppRun";
 import { useAtomValue, useSetAtom, useAtom } from "jotai";
 import {
   useCallback,
@@ -216,7 +216,7 @@ const PREVIEW_TOOLBAR_BUTTON_CLASSES =
 export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const { t } = useTranslation("home");
   const selectedAppId = useAtomValue(selectedAppIdAtom);
-  const { appUrl, originalUrl, mode } = useAtomValue(currentAppUrlAtom);
+  const { appUrl, originalUrl, mode } = useCurrentAppUrl(selectedAppId);
   const appendConsoleEntries = useSetAtom(appendConsoleEntriesForAppAtom);
   const errorMessage = useAtomValue(currentPreviewErrorAtom);
   const setPreviewErrorForApp = useSetAtom(setPreviewErrorForAppAtom);

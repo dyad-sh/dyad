@@ -1,9 +1,7 @@
 import { useAtomValue } from "jotai";
 import { previewModeAtom, selectedAppIdAtom } from "../../atoms/appAtoms";
-import {
-  currentConsoleEntriesAtom,
-  currentPreviewReloadTokenAtom,
-} from "@/atoms/previewRuntimeAtoms";
+import { currentConsoleEntriesAtom } from "@/atoms/previewRuntimeAtoms";
+import { usePreviewReloadToken } from "@/hooks/useAppRun";
 
 import { CodeView } from "./CodeView";
 import { PreviewIframe } from "./PreviewIframe";
@@ -86,7 +84,7 @@ export function PreviewPanel() {
   const { app } = useLoadApp(selectedAppId);
   const { settings, updateSettings } = useSettings();
   const queryClient = useQueryClient();
-  const key = useAtomValue(currentPreviewReloadTokenAtom);
+  const key = usePreviewReloadToken(selectedAppId);
   const consoleEntries = useAtomValue(currentConsoleEntriesAtom);
   const {
     data: nodeSystemInfo,

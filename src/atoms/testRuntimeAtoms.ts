@@ -115,7 +115,7 @@ export const clearTestRunOutputForAppAtom = atom(
   },
 );
 
-// Per-app maps, mirroring previewRunStateByAppIdAtom.
+// Per-app maps keep test discovery and execution state isolated by app.
 export const testSpecsByAppIdAtom = atom<Map<number, TestSpec[]>>(new Map());
 export const testRunStateByAppIdAtom = atom<Map<number, TestRunState>>(
   new Map(),

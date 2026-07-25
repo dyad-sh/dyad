@@ -21,6 +21,7 @@ import { useQueuePersistence } from "@/hooks/useQueuePersistence";
 import { useReopenClosedTab } from "@/hooks/useReopenClosedTab";
 import { VersionPreviewProvider } from "@/version_preview/VersionPreviewProvider";
 import { AppRunProvider } from "@/app_run/AppRunProvider";
+import { useAppRunManager } from "@/app_run/AppRunProvider";
 import { PlanHandoffProvider } from "@/plan_handoff/PlanHandoffProvider";
 import i18n from "@/i18n";
 import { LanguageSchema } from "@/lib/schemas";
@@ -39,7 +40,10 @@ import { systemClock, uuidIdSource } from "@/state_machines/clock";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { PreviewIframeProvider } from "@/preview_iframe/PreviewIframeProvider";
 import { GithubOpsProvider } from "@/github_ops/GithubOpsProvider";
-import { ScreenshotProvider } from "@/screenshot/ScreenshotProvider";
+import {
+  ScreenshotProvider,
+  useScreenshotManager,
+} from "@/screenshot/ScreenshotProvider";
 import { useSyncDefaultChatMode } from "@/hooks/useSyncDefaultChatMode";
 
 export default function RootLayout({ children }: { children: ReactNode }) {
@@ -73,25 +77,29 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   );
   return (
     <AppRunProvider>
-      <GithubOpsProvider>
-        <ImageGenerationProvider>
-          <FirstPromptProvider
-            chatStream={firstPromptChatStream}
-            clock={systemClock}
-            idSource={uuidIdSource}
-            settleDelayMs={settings?.isTestMode ? 0 : 2_000}
-          >
-            <PlanHandoffProvider chatStream={planHandoffChatStream}>
-              <RootLayoutContent>{children}</RootLayoutContent>
-            </PlanHandoffProvider>
-          </FirstPromptProvider>
-        </ImageGenerationProvider>
-      </GithubOpsProvider>
+      <ScreenshotProvider>
+        <GithubOpsProvider>
+          <ImageGenerationProvider>
+            <FirstPromptProvider
+              chatStream={firstPromptChatStream}
+              clock={systemClock}
+              idSource={uuidIdSource}
+              settleDelayMs={settings?.isTestMode ? 0 : 2_000}
+            >
+              <PlanHandoffProvider chatStream={planHandoffChatStream}>
+                <RootLayoutContent>{children}</RootLayoutContent>
+              </PlanHandoffProvider>
+            </FirstPromptProvider>
+          </ImageGenerationProvider>
+        </GithubOpsProvider>
+      </ScreenshotProvider>
     </AppRunProvider>
   );
 }
 
 function RootLayoutContent({ children }: { children: ReactNode }) {
+  const appRunManager = useAppRunManager();
+  const screenshotManager = useScreenshotManager();
   const { refreshAppIframe } = useRunApp();
   // Subscribe to app output events once at the root level to avoid duplicates
   useAppOutputSubscription();
@@ -130,7 +138,10 @@ function RootLayoutContent({ children }: { children: ReactNode }) {
   // Wire the chat stream machine's runtime (side-effect adapter). Streams
   // and queued-message dispatch keep running globally, even when the chat
   // page is closed.
-  useChatStreamRuntime();
+  useChatStreamRuntime({
+    requestPreviewReload: appRunManager.requestManualReload,
+    requestCapture: screenshotManager.requestCapture,
+  });
 
   // Persist queued messages to disk and hydrate them on startup, so queued
   // prompts survive app restarts / crashes.
@@ -199,8 +210,7 @@ function RootLayoutContent({ children }: { children: ReactNode }) {
     <>
       <VersionPreviewProvider>
         <PreviewIframeProvider>
-          <ScreenshotProvider>
-            <ThemeProvider>
+          <ThemeProvider>
               <DeepLinkProvider>
                 <SidebarProvider defaultOpen={false}>
                   <TitleBar />
@@ -223,8 +233,7 @@ function RootLayoutContent({ children }: { children: ReactNode }) {
                   <ForceCloseDialog />
                 </SidebarProvider>
               </DeepLinkProvider>
-            </ThemeProvider>
-          </ScreenshotProvider>
+          </ThemeProvider>
         </PreviewIframeProvider>
       </VersionPreviewProvider>
     </>

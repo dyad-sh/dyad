@@ -29,7 +29,10 @@ export const AppRunKeySchema = z
     appId: z.number().int().positive(),
   })
   .strict()
-  .transform(({ appId }) => appRunKey(appId));
+  // Wire decoding must not populate the process-lifetime canonical-key cache:
+  // authorization happens after decoding, so invalid entity IDs could
+  // otherwise grow the cache without bound.
+  .transform(({ appId }) => Object.freeze({ appId }));
 export type AppRunKey = z.infer<typeof AppRunKeySchema>;
 
 export const AppRunInvocationRefSchema = z

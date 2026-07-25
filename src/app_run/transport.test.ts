@@ -14,6 +14,7 @@ import {
   AppRunProducerEventSchema,
   AppRunRemoteSnapshotSchema,
   AppRunWireEventSchema,
+  appRunKey,
   projectAppRunRemoteSnapshot,
   type AppRunIntentEvent,
   type AppRunProducerEvent,
@@ -110,6 +111,16 @@ describe("app-run transport codecs", () => {
   it("round-trips the app key", () => {
     const key = { appId: APP_ID };
     expect(roundTrip(AppRunKeySchema, key)).toEqual(key);
+  });
+
+  it("does not intern untrusted decoded keys before authorization", () => {
+    const firstDecoded = AppRunKeySchema.parse({ appId: APP_ID });
+    const secondDecoded = AppRunKeySchema.parse({ appId: APP_ID });
+    const localCanonical = appRunKey(APP_ID);
+
+    expect(firstDecoded).not.toBe(secondDecoded);
+    expect(firstDecoded).not.toBe(localCanonical);
+    expect(appRunKey(APP_ID)).toBe(localCanonical);
   });
 
   it.each(intentEvents)("round-trips intent $type", (event) => {

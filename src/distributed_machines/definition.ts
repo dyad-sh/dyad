@@ -128,6 +128,12 @@ export interface RemoteMachineContract<
   readonly protocolVersion: number;
   readonly keyCodec: z.ZodType<Key>;
   readonly encodeKey: (key: Key) => unknown;
+  /**
+   * Optionally replace an authorized decoded key with the host's canonical
+   * identity key. This runs only after subscribe authorization succeeds, so
+   * untrusted wire keys cannot populate process-lifetime identity caches.
+   */
+  readonly canonicalizeKeyAfterAuthorization?: (key: Key) => Key;
   readonly eventCodec: z.ZodType<Event>;
   readonly snapshotCodec: z.ZodType<RemoteState>;
   readonly keyToString: (key: Key) => string;

@@ -22,6 +22,7 @@ import {
   AppRunIntentEventSchema,
   AppRunKeySchema,
   AppRunRemoteSnapshotSchema,
+  appRunKey,
   projectAppRunRemoteSnapshot,
   type AppRunKey,
   type AppRunProducerEvent,
@@ -386,6 +387,7 @@ export const appRunDefinition = {
     protocolVersion: REMOTE_MACHINE_PROTOCOL_VERSION,
     keyCodec: AppRunKeySchema,
     encodeKey: (key) => key,
+    canonicalizeKeyAfterAuthorization: (key) => appRunKey(key.appId),
     // Host-only producer events deliberately fail this renderer boundary.
     eventCodec: AppRunIntentEventSchema as z.ZodType<AppRunWireEvent>,
     snapshotCodec: AppRunRemoteSnapshotSchema,

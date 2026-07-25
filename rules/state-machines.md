@@ -19,6 +19,10 @@ Background and before/after examples of why this pattern exists:
 - A strict Zod object with a `message` field still accepts an `Error` instance
   through property lookup. Wire schemas that exclude `Error` objects must
   reject them before parsing the plain error-info object, and test that case.
+- When a keyed wire transport decodes its key and event independently, keep
+  events entity-relative. If an event must repeat entity identity, the
+  per-definition admission boundary must validate it (and cancellation refs)
+  against the decoded key; separate schemas cannot enforce that relationship.
 - Cover the full state × event matrix with exhaustive switches and `never`
   checks. Deliberate no-ops must use shared `ignore(state, reason)` so they are
   distinguishable from omissions and observable in telemetry.

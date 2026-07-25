@@ -233,7 +233,11 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
           )}
 
           {needsSetup && (
+            // Keyed by server so switching between two setup-needing
+            // servers starts each from its own blank fields, never
+            // carrying one server's typed credentials into another.
             <PluginSetupSection
+              key={s.id}
               server={s}
               inputs={setupInputs}
               isSaving={isUpdatingServer}

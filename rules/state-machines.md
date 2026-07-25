@@ -114,6 +114,10 @@ Background and before/after examples of why this pattern exists:
 - Async keyed disposal must stop admission synchronously but keep the lifetime
   addressable until its final cleanup promise settles. Every disposal caller
   awaits that same barrier, and same-key recreation stays blocked behind it.
+- Treat bounded retention as an edge-triggered deadline. Once a snapshot
+  qualifies for delayed disposal, traffic that leaves it qualifying must not
+  refresh the timer; cancel the deadline only when the authoritative snapshot
+  stops qualifying.
 - When a host passes live scopes or snapshot/send methods into definition
   factories, make factory-time access safe and construction failure-atomic.
   Dispose every acquired task/timer resource if any later factory step throws.

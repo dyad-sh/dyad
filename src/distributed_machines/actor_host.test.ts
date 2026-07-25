@@ -362,6 +362,31 @@ describe("ActorHost", () => {
     expect(actor.getSnapshot()).toEqual({ value: 2 });
   });
 
+  it("does not postpone terminal disposal for traffic in the terminal state", async () => {
+    const clock = createFakeClock();
+    const onDisposed = vi.fn();
+    const definition = machine(
+      "terminal-deadline",
+      lifecycle({
+        terminalRetention: { kind: "dispose-after", delayMs: 5 },
+        onDisposed,
+      }),
+    );
+    const actorHost = host(clock);
+    actorHost.register(definition);
+    const actor = actorHost.localRef(definition, "entity");
+
+    actor.send({ type: "TERMINAL" });
+    await Promise.resolve();
+    clock.advanceBy(4);
+    actor.send({ type: "IGNORE" });
+    await Promise.resolve();
+    clock.advanceBy(1);
+
+    await vi.waitFor(() => expect(onDisposed).toHaveBeenCalledOnce());
+    expect(actorHost.peek(definition.id, "entity")).toBeUndefined();
+  });
+
   it("runs definition lease cancellation before snapshot notification", () => {
     const order: string[] = [];
     const baseClock = createFakeClock();

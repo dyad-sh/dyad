@@ -340,9 +340,7 @@ class HostedActor<
     const policy = this.definition.lifecycle.terminalRetention;
     this.cancelIdleEviction();
     if (policy.kind === "retain" || this.disposing) return;
-    if (this.terminalTimer !== undefined) {
-      this.options.clock.cancel(this.terminalTimer);
-    }
+    if (this.terminalTimer !== undefined) return;
     this.terminalTimer = this.options.clock.schedule(() => {
       this.terminalTimer = undefined;
       try {

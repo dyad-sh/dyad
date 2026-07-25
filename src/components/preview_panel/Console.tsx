@@ -9,7 +9,7 @@ import { ConsoleFilters } from "./ConsoleFilters";
 import { useSettings } from "@/hooks/useSettings";
 import { showError } from "@/lib/toast";
 import { useConsoleEntries } from "@/preview_console/hooks";
-import { useAppRunManager } from "@/app_run/AppRunProvider";
+import { useAppRunRemoteManager } from "@/app_run/AppRunRemoteProvider";
 
 // Placeholder component shown during fast scrolling
 const ScrollSeekPlaceholder = () => {
@@ -69,7 +69,7 @@ ConsoleItem.displayName = "ConsoleItem";
 export const Console = () => {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const consoleEntries = useConsoleEntries(selectedAppId);
-  const appRunManager = useAppRunManager();
+  const appRunManager = useAppRunRemoteManager();
   const { settings } = useSettings();
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const containerRef = useRef<HTMLDivElement>(null);

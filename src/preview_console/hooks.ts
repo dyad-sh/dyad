@@ -2,16 +2,16 @@ import {
   useKeyedController,
   useKeyedMachineSelector,
 } from "@/state_machines/react";
-import { useAppRunManager } from "@/app_run/AppRunProvider";
+import { useAppRunRemoteManager } from "@/app_run/AppRunRemoteProvider";
 
 export function useConsoleEntries(appId: number | null) {
-  const manager = useAppRunManager();
+  const manager = useAppRunRemoteManager();
   const entries = useKeyedController(manager.previewConsole, appId ?? -1);
   return appId === null ? [] : entries;
 }
 
 export function useLatestConsoleEntry(appId: number | null) {
-  const manager = useAppRunManager();
+  const manager = useAppRunRemoteManager();
   return useKeyedMachineSelector(
     manager.previewConsole,
     appId ?? -1,

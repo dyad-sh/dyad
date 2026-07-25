@@ -106,8 +106,12 @@ import {
   ScreenshotProvider,
   useScreenshotManager,
 } from "@/screenshot/ScreenshotProvider";
-import { AppRunManager } from "@/app_run/manager";
-import { AppRunProvider, useAppRunManager } from "@/app_run/AppRunProvider";
+import { AppRunRemoteManager } from "@/app_run/remote_manager";
+import {
+  AppRunRemoteProvider,
+  useAppRunRemoteManager,
+} from "@/app_run/AppRunRemoteProvider";
+import { TestAppRunRemoteConnection } from "@/app_run/testing";
 import { PlanHandoffProvider } from "@/plan_handoff/PlanHandoffProvider";
 import { ChatStreamManager } from "@/chat_stream/manager";
 import { selectStreamError } from "@/chat_stream/transition";
@@ -580,7 +584,7 @@ function HybridEntityDisposalWiring({ store }: { store: JotaiStore }) {
 // dispatch keep working even when the chat page is closed. Mount the SAME
 // hook here rather than replicating its logic.
 function HybridAppShellHooks() {
-  const appRunManager = useAppRunManager();
+  const appRunManager = useAppRunRemoteManager();
   const screenshotManager = useScreenshotManager();
   useChatStreamRuntime({
     requestPreviewReload: appRunManager.requestManualReload,
@@ -985,10 +989,10 @@ export async function setupHybridChatHarness(
       queryClients.push(queryClient);
       const previewErrors = new DeferredPreviewErrorFacade();
       const packageWarnings = new PackageManagerWarningStore();
-      const appRunManager = new AppRunManager(store, undefined, undefined, {
-        previewErrors,
-        packageWarnings,
-      });
+      const appRunManager = new AppRunRemoteManager(
+        uuidIdSource,
+        new TestAppRunRemoteConnection(),
+      );
       const previewIframeManager = new PreviewIframeManager(
         createPreviewIframeCommandAdapter(store),
       );
@@ -1023,7 +1027,7 @@ export async function setupHybridChatHarness(
               <PreviewErrorFacadeProvider facade={previewErrors}>
                 <PackageManagerWarningProvider manager={packageWarnings}>
                   <ChatStreamProvider manager={chatStreamManager}>
-                    <AppRunProvider manager={appRunManager}>
+                    <AppRunRemoteProvider manager={appRunManager}>
                       <GithubOpsProvider>
                         <ImageGenerationProvider
                           manager={imageGenerationManager}
@@ -1062,7 +1066,7 @@ export async function setupHybridChatHarness(
                           </VersionPreviewProvider>
                         </ImageGenerationProvider>
                       </GithubOpsProvider>
-                    </AppRunProvider>
+                    </AppRunRemoteProvider>
                   </ChatStreamProvider>
                 </PackageManagerWarningProvider>
               </PreviewErrorFacadeProvider>

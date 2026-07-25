@@ -244,44 +244,43 @@ The production `app_run` definition satisfies the B3 boundary checklist:
   and invocation diagnostics. Console bytes stay on the keyed, bounded
   high-volume channel.
 
-C1 is not complete until the following current renderer modules or
-responsibilities are deleted or replaced:
+C1's trailing deletion implements the following checklist:
 
-- Delete `src/app_run/controller.ts` and
-  `src/app_run/controller.test.ts`; the main actor and host conformance tests
-  replace `AppRunController`.
-- Delete `src/app_run/manager.ts` and `src/app_run/manager.test.ts`, including
-  its renderer `KeyedControllerHost`, `InvocationRegistry`, `activeRefs`,
-  admitted-exit fallback stores, reload-token stores, and lifecycle listener
-  registry.
-- Delete `src/app_run/AppRunProvider.tsx`. Replace its manager context and
-  renderer entity disposer with the per-window remote actor client/ref.
-- Delete the renderer-to-main lifecycle executor in
-  `src/app_run/commands.ts`. Main executes start/restart/stop and owns process
-  settlement; independently justified renderer console, warning, error, and
-  iframe presentation effects move behind typed post-commit consumers.
-- Replace `src/hooks/useAppRun.ts` manager subscriptions with selectors over
-  the remote lifecycle read model. Remove the manager-backed app-exit fallback
-  and reload-token projection APIs.
-- Remove lifecycle routing in `src/hooks/useRunApp.ts`: its
-  `beginExternal`/`settleExternal` bridge, renderer ownership of run/restart/
-  rebuild/stop dispatch, and producer-event admission. The hook may remain as
-  a UI facade over remote dispatch receipts and keyed console subscriptions.
-- Replace the `AppRunStateSubscriptionFacade` implementation in
-  `src/app_wiring/cross_machine_facades.ts` and the manager wiring in
-  `src/app/layout.tsx` with the renderer remote read model. Keep
-  `preview_iframe` renderer-owned.
-- Remove `PreviewIframeProvider`'s dependency on `AppRunManager` in
-  `src/preview_iframe/PreviewIframeProvider.tsx`; feed it typed post-commit
-  app-run lifecycle events carrying actor/invocation identity.
-- Remove timestamp/map-edge inference embodied by the admitted-exit fallback
-  and `selectAppExit` timestamp comparison in `src/app_run/manager.ts`.
-  `src/app_run/selectors.ts` may remain only for pure selection over the safe
-  remote schema; no timestamp may stand in for invocation identity.
-- Rewrite affected renderer-centric tests in `src/hooks/useRunApp.test.tsx`
-  and `src/preview_iframe/usePreviewIframe.test.tsx` as remote-bootstrap,
-  cross-window dispatch, post-commit composition, and capability-routing
-  tests before deleting their manager fixtures.
+- [x] Delete `src/app_run/controller.ts` and
+      `src/app_run/controller.test.ts`; the main actor and host conformance tests
+      replace `AppRunController`.
+- [x] Delete `src/app_run/manager.ts` and `src/app_run/manager.test.ts`, including
+      its renderer `KeyedControllerHost`, `InvocationRegistry`, `activeRefs`,
+      admitted-exit fallback stores, reload-token stores, and lifecycle listener
+      registry.
+- [x] Delete `src/app_run/AppRunProvider.tsx`. Replace its manager context and
+      renderer entity disposer with the per-window remote actor client/ref.
+- [x] Delete the renderer-to-main lifecycle executor in
+      `src/app_run/commands.ts`. Main executes start/restart/stop and owns process
+      settlement; independently justified renderer console, warning, error, and
+      iframe presentation effects move behind typed post-commit consumers.
+- [x] Replace `src/hooks/useAppRun.ts` manager subscriptions with selectors over
+      the remote lifecycle read model. Remove the manager-backed app-exit fallback
+      and reload-token projection APIs.
+- [x] Remove lifecycle routing in `src/hooks/useRunApp.ts`: its
+      `beginExternal`/`settleExternal` bridge, renderer ownership of run/restart/
+      rebuild/stop dispatch, and producer-event admission. The hook may remain as
+      a UI facade over remote dispatch receipts and keyed console subscriptions.
+- [x] Replace the `AppRunStateSubscriptionFacade` implementation in
+      `src/app_wiring/cross_machine_facades.ts` and the manager wiring in
+      `src/app/layout.tsx` with the renderer remote read model. Keep
+      `preview_iframe` renderer-owned.
+- [x] Remove `PreviewIframeProvider`'s dependency on `AppRunManager` in
+      `src/preview_iframe/PreviewIframeProvider.tsx`; feed it typed post-commit
+      app-run lifecycle events carrying actor/invocation identity.
+- [x] Remove timestamp/map-edge inference embodied by the admitted-exit fallback
+      and `selectAppExit` timestamp comparison in `src/app_run/manager.ts`.
+      `src/app_run/selectors.ts` may remain only for pure selection over the safe
+      remote schema; no timestamp may stand in for invocation identity.
+- [x] Rewrite affected renderer-centric tests in `src/hooks/useRunApp.test.tsx`
+      and `src/preview_iframe/usePreviewIframe.test.tsx` as remote-bootstrap,
+      cross-window dispatch, post-commit composition, and capability-routing
+      tests before deleting their manager fixtures.
 
 The pure transition/state definitions may move to main and remain if they
 still describe the authoritative actor. Console buffers, package-manager

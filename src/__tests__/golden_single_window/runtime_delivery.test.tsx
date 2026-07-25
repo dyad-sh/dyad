@@ -3,8 +3,9 @@ import { QueryClient } from "@tanstack/react-query";
 import { createStore, Provider } from "jotai";
 import type { PropsWithChildren } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AppRunManager } from "@/app_run/manager";
-import { AppRunProvider } from "@/app_run/AppRunProvider";
+import { AppRunRemoteManager } from "@/app_run/remote_manager";
+import { AppRunRemoteProvider } from "@/app_run/AppRunRemoteProvider";
+import { TestAppRunRemoteConnection } from "@/app_run/testing";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useAppOutputSubscription, useRunApp } from "@/hooks/useRunApp";
 import { createImageGenerationCommandRunner } from "@/image_generation/commands";
@@ -101,23 +102,26 @@ function makeRunWrapper() {
   const store = createStore();
   const previewErrors = new DeferredPreviewErrorFacade();
   const packageWarnings = new PackageManagerWarningStore();
-  const manager = new AppRunManager(store, undefined, undefined, {
-    previewErrors,
-    packageWarnings,
-  });
+  const connection = new TestAppRunRemoteConnection();
+  const manager = new AppRunRemoteManager(
+    createSequentialIdSource(),
+    connection,
+  );
   store.set(selectedAppIdAtom, 7);
   function Wrapper({ children }: PropsWithChildren) {
     return (
       <Provider store={store}>
         <PreviewErrorFacadeProvider facade={previewErrors}>
           <PackageManagerWarningProvider manager={packageWarnings}>
-            <AppRunProvider manager={manager}>{children}</AppRunProvider>
+            <AppRunRemoteProvider manager={manager}>
+              {children}
+            </AppRunRemoteProvider>
           </PackageManagerWarningProvider>
         </PreviewErrorFacadeProvider>
       </Provider>
     );
   }
-  return { manager, packageWarnings, store, Wrapper };
+  return { connection, manager, packageWarnings, store, Wrapper };
 }
 
 describe("golden single-window: runtime presentation delivery", () => {
@@ -139,7 +143,17 @@ describe("golden single-window: runtime presentation delivery", () => {
   });
 
   it("retains the first console line emitted at the app-start boundary", async () => {
-    const { manager, Wrapper } = makeRunWrapper();
+    const { connection, manager, Wrapper } = makeRunWrapper();
+    connection.onDispatch = () => {
+      for (const listener of mocks.appOutputListeners) {
+        listener({
+          type: "stdout",
+          message: "first line",
+          appId: 7,
+          timestamp: 123,
+        });
+      }
+    };
     const hook = renderHook(
       () => {
         useAppOutputSubscription();
@@ -153,7 +167,7 @@ describe("golden single-window: runtime presentation delivery", () => {
     });
 
     // Protects the Phase B interest-keyed console fan-out.
-    expect(mocks.runApp).toHaveBeenCalledOnce();
+    expect(connection.dispatches).toHaveLength(1);
     expect(
       manager.previewConsole
         .getSnapshot(7)

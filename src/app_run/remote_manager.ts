@@ -4,7 +4,6 @@ import type { RemoteMachineClientConnection } from "@/distributed_machines/remot
 import { IpcRemoteMachineConnection } from "@/distributed_machines/ipc_connection";
 import { PreviewConsoleStore } from "@/preview_console/store";
 import { DyadError } from "@/errors/dyad_error";
-import type { AppExit } from "./selectors";
 import {
   appRunKey,
   projectAppRunRemoteSnapshot,
@@ -12,6 +11,10 @@ import {
   type AppRunRemoteSnapshot,
 } from "./transport";
 import { appRunClientDefinition } from "./client_definition";
+
+export type AppRunRemoteConnection = RemoteMachineClientConnection & {
+  start?: () => () => void;
+};
 
 export type AppRunRemoteStateChangedListener = (
   appId: number,
@@ -47,13 +50,6 @@ export class AppRunRemoteManager {
     { consumers: number; unsubscribe: () => void }
   >();
   private readonly listeners = new Set<AppRunRemoteStateChangedListener>();
-  private readonly appExitSnapshots = new Map<
-    number,
-    {
-      source: AppRunRemoteSnapshot["exit"];
-      value: AppExit;
-    }
-  >();
   private readonly settlementWaiters = new Map<
     string,
     { appId: number; resolve: (result: SettlementResult) => void }
@@ -63,9 +59,7 @@ export class AppRunRemoteManager {
 
   constructor(
     private readonly ids: IdSource = uuidIdSource,
-    private readonly connection: RemoteMachineClientConnection & {
-      start?: () => () => void;
-    } = new IpcRemoteMachineConnection(),
+    private readonly connection: AppRunRemoteConnection = new IpcRemoteMachineConnection(),
   ) {
     this.client = new RemoteMachineClient(this.connection, ids);
   }
@@ -97,32 +91,6 @@ export class AppRunRemoteManager {
       releaseManagerSubscription();
     };
   };
-
-  getAppExitSnapshot = (appId: number): AppExit | null => {
-    const exit = this.getSnapshot(appId).exit;
-    if (!exit || exit.timestamp === null) {
-      this.appExitSnapshots.delete(appId);
-      return null;
-    }
-    const cached = this.appExitSnapshots.get(appId);
-    if (cached?.source === exit) return cached.value;
-    const value = {
-      appId,
-      exitCode: exit.exitCode,
-      timestamp: exit.timestamp,
-    };
-    this.appExitSnapshots.set(appId, { source: exit, value });
-    return value;
-  };
-
-  subscribeAppExit = (appId: number, listener: () => void): (() => void) =>
-    this.subscribeKey(appId, listener);
-
-  getReloadToken = (appId: number): number =>
-    this.getSnapshot(appId).previewReloadEpoch;
-
-  subscribeReloadToken = (appId: number, listener: () => void): (() => void) =>
-    this.subscribeKey(appId, listener);
 
   subscribeRunStateChanged = (
     listener: AppRunRemoteStateChangedListener,
@@ -268,7 +236,6 @@ export class AppRunRemoteManager {
   disposeKey = (appId: number): void => {
     this.actorSubscriptions.get(appId)?.unsubscribe();
     this.actorSubscriptions.delete(appId);
-    this.appExitSnapshots.delete(appId);
     this.previewConsole.disposeKey(appId);
     this.resolveSettlementsForApp(appId);
   };
@@ -281,7 +248,6 @@ export class AppRunRemoteManager {
       subscription.unsubscribe();
     }
     this.actorSubscriptions.clear();
-    this.appExitSnapshots.clear();
     this.listeners.clear();
     this.previewConsole.dispose();
     for (const waiter of this.settlementWaiters.values()) {

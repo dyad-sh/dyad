@@ -14,10 +14,7 @@ import { AppRunActorService } from "@/ipc/services/app_run_actor_service";
 import { appRunClientDefinition } from "./client_definition";
 import { appRunDefinition } from "./definition";
 import { appRunKey } from "./transport";
-import {
-  AppRunRemoteManager,
-  NO_APP_RUN_REMOTE_SNAPSHOT,
-} from "./remote_manager";
+import { AppRunRemoteManager } from "./remote_manager";
 
 const runtime = vi.hoisted(() => ({
   start: vi.fn<() => Promise<void>>(),
@@ -305,7 +302,6 @@ describe("main-hosted app-run actor", () => {
     });
     manager.dispose();
   });
-
   it("rejects renderer dispatch when reset disposes its actor", async () => {
     const pending = deferred<void>();
     runtime.start.mockReturnValue(pending.promise);
@@ -447,28 +443,6 @@ describe("main-hosted app-run actor", () => {
     ).rejects.toMatchObject({
       kind: DyadErrorKind.Conflict,
     });
-  });
-
-  it("returns a reference-stable exit snapshot for React subscribers", () => {
-    const { duplex } = createHarness();
-    const manager = new AppRunRemoteManager(
-      createSequentialIdSource(),
-      duplex.connect(),
-    );
-    vi.spyOn(manager, "getSnapshot").mockReturnValue({
-      ...NO_APP_RUN_REMOTE_SNAPSHOT,
-      appId: 7,
-      phase: "stopped",
-      exit: {
-        exitCode: 1,
-        timestamp: 20,
-      },
-    });
-
-    const exit = manager.getAppExitSnapshot(7);
-    expect(exit).toEqual({ appId: 7, exitCode: 1, timestamp: 20 });
-    expect(manager.getAppExitSnapshot(7)).toBe(exit);
-    manager.dispose();
   });
 
   it("keeps restart cleanup options distinct from a pnpm rebuild", async () => {

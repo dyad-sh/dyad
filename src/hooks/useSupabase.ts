@@ -15,7 +15,7 @@ import {
 import { useSettings } from "./useSettings";
 import { isSupabaseConnected } from "@/lib/schemas";
 import { queryKeys } from "@/lib/queryKeys";
-import { useAppRunManager } from "@/app_run/AppRunProvider";
+import { useAppRunRemoteManager } from "@/app_run/AppRunRemoteProvider";
 
 const EDGE_LOGS_POLL_INTERVAL_MS = 5_000;
 
@@ -39,7 +39,7 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
   const { settings } = useSettings();
   const isConnected = isSupabaseConnected(settings);
 
-  const appRunManager = useAppRunManager();
+  const appRunManager = useAppRunRemoteManager();
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const [lastLogTimestamp, setLastLogTimestamp] = useAtom(lastLogTimestampAtom);
 

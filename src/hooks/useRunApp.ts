@@ -3,11 +3,8 @@ import { ipc, type AppOutput } from "@/ipc/types";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useAtomValue } from "jotai";
 import { showError, showInputRequest } from "@/lib/toast";
-import {
-  shouldShowPnpmMinimumReleaseAgeWarning,
-  type RuntimeMode2,
-} from "@/lib/schemas";
-import { useAppRunManager } from "@/app_run/AppRunProvider";
+import { shouldShowPnpmMinimumReleaseAgeWarning } from "@/lib/schemas";
+import { useAppRunRemoteManager } from "@/app_run/AppRunRemoteProvider";
 import { useAppRunState } from "./useAppRun";
 import { useSettings } from "./useSettings";
 import { usePreviewErrorFacade } from "@/app_wiring/preview_error_facade";
@@ -25,7 +22,7 @@ export function runAppLifecycleInBackground(
 }
 
 export function useRebuildAppAfterPnpmInstall() {
-  const manager = useAppRunManager();
+  const manager = useAppRunRemoteManager();
 
   return useCallback(
     (appId: number) =>
@@ -44,7 +41,7 @@ export function useRebuildAppAfterPnpmInstall() {
  */
 export function useAppOutputSubscription() {
   const { settings } = useSettings();
-  const manager = useAppRunManager();
+  const manager = useAppRunRemoteManager();
   const previewErrors = usePreviewErrorFacade();
   const packageWarnings = usePackageManagerWarningStore();
   const appId = useAtomValue(selectedAppIdAtom);
@@ -72,43 +69,10 @@ export function useAppOutputSubscription() {
     settings?.hidePnpmMinimumReleaseAgeWarning,
   ]);
 
-  // Thin producer: parses the proxy-server stdout line into a typed
-  // PROXY_READY event for the app's run-state machine. The machine decides
-  // whether it applies now, is buffered for an in-flight operation, or is a
-  // stale line that must be ignored.
+  // Runtime lifecycle producers route directly to the main actor. This
+  // renderer listener owns only presentation effects and console buffering.
   const processAppOutput = useCallback(
     (output: AppOutput) => {
-      if ("beginExternal" in manager) {
-        if (
-          output.type === "agent-lifecycle-started" &&
-          output.lifecycleRequestId &&
-          output.lifecycleOperation
-        ) {
-          manager.beginExternal(output.appId, {
-            requestId: output.lifecycleRequestId,
-            operation: output.lifecycleOperation,
-            startedAt: output.timestamp ?? Date.now(),
-            invocationRef: output.invocationRef,
-          });
-          return null;
-        }
-        if (
-          (output.type === "agent-lifecycle-succeeded" ||
-            output.type === "agent-lifecycle-failed") &&
-          output.lifecycleRequestId
-        ) {
-          manager.settleExternal(
-            output.appId,
-            output.lifecycleRequestId,
-            output.invocationRef,
-            output.type === "agent-lifecycle-failed"
-              ? { message: output.message }
-              : undefined,
-          );
-          return null;
-        }
-      }
-
       if (output.type === "input-requested") {
         if (selectedAppIdRef.current !== output.appId) {
           return null;
@@ -152,14 +116,6 @@ export function useAppOutputSubscription() {
       }
 
       if (output.type === "app-exit") {
-        if ("send" in manager) {
-          manager.send(output.appId, {
-            type: "APP_EXIT",
-            invocationRef: output.invocationRef,
-            exitCode: output.exitCode ?? null,
-            timestamp: output.timestamp ?? Date.now(),
-          });
-        }
         return null;
       }
 
@@ -181,30 +137,6 @@ export function useAppOutputSubscription() {
         output.message === "Rebuilding app after pnpm install..."
       ) {
         manager.previewConsole.clear(output.appId);
-      }
-
-      if ("send" in manager) {
-        if (
-          output.message.includes("hmr update") &&
-          output.message.includes("[vite]")
-        ) {
-          manager.send(output.appId, { type: "HMR_DETECTED" });
-        }
-        const appUrl = output.message.match(
-          /\[dyad-proxy-server\]started=\[(.*?)\]/,
-        )?.[1];
-        const originalUrl = output.message.match(/original=\[(.*?)\]/)?.[1];
-        const mode =
-          (output.message.match(/mode=\[(.*?)\]/)?.[1] as
-            | RuntimeMode2
-            | undefined) ?? "host";
-        if (appUrl && originalUrl) {
-          manager.send(output.appId, {
-            type: "PROXY_READY",
-            invocationRef: output.invocationRef,
-            url: { appUrl, originalUrl, mode },
-          });
-        }
       }
 
       const logEntry = {
@@ -265,7 +197,7 @@ export function useAppOutputSubscription() {
 }
 
 export function useRunApp() {
-  const manager = useAppRunManager();
+  const manager = useAppRunRemoteManager();
   const packageWarnings = usePackageManagerWarningStore();
   const appId = useAtomValue(selectedAppIdAtom);
   const runState = useAppRunState(appId);

@@ -20,5 +20,3 @@ export interface AppRunStateSubscriptionFacade {
     listener: (appId: number, state: AppRunRemoteSnapshot) => void,
   ): () => void;
 }
-
-export type AppRunStateSnapshot = AppRunRemoteSnapshot;

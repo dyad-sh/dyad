@@ -8,10 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { useStore } from "jotai";
-import type {
-  AppRunStateSnapshot,
-  AppRunStateSubscriptionFacade,
-} from "@/app_wiring/cross_machine_facades";
+import type { AppRunStateSubscriptionFacade } from "@/app_wiring/cross_machine_facades";
 import { usePreviewErrorFacade } from "@/app_wiring/preview_error_facade";
 import {
   useManagerLifecycle,
@@ -22,31 +19,13 @@ import { PreviewIframeManager } from "./manager";
 
 const PreviewIframeContext = createContext<PreviewIframeManager | null>(null);
 
-type LegacyRunStateForPreview =
-  | { readonly type: "idle" }
-  | {
-      readonly type: "starting";
-      readonly operation: string;
-      readonly invocationRef: { readonly operationId: string };
-    }
-  | {
-      readonly type: "ready" | "reloading" | "stopping" | "stopped" | "errored";
-      readonly invocationRef: { readonly operationId: string };
-    };
-
 export function PreviewIframeProvider({
   children,
   appRunState,
   manager: injectedManager,
 }: {
   children: ReactNode;
-  appRunState:
-    | AppRunStateSubscriptionFacade
-    | {
-        subscribeRunStateChanged(
-          listener: (appId: number, state: LegacyRunStateForPreview) => void,
-        ): () => void;
-      };
+  appRunState: AppRunStateSubscriptionFacade;
   manager?: PreviewIframeManager;
 }) {
   const store = useStore();
@@ -66,25 +45,12 @@ export function PreviewIframeProvider({
   );
 
   useEffect(() => {
-    const subscribe = appRunState.subscribeRunStateChanged as (
-      listener: (
-        appId: number,
-        state: LegacyRunStateForPreview | AppRunStateSnapshot,
-      ) => void,
-    ) => () => void;
-    return subscribe((appId, runState) => {
+    return appRunState.subscribeRunStateChanged((appId, runState) => {
       const isRestart =
-        "phase" in runState
-          ? runState.phase === "starting" &&
-            runState.operation !== "run" &&
-            runState.invocationRef !== null
-          : runState.type === "starting" && runState.operation !== "run";
-      const invocationRef =
-        "phase" in runState
-          ? runState.invocationRef
-          : runState.type === "idle"
-            ? null
-            : runState.invocationRef;
+        runState.phase === "starting" &&
+        runState.operation !== "run" &&
+        runState.invocationRef !== null;
+      const invocationRef = runState.invocationRef;
       if (!isRestart || !invocationRef) {
         handledRestartInvocationIds.current.delete(appId);
         return;

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { selectAppUrl } from "./selectors";
+import { projectAppRunRemoteSnapshot } from "./transport";
 import type { AppRunInvocationRef, RunState } from "./state";
+import { selectRemoteAppExit, selectRemoteAppUrl } from "./selectors";
 
 const invocationRef: AppRunInvocationRef = {
   kind: "app-run",
@@ -8,7 +9,11 @@ const invocationRef: AppRunInvocationRef = {
   operationId: "run-1",
 };
 
-describe("selectAppUrl", () => {
+function snapshot(state: RunState) {
+  return projectAppRunRemoteSnapshot(7, 1, state);
+}
+
+describe("app-run remote selectors", () => {
   it("exposes ready and reloading URLs as a running-server signal", () => {
     const url = {
       appUrl: "http://localhost:4200",
@@ -26,27 +31,31 @@ describe("selectAppUrl", () => {
         url,
       },
     ] satisfies RunState[]) {
-      expect(selectAppUrl(state)).toEqual({ ...url, appId: 7 });
+      expect(selectRemoteAppUrl(snapshot(state))).toEqual({ ...url, appId: 7 });
     }
   });
 
-  it("intentionally drops URLs when the run stops or errors", () => {
-    for (const state of [
-      {
-        type: "stopped",
-        appId: 7,
-        invocationRef,
-        exitCode: 1,
-        timestamp: 100,
-      },
-      {
-        type: "errored",
-        appId: 7,
-        invocationRef,
-        error: { message: "failed" },
-      },
-    ] satisfies RunState[]) {
-      expect(selectAppUrl(state).appUrl).toBeNull();
-    }
+  it("projects only an observed process exit", () => {
+    expect(
+      selectRemoteAppExit(
+        snapshot({
+          type: "stopped",
+          appId: 7,
+          invocationRef,
+          exitCode: 1,
+          timestamp: 100,
+        }),
+      ),
+    ).toEqual({ appId: 7, exitCode: 1, timestamp: 100 });
+    expect(
+      selectRemoteAppExit(
+        snapshot({
+          type: "errored",
+          appId: 7,
+          invocationRef,
+          error: { message: "failed" },
+        }),
+      ),
+    ).toBeNull();
   });
 });

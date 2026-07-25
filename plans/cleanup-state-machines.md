@@ -610,14 +610,16 @@ With B4 complete, Phase B is complete and C1 is unblocked.
 
 **C1 — `app_run` pilot.**
 
-Status: **C1.1–C1.2 done; C1.3 authority cutover implemented** — main
+Status: **C1.1–C1.2 done; C1.3 authority cutover and trailing deletion
+implemented** — main
 app-runtime orchestration is behind a transport-neutral service, the
 production `app_run` definition is registered on the main `ActorHost`, and
 renderer consumers use its revisioned remote read model. Producer lifecycle
 events are bound to the invocation at output-sink creation and enter the actor
-before keyed console fan-out. The legacy controller/manager files and
-renderer-to-main lifecycle adapters remain only for the immediate, separate
-rolling-deletion PR; C1 is not accepted until that deletion lands.
+before keyed console fan-out. The separate rolling-deletion change removes the
+legacy renderer controller/manager, invocation registry, lifecycle command
+adapter, fallback projections, and renderer producer routing. C1 is accepted
+when the authority-cutover and stacked deletion PRs land.
 
 Main owns process lifecycle and binds producer output to the invocation at
 creation. Renderer windows keep local console views and `preview_iframe`

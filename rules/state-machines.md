@@ -387,6 +387,9 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   expected ignore reason.
 - `boundaries.test.ts` enforces kernel purity and machine-to-machine isolation;
   add new machine directories to its inventory when they are introduced.
+- Keep remote transport test doubles behind an existing domain test-support
+  facade. Renderer and hybrid harnesses may consume that facade, but must not
+  widen the allowlist of production modules that import transport internals.
 - In `runCosim` suites, `maxSchedules` bounds visited configurations, not only
   quiescent leaves. If one orthogonal action (for example quit at every phase)
   causes a bound hit, split it into a focused exhaustive alphabet instead of

@@ -1,10 +1,12 @@
 import { act, renderHook } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
-import { AppRunProvider } from "@/app_run/AppRunProvider";
-import { AppRunManager } from "@/app_run/manager";
+import { AppRunRemoteProvider } from "@/app_run/AppRunRemoteProvider";
+import { AppRunRemoteManager } from "@/app_run/remote_manager";
+import { TestAppRunRemoteConnection } from "@/app_run/testing";
 import type { AppRunInvocationRef } from "@/app_run/state";
+import { createSequentialIdSource } from "@/state_machines/testing";
 import {
   EntityDisposalProvider,
   useEntityDisposal,
@@ -20,19 +22,27 @@ import {
 } from "@/app_wiring/preview_error_facade";
 
 function makeWrapper(store = createStore()) {
-  const appRunManager = new AppRunManager(store);
+  const connection = new TestAppRunRemoteConnection();
+  const appRunManager = new AppRunRemoteManager(
+    createSequentialIdSource(),
+    connection,
+  );
+  // Establish the app-specific remote subscription that production
+  // useAppRunState consumers create.
+  appRunManager.getSnapshot(1);
   return {
     appRunManager,
+    connection,
     Wrapper({ children }: { children: ReactNode }) {
       return (
         <EntityDisposalProvider>
           <Provider store={store}>
             <PreviewErrorFacadeProvider>
-              <AppRunProvider manager={appRunManager}>
+              <AppRunRemoteProvider manager={appRunManager}>
                 <PreviewIframeProvider appRunState={appRunManager}>
                   {children}
                 </PreviewIframeProvider>
-              </AppRunProvider>
+              </AppRunRemoteProvider>
             </PreviewErrorFacadeProvider>
           </Provider>
         </EntityDisposalProvider>
@@ -62,7 +72,7 @@ describe("useSendPreviewIframeEvent", () => {
     "resets preserved navigation when a %s begins",
     async (operation) => {
       const store = createStore();
-      const { Wrapper, appRunManager } = makeWrapper(store);
+      const { Wrapper, connection } = makeWrapper(store);
       const { result } = renderHook(() => usePreviewIframeController(1), {
         wrapper: Wrapper,
       });
@@ -83,11 +93,8 @@ describe("useSendPreviewIframeEvent", () => {
       );
 
       await act(async () => {
-        appRunManager.beginExternal(1, {
-          requestId: `${operation}-1`,
-          operation,
-          startedAt: 1_000,
-        });
+        await Promise.resolve();
+        connection.publishStarting(1, `${operation}-1`, operation, 1_000);
         await Promise.resolve();
       });
 
@@ -101,7 +108,7 @@ describe("useSendPreviewIframeEvent", () => {
 
   it("clears restart dedupe metadata when the app is disposed", async () => {
     const store = createStore();
-    const { Wrapper, appRunManager } = makeWrapper(store);
+    const { Wrapper, appRunManager, connection } = makeWrapper(store);
     const { result } = renderHook(
       () => ({
         preview: usePreviewIframeController(1),
@@ -116,14 +123,15 @@ describe("useSendPreviewIframeEvent", () => {
     };
 
     await act(async () => {
-      appRunManager.beginExternal(1, {
-        requestId: "restart-before-delete",
-        operation: "restart",
-        startedAt: 1_000,
-        invocationRef,
-      });
+      connection.publishStarting(
+        1,
+        invocationRef.operationId,
+        "restart",
+        1_000,
+      );
       await Promise.resolve();
-      result.current.entityDisposal.disposeForApp(1);
+    });
+    act(() => {
       result.current.preview.send({
         type: "APP_URL_CHANGED",
         url: "http://localhost:3000",
@@ -139,13 +147,12 @@ describe("useSendPreviewIframeEvent", () => {
     );
 
     await act(async () => {
-      appRunManager.beginExternal(1, {
-        requestId: "restart-after-delete",
-        operation: "restart",
-        startedAt: 2_000,
-        invocationRef,
-      });
-      await Promise.resolve();
+      result.current.entityDisposal.disposeForApp(1);
+      appRunManager.getSnapshot(1);
+    });
+    await vi.waitFor(() => {
+      expect(appRunManager.getSnapshot(1).phase).toBe("starting");
+      expect(result.current.preview.state.currentUrl).toBeNull();
     });
 
     expect(result.current.preview.state).toMatchObject({

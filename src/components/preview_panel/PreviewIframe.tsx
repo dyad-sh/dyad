@@ -102,7 +102,7 @@ import {
   useScreenshot,
   type ScreenshotAdapterEvent,
 } from "@/screenshot/useScreenshot";
-import { useAppRunManager } from "@/app_run/AppRunProvider";
+import { useAppRunRemoteManager } from "@/app_run/AppRunRemoteProvider";
 
 interface ErrorBannerProps {
   error:
@@ -216,7 +216,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const { t } = useTranslation("home");
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const { appUrl, originalUrl, mode } = useCurrentAppUrl(selectedAppId);
-  const appRunManager = useAppRunManager();
+  const appRunManager = useAppRunRemoteManager();
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const { streamMessage } = useStreamChat();
   const {

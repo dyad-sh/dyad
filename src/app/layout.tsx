@@ -20,8 +20,10 @@ import { useChatStreamRuntime } from "@/hooks/useChatStream";
 import { useQueuePersistence } from "@/hooks/useQueuePersistence";
 import { useReopenClosedTab } from "@/hooks/useReopenClosedTab";
 import { VersionPreviewProvider } from "@/version_preview/VersionPreviewProvider";
-import { AppRunProvider } from "@/app_run/AppRunProvider";
-import { useAppRunManager } from "@/app_run/AppRunProvider";
+import {
+  AppRunRemoteProvider,
+  useAppRunRemoteManager,
+} from "@/app_run/AppRunRemoteProvider";
 import { PlanHandoffProvider } from "@/plan_handoff/PlanHandoffProvider";
 import i18n from "@/i18n";
 import { LanguageSchema } from "@/lib/schemas";
@@ -84,7 +86,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <PreviewErrorFacadeProvider>
       <PackageManagerWarningProvider>
-        <AppRunProvider>
+        <AppRunRemoteProvider>
           <ScreenshotProvider>
             <GithubOpsProvider>
               <ImageGenerationProvider>
@@ -101,14 +103,14 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               </ImageGenerationProvider>
             </GithubOpsProvider>
           </ScreenshotProvider>
-        </AppRunProvider>
+        </AppRunRemoteProvider>
       </PackageManagerWarningProvider>
     </PreviewErrorFacadeProvider>
   );
 }
 
 function RootLayoutContent({ children }: { children: ReactNode }) {
-  const appRunManager = useAppRunManager();
+  const appRunManager = useAppRunRemoteManager();
   const previewErrors = usePreviewErrorFacade();
   const screenshotManager = useScreenshotManager();
   const { refreshAppIframe } = useRunApp();
@@ -117,9 +119,9 @@ function RootLayoutContent({ children }: { children: ReactNode }) {
   useEffect(
     () =>
       appRunManager.subscribeRunStateChanged((appId, state) => {
-        if ("phase" in state && state.operationError) {
+        if (state.operationError) {
           previewErrors.setAppError(appId, state.operationError.message);
-        } else if ("phase" in state) {
+        } else {
           previewErrors.clearAppError(appId);
         }
       }),

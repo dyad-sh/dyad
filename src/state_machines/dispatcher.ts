@@ -265,6 +265,10 @@ export class TransactionalDispatcher<
     } catch (error) {
       this.report({ stage: "before-commit", error });
     }
+    if (!this.accepting) {
+      settle({ kind: "disposed" });
+      return;
+    }
 
     // Linearization point. Every callback below reads this committed snapshot.
     if (result.state === previous) {

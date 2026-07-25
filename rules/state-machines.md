@@ -42,6 +42,9 @@ Background and before/after examples of why this pattern exists:
   would drop the event against a partially modified old state. Cancellation is
   required resource hygiene, while operation/state-instance token checks are
   the correctness backstop that rejects any stale callback which still fires.
+- Recheck dispatcher admission after an effectful pre-commit hook. The hook can
+  synchronously re-enter owner disposal; if it does, do not commit, notify,
+  schedule commands, or report the current ticket as applied.
 - Use `TimerLeaseScope` for migrated watchdogs. Carry the lease's operation or
   state-instance token in its event, cancel it in the dispatcher's pre-commit
   lease hook before exiting state, explicitly replace it on self-re-entry, and

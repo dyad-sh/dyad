@@ -244,6 +244,37 @@ describe("TransactionalDispatcher", () => {
     ).resolves.toEqual({ kind: "disposed" });
   });
 
+  it("settles the current ticket as disposed when beforeCommit closes admission", async () => {
+    const project = vi.fn();
+    const observer = vi.fn();
+    const schedule = vi.fn();
+    let dispatcher!: TransactionalDispatcher<
+      TestState,
+      TestEvent,
+      TestCommand,
+      TestReason
+    >;
+    dispatcher = new TransactionalDispatcher({
+      initialState: { value: 0 },
+      transition: testTransition,
+      beforeCommit() {
+        dispatcher.dispose();
+      },
+      project,
+      observer: { onTransitionApplied: observer },
+      scheduler: { schedule },
+      runCommand: () => undefined,
+    });
+
+    const ticket = dispatcher.enqueue({ type: "SET", value: 1 });
+
+    await expect(ticket.settled).resolves.toEqual({ kind: "disposed" });
+    expect(dispatcher.getSnapshot()).toEqual({ value: 0 });
+    expect(project).not.toHaveBeenCalled();
+    expect(observer).not.toHaveBeenCalled();
+    expect(schedule).not.toHaveBeenCalled();
+  });
+
   it("preserves ticket settlement order during re-entrant admission shutdown", async () => {
     const settlementOrder: string[] = [];
     let dispatcher: TransactionalDispatcher<

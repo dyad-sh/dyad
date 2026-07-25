@@ -123,7 +123,20 @@ export function useMcp() {
     mutationFn: async (params: McpServerUpdate) => {
       return ipc.mcp.updateServer(params);
     },
-    onSuccess: async () => {
+    onSuccess: async (_result, params) => {
+      // Drop this server's cached probe result before re-discovering, so a
+      // status from before the change (e.g. a 401 from before its key was
+      // saved) can't briefly show as a failure. The batched query keeps
+      // previous data through a refetch, which would otherwise retain it.
+      queryClient.setQueriesData<Record<number, McpListToolsResult>>(
+        { queryKey: queryKeys.mcp.toolsByServer.all },
+        (old) => {
+          if (!old || !(params.id in old)) return old;
+          const next = { ...old };
+          delete next[params.id];
+          return next;
+        },
+      );
       await queryClient.invalidateQueries({ queryKey: queryKeys.mcp.servers });
       await queryClient.invalidateQueries({
         queryKey: queryKeys.mcp.toolsByServer.all,

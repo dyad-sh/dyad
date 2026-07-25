@@ -271,7 +271,6 @@ class HostedActor<
   dispose(cause: ActorDisposalCause): Promise<void> {
     if (this.disposal) return this.disposal;
     this.disposing = true;
-    this.stopAdmission();
     const context: ActorDisposalContext<Key, State> = {
       key: this.key,
       cause,
@@ -281,6 +280,7 @@ class HostedActor<
     this.disposal = Promise.resolve()
       .then(() => this.finishDisposal(context))
       .finally(() => this.removeFromHost(this));
+    this.stopAdmission();
     return this.disposal;
   }
 
@@ -336,7 +336,9 @@ class HostedActor<
     ) {
       return;
     }
-    this.idleTimer = this.options.clock.schedule(() => {
+    let timer!: ClockHandle;
+    timer = this.options.clock.schedule(() => {
+      if (this.idleTimer !== timer) return;
       this.idleTimer = undefined;
       if (this.subscriberCount === 0) {
         void this.dispose("idle").catch((failure) =>
@@ -344,6 +346,7 @@ class HostedActor<
         );
       }
     }, policy.delayMs);
+    this.idleTimer = timer;
   }
 
   private scheduleTerminalDisposal(): void {
@@ -351,7 +354,9 @@ class HostedActor<
     this.cancelIdleEviction();
     if (policy.kind === "retain" || this.disposing) return;
     if (this.terminalTimer !== undefined) return;
-    this.terminalTimer = this.options.clock.schedule(() => {
+    let timer!: ClockHandle;
+    timer = this.options.clock.schedule(() => {
+      if (this.terminalTimer !== timer) return;
       this.terminalTimer = undefined;
       try {
         if (!this.definition.lifecycle.isTerminal?.(this.getSnapshot())) {
@@ -366,6 +371,7 @@ class HostedActor<
         this.reportFailure(failure),
       );
     }, policy.delayMs);
+    this.terminalTimer = timer;
   }
 
   private reconcileRetention(): void {
@@ -436,6 +442,11 @@ export class ActorHost {
     Map<unknown, HostedActor<any, any, any, any, any>>
   >();
   private readonly machineDisposals = new Map<string, Promise<void>>();
+  private readonly machineConstructionDisposals = new Map<
+    string,
+    Promise<void>[]
+  >();
+  private readonly hostConstructionDisposals: Promise<void>[] = [];
   private disposed = false;
   private disposal: Promise<void> | undefined;
 
@@ -464,6 +475,14 @@ export class ActorHost {
     if (definition.host !== this.options.placement) {
       throw new Error(
         `Machine ${definition.id} is placed in ${definition.host}, not ${this.options.placement}`,
+      );
+    }
+    if (
+      definition.lifecycle.terminalRetention.kind === "dispose-after" &&
+      !definition.lifecycle.isTerminal
+    ) {
+      throw new Error(
+        `Machine ${definition.id} requires isTerminal for bounded terminal retention`,
       );
     }
     if (this.definitions.has(definition.id)) {
@@ -649,16 +668,22 @@ export class ActorHost {
   disposeMachine(machineId: string): Promise<void> {
     const existing = this.machineDisposals.get(machineId);
     if (existing) return existing;
-    const actors = [...(this.actors.get(machineId)?.values() ?? [])];
+    let actors!: readonly HostedActor<any, any, any, any, any>[];
+    const constructionDisposals: Promise<void>[] = [];
     let disposal!: Promise<void>;
     disposal = Promise.resolve()
-      .then(() => this.disposeActors(actors, "machine-disposal"))
+      .then(() =>
+        this.disposeActors(actors, "machine-disposal", constructionDisposals),
+      )
       .finally(() => {
         if (this.machineDisposals.get(machineId) === disposal) {
           this.machineDisposals.delete(machineId);
+          this.machineConstructionDisposals.delete(machineId);
         }
       });
     this.machineDisposals.set(machineId, disposal);
+    this.machineConstructionDisposals.set(machineId, constructionDisposals);
+    actors = [...(this.actors.get(machineId)?.values() ?? [])];
     for (const actor of actors) actor.stopAdmission();
     return disposal;
   }
@@ -666,13 +691,12 @@ export class ActorHost {
   dispose(): Promise<void> {
     if (this.disposal) return this.disposal;
     this.disposed = true;
-    const actors = [...this.actors.values()].flatMap((keyed) => [
-      ...keyed.values(),
-    ]);
-    for (const actor of actors) actor.stopAdmission();
+    let actors!: readonly HostedActor<any, any, any, any, any>[];
     this.disposal = Promise.resolve().then(() =>
       this.finishHostDisposal(actors),
     );
+    actors = [...this.actors.values()].flatMap((keyed) => [...keyed.values()]);
+    for (const actor of actors) actor.stopAdmission();
     return this.disposal;
   }
 
@@ -680,7 +704,11 @@ export class ActorHost {
     actors: readonly HostedActor<any, any, any, any, any>[],
   ): Promise<void> {
     try {
-      await this.disposeActors(actors, "shutdown");
+      await this.disposeActors(
+        actors,
+        "shutdown",
+        this.hostConstructionDisposals,
+      );
     } finally {
       this.definitions.clear();
     }
@@ -752,11 +780,21 @@ export class ActorHost {
       constructing.delete(key);
       if (constructing.size === 0) this.constructing.delete(definition.id);
     }
+    const machineConstructionDisposals = this.machineConstructionDisposals.get(
+      definition.id,
+    );
+    if (this.disposed || machineConstructionDisposals) {
+      const cleanup = actor.dispose(
+        this.disposed ? "shutdown" : "machine-disposal",
+      );
+      if (this.disposed) this.hostConstructionDisposals.push(cleanup);
+      machineConstructionDisposals?.push(cleanup);
+    }
     if (this.disposed) {
-      void actor
-        .dispose("shutdown")
-        .catch((failure) => this.reportFailure(definition.id, key, failure));
       throw new ActorAdmissionError("host-disposed", "ActorHost is disposed");
+    }
+    if (machineConstructionDisposals) {
+      this.throwMachineDisposing(definition.id);
     }
     keyed.set(key, actor);
     actor.activate();
@@ -804,9 +842,10 @@ export class ActorHost {
   private async disposeActors(
     actors: readonly HostedActor<any, any, any, any, any>[],
     cause: ActorDisposalCause,
+    additionalDisposals: readonly Promise<void>[] = [],
   ): Promise<void> {
     const results = await Promise.allSettled(
-      actors.map((actor) => actor.dispose(cause)),
+      actors.map((actor) => actor.dispose(cause)).concat(additionalDisposals),
     );
     const failures = results.flatMap((result) =>
       result.status === "rejected" ? [result.reason] : [],

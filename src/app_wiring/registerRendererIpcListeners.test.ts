@@ -82,6 +82,61 @@ describe("query invalidation listener", () => {
     });
     disposeReplacement();
   });
+
+  it("retries a failed bootstrap without retaining stale pending batches", async () => {
+    let onInvalidations!: (batch: QueryInvalidationBatch) => void;
+    const sessionId = randomUUID() as WindowSessionId;
+    const bootstrap = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("main not ready"))
+      .mockResolvedValue({
+        windowSessionId: sessionId,
+        currentQueryInvalidationEpoch: 1,
+        missedInvalidations: [
+          { epoch: 1, scopes: [{ family: "apps" as const }] },
+        ],
+        recoveryScopes: [],
+      });
+    const ipcClient = {
+      windowInfrastructure: { bootstrap },
+      events: {
+        windowInfrastructure: {
+          onQueryInvalidations: vi.fn((listener) => {
+            onInvalidations = listener;
+            return vi.fn();
+          }),
+        },
+      },
+    } as unknown as Pick<RendererIpcClient, "windowInfrastructure" | "events">;
+    const queryClient = new QueryClient();
+    const invalidateQueries = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue();
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    const dispose = registerQueryInvalidationListener(ipcClient, queryClient, {
+      initialDelayMs: 0,
+      maximumDelayMs: 0,
+    });
+    onInvalidations({
+      invalidations: [{ epoch: 1, scopes: [{ family: "chats" }] }],
+      recoveryScopes: [],
+    });
+
+    await vi.waitFor(() => expect(bootstrap).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() =>
+      expect(invalidateQueries).toHaveBeenCalledWith({
+        queryKey: queryKeys.apps.all,
+      }),
+    );
+    expect(invalidateQueries).not.toHaveBeenCalledWith({
+      queryKey: queryKeys.chats.all,
+    });
+
+    dispose();
+    consoleError.mockRestore();
+  });
 });
 
 describe("user-input chat-stream composition facade", () => {

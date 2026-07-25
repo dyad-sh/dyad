@@ -199,6 +199,9 @@ When creating hooks/components that call IPC handlers:
   bootstrapping, pass the last applied epoch (`0` for a fresh cache), and dedupe
   buffered live events against replay. Advancing directly to the bootstrap's
   current epoch can acknowledge and discard an event received during startup.
+  Retry failed bootstrap attempts with bounded backoff, clearing pending data
+  that the next epoch replay will recover so a half-initialized listener cannot
+  grow an unbounded queue.
 - Async keyed subscription attach must use a generation/current-state check
   after awaiting bootstrap and roll back that generation on rejection.
   Otherwise detach or replacement during bootstrap can deliver stale data, and

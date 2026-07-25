@@ -29,10 +29,17 @@ export interface RegisterRendererIpcListenersOptions {
 export function registerQueryInvalidationListener(
   ipcClient: Pick<RendererIpcClient, "windowInfrastructure" | "events">,
   queryClient: QueryClient,
+  retryOptions: {
+    initialDelayMs?: number;
+    maximumDelayMs?: number;
+  } = {},
 ): () => void {
   const pendingBatches: QueryInvalidationBatch[] = [];
   let consumer: RendererQueryInvalidationConsumer | undefined;
   let disposed = false;
+  let retryTimer: ReturnType<typeof setTimeout> | undefined;
+  let retryDelayMs = retryOptions.initialDelayMs ?? 250;
+  const maximumRetryDelayMs = retryOptions.maximumDelayMs ?? 5_000;
   const rememberEpoch = () => {
     if (consumer) {
       lastQueryInvalidationEpochByClient.set(queryClient, consumer.epoch());
@@ -48,33 +55,43 @@ export function registerQueryInvalidationListener(
       }
     });
 
-  void ipcClient.windowInfrastructure
-    .bootstrap({
-      lastSeenQueryInvalidationEpoch:
-        lastQueryInvalidationEpochByClient.get(queryClient) ?? 0,
-    })
-    .then((bootstrap) => {
-      if (disposed) return;
-      consumer = new RendererQueryInvalidationConsumer(
-        queryClient,
-        bootstrap.windowSessionId,
-      );
-      consumer.recover(
-        bootstrap.currentQueryInvalidationEpoch,
-        bootstrap.missedInvalidations,
-        bootstrap.recoveryScopes,
-      );
-      for (const batch of pendingBatches.splice(0)) {
-        consumer.consume(batch);
-      }
-      rememberEpoch();
-    })
-    .catch((error) => {
-      console.error("Failed to bootstrap window infrastructure", error);
-    });
+  const bootstrapInvalidations = () => {
+    void ipcClient.windowInfrastructure
+      .bootstrap({
+        lastSeenQueryInvalidationEpoch:
+          lastQueryInvalidationEpochByClient.get(queryClient) ?? 0,
+      })
+      .then((bootstrap) => {
+        if (disposed) return;
+        consumer = new RendererQueryInvalidationConsumer(
+          queryClient,
+          bootstrap.windowSessionId,
+        );
+        consumer.recover(
+          bootstrap.currentQueryInvalidationEpoch,
+          bootstrap.missedInvalidations,
+          bootstrap.recoveryScopes,
+        );
+        for (const batch of pendingBatches.splice(0)) {
+          consumer.consume(batch);
+        }
+        rememberEpoch();
+      })
+      .catch((error) => {
+        if (disposed) return;
+        console.error("Failed to bootstrap window infrastructure", error);
+        // The next bootstrap replays from the last applied epoch, so batches
+        // accumulated before a failed attempt are redundant and safe to drop.
+        pendingBatches.splice(0);
+        retryTimer = setTimeout(bootstrapInvalidations, retryDelayMs);
+        retryDelayMs = Math.min(retryDelayMs * 2, maximumRetryDelayMs);
+      });
+  };
+  bootstrapInvalidations();
 
   return () => {
     disposed = true;
+    if (retryTimer) clearTimeout(retryTimer);
     rememberEpoch();
     unsubscribe();
   };

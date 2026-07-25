@@ -71,8 +71,8 @@ Full tables, per-atom traces, and corrections live in
 - **116 atoms** across `src/atoms/*`, `src/store/appAtoms.ts`, and machine
   projection modules.
 - **69 UI-only — keep as Jotai.** Includes documented deliberate keeps
-  (machine writes into UI-owned atoms: plan_handoff navigation writes,
-  first_prompt post-submit clears, isPreviewOpenAtom) and machine _reads_
+  (machine writes into UI-owned atoms: plan*handoff navigation writes,
+  first_prompt post-submit clears, isPreviewOpenAtom) and machine \_reads*
   of UI atoms (inputs, not projections — out of scope).
 - **32 machine-mirror — retire.** Machine is the writer; the atom
   duplicates snapshot state (isStreaming-adjacent flags, saga projections,

@@ -7,8 +7,11 @@ import {
   EntityDisposalProvider,
   useEntityDisposal,
   useKeyedController,
+  useKeyedMachineSelector,
+  useMachineSelector,
   useManagerLifecycle,
   useManagerPagehideDisposal,
+  useProjectionSource,
   type KeyedSnapshotSource,
 } from "./react";
 import { SnapshotStore } from "./snapshot_store";
@@ -233,5 +236,102 @@ describe("useControllerSnapshot", () => {
     const { result } = renderHook(() => useControllerSnapshot(controller));
     act(() => controller.setState(2));
     expect(result.current).toBe(2);
+  });
+});
+
+describe("machine selectors", () => {
+  it("does not rerender a keyed consumer for unrelated-key updates", () => {
+    const source = new Source();
+    let renders = 0;
+    function Consumer() {
+      renders++;
+      return (
+        <span>{useKeyedMachineSelector(source, 1, (value) => value)}</span>
+      );
+    }
+    render(<Consumer />);
+    expect(renders).toBe(1);
+
+    act(() => source.set(2, 2));
+    expect(renders).toBe(1);
+
+    act(() => source.set(1, 1));
+    expect(renders).toBe(2);
+    expect(screen.getByText("1")).toBeTruthy();
+  });
+
+  it("survives StrictMode subscription replay", () => {
+    const source = new Source();
+    let renders = 0;
+    function Consumer() {
+      renders++;
+      return (
+        <span>{useKeyedMachineSelector(source, 1, (value) => value)}</span>
+      );
+    }
+    render(
+      <StrictMode>
+        <Consumer />
+      </StrictMode>,
+    );
+
+    expect(renders).toBeGreaterThan(1);
+    act(() => source.set(1, 3));
+    expect(screen.getByText("3")).toBeTruthy();
+  });
+
+  it("does not resubscribe when only the selector closure changes", () => {
+    const store = new SnapshotStore({ value: 2 });
+    const subscribe = vi.spyOn(store, "subscribe");
+    const { result, rerender } = renderHook(
+      ({ multiplier }) =>
+        useMachineSelector(store, (snapshot) => snapshot.value * multiplier),
+      { initialProps: { multiplier: 2 } },
+    );
+    expect(result.current).toBe(4);
+    expect(subscribe).toHaveBeenCalledTimes(1);
+
+    rerender({ multiplier: 3 });
+    expect(result.current).toBe(6);
+    expect(subscribe).toHaveBeenCalledTimes(1);
+  });
+
+  it("gates small-object updates with optional equality", () => {
+    const store = new SnapshotStore({ value: 1, unrelated: 0 });
+    let renders = 0;
+    let selection: { odd: boolean } | undefined;
+    function Consumer() {
+      renders++;
+      selection = useMachineSelector(
+        store,
+        (snapshot) => ({ odd: snapshot.value % 2 === 1 }),
+        (previous, next) => previous.odd === next.odd,
+      );
+      return null;
+    }
+    render(<Consumer />);
+    const firstSelection = selection;
+
+    act(() => store.setState({ value: 3, unrelated: 1 }));
+    expect(renders).toBe(1);
+    expect(selection).toBe(firstSelection);
+
+    act(() => store.setState({ value: 4, unrelated: 1 }));
+    expect(renders).toBe(2);
+    expect(selection).toEqual({ odd: false });
+  });
+
+  it("returns the projection source's reference-stable snapshot", () => {
+    const initial = { value: 1 };
+    const store = new SnapshotStore(initial);
+    const { result } = renderHook(() => useProjectionSource(store));
+    expect(result.current).toBe(initial);
+
+    act(() => store.setState(initial));
+    expect(result.current).toBe(initial);
+
+    const next = { value: 2 };
+    act(() => store.setState(next));
+    expect(result.current).toBe(next);
   });
 });

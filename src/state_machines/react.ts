@@ -10,6 +10,7 @@ import {
   type ComponentType,
   type PropsWithChildren,
 } from "react";
+import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
 import { EntityDisposalRegistry, type EntityDisposer } from "./entity_disposal";
 import type { KeyedController } from "./keyed_host";
 
@@ -168,6 +169,56 @@ export interface KeyedSnapshotSource<K, Snapshot> {
   getSnapshot(key: K): Snapshot;
 }
 
+export interface ProjectionSource<Snapshot> {
+  subscribe(listener: () => void): () => void;
+  getSnapshot(): Snapshot;
+}
+
+type EqualityFn<Value> = (previous: Value, next: Value) => boolean;
+
+/** Selects a reference-stable view from one machine controller. */
+export function useMachineSelector<Snapshot, Selection>(
+  controller: ProjectionSource<Snapshot>,
+  selector: (snapshot: Snapshot) => Selection,
+  isEqual?: EqualityFn<Selection>,
+): Selection {
+  return useSyncExternalStoreWithSelector(
+    controller.subscribe,
+    controller.getSnapshot,
+    undefined,
+    selector,
+    isEqual,
+  );
+}
+
+/** Selects a view from one key without subscribing to unrelated keys. */
+export function useKeyedMachineSelector<K, Snapshot, Selection>(
+  source: KeyedSnapshotSource<K, Snapshot>,
+  key: K,
+  selector: (snapshot: Snapshot) => Selection,
+  isEqual?: EqualityFn<Selection>,
+): Selection {
+  const subscribe = useCallback(
+    (listener: () => void) => source.subscribeKey(key, listener),
+    [source, key],
+  );
+  const getSnapshot = useCallback(() => source.getSnapshot(key), [source, key]);
+  return useSyncExternalStoreWithSelector(
+    subscribe,
+    getSnapshot,
+    undefined,
+    selector,
+    isEqual,
+  );
+}
+
+/** Subscribes to a reference-stable projection snapshot without Jotai. */
+export function useProjectionSource<Snapshot>(
+  source: ProjectionSource<Snapshot>,
+): Snapshot {
+  return useSyncExternalStore(source.subscribe, source.getSnapshot);
+}
+
 function defaultSelectSnapshot<K, Snapshot>(
   source: KeyedSnapshotSource<K, Snapshot>,
   key: K,
@@ -199,5 +250,5 @@ export function useKeyedController<K, Snapshot>(
 export function useControllerSnapshot<Snapshot>(
   controller: KeyedController<Snapshot>,
 ): Snapshot {
-  return useSyncExternalStore(controller.subscribe, controller.getSnapshot);
+  return useProjectionSource(controller);
 }

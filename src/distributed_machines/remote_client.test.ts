@@ -63,7 +63,11 @@ describe("RemoteMachineClient", () => {
     const actor = client.actor(machine, "actor");
     const first = actor.subscribe(() => undefined);
     const second = actor.subscribe(() => undefined);
-    await waitFor(() => subscribe.mock.calls.length === 1);
+    await waitFor(
+      () =>
+        subscribe.mock.calls.length === 1 &&
+        transport.inspectSubscriptions().length === 1,
+    );
 
     await actor.dispatch({ type: "INCREMENT" });
     renderer.releaseBootstrapResponses();

@@ -6,6 +6,7 @@ import type {
   RemoteMachineClientConnection,
   RemoteTransportStatus,
 } from "../remote_client";
+import { RemoteMachineTransportError } from "../remote_client";
 import {
   MachineDisposedEnvelopeSchema,
   MachineSnapshotEnvelopeSchema,
@@ -93,6 +94,7 @@ export class FakeRemoteRenderer implements RemoteMachineClientConnection {
   private holdBootstrap = false;
   private readonly bootstrapReleases: Array<() => void> = [];
   private connected = true;
+  private status: RemoteTransportStatus = "connected";
 
   constructor(
     private readonly duplex: FakeDuplexRemoteTransport,
@@ -117,7 +119,7 @@ export class FakeRemoteRenderer implements RemoteMachineClientConnection {
   }
 
   getStatus(): RemoteTransportStatus {
-    return this.connected ? "connected" : "disconnected";
+    return this.status;
   }
 
   onStatusChange(
@@ -138,6 +140,7 @@ export class FakeRemoteRenderer implements RemoteMachineClientConnection {
   }
 
   reportIncompatible(): void {
+    this.status = "incompatible";
     for (const listener of this.statusListeners) listener("incompatible");
   }
 
@@ -152,6 +155,14 @@ export class FakeRemoteRenderer implements RemoteMachineClientConnection {
     if (!definition)
       throw new Error(`Unknown fake machine ${address.machineId}`);
     const addressKey = this.addressKey(address);
+    if (definition.remote.protocolVersion !== address.protocolVersion) {
+      await Promise.resolve();
+      this.reportIncompatible();
+      throw new RemoteMachineTransportError(
+        "incompatible",
+        "Fake renderer/main machine protocols are incompatible",
+      );
+    }
     const view: FakeRemoteView = {
       generation: this.nextViewGeneration++,
       address,
@@ -217,6 +228,9 @@ export class FakeRemoteRenderer implements RemoteMachineClientConnection {
       throw new FakeTransportDisconnectedError();
     }
     this.assertGeneration(generation);
+    if (receipt.kind === "rejected" && receipt.reason === "protocol-version") {
+      this.reportIncompatible();
+    }
     return receipt;
   }
 
@@ -224,6 +238,7 @@ export class FakeRemoteRenderer implements RemoteMachineClientConnection {
     if (!this.connected) return;
     this.connected = false;
     this.views.clear();
+    this.status = "disconnected";
     this.removeReceiveListener();
     this.duplex.windows.destroy(this.sessionId);
     this.releaseBootstrapResponses();

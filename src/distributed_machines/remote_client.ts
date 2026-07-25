@@ -57,6 +57,11 @@ export interface RemoteActorView<State> {
   readonly connection: RemoteConnectionStatus;
 }
 
+export interface RemoteMachineClientError {
+  readonly stage: "subscriber";
+  readonly error: unknown;
+}
+
 export interface RemoteActorRef<State, Event, Reason extends IgnoreReason> {
   readonly kind: "remote";
   getStatus(): RemoteConnectionStatus;
@@ -100,7 +105,12 @@ class RemoteSnapshotStore<
   private subscribers = 0;
   private transportSubscribed = false;
   private bootstrapGeneration = 0;
-  private resyncPromise?: Promise<void>;
+  private bootstrapAttempt?: {
+    readonly generation: number;
+    readonly isCurrent: () => boolean;
+    readonly promise: Promise<void>;
+  };
+  private disposed = false;
 
   constructor(
     private readonly client: RemoteMachineClient,
@@ -122,7 +132,14 @@ class RemoteSnapshotStore<
   getView = (): RemoteActorView<State> => this.view.getSnapshot();
 
   subscribe = (listener: () => void): (() => void) => {
-    const unsubscribeView = this.view.subscribe(listener);
+    if (this.disposed) return () => undefined;
+    const unsubscribeView = this.view.subscribe(() => {
+      try {
+        listener();
+      } catch (error) {
+        this.client.reportSubscriberError(error);
+      }
+    });
     this.subscribers += 1;
     if (this.subscribers === 1) this.client.retain(this);
     let active = true;
@@ -139,13 +156,8 @@ class RemoteSnapshotStore<
     this.client.dispatch(this, event);
 
   resync = (): Promise<void> => {
-    if (this.resyncPromise) return this.resyncPromise;
-    const pending = this.bootstrap();
-    const tracked = pending.finally(() => {
-      if (this.resyncPromise === tracked) this.resyncPromise = undefined;
-    });
-    this.resyncPromise = tracked;
-    return tracked;
+    if (this.disposed) return Promise.resolve();
+    return this.bootstrap();
   };
 
   hasSubscribers(): boolean {
@@ -200,48 +212,82 @@ class RemoteSnapshotStore<
     );
   }
 
-  async bootstrap(): Promise<void> {
-    if (!this.hasSubscribers() || !this.client.isConnected()) return;
+  bootstrap(): Promise<void> {
+    if (!this.hasSubscribers() || !this.client.isConnected()) {
+      return Promise.resolve();
+    }
+    const active = this.bootstrapAttempt;
+    if (active?.isCurrent()) {
+      if (active.generation === this.bootstrapGeneration) {
+        return active.promise;
+      }
+      return active.promise.catch(() => undefined).then(() => this.bootstrap());
+    }
     const generation = ++this.bootstrapGeneration;
     const subscription = this.client.beginSubscription(this.address);
     const previouslySubscribed = this.transportSubscribed;
     this.bootstrapped = false;
     this.setConnection("connecting");
-    try {
-      const payload = await subscription.bootstrap;
-      if (generation !== this.bootstrapGeneration || !this.hasSubscribers()) {
-        await subscription.release().catch(() => undefined);
-        this.transportSubscribed = false;
-        return;
+    const run = async (): Promise<void> => {
+      try {
+        const payload = await subscription.bootstrap;
+        if (generation !== this.bootstrapGeneration || !this.hasSubscribers()) {
+          if (!subscription.isCurrent() || !this.hasSubscribers()) {
+            await subscription.release().catch(() => undefined);
+            if (subscription.isCurrent()) this.transportSubscribed = false;
+          } else {
+            this.transportSubscribed = true;
+          }
+          return;
+        }
+        this.applyBootstrap(this.validateSnapshot(payload));
+        this.transportSubscribed = true;
+      } catch (error) {
+        if (generation !== this.bootstrapGeneration) {
+          if (!subscription.isCurrent() || !this.hasSubscribers()) {
+            await subscription.release().catch(() => undefined);
+          }
+          return;
+        }
+        if (!previouslySubscribed) {
+          await subscription.release().catch(() => undefined);
+          if (subscription.isCurrent()) this.transportSubscribed = false;
+        }
+        if (this.client.isProtocolError(error)) {
+          this.client.markIncompatible(error);
+        } else if (!this.client.isConnected()) {
+          this.setTransportStatus("disconnected");
+        } else {
+          this.bootstrapped = false;
+          this.setView(
+            this.definition.remote.unavailableSnapshot(this.key),
+            "disconnected",
+          );
+        }
+        throw error;
       }
-      this.applyBootstrap(this.validateSnapshot(payload));
-      this.transportSubscribed = true;
-    } catch (error) {
-      if (generation !== this.bootstrapGeneration) return;
-      if (!previouslySubscribed) {
-        await subscription.release().catch(() => undefined);
-        this.transportSubscribed = false;
+    };
+    const promise = run().finally(() => {
+      if (this.bootstrapAttempt?.promise === promise) {
+        this.bootstrapAttempt = undefined;
       }
-      if (this.client.isProtocolError(error)) {
-        this.client.markIncompatible(error);
-      } else if (!this.client.isConnected()) {
-        this.setTransportStatus("disconnected");
-      } else {
-        this.bootstrapped = false;
-        this.setView(
-          this.definition.remote.unavailableSnapshot(this.key),
-          "disconnected",
-        );
-      }
-      throw error;
-    }
+    });
+    this.bootstrapAttempt = {
+      generation,
+      isCurrent: subscription.isCurrent,
+      promise,
+    };
+    return promise;
   }
 
   receiveSnapshot(payload: MachineSnapshotEnvelope): void {
     let snapshot: MachineSnapshotEnvelope;
     try {
       snapshot = this.validateSnapshot(payload);
-    } catch {
+    } catch (error) {
+      if (this.client.isProtocolError(error)) {
+        this.client.markIncompatible(error);
+      }
       return;
     }
     if (!this.bootstrapped) {
@@ -255,6 +301,16 @@ class RemoteSnapshotStore<
   }
 
   receiveDisposed(envelope: MachineDisposedEnvelope): void {
+    if (envelope.protocolVersion !== this.address.protocolVersion) {
+      this.client.markIncompatible(
+        new RemoteMachineTransportError(
+          "incompatible",
+          "Remote disposed envelope protocol is incompatible",
+        ),
+      );
+      return;
+    }
+    if (this.client.addressKey(envelope) !== this.addressKey) return;
     this.disposedActorIds.add(envelope.actorInstanceId);
     if (this.metadata?.actorInstanceId !== envelope.actorInstanceId) return;
     this.metadata = undefined;
@@ -265,7 +321,17 @@ class RemoteSnapshotStore<
   }
 
   dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
     this.invalidateBootstrap();
+    this.subscribers = 0;
+    this.bootstrapped = false;
+    this.metadata = undefined;
+    this.transportSubscribed = false;
+    this.setView(
+      this.definition.remote.unavailableSnapshot(this.key),
+      "disconnected",
+    );
     this.view.dispose();
     this.buffered.splice(0);
   }
@@ -321,12 +387,17 @@ class RemoteSnapshotStore<
     const outer = MachineSnapshotEnvelopeSchema.safeParse(payload);
     if (
       !outer.success ||
-      outer.data.protocolVersion !== this.address.protocolVersion ||
       this.client.addressKey(outer.data) !== this.addressKey
     ) {
       throw new RemoteMachineTransportError(
         "invalid-payload",
         "Invalid remote snapshot envelope",
+      );
+    }
+    if (outer.data.protocolVersion !== this.address.protocolVersion) {
+      throw new RemoteMachineTransportError(
+        "incompatible",
+        "Remote snapshot protocol is incompatible",
       );
     }
     const state = this.definition.remote.snapshotCodec.safeParse(
@@ -355,7 +426,6 @@ class RemoteSnapshotStore<
 
   private invalidateBootstrap(): void {
     this.bootstrapGeneration += 1;
-    this.resyncPromise = undefined;
   }
 }
 
@@ -380,6 +450,7 @@ export class RemoteMachineClient {
   constructor(
     private connection: RemoteMachineClientConnection,
     private readonly ids: IdSource,
+    private readonly reportError?: (error: RemoteMachineClientError) => void,
   ) {
     this.status = connection.getStatus();
   }
@@ -401,6 +472,14 @@ export class RemoteMachineClient {
     this.detachConnection();
     this.rejectPending("renderer-destroyed", "Renderer transport was replaced");
     this.generation += 1;
+    const previousConnection = this.connection;
+    for (const store of this.stores.values()) {
+      if (store.hasSubscribers()) {
+        void previousConnection
+          .unsubscribe(store.address)
+          .catch(() => undefined);
+      }
+    }
     this.connection = connection;
     this.status = connection.getStatus();
     for (const store of this.stores.values()) {
@@ -437,13 +516,14 @@ export class RemoteMachineClient {
   }
 
   connectionStatus(): RemoteConnectionStatus {
+    if (this.disposed) return "disconnected";
     if (this.status === "incompatible") return "incompatible";
     if (this.status === "disconnected") return "disconnected";
     return "connecting";
   }
 
   isConnected(): boolean {
-    return this.status === "connected";
+    return !this.disposed && this.status === "connected";
   }
 
   retain(store: RemoteSnapshotStore<any, any, any, any>): void {
@@ -464,11 +544,13 @@ export class RemoteMachineClient {
   beginSubscription(address: MachineAddress): {
     readonly bootstrap: Promise<MachineSnapshotEnvelope>;
     readonly release: () => Promise<void>;
+    readonly isCurrent: () => boolean;
   } {
     const connection = this.connection;
     return {
       bootstrap: connection.subscribe(address),
       release: () => connection.unsubscribe(address),
+      isCurrent: () => !this.disposed && this.connection === connection,
     };
   }
 
@@ -491,6 +573,12 @@ export class RemoteMachineClient {
     store: RemoteSnapshotStore<Key, State, Event, Reason>,
     event: Event,
   ): Promise<MachineDispatchReceipt<Reason>> {
+    if (this.disposed) {
+      throw new RemoteMachineTransportError(
+        "renderer-destroyed",
+        "Renderer was destroyed",
+      );
+    }
     if (this.status !== "connected") throw this.transportError();
     const parsedEvent = store.definition.remote.eventCodec.safeParse(event);
     if (!parsedEvent.success) {
@@ -519,11 +607,17 @@ export class RemoteMachineClient {
       ]);
       if (generation !== this.generation) throw this.transportError();
       const receipt = MachineDispatchReceiptSchema.safeParse(payload);
-      if (!receipt.success) {
+      if (!receipt.success || receipt.data.messageId !== envelope.messageId) {
         throw new RemoteMachineTransportError(
           "invalid-payload",
           "Invalid remote dispatch receipt",
         );
+      }
+      if (
+        receipt.data.kind === "rejected" &&
+        receipt.data.reason === "protocol-version"
+      ) {
+        this.markIncompatible();
       }
       return receipt.data as MachineDispatchReceipt<Reason>;
     } finally {
@@ -542,6 +636,19 @@ export class RemoteMachineClient {
     this.handleStatus("incompatible", error);
   }
 
+  reportSubscriberError(error: unknown): void {
+    const failure: RemoteMachineClientError = { stage: "subscriber", error };
+    if (!this.reportError) {
+      console.error("Remote machine subscriber failure:", error);
+      return;
+    }
+    try {
+      this.reportError(failure);
+    } catch {
+      // Error reporting must never alter transport ownership.
+    }
+  }
+
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
@@ -554,6 +661,7 @@ export class RemoteMachineClient {
       store.dispose();
     }
     this.stores.clear();
+    this.status = "disconnected";
   }
 
   private attachConnection(): void {

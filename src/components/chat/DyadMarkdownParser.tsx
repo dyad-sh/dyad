@@ -22,11 +22,8 @@ import { DyadCodebaseContext } from "./DyadCodebaseContext";
 import { DyadThink } from "./DyadThink";
 import { CodeHighlight } from "./CodeHighlight";
 import { useAtomValue } from "jotai";
-import {
-  isStreamingByIdAtom,
-  selectedChatIdAtom,
-  streamingPreviewByChatIdAtom,
-} from "@/atoms/chatAtoms";
+import { isStreamingByIdAtom, selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { useChatStreamPreview } from "@/hooks/useChatStream";
 import { CustomTagState } from "./stateTypes";
 import { DyadOutput } from "./DyadOutput";
 import { DyadProblemSummary } from "./DyadProblemSummary";
@@ -245,8 +242,7 @@ function StreamingPreviewBlocks({
   chatId: number;
   isStreaming: boolean;
 }) {
-  const previewStates = useAtomValue(streamingPreviewByChatIdAtom);
-  const previewXml = previewStates.get(chatId);
+  const previewXml = useChatStreamPreview(chatId);
   const previewBlocks = useMemo<Block[] | null>(() => {
     if (!previewXml) return null;
     return parseFullMessage(previewXml).blocks;

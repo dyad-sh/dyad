@@ -1,9 +1,9 @@
 /**
  * User-input round-trip machine domain types.
  *
- * The main-process registry is authoritative. Renderer state is a projection.
+ * The main-process registry is authoritative. Renderer state is a read model.
  * The pure core has no machine dependencies; callers reach it through the
- * registry API. The renderer projection has one documented dependency edge:
+ * registry API. The renderer read model has one documented dependency edge:
  * user_input -> chat_stream facade, injected at the composition root.
  * Concurrency is first-applied-wins for every terminal event.
  */

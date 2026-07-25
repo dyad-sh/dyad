@@ -3,39 +3,35 @@ import { describe, expect, it, vi } from "vitest";
 
 import { QuestionnaireInput } from "./QuestionnaireInput";
 
-vi.mock("@/atoms/planAtoms", async () => {
-  const { atom } = await import("jotai");
-  return {
-    pendingQuestionnaireAtom: atom(
-      new Map([
-        [
-          7,
-          {
-            chatId: 7,
-            requestId: "questionnaire-1",
-            questions: [
-              {
-                id: "framework",
-                type: "radio",
-                question: "Which framework?",
-                options: ["React", "Vue"],
-              },
-            ],
-            isResponding: true,
-          },
-        ],
-      ]),
-    ),
-  };
-});
+vi.mock("@/user_input/hooks", () => ({
+  usePendingQuestionnaires: () =>
+    new Map([
+      [
+        7,
+        {
+          chatId: 7,
+          requestId: "questionnaire-1",
+          questions: [
+            {
+              id: "framework",
+              type: "radio",
+              question: "Which framework?",
+              options: ["React", "Vue"],
+            },
+          ],
+          isResponding: true,
+        },
+      ],
+    ]),
+}));
 
 vi.mock("@/atoms/chatAtoms", async () => {
   const { atom } = await import("jotai");
   return { selectedChatIdAtom: atom(7) };
 });
 
-vi.mock("@/user_input/projection", () => ({
-  getUserInputProjectionAdapter: () => ({ respond: vi.fn() }),
+vi.mock("@/user_input/read_model", () => ({
+  getUserInputReadModel: () => ({ respond: vi.fn() }),
 }));
 
 describe("QuestionnaireInput", () => {

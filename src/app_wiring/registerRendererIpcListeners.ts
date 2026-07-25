@@ -7,9 +7,9 @@ import { ipc as defaultIpc, type TelemetryEventPayload } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
 import { showError } from "@/lib/toast";
 import {
-  getUserInputProjectionAdapter,
+  getUserInputReadModel,
   type UserInputChatStreamFacade,
-} from "@/user_input/projection";
+} from "@/user_input/read_model";
 
 export type RendererIpcClient = typeof defaultIpc;
 type JotaiStore = ReturnType<typeof createStore>;
@@ -77,7 +77,7 @@ export function registerRendererIpcListeners({
   );
 
   unsubscribes.push(
-    getUserInputProjectionAdapter({
+    getUserInputReadModel({
       store,
       ipcClient,
       chatStream: userInputChatStream,

@@ -38,7 +38,7 @@ describe("ImageGenerationManager", () => {
     });
 
     expect(id).toBe("image-generation:1");
-    expect(manager.getProjection()).toEqual([
+    expect(manager.getJobsSnapshot()).toEqual([
       expect.objectContaining({
         id,
         startedAt: 1_000,
@@ -69,12 +69,12 @@ describe("ImageGenerationManager", () => {
 
     manager.cancel(id);
 
-    expect(manager.getProjection()).toEqual([
+    expect(manager.getJobsSnapshot()).toEqual([
       expect.objectContaining({ id, status: "cancelling" }),
     ]);
 
     emitJob?.({ type: "JOB_SUCCEEDED", result });
-    expect(manager.getProjection()).toEqual([
+    expect(manager.getJobsSnapshot()).toEqual([
       expect.objectContaining({
         id,
         status: "success",
@@ -112,6 +112,6 @@ describe("ImageGenerationManager", () => {
     });
 
     expect(manager.getState(first)).toBeUndefined();
-    expect(manager.getProjection().map((job) => job.id)).toEqual([second]);
+    expect(manager.getJobsSnapshot().map((job) => job.id)).toEqual([second]);
   });
 });

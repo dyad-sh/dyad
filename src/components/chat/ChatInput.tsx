@@ -81,10 +81,8 @@ import {
   doesSqlMutateSchema,
 } from "@/lib/sqlSchemaMutation";
 import { ChatImageGenerationStrip } from "./ChatImageGenerationStrip";
-import {
-  chatImageGenerationJobsAtom,
-  dismissedImageGenerationJobIdsAtom,
-} from "@/atoms/imageGenerationAtoms";
+import { dismissedImageGenerationJobIdsAtom } from "@/atoms/imageGenerationAtoms";
+import { useChatImageGenerationJobs } from "@/image_generation/hooks";
 import { ImageGeneratorDialog } from "@/components/ImageGeneratorDialog";
 import { useChatModeToggle } from "@/hooks/useChatModeToggle";
 import { VisualEditingChangesDialog } from "@/components/preview_panel/VisualEditingChangesDialog";
@@ -110,11 +108,9 @@ import { useVoiceToText } from "@/hooks/useVoiceToText";
 import { isDyadProEnabled } from "@/lib/schemas";
 import { useChatMode } from "@/hooks/useChatMode";
 import { useOpenPreviewIfSetupRequired } from "@/hooks/useOpenPreviewIfSetupRequired";
-import {
-  getUserInputProjectionAdapter,
-  type PendingToolConsent,
-  usePendingToolConsents,
-} from "@/user_input/projection";
+import { getUserInputReadModel } from "@/user_input/read_model";
+import { usePendingToolConsents } from "@/user_input/hooks";
+import type { PendingToolConsent } from "@/user_input/selectors";
 import { useSendPreviewIframeEvent } from "@/preview_iframe/usePreviewIframe";
 
 const showTokenBarAtom = atom(false);
@@ -194,9 +190,9 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const setPendingVisualChanges = useSetAtom(pendingVisualChangesAtom);
   const sendPreviewIframeEvent = useSendPreviewIframeEvent(appId);
   const store = useStore();
-  const userInputProjection = getUserInputProjectionAdapter({ store });
-  const pendingToolConsents = usePendingToolConsents(chatId);
-  const pendingToolConsent = pendingToolConsents[0] ?? null;
+  const userInputReadModel = getUserInputReadModel({ store });
+  const consentsForThisChat = usePendingToolConsents(chatId);
+  const pendingToolConsent = consentsForThisChat[0] ?? null;
 
   // The projection adapter owns optimistic hiding, rollback, and stale-request
   // reconciliation so the request atom retains exactly one writer.
@@ -204,7 +200,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     consent: PendingToolConsent,
     decision: "accept-once" | "accept-always" | "decline",
   ) => {
-    await userInputProjection.respond(consent.requestId, {
+    await userInputReadModel.respond(consent.requestId, {
       kind: consent.kind === "mcp" ? "mcp-consent" : "agent-consent",
       decision,
     });
@@ -223,7 +219,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   }, []);
 
   // Image generation jobs for auto-adding to chat on send
-  const chatImageJobs = useAtomValue(chatImageGenerationJobsAtom);
+  const chatImageJobs = useChatImageGenerationJobs();
   const [dismissedImageJobIds, setDismissedImageJobIds] = useAtom(
     dismissedImageGenerationJobIdsAtom,
   );
@@ -797,7 +793,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           {pendingToolConsent && (
             <AgentConsentBanner
               consent={pendingToolConsent}
-              queueTotal={pendingToolConsents.length}
+              queueTotal={consentsForThisChat.length}
               onDecision={(decision) =>
                 decideConsent(pendingToolConsent, decision)
               }

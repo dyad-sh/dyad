@@ -1,13 +1,11 @@
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
-import type { ReactNode, SetStateAction } from "react";
+import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import {
-  isStreamingByIdAtom,
-  selectedChatIdAtom,
-  streamingPreviewByChatIdAtom,
-} from "@/atoms/chatAtoms";
+import { isStreamingByIdAtom, selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { ChatStreamManager } from "@/chat_stream/manager";
+import { ChatStreamProvider } from "@/chat_stream/ChatStreamProvider";
 import { applyPreviewChunk } from "@/lib/streamingPreviewSync";
 import { makeAgentContext } from "@/pro/main/ipc/handlers/local_agent/tools/chat_search_spec_utils";
 import type { HistoryReportStats } from "@/pro/main/ipc/handlers/local_agent/tools/explore_chat_history_report";
@@ -74,12 +72,13 @@ describe("explore_chat_history streaming preview", () => {
 
     const chatId = 1;
     const store = createStore();
+    const manager = new ChatStreamManager(store);
     store.set(selectedChatIdAtom, chatId);
     store.set(isStreamingByIdAtom, new Map([[chatId, true]]));
 
     let latestPreviewXml = "";
-    const setPreview = (update: SetStateAction<Map<number, string>>) =>
-      store.set(streamingPreviewByChatIdAtom, update);
+    const setPreview = (id: number, content: string) =>
+      manager.setPreview(id, content);
     const ctx = makeAgentContext({
       isDyadPro: true,
       chatId,
@@ -91,7 +90,9 @@ describe("explore_chat_history streaming preview", () => {
 
     render(
       <Provider store={store}>
-        <DyadMarkdownParser content="" showStreamingPreview />
+        <ChatStreamProvider manager={manager}>
+          <DyadMarkdownParser content="" showStreamingPreview />
+        </ChatStreamProvider>
       </Provider>,
     );
 
@@ -136,6 +137,7 @@ describe("explore_chat_history streaming preview", () => {
   it("normalizes mixed read_chat arguments before the pending card completes", async () => {
     const chatId = 1;
     const store = createStore();
+    const manager = new ChatStreamManager(store);
     store.set(selectedChatIdAtom, chatId);
     store.set(isStreamingByIdAtom, new Map([[chatId, true]]));
 
@@ -159,18 +161,16 @@ describe("explore_chat_history streaming preview", () => {
     expect(previewXml).toBe(
       '<dyad-read-chat chat-id="703" state="pending">Reading chat...</dyad-read-chat>',
     );
-    applyPreviewChunk(
-      (update) => store.set(streamingPreviewByChatIdAtom, update),
-      chatId,
-      { content: previewXml! },
-    );
+    applyPreviewChunk(manager.setPreview, chatId, { content: previewXml! });
 
     const view = render(
       <Provider store={store}>
-        <DyadMarkdownParser
-          content="<think>Considering the cited chat</think>"
-          showStreamingPreview
-        />
+        <ChatStreamProvider manager={manager}>
+          <DyadMarkdownParser
+            content="<think>Considering the cited chat</think>"
+            showStreamingPreview
+          />
+        </ChatStreamProvider>
       </Provider>,
     );
 
@@ -182,19 +182,17 @@ describe("explore_chat_history streaming preview", () => {
     expect(screen.queryByTestId("dyad-explore-chat-history")).toBeNull();
 
     await act(async () => {
-      applyPreviewChunk(
-        (update) => store.set(streamingPreviewByChatIdAtom, update),
-        chatId,
-        { content: "" },
-      );
+      applyPreviewChunk(manager.setPreview, chatId, { content: "" });
       view.rerender(
         <Provider store={store}>
-          <DyadMarkdownParser
-            content={
-              '<think>Considering the cited chat</think>\n<dyad-read-chat chat-id="703" title="Build indie shop landing page" range="4–7 of 9">Historical messages</dyad-read-chat>'
-            }
-            showStreamingPreview
-          />
+          <ChatStreamProvider manager={manager}>
+            <DyadMarkdownParser
+              content={
+                '<think>Considering the cited chat</think>\n<dyad-read-chat chat-id="703" title="Build indie shop landing page" range="4–7 of 9">Historical messages</dyad-read-chat>'
+              }
+              showStreamingPreview
+            />
+          </ChatStreamProvider>
         </Provider>,
       );
     });

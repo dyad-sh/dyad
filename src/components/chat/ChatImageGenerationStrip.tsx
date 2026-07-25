@@ -1,15 +1,13 @@
 import { useEffect, useState } from "react";
 import { useAtom, useAtomValue } from "jotai";
 import { X, Loader2, Plus, AlertCircle, RotateCcw } from "lucide-react";
-import {
-  chatImageGenerationJobsAtom,
-  dismissedImageGenerationJobIdsAtom,
-} from "@/atoms/imageGenerationAtoms";
+import { dismissedImageGenerationJobIdsAtom } from "@/atoms/imageGenerationAtoms";
+import { useChatImageGenerationJobs } from "@/image_generation/hooks";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useGenerateImage } from "@/hooks/useGenerateImage";
 import { buildDyadMediaUrl } from "@/lib/dyadMediaUrl";
 import { ImageLightbox } from "./ImageLightbox";
-import type { ImageGenerationJob } from "@/atoms/imageGenerationAtoms";
+import type { ImageGenerationJob } from "@/image_generation/state";
 
 interface ChatImageGenerationStripProps {
   onGenerateImage: () => void;
@@ -18,7 +16,7 @@ interface ChatImageGenerationStripProps {
 export function ChatImageGenerationStrip({
   onGenerateImage,
 }: ChatImageGenerationStripProps) {
-  const jobs = useAtomValue(chatImageGenerationJobsAtom);
+  const jobs = useChatImageGenerationJobs();
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const { start, cancel } = useGenerateImage();
   const [dismissedJobIds, setDismissedJobIds] = useAtom(

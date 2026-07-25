@@ -60,28 +60,6 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
     note: "Inventory gap: lifecycle request types still come from IPC.",
   },
   {
-    rule: "pure-machine-module",
-    atom: "imageGenerationJobsAtom",
-    file: "image_generation/state.ts",
-    detail: "@/ipc/types",
-    deletionPr: "A3",
-    note: "Inventory gap: the state type still imports its IPC response types.",
-  },
-  {
-    rule: "writable-projection-export",
-    atom: "streamingPreviewByChatIdAtom",
-    file: "atoms/chatAtoms.ts",
-    detail: "exported writable atom",
-    deletionPr: "A3",
-  },
-  {
-    rule: "writable-projection-export",
-    atom: "setImageGenerationJobsProjectionAtom",
-    file: "atoms/imageGenerationAtoms.ts",
-    detail: "exported writable atom",
-    deletionPr: "A3",
-  },
-  {
     rule: "writable-projection-export",
     atom: "pendingScreenshotAppIdsAtom",
     file: "atoms/previewAtoms.ts",
@@ -234,27 +212,6 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
     file: "atoms/planAtoms.ts",
     detail: "exported writable atom",
     deletionPr: "A6",
-  },
-  {
-    rule: "atom-projection-call",
-    atom: "setImageGenerationJobsProjectionAtom",
-    file: "image_generation/ImageGenerationProvider.tsx",
-    detail: "projectToAtom",
-    deletionPr: "A3",
-  },
-  {
-    rule: "atom-projection-call",
-    atom: "writableUserInputRequestsAtom",
-    file: "user_input/projection.ts",
-    detail: "registerAtomWriter",
-    deletionPr: "A3",
-  },
-  {
-    rule: "atom-projection-call",
-    atom: "writableRespondingRequestIdsAtom",
-    file: "user_input/projection.ts",
-    detail: "registerAtomWriter",
-    deletionPr: "A3",
   },
   {
     rule: "atom-projection-call",
@@ -821,6 +778,36 @@ describe("state-machine boundaries", () => {
     expectExactAllowlist("writable-projection-export", violations);
   });
 
+  it("does not import Jotai's process-global default store at runtime", () => {
+    const violations: string[] = [];
+    for (const filePath of productionFiles(SOURCE_ROOT)) {
+      const sourceFile = sourceFileFor(filePath);
+      for (const statement of sourceFile.statements) {
+        if (
+          !ts.isImportDeclaration(statement) ||
+          !ts.isStringLiteralLike(statement.moduleSpecifier) ||
+          !isJotaiModule(statement.moduleSpecifier.text) ||
+          statement.importClause?.isTypeOnly
+        ) {
+          continue;
+        }
+        for (const specifier of statement.importClause?.namedBindings &&
+        ts.isNamedImports(statement.importClause.namedBindings)
+          ? statement.importClause.namedBindings.elements
+          : []) {
+          if (
+            !specifier.isTypeOnly &&
+            (specifier.propertyName?.text ?? specifier.name.text) ===
+              "getDefaultStore"
+          ) {
+            violations.push(relativeSourcePath(filePath));
+          }
+        }
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
   it("allows only inventoried atom projection call sites", () => {
     const violations: BoundaryViolation[] = [];
     for (const filePath of productionFiles(SOURCE_ROOT)) {
@@ -1055,22 +1042,5 @@ describe("state-machine boundaries", () => {
       });
     }
     expectExactAllowlist("cross-machine-atom-read", violations);
-  });
-
-  it("keeps image-generation projection writes inside its provider", () => {
-    const projectionAtomModule = path.join(
-      SOURCE_ROOT,
-      "atoms/imageGenerationAtoms.ts",
-    );
-    const writers = productionFiles(SOURCE_ROOT)
-      .filter((filePath) => filePath !== projectionAtomModule)
-      .filter((filePath) =>
-        fs
-          .readFileSync(filePath, "utf8")
-          .includes("setImageGenerationJobsProjectionAtom"),
-      )
-      .map((filePath) => toPortablePath(path.relative(SOURCE_ROOT, filePath)));
-
-    expect(writers).toEqual(["image_generation/ImageGenerationProvider.tsx"]);
   });
 });

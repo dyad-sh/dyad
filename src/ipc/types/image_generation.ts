@@ -1,5 +1,11 @@
 import { z } from "zod";
 import { defineContract, createClient } from "../contracts/core";
+import type {
+  GenerateImageResponse,
+  ImageThemeMode,
+} from "@/image_generation/state";
+
+export type { GenerateImageResponse, ImageThemeMode };
 
 // =============================================================================
 // Image Generation Schemas
@@ -11,8 +17,6 @@ export const ImageThemeModeSchema = z.enum([
   "real-photography",
   "isometric-illustration",
 ]);
-
-export type ImageThemeMode = z.infer<typeof ImageThemeModeSchema>;
 
 export const GenerateImageParamsSchema = z.object({
   prompt: z.string().min(1).max(2000),
@@ -50,8 +54,6 @@ export const GenerateImageResponseSchema = z.object({
   appId: z.number(),
   appName: z.string(),
 });
-
-export type GenerateImageResponse = z.infer<typeof GenerateImageResponseSchema>;
 
 // =============================================================================
 // Image Generation Contracts

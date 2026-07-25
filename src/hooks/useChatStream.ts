@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useStore } from "jotai";
 import { usePostHog } from "posthog-js/react";
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
+import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
 
 import { useChatStreamManager } from "@/chat_stream/ChatStreamProvider";
 import type { StreamState } from "@/chat_stream/state";
@@ -32,6 +33,40 @@ export function useChatStreamState(
     [chatId, manager],
   );
   return useSyncExternalStore(subscribe, getSnapshot);
+}
+
+export function useChatStreamPreview(chatId: number): string {
+  const manager = useChatStreamManager();
+  const subscribe = useCallback(
+    (listener: () => void) => manager.subscribePreview(chatId, listener),
+    [chatId, manager],
+  );
+  const getSnapshot = useCallback(
+    () => manager.getPreviewSnapshot(chatId),
+    [chatId, manager],
+  );
+  return useSyncExternalStore(subscribe, getSnapshot);
+}
+
+export function useChatStreamHasPreview(chatId: number | null): boolean {
+  const manager = useChatStreamManager();
+  const subscribe = useCallback(
+    (listener: () => void) =>
+      chatId === null
+        ? IDLE_UNSUBSCRIBE
+        : manager.subscribePreview(chatId, listener),
+    [chatId, manager],
+  );
+  const getSnapshot = useCallback(
+    () => (chatId === null ? "" : manager.getPreviewSnapshot(chatId)),
+    [chatId, manager],
+  );
+  return useSyncExternalStoreWithSelector(
+    subscribe,
+    getSnapshot,
+    undefined,
+    (preview) => preview.length > 0,
+  );
 }
 
 /**

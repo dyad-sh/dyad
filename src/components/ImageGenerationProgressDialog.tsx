@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { useAtomValue } from "jotai";
 import {
   Loader2,
   CheckCircle2,
@@ -19,11 +18,11 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { imageGenerationJobsAtom } from "@/atoms/imageGenerationAtoms";
+import { useImageGenerationJobs } from "@/image_generation/hooks";
 import type {
   ImageGenerationJob,
   ImageGenerationStatus,
-} from "@/atoms/imageGenerationAtoms";
+} from "@/image_generation/state";
 import { buildDyadMediaUrl } from "@/lib/dyadMediaUrl";
 import { useGenerateImage } from "@/hooks/useGenerateImage";
 import { ImageLightbox } from "@/components/chat/ImageLightbox";
@@ -243,7 +242,7 @@ export function ImageGenerationProgressDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const recentJobs = useAtomValue(imageGenerationJobsAtom);
+  const recentJobs = useImageGenerationJobs();
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

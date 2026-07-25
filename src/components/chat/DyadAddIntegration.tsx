@@ -2,10 +2,8 @@ import React, { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
-import {
-  integrationProviderSelectionAtom,
-  pendingIntegrationAtom,
-} from "@/atoms/integrationAtoms";
+import { integrationProviderSelectionAtom } from "@/atoms/integrationAtoms";
+import { usePendingIntegrations } from "@/user_input/hooks";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 import { useAtomValue, useSetAtom } from "jotai";
 import { useLoadApp } from "@/hooks/useLoadApp";
@@ -38,7 +36,7 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
   const { t } = useTranslation("home");
   const appId = useAtomValue(selectedAppIdAtom);
   const chatId = useAtomValue(selectedChatIdAtom);
-  const pendingIntegrationMap = useAtomValue(pendingIntegrationAtom);
+  const pendingIntegrationMap = usePendingIntegrations();
   const setIntegrationProviderSelection = useSetAtom(
     integrationProviderSelectionAtom,
   );

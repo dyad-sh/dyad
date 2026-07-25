@@ -22,12 +22,9 @@ import {
 import { formatDistanceToNow, format } from "date-fns";
 import { useVersions } from "@/hooks/useVersions";
 import { useAtomValue } from "jotai";
-import { selectAtom } from "jotai/utils";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import {
-  selectedChatIdAtom,
-  streamingPreviewByChatIdAtom,
-} from "@/atoms/chatAtoms";
+import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { useChatStreamHasPreview } from "@/hooks/useChatStream";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import {
@@ -123,18 +120,10 @@ const ChatMessage = ({
       ? stripCancelledResponseNotice(message.content)
       : "";
   // Sidecar tool-input XML preview lives outside message.content. Subscribe
-  // to a per-chat boolean derived atom so non-last messages don't re-render
-  // every preview chunk — only on the boolean transition.
+  // to its equality-gated boolean so non-last messages only re-render on the
+  // empty/non-empty transition, not on every preview chunk.
   const selectedChatId = useAtomValue(selectedChatIdAtom);
-  const hasPreviewForChatAtom = useMemo(
-    () =>
-      selectAtom(streamingPreviewByChatIdAtom, (m) => {
-        if (selectedChatId == null) return false;
-        return (m.get(selectedChatId)?.length ?? 0) > 0;
-      }),
-    [selectedChatId],
-  );
-  const hasPreviewForChat = useAtomValue(hasPreviewForChatAtom);
+  const hasPreviewForChat = useChatStreamHasPreview(selectedChatId);
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
   const hasStreamingPreview =
     message.role === "assistant" &&

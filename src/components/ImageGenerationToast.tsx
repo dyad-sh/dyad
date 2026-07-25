@@ -6,16 +6,13 @@ import { Button } from "@/components/ui/button";
 import { ImageLightbox } from "@/components/chat/ImageLightbox";
 import { buildDyadMediaUrl } from "@/lib/dyadMediaUrl";
 import type { GenerateImageResponse } from "@/ipc/types";
-import { getDefaultStore } from "jotai";
-import { pendingImageGenerationsCountAtom } from "@/atoms/imageGenerationAtoms";
 
 const GENERATING_TOAST_ID = "image-gen-progress";
 const SUCCESS_TOAST_ID = "image-gen-success";
 const SUCCESS_AUTO_DISMISS_MS = 10_000;
 
-function restoreGeneratingToastIfNeeded() {
-  const store = getDefaultStore();
-  const pending = store.get(pendingImageGenerationsCountAtom);
+function restoreGeneratingToastIfNeeded(getPendingCount: () => number) {
+  const pending = getPendingCount();
   if (pending > 0) {
     showImageGeneratingToast(pending);
   }
@@ -69,9 +66,11 @@ export function ImageGeneratingToast({
 export function ImageSuccessToast({
   result,
   toastId,
+  getPendingCount,
 }: {
   result: GenerateImageResponse;
   toastId: string | number;
+  getPendingCount: () => number;
 }) {
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
   const imageUrl = buildDyadMediaUrl(result.appPath, result.fileName);
@@ -81,7 +80,7 @@ export function ImageSuccessToast({
       <div className="relative overflow-visible bg-background border border-border rounded-xl shadow-lg min-w-[340px] max-w-[420px] p-3">
         <DismissButton
           toastId={toastId}
-          onDismiss={restoreGeneratingToastIfNeeded}
+          onDismiss={() => restoreGeneratingToastIfNeeded(getPendingCount)}
         />
         <div className="flex items-center gap-3">
           <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0" />
@@ -113,7 +112,7 @@ export function ImageSuccessToast({
             onClose={() => {
               setIsLightboxOpen(false);
               toast.dismiss(toastId);
-              restoreGeneratingToastIfNeeded();
+              restoreGeneratingToastIfNeeded(getPendingCount);
             }}
           />,
           document.body,
@@ -135,15 +134,22 @@ export function showImageGeneratingToast(
 
 export function showImageSuccessToast(
   result: GenerateImageResponse,
+  getPendingCount: () => number,
 ): string | number {
   // Dismiss the generating toast before showing success
   toast.dismiss(GENERATING_TOAST_ID);
   return toast.custom(
-    (t) => <ImageSuccessToast result={result} toastId={t} />,
+    (t) => (
+      <ImageSuccessToast
+        result={result}
+        toastId={t}
+        getPendingCount={getPendingCount}
+      />
+    ),
     {
       id: SUCCESS_TOAST_ID,
       duration: SUCCESS_AUTO_DISMISS_MS,
-      onAutoClose: () => restoreGeneratingToastIfNeeded(),
+      onAutoClose: () => restoreGeneratingToastIfNeeded(getPendingCount),
     },
   );
 }

@@ -8,7 +8,6 @@ import {
   chatMessagesByIdAtom,
   queuePausedByIdAtom,
   queuedMessagesByIdAtom,
-  streamingPreviewByChatIdAtom,
   isStreamingByIdAtom,
   type QueuedMessageItem,
 } from "@/atoms/chatAtoms";
@@ -151,6 +150,7 @@ export function createProductionChatStreamCommands(
   writeStreamingProjection?: (
     update: (previous: Map<number, boolean>) => Map<number, boolean>,
   ) => void,
+  setPreview: (chatId: number, content: string) => void = () => undefined,
 ): ChatStreamCommands {
   const latestChunkByChatId = new Map<number, number>();
   const ackTimers = new TaskScope<number>();
@@ -210,10 +210,7 @@ export function createProductionChatStreamCommands(
   ): void {
     latestChunkByChatId.delete(chatId);
     cancelAckTimer(chatId);
-    clearPreviewForChat(
-      (update) => deps().store.set(streamingPreviewByChatIdAtom, update),
-      chatId,
-    );
+    clearPreviewForChat(setPreview, chatId);
     ipc.chatStream.release(chatId, { invocationRef });
   }
 
@@ -323,11 +320,7 @@ export function createProductionChatStreamCommands(
               return;
             }
 
-            applyPreviewChunk(
-              (update) => store.set(streamingPreviewByChatIdAtom, update),
-              chatId,
-              streamingPreview,
-            );
+            applyPreviewChunk(setPreview, chatId, streamingPreview);
 
             if (updatedMessages) {
               // Full messages update (initial load, post-compaction, etc.)

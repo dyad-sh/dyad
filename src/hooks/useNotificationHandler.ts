@@ -1,9 +1,8 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef } from "react";
-import { useAtomValue } from "jotai";
 import { useRouterState } from "@tanstack/react-router";
 import { useStreamFinished } from "@/chat_stream/ChatStreamProvider";
-import { userInputRequestsAtom } from "@/user_input/projection";
+import { useUserInputRequests } from "@/user_input/hooks";
 import { useSelectChat } from "./useSelectChat";
 import { ipc } from "../ipc/types";
 import { showWarning } from "../lib/toast";
@@ -80,7 +79,7 @@ export function useNotificationHandler() {
     >(),
   );
   const pendingClassifiedNotificationRequestIdsRef = useRef(new Set<string>());
-  const projectedUserInputRequests = useAtomValue(userInputRequestsAtom);
+  const projectedUserInputRequests = useUserInputRequests();
 
   useEffect(() => {
     selectChatRef.current = selectChat;

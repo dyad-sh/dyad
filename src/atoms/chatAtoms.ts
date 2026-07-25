@@ -554,12 +554,3 @@ export const queuedMessagesByIdAtom = atom<Map<number, QueuedMessageItem[]>>(
 
 // Tracks if the queue is paused for each chat (Map<chatId, isPaused>)
 export const queuePausedByIdAtom = atom<Map<number, boolean>>(new Map());
-
-// Sidecar overlay for tool-input XML preview during Pro/Agent v2 streaming.
-// Lives outside message.content so the patch protocol stays strictly
-// append-only — buildXml output rewrites its prefix per JSON delta, which
-// would otherwise force non-tail patch escalation to fullMessages. Keyed by
-// chat id; only the last streaming assistant message renders it.
-export const streamingPreviewByChatIdAtom = atom<Map<number, string>>(
-  new Map(),
-);

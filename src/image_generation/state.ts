@@ -5,7 +5,19 @@
  * boundary becomes a visible late success instead of an orphaned file.
  */
 
-import type { GenerateImageResponse, ImageThemeMode } from "@/ipc/types";
+export type ImageThemeMode =
+  | "plain"
+  | "3d-clay"
+  | "real-photography"
+  | "isometric-illustration";
+
+export interface GenerateImageResponse {
+  fileName: string;
+  filePath: string;
+  appPath: string;
+  appId: number;
+  appName: string;
+}
 
 export interface StartImageGenerationParams {
   prompt: string;
@@ -18,6 +30,21 @@ export interface StartImageGenerationParams {
 export interface ImageGenerationJobDetails extends StartImageGenerationParams {
   id: string;
   startedAt: number;
+}
+
+export type ImageGenerationStatus =
+  | "pending"
+  | "cancelling"
+  | "success"
+  | "error"
+  | "cancelled";
+
+export interface ImageGenerationJob extends ImageGenerationJobDetails {
+  status: ImageGenerationStatus;
+  result?: GenerateImageResponse;
+  error?: string;
+  /** Success crossed the IPC boundary after cancellation was requested. */
+  lateAfterCancel?: boolean;
 }
 
 export type ImageGenerationState =

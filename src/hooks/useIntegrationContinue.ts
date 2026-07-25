@@ -1,17 +1,15 @@
 import { useCallback } from "react";
 import { useAtomValue, useSetAtom, useStore } from "jotai";
-import {
-  integrationProviderSelectionAtom,
-  pendingIntegrationAtom,
-} from "@/atoms/integrationAtoms";
+import { integrationProviderSelectionAtom } from "@/atoms/integrationAtoms";
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { getCompletedIntegrationProvider } from "@/components/chat/dyadAddIntegrationUtils";
+import { getUserInputReadModel } from "@/user_input/read_model";
 import {
-  getUserInputProjectionAdapter,
-  respondingRequestIdsAtom,
-} from "@/user_input/projection";
+  usePendingIntegrations,
+  useRespondingRequestIds,
+} from "@/user_input/hooks";
 
 /**
  * Shared continue logic for the integration setup flow. Request lifecycle
@@ -21,9 +19,9 @@ export function useIntegrationContinue() {
   const chatId = useAtomValue(selectedChatIdAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const store = useStore();
-  const userInputProjection = getUserInputProjectionAdapter({ store });
-  const pendingIntegrationMap = useAtomValue(pendingIntegrationAtom);
-  const respondingRequestIds = useAtomValue(respondingRequestIdsAtom);
+  const userInputReadModel = getUserInputReadModel({ store });
+  const pendingIntegrationMap = usePendingIntegrations();
+  const respondingRequestIds = useRespondingRequestIds();
   const setIntegrationProviderSelection = useSetAtom(
     integrationProviderSelectionAtom,
   );
@@ -50,7 +48,7 @@ export function useIntegrationContinue() {
     ) {
       return;
     }
-    const responded = await userInputProjection.respond(
+    const responded = await userInputReadModel.respond(
       pendingIntegration.requestId,
       {
         kind: "integration",
@@ -74,7 +72,7 @@ export function useIntegrationContinue() {
     provider,
     canContinue,
     isSubmitting,
-    userInputProjection,
+    userInputReadModel,
     setIntegrationProviderSelection,
     setPreviewMode,
   ]);

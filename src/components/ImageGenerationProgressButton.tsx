@@ -1,16 +1,15 @@
 import { useState } from "react";
-import { useAtomValue } from "jotai";
 import { Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
-  imageGenerationJobsAtom,
-  pendingImageGenerationsCountAtom,
-} from "@/atoms/imageGenerationAtoms";
+  useImageGenerationJobs,
+  useImageGenerationPendingCount,
+} from "@/image_generation/hooks";
 import { ImageGenerationProgressDialog } from "./ImageGenerationProgressDialog";
 
 export function ImageGenerationProgressButton() {
-  const recentJobs = useAtomValue(imageGenerationJobsAtom);
-  const pendingCount = useAtomValue(pendingImageGenerationsCountAtom);
+  const recentJobs = useImageGenerationJobs();
+  const pendingCount = useImageGenerationPendingCount();
   const [dialogOpen, setDialogOpen] = useState(false);
 
   if (recentJobs.length === 0) return null;

@@ -1,9 +1,4 @@
 import { atom } from "jotai";
-import type { UserInputQuestionPayload } from "@/ipc/types/user_input";
-import {
-  respondingRequestIdsAtom,
-  userInputRequestsAtom,
-} from "@/user_input/projection";
 
 export interface PlanData {
   content: string;
@@ -30,32 +25,6 @@ export const planStateAtom = atom<PlanState>({
 // can route the implementation accordingly.
 export const planAcceptInNewChatByChatIdAtom = atom<Map<number, boolean>>(
   new Map(),
-);
-
-interface PendingQuestionnaire {
-  chatId: number;
-  requestId: string;
-  questions: UserInputQuestionPayload[];
-  isResponding: boolean;
-}
-
-export const pendingQuestionnaireAtom = atom<Map<number, PendingQuestionnaire>>(
-  (get) => {
-    const questionnaires = new Map<number, PendingQuestionnaire>();
-    const respondingRequestIds = get(respondingRequestIdsAtom);
-    for (const request of get(userInputRequestsAtom).values()) {
-      if (request.status === "settled") continue;
-      const descriptor = request.descriptor;
-      if (descriptor.kind !== "questionnaire") continue;
-      questionnaires.set(descriptor.chatId, {
-        chatId: descriptor.chatId,
-        requestId: descriptor.requestId,
-        questions: descriptor.questions,
-        isResponding: respondingRequestIds.has(descriptor.requestId),
-      });
-    }
-    return questionnaires;
-  },
 );
 
 export interface PlanAnnotation {

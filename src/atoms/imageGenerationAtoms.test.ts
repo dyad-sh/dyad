@@ -1,11 +1,9 @@
-import { createStore } from "jotai";
 import { describe, expect, it } from "vitest";
-import type { ImageGenerationJob } from "./imageGenerationAtoms";
+import type { ImageGenerationJob } from "@/image_generation/state";
 import {
-  chatImageGenerationJobsAtom,
-  pendingImageGenerationsCountAtom,
-  setImageGenerationJobsProjectionAtom,
-} from "./imageGenerationAtoms";
+  selectChatImageGenerationJobs,
+  selectImageGenerationPendingCount,
+} from "@/image_generation/selectors";
 
 const baseJob: ImageGenerationJob = {
   id: "job-1",
@@ -18,24 +16,21 @@ const baseJob: ImageGenerationJob = {
   source: "chat",
 };
 
-describe("image generation atoms", () => {
+describe("image generation selectors", () => {
   it("excludes late-after-cancel successes from chat consumers", () => {
-    const store = createStore();
-    store.set(setImageGenerationJobsProjectionAtom, [
-      baseJob,
-      { ...baseJob, id: "job-2", lateAfterCancel: true },
-    ]);
+    const jobs = [baseJob, { ...baseJob, id: "job-2", lateAfterCancel: true }];
 
-    expect(store.get(chatImageGenerationJobsAtom)).toEqual([baseJob]);
+    const selected = selectChatImageGenerationJobs(jobs);
+    expect(selected).toEqual([baseJob]);
+    expect(selectChatImageGenerationJobs(jobs)).toBe(selected);
   });
 
   it("does not count cancellation requests as pending generations", () => {
-    const store = createStore();
-    store.set(setImageGenerationJobsProjectionAtom, [
+    const jobs: ImageGenerationJob[] = [
       { ...baseJob, status: "pending" },
       { ...baseJob, id: "job-2", status: "cancelling" },
-    ]);
+    ];
 
-    expect(store.get(pendingImageGenerationsCountAtom)).toBe(1);
+    expect(selectImageGenerationPendingCount(jobs)).toBe(1);
   });
 });

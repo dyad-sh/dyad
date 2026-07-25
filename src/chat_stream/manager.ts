@@ -32,6 +32,7 @@ import type {
   StreamEvent,
   StreamState,
 } from "./state";
+import { ChatStreamPreviewStore } from "./preview_store";
 
 type JotaiStore = ReturnType<typeof createStore>;
 
@@ -68,6 +69,7 @@ export class ChatStreamManager {
   private readonly commands;
   private readonly host: KeyedControllerHost<number, ChatStreamController>;
   private readonly lifecycle: LifecycleScope;
+  private readonly previews = new ChatStreamPreviewStore();
   private projectionWriter: AtomProjectionWriter<unknown> | null = null;
   private projectionEnabled = true;
 
@@ -85,6 +87,7 @@ export class ChatStreamManager {
         return this.runtimeDeps;
       },
       (update) => this.writeProjection(update),
+      this.setPreview,
     );
     this.host = new KeyedControllerHost((chatId) =>
       this.createController(chatId),
@@ -140,8 +143,17 @@ export class ChatStreamManager {
     };
   }
 
+  getPreviewSnapshot = this.previews.getSnapshot;
+
+  subscribePreview = this.previews.subscribeKey;
+
+  /** Command-adapter write boundary for the high-frequency preview sidecar. */
+  setPreview = (chatId: number, content: string): boolean =>
+    this.previews.set(chatId, content);
+
   disposeKey = (chatId: number): void => {
     this.host.disposeKey(chatId);
+    this.previews.disposeKey(chatId);
     this.store.set(queuedMessagesByIdAtom, (previous) =>
       withoutChatId(previous, chatId),
     );
@@ -158,6 +170,7 @@ export class ChatStreamManager {
 
   dispose(): void {
     this.lifecycle.dispose();
+    this.previews.dispose();
     // An in-flight startStream may register its IPC transport after an await.
     // Its controller releases again once setup settles, so retain deps until
     // that promise releases this otherwise-unreferenced manager graph.

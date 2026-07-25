@@ -1,7 +1,8 @@
 /**
- * Renderer projection for the main-authoritative user-input registry.
+ * Renderer read model for the main-authoritative user-input registry.
  *
- * This adapter is the only writer of the projection. It subscribes before
+ * This adapter is the only writer of the renderer read model. It subscribes
+ * before
  * hydrating and uses per-request revisions so an event received while
  * getPending is in flight always wins over that snapshot.
  *
@@ -9,8 +10,7 @@
  * facade is injected at the application composition root; this module never
  * imports the chat-stream manager or controller.
  */
-import { useMemo } from "react";
-import { atom, type createStore, useAtomValue } from "jotai";
+import type { createStore } from "jotai";
 
 import { DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import type {
@@ -20,9 +20,8 @@ import type {
 } from "@/ipc/types/user_input";
 import { ipc as defaultIpc } from "@/ipc/types";
 import { showError } from "@/lib/toast";
-import type { SqlConsentMetadata } from "@/shared/sqlConsentMetadata";
 import { createLateBinding } from "@/state_machines/late_binding";
-import { registerAtomWriter } from "@/state_machines/projection";
+import { SnapshotStore } from "@/state_machines/snapshot_store";
 import { TaskScope } from "@/state_machines/task_scope";
 
 type UserInputOutcome =
@@ -37,7 +36,7 @@ type UserInputOutcome =
 const MAX_SETTLED_TOMBSTONES = 1_000;
 const QUESTIONNAIRE_CONFIRMATION_MS = 2_000;
 
-export type ProjectedUserInputRequest =
+export type UserInputRequest =
   | {
       status: "awaiting" | "armed" | "due";
       descriptor: UserInputDescriptorPayload;
@@ -56,97 +55,20 @@ export type ProjectedUserInputRequest =
       questionnaireSubmitted?: boolean;
     };
 
-export type UserInputRequests = ReadonlyMap<string, ProjectedUserInputRequest>;
-type LiveProjectedUserInputRequest = Exclude<
-  ProjectedUserInputRequest,
-  { status: "settled" }
->;
+export type UserInputRequests = ReadonlyMap<string, UserInputRequest>;
+type LiveUserInputRequest = Exclude<UserInputRequest, { status: "settled" }>;
 
-const writableUserInputRequestsAtom = atom<
-  Map<string, ProjectedUserInputRequest>
->(new Map());
-const writableRespondingRequestIdsAtom = atom<Set<string>>(new Set<string>());
-
-// Public projection atoms are intentionally read-only. A rogue store.set call
-// fails at runtime as well as at compile time, enforcing the single writer.
-export const userInputRequestsAtom = atom<UserInputRequests>((get) =>
-  get(writableUserInputRequestsAtom),
-);
-export const respondingRequestIdsAtom = atom<ReadonlySet<string>>((get) =>
-  get(writableRespondingRequestIdsAtom),
-);
-
-// Tool consent request queue. `kind` routes the decision back to the right IPC
-// channel; responding requests are hidden optimistically by the projection.
-export interface PendingToolConsent {
-  kind: "agent" | "mcp";
-  requestId: string;
-  chatId: number;
-  toolName: string;
-  toolDescription?: string | null;
-  inputPreview?: string | null;
-  metadata?: SqlConsentMetadata | null;
-  serverId?: number;
-  serverName?: string | null;
-  classifierReason?: string | null;
-  classifierPending?: boolean;
+export interface UserInputReadModelSnapshot {
+  requests: UserInputRequests;
+  respondingRequestIds: ReadonlySet<string>;
 }
 
-export function selectPendingToolConsents(
-  requests: UserInputRequests,
-  respondingRequestIds: ReadonlySet<string>,
-  chatId: number | undefined,
-): PendingToolConsent[] {
-  const consents: PendingToolConsent[] = [];
-  for (const request of requests.values()) {
-    if (request.status === "settled") continue;
-    const descriptor = request.descriptor;
-    if (
-      descriptor.chatId !== chatId ||
-      respondingRequestIds.has(descriptor.requestId)
-    ) {
-      continue;
-    }
-    if (descriptor.kind === "agent-consent") {
-      consents.push({
-        kind: "agent",
-        requestId: descriptor.requestId,
-        chatId: descriptor.chatId,
-        toolName: descriptor.toolName,
-        toolDescription: descriptor.toolDescription,
-        inputPreview: descriptor.inputPreview,
-        metadata: descriptor.metadata as SqlConsentMetadata | null | undefined,
-      });
-    } else if (descriptor.kind === "mcp-consent") {
-      consents.push({
-        kind: "mcp",
-        requestId: descriptor.requestId,
-        chatId: descriptor.chatId,
-        serverId: descriptor.serverId,
-        serverName: descriptor.serverName,
-        toolName: descriptor.toolName,
-        toolDescription: descriptor.toolDescription,
-        inputPreview: descriptor.inputPreview,
-        classifierReason: request.classifierReason,
-        classifierPending: request.classifier === "racing",
-      });
-    }
-  }
-  return consents;
-}
+const EMPTY_READ_MODEL: UserInputReadModelSnapshot = {
+  requests: new Map(),
+  respondingRequestIds: new Set(),
+};
 
-export function usePendingToolConsents(
-  chatId: number | undefined,
-): PendingToolConsent[] {
-  const requests = useAtomValue(userInputRequestsAtom);
-  const respondingRequestIds = useAtomValue(respondingRequestIdsAtom);
-  return useMemo(
-    () => selectPendingToolConsents(requests, respondingRequestIds, chatId),
-    [chatId, requests, respondingRequestIds],
-  );
-}
-
-export type UserInputProjectionIpc = Pick<typeof defaultIpc, "userInput"> & {
+export type UserInputReadModelIpc = Pick<typeof defaultIpc, "userInput"> & {
   events: Pick<typeof defaultIpc.events, "userInput">;
 };
 
@@ -160,7 +82,9 @@ export interface UserInputChatStreamFacade {
   }): { accepted: boolean } | Promise<{ accepted: boolean }>;
 }
 
-export interface UserInputProjectionAdapter {
+export interface UserInputReadModel {
+  getSnapshot(): UserInputReadModelSnapshot;
+  subscribe(listener: () => void): () => void;
   start(): () => void;
   configureChatStream(chatStream: UserInputChatStreamFacade): void;
   respond(
@@ -171,18 +95,18 @@ export interface UserInputProjectionAdapter {
 
 interface AdapterOptions {
   store: JotaiStore;
-  ipcClient?: UserInputProjectionIpc;
+  ipcClient?: UserInputReadModelIpc;
   chatStream?: UserInputChatStreamFacade;
   showErrorToast?: (message: unknown) => unknown;
 }
 
 type JotaiStore = ReturnType<typeof createStore>;
 
-const adapters = new WeakMap<JotaiStore, UserInputProjectionAdapter>();
+const readModels = new WeakMap<JotaiStore, UserInputReadModel>();
 
-function snapshotToProjection(
+function snapshotToReadModel(
   snapshot: PendingUserInputPayload,
-): LiveProjectedUserInputRequest {
+): LiveUserInputRequest {
   return {
     status: snapshot.status,
     descriptor: snapshot.descriptor,
@@ -193,13 +117,13 @@ function snapshotToProjection(
   };
 }
 
-export function getUserInputProjectionAdapter({
+export function getUserInputReadModel({
   store,
   ipcClient = defaultIpc,
   chatStream,
   showErrorToast = showError,
-}: AdapterOptions): UserInputProjectionAdapter {
-  const existing = adapters.get(store);
+}: AdapterOptions): UserInputReadModel {
+  const existing = readModels.get(store);
   if (existing) {
     if (chatStream) existing.configureChatStream(chatStream);
     return existing;
@@ -226,18 +150,9 @@ export function getUserInputProjectionAdapter({
   const chatStreamBinding =
     createLateBinding<UserInputChatStreamFacade>("replaceable");
   if (chatStream) chatStreamBinding.configure(chatStream);
-  const requestsWriter = registerAtomWriter<
-    typeof store,
-    typeof writableUserInputRequestsAtom,
-    (
-      current: Map<string, ProjectedUserInputRequest>,
-    ) => Map<string, ProjectedUserInputRequest>
-  >(store, writableUserInputRequestsAtom);
-  const respondingWriter = registerAtomWriter<
-    typeof store,
-    typeof writableRespondingRequestIdsAtom,
-    (current: Set<string>) => Set<string>
-  >(store, writableRespondingRequestIdsAtom);
+  const readModelStore = new SnapshotStore<UserInputReadModelSnapshot>(
+    EMPTY_READ_MODEL,
+  );
 
   const markChanged = (requestId: string): number => {
     const revision = (revisions.get(requestId) ?? 0) + 1;
@@ -246,20 +161,33 @@ export function getUserInputProjectionAdapter({
   };
 
   const updateRequests = (
-    update: (
-      current: UserInputRequests,
-    ) => Map<string, ProjectedUserInputRequest>,
+    update: (current: UserInputRequests) => Map<string, UserInputRequest>,
   ) => {
-    requestsWriter.write((current) => update(current));
+    const current = readModelStore.getSnapshot();
+    const requests = update(current.requests);
+    if (requests === current.requests) return;
+    readModelStore.setState({ ...current, requests });
+  };
+
+  const updateRequestsAndRemoveResponding = (
+    requestId: string,
+    update: (current: UserInputRequests) => Map<string, UserInputRequest>,
+  ) => {
+    const current = readModelStore.getSnapshot();
+    const requests = update(current.requests);
+    const wasResponding = current.respondingRequestIds.has(requestId);
+    if (requests === current.requests && !wasResponding) return;
+    const respondingRequestIds = new Set(current.respondingRequestIds);
+    respondingRequestIds.delete(requestId);
+    readModelStore.setState({ requests, respondingRequestIds });
   };
 
   const removeResponding = (requestId: string) => {
-    respondingWriter.write((current) => {
-      if (!current.has(requestId)) return current;
-      const next = new Set<string>(current);
-      next.delete(requestId);
-      return next;
-    });
+    const current = readModelStore.getSnapshot();
+    if (!current.respondingRequestIds.has(requestId)) return;
+    const next = new Set(current.respondingRequestIds);
+    next.delete(requestId);
+    readModelStore.setState({ ...current, respondingRequestIds: next });
   };
 
   const scheduleSettledCleanup = () => {
@@ -270,7 +198,7 @@ export function getUserInputProjectionAdapter({
     const now = Date.now();
     let nextExpiry = Number.POSITIVE_INFINITY;
     updateRequests((current) => {
-      let next: Map<string, ProjectedUserInputRequest> | undefined;
+      let next: Map<string, UserInputRequest> | undefined;
       for (const [requestId, entry] of current) {
         if (entry.status !== "settled" || !entry.questionnaireSubmitted) {
           continue;
@@ -283,7 +211,7 @@ export function getUserInputProjectionAdapter({
           nextExpiry = Math.min(nextExpiry, expiresAt);
         }
       }
-      return next ?? (current as Map<string, ProjectedUserInputRequest>);
+      return next ?? (current as Map<string, UserInputRequest>);
     });
 
     if (Number.isFinite(nextExpiry)) {
@@ -297,7 +225,7 @@ export function getUserInputProjectionAdapter({
 
   const dispatchDueFollowUp = async (requestId: string): Promise<void> => {
     if (dispatchingFollowUps.has(requestId)) return;
-    const request = store.get(writableUserInputRequestsAtom).get(requestId);
+    const request = readModelStore.getSnapshot().requests.get(requestId);
     if (
       !request ||
       request.status !== "due" ||
@@ -343,9 +271,7 @@ export function getUserInputProjectionAdapter({
   };
 
   const dispatchAllDueFollowUps = () => {
-    for (const [requestId, request] of store.get(
-      writableUserInputRequestsAtom,
-    )) {
+    for (const [requestId, request] of readModelStore.getSnapshot().requests) {
       if (request.status === "due") {
         void dispatchDueFollowUp(requestId);
       }
@@ -359,7 +285,7 @@ export function getUserInputProjectionAdapter({
     if (!stop || generation !== hydrationGeneration) return;
 
     updateRequests((current) => {
-      const next = new Map<string, ProjectedUserInputRequest>();
+      const next = new Map<string, UserInputRequest>();
 
       // Tombstones survive a refresh; unchanged live entries are replaced by
       // main's authoritative snapshot below.
@@ -392,7 +318,7 @@ export function getUserInputProjectionAdapter({
           continue;
         }
 
-        const projected = snapshotToProjection(snapshot);
+        const projected = snapshotToReadModel(snapshot);
         const classification = pendingClassifications.get(requestId);
         const armed = pendingArmed.get(requestId);
         const followUp = pendingFollowUps.get(requestId);
@@ -438,7 +364,9 @@ export function getUserInputProjectionAdapter({
     dispatchAllDueFollowUps();
   };
 
-  const adapter: UserInputProjectionAdapter = {
+  const readModel: UserInputReadModel = {
+    getSnapshot: readModelStore.getSnapshot,
+    subscribe: readModelStore.subscribe,
     configureChatStream(nextChatStream) {
       chatStreamBinding.configure(nextChatStream);
       dispatchAllDueFollowUps();
@@ -479,7 +407,7 @@ export function getUserInputProjectionAdapter({
             ({ requestId, followUpPrompt }) => {
               const revision = markChanged(requestId);
               pendingArmed.set(requestId, { followUpPrompt, revision });
-              updateRequests((current) => {
+              updateRequestsAndRemoveResponding(requestId, (current) => {
                 const entry = current.get(requestId);
                 if (
                   !entry ||
@@ -496,7 +424,6 @@ export function getUserInputProjectionAdapter({
                 });
                 return next;
               });
-              removeResponding(requestId);
             },
           ),
         ],
@@ -528,8 +455,7 @@ export function getUserInputProjectionAdapter({
             pendingFollowUps.delete(requestId);
             const pendingResponse = pendingResponses.get(requestId);
             pendingResponses.delete(requestId);
-            removeResponding(requestId);
-            updateRequests((current) => {
+            updateRequestsAndRemoveResponding(requestId, (current) => {
               const previous = current.get(requestId);
               const next = new Map(current);
               next.set(requestId, {
@@ -602,11 +528,12 @@ export function getUserInputProjectionAdapter({
 
     async respond(requestId, response) {
       pendingResponses.set(requestId, response);
-      respondingWriter.write((current) => {
-        const next = new Set<string>(current);
+      const current = readModelStore.getSnapshot();
+      if (!current.respondingRequestIds.has(requestId)) {
+        const next = new Set(current.respondingRequestIds);
         next.add(requestId);
-        return next;
-      });
+        readModelStore.setState({ ...current, respondingRequestIds: next });
+      }
       try {
         await ipcClient.userInput.respond({ requestId, response });
         return true;
@@ -616,17 +543,16 @@ export function getUserInputProjectionAdapter({
           // Never expose a request main has already rejected as stale, even if
           // the best-effort authoritative refresh also fails.
           markChanged(requestId);
-          updateRequests((current) => {
+          updateRequestsAndRemoveResponding(requestId, (current) => {
             const next = new Map(current);
             next.delete(requestId);
             return next;
           });
-          removeResponding(requestId);
           try {
             await hydrate();
           } catch {
             // The stale response remains a NotFound regardless of whether the
-            // best-effort projection refresh succeeds.
+            // best-effort read-model refresh succeeds.
           }
           showErrorToast("request expired");
           return false;
@@ -638,6 +564,6 @@ export function getUserInputProjectionAdapter({
     },
   };
 
-  adapters.set(store, adapter);
-  return adapter;
+  readModels.set(store, readModel);
+  return readModel;
 }

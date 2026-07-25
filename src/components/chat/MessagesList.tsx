@@ -14,7 +14,7 @@ import { OpenRouterSetupBanner, SetupBanner } from "../SetupBanner";
 
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
-import { userInputRequestsAtom } from "@/user_input/projection";
+import { useUserInputRequests } from "@/user_input/hooks";
 import { useAtomValue } from "jotai";
 import { CheckCircle2, Loader2, RefreshCw, Undo } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -84,7 +84,7 @@ type PendingRevert =
 
 // Footer component for Virtuoso - receives context via props
 function FooterComponent({ context }: { context?: FooterContext }) {
-  const userInputRequests = useAtomValue(userInputRequestsAtom);
+  const userInputRequests = useUserInputRequests();
   const [pendingRevert, setPendingRevert] = useState<PendingRevert | null>(
     null,
   );

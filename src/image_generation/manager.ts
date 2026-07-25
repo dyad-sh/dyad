@@ -3,7 +3,6 @@ import type { Clock, IdSource } from "@/state_machines/clock";
 import { SnapshotStore } from "@/state_machines/snapshot_store";
 import { createTraceObserver } from "@/state_machines/trace";
 import type { TransitionObserver } from "@/state_machines/types";
-import type { ImageGenerationJob } from "@/atoms/imageGenerationAtoms";
 import {
   ImageGenerationController,
   type ImageGenerationCommandRunner,
@@ -11,6 +10,7 @@ import {
 import type {
   ImageGenerationCommand,
   ImageGenerationEvent,
+  ImageGenerationJob,
   ImageGenerationJobDetails,
   ImageGenerationState,
   StartImageGenerationParams,
@@ -39,7 +39,7 @@ export class ImageGenerationManager {
     string,
     ImageGenerationJobDetails
   >();
-  private readonly projectionStore = new SnapshotStore<ImageGenerationJob[]>(
+  private readonly jobsStore = new SnapshotStore<ImageGenerationJob[]>(
     EMPTY_JOBS,
   );
   private readonly unsubscribeHost: () => void;
@@ -61,9 +61,9 @@ export class ImageGenerationManager {
     this.unsubscribeHost = this.host.subscribeAny(this.refreshProjection);
   }
 
-  getProjection = this.projectionStore.getSnapshot;
+  getJobsSnapshot = this.jobsStore.getSnapshot;
 
-  subscribeProjection = this.projectionStore.subscribe;
+  subscribeJobs = this.jobsStore.subscribe;
 
   submit(params: StartImageGenerationParams): string {
     if (this.disposed) {
@@ -103,7 +103,7 @@ export class ImageGenerationManager {
     this.unsubscribeHost();
     this.host.dispose();
     this.pendingCreations.clear();
-    this.projectionStore.dispose();
+    this.jobsStore.dispose();
   }
 
   private readonly refreshProjection = (): void => {
@@ -111,7 +111,7 @@ export class ImageGenerationManager {
       const state = this.host.get(jobId)?.getSnapshot();
       return state ? [projectImageGenerationState(state)] : [];
     });
-    this.projectionStore.setState(next.length === 0 ? EMPTY_JOBS : next);
+    this.jobsStore.setState(next.length === 0 ? EMPTY_JOBS : next);
   };
 
   private pruneTerminalJobs(): void {

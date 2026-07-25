@@ -55,6 +55,28 @@ export const GenerateImageResponseSchema = z.object({
   appName: z.string(),
 });
 
+type MutuallyAssignable<Left, Right> = [Left] extends [Right]
+  ? [Right] extends [Left]
+    ? true
+    : false
+  : false;
+type AssertTrue<Value extends true> = Value;
+
+// The machine state stays zod-free, so pin its hand-written boundary types to
+// the runtime IPC schemas here. Either side drifting must fail type-checking.
+const imageGenerationSchemaTypeAssertions: [
+  AssertTrue<
+    MutuallyAssignable<
+      z.infer<typeof GenerateImageResponseSchema>,
+      GenerateImageResponse
+    >
+  >,
+  AssertTrue<
+    MutuallyAssignable<z.infer<typeof ImageThemeModeSchema>, ImageThemeMode>
+  >,
+] = [true, true];
+void imageGenerationSchemaTypeAssertions;
+
 // =============================================================================
 // Image Generation Contracts
 // =============================================================================

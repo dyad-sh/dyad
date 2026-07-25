@@ -13,6 +13,9 @@ Background and before/after examples of why this pattern exists:
   adapters in `commands.ts`, and renderer bindings in a hook/provider.
 - `state.ts` and `transition.ts` stay pure. They must not depend on React,
   Electron, Jotai, TanStack Query, zod, timers, `Date`, or randomness.
+- When that purity requires a hand-written state type to duplicate an IPC zod
+  schema, add a mutual-assignability assertion beside the schema so either
+  definition drifting fails type-checking.
 - Cover the full state × event matrix with exhaustive switches and `never`
   checks. Deliberate no-ops must use shared `ignore(state, reason)` so they are
   distinguishable from omissions and observable in telemetry.

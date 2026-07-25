@@ -134,6 +134,7 @@ import {
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { detectFrameworkType } from "../utils/framework_utils";
 import { readAppFileForEditor } from "../utils/bounded_text_file";
+import { queryInvalidationBus } from "@/window_infrastructure/main/query_invalidation_bus";
 
 const logger = log.scope("app_handlers");
 const handle = createLoggedHandler(logger);
@@ -539,10 +540,14 @@ export function registerAppHandlers() {
         })
         .where(eq(chats.id, chat.id));
 
-      return {
+      const result = {
         app: { ...app, resolvedPath: fullAppPath },
         chatId: chat.id,
       };
+      queryInvalidationBus.publish([{ family: "apps" }, { family: "chats" }], {
+        originEndpoint: event?.sender,
+      });
+      return result;
     } finally {
       if (params.firstPromptCreationOperationId) {
         await firstPromptCreationRegistry.complete(

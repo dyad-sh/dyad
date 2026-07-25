@@ -59,6 +59,10 @@ import { testsContracts, testsEvents } from "../types/tests";
 import { queueContracts, queueSendContracts } from "../types/queue";
 import { userInputContracts, userInputEvents } from "../types/user_input";
 import { firstPromptSendContracts } from "../types/first_prompt";
+import {
+  windowInfrastructureContracts,
+  windowInfrastructureEvents,
+} from "../types/window_infrastructure";
 
 // =============================================================================
 // Invoke Channels (derived from all contracts)
@@ -126,6 +130,7 @@ export const VALID_INVOKE_CHANNELS = [
   ...getInvokeChannels(testsContracts),
   ...getInvokeChannels(queueContracts),
   ...getInvokeChannels(userInputContracts),
+  ...getInvokeChannels(windowInfrastructureContracts),
 
   // Test-only channels
   ...TEST_INVOKE_CHANNELS,
@@ -166,6 +171,7 @@ export const VALID_RECEIVE_CHANNELS = [
   ...getReceiveChannels(appBlueprintEvents),
   ...getReceiveChannels(testsEvents),
   ...getReceiveChannels(userInputEvents),
+  ...getReceiveChannels(windowInfrastructureEvents),
 ] as const;
 
 // =============================================================================

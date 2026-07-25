@@ -65,6 +65,10 @@ export { terminalContracts } from "./terminal";
 export { testsContracts, testsEvents } from "./tests";
 export { userInputContracts, userInputEvents } from "./user_input";
 export { firstPromptSendContracts } from "./first_prompt";
+export {
+  windowInfrastructureContracts,
+  windowInfrastructureEvents,
+} from "./window_infrastructure";
 
 // =============================================================================
 // Client Exports
@@ -109,6 +113,10 @@ export { terminalClient } from "./terminal";
 export { testsClient, testsEventClient } from "./tests";
 export { userInputClient, userInputEventClient } from "./user_input";
 export { firstPromptClient } from "./first_prompt";
+export {
+  windowInfrastructureClient,
+  windowInfrastructureEventClient,
+} from "./window_infrastructure";
 
 // =============================================================================
 // Type Exports
@@ -464,6 +472,10 @@ import { testsClient, testsEventClient } from "./tests";
 import { queueClient } from "./queue";
 import { userInputClient, userInputEventClient } from "./user_input";
 import { firstPromptClient } from "./first_prompt";
+import {
+  windowInfrastructureClient,
+  windowInfrastructureEventClient,
+} from "./window_infrastructure";
 
 /**
  * Unified IPC client with all domains organized by namespace.
@@ -532,6 +544,7 @@ export const ipc = {
   queue: queueClient,
   userInput: userInputClient,
   firstPrompt: firstPromptClient,
+  windowInfrastructure: windowInfrastructureClient,
 
   // Event clients for main->renderer pub/sub
   events: {
@@ -542,5 +555,6 @@ export const ipc = {
     appBlueprint: appBlueprintEventClient,
     tests: testsEventClient,
     userInput: userInputEventClient,
+    windowInfrastructure: windowInfrastructureEventClient,
   },
 } as const;

@@ -11,6 +11,7 @@ import {
   type Event as ElectronEvent,
 } from "electron";
 import * as path from "node:path";
+import { randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { registerIpcHandlers } from "./ipc/ipc_host";
@@ -118,6 +119,8 @@ import {
   shouldBlockMainWindowNavigation,
 } from "./main/window_security";
 import { pathToFileURL } from "node:url";
+import { windowRegistry } from "./window_infrastructure/main/window_registry";
+import type { WindowSessionId } from "./window_infrastructure/types";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();
@@ -606,6 +609,9 @@ const createWindow = () => {
     // backgroundColor: "#00000001",
     // frame: false,
   });
+  const windowSessionId = randomUUID() as WindowSessionId;
+  windowRegistry.register(mainWindow.webContents, windowSessionId);
+  mainWindow.on("focus", () => windowRegistry.setFocused(windowSessionId));
   const packagedRendererUrl = pathToFileURL(
     path.join(__dirname, "../renderer/main_window/index.html"),
   ).href;

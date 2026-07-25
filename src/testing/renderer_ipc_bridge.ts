@@ -91,6 +91,7 @@ export interface RendererIpcBridge {
   /** The fake IpcMainInvokeEvent handed to every invoked handler. */
   fakeEvent: {
     sender: {
+      id: number;
       isDestroyed: () => boolean;
       isCrashed: () => boolean;
       send: (channel: string, ...args: unknown[]) => void;
@@ -243,6 +244,7 @@ export function installRendererIpcBridge(
   const frame = { url: "http://localhost:5173/" };
   const fakeEvent = {
     sender: {
+      id: 1,
       mainFrame: frame,
       isDestroyed: () => false,
       isCrashed: () => false,

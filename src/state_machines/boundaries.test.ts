@@ -528,6 +528,36 @@ function usesRuntimeGetDefaultStore(sourceFile: ts.SourceFile): boolean {
 }
 
 describe("state-machine boundaries", () => {
+  it("keeps WindowRegistry main internals out of renderer production code", () => {
+    const mainOnlyRoot = path.join(
+      SOURCE_ROOT,
+      "window_infrastructure",
+      "main",
+    );
+    const allowedRoots = [
+      path.join(SOURCE_ROOT, "ipc"),
+      path.join(SOURCE_ROOT, "main"),
+      path.join(SOURCE_ROOT, "testing"),
+      mainOnlyRoot,
+    ];
+    const violations: string[] = [];
+    for (const filePath of productionFiles(SOURCE_ROOT)) {
+      const isMainEntry = filePath === path.join(SOURCE_ROOT, "main.ts");
+      if (
+        isMainEntry ||
+        allowedRoots.some((root) => isWithin(root, filePath))
+      ) {
+        continue;
+      }
+      for (const source of importsIn(filePath)) {
+        if (resolvesWithin(filePath, source, mainOnlyRoot)) {
+          violations.push(`${relativeSourcePath(filePath)} imports ${source}`);
+        }
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
   it("normalizes Windows paths used in boundary assertions", () => {
     expect(toPortablePath("first_prompt\\FirstPromptProvider.tsx")).toBe(
       "first_prompt/FirstPromptProvider.tsx",

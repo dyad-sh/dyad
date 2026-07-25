@@ -34,6 +34,20 @@ class AppRunActorService {
     });
   }
 
+  async outputForCurrentRun(
+    appId: number,
+    fallbackInvocationRef?: AppRunInvocationRef,
+  ): Promise<MainAppRuntimeOutput> {
+    await requireApp(appId);
+    const state = this.actor(appId).getSnapshot().runState;
+    const invocationRef =
+      state.type === "idle"
+        ? (fallbackInvocationRef ??
+          appRuntimeService.createExternalLifecycleRef(appId))
+        : state.invocationRef;
+    return this.outputFor(appId, invocationRef);
+  }
+
   async dispatchStart(
     appId: number,
     input: {
@@ -119,6 +133,10 @@ class AppRunActorService {
       appRunKey(appId),
       "entity-deletion",
     );
+  }
+
+  disposeAllApps(): Promise<void> {
+    return remoteMachineHost.disposeMachine(appRunDefinition.id);
   }
 
   dispose(): Promise<void> {

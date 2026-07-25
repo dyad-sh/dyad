@@ -651,7 +651,6 @@ export async function runAppTestsWithIsolation({
         // a throwaway RLS-scoped test user, and no-DB apps run as-is.
         prepared = await prepareIsolatedTestDatabase({
           app,
-          event,
           emit,
           runtimeMode,
           signal: controller.signal,

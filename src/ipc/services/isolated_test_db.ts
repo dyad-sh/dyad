@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import log from "electron-log";
-import type { IpcMainInvokeEvent } from "electron";
 
 import { getDyadAppPath } from "../../paths/paths";
 import { apps } from "../../db/schema";
@@ -22,7 +21,7 @@ import {
 import { detectFrameworkType } from "../utils/framework_utils";
 import { runningApps, stopAppByInfo } from "../utils/process_manager";
 import { cleanUpPort, executeApp } from "./app_runtime_service";
-import { getIpcAppRuntimeOutput } from "./app_runtime_transport";
+import { appRunActorService } from "./app_run_actor_service";
 import { getAppPort } from "../../../shared/ports";
 import type { TestIsolation } from "../types/tests";
 
@@ -77,13 +76,11 @@ const NOOP_TEARDOWN = async () => {
  */
 export async function prepareIsolatedTestDatabase({
   app,
-  event,
   emit,
   runtimeMode,
   signal,
 }: {
   app: AppRow;
-  event: IpcMainInvokeEvent;
   emit: EmitOutput;
   runtimeMode: string;
   signal?: AbortSignal;
@@ -137,7 +134,7 @@ export async function prepareIsolatedTestDatabase({
       }
       if (envRestored) {
         try {
-          await restartAppInPlace({ app, appPath, event });
+          await restartAppInPlace({ app, appPath });
         } catch (error) {
           logger.error(
             `Failed to restart app ${app.id} back onto its real branch: ${error}`,
@@ -196,7 +193,7 @@ export async function prepareIsolatedTestDatabase({
     // 4. Restart so the dev server reads the throwaway branch, then wait until
     //    it's serving again before Playwright points at it.
     emit("Starting the app against the isolated test database…\n", "setup");
-    const processId = await restartAppInPlace({ app, appPath, event });
+    const processId = await restartAppInPlace({ app, appPath });
     await waitForServerReady(app.id, signal, processId);
 
     return {
@@ -381,13 +378,15 @@ async function restoreEnvFile(
 async function restartAppInPlace({
   app,
   appPath,
-  event,
 }: {
   app: AppRow;
   appPath: string;
-  event: IpcMainInvokeEvent;
 }): Promise<number | undefined> {
   const appInfo = runningApps.get(app.id);
+  const output = await appRunActorService.outputForCurrentRun(
+    app.id,
+    appInfo?.invocationRef,
+  );
   if (appInfo) {
     await stopAppByInfo(app.id, appInfo);
   }
@@ -395,7 +394,7 @@ async function restartAppInPlace({
   await executeApp({
     appPath,
     appId: app.id,
-    output: getIpcAppRuntimeOutput(event.sender),
+    output,
     isNeon: !!app.neonProjectId,
     installCommand: app.installCommand,
     startCommand: app.startCommand,

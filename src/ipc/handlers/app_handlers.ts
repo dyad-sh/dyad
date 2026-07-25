@@ -1394,6 +1394,8 @@ export function registerAppHandlers() {
       }
     }
     logger.log("all running apps stopped.");
+    await appRunActorService.disposeAllApps();
+    logger.log("all app run actors disposed.");
     // Determine the paths of all apps in the database so that we can delete them.
     // We do the deletion last, so technically this is a TOCTOU race, but
     // it allows us to do the deletion last after removing the database

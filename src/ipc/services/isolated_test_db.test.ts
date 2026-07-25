@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   readEnvFileIfExists: vi.fn().mockResolvedValue(null),
   executeApp: vi.fn().mockResolvedValue(undefined),
   cleanUpPort: vi.fn().mockResolvedValue(undefined),
+  outputForCurrentRun: vi.fn().mockResolvedValue({}),
   stopAppByInfo: vi.fn().mockResolvedValue(undefined),
   runningApps: new Map<number, any>(),
 }));
@@ -43,6 +44,11 @@ vi.mock("./app_runtime_service", () => ({
   executeApp: mocks.executeApp,
   cleanUpPort: mocks.cleanUpPort,
 }));
+vi.mock("./app_run_actor_service", () => ({
+  appRunActorService: {
+    outputForCurrentRun: mocks.outputForCurrentRun,
+  },
+}));
 vi.mock("../../paths/paths", () => ({
   getDyadAppPath: (p: string) => `/apps/${p}`,
 }));
@@ -59,7 +65,6 @@ vi.mock("electron-log", () => ({
 
 import { prepareIsolatedTestDatabase } from "./isolated_test_db";
 
-const event = { sender: {} } as any;
 const emit = vi.fn();
 
 function makeApp(overrides: Record<string, unknown> = {}) {
@@ -96,7 +101,6 @@ describe("prepareIsolatedTestDatabase — Supabase test-user path", () => {
         supabaseProjectId: "sb-1",
         supabaseOrganizationSlug: "org-1",
       }),
-      event,
       emit,
       runtimeMode: "host",
     });
@@ -123,7 +127,6 @@ describe("prepareIsolatedTestDatabase — Supabase test-user path", () => {
         supabaseProjectId: "sb-1",
         supabaseOrganizationSlug: "org-1",
       }),
-      event,
       emit,
       runtimeMode: "host",
     });
@@ -136,7 +139,6 @@ describe("prepareIsolatedTestDatabase — Supabase test-user path", () => {
   it("discloses without creating a user when no organization is connected", async () => {
     const prepared = await prepareIsolatedTestDatabase({
       app: makeApp({ supabaseProjectId: "sb-1" }),
-      event,
       emit,
       runtimeMode: "host",
     });
@@ -152,7 +154,6 @@ describe("prepareIsolatedTestDatabase — Supabase test-user path", () => {
         supabaseProjectId: "sb-1",
         supabaseOrganizationSlug: "org-1",
       }),
-      event,
       emit,
       runtimeMode: "host",
     });
@@ -167,7 +168,6 @@ describe("prepareIsolatedTestDatabase — non-Neon paths", () => {
   it("runs as-is with no reason for apps with no database", async () => {
     const prepared = await prepareIsolatedTestDatabase({
       app: makeApp(),
-      event,
       emit,
       runtimeMode: "host",
     });
@@ -178,7 +178,6 @@ describe("prepareIsolatedTestDatabase — non-Neon paths", () => {
   it("discloses for non-host runtimes on a Neon app (no branch created)", async () => {
     const prepared = await prepareIsolatedTestDatabase({
       app: makeApp({ neonProjectId: "proj-1" }),
-      event,
       emit,
       runtimeMode: "docker",
     });
@@ -213,7 +212,6 @@ describe("prepareIsolatedTestDatabase — Neon happy path", () => {
     try {
       const prepared = await prepareIsolatedTestDatabase({
         app: makeApp({ neonProjectId: "proj-1" }),
-        event,
         emit,
         runtimeMode: "host",
       });
@@ -240,7 +238,15 @@ describe("prepareIsolatedTestDatabase — Neon happy path", () => {
       cookieSecret: "secret",
     });
     // Server comes up immediately.
-    mocks.runningApps.set(1, { proxyUrl: "http://localhost:42100" });
+    const invocationRef = {
+      kind: "app-run",
+      entityKey: 1,
+      operationId: "preview-run",
+    };
+    mocks.runningApps.set(1, {
+      proxyUrl: "http://localhost:42100",
+      invocationRef,
+    });
     // try/finally so a failing assertion can't leak the mocked fetch into
     // other tests (vi.clearAllMocks in beforeEach doesn't restore spies).
     const fetchSpy = vi
@@ -249,7 +255,6 @@ describe("prepareIsolatedTestDatabase — Neon happy path", () => {
     try {
       const prepared = await prepareIsolatedTestDatabase({
         app: makeApp({ neonProjectId: "proj-1" }),
-        event,
         emit,
         runtimeMode: "host",
       });
@@ -259,6 +264,10 @@ describe("prepareIsolatedTestDatabase — Neon happy path", () => {
         expect.objectContaining({ connectionUri: "postgres://temp" }),
       );
       expect(mocks.executeApp).toHaveBeenCalled();
+      expect(mocks.outputForCurrentRun).toHaveBeenCalledWith(1, invocationRef);
+      expect(mocks.executeApp).toHaveBeenCalledWith(
+        expect.objectContaining({ output: {} }),
+      );
       expect(prepared.isolation).toEqual({ mode: "neon-branch" });
       expect(prepared.infraError).toBeUndefined();
 
@@ -287,7 +296,6 @@ describe("prepareIsolatedTestDatabase — Neon happy path", () => {
     try {
       const prepared = await prepareIsolatedTestDatabase({
         app: makeApp({ neonProjectId: "proj-1" }),
-        event,
         emit,
         runtimeMode: "host",
       });
@@ -314,7 +322,6 @@ describe("prepareIsolatedTestDatabase — Neon happy path", () => {
 
     const prepared = await prepareIsolatedTestDatabase({
       app: makeApp({ neonProjectId: "proj-1" }),
-      event,
       emit,
       runtimeMode: "host",
     });

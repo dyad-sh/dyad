@@ -84,15 +84,15 @@ export const QueryInvalidationScopeSchema = z.discriminatedUnion("family", [
   }),
   z.object({
     family: z.literal("versions"),
-    appId: z.number().int().positive(),
+    appId: z.number().int().positive().optional(),
   }),
   z.object({
     family: z.literal("branches"),
-    appId: z.number().int().positive(),
+    appId: z.number().int().positive().optional(),
   }),
   z.object({
     family: z.literal("problems"),
-    appId: z.number().int().positive(),
+    appId: z.number().int().positive().optional(),
   }),
   z.object({
     family: z.literal("chat"),
@@ -150,7 +150,7 @@ export function queryInvalidationScopeKey(
     case "versions":
     case "branches":
     case "problems":
-      return `${scope.family}:${scope.appId}`;
+      return `${scope.family}:${scope.appId ?? "*"}`;
     case "chat":
       return `${scope.family}:${scope.chatId}`;
     default:

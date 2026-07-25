@@ -15,11 +15,23 @@ export function queryKeysForInvalidationScope(
     case "app":
       return [queryKeys.apps.detail({ appId: scope.appId })];
     case "versions":
-      return [queryKeys.versions.list({ appId: scope.appId })];
+      return [
+        scope.appId === undefined
+          ? queryKeys.versions.all
+          : queryKeys.versions.list({ appId: scope.appId }),
+      ];
     case "branches":
-      return [queryKeys.branches.byApp({ appId: scope.appId })];
+      return [
+        scope.appId === undefined
+          ? queryKeys.branches.all
+          : queryKeys.branches.byApp({ appId: scope.appId }),
+      ];
     case "problems":
-      return [queryKeys.problems.byApp({ appId: scope.appId })];
+      return [
+        scope.appId === undefined
+          ? queryKeys.problems.all
+          : queryKeys.problems.byApp({ appId: scope.appId }),
+      ];
     case "chat":
       return [queryKeys.chats.detail({ chatId: scope.chatId })];
   }

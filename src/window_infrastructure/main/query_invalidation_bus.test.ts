@@ -51,4 +51,25 @@ describe("QueryInvalidationBus", () => {
       ],
     });
   });
+
+  it("keeps gap-recovery history bounded by compacting entity scopes", () => {
+    const registry = new WindowRegistry();
+    const bus = new QueryInvalidationBus(registry, 1_000, 1);
+
+    bus.publish([{ family: "app", appId: 1 }]);
+    bus.publish([{ family: "app", appId: 2 }]);
+    bus.publish([{ family: "chat", chatId: 1 }]);
+    bus.publish([{ family: "versions", appId: 1 }]);
+    bus.publish([{ family: "versions", appId: 2 }]);
+    bus.publish([{ family: "branches", appId: 1 }]);
+    bus.publish([{ family: "problems", appId: 1 }]);
+
+    expect(bus.synchronize(0).recoveryScopes).toEqual([
+      { family: "apps" },
+      { family: "chats" },
+      { family: "versions" },
+      { family: "branches" },
+      { family: "problems" },
+    ]);
+  });
 });

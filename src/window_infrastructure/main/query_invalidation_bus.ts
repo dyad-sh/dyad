@@ -48,7 +48,11 @@ export class QueryInvalidationBus {
     this.journal.push(event);
     if (this.journal.length > this.journalLimit) this.journal.shift();
     for (const scope of event.scopes) {
-      this.recoveryScopes.set(queryInvalidationScopeKey(scope), scope);
+      const recoveryScope = this.compactRecoveryScope(scope);
+      this.recoveryScopes.set(
+        queryInvalidationScopeKey(recoveryScope),
+        recoveryScope,
+      );
     }
     this.pending.push(event);
     this.flushTimer ??= setTimeout(() => this.flush(), this.flushDelayMs);
@@ -109,6 +113,23 @@ export class QueryInvalidationBus {
         scopes.map((scope) => [queryInvalidationScopeKey(scope), scope]),
       ).values(),
     ];
+  }
+
+  private compactRecoveryScope(
+    scope: QueryInvalidationScope,
+  ): QueryInvalidationScope {
+    switch (scope.family) {
+      case "app":
+        return { family: "apps" };
+      case "chat":
+        return { family: "chats" };
+      case "versions":
+      case "branches":
+      case "problems":
+        return { family: scope.family };
+      default:
+        return scope;
+    }
   }
 }
 

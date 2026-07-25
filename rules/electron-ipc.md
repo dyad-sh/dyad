@@ -201,7 +201,10 @@ When creating hooks/components that call IPC handlers:
   current epoch can acknowledge and discard an event received during startup.
   Retry failed bootstrap attempts with bounded backoff, clearing pending data
   that the next epoch replay will recover so a half-initialized listener cannot
-  grow an unbounded queue.
+  grow an unbounded queue. Keep long-term gap-recovery history bounded by
+  compacting entity-specific scopes to family-root invalidations once precision
+  is no longer required; a bounded event journal alone does not bound a
+  lifetime recovery-scope map.
 - Async keyed subscription attach must use a generation/current-state check
   after awaiting bootstrap and roll back that generation on rejection.
   Otherwise detach or replacement during bootstrap can deliver stale data, and

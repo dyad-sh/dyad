@@ -49,7 +49,8 @@ export class ActorAdmissionError extends Error {
       | "stale-actor-instance"
       | "host-disposed"
       | "actor-disposing"
-      | "actor-constructing",
+      | "actor-constructing"
+      | "machine-disposing",
     message: string,
   ) {
     super(message);
@@ -434,6 +435,7 @@ export class ActorHost {
     string,
     Map<unknown, HostedActor<any, any, any, any, any>>
   >();
+  private readonly machineDisposals = new Map<string, Promise<void>>();
   private disposed = false;
   private disposal: Promise<void> | undefined;
 
@@ -520,6 +522,9 @@ export class ActorHost {
     key: Key,
   ): HostedActorRef<State, Event, Reason> {
     this.assertRegistered(definition);
+    if (this.machineDisposals.has(definition.id)) {
+      this.throwMachineDisposing(definition.id);
+    }
     const existing = this.actors.get(definition.id)?.get(key) as
       | HostedActor<Key, State, Event, Command, Reason>
       | undefined;
@@ -564,6 +569,16 @@ export class ActorHost {
         error: new ActorAdmissionError(
           "host-disposed",
           "ActorHost is disposed",
+        ),
+      });
+    }
+    if (this.machineDisposals.has(definition.id)) {
+      return settledTicket({
+        kind: "failed",
+        stage: "before-admission",
+        error: new ActorAdmissionError(
+          "machine-disposing",
+          `Machine ${definition.id} is disposing`,
         ),
       });
     }
@@ -631,9 +646,21 @@ export class ActorHost {
     }
   }
 
-  async disposeMachine(machineId: string): Promise<void> {
+  disposeMachine(machineId: string): Promise<void> {
+    const existing = this.machineDisposals.get(machineId);
+    if (existing) return existing;
     const actors = [...(this.actors.get(machineId)?.values() ?? [])];
-    await this.disposeActors(actors, "machine-disposal");
+    let disposal!: Promise<void>;
+    disposal = Promise.resolve()
+      .then(() => this.disposeActors(actors, "machine-disposal"))
+      .finally(() => {
+        if (this.machineDisposals.get(machineId) === disposal) {
+          this.machineDisposals.delete(machineId);
+        }
+      });
+    this.machineDisposals.set(machineId, disposal);
+    for (const actor of actors) actor.stopAdmission();
+    return disposal;
   }
 
   dispose(): Promise<void> {
@@ -679,6 +706,9 @@ export class ActorHost {
   ): HostedActor<Key, State, Event, Command, Reason> {
     if (this.disposed) {
       throw new ActorAdmissionError("host-disposed", "ActorHost is disposed");
+    }
+    if (this.machineDisposals.has(definition.id)) {
+      this.throwMachineDisposing(definition.id);
     }
     let keyed = this.actors.get(definition.id);
     if (!keyed) {
@@ -737,6 +767,13 @@ export class ActorHost {
     throw new ActorAdmissionError(
       "actor-disposing",
       `Actor ${machineId} is disposing`,
+    );
+  }
+
+  private throwMachineDisposing(machineId: string): never {
+    throw new ActorAdmissionError(
+      "machine-disposing",
+      `Machine ${machineId} is disposing`,
     );
   }
 

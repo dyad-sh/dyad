@@ -268,6 +268,45 @@ describe("ActorHost", () => {
     });
   });
 
+  it("blocks machine admission behind one shared disposal barrier", async () => {
+    let release!: () => void;
+    const definition = machine(
+      "machine-barrier",
+      lifecycle({
+        settleWaiters: () =>
+          new Promise<void>((resolve) => {
+            release = resolve;
+          }),
+      }),
+    );
+    const actorHost = host();
+    actorHost.register(definition);
+    const original = actorHost.ensure(definition, "existing");
+
+    const firstDisposal = actorHost.disposeMachine(definition.id);
+    const secondDisposal = actorHost.disposeMachine(definition.id);
+
+    expect(secondDisposal).toBe(firstDisposal);
+    expect(() => actorHost.ensure(definition, "new")).toThrow(
+      expect.objectContaining({ code: "machine-disposing" }),
+    );
+    await expect(
+      actorHost.dispatch(definition, "new", { type: "SET", value: 1 }).settled,
+    ).resolves.toMatchObject({
+      kind: "failed",
+      stage: "before-admission",
+      error: expect.objectContaining({ code: "machine-disposing" }),
+    });
+
+    await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+    release();
+    await firstDisposal;
+
+    expect(actorHost.ensure(definition, "new").actorInstanceId).not.toBe(
+      original.actorInstanceId,
+    );
+  });
+
   it("keeps same-key admission behind the final disposal barrier", async () => {
     let release!: () => void;
     const entered = vi.fn();

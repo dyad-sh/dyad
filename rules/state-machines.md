@@ -119,6 +119,9 @@ Background and before/after examples of why this pattern exists:
 - Reserve a keyed lifetime before running definition factories. Factories may
   synchronously re-enter host admission; reject that re-entry rather than
   constructing a second owner that can be overwritten and leaked.
+- Bulk or machine-scoped disposal must publish one collection barrier before
+  snapshotting members and block new member admission until it settles. If the
+  definition remains registered, reopen admission only after final cleanup.
 - Treat bounded retention as an edge-triggered deadline. Once a snapshot
   qualifies for delayed disposal, traffic that leaves it qualifying must not
   refresh the timer; cancel the deadline only when the authoritative snapshot

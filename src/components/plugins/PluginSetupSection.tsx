@@ -118,12 +118,17 @@ export function PluginSetupSection({
       <div className="mt-3 space-y-3">
         {inputs.map((input) => {
           const key = keyOf(input);
+          // Namespace the DOM id by server so two setups on screen can't
+          // share an id.
+          const fieldId = `setup-${server.id}-${key}`;
           return (
             <div key={key} className="space-y-1">
-              <Label htmlFor={key}>{labelOf(input)}</Label>
+              <Label htmlFor={fieldId}>{labelOf(input)}</Label>
               <Input
-                id={key}
+                id={fieldId}
                 type={isSecret(input) ? "password" : "text"}
+                autoComplete="off"
+                spellCheck={false}
                 value={values[key] ?? ""}
                 onChange={(e) =>
                   setValues((prev) => ({ ...prev, [key]: e.target.value }))

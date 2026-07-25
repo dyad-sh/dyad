@@ -288,7 +288,7 @@ describe("ActorHost", () => {
     const firstDisposal = actorHost.disposeKey(definition.id, "entity");
     const secondDisposal = actorHost.disposeKey(definition.id, "entity");
 
-    expect(entered).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(entered).toHaveBeenCalledOnce());
     expect(() => actorHost.ensure(definition, "entity")).toThrow(
       ActorAdmissionError,
     );
@@ -306,6 +306,34 @@ describe("ActorHost", () => {
     expect(actorHost.ensure(definition, "entity").actorInstanceId).not.toBe(
       original.actorInstanceId,
     );
+  });
+
+  it("publishes the actor disposal barrier before lifecycle hooks re-enter", async () => {
+    const settleWaiters = vi.fn();
+    const onDisposed = vi.fn();
+    let reentrantDisposal: Promise<void> | undefined;
+    let actorHost!: ActorHost;
+    const definition = machine(
+      "actor-reentrant-disposal",
+      lifecycle({
+        settleWaiters: () => {
+          settleWaiters();
+          reentrantDisposal = actorHost.disposeKey(definition.id, "entity");
+        },
+        onDisposed,
+      }),
+    );
+    actorHost = host();
+    actorHost.register(definition);
+    actorHost.ensure(definition, "entity");
+
+    const disposal = actorHost.disposeKey(definition.id, "entity");
+    await disposal;
+    await reentrantDisposal;
+
+    expect(settleWaiters).toHaveBeenCalledOnce();
+    expect(onDisposed).toHaveBeenCalledOnce();
+    expect(actorHost.peek(definition.id, "entity")).toBeUndefined();
   });
 
   it("returns one host shutdown barrier to concurrent callers", async () => {
@@ -334,9 +362,85 @@ describe("ActorHost", () => {
     await Promise.resolve();
     expect(settled).toBe(false);
 
+    await vi.waitFor(() => expect(release).toBeTypeOf("function"));
     release();
     await Promise.all([first, second]);
     expect(settled).toBe(true);
+  });
+
+  it("publishes the host disposal barrier before actor hooks re-enter", async () => {
+    let reentrantDisposal: Promise<void> | undefined;
+    let actorHost!: ActorHost;
+    const definition = machine(
+      "host-reentrant-disposal",
+      lifecycle({
+        settleWaiters: () => {
+          reentrantDisposal = actorHost.dispose();
+        },
+      }),
+    );
+    actorHost = host();
+    actorHost.register(definition);
+    actorHost.ensure(definition, "entity");
+
+    const disposal = actorHost.dispose();
+    await disposal;
+
+    expect(reentrantDisposal).toBe(disposal);
+  });
+
+  it("aggregates retention cancellation failures behind host disposal", async () => {
+    const cancelFailure = new Error("cancel failed");
+    const onDisposed = vi.fn();
+    const baseClock = createFakeClock();
+    const clock = {
+      ...baseClock,
+      cancel() {
+        throw cancelFailure;
+      },
+    };
+    const definition = machine(
+      "cancel-failure",
+      lifecycle({
+        idleEviction: { kind: "dispose-after", delayMs: 5 },
+        onDisposed,
+      }),
+    );
+    const actorHost = host(clock);
+    actorHost.register(definition);
+    actorHost.ensure(definition, "entity");
+
+    const disposal = actorHost.dispose();
+    expect(actorHost.dispose()).toBe(disposal);
+    await expect(disposal).rejects.toThrow(AggregateError);
+
+    expect(onDisposed).toHaveBeenCalledOnce();
+    expect(actorHost.peek(definition.id, "entity")).toBeUndefined();
+  });
+
+  it("returns host-disposed tickets throughout shutdown", async () => {
+    const definition = machine("shutdown-admission");
+    const actorHost = host();
+    actorHost.register(definition);
+
+    const disposal = actorHost.dispose();
+    await expect(
+      actorHost.dispatch(definition, "missing", { type: "SET", value: 1 })
+        .settled,
+    ).resolves.toMatchObject({
+      kind: "failed",
+      stage: "before-admission",
+      error: expect.objectContaining({ code: "host-disposed" }),
+    });
+    await disposal;
+    await expect(
+      actorHost.dispatch(definition, "missing", { type: "SET", value: 2 })
+        .settled,
+    ).resolves.toMatchObject({
+      kind: "failed",
+      stage: "before-admission",
+      error: expect.objectContaining({ code: "host-disposed" }),
+    });
   });
 
   it("cancels stale terminal retention when the actor becomes active", async () => {
@@ -572,6 +676,33 @@ describe("ActorHost", () => {
     expect(cleanupCount).toBe(1);
     expect(clock.pendingTimerCount()).toBe(0);
     expect(actorHost.peek(failingDefinition.id, "entity")).toBeUndefined();
+  });
+
+  it("reserves an actor key before definition factories can re-enter", () => {
+    let constructionError: unknown;
+    let actorHost!: ActorHost;
+    let definition!: ReturnType<typeof machine>;
+    const baseDefinition = machine("construction-reservation");
+    definition = {
+      ...baseDefinition,
+      createObserver() {
+        try {
+          actorHost.ensure(definition, "entity");
+        } catch (error) {
+          constructionError = error;
+        }
+        return {};
+      },
+    };
+    actorHost = host();
+    actorHost.register(definition);
+
+    const actor = actorHost.ensure(definition, "entity");
+
+    expect(constructionError).toMatchObject({
+      code: "actor-constructing",
+    });
+    expect(actorHost.peek(definition.id, "entity")).toBe(actor);
   });
 
   it("reports terminal-policy failures without rejecting dispatch", async () => {

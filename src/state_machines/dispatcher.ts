@@ -218,7 +218,7 @@ export class TransactionalDispatcher<
   stopAdmission(): void {
     if (!this.accepting) return;
     this.accepting = false;
-    this.settlePendingAsDisposed();
+    if (!this.processing) this.settlePendingAsDisposed();
   }
 
   isAccepting(): boolean {

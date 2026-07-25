@@ -244,6 +244,39 @@ describe("TransactionalDispatcher", () => {
     ).resolves.toEqual({ kind: "disposed" });
   });
 
+  it("preserves ticket settlement order during re-entrant admission shutdown", async () => {
+    const settlementOrder: string[] = [];
+    let dispatcher: TransactionalDispatcher<
+      TestState,
+      TestEvent,
+      TestCommand,
+      TestReason
+    >;
+    dispatcher = new TransactionalDispatcher({
+      initialState: { value: 0 },
+      transition: testTransition,
+      scheduler: independentScheduler(),
+      runCommand: () => undefined,
+      observer: {
+        onTransitionApplied({ state }) {
+          if (state.value === 1) {
+            const current = dispatcher.enqueue({ type: "SET", value: 2 });
+            void current.settled.then(() => settlementOrder.push("current"));
+          } else if (state.value === 2) {
+            const queued = dispatcher.enqueue({ type: "SET", value: 3 });
+            void queued.settled.then(() => settlementOrder.push("queued"));
+            dispatcher.stopAdmission();
+          }
+        },
+      },
+    });
+
+    dispatcher.send({ type: "SET", value: 1 });
+    await Promise.resolve();
+
+    expect(settlementOrder).toEqual(["current", "queued"]);
+  });
+
   it("can stop admission before final snapshot and subscriber disposal", async () => {
     const subscriber = vi.fn();
     const dispatcher = new TransactionalDispatcher({

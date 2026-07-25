@@ -114,6 +114,11 @@ Background and before/after examples of why this pattern exists:
 - Async keyed disposal must stop admission synchronously but keep the lifetime
   addressable until its final cleanup promise settles. Every disposal caller
   awaits that same barrier, and same-key recreation stays blocked behind it.
+  Publish the barrier before invoking any cleanup hook, and aggregate
+  synchronous admission/timer cleanup failures behind it.
+- Reserve a keyed lifetime before running definition factories. Factories may
+  synchronously re-enter host admission; reject that re-entry rather than
+  constructing a second owner that can be overwritten and leaked.
 - Treat bounded retention as an edge-triggered deadline. Once a snapshot
   qualifies for delayed disposal, traffic that leaves it qualifying must not
   refresh the timer; cancel the deadline only when the authoritative snapshot

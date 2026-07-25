@@ -48,7 +48,8 @@ export class ActorAdmissionError extends Error {
       | "subscription-does-not-create"
       | "stale-actor-instance"
       | "host-disposed"
-      | "actor-disposing",
+      | "actor-disposing"
+      | "actor-constructing",
     message: string,
   ) {
     super(message);
@@ -100,6 +101,7 @@ class HostedActor<
   private subscriberCount = 0;
   private idleTimer: ClockHandle | undefined;
   private terminalTimer: ClockHandle | undefined;
+  private readonly admissionStopErrors: unknown[] = [];
   private disposing = false;
   private disposal: Promise<void> | undefined;
   private lastProjectedSnapshot: State;
@@ -248,7 +250,9 @@ class HostedActor<
 
   stopAdmission(): void {
     this.dispatcher.stopAdmission();
-    this.cancelRetentionTimers();
+    this.cancelRetentionTimers((failure) =>
+      this.admissionStopErrors.push(failure),
+    );
   }
 
   activate(): void {
@@ -273,16 +277,16 @@ class HostedActor<
       metadata: this.getMetadata(),
       snapshot: this.getSnapshot(),
     };
-    this.disposal = this.finishDisposal(context).finally(() =>
-      this.removeFromHost(this),
-    );
+    this.disposal = Promise.resolve()
+      .then(() => this.finishDisposal(context))
+      .finally(() => this.removeFromHost(this));
     return this.disposal;
   }
 
   private async finishDisposal(
     context: ActorDisposalContext<Key, State>,
   ): Promise<void> {
-    const errors: unknown[] = [];
+    const errors: unknown[] = [...this.admissionStopErrors];
     await this.runDisposalStep(errors, () =>
       this.definition.lifecycle.settleWaiters?.(context),
     );
@@ -373,21 +377,40 @@ class HostedActor<
     if (this.subscriberCount === 0) this.scheduleIdleEviction();
   }
 
-  private cancelIdleEviction(): void {
+  private cancelIdleEviction(
+    onError: (failure: unknown) => void = (failure) =>
+      this.reportFailure(failure),
+  ): void {
     if (this.idleTimer === undefined) return;
-    this.options.clock.cancel(this.idleTimer);
+    const timer = this.idleTimer;
     this.idleTimer = undefined;
+    try {
+      this.options.clock.cancel(timer);
+    } catch (failure) {
+      onError(failure);
+    }
   }
 
-  private cancelRetentionTimers(): void {
-    this.cancelIdleEviction();
-    this.cancelTerminalDisposal();
+  private cancelRetentionTimers(
+    onError: (failure: unknown) => void = (failure) =>
+      this.reportFailure(failure),
+  ): void {
+    this.cancelIdleEviction(onError);
+    this.cancelTerminalDisposal(onError);
   }
 
-  private cancelTerminalDisposal(): void {
+  private cancelTerminalDisposal(
+    onError: (failure: unknown) => void = (failure) =>
+      this.reportFailure(failure),
+  ): void {
     if (this.terminalTimer === undefined) return;
-    this.options.clock.cancel(this.terminalTimer);
+    const timer = this.terminalTimer;
     this.terminalTimer = undefined;
+    try {
+      this.options.clock.cancel(timer);
+    } catch (failure) {
+      onError(failure);
+    }
   }
 
   private reportFailure(failure: unknown): void {
@@ -405,6 +428,8 @@ class HostedActor<
 
 export class ActorHost {
   private readonly definitions = new Map<string, AnyDefinition>();
+  private readonly registeredDefinitions = new WeakSet<object>();
+  private readonly constructing = new Map<string, Set<unknown>>();
   private readonly actors = new Map<
     string,
     Map<unknown, HostedActor<any, any, any, any, any>>
@@ -443,6 +468,7 @@ export class ActorHost {
       throw new Error(`Machine ${definition.id} is already registered`);
     }
     this.definitions.set(definition.id, definition as AnyDefinition);
+    this.registeredDefinitions.add(definition);
   }
 
   ensure<
@@ -531,6 +557,16 @@ export class ActorHost {
     expectedActorInstanceId?: ActorInstanceId,
   ): DispatchTicket<State, Reason> {
     this.assertRegistered(definition);
+    if (this.disposed) {
+      return settledTicket({
+        kind: "failed",
+        stage: "before-admission",
+        error: new ActorAdmissionError(
+          "host-disposed",
+          "ActorHost is disposed",
+        ),
+      });
+    }
     let actor = this.actors.get(definition.id)?.get(key) as
       | HostedActor<Key, State, Event, Command, Reason>
       | undefined;
@@ -541,6 +577,16 @@ export class ActorHost {
         error: new ActorAdmissionError(
           "actor-disposing",
           `Actor ${definition.id} is disposing`,
+        ),
+      });
+    }
+    if (this.isConstructing(definition.id, key)) {
+      return settledTicket({
+        kind: "failed",
+        stage: "before-admission",
+        error: new ActorAdmissionError(
+          "actor-constructing",
+          `Actor ${definition.id} is constructing`,
         ),
       });
     }
@@ -597,7 +643,9 @@ export class ActorHost {
       ...keyed.values(),
     ]);
     for (const actor of actors) actor.stopAdmission();
-    this.disposal = this.finishHostDisposal(actors);
+    this.disposal = Promise.resolve().then(() =>
+      this.finishHostDisposal(actors),
+    );
     return this.disposal;
   }
 
@@ -644,6 +692,18 @@ export class ActorHost {
       if (existing.isDisposing()) this.throwActorDisposing(definition.id);
       return existing;
     }
+    if (this.isConstructing(definition.id, key)) {
+      throw new ActorAdmissionError(
+        "actor-constructing",
+        `Actor ${definition.id} is constructing`,
+      );
+    }
+    let constructing = this.constructing.get(definition.id);
+    if (!constructing) {
+      constructing = new Set();
+      this.constructing.set(definition.id, constructing);
+    }
+    constructing.add(key);
     let actor: HostedActor<Key, State, Event, Command, Reason>;
     try {
       actor = new HostedActor(
@@ -658,6 +718,15 @@ export class ActorHost {
     } catch (error) {
       if (keyed.size === 0) this.actors.delete(definition.id);
       throw error;
+    } finally {
+      constructing.delete(key);
+      if (constructing.size === 0) this.constructing.delete(definition.id);
+    }
+    if (this.disposed) {
+      void actor
+        .dispose("shutdown")
+        .catch((failure) => this.reportFailure(definition.id, key, failure));
+      throw new ActorAdmissionError("host-disposed", "ActorHost is disposed");
     }
     keyed.set(key, actor);
     actor.activate();
@@ -671,10 +740,22 @@ export class ActorHost {
     );
   }
 
-  private assertRegistered(definition: { readonly id: string }): void {
-    if (this.definitions.get(definition.id) !== definition) {
-      throw new Error(`Machine ${definition.id} is not registered`);
+  private isConstructing(machineId: string, key: unknown): boolean {
+    return this.constructing.get(machineId)?.has(key) === true;
+  }
+
+  private reportFailure(machineId: string, key: unknown, failure: unknown) {
+    try {
+      this.options.reportError?.({ machineId, key, failure });
+    } catch {
+      // Failure reporting must not become another lifecycle failure.
     }
+  }
+
+  private assertRegistered(definition: { readonly id: string }): void {
+    if (this.definitions.get(definition.id) === definition) return;
+    if (this.disposed && this.registeredDefinitions.has(definition)) return;
+    throw new Error(`Machine ${definition.id} is not registered`);
   }
 
   private definition(machineId: string): AnyDefinition {

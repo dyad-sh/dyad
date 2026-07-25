@@ -337,11 +337,14 @@ export async function runLocalActorHostConformanceSuite(
     actor.send({ type: "COMMAND", command: { type: "RESOURCE" } });
     unsubscribe();
     clock.advanceBy(10);
-    await flush();
     assert(
-      host.peek(machine.id, "key") === undefined &&
-        resourceCleanups === 1 &&
-        clock.pendingTimerCount() === 0,
+      host.peek(machine.id, "key") === undefined,
+      "bounded idle eviction admission",
+      "the actor still admitted work after its idle bound",
+    );
+    await host.disposeKey(machine.id, "key");
+    assert(
+      resourceCleanups === 1 && clock.pendingTimerCount() === 0,
       "bounded idle eviction and cleanup",
       "the actor, task, or timer survived its idle bound",
     );

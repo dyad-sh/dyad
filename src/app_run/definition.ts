@@ -28,7 +28,7 @@ import {
   type AppRunWireEvent,
 } from "./transport";
 import { transition } from "./transition";
-import { ignore } from "./transition";
+import { ignore } from "@/state_machines/types";
 import { MainAppRuntimeOutput } from "@/ipc/services/main_app_runtime_output";
 
 export const APP_RUN_MACHINE_ID = "app_run" as const;
@@ -155,9 +155,52 @@ function isCurrentInvocation(
   );
 }
 
+interface AppRunActorState {
+  readonly runState: RunState;
+  readonly previewReloadEpoch: number;
+  readonly lastSettlement: {
+    readonly operationId: string;
+    readonly kind: "run" | "stop";
+    readonly outcome: "succeeded" | "failed";
+  } | null;
+}
+
+function settlementFor(
+  event: AppRunWireEvent,
+): AppRunActorState["lastSettlement"] {
+  switch (event.type) {
+    case "PROCESS_SPAWNED":
+      return {
+        operationId: event.invocationRef.operationId,
+        kind: "run",
+        outcome: "succeeded",
+      };
+    case "PROCESS_FAILED":
+      return {
+        operationId: event.invocationRef.operationId,
+        kind: "run",
+        outcome: "failed",
+      };
+    case "PROCESS_STOPPED":
+      return {
+        operationId: event.invocationRef.operationId,
+        kind: "stop",
+        outcome: "succeeded",
+      };
+    case "PROCESS_STOP_FAILED":
+      return {
+        operationId: event.invocationRef.operationId,
+        kind: "stop",
+        outcome: "failed",
+      };
+    default:
+      return null;
+  }
+}
+
 function transitionActor(
   key: AppRunKey,
-  state: RunState,
+  state: AppRunActorState,
   event: AppRunWireEvent,
 ) {
   if ("invocationRef" in event && event.invocationRef.entityKey !== key.appId) {
@@ -165,11 +208,43 @@ function transitionActor(
   }
   if (
     event.type === "HMR_DETECTED" &&
-    !isCurrentInvocation(state, event.invocationRef)
+    !isCurrentInvocation(state.runState, event.invocationRef)
   ) {
     return ignore(state, "stale-operation");
   }
-  return transition(state, toDomainEvent(key, state, event));
+  const result = transition(
+    state.runState,
+    toDomainEvent(key, state.runState, event),
+  );
+  const settlement = settlementFor(event);
+  if (result.kind === "ignored") {
+    return settlement
+      ? {
+          kind: "applied" as const,
+          state: { ...state, lastSettlement: settlement },
+          commands: [],
+        }
+      : { ...result, state };
+  }
+  const bumpsPreviewReload = result.commands.some(
+    (command) =>
+      command.type === "applyUrl" ||
+      command.type === "bumpReloadToken" ||
+      command.type === "reload",
+  );
+  return {
+    kind: "applied" as const,
+    state:
+      result.state === state.runState && !bumpsPreviewReload && !settlement
+        ? state
+        : {
+            runState: result.state,
+            previewReloadEpoch:
+              state.previewReloadEpoch + (bumpsPreviewReload ? 1 : 0),
+            lastSettlement: settlement ?? state.lastSettlement,
+          },
+    commands: result.commands,
+  };
 }
 
 async function requireApp(appId: number): Promise<void> {
@@ -181,7 +256,7 @@ async function requireApp(appId: number): Promise<void> {
 }
 
 function createCommandRunner(
-  context: MachineHostContext<AppRunKey, RunState, AppRunWireEvent>,
+  context: MachineHostContext<AppRunKey, AppRunActorState, AppRunWireEvent>,
 ) {
   const emit = (event: AppRunProducerEvent) => context.send(event);
   return (command: RunCommand): void => {
@@ -281,7 +356,11 @@ function createCommandRunner(
 export const appRunDefinition = {
   id: APP_RUN_MACHINE_ID,
   host: "main",
-  initialState: () => ({ type: "idle" }),
+  initialState: (): AppRunActorState => ({
+    runState: { type: "idle" },
+    previewReloadEpoch: 0,
+    lastSettlement: null,
+  }),
   transition: (state, event, key) => transitionActor(key, state, event),
   createScheduler: () => ({
     schedule(batch, execute) {
@@ -312,7 +391,13 @@ export const appRunDefinition = {
     snapshotCodec: AppRunRemoteSnapshotSchema,
     keyToString: (key) => String(key.appId),
     projectSnapshot: (state, key, metadata) =>
-      projectAppRunRemoteSnapshot(key.appId, metadata.snapshotRevision, state),
+      projectAppRunRemoteSnapshot(
+        key.appId,
+        metadata.snapshotRevision,
+        state.runState,
+        state.previewReloadEpoch,
+        state.lastSettlement,
+      ),
     unavailableSnapshot: (key) =>
       projectAppRunRemoteSnapshot(key.appId, 0, { type: "idle" }),
     revisionPolicy: (event) =>
@@ -324,14 +409,17 @@ export const appRunDefinition = {
       await requireApp(key.appId);
       if (
         event.type === "STOP_REQUESTED" &&
-        !isCurrentInvocation(currentState, event.activeInvocationRef)
+        !isCurrentInvocation(currentState?.runState, event.activeInvocationRef)
       ) {
         throw new DyadError(
           "Cancellation does not target the active app run",
           DyadErrorKind.Auth,
         );
       }
-      if (event.type === "MANUAL_RELOAD" && currentState?.type !== "ready") {
+      if (
+        event.type === "MANUAL_RELOAD" &&
+        currentState?.runState.type !== "ready"
+      ) {
         throw new DyadError(
           "The app preview is not ready to reload",
           DyadErrorKind.Auth,
@@ -342,7 +430,7 @@ export const appRunDefinition = {
 } satisfies DistributedMachineDefinition<
   typeof APP_RUN_MACHINE_ID,
   AppRunKey,
-  RunState,
+  AppRunActorState,
   AppRunWireEvent,
   RunCommand,
   AppRunIgnoreReason

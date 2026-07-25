@@ -802,7 +802,7 @@ export function registerAppHandlers() {
   });
 
   createTypedHandler(appContracts.stopApp, async (_, { appId }) => {
-    const snapshot = appRunActorService.actor(appId).getSnapshot();
+    const snapshot = appRunActorService.actor(appId).getSnapshot().runState;
     if (snapshot.type === "idle") return;
     await appRunActorService.dispatchStop(appId, {
       operationId: randomUUID(),

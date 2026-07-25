@@ -12,6 +12,7 @@ import { TwoWindowHarness } from "@/testing/two_window_harness";
 import { appRunClientDefinition } from "./client_definition";
 import { appRunDefinition } from "./definition";
 import { appRunKey } from "./transport";
+import { AppRunRemoteManager } from "./remote_manager";
 
 const runtime = vi.hoisted(() => ({
   start: vi.fn<() => Promise<void>>(),
@@ -94,7 +95,7 @@ function createHarness() {
   const actorB = second.actor(appRunClientDefinition, appRunKey(7));
   const releaseA = actorA.subscribe(() => undefined);
   const releaseB = actorB.subscribe(() => undefined);
-  return { actorA, actorB, host, releaseA, releaseB, transport };
+  return { actorA, actorB, duplex, host, releaseA, releaseB, transport };
 }
 
 describe("main-hosted app-run actor", () => {
@@ -127,6 +128,7 @@ describe("main-hosted app-run actor", () => {
     expect(start.kind).toBe("applied");
     expect(actorB.getSnapshot()).toMatchObject({
       phase: "starting",
+      previewReloadEpoch: 0,
       invocationRef: { operationId: "start-a" },
     });
 
@@ -145,6 +147,7 @@ describe("main-hosted app-run actor", () => {
     });
     expect(actorA.getSnapshot()).toMatchObject({
       phase: "starting",
+      previewReloadEpoch: 0,
       url: null,
     });
 
@@ -152,6 +155,12 @@ describe("main-hosted app-run actor", () => {
     await flush();
     expect(actorA.getSnapshot()).toMatchObject({
       phase: "ready",
+      previewReloadEpoch: 1,
+      lastSettlement: {
+        operationId: "start-a",
+        kind: "run",
+        outcome: "succeeded",
+      },
       url: { appUrl: "http://localhost:3210" },
     });
     expect(actorB.getSnapshot()).toStrictEqual(actorA.getSnapshot());
@@ -169,9 +178,51 @@ describe("main-hosted app-run actor", () => {
     await flush();
     expect(actorA.getSnapshot()).toMatchObject({
       phase: "ready",
+      previewReloadEpoch: 2,
       invocationRef: { operationId: "restart-b" },
     });
     expect(runtime.restart).toHaveBeenCalledTimes(1);
+
+    host.ensure(appRunDefinition, appRunKey(7)).send({
+      type: "HMR_DETECTED",
+      invocationRef: {
+        kind: "app-run",
+        entityKey: 7,
+        operationId: "restart-b",
+      },
+    });
+    await flush();
+    expect(actorA.getSnapshot()).toMatchObject({
+      phase: "ready",
+      previewReloadEpoch: 3,
+    });
+  });
+
+  it("resolves renderer dispatch only after the matching runtime settles", async () => {
+    const pending = deferred<void>();
+    runtime.start.mockReturnValue(pending.promise);
+    const { duplex } = createHarness();
+    const manager = new AppRunRemoteManager(
+      createSequentialIdSource(),
+      duplex.connect(),
+    );
+    manager.start();
+    let settled = false;
+
+    const dispatch = manager
+      .dispatch(7, { type: "START", startedAt: 10 })
+      .then(() => {
+        settled = true;
+      });
+    await vi.waitFor(() => {
+      expect(runtime.start).toHaveBeenCalledTimes(1);
+    });
+    expect(settled).toBe(false);
+
+    pending.resolve();
+    await dispatch;
+    expect(settled).toBe(true);
+    manager.dispose();
   });
 
   it("rejects a stale restart and requires stop to target the active invocation", async () => {

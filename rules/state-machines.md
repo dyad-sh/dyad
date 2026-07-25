@@ -303,6 +303,13 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   the user's input while the operation runs and after failure. Close dialogs
   and clear forms only on authoritative settlement; dispatch itself is not
   proof that the mutation succeeded.
+- A remote dispatch receipt proves transport admission, not runtime completion.
+  When callers sequence work on the outcome, project a bounded,
+  operation-correlated settlement acknowledgment. Superseded completions must
+  settle their original waiters without advancing the current lifecycle.
+- Keep transport revisions separate from semantic presentation epochs. A
+  revision may advance for bookkeeping-only transitions, while a reload token
+  must advance exactly once for each user-visible remount.
 - When an epoch keys a mounted resource, capture props such as an iframe `src`
   from the epoch-changing snapshot. Do not let later same-epoch state updates
   rewrite identity-defining DOM attributes and trigger an implicit reload.

@@ -303,6 +303,7 @@ export const AppRunRemoteSnapshotSchema = z
   .object({
     appId: z.number().int().positive(),
     revision: expectedRevisionSchema,
+    previewReloadEpoch: expectedRevisionSchema,
     phase: z.enum([
       "idle",
       "starting",
@@ -321,6 +322,14 @@ export const AppRunRemoteSnapshotSchema = z
     exit: appRunExitSchema.nullable(),
     capabilities: appRunCapabilitiesSchema,
     invocationRef: AppRunInvocationRefSchema.nullable(),
+    lastSettlement: z
+      .object({
+        operationId: operationIdSchema,
+        kind: z.enum(["run", "stop"]),
+        outcome: z.enum(["succeeded", "failed"]),
+      })
+      .strict()
+      .nullable(),
   })
   .strict();
 export type AppRunRemoteSnapshot = z.infer<typeof AppRunRemoteSnapshotSchema>;
@@ -333,6 +342,8 @@ export function projectAppRunRemoteSnapshot(
   appId: number,
   revision: number,
   state: RunState,
+  previewReloadEpoch = 0,
+  lastSettlement: AppRunRemoteSnapshot["lastSettlement"] = null,
 ): AppRunRemoteSnapshot {
   if (
     state.type !== "idle" &&
@@ -344,6 +355,7 @@ export function projectAppRunRemoteSnapshot(
   const base = {
     appId,
     revision,
+    previewReloadEpoch,
     phase: state.type,
     operation: null,
     startedAt: null,
@@ -352,6 +364,7 @@ export function projectAppRunRemoteSnapshot(
     exit: null,
     capabilities: selectRemoteCapabilities(state),
     invocationRef: state.type === "idle" ? null : state.invocationRef,
+    lastSettlement,
   } satisfies AppRunRemoteSnapshot;
 
   switch (state.type) {

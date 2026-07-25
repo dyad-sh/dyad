@@ -15,12 +15,12 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 
 ## App lifecycle tools
 
-- Tools that start or restart the app preview must keep the renderer's
-  `AppRunManager` as the lifecycle authority. Send lifecycle start and
-  settlement events with a stable request ID through `app:output`, and do not
-  report tool success until the preview proxy is ready. The restart IPC call
-  can settle after spawning the process but before the development server is
-  usable.
+- Tools that start or restart the app preview must route through the main-owned
+  `app_run` actor. Mint and carry a stable invocation ref through the runtime
+  claim, producer output, and actor settlement; `app:output` is presentation
+  fan-out, not lifecycle authority. Do not report tool success until the
+  preview proxy is ready. The restart service call can settle after spawning
+  the process but before the development server is usable.
 - Keep lifecycle tool semantics consistent across host, Docker, and cloud
   runtimes. In particular, a tool that claims to rebuild or reinstall
   dependencies must not take an in-place cloud restart shortcut.

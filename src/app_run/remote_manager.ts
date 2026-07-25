@@ -1,5 +1,6 @@
 import { uuidIdSource, type IdSource } from "@/state_machines/clock";
 import { RemoteMachineClient } from "@/distributed_machines/remote_client";
+import type { RemoteMachineClientConnection } from "@/distributed_machines/remote_client";
 import { IpcRemoteMachineConnection } from "@/distributed_machines/ipc_connection";
 import { PreviewConsoleStore } from "@/preview_console/store";
 import type { AppExit } from "./selectors";
@@ -34,20 +35,28 @@ type RunOperationInput =
  */
 export class AppRunRemoteManager {
   readonly previewConsole = new PreviewConsoleStore();
-  private readonly connection = new IpcRemoteMachineConnection();
   private readonly client: RemoteMachineClient;
   private readonly actorUnsubscribes = new Map<number, () => void>();
   private readonly listeners = new Set<AppRunRemoteStateChangedListener>();
+  private readonly settlementWaiters = new Map<
+    string,
+    { appId: number; resolve: () => void }
+  >();
   private stopConnection?: () => void;
   private disposed = false;
 
-  constructor(private readonly ids: IdSource = uuidIdSource) {
+  constructor(
+    private readonly ids: IdSource = uuidIdSource,
+    private readonly connection: RemoteMachineClientConnection & {
+      start?: () => () => void;
+    } = new IpcRemoteMachineConnection(),
+  ) {
     this.client = new RemoteMachineClient(this.connection, ids);
   }
 
   start(): void {
     if (this.disposed || this.stopConnection) return;
-    this.stopConnection = this.connection.start();
+    this.stopConnection = this.connection.start?.() ?? (() => undefined);
     this.client.start();
   }
 
@@ -73,7 +82,8 @@ export class AppRunRemoteManager {
   subscribeAppExit = (appId: number, listener: () => void): (() => void) =>
     this.subscribeKey(appId, listener);
 
-  getReloadToken = (appId: number): number => this.getSnapshot(appId).revision;
+  getReloadToken = (appId: number): number =>
+    this.getSnapshot(appId).previewReloadEpoch;
 
   subscribeReloadToken = (appId: number, listener: () => void): (() => void) =>
     this.subscribeKey(appId, listener);
@@ -138,10 +148,17 @@ export class AppRunRemoteManager {
         };
         break;
     }
+    const settlement = this.waitForSettlement(appId, event.operationId);
     const receipt = await actor.dispatch(event);
     if (receipt.kind === "rejected") {
+      settlement.cancel();
       throw new Error(`App run request rejected: ${receipt.reason}`);
     }
+    if (receipt.kind === "ignored") {
+      settlement.cancel();
+      return;
+    }
+    await settlement.promise;
   }
 
   requestManualReload = (appId: number): void => {
@@ -165,6 +182,7 @@ export class AppRunRemoteManager {
     this.actorUnsubscribes.get(appId)?.();
     this.actorUnsubscribes.delete(appId);
     this.previewConsole.disposeKey(appId);
+    this.resolveSettlementsForApp(appId);
   };
 
   dispose(): void {
@@ -175,6 +193,8 @@ export class AppRunRemoteManager {
     this.actorUnsubscribes.clear();
     this.listeners.clear();
     this.previewConsole.dispose();
+    for (const waiter of this.settlementWaiters.values()) waiter.resolve();
+    this.settlementWaiters.clear();
     this.client.dispose();
   }
 
@@ -183,6 +203,11 @@ export class AppRunRemoteManager {
     if (!this.actorUnsubscribes.has(appId)) {
       const unsubscribe = actor.subscribe(() => {
         const snapshot = actor.getSnapshot();
+        const settlement = snapshot.lastSettlement;
+        if (settlement) {
+          this.settlementWaiters.get(settlement.operationId)?.resolve();
+          this.settlementWaiters.delete(settlement.operationId);
+        }
         for (const listener of this.listeners) {
           try {
             listener(appId, snapshot);
@@ -194,6 +219,31 @@ export class AppRunRemoteManager {
       this.actorUnsubscribes.set(appId, unsubscribe);
     }
     return actor;
+  }
+
+  private waitForSettlement(appId: number, operationId: string) {
+    let resolvePromise!: () => void;
+    const promise = new Promise<void>((resolve) => {
+      resolvePromise = resolve;
+    });
+    const waiter = { appId, resolve: resolvePromise };
+    this.settlementWaiters.set(operationId, waiter);
+    return {
+      promise,
+      cancel: () => {
+        if (this.settlementWaiters.get(operationId) === waiter) {
+          this.settlementWaiters.delete(operationId);
+        }
+      },
+    };
+  }
+
+  private resolveSettlementsForApp(appId: number): void {
+    for (const [operationId, waiter] of this.settlementWaiters) {
+      if (waiter.appId !== appId) continue;
+      waiter.resolve();
+      this.settlementWaiters.delete(operationId);
+    }
   }
 }
 

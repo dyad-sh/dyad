@@ -37,6 +37,10 @@ testSkipIfWindows(
     }).toPass({ timeout: Timeout.MEDIUM });
 
     const firstSnapshot = await subscribe(po.page, appId!);
+    await expect(async () => {
+      const snapshot = await subscribe(po.page, appId!);
+      expect(snapshot.encodedState.phase).toBe("ready");
+    }).toPass({ timeout: Timeout.EXTRA_LONG });
     const appPath = await electronApp.evaluate(({ app }) => app.getAppPath());
     const rendererIndexPath = path.join(
       appPath,
@@ -68,7 +72,13 @@ testSkipIfWindows(
 
     await electronApp.evaluate(
       async ({ BrowserWindow }, input) => {
-        await BrowserWindow.fromId(input.windowId)?.loadFile(input.renderer);
+        try {
+          await BrowserWindow.fromId(input.windowId)?.loadFile(input.renderer);
+        } catch (error) {
+          if (!(error instanceof Error) || !error.message.includes("(-3)")) {
+            throw error;
+          }
+        }
       },
       { windowId: secondWindowId, renderer: rendererIndexPath },
     );

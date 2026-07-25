@@ -54,6 +54,7 @@ export class IpcRemoteMachineConnection implements RemoteMachineClientConnection
   }
 
   start(): () => void {
+    this.setStatus("connected");
     const unsubscribe = ipc.events.distributedMachine.onProtocolMismatch(() => {
       this.setStatus("incompatible");
     });

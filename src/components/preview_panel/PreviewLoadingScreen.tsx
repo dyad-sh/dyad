@@ -11,11 +11,11 @@ import {
 import { useTranslation } from "react-i18next";
 import type { ConsoleEntry } from "@/ipc/types";
 import { currentConsoleEntriesAtom } from "@/atoms/previewRuntimeAtoms";
-import { selectAppExit, type AppExit } from "@/app_run/selectors";
+import type { AppExit } from "@/app_run/selectors";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useRunApp } from "@/hooks/useRunApp";
-import { useAppRunState } from "@/hooks/useAppRun";
+import { useAppExit, useAppRunState } from "@/hooks/useAppRun";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { projectRunState } from "@/app_run/transition";
 import { cn } from "@/lib/utils";
@@ -158,7 +158,7 @@ export function PreviewLoadingScreen({
   const consoleEntries = useAtomValue(currentConsoleEntriesAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const runState = useAppRunState(selectedAppId);
-  const previewAppExit = selectAppExit(runState);
+  const previewAppExit = useAppExit(selectedAppId);
   const previewRunStartedAt =
     projectRunState(runState)?.startedAt ?? null;
   const selectedChatId = useAtomValue(selectedChatIdAtom);

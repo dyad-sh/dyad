@@ -81,7 +81,7 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
   ];
 
   // Derived: prefer explicit user choice, then tool-locked, then AI-requested
-  // (from the IPC-driven atom), then default. Re-derives every render so a
+  // (from the IPC-driven read model), then default. Re-derives every render so a
   // late `pendingIntegration?.provider` is reflected without a sync effect.
   const selectedProvider =
     userSelectedProvider ??
@@ -170,7 +170,7 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
     if (!effectiveSelectedProvider || chatId == null || !pendingIntegration)
       return;
     // Share the UI choice with the Configure panel without mutating the
-    // main-authoritative request projection.
+    // main-authoritative request read model.
     setIntegrationProviderSelection((prev) => {
       if (prev.get(pendingIntegration.requestId) === effectiveSelectedProvider)
         return prev;

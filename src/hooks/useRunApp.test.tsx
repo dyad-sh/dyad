@@ -17,7 +17,6 @@ import {
   useRunApp,
 } from "@/hooks/useRunApp";
 import { AppRunProvider } from "@/app_run/AppRunProvider";
-import { selectAppExit } from "@/app_run/selectors";
 import { AppRunManager } from "@/app_run/manager";
 
 const {
@@ -241,9 +240,6 @@ describe("useAppOutputSubscription", () => {
       wrapper: Wrapper,
     });
 
-    await act(async () => {
-      await manager.dispatch(1, { type: "START", startedAt: 100 });
-    });
     const consoleEntriesBeforeExit = store.get(currentConsoleEntriesAtom);
 
     act(() => {
@@ -258,13 +254,57 @@ describe("useAppOutputSubscription", () => {
       }
     });
 
-    expect(selectAppExit(manager.getSnapshot(1))).toEqual({
+    expect(manager.getAppExitSnapshot(1)).toEqual({
       appId: 1,
       exitCode: 1,
       timestamp: 123,
     });
     expect(store.get(currentConsoleEntriesAtom)).toBe(consoleEntriesBeforeExit);
 
+    unmount();
+  });
+
+  it("tracks an admitted app exit while startup IPC is still pending", async () => {
+    const { manager, Wrapper } = makeWrapper(1);
+    let finishRunApp: () => void = () => {};
+    runAppMock.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        finishRunApp = resolve;
+      }),
+    );
+    const { unmount } = renderHook(() => useAppOutputSubscription(), {
+      wrapper: Wrapper,
+    });
+
+    const pending = manager.dispatch(1, { type: "START", startedAt: 100 });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const invocationRef = runAppMock.mock.calls[0]?.[0].invocationRef;
+    if (!invocationRef) throw new Error("expected run invocation");
+
+    act(() => {
+      for (const listener of appOutputListeners) {
+        listener({
+          type: "app-exit",
+          message: "App process exited during startup",
+          appId: 1,
+          invocationRef,
+          exitCode: 1,
+          timestamp: 123,
+        });
+      }
+    });
+
+    expect(manager.getSnapshot(1).type).toBe("starting");
+    expect(manager.getAppExitSnapshot(1)).toEqual({
+      appId: 1,
+      exitCode: 1,
+      timestamp: 123,
+    });
+
+    finishRunApp();
+    await pending;
     unmount();
   });
 
@@ -316,7 +356,7 @@ describe("useAppOutputSubscription", () => {
       }
     });
 
-    expect(selectAppExit(manager.getSnapshot(1))).toBeNull();
+    expect(manager.getAppExitSnapshot(1)).toBeNull();
     expect(manager.getSnapshot(1)).toMatchObject({
       type: "starting",
       startedAt: 200,

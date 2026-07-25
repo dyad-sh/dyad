@@ -206,6 +206,32 @@ describe("user-input renderer read model", () => {
     expect(readModel.getSnapshot().requests).toEqual(new Map());
   });
 
+  it("keeps snapshot identity for buffered events with no visible request", () => {
+    const store = createStore();
+    const fake = createFakeIpc();
+    const readModel = getUserInputReadModel({
+      store,
+      ipcClient: fake.ipcClient,
+    });
+    const stop = readModel.start();
+    const initial = readModel.getSnapshot();
+    const listener = vi.fn();
+    const unsubscribe = readModel.subscribe(listener);
+
+    fake.sendArmed({
+      requestId: "buffered",
+      followUpPrompt: "Continue",
+    });
+    fake.sendClassified({ requestId: "buffered", reason: "Review" });
+    fake.sendFollowUpDue({ requestId: "buffered", chatId: 7, prompt: "Go" });
+
+    expect(readModel.getSnapshot()).toBe(initial);
+    expect(listener).not.toHaveBeenCalled();
+
+    unsubscribe();
+    stop();
+  });
+
   it("replays a classified event that beats its hydration snapshot", async () => {
     const store = createStore();
     const fake = createFakeIpc();

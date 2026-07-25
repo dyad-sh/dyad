@@ -379,7 +379,7 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
       }
       // During starting/stopping the IPC settlement drives the state (as
       // before); in idle/stopped/errored there is nothing to do. The exit
-      // details atom is written by the output subscription either way.
+      // read-model fallback is written at the manager admission boundary.
       return ignore(state, "invalid-in-current-state");
 
     default:

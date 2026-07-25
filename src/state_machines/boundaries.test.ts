@@ -545,11 +545,122 @@ function importedCallName(
   return undefined;
 }
 
+function usesRuntimeGetDefaultStore(sourceFile: ts.SourceFile): boolean {
+  const jotaiNamespaces = new Set<string>();
+  for (const statement of sourceFile.statements) {
+    if (
+      ts.isImportDeclaration(statement) &&
+      ts.isStringLiteralLike(statement.moduleSpecifier) &&
+      isJotaiModule(statement.moduleSpecifier.text) &&
+      !statement.importClause?.isTypeOnly
+    ) {
+      const bindings = statement.importClause?.namedBindings;
+      if (bindings && ts.isNamespaceImport(bindings)) {
+        jotaiNamespaces.add(bindings.name.text);
+      } else if (bindings && ts.isNamedImports(bindings)) {
+        if (
+          bindings.elements.some(
+            (specifier) =>
+              !specifier.isTypeOnly &&
+              (specifier.propertyName?.text ?? specifier.name.text) ===
+                "getDefaultStore",
+          )
+        ) {
+          return true;
+        }
+      }
+    }
+    if (
+      ts.isExportDeclaration(statement) &&
+      statement.moduleSpecifier &&
+      ts.isStringLiteralLike(statement.moduleSpecifier) &&
+      isJotaiModule(statement.moduleSpecifier.text) &&
+      !statement.isTypeOnly
+    ) {
+      if (
+        !statement.exportClause ||
+        ts.isNamespaceExport(statement.exportClause)
+      ) {
+        return true;
+      }
+      if (
+        ts.isNamedExports(statement.exportClause) &&
+        statement.exportClause.elements.some(
+          (specifier) =>
+            !specifier.isTypeOnly &&
+            (specifier.propertyName?.text ?? specifier.name.text) ===
+              "getDefaultStore",
+        )
+      ) {
+        return true;
+      }
+    }
+  }
+
+  let found = false;
+  const visit = (node: ts.Node) => {
+    if (
+      ts.isPropertyAccessExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      jotaiNamespaces.has(node.expression.text) &&
+      node.name.text === "getDefaultStore"
+    ) {
+      found = true;
+      return;
+    }
+    if (
+      ts.isElementAccessExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      jotaiNamespaces.has(node.expression.text) &&
+      node.argumentExpression &&
+      ts.isStringLiteralLike(node.argumentExpression) &&
+      node.argumentExpression.text === "getDefaultStore"
+    ) {
+      found = true;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return found;
+}
+
 describe("state-machine boundaries", () => {
   it("normalizes Windows paths used in boundary assertions", () => {
     expect(toPortablePath("first_prompt\\FirstPromptProvider.tsx")).toBe(
       "first_prompt/FirstPromptProvider.tsx",
     );
+  });
+
+  it("recognizes runtime default-store access through supported import forms", () => {
+    const parse = (source: string) =>
+      ts.createSourceFile(
+        "fixture.ts",
+        source,
+        ts.ScriptTarget.Latest,
+        true,
+        ts.ScriptKind.TS,
+      );
+    expect(
+      usesRuntimeGetDefaultStore(
+        parse('import { getDefaultStore as store } from "jotai"; store();'),
+      ),
+    ).toBe(true);
+    expect(
+      usesRuntimeGetDefaultStore(
+        parse('import * as jotai from "jotai"; jotai.getDefaultStore();'),
+      ),
+    ).toBe(true);
+    expect(
+      usesRuntimeGetDefaultStore(
+        parse('import * as jotai from "jotai"; jotai["getDefaultStore"]();'),
+      ),
+    ).toBe(true);
+    expect(
+      usesRuntimeGetDefaultStore(
+        parse('import type { getDefaultStore } from "jotai";'),
+      ),
+    ).toBe(false);
   });
 
   it("keeps the shared kernel independent from domain and platform modules", () => {
@@ -779,32 +890,9 @@ describe("state-machine boundaries", () => {
   });
 
   it("does not import Jotai's process-global default store at runtime", () => {
-    const violations: string[] = [];
-    for (const filePath of productionFiles(SOURCE_ROOT)) {
-      const sourceFile = sourceFileFor(filePath);
-      for (const statement of sourceFile.statements) {
-        if (
-          !ts.isImportDeclaration(statement) ||
-          !ts.isStringLiteralLike(statement.moduleSpecifier) ||
-          !isJotaiModule(statement.moduleSpecifier.text) ||
-          statement.importClause?.isTypeOnly
-        ) {
-          continue;
-        }
-        for (const specifier of statement.importClause?.namedBindings &&
-        ts.isNamedImports(statement.importClause.namedBindings)
-          ? statement.importClause.namedBindings.elements
-          : []) {
-          if (
-            !specifier.isTypeOnly &&
-            (specifier.propertyName?.text ?? specifier.name.text) ===
-              "getDefaultStore"
-          ) {
-            violations.push(relativeSourcePath(filePath));
-          }
-        }
-      }
-    }
+    const violations = productionFiles(SOURCE_ROOT)
+      .filter((filePath) => usesRuntimeGetDefaultStore(sourceFileFor(filePath)))
+      .map(relativeSourcePath);
     expect(violations).toEqual([]);
   });
 

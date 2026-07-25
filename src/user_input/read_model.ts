@@ -161,7 +161,7 @@ export function getUserInputReadModel({
   };
 
   const updateRequests = (
-    update: (current: UserInputRequests) => Map<string, UserInputRequest>,
+    update: (current: UserInputRequests) => UserInputRequests,
   ) => {
     const current = readModelStore.getSnapshot();
     const requests = update(current.requests);
@@ -171,7 +171,7 @@ export function getUserInputReadModel({
 
   const updateRequestsAndRemoveResponding = (
     requestId: string,
-    update: (current: UserInputRequests) => Map<string, UserInputRequest>,
+    update: (current: UserInputRequests) => UserInputRequests,
   ) => {
     const current = readModelStore.getSnapshot();
     const requests = update(current.requests);
@@ -414,7 +414,7 @@ export function getUserInputReadModel({
                   entry.status !== "awaiting" ||
                   entry.descriptor.kind !== "integration"
                 ) {
-                  return new Map(current);
+                  return current;
                 }
                 const next = new Map(current);
                 next.set(requestId, {
@@ -434,8 +434,7 @@ export function getUserInputReadModel({
             pendingClassifications.set(requestId, { reason, revision });
             updateRequests((current) => {
               const entry = current.get(requestId);
-              if (!entry || entry.status !== "awaiting")
-                return new Map(current);
+              if (!entry || entry.status !== "awaiting") return current;
               const next = new Map(current);
               next.set(requestId, {
                 ...entry,
@@ -495,7 +494,7 @@ export function getUserInputReadModel({
             pendingFollowUps.set(requestId, { prompt, revision });
             updateRequests((current) => {
               const entry = current.get(requestId);
-              if (!entry || entry.status === "settled") return new Map(current);
+              if (!entry || entry.status === "settled") return current;
               const next = new Map(current);
               next.set(requestId, {
                 ...entry,

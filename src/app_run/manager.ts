@@ -2,6 +2,7 @@ import { setPreviewRunStateForAppAtom } from "@/atoms/previewRuntimeAtoms";
 import { KeyedControllerHost } from "@/state_machines/keyed_host";
 import { uuidIdSource, type IdSource } from "@/state_machines/clock";
 import { InvocationRegistry } from "@/state_machines/invocation_ref";
+import { SnapshotStore } from "@/state_machines/snapshot_store";
 import { createTraceObserver } from "@/state_machines/trace";
 import {
   registerAtomWriter,
@@ -14,6 +15,7 @@ import {
   type RunOperationInput,
   type RunProducerInput,
 } from "./controller";
+import { selectAppExit, type AppExit } from "./selectors";
 import type { AppRunInvocationRef, RunState } from "./state";
 import type { RunCommand, RunEvent } from "./state";
 import type { TransitionObserver } from "@/state_machines/types";
@@ -26,6 +28,10 @@ export class AppRunManager {
   private readonly host: KeyedControllerHost<number, AppRunController>;
   private readonly invocations = new InvocationRegistry<AppRunController>();
   private readonly activeRefs = new Map<number, AppRunInvocationRef>();
+  private readonly admittedExitStores = new Map<
+    number,
+    SnapshotStore<AppExit | null>
+  >();
   private projectionWriter: AtomProjectionWriter<unknown> | null = null;
   private projectionEnabled = true;
 
@@ -75,8 +81,29 @@ export class AppRunManager {
   subscribeKey = (appId: number, listener: () => void): (() => void) =>
     this.host.subscribeKey(appId, listener);
 
+  /**
+   * APP_EXIT read model. `RunState.stopped` is authoritative when the
+   * transition applies; the manager-owned fallback preserves admitted
+   * legacy/fast-start exits that the unchanged transition table ignores.
+   */
+  getAppExitSnapshot = (appId: number): AppExit | null =>
+    this.admittedExitStores.get(appId)?.getSnapshot() ??
+    selectAppExit(this.getSnapshot(appId));
+
+  subscribeAppExit = (appId: number, listener: () => void): (() => void) => {
+    const unsubscribeState = this.subscribeKey(appId, listener);
+    const unsubscribeFallback =
+      this.ensureAdmittedExitStore(appId).subscribe(listener);
+    return () => {
+      unsubscribeState();
+      unsubscribeFallback();
+    };
+  };
+
   dispatch(appId: number, input: RunOperationInput): Promise<void> {
-    return this.host.ensure(appId).dispatch(input);
+    const pending = this.host.ensure(appId).dispatch(input);
+    if (input.type !== "STOP") this.clearAdmittedExit(appId);
+    return pending;
   }
 
   /**
@@ -95,6 +122,9 @@ export class AppRunManager {
       const claim = this.invocations.claim(input.invocationRef);
       if (claim.kind === "claimed") {
         claim.value.send(input);
+        if (input.type === "APP_EXIT") {
+          this.recordUnrepresentedExit(appId, input, claim.value);
+        }
         return true;
       } else {
         // Preserve ignored-event tracing without admitting stale work.
@@ -102,12 +132,17 @@ export class AppRunManager {
         return false;
       }
     }
-    this.host.ensure(appId).send(input);
+    const controller = this.host.ensure(appId);
+    controller.send(input);
+    if (input.type === "APP_EXIT") {
+      this.recordUnrepresentedExit(appId, input, controller);
+    }
     return true;
   }
 
   beginExternal(appId: number, input: ExternalRunOperationInput): void {
     this.host.ensure(appId).beginExternal(input);
+    this.clearAdmittedExit(appId);
   }
 
   settleExternal(
@@ -125,7 +160,10 @@ export class AppRunManager {
       this.invocations.delete(ref);
       this.activeRefs.delete(appId);
     }
+    this.clearAdmittedExit(appId);
     this.host.disposeKey(appId);
+    this.admittedExitStores.get(appId)?.dispose();
+    this.admittedExitStores.delete(appId);
   };
 
   dispose(): void {
@@ -135,6 +173,43 @@ export class AppRunManager {
     }
     this.activeRefs.clear();
     this.host.dispose();
+    for (const store of this.admittedExitStores.values()) store.dispose();
+    this.admittedExitStores.clear();
+  }
+
+  private ensureAdmittedExitStore(
+    appId: number,
+  ): SnapshotStore<AppExit | null> {
+    let store = this.admittedExitStores.get(appId);
+    if (!store) {
+      store = new SnapshotStore<AppExit | null>(null);
+      this.admittedExitStores.set(appId, store);
+    }
+    return store;
+  }
+
+  private clearAdmittedExit(appId: number): void {
+    this.admittedExitStores.get(appId)?.setState(null);
+  }
+
+  private recordUnrepresentedExit(
+    appId: number,
+    input: Extract<RunProducerInput, { type: "APP_EXIT" }>,
+    controller: AppRunController,
+  ): void {
+    const stateExit = selectAppExit(controller.getSnapshot());
+    if (
+      stateExit?.exitCode === input.exitCode &&
+      stateExit.timestamp === input.timestamp
+    ) {
+      this.clearAdmittedExit(appId);
+      return;
+    }
+    this.ensureAdmittedExitStore(appId).setState({
+      appId,
+      exitCode: input.exitCode,
+      timestamp: input.timestamp,
+    });
   }
 
   private writeProjection(value: unknown): void {

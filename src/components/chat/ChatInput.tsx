@@ -194,8 +194,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const consentsForThisChat = usePendingToolConsents(chatId);
   const pendingToolConsent = consentsForThisChat[0] ?? null;
 
-  // The projection adapter owns optimistic hiding, rollback, and stale-request
-  // reconciliation so the request atom retains exactly one writer.
+  // The read-model adapter owns optimistic hiding, rollback, and stale-request
+  // reconciliation so the request snapshot retains exactly one owner.
   const decideConsent = async (
     consent: PendingToolConsent,
     decision: "accept-once" | "accept-always" | "decline",

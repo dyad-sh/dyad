@@ -177,6 +177,11 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   `registerAtomWriter`, not opportunistically by individual commands. A
   projection is safe only once the machine is its single writer; interim
   dual-writer periods are where races live.
+- Manager admission and transition application are separate facts. Before
+  deleting an admission-gated side channel, characterize admitted events that
+  the transition deliberately ignores (including startup, shutdown, and
+  compatibility routing); preserve any observable data in an owner-scoped read
+  model unless changing those transitions is explicitly in scope.
 - A machine with interactive controls defines a pure
   `selectCapabilities(state)` whose named booleans express domain UI policy,
   and exposes those capabilities through its projection. Do not derive

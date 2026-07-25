@@ -37,6 +37,30 @@ function deferred() {
 }
 
 describe("AppRunManager", () => {
+  it("publishes an empty admitted-exit snapshot before key disposal", () => {
+    const manager = new AppRunManager(createStore());
+    const snapshots: Array<ReturnType<typeof manager.getAppExitSnapshot>> = [];
+    const unsubscribe = manager.subscribeAppExit(7, () => {
+      snapshots.push(manager.getAppExitSnapshot(7));
+    });
+
+    manager.send(7, {
+      type: "APP_EXIT",
+      exitCode: 1,
+      timestamp: 123,
+    });
+    manager.disposeKey(7);
+
+    expect(snapshots[0]).toEqual({
+      appId: 7,
+      exitCode: 1,
+      timestamp: 123,
+    });
+    expect(snapshots.at(-1)).toBeNull();
+    unsubscribe();
+    manager.dispose();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     clearLogsMock.mockResolvedValue(undefined);

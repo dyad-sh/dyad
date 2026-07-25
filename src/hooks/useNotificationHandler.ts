@@ -294,10 +294,10 @@ export function useNotificationHandler() {
     [closeNativeNotification],
   );
 
-  // getPending hydrates the projection after a renderer reload. Seed the
+  // getPending hydrates the read model after a renderer reload. Seed the
   // notification lookup from that same source so a later classified event can
   // still identify a racing MCP request. If classification beats hydration,
-  // replay the notification once the descriptor appears in the projection.
+  // replay the notification once the descriptor appears in the read model.
   useEffect(() => {
     for (const [requestId, request] of projectedUserInputRequests) {
       if (request.status === "settled") continue;

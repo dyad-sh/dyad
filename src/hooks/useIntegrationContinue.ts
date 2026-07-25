@@ -13,7 +13,7 @@ import {
 
 /**
  * Shared continue logic for the integration setup flow. Request lifecycle
- * reads and responses go through the generic user-input projection adapter.
+ * reads and responses go through the generic user-input read-model adapter.
  */
 export function useIntegrationContinue() {
   const chatId = useAtomValue(selectedChatIdAtom);

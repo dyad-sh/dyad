@@ -16,6 +16,9 @@ Background and before/after examples of why this pattern exists:
 - When that purity requires a hand-written state type to duplicate an IPC zod
   schema, add a mutual-assignability assertion beside the schema so either
   definition drifting fails type-checking.
+- A strict Zod object with a `message` field still accepts an `Error` instance
+  through property lookup. Wire schemas that exclude `Error` objects must
+  reject them before parsing the plain error-info object, and test that case.
 - Cover the full state × event matrix with exhaustive switches and `never`
   checks. Deliberate no-ops must use shared `ignore(state, reason)` so they are
   distinguishable from omissions and observable in telemetry.

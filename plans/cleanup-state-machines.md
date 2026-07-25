@@ -597,6 +597,11 @@ Main owns process lifecycle and binds producer output to the invocation at
 creation. Renderer windows keep local console views and `preview_iframe`
 machines while consuming one remote lifecycle read model.
 
+Status:
+
+- C1.2 app-run wire codecs, event refinement, and safe remote projection:
+  **done**. The contracts ship dark; no cutover slot is consumed.
+
 Required deletions:
 
 - renderer `AppRunController` and `AppRunManager`;

@@ -8,6 +8,7 @@ import type {
 } from "./state";
 import {
   APP_RUN_REMOTE_INTENT_CLASS,
+  AppRunDispatchSchema,
   AppRunIntentEventSchema,
   AppRunKeySchema,
   AppRunProducerEventSchema,
@@ -39,14 +40,12 @@ const url = {
 const intentEvents = [
   {
     type: "START",
-    appId: APP_ID,
     operationId: "intent:start:1",
     startedAt: 100,
     expectedRevision: 0,
   },
   {
     type: "RESTART",
-    appId: APP_ID,
     operationId: "intent:restart:1",
     startedAt: 110,
     expectedRevision: 1,
@@ -55,7 +54,6 @@ const intentEvents = [
   },
   {
     type: "RESTART",
-    appId: APP_ID,
     operationId: "intent:rebuild:1",
     startedAt: 115,
     expectedRevision: 1,
@@ -63,14 +61,12 @@ const intentEvents = [
   },
   {
     type: "STOP_REQUESTED",
-    appId: APP_ID,
     operationId: "intent:stop:1",
     startedAt: 120,
     activeInvocationRef: invocationRef,
   },
   {
     type: "MANUAL_RELOAD",
-    appId: APP_ID,
     operationId: "intent:reload:1",
     startedAt: 130,
   },
@@ -119,6 +115,8 @@ describe("app-run transport codecs", () => {
   it.each(intentEvents)("round-trips intent $type", (event) => {
     expect(roundTrip(AppRunIntentEventSchema, event)).toEqual(event);
     expect(roundTrip(AppRunWireEventSchema, event)).toEqual(event);
+    const dispatch = { key: { appId: APP_ID }, event };
+    expect(roundTrip(AppRunDispatchSchema, dispatch)).toEqual(dispatch);
   });
 
   it.each(producerEvents)("round-trips producer $type", (event) => {
@@ -221,12 +219,21 @@ describe("app-run transport codecs", () => {
       }),
     ).toThrow();
     expect(() =>
-      AppRunIntentEventSchema.parse({
-        ...intentEvents[3],
-        activeInvocationRef: {
-          ...invocationRef,
-          entityKey: APP_ID + 1,
+      AppRunDispatchSchema.parse({
+        key: { appId: APP_ID },
+        event: {
+          ...intentEvents[3],
+          activeInvocationRef: {
+            ...invocationRef,
+            entityKey: APP_ID + 1,
+          },
         },
+      }),
+    ).toThrow();
+    expect(() =>
+      AppRunIntentEventSchema.parse({
+        ...intentEvents[0],
+        appId: APP_ID,
       }),
     ).toThrow();
   });

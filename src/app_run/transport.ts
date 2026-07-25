@@ -65,7 +65,6 @@ const runErrorSchema = z
 const startIntentSchema = z
   .object({
     type: z.literal("START"),
-    appId: z.number().int().positive(),
     operationId: operationIdSchema,
     startedAt: finiteTimestampSchema,
     expectedRevision: expectedRevisionSchema,
@@ -74,7 +73,6 @@ const startIntentSchema = z
 
 const restartIntentBase = {
   type: z.literal("RESTART"),
-  appId: z.number().int().positive(),
   operationId: operationIdSchema,
   startedAt: finiteTimestampSchema,
   expectedRevision: expectedRevisionSchema,
@@ -99,7 +97,6 @@ const restartIntentSchema = z.union([
 const stopRequestedIntentSchema = z
   .object({
     type: z.literal("STOP_REQUESTED"),
-    appId: z.number().int().positive(),
     /**
      * Identity of this cancellation request. It is distinct from the active
      * invocation being targeted below.
@@ -108,21 +105,11 @@ const stopRequestedIntentSchema = z
     startedAt: finiteTimestampSchema,
     activeInvocationRef: AppRunInvocationRefSchema,
   })
-  .strict()
-  .superRefine((intent, context) => {
-    if (intent.activeInvocationRef.entityKey !== intent.appId) {
-      context.addIssue({
-        code: "custom",
-        path: ["activeInvocationRef", "entityKey"],
-        message: "Cancellation target must belong to the routed app",
-      });
-    }
-  });
+  .strict();
 
 const manualReloadIntentSchema = z
   .object({
     type: z.literal("MANUAL_RELOAD"),
-    appId: z.number().int().positive(),
     operationId: operationIdSchema,
     startedAt: finiteTimestampSchema,
   })
@@ -139,6 +126,32 @@ export const AppRunIntentEventSchema = z.union([
   manualReloadIntentSchema,
 ]);
 export type AppRunIntentEvent = z.infer<typeof AppRunIntentEventSchema>;
+
+/**
+ * Per-definition admission boundary assembled after the generic actor
+ * transport decodes its key and event independently. The key is the sole app
+ * identity for renderer intents; cancellation additionally proves that its
+ * active invocation belongs to that key.
+ */
+export const AppRunDispatchSchema = z
+  .object({
+    key: AppRunKeySchema,
+    event: AppRunIntentEventSchema,
+  })
+  .strict()
+  .superRefine((dispatch, context) => {
+    if (
+      dispatch.event.type === "STOP_REQUESTED" &&
+      dispatch.event.activeInvocationRef.entityKey !== dispatch.key.appId
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["event", "activeInvocationRef", "entityKey"],
+        message: "Cancellation target must belong to the routed app",
+      });
+    }
+  });
+export type AppRunDispatch = z.infer<typeof AppRunDispatchSchema>;
 
 const externalRestartStartedSchema = z
   .object({

@@ -11,13 +11,17 @@ unknown payload fields fail decoding. The combined schema exists for tests and
 transport-neutral tooling, not as permission to dispatch producer events from
 a renderer.
 
-Remote intents carry an immutable `operationId` and `startedAt`. START and
-RESTART are state-sensitive and require `expectedRevision`. STOP_REQUESTED is
-cancellation: its request `operationId` is distinct from, and cannot replace,
-the required `activeInvocationRef`. MANUAL_RELOAD is idempotent/current-
-agnostic. There is no presentation-only member of the current `RunEvent`
-union; `applyUrl` and reload-token commands become typed post-commit
-presentation consumers in C1.3 rather than a second domain mutation path.
+Remote intents are entity-relative: `AppRunKeySchema.appId` is their sole app
+identity, and `AppRunDispatchSchema` is the per-definition admission boundary
+assembled after the generic transport decodes key and event. Intents carry an
+immutable `operationId` and `startedAt`. START and RESTART are state-sensitive
+and require `expectedRevision`. STOP_REQUESTED is cancellation: its request
+`operationId` is distinct from, and cannot replace, the required
+`activeInvocationRef`; dispatch admission requires that ref to belong to the
+routed key. MANUAL_RELOAD is idempotent/current-agnostic. There is no
+presentation-only member of the current `RunEvent` union; `applyUrl` and
+reload-token commands become typed post-commit presentation consumers in C1.3
+rather than a second domain mutation path.
 
 Every current event has an explicit refined destination:
 
@@ -87,8 +91,9 @@ excluded-key assertion guard that boundary.
 
 ## C1.3 consumption and cutover questions
 
-C1.3 registers the key, intent, producer, and snapshot schemas with the main
-actor definition; translates accepted intents into the existing transition
+C1.3 registers the key, intent, dispatch-admission, producer, and snapshot
+schemas with the main actor definition; injects the decoded key's `appId` when
+translating accepted entity-relative intents into the existing transition
 semantics; binds runtime producers to invocation refs; and publishes this
 projection after authoritative commits. The generic actor envelope owns
 revision/receipt/subscription mechanics, while this module owns domain payload

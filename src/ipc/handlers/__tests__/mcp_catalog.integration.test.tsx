@@ -16,6 +16,10 @@ import {
   type HybridChatHarness,
 } from "@/testing/hybrid_chat_harness";
 import { h } from "@/testing/hybrid.setup";
+import { eq } from "drizzle-orm";
+import { db } from "@/db";
+import { mcpServers } from "@/db/schema";
+import { decryptFromString } from "@/ipc/utils/mcp_oauth_provider";
 
 describe("Plugins catalog (integration)", () => {
   let harness: HybridChatHarness;
@@ -310,6 +314,96 @@ describe("Plugins catalog (integration)", () => {
       expect(updated.headersJson).toEqual({
         Authorization: "Bearer secret-key",
       });
+    } finally {
+      catalogPayload = previousPayload;
+      clearMcpCatalogCacheForTests();
+    }
+  }, 40_000);
+
+  it("adds a field-requiring stdio entry disabled, then setup writes its env var", async () => {
+    const previousPayload = catalogPayload;
+    catalogPayload = {
+      servers: [
+        {
+          slug: "integration-env",
+          name: "Integration Env Server",
+          category: "Testing",
+          transport: "stdio",
+          command: "npx",
+          args: ["-y", "@dyad-sh/e2e-nonexistent-mcp@1.0.0"],
+          inputs: [{ kind: "env", name: "API_TOKEN", label: "Token" }],
+        },
+      ],
+    };
+    clearMcpCatalogCacheForTests();
+    try {
+      // A stdio entry with inputs is added disabled too, so its package
+      // never spawns before the env var is filled in.
+      const created = await ipc.mcp.addFromCatalog({
+        slug: "integration-env",
+        expectedStdioConfig: {
+          command: "npx",
+          args: ["-y", "@dyad-sh/e2e-nonexistent-mcp@1.0.0"],
+        },
+      });
+      expect(created.enabled).toBe(false);
+      expect(created.transport).toBe("stdio");
+
+      const updated = await ipc.mcp.updateServer({
+        id: created.id,
+        enabled: true,
+        envJson: { API_TOKEN: "tok-123" },
+      });
+      expect(updated.enabled).toBe(true);
+      expect(updated.envJson).toEqual({ API_TOKEN: "tok-123" });
+    } finally {
+      catalogPayload = previousPayload;
+      clearMcpCatalogCacheForTests();
+    }
+  }, 40_000);
+
+  it("adds an oauth entry disabled, then setup stores encrypted client credentials", async () => {
+    const previousPayload = catalogPayload;
+    catalogPayload = {
+      servers: [
+        {
+          slug: "integration-oauth",
+          name: "Integration OAuth Server",
+          category: "Testing",
+          transport: "http",
+          url: `http://localhost:${mcpPort}/mcp`,
+          oauth: { required: true },
+          inputs: [{ kind: "oauthClientId" }, { kind: "oauthClientSecret" }],
+        },
+      ],
+    };
+    clearMcpCatalogCacheForTests();
+    try {
+      const created = await ipc.mcp.addFromCatalog({
+        slug: "integration-oauth",
+      });
+      expect(created.enabled).toBe(false);
+      expect(created.oauthEnabled).toBe(true);
+      expect(created.oauthClientId).toBeNull();
+
+      const updated = await ipc.mcp.updateServer({
+        id: created.id,
+        enabled: true,
+        oauthClientId: "client-abc",
+        oauthClientSecret: "secret-xyz",
+      });
+      expect(updated.enabled).toBe(true);
+      expect(updated.oauthClientId).toBe("client-abc");
+      // The client secret is encrypted at rest and never sent to the
+      // renderer: it isn't on the returned server, and the stored value
+      // is not the plaintext but decrypts back to it.
+      expect(updated).not.toHaveProperty("oauthClientSecret");
+      const [row] = await db
+        .select()
+        .from(mcpServers)
+        .where(eq(mcpServers.id, created.id));
+      expect(row.oauthClientSecret).not.toBe("secret-xyz");
+      expect(decryptFromString(row.oauthClientSecret!)).toBe("secret-xyz");
     } finally {
       catalogPayload = previousPayload;
       clearMcpCatalogCacheForTests();

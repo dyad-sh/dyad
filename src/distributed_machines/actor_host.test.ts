@@ -409,6 +409,69 @@ describe("ActorHost", () => {
     expect(actorHost.peek(definition.id, "entity")).toBeUndefined();
   });
 
+  it("keeps key disposal pending through construction cleanup", async () => {
+    let actorHost!: ActorHost;
+    let definition!: ReturnType<typeof machine>;
+    let disposal: Promise<void> | undefined;
+    let release!: () => void;
+    let disposeDuringConstruction = true;
+    const runCommand = vi.fn();
+    const baseDefinition = machine(
+      "key-construction-disposal",
+      lifecycle({
+        settleWaiters: () =>
+          new Promise<void>((resolve) => {
+            release = resolve;
+          }),
+      }),
+    );
+    definition = {
+      ...baseDefinition,
+      createObserver(context) {
+        if (disposeDuringConstruction) {
+          disposeDuringConstruction = false;
+          disposal = actorHost.disposeKey(definition.id, "entity");
+          context.send({ type: "COMMAND" });
+        }
+        return {};
+      },
+      createCommandRunner: () => runCommand,
+    };
+    actorHost = host();
+    actorHost.register(definition);
+
+    expect(() => actorHost.ensure(definition, "entity")).toThrow(
+      expect.objectContaining({ code: "actor-disposing" }),
+    );
+    await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+    expect(() => actorHost.localRef(definition, "entity")).toThrow(
+      expect.objectContaining({ code: "actor-disposing" }),
+    );
+    await expect(
+      actorHost.dispatch(definition, "entity", { type: "SET", value: 1 })
+        .settled,
+    ).resolves.toMatchObject({
+      kind: "failed",
+      stage: "before-admission",
+      error: expect.objectContaining({ code: "actor-disposing" }),
+    });
+    let settled = false;
+    void disposal?.then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    release();
+    await disposal;
+
+    expect(runCommand).not.toHaveBeenCalled();
+    expect(actorHost.peek(definition.id, "entity")).toBeUndefined();
+    expect(actorHost.ensure(definition, "entity").actorInstanceId).toBe(
+      "key-construction-disposal-actor:2",
+    );
+  });
+
   it("keeps same-key admission behind the final disposal barrier", async () => {
     let release!: () => void;
     const entered = vi.fn();

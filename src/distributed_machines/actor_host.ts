@@ -84,6 +84,13 @@ interface RetentionTimerLease {
   handle?: ClockHandle;
 }
 
+interface ConstructionDisposalBarrier {
+  readonly cause: ActorDisposalCause;
+  readonly promise: Promise<void>;
+  readonly resolve: () => void;
+  readonly reject: (failure: unknown) => void;
+}
+
 class HostedActor<
   Key,
   State,
@@ -493,6 +500,10 @@ export class ActorHost {
   private readonly definitions = new Map<string, AnyDefinition>();
   private readonly registeredDefinitions = new WeakSet<object>();
   private readonly constructing = new Map<string, Set<unknown>>();
+  private readonly constructionDisposals = new Map<
+    string,
+    Map<unknown, ConstructionDisposalBarrier>
+  >();
   private readonly actors = new Map<
     string,
     Map<unknown, HostedActor<any, any, any, any, any>>
@@ -603,6 +614,9 @@ export class ActorHost {
     if (this.machineDisposals.has(definition.id)) {
       this.throwMachineDisposing(definition.id);
     }
+    if (this.isConstructionDisposing(definition.id, key)) {
+      this.throwActorDisposing(definition.id);
+    }
     const existing = this.actors.get(definition.id)?.get(key) as
       | HostedActor<Key, State, Event, Command, Reason>
       | undefined;
@@ -660,6 +674,16 @@ export class ActorHost {
         ),
       });
     }
+    if (this.isConstructionDisposing(definition.id, key)) {
+      return settledTicket({
+        kind: "failed",
+        stage: "before-admission",
+        error: new ActorAdmissionError(
+          "actor-disposing",
+          `Actor ${definition.id} is disposing`,
+        ),
+      });
+    }
     let actor = this.actors.get(definition.id)?.get(key) as
       | HostedActor<Key, State, Event, Command, Reason>
       | undefined;
@@ -714,7 +738,18 @@ export class ActorHost {
     key: unknown,
     cause: ActorDisposalCause = "explicit",
   ): Promise<void> {
-    await this.actors.get(machineId)?.get(key)?.dispose(cause);
+    const actor = this.actors.get(machineId)?.get(key);
+    if (actor) {
+      await actor.dispose(cause);
+      return;
+    }
+    const existing = this.constructionDisposals.get(machineId)?.get(key);
+    if (existing) {
+      await existing.promise;
+      return;
+    }
+    if (!this.isConstructing(machineId, key)) return;
+    await this.reserveConstructionDisposal(machineId, key, cause).promise;
   }
 
   async entityDeleted(machineId: string, key: unknown): Promise<void> {
@@ -799,6 +834,9 @@ export class ActorHost {
     if (this.machineDisposals.has(definition.id)) {
       this.throwMachineDisposing(definition.id);
     }
+    if (this.isConstructionDisposing(definition.id, key)) {
+      this.throwActorDisposing(definition.id);
+    }
     let keyed = this.actors.get(definition.id);
     if (!keyed) {
       keyed = new Map();
@@ -829,13 +867,28 @@ export class ActorHost {
         definition,
         key,
         this.options,
-        () => this.disposed || this.machineDisposals.has(definition.id),
+        () =>
+          this.disposed ||
+          this.machineDisposals.has(definition.id) ||
+          this.isConstructionDisposing(definition.id, key),
         (disposedActor) => {
           if (keyed?.get(key) === disposedActor) keyed.delete(key);
           if (keyed?.size === 0) this.actors.delete(definition.id);
         },
       );
     } catch (error) {
+      const constructionDisposal = this.constructionDisposals
+        .get(definition.id)
+        ?.get(key);
+      if (constructionDisposal) {
+        this.settleConstructionDisposal(
+          definition.id,
+          key,
+          constructionDisposal,
+          error,
+          true,
+        );
+      }
       if (keyed.size === 0) this.actors.delete(definition.id);
       throw error;
     } finally {
@@ -845,18 +898,46 @@ export class ActorHost {
     const machineConstructionDisposals = this.machineConstructionDisposals.get(
       definition.id,
     );
-    if (this.disposed || machineConstructionDisposals) {
+    const constructionDisposal = this.constructionDisposals
+      .get(definition.id)
+      ?.get(key);
+    if (this.disposed || machineConstructionDisposals || constructionDisposal) {
       const cleanup = actor.dispose(
-        this.disposed ? "shutdown" : "machine-disposal",
+        this.disposed
+          ? "shutdown"
+          : machineConstructionDisposals
+            ? "machine-disposal"
+            : constructionDisposal!.cause,
       );
       if (this.disposed) this.hostConstructionDisposals.push(cleanup);
       machineConstructionDisposals?.push(cleanup);
+      if (constructionDisposal) {
+        void cleanup.then(
+          () =>
+            this.settleConstructionDisposal(
+              definition.id,
+              key,
+              constructionDisposal,
+            ),
+          (failure) =>
+            this.settleConstructionDisposal(
+              definition.id,
+              key,
+              constructionDisposal,
+              failure,
+              true,
+            ),
+        );
+      }
     }
     if (this.disposed) {
       throw new ActorAdmissionError("host-disposed", "ActorHost is disposed");
     }
     if (machineConstructionDisposals) {
       this.throwMachineDisposing(definition.id);
+    }
+    if (constructionDisposal) {
+      this.throwActorDisposing(definition.id);
     }
     keyed.set(key, actor);
     actor.activate();
@@ -879,6 +960,49 @@ export class ActorHost {
 
   private isConstructing(machineId: string, key: unknown): boolean {
     return this.constructing.get(machineId)?.has(key) === true;
+  }
+
+  private isConstructionDisposing(machineId: string, key: unknown): boolean {
+    return this.constructionDisposals.get(machineId)?.has(key) === true;
+  }
+
+  private reserveConstructionDisposal(
+    machineId: string,
+    key: unknown,
+    cause: ActorDisposalCause,
+  ): ConstructionDisposalBarrier {
+    let resolve!: () => void;
+    let reject!: (failure: unknown) => void;
+    const promise = new Promise<void>((resolvePromise, rejectPromise) => {
+      resolve = resolvePromise;
+      reject = rejectPromise;
+    });
+    const barrier = { cause, promise, resolve, reject };
+    let keyed = this.constructionDisposals.get(machineId);
+    if (!keyed) {
+      keyed = new Map();
+      this.constructionDisposals.set(machineId, keyed);
+    }
+    keyed.set(key, barrier);
+    return barrier;
+  }
+
+  private settleConstructionDisposal(
+    machineId: string,
+    key: unknown,
+    barrier: ConstructionDisposalBarrier,
+    failure?: unknown,
+    rejected = false,
+  ): void {
+    const keyed = this.constructionDisposals.get(machineId);
+    if (keyed?.get(key) !== barrier) return;
+    keyed.delete(key);
+    if (keyed.size === 0) this.constructionDisposals.delete(machineId);
+    if (rejected) {
+      barrier.reject(failure);
+    } else {
+      barrier.resolve();
+    }
   }
 
   private reportFailure(machineId: string, key: unknown, failure: unknown) {

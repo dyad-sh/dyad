@@ -114,8 +114,10 @@ Background and before/after examples of why this pattern exists:
 - Async keyed disposal must stop admission synchronously but keep the lifetime
   addressable until its final cleanup promise settles. Every disposal caller
   awaits that same barrier, and same-key recreation stays blocked behind it.
-  Publish the barrier before invoking any cleanup hook, and aggregate
-  synchronous admission/timer cleanup failures behind it.
+  If the key is still under synchronous construction, publish a keyed barrier
+  that adopts the eventual actor cleanup rather than treating the missing map
+  entry as already disposed. Publish the barrier before invoking any cleanup
+  hook, and aggregate synchronous admission/timer cleanup failures behind it.
 - Reserve a keyed lifetime before running definition factories. Factories may
   synchronously re-enter host admission; reject that re-entry rather than
   constructing a second owner that can be overwritten and leaked.

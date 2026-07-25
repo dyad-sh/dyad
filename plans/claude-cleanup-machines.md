@@ -43,9 +43,9 @@ The load-bearing ones:
   are therefore _not_ exclusively the app_run machine's, and
   `useAppRunState` alone cannot replace the reader.
 - **Mount-order reality for facade injection**: `ChatStreamProvider` mounts
-  above the router (`renderer.tsx:141`); chat_stream's runtime deps are
+  above the router (`renderer.tsx:141`); chat*stream's runtime deps are
   registered late by `useChatStreamRuntime()` at `layout.tsx:133`, which
-  runs _under_ `AppRunProvider` (`layout.tsx:75`) but _above_
+  runs \_under* `AppRunProvider` (`layout.tsx:75`) but _above_
   `ScreenshotProvider` (`layout.tsx:202`). The AppRunManager facade injects
   cleanly; the screenshot facade needs wiring restructured or buffering.
 - **`subscribeStreamFinished` is already microtask-deferred**
@@ -195,7 +195,7 @@ traces establish):
 1. **pendingScreenshotAppIdsAtom** (2) — purest mailbox, no deferral
    needed, best first target; establishes the producer-facade pattern.
 2. **previewRunStateByAppIdAtom** (2) — establishes the
-   app_run→preview_iframe _deferred_ facade pattern.
+   app*run→preview_iframe \_deferred* facade pattern.
 3. **previewReloadTokenByAppIdAtom** (2) — chat_stream writer migrates to
    the app_run `MANUAL_RELOAD` facade first (independently shippable).
 4. **packageManagerWarningByAppIdAtom** (2) — owned store; priority rule
@@ -468,8 +468,8 @@ does not exist today.
   `requestCapture(appId, source)` facade →
   `ScreenshotManager.send(appId, {type:"CAPTURE_REQUESTED", source})`
   (exists, `manager.ts:31`).
-- **Wiring correction**: chat_stream's deps are registered by
-  `useChatStreamRuntime()` at `layout.tsx:133`, which runs _above_
+- **Wiring correction**: chat*stream's deps are registered by
+  `useChatStreamRuntime()` at `layout.tsx:133`, which runs \_above*
   `ScreenshotProvider` (`layout.tsx:202`) — `useScreenshotManager()` is not
   in scope there. Options: hoist ScreenshotManager creation into layout
   (createMachineProvider accepts an injected manager), register the facade

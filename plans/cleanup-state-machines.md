@@ -672,6 +672,7 @@ standing rules:
   session restore from a captured real session blob. Mostly a named
   collection of assertions that already exist scattered across suites —
   regressions become diffs, not bug reports.
+  **Landed in PR #4097.**
 - **N=1 identity rule.** With exactly one window, the presentation router
   short-circuits to that window unconditionally; a dev-mode assert
   computes the full fallback chain and flags any divergence from the

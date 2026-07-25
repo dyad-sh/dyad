@@ -105,10 +105,7 @@ import {
   useScreenshotManager,
 } from "@/screenshot/ScreenshotProvider";
 import { AppRunManager } from "@/app_run/manager";
-import {
-  AppRunProvider,
-  useAppRunManager,
-} from "@/app_run/AppRunProvider";
+import { AppRunProvider, useAppRunManager } from "@/app_run/AppRunProvider";
 import { PlanHandoffProvider } from "@/plan_handoff/PlanHandoffProvider";
 import { ChatStreamManager } from "@/chat_stream/manager";
 import { ChatStreamProvider } from "@/chat_stream/ChatStreamProvider";
@@ -1002,7 +999,7 @@ export async function setupHybridChatHarness(
                   <GithubOpsProvider>
                     <ImageGenerationProvider manager={imageGenerationManager}>
                       <VersionPreviewProvider manager={versionPreviewManager}>
-                        <PreviewIframeProvider>
+                        <PreviewIframeProvider appRunState={appRunManager}>
                           <ScreenshotProvider>
                             <ThemeProvider>
                               <DeepLinkProvider>

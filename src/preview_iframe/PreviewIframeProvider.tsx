@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { useStore } from "jotai";
-import { useAppRunManager } from "@/app_run/AppRunProvider";
+import type { AppRunStateSubscriptionFacade } from "@/app_wiring/cross_machine_facades";
 import {
   useManagerLifecycle,
   useRegisterEntityDisposer,
@@ -18,9 +18,14 @@ import { PreviewIframeManager } from "./manager";
 
 const PreviewIframeContext = createContext<PreviewIframeManager | null>(null);
 
-export function PreviewIframeProvider({ children }: { children: ReactNode }) {
+export function PreviewIframeProvider({
+  children,
+  appRunState,
+}: {
+  children: ReactNode;
+  appRunState: AppRunStateSubscriptionFacade;
+}) {
   const store = useStore();
-  const appRunManager = useAppRunManager();
   const [manager] = useState(
     () => new PreviewIframeManager(createPreviewIframeCommandAdapter(store)),
   );
@@ -31,7 +36,7 @@ export function PreviewIframeProvider({ children }: { children: ReactNode }) {
   const handledRestartInvocationIds = useRef(new Map<number, string>());
 
   useEffect(() => {
-    return appRunManager.subscribeRunStateChanged((appId, runState) => {
+    return appRunState.subscribeRunStateChanged((appId, runState) => {
       if (runState.type !== "starting" || runState.operation !== "restart") {
         handledRestartInvocationIds.current.delete(appId);
         return;
@@ -48,7 +53,7 @@ export function PreviewIframeProvider({ children }: { children: ReactNode }) {
       );
       manager.send(appId, { type: "RUNTIME_RESTARTED" });
     });
-  }, [appRunManager, manager]);
+  }, [appRunState, manager]);
 
   useManagerLifecycle(manager);
   useRegisterEntityDisposer("app", disposeApp);

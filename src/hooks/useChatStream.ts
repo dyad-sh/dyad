@@ -103,7 +103,13 @@ export function useChatStreamRuntime(
       requestPreviewReload: facades.requestPreviewReload,
       requestCapture: facades.requestCapture,
     });
-  }, [facades.requestCapture, facades.requestPreviewReload, manager, store, queryClient]);
+  }, [
+    facades.requestCapture,
+    facades.requestPreviewReload,
+    manager,
+    store,
+    queryClient,
+  ]);
 
   // Register synchronously on the first render too: child components mount
   // (and can submit) before the parent layout's effects run.

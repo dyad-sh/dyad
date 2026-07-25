@@ -6,17 +6,13 @@ import {
   appendConsoleEntriesForAppAtom,
   clearPreviewRuntimeForAppAtom,
   consoleEntriesByAppIdAtom,
-  currentAppUrlAtom,
   currentConsoleEntriesAtom,
   currentPackageManagerWarningAtom,
   currentPreviewErrorAtom,
   dismissPackageManagerWarningsAtom,
-  previewRunStateByAppIdAtom,
-  setAppUrlForAppAtom,
   setPackageManagerWarningForAppAtom,
   setConsoleEntriesForAppAtom,
   setPreviewErrorForAppAtom,
-  setPreviewRunStateForAppAtom,
 } from "@/atoms/previewRuntimeAtoms";
 import {
   getPreviewConsoleEntryByteLength,
@@ -169,22 +165,9 @@ describe("preview runtime atoms", () => {
     expect(store.get(consoleEntriesByAppIdAtom).has(1)).toBe(false);
   });
 
-  it("clears all preview runtime state for one app", () => {
+  it("clears the remaining preview runtime state for one app", () => {
     const store = createStore();
     store.set(selectedAppIdAtom, 1);
-    store.set(setPreviewRunStateForAppAtom, {
-      appId: 1,
-      state: { operation: "restart", startedAt: 100 },
-    });
-    store.set(setAppUrlForAppAtom, {
-      appId: 1,
-      appUrl: {
-        appUrl: "http://localhost:3000",
-        appId: 1,
-        originalUrl: "http://localhost:3000",
-        mode: "host",
-      },
-    });
     store.set(setPackageManagerWarningForAppAtom, {
       appId: 1,
       warning: {
@@ -201,7 +184,6 @@ describe("preview runtime atoms", () => {
       entries: [consoleEntry("other app log", 100, 2)],
     });
 
-    expect(store.get(currentAppUrlAtom).appUrl).toBe("http://localhost:3000");
     expect(store.get(currentPackageManagerWarningAtom)).toEqual({
       kind: "release-age",
       message: "Install pnpm 10.16.0 or newer",
@@ -210,8 +192,6 @@ describe("preview runtime atoms", () => {
 
     store.set(clearPreviewRuntimeForAppAtom, 1);
 
-    expect(store.get(previewRunStateByAppIdAtom).has(1)).toBe(false);
-    expect(store.get(currentAppUrlAtom).appUrl).toBeNull();
     expect(store.get(currentPackageManagerWarningAtom)).toBeUndefined();
     expect(store.get(consoleEntriesByAppIdAtom).has(1)).toBe(false);
     expect(store.get(consoleEntriesByAppIdAtom).has(2)).toBe(true);

@@ -43,9 +43,9 @@ export function toRunErrorInfo(error: unknown): RunErrorInfo {
 }
 
 /**
- * Production adapter: applies commands to the Jotai preview-runtime atoms
- * and the app IPC surface, preserving the side-effect ordering the old
- * copy-pasted run/restart/rebuild/stop bodies had.
+ * Production adapter: applies remaining preview UI side effects, invokes the
+ * app IPC surface, and signals manager-owned reload-token bumps while
+ * preserving the old run/restart/rebuild/stop ordering.
  */
 export function createIpcRunCommandExecutor(
   store: JotaiStore,

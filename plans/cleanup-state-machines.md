@@ -348,7 +348,7 @@ plan, not deleted Git history, defines PR scope and status.
 - selector-aware keyed React bindings;
 - no intended production behavior change.
 
-**A2 — S-tier mirrors, no new stores: pending.**
+**A2 — S-tier mirrors, no new stores: done (#4091).**
 
 - completion-event pair via `useStreamFinished`;
 - first-prompt saga projection pair;
@@ -358,7 +358,7 @@ plan, not deleted Git history, defines PR scope and status.
 
 These deletions do not choose a future host or transport.
 
-**A3 — Single-machine projections with stable direct owners: pending.**
+**A3 — Single-machine projections with stable direct owners: in flight (#4092).**
 
 - image-generation projection exposed directly by its manager; keep dismissal
   UI state;
@@ -374,17 +374,17 @@ shape C2 will later publish remotely — this is preparation for the host
 move, not a temporary API.
 
 **A4 — Cross-machine signal edges that do not preselect chat storage:
-pending.**
+in flight.**
 
 - app-run lifecycle/URL edges consumed through typed post-commit facades so
   their source can later swap to a remote actor;
 - reload intent uses a typed app-run event rather than an atom counter edge;
 - screenshot ingress: both producers (window-local commit requests AND
-  chat_stream's end-of-stream capture) migrate to the same local
+  chat*stream's end-of-stream capture) migrate to the same local
   `requestCapture` facade injected via deps, and the mailbox atom is
   deleted in this PR — the no-dual-consumption rule holds. The chat_stream
   call site carries an allowlist-style marker tied to B1: when the window
-  capability router lands, it replaces the facade's *implementation*
+  capability router lands, it replaces the facade's \_implementation*
   (lease-targeted routing instead of the singleton manager), not its call
   sites. Facade indirection is what prevents permanent singleton binding;
   keeping the atom alive until B1 would be the worse binding.

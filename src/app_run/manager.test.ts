@@ -1,6 +1,5 @@
 import { createStore } from "jotai";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { previewRunStateByAppIdAtom } from "@/atoms/previewRuntimeAtoms";
 import { AppRunManager } from "./manager";
 import type { AppRunInvocationRef } from "./state";
 import { createSequentialIdSource } from "@/state_machines/testing";
@@ -69,32 +68,50 @@ describe("AppRunManager", () => {
     stopAppMock.mockResolvedValue(undefined);
   });
 
-  it("isolates manager instances backed by separate stores", async () => {
+  it("delivers run-state changes to multiple listeners after commit", async () => {
     const storeA = createStore();
     const storeB = createStore();
     const managerA = new AppRunManager(storeA);
     const managerB = new AppRunManager(storeB);
+    const listenerA = vi.fn();
+    const secondListenerA = vi.fn();
+    const listenerB = vi.fn();
+    managerA.subscribeRunStateChanged(listenerA);
+    managerA.subscribeRunStateChanged(secondListenerA);
+    managerB.subscribeRunStateChanged(listenerB);
 
     const pending = managerA.dispatch(7, { type: "START", startedAt: 100 });
 
     expect(managerA.getSnapshot(7)).toMatchObject({ type: "starting" });
     expect(managerB.getSnapshot(7)).toEqual({ type: "idle" });
-    expect(storeA.get(previewRunStateByAppIdAtom).get(7)).toEqual({
-      operation: "run",
-      startedAt: 100,
-    });
-    expect(storeB.get(previewRunStateByAppIdAtom).has(7)).toBe(false);
+    expect(listenerA).not.toHaveBeenCalled();
+
+    await Promise.resolve();
+    expect(listenerA).toHaveBeenCalledWith(
+      7,
+      expect.objectContaining({
+        type: "starting",
+        startedAt: 100,
+        invocationRef: expect.objectContaining({
+          operationId: expect.any(String),
+        }),
+      }),
+    );
+    expect(secondListenerA).toHaveBeenCalledOnce();
+    expect(listenerB).not.toHaveBeenCalled();
 
     managerA.dispose();
     managerB.dispose();
     await pending;
   });
 
-  it("dispose resolves dispatch and blocks late projection writes", async () => {
+  it("dispose resolves dispatch and blocks queued facade delivery", async () => {
     const run = deferred();
     runAppMock.mockReturnValueOnce(run.promise);
     const store = createStore();
     const manager = new AppRunManager(store);
+    const listener = vi.fn();
+    manager.subscribeRunStateChanged(listener);
 
     const pending = manager.dispatch(7, { type: "START", startedAt: 100 });
     expect(manager.getSnapshot(7)).toMatchObject({ type: "starting" });
@@ -102,13 +119,31 @@ describe("AppRunManager", () => {
     manager.dispose();
     await pending;
 
-    const marker = { operation: "restart" as const, startedAt: 999 };
-    store.set(previewRunStateByAppIdAtom, new Map([[7, marker]]));
     run.resolve();
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(store.get(previewRunStateByAppIdAtom).get(7)).toBe(marker);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it("owns a monotonic reload token and resets it on disposeKey", async () => {
+    const manager = new AppRunManager(createStore());
+    const listener = vi.fn();
+    manager.subscribeReloadToken(7, listener);
+
+    manager.requestManualReload(7);
+    await Promise.resolve();
+    expect(manager.getReloadToken(7)).toBe(1);
+
+    manager.requestManualReload(7);
+    await Promise.resolve();
+    expect(manager.getReloadToken(7)).toBe(2);
+    expect(listener).toHaveBeenCalledTimes(2);
+
+    manager.disposeKey(7);
+    expect(manager.getReloadToken(7)).toBe(0);
+    expect(listener).toHaveBeenCalledTimes(3);
+    manager.dispose();
   });
 
   it("disposeKey for app A leaves app B's in-flight run untouched", async () => {

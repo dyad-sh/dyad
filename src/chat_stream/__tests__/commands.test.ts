@@ -113,6 +113,35 @@ describe("chat stream command adapter instances", () => {
     expect(onAccepted).toHaveBeenCalledOnce();
   });
 
+  it("routes updated-file reload and capture through typed facades", async () => {
+    const calls: string[] = [];
+    const deps = {
+      store: createStore(),
+      queryClient: new QueryClient(),
+      getSettings: () => undefined,
+      getPosthog: () => null,
+      requestPreviewReload: vi.fn(() => calls.push("reload")),
+      requestCapture: vi.fn(() => calls.push("capture")),
+    };
+    vi.spyOn(ipc.chatStream, "release").mockImplementation(() => {});
+    vi.spyOn(ipc.chat, "getChat").mockResolvedValue({
+      id: 9,
+      messages: [],
+    } as never);
+
+    await createProductionChatStreamCommands(() => deps).runEndSideEffects({
+      chatId: 9,
+      invocationRef: ref(1),
+      request: { chatId: 9, appId: 4, prompt: "update files" },
+      targetAppId: 4,
+      response: { chatId: 9, updatedFiles: true, wasCancelled: false },
+    });
+
+    expect(deps.requestPreviewReload).toHaveBeenCalledWith(4);
+    expect(deps.requestCapture).toHaveBeenCalledWith(4, "stream");
+    expect(calls).toEqual(["reload", "capture"]);
+  });
+
   it("replaces transient content after the cancelled handler unwinds", async () => {
     let resolveCancellation!: (cancelled: boolean) => void;
     const cancellation = new Promise<boolean>((resolve) => {

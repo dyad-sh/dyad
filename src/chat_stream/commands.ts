@@ -13,7 +13,10 @@ import {
 } from "@/atoms/chatAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
-import type { ScreenshotCaptureSource } from "@/screenshot/state";
+import type {
+  PreviewReloadRequestFacade,
+  ScreenshotRequestFacade,
+} from "@/app_wiring/cross_machine_facades";
 import { setPackageManagerWarningForAppAtom } from "@/atoms/previewRuntimeAtoms";
 import { ipc } from "@/ipc/types";
 import type { Chat, ChatResponseEnd, Message } from "@/ipc/types";
@@ -102,10 +105,8 @@ export interface ChatStreamRuntimeDeps {
   queryClient: QueryClient;
   getSettings: () => UserSettings | null | undefined;
   getPosthog: () => PostHog | null;
-  /** Remote intent: idempotent/current-agnostic MANUAL_RELOAD. */
-  requestPreviewReload: (appId: number) => void;
-  /** Remote intent: idempotent/current-agnostic screenshot capture. */
-  requestCapture: (appId: number, source: ScreenshotCaptureSource) => void;
+  requestPreviewReload: PreviewReloadRequestFacade["requestManualReload"];
+  requestCapture: ScreenshotRequestFacade["requestCapture"];
 }
 
 // =============================================================================

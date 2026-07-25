@@ -71,7 +71,6 @@ vi.mock("../lib/chatUtils", () => ({
 
 vi.mock("../lib/toast", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/toast")>()),
-  showError: vi.fn(),
   showWarning: vi.fn(),
 }));
 

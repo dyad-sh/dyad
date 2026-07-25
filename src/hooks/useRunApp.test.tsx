@@ -5,10 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import {
   currentConsoleEntriesAtom,
-  currentAppUrlAtom,
   currentPackageManagerWarningAtom,
   currentPreviewErrorAtom,
-  currentPreviewReloadTokenAtom,
   setConsoleEntriesForAppAtom,
 } from "@/atoms/previewRuntimeAtoms";
 import {
@@ -17,6 +15,7 @@ import {
   useRunApp,
 } from "@/hooks/useRunApp";
 import { AppRunProvider } from "@/app_run/AppRunProvider";
+import { selectAppExit, selectAppUrl } from "@/app_run/selectors";
 import { AppRunManager } from "@/app_run/manager";
 
 const {
@@ -240,6 +239,9 @@ describe("useAppOutputSubscription", () => {
       wrapper: Wrapper,
     });
 
+    await act(async () => {
+      await manager.dispatch(1, { type: "START", startedAt: 100 });
+    });
     const consoleEntriesBeforeExit = store.get(currentConsoleEntriesAtom);
 
     act(() => {
@@ -254,7 +256,7 @@ describe("useAppOutputSubscription", () => {
       }
     });
 
-    expect(manager.getAppExitSnapshot(1)).toEqual({
+    expect(selectAppExit(manager.getSnapshot(1))).toEqual({
       appId: 1,
       exitCode: 1,
       timestamp: 123,
@@ -264,7 +266,7 @@ describe("useAppOutputSubscription", () => {
     unmount();
   });
 
-  it("tracks an admitted app exit while startup IPC is still pending", async () => {
+  it("retains an exit that arrives before the run IPC settles", async () => {
     const { manager, Wrapper } = makeWrapper(1);
     let finishRunApp: () => void = () => {};
     runAppMock.mockReturnValueOnce(
@@ -276,35 +278,39 @@ describe("useAppOutputSubscription", () => {
       wrapper: Wrapper,
     });
 
-    const pending = manager.dispatch(1, { type: "START", startedAt: 100 });
+    const pendingRun = manager.dispatch(1, { type: "START", startedAt: 100 });
     await act(async () => {
       await Promise.resolve();
     });
-    const invocationRef = runAppMock.mock.calls[0]?.[0].invocationRef;
-    if (!invocationRef) throw new Error("expected run invocation");
+    const runCall = runAppMock.mock.calls[0];
+    if (!runCall) throw new Error("expected run IPC call");
 
     act(() => {
       for (const listener of appOutputListeners) {
         listener({
           type: "app-exit",
-          message: "App process exited during startup",
+          message: "App process exited before startup settled",
           appId: 1,
-          invocationRef,
+          invocationRef: runCall[0].invocationRef,
           exitCode: 1,
           timestamp: 123,
         });
       }
     });
 
-    expect(manager.getSnapshot(1).type).toBe("starting");
-    expect(manager.getAppExitSnapshot(1)).toEqual({
+    expect(selectAppExit(manager.getSnapshot(1))).toEqual({
       appId: 1,
       exitCode: 1,
       timestamp: 123,
     });
 
     finishRunApp();
-    await pending;
+    await pendingRun;
+    expect(selectAppExit(manager.getSnapshot(1))).toEqual({
+      appId: 1,
+      exitCode: 1,
+      timestamp: 123,
+    });
     unmount();
   });
 
@@ -356,7 +362,7 @@ describe("useAppOutputSubscription", () => {
       }
     });
 
-    expect(manager.getAppExitSnapshot(1)).toBeNull();
+    expect(selectAppExit(manager.getSnapshot(1))).toBeNull();
     expect(manager.getSnapshot(1)).toMatchObject({
       type: "starting",
       startedAt: 200,
@@ -369,14 +375,14 @@ describe("useAppOutputSubscription", () => {
     unmount();
   });
 
-  it("reloads the preview when the proxy reports a ready URL", () => {
-    const { manager, store, Wrapper } = makeWrapper(1);
+  it("reloads the preview after the proxy URL commits", async () => {
+    const { manager, Wrapper } = makeWrapper(1);
     const { unmount } = renderHook(() => useAppOutputSubscription(), {
       wrapper: Wrapper,
     });
 
-    expect(store.get(currentPreviewReloadTokenAtom)).toBe(0);
-    act(() => {
+    expect(manager.getReloadToken(1)).toBe(0);
+    await act(async () => {
       for (const listener of appOutputListeners) {
         listener({
           type: "stdout",
@@ -385,15 +391,16 @@ describe("useAppOutputSubscription", () => {
             "[dyad-proxy-server]started=[http://localhost:42101] original=[http://localhost:32101] mode=[host]",
         });
       }
+      await Promise.resolve();
     });
 
-    expect(store.get(currentAppUrlAtom)).toEqual({
+    expect(selectAppUrl(manager.getSnapshot(1))).toEqual({
       appUrl: "http://localhost:42101",
       appId: 1,
       originalUrl: "http://localhost:32101",
       mode: "host",
     });
-    expect(store.get(currentPreviewReloadTokenAtom)).toBe(1);
+    expect(manager.getReloadToken(1)).toBe(1);
     expect(manager.getSnapshot(1).type).toBe("ready");
 
     unmount();
@@ -642,7 +649,7 @@ describe("useAppOutputSubscription", () => {
   });
 
   it("keeps a restart's loading state when a cached proxy line arrives, then applies the buffered URL", async () => {
-    const { manager, store, Wrapper } = makeWrapper(1);
+    const { manager, Wrapper } = makeWrapper(1);
     let finishRestartApp: () => void = () => {};
     restartAppMock.mockReturnValueOnce(
       new Promise<void>((resolve) => {
@@ -664,7 +671,7 @@ describe("useAppOutputSubscription", () => {
       await Promise.resolve();
     });
     expect(result.current.loading).toBe(true);
-    const tokenBefore = store.get(currentPreviewReloadTokenAtom);
+    const tokenBefore = manager.getReloadToken(1);
 
     // A cached proxy line (re-emitted for an already-running app before the
     // restart) arrives while the restart IPC is still in flight.
@@ -682,7 +689,7 @@ describe("useAppOutputSubscription", () => {
     // It must NOT clear the restart's loading state or apply the URL yet.
     expect(result.current.loading).toBe(true);
     expect(manager.getSnapshot(1).type).toBe("starting");
-    expect(store.get(currentAppUrlAtom).appUrl).toBeNull();
+    expect(selectAppUrl(manager.getSnapshot(1)).appUrl).toBeNull();
 
     await act(async () => {
       finishRestartApp();
@@ -690,15 +697,13 @@ describe("useAppOutputSubscription", () => {
     });
 
     expect(result.current.loading).toBe(false);
-    expect(store.get(currentAppUrlAtom)).toEqual({
+    expect(selectAppUrl(manager.getSnapshot(1))).toEqual({
       appUrl: "http://localhost:42101",
       appId: 1,
       originalUrl: "http://localhost:32101",
       mode: "host",
     });
-    expect(store.get(currentPreviewReloadTokenAtom)).toBeGreaterThan(
-      tokenBefore,
-    );
+    expect(manager.getReloadToken(1)).toBeGreaterThan(tokenBefore);
 
     unmount();
   });

@@ -39,10 +39,7 @@ export class ScreenshotManager {
    * Repeated capture requests are admitted against the controller's current
    * queue/supersession policy, so callers do not need lifecycle revisions.
    */
-  requestCapture = (
-    appId: number,
-    source: ScreenshotCaptureSource,
-  ): void => {
+  requestCapture = (appId: number, source: ScreenshotCaptureSource): void => {
     this.send(appId, { type: "CAPTURE_REQUESTED", source });
   };
 

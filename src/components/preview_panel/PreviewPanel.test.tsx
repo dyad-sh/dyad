@@ -8,7 +8,6 @@ import {
 
 const mocks = vi.hoisted(() => ({
   currentConsoleEntriesAtom: Symbol("currentConsoleEntriesAtom"),
-  currentPreviewReloadTokenAtom: Symbol("currentPreviewReloadTokenAtom"),
   cancelManagedNodeInstall: vi.fn(),
   installManagedNode: vi.fn(),
   nodeCheckFailed: false,
@@ -39,9 +38,6 @@ vi.mock("jotai", async (importOriginal) => ({
     if (atom === mocks.selectedAppIdAtom) {
       return mocks.selectedAppId;
     }
-    if (atom === mocks.currentPreviewReloadTokenAtom) {
-      return 0;
-    }
     if (atom === mocks.currentConsoleEntriesAtom) {
       return [];
     }
@@ -56,7 +52,10 @@ vi.mock("../../atoms/appAtoms", () => ({
 
 vi.mock("@/atoms/previewRuntimeAtoms", () => ({
   currentConsoleEntriesAtom: mocks.currentConsoleEntriesAtom,
-  currentPreviewReloadTokenAtom: mocks.currentPreviewReloadTokenAtom,
+}));
+
+vi.mock("@/hooks/useAppRun", () => ({
+  usePreviewReloadToken: () => 0,
 }));
 
 vi.mock("@tanstack/react-query", () => ({

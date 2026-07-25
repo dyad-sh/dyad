@@ -209,30 +209,30 @@ function RootLayoutContent({ children }: { children: ReactNode }) {
   return (
     <>
       <VersionPreviewProvider>
-        <PreviewIframeProvider>
+        <PreviewIframeProvider appRunState={appRunManager}>
           <ThemeProvider>
-              <DeepLinkProvider>
-                <SidebarProvider defaultOpen={false}>
-                  <TitleBar />
-                  <AppSidebar />
-                  <div className="flex h-screenish min-w-0 flex-1 flex-col overflow-hidden mt-[var(--layout-title-bar-offset)] border-l border-border bg-background">
-                    <SubscriptionStatusBanner />
-                    <div
-                      id="layout-main-content-container"
-                      className="flex min-h-0 w-full flex-1 overflow-x-hidden"
-                    >
-                      {children}
-                    </div>
+            <DeepLinkProvider>
+              <SidebarProvider defaultOpen={false}>
+                <TitleBar />
+                <AppSidebar />
+                <div className="flex h-screenish min-w-0 flex-1 flex-col overflow-hidden mt-[var(--layout-title-bar-offset)] border-l border-border bg-background">
+                  <SubscriptionStatusBanner />
+                  <div
+                    id="layout-main-content-container"
+                    className="flex min-h-0 w-full flex-1 overflow-x-hidden"
+                  >
+                    {children}
                   </div>
-                  <Toaster
-                    richColors
-                    expand
-                    duration={settings?.isTestMode ? 500 : undefined}
-                  />
-                  <ReleaseNotesDialog />
-                  <ForceCloseDialog />
-                </SidebarProvider>
-              </DeepLinkProvider>
+                </div>
+                <Toaster
+                  richColors
+                  expand
+                  duration={settings?.isTestMode ? 500 : undefined}
+                />
+                <ReleaseNotesDialog />
+                <ForceCloseDialog />
+              </SidebarProvider>
+            </DeepLinkProvider>
           </ThemeProvider>
         </PreviewIframeProvider>
       </VersionPreviewProvider>

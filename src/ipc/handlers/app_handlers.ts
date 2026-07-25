@@ -34,15 +34,13 @@ import { withLock } from "../utils/lock_utils";
 import { getFilesRecursively } from "../utils/file_utils";
 import {
   runningApps,
-  processCounter,
-  removeAppIfCurrentProcess,
   stopAppByInfo,
   setCurrentlySelectedAppId,
   startAppGarbageCollection,
 } from "../utils/process_manager";
 import { getEnvVar } from "../utils/read_env";
 import { readSettings } from "../../main/settings";
-import { addLog, clearLogs } from "../../lib/log_store";
+import { addLog } from "../../lib/log_store";
 import { IS_TEST_BUILD } from "../utils/test_utils";
 import {
   DYAD_SCREENSHOT_DIR_NAME,
@@ -50,14 +48,12 @@ import {
   SCREENSHOT_FILENAME_REGEX,
 } from "../utils/media_path_utils";
 import {
-  cleanUpPort,
-  emitProxyServerStarted,
+  appRuntimeService,
   ensureProxyForRunningApp,
-  executeApp,
   formatCloudSandboxError,
   registerCloudSandboxSyncUpdateListener,
 } from "../services/app_runtime_service";
-import { restartApp } from "../services/restart_app";
+import { getIpcAppRuntimeOutput } from "../services/app_runtime_transport";
 import { getPtySessionManager } from "../utils/pty_session_manager";
 import { sameInvocationRef } from "@/state_machines/invocation_ref";
 import { userInputRegistry } from "@/user_input/main";
@@ -125,7 +121,6 @@ import { getVercelTeamSlug } from "../utils/vercel_utils";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
 import type { AppSearchResult } from "@/lib/schemas";
 
-import { getAppPort } from "../../../shared/ports";
 import {
   getRgExecutablePath,
   MAX_FILE_SEARCH_SIZE,
@@ -388,6 +383,7 @@ async function deleteAppById(
     if (!app) {
       if (options.allowMissing && options.knownAppPath) {
         await removeAppFiles(appId, options.knownAppPath);
+        appRuntimeService.cleanup(appId);
         return;
       }
       throw new DyadError("App not found", DyadErrorKind.NotFound);
@@ -405,7 +401,7 @@ async function deleteAppById(
     }
 
     // Clear logs for this app to prevent memory leak
-    clearLogs(appId);
+    appRuntimeService.clearRuntimeLogs(appId);
     getPtySessionManager().killForApp(appId);
 
     try {
@@ -427,6 +423,7 @@ async function deleteAppById(
     }
 
     await removeAppFiles(appId, getDyadAppPath(app.path));
+    appRuntimeService.cleanup(appId);
   });
 }
 
@@ -768,129 +765,15 @@ export function registerAppHandlers() {
   });
 
   createTypedHandler(appContracts.runApp, async (event, params) => {
-    const { appId, invocationRef } = params;
-    return withLock(appId, async () => {
-      // Check if app is already running
-      if (runningApps.has(appId)) {
-        logger.debug(`App ${appId} is already running.`);
-        // Re-emit the proxy URL so the frontend can restore the preview
-        const appInfo = runningApps.get(appId);
-        if (appInfo?.proxyUrl && appInfo?.originalUrl) {
-          emitProxyServerStarted({
-            appId,
-            event,
-            proxyUrl: appInfo.proxyUrl,
-            originalUrl: appInfo.originalUrl,
-            mode: appInfo.mode,
-            // This is a cached response to the current request, not stdout
-            // from the existing producer, so correlate it to the requester.
-            invocationRef: invocationRef ?? appInfo.invocationRef,
-          });
-        }
-        return;
-      }
-
-      const app = await db.query.apps.findFirst({
-        where: eq(apps.id, appId),
-      });
-
-      if (!app) {
-        throw new DyadError("App not found", DyadErrorKind.NotFound);
-      }
-
-      logger.debug(`Starting app ${appId} in path ${app.path}`);
-
-      const appPath = getDyadAppPath(app.path);
-      try {
-        // There may have been a previous run that left a process on this port.
-        await cleanUpPort(getAppPort(appId));
-        await executeApp({
-          appPath,
-          appId,
-          event,
-          isNeon: !!app.neonProjectId,
-          installCommand: app.installCommand,
-          startCommand: app.startCommand,
-          invocationRef,
-        });
-
-        return;
-      } catch (error: any) {
-        logger.error(`Error running app ${appId}:`, error);
-        // Ensure cleanup if error happens during setup but before process events are handled
-        if (
-          runningApps.has(appId) &&
-          runningApps.get(appId)?.processId === processCounter.value
-        ) {
-          runningApps.delete(appId);
-        }
-        throw new DyadError(
-          `Failed to run app ${appId}: ${error.message}`,
-          DyadErrorKind.External,
-        );
-      }
+    return appRuntimeService.start({
+      ...params,
+      output: getIpcAppRuntimeOutput(event.sender),
     });
   });
 
-  createTypedHandler(appContracts.stopApp, async (_, params) => {
-    const { appId } = params;
-    logger.log(
-      `Attempting to stop app ${appId}. Current running apps: ${runningApps.size}`,
-    );
-    return withLock(appId, async () => {
-      const appInfo = runningApps.get(appId);
-
-      if (!appInfo) {
-        logger.log(
-          `App ${appId} not found in running apps map. Assuming already stopped.`,
-        );
-        return;
-      }
-
-      const { process, processId } = appInfo;
-      logger.log(
-        `Found running app ${appId} with processId ${processId}${process?.pid ? ` (PID: ${process.pid})` : ""}. Attempting to stop.`,
-      );
-
-      // Check if the process is already exited or closed
-      if (
-        process &&
-        (process.exitCode !== null || process.signalCode !== null)
-      ) {
-        logger.log(
-          `Process for app ${appId} (PID: ${process.pid}) already exited (code: ${process.exitCode}, signal: ${process.signalCode}). Cleaning up map.`,
-        );
-        runningApps.delete(appId); // Ensure cleanup if somehow missed
-        return;
-      }
-
-      try {
-        await stopAppByInfo(appId, appInfo);
-
-        // Now, safely remove the app from the map *after* confirming closure
-        if (process) {
-          removeAppIfCurrentProcess(appId, process);
-        }
-
-        return;
-      } catch (error: any) {
-        logger.error(
-          `Error stopping app ${appId}${process?.pid ? ` (PID: ${process.pid}, processId: ${processId})` : ` (processId: ${processId})`}:`,
-          error,
-        );
-        // Attempt cleanup even if an error occurred during the stop process
-        if (process) {
-          removeAppIfCurrentProcess(appId, process);
-        } else if (appInfo.mode !== "cloud") {
-          runningApps.delete(appId);
-        }
-        throw new DyadError(
-          `Failed to stop app ${appId}: ${error.message}`,
-          DyadErrorKind.External,
-        );
-      }
-    });
-  });
+  createTypedHandler(appContracts.stopApp, async (_, { appId }) =>
+    appRuntimeService.stop(appId),
+  );
 
   createTypedHandler(
     appContracts.getCloudSandboxStatus,
@@ -927,7 +810,7 @@ export function registerAppHandlers() {
         if (previewChanged && appInfo.proxyWorker) {
           await ensureProxyForRunningApp({
             appId,
-            event,
+            output: getIpcAppRuntimeOutput(event.sender),
             originalUrl: status.previewUrl,
             mode: "cloud",
             invocationRef,
@@ -983,7 +866,12 @@ export function registerAppHandlers() {
     },
   );
 
-  createTypedHandler(appContracts.restartApp, restartApp);
+  createTypedHandler(appContracts.restartApp, async (event, params) =>
+    appRuntimeService.restart({
+      ...params,
+      output: getIpcAppRuntimeOutput(event.sender),
+    }),
+  );
 
   createTypedHandler(appContracts.editAppFile, async (_, params) => {
     let { appId, filePath, content } = params;
@@ -1744,7 +1632,7 @@ export function registerAppHandlers() {
 
   // Handler for clearing logs for a specific app
   createTypedHandler(miscContracts.clearLogs, async (_, { appId }) => {
-    clearLogs(appId);
+    appRuntimeService.clearRuntimeLogs(appId);
   });
 
   // select-app-location is not in app contracts - keep using handle

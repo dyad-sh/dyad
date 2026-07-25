@@ -1,12 +1,16 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import util from "node:util";
 import fixPath from "fix-path";
 import killPort from "kill-port";
 import log from "electron-log";
+import { eq } from "drizzle-orm";
 
 import { getAppPort, getAppProxyPort } from "../../../shared/ports";
+import { db } from "@/db";
+import { apps } from "@/db/schema";
 import { readSettings } from "@/main/settings";
 import {
   shouldShowPnpmMinimumReleaseAgeWarning,
@@ -14,10 +18,15 @@ import {
 } from "@/lib/schemas";
 import type { AppOutput } from "@/ipc/types/misc";
 import type { AppRunInvocationRef } from "@/app_run/state";
-import { sameInvocationRef } from "@/state_machines/invocation_ref";
+import {
+  CancellationTombstones,
+  createInvocationRef,
+  invocationRegistryKey,
+  sameInvocationRef,
+} from "@/state_machines/invocation_ref";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { addLog } from "@/lib/log_store";
-import { safeSend } from "@/ipc/utils/safe_sender";
+import { addLog, clearLogs } from "@/lib/log_store";
+import { getDyadAppPath } from "@/paths/paths";
 import { startProxy } from "@/ipc/utils/start_proxy_server";
 import {
   buildCloudSandboxFileMap,
@@ -28,12 +37,18 @@ import {
   setCloudSandboxSyncUpdateListener,
   streamCloudSandboxLogs,
   uploadCloudSandboxFiles,
+  restartCloudSandbox,
 } from "@/ipc/utils/cloud_sandbox_provider";
 import {
   processCounter,
   removeAppIfCurrentProcess,
+  removeDockerVolumesForApp,
   runningApps,
+  stopAppByInfo,
+  type RunningAppInfo,
 } from "@/ipc/utils/process_manager";
+import { withLock } from "@/ipc/utils/lock_utils";
+import { APP_RUN_INVOCATION_KIND } from "@/app_run/state";
 import {
   ensurePnpmAllowBuildsConfigured,
   getPackageManagerCommandEnv,
@@ -61,6 +76,18 @@ import {
 
 const logger = log.scope("app_runtime_service");
 const pnpmVersionMigrationNotifiedAppIds = new Set<number>();
+
+/**
+ * Transport-neutral output boundary captured by a runtime producer.
+ *
+ * IPC is one adapter today; the future main-hosted actor can consume these
+ * callbacks directly without manufacturing an Electron event.
+ */
+export interface AppRuntimeOutput {
+  send(output: AppOutput): void;
+  enqueue(output: AppOutput): void;
+  flush(): void;
+}
 
 // Needed, otherwise Electron on macOS/Linux may not find node/pnpm.
 fixPath();
@@ -224,11 +251,11 @@ async function getCommand({
 
 function emitPnpmMinimumReleaseAgeWarning({
   appId,
-  event,
+  output,
   message,
 }: {
   appId: number;
-  event: Electron.IpcMainInvokeEvent;
+  output: AppRuntimeOutput;
   message: string;
 }) {
   const settings = readSettings();
@@ -236,7 +263,7 @@ function emitPnpmMinimumReleaseAgeWarning({
     return;
   }
 
-  safeSend(event.sender, "app:output", {
+  output.send({
     type: "package-manager-warning",
     warningKind: "release-age",
     message,
@@ -247,7 +274,7 @@ function emitPnpmMinimumReleaseAgeWarning({
 export async function executeApp({
   appPath,
   appId,
-  event,
+  output,
   isNeon,
   installCommand,
   startCommand,
@@ -255,7 +282,7 @@ export async function executeApp({
 }: {
   appPath: string;
   appId: number;
-  event: Electron.IpcMainInvokeEvent;
+  output: AppRuntimeOutput;
   isNeon: boolean;
   installCommand?: string | null;
   startCommand?: string | null;
@@ -268,7 +295,7 @@ export async function executeApp({
     await executeAppInDocker({
       appPath,
       appId,
-      event,
+      output,
       isNeon,
       installCommand,
       startCommand,
@@ -278,17 +305,17 @@ export async function executeApp({
     await executeAppInCloud({
       appPath,
       appId,
-      event,
+      output,
       installCommand,
       startCommand,
       invocationRef,
     });
   } else {
-    notifyPnpmVersionMigrationAvailable({ appPath, appId, event });
+    notifyPnpmVersionMigrationAvailable({ appPath, appId, output });
     await executeAppLocalNode({
       appPath,
       appId,
-      event,
+      output,
       isNeon,
       installCommand,
       startCommand,
@@ -304,11 +331,11 @@ export async function executeApp({
 function notifyPnpmVersionMigrationAvailable({
   appPath,
   appId,
-  event,
+  output,
 }: {
   appPath: string;
   appId: number;
-  event: Electron.IpcMainInvokeEvent;
+  output: AppRuntimeOutput;
 }): void {
   try {
     if (!isPnpmVersionMigrationNeeded(appPath)) {
@@ -316,14 +343,14 @@ function notifyPnpmVersionMigrationAvailable({
     }
     const managedMajor = getManagedPnpmMajorVersion();
     if (!pnpmVersionMigrationNotifiedAppIds.has(appId)) {
-      safeSend(event.sender, "app:output", {
+      output.send({
         type: "stdout",
         message: `[dyad] This pnpm app needs a pnpm ${managedMajor} migration (pre-9 lockfile or pnpm <= 8 pin). Dyad already runs pnpm ${managedMajor}, so deploys, CI, and teammates' installs can drift without the matching project pin. Open App Details -> App Upgrades and apply "Migrate to pnpm ${managedMajor}".`,
         appId,
       });
       pnpmVersionMigrationNotifiedAppIds.add(appId);
     }
-    safeSend(event.sender, "app:output", {
+    output.send({
       type: "package-manager-warning",
       warningKind: "pnpm-migration",
       message: `This app pins an older pnpm that can't read the lockfile Dyad writes. Migrate to pnpm ${managedMajor} so CI, deploys, and teammates can install it reliably.`,
@@ -336,20 +363,20 @@ function notifyPnpmVersionMigrationAvailable({
 
 export function emitProxyServerStarted({
   appId,
-  event,
+  output,
   proxyUrl,
   originalUrl,
   mode,
   invocationRef,
 }: {
   appId: number;
-  event: Electron.IpcMainInvokeEvent;
+  output: AppRuntimeOutput;
   proxyUrl: string;
   originalUrl: string;
   mode: RuntimeMode2;
   invocationRef?: AppRunInvocationRef;
 }) {
-  safeSend(event.sender, "app:output", {
+  output.send({
     type: "stdout",
     message: `[dyad-proxy-server]started=[${proxyUrl}] original=[${originalUrl}] mode=[${mode}]`,
     appId,
@@ -359,13 +386,13 @@ export function emitProxyServerStarted({
 
 export async function ensureProxyForRunningApp({
   appId,
-  event,
+  output,
   originalUrl,
   mode,
   invocationRef,
 }: {
   appId: number;
-  event: Electron.IpcMainInvokeEvent;
+  output: AppRuntimeOutput;
   originalUrl: string;
   mode: RuntimeMode2;
   invocationRef?: AppRunInvocationRef;
@@ -395,7 +422,7 @@ export async function ensureProxyForRunningApp({
   ) {
     emitProxyServerStarted({
       appId,
-      event,
+      output,
       proxyUrl: appInfo.proxyUrl,
       originalUrl,
       mode,
@@ -433,7 +460,7 @@ export async function ensureProxyForRunningApp({
       }
       emitProxyServerStarted({
         appId,
-        event,
+        output,
         proxyUrl,
         originalUrl,
         mode,
@@ -442,7 +469,7 @@ export async function ensureProxyForRunningApp({
     },
     onError: (error) => {
       logger.error(`Failed to start proxy for app ${appId}:`, error);
-      safeSend(event.sender, "app:output", {
+      output.send({
         type: "stderr",
         message: `[dyad-proxy-server] ${error.message}`,
         appId,
@@ -474,7 +501,7 @@ export async function ensureProxyForRunningApp({
 async function executeAppLocalNode({
   appPath,
   appId,
-  event,
+  output,
   isNeon,
   installCommand,
   startCommand,
@@ -483,7 +510,7 @@ async function executeAppLocalNode({
 }: {
   appPath: string;
   appId: number;
-  event: Electron.IpcMainInvokeEvent;
+  output: AppRuntimeOutput;
   isNeon: boolean;
   installCommand?: string | null;
   startCommand?: string | null;
@@ -497,7 +524,7 @@ async function executeAppLocalNode({
     installCommand,
     startCommand,
     onPnpmMinimumReleaseAgeWarning: (message) =>
-      emitPnpmMinimumReleaseAgeWarning({ appId, event, message }),
+      emitPnpmMinimumReleaseAgeWarning({ appId, output, message }),
   });
   let env = { ...process.env };
   if (!command.isCustom && command.packageManager === "pnpm") {
@@ -560,7 +587,7 @@ Details: ${details || "n/a"}
     processId: currentProcessId,
     invocationRef,
     mode: "host",
-    rendererSender: event.sender,
+    output,
     lastViewedAt: Date.now(),
   });
 
@@ -569,14 +596,14 @@ Details: ${details || "n/a"}
     appId,
     appPath,
     isNeon,
-    event,
+    output,
     invocationRef,
     onPnpmIgnoredBuildsFailure:
       command.isCustom && !ignoredBuildsSelfHealAttempted
-        ? async (output) => {
+        ? async (processOutput) => {
             const healed = await selfHealDeniedPnpmBuilds({
               appPath,
-              output,
+              output: processOutput,
               telemetrySource: "self-heal",
             });
             if (!healed) {
@@ -585,7 +612,7 @@ Details: ${details || "n/a"}
 
             // Per "Transparent Over Magical": tell the user why the
             // process restarted instead of silently reinstalling.
-            safeSend(event.sender, "app:output", {
+            output.send({
               type: "stdout",
               message:
                 "[dyad] pnpm blocked dependency build scripts. Recorded the decision in pnpm-workspace.yaml and reinstalling...",
@@ -595,7 +622,7 @@ Details: ${details || "n/a"}
             await executeAppLocalNode({
               appPath,
               appId,
-              event,
+              output,
               isNeon,
               installCommand,
               startCommand,
@@ -606,37 +633,6 @@ Details: ${details || "n/a"}
           }
         : undefined,
   });
-}
-
-const APP_OUTPUT_FLUSH_INTERVAL_MS = 100;
-
-const pendingOutputs = new Map<Electron.WebContents, AppOutput[]>();
-let flushTimer: ReturnType<typeof setTimeout> | null = null;
-
-function enqueueAppOutput(
-  sender: Electron.WebContents,
-  output: AppOutput,
-): void {
-  let queue = pendingOutputs.get(sender);
-  if (!queue) {
-    queue = [];
-    pendingOutputs.set(sender, queue);
-  }
-  queue.push(output);
-
-  if (!flushTimer) {
-    flushTimer = setTimeout(flushAllAppOutputs, APP_OUTPUT_FLUSH_INTERVAL_MS);
-  }
-}
-
-function flushAllAppOutputs(): void {
-  flushTimer = null;
-  for (const [sender, outputs] of pendingOutputs) {
-    if (outputs.length > 0) {
-      safeSend(sender, "app:output-batch", outputs);
-    }
-  }
-  pendingOutputs.clear();
 }
 
 let cloudSandboxSyncUpdateListenerRegistered = false;
@@ -655,8 +651,8 @@ export function registerCloudSandboxSyncUpdateListener(): void {
     const previousErrorMessage = appInfo.cloudSyncErrorMessage ?? null;
     appInfo.cloudSyncErrorMessage = errorMessage ?? undefined;
 
-    const sender = appInfo.rendererSender;
-    if (!sender) {
+    const output = appInfo.output;
+    if (!output) {
       return;
     }
 
@@ -673,7 +669,7 @@ export function registerCloudSandboxSyncUpdateListener(): void {
         appId,
       });
 
-      safeSend(sender, "app:output", {
+      output.send({
         type: "sync-error",
         message: errorMessage,
         appId,
@@ -696,7 +692,7 @@ export function registerCloudSandboxSyncUpdateListener(): void {
       appId,
     });
 
-    safeSend(sender, "app:output", {
+    output.send({
       type: "sync-recovered",
       message: recoveredMessage,
       appId,
@@ -729,7 +725,7 @@ function listenToProcess({
   appId,
   appPath,
   isNeon,
-  event,
+  output,
   invocationRef,
   onPnpmIgnoredBuildsFailure,
 }: {
@@ -737,7 +733,7 @@ function listenToProcess({
   appId: number;
   appPath?: string;
   isNeon: boolean;
-  event: Electron.IpcMainInvokeEvent;
+  output: AppRuntimeOutput;
   invocationRef?: AppRunInvocationRef;
   onPnpmIgnoredBuildsFailure?: (output: string) => Promise<boolean>;
 }) {
@@ -781,13 +777,13 @@ function listenToProcess({
     const inputRequestPattern = /\s*›\s*\([yY]\/[nN]\)\s*$/;
     const isInputRequest = inputRequestPattern.test(message);
     if (isInputRequest) {
-      safeSend(event.sender, "app:output", {
+      output.send({
         type: "input-requested",
         message,
         appId,
       });
     } else {
-      enqueueAppOutput(event.sender, {
+      output.enqueue({
         type: "stdout",
         message,
         appId,
@@ -805,7 +801,7 @@ function listenToProcess({
         }
         await ensureProxyForRunningApp({
           appId,
-          event,
+          output,
           originalUrl,
           mode: "host",
           invocationRef,
@@ -829,7 +825,7 @@ function listenToProcess({
       appId,
     });
 
-    enqueueAppOutput(event.sender, {
+    output.enqueue({
       type: "stderr",
       message,
       appId,
@@ -842,7 +838,7 @@ function listenToProcess({
         logger.log(
           `App ${appId} (PID: ${spawnedProcess.pid}) process closed with code ${code}, signal ${signal}.`,
         );
-        flushAllAppOutputs();
+        output.flush();
         const currentAppInfo = runningApps.get(appId);
         if (!currentAppInfo || currentAppInfo.process !== spawnedProcess) {
           removeAppIfCurrentProcess(appId, spawnedProcess);
@@ -868,7 +864,7 @@ function listenToProcess({
           }
         }
 
-        safeSend(event.sender, "app:output", {
+        output.send({
           type: "app-exit",
           message: `App process exited with code ${code ?? "null"}`,
           appId,
@@ -939,7 +935,7 @@ async function selfHealDeniedPnpmBuilds({
 async function executeAppInDocker({
   appPath,
   appId,
-  event,
+  output,
   isNeon,
   installCommand,
   startCommand,
@@ -948,7 +944,7 @@ async function executeAppInDocker({
 }: {
   appPath: string;
   appId: number;
-  event: Electron.IpcMainInvokeEvent;
+  output: AppRuntimeOutput;
   isNeon: boolean;
   installCommand?: string | null;
   startCommand?: string | null;
@@ -1072,7 +1068,7 @@ RUN npm install -g pnpm
           installCommand,
           startCommand,
           onPnpmMinimumReleaseAgeWarning: (message) =>
-            emitPnpmMinimumReleaseAgeWarning({ appId, event, message }),
+            emitPnpmMinimumReleaseAgeWarning({ appId, output, message }),
         })
       ).command,
     ],
@@ -1126,7 +1122,7 @@ ${errorOutput || "(empty)"}`,
     processId: currentProcessId,
     invocationRef,
     mode: "docker",
-    rendererSender: event.sender,
+    output,
     containerName,
     lastViewedAt: Date.now(),
   });
@@ -1141,14 +1137,14 @@ ${errorOutput || "(empty)"}`,
     appId,
     appPath,
     isNeon,
-    event,
+    output,
     invocationRef,
     onPnpmIgnoredBuildsFailure:
       hasCustomCommands && !ignoredBuildsSelfHealAttempted
-        ? async (output) => {
+        ? async (processOutput) => {
             const healed = await selfHealDeniedPnpmBuilds({
               appPath,
-              output,
+              output: processOutput,
               telemetrySource: "self-heal",
               removeNodeModules: false,
             });
@@ -1156,7 +1152,7 @@ ${errorOutput || "(empty)"}`,
               return false;
             }
 
-            safeSend(event.sender, "app:output", {
+            output.send({
               type: "stdout",
               message:
                 "[dyad] pnpm blocked dependency build scripts. Recorded the decision in pnpm-workspace.yaml and reinstalling...",
@@ -1166,7 +1162,7 @@ ${errorOutput || "(empty)"}`,
             await executeAppInDocker({
               appPath,
               appId,
-              event,
+              output,
               isNeon,
               installCommand,
               startCommand,
@@ -1182,14 +1178,14 @@ ${errorOutput || "(empty)"}`,
 async function executeAppInCloud({
   appPath,
   appId,
-  event,
+  output,
   installCommand,
   startCommand,
   invocationRef,
 }: {
   appPath: string;
   appId: number;
-  event: Electron.IpcMainInvokeEvent;
+  output: AppRuntimeOutput;
   installCommand?: string | null;
   startCommand?: string | null;
   invocationRef?: AppRunInvocationRef;
@@ -1246,7 +1242,7 @@ async function executeAppInCloud({
     processId: currentProcessId,
     invocationRef,
     mode: "cloud",
-    rendererSender: event.sender,
+    output,
     cloudSandboxId: sandboxId,
     cloudPreviewUrl: resolvedPreviewUrl,
     cloudPreviewAuthToken: resolvedPreviewAuthToken,
@@ -1262,7 +1258,7 @@ async function executeAppInCloud({
 
   await ensureProxyForRunningApp({
     appId,
-    event,
+    output,
     originalUrl: resolvedPreviewUrl,
     mode: "cloud",
     invocationRef,
@@ -1271,7 +1267,7 @@ async function executeAppInCloud({
   startCloudSandboxLogStream({
     appId,
     appPath,
-    event,
+    output,
     sandboxId,
     cloudLogAbortController,
   });
@@ -1280,7 +1276,7 @@ async function executeAppInCloud({
 export function startCloudSandboxLogStream(input: {
   appId: number;
   appPath?: string;
-  event: Electron.IpcMainInvokeEvent;
+  output: AppRuntimeOutput;
   sandboxId: string;
   cloudLogAbortController: AbortController;
 }) {
@@ -1341,7 +1337,7 @@ export function startCloudSandboxLogStream(input: {
           appId: input.appId,
         });
 
-        safeSend(input.event.sender, "app:output", {
+        input.output.send({
           type: "stdout",
           message,
           appId: input.appId,
@@ -1365,7 +1361,7 @@ export function startCloudSandboxLogStream(input: {
         appId: input.appId,
       });
 
-      safeSend(input.event.sender, "app:output", {
+      input.output.send({
         type: "stderr",
         message,
         appId: input.appId,
@@ -1430,3 +1426,525 @@ export async function cleanUpPort(port: number) {
     await killProcessOnPort(port);
   }
 }
+
+interface RuntimeAppRecord {
+  id: number;
+  path: string;
+  neonProjectId: string | null;
+  installCommand: string | null;
+  startCommand: string | null;
+}
+
+export interface AppRuntimeServiceDependencies {
+  withLock<T>(appId: number, operation: () => Promise<T>): Promise<T>;
+  findApp(appId: number): Promise<RuntimeAppRecord | undefined>;
+  resolveAppPath(relativePath: string): string;
+  getRunningApp(appId: number): RunningAppInfo | undefined;
+  deleteRunningApp(appId: number): void;
+  getProcessCounter(): number;
+  startProcess(input: {
+    appPath: string;
+    appId: number;
+    output: AppRuntimeOutput;
+    isNeon: boolean;
+    installCommand?: string | null;
+    startCommand?: string | null;
+    invocationRef?: AppRunInvocationRef;
+  }): Promise<void>;
+  stopProcess(appId: number, appInfo: RunningAppInfo): Promise<void>;
+  removeCurrentProcess(appId: number, process: ChildProcess): void;
+  cleanPort(port: number): Promise<void>;
+  restartSandbox(sandboxId: string): Promise<{
+    previewUrl: string;
+    previewAuthToken: string;
+  }>;
+  ensureProxy(input: {
+    appId: number;
+    output: AppRuntimeOutput;
+    originalUrl: string;
+    mode: RuntimeMode2;
+    invocationRef?: AppRunInvocationRef;
+  }): Promise<void>;
+  startCloudLogs(input: {
+    appId: number;
+    appPath?: string;
+    output: AppRuntimeOutput;
+    sandboxId: string;
+    cloudLogAbortController: AbortController;
+  }): void;
+  clearLogs(appId: number): void;
+  readRuntimeMode(): RuntimeMode2;
+  removeNodeModules(appPath: string): Promise<void>;
+  removeDockerVolumes(appId: number): Promise<void>;
+  waitForReady(appId: number, timeoutMs?: number): Promise<void>;
+  createId(): string;
+  now(): number;
+}
+
+export interface StartAppRuntimeOptions {
+  appId: number;
+  output: AppRuntimeOutput;
+  invocationRef?: AppRunInvocationRef;
+}
+
+export interface RestartAppRuntimeOptions extends StartAppRuntimeOptions {
+  removeNodeModules?: boolean;
+  recreateSandbox?: boolean;
+  clearRuntimeLogs?: boolean;
+}
+
+export interface ExternalAppRuntimeLifecycleOptions {
+  appId: number;
+  output: AppRuntimeOutput;
+  operation: "restart" | "rebuild";
+  abortSignal?: AbortSignal;
+  invocationRef?: AppRunInvocationRef;
+  timeoutMs?: number;
+}
+
+export interface ExternalAppRuntimeClaim {
+  requestId: string;
+  invocationRef: AppRunInvocationRef;
+  appId: number;
+  operation: "restart" | "rebuild";
+  output: AppRuntimeOutput;
+}
+
+const DEFAULT_APP_READY_TIMEOUT_MS = 2 * 60 * 1_000;
+const APP_READY_POLL_MS = 100;
+const MAX_RUNTIME_CANCELLATION_TOMBSTONES = 1_000;
+
+/**
+ * Cohesive, transport-neutral owner of main-process app runtime commands.
+ *
+ * IPC handlers and Local Agent tools are adapters over this seam. Producer
+ * output is captured in the command input and passed unchanged to process,
+ * proxy, and sandbox callbacks, preserving invocation identity at producer
+ * creation.
+ */
+export class AppRuntimeService {
+  private readonly externalClaims = new Map<string, ExternalAppRuntimeClaim>();
+  private readonly externalClaimsByApp = new Map<
+    number,
+    Map<string, ExternalAppRuntimeClaim>
+  >();
+  private readonly cancellationTombstones = new CancellationTombstones(
+    MAX_RUNTIME_CANCELLATION_TOMBSTONES,
+  );
+
+  constructor(private readonly dependencies: AppRuntimeServiceDependencies) {}
+
+  async start(options: StartAppRuntimeOptions): Promise<void> {
+    const { appId, output, invocationRef } = options;
+    return this.dependencies.withLock(appId, async () => {
+      const existing = this.dependencies.getRunningApp(appId);
+      if (existing) {
+        logger.debug(`App ${appId} is already running.`);
+        if (existing.proxyUrl && existing.originalUrl) {
+          emitProxyServerStarted({
+            appId,
+            output,
+            proxyUrl: existing.proxyUrl,
+            originalUrl: existing.originalUrl,
+            mode: existing.mode,
+            invocationRef: invocationRef ?? existing.invocationRef,
+          });
+        }
+        return;
+      }
+
+      const app = await this.requireApp(appId);
+      const appPath = this.dependencies.resolveAppPath(app.path);
+      logger.debug(`Starting app ${appId} in path ${app.path}`);
+      try {
+        await this.dependencies.cleanPort(getAppPort(appId));
+        await this.startProcess(app, appPath, options);
+      } catch (error) {
+        logger.error(`Error running app ${appId}:`, error);
+        const latest = this.dependencies.getRunningApp(appId);
+        if (
+          latest &&
+          latest.processId === this.dependencies.getProcessCounter()
+        ) {
+          this.dependencies.deleteRunningApp(appId);
+        }
+        throw new DyadError(
+          `Failed to run app ${appId}: ${errorMessage(error)}`,
+          DyadErrorKind.External,
+        );
+      }
+    });
+  }
+
+  async restart(options: RestartAppRuntimeOptions): Promise<void> {
+    const {
+      appId,
+      output,
+      invocationRef,
+      removeNodeModules = false,
+      recreateSandbox = false,
+      clearRuntimeLogs = false,
+    } = options;
+    logger.log(`Restarting app ${appId}`);
+    return this.dependencies.withLock(appId, async () => {
+      const app = await this.requireApp(appId);
+      const appPath = this.dependencies.resolveAppPath(app.path);
+      const appInfo = this.dependencies.getRunningApp(appId);
+
+      if (
+        appInfo?.mode === "cloud" &&
+        appInfo.cloudSandboxId &&
+        !recreateSandbox
+      ) {
+        await this.restartCloudSandboxInPlace({
+          appId,
+          appPath,
+          output,
+          invocationRef,
+          clearRuntimeLogs,
+          appInfo,
+        });
+        return;
+      }
+
+      if (appInfo) {
+        logger.log(
+          `Stopping app ${appId} (processId ${appInfo.processId}) before restart`,
+        );
+        await this.dependencies.stopProcess(appId, appInfo);
+      } else {
+        logger.log(`App ${appId} not running. Proceeding to start.`);
+      }
+
+      await this.dependencies.cleanPort(getAppPort(appId));
+      if (removeNodeModules) {
+        await this.dependencies.removeNodeModules(appPath);
+        if (this.dependencies.readRuntimeMode() === "docker") {
+          try {
+            await this.dependencies.removeDockerVolumes(appId);
+          } catch (error) {
+            logger.warn(
+              `Failed to remove Docker volumes for app ${appId}. Continuing: ${error}`,
+            );
+          }
+        }
+      }
+      if (clearRuntimeLogs) {
+        this.dependencies.clearLogs(appId);
+      }
+      await this.startProcess(app, appPath, options);
+    });
+  }
+
+  async stop(appId: number): Promise<void> {
+    logger.log(
+      `Attempting to stop app ${appId}. Current running apps: ${runningApps.size}`,
+    );
+    return this.dependencies.withLock(appId, async () => {
+      const appInfo = this.dependencies.getRunningApp(appId);
+      if (!appInfo) {
+        logger.log(`App ${appId} is already stopped.`);
+        return;
+      }
+
+      const { process, processId } = appInfo;
+      if (
+        process &&
+        (process.exitCode !== null || process.signalCode !== null)
+      ) {
+        this.dependencies.deleteRunningApp(appId);
+        return;
+      }
+
+      try {
+        await this.dependencies.stopProcess(appId, appInfo);
+        if (process) {
+          this.dependencies.removeCurrentProcess(appId, process);
+        }
+      } catch (error) {
+        logger.error(
+          `Error stopping app ${appId} (processId ${processId}):`,
+          error,
+        );
+        if (process) {
+          this.dependencies.removeCurrentProcess(appId, process);
+        } else if (appInfo.mode !== "cloud") {
+          this.dependencies.deleteRunningApp(appId);
+        }
+        throw new DyadError(
+          `Failed to stop app ${appId}: ${errorMessage(error)}`,
+          DyadErrorKind.External,
+        );
+      }
+    });
+  }
+
+  clearRuntimeLogs(appId: number): void {
+    this.dependencies.clearLogs(appId);
+  }
+
+  waitForReady(
+    appId: number,
+    options: { timeoutMs?: number } = {},
+  ): Promise<void> {
+    return this.dependencies.waitForReady(appId, options.timeoutMs);
+  }
+
+  createExternalLifecycleRef(appId: number): AppRunInvocationRef {
+    return createInvocationRef(APP_RUN_INVOCATION_KIND, appId, {
+      next: (prefix) => `${prefix}:${this.dependencies.createId()}`,
+    });
+  }
+
+  claimExternalLifecycle(
+    options: ExternalAppRuntimeLifecycleOptions,
+  ): ExternalAppRuntimeClaim | undefined {
+    const invocationRef =
+      options.invocationRef ?? this.createExternalLifecycleRef(options.appId);
+    if (this.cancellationTombstones.has(invocationRef)) {
+      return undefined;
+    }
+    const claim: ExternalAppRuntimeClaim = {
+      requestId: this.dependencies.createId(),
+      invocationRef,
+      appId: options.appId,
+      operation: options.operation,
+      output: options.output,
+    };
+    this.externalClaims.set(invocationRegistryKey(invocationRef), claim);
+    let claims = this.externalClaimsByApp.get(options.appId);
+    if (!claims) {
+      claims = new Map();
+      this.externalClaimsByApp.set(options.appId, claims);
+    }
+    claims.set(invocationRef.operationId, claim);
+    options.output.send({
+      type: "agent-lifecycle-started",
+      message: `${options.operation === "rebuild" ? "Rebuilding" : "Restarting"} app`,
+      appId: options.appId,
+      invocationRef,
+      timestamp: this.dependencies.now(),
+      lifecycleRequestId: claim.requestId,
+      lifecycleOperation: options.operation,
+    });
+    return claim;
+  }
+
+  cancelExternalLifecycle(invocationRef: AppRunInvocationRef): void {
+    this.cancellationTombstones.add(invocationRef);
+    const claim = this.externalClaims.get(invocationRegistryKey(invocationRef));
+    if (claim) {
+      this.releaseExternalClaim(claim);
+    }
+  }
+
+  async executeExternalLifecycle(
+    options: ExternalAppRuntimeLifecycleOptions,
+  ): Promise<void> {
+    const invocationRef =
+      options.invocationRef ?? this.createExternalLifecycleRef(options.appId);
+    if (options.abortSignal?.aborted) {
+      this.cancelExternalLifecycle(invocationRef);
+      throw new DyadError(
+        "The app lifecycle operation was cancelled before it started",
+        DyadErrorKind.UserCancelled,
+      );
+    }
+    const claim = this.claimExternalLifecycle({
+      ...options,
+      invocationRef,
+    });
+    if (!claim) {
+      throw new DyadError(
+        "The app lifecycle operation was cancelled before it started",
+        DyadErrorKind.UserCancelled,
+      );
+    }
+
+    try {
+      await this.restart({
+        appId: options.appId,
+        output: options.output,
+        invocationRef,
+        removeNodeModules: options.operation === "rebuild",
+        recreateSandbox: options.operation === "rebuild",
+        clearRuntimeLogs: true,
+      });
+      await this.waitForReady(options.appId, {
+        timeoutMs: options.timeoutMs,
+      });
+      this.settleExternalClaim(claim);
+    } catch (error) {
+      this.settleExternalClaim(claim, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Disposes service-owned claims for a deleted app. Late completions are
+   * recognized by bounded tombstones and cannot settle a replacement claim.
+   */
+  cleanup(appId: number): void {
+    for (const claim of this.externalClaimsByApp.get(appId)?.values() ?? []) {
+      this.cancellationTombstones.add(claim.invocationRef);
+      this.externalClaims.delete(invocationRegistryKey(claim.invocationRef));
+    }
+    this.externalClaimsByApp.delete(appId);
+  }
+
+  private async requireApp(appId: number): Promise<RuntimeAppRecord> {
+    const app = await this.dependencies.findApp(appId);
+    if (!app) {
+      throw new DyadError("App not found", DyadErrorKind.NotFound);
+    }
+    return app;
+  }
+
+  private startProcess(
+    app: RuntimeAppRecord,
+    appPath: string,
+    options: StartAppRuntimeOptions,
+  ): Promise<void> {
+    return this.dependencies.startProcess({
+      appPath,
+      appId: options.appId,
+      output: options.output,
+      isNeon: !!app.neonProjectId,
+      installCommand: app.installCommand,
+      startCommand: app.startCommand,
+      invocationRef: options.invocationRef,
+    });
+  }
+
+  private async restartCloudSandboxInPlace(input: {
+    appId: number;
+    appPath: string;
+    output: AppRuntimeOutput;
+    invocationRef?: AppRunInvocationRef;
+    clearRuntimeLogs: boolean;
+    appInfo: RunningAppInfo;
+  }): Promise<void> {
+    const sandboxId = input.appInfo.cloudSandboxId!;
+    input.appInfo.cloudLogAbortController?.abort();
+    const result = await this.dependencies.restartSandbox(sandboxId);
+    input.appInfo.cloudPreviewUrl = result.previewUrl;
+    input.appInfo.cloudPreviewAuthToken = result.previewAuthToken;
+    input.appInfo.lastViewedAt = this.dependencies.now();
+    input.appInfo.invocationRef = input.invocationRef;
+    input.appInfo.output = input.output;
+    input.appInfo.cloudLogAbortController = new AbortController();
+    if (input.clearRuntimeLogs) {
+      this.dependencies.clearLogs(input.appId);
+    }
+    await this.dependencies.ensureProxy({
+      appId: input.appId,
+      output: input.output,
+      originalUrl: result.previewUrl,
+      mode: "cloud",
+      invocationRef: input.invocationRef,
+    });
+    this.dependencies.startCloudLogs({
+      appId: input.appId,
+      appPath: input.appPath,
+      output: input.output,
+      sandboxId,
+      cloudLogAbortController: input.appInfo.cloudLogAbortController,
+    });
+  }
+
+  private settleExternalClaim(
+    claim: ExternalAppRuntimeClaim,
+    error?: unknown,
+  ): void {
+    const active = this.externalClaims.get(
+      invocationRegistryKey(claim.invocationRef),
+    );
+    if (
+      active !== claim ||
+      this.cancellationTombstones.has(claim.invocationRef)
+    ) {
+      return;
+    }
+    claim.output.send({
+      type: error ? "agent-lifecycle-failed" : "agent-lifecycle-succeeded",
+      message: error ? errorMessage(error) : `App ${claim.operation} succeeded`,
+      appId: claim.appId,
+      invocationRef: claim.invocationRef,
+      lifecycleRequestId: claim.requestId,
+      lifecycleOperation: claim.operation,
+    });
+    this.releaseExternalClaim(claim);
+  }
+
+  private releaseExternalClaim(claim: ExternalAppRuntimeClaim): void {
+    this.externalClaims.delete(invocationRegistryKey(claim.invocationRef));
+    const claims = this.externalClaimsByApp.get(claim.appId);
+    claims?.delete(claim.invocationRef.operationId);
+    if (claims?.size === 0) {
+      this.externalClaimsByApp.delete(claim.appId);
+    }
+  }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function waitForAppReady(
+  appId: number,
+  timeoutMs = DEFAULT_APP_READY_TIMEOUT_MS,
+): Promise<void> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const appInfo = runningApps.get(appId);
+    if (!appInfo) {
+      throw new DyadError(
+        "The app process exited before the preview became ready",
+        DyadErrorKind.External,
+      );
+    }
+    if (appInfo.proxyUrl) {
+      return;
+    }
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, APP_READY_POLL_MS);
+    });
+  }
+  throw new DyadError(
+    "Timed out waiting for the app preview to become ready",
+    DyadErrorKind.External,
+  );
+}
+
+export const appRuntimeService = new AppRuntimeService({
+  withLock,
+  findApp: (appId) =>
+    db.query.apps.findFirst({
+      where: eq(apps.id, appId),
+    }),
+  resolveAppPath: getDyadAppPath,
+  getRunningApp: (appId) => runningApps.get(appId),
+  deleteRunningApp: (appId) => {
+    runningApps.delete(appId);
+  },
+  getProcessCounter: () => processCounter.value,
+  startProcess: executeApp,
+  stopProcess: stopAppByInfo,
+  removeCurrentProcess: removeAppIfCurrentProcess,
+  cleanPort: cleanUpPort,
+  restartSandbox: restartCloudSandbox,
+  ensureProxy: ensureProxyForRunningApp,
+  startCloudLogs: startCloudSandboxLogStream,
+  clearLogs,
+  readRuntimeMode: () => readSettings().runtimeMode2 ?? "host",
+  removeNodeModules: async (appPath) => {
+    await fs.promises.rm(path.join(appPath, "node_modules"), {
+      recursive: true,
+      force: true,
+    });
+  },
+  removeDockerVolumes: removeDockerVolumesForApp,
+  waitForReady: waitForAppReady,
+  createId: randomUUID,
+  now: Date.now,
+});

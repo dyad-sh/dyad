@@ -11,6 +11,7 @@ import {
 } from "./cloud_sandbox_provider";
 import { readSettings } from "../../main/settings";
 import type { AppRunInvocationRef } from "@/app_run/state";
+import type { AppRuntimeOutput } from "@/ipc/services/app_runtime_service";
 
 const logger = log.scope("process_manager");
 
@@ -21,7 +22,8 @@ export interface RunningAppInfo {
   /** Correlation identity of the run/restart that owns this producer. */
   invocationRef?: AppRunInvocationRef;
   mode: RuntimeMode2;
-  rendererSender?: Electron.WebContents;
+  /** Output producer captured when this runtime invocation is created. */
+  output?: AppRuntimeOutput;
   containerName?: string;
   cloudSandboxId?: string;
   cloudPreviewUrl?: string;

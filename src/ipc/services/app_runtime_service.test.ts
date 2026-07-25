@@ -130,6 +130,7 @@ vi.mock("@/ipc/utils/cloud_sandbox_provider", () => ({
   createCloudSandbox: vi.fn(),
   destroyCloudSandbox: vi.fn(),
   registerRunningCloudSandbox: vi.fn(),
+  restartCloudSandbox: vi.fn(),
   setCloudSandboxSyncUpdateListener: vi.fn(),
   stopCloudSandboxFileSync: vi.fn(),
   streamCloudSandboxLogs: vi.fn(),
@@ -145,6 +146,7 @@ import {
   ensureProxyForRunningApp,
   executeApp,
   startCloudSandboxLogStream,
+  type AppRuntimeOutput,
 } from "./app_runtime_service";
 import { streamCloudSandboxLogs } from "@/ipc/utils/cloud_sandbox_provider";
 import { processCounter, runningApps } from "@/ipc/utils/process_manager";
@@ -172,6 +174,16 @@ function createEvent(): Electron.IpcMainInvokeEvent {
   } as unknown as WebContents;
 
   return { sender } as IpcMainInvokeEvent;
+}
+
+function createOutput(
+  event: Electron.IpcMainInvokeEvent = createEvent(),
+): AppRuntimeOutput {
+  return {
+    send: (output) => safeSendMock(event.sender, "app:output", output),
+    enqueue: (output) => safeSendMock(event.sender, "app:output", output),
+    flush: vi.fn(),
+  };
 }
 
 async function createTempAppDir(): Promise<string> {
@@ -274,13 +286,13 @@ describe("executeApp", () => {
     await executeApp({
       appPath: "/tmp/app",
       appId: 1,
-      event: createEvent(),
+      output: createOutput(),
       isNeon: false,
     });
     await executeApp({
       appPath: "/tmp/app",
       appId: 1,
-      event: createEvent(),
+      output: createOutput(),
       isNeon: false,
     });
 
@@ -304,7 +316,7 @@ describe("executeApp", () => {
     await executeApp({
       appPath: "/tmp/app",
       appId: 1,
-      event,
+      output: createOutput(event),
       isNeon: false,
     });
 
@@ -341,7 +353,7 @@ describe("executeApp", () => {
     await executeApp({
       appPath: "/tmp/app",
       appId: 1,
-      event,
+      output: createOutput(event),
       isNeon: false,
     });
 
@@ -387,7 +399,7 @@ describe("executeApp", () => {
     await executeApp({
       appPath: "/tmp/app",
       appId: 1,
-      event: createEvent(),
+      output: createOutput(),
       isNeon: false,
     });
 
@@ -419,7 +431,7 @@ describe("executeApp", () => {
     await executeApp({
       appPath: "/tmp/app",
       appId: 1,
-      event: createEvent(),
+      output: createOutput(),
       isNeon: false,
     });
 
@@ -449,7 +461,7 @@ describe("executeApp", () => {
       process: null,
       processId: 1,
       mode: "cloud",
-      rendererSender: event.sender,
+      output: createOutput(event),
       cloudSandboxId: "sb-1",
       lastViewedAt: Date.now(),
     } as any);
@@ -467,7 +479,7 @@ describe("executeApp", () => {
     startCloudSandboxLogStream({
       appId: 7,
       appPath: "/tmp/cloud-app",
-      event,
+      output: createOutput(event),
       sandboxId: "sb-1",
       cloudLogAbortController: new AbortController(),
     });
@@ -507,7 +519,7 @@ describe("executeApp", () => {
       await executeApp({
         appPath,
         appId: 1,
-        event: createEvent(),
+        output: createOutput(),
         isNeon: false,
       });
 
@@ -543,7 +555,7 @@ describe("executeApp", () => {
       await executeApp({
         appPath,
         appId: 1,
-        event,
+        output: createOutput(event),
         isNeon: false,
       });
 
@@ -582,13 +594,13 @@ describe("executeApp", () => {
       await executeApp({
         appPath,
         appId: 90,
-        event: createEvent(),
+        output: createOutput(),
         isNeon: false,
       });
       await executeApp({
         appPath,
         appId: 90,
-        event: createEvent(),
+        output: createOutput(),
         isNeon: false,
       });
 
@@ -629,7 +641,7 @@ describe("executeApp", () => {
         executeApp({
           appPath,
           appId: 91,
-          event: createEvent(),
+          output: createOutput(),
           isNeon: false,
         }),
       ).rejects.toThrow();
@@ -733,7 +745,7 @@ describe("executeApp", () => {
       await executeApp({
         appPath,
         appId: 1,
-        event: createEvent(),
+        output: createOutput(),
         isNeon: false,
       });
 
@@ -753,7 +765,7 @@ describe("executeApp", () => {
       await executeApp({
         appPath: "/tmp/app",
         appId: 1,
-        event: createEvent(),
+        output: createOutput(),
         isNeon: false,
       });
 
@@ -780,7 +792,7 @@ describe("executeApp", () => {
       await executeApp({
         appPath: "/tmp/app",
         appId: 1,
-        event: createEvent(),
+        output: createOutput(),
         isNeon: false,
         installCommand: "pnpm install --frozen-lockfile",
         startCommand: "pnpm run preview -- --port 32101",
@@ -831,7 +843,7 @@ describe("executeApp", () => {
       await executeApp({
         appPath,
         appId: 1,
-        event: createEvent(),
+        output: createOutput(),
         isNeon: false,
         installCommand: "pnpm --config.strictDepBuilds=true install",
         startCommand: "pnpm run dev",
@@ -892,7 +904,7 @@ describe("executeApp", () => {
     const event = createEvent();
     await ensureProxyForRunningApp({
       appId: 42,
-      event,
+      output: createOutput(event),
       originalUrl: "http://localhost:32142",
       mode: "host",
     });
@@ -935,7 +947,7 @@ describe("executeApp", () => {
     const event = createEvent();
     await ensureProxyForRunningApp({
       appId: 42,
-      event,
+      output: createOutput(event),
       originalUrl: "http://localhost:32142",
       mode: "host",
       invocationRef: oldRef,
@@ -988,7 +1000,7 @@ describe("executeApp", () => {
 
     await ensureProxyForRunningApp({
       appId: 42,
-      event: createEvent(),
+      output: createOutput(),
       originalUrl: "http://localhost:39999",
       mode: "host",
       invocationRef: oldRef,
@@ -1019,7 +1031,7 @@ describe("executeApp", () => {
     const event = createEvent();
     await ensureProxyForRunningApp({
       appId: 42,
-      event,
+      output: createOutput(event),
       originalUrl: "http://localhost:32142",
       mode: "host",
     });

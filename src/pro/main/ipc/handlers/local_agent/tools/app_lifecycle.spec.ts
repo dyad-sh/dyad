@@ -1,17 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { restartApp, waitForAppReady } from "@/ipc/services/restart_app";
-import { safeSend } from "@/ipc/utils/safe_sender";
+import { appRuntimeService } from "@/ipc/services/app_runtime_service";
 import { rebuildAppTool, restartAppTool } from "./app_lifecycle";
 import type { AgentContext } from "./types";
 
-vi.mock("@/ipc/services/restart_app", () => ({
-  restartApp: vi.fn(),
-  waitForAppReady: vi.fn(),
+vi.mock("@/ipc/services/app_runtime_service", () => ({
+  appRuntimeService: {
+    executeExternalLifecycle: vi.fn(),
+  },
 }));
 
-vi.mock("@/ipc/utils/safe_sender", () => ({
-  safeSend: vi.fn(),
+vi.mock("@/ipc/services/app_runtime_transport", () => ({
+  getIpcAppRuntimeOutput: vi.fn(() => "output"),
 }));
 
 describe("app lifecycle tools", () => {
@@ -24,8 +24,9 @@ describe("app lifecycle tools", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(restartApp).mockResolvedValue(undefined);
-    vi.mocked(waitForAppReady).mockResolvedValue(undefined);
+    vi.mocked(appRuntimeService.executeExternalLifecycle).mockResolvedValue(
+      undefined,
+    );
   });
 
   it("declares restart as an auto-approved runtime mutation", () => {
@@ -42,26 +43,13 @@ describe("app lifecycle tools", () => {
       "The app restarted successfully.",
     );
 
-    expect(restartApp).toHaveBeenCalledWith(ctx.event, {
+    expect(appRuntimeService.executeExternalLifecycle).toHaveBeenCalledWith({
       appId: 42,
-      invocationRef: expect.objectContaining({
-        kind: "app-run",
-        entityKey: 42,
-      }),
-      removeNodeModules: false,
-      recreateSandbox: false,
-      clearRuntimeLogs: true,
+      output: "output",
+      operation: "restart",
+      abortSignal: undefined,
+      timeoutMs: undefined,
     });
-    expect(waitForAppReady).toHaveBeenCalledWith(42, undefined);
-    expect(safeSend).toHaveBeenCalledWith(
-      undefined,
-      "app:output",
-      expect.objectContaining({
-        type: "agent-lifecycle-succeeded",
-        appId: 42,
-        lifecycleOperation: "restart",
-      }),
-    );
     expect(ctx.onXmlStream).toHaveBeenCalledWith(
       '<dyad-status title="Restarting app"></dyad-status>',
     );
@@ -84,17 +72,11 @@ describe("app lifecycle tools", () => {
       "The app rebuilt and restarted successfully.",
     );
 
-    expect(restartApp).toHaveBeenCalledWith(ctx.event, {
+    expect(appRuntimeService.executeExternalLifecycle).toHaveBeenCalledWith({
       appId: 42,
-      invocationRef: expect.objectContaining({
-        kind: "app-run",
-        entityKey: 42,
-      }),
-      removeNodeModules: true,
-      recreateSandbox: true,
-      clearRuntimeLogs: true,
-    });
-    expect(waitForAppReady).toHaveBeenCalledWith(42, {
+      output: "output",
+      operation: "rebuild",
+      abortSignal: undefined,
       timeoutMs: 10 * 60 * 1_000,
     });
     expect(ctx.onXmlStream).toHaveBeenCalledWith(
@@ -124,8 +106,7 @@ describe("app lifecycle tools", () => {
       "cancelled before it started",
     );
 
-    expect(restartApp).not.toHaveBeenCalled();
-    expect(waitForAppReady).not.toHaveBeenCalled();
+    expect(appRuntimeService.executeExternalLifecycle).not.toHaveBeenCalled();
     expect(ctx.onXmlStream).not.toHaveBeenCalled();
   });
 });

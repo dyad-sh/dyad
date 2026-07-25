@@ -593,6 +593,11 @@ machine enters Phase C. Kernel and transport remain separate revert points.
 
 **C1 — `app_run` pilot.**
 
+Status: **C1.1 done** — main app-runtime orchestration is behind a
+transport-neutral service; the existing IPC and Local Agent entry points are
+temporary adapters. This service extraction occupies no authority-cutover
+slot. C1.2–C1.5 remain pending.
+
 Main owns process lifecycle and binds producer output to the invocation at
 creation. Renderer windows keep local console views and `preview_iframe`
 machines while consuming one remote lifecycle read model.

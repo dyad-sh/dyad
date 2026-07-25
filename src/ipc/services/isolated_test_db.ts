@@ -22,6 +22,7 @@ import {
 import { detectFrameworkType } from "../utils/framework_utils";
 import { runningApps, stopAppByInfo } from "../utils/process_manager";
 import { cleanUpPort, executeApp } from "./app_runtime_service";
+import { getIpcAppRuntimeOutput } from "./app_runtime_transport";
 import { getAppPort } from "../../../shared/ports";
 import type { TestIsolation } from "../types/tests";
 
@@ -394,7 +395,7 @@ async function restartAppInPlace({
   await executeApp({
     appPath,
     appId: app.id,
-    event,
+    output: getIpcAppRuntimeOutput(event.sender),
     isNeon: !!app.neonProjectId,
     installCommand: app.installCommand,
     startCommand: app.startCommand,

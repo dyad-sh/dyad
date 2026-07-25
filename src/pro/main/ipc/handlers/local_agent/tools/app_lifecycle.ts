@@ -1,12 +1,9 @@
 import { z } from "zod";
-import { randomUUID } from "node:crypto";
 
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { restartApp, waitForAppReady } from "@/ipc/services/restart_app";
-import { safeSend } from "@/ipc/utils/safe_sender";
+import { appRuntimeService } from "@/ipc/services/app_runtime_service";
+import { getIpcAppRuntimeOutput } from "@/ipc/services/app_runtime_transport";
 import type { AgentContext, ToolDefinition } from "./types";
-import { APP_RUN_INVOCATION_KIND } from "@/app_run/state";
-import { createInvocationRef } from "@/state_machines/invocation_ref";
 
 const appLifecycleSchema = z.object({});
 const REBUILD_READY_TIMEOUT_MS = 10 * 60 * 1_000;
@@ -32,56 +29,13 @@ async function executeLifecycle({
   ctx: AgentContext;
   operation: "restart" | "rebuild";
 }): Promise<void> {
-  const lifecycleRequestId = randomUUID();
-  const startedAt = Date.now();
-  const invocationRef = createInvocationRef(
-    APP_RUN_INVOCATION_KIND,
-    ctx.appId,
-    { next: (prefix) => `${prefix}:${randomUUID()}` },
-  );
-  safeSend(ctx.event.sender, "app:output", {
-    type: "agent-lifecycle-started",
-    message: `${operation === "rebuild" ? "Rebuilding" : "Restarting"} app`,
+  await appRuntimeService.executeExternalLifecycle({
     appId: ctx.appId,
-    invocationRef,
-    timestamp: startedAt,
-    lifecycleRequestId,
-    lifecycleOperation: operation,
+    output: getIpcAppRuntimeOutput(ctx.event.sender),
+    operation,
+    abortSignal: ctx.abortSignal,
+    timeoutMs: operation === "rebuild" ? REBUILD_READY_TIMEOUT_MS : undefined,
   });
-
-  try {
-    await restartApp(ctx.event, {
-      appId: ctx.appId,
-      invocationRef,
-      removeNodeModules: operation === "rebuild",
-      recreateSandbox: operation === "rebuild",
-      clearRuntimeLogs: true,
-    });
-    await waitForAppReady(
-      ctx.appId,
-      operation === "rebuild"
-        ? { timeoutMs: REBUILD_READY_TIMEOUT_MS }
-        : undefined,
-    );
-    safeSend(ctx.event.sender, "app:output", {
-      type: "agent-lifecycle-succeeded",
-      message: `App ${operation} succeeded`,
-      appId: ctx.appId,
-      invocationRef,
-      lifecycleRequestId,
-      lifecycleOperation: operation,
-    });
-  } catch (error) {
-    safeSend(ctx.event.sender, "app:output", {
-      type: "agent-lifecycle-failed",
-      message: error instanceof Error ? error.message : String(error),
-      appId: ctx.appId,
-      invocationRef,
-      lifecycleRequestId,
-      lifecycleOperation: operation,
-    });
-    throw error;
-  }
 }
 
 export const restartAppTool: ToolDefinition<

@@ -397,7 +397,7 @@ or presentation — so the C-wave conversion to receipts/revisions is
 mechanical and misclassifications surface now.
 
 **A5 — Multi-producer channels with explicit non-machine owners: complete
-(#TBD).**
+(#4098).**
 
 - preview errors split/owned with source-priority and dismissal semantics
   characterized first;

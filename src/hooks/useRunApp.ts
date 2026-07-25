@@ -67,67 +67,37 @@ export function useAppOutputSubscription() {
   // PROXY_READY event for the app's run-state machine. The machine decides
   // whether it applies now, is buffered for an in-flight operation, or is a
   // stale line that must be ignored.
-  const processProxyServerOutput = useCallback(
-    (output: AppOutput) => {
-      const matchesProxyServerStart = output.message.includes(
-        "[dyad-proxy-server]started=[",
-      );
-      if (matchesProxyServerStart) {
-        const proxyUrlMatch = output.message.match(
-          /\[dyad-proxy-server\]started=\[(.*?)\]/,
-        );
-        const originalUrlMatch = output.message.match(/original=\[(.*?)\]/);
-        const modeMatch = output.message.match(/mode=\[(.*?)\]/);
-
-        if (proxyUrlMatch && proxyUrlMatch[1]) {
-          const proxyUrl = proxyUrlMatch[1];
-          const originalUrl = originalUrlMatch && originalUrlMatch[1];
-          const mode = (modeMatch?.[1] as RuntimeMode2 | undefined) ?? "host";
-          manager.send(output.appId, {
-            type: "PROXY_READY",
-            invocationRef: output.invocationRef,
-            url: {
-              appUrl: proxyUrl,
-              originalUrl: originalUrl!,
-              mode,
-            },
-          });
-        }
-      }
-    },
-    [manager],
-  );
-
   const processAppOutput = useCallback(
     (output: AppOutput) => {
-      if (
-        output.type === "agent-lifecycle-started" &&
-        output.lifecycleRequestId &&
-        output.lifecycleOperation
-      ) {
-        manager.beginExternal(output.appId, {
-          requestId: output.lifecycleRequestId,
-          operation: output.lifecycleOperation,
-          startedAt: output.timestamp ?? Date.now(),
-          invocationRef: output.invocationRef,
-        });
-        return null;
-      }
-
-      if (
-        (output.type === "agent-lifecycle-succeeded" ||
-          output.type === "agent-lifecycle-failed") &&
-        output.lifecycleRequestId
-      ) {
-        manager.settleExternal(
-          output.appId,
-          output.lifecycleRequestId,
-          output.invocationRef,
-          output.type === "agent-lifecycle-failed"
-            ? { message: output.message }
-            : undefined,
-        );
-        return null;
+      if ("beginExternal" in manager) {
+        if (
+          output.type === "agent-lifecycle-started" &&
+          output.lifecycleRequestId &&
+          output.lifecycleOperation
+        ) {
+          manager.beginExternal(output.appId, {
+            requestId: output.lifecycleRequestId,
+            operation: output.lifecycleOperation,
+            startedAt: output.timestamp ?? Date.now(),
+            invocationRef: output.invocationRef,
+          });
+          return null;
+        }
+        if (
+          (output.type === "agent-lifecycle-succeeded" ||
+            output.type === "agent-lifecycle-failed") &&
+          output.lifecycleRequestId
+        ) {
+          manager.settleExternal(
+            output.appId,
+            output.lifecycleRequestId,
+            output.invocationRef,
+            output.type === "agent-lifecycle-failed"
+              ? { message: output.message }
+              : undefined,
+          );
+          return null;
+        }
       }
 
       if (output.type === "input-requested") {
@@ -173,14 +143,13 @@ export function useAppOutputSubscription() {
       }
 
       if (output.type === "app-exit") {
-        const admitted = manager.send(output.appId, {
-          type: "APP_EXIT",
-          invocationRef: output.invocationRef,
-          exitCode: output.exitCode ?? null,
-          timestamp: output.timestamp ?? Date.now(),
-        });
-        if (!admitted) {
-          return null;
+        if ("send" in manager) {
+          manager.send(output.appId, {
+            type: "APP_EXIT",
+            invocationRef: output.invocationRef,
+            exitCode: output.exitCode ?? null,
+            timestamp: output.timestamp ?? Date.now(),
+          });
         }
         return null;
       }
@@ -198,15 +167,36 @@ export function useAppOutputSubscription() {
       }
 
       if (
-        output.message.includes("hmr update") &&
-        output.message.includes("[vite]")
+        output.type === "agent-lifecycle-started" ||
+        output.message === "Restarting app..." ||
+        output.message === "Rebuilding app after pnpm install..."
       ) {
-        manager.send(output.appId, {
-          type: "HMR_DETECTED",
-        });
+        manager.previewConsole.clear(output.appId);
       }
 
-      processProxyServerOutput(output);
+      if ("send" in manager) {
+        if (
+          output.message.includes("hmr update") &&
+          output.message.includes("[vite]")
+        ) {
+          manager.send(output.appId, { type: "HMR_DETECTED" });
+        }
+        const appUrl = output.message.match(
+          /\[dyad-proxy-server\]started=\[(.*?)\]/,
+        )?.[1];
+        const originalUrl = output.message.match(/original=\[(.*?)\]/)?.[1];
+        const mode =
+          (output.message.match(/mode=\[(.*?)\]/)?.[1] as
+            | RuntimeMode2
+            | undefined) ?? "host";
+        if (appUrl && originalUrl) {
+          manager.send(output.appId, {
+            type: "PROXY_READY",
+            invocationRef: output.invocationRef,
+            url: { appUrl, originalUrl, mode },
+          });
+        }
+      }
 
       const logEntry = {
         level:
@@ -227,7 +217,7 @@ export function useAppOutputSubscription() {
 
       return logEntry;
     },
-    [processProxyServerOutput, packageWarnings, previewErrors, manager],
+    [packageWarnings, previewErrors],
   );
 
   useEffect(() => {
@@ -267,17 +257,21 @@ export function useAppOutputSubscription() {
 
 export function useRunApp() {
   const manager = useAppRunManager();
+  const packageWarnings = usePackageManagerWarningStore();
   const appId = useAtomValue(selectedAppIdAtom);
   const runState = useAppRunState(appId);
-  const loading = runState.type === "starting" || runState.type === "stopping";
+  const loading =
+    runState.phase === "starting" || runState.phase === "stopping";
 
   const runApp = useCallback(
-    (appId: number) =>
-      manager.dispatch(appId, {
+    (appId: number) => {
+      packageWarnings.clear(appId);
+      return manager.dispatch(appId, {
         type: "START",
         startedAt: Date.now(),
-      }),
-    [manager],
+      });
+    },
+    [manager, packageWarnings],
   );
 
   const stopApp = useCallback(
@@ -307,20 +301,21 @@ export function useRunApp() {
       if (targetAppId === null) {
         return;
       }
+      if (!removeNodeModules) packageWarnings.clear(targetAppId);
       await manager.dispatch(targetAppId, {
         type: "RESTART",
         startedAt: Date.now(),
         options: { removeNodeModules, recreateSandbox },
       });
     },
-    [appId, manager],
+    [appId, manager, packageWarnings],
   );
 
   const refreshAppIframe = useCallback(async () => {
     if (appId === null) {
       return;
     }
-    manager.send(appId, { type: "MANUAL_RELOAD" });
+    manager.requestManualReload(appId);
   }, [appId, manager]);
 
   return {

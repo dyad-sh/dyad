@@ -1,4 +1,4 @@
-import type { RunState } from "@/app_run/state";
+import type { AppRunRemoteSnapshot } from "@/app_run/transport";
 import type { ScreenshotCaptureSource } from "@/screenshot/state";
 
 export interface ScreenshotRequestFacade {
@@ -14,9 +14,11 @@ export interface PreviewReloadRequestFacade {
 export interface AppRunStateSubscriptionFacade {
   /**
    * Remote intent: read/subscription. Events are post-commit, deferred, and
-   * carry their authoritative invocation identity in RunState.
+   * carry their authoritative invocation identity in the remote snapshot.
    */
   subscribeRunStateChanged(
-    listener: (appId: number, state: RunState) => void,
+    listener: (appId: number, state: AppRunRemoteSnapshot) => void,
   ): () => void;
 }
+
+export type AppRunStateSnapshot = AppRunRemoteSnapshot;

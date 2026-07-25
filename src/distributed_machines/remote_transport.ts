@@ -542,6 +542,7 @@ export class RemoteMachineTransport {
     const projected = entry.definition.remote.projectSnapshot(
       entry.actor.getSnapshot(),
       entry.key,
+      metadata,
     );
     const parsed = entry.definition.remote.snapshotCodec.safeParse(projected);
     if (!parsed.success) {

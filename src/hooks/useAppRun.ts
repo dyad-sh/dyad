@@ -1,22 +1,35 @@
 import { useCallback, useSyncExternalStore } from "react";
 import { useAppRunManager } from "@/app_run/AppRunProvider";
 import {
-  selectAppUrl,
+  selectRemoteAppUrl,
   type AppExit,
   type AppUrlState,
 } from "@/app_run/selectors";
+import {
+  projectAppRunRemoteSnapshot,
+  type AppRunRemoteSnapshot,
+} from "@/app_run/transport";
 import type { RunState } from "@/app_run/state";
+import { NO_APP_RUN_REMOTE_SNAPSHOT } from "@/app_run/remote_manager";
 import { useKeyedController } from "@/state_machines/react";
-
-const NO_APP_ID = -1;
 
 /**
  * Subscribes to the run-state machine snapshot for an app. Returns the
  * idle state when no app is selected.
  */
-export function useAppRunState(appId: number | null): RunState {
+export function useAppRunState(appId: number | null): AppRunRemoteSnapshot {
   const manager = useAppRunManager();
-  return useKeyedController(manager, appId ?? NO_APP_ID);
+  const snapshot = useKeyedController(
+    manager as {
+      getSnapshot(appId: number): AppRunRemoteSnapshot | RunState;
+      subscribeKey(appId: number, listener: () => void): () => void;
+    },
+    appId ?? 1,
+  );
+  if (appId === null) return NO_APP_RUN_REMOTE_SNAPSHOT;
+  return "phase" in snapshot
+    ? snapshot
+    : projectAppRunRemoteSnapshot(appId, 0, snapshot);
 }
 
 /** Reads identity-admitted process exits from the manager-owned read model. */
@@ -37,7 +50,7 @@ export function useAppExit(appId: number | null): AppExit | null {
 }
 
 export function useCurrentAppUrl(appId: number | null): AppUrlState {
-  return selectAppUrl(useAppRunState(appId));
+  return selectRemoteAppUrl(useAppRunState(appId));
 }
 
 export function usePreviewReloadToken(appId: number | null): number {

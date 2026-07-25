@@ -188,7 +188,7 @@ class HostedActor<
         initialState,
         transition: (state, event) => {
           this.transactionSequence += 1;
-          return definition.transition(state, event);
+          return definition.transition(state, event, key);
         },
         scheduler: definition.createScheduler(key),
         runCommand: (command) => runCommand(command, context.send),

@@ -1,8 +1,7 @@
 import { z } from "zod";
 
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { appRuntimeService } from "@/ipc/services/app_runtime_service";
-import { getIpcAppRuntimeOutput } from "@/ipc/services/app_runtime_transport";
+import { appRunActorService } from "@/ipc/services/app_run_actor_service";
 import type { AgentContext, ToolDefinition } from "./types";
 
 const appLifecycleSchema = z.object({});
@@ -29,9 +28,8 @@ async function executeLifecycle({
   ctx: AgentContext;
   operation: "restart" | "rebuild";
 }): Promise<void> {
-  await appRuntimeService.executeExternalLifecycle({
+  await appRunActorService.executeExternalLifecycle({
     appId: ctx.appId,
-    output: getIpcAppRuntimeOutput(ctx.event.sender),
     operation,
     abortSignal: ctx.abortSignal,
     timeoutMs: operation === "rebuild" ? REBUILD_READY_TIMEOUT_MS : undefined,

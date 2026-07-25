@@ -13,11 +13,23 @@ const expectedRevisionSchema = z.number().int().nonnegative();
  * This schema is intentionally independent from the generic actor transport:
  * it is the per-definition authorization/routing key that C1.3 will register.
  */
+const appRunKeys = new Map<number, { appId: number }>();
+
+export function appRunKey(appId: number): { appId: number } {
+  let key = appRunKeys.get(appId);
+  if (!key) {
+    key = Object.freeze({ appId });
+    appRunKeys.set(appId, key);
+  }
+  return key;
+}
+
 export const AppRunKeySchema = z
   .object({
     appId: z.number().int().positive(),
   })
-  .strict();
+  .strict()
+  .transform(({ appId }) => appRunKey(appId));
 export type AppRunKey = z.infer<typeof AppRunKeySchema>;
 
 export const AppRunInvocationRefSchema = z

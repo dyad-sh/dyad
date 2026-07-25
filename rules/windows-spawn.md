@@ -2,6 +2,12 @@
 
 Applies to anything that spawns a child process with arguments — `spawn_streaming`, `socket_firewall` (node-pty), and any new caller. All of them go through `src/ipc/utils/windows_command.ts`, which is the single source of truth so quoting/security fixes apply everywhere.
 
+Electron's `will-quit` event does not await promises. Cleanup invoked there
+must perform process-tree discovery and signal delivery synchronously; an async
+tree-kill helper can leave grandchildren reparented and running after Electron
+exits. Keep Windows quit cleanup on direct `taskkill.exe` argv and avoid
+`cmd.exe` for this path.
+
 ## A bare command name becomes a `.cmd` shim
 
 `resolveWindowsExecutableName` appends `.cmd` to any command without a `.` in it (`npm` → `npm.cmd`), because that's what the command really is on Windows. This means **`node`, `npx`, and `npm` all take the `cmd.exe` path**, not the direct-exec path — only a name with an extension (`node.exe`) passes through unchanged. Assuming otherwise is an easy way to write a test that asserts the wrong branch.

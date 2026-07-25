@@ -46,6 +46,7 @@ import {
 } from "@/screenshot/ScreenshotProvider";
 import { useSyncDefaultChatMode } from "@/hooks/useSyncDefaultChatMode";
 import { PreviewErrorFacadeProvider } from "@/app_wiring/preview_error_facade";
+import { usePreviewErrorFacade } from "@/app_wiring/preview_error_facade";
 import { PackageManagerWarningProvider } from "@/package_manager_warnings/PackageManagerWarningProvider";
 
 export default function RootLayout({ children }: { children: ReactNode }) {
@@ -108,10 +109,22 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 
 function RootLayoutContent({ children }: { children: ReactNode }) {
   const appRunManager = useAppRunManager();
+  const previewErrors = usePreviewErrorFacade();
   const screenshotManager = useScreenshotManager();
   const { refreshAppIframe } = useRunApp();
   // Subscribe to app output events once at the root level to avoid duplicates
   useAppOutputSubscription();
+  useEffect(
+    () =>
+      appRunManager.subscribeRunStateChanged((appId, state) => {
+        if ("phase" in state && state.operationError) {
+          previewErrors.setAppError(appId, state.operationError.message);
+        } else if ("phase" in state) {
+          previewErrors.clearAppError(appId);
+        }
+      }),
+    [appRunManager, previewErrors],
+  );
   const previewMode = useAtomValue(previewModeAtom);
   const { settings } = useSettings();
   const setSelectedComponentsPreview = useSetAtom(

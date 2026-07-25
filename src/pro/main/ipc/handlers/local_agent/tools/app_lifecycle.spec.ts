@@ -1,17 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { appRuntimeService } from "@/ipc/services/app_runtime_service";
+import { appRunActorService } from "@/ipc/services/app_run_actor_service";
 import { rebuildAppTool, restartAppTool } from "./app_lifecycle";
 import type { AgentContext } from "./types";
 
-vi.mock("@/ipc/services/app_runtime_service", () => ({
-  appRuntimeService: {
+vi.mock("@/ipc/services/app_run_actor_service", () => ({
+  appRunActorService: {
     executeExternalLifecycle: vi.fn(),
   },
-}));
-
-vi.mock("@/ipc/services/app_runtime_transport", () => ({
-  getIpcAppRuntimeOutput: vi.fn(() => "output"),
 }));
 
 describe("app lifecycle tools", () => {
@@ -24,7 +20,7 @@ describe("app lifecycle tools", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(appRuntimeService.executeExternalLifecycle).mockResolvedValue(
+    vi.mocked(appRunActorService.executeExternalLifecycle).mockResolvedValue(
       undefined,
     );
   });
@@ -43,9 +39,8 @@ describe("app lifecycle tools", () => {
       "The app restarted successfully.",
     );
 
-    expect(appRuntimeService.executeExternalLifecycle).toHaveBeenCalledWith({
+    expect(appRunActorService.executeExternalLifecycle).toHaveBeenCalledWith({
       appId: 42,
-      output: "output",
       operation: "restart",
       abortSignal: undefined,
       timeoutMs: undefined,
@@ -72,9 +67,8 @@ describe("app lifecycle tools", () => {
       "The app rebuilt and restarted successfully.",
     );
 
-    expect(appRuntimeService.executeExternalLifecycle).toHaveBeenCalledWith({
+    expect(appRunActorService.executeExternalLifecycle).toHaveBeenCalledWith({
       appId: 42,
-      output: "output",
       operation: "rebuild",
       abortSignal: undefined,
       timeoutMs: 10 * 60 * 1_000,
@@ -106,7 +100,7 @@ describe("app lifecycle tools", () => {
       "cancelled before it started",
     );
 
-    expect(appRuntimeService.executeExternalLifecycle).not.toHaveBeenCalled();
+    expect(appRunActorService.executeExternalLifecycle).not.toHaveBeenCalled();
     expect(ctx.onXmlStream).not.toHaveBeenCalled();
   });
 });

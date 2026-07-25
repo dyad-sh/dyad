@@ -10,6 +10,7 @@ import { systemContracts } from "../types/system";
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import {
   getDyadAppPath,
   getDefaultDyadAppsDirectory,
@@ -131,6 +132,7 @@ import { detectFrameworkType } from "../utils/framework_utils";
 import { readAppFileForEditor } from "../utils/bounded_text_file";
 import { queryInvalidationBus } from "@/window_infrastructure/main/query_invalidation_bus";
 import { entityDisposalBus } from "@/window_infrastructure/main/entity_disposal_bus";
+import { appRunActorService } from "../services/app_run_actor_service";
 
 const logger = log.scope("app_handlers");
 const handle = createLoggedHandler(logger);
@@ -385,6 +387,7 @@ async function deleteAppById(
 
     if (!app) {
       if (options.allowMissing && options.knownAppPath) {
+        await appRunActorService.disposeApp(appId);
         appRuntimeService.cleanup(appId);
         await removeAppFiles(appId, options.knownAppPath);
         return;
@@ -402,6 +405,7 @@ async function deleteAppById(
         // Continue with deletion even if stopping fails
       }
     }
+    await appRunActorService.disposeApp(appId);
 
     // Clear logs for this app to prevent memory leak
     appRuntimeService.clearRuntimeLogs(appId);
@@ -790,16 +794,22 @@ export function registerAppHandlers() {
     return envVars;
   });
 
-  createTypedHandler(appContracts.runApp, async (event, params) => {
-    return appRuntimeService.start({
-      ...params,
-      output: getIpcAppRuntimeOutput(event.sender),
+  createTypedHandler(appContracts.runApp, async (_, params) => {
+    await appRunActorService.dispatchStart(params.appId, {
+      operationId: params.invocationRef?.operationId ?? randomUUID(),
+      startedAt: Date.now(),
     });
   });
 
-  createTypedHandler(appContracts.stopApp, async (_, { appId }) =>
-    appRuntimeService.stop(appId),
-  );
+  createTypedHandler(appContracts.stopApp, async (_, { appId }) => {
+    const snapshot = appRunActorService.actor(appId).getSnapshot();
+    if (snapshot.type === "idle") return;
+    await appRunActorService.dispatchStop(appId, {
+      operationId: randomUUID(),
+      startedAt: Date.now(),
+      activeInvocationRef: snapshot.invocationRef,
+    });
+  });
 
   createTypedHandler(
     appContracts.getCloudSandboxStatus,
@@ -836,7 +846,9 @@ export function registerAppHandlers() {
         if (previewChanged && appInfo.proxyWorker) {
           await ensureProxyForRunningApp({
             appId,
-            output: getIpcAppRuntimeOutput(event.sender),
+            output: invocationRef
+              ? appRunActorService.outputFor(appId, invocationRef)
+              : getIpcAppRuntimeOutput(event.sender),
             originalUrl: status.previewUrl,
             mode: "cloud",
             invocationRef,
@@ -892,12 +904,14 @@ export function registerAppHandlers() {
     },
   );
 
-  createTypedHandler(appContracts.restartApp, async (event, params) =>
-    appRuntimeService.restart({
-      ...params,
-      output: getIpcAppRuntimeOutput(event.sender),
-    }),
-  );
+  createTypedHandler(appContracts.restartApp, async (_, params) => {
+    await appRunActorService.dispatchRestart(params.appId, {
+      operationId: params.invocationRef?.operationId ?? randomUUID(),
+      startedAt: Date.now(),
+      removeNodeModules: params.removeNodeModules ?? false,
+      recreateSandbox: params.recreateSandbox ?? false,
+    });
+  });
 
   createTypedHandler(appContracts.editAppFile, async (_, params) => {
     let { appId, filePath, content } = params;

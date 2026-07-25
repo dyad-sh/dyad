@@ -99,6 +99,10 @@ Background and before/after examples of why this pattern exists:
   and bound snapshot envelopes before delivery. Use a
   structured-clone-compatible byte measurement; JSON sizing is not
   wire-compatible with values such as `bigint`.
+- When a remote machine uses an object key, intern decoded keys through the same
+  canonicalizer used by main-process producers before passing them to
+  `ActorHost`. Its actor map is identity-keyed, so structurally equal object
+  instances otherwise create duplicate owners for one entity.
 - Remote authorization hooks use `DyadErrorKind.Auth` for expected access
   denial. Convert only that explicit classification to an unauthorized receipt;
   propagate unexpected hook failures so telemetry can distinguish dependency

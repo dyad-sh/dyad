@@ -1,44 +1,10 @@
-import { ActorHost } from "@/distributed_machines/actor_host";
-import { createRemoteMachineManifest } from "@/distributed_machines/remote_manifest";
+import type { RemoteMachineTransport } from "@/distributed_machines/remote_transport";
 import {
-  RemoteMachineTransport,
+  remoteMachineTransport,
   type RemoteTransportEndpoint,
-} from "@/distributed_machines/remote_transport";
-import { systemClock, uuidIdSource } from "@/state_machines/clock";
-import { windowRegistry } from "@/window_infrastructure/main/window_registry";
-import type { WindowSessionId } from "@/window_infrastructure/types";
+} from "../services/distributed_machine_host";
 import { distributedMachineContracts } from "../types/distributed_machines";
 import { createTypedHandler } from "./base";
-
-const remoteMachineHost = new ActorHost({
-  placement: "main",
-  clock: systemClock,
-  ids: uuidIdSource,
-});
-
-// B3 deliberately ships no production-addressable machine definitions. The
-// synthetic definition used by conformance tests is injected into a test
-// transport instance.
-const remoteMachineManifest = createRemoteMachineManifest([]);
-
-export const remoteMachineTransport = new RemoteMachineTransport({
-  host: remoteMachineHost,
-  manifest: remoteMachineManifest,
-  windows: windowRegistry,
-  clock: systemClock,
-  onProtocolMismatch: ({ sender, machineId, expected, received }) => {
-    if (!sender.windowSessionId) return;
-    const endpoint = windowRegistry.endpointForSession(
-      sender.windowSessionId as WindowSessionId,
-    );
-    if (!endpoint || endpoint.isDestroyed()) return;
-    endpoint.send("distributed-machine:protocol-mismatch", {
-      machineId,
-      expectedProtocolVersion: expected,
-      receivedProtocolVersion: received,
-    });
-  },
-});
 
 export function registerDistributedMachineHandlers(
   transport: RemoteMachineTransport = remoteMachineTransport,

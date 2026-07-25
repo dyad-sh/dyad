@@ -43,6 +43,12 @@ describe("distributed machine boundaries", () => {
       )
       .map((file) => path.relative(SOURCE_ROOT, file).replaceAll("\\", "/"));
 
-    expect(offenders).toEqual(["ipc/handlers/distributed_machine_handlers.ts"]);
+    expect(offenders).toEqual([
+      "app_run/client_definition.ts",
+      "app_run/definition.ts",
+      "app_run/remote_manager.ts",
+      "ipc/handlers/distributed_machine_handlers.ts",
+      "ipc/services/distributed_machine_host.ts",
+    ]);
   });
 });

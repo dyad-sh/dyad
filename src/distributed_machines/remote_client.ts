@@ -1,10 +1,7 @@
 import type { IdSource } from "@/state_machines/clock";
 import { SnapshotStore } from "@/state_machines/snapshot_store";
 import type { IgnoreReason } from "@/state_machines/types";
-import type {
-  DistributedMachineDefinition,
-  RemoteMachineContract,
-} from "./definition";
+import type { RemoteMachineContract } from "./definition";
 import {
   MachineDispatchReceiptSchema,
   MachineDisposedEnvelopeSchema,
@@ -78,10 +75,20 @@ export type RemoteClientDefinition<
   Event,
   Reason extends IgnoreReason,
 > = {
-  readonly remote: RemoteMachineContract<Key, any, Event, State>;
-} & DistributedMachineDefinition<string, Key, any, Event, any, Reason> & {
-    readonly host: "main";
-  };
+  readonly id: string;
+  readonly host: "main";
+  readonly remote: Pick<
+    RemoteMachineContract<Key, unknown, Event, State>,
+    | "protocolVersion"
+    | "keyCodec"
+    | "encodeKey"
+    | "eventCodec"
+    | "snapshotCodec"
+    | "keyToString"
+    | "unavailableSnapshot"
+  >;
+  readonly reasonType?: Reason;
+};
 
 interface StoreMetadata {
   readonly actorInstanceId: string;

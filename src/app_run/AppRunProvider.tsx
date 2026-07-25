@@ -1,32 +1,23 @@
 import { useState } from "react";
-import { useStore } from "jotai";
 import {
   createMachineProvider,
   useRegisterEntityDisposer,
 } from "@/state_machines/react";
-import { AppRunManager } from "./manager";
-import { usePreviewErrorFacade } from "@/app_wiring/preview_error_facade";
-import { usePackageManagerWarningStore } from "@/package_manager_warnings/PackageManagerWarningProvider";
+import { AppRunRemoteManager } from "./remote_manager";
+import type { AppRunManager } from "./manager";
 
-function useOwnedAppRunManager(): AppRunManager {
-  const store = useStore();
-  const previewErrors = usePreviewErrorFacade();
-  const packageWarnings = usePackageManagerWarningStore();
-  const [manager] = useState(
-    () =>
-      new AppRunManager(store, undefined, undefined, {
-        previewErrors,
-        packageWarnings,
-      }),
-  );
+type AppRunProviderManager = AppRunRemoteManager | AppRunManager;
+
+function useOwnedAppRunManager(): AppRunProviderManager {
+  const [manager] = useState(() => new AppRunRemoteManager());
   return manager;
 }
 
-function useAppRunMount(manager: AppRunManager): void {
+function useAppRunMount(manager: AppRunProviderManager): void {
   useRegisterEntityDisposer("app", manager.disposeKey);
 }
 
-const appRunProvider = createMachineProvider({
+const appRunProvider = createMachineProvider<AppRunProviderManager>({
   name: "AppRun",
   useOwnedManager: useOwnedAppRunManager,
   useOnMount: useAppRunMount,

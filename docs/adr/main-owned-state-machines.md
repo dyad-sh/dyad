@@ -224,6 +224,26 @@ or fix these boundary obligations.
 
 ## App-run pilot deletion budget
 
+### C1.3 remote-definition security review
+
+The production `app_run` definition satisfies the B3 boundary checklist:
+
+- the main-owned static manifest registers only the literal `app_run`
+  definition; renderer input cannot select a module or command runner;
+- the generic envelope and strict `AppRunKeySchema` /
+  `AppRunIntentEventSchema` validate independently, and producer/settlement
+  variants are absent from the renderer event codec;
+- subscribe and dispatch authorize the app entity against main-owned database
+  state, while stop additionally proves the exact active invocation and
+  state-sensitive start/restart intents require the actor revision;
+- renderer payloads contain intents only; `RunCommand`, process handles,
+  runtime outputs, paths, and sandbox data are constructed and retained in
+  main;
+- `AppRunRemoteSnapshotSchema` projects only lifecycle phase, operation,
+  start time, URL/mode, operation error, exit details, capabilities, revision,
+  and invocation diagnostics. Console bytes stay on the keyed, bounded
+  high-volume channel.
+
 C1 is not complete until the following current renderer modules or
 responsibilities are deleted or replaced:
 

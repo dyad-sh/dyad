@@ -16,7 +16,6 @@ import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useRunApp } from "@/hooks/useRunApp";
 import { useAppExit, useAppRunState } from "@/hooks/useAppRun";
 import { useStreamChat } from "@/hooks/useStreamChat";
-import { projectRunState } from "@/app_run/transition";
 import { cn } from "@/lib/utils";
 import { useConsoleEntries } from "@/preview_console/hooks";
 
@@ -159,7 +158,7 @@ export function PreviewLoadingScreen({
   const consoleEntries = useConsoleEntries(selectedAppId);
   const runState = useAppRunState(selectedAppId);
   const previewAppExit = useAppExit(selectedAppId);
-  const previewRunStartedAt = projectRunState(runState)?.startedAt ?? null;
+  const previewRunStartedAt = runState.startedAt;
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const { streamMessage, isStreaming } = useStreamChat();
   const { restartApp } = useRunApp();

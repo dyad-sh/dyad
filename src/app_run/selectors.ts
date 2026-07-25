@@ -1,5 +1,6 @@
 import type { RuntimeMode2 } from "@/lib/schemas";
 import type { RunState } from "./state";
+import type { AppRunRemoteSnapshot } from "./transport";
 
 export interface AppExit {
   appId: number;
@@ -52,6 +53,21 @@ export const EMPTY_APP_URL: AppUrlState = {
 export function selectAppUrl(state: RunState): AppUrlState {
   if (
     (state.type !== "ready" && state.type !== "reloading") ||
+    state.url === null
+  ) {
+    return EMPTY_APP_URL;
+  }
+  return {
+    appUrl: state.url.appUrl,
+    appId: state.appId,
+    originalUrl: state.url.originalUrl,
+    mode: state.url.mode,
+  };
+}
+
+export function selectRemoteAppUrl(state: AppRunRemoteSnapshot): AppUrlState {
+  if (
+    (state.phase !== "ready" && state.phase !== "reloading") ||
     state.url === null
   ) {
     return EMPTY_APP_URL;

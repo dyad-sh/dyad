@@ -12,7 +12,10 @@ import { TwoWindowHarness } from "@/testing/two_window_harness";
 import { appRunClientDefinition } from "./client_definition";
 import { appRunDefinition } from "./definition";
 import { appRunKey } from "./transport";
-import { AppRunRemoteManager } from "./remote_manager";
+import {
+  AppRunRemoteManager,
+  NO_APP_RUN_REMOTE_SNAPSHOT,
+} from "./remote_manager";
 
 const runtime = vi.hoisted(() => ({
   start: vi.fn<() => Promise<void>>(),
@@ -222,6 +225,51 @@ describe("main-hosted app-run actor", () => {
     pending.resolve();
     await dispatch;
     expect(settled).toBe(true);
+    manager.dispose();
+  });
+
+  it("returns a reference-stable exit snapshot for React subscribers", () => {
+    const { duplex } = createHarness();
+    const manager = new AppRunRemoteManager(
+      createSequentialIdSource(),
+      duplex.connect(),
+    );
+    vi.spyOn(manager, "getSnapshot").mockReturnValue({
+      ...NO_APP_RUN_REMOTE_SNAPSHOT,
+      appId: 7,
+      phase: "stopped",
+      exit: {
+        exitCode: 1,
+        timestamp: 20,
+      },
+    });
+
+    const exit = manager.getAppExitSnapshot(7);
+    expect(exit).toEqual({ appId: 7, exitCode: 1, timestamp: 20 });
+    expect(manager.getAppExitSnapshot(7)).toBe(exit);
+    manager.dispose();
+  });
+
+  it("keeps restart cleanup options distinct from a pnpm rebuild", async () => {
+    const { duplex } = createHarness();
+    const manager = new AppRunRemoteManager(
+      createSequentialIdSource(),
+      duplex.connect(),
+    );
+    manager.start();
+
+    await manager.dispatch(7, {
+      type: "RESTART",
+      startedAt: 10,
+      options: { removeNodeModules: true, recreateSandbox: false },
+    });
+
+    expect(runtime.restart).toHaveBeenCalledWith(
+      expect.objectContaining({
+        removeNodeModules: true,
+        recreateSandbox: false,
+      }),
+    );
     manager.dispose();
   });
 

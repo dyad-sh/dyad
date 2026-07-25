@@ -38,6 +38,13 @@ export class AppRunRemoteManager {
   private readonly client: RemoteMachineClient;
   private readonly actorUnsubscribes = new Map<number, () => void>();
   private readonly listeners = new Set<AppRunRemoteStateChangedListener>();
+  private readonly appExitSnapshots = new Map<
+    number,
+    {
+      source: AppRunRemoteSnapshot["exit"];
+      value: AppExit;
+    }
+  >();
   private readonly settlementWaiters = new Map<
     string,
     { appId: number; resolve: () => void }
@@ -74,9 +81,19 @@ export class AppRunRemoteManager {
 
   getAppExitSnapshot = (appId: number): AppExit | null => {
     const exit = this.getSnapshot(appId).exit;
-    return exit?.timestamp === null || !exit
-      ? null
-      : { appId, exitCode: exit.exitCode, timestamp: exit.timestamp };
+    if (!exit || exit.timestamp === null) {
+      this.appExitSnapshots.delete(appId);
+      return null;
+    }
+    const cached = this.appExitSnapshots.get(appId);
+    if (cached?.source === exit) return cached.value;
+    const value = {
+      appId,
+      exitCode: exit.exitCode,
+      timestamp: exit.timestamp,
+    };
+    this.appExitSnapshots.set(appId, { source: exit, value });
+    return value;
   };
 
   subscribeAppExit = (appId: number, listener: () => void): (() => void) =>
@@ -112,22 +129,14 @@ export class AppRunRemoteManager {
         };
         break;
       case "RESTART":
-        event = input.options.removeNodeModules
-          ? {
-              type: "RESTART",
-              operation: "rebuild",
-              operationId: this.ids.next("app-run"),
-              startedAt: input.startedAt,
-              expectedRevision: snapshot.revision,
-            }
-          : {
-              type: "RESTART",
-              operation: "restart",
-              operationId: this.ids.next("app-run"),
-              startedAt: input.startedAt,
-              expectedRevision: snapshot.revision,
-              options: input.options,
-            };
+        event = {
+          type: "RESTART",
+          operation: "restart",
+          operationId: this.ids.next("app-run"),
+          startedAt: input.startedAt,
+          expectedRevision: snapshot.revision,
+          options: input.options,
+        };
         break;
       case "REBUILD":
         event = {
@@ -181,6 +190,7 @@ export class AppRunRemoteManager {
   disposeKey = (appId: number): void => {
     this.actorUnsubscribes.get(appId)?.();
     this.actorUnsubscribes.delete(appId);
+    this.appExitSnapshots.delete(appId);
     this.previewConsole.disposeKey(appId);
     this.resolveSettlementsForApp(appId);
   };
@@ -191,6 +201,7 @@ export class AppRunRemoteManager {
     this.stop();
     for (const unsubscribe of this.actorUnsubscribes.values()) unsubscribe();
     this.actorUnsubscribes.clear();
+    this.appExitSnapshots.clear();
     this.listeners.clear();
     this.previewConsole.dispose();
     for (const waiter of this.settlementWaiters.values()) waiter.resolve();

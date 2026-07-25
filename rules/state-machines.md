@@ -118,6 +118,9 @@ Background and before/after examples of why this pattern exists:
   qualifies for delayed disposal, traffic that leaves it qualifying must not
   refresh the timer; cancel the deadline only when the authoritative snapshot
   stops qualifying.
+- Route every actor event ingress—including command and timer callbacks—through
+  the host's shared enqueue wrapper. Bypassing it may preserve FIFO ordering
+  while skipping retention, tracing, or other host-owned settlement bookkeeping.
 - When a host passes live scopes or snapshot/send methods into definition
   factories, make factory-time access safe and construction failure-atomic.
   Dispose every acquired task/timer resource if any later factory step throws.

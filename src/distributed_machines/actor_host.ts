@@ -138,7 +138,7 @@ class HostedActor<
       getSnapshot: () => dispatcher?.getSnapshot() ?? initialState,
       send: (event) => {
         if (dispatcher) {
-          dispatcher.send(event);
+          void this.enqueue(event);
         } else {
           bufferedEvents.push(event);
         }
@@ -171,7 +171,7 @@ class HostedActor<
         reportError: (failure) => this.reportFailure(failure),
       });
       this.dispatcher = dispatcher;
-      for (const event of bufferedEvents) dispatcher.send(event);
+      for (const event of bufferedEvents) void this.enqueue(event);
     } catch (error) {
       const cleanupErrors: unknown[] = [];
       collectDisposalError(cleanupErrors, () => this.timers.dispose());
@@ -216,7 +216,6 @@ class HostedActor<
   };
 
   enqueue = (event: Event): DispatchTicket<State, Reason> => {
-    this.cancelIdleEviction();
     const ticket = this.dispatcher.enqueue(event);
     void ticket.settled
       .then((outcome) => {
@@ -324,8 +323,13 @@ class HostedActor<
 
   private scheduleIdleEviction(): void {
     const policy = this.definition.lifecycle.idleEviction;
-    if (policy.kind === "retain" || this.disposing) return;
-    this.cancelIdleEviction();
+    if (
+      policy.kind === "retain" ||
+      this.disposing ||
+      this.idleTimer !== undefined
+    ) {
+      return;
+    }
     this.idleTimer = this.options.clock.schedule(() => {
       this.idleTimer = undefined;
       if (this.subscriberCount === 0) {

@@ -387,6 +387,66 @@ describe("ActorHost", () => {
     expect(actorHost.peek(definition.id, "entity")).toBeUndefined();
   });
 
+  it("reconciles retention after asynchronous machine-context sends", async () => {
+    const clock = createFakeClock();
+    const onDisposed = vi.fn();
+    const baseDefinition = machine(
+      "internal-terminal",
+      lifecycle({
+        terminalRetention: { kind: "dispose-after", delayMs: 5 },
+        onDisposed,
+      }),
+    );
+    const definition = {
+      ...baseDefinition,
+      createCommandRunner:
+        (context: Parameters<typeof baseDefinition.createCommandRunner>[0]) =>
+        () => {
+          context.timers.replace(
+            "terminal",
+            "token",
+            1,
+            () => ({ type: "TERMINAL" }),
+            context.send,
+          );
+        },
+    };
+    const actorHost = host(clock);
+    actorHost.register(definition);
+    const actor = actorHost.localRef(definition, "entity");
+
+    actor.send({ type: "COMMAND" });
+    clock.advanceBy(1);
+    await Promise.resolve();
+    clock.advanceBy(5);
+
+    await vi.waitFor(() => expect(onDisposed).toHaveBeenCalledOnce());
+    expect(actorHost.peek(definition.id, "entity")).toBeUndefined();
+  });
+
+  it("does not postpone idle eviction for idle-eligible traffic", async () => {
+    const clock = createFakeClock();
+    const onDisposed = vi.fn();
+    const definition = machine(
+      "idle-deadline",
+      lifecycle({
+        idleEviction: { kind: "dispose-after", delayMs: 5 },
+        onDisposed,
+      }),
+    );
+    const actorHost = host(clock);
+    actorHost.register(definition);
+    const actor = actorHost.localRef(definition, "entity");
+
+    clock.advanceBy(4);
+    actor.send({ type: "IGNORE" });
+    await Promise.resolve();
+    clock.advanceBy(1);
+
+    await vi.waitFor(() => expect(onDisposed).toHaveBeenCalledOnce());
+    expect(actorHost.peek(definition.id, "entity")).toBeUndefined();
+  });
+
   it("runs definition lease cancellation before snapshot notification", () => {
     const order: string[] = [];
     const baseClock = createFakeClock();

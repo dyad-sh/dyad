@@ -1,32 +1,49 @@
-# C2 — connection_flow / mcp_oauth common-contract exposure (conditional)
+# C2 — connection_flow / mcp_oauth boundary hardening
 
 Implement the main-registries item of C2 in plans/cleanup-state-machines.md
 — read its exact wording first: these two are ALREADY correctly
 main-authoritative; they are NOT mechanical migrations, and documented
 resource registries are an acceptable end state. The plan wins.
 
-Scope, strictly conditional:
+The audit is complete in the B0 ADR and the cleanup plan. It found that the
+specialized registries remain the correct resource owners and must not be
+mechanically replaced by ActorHost, but the current renderer boundaries are
+not sufficient for the recorded multi-window contract. This implementation
+wave therefore may not stop at a docs-only deviation.
 
-1. Expose connection_flow and mcp_oauth through the common remote
-   reference/read-model contract ONLY where a renderer consumer needs it
-   (audit first: what does the renderer actually read from each today,
-   through which channels?). If existing hand-written IPC events are
-   narrow and sufficient, record that as the documented deviation and
-   STOP — do not build read models nobody consumes.
-2. ActorHost adoption inside either registry only if it demonstrably
+Scope:
+
+1. Keep `connection_flow`'s narrow lifecycle projection, but make remote
+   admission multi-window-safe: revision-check `start`/`acknowledge`, require
+   the exact typed `ConnectionFlowInvocationRef` for cancel, and replace the
+   historical string `flowId` across every correlation boundary. Mint refs
+   through the shared `IdSource`; use `InvocationRegistry` claims, including a
+   documented structural claim for deep-link sources that cannot echo the ref.
+   Replace the renderer
+   `resources-loaded` barrier with a post-persistence provider-status
+   invalidation consumed independently by every window.
+2. Keep `mcp_oauth`'s internal lifecycle private. Preserve last-request-wins
+   Connect with a renderer message ID for retry dedupe, distinct from the typed
+   `McpOAuthInvocationRef` used across listener/waiter/timer/callback/exchange
+   and settlement boundaries. After persisted settlement publish MCP
+   server/tool scopes through the global epoch-keyed query-invalidation
+   channel.
+3. Add server-scoped OAuth cancellation/settlement and stale-write fencing.
+   Deletion, disconnect, OAuth disable, and OAuth-relevant configuration
+   changes must revoke the old flow's write authority before mutating the row.
+4. Add explicit application-shutdown disposal for connection-flow watchdogs
+   and provider work and wire the existing MCP registry disposer to the real
+   shutdown boundary.
+5. ActorHost adoption inside either registry only if it demonstrably
    deletes code or fixes a known deficiency (compare line counts and name
    the deficiency in the PR description — "consistency" is
    insufficient justification per the plan). The listener, timer, waiter,
    claim, and close-barrier internals stay intact regardless.
-3. Whatever the outcome, update the plan's placement-table rows and the
-   lifecycle matrix with the recorded decision (adopted / deviation
-   documented), so the "remaining custom runtimes have narrow documented
-   reasons" success criterion is auditable.
 
-If both machines end as documented deviations with zero code change,
-that is a VALID completion of this prompt — deliver the audit and the
-plan updates as a docs PR.
-
-Verify (if code changed): existing OAuth happy-path and flowId
-correlation tests unchanged; golden suite green; /deep-review. Branch
-c2-main-registries; /pr-push.
+Verify: stale two-window cancellation; reload before OAuth settlement;
+settlement invalidation gap recovery; delete/disable/disconnect/config-change
+during callback wait and exchange; stale provider writes rejected; explicit
+shutdown during pending setup; typed-ref stale/claim tests, including the
+structural deep-link claim; existing OAuth happy paths unchanged; golden suite
+green; /deep-review. Branch
+c2-main-registries-hardening; /pr-push.

@@ -88,8 +88,9 @@ Two implementation consequences are mandatory:
 
 ```text
                     main process (authority)
-   app_run · chat_stream* · github_ops · version_preview ·
-   image_generation · user_input · connection_flow · mcp_oauth
+   remote actors:
+     app_run · chat_stream* · github_ops · version_preview ·
+     image_generation · user_input
         |                                   ^
         | revisioned snapshot read models    | validated, authorized,
         | + typed post-commit events         | deduplicated dispatch
@@ -101,6 +102,12 @@ Two implementation consequences are mandatory:
   |   voice_to_text · first_prompt       |  |                          |
   | per-window Jotai (UI-only atoms)     |  |                          |
   +--------------------------------------+  +--------------------------+
+
+   documented main-owned resource registries:
+     connection_flow -- narrow lifecycle projection; revisioned intent
+                        hardening remains before multi-window dispatch
+     mcp_oauth       -- terminal invoke + persisted server status; epoch
+                        query invalidation remains required
 ```
 
 \* `chat_stream` pending its feasibility study (below) — its _placement_
@@ -109,21 +116,21 @@ is decided (main), its _design_ is not yet.
 Placement table (final intent; per-machine moves still gate on their
 pilot/study):
 
-| Machine            | Host                 | Reason                                                                                 |
-| ------------------ | -------------------- | -------------------------------------------------------------------------------------- |
-| `app_run`          | main                 | Owns child process, producer identity; app is global across windows                    |
-| `user_input`       | main                 | Already main; owns waiters; survives window lifecycle                                  |
-| `connection_flow`  | main                 | Already main; OAuth flows, deep-link claims                                            |
-| `mcp_oauth`        | main                 | Already main; loopback listeners                                                       |
-| `github_ops`       | main                 | Git mutation/recovery is per-app, not per-window; mid-rebase must survive window close |
-| `version_preview`  | main                 | Checkout/branch recovery is per-app; mid-checkout must survive window close            |
-| `image_generation` | main                 | Jobs are per-chat, visible from any window                                             |
-| `chat_stream`      | main, pending study  | Stream lifecycle is per-chat; admission already main-owned; design study required      |
-| `plan_handoff`     | main, pending study  | Cross-chat workflow; rides the chat_stream decision                                    |
-| `preview_iframe`   | renderer, per-window | Owns a window's DOM/iframe identity                                                    |
-| `screenshot`       | renderer, per-window | Captures a window's iframe                                                             |
-| `voice_to_text`    | renderer, per-window | Owns a window's media resources                                                        |
-| `first_prompt`     | renderer, per-window | Presentation saga tied to a window's home view                                         |
+| Machine            | Host                               | Reason                                                                                                                                                               |
+| ------------------ | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `app_run`          | main                               | Owns child process, producer identity; app is global across windows                                                                                                  |
+| `user_input`       | main                               | Already main; owns waiters; survives window lifecycle                                                                                                                |
+| `connection_flow`  | main, documented resource registry | Already main; retain its narrow lifecycle projection and specialized resource ownership, but add revisioned/correlated intent admission before multi-window dispatch |
+| `mcp_oauth`        | main, documented resource registry | Already main; retain listener/waiter internals and publish persisted-status invalidation through the global epoch channel, not internal lifecycle states             |
+| `github_ops`       | main                               | Git mutation/recovery is per-app, not per-window; mid-rebase must survive window close                                                                               |
+| `version_preview`  | main                               | Checkout/branch recovery is per-app; mid-checkout must survive window close                                                                                          |
+| `image_generation` | main                               | Jobs are per-chat, visible from any window                                                                                                                           |
+| `chat_stream`      | main, pending study                | Stream lifecycle is per-chat; admission already main-owned; design study required                                                                                    |
+| `plan_handoff`     | main, pending study                | Cross-chat workflow; rides the chat_stream decision                                                                                                                  |
+| `preview_iframe`   | renderer, per-window               | Owns a window's DOM/iframe identity                                                                                                                                  |
+| `screenshot`       | renderer, per-window               | Captures a window's iframe                                                                                                                                           |
+| `voice_to_text`    | renderer, per-window               | Owns a window's media resources                                                                                                                                      |
+| `first_prompt`     | renderer, per-window               | Presentation saga tied to a window's home view                                                                                                                       |
 
 Per-window machines key by (window-local host, entity). Main-hosted
 machines key by entity; windows subscribe.
@@ -243,16 +250,16 @@ work, not only snapshot fan-out.
 
 Each C-wave PR completes this matrix before implementation:
 
-| Machine            | No subscribers                               | Window reload                    | Last window closes                                 | App quit                           | App restart                                 | Entity deletion                          |
-| ------------------ | -------------------------------------------- | -------------------------------- | -------------------------------------------------- | ---------------------------------- | ------------------------------------------- | ---------------------------------------- |
-| `app_run`          | Active process retained; idle policy bounded | Reattach to main snapshot/output | Platform convention; active work retained on macOS | Bounded child-process teardown     | Ephemeral unless separately recovered       | Stop/dispose actor and process           |
-| `user_input`       | Live waiter retained to deadline             | Rehydrate read model             | Continue while application remains alive           | Settle/sweep by shutdown policy    | Recover only durable pending records        | Settle requests for deleted entity       |
-| `connection_flow`  | Continue to timeout                          | Reattach read model              | Continue while application remains alive           | Cancel listeners/timers safely     | Domain-specific unsolicited return          | N/A/provider cleanup                     |
-| `mcp_oauth`        | Continue to timeout                          | Reattach status if exposed       | Continue while application remains alive           | Close listeners and settle waiters | No implicit recovery                        | Dispose server/flow-owned resources      |
-| `github_ops`       | Active mutation retained                     | Reattach                         | Continue while application remains alive           | Finish or enter explicit recovery  | Reconcile repository state                  | Dispose actor after safe settlement      |
-| `version_preview`  | Active checkout/recovery retained            | Reattach                         | Continue while application remains alive           | Preserve/enter recovery contract   | Reconcile branch/checkout state             | Dispose after safe return/settlement     |
-| `image_generation` | Active jobs retained                         | Reattach                         | Continue while application remains alive           | Best-effort cancel; bounded settle | No active-job persistence or auto-run       | Cancel/prune jobs for deleted entity     |
-| `chat_stream`      | Active stream and queue continue             | Bootstrap all read models        | Follow real platform shutdown boundary             | Interrupt; abort; bounded unwind   | Hydrate queue paused; reconcile interrupted | Settle owners and unwind before deletion |
+| Machine            | No subscribers                               | Window reload                                                                                          | Last window closes                                 | App quit                                    | App restart                                                      | Entity deletion                                                                 |
+| ------------------ | -------------------------------------------- | ------------------------------------------------------------------------------------------------------ | -------------------------------------------------- | ------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `app_run`          | Active process retained; idle policy bounded | Reattach to main snapshot/output                                                                       | Platform convention; active work retained on macOS | Bounded child-process teardown              | Ephemeral unless separately recovered                            | Stop/dispose actor and process                                                  |
+| `user_input`       | Live waiter retained to deadline             | Rehydrate read model                                                                                   | Continue while application remains alive           | Settle/sweep by shutdown policy             | Recover only durable pending records                             | Settle requests for deleted entity                                              |
+| `connection_flow`  | Continue to timeout                          | Hydrate via `getStates`; resume broadcasts                                                             | Continue while application remains alive           | Explicitly dispose timers and provider work | No flow recovery; a completed deep link is an unsolicited return | N/A; provider hooks release flow resources                                      |
+| `mcp_oauth`        | Continue to timeout                          | No internal lifecycle reattach; settlement publishes MCP scopes through epoch-keyed query invalidation | Continue while application remains alive           | Close listeners and settle waiters          | No implicit recovery                                             | Cancel/settle and fence stale writes before deletion or OAuth-relevant mutation |
+| `github_ops`       | Active mutation retained                     | Reattach                                                                                               | Continue while application remains alive           | Finish or enter explicit recovery           | Reconcile repository state                                       | Dispose actor after safe settlement                                             |
+| `version_preview`  | Active checkout/recovery retained            | Reattach                                                                                               | Continue while application remains alive           | Preserve/enter recovery contract            | Reconcile branch/checkout state                                  | Dispose after safe return/settlement                                            |
+| `image_generation` | Active jobs retained                         | Reattach                                                                                               | Continue while application remains alive           | Best-effort cancel; bounded settle          | No active-job persistence or auto-run                            | Cancel/prune jobs for deleted entity                                            |
+| `chat_stream`      | Active stream and queue continue             | Bootstrap all read models                                                                              | Follow real platform shutdown boundary             | Interrupt; abort; bounded unwind            | Hydrate queue paused; reconcile interrupted                      | Settle owners and unwind before deletion                                        |
 
 Renderer-local machines always die with their renderer resources, but must
 settle or compensate their callers. The matrix records product semantics; it
@@ -289,7 +296,11 @@ read-only public APIs, revisioned, per-window subscription; derived
 indexes (read-only external-store selectors, real consumers only).
 
 `user_input`'s renderer adapter stops being the special case and becomes
-the reference implementation of the pattern.
+the reference implementation of the pattern. Documented main-owned resource
+registries may expose a narrower consumer-driven boundary instead: their
+resource internals remain private, while any renderer-visible lifecycle fact
+or intent still follows the revision, correlation, hydration, and
+multi-window-convergence rules above.
 
 ## Single-window assumptions audit
 
@@ -629,6 +640,77 @@ needed. Their listener, timer, waiter, claim, and close-barrier registries stay
 intact unless ActorHost adoption demonstrably deletes code or fixes a known
 deficiency. They are not mechanical migrations, and documented resource
 registries are an acceptable end state.
+
+Main-registries audit — **audit complete; specialized registries retained,
+boundary hardening pending**. The evidence inventory and binding disposition
+are recorded in the
+[B0 ADR](../docs/adr/main-owned-state-machines.md#main-registries-audit):
+
+- `connection_flow`: the renderer reads the per-provider lifecycle through
+  `connection-flow:get-states` on hydration and
+  `connection-flow:state-changed` thereafter. It separately consumes the
+  narrow `connection-flow:unsolicited-return` notification to refresh
+  provider data after a cold-start or stale deep-link return. This projection
+  is the concrete surface consumed by `useConnectionFlow` and the GitHub,
+  Neon, and Supabase connector components; do not publish additional registry
+  internals. Its intent boundary is not yet
+  multi-window-safe: `start` and `acknowledge` need authoritative revision
+  admission, and C2 must replace the historical string `flowId` with a typed
+  `ConnectionFlowInvocationRef` minted through the shared `IdSource`.
+  Cancellation requires the exact active ref rather than resolving an omitted
+  ID to whichever flow is current; acknowledgment, timers, provider callbacks,
+  and every echo-capable boundary carry the same ref. Deep-link returns that
+  cannot echo it use a documented structural `InvocationRegistry` claim. The
+  custom registry also needs explicit shutdown disposal for its watchdogs and
+  provider work. These are boundary/lifecycle hardening requirements, not
+  justification for replacing its specialized internals with `ActorHost`. The
+  current renderer-owned `resources-loaded` barrier is also not meaningful
+  across windows: after durable credential persistence, main should settle the
+  flow and publish correlated provider-status invalidation; every window
+  refreshes its own query families without acknowledging main lifecycle
+  completion.
+- `mcp_oauth`: the renderer does not read the registry snapshot. Its Connect
+  mutation awaits the existing `mcp:start-oauth` invoke through terminal
+  settlement, then invalidates the persisted MCP server/tool queries; the
+  durable renderer-visible fact is `McpServer.oauthConnected`, read through
+  `mcp:list-servers` by `useMcp`/`usePluginConnect`. Intermediate
+  binding/callback/exchange states exist only to coordinate main-owned
+  listeners, waiters, claims, and close barriers. Publishing them would create
+  an unused read model. The `mcp:start-oauth` one-shot reply alone is
+  insufficient across renderer reload or window close: after persisted
+  settlement, main must publish the MCP server/tool scopes through the global
+  epoch-keyed `QueryInvalidationEvent` channel. Its reconnect/bootstrap and
+  gap recovery provide convergence; this is not a live-only terminal event.
+  Server deletion, disconnect, OAuth disable, and OAuth-relevant configuration
+  changes must cancel and settle matching in-memory flows and fence stale
+  provider writes before mutating the row.
+  C2 also replaces the registry's historical string `flowId` with a typed
+  `McpOAuthInvocationRef`, echoed through listener, waiter, timer, callback,
+  exchange, supersession, and settlement boundaries. That correlation
+  identity is distinct from the renderer message ID used for retry dedupe.
+- Neither registry adopts `ActorHost`: replacing the specialized resource
+  maps and effect sequencing would not delete those internals or fix the
+  identified boundary deficiencies. The placement rows record the retained
+  registries; the lifecycle matrix records the required end state rather than
+  blessing current cleanup gaps.
+
+Renderer-triggerable intent disposition:
+
+| Registry          | Intent                    | Target admission                                                                                                                                                  |
+| ----------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `connection_flow` | `start`                   | State-sensitive; require `expectedRevision`; main mints the typed `ConnectionFlowInvocationRef`                                                                   |
+| `connection_flow` | `cancel`                  | Cancellation; require the exact active `ConnectionFlowInvocationRef`                                                                                              |
+| `connection_flow` | `acknowledge`             | State-sensitive; require `expectedRevision` and matching invocation ref                                                                                           |
+| `connection_flow` | `resources-loaded`        | Renderer-triggered today; remove as an intent when correlated provider-status invalidation replaces the per-window barrier                                        |
+| `mcp_oauth`       | Connect via `start-oauth` | Current-agnostic last-request-wins; carry a renderer message ID for retry dedupe; main mints a typed `McpOAuthInvocationRef` and settles the displaced invocation |
+
+All other preparation, callback, timer, exchange, failure, claim, and
+close-barrier events remain host-only and correlated internally. The audit
+does not authorize production code in this docs PR. The
+`pr_c2_main_registries` implementation wave owns focused hardening and tests
+for stale cancellation, post-persistence invalidation across reload, OAuth
+configuration mutation/deletion, stale-write fencing, and explicit shutdown
+disposal.
 
 **C3 — Chat-stream and plan-handoff execution.**
 

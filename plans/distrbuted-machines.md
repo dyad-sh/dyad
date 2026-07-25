@@ -728,7 +728,7 @@ Each remote machine contract has:
 - state schema version;
 - event schema version;
 - optional migration for persisted state;
-- compatibility policy during an app update.
+- persisted-state compatibility policy across an app update.
 
 CORRECTION (2026-07-25, see plans/cleanup-state-machines.md Phase D): main
 and renderer ALWAYS ship together in production — dyad updates via
@@ -743,12 +743,14 @@ version assert (reject + reload) suffices. On incompatibility:
 - request a full renderer reload when appropriate;
 - never coerce unknown events or states.
 
-### Legacy update compatibility
+### Persisted-operation update compatibility
 
-Existing domains sometimes accept missing invocation refs so work crossing an
-application update can finish. Each pilot documents whether to retain this
-compatibility, structurally claim the producer, or deliberately terminate the
-old operation.
+Persisted work crossing an application update retains or migrates its complete
+invocation and idempotency identity. Missing identity is never accepted for
+cancellation or state-sensitive intent. Each domain either reconstructs
+identity through a documented structural claim during migration, explicitly
+reconciles or terminates legacy work, or rejects it with a recoverable
+incompatibility result.
 
 The framework must not invent a universal “accept missing identity” rule.
 
@@ -1106,7 +1108,8 @@ The app-run pilot requires packaged Electron tests for:
 - renderer rehydrates the current URL/state;
 - restart and stop;
 - stale stdout/exit from a previous invocation;
-- application update compatibility where supported;
+- application restart tears down the child process and starts with no
+  recovered app-run actor state;
 - window close/application quit cleanup.
 
 Build before every E2E run that changes runtime code.
@@ -1479,20 +1482,23 @@ Possible decisions:
 - retain local machines on the existing lightweight controller API;
 - stop and revert the framework, keeping only no-regrets cleanup.
 
-### Phase 7 — Resource-owner migrations
+### Phase 7 — Resource-owner migrations and registry dispositions
 
-If approved, migrate one domain per PR:
+If approved, migrate one ordinary actor domain per PR. The current order and
+recorded exceptions are owned by `plans/cleanup-state-machines.md`.
 
-1. `connection_flow`;
-2. `mcp_oauth`;
-3. `github_ops`;
-4. `version_preview`.
+`connection_flow` and `mcp_oauth` are already main-authoritative specialized
+resource registries. Audit their renderer consumers before exposing a common
+read model; retain their listener, timer, waiter, claim, and close-barrier
+internals unless `ActorHost` demonstrably deletes code or fixes a named
+deficiency. A documented narrow boundary is an acceptable end state.
 
 Each PR:
 
 - selects the authoritative host;
 - defines remote projection if required;
-- deletes its previous registry/controller boundary;
+- deletes its previous registry/controller boundary only when that boundary
+  was actually replaced;
 - retains domain transition tests;
 - adds crash/reload tests appropriate to placement.
 
@@ -1522,7 +1528,9 @@ After migrations:
 - remove lifecycle projection atoms and writer helpers;
 - remove atom mailboxes;
 - narrow or remove legacy IPC channels;
-- remove transport compatibility branches after the supported update window;
+- remove temporary transport adapters and legacy channels in each cutover's
+  immediate follow-up deletion PR; retain only the protocol-version
+  assert/reload path;
 - update state-machine, Jotai, IPC, and error rules;
 - update architecture and “why state machines” documentation;
 - add boundaries preventing reintroduction.
@@ -1592,16 +1600,22 @@ Mitigation:
 - selector-aware subscriptions;
 - measure app-run and chat before migration.
 
-### Renderer/main version mismatch
+### Development-time renderer/main protocol mismatch
 
-An update or reload could briefly pair incompatible contracts.
+Hot-module replacement can briefly pair incompatible contracts during
+development. Production updates apply on restart and load main and renderer
+from the same bundle.
 
 Mitigation:
 
 - explicit protocol/schema versions;
 - reject rather than coerce;
 - resync/reload path;
-- compatibility tests.
+- development mismatch tests.
+
+Persisted state written by one application version and read after an update is
+a separate compatibility boundary. Version and migrate durable schemas where
+required; reject or recover explicitly when migration is unavailable.
 
 ### Duplicate dispatch after lost receipt
 

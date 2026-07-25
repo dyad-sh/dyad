@@ -775,7 +775,8 @@ command start.
    the window adapter, never in intent/state/command data.
 5. **Create main queue/intent persistence and acceptance transaction.** Migrate
    `.dyad/queue` entries once, paused, into the main aggregate. Keep the old
-   files read-only for one compatibility release; never dual-write.
+   files read-only according to the durable migration/rollback retention
+   policy; never dual-write.
 6. **Move plan-handoff acceptance to IDs/checkpoints.** Capture an immutable
    plan version, add handoff and step idempotency keys, and keep renderer
    navigation/toasts behind presentation adapters. It may still call the old
@@ -791,10 +792,13 @@ command start.
 9. **Flip queue mutations and terminal effects.** UI edits use expected
    revisions; notification/screenshot consumers dedupe typed post-commit
    events. Verify initiating-window close and same-chat two-window races.
-10. **Delete compatibility code.** Remove renderer lifecycle/controller,
-    callback fields, queue persistence hook/full-snapshot IPC, direct atom
-    writers, and obsolete boundary exceptions only after telemetry and tests
-    show no legacy callers.
+10. **Delete runtime compatibility code immediately behind cutover.** In a
+    separate trailing PR, remove renderer lifecycle/controller, callback
+    fields, queue persistence hook/full-snapshot IPC, direct atom writers, and
+    obsolete boundary exceptions. Typecheck/tests prove all in-tree callers
+    moved; telemetry may validate the cutover but is not a deletion gate. The
+    persisted legacy queue importer/read-only files remain under the durable
+    migration/rollback policy.
 
 Rollback boundaries exist after steps 4 and 8. Step 5 is irreversible after
 the new writer accepts its first mutation unless an explicit reverse export

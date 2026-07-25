@@ -22,18 +22,18 @@ status lines are the source of truth; this file is the picture.
 
 ## Rebatched schedule
 
-| Batch   | Parallel items                                                                                                                                   | Waits on                               |
-| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------- |
-| 1 (now) | A5 · golden suite · B0 ADR · **C1.1 main app-runtime service extraction** · C2 main-registries audit (docs) · finish A6a                         | nothing                                |
-| 2       | B1 ∥ B2 · C1.2 (app_run codecs + safe projection design)                                                                                         | golden+B0 → B1; B0 → B2, C1.2          |
-| 3       | B3 (core against fake transport; B1-harness scenarios land last) ∥ audit-rewiring (pagehide item first — C1 prereq)                              | B2 → B3; B1+golden → rewiring          |
-| 4       | B4 (may begin against B3's envelope types during B3's tail)                                                                                      | B3                                     |
-| 5       | **C1.3 app_run cutover** (the wave's only cutover slot)                                                                                          | B4 + pagehide + C1.1/C1.2              |
-| 6       | C2-github_ops (next cutover slot) ∥ C3 design→implementation prep ∥ C4a (window creation/session-restore/app surface)                            | C1 accepted; C3 also needs G1 accepted |
-| 7       | C2-version_preview ∥ C2-image_generation ∥ C2-registries disposition — preps parallel, cutovers staggered through the single slot ∥ C3 continued | github_ops pattern set                 |
-| 8       | C3 cutover → C4b (chat tab drag/transfer)                                                                                                        | C3 gates (G1-go · C1 · A6b-subset ✓)   |
-| rolling | each wave's deletion PR, immediately behind its cutover                                                                                          | per wave                               |
-| final   | A7 → Phase D remainder (docs, boundaries, leftovers)                                                                                             | all allowlist owners landed            |
+| Batch   | Parallel items                                                                                                                                            | Waits on                               |
+| ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| 1 (now) | A5 · golden suite · B0 ADR · **C1.1 main app-runtime service extraction** · C2 main-registries audit (docs) · finish A6a                                  | nothing                                |
+| 2       | B1 ∥ B2 · C1.2 (app_run codecs + safe projection design)                                                                                                  | golden+B0 → B1; B0 → B2, C1.2          |
+| 3       | B3 (core against fake transport; B1-harness scenarios land last) ∥ audit-rewiring (pagehide item first — C1 prereq)                                       | B2 → B3; B1+golden → rewiring          |
+| 4       | B4 (may begin against B3's envelope types during B3's tail)                                                                                               | B3                                     |
+| 5       | **C1.3 app_run cutover** (the wave's only cutover slot)                                                                                                   | B4 + pagehide + C1.1/C1.2              |
+| 6       | C2-github_ops (next cutover slot) ∥ C3 design→implementation prep ∥ C4a (window creation/session-restore/app surface)                                     | C1 accepted; C3 also needs G1 accepted |
+| 7       | C2-version_preview ∥ C2-image_generation ∥ **C2 registry boundary hardening** — preps parallel, cutovers staggered through the single slot ∥ C3 continued | github_ops pattern set                 |
+| 8       | C3 cutover → C4b (chat tab drag/transfer)                                                                                                                 | C3 gates (G1-go · C1 · A6b-subset ✓)   |
+| rolling | each wave's deletion PR, immediately behind its cutover                                                                                                   | per wave                               |
+| final   | A7 → Phase D remainder (docs, boundaries, leftovers)                                                                                                      | all allowlist owners landed            |
 
 Key changes vs the original wave table: C1 is split (its longest step has
 no transport dependency and starts NOW); B2 runs beside B1; B3/B4 overlap
@@ -63,7 +63,7 @@ serialize); C4 splits into a (after C1) and b (after C3).
                                   C3 design/impl (needs * G1 accepted) ... C3 cutover <---------+
                                   C4a (app-window surface) ............... C4b (after C3)
 
-   rolling: each cutover + 1 release -> its trailing deletion PR
+   rolling: each cutover -> immediate trailing deletion PR (same day; no soak)
    final:   A7 -> D remainder (docs, boundary hardening, leftovers)
 ```
 

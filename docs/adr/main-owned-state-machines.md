@@ -25,6 +25,12 @@ one commit point, explicit lifecycle and transport contracts, and read-only
 fan-out to every window. The detailed motivation and rollout are in the
 [plan](../../plans/cleanup-state-machines.md).
 
+Documented main-owned resource registries may keep specialized listener,
+timer, waiter, claim, and close-barrier internals. They expose only the
+consumer-driven projection and intent boundary needed by renderers; those
+narrow boundaries still obey revision, correlation, hydration, invalidation,
+and multi-window convergence rules.
+
 ## Recorded product decisions
 
 The following decisions are copied verbatim from the plan.
@@ -114,8 +120,8 @@ protocol actor.
 | ------------------ | ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | `app_run`          | Active process retained; idle policy bounded                                               | Reattach to main snapshot/output                                                                           | Platform convention; active work retained on macOS        | Bounded child-process teardown                                                                                                       | Ephemeral unless separately recovered                                                                                                    | Stop/dispose actor and process                                                                                                                  |
 | `user_input`       | Live waiter retained to deadline                                                           | Rehydrate read model                                                                                       | Continue while application remains alive                  | Settle/sweep by shutdown policy                                                                                                      | Recover only durable pending records                                                                                                     | Settle requests for deleted entity                                                                                                              |
-| `connection_flow`  | Continue to timeout                                                                        | Reattach read model                                                                                        | Continue while application remains alive                  | Cancel listeners/timers safely                                                                                                       | Domain-specific unsolicited return                                                                                                       | N/A/provider cleanup                                                                                                                            |
-| `mcp_oauth`        | Continue to timeout                                                                        | Reattach status if exposed                                                                                 | Continue while application remains alive                  | Close listeners and settle waiters                                                                                                   | No implicit recovery                                                                                                                     | Dispose server/flow-owned resources                                                                                                             |
+| `connection_flow`  | Continue to timeout                                                                        | Hydrate through `getStates`; resume broadcasts                                                             | Continue while application remains alive                  | Explicitly dispose timers and provider work                                                                                          | No flow recovery; a completed deep link is an unsolicited return                                                                         | N/A; provider hooks release flow resources                                                                                                      |
+| `mcp_oauth`        | Continue to timeout                                                                        | No internal lifecycle reattach; settlement publishes MCP scopes through epoch-keyed query invalidation     | Continue while application remains alive                  | Close listeners and settle waiters                                                                                                   | No implicit recovery                                                                                                                     | Cancel/settle and fence stale writes before deletion or OAuth-relevant mutation                                                                 |
 | `github_ops`       | Active mutation retained                                                                   | Reattach                                                                                                   | Continue while application remains alive                  | Finish or enter explicit recovery                                                                                                    | Reconcile repository state                                                                                                               | Dispose actor after safe settlement                                                                                                             |
 | `version_preview`  | Active checkout/recovery retained                                                          | Reattach                                                                                                   | Continue while application remains alive                  | Preserve/enter recovery contract                                                                                                     | Reconcile branch/checkout state                                                                                                          | Dispose after safe return/settlement                                                                                                            |
 | `image_generation` | Active jobs retained                                                                       | Reattach                                                                                                   | Continue while application remains alive                  | Stop admission, request best-effort cancellation, and wait only for a bounded settlement window                                      | Do not persist or resume active jobs; retain only already committed image/media records                                                  | Cancel/prune jobs for deleted entity                                                                                                            |
@@ -132,6 +138,89 @@ after a crash; completed files that were committed before shutdown remain.
 Renderer-local machines die with their renderer resources and must settle or
 compensate their callers. No-subscriber behavior is a per-definition lifecycle
 policy, not an implicit cancellation rule.
+
+## Main registries audit
+
+This audit records the current renderer surfaces and the C2 disposition for
+the two already-main-authoritative registries. Source locations are the
+evidence as of this ADR update; the contracts remain the durable source of
+channel names.
+
+### `connection_flow`
+
+Renderer-visible surface:
+
+| Surface                              | Main contract/handler                                                                                           | Renderer consumer and access mode                                                                                                                                                                                         |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `connection-flow:start`              | `src/ipc/types/connection_flow.ts:83-94`; `src/ipc/handlers/connection_flow_handlers.ts:188-206`                | One-shot wrapper `src/hooks/useConnectionFlow.ts:114-123`; GitHub, Neon, and Supabase Connect actions at `GitHubConnector.tsx:480`, `NeonConnector.tsx:157`, and `SupabaseConnector.tsx:187`                              |
+| `connection-flow:cancel`             | `src/ipc/types/connection_flow.ts:96-103`; `src/ipc/handlers/connection_flow_handlers.ts:208-211`               | One-shot wrapper `src/hooks/useConnectionFlow.ts:126-131`; connector cleanup and Cancel actions, including provider-only calls at `GitHubConnector.tsx:753`, `NeonConnector.tsx:897`, and `SupabaseConnector.tsx:390,536` |
+| `connection-flow:resources-loaded`   | `src/ipc/types/connection_flow.ts:105-109`; `src/ipc/handlers/connection_flow_handlers.ts:213-222`              | One-shot wrapper `src/hooks/useConnectionFlow.ts:142-147`; sent after renderer query/settings refresh at `GitHubConnector.tsx:495`, `NeonConnector.tsx:124`, and `SupabaseConnector.tsx:112`                              |
+| `connection-flow:acknowledge`        | `src/ipc/types/connection_flow.ts:111-115`; `src/ipc/handlers/connection_flow_handlers.ts:224-230`              | One-shot wrapper `src/hooks/useConnectionFlow.ts:134-139`; connector terminal-state effects at `GitHubConnector.tsx:504-506`, `NeonConnector.tsx:129-138`, and `SupabaseConnector.tsx:116-125`                            |
+| `connection-flow:get-states`         | `src/ipc/types/connection_flow.ts:117-125`; `src/ipc/handlers/connection_flow_handlers.ts:232-235`              | One-shot hydration guarded against newer pushes at `src/hooks/useConnectionFlow.ts:78-98`                                                                                                                                 |
+| `connection-flow:state-changed`      | `src/ipc/types/connection_flow.ts:133-139`; broadcast at `src/ipc/handlers/connection_flow_handlers.ts:90-100`  | Window-global listener and external-store projection at `src/hooks/useConnectionFlow.ts:53-63,101-107,153-164`; read by all three connectors                                                                              |
+| `connection-flow:unsolicited-return` | `src/ipc/types/connection_flow.ts:147-153`; broadcast at `src/ipc/handlers/connection_flow_handlers.ts:101-106` | Buffered listener/hook at `src/hooks/useConnectionFlow.ts:65-76,173-191`; provider refresh effects at `GitHubConnector.tsx:514`, `NeonConnector.tsx:147`, and `SupabaseConnector.tsx:132`                                 |
+
+Registry internals:
+
+| Internal                                           | Evidence                                                                                                                         | Classification and disposition                                                                                                           |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Per-provider state and pure transition application | `src/connection_flow/registry.ts:125,138-148,163-203`                                                                            | State transaction mechanics. Retain the specialized registry; remote admission adds revisions/correlation without exposing more state.   |
+| Watchdog handles and scheduling                    | `src/connection_flow/registry.ts:126,150-156,176-192`                                                                            | Resource ownership. Retain; add explicit idempotent shutdown disposal and late-work fencing.                                             |
+| Deep-link/device-flow return claim                 | `src/connection_flow/registry.ts:241-272`; structural-safety rationale in `src/ipc/handlers/connection_flow_handlers.ts:118-145` | Claim/correlation ownership. Retain.                                                                                                     |
+| Provider hooks and provider cleanup                | `src/ipc/handlers/connection_flow_handlers.ts:58-88,90-99`                                                                       | Main-owned resource adapter. Retain and include in explicit shutdown disposal.                                                           |
+| Broadcast subscriber tracking                      | `src/ipc/handlers/connection_flow_handlers.ts:20-54`                                                                             | Narrow projection transport. Retain until the common transport replaces it only where the connector consumers need revisioned admission. |
+
+Disposition: keep the registry and its narrow lifecycle projection. C2 hardens
+`start`/`acknowledge` with authoritative revision admission and replaces the
+historical string `flowId` with a typed `ConnectionFlowInvocationRef` minted
+through the shared `IdSource`. Cancel and acknowledgment require the exact
+active ref; timers, provider callbacks, and every echo-capable boundary carry
+it. Deep-link returns that cannot echo it use a documented structural
+`InvocationRegistry` claim. C2 also adds explicit shutdown disposal.
+`resources-loaded` is not a valid cross-window barrier: after durable
+credential persistence, main settles the flow and publishes correlated
+provider-status invalidation; each window independently invalidates its local
+query families without acknowledging main lifecycle completion.
+
+### `mcp_oauth`
+
+Renderer-visible surface:
+
+| Surface                                         | Main contract/handler                                                                      | Renderer consumer and access mode                                                                                                                                                                             |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mcp:start-oauth`                               | `src/ipc/types/mcp.ts:237-253`; `src/ipc/handlers/mcp_handlers.ts:478-491`                 | Long-running one-shot mutation at `src/hooks/useMcp.ts:163-176`, called by `src/components/plugins/usePluginConnect.ts:76-112`; its renderer-local success invalidation is lost if that renderer is destroyed |
+| `mcp:list-servers` / `McpServer.oauthConnected` | `src/ipc/types/mcp.ts:23-42,174-178`; derived in `src/ipc/handlers/mcp_handlers.ts:84-103` | Persisted-status query at `src/hooks/useMcp.ts:24-31`; read by plugin list/detail/summary surfaces rather than from the OAuth registry snapshot                                                               |
+| `mcp:update-server`                             | `src/ipc/types/mcp.ts:207-211`; `src/ipc/handlers/mcp_handlers.ts:294-362`                 | One-shot mutation at `src/hooks/useMcp.ts:122-146`; OAuth disable/credential/scope/URL/transport changes can invalidate an active flow                                                                        |
+| `mcp:delete-server`                             | `src/ipc/types/mcp.ts:213-217`; `src/ipc/handlers/mcp_handlers.ts:364-368`                 | One-shot mutation at `src/hooks/useMcp.ts:148-161`; reachable from `PluginDetailPage.tsx:118` while OAuth is active                                                                                           |
+| `mcp:disconnect-oauth`                          | `src/ipc/types/mcp.ts:255-259`; `src/ipc/handlers/mcp_handlers.ts:541-543`                 | One-shot mutation at `src/hooks/useMcp.ts:178-190`, called by `src/components/plugins/usePluginConnect.ts:200-211`                                                                                            |
+
+There is no MCP OAuth lifecycle event, hydration endpoint, or renderer
+snapshot consumer today.
+
+Registry internals:
+
+| Internal                                   | Evidence                                          | Classification and disposition                                                                        |
+| ------------------------------------------ | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Per-port states and transition dispatch    | `src/mcp_oauth/registry.ts:93,100-102,334-353`    | State transaction mechanics. Retain; no renderer consumes binding/callback/exchange substates.        |
+| Flow-to-port and runtime waiter maps       | `src/mcp_oauth/registry.ts:94-95,111-124,356-381` | Waiter/correlation ownership. Retain; add server-scoped cancel/settle and renderer message-ID dedupe. |
+| Loopback listener handles                  | `src/mcp_oauth/registry.ts:96,126-140,161-203`    | Resource ownership. Retain.                                                                           |
+| Timeout handles                            | `src/mcp_oauth/registry.ts:97,104-109,206-216`    | Resource ownership. Retain.                                                                           |
+| Close barriers and supersession sequencing | `src/mcp_oauth/registry.ts:98,126-140,263-295`    | Resource ownership and race barrier. Retain.                                                          |
+| Callback claim/state validation            | `src/mcp_oauth/registry.ts:384-407`               | Claim/correlation ownership. Retain.                                                                  |
+| Whole-registry disposal                    | `src/mcp_oauth/registry.ts:410-423`               | Resource cleanup. Retain and wire to the real application-shutdown boundary.                          |
+
+Disposition: do not publish internal lifecycle states. Connect remains
+current-agnostic, last-request-wins intent with a renderer-generated message
+ID for retry dedupe; main mints a typed `McpOAuthInvocationRef` and settles the
+displaced invocation. The ref is echoed through listener, waiter, timer,
+callback, exchange, supersession, and settlement boundaries; it is distinct
+from the retry-deduplication message ID. After persisted settlement, publish
+MCP server/tool scopes through the global epoch-keyed `QueryInvalidationEvent`
+channel so reconnect/bootstrap and gap recovery converge every window. Server
+deletion, disconnect, OAuth disable, and OAuth-relevant configuration changes
+cancel and settle matching flows and fence stale provider persistence before
+changing the row. `ActorHost` would not remove the specialized resource maps
+or fix these boundary obligations.
 
 ## App-run pilot deletion budget
 
@@ -218,19 +307,20 @@ Actionable user-input presentation is broadcast according to recorded decision
 
 ### `connection_flow`
 
-| Event                                                                                   | Classification and admission                                                                               |
-| --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `start`                                                                                 | State-sensitive; require `expectedRevision`; `flowId` is the new invocation identity.                      |
-| `cancel`                                                                                | Cancellation; require the active `flowId` as the invocation ref.                                           |
-| `acknowledge`                                                                           | State-sensitive; require `expectedRevision` and matching `flowId`.                                         |
-| `prepared`, `return-received`, `token-exchanged`, `resources-loaded`, `timeout`, `fail` | Host-only preparation, deep-link, command, timer, or failure events; require matching `flowId` internally. |
+| Event                                                               | Classification and admission                                                                                               |
+| ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `start`                                                             | State-sensitive; require `expectedRevision`; main mints the typed `ConnectionFlowInvocationRef`.                           |
+| `cancel`                                                            | Cancellation; require the exact active `ConnectionFlowInvocationRef`.                                                      |
+| `acknowledge`                                                       | State-sensitive; require `expectedRevision` and matching invocation ref.                                                   |
+| `resources-loaded`                                                  | Renderer-triggered compatibility intent to remove; provider-status invalidation replaces this per-window barrier.          |
+| `prepared`, `return-received`, `token-exchanged`, `timeout`, `fail` | Host-only preparation, deep-link, command, timer, or failure events; require the matching typed invocation ref internally. |
 
 ### `mcp_oauth`
 
-| Event                                                                                                             | Classification and admission                                                                                                                              |
-| ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `CONNECT`                                                                                                         | State-sensitive; require `expectedRevision`. `flowId` is the new invocation identity, and superseding an active flow must settle the displaced caller.    |
-| `SOCKETS_CLOSED`, `BINDS_SETTLED`, `AUTHORIZED_SILENTLY`, `CALLBACK`, `TIMEOUT`, `EXCHANGE_OK`, `EXCHANGE_FAILED` | Host-only listener, callback, timer, or command-settlement events; require matching `flowId` internally. OAuth callback state is validated independently. |
+| Event                                                                                                             | Classification and admission                                                                                                                                                                                              |
+| ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CONNECT`                                                                                                         | Idempotent/current-agnostic last-request-wins intent; require a renderer message ID for retry dedupe. Main mints `McpOAuthInvocationRef`, and superseding an active flow settles the displaced caller before replacement. |
+| `SOCKETS_CLOSED`, `BINDS_SETTLED`, `AUTHORIZED_SILENTLY`, `CALLBACK`, `TIMEOUT`, `EXCHANGE_OK`, `EXCHANGE_FAILED` | Host-only listener, callback, timer, or command-settlement events; require the matching typed invocation ref internally. OAuth callback state is validated independently.                                                 |
 
 ### `github_ops`
 

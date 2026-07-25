@@ -592,7 +592,7 @@ Conformance includes:
 - cancellation requires the invocation ref;
 - no-subscriber lifecycle follows the definition, not an implicit global rule.
 
-**B4 — Remote client, hydration, and React.**
+**B4 — Remote client, hydration, and React: implemented.**
 
 - one `RemoteMachineClient` per renderer window;
 - revisioned stores;
@@ -604,6 +604,7 @@ Conformance includes:
 
 Phase B has no intended user-visible behavior change until a production
 machine enters Phase C. Kernel and transport remain separate revert points.
+With B4 complete, Phase B is complete and C1 is unblocked.
 
 ### Phase C — host migrations
 

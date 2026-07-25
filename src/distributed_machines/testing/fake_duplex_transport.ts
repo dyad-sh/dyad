@@ -2,6 +2,10 @@ import type { WindowSessionId } from "@/window_infrastructure/types";
 import { TwoWindowHarness } from "@/testing/two_window_harness";
 import type { z } from "zod";
 import type { RemoteMachineManifest } from "../remote_manifest";
+import type {
+  RemoteMachineClientConnection,
+  RemoteTransportStatus,
+} from "../remote_client";
 import {
   MachineDisposedEnvelopeSchema,
   MachineSnapshotEnvelopeSchema,
@@ -77,10 +81,15 @@ export class FakeDuplexRemoteTransport {
   }
 }
 
-export class FakeRemoteRenderer {
+export class FakeRemoteRenderer implements RemoteMachineClientConnection {
   private readonly views = new Map<string, FakeRemoteView>();
   private nextViewGeneration = 1;
   private readonly removeReceiveListener: () => void;
+  private readonly statusListeners = new Set<
+    (status: RemoteTransportStatus) => void
+  >();
+  private readonly snapshotListeners = new Set<(payload: unknown) => void>();
+  private readonly disposedListeners = new Set<(payload: unknown) => void>();
   private holdBootstrap = false;
   private readonly bootstrapReleases: Array<() => void> = [];
   private connected = true;
@@ -93,8 +102,10 @@ export class FakeRemoteRenderer {
       sessionId,
       (channel, payload) => {
         if (channel === "distributed-machine:snapshot") {
+          for (const listener of this.snapshotListeners) listener(payload);
           this.receiveSnapshot(payload);
         } else if (channel === "distributed-machine:disposed") {
+          for (const listener of this.disposedListeners) listener(payload);
           this.receiveDisposed(payload);
         }
       },
@@ -103,6 +114,31 @@ export class FakeRemoteRenderer {
 
   holdBootstrapResponses(): void {
     this.holdBootstrap = true;
+  }
+
+  getStatus(): RemoteTransportStatus {
+    return this.connected ? "connected" : "disconnected";
+  }
+
+  onStatusChange(
+    listener: (status: RemoteTransportStatus) => void,
+  ): () => void {
+    this.statusListeners.add(listener);
+    return () => this.statusListeners.delete(listener);
+  }
+
+  onSnapshot(listener: (payload: unknown) => void): () => void {
+    this.snapshotListeners.add(listener);
+    return () => this.snapshotListeners.delete(listener);
+  }
+
+  onDisposed(listener: (payload: unknown) => void): () => void {
+    this.disposedListeners.add(listener);
+    return () => this.disposedListeners.delete(listener);
+  }
+
+  reportIncompatible(): void {
+    for (const listener of this.statusListeners) listener("incompatible");
   }
 
   releaseBootstrapResponses(): void {
@@ -191,6 +227,7 @@ export class FakeRemoteRenderer {
     this.removeReceiveListener();
     this.duplex.windows.destroy(this.sessionId);
     this.releaseBootstrapResponses();
+    for (const listener of this.statusListeners) listener("disconnected");
   }
 
   reconnect(): FakeRemoteRenderer {
@@ -203,10 +240,12 @@ export class FakeRemoteRenderer {
   }
 
   injectSnapshot(payload: unknown): void {
+    for (const listener of this.snapshotListeners) listener(payload);
     this.receiveSnapshot(payload);
   }
 
   injectDisposed(payload: unknown): void {
+    for (const listener of this.disposedListeners) listener(payload);
     this.receiveDisposed(payload);
   }
 

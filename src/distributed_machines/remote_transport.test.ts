@@ -119,6 +119,7 @@ function createObjectKeyMachine(
       snapshotCodec: z.object({ value: z.number().int() }).strict(),
       keyToString: (key: { id: string }) => key.id,
       projectSnapshot: (state: { value: number }) => state,
+      unavailableSnapshot: () => ({ value: 0 }),
       revisionPolicy: () => "allow-stale",
       authorizeSubscribe: () => undefined,
       authorizeDispatch,

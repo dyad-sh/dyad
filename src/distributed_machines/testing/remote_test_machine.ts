@@ -6,6 +6,7 @@ import { change, ignore, stay } from "@/state_machines/types";
 import type {
   ActorLifecyclePolicy,
   DistributedMachineDefinition,
+  RemoteMachineContract,
 } from "../definition";
 import { REMOTE_MACHINE_PROTOCOL_VERSION } from "../remote_protocol";
 
@@ -62,6 +63,7 @@ export interface RemoteTestState {
 }
 
 export type RemoteTestEvent = z.infer<typeof RemoteTestEventSchema>;
+export type RemoteTestSnapshot = z.infer<typeof RemoteTestSnapshotSchema>;
 type RemoteTestCommand =
   | { readonly type: "FAIL" }
   | { readonly type: "EMIT_INCREMENT" };
@@ -96,15 +98,11 @@ export function createRemoteTestMachine(
   RemoteTestReason
 > & {
   readonly host: "main";
-  readonly remote: NonNullable<
-    DistributedMachineDefinition<
-      string,
-      string,
-      RemoteTestState,
-      RemoteTestEvent,
-      RemoteTestCommand,
-      RemoteTestReason
-    >["remote"]
+  readonly remote: RemoteMachineContract<
+    string,
+    RemoteTestState,
+    RemoteTestEvent,
+    RemoteTestSnapshot
   >;
 } {
   return {
@@ -164,6 +162,7 @@ export function createRemoteTestMachine(
         value: state.value,
         activeInvocationRef: state.activeInvocationRef,
       }),
+      unavailableSnapshot: () => ({ value: 0 }),
       revisionPolicy: (event) =>
         event.type === "SET" ? "reject-stale" : "allow-stale",
       authorizeSubscribe({ key }) {

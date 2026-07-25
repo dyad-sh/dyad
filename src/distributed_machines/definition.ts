@@ -119,14 +119,24 @@ export interface RemoteMachineSender {
 
 export type RemoteRevisionPolicy = "allow-stale" | "reject-stale";
 
-export interface RemoteMachineContract<Key, State, Event> {
+export interface RemoteMachineContract<
+  Key,
+  State,
+  Event,
+  RemoteState = unknown,
+> {
   readonly protocolVersion: number;
   readonly keyCodec: z.ZodType<Key>;
   readonly encodeKey: (key: Key) => unknown;
   readonly eventCodec: z.ZodType<Event>;
-  readonly snapshotCodec: z.ZodType;
+  readonly snapshotCodec: z.ZodType<RemoteState>;
   readonly keyToString: (key: Key) => string;
-  readonly projectSnapshot: (state: State, key: Key) => unknown;
+  readonly projectSnapshot: (state: State, key: Key) => RemoteState;
+  /**
+   * Explicit non-authoritative renderer view used before bootstrap, after
+   * disposal, and while the transport is unavailable.
+   */
+  readonly unavailableSnapshot: (key: Key) => RemoteState;
   readonly revisionPolicy: (event: Event) => RemoteRevisionPolicy;
   /** Throw DyadErrorKind.Auth for an expected access denial. */
   readonly authorizeSubscribe: (context: {

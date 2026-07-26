@@ -8,16 +8,28 @@ import { MainAppRuntimeOutput } from "./main_app_runtime_output";
 import type { AppRunInvocationRef } from "@/app_run/state";
 import { appRuntimeService } from "./app_runtime_service";
 import { remoteMachineHost } from "./distributed_machine_host";
-import { DyadError } from "@/errors/dyad_error";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
-class AppRunActorService {
+type AppRunActorHost = Pick<
+  typeof remoteMachineHost,
+  "ensure" | "peek" | "disposeKey" | "disposeMachine" | "dispose"
+>;
+
+export class AppRunActorService {
+  private readonly settlementRejectors = new Map<
+    number,
+    Set<(error: DyadError) => void>
+  >();
+
+  constructor(private readonly host: AppRunActorHost = remoteMachineHost) {}
+
   actor(appId: number) {
-    return remoteMachineHost.ensure(appRunDefinition, appRunKey(appId));
+    return this.host.ensure(appRunDefinition, appRunKey(appId));
   }
 
   sendProducer(appId: number, event: AppRunProducerEvent): void {
     if (event.invocationRef.entityKey !== appId) return;
-    remoteMachineHost.peek(appRunDefinition.id, appRunKey(appId))?.send(event);
+    this.host.peek(appRunDefinition.id, appRunKey(appId))?.send(event);
   }
 
   async getRunState(appId: number) {
@@ -128,7 +140,8 @@ class AppRunActorService {
   }
 
   async disposeApp(appId: number): Promise<void> {
-    await remoteMachineHost.disposeKey(
+    this.rejectSettlementsForApp(appId);
+    await this.host.disposeKey(
       appRunDefinition.id,
       appRunKey(appId),
       "entity-deletion",
@@ -136,11 +149,13 @@ class AppRunActorService {
   }
 
   disposeAllApps(): Promise<void> {
-    return remoteMachineHost.disposeMachine(appRunDefinition.id);
+    this.rejectAllSettlements();
+    return this.host.disposeMachine(appRunDefinition.id);
   }
 
   dispose(): Promise<void> {
-    return remoteMachineHost.dispose();
+    this.rejectAllSettlements();
+    return this.host.dispose();
   }
 
   private async dispatchAndWait(
@@ -152,10 +167,16 @@ class AppRunActorService {
     const outcome = await actor.enqueue(event).settled;
     if (outcome.kind === "failed") throw outcome.error;
     if (outcome.kind === "disposed") {
-      throw new Error("App run actor was disposed");
+      throw new DyadError(
+        "App run actor was disposed",
+        DyadErrorKind.Precondition,
+      );
     }
     if (outcome.kind === "ignored") {
-      throw new Error(`App run request ignored: ${outcome.reason}`);
+      throw new DyadError(
+        `App run request ignored: ${outcome.reason}`,
+        DyadErrorKind.Conflict,
+      );
     }
 
     const readSettlement = () => {
@@ -166,18 +187,34 @@ class AppRunActorService {
     const settlement =
       initialSettlement ??
       (await new Promise<NonNullable<ReturnType<typeof readSettlement>>>(
-        (resolve) => {
-          const unsubscribe = actor.subscribe(() => {
+        (resolve, reject) => {
+          let unsubscribe: () => void = () => undefined;
+          let settled = false;
+          const finish = (
+            result:
+              | {
+                  kind: "resolved";
+                  value: NonNullable<ReturnType<typeof readSettlement>>;
+                }
+              | { kind: "rejected"; error: DyadError },
+          ) => {
+            if (settled) return;
+            settled = true;
+            unsubscribe();
+            this.removeSettlementRejector(appId, rejectSettlement);
+            if (result.kind === "resolved") resolve(result.value);
+            else reject(result.error);
+          };
+          const rejectSettlement = (error: DyadError) =>
+            finish({ kind: "rejected", error });
+          this.addSettlementRejector(appId, rejectSettlement);
+          unsubscribe = actor.subscribe(() => {
             const current = readSettlement();
             if (!current) return;
-            unsubscribe();
-            resolve(current);
+            finish({ kind: "resolved", value: current });
           });
           const current = readSettlement();
-          if (current) {
-            unsubscribe();
-            resolve(current);
-          }
+          if (current) finish({ kind: "resolved", value: current });
         },
       ));
     if (settlement.outcome === "failed") {
@@ -190,6 +227,39 @@ class AppRunActorService {
           ? runState.error.message
           : "App runtime operation failed",
       );
+    }
+  }
+
+  private addSettlementRejector(
+    appId: number,
+    reject: (error: DyadError) => void,
+  ): void {
+    const rejectors = this.settlementRejectors.get(appId) ?? new Set();
+    rejectors.add(reject);
+    this.settlementRejectors.set(appId, rejectors);
+  }
+
+  private removeSettlementRejector(
+    appId: number,
+    reject: (error: DyadError) => void,
+  ): void {
+    const rejectors = this.settlementRejectors.get(appId);
+    rejectors?.delete(reject);
+    if (rejectors?.size === 0) this.settlementRejectors.delete(appId);
+  }
+
+  private rejectSettlementsForApp(appId: number): void {
+    const rejectors = [...(this.settlementRejectors.get(appId) ?? [])];
+    for (const reject of rejectors) {
+      reject(
+        new DyadError("App run actor was disposed", DyadErrorKind.Precondition),
+      );
+    }
+  }
+
+  private rejectAllSettlements(): void {
+    for (const appId of this.settlementRejectors.keys()) {
+      this.rejectSettlementsForApp(appId);
     }
   }
 }

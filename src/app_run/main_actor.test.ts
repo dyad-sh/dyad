@@ -9,6 +9,8 @@ import {
   createSequentialIdSource,
 } from "@/state_machines/testing";
 import { TwoWindowHarness } from "@/testing/two_window_harness";
+import { DyadErrorKind } from "@/errors/dyad_error";
+import { AppRunActorService } from "@/ipc/services/app_run_actor_service";
 import { appRunClientDefinition } from "./client_definition";
 import { appRunDefinition } from "./definition";
 import { appRunKey } from "./transport";
@@ -260,6 +262,110 @@ describe("main-hosted app-run actor", () => {
       manager.dispatch(7, { type: "START", startedAt: 10 }),
     ).rejects.toThrow("spawn failed");
     manager.dispose();
+  });
+
+  it("rejects renderer dispatch when reset disposes its actor", async () => {
+    const pending = deferred<void>();
+    runtime.start.mockReturnValue(pending.promise);
+    const { duplex, host } = createHarness();
+    const manager = new AppRunRemoteManager(
+      createSequentialIdSource(),
+      duplex.connect(),
+    );
+    manager.start();
+
+    const dispatch = manager.dispatch(7, { type: "START", startedAt: 10 });
+    await vi.waitFor(() => {
+      expect(runtime.start).toHaveBeenCalledTimes(1);
+    });
+    await host.disposeMachine(appRunDefinition.id);
+
+    await expect(dispatch).rejects.toThrow("subscription was disposed");
+    manager.dispose();
+  });
+
+  it("releases transport subscriptions when an app is no longer observed", async () => {
+    const { duplex, transport } = createHarness();
+    const connection = duplex.connect();
+    const manager = new AppRunRemoteManager(
+      createSequentialIdSource(),
+      connection,
+    );
+    manager.start();
+
+    const unsubscribe = manager.subscribeKey(1000, () => undefined);
+    await vi.waitFor(() => {
+      expect(
+        transport
+          .inspectSubscriptions()
+          .some((entry) => (entry.key as { appId: number }).appId === 1000),
+      ).toBe(true);
+    });
+    unsubscribe();
+    await vi.waitFor(() => {
+      expect(
+        transport
+          .inspectSubscriptions()
+          .some((entry) => (entry.key as { appId: number }).appId === 1000),
+      ).toBe(false);
+    });
+
+    manager.stop();
+    for (let appId = 1001; appId < 1261; appId += 1) {
+      manager.subscribeKey(appId, () => undefined)();
+    }
+    expect(
+      (
+        manager as unknown as {
+          actorSubscriptions: Map<number, unknown>;
+        }
+      ).actorSubscriptions.size,
+    ).toBe(0);
+
+    manager.dispose();
+  });
+
+  it("rejects main lifecycle waiters when their actor is disposed", async () => {
+    const pending = deferred<void>();
+    runtime.start.mockReturnValue(pending.promise);
+    const { host } = createHarness();
+    const service = new AppRunActorService(host);
+
+    const dispatch = service.dispatchStart(7, {
+      operationId: "start-before-reset",
+      startedAt: 10,
+    });
+    await vi.waitFor(() => {
+      expect(runtime.start).toHaveBeenCalledTimes(1);
+    });
+    await service.disposeAllApps();
+
+    await expect(dispatch).rejects.toMatchObject({
+      kind: DyadErrorKind.Precondition,
+    });
+  });
+
+  it("classifies ignored main lifecycle races as conflicts", async () => {
+    const { host } = createHarness();
+    const service = new AppRunActorService(host);
+    await service.dispatchStart(7, {
+      operationId: "active-run",
+      startedAt: 10,
+    });
+
+    await expect(
+      service.dispatchStop(7, {
+        operationId: "stale-stop",
+        startedAt: 20,
+        activeInvocationRef: {
+          kind: "app-run",
+          entityKey: 7,
+          operationId: "not-active",
+        },
+      }),
+    ).rejects.toMatchObject({
+      kind: DyadErrorKind.Conflict,
+    });
   });
 
   it("returns a reference-stable exit snapshot for React subscribers", () => {

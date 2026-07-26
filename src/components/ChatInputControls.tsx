@@ -3,6 +3,7 @@ import { ModelPicker } from "./ModelPicker";
 import { ThinkingEffortSelector } from "./ThinkingEffortSelector";
 import { ProModeSelector } from "./ProModeSelector";
 import { ChatModeSelector } from "./ChatModeSelector";
+import { DesignImagesToggle } from "./DesignImagesToggle";
 import { McpToolsPicker } from "@/components/McpToolsPicker";
 import { useSettings } from "@/hooks/useSettings";
 import { useMcp } from "@/hooks/useMcp";
@@ -35,6 +36,12 @@ export function ChatInputControls({
   return (
     <div className="flex items-center">
       <ChatModeSelector />
+      {selectedMode === "design" && (
+        <>
+          <div className="w-1.5"></div>
+          <DesignImagesToggle />
+        </>
+      )}
       {showMcpToolsPicker && (
         <>
           <div className="w-1.5"></div>

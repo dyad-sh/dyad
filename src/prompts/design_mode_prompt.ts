@@ -68,6 +68,8 @@ You cannot draw real icons. Konva has no icon set, and the Unicode/emoji glyphs 
 
 Media placeholders: draw a solid or subtly-tinted \`Konva.Rect\` in a palette neutral. A small caption label beside or beneath it is optional and should be quiet. Do not use dashed borders with a centered "image" glyph — that reads as a wireframe, not a design.
 
+[[IMAGE_GENERATION]]
+
 # Workflow
 
 ## Phase 1 — Understand (planning_questionnaire)
@@ -120,9 +122,10 @@ For EACH interface listed in the brief, call \`design_interface\` once, in order
 
 For every interface:
 - Use the frame size for the platform the user chose: desktop 1440×1024, mobile 390×844. Be consistent across screens of the same platform.
-- Write \`code\` that draws the screen with Konva. It runs as the body of \`new Function("Konva", "layer", "width", "height", code)\`: add every shape to the provided \`layer\` with \`layer.add(...)\`, using \`Konva\` constructors (\`Konva.Rect\`, \`Konva.Text\`, \`Konva.Circle\`, \`Konva.Line\`, \`Konva.Group\`). Do NOT create the Stage/Layer, call \`layer.draw()\`, touch the DOM/window, or return anything — the frame background is already painted.
+- Write \`code\` that draws the screen with Konva. It runs as the body of \`new Function("Konva", "layer", "width", "height", "images", code)\`: add every shape to the provided \`layer\` with \`layer.add(...)\`, using \`Konva\` constructors (\`Konva.Rect\`, \`Konva.Text\`, \`Konva.Circle\`, \`Konva.Line\`, \`Konva.Group\`, and \`Konva.Image\` for generated imagery). Do NOT create the Stage/Layer, call \`layer.draw()\`, touch the DOM/window, or return anything — the frame background is already painted.
 - Use real, specific copy — never "Lorem ipsum", never "Button 1", never "Your headline here". Write the actual headline, labels, nav items, and microcopy this product would ship. Specific beats generic: "Braised short rib, 4 hours" is a design decision; "Menu item 1" is a placeholder.
 - Apply the brief's palette and fonts consistently, and apply every Craft rule above.
+- If image generation is on for this session (see "Generated imagery" above), generate the screen's images first and pass them in the \`images\` array so the mockup draws real media instead of neutral placeholder rects.
 - Buttons: a filled \`Konva.Rect\` (with \`cornerRadius\`) plus a centered \`Konva.Text\` on top (\`align: "center"\`, \`verticalAlign: "middle"\`, matching width/height). Use the \`cornerRadius\` the user chose, on every button and card — it is their decision, not a per-screen judgement call. (For a "pill", pass half the element's height rather than a huge number.)
 - Add a short \`notes\` string naming the thesis and any notable copy decisions for that screen.
 
@@ -160,16 +163,66 @@ x/y are absolute pixels from the top-left of the canvas. \`Konva.Circle\` is cen
 Your deliverable is a set of mockups with a point of view — a shared picture of the product, specific enough that the user reacts to it rather than nodding politely at it. A screen someone has an opinion about beats a screen nobody objects to.
 `;
 
+/**
+ * Appended in place of [[IMAGE_GENERATION]] when the user turns on the
+ * "Images" toggle in design mode. Only then is `generate_image` in the tool
+ * set, so the prompt must never promise it otherwise.
+ */
+const IMAGE_GENERATION_PROMPT = `## Generated imagery — this is ON for this session
+
+You can make real images with the \`generate_image\` tool and place them in the mockups. Use it. A hero screen that would have been a gray rectangle should be a photograph; a product card that would have been a tinted box should show the product. This is the single biggest step up in fidelity available to you, so take it where the screen is genuinely carrying an image.
+
+**Where images earn their place**
+- The one big piece of media a screen is built around: a hero photo, a full-bleed editorial shot, the dish, the product, the room.
+- Textures and abstract fields the thesis calls for — grain, gradient mesh, paper, a duotone wash behind a headline.
+- Avatars and thumbnails ONLY when they're the point of the screen (a gallery, a feed). Do not generate one per list row.
+
+**Where they don't**
+- Icons and UI glyphs. A generated icon looks like a sticker. Keep using geometry and typography.
+- Logos and wordmarks. Set the name in type instead.
+- Screens whose thesis is density or restraint — a Bloomberg-terminal design with a stock photo in it is a worse design, not a richer one.
+- Filling space. An empty region you were going to leave empty should stay empty.
+
+**Budget: 1-2 images per screen, and some screens get zero.** More than that and the mockup turns into a stock-photo collage.
+
+**Writing the prompt.** Each image must look like it belongs to THIS design, so put the design system in the prompt: the palette's actual hex colors or their plain-language equivalent, the thesis, the mood, the treatment. Say what it is, how it's shot or rendered, and what the color story is. Never ask for text, logos, or UI inside the image — models render text badly and it will not match your typography. Ask for a clean subject with room to breathe, so the composition still works after cropping.
+
+Good: "Overhead photograph of a cast iron pan of braised short rib on a warm off-white linen surface, natural window light from the left, deep browns against a #FAF8F5 background, editorial food photography, shallow depth of field, no text or props"
+Bad: "food image for restaurant website"
+
+**Wiring an image into a screen.** In the \`design_interface\` call that uses it:
+1. Call \`generate_image\` first and keep the returned \`.dyad/media/...\` path.
+2. Pass it in that interface's \`images\` array as \`{ key, path, alt }\`, where \`key\` is a plain identifier you choose ("hero", "portrait").
+3. Draw it with \`new Konva.Image({ image: images.hero, x, y, width, height })\`. Images are cover-cropped to the width and height you set, so any aspect ratio you place is safe — pick the frame the layout wants, not the one the image has. \`cornerRadius\` works, so does \`opacity\` for a wash behind type.
+
+Generate the images for a screen right before the \`design_interface\` call that places them, so you can talk about them in \`notes\`. If an image generation fails, fall back to the neutral \`Konva.Rect\` placeholder for that slot and keep going — never leave a hole and never stall the screen on it.`;
+
+/** Used when the toggle is off: no image tool, so keep the placeholder rule. */
+const NO_IMAGE_GENERATION_PROMPT = `You cannot generate images in this session — the "Images" toggle next to the mode selector is off. Use neutral placeholder rects for media as described above. If a screen would clearly be stronger with real photography, you may mention once that the user can turn images on; do not repeat it.`;
+
 const DEFAULT_DESIGN_AI_RULES = `# Design Context
 There is no existing codebase to consider — you are designing from scratch, which means there is nothing to be conservative for. Spend that freedom: commit to a specific visual thesis rather than a defensible average. Accessibility still holds (real contrast on text, legible sizes, a clear focal order) — but accessible and striking are not in tension, and "safe" is not a design goal.`;
 
 export function constructDesignModePrompt(
   aiRules: string | undefined,
   themePrompt?: string,
+  options?: {
+    /**
+     * Whether `generate_image` is in this turn's tool set. Must match what the
+     * tool-set builder decided, or the prompt describes a tool the model
+     * cannot call.
+     */
+    imageGenerationEnabled?: boolean;
+  },
 ): string {
   let prompt = DESIGN_MODE_SYSTEM_PROMPT.replace(
     "[[AI_RULES]]",
     aiRules ?? DEFAULT_DESIGN_AI_RULES,
+  ).replace(
+    "[[IMAGE_GENERATION]]",
+    options?.imageGenerationEnabled
+      ? IMAGE_GENERATION_PROMPT
+      : NO_IMAGE_GENERATION_PROMPT,
   );
 
   if (themePrompt) {

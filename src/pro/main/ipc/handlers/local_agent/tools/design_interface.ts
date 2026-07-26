@@ -31,6 +31,30 @@ const designInterfaceSchema = z.object({
     .string()
     .optional()
     .describe("Short note on the aesthetic intent and key copy decisions"),
+  images: z
+    .array(
+      z.object({
+        key: z
+          .string()
+          .regex(
+            /^[A-Za-z_$][A-Za-z0-9_$]*$/,
+            "Use a plain identifier, e.g. hero",
+          )
+          .describe(
+            "Identifier the drawing code uses to reach this image: images.<key>",
+          ),
+        path: z
+          .string()
+          .describe(
+            'A ".dyad/media/..." path returned by the generate_image tool',
+          ),
+        alt: z.string().optional().describe("What the image shows"),
+      }),
+    )
+    .optional()
+    .describe(
+      "Generated images this screen draws. Only paths returned by generate_image in this conversation.",
+    ),
   code: z
     .string()
     .min(1, "Provide the Konva drawing code")
@@ -44,12 +68,24 @@ const DESCRIPTION = `Generate one interface (screen) by writing Konva drawing co
 Call this once per screen listed in the design brief, in order. Each call is a complete, self-contained mockup.
 
 <execution>
-Your "code" runs as the body of: new Function("Konva", "layer", "width", "height", code)
+Your "code" runs as the body of: new Function("Konva", "layer", "width", "height", "images", code)
 - "Konva" is the Konva library. Build shapes with its constructors (Konva.Rect, Konva.Text, Konva.Circle, Konva.Line, Konva.Group, …).
 - "layer" is a Konva.Layer already added to a stage. Add every shape to it via layer.add(shape). The frame background is already painted for you.
 - "width" and "height" are the canvas dimensions in px.
+- "images" maps each key from this call's "images" array to a loaded image element (see <images> below). It is an empty object when you pass no images.
 Do NOT create the Stage or Layer, do NOT call layer.draw(), do NOT reference the DOM/window or load external resources, and do NOT return a value. Just add shapes to "layer".
 </execution>
+
+<images>
+Only available when the generate_image tool is in your tool set. If it isn't, skip this section entirely and use neutral placeholder rects for media (see <guidelines>) — never invent an image path.
+
+To place a generated image:
+1. Call generate_image and keep the ".dyad/media/..." path it returns.
+2. List it here as { "key": "hero", "path": ".dyad/media/generated-….png", "alt": "…" }.
+3. Draw it: layer.add(new Konva.Image({ image: images.hero, x: 768, y: 216, width: 576, height: 720, cornerRadius: 12 }));
+
+The image is cover-cropped (centered) to the width and height you set, so pick the frame the layout wants and ignore the source aspect ratio. "opacity" works for a wash behind type. An unknown key is simply absent from "images", so guard with a placeholder rect underneath if you are unsure.
+</images>
 
 <coordinates>
 x/y are absolute pixels from the top-left of the canvas; keep shapes within the width/height bounds. Konva.Circle is center-anchored (x/y is its center). Konva.Line takes a flat points array [x1,y1,x2,y2,…] in absolute canvas coordinates.
@@ -67,7 +103,7 @@ Set fontFamily to a font from the brief, spelled EXACTLY as the brief has it (e.
 - Apply the accent color to the primary action and almost nothing else. Neutrals should carry the screen.
 - Favor asymmetry and real negative space over a centered stack with everything filled in.
 - Buttons: a filled Konva.Rect (with cornerRadius) plus a centered Konva.Text on top (align "center", verticalAlign "middle", width/height matching the rect).
-- Media: a solid or subtly-tinted Konva.Rect in a palette neutral, with an optional quiet caption beside it. Do NOT use a dashed border with a centered image glyph — that reads as a wireframe, not a design.
+- Media: when you have a generated image for the slot, draw it with Konva.Image (see <images>). Otherwise a solid or subtly-tinted Konva.Rect in a palette neutral, with an optional quiet caption beside it. Do NOT use a dashed border with a centered image glyph — that reads as a wireframe, not a design.
 - Icons: you cannot draw real ones. Unicode/emoji glyphs (▦ ★ ✓ → ⚡ 🔍) render inconsistently and are the loudest tell of generated design — do not put one on every card, nav item, or list row. Budget roughly two per screen. Prefer real geometry (Konva.Line for an arrow or chevron, Konva.Circle for a bullet or avatar) and prefer typography and space over symbols.
 </guidelines>
 
@@ -110,6 +146,7 @@ export const designInterfaceTool: ToolDefinition<
       height: args.height,
       background: args.background,
       notes: args.notes,
+      images: args.images,
       code: args.code,
     });
 

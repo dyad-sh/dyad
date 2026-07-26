@@ -409,6 +409,12 @@ export interface BuildAgentToolSetOptions {
    * If false, exclude app blueprint tools (write_app_blueprint).
    */
   enableAppBlueprint?: boolean;
+  /**
+   * Design mode only: if true, `generate_image` joins the design tool set so
+   * mockups can use real imagery instead of placeholder rects. Ignored outside
+   * design mode, where the tool follows the normal rules.
+   */
+  enableDesignImages?: boolean;
 }
 
 /**
@@ -448,6 +454,15 @@ const DESIGN_SPECIFIC_TOOLS = new Set([
 ]);
 
 /**
+ * Tools design mode may additionally use when the user turns on the "Images"
+ * toggle. `generate_image` is state-modifying (it writes a PNG under
+ * `.dyad/media`), so without this it would be filtered out along with every
+ * other workspace-mutating tool. It writes no project code, which is what
+ * makes it safe to admit into an otherwise read-only mode.
+ */
+const DESIGN_IMAGE_TOOLS = new Set(["generate_image"]);
+
+/**
  * Tools only available in Pro agent mode (excluded from basic agent mode).
  */
 const PRO_AGENT_ONLY_TOOLS = new Set<string>();
@@ -471,6 +486,21 @@ const APP_BLUEPRINT_TOOLS = new Set<string>(["write_app_blueprint"]);
 const CAPABILITY_GATED_BLUEPRINT_TOOLS = new Set<string>([
   "execute_sandbox_script",
 ]);
+
+/**
+ * Whether `tool` is an image tool that design mode is currently allowed to use.
+ * False outside design mode, where the tool is governed by the normal rules.
+ */
+function isDesignImageToolAllowed(
+  toolName: string,
+  options: BuildAgentToolSetOptions,
+): boolean {
+  return (
+    options.designModeOnly === true &&
+    options.enableDesignImages === true &&
+    DESIGN_IMAGE_TOOLS.has(toolName)
+  );
+}
 
 function toolModifiesState(
   tool: (typeof TOOL_DEFINITIONS)[number],
@@ -508,11 +538,13 @@ export function shouldIncludeTool(
   if (!options.planModeOnly && PLAN_MODE_ONLY_TOOLS.has(tool.name)) {
     return false;
   }
-  // In design mode, skip state-modifying tools unless they're design-specific.
+  // In design mode, skip state-modifying tools unless they're design-specific
+  // (or image generation, which the user opted into for this session).
   if (
     options.designModeOnly &&
     toolModifiesState(tool, ctx) &&
-    !DESIGN_SPECIFIC_TOOLS.has(tool.name)
+    !DESIGN_SPECIFIC_TOOLS.has(tool.name) &&
+    !isDesignImageToolAllowed(tool.name, options)
   ) {
     return false;
   }
@@ -578,8 +610,14 @@ export function buildAgentToolSet(
           // but the prompt isn't an enforcement boundary. Without this check,
           // a model that skips write_app_blueprint can still call e.g.
           // write_file and bypass the required blueprint approval flow.
+          //
+          // Design mode is exempt wholesale: it produces no project code, so
+          // its tools (including image generation) have nothing for a
+          // blueprint to gate, and an app still awaiting approval would
+          // otherwise be unable to design anything at all.
           if (
             toolModifiesState(tool, ctx) &&
+            !options.designModeOnly &&
             !APP_BLUEPRINT_TOOLS.has(tool.name) &&
             !PLANNING_SPECIFIC_TOOLS.has(tool.name) &&
             !DESIGN_SPECIFIC_TOOLS.has(tool.name) &&

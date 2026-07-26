@@ -152,6 +152,13 @@ export interface AgentContext {
    * as enabled so non-handler callers fail closed.
    */
   enableAppBlueprint?: boolean;
+  /**
+   * Whether this turn is running in design mode. Tools shared with the coding
+   * modes use it to tailor their result text — design mode has no
+   * `copy_file`/`write_file`, so pointing the model at them would send it after
+   * tools it cannot call.
+   */
+  designMode?: boolean;
 }
 
 // ============================================================================

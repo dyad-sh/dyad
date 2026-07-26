@@ -134,6 +134,7 @@ import {
   isFreeProBuildModeCombination,
   isFreeProModel,
 } from "@/lib/freeProModel";
+import { isDesignImageGenerationEnabled } from "@/shared/designModeImages";
 import { resolveChatModeForTurn } from "./chat_mode_resolution";
 import {
   getFreeAgentQuotaStatus,
@@ -1448,6 +1449,10 @@ This conversation includes one or more image attachments. When the user uploads 
             enableTurboEditsV2: false,
             themePrompt,
             freeModelMode,
+            designImageGenerationEnabled: isDesignImageGenerationEnabled({
+              settings,
+              freeModelMode,
+            }),
           });
 
           await handleLocalAgentStream(event, req, abortController, {

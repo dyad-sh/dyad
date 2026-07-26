@@ -531,6 +531,7 @@ export const constructSystemPrompt = ({
   hasSupabaseProject,
   enableAppBlueprint,
   codeExplorerAvailable,
+  designImageGenerationEnabled,
 }: {
   aiRules: string | undefined;
   chatMode?: "build" | "ask" | "local-agent" | "plan" | "design";
@@ -561,13 +562,20 @@ export const constructSystemPrompt = ({
    * TypeScript exploration tool over code_search for broad codebase discovery.
    */
   codeExplorerAvailable?: boolean;
+  /**
+   * Design mode only: whether the `generate_image` tool is available this turn,
+   * so the prompt tells the model to use real imagery in the mockups.
+   */
+  designImageGenerationEnabled?: boolean;
 }) => {
   if (chatMode === "plan") {
     return constructPlanModePrompt(aiRules, themePrompt);
   }
 
   if (chatMode === "design") {
-    return constructDesignModePrompt(aiRules, themePrompt);
+    return constructDesignModePrompt(aiRules, themePrompt, {
+      imageGenerationEnabled: designImageGenerationEnabled,
+    });
   }
 
   if (chatMode === "local-agent") {

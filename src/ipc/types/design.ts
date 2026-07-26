@@ -172,6 +172,26 @@ export type DesignBriefData = z.infer<typeof DesignBriefDataSchema>;
 // Interface (per-screen Konva drawing code)
 // -----------------------------------------------------------------------------
 
+/**
+ * A generated image the mockup code can draw. `path` is the app-relative path
+ * returned by the `generate_image` tool (always inside `.dyad/media/`); the
+ * renderer resolves it to a `dyad-media://` URL and exposes the loaded element
+ * to the drawing code as `images[key]`.
+ */
+export const DesignImageAssetSchema = z.object({
+  /**
+   * Identifier the drawing code uses to reach the image (`images.hero`).
+   * Restricted to a JS identifier so `images.<key>` is always valid.
+   */
+  key: z.string().regex(/^[A-Za-z_$][A-Za-z0-9_$]*$/),
+  /** App-relative path under `.dyad/media/`, e.g. `.dyad/media/generated-1.png`. */
+  path: z.string(),
+  /** What the image shows — used for the mockup's caption/alt context. */
+  alt: z.string().optional(),
+});
+
+export type DesignImageAsset = z.infer<typeof DesignImageAssetSchema>;
+
 export const DesignInterfaceDataSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -185,10 +205,16 @@ export const DesignInterfaceDataSchema = z.object({
   /** Aesthetic rationale / copy notes shown alongside the mockup. */
   notes: z.string().optional(),
   /**
+   * Generated images this screen draws, if any. Optional so interfaces written
+   * before image support (or with images turned off) still load.
+   */
+  images: z.array(DesignImageAssetSchema).optional(),
+  /**
    * JavaScript that draws the screen with Konva. The renderer runs it as
-   * `new Function("Konva", "layer", "width", "height", code)`, so the code adds
-   * shapes to the provided `layer` (already attached to a scaled stage) using
-   * the `Konva` constructors and the `width`/`height` of the canvas.
+   * `new Function("Konva", "layer", "width", "height", "images", code)`, so the
+   * code adds shapes to the provided `layer` (already attached to a scaled
+   * stage) using the `Konva` constructors, the `width`/`height` of the canvas,
+   * and the `images` map keyed by the entries above.
    */
   code: z.string(),
 });

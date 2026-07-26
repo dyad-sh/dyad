@@ -5,8 +5,11 @@ import Konva from "konva";
 import { Maximize2, Palette, X, ZoomIn, ZoomOut } from "lucide-react";
 import { designStateAtom } from "@/atoms/designAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { useLoadApp } from "@/hooks/useLoadApp";
 import type { DesignBriefData, DesignInterfaceData } from "@/ipc/types/design";
 import { loadDesignFonts } from "./designFonts";
+import { fitLoadedImage, resolveDesignImageUrl } from "./designImages";
 import { DesignOptionsPicker } from "./DesignOptionsPicker";
 
 // Widest a rendered frame is shown at inline; larger canvases scale down to fit.
@@ -32,10 +35,13 @@ const clamp = (value: number, lo: number, hi: number) =>
  */
 function MockupStage({
   data,
+  appPath,
   mode,
   onExpand,
 }: {
   data: DesignInterfaceData;
+  /** App root, used to resolve the design's generated images. */
+  appPath: string;
   mode: "inline" | "fullscreen";
   onExpand?: () => void;
 }) {
@@ -146,6 +152,46 @@ function MockupStage({
       }),
     );
 
+    let cancelled = false;
+
+    // Generated images (design mode's "Images" toggle). Elements are created
+    // up front and handed to the drawing code straight away — Konva simply
+    // draws nothing for one that hasn't loaded yet, and the load handler below
+    // crops and redraws it in. Same shape as the font handling underneath.
+    const imageElements: Record<string, HTMLImageElement> = {};
+    const detachImageListeners: (() => void)[] = [];
+
+    // Size and cover-crop every image node whose source has arrived, then
+    // repaint.
+    const syncImages = () => {
+      for (const node of layer.find("Image") as Konva.Image[]) {
+        const element = node.image();
+        if (
+          element instanceof HTMLImageElement &&
+          element.complete &&
+          element.naturalWidth
+        ) {
+          fitLoadedImage(node, element);
+        }
+      }
+      layer.batchDraw();
+    };
+
+    for (const asset of data.images ?? []) {
+      const url = resolveDesignImageUrl(appPath, asset.path);
+      if (!url) continue;
+      const element = new Image();
+      const onSettled = () => {
+        if (!cancelled) syncImages();
+      };
+      element.addEventListener("load", onSettled);
+      element.src = url;
+      detachImageListeners.push(() =>
+        element.removeEventListener("load", onSettled),
+      );
+      imageElements[asset.key] = element;
+    }
+
     try {
       // eslint-disable-next-line no-new-func
       const build = new Function(
@@ -153,18 +199,21 @@ function MockupStage({
         "layer",
         "width",
         "height",
+        "images",
         data.code,
       );
-      build(Konva, layer, data.width, data.height);
+      build(Konva, layer, data.width, data.height, imageElements);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
     layer.draw();
+    // Catches images already in the memory cache, whose load event fired (or
+    // will fire) before the nodes referencing them existed.
+    syncImages();
 
     // The first draw above can land before the mockup's fonts finish loading,
     // in which case canvas silently substitutes a default face. Redraw once
     // they're ready (no-op on the common path, where they're already cached).
-    let cancelled = false;
     loadDesignFonts().then(() => {
       if (!cancelled) layer.draw();
     });
@@ -184,10 +233,11 @@ function MockupStage({
     setZoom(1);
     return () => {
       cancelled = true;
+      for (const detach of detachImageListeners) detach();
       stage.destroy();
       stageRef.current = null;
     };
-  }, [data, isFullscreen, zoomTo]);
+  }, [data, appPath, isFullscreen, zoomTo]);
 
   // Apply viewport size, zoom, and crispness whenever they change (resize/zoom),
   // without rebuilding the scene.
@@ -311,9 +361,11 @@ function MockupStage({
 /** Full-page overlay showing a single interface with zoom + pan. */
 function FullscreenMockup({
   data,
+  appPath,
   onClose,
 }: {
   data: DesignInterfaceData;
+  appPath: string;
   onClose: () => void;
 }) {
   useEffect(() => {
@@ -353,13 +405,19 @@ function FullscreenMockup({
           <X size={18} />
         </button>
       </div>
-      <MockupStage data={data} mode="fullscreen" />
+      <MockupStage data={data} appPath={appPath} mode="fullscreen" />
     </div>,
     document.body,
   );
 }
 
-function InterfaceFrame({ data }: { data: DesignInterfaceData }) {
+function InterfaceFrame({
+  data,
+  appPath,
+}: {
+  data: DesignInterfaceData;
+  appPath: string;
+}) {
   const [fullscreen, setFullscreen] = useState(false);
 
   return (
@@ -372,6 +430,7 @@ function InterfaceFrame({ data }: { data: DesignInterfaceData }) {
       </div>
       <MockupStage
         data={data}
+        appPath={appPath}
         mode="inline"
         onExpand={() => setFullscreen(true)}
       />
@@ -381,7 +440,11 @@ function InterfaceFrame({ data }: { data: DesignInterfaceData }) {
         </p>
       )}
       {fullscreen && (
-        <FullscreenMockup data={data} onClose={() => setFullscreen(false)} />
+        <FullscreenMockup
+          data={data}
+          appPath={appPath}
+          onClose={() => setFullscreen(false)}
+        />
       )}
     </div>
   );
@@ -432,6 +495,11 @@ function DesignBriefHeader({ brief }: { brief: DesignBriefData }) {
 
 export function DesignCanvas() {
   const selectedChatId = useAtomValue(selectedChatIdAtom);
+  const selectedAppId = useAtomValue(selectedAppIdAtom);
+  const { app } = useLoadApp(selectedAppId);
+  // Generated images live under the app's `.dyad/media`, so mockups need the
+  // app root to build the `dyad-media://` URLs that serve them.
+  const appPath = app?.resolvedPath ?? app?.path ?? "";
   const [designState, setDesignState] = useAtom(designStateAtom);
 
   const brief = selectedChatId
@@ -482,7 +550,7 @@ export function DesignCanvas() {
       )}
       {brief && <DesignBriefHeader brief={brief} />}
       {interfaces.map((data) => (
-        <InterfaceFrame key={data.id} data={data} />
+        <InterfaceFrame key={data.id} data={data} appPath={appPath} />
       ))}
     </div>
   );

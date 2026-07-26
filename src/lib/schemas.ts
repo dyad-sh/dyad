@@ -368,6 +368,13 @@ const BaseUserSettingsFields = {
 
   enableAutoFixProblems: z.boolean().optional(),
   enableAppBlueprint: z.boolean().optional(),
+  /**
+   * Design mode only: let the agent generate images and place them in the
+   * mockups. Off by default — image generation is a paid, Pro-only engine
+   * call, so the user opts in per session via the toggle next to the mode
+   * selector.
+   */
+  enableDesignModeImages: z.boolean().optional(),
   autoExpandPreviewPanel: z.boolean().optional(),
   enableChatEventNotifications: z.boolean().optional(),
   blockUnsafeNpmPackages: z.boolean().optional(),

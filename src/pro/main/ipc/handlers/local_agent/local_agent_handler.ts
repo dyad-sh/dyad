@@ -31,6 +31,7 @@ import {
   type UserSettings,
 } from "@/lib/schemas";
 import type { SqlConsentMetadata } from "@/shared/sqlConsentMetadata";
+import { isDesignImageGenerationEnabled } from "@/shared/designModeImages";
 import { isFreeProModel } from "@/lib/freeProModel";
 import { readSettings } from "@/main/settings";
 import { getDyadAppPath } from "@/paths/paths";
@@ -675,6 +676,7 @@ export async function handleLocalAgentStream(
       fileEditTracker,
       isDyadPro: isDyadProEnabled(settings),
       freeModelMode: effectiveFreeModelMode,
+      designMode: designModeOnly,
       onXmlStream: (accumulatedXml: string) => {
         // Stream the in-progress tool XML as a sidecar preview overlay.
         // Does NOT enter `message.content` or `fullResponse` — the patch
@@ -737,6 +739,14 @@ export async function handleLocalAgentStream(
       freeModelMode: effectiveFreeModelMode,
       enableAppBlueprint:
         settings.enableAppBlueprint && chat.app.needsAppBlueprint,
+      // Same predicate the design-mode system prompt was built from, so the
+      // prompt never advertises an image tool the tool set filtered out.
+      enableDesignImages:
+        designModeOnly &&
+        isDesignImageGenerationEnabled({
+          settings,
+          freeModelMode: effectiveFreeModelMode,
+        }),
     };
     // Same inclusion predicate the tool-set builder uses for the write_file
     // tool, so the sandbox write host can never stay exposed in a turn where

@@ -152,6 +152,13 @@ export const generateImageTool: ToolDefinition<
 
       logger.log(`Image generation completed, saved to: ${relativePath}`);
 
+      // Design mode has no copy_file/write_file, and the mockup renderer reads
+      // straight out of .dyad/media — so point the model at design_interface
+      // instead of a copy step it cannot perform.
+      if (ctx.designMode) {
+        return `Image generated and saved to: ${relativePath}\nPass this path to design_interface in that screen's "images" array (e.g. { "key": "hero", "path": "${relativePath}" }) and draw it with new Konva.Image({ image: images.hero, x, y, width, height }). It is cover-cropped to the width/height you set.`;
+      }
+
       return `Image generated and saved to: ${relativePath}\nUse the copy_file tool to copy it from "${relativePath}" to the appropriate location in the project (e.g., public/assets/), then reference the copied path in your code.`;
     } catch (error) {
       ctx.onXmlComplete(

@@ -43,11 +43,58 @@ testSkipIfWindows(
     await po.page.getByTestId("preview-recording-name-input").fill("add item");
     await po.page.getByTestId("preview-recording-save-button").click();
 
+    // The saved banner links straight to the generated spec in the Code tab.
+    await po.page.getByTestId("preview-recording-open-file-button").click({
+      timeout: Timeout.LONG,
+    });
+    await expect(
+      po.page.locator("#preview-panel").getByText("recorded-add-item.spec.ts"),
+    ).toBeVisible({ timeout: Timeout.LONG });
+    await expect(po.page.getByTestId("save-file-button")).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
+
     // The spec is written under e2e-tests/ and auto-discovered into the panel.
     await po.previewPanel.selectPreviewMode("tests");
     await expect(
       po.page.locator("#preview-panel").getByText("recorded-add-item.spec.ts"),
     ).toBeVisible({ timeout: Timeout.LONG });
+  },
+);
+
+// The recorder lives in the preview, but the Tests panel is where users look
+// for it: the entry point there has to switch tabs and arm the session.
+testSkipIfWindows(
+  "starts a recording from the Tests panel entry point",
+  async ({ po }) => {
+    await po.setUp({ autoApprove: true });
+    await po.importApp("recorder");
+
+    // Recording is part of the testing feature — no opt-in, no record button.
+    await po.previewPanel.selectPreviewMode("preview");
+    await expect(po.page.getByTestId("preview-record-button")).toBeHidden();
+
+    await po.previewPanel.selectPreviewMode("tests");
+    await po.previewPanel.clickEnableTesting();
+
+    await po.previewPanel.selectPreviewMode("preview");
+    await po.clickRestart();
+    await po.previewPanel.expectPreviewIframeIsVisible();
+    await expect(po.page.getByTestId("preview-record-button")).toBeVisible();
+
+    await po.previewPanel.selectPreviewMode("tests");
+    await po.page.getByTestId("tests-record-button").click();
+
+    // Recording runs in the preview, so the panel switches back to it.
+    await expect(po.page.getByTestId("preview-recording-bar")).toBeVisible({
+      timeout: Timeout.LONG,
+    });
+    await po.previewPanel.expectPreviewIframeIsVisible();
+
+    await po.page.getByTestId("preview-recording-cancel-button").click();
+    await expect(po.page.getByTestId("preview-recording-bar")).toBeHidden({
+      timeout: Timeout.LONG,
+    });
   },
 );
 

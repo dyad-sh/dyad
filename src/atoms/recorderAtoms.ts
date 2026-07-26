@@ -10,6 +10,7 @@ import type { RecordedEntry } from "@/lib/test_recorder/types";
  * - "authenticating": establishing the pre-recording session in the iframe.
  * - "recording": capturing interactions.
  * - "saving": generating + writing the spec.
+ * - "stopping": discarding the session; waiting on isolation teardown.
  */
 export type RecordingPhase =
   | "idle"
@@ -17,6 +18,7 @@ export type RecordingPhase =
   | "authenticating"
   | "recording"
   | "saving"
+  | "stopping"
   // Spec written; offering the optional AI-assertion pass until dismissed.
   | "saved";
 
@@ -40,6 +42,27 @@ export interface RecordingState {
 export const EMPTY_RECORDING_STATE: RecordingState = Object.freeze({
   phase: "idle",
 }) as RecordingState;
+
+/**
+ * A "start recording" ask from outside the preview (currently the Tests panel).
+ * The recorder only lives while the preview is mounted, so the entry point
+ * switches to the preview tab and leaves this request behind for
+ * `useTestRecorder` to pick up once it mounts.
+ *
+ * `requestedAt` keeps a request that was never consumed (the user navigated
+ * somewhere else before the preview mounted) from silently starting a session
+ * minutes later — see `RECORDING_REQUEST_TTL_MS`.
+ */
+export interface RecordingStartRequest {
+  appId: number;
+  requestedAt: number;
+}
+
+export const RECORDING_REQUEST_TTL_MS = 15_000;
+
+export const recordingStartRequestAtom = atom<RecordingStartRequest | null>(
+  null,
+);
 
 export const recordingStateByAppIdAtom = atom<Map<number, RecordingState>>(
   new Map(),

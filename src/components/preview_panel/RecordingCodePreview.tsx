@@ -2,9 +2,10 @@ import type { ReactNode } from "react";
 import { ChevronRight, Code2 } from "lucide-react";
 
 /**
- * Live banner strip that shows the Playwright statement generated for the step
- * the user just performed. It renders directly under the recording bar and
- * continues its red theme, so the two read as one cohesive recording surface.
+ * Live code strip that shows the Playwright statement generated for the step
+ * the user just performed. It renders as the second row *inside* the recording
+ * banner — a hairline divider, no background of its own — so the status row and
+ * the code read as one cohesive surface rather than two stacked banners.
  *
  * Only the current (latest) step is shown — as each new interaction is recorded
  * the line is replaced and animates in, so the banner always reflects "the code
@@ -21,10 +22,10 @@ export function RecordingCodePreview({
 
   return (
     <div
-      className="flex items-center gap-2 border-b border-red-200 bg-red-50/60 px-3 py-1.5 dark:border-red-900/50 dark:bg-red-950/20"
+      className="flex items-center gap-2 border-t border-border/60 px-3 py-1.5"
       data-testid="preview-recording-code"
     >
-      <span className="flex shrink-0 items-center gap-1.5 text-xs font-semibold tracking-wide text-red-700 uppercase dark:text-red-300">
+      <span className="flex shrink-0 items-center gap-1.5 text-xs font-semibold tracking-wide text-purple-700 uppercase dark:text-purple-300">
         <Code2 className="size-3.5" />
         {current ? `Step ${stepNumber}` : "Live code"}
       </span>
@@ -33,11 +34,11 @@ export function RecordingCodePreview({
         <code
           key={stepNumber}
           data-testid="preview-recording-code-line"
-          className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md border border-border bg-(--background-lightest) px-2.5 py-1 font-mono text-xs shadow-sm animate-in fade-in slide-in-from-bottom-1 duration-200 dark:bg-red-950/40"
+          className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md border border-border bg-(--background-lightest) px-2.5 py-1 font-mono text-xs shadow-sm animate-in fade-in slide-in-from-bottom-1 duration-200"
         >
           <ChevronRight
             size={12}
-            className="shrink-0 text-red-500/70 dark:text-red-400/70"
+            className="shrink-0 text-purple-500/70 dark:text-purple-400/70"
           />
           <span className="truncate">{highlightPlaywrightLine(current)}</span>
         </code>

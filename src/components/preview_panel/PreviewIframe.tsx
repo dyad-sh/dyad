@@ -1,4 +1,5 @@
-import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
+import { selectedFileAtom } from "@/atoms/viewAtoms";
 import { useCurrentAppUrl } from "@/hooks/useAppRun";
 import { useAtomValue, useSetAtom, useAtom } from "jotai";
 import {
@@ -33,6 +34,7 @@ import {
   CircleDot,
   Square,
   Loader2,
+  FileCode2,
 } from "lucide-react";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { CopyErrorMessage } from "@/components/CopyErrorMessage";
@@ -217,6 +219,27 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
 const PREVIEW_TOOLBAR_BUTTON_CLASSES =
   "flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-40";
 
+// Quiet actions in the recording banner (Cancel / Done / Open test file). The
+// banner sits on the panel background, so the hover fill has to come from
+// `--background-darkest` — `bg-muted` is nearly invisible against it in light
+// mode.
+const RECORDING_SECONDARY_BUTTON_CLASSES =
+  "rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-(--background-darkest) hover:text-foreground";
+
+/** Status line for the recorder's non-interactive (spinner) phases. */
+function recordingStatusMessage(recorder: TestRecorderController): string {
+  switch (recorder.phase) {
+    case "saving":
+      return "Saving the recorded test…";
+    case "stopping":
+      return "Cleaning up the test environment…";
+    case "authenticating":
+      return recorder.progress ?? "Signing in the test user…";
+    default:
+      return recorder.progress ?? "Setting up the test environment…";
+  }
+}
+
 // Preview iframe component
 export const PreviewIframe = ({
   loading,
@@ -291,17 +314,25 @@ export const PreviewIframe = ({
   const [annotatorMode, setAnnotatorMode] = useAtom(annotatorModeAtom);
   const { app: loadedApp } = useLoadApp(selectedAppId);
   const [recordName, setRecordName] = useState("");
+  const setSelectedFile = useSetAtom(selectedFileAtom);
+  const setPreviewMode = useSetAtom(previewModeAtom);
+  // Recording is part of the testing feature, so the entry point only exists
+  // for apps that opted into testing (the Tests panel owns that opt-in).
+  const canRecordTests = !!loadedApp?.testingEnabled;
 
   const handleRecordClick = () => {
     if (recorder.phase !== "idle") return;
-    if (!loadedApp?.testingEnabled) {
-      showInfo(
-        "Enable testing for this app in the Tests panel before recording a test.",
-      );
-      return;
-    }
     setRecordName("");
     void recorder.startRecording();
+  };
+
+  // Jump straight to the generated spec in the Code tab — recording ends with a
+  // file the user usually wants to read, and hunting for it in the file tree is
+  // the slowest part of the flow.
+  const handleOpenSavedSpec = (specPath: string) => {
+    setSelectedFile({ path: specPath });
+    setPreviewMode("code");
+    recorder.dismissSaved();
   };
 
   const handleEnhanceWithAI = (specPath: string) => {
@@ -1210,48 +1241,52 @@ export const PreviewIframe = ({
                 {annotatorMode ? "Annotator mode active" : "Activate annotator"}
               </TooltipContent>
             </Tooltip>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    onClick={handleRecordClick}
-                    aria-label={
-                      recorder.isRecording ? "Recording test" : "Record test"
-                    }
-                    aria-pressed={recorder.phase !== "idle"}
-                    className={cn(
-                      PREVIEW_TOOLBAR_BUTTON_CLASSES,
-                      "rounded-none border-l border-border",
-                      recorder.phase !== "idle"
-                        ? "bg-red-500 text-white hover:bg-red-600 hover:text-white dark:bg-red-600 dark:hover:bg-red-700"
-                        : "text-red-700 hover:bg-red-100 hover:text-red-800 dark:text-red-300 dark:hover:bg-red-900/50 dark:hover:text-red-200",
-                    )}
-                    disabled={
-                      loading ||
-                      !selectedAppId ||
-                      !appUrl ||
-                      isPicking ||
-                      annotatorMode ||
-                      recorder.phase !== "idle"
-                    }
-                    data-testid="preview-record-button"
-                  />
-                }
-              >
-                {recorder.isBusy ? (
-                  <Loader2 size={16} className="animate-spin" />
-                ) : recorder.isRecording ? (
-                  <Square size={16} />
-                ) : (
-                  <CircleDot size={16} />
-                )}
-              </TooltipTrigger>
-              <TooltipContent>
-                {recorder.phase === "idle"
-                  ? "Record a test"
-                  : "Recording — use the bar below to stop"}
-              </TooltipContent>
-            </Tooltip>
+            {canRecordTests && (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      onClick={handleRecordClick}
+                      aria-label={
+                        recorder.isRecording ? "Recording test" : "Record test"
+                      }
+                      aria-pressed={recorder.phase !== "idle"}
+                      className={cn(
+                        PREVIEW_TOOLBAR_BUTTON_CLASSES,
+                        "rounded-none border-l border-border",
+                        recorder.phase !== "idle"
+                          ? "bg-purple-500 text-white hover:bg-purple-600 hover:text-white dark:bg-purple-600 dark:hover:bg-purple-700"
+                          : "text-purple-700 hover:bg-purple-100 hover:text-purple-800 dark:text-purple-300 dark:hover:bg-purple-900/50 dark:hover:text-purple-200",
+                      )}
+                      disabled={
+                        loading ||
+                        !selectedAppId ||
+                        !appUrl ||
+                        isPicking ||
+                        annotatorMode ||
+                        recorder.phase !== "idle"
+                      }
+                      data-testid="preview-record-button"
+                    />
+                  }
+                >
+                  {recorder.isBusy ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : recorder.isRecording ? (
+                    <Square size={16} />
+                  ) : (
+                    <CircleDot size={16} />
+                  )}
+                </TooltipTrigger>
+                <TooltipContent>
+                  {recorder.phase === "idle"
+                    ? "Record a test"
+                    : recorder.isRecording
+                      ? "Recording — use the bar below to stop"
+                      : recordingStatusMessage(recorder)}
+                </TooltipContent>
+              </Tooltip>
+            )}
           </div>
 
           {/* Browser navigation group */}
@@ -1578,105 +1613,116 @@ export const PreviewIframe = ({
         </div>
       )}
 
+      {/* One banner for the whole session: the status row and the live code line
+          share a container (and the toolbar's background) so recording reads as
+          a single strip under the toolbar rather than stacked alerts. */}
       {recorder.phase !== "idle" && !annotatorMode && (
-        <div
-          className="flex flex-wrap items-center gap-2 border-b border-red-200 bg-red-50 px-3 py-2 text-sm dark:border-red-900/50 dark:bg-red-950/30"
-          data-testid="preview-recording-bar"
-        >
-          {recorder.isRecording ? (
-            <>
-              <span className="flex items-center gap-1.5 font-medium text-red-700 dark:text-red-300">
-                <CircleDot size={14} className="animate-pulse" />
-                Recording
-              </span>
-              <span
-                className="text-muted-foreground"
-                data-testid="preview-recording-step-count"
-              >
-                {recorder.entryCount} step{recorder.entryCount === 1 ? "" : "s"}
-              </span>
-              {recorder.isolation && recorder.isolation.mode !== "none" && (
-                <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-xs text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
-                  isolated data
+        <div className="border-b" data-testid="preview-recording-bar">
+          <div className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm">
+            {recorder.isRecording ? (
+              <>
+                <span className="flex items-center gap-1.5 font-medium text-purple-700 dark:text-purple-300">
+                  <CircleDot size={14} className="animate-pulse" />
+                  Recording
                 </span>
-              )}
-              {recorder.isolation &&
-                recorder.isolation.mode !== "none" &&
-                recorder.auth?.mode === "none" && (
-                  <span
-                    className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground"
-                    data-testid="preview-recording-signed-out-badge"
-                  >
-                    signed out
+                <span
+                  className="text-muted-foreground"
+                  data-testid="preview-recording-step-count"
+                >
+                  {recorder.entryCount} step
+                  {recorder.entryCount === 1 ? "" : "s"}
+                </span>
+                {recorder.isolation && recorder.isolation.mode !== "none" && (
+                  <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-xs text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                    isolated data
                   </span>
                 )}
-              <input
-                value={recordName}
-                onChange={(e) => setRecordName(e.target.value)}
-                placeholder="Test name"
-                aria-label="Test name"
-                data-testid="preview-recording-name-input"
-                className="ml-auto min-w-0 max-w-48 flex-1 rounded-sm border border-border bg-(--background-lighter) px-2 py-1 text-xs outline-none"
-              />
-              <button
-                onClick={() => void recorder.stopAndSave(recordName)}
-                data-testid="preview-recording-save-button"
-                className="flex items-center gap-1 rounded-md bg-red-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-700"
-              >
-                <Square size={12} /> Stop &amp; Save
-              </button>
-              <button
-                onClick={() => void recorder.cancelRecording()}
-                data-testid="preview-recording-cancel-button"
-                className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
-              >
-                Cancel
-              </button>
-            </>
-          ) : recorder.phase === "saved" ? (
-            <>
-              <span className="min-w-0 truncate font-medium text-emerald-700 dark:text-emerald-300">
-                Saved {recorder.savedSpecPath}
+                {recorder.isolation &&
+                  recorder.isolation.mode !== "none" &&
+                  recorder.auth?.mode === "none" && (
+                    <span
+                      className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground"
+                      data-testid="preview-recording-signed-out-badge"
+                    >
+                      signed out
+                    </span>
+                  )}
+                <input
+                  value={recordName}
+                  onChange={(e) => setRecordName(e.target.value)}
+                  placeholder="Test name"
+                  aria-label="Test name"
+                  data-testid="preview-recording-name-input"
+                  className="ml-auto min-w-0 max-w-48 flex-1 rounded-sm border border-border bg-(--background-lighter) px-2 py-1 text-xs outline-none"
+                />
+                <button
+                  onClick={() => void recorder.stopAndSave(recordName)}
+                  data-testid="preview-recording-save-button"
+                  className="flex items-center gap-1 rounded-md bg-purple-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-purple-700"
+                >
+                  <Square size={12} /> Stop &amp; Save
+                </button>
+                <button
+                  onClick={() => void recorder.cancelRecording()}
+                  data-testid="preview-recording-cancel-button"
+                  className={RECORDING_SECONDARY_BUTTON_CLASSES}
+                >
+                  Cancel
+                </button>
+              </>
+            ) : recorder.phase === "saved" ? (
+              <>
+                <span className="min-w-0 truncate font-medium text-emerald-700 dark:text-emerald-300">
+                  Saved {recorder.savedSpecPath}
+                </span>
+                <button
+                  onClick={() =>
+                    recorder.savedSpecPath &&
+                    handleEnhanceWithAI(recorder.savedSpecPath)
+                  }
+                  data-testid="preview-recording-enhance-button"
+                  className="ml-auto flex items-center gap-1 rounded-md bg-purple-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-purple-700"
+                >
+                  <Sparkles size={12} /> Add assertions with AI
+                </button>
+                <button
+                  onClick={() =>
+                    recorder.savedSpecPath &&
+                    handleOpenSavedSpec(recorder.savedSpecPath)
+                  }
+                  data-testid="preview-recording-open-file-button"
+                  className={cn(
+                    RECORDING_SECONDARY_BUTTON_CLASSES,
+                    "flex items-center gap-1",
+                  )}
+                >
+                  <FileCode2 size={12} /> Open test file
+                </button>
+                <button
+                  onClick={() => recorder.dismissSaved()}
+                  data-testid="preview-recording-done-button"
+                  className={RECORDING_SECONDARY_BUTTON_CLASSES}
+                >
+                  Done
+                </button>
+              </>
+            ) : (
+              <span className="flex items-center gap-1.5 text-muted-foreground">
+                <Loader2 size={14} className="animate-spin" />
+                {recordingStatusMessage(recorder)}
               </span>
-              <button
-                onClick={() =>
-                  recorder.savedSpecPath &&
-                  handleEnhanceWithAI(recorder.savedSpecPath)
-                }
-                data-testid="preview-recording-enhance-button"
-                className="ml-auto flex items-center gap-1 rounded-md bg-purple-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-purple-700"
-              >
-                <Sparkles size={12} /> Add assertions with AI
-              </button>
-              <button
-                onClick={() => recorder.dismissSaved()}
-                data-testid="preview-recording-done-button"
-                className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
-              >
-                Done
-              </button>
-            </>
-          ) : (
-            <span className="flex items-center gap-1.5 text-muted-foreground">
-              <Loader2 size={14} className="animate-spin" />
-              {recorder.progress ??
-                (recorder.phase === "saving"
-                  ? "Saving the recorded test…"
-                  : recorder.phase === "authenticating"
-                    ? "Signing in the test user…"
-                    : "Setting up the recording session…")}
-            </span>
-          )}
-          {recorder.warning && (
-            <span className="w-full text-xs text-amber-600 dark:text-amber-400">
-              {recorder.warning}
-            </span>
+            )}
+            {recorder.warning && (
+              <span className="w-full text-xs text-amber-600 dark:text-amber-400">
+                {recorder.warning}
+              </span>
+            )}
+          </div>
+
+          {recorder.isRecording && (
+            <RecordingCodePreview steps={recorder.steps} />
           )}
         </div>
-      )}
-
-      {recorder.isRecording && !annotatorMode && (
-        <RecordingCodePreview steps={recorder.steps} />
       )}
 
       <div className="relative flex-grow overflow-hidden">
@@ -1763,10 +1809,43 @@ export const PreviewIframe = ({
             )}
           </div>
         )}
+        {recorder.isBusy && !annotatorMode && (
+          <RecordingSetupOverlay recorder={recorder} />
+        )}
       </div>
     </div>
   );
 };
+
+/**
+ * Blocks (and explains) the preview while a recording session is being set up
+ * or torn down. Isolation setup restarts the dev server and signs the test user
+ * in, so anything the user clicks in that window is both lost and confusing.
+ */
+function RecordingSetupOverlay({
+  recorder,
+}: {
+  recorder: TestRecorderController;
+}) {
+  return (
+    <div
+      className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-background/85 px-6 text-center backdrop-blur-sm"
+      data-testid="preview-recording-overlay"
+      role="status"
+      aria-live="polite"
+    >
+      <Loader2 className="size-8 animate-spin text-purple-600 dark:text-purple-300" />
+      <p className="text-base font-medium text-foreground">
+        {recordingStatusMessage(recorder)}
+      </p>
+      <p className="max-w-sm text-sm text-muted-foreground">
+        {recorder.phase === "starting" || recorder.phase === "authenticating"
+          ? "Dyad is preparing an isolated environment for your recording — hold off on interacting with the preview until it's ready."
+          : "Hold off on interacting with the preview until this finishes."}
+      </p>
+    </div>
+  );
+}
 
 function parseComponentSelection(data: any): ComponentSelection | null {
   if (!data || data.type !== "dyad-component-selected") {

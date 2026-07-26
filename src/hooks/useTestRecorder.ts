@@ -13,6 +13,8 @@ import {
   clearRecordedEntriesForAppAtom,
   currentRecordedEntriesAtom,
   currentRecordingStateAtom,
+  recordingStartRequestAtom,
+  RECORDING_REQUEST_TTL_MS,
   setRecordingStateForAppAtom,
   type RecordingState,
 } from "@/atoms/recorderAtoms";
@@ -68,7 +70,9 @@ export function useTestRecorder({
   const appUrl = useAtomValue(currentAppUrlAtom).appUrl;
   const recordingState = useAtomValue(currentRecordingStateAtom);
   const entries = useAtomValue(currentRecordedEntriesAtom);
+  const startRequest = useAtomValue(recordingStartRequestAtom);
 
+  const setStartRequest = useSetAtom(recordingStartRequestAtom);
   const setRecordingState = useSetAtom(setRecordingStateForAppAtom);
   const appendEntry = useSetAtom(appendRecordedEntryAtom);
   const clearEntries = useSetAtom(clearRecordedEntriesForAppAtom);
@@ -472,10 +476,32 @@ export function useTestRecorder({
     const targetAppId = appId;
     if (targetAppId == null) return;
     postToIframe({ type: "deactivate-dyad-recorder" });
+    // stopRecording resolves only once isolation teardown finishes (dropping a
+    // Neon branch / removing the Supabase test user takes seconds), so hold a
+    // visible "stopping" phase instead of leaving the bar up with no feedback.
+    patchState(targetAppId, (prev) => ({ ...prev, phase: "stopping" }));
     await ipc.recording.stopRecording({ appId: targetAppId }).catch(() => {});
     clearEntries(targetAppId);
     patchState(targetAppId, { phase: "idle" });
   }, [appId, clearEntries, patchState, postToIframe]);
+
+  // Honor a "record" click made outside the preview (the Tests panel entry
+  // point), which switches to the preview tab and leaves the request behind for
+  // this hook to consume once it mounts.
+  useEffect(() => {
+    if (!startRequest || appId == null) return;
+    const isStale =
+      Date.now() - startRequest.requestedAt > RECORDING_REQUEST_TTL_MS;
+    if (startRequest.appId !== appId) {
+      // Only drop another app's request once it can no longer be honored, so
+      // switching apps mid-request doesn't cancel an in-flight ask.
+      if (isStale) setStartRequest(null);
+      return;
+    }
+    setStartRequest(null);
+    if (isStale || phaseRef.current !== "idle") return;
+    void startRecording();
+  }, [appId, setStartRequest, startRecording, startRequest]);
 
   return {
     phase: recordingState.phase,
@@ -491,7 +517,8 @@ export function useTestRecorder({
     isBusy:
       recordingState.phase === "starting" ||
       recordingState.phase === "authenticating" ||
-      recordingState.phase === "saving",
+      recordingState.phase === "saving" ||
+      recordingState.phase === "stopping",
     startRecording,
     stopAndSave,
     cancelRecording,

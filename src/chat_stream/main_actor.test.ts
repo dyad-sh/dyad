@@ -325,6 +325,26 @@ describe("main-hosted chat stream actor", () => {
     ).rejects.toMatchObject({ kind: "auth" });
   });
 
+  it("rejects renderer submissions for an app that does not own the chat", async () => {
+    await expect(
+      chatStreamDefinition.remote.authorizeDispatch({
+        sender: {
+          webContentsId: 1,
+          windowSessionId: "renderer-window",
+        },
+        key: chatStreamKey(7),
+        event: {
+          type: "SUBMIT",
+          intent: {
+            ...turn("wrong-app"),
+            appId: 4,
+          },
+        },
+        currentState: undefined,
+      }),
+    ).rejects.toMatchObject({ kind: "auth" });
+  });
+
   it("retains a submission subscription until terminal settlement", async () => {
     const clock = createFakeClock();
     const host = new ActorHost({

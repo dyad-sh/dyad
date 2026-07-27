@@ -169,9 +169,7 @@ function createCommandRunner(
             context.key.chatId,
             command.intent.originWindowSessionId,
           );
-          const targetAppId =
-            command.intent.appId ??
-            (await requireExistingChat(context.key.chatId));
+          const targetAppId = await requireExistingChat(context.key.chatId);
           void executeChatStreamFromActor(
             endpoint,
             {
@@ -256,7 +254,6 @@ function createCommandRunner(
             if (!active) return;
             const targetAppId =
               active.targetAppId ??
-              active.intent.appId ??
               (await requireExistingChat(context.key.chatId));
             emit({
               type: "STREAM_ENDED",

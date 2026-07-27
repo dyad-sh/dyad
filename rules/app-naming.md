@@ -30,3 +30,7 @@ approval, template apply).
   copy-then-delete: on case-insensitive filesystems (macOS/Windows defaults)
   source and destination are the same physical directory, so the delete step
   destroys the app.
+- Long-running operations that write inside an app must acquire the same
+  per-app `withLock(appId, ...)` used by rename/location changes and re-read
+  `apps.path` after acquiring it. A path captured before network or other async
+  work can become stale and recreate files in the app's former directory.

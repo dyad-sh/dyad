@@ -105,7 +105,10 @@ export function createDyadMediaProtocolHandler({
       // dyad-media://media/app-id/{id}/.dyad/{subdir}/{filename}
       const pathSegments = url.pathname.slice(1).split("/");
       const allowedSubdirs = [DYAD_MEDIA_SUBDIR, DYAD_SCREENSHOT_SUBDIR];
-      const usesAppId = pathSegments[0] === "app-id";
+      const usesAppId =
+        pathSegments.length === 5 &&
+        pathSegments[0] === "app-id" &&
+        /^[1-9]\d*$/.test(pathSegments[1]);
       const internalDirIndex = usesAppId ? 2 : 1;
       const subdirIndex = internalDirIndex + 1;
       const filenameIndex = internalDirIndex + 2;

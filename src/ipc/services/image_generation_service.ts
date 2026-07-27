@@ -15,6 +15,7 @@ import path from "node:path";
 import log from "electron-log";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { getDyadEngineBaseUrl } from "../utils/dyad_engine_url";
+import { ensureDyadGitignored } from "../handlers/gitignoreUtils";
 
 const logger = log.scope("image_generation_service");
 
@@ -273,13 +274,19 @@ export class ImageGenerationService {
     throwIfGenerationCancelled(controller.signal);
 
     // Save to app's media folder under lock (consistent with media CRUD handlers)
-    const { fileName, filePath, appPath } = await withLock(
-      `media:${params.targetAppId}`,
-      async () => {
+    const savedImage = await withLock(params.targetAppId, async () =>
+      withLock(`media:${params.targetAppId}`, async () => {
         this.assertAcceptingGenerations(params.targetAppId);
         throwIfGenerationCancelled(controller.signal);
-        const appPath = getDyadAppPath(app.path);
-        const mediaDir = path.join(appPath, DYAD_MEDIA_DIR_NAME);
+        const currentApp = await db.query.apps.findFirst({
+          where: eq(apps.id, params.targetAppId),
+        });
+        if (!currentApp) {
+          throw new DyadError("Target app not found", DyadErrorKind.NotFound);
+        }
+        const resolvedAppPath = getDyadAppPath(currentApp.path);
+        await ensureDyadGitignored(resolvedAppPath);
+        const mediaDir = path.join(resolvedAppPath, DYAD_MEDIA_DIR_NAME);
         await fs.promises.mkdir(mediaDir, { recursive: true });
 
         const timestamp = Date.now();
@@ -317,17 +324,17 @@ export class ImageGenerationService {
         }
 
         logger.log(`Generated image saved: ${filePath}`);
-        return { fileName, filePath, appPath: app.path };
-      },
+        return {
+          fileName,
+          filePath,
+          appPath: currentApp.path,
+          appId: currentApp.id,
+          appName: currentApp.name,
+        };
+      }),
     );
 
-    return {
-      fileName,
-      filePath,
-      appPath,
-      appId: app.id,
-      appName: app.name,
-    };
+    return savedImage;
   }
 
   cancel(requestId: string): boolean {

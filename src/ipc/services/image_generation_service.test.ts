@@ -2,8 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { eq } from "drizzle-orm";
 import { apps } from "@/db/schema";
 import { DyadErrorKind } from "@/errors/dyad_error";
+import { withLock } from "@/ipc/utils/lock_utils";
 import {
   type HandlerTestHarness,
   setupHandlerTestHarness,
@@ -72,6 +74,7 @@ describe("ImageGenerationService", () => {
       .values({ name: "Test app", path: "test-app" })
       .run();
     appId = Number(result.lastInsertRowid);
+    fs.mkdirSync(path.join(tempBase, "test-app"), { recursive: true });
   });
 
   afterEach(() => {
@@ -318,7 +321,11 @@ describe("ImageGenerationService", () => {
     await expect(generation).rejects.toMatchObject({
       kind: DyadErrorKind.UserCancelled,
     });
-    expect(writeFile).not.toHaveBeenCalled();
+    expect(writeFile).not.toHaveBeenCalledWith(
+      expect.stringMatching(/\.tmp$/),
+      expect.any(Buffer),
+      expect.anything(),
+    );
   });
 
   it("aborts and cleans up a file write when generation is cancelled", async () => {
@@ -335,9 +342,13 @@ describe("ImageGenerationService", () => {
       ),
     );
     const writeStarted = deferred<void>();
+    const originalWriteFile = fs.promises.writeFile;
     const writeFile = vi
       .spyOn(fs.promises, "writeFile")
-      .mockImplementationOnce(async (_file, _data, options) => {
+      .mockImplementation(async (file, data, options) => {
+        if (!String(file).endsWith(".tmp")) {
+          return originalWriteFile(file, data, options);
+        }
         const signal = (options as { signal?: AbortSignal } | undefined)
           ?.signal;
         writeStarted.resolve();
@@ -364,6 +375,55 @@ describe("ImageGenerationService", () => {
     expect(rm).toHaveBeenCalledWith(expect.stringMatching(/\.tmp$/), {
       force: true,
     });
+  });
+
+  it("serializes with app moves and saves using the refreshed app path", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            created: 1,
+            data: [{ b64_json: Buffer.from("image").toString("base64") }],
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+    const appLockAcquired = deferred<void>();
+    const releaseAppLock = deferred<void>();
+    const relocation = withLock(appId, async () => {
+      appLockAcquired.resolve();
+      await releaseAppLock.promise;
+      const movedAppPath = path.join(tempBase, "moved-app");
+      await fs.promises.mkdir(movedAppPath, { recursive: true });
+      harness.db
+        .update(apps)
+        .set({ path: "moved-app", name: "Moved app" })
+        .where(eq(apps.id, appId))
+        .run();
+    });
+    await appLockAcquired.promise;
+
+    const generation = generate("move-during-generation");
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+    releaseAppLock.resolve();
+    await relocation;
+
+    await expect(generation).resolves.toMatchObject({
+      appPath: "moved-app",
+      appName: "Moved app",
+      filePath: expect.stringContaining(path.join("moved-app", ".dyad")),
+    });
+    await expect(
+      fs.promises.readFile(
+        path.join(tempBase, "moved-app", ".gitignore"),
+        "utf-8",
+      ),
+    ).resolves.toContain(".dyad/");
+    expect(
+      fs.existsSync(path.join(tempBase, "test-app", ".dyad", "media")),
+    ).toBe(false);
   });
 
   it("removes failed requests from the active controller registry", async () => {

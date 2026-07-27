@@ -459,6 +459,105 @@ describe("main-hosted app-run actor", () => {
     });
   });
 
+  it("settles shared-runtime requests by request ID", () => {
+    const sharedInvocation = {
+      kind: "app-run",
+      entityKey: 7,
+      operationId: "runtime",
+    } as const;
+    const result = appRunDefinition.transition(
+      {
+        runState: {
+          type: "ready",
+          appId: 7,
+          invocationRef: sharedInvocation,
+          url: null,
+        },
+        previewReloadEpoch: 0,
+        pendingOperations: [
+          {
+            operationId: "request-a",
+            invocationRef: sharedInvocation,
+          },
+          {
+            operationId: "request-b",
+            invocationRef: sharedInvocation,
+          },
+        ],
+        lastSettlement: null,
+      },
+      {
+        type: "PROCESS_FAILED",
+        operationId: "request-b",
+        invocationRef: sharedInvocation,
+        error: { message: "request B failed" },
+      },
+      appRunKey(7),
+    );
+
+    expect(result).toMatchObject({
+      kind: "applied",
+      state: {
+        pendingOperations: [{ operationId: "request-a" }],
+        lastSettlement: {
+          operationId: "request-b",
+          outcome: "failed",
+        },
+      },
+    });
+  });
+
+  it("preserves the runtime invocation when retrying an errored start", () => {
+    const liveInvocation = {
+      kind: "app-run",
+      entityKey: 7,
+      operationId: "still-installing",
+    } as const;
+    const result = appRunDefinition.transition(
+      {
+        runState: {
+          type: "errored",
+          appId: 7,
+          invocationRef: liveInvocation,
+          error: { message: "readiness timed out" },
+        },
+        previewReloadEpoch: 0,
+        pendingOperations: [],
+        lastSettlement: null,
+      },
+      {
+        type: "START",
+        operationId: "retry-request",
+        startedAt: 20,
+        expectedRevision: 1,
+      },
+      appRunKey(7),
+    );
+
+    expect(result).toMatchObject({
+      kind: "applied",
+      state: {
+        runState: {
+          type: "starting",
+          invocationRef: liveInvocation,
+        },
+        pendingOperations: [
+          {
+            operationId: "retry-request",
+            invocationRef: liveInvocation,
+          },
+        ],
+      },
+      commands: [
+        {
+          type: "start",
+          operationId: "retry-request",
+          invocationRef: liveInvocation,
+        },
+      ],
+    });
+  });
+
   it("treats a concurrent ensure-running revision conflict as success", async () => {
     const { duplex, host } = createHarness();
     const connection = duplex.connect();

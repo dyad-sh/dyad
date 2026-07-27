@@ -83,9 +83,14 @@ export class MainAppRuntimeOutput implements AppRuntimeOutput {
     ) {
       this.producer.send(
         output.type === "agent-lifecycle-succeeded"
-          ? { type: "PROCESS_SPAWNED", invocationRef }
+          ? {
+              type: "PROCESS_SPAWNED",
+              operationId: invocationRef.operationId,
+              invocationRef,
+            }
           : {
               type: "PROCESS_FAILED",
+              operationId: invocationRef.operationId,
               invocationRef,
               error: { message: output.message },
             },

@@ -5,6 +5,16 @@ interface ProcessRow {
   parentPid: number;
 }
 
+interface ProcessTreeSyncDependencies {
+  spawnSync: typeof spawnSync;
+  kill(pid: number, signal: NodeJS.Signals): boolean;
+}
+
+const processTreeSyncDependencies: ProcessTreeSyncDependencies = {
+  spawnSync,
+  kill: (pid, signal) => process.kill(pid, signal),
+};
+
 export function collectDescendantPids(
   rootPid: number,
   rows: readonly ProcessRow[],
@@ -34,32 +44,45 @@ export function collectDescendantPids(
 export function killProcessTreeSync(
   rootPid: number,
   platform: NodeJS.Platform = process.platform,
-): void {
+  dependencies: ProcessTreeSyncDependencies = processTreeSyncDependencies,
+): boolean {
   if (platform === "win32") {
-    spawnSync("taskkill.exe", ["/pid", String(rootPid), "/t", "/f"], {
-      stdio: "ignore",
-      windowsHide: true,
-    });
-    return;
+    const result = dependencies.spawnSync(
+      "taskkill.exe",
+      ["/pid", String(rootPid), "/t", "/f"],
+      {
+        stdio: "ignore",
+        windowsHide: true,
+      },
+    );
+    return result.error === undefined && result.status === 0;
   }
 
-  const listing = spawnSync("ps", ["-A", "-o", "pid=,ppid="], {
+  const listing = dependencies.spawnSync("ps", ["-A", "-o", "pid=,ppid="], {
     encoding: "utf8",
   });
-  const rows = (listing.stdout ?? "")
-    .split("\n")
-    .map((line) => line.trim().split(/\s+/).map(Number))
-    .filter(
-      (parts): parts is [number, number] =>
-        parts.length === 2 && parts.every(Number.isSafeInteger),
-    )
-    .map(([pid, parentPid]) => ({ pid, parentPid }));
+  let succeeded = listing.error === undefined && listing.status === 0;
+  const rows = succeeded
+    ? (listing.stdout ?? "")
+        .split("\n")
+        .map((line) => line.trim().split(/\s+/).map(Number))
+        .filter(
+          (parts): parts is [number, number] =>
+            parts.length === 2 && parts.every(Number.isSafeInteger),
+        )
+        .map(([pid, parentPid]) => ({ pid, parentPid }))
+    : [];
 
   for (const pid of [...collectDescendantPids(rootPid, rows), rootPid]) {
     try {
-      process.kill(pid, "SIGTERM");
-    } catch {
-      // The process may have already exited while its tree was enumerated.
+      dependencies.kill(pid, "SIGTERM");
+    } catch (error) {
+      if (
+        !(error instanceof Error && "code" in error && error.code === "ESRCH")
+      ) {
+        succeeded = false;
+      }
     }
   }
+  return succeeded;
 }

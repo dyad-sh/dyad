@@ -80,15 +80,25 @@ const producerEvents = [
     startedAt: 200,
     operation: "rebuild",
   },
-  { type: "PROCESS_SPAWNED", invocationRef },
+  {
+    type: "PROCESS_SPAWNED",
+    operationId: "request:spawned",
+    invocationRef,
+  },
   {
     type: "PROCESS_FAILED",
+    operationId: "request:failed",
     invocationRef,
     error: { message: "spawn failed" },
   },
-  { type: "PROCESS_STOPPED", invocationRef },
+  {
+    type: "PROCESS_STOPPED",
+    operationId: "request:stopped",
+    invocationRef,
+  },
   {
     type: "PROCESS_STOP_FAILED",
+    operationId: "request:stop-failed",
     invocationRef,
     error: { message: "stop failed" },
   },

@@ -182,6 +182,7 @@ const externalRestartStartedSchema = z
 const processSpawnedSchema = z
   .object({
     type: z.literal("PROCESS_SPAWNED"),
+    operationId: operationIdSchema,
     invocationRef: AppRunInvocationRefSchema,
   })
   .strict();
@@ -189,6 +190,7 @@ const processSpawnedSchema = z
 const processFailedSchema = z
   .object({
     type: z.literal("PROCESS_FAILED"),
+    operationId: operationIdSchema,
     invocationRef: AppRunInvocationRefSchema,
     error: runErrorSchema,
   })
@@ -197,6 +199,7 @@ const processFailedSchema = z
 const processStoppedSchema = z
   .object({
     type: z.literal("PROCESS_STOPPED"),
+    operationId: operationIdSchema,
     invocationRef: AppRunInvocationRefSchema,
   })
   .strict();
@@ -204,6 +207,7 @@ const processStoppedSchema = z
 const processStopFailedSchema = z
   .object({
     type: z.literal("PROCESS_STOP_FAILED"),
+    operationId: operationIdSchema,
     invocationRef: AppRunInvocationRefSchema,
     error: runErrorSchema,
   })

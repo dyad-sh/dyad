@@ -420,8 +420,14 @@ export function stopAllAppsSync(): void {
       logger.info(`Sent docker stop for app ${appId} (${containerName})`);
     } else if (appInfo.process?.pid) {
       const pid = appInfo.process.pid;
-      killProcessTreeSync(pid);
-      logger.info(`Sent SIGTERM to app ${appId} (PID ${pid})`);
+      if (killProcessTreeSync(pid)) {
+        logger.info(`Sent SIGTERM to app ${appId} (PID ${pid})`);
+      } else {
+        logger.warn(
+          `Failed to synchronously terminate app ${appId} (PID ${pid}) during quit`,
+        );
+        continue;
+      }
     }
     runningApps.delete(appId);
   }

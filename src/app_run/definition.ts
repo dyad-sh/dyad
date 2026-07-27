@@ -35,6 +35,26 @@ import { MainAppRuntimeOutput } from "@/ipc/services/main_app_runtime_output";
 
 export const APP_RUN_MACHINE_ID = "app_run" as const;
 
+type CorrelatedRunCommand =
+  | (Extract<RunCommand, { type: "start" | "stop" }> & {
+      operationId: string;
+    })
+  | Exclude<RunCommand, { type: "start" | "stop" }>;
+
+function correlateCommand(
+  command: RunCommand,
+  event: AppRunWireEvent,
+): CorrelatedRunCommand {
+  if (command.type !== "start" && command.type !== "stop") return command;
+  return {
+    ...command,
+    operationId:
+      "operationId" in event
+        ? event.operationId
+        : command.invocationRef.operationId,
+  };
+}
+
 const START_LOG_MESSAGE = {
   run: "Connecting to app...",
   restart: "Restarting app...",
@@ -60,7 +80,9 @@ function toDomainEvent(
         type: "START",
         appId: key.appId,
         invocationRef:
-          state.type === "ready" || state.type === "reloading"
+          state.type === "ready" ||
+          state.type === "reloading" ||
+          state.type === "errored"
             ? state.invocationRef
             : invocation(key.appId, event.operationId),
         startedAt: event.startedAt,
@@ -175,35 +197,28 @@ function settlementFor(
   state: AppRunActorState,
   event: AppRunWireEvent,
 ): AppRunActorState["lastSettlement"] {
-  const pendingIndex = pendingIndexFor(state, event);
-  const operationId =
-    pendingIndex >= 0
-      ? state.pendingOperations[pendingIndex].operationId
-      : "invocationRef" in event
-        ? event.invocationRef.operationId
-        : null;
   switch (event.type) {
     case "PROCESS_SPAWNED":
       return {
-        operationId: operationId!,
+        operationId: event.operationId,
         kind: "run",
         outcome: "succeeded",
       };
     case "PROCESS_FAILED":
       return {
-        operationId: operationId!,
+        operationId: event.operationId,
         kind: "run",
         outcome: "failed",
       };
     case "PROCESS_STOPPED":
       return {
-        operationId: operationId!,
+        operationId: event.operationId,
         kind: "stop",
         outcome: "succeeded",
       };
     case "PROCESS_STOP_FAILED":
       return {
-        operationId: operationId!,
+        operationId: event.operationId,
         kind: "stop",
         outcome: "failed",
       };
@@ -216,14 +231,17 @@ function pendingIndexFor(
   state: AppRunActorState,
   event: AppRunWireEvent,
 ): number {
-  return "invocationRef" in event
-    ? state.pendingOperations.findIndex(
-        ({ invocationRef }) =>
-          invocationRef.kind === event.invocationRef.kind &&
-          invocationRef.entityKey === event.invocationRef.entityKey &&
-          invocationRef.operationId === event.invocationRef.operationId,
-      )
-    : -1;
+  switch (event.type) {
+    case "PROCESS_SPAWNED":
+    case "PROCESS_FAILED":
+    case "PROCESS_STOPPED":
+    case "PROCESS_STOP_FAILED":
+      return state.pendingOperations.findIndex(
+        ({ operationId }) => operationId === event.operationId,
+      );
+    default:
+      return -1;
+  }
 }
 
 function pendingOperationFor(event: AppRunWireEvent): string | null {
@@ -245,7 +263,8 @@ function pendingInvocationFor(
   switch (event.type) {
     case "START":
       return state.runState.type === "ready" ||
-        state.runState.type === "reloading"
+        state.runState.type === "reloading" ||
+        state.runState.type === "errored"
         ? state.runState.invocationRef
         : invocation(key.appId, event.operationId);
     case "RESTART":
@@ -311,6 +330,9 @@ function transitionActor(
         }
       : { ...result, state };
   }
+  const commands = result.commands.map((command) =>
+    correlateCommand(command, event),
+  );
   const bumpsPreviewReload = result.commands.some(
     (command) =>
       command.type === "applyUrl" ||
@@ -329,7 +351,7 @@ function transitionActor(
             pendingOperations,
             lastSettlement: settlement ?? state.lastSettlement,
           },
-    commands: result.commands,
+    commands,
   };
 }
 
@@ -352,7 +374,7 @@ function createCommandRunner(
   context: MachineHostContext<AppRunKey, AppRunActorState, AppRunWireEvent>,
 ) {
   const emit = (event: AppRunProducerEvent) => context.send(event);
-  return (command: RunCommand): void => {
+  return (command: CorrelatedRunCommand): void => {
     switch (command.type) {
       case "start": {
         if (command.operation !== "rebuild") {
@@ -400,11 +422,13 @@ function createCommandRunner(
           () =>
             emit({
               type: "PROCESS_SPAWNED",
+              operationId: command.operationId,
               invocationRef: command.invocationRef,
             }),
           (error) =>
             emit({
               type: "PROCESS_FAILED",
+              operationId: command.operationId,
               invocationRef: command.invocationRef,
               error: runErrorInfo(error),
             }),
@@ -416,11 +440,13 @@ function createCommandRunner(
           () =>
             emit({
               type: "PROCESS_STOPPED",
+              operationId: command.operationId,
               invocationRef: command.invocationRef,
             }),
           (error) =>
             emit({
               type: "PROCESS_STOP_FAILED",
+              operationId: command.operationId,
               invocationRef: command.invocationRef,
               error: runErrorInfo(error),
             }),
@@ -523,6 +549,6 @@ export const appRunDefinition = {
   AppRunKey,
   AppRunActorState,
   AppRunWireEvent,
-  RunCommand,
+  CorrelatedRunCommand,
   AppRunIgnoreReason
 >;

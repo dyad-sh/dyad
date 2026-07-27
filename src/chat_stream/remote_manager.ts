@@ -550,9 +550,9 @@ export class ChatStreamRemoteManager {
     const completion = snapshot.lastCompletion;
     if (!this.completionCursorInitialized.has(chatId)) {
       this.completionCursorInitialized.add(chatId);
-      if (completion) {
+      if (completion && !this.pendingSubmissions.has(completion.intentId)) {
         this.lastCompletionByChat.set(chatId, completion.intentId);
-        if (!this.pendingSubmissions.has(completion.intentId)) return;
+        return;
       }
     }
     if (

@@ -359,6 +359,9 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   contract as well as lifecycle state: query invalidations, authoritative
   message refresh, preview-open policy, reload/capture requests, and settlement
   callbacks all belong in the completion projection.
+- When seeding a retained-completion cursor from bootstrap, skip only receipts
+  that have no matching local in-flight request. A matching receipt must take
+  the normal completion path or its waiter and terminal side effects are lost.
 - Main-owned work must report terminal settlement through a main-owned observer
   or return path. Renderer delivery is best-effort: a destroyed `WebContents`
   can make `safeSend` a no-op and must not strand the authoritative actor.

@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
+import type { WebContents } from "electron";
 import type { ChatStreamExecutionObserver } from "./chat_stream_handlers";
-import { settleUnobservedChatStreamResult } from "./chat_stream_handlers";
+import {
+  createObservedChatStreamSender,
+  settleUnobservedChatStreamResult,
+} from "./chat_stream_handlers";
 
 function observer(): ChatStreamExecutionObserver {
   return {
@@ -44,5 +48,30 @@ describe("settleUnobservedChatStreamResult", () => {
       error: "Chat stream ended without reporting a terminal error",
     });
     expect(target.onEnd).not.toHaveBeenCalled();
+  });
+});
+
+describe("createObservedChatStreamSender", () => {
+  it("makes a captured endpoint non-registrable after it is destroyed", () => {
+    let destroyed = false;
+    const send = vi.fn();
+    const observeTerminal = vi.fn();
+    const sender = {
+      id: 42,
+      isDestroyed: () => destroyed,
+      isCrashed: () => false,
+      send,
+    } as unknown as WebContents;
+    const observed = createObservedChatStreamSender(sender, observeTerminal);
+
+    expect(observed.id).toBe(42);
+    destroyed = true;
+
+    expect(Number.isInteger(observed.id)).toBe(false);
+    observed.send("chat:response:end", { chatId: 7 });
+    expect(observeTerminal).toHaveBeenCalledWith("chat:response:end", {
+      chatId: 7,
+    });
+    expect(send).not.toHaveBeenCalled();
   });
 });

@@ -155,6 +155,9 @@ When an IPC event can fire at very high frequency (e.g., stdout/stderr from chil
   liveness check, so catch per destination (and per payload for individual
   delivery) to ensure one failed window cannot abort fanout to healthy peers or
   escape from a timer callback.
+- A proxy that masks `WebContents.isDestroyed()` to observe terminal sends must
+  dynamically expose a non-integer producer ID once its real target is gone.
+  Otherwise high-volume routing can re-register the destroyed endpoint.
 - Start a `setTimeout` on first enqueue; flush all buffered messages as a single batch event (e.g., `app:output-batch`) when the timer fires (100ms default).
 - Flush immediately on process exit so no messages are lost.
 - Keep latency-sensitive events (e.g., `input-requested`) on an immediate, unbatched channel.

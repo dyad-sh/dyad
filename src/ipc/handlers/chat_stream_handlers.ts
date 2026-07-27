@@ -210,6 +210,49 @@ export function settleUnobservedChatStreamResult(
   });
 }
 
+export function createObservedChatStreamSender(
+  sender: WebContents,
+  observeTerminal: (channel: string, payload: unknown) => void,
+): WebContents {
+  const targetIsUnavailable = (): boolean => {
+    if (sender.isDestroyed()) return true;
+    const senderWithCrashState = sender as WebContents & {
+      isCrashed?: () => boolean;
+    };
+    return senderWithCrashState.isCrashed?.() ?? false;
+  };
+  return new Proxy(sender, {
+    get(target, property, receiver) {
+      if (property === "id" && targetIsUnavailable()) {
+        // High-volume routing treats non-integer endpoints as non-producers.
+        // This prevents a real webContents that closed after route selection
+        // from being re-registered through this observation proxy.
+        return Number.NaN;
+      }
+      // `safeSend` must reach the proxy's `send` trap even if the presentation
+      // endpoint disappeared. Actor completion is independent of renderer
+      // delivery; the trap below separately checks whether delivery is safe.
+      if (property === "isDestroyed" || property === "isCrashed") {
+        return () => false;
+      }
+      if (property === "send") {
+        return (channel: string, payload: unknown) => {
+          observeTerminal(channel, payload);
+          if (targetIsUnavailable()) return;
+          try {
+            target.send(channel, payload);
+          } catch {
+            // Presentation delivery is best effort. The observer above is the
+            // main-owned lifecycle authority and has already been notified.
+          }
+        };
+      }
+      const value = Reflect.get(target, property, receiver);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+}
+
 /**
  * Compatibility seam for the in-process Vitest harness. Production renderers
  * must dispatch through the remote chat actor and never receive this endpoint.
@@ -262,35 +305,10 @@ export async function executeChatStreamFromActor(
       observer.onError?.(payload as ChatStreamErrorPayload);
     }
   };
-  const observedSender = new Proxy(sender, {
-    get(target, property, receiver) {
-      // `safeSend` must reach the proxy's `send` trap even if the presentation
-      // endpoint disappeared. Actor completion is independent of renderer
-      // delivery; the trap below separately checks whether delivery is safe.
-      if (property === "isDestroyed" || property === "isCrashed") {
-        return () => false;
-      }
-      if (property === "send") {
-        return (channel: string, payload: unknown) => {
-          observeTerminal(channel, payload);
-          if (target.isDestroyed()) return;
-          // `isCrashed` exists at runtime but is absent from Electron's type.
-          const targetWithCrashState = target as WebContents & {
-            isCrashed?: () => boolean;
-          };
-          if (targetWithCrashState.isCrashed?.()) return;
-          try {
-            target.send(channel, payload);
-          } catch {
-            // Presentation delivery is best effort. The observer above is the
-            // main-owned lifecycle authority and has already been notified.
-          }
-        };
-      }
-      const value = Reflect.get(target, property, receiver);
-      return typeof value === "function" ? value.bind(target) : value;
-    },
-  });
+  const observedSender = createObservedChatStreamSender(
+    sender,
+    observeTerminal,
+  );
   try {
     const result =
       (await internalChatStreamHandler(

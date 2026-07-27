@@ -152,6 +152,9 @@ Background and before/after examples of why this pattern exists:
 - Command runners convert expected failures into events. A runner throw is a
   programming error: log it and keep the service usable; never wedge a queue or
   silently rewrite state.
+- When a generation token suppresses superseded async probe results, apply the
+  same token check to rejection handling. A stale failure must not emit a
+  toast, settle newer state, or trigger recovery for the replacement probe.
 - When a resume event can come from a global watcher as well as explicit UI
   senders, validate the captured payload in the transition. Caller-only guards
   can be bypassed after navigation or another asynchronous detour.

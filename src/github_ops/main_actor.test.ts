@@ -37,6 +37,11 @@ const database = vi.hoisted(() => ({
   findFirst: vi.fn(async () => ({ id: 7 }) as { id: number } | undefined),
 }));
 const invalidations = vi.hoisted(() => ({ publish: vi.fn() }));
+const presentation = vi.hoisted(() => ({
+  forget: vi.fn(),
+  recordInitiator: vi.fn(),
+  showError: vi.fn(),
+}));
 
 vi.mock("@/ipc/services/github_ops_service", () => ({
   githubOpsService: service,
@@ -52,6 +57,9 @@ vi.mock(
 );
 vi.mock("@/db", () => ({
   db: { query: { apps: { findFirst: database.findFirst } } },
+}));
+vi.mock("@/ipc/services/github_ops_presentation_service", () => ({
+  githubOpsPresentationService: presentation,
 }));
 vi.mock("@/db/schema", () => ({ apps: { id: "id" } }));
 vi.mock("drizzle-orm", async (importOriginal) => ({
@@ -137,6 +145,9 @@ describe("main-hosted github_ops actor", () => {
     service.assertAcceptingOperations.mockReset();
     database.findFirst.mockReset();
     invalidations.publish.mockReset();
+    presentation.forget.mockReset();
+    presentation.recordInitiator.mockReset();
+    presentation.showError.mockReset();
     database.findFirst.mockResolvedValue({ id: 7 });
     service.run.mockResolvedValue(undefined);
     service.getGitState.mockResolvedValue({
@@ -444,6 +455,47 @@ describe("main-hosted github_ops actor", () => {
 
     expect(service.getGitState).toHaveBeenCalledWith(7);
     expect(replacement.getSnapshot().state.type).toBe("rebase-paused");
+  });
+
+  it("suppresses failures from superseded repository probes", async () => {
+    let rejectGitState!: (error: Error) => void;
+    service.getGitState
+      .mockReturnValueOnce(
+        new Promise((_, reject) => {
+          rejectGitState = reject;
+        }),
+      )
+      .mockResolvedValue({
+        mergeInProgress: false,
+        rebaseInProgress: false,
+      });
+    const { actorA } = createHarness();
+    await actorA.resync();
+
+    await actorA.dispatch({ type: "RECONCILE_REQUESTED" });
+    await actorA.dispatch({ type: "RECONCILE_REQUESTED" });
+    rejectGitState(new Error("superseded Git-state failure"));
+    await flush();
+
+    expect(presentation.showError).not.toHaveBeenCalled();
+
+    let rejectConflicts!: (error: Error) => void;
+    service.getConflicts
+      .mockReturnValueOnce(
+        new Promise((_, reject) => {
+          rejectConflicts = reject;
+        }),
+      )
+      .mockResolvedValue([]);
+
+    await actorA.dispatch({ type: "RECONCILE_REQUESTED" });
+    await flush();
+    await actorA.dispatch({ type: "RECONCILE_REQUESTED" });
+    await flush();
+    rejectConflicts(new Error("superseded conflict failure"));
+    await flush();
+
+    expect(presentation.showError).not.toHaveBeenCalled();
   });
 
   it("rejects dispatch for the null-app subscription sentinel", async () => {

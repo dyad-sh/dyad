@@ -250,12 +250,14 @@ function createCommandRunner(
               emit({ type: "GIT_STATE", ...state, recoveryInvocationRef });
             }
           },
-          () =>
+          () => {
+            if (generation !== gitStateProbeGeneration) return;
             githubOpsPresentationService.showError(
               appId,
               invocationRef?.operationId,
               "Could not refresh the repository state",
-            ),
+            );
+          },
         );
         return;
       }
@@ -274,15 +276,13 @@ function createCommandRunner(
             }
           },
           () => {
+            if (generation !== conflictProbeGeneration) return;
             githubOpsPresentationService.showError(
               appId,
               invocationRef?.operationId,
               "Could not check the repository for merge conflicts",
             );
-            if (
-              generation === conflictProbeGeneration &&
-              command.settleOnError
-            ) {
+            if (command.settleOnError) {
               emit({ type: "CONFLICTS", files: [] });
             }
           },

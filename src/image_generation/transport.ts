@@ -70,7 +70,6 @@ export const ImageGenerationIntentEventSchema = z.union([
 const resultViewSchema = z
   .object({
     fileName: z.string(),
-    appPath: z.string(),
     appId: z.number().int().positive(),
     appName: z.string(),
   })
@@ -114,7 +113,6 @@ export function projectImageGenerationRemoteSnapshot(
         ? {
             result: {
               fileName: job.result.fileName,
-              appPath: job.result.appPath,
               appId: job.result.appId,
               appName: job.result.appName,
             },

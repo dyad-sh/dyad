@@ -25,7 +25,10 @@ export interface GenerateImageResponse {
   appName: string;
 }
 
-export type ImageGenerationResultView = Omit<GenerateImageResponse, "filePath">;
+export type ImageGenerationResultView = Omit<
+  GenerateImageResponse,
+  "filePath" | "appPath"
+>;
 
 export interface StartImageGenerationParams {
   prompt: string;

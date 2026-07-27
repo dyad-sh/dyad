@@ -30,7 +30,6 @@ export const ImageGenerationApiResponseSchema = z.object({
 export const ImageGenerationResultViewSchema = z
   .object({
     fileName: z.string(),
-    appPath: z.string(),
     appId: z.number(),
     appName: z.string(),
   })

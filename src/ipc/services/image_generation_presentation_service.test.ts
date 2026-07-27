@@ -118,7 +118,6 @@ describe("ImageGenerationPresentationService", () => {
       type: "succeeded",
       result: {
         fileName: "generated.png",
-        appPath: "app",
         appId: 7,
         appName: "App",
       },

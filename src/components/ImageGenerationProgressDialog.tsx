@@ -23,7 +23,7 @@ import type {
   ImageGenerationJobView,
   ImageGenerationStatus,
 } from "@/image_generation/state";
-import { buildDyadMediaUrl } from "@/lib/dyadMediaUrl";
+import { buildDyadMediaUrlForApp } from "@/lib/dyadMediaUrl";
 import { useGenerateImage } from "@/hooks/useGenerateImage";
 import { ImageLightbox } from "@/components/chat/ImageLightbox";
 
@@ -168,8 +168,8 @@ function ImageGenerationCard({ job }: { job: ImageGenerationJobView }) {
                   onClick={() => setLightboxOpen(true)}
                 >
                   <img
-                    src={buildDyadMediaUrl(
-                      job.result.appPath,
+                    src={buildDyadMediaUrlForApp(
+                      job.result.appId,
                       job.result.fileName,
                     )}
                     alt="Generated image"
@@ -221,8 +221,8 @@ function ImageGenerationCard({ job }: { job: ImageGenerationJobView }) {
         job.result &&
         createPortal(
           <ImageLightbox
-            imageUrl={buildDyadMediaUrl(
-              job.result.appPath,
+            imageUrl={buildDyadMediaUrlForApp(
+              job.result.appId,
               job.result.fileName,
             )}
             alt={job.prompt}

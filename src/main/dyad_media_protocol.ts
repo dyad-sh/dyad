@@ -16,6 +16,7 @@ import {
 type DyadMediaProtocolDependencies = {
   cacheRoot: string;
   resolveAppPath: (appPath: string) => string;
+  resolveAppId: (appId: number) => Promise<string | null>;
   fetchFile: (url: string) => Promise<Response>;
   createThumbnailFromPath: CreateThumbnailFromPath;
 };
@@ -83,6 +84,7 @@ async function resolveContainedMediaPath(
 export function createDyadMediaProtocolHandler({
   cacheRoot,
   resolveAppPath,
+  resolveAppId,
   fetchFile,
   createThumbnailFromPath,
 }: DyadMediaProtocolDependencies) {
@@ -98,20 +100,37 @@ export function createDyadMediaProtocolHandler({
         return response(403, "Forbidden");
       }
 
-      // Format: dyad-media://media/{app-path}/.dyad/{subdir}/{filename}
+      // Formats:
+      // dyad-media://media/{app-path}/.dyad/{subdir}/{filename}
+      // dyad-media://media/app-id/{id}/.dyad/{subdir}/{filename}
       const pathSegments = url.pathname.slice(1).split("/");
       const allowedSubdirs = [DYAD_MEDIA_SUBDIR, DYAD_SCREENSHOT_SUBDIR];
+      const usesAppId = pathSegments[0] === "app-id";
+      const internalDirIndex = usesAppId ? 2 : 1;
+      const subdirIndex = internalDirIndex + 1;
+      const filenameIndex = internalDirIndex + 2;
       if (
-        pathSegments.length !== 4 ||
-        pathSegments[1] !== DYAD_INTERNAL_DIR_NAME ||
-        !allowedSubdirs.includes(pathSegments[2])
+        pathSegments.length !== filenameIndex + 1 ||
+        pathSegments[internalDirIndex] !== DYAD_INTERNAL_DIR_NAME ||
+        !allowedSubdirs.includes(pathSegments[subdirIndex])
       ) {
         return response(403, "Forbidden");
       }
 
-      const appPathRaw = decodeURIComponent(pathSegments[0]);
-      const subdir = pathSegments[2];
-      const filename = decodeURIComponent(pathSegments[3]);
+      let appPath: string;
+      if (usesAppId) {
+        const appId = Number(pathSegments[1]);
+        if (!Number.isSafeInteger(appId) || appId <= 0) {
+          return response(403, "Forbidden");
+        }
+        const resolvedAppPath = await resolveAppId(appId);
+        if (!resolvedAppPath) return response(404, "Not Found");
+        appPath = resolvedAppPath;
+      } else {
+        appPath = resolveAppPath(decodeURIComponent(pathSegments[0]));
+      }
+      const subdir = pathSegments[subdirIndex];
+      const filename = decodeURIComponent(pathSegments[filenameIndex]);
       if (
         !filename ||
         filename.includes("..") ||
@@ -123,7 +142,7 @@ export function createDyadMediaProtocolHandler({
       }
 
       const { sourcePath, cacheKeyPath } = await resolveContainedMediaPath(
-        resolveAppPath(appPathRaw),
+        appPath,
         subdir,
         filename,
       );

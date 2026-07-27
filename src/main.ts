@@ -45,7 +45,9 @@ import { handleSupabaseOAuthReturn } from "./supabase_admin/supabase_return_hand
 import { handleDyadProReturn } from "./main/pro";
 import { IS_TEST_BUILD } from "./ipc/utils/test_utils";
 import { BackupManager } from "./backup_manager";
-import { getDatabasePath, initializeDatabase } from "./db";
+import { db, getDatabasePath, initializeDatabase } from "./db";
+import { apps } from "./db/schema";
+import { eq } from "drizzle-orm";
 import { reconcileOrphanTestBranches } from "./ipc/utils/neon_test_branch";
 import { reconcileOrphanTestUsers } from "./ipc/utils/supabase_test_user";
 import { UserSettings } from "./lib/schemas";
@@ -462,6 +464,13 @@ export async function onReady() {
     createDyadMediaProtocolHandler({
       cacheRoot: getMediaThumbnailCacheRoot(app.getPath("sessionData")),
       resolveAppPath: getDyadAppPath,
+      resolveAppId: async (appId) => {
+        const appRecord = await db.query.apps.findFirst({
+          where: eq(apps.id, appId),
+          columns: { path: true },
+        });
+        return appRecord ? getDyadAppPath(appRecord.path) : null;
+      },
       fetchFile: (url) => net.fetch(url),
       createThumbnailFromPath: (sourcePath, size) =>
         createPlatformThumbnailFromPath(nativeImage, sourcePath, size),

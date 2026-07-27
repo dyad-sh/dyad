@@ -49,7 +49,6 @@ describe("ImageGenerationProvider", () => {
 
     const result = {
       fileName: "generated.png",
-      appPath: "app",
       appId: 1,
       appName: "App",
     };

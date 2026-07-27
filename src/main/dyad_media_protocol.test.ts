@@ -8,6 +8,7 @@ import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  buildDyadMediaUrlForApp,
   buildDyadMediaThumbnailUrl,
   buildDyadMediaUrl,
 } from "../lib/dyadMediaUrl";
@@ -85,6 +86,7 @@ describe("dyad-media thumbnail protocol", () => {
     const handler = createDyadMediaProtocolHandler({
       cacheRoot,
       resolveAppPath: (value) => value,
+      resolveAppId: async (appId) => (appId === 7 ? appPath : null),
       fetchFile,
       createThumbnailFromPath,
     });
@@ -96,6 +98,19 @@ describe("dyad-media thumbnail protocol", () => {
     await fs.writeFile(sourcePath, pngData);
     return sourcePath;
   }
+
+  it("resolves opaque app IDs without exposing the app path in the URL", async () => {
+    const sourcePath = await writeImage();
+    const realSourcePath = await fs.realpath(sourcePath);
+    const { handler, fetchFile } = makeHandler();
+    const url = buildDyadMediaUrlForApp(7, "image.png");
+
+    expect(url).not.toContain(encodeURIComponent(appPath));
+    await expect(handler(new Request(url))).resolves.toMatchObject({
+      status: 200,
+    });
+    expect(fetchFile).toHaveBeenCalledWith(pathToFileURL(realSourcePath).href);
+  });
 
   it("serves originals only when a thumbnail was not requested", async () => {
     const sourcePath = await writeImage();

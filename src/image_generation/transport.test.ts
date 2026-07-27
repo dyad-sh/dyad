@@ -38,7 +38,6 @@ describe("image generation transport", () => {
     );
     expect(projection.jobs[0]?.result).toEqual({
       fileName: "generated.png",
-      appPath: "app",
       appId: 7,
       appName: "App",
     });

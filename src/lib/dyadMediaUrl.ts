@@ -6,6 +6,16 @@ export function buildDyadMediaUrl(appPath: string, fileName: string): string {
 }
 
 /**
+ * Builds a renderer-safe media URL whose filesystem path is resolved in main.
+ */
+export function buildDyadMediaUrlForApp(
+  appId: number,
+  fileName: string,
+): string {
+  return `dyad-media://media/app-id/${appId}/.dyad/media/${encodeURIComponent(fileName)}`;
+}
+
+/**
  * Builds a versioned URL for a bounded media-library thumbnail derivative.
  * The source version lets Chromium cache the derivative without showing stale
  * content after an image is replaced in place.

@@ -46,7 +46,7 @@ export function toQueueEntry(
         ? "main-session"
         : "durable",
     editable: intent.owner === undefined,
-    removable: true,
+    removable: intent.owner?.kind !== "plan-handoff",
   };
 }
 
@@ -503,7 +503,6 @@ export async function mutateChatQueue(
   chatId: number,
   command: Extract<ChatStreamHostCommand, { type: "mutate-queue" }>,
 ): Promise<ReturnType<typeof loadChatQueue>> {
-  const ownersToReject: string[] = [];
   const mutation = command.mutation;
   const aggregateQueue = loadChatQueue(database, chatId).queue;
   const sessionEntries = aggregateQueue.filter(
@@ -521,10 +520,70 @@ export async function mutateChatQueue(
       DyadErrorKind.Precondition,
     );
   }
-  for (const entry of sessionEntries) {
-    const owner = sessionIntents.get(entry.intentId)?.owner;
-    if (owner?.kind === "user-input-follow-up") {
-      ownersToReject.push(owner.requestId);
+  const queueState = database
+    .select()
+    .from(chatQueueState)
+    .where(eq(chatQueueState.chatId, chatId))
+    .get();
+  if ((queueState?.revision ?? 0) !== command.expectedQueueRevision) {
+    throw new DyadError(
+      "Chat queue changed in another window",
+      DyadErrorKind.Conflict,
+    );
+  }
+
+  // Claim memory-owned entries before awaiting their owners so the queue
+  // driver cannot start them during settlement. A failed settlement restores
+  // the exact entries and their original relative order before surfacing.
+  const originalOrder = [...queueOrder(database, chatId)];
+  const claimedSessionIntents = sessionEntries.flatMap((entry) => {
+    const intent = sessionIntents.get(entry.intentId);
+    return intent ? [{ entry, intent }] : [];
+  });
+  let removedSessionEntries = sessionEntries;
+  let ownerSettlementErrors: unknown[] = [];
+  if (claimedSessionIntents.length > 0) {
+    const claimedIds = new Set(
+      claimedSessionIntents.map(({ entry }) => entry.intentId),
+    );
+    for (const { entry } of claimedSessionIntents) {
+      sessionIntents.delete(entry.intentId);
+    }
+    queueOrderByChat.set(
+      chatId,
+      originalOrder.filter((intentId) => !claimedIds.has(intentId)),
+    );
+
+    const settlements = await Promise.allSettled(
+      claimedSessionIntents.map(({ intent }) => {
+        if (intent.owner?.kind !== "user-input-follow-up") {
+          return Promise.resolve();
+        }
+        return rejectDueFollowUp(intent.owner.requestId);
+      }),
+    );
+    const failed = claimedSessionIntents.filter(
+      (_, index) => settlements[index]?.status === "rejected",
+    );
+    if (failed.length > 0) {
+      const failedIds = new Set(failed.map(({ entry }) => entry.intentId));
+      removedSessionEntries = sessionEntries.filter(
+        (entry) => !failedIds.has(entry.intentId),
+      );
+      for (const { intent } of failed) {
+        sessionIntents.set(intent.intentId, intent);
+      }
+      const currentOrder = queueOrder(database, chatId);
+      const restoredOriginal = originalOrder.filter(
+        (intentId) => failedIds.has(intentId) || !claimedIds.has(intentId),
+      );
+      queueOrderByChat.set(chatId, [
+        ...restoredOriginal,
+        ...currentOrder.filter((intentId) => !originalOrder.includes(intentId)),
+      ]);
+      ownerSettlementErrors = settlements.flatMap((settlement) =>
+        settlement.status === "rejected" ? [settlement.reason] : [],
+      );
     }
   }
   let nextOrder: string[] | undefined;
@@ -666,11 +725,6 @@ export async function mutateChatQueue(
               DyadErrorKind.Precondition,
             );
           }
-          if (entry.persistence === "main-session") {
-            if (intent?.owner?.kind === "user-input-follow-up") {
-              ownersToReject.push(intent.owner.requestId);
-            }
-          }
           tx.delete(chatQueueEntries)
             .where(eq(chatQueueEntries.itemId, row.itemId))
             .run();
@@ -685,7 +739,7 @@ export async function mutateChatQueue(
         );
         const removedIds = new Set([
           ...removed.map((row) => row.intentId),
-          ...sessionEntries.map((entry) => entry.intentId),
+          ...removedSessionEntries.map((entry) => entry.intentId),
         ]);
         nextOrder = aggregateQueue
           .map((entry) => entry.intentId)
@@ -699,14 +753,18 @@ export async function mutateChatQueue(
       .where(eq(chatQueueState.chatId, chatId))
       .run();
   });
-  for (const requestId of ownersToReject) {
-    await rejectDueFollowUp(requestId);
-  }
   if (nextOrder) queueOrderByChat.set(chatId, nextOrder);
-  for (const entry of sessionEntries) {
+  for (const entry of removedSessionEntries) {
     completeSessionQueueAcceptance(entry.intentId);
   }
-  return loadChatQueue(database, chatId);
+  const queue = loadChatQueue(database, chatId);
+  if (ownerSettlementErrors.length > 0) {
+    throw new AggregateError(
+      ownerSettlementErrors,
+      "Failed to settle one or more queued message owners",
+    );
+  }
+  return queue;
 }
 
 export function markIntentTerminal(

@@ -185,4 +185,79 @@ describe("transitionChatStreamHost", () => {
     if (mutationCompleted.kind !== "applied") return;
     expect(mutationCompleted.state.pendingQueueMutationId).toBeNull();
   });
+
+  it("recovers to a terminal state when a lifecycle command fails", () => {
+    const submitted = transitionChatStreamHost(initialChatStreamHostState(), {
+      type: "SUBMIT",
+      intent: intent("active"),
+    });
+    expect(submitted.kind).toBe("applied");
+    if (submitted.kind !== "applied") return;
+
+    const failed = transitionChatStreamHost(submitted.state, {
+      type: "LIFECYCLE_COMMAND_FAILED",
+      command: "cancel-active",
+      intentId: "active",
+      invocationRef: intent("active").invocationRef!,
+      error: "cancel failed",
+      queueRevision: 4,
+      paused: true,
+      entries: [],
+    });
+
+    expect(failed.kind).toBe("applied");
+    if (failed.kind !== "applied") return;
+    expect(failed.state).toMatchObject({
+      phase: "errored",
+      active: null,
+      error: "cancel failed",
+      queueRevision: 4,
+      queuePaused: true,
+      lastCompletion: {
+        intentId: "active",
+        outcome: "errored",
+      },
+    });
+  });
+
+  it("reconciles the authoritative queue after a mutation side effect fails", () => {
+    const state = {
+      ...initialChatStreamHostState({
+        queueRevision: 2,
+        queuePaused: false,
+        queue: [],
+      }),
+      pendingQueueMutationId: "clear-1",
+    };
+    const rejected = transitionChatStreamHost(state, {
+      type: "QUEUE_MUTATION_REJECTED",
+      mutationId: "clear-1",
+      error: "owner settlement failed",
+      queueRevision: 3,
+      paused: true,
+      entries: [
+        {
+          itemId: "owner",
+          intentId: "owner",
+          prompt: "Keep me",
+          persistence: "main-session",
+          editable: false,
+          removable: true,
+        },
+      ],
+    });
+
+    expect(rejected.kind).toBe("applied");
+    if (rejected.kind !== "applied") return;
+    expect(rejected.state).toMatchObject({
+      queueRevision: 3,
+      queuePaused: true,
+      queue: [{ intentId: "owner" }],
+      pendingQueueMutationId: null,
+      lastQueueMutation: {
+        mutationId: "clear-1",
+        outcome: "rejected",
+      },
+    });
+  });
 });

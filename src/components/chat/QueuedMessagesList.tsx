@@ -46,9 +46,9 @@ function QueuedMessageItemRow({
   onMoveUp,
   onMoveDown,
 }: QueuedMessageItemRowProps) {
-  const isMachineFollowUp = Boolean(
-    message.owner || message.userInputRequestId,
-  );
+  const editable = message.editable ?? !message.owner;
+  const removable = message.removable ?? true;
+  const isRejectableMachineEntry = !editable && removable;
 
   return (
     <li className="flex items-center gap-2 text-sm py-1.5 px-2 bg-muted/50 rounded group">
@@ -62,7 +62,7 @@ function QueuedMessageItemRow({
 
       {/* Action buttons - visible on hover */}
       <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-        {!isMachineFollowUp && (
+        {editable && (
           <button
             type="button"
             onClick={onEdit}
@@ -72,38 +72,44 @@ function QueuedMessageItemRow({
             <Pencil size={14} className="text-muted-foreground" />
           </button>
         )}
-        <button
-          type="button"
-          onClick={onMoveUp}
-          disabled={index === 0}
-          className={cn(
-            "p-1 hover:bg-muted rounded cursor-pointer",
-            index === 0 && "opacity-30 cursor-not-allowed",
-          )}
-          title="Move up"
-        >
-          <ArrowUp size={14} className="text-muted-foreground" />
-        </button>
-        <button
-          type="button"
-          onClick={onMoveDown}
-          disabled={index === total - 1}
-          className={cn(
-            "p-1 hover:bg-muted rounded cursor-pointer",
-            index === total - 1 && "opacity-30 cursor-not-allowed",
-          )}
-          title="Move down"
-        >
-          <ArrowDown size={14} className="text-muted-foreground" />
-        </button>
-        <button
-          type="button"
-          onClick={() => void onDelete()}
-          className="p-1 hover:bg-muted rounded cursor-pointer"
-          title={isMachineFollowUp ? "Reject and delete" : "Delete"}
-        >
-          <Trash2 size={14} className="text-red-500" />
-        </button>
+        {editable && (
+          <>
+            <button
+              type="button"
+              onClick={onMoveUp}
+              disabled={index === 0}
+              className={cn(
+                "p-1 hover:bg-muted rounded cursor-pointer",
+                index === 0 && "opacity-30 cursor-not-allowed",
+              )}
+              title="Move up"
+            >
+              <ArrowUp size={14} className="text-muted-foreground" />
+            </button>
+            <button
+              type="button"
+              onClick={onMoveDown}
+              disabled={index === total - 1}
+              className={cn(
+                "p-1 hover:bg-muted rounded cursor-pointer",
+                index === total - 1 && "opacity-30 cursor-not-allowed",
+              )}
+              title="Move down"
+            >
+              <ArrowDown size={14} className="text-muted-foreground" />
+            </button>
+          </>
+        )}
+        {removable && (
+          <button
+            type="button"
+            onClick={() => void onDelete()}
+            className="p-1 hover:bg-muted rounded cursor-pointer"
+            title={isRejectableMachineEntry ? "Reject and delete" : "Delete"}
+          >
+            <Trash2 size={14} className="text-red-500" />
+          </button>
+        )}
       </div>
     </li>
   );

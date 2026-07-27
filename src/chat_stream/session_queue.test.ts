@@ -173,6 +173,29 @@ describe("main-session follow-up queue", () => {
     ]);
   });
 
+  it("restores a claimed session entry when owner settlement fails", async () => {
+    const intent = followUpIntent();
+    makeFollowUpDue();
+    persistSessionQueuedIntent(database, intent);
+    liveOwner.followUpRejected.mockRejectedValueOnce(
+      new Error("owner settlement failed"),
+    );
+
+    await expect(
+      mutateChatQueue(database, chatId, {
+        type: "mutate-queue",
+        mutation: { type: "remove", itemId: intent.intentId },
+        expectedQueueRevision: 1,
+        mutationId: "failed-remove",
+      }),
+    ).rejects.toThrow("Failed to settle one or more queued message owners");
+
+    expect(loadChatQueue(database, chatId)).toMatchObject({
+      queueRevision: 2,
+      queue: [{ intentId: intent.intentId }],
+    });
+  });
+
   it("validates a live due owner before starting an active follow-up", () => {
     const intent = followUpIntent();
 

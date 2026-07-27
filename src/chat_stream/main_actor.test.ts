@@ -304,4 +304,81 @@ describe("main-hosted chat stream actor", () => {
     await transport.dispose();
     await host.dispose();
   });
+
+  it("rejects renderer attempts to claim a main-owned queue owner", async () => {
+    await expect(
+      chatStreamDefinition.remote.authorizeDispatch({
+        sender: {
+          webContentsId: 1,
+          windowSessionId: "renderer-window",
+        },
+        key: chatStreamKey(7),
+        event: {
+          type: "SUBMIT",
+          intent: {
+            ...turn("forged-plan"),
+            owner: { kind: "plan-handoff", handoffId: "forged" },
+          },
+        },
+        currentState: undefined,
+      }),
+    ).rejects.toMatchObject({ kind: "auth" });
+  });
+
+  it("retains a submission subscription until terminal settlement", async () => {
+    const clock = createFakeClock();
+    const host = new ActorHost({
+      placement: "main",
+      clock,
+      ids: createSequentialIdSource(),
+    });
+    const manifest = createRemoteMachineManifest([chatStreamDefinition]);
+    const windows = new TwoWindowHarness();
+    const transport = new RemoteMachineTransport({
+      host,
+      manifest,
+      windows: windows.registry,
+      clock,
+    });
+    const duplex = new FakeDuplexRemoteTransport(transport, manifest, windows);
+    const manager = new ChatStreamRemoteManager(
+      createStore(),
+      createSequentialIdSource(),
+      duplex.connect(),
+    );
+    manager.start();
+    const actor = manager.ensure(7);
+    const release = actor.subscribe(() => undefined);
+    const onSettled = vi.fn();
+
+    actor.send({
+      type: "submit",
+      request: {
+        chatId: 7,
+        appId: 3,
+        prompt: "continue",
+        onSettled,
+      },
+    });
+    await vi.waitFor(() => expect(execution.observers.size).toBe(1));
+    release();
+
+    const observer = [...execution.observers.values()][0]!;
+    observer.onEnd?.({
+      chatId: 7,
+      invocationRef: observer.intent.invocationRef!,
+      updatedFiles: false,
+    });
+
+    await vi.waitFor(() =>
+      expect(onSettled).toHaveBeenCalledWith({
+        success: true,
+        pausedByStepLimit: undefined,
+      }),
+    );
+
+    manager.dispose();
+    await transport.dispose();
+    await host.dispose();
+  });
 });

@@ -405,11 +405,42 @@ export function transitionChatStreamHost(
         kind: "applied",
         state: {
           ...state,
+          queueRevision: event.queueRevision,
+          queuePaused: event.paused,
+          queue: event.entries,
           pendingQueueMutationId: null,
           lastQueueMutation: {
             mutationId: event.mutationId,
             outcome: "rejected",
             error: event.error,
+          },
+        },
+        commands: [],
+      };
+    case "LIFECYCLE_COMMAND_FAILED":
+      if (
+        !state.active ||
+        state.active.intent.intentId !== event.intentId ||
+        !sameInvocationRef(state.active.invocationRef, event.invocationRef)
+      ) {
+        return ignore(state, "stale-invocation");
+      }
+      return {
+        kind: "applied",
+        state: {
+          ...state,
+          phase: "errored",
+          active: null,
+          error: event.error,
+          queueRevision: event.queueRevision,
+          queuePaused: event.paused,
+          queue: event.entries,
+          lastCompletion: {
+            intentId: event.intentId,
+            invocationRef: event.invocationRef,
+            outcome: "errored",
+            error: event.error,
+            targetAppId: state.active.targetAppId,
           },
         },
         commands: [],

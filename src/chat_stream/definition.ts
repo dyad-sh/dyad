@@ -98,6 +98,22 @@ function createCommandRunner(
   >[0],
 ) {
   const emit = context.send;
+  const loadAuthoritativeQueue = () => {
+    try {
+      return loadChatQueue(db, context.key.chatId);
+    } catch (error) {
+      console.error(
+        "[chat-stream] Failed to reload authoritative queue",
+        error,
+      );
+      const snapshot = context.getSnapshot();
+      return {
+        queueRevision: snapshot.queueRevision,
+        queuePaused: snapshot.queuePaused,
+        queue: [...snapshot.queue],
+      };
+    }
+  };
   return async (command: ChatStreamHostCommand): Promise<void> => {
     switch (command.type) {
       case "persist-queued": {
@@ -229,8 +245,24 @@ function createCommandRunner(
         return;
       }
       case "cancel-active": {
-        const endpoint = chatExecutionEndpoint(context.key.chatId);
-        await cancelActiveStreamsForChat(context.key.chatId, endpoint);
+        try {
+          const endpoint = chatExecutionEndpoint(context.key.chatId);
+          await cancelActiveStreamsForChat(context.key.chatId, endpoint);
+        } catch (error) {
+          const active = context.getSnapshot().active;
+          if (!active) return;
+          const queue = loadAuthoritativeQueue();
+          emit({
+            type: "LIFECYCLE_COMMAND_FAILED",
+            command: "cancel-active",
+            intentId: active.intent.intentId,
+            invocationRef: command.invocationRef,
+            error: error instanceof Error ? error.message : String(error),
+            queueRevision: queue.queueRevision,
+            paused: queue.queuePaused,
+            entries: queue.queue,
+          });
+        }
         return;
       }
       case "mutate-queue": {
@@ -245,10 +277,14 @@ function createCommandRunner(
           });
         } catch (error) {
           console.error("[chat-stream] Queue mutation failed", error);
+          const queue = loadAuthoritativeQueue();
           emit({
             type: "QUEUE_MUTATION_REJECTED",
             mutationId: command.mutationId,
             error: error instanceof Error ? error.message : String(error),
+            queueRevision: queue.queueRevision,
+            paused: queue.queuePaused,
+            entries: queue.queue,
           });
         }
         return;
@@ -258,18 +294,32 @@ function createCommandRunner(
         if (!active || active.intent.intentId !== command.intentId) {
           throw new Error("Finalization does not match the active chat intent");
         }
-        const queue = markIntentTerminal(
-          db,
-          active.intent,
-          command.response?.pausePromptQueue === true,
-        );
-        publishChatInvalidations(context.key.chatId);
-        emit({
-          type: "QUEUE_MUTATED",
-          queueRevision: queue.queueRevision,
-          paused: queue.queuePaused,
-          entries: queue.queue,
-        });
+        try {
+          const queue = markIntentTerminal(
+            db,
+            active.intent,
+            command.response?.pausePromptQueue === true,
+          );
+          publishChatInvalidations(context.key.chatId);
+          emit({
+            type: "QUEUE_MUTATED",
+            queueRevision: queue.queueRevision,
+            paused: queue.queuePaused,
+            entries: queue.queue,
+          });
+        } catch (error) {
+          const queue = loadAuthoritativeQueue();
+          emit({
+            type: "LIFECYCLE_COMMAND_FAILED",
+            command: "finalize",
+            intentId: active.intent.intentId,
+            invocationRef: active.invocationRef,
+            error: error instanceof Error ? error.message : String(error),
+            queueRevision: queue.queueRevision,
+            paused: queue.queuePaused,
+            entries: queue.queue,
+          });
+        }
         return;
       }
       case "dispatch-next": {
@@ -353,6 +403,12 @@ export const chatStreamDefinition = {
         ) {
           throw new DyadError(
             "Chat intent origin does not match the sender",
+            DyadErrorKind.Auth,
+          );
+        }
+        if (event.intent.owner) {
+          throw new DyadError(
+            "Main-owned chat intents cannot be submitted by a renderer",
             DyadErrorKind.Auth,
           );
         }

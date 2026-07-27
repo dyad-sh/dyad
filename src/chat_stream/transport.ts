@@ -224,6 +224,21 @@ export const ChatStreamHostEventSchema = z.discriminatedUnion("type", [
       type: z.literal("QUEUE_MUTATION_REJECTED"),
       mutationId: queueMutationId,
       error: z.string(),
+      queueRevision: expectedQueueRevision,
+      paused: z.boolean(),
+      entries: z.array(ChatQueueEntrySchema),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("LIFECYCLE_COMMAND_FAILED"),
+      command: z.enum(["cancel-active", "finalize"]),
+      intentId: z.string(),
+      invocationRef: ChatStreamInvocationRefSchema,
+      error: z.string(),
+      queueRevision: expectedQueueRevision,
+      paused: z.boolean(),
+      entries: z.array(ChatQueueEntrySchema),
     })
     .strict(),
 ]);

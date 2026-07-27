@@ -51,6 +51,7 @@ interface PendingSubmission {
   request: StreamRequest;
   invocationRef: NonNullable<ChatStreamRemoteSnapshot["invocationRef"]>;
   acceptanceDelivered: boolean;
+  releaseSubscription: () => void;
 }
 
 interface RemoteChatRef {
@@ -354,6 +355,7 @@ export class ChatStreamRemoteManager {
       request,
       invocationRef,
       acceptanceDelivered: false,
+      releaseSubscription: release,
     });
     this.notifySnapshotListeners(request.chatId);
     try {
@@ -385,15 +387,23 @@ export class ChatStreamRemoteManager {
         throw new Error(`Chat submission rejected: ${receipt.reason}`);
       }
     } catch (error) {
-      this.pendingSubmissions.delete(intentId);
+      this.takePendingSubmission(intentId);
       this.notifySnapshotListeners(request.chatId);
       request.onAcceptanceError?.(
         error instanceof Error ? error : new Error(String(error)),
       );
       request.onSettled?.({ success: false });
-    } finally {
-      release();
     }
+  }
+
+  private takePendingSubmission(
+    intentId: string,
+  ): PendingSubmission | undefined {
+    const pending = this.pendingSubmissions.get(intentId);
+    if (!pending) return undefined;
+    this.pendingSubmissions.delete(intentId);
+    pending.releaseSubscription();
+    return pending;
   }
 
   private retainSubscription(
@@ -455,13 +465,13 @@ export class ChatStreamRemoteManager {
           pending.request.onAccepted?.();
         } else if (acceptance.acceptance === "queued") {
           pending.request.onSettled?.({ success: false, queued: true });
-          this.pendingSubmissions.delete(acceptance.intentId);
+          this.takePendingSubmission(acceptance.intentId);
         } else {
           pending.request.onAcceptanceRejected?.(
             acceptance.error ?? "Chat submission rejected",
           );
           pending.request.onSettled?.({ success: false });
-          this.pendingSubmissions.delete(acceptance.intentId);
+          this.takePendingSubmission(acceptance.intentId);
         }
       }
     }
@@ -474,7 +484,7 @@ export class ChatStreamRemoteManager {
     }
     this.lastCompletionByChat.set(chatId, completion.intentId);
     this.previews.disposeKey(chatId);
-    const pending = this.pendingSubmissions.get(completion.intentId);
+    const pending = this.takePendingSubmission(completion.intentId);
     const targetAppId = completion.targetAppId;
     if (pending) {
       const result: StreamSettledResult = {
@@ -482,7 +492,6 @@ export class ChatStreamRemoteManager {
         pausedByStepLimit: completion.pausePromptQueue,
       };
       pending.request.onSettled?.(result);
-      this.pendingSubmissions.delete(completion.intentId);
     }
     this.runtimeDeps?.queryClient.invalidateQueries({
       queryKey: queryKeys.chats.all,
@@ -675,6 +684,8 @@ export class ChatStreamRemoteManager {
               redo: entry.redo,
               appId: entry.appId,
               requestedChatMode: entry.requestedChatMode,
+              editable: entry.editable,
+              removable: entry.removable,
             }),
           ),
         );

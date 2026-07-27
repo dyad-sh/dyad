@@ -3,7 +3,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import { QueuedMessagesList } from "./QueuedMessagesList";
 
-function renderList(onDelete: (id: string) => void | Promise<void>) {
+function renderList(
+  onDelete: (id: string) => void | Promise<void>,
+  capabilities: { editable?: boolean; removable?: boolean } = {},
+) {
   return render(
     <QueuedMessagesList
       messages={[
@@ -14,6 +17,7 @@ function renderList(onDelete: (id: string) => void | Promise<void>) {
             kind: "user-input-follow-up",
             requestId: "integration:1",
           },
+          ...capabilities,
         },
       ]}
       onEdit={vi.fn()}
@@ -38,5 +42,15 @@ describe("QueuedMessagesList", () => {
     fireEvent.click(deleteButton);
 
     expect(onDelete).toHaveBeenCalledExactlyOnceWith("follow-up");
+  });
+
+  it("hides mutations excluded by the authoritative queue capabilities", () => {
+    renderList(vi.fn(), { editable: false, removable: false });
+
+    expect(screen.queryByTitle("Edit")).toBeNull();
+    expect(screen.queryByTitle("Move up")).toBeNull();
+    expect(screen.queryByTitle("Move down")).toBeNull();
+    expect(screen.queryByTitle("Delete")).toBeNull();
+    expect(screen.queryByTitle("Reject and delete")).toBeNull();
   });
 });

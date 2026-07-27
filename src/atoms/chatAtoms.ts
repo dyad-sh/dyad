@@ -527,6 +527,9 @@ export const needsFreshPlanChatAtom = atom<boolean>(false);
 export interface QueuedMessageItem {
   id: string; // UUID for stable identification during reordering/editing
   prompt: string;
+  /** Main-owned entries expose only the mutations their owner can settle. */
+  editable?: boolean;
+  removable?: boolean;
   attachments?: FileAttachment[];
   selectedComponents?: ComponentSelection[];
   // Extra stream-request fields preserved when the chat stream machine queues

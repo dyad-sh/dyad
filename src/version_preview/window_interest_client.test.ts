@@ -31,6 +31,8 @@ describe("VersionPreviewWindowInterestClient", () => {
       type: "switch-app",
       nextAppId: 8,
     });
+    expect(interests.isSelectionEpochCurrent(7, 0)).toBe(false);
+    expect(interests.selectionEpoch(7)).toBe(1);
     await vi.waitFor(() => expect(calls).toEqual(["acquire:start"]));
 
     acquisition.resolve();

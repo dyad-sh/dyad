@@ -40,6 +40,11 @@ export class VersionPreviewActorService {
     operationId: string;
     exit: { type: "close" } | { type: "switch-app"; nextAppId: number | null };
   }): boolean {
+    if (this.windowInterests.isLastOwner(appId, webContentsId)) {
+      // Reserve routing before relinquishing the final interest. A capacity
+      // rejection must leave the pane's ownership intact so the user can retry.
+      this.presentation.recordInitiator(operationId, windowSessionId);
+    }
     if (
       this.windowInterests.release(appId, webContentsId) !==
       "last-owner-released"
@@ -57,7 +62,6 @@ export class VersionPreviewActorService {
     ) {
       return false;
     }
-    this.presentation.recordInitiator(operationId, windowSessionId);
     actor.send(
       exit.type === "close"
         ? { type: "CLOSE", operationId }

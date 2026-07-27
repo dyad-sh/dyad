@@ -12,6 +12,7 @@ type VersionInterestIpc = Pick<
  */
 export class VersionPreviewWindowInterestClient {
   private readonly tails = new Map<number, Promise<void>>();
+  private readonly selectionEpochs = new Map<number, number>();
 
   constructor(private readonly client: VersionInterestIpc = ipc.version) {}
 
@@ -26,6 +27,7 @@ export class VersionPreviewWindowInterestClient {
     operationId: string,
     exit: { type: "close" } | { type: "switch-app"; nextAppId: number | null },
   ): Promise<{ cleanupStarted: boolean }> {
+    this.selectionEpochs.set(appId, this.selectionEpoch(appId) + 1);
     return this.enqueue(appId, () =>
       this.client.releasePreviewWindowInterest({
         appId,
@@ -33,6 +35,14 @@ export class VersionPreviewWindowInterestClient {
         exit,
       }),
     );
+  }
+
+  selectionEpoch(appId: number): number {
+    return this.selectionEpochs.get(appId) ?? 0;
+  }
+
+  isSelectionEpochCurrent(appId: number, epoch: number): boolean {
+    return this.selectionEpoch(appId) === epoch;
   }
 
   private enqueue<Result>(

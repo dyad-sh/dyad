@@ -146,6 +146,10 @@ describe("VersionPreviewActorService", () => {
         owners.delete(appId);
         return "last-owner-released" as const;
       },
+      isLastOwner: (appId: number, webContentsId: number) => {
+        const appOwners = owners.get(appId);
+        return appOwners?.size === 1 && appOwners.has(webContentsId);
+      },
       clearApp: vi.fn(),
       clearAll: vi.fn(),
     };
@@ -187,5 +191,65 @@ describe("VersionPreviewActorService", () => {
       nextAppId: 8,
       operationId: "leave-2",
     });
+  });
+
+  it("retains the last window interest when initiator admission is full", () => {
+    const send = vi.fn();
+    const host = {
+      peek: vi.fn(() => ({
+        getSnapshot: () => ({
+          state: {
+            type: "previewing",
+            session: {
+              appId: 7,
+              originBranch: "main",
+              targetVersionId: "abc123",
+              checkedOutVersionId: "abc123",
+              exitIntent: { type: "none" },
+              selectedDiffFile: null,
+              isDiffVisible: false,
+            },
+          },
+        }),
+        send,
+      })),
+      disposeKey: vi.fn(async () => undefined),
+      disposeMachine: vi.fn(async () => undefined),
+    };
+    const owners = new Set([1]);
+    const interests = {
+      acquire: vi.fn(),
+      isLastOwner: vi.fn(() => owners.size === 1 && owners.has(1)),
+      release: vi.fn(() => {
+        owners.delete(1);
+        return "last-owner-released" as const;
+      }),
+      clearApp: vi.fn(),
+      clearAll: vi.fn(),
+    };
+    const capacityError = new Error("initiator capacity exhausted");
+    const presentation = {
+      recordInitiator: vi.fn(() => {
+        throw capacityError;
+      }),
+    };
+    const actors = new VersionPreviewActorService(
+      host as never,
+      interests as never,
+      presentation as never,
+    );
+
+    expect(() =>
+      actors.releaseWindowInterest({
+        appId: 7,
+        webContentsId: 1,
+        windowSessionId: "window-1",
+        operationId: "leave-1",
+        exit: { type: "close" },
+      }),
+    ).toThrow(capacityError);
+    expect(interests.release).not.toHaveBeenCalled();
+    expect(owners).toEqual(new Set([1]));
+    expect(send).not.toHaveBeenCalled();
   });
 });

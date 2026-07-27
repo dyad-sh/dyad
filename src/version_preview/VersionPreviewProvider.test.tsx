@@ -39,6 +39,8 @@ const toastError = vi.hoisted(() => vi.fn());
 const windowInterest = vi.hoisted(() => ({
   acquire: vi.fn(async () => undefined),
   release: vi.fn(async () => ({ cleanupStarted: false })),
+  selectionEpoch: vi.fn(() => 0),
+  isSelectionEpochCurrent: vi.fn(() => true),
 }));
 vi.mock("sonner", () => ({
   toast: {
@@ -53,6 +55,8 @@ vi.mock("./window_interest_client", () => ({
   VersionPreviewWindowInterestClient: class {
     acquire = windowInterest.acquire;
     release = windowInterest.release;
+    selectionEpoch = windowInterest.selectionEpoch;
+    isSelectionEpochCurrent = windowInterest.isSelectionEpochCurrent;
   },
 }));
 
@@ -104,6 +108,8 @@ describe("VersionPreviewProvider", () => {
     windowInterest.release
       .mockReset()
       .mockResolvedValue({ cleanupStarted: false });
+    windowInterest.selectionEpoch.mockReset().mockReturnValue(0);
+    windowInterest.isSelectionEpochCurrent.mockReset().mockReturnValue(true);
     getDefaultStore().set(selectedAppIdAtom, null);
   });
 
@@ -318,6 +324,51 @@ describe("VersionPreviewProvider", () => {
     expect(
       screen.getByTestId("rapid-selection").getAttribute("data-version"),
     ).toBe("a");
+  });
+
+  it("cancels a queued selection when the pane closes", async () => {
+    const resync = deferred<undefined>();
+    actor.resync.mockReturnValueOnce(resync.promise);
+    windowInterest.release.mockImplementationOnce(async () => {
+      windowInterest.isSelectionEpochCurrent.mockReturnValue(false);
+      return { cleanupStarted: false };
+    });
+    const queryClient = new QueryClient();
+
+    function SelectionCloseProbe() {
+      const { send } = useVersionPreview(1);
+      return (
+        <>
+          <button
+            onClick={() => send({ type: "SELECT_VERSION", versionId: "a" })}
+          >
+            Select
+          </button>
+          <button onClick={() => send({ type: "CLOSE" })}>Close</button>
+        </>
+      );
+    }
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <VersionPreviewProvider>
+          <SelectionCloseProbe />
+        </VersionPreviewProvider>
+      </QueryClientProvider>,
+    );
+    fireEvent.click(screen.getByText("Select"));
+    await waitFor(() => expect(actor.resync).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByText("Close"));
+    await waitFor(() => expect(windowInterest.release).toHaveBeenCalled());
+
+    await act(async () => {
+      resync.resolve(undefined);
+      await resync.promise;
+      await Promise.resolve();
+    });
+    expect(actor.dispatch).not.toHaveBeenCalled();
+    expect(windowInterest.acquire).not.toHaveBeenCalled();
   });
 
   it("keeps the pane visible until main accepts its window release", async () => {

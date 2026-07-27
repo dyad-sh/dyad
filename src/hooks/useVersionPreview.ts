@@ -110,7 +110,11 @@ export function useVersionPreview(appId: number | null): {
     appId !== null && presentationStore.isPaneVisible(appId);
 
   const dispatchNow = useCallback(
-    async (event: PreviewEvent, waitForSettlement: boolean): Promise<void> => {
+    async (
+      event: PreviewEvent,
+      waitForSettlement: boolean,
+      selectionEpoch?: number,
+    ): Promise<void> => {
       if (appId === null) return;
       const isCleanup = event.type === "CLOSE";
       if (event.type === "OPEN") {
@@ -120,6 +124,12 @@ export function useVersionPreview(appId: number | null): {
       }
       if (event.type === "SELECT_VERSION") {
         await windowInterest.acquire(appId);
+        if (
+          selectionEpoch !== undefined &&
+          !windowInterest.isSelectionEpochCurrent(appId, selectionEpoch)
+        ) {
+          return;
+        }
       }
       if (event.type !== "SELECT_VERSION" && !isCleanup) {
         presentationStore.send(appId, event);
@@ -187,16 +197,25 @@ export function useVersionPreview(appId: number | null): {
       if (event.type !== "SELECT_VERSION") {
         return dispatchNow(event, waitForSettlement);
       }
+      const selectionEpoch = windowInterest.selectionEpoch(
+        appId ?? NULL_APP_ID,
+      );
       const operation = selectionQueue.current
         .catch(() => undefined)
         .then(async () => {
           await actor.resync();
-          await dispatchNow(event, waitForSettlement);
+          if (
+            appId === null ||
+            !windowInterest.isSelectionEpochCurrent(appId, selectionEpoch)
+          ) {
+            return;
+          }
+          await dispatchNow(event, waitForSettlement, selectionEpoch);
         });
       selectionQueue.current = operation.catch(() => undefined);
       return operation;
     },
-    [actor, dispatchNow],
+    [actor, appId, dispatchNow, windowInterest],
   );
   const send = useCallback(
     (event: PreviewEvent) => {

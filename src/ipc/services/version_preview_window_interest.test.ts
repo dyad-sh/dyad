@@ -29,10 +29,12 @@ describe("VersionPreviewWindowInterestService", () => {
     interests.acquire(7, 1);
     interests.acquire(7, 2);
 
+    expect(interests.isLastOwner(7, 1)).toBe(false);
     expect(interests.release(7, 1)).toBe(
       "retained-by-other-window" satisfies VersionPreviewWindowRelease,
     );
     expect(interests.inspect(7)).toEqual([2]);
+    expect(interests.isLastOwner(7, 2)).toBe(true);
     expect(interests.release(7, 2)).toBe(
       "last-owner-released" satisfies VersionPreviewWindowRelease,
     );

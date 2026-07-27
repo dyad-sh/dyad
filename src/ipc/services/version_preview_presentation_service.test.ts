@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { DyadErrorKind } from "@/errors/dyad_error";
 import { VersionPreviewPresentationService } from "./version_preview_presentation_service";
 
 describe("VersionPreviewPresentationService", () => {
@@ -20,7 +21,13 @@ describe("VersionPreviewPresentationService", () => {
     for (let index = 0; index < 256; index += 1) {
       service.recordInitiator(`operation-${index}`, `window-${index}`);
     }
-    service.recordInitiator("operation-overflow", "window-256");
+    expect(() =>
+      service.recordInitiator("operation-overflow", "window-256"),
+    ).toThrowError(
+      expect.objectContaining({
+        kind: DyadErrorKind.Auth,
+      }),
+    );
 
     expect(service.originEndpointFor("operation-0")).toBe(
       endpoints.get("window-0"),

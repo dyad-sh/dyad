@@ -4,6 +4,7 @@ import {
 } from "@/window_infrastructure/main/window_registry";
 import type { WindowSessionId } from "@/window_infrastructure/types";
 import type { VersionCommandResult } from "@/ipc/types";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 export class VersionPreviewPresentationService {
   private readonly initiatorByOperationId = new Map<
@@ -29,10 +30,10 @@ export class VersionPreviewPresentationService {
       return;
     }
     if (this.initiatorByOperationId.size >= 256) {
-      // Never evict an unresolved operation: its eventual presentation must
-      // remain bound to the initiating window. The new operation can still
-      // fall back through WindowRegistry routing if the bounded map is full.
-      return;
+      throw new DyadError(
+        "Too many version preview operations are still settling. Please try again.",
+        DyadErrorKind.Auth,
+      );
     }
     const entry = {
       windowSessionId: windowSessionId as WindowSessionId,

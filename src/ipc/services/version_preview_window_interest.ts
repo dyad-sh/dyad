@@ -33,6 +33,11 @@ export class VersionPreviewWindowInterestService {
     this.windowIdsByAppId.set(appId, owners);
   }
 
+  isLastOwner(appId: number, webContentsId: number): boolean {
+    const owners = this.windowIdsByAppId.get(appId);
+    return owners?.size === 1 && owners.has(webContentsId);
+  }
+
   release(appId: number, webContentsId: number): VersionPreviewWindowRelease {
     const owners = this.windowIdsByAppId.get(appId);
     if (!owners?.delete(webContentsId)) return "not-owned";

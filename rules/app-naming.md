@@ -33,4 +33,6 @@ approval, template apply).
 - Long-running operations that write inside an app must acquire the same
   per-app `withLock(appId, ...)` used by rename/location changes and re-read
   `apps.path` after acquiring it. A path captured before network or other async
-  work can become stale and recreate files in the app's former directory.
+  work can become stale and recreate files in the app's former directory. If a
+  workflow releases the lock across an `await` (for example, while cancelling
+  streams), re-fetch the row and recompute the path after reacquiring it.

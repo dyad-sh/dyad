@@ -46,10 +46,19 @@ export function VersionPreviewProvider({ children }: PropsWithChildren) {
     return jotaiStore.sub(selectedAppIdAtom, () => {
       const nextAppId = jotaiStore.get(selectedAppIdAtom);
       if (previousAppId !== null && previousAppId !== nextAppId) {
+        const ownedPane = presentation.isPaneVisible(previousAppId);
         presentation.send(previousAppId, {
           type: "APP_CHANGED",
           nextAppId,
         });
+        // Pane visibility is window-local. A renderer that never opened this
+        // app's Version pane must not drive the shared main actor's cleanup
+        // when it navigates away, or it can return the repository while
+        // another window is still using the preview.
+        if (!ownedPane) {
+          previousAppId = nextAppId;
+          return;
+        }
         const actor = client.actor(
           versionPreviewClientDefinition,
           versionPreviewKey(previousAppId),
@@ -186,16 +195,35 @@ export function VersionPreviewProvider({ children }: PropsWithChildren) {
               action: {
                 label: "Retry",
                 onClick: () => {
-                  void actor
-                    .dispatch({
-                      type: "RETRY_RETURN",
-                      operationId: `version-preview:${globalThis.crypto.randomUUID()}`,
-                    })
-                    .catch(() => {
-                      toast.error(
-                        "Version recovery could not be started. Please try again.",
+                  const event = {
+                    type: "RETRY_RETURN" as const,
+                    operationId: `version-preview:${globalThis.crypto.randomUUID()}`,
+                  };
+                  void (async () => {
+                    for (let attempt = 0; attempt < 3; attempt += 1) {
+                      if (actor.getStatus() !== "ready") await actor.resync();
+                      const receipt = await actor.dispatch(event);
+                      if (receipt.kind === "applied") return;
+                      if (
+                        receipt.kind === "rejected" &&
+                        (receipt.reason === "revision-conflict" ||
+                          receipt.reason === "stale-actor")
+                      ) {
+                        await actor.resync();
+                        continue;
+                      }
+                      throw new Error(
+                        "The version recovery retry was not accepted",
                       );
-                    });
+                    }
+                    throw new Error(
+                      "The version recovery retry remained stale",
+                    );
+                  })().catch(() => {
+                    toast.error(
+                      "Version recovery could not be started. Please try again.",
+                    );
+                  });
                 },
               },
             },

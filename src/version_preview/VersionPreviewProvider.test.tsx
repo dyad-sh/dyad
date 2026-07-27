@@ -11,9 +11,11 @@ import { getDefaultStore } from "jotai";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useVersionPreview } from "@/hooks/useVersionPreview";
-import { CLOSED_STATE } from "./state";
+import { CLOSED_STATE, type PreviewState } from "./state";
 import { VersionPreviewProvider } from "./VersionPreviewProvider";
 
+let remoteState: PreviewState = CLOSED_STATE;
+const actorListeners = new Set<() => void>();
 const actor = {
   dispatch: vi.fn().mockResolvedValue({ kind: "applied" }),
   getStatus: vi.fn(() => "ready"),
@@ -22,13 +24,27 @@ const actor = {
     state: {
       appId: 1,
       revision: 0,
-      state: CLOSED_STATE,
+      state: remoteState,
       activeInvocationRef: null,
       lastSettlement: null,
     },
   }),
-  subscribe: () => () => undefined,
+  subscribe: (listener: () => void) => {
+    actorListeners.add(listener);
+    return () => actorListeners.delete(listener);
+  },
 };
+
+const toastError = vi.hoisted(() => vi.fn());
+vi.mock("sonner", () => ({
+  toast: {
+    custom: vi.fn(),
+    dismiss: vi.fn(),
+    error: toastError,
+    success: vi.fn(),
+    warning: vi.fn(),
+  },
+}));
 
 vi.mock("@/distributed_machines/react", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/distributed_machines/react")>()),
@@ -71,6 +87,9 @@ describe("VersionPreviewProvider", () => {
     actor.dispatch.mockReset().mockResolvedValue({ kind: "applied" });
     actor.getStatus.mockReturnValue("ready");
     actor.resync.mockClear();
+    actorListeners.clear();
+    remoteState = CLOSED_STATE;
+    toastError.mockClear();
     getDefaultStore().set(selectedAppIdAtom, null);
   });
 
@@ -142,10 +161,11 @@ describe("VersionPreviewProvider", () => {
     render(
       <QueryClientProvider client={queryClient}>
         <VersionPreviewProvider>
-          <div>content</div>
+          <Probe />
         </VersionPreviewProvider>
       </QueryClientProvider>,
     );
+    fireEvent.click(screen.getByTestId("probe"));
 
     act(() => getDefaultStore().set(selectedAppIdAtom, 2));
 
@@ -153,6 +173,84 @@ describe("VersionPreviewProvider", () => {
     expect(actor.resync).toHaveBeenCalled();
     expect(actor.dispatch.mock.calls[0]?.[0]).toEqual(
       actor.dispatch.mock.calls[1]?.[0],
+    );
+  });
+
+  it("does not let a window with a closed pane clean up another window's preview", async () => {
+    getDefaultStore().set(selectedAppIdAtom, 1);
+    remoteState = {
+      type: "previewing",
+      session: {
+        appId: 1,
+        originBranch: "main",
+        targetVersionId: "abc123",
+        checkedOutVersionId: "abc123",
+        exitIntent: { type: "none" },
+        selectedDiffFile: null,
+        isDiffVisible: false,
+      },
+    };
+    const queryClient = new QueryClient();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <VersionPreviewProvider>
+          <div>content</div>
+        </VersionPreviewProvider>
+      </QueryClientProvider>,
+    );
+
+    act(() => getDefaultStore().set(selectedAppIdAtom, 2));
+
+    await waitFor(() => expect(actor.dispatch).not.toHaveBeenCalled());
+  });
+
+  it("resyncs a rejected recovery retry and surfaces terminal rejection", async () => {
+    getDefaultStore().set(selectedAppIdAtom, 1);
+    remoteState = {
+      type: "recovery-required",
+      session: {
+        appId: 1,
+        originBranch: "main",
+        targetVersionId: "abc123",
+        checkedOutVersionId: "abc123",
+        exitIntent: { type: "none" },
+        selectedDiffFile: null,
+        isDiffVisible: false,
+      },
+      error: { message: "Return failed" },
+    };
+    actor.dispatch
+      .mockResolvedValueOnce({
+        kind: "rejected",
+        reason: "revision-conflict",
+      })
+      .mockResolvedValueOnce({
+        kind: "ignored",
+        reason: "invalid-transition",
+      });
+    const queryClient = new QueryClient();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <VersionPreviewProvider>
+          <div>content</div>
+        </VersionPreviewProvider>
+      </QueryClientProvider>,
+    );
+
+    const recoveryToast = toastError.mock.calls.find(
+      ([message]) =>
+        message ===
+        "Unable to return to the branch that was active before previewing this version.",
+    );
+    expect(recoveryToast).toBeDefined();
+    act(() => recoveryToast?.[1]?.action?.onClick());
+
+    await waitFor(() => expect(actor.dispatch).toHaveBeenCalledTimes(2));
+    expect(actor.resync).toHaveBeenCalled();
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith(
+        "Version recovery could not be started. Please try again.",
+      ),
     );
   });
 

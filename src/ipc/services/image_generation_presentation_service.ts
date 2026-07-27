@@ -47,6 +47,24 @@ export class ImageGenerationPresentationService {
   }
 
   forgetApp(appId: number, state: ImageGenerationActorState): void {
+    const targets = new Set<WindowSessionId>();
+    for (const { job } of state.jobs) {
+      if (job.targetAppId !== appId) continue;
+      const target = this.routeForJob(job);
+      if (target) targets.add(target);
+    }
+    for (const target of targets) {
+      const pendingCount = state.jobs.filter(
+        ({ job }) =>
+          job.targetAppId !== appId &&
+          job.status === "pending" &&
+          this.routeForJob(job) === target,
+      ).length;
+      this.windows.endpointForSession(target)?.send(PRESENTATION_CHANNEL, {
+        type: "progress",
+        pendingCount,
+      });
+    }
     for (const { job } of state.jobs) {
       if (job.targetAppId === appId) {
         this.initiatorByJobId.delete(job.id);

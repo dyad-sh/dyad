@@ -125,4 +125,39 @@ describe("ImageGenerationPresentationService", () => {
       pendingCount: 0,
     });
   });
+
+  it("dismisses a deleted app's progress before forgetting its route", () => {
+    const { first, firstSession, service } = setup();
+    const state: ImageGenerationActorState = {
+      jobs: [
+        ...pendingState().jobs,
+        {
+          job: {
+            id: "job-3",
+            prompt: "Another app",
+            themeMode: "plain",
+            targetAppId: 8,
+            targetAppName: "Other App",
+            startedAt: 1,
+            status: "pending",
+          },
+          activeInvocationRef: {
+            kind: "image-generation",
+            entityKey: "job-3",
+            operationId: "operation-job-3",
+          },
+        },
+      ],
+    };
+    service.recordInitiator("job-1", firstSession);
+    service.recordInitiator("job-2", firstSession);
+    service.recordInitiator("job-3", firstSession);
+    service.forgetApp(7, state);
+
+    expect(first.send).toHaveBeenCalledTimes(1);
+    expect(first.send).toHaveBeenCalledWith("image-generation:presentation", {
+      type: "progress",
+      pendingCount: 1,
+    });
+  });
 });

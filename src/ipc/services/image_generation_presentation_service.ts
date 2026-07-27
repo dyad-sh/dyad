@@ -70,7 +70,12 @@ export class ImageGenerationPresentationService {
 
 function presentationPayload(job: ImageGenerationJob, pendingCount: number) {
   if (job.status === "success" && job.result && !job.lateAfterCancel) {
-    return { type: "succeeded" as const, result: job.result, pendingCount };
+    const { fileName, appPath, appId, appName } = job.result;
+    return {
+      type: "succeeded" as const,
+      result: { fileName, appPath, appId, appName },
+      pendingCount,
+    };
   }
   if (job.status === "error") {
     return {

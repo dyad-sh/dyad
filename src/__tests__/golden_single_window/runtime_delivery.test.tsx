@@ -27,7 +27,6 @@ const mocks = vi.hoisted(() => ({
         type: "succeeded";
         result: {
           fileName: string;
-          filePath: string;
           appPath: string;
           appId: number;
           appName: string;
@@ -225,7 +224,6 @@ describe("golden single-window: runtime presentation delivery", () => {
   it("presents one routed success when generation settles", () => {
     const result = {
       fileName: "generated.png",
-      filePath: "/tmp/generated.png",
       appPath: "app",
       appId: 7,
       appName: "Golden app",

@@ -437,8 +437,9 @@ Serializability audit:
   the main service;
 - the remote job-list projection includes relative media/app references and
   the active invocation ref needed for cancellation, but excludes the
-  generated file's absolute path; the initiator-targeted success presentation
-  event carries that path only for the existing “Open file” action;
+  generated file's absolute path; both retained jobs and initiator-targeted
+  success presentation open media through a main-owned action keyed by app ID
+  and file name;
 - renderer codecs admit only `SUBMIT` and correlated
   `CANCEL_REQUESTED`. Provider settlement, pruning, and app-deletion events are
   host-only.

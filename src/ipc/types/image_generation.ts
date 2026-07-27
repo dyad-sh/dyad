@@ -1,11 +1,11 @@
 import { z } from "zod";
 import { createEventClient, defineEvent } from "../contracts/core";
 import type {
-  GenerateImageResponse,
+  ImageGenerationResultView,
   ImageThemeMode,
 } from "../../image_generation/state";
 
-export type { GenerateImageResponse, ImageThemeMode };
+export type { ImageGenerationResultView, ImageThemeMode };
 
 export const ImageThemeModeSchema = z.enum([
   "plain",
@@ -27,10 +27,9 @@ export const ImageGenerationApiResponseSchema = z.object({
   ),
 });
 
-export const GenerateImageResponseSchema = z
+export const ImageGenerationResultViewSchema = z
   .object({
     fileName: z.string(),
-    filePath: z.string(),
     appPath: z.string(),
     appId: z.number(),
     appName: z.string(),
@@ -49,7 +48,7 @@ export const ImageGenerationPresentationEventSchema = z.discriminatedUnion(
     z
       .object({
         type: z.literal("succeeded"),
-        result: GenerateImageResponseSchema,
+        result: ImageGenerationResultViewSchema,
         pendingCount: z.number().int().nonnegative(),
       })
       .strict(),
@@ -76,8 +75,8 @@ type AssertTrue<Value extends true> = Value;
 const imageGenerationSchemaTypeAssertions: [
   AssertTrue<
     MutuallyAssignable<
-      z.infer<typeof GenerateImageResponseSchema>,
-      GenerateImageResponse
+      z.infer<typeof ImageGenerationResultViewSchema>,
+      ImageGenerationResultView
     >
   >,
   AssertTrue<

@@ -374,7 +374,10 @@ export type {
 } from "./media";
 
 // Image generation types
-export type { ImageThemeMode, GenerateImageResponse } from "./image_generation";
+export type {
+  ImageThemeMode,
+  ImageGenerationResultView,
+} from "./image_generation";
 
 // Tests types
 export type {

@@ -6,10 +6,10 @@ import type { StartImageGenerationParams } from "@/image_generation/state";
 export function useGenerateImage() {
   const remote = useImageGenerationActor();
   const start = useCallback(
-    (params: StartImageGenerationParams) => {
+    async (params: StartImageGenerationParams): Promise<string | null> => {
       const jobId = `image-generation-job:${globalThis.crypto.randomUUID()}`;
-      void remote
-        .dispatch({
+      try {
+        const receipt = await remote.dispatch({
           type: "SUBMIT",
           job: {
             ...params,
@@ -17,21 +17,16 @@ export function useGenerateImage() {
             startedAt: Date.now(),
           },
           operationId: `image-generation-operation:${globalThis.crypto.randomUUID()}`,
-        })
-        .then(
-          (receipt) => {
-            if (receipt.kind !== "applied") {
-              showError(
-                "Image generation is temporarily unavailable. Please try again.",
-              );
-            }
-          },
-          () =>
-            showError(
-              "Image generation is temporarily unavailable. Please try again.",
-            ),
-        );
-      return jobId;
+        });
+        if (receipt.kind === "applied") return jobId;
+      } catch {
+        // The shared error below is intentionally the same for rejected
+        // admission and transport failures.
+      }
+      showError(
+        "Image generation is temporarily unavailable. Please try again.",
+      );
+      return null;
     },
     [remote.dispatch],
   );

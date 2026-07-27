@@ -84,4 +84,45 @@ describe("ImageGenerationPresentationService", () => {
       pendingCount: 2,
     });
   });
+
+  it("omits the absolute path from success presentation", () => {
+    const { first, firstSession, service } = setup();
+    const state: ImageGenerationActorState = {
+      jobs: [
+        {
+          job: {
+            id: "job-1",
+            prompt: "A lighthouse",
+            themeMode: "plain",
+            targetAppId: 7,
+            targetAppName: "App",
+            startedAt: 1,
+            status: "success",
+            result: {
+              fileName: "generated.png",
+              filePath: "/private/app/.dyad/media/generated.png",
+              appPath: "app",
+              appId: 7,
+              appName: "App",
+            },
+          },
+          activeInvocationRef: null,
+        },
+      ],
+    };
+    service.recordInitiator("job-1", firstSession);
+
+    service.present(state, "job-1");
+
+    expect(first.send).toHaveBeenCalledWith("image-generation:presentation", {
+      type: "succeeded",
+      result: {
+        fileName: "generated.png",
+        appPath: "app",
+        appId: 7,
+        appName: "App",
+      },
+      pendingCount: 0,
+    });
+  });
 });

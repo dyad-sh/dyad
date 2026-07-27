@@ -57,7 +57,7 @@ export function ChatImageGenerationStrip({
 
   const handleRetry = (job: ImageGenerationJobView) => {
     setDismissedJobIds((prev: Set<string>) => new Set(prev).add(job.id));
-    start({
+    void start({
       prompt: job.prompt,
       themeMode: job.themeMode,
       targetAppId: job.targetAppId,

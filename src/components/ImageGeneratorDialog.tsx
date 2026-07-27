@@ -89,13 +89,13 @@ export function ImageGeneratorDialog({
   const effectiveTargetAppId =
     targetAppId ?? (apps.length === 1 ? apps[0].id : null);
 
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
     if (!prompt.trim() || effectiveTargetAppId === null) return;
 
     const targetApp = apps.find((a) => a.id === effectiveTargetAppId);
     if (!targetApp) return;
 
-    start({
+    const jobId = await start({
       prompt: prompt.trim(),
       themeMode,
       targetAppId: effectiveTargetAppId,
@@ -103,8 +103,7 @@ export function ImageGeneratorDialog({
       source,
     });
 
-    // Auto-close dialog immediately after starting generation
-    handleOpenChange(false);
+    if (jobId) handleOpenChange(false);
   };
 
   const handleOpenChange = (nextOpen: boolean) => {

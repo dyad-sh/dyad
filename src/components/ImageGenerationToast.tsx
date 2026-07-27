@@ -5,7 +5,7 @@ import { Loader2, CheckCircle2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ImageLightbox } from "@/components/chat/ImageLightbox";
 import { buildDyadMediaUrl } from "@/lib/dyadMediaUrl";
-import type { GenerateImageResponse } from "@/ipc/types";
+import type { ImageGenerationResultView } from "@/ipc/types";
 
 const GENERATING_TOAST_ID = "image-gen-progress";
 const SUCCESS_TOAST_ID = "image-gen-success";
@@ -68,7 +68,7 @@ export function ImageSuccessToast({
   toastId,
   getPendingCount,
 }: {
-  result: GenerateImageResponse;
+  result: ImageGenerationResultView;
   toastId: string | number;
   getPendingCount: () => number;
 }) {
@@ -108,7 +108,7 @@ export function ImageSuccessToast({
           <ImageLightbox
             imageUrl={imageUrl}
             alt="Generated image"
-            filePath={result.filePath}
+            mediaFile={{ appId: result.appId, fileName: result.fileName }}
             onClose={() => {
               setIsLightboxOpen(false);
               toast.dismiss(toastId);
@@ -133,7 +133,7 @@ export function showImageGeneratingToast(
 }
 
 export function showImageSuccessToast(
-  result: GenerateImageResponse,
+  result: ImageGenerationResultView,
   getPendingCount: () => number,
 ): string | number {
   // Dismiss the generating toast before showing success

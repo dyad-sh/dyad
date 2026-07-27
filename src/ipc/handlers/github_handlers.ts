@@ -637,6 +637,14 @@ export async function handleCreateRepo(
     branch,
   }: { org: string; repo: string; appId: number; branch?: string },
 ): Promise<void> {
+  const app = await db.query.apps.findFirst({
+    columns: { id: true },
+    where: eq(apps.id, appId),
+  });
+  if (!app) {
+    throw new DyadError("App not found", DyadErrorKind.NotFound);
+  }
+
   // Normalize the repo name to match GitHub's automatic normalization
   // GitHub converts spaces to hyphens when creating repositories
   const normalizedRepo = normalizeGitHubRepoName(repo);

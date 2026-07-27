@@ -153,6 +153,30 @@ describe("useResolveMergeConflictsWithAI", () => {
     expect(mocks.controllerSend).not.toHaveBeenCalled();
   });
 
+  it("releases the claim when main rejects conflict-resolution start", async () => {
+    mocks.onStartResolving.mockRejectedValueOnce(new Error("claim expired"));
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(
+      () =>
+        useResolveMergeConflictsWithAI({
+          appId: APP_ID,
+          conflicts: ["src/one.ts"],
+          onStartResolving: mocks.onStartResolving,
+          onStartFailed: mocks.onStartFailed,
+        }),
+      { wrapper: Wrapper },
+    );
+
+    await act(async () => {
+      await result.current.resolveWithAI();
+    });
+
+    expect(mocks.onStartFailed).toHaveBeenCalledOnce();
+    expect(mocks.showError).toHaveBeenCalledExactlyOnceWith("claim expired");
+    expect(mocks.controllerSend).not.toHaveBeenCalled();
+    expect(result.current.isResolving).toBe(false);
+  });
+
   it("uses conflicts supplied by the machine runner instead of the render closure", async () => {
     const { Wrapper } = makeWrapper();
     const { result } = renderHook(

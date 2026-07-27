@@ -87,9 +87,12 @@ function ConnectedGitHubConnector({
   const [showForceDialog, setShowForceDialog] = useState(false);
   const {
     projection,
+    connection,
     send,
+    dispatch,
     dispatchConflictResolutionStarted,
     dispatchConflictResolutionCancelled,
+    conflictResolutionClaimed,
   } = useGithubOps(appId);
   const {
     banner,
@@ -119,22 +122,29 @@ function ConnectedGitHubConnector({
   const { resolveFilesWithAI, isResolving } = useResolveMergeConflictsWithAI({
     appId,
     conflicts,
-    onStartResolving: () => void dispatchConflictResolutionStarted(),
-    onStartFailed: () => void dispatchConflictResolutionCancelled(),
+    onStartResolving: dispatchConflictResolutionStarted,
+    onStartFailed: dispatchConflictResolutionCancelled,
   });
 
   const startConflictResolution = useCallback(async () => {
-    const receipt = await send({ type: "RESOLVE_WITH_AI_STARTED" });
+    const receipt = await dispatch({ type: "RESOLVE_WITH_AI_STARTED" });
     if (isAppliedGithubOpsReceipt(receipt)) {
       await resolveFilesWithAI(conflicts);
     }
-  }, [conflicts, resolveFilesWithAI, send]);
+  }, [conflicts, dispatch, resolveFilesWithAI]);
 
   const isDisconnecting = runningOperation?.type === "disconnect";
   const isRebaseActionPending = isOperationInFlight || !!rebaseAction;
 
   return (
     <div className="w-full" data-testid="github-connected-repo">
+      {connection !== "ready" && (
+        <p className="mb-2 text-sm text-muted-foreground">
+          {connection === "connecting"
+            ? "Loading repository status…"
+            : "Repository controls are temporarily unavailable."}
+        </p>
+      )}
       <p>Connected to GitHub Repo:</p>
       <a
         onClick={(e) => {
@@ -313,9 +323,18 @@ function ConnectedGitHubConnector({
           <div className="flex gap-2">
             <Button
               onClick={() => void startConflictResolution()}
-              disabled={!canResolveConflicts || isCancellingSync || isResolving}
+              disabled={
+                !canResolveConflicts ||
+                conflictResolutionClaimed ||
+                isCancellingSync ||
+                isResolving
+              }
             >
-              {isResolving ? "Resolving..." : "Resolve merge conflicts with AI"}
+              {isResolving
+                ? "Resolving..."
+                : conflictResolutionClaimed
+                  ? "Conflict resolution starting..."
+                  : "Resolve merge conflicts with AI"}
             </Button>
             <Button
               variant="outline"
@@ -404,7 +423,7 @@ export function UnconnectedGitHubConnector({
   expanded,
   linkedRepo,
 }: UnconnectedGitHubConnectorProps) {
-  const { projection, send } = useGithubOps(appId, {
+  const { projection, send, connection } = useGithubOps(appId, {
     reconcileOnMount: linkedRepo !== undefined,
   });
   const { canConnectRepository } = projection.capabilities;
@@ -772,6 +791,13 @@ export function UnconnectedGitHubConnector({
 
   return (
     <div className="w-full" data-testid="github-setup-repo">
+      {connection !== "ready" && (
+        <p className="px-4 pt-2 text-sm text-muted-foreground">
+          {connection === "connecting"
+            ? "Loading GitHub controls…"
+            : "GitHub controls are temporarily unavailable."}
+        </p>
+      )}
       {/* Collapsible Header */}
       <button
         type="button"

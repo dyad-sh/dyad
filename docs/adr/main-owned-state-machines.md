@@ -348,9 +348,10 @@ Actionable user-input presentation is broadcast according to recorded decision
 | `OP_REQUESTED` with `fetch`                                                                                                                                            | Idempotent/current-agnostic; no revision, though the transition may ignore it while another operation is active.     |
 | `OP_REQUESTED` with `rebase-abort` or `merge-abort`                                                                                                                    | Cancellation; require the active Git operation invocation ref, not merely `appId`.                                   |
 | `OP_REQUESTED` with `push`, `pull`, `rebase`, `rebase-continue`, `merge`, `switch`, `create-branch`, `delete-branch`, `rename-branch`, `disconnect`, or `connect-repo` | State-sensitive; require `expectedRevision`.                                                                         |
-| `ABORT_AND_SWITCH_CONFIRMED`, `BLOCKED_DISMISSED`, `RESOLVE_WITH_AI_STARTED`                                                                                           | State-sensitive; require `expectedRevision`.                                                                         |
+| `ABORT_AND_SWITCH_CONFIRMED`, `BLOCKED_DISMISSED`, `RESOLVE_WITH_AI_STARTED`                                                                                           | State-sensitive; require `expectedRevision`. The resolve intent creates an opaque, bounded claim.                    |
+| `CONFLICT_RESOLUTION_STARTED`, `CONFLICT_RESOLUTION_CANCELLED`                                                                                                         | Claim-sensitive; allow a stale revision only when the exact active claim ID matches.                                 |
 | `BANNER_DISMISSED`, `RECONCILE_REQUESTED`                                                                                                                              | Idempotent/current-agnostic; no revision. Reconciliation probes repository truth before applying a lifecycle change. |
-| `OP_SUCCEEDED`, `OP_FAILED`, `CONFLICTS`, `GIT_STATE`                                                                                                                  | Host-only command/probe settlement correlated to the active operation internally.                                    |
+| `OP_SUCCEEDED`, `OP_FAILED`, `CONFLICTS`, `GIT_STATE`, `CONFLICT_RESOLUTION_CLAIM_EXPIRED`                                                                             | Host-only command/probe/timer settlement correlated to the active operation or claim internally.                     |
 
 The C2 implementation verified the lifecycle row against the current Git
 operations: mutations already run to process settlement in main, repository
@@ -358,9 +359,9 @@ truth is recoverable from Git metadata, and app deletion is serialized with
 the per-app mutation lock. The hosted actor therefore retains active work with
 no subscribers, survives reload and last-window close, reconciles Git state
 when recreated, and is disposed only after deletion has acquired the same
-per-app lock. Shutdown stops new admission and lets already-started Git
-commands settle; an interrupted process is recovered from repository truth on
-the next start rather than replayed.
+per-app lock. Shutdown stops new admission and gives already-started Git
+commands a bounded settlement window; an interrupted process is recovered from
+repository truth on the next start rather than replayed.
 
 Serializability audit:
 
@@ -370,17 +371,20 @@ Serializability audit:
   `Error` instances, and service objects are excluded from state and events.
 - `OP_SUCCEEDED`, `OP_FAILED`, `CONFLICTS`, and `GIT_STATE` are host-only.
   Renderer codecs admit only the intent rows above.
-- The former per-app conflict-resolution callback registry is replaced by the
-  remote dispatch receipt. After main applies `RESOLVE_WITH_AI_STARTED`, only
-  the initiating renderer starts its local chat/navigation flow, using the
-  conflict names from the accepted snapshot.
+- The former per-app conflict-resolution callback registry is replaced by a
+  receipt plus an opaque, correlated claim. After main applies
+  `RESOLVE_WITH_AI_STARTED`, only the claimant starts its local
+  chat/navigation flow. Matching follow-ups are safe across a stale snapshot;
+  unrelated reconciliation cannot release the claim, peers see a claimed
+  projection, and an actor-owned timeout releases an abandoned claim.
 
 The remote read model contains the existing `GithubOpsState` projection,
 snapshot revision, and the active typed invocation reference needed for
 cancellation. Conflict entries are repository-relative names required by the
 existing resolution UI. It excludes access tokens, authenticated remote URLs,
 absolute app/repository paths, Git command handles, and settings/database
-records.
+records. Main also replaces Git failure text containing remotes, credentials,
+or absolute paths before it enters the snapshot.
 
 The migration deletion budget is the renderer `GithubOpsController`,
 `GithubOpsManager`, `GithubOpsCommandRunner`, its hand-written FIFO and probe

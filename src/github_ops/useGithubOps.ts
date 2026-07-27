@@ -1,18 +1,41 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useDistributedMachine } from "@/distributed_machines/react";
+import { showError } from "@/lib/toast";
 import { githubOpsClientDefinition } from "./client_definition";
 import { projectGithubOps } from "./projection";
 import type { GithubOpsEvent } from "./state";
 import { githubOpsKey, type GithubOpsIntentEvent } from "./transport";
 
+const UNAVAILABLE_CAPABILITIES = {
+  canSync: false,
+  canDisconnect: false,
+  canAbortRebase: false,
+  canContinueRebase: false,
+  canSafeForcePush: false,
+  canForcePush: false,
+  canRebaseAndSync: false,
+  canResolveConflicts: false,
+  canCancelSync: false,
+  canMutateBranches: false,
+  canSwitchBranches: false,
+  canConfirmBlockedSwitch: false,
+  canDismissBlockedSwitch: false,
+  canConnectRepository: false,
+} as const;
+
 function operationId(): string {
   return `github-operation:${globalThis.crypto.randomUUID()}`;
+}
+
+function conflictResolutionClaimId(): string {
+  return `github-conflict-resolution:${globalThis.crypto.randomUUID()}`;
 }
 
 export function useGithubOps(
   appId: number | null,
   options: { reconcileOnMount?: boolean } = {},
 ) {
+  const conflictClaimRef = useRef<string | null>(null);
   const routedAppId = appId ?? 0;
   const remote = useDistributedMachine(
     githubOpsClientDefinition,
@@ -20,7 +43,7 @@ export function useGithubOps(
     (snapshot) => projectGithubOps(snapshot.state),
   );
 
-  const send = useCallback(
+  const dispatch = useCallback(
     async (event: GithubOpsEvent) => {
       if (appId === null) return undefined;
       let intent: GithubOpsIntentEvent;
@@ -40,11 +63,17 @@ export function useGithubOps(
           intent = { ...event, operationId: operationId() };
           break;
         case "BLOCKED_DISMISSED":
-        case "RESOLVE_WITH_AI_STARTED":
         case "BANNER_DISMISSED":
         case "RECONCILE_REQUESTED":
           intent = event;
           break;
+        case "RESOLVE_WITH_AI_STARTED": {
+          if (conflictClaimRef.current) return undefined;
+          const claimId = conflictResolutionClaimId();
+          conflictClaimRef.current = claimId;
+          intent = { ...event, claimId };
+          break;
+        }
         case "OP_SUCCEEDED":
         case "OP_FAILED":
         case "CONFLICTS":
@@ -53,36 +82,102 @@ export function useGithubOps(
             `${event.type} is a host-only GitHub operation event`,
           );
       }
-      return remote.dispatch(intent);
+      try {
+        const receipt = await remote.dispatch(intent);
+        if (
+          event.type === "RESOLVE_WITH_AI_STARTED" &&
+          receipt.kind !== "applied"
+        ) {
+          conflictClaimRef.current = null;
+        }
+        return receipt;
+      } catch (error) {
+        if (event.type === "RESOLVE_WITH_AI_STARTED") {
+          conflictClaimRef.current = null;
+        }
+        throw error;
+      }
     },
     [appId, remote.dispatch, remote.state.activeInvocationRef],
+  );
+  const send = useCallback(
+    (event: GithubOpsEvent): void => {
+      void dispatch(event).catch(() => {
+        showError(
+          "GitHub controls are temporarily unavailable. Please try again.",
+        );
+      });
+    },
+    [dispatch],
+  );
+
+  const projection = useMemo(
+    () =>
+      remote.connection === "ready"
+        ? remote.projection
+        : {
+            ...remote.projection,
+            capabilities: UNAVAILABLE_CAPABILITIES,
+          },
+    [remote.connection, remote.projection],
   );
 
   const reconcileOnMount = options.reconcileOnMount ?? true;
   useEffect(() => {
-    if (appId === null || !reconcileOnMount) return;
-    const reconcile = () => void send({ type: "RECONCILE_REQUESTED" });
+    if (appId === null || !reconcileOnMount || remote.connection !== "ready") {
+      return;
+    }
+    const reconcile = () => send({ type: "RECONCILE_REQUESTED" });
     reconcile();
     window.addEventListener("focus", reconcile);
     return () => window.removeEventListener("focus", reconcile);
-  }, [appId, reconcileOnMount, send]);
+  }, [appId, reconcileOnMount, remote.connection, send]);
+
+  const dispatchConflictResolutionStarted = useCallback(async () => {
+    const claimId = conflictClaimRef.current;
+    if (!claimId) {
+      throw new Error("Conflict-resolution claim is no longer available");
+    }
+    const receipt = await remote.dispatch({
+      type: "CONFLICT_RESOLUTION_STARTED",
+      claimId,
+    });
+    if (receipt.kind !== "applied") {
+      conflictClaimRef.current = null;
+      throw new Error("Conflict-resolution claim was not accepted");
+    }
+    conflictClaimRef.current = null;
+  }, [remote.dispatch]);
+
+  const dispatchConflictResolutionCancelled = useCallback(async () => {
+    const claimId = conflictClaimRef.current;
+    if (!claimId) return;
+    const receipt = await remote.dispatch({
+      type: "CONFLICT_RESOLUTION_CANCELLED",
+      claimId,
+    });
+    conflictClaimRef.current = null;
+    if (receipt.kind !== "applied") {
+      throw new Error("Conflict-resolution cancellation was not accepted");
+    }
+  }, [remote.dispatch]);
 
   return {
     state: remote.state.state,
-    projection: remote.projection,
+    projection,
     connection: remote.connection,
     revision: remote.state.revision,
     activeInvocationRef: remote.state.activeInvocationRef,
+    conflictResolutionClaimed: remote.state.conflictResolutionClaimed,
     send,
-    dispatchConflictResolutionStarted: () =>
-      remote.dispatch({ type: "CONFLICT_RESOLUTION_STARTED" }),
-    dispatchConflictResolutionCancelled: () =>
-      remote.dispatch({ type: "CONFLICT_RESOLUTION_CANCELLED" }),
+    dispatch,
+    dispatchConflictResolutionStarted,
+    dispatchConflictResolutionCancelled,
   };
 }
 
 export type GithubOpsDispatchReceipt = Awaited<
-  ReturnType<ReturnType<typeof useGithubOps>["send"]>
+  ReturnType<ReturnType<typeof useGithubOps>["dispatch"]>
 >;
 
 export function isAppliedGithubOpsReceipt(

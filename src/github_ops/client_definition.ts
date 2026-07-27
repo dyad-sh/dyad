@@ -27,7 +27,7 @@ export const githubOpsClientDefinition = {
       projectGithubOpsRemoteSnapshot(key.appId, 0, {
         state: INITIAL_GITHUB_OPS_STATE,
         activeInvocationRef: null,
-        conflictResolutionPending: false,
+        conflictResolutionClaimId: null,
       }),
   },
 } satisfies RemoteClientDefinition<

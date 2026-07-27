@@ -134,6 +134,7 @@ import { queryInvalidationBus } from "@/window_infrastructure/main/query_invalid
 import { entityDisposalBus } from "@/window_infrastructure/main/entity_disposal_bus";
 import { appRunActorService } from "../services/app_run_actor_service";
 import { githubOpsActorService } from "../services/github_ops_actor_service";
+import { githubOpsService } from "../services/github_ops_service";
 
 const logger = log.scope("app_handlers");
 const handle = createLoggedHandler(logger);
@@ -381,76 +382,83 @@ async function deleteAppById(
   appId: number,
   options: DeleteAppByIdOptions = {},
 ): Promise<void> {
-  return withLock(appId, async () => {
-    const app = await db.query.apps.findFirst({
-      where: eq(apps.id, appId),
-    });
+  githubOpsService.beginAppDeletion(appId);
+  try {
+    return await withLock(appId, async () => {
+      const app = await db.query.apps.findFirst({
+        where: eq(apps.id, appId),
+      });
 
-    if (!app) {
-      if (options.allowMissing && options.knownAppPath) {
-        await appRunActorService.disposeApp(appId);
-        await githubOpsActorService.disposeApp(appId);
-        appRuntimeService.cleanup(appId);
-        await removeAppFiles(appId, options.knownAppPath);
-        return;
-      }
-      throw new DyadError("App not found", DyadErrorKind.NotFound);
-    }
-
-    if (runningApps.has(appId)) {
-      const appInfo = runningApps.get(appId)!;
-      try {
-        logger.log(`Stopping app ${appId} before deletion.`);
-        await stopAppByInfo(appId, appInfo);
-      } catch (error: any) {
-        logger.error(`Error stopping app ${appId} before deletion:`, error);
-        // Continue with deletion even if stopping fails
-      }
-    }
-    await appRunActorService.disposeApp(appId);
-    await githubOpsActorService.disposeApp(appId);
-
-    // Clear logs for this app to prevent memory leak
-    appRuntimeService.clearRuntimeLogs(appId);
-    getPtySessionManager().killForApp(appId);
-
-    try {
-      const appChats = await db
-        .select({ id: chats.id })
-        .from(chats)
-        .where(eq(chats.appId, appId));
-      await Promise.all(
-        appChats.map(({ id: chatId }) => userInputRegistry.settleChat(chatId)),
-      );
-      await db.delete(apps).where(eq(apps.id, appId));
-      // Note: Associated chats will cascade delete
-      if (options.publishDisposal !== false) {
-        for (const { id: chatId } of appChats) {
-          entityDisposalBus.publish({ kind: "chat", id: chatId });
+      if (!app) {
+        if (options.allowMissing && options.knownAppPath) {
+          await githubOpsActorService.disposeApp(appId);
+          await appRunActorService.disposeApp(appId);
+          appRuntimeService.cleanup(appId);
+          await removeAppFiles(appId, options.knownAppPath);
+          return;
         }
-        entityDisposalBus.publish({ kind: "app", id: appId });
+        throw new DyadError("App not found", DyadErrorKind.NotFound);
       }
-    } catch (error: any) {
-      logger.error(`Error deleting app ${appId} from database:`, error);
-      throw new DyadError(
-        `Failed to delete app from database: ${error.message}`,
-        DyadErrorKind.External,
-      );
-    }
 
-    appRuntimeService.cleanup(appId);
-    try {
-      await removeAppFiles(appId, getDyadAppPath(app.path));
-    } catch (error) {
-      // Database deletion is the authoritative state transition. A failed
-      // best-effort filesystem cleanup must not make renderers treat the
-      // already-deleted app as retryable or suppress contract invalidations.
-      logger.warn(
-        `App ${appId} was deleted, but its files require manual cleanup`,
-        error,
-      );
-    }
-  });
+      await githubOpsActorService.disposeApp(appId);
+      if (runningApps.has(appId)) {
+        const appInfo = runningApps.get(appId)!;
+        try {
+          logger.log(`Stopping app ${appId} before deletion.`);
+          await stopAppByInfo(appId, appInfo);
+        } catch (error: any) {
+          logger.error(`Error stopping app ${appId} before deletion:`, error);
+          // Continue with deletion even if stopping fails
+        }
+      }
+      await appRunActorService.disposeApp(appId);
+
+      // Clear logs for this app to prevent memory leak
+      appRuntimeService.clearRuntimeLogs(appId);
+      getPtySessionManager().killForApp(appId);
+
+      try {
+        const appChats = await db
+          .select({ id: chats.id })
+          .from(chats)
+          .where(eq(chats.appId, appId));
+        await Promise.all(
+          appChats.map(({ id: chatId }) =>
+            userInputRegistry.settleChat(chatId),
+          ),
+        );
+        await db.delete(apps).where(eq(apps.id, appId));
+        // Note: Associated chats will cascade delete
+        if (options.publishDisposal !== false) {
+          for (const { id: chatId } of appChats) {
+            entityDisposalBus.publish({ kind: "chat", id: chatId });
+          }
+          entityDisposalBus.publish({ kind: "app", id: appId });
+        }
+      } catch (error: any) {
+        logger.error(`Error deleting app ${appId} from database:`, error);
+        throw new DyadError(
+          `Failed to delete app from database: ${error.message}`,
+          DyadErrorKind.External,
+        );
+      }
+
+      appRuntimeService.cleanup(appId);
+      try {
+        await removeAppFiles(appId, getDyadAppPath(app.path));
+      } catch (error) {
+        // Database deletion is the authoritative state transition. A failed
+        // best-effort filesystem cleanup must not make renderers treat the
+        // already-deleted app as retryable or suppress contract invalidations.
+        logger.warn(
+          `App ${appId} was deleted, but its files require manual cleanup`,
+          error,
+        );
+      }
+    });
+  } finally {
+    githubOpsService.endAppDeletion(appId);
+  }
 }
 
 export function registerAppHandlers() {

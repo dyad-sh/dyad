@@ -32,12 +32,22 @@ import {
   type GithubOpsWireEvent,
 } from "@/github_ops/transport";
 import { githubOpsService } from "./github_ops_service";
+import { safeGithubOpsErrorMessage } from "./github_ops_safe_error";
+import { githubOpsPresentationService } from "./github_ops_presentation_service";
 
-type GithubOpsActorCommand = {
-  readonly type: "domain";
-  readonly command: GithubOpsCommand;
-  readonly invocationRef: GithubOpsInvocationRef | null;
-};
+type GithubOpsActorCommand =
+  | {
+      readonly type: "domain";
+      readonly command: GithubOpsCommand;
+      readonly invocationRef: GithubOpsInvocationRef | null;
+    }
+  | {
+      readonly type: "schedule-conflict-claim-expiry";
+      readonly claimId: string;
+    };
+
+export const CONFLICT_RESOLUTION_CLAIM_TIMEOUT_MS = 30_000;
+const CONFLICT_RESOLUTION_CLAIM_TIMER = "conflict-resolution-claim";
 
 function sameInvocation(
   left: GithubOpsInvocationRef | null,
@@ -81,20 +91,33 @@ function transitionActor(
   }
   if (
     event.type === "RESOLVE_WITH_AI_STARTED" &&
-    actorState.conflictResolutionPending
+    actorState.conflictResolutionClaimId !== null
   ) {
     return ignore(actorState, "invalid-in-current-state");
   }
   if (
-    event.type === "CONFLICT_RESOLUTION_CANCELLED" &&
-    !actorState.conflictResolutionPending
+    (event.type === "CONFLICT_RESOLUTION_STARTED" ||
+      event.type === "CONFLICT_RESOLUTION_CANCELLED" ||
+      event.type === "CONFLICT_RESOLUTION_CLAIM_EXPIRED") &&
+    actorState.conflictResolutionClaimId !== event.claimId
   ) {
-    return ignore(actorState, "invalid-in-current-state");
+    return ignore(actorState, "stale-operation");
+  }
+  if (event.type === "CONFLICT_RESOLUTION_CLAIM_EXPIRED") {
+    return {
+      kind: "applied" as const,
+      state: {
+        ...actorState,
+        conflictResolutionClaimId: null,
+      },
+      commands: [],
+    };
   }
 
   const result = transition(actorState.state, toGithubOpsDomainEvent(event));
   if (result.kind === "ignored") return { ...result, state: actorState };
 
+  const previousInvocationRef = actorState.activeInvocationRef;
   let activeInvocationRef = actorState.activeInvocationRef;
   if (event.type === "OP_REQUESTED" && result.state.type === "running") {
     activeInvocationRef = invocation(key.appId, event.operationId);
@@ -113,39 +136,48 @@ function transitionActor(
   } else if (result.state.type === "idle") {
     activeInvocationRef = null;
   }
-  const conflictResolutionPending =
+  const conflictResolutionClaimId =
     event.type === "RESOLVE_WITH_AI_STARTED"
-      ? true
+      ? event.claimId
       : event.type === "CONFLICT_RESOLUTION_STARTED" ||
           event.type === "CONFLICT_RESOLUTION_CANCELLED" ||
-          event.type === "RECONCILE_REQUESTED" ||
           result.state.type !== "conflicted"
-        ? false
-        : actorState.conflictResolutionPending;
+        ? null
+        : actorState.conflictResolutionClaimId;
 
   const state =
     result.state === actorState.state &&
     activeInvocationRef === actorState.activeInvocationRef &&
-    conflictResolutionPending === actorState.conflictResolutionPending
+    conflictResolutionClaimId === actorState.conflictResolutionClaimId
       ? actorState
       : {
           state: result.state,
           activeInvocationRef,
-          conflictResolutionPending,
+          conflictResolutionClaimId,
         };
   return {
     kind: "applied" as const,
     state,
-    commands: result.commands.map((command) => ({
-      type: "domain" as const,
-      command,
-      invocationRef: activeInvocationRef,
-    })),
+    commands: [
+      ...result.commands.map((command) => ({
+        type: "domain" as const,
+        command,
+        invocationRef: activeInvocationRef ?? previousInvocationRef,
+      })),
+      ...(event.type === "RESOLVE_WITH_AI_STARTED"
+        ? [
+            {
+              type: "schedule-conflict-claim-expiry" as const,
+              claimId: event.claimId,
+            },
+          ]
+        : []),
+    ],
   };
 }
 
 function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback;
+  return safeGithubOpsErrorMessage(error, fallback);
 }
 
 function createCommandRunner(
@@ -159,7 +191,21 @@ function createCommandRunner(
   let conflictProbeGeneration = 0;
   const emit = (event: GithubOpsProducerEvent) => context.send(event);
 
-  return ({ command, invocationRef }: GithubOpsActorCommand): void => {
+  return (actorCommand: GithubOpsActorCommand): void => {
+    if (actorCommand.type === "schedule-conflict-claim-expiry") {
+      context.timers.replace(
+        CONFLICT_RESOLUTION_CLAIM_TIMER,
+        actorCommand.claimId,
+        CONFLICT_RESOLUTION_CLAIM_TIMEOUT_MS,
+        (claimId) => ({
+          type: "CONFLICT_RESOLUTION_CLAIM_EXPIRED",
+          claimId: String(claimId),
+        }),
+        context.send,
+      );
+      return;
+    }
+    const { command, invocationRef } = actorCommand;
     const appId = context.key.appId;
     switch (command.type) {
       case "run-op": {
@@ -204,7 +250,12 @@ function createCommandRunner(
               emit({ type: "GIT_STATE", ...state, recoveryInvocationRef });
             }
           },
-          () => undefined,
+          () =>
+            githubOpsPresentationService.showError(
+              appId,
+              invocationRef?.operationId,
+              "Could not refresh the repository state",
+            ),
         );
         return;
       }
@@ -223,6 +274,11 @@ function createCommandRunner(
             }
           },
           () => {
+            githubOpsPresentationService.showError(
+              appId,
+              invocationRef?.operationId,
+              "Could not check the repository for merge conflicts",
+            );
             if (
               generation === conflictProbeGeneration &&
               command.settleOnError
@@ -246,8 +302,14 @@ function createCommandRunner(
         ]);
         return;
       case "notify":
-        // The authoritative banner is part of the remote snapshot. Avoid
-        // duplicating a window-specific toast from main.
+        if (command.kind === "error") {
+          githubOpsPresentationService.showError(
+            appId,
+            invocationRef?.operationId,
+            command.message,
+          );
+          githubOpsPresentationService.forget(invocationRef?.operationId);
+        }
         return;
       case "start-conflict-resolution":
         // Renderer presentation starts only after the applied dispatch receipt.
@@ -298,7 +360,7 @@ export const githubOpsDefinition: GithubOpsDefinition = {
   initialState: (): GithubOpsActorState => ({
     state: INITIAL_GITHUB_OPS_STATE,
     activeInvocationRef: null,
-    conflictResolutionPending: false,
+    conflictResolutionClaimId: null,
   }),
   transition: (state, event, key) => transitionActor(key, state, event),
   createScheduler: () => ({
@@ -307,6 +369,14 @@ export const githubOpsDefinition: GithubOpsDefinition = {
     },
   }),
   createCommandRunner,
+  createBeforeCommit: (context) => (previous, next) => {
+    if (
+      previous.conflictResolutionClaimId !== null &&
+      previous.conflictResolutionClaimId !== next.conflictResolutionClaimId
+    ) {
+      context.timers.remove(CONFLICT_RESOLUTION_CLAIM_TIMER);
+    }
+  },
   lifecycle: {
     subscriptionCreates: true,
     dispatchCreates: false,
@@ -317,6 +387,7 @@ export const githubOpsDefinition: GithubOpsDefinition = {
     survivesRendererReload: true,
     restartPersistence: "ephemeral",
     flushOnShutdown: true,
+    flush: ({ key }) => githubOpsService.settle(key.appId),
   },
   remote: {
     protocolVersion: REMOTE_MACHINE_PROTOCOL_VERSION,
@@ -336,15 +407,31 @@ export const githubOpsDefinition: GithubOpsDefinition = {
       projectGithubOpsRemoteSnapshot(key.appId, 0, {
         state: INITIAL_GITHUB_OPS_STATE,
         activeInvocationRef: null,
-        conflictResolutionPending: false,
+        conflictResolutionClaimId: null,
       }),
     revisionPolicy: (event) =>
       isGithubOpsStateSensitiveIntent(event as GithubOpsIntentEvent)
         ? "reject-stale"
         : "allow-stale",
     authorizeSubscribe: ({ key }) => authorizeApp(key.appId),
-    authorizeDispatch: async ({ key, event, currentState }) => {
+    authorizeDispatch: async ({ sender, key, event, currentState }) => {
+      if (key.appId === 0) {
+        throw new DyadError(
+          "A real app is required for GitHub operations",
+          DyadErrorKind.Auth,
+        );
+      }
       await authorizeApp(key.appId);
+      githubOpsService.assertAcceptingOperations(key.appId);
+      if (
+        event.type === "OP_REQUESTED" ||
+        event.type === "ABORT_AND_SWITCH_CONFIRMED"
+      ) {
+        githubOpsPresentationService.recordInitiator(
+          event.operationId,
+          sender.windowSessionId,
+        );
+      }
       if (
         event.type === "OP_REQUESTED" &&
         (event.op.type === "rebase-abort" || event.op.type === "merge-abort") &&

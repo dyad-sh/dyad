@@ -327,6 +327,13 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   be superseded before its producer settles, but its original waiter must
   still complete. A producer sink captured for one invocation must also ignore
   or overwrite any conflicting invocation identity supplied by its payload.
+- A first-response-wins renderer handoff needs a correlated claim, not a
+  boolean. Matching follow-ups may be revision-stale only when the opaque claim
+  ID is validated by the host. Unrelated reconciliation must not release the
+  claim, and renderer loss needs an owner signal or bounded actor-owned expiry.
+- An unavailable/bootstrap remote snapshot is not authoritative idle state.
+  Gate every actor-backed capability on a ready connection and defer recovery
+  dispatches until subscription bootstrap has completed.
 - Keep transport revisions separate from semantic presentation epochs. A
   revision may advance for bookkeeping-only transitions, while a reload token
   must advance exactly once for each user-visible remount.
@@ -349,6 +356,10 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
 - Define merge/replacement semantics for events received during hydration.
   On teardown, flush the latest accepted snapshot through a transport that is
   safe for the lifecycle boundary (for example, one-way IPC during pagehide).
+- Entity deletion must fence new command admission before waiting for the
+  entity lock. Recheck the fence inside the lock, stop actor admission before
+  unrelated awaited cleanup, and make actor disposal flush every admitted
+  command before database or filesystem deletion.
 
 ## Query keys and recorded decisions
 

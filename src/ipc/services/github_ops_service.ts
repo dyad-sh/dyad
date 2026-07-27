@@ -1,4 +1,5 @@
 import type { IpcMainInvokeEvent } from "electron";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import type { GithubOperation } from "@/github_ops/state";
 import {
   handleAbortRebase,
@@ -29,8 +30,49 @@ import { withLock } from "../utils/lock_utils";
 const MAIN_SERVICE_EVENT = undefined as unknown as IpcMainInvokeEvent;
 
 export class GithubOpsService {
+  private readonly deletionFences = new Map<number, number>();
+  private readonly pendingByApp = new Map<number, Set<Promise<unknown>>>();
+
   run(appId: number, op: GithubOperation): Promise<void> {
-    return withLock(appId, () => this.runUnlocked(appId, op));
+    // Check before queueing so deletion never waits on a command that is
+    // itself queued behind the deletion's per-app lock.
+    try {
+      this.assertAcceptingOperations(appId);
+    } catch (error) {
+      return Promise.reject(error);
+    }
+    return this.track(
+      appId,
+      withLock(appId, () => {
+        this.assertAcceptingOperations(appId);
+        return this.runUnlocked(appId, op);
+      }),
+    );
+  }
+
+  beginAppDeletion(appId: number): void {
+    this.deletionFences.set(appId, (this.deletionFences.get(appId) ?? 0) + 1);
+  }
+
+  endAppDeletion(appId: number): void {
+    const remaining = (this.deletionFences.get(appId) ?? 1) - 1;
+    if (remaining > 0) this.deletionFences.set(appId, remaining);
+    else this.deletionFences.delete(appId);
+  }
+
+  assertAcceptingOperations(appId: number): void {
+    if (this.deletionFences.has(appId)) {
+      throw new DyadError(
+        "The app is being deleted",
+        DyadErrorKind.Precondition,
+      );
+    }
+  }
+
+  async settle(appId: number): Promise<void> {
+    const pending = this.pendingByApp.get(appId);
+    if (!pending?.size) return;
+    await Promise.allSettled(pending);
   }
 
   private runUnlocked(appId: number, op: GithubOperation): Promise<void> {
@@ -100,11 +142,32 @@ export class GithubOpsService {
   }
 
   getGitState(appId: number) {
-    return handleGetGitState(MAIN_SERVICE_EVENT, { appId });
+    return this.track(appId, handleGetGitState(MAIN_SERVICE_EVENT, { appId }));
   }
 
   getConflicts(appId: number) {
-    return handleGetMergeConflicts(MAIN_SERVICE_EVENT, { appId });
+    return this.track(
+      appId,
+      handleGetMergeConflicts(MAIN_SERVICE_EVENT, { appId }),
+    );
+  }
+
+  private track<Result>(
+    appId: number,
+    promise: Promise<Result>,
+  ): Promise<Result> {
+    let pending = this.pendingByApp.get(appId);
+    if (!pending) {
+      pending = new Set();
+      this.pendingByApp.set(appId, pending);
+    }
+    pending.add(promise);
+    const cleanup = () => {
+      pending?.delete(promise);
+      if (pending?.size === 0) this.pendingByApp.delete(appId);
+    };
+    void promise.then(cleanup, cleanup);
+    return promise;
   }
 }
 

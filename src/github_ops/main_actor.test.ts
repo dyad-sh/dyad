@@ -10,7 +10,10 @@ import {
   createSequentialIdSource,
 } from "@/state_machines/testing";
 import { TwoWindowHarness } from "@/testing/two_window_harness";
-import { githubOpsDefinition } from "@/ipc/services/github_ops_definition";
+import {
+  CONFLICT_RESOLUTION_CLAIM_TIMEOUT_MS,
+  githubOpsDefinition,
+} from "@/ipc/services/github_ops_definition";
 import { githubOpsClientDefinition } from "./client_definition";
 import type { GithubOpsIgnoreReason } from "./state";
 import {
@@ -26,6 +29,8 @@ const service = vi.hoisted(() => ({
       () => Promise<{ mergeInProgress: boolean; rebaseInProgress: boolean }>
     >(),
   getConflicts: vi.fn<() => Promise<string[]>>(),
+  settle: vi.fn<() => Promise<void>>(async () => undefined),
+  assertAcceptingOperations: vi.fn(),
 }));
 
 const database = vi.hoisted(() => ({
@@ -103,6 +108,7 @@ function createHarness() {
   return {
     actorA,
     actorB,
+    clock,
     clientA,
     clientB,
     connectionA,
@@ -126,6 +132,9 @@ describe("main-hosted github_ops actor", () => {
     service.run.mockReset();
     service.getGitState.mockReset();
     service.getConflicts.mockReset();
+    service.settle.mockReset();
+    service.settle.mockResolvedValue(undefined);
+    service.assertAcceptingOperations.mockReset();
     database.findFirst.mockReset();
     invalidations.publish.mockReset();
     database.findFirst.mockResolvedValue({ id: 7 });
@@ -241,7 +250,25 @@ describe("main-hosted github_ops actor", () => {
 
     await actor.resync();
     await expect(
-      actor.dispatch({ type: "CONFLICT_RESOLUTION_STARTED" }),
+      actor.dispatch({
+        type: "CONFLICT_RESOLUTION_STARTED",
+        claimId: "missing-claim",
+      }),
+    ).resolves.toMatchObject({
+      kind: "ignored",
+      reason: "stale-operation",
+    });
+    await expect(
+      actor.dispatch({
+        type: "RESOLVE_WITH_AI_STARTED",
+        claimId: "claim-after-sync",
+      }),
+    ).resolves.toMatchObject({ kind: "applied" });
+    await expect(
+      actor.dispatch({
+        type: "CONFLICT_RESOLUTION_STARTED",
+        claimId: "claim-after-sync",
+      }),
     ).resolves.toMatchObject({ kind: "applied" });
   });
 
@@ -259,19 +286,144 @@ describe("main-hosted github_ops actor", () => {
 
     const receipt = await actorA.dispatch({
       type: "RESOLVE_WITH_AI_STARTED",
+      claimId: "claim-a",
     });
     expect(receipt.kind).toBe("applied");
     expect(actorA.getSnapshot().state.type).toBe("conflicted");
     expect(service.run).not.toHaveBeenCalled();
     await expect(
-      actorB.dispatch({ type: "RESOLVE_WITH_AI_STARTED" }),
+      actorB.dispatch({
+        type: "RESOLVE_WITH_AI_STARTED",
+        claimId: "claim-b",
+      }),
     ).resolves.toMatchObject({
       kind: "ignored",
       reason: "invalid-in-current-state",
     });
 
-    await actorA.dispatch({ type: "CONFLICT_RESOLUTION_STARTED" });
+    await actorA.dispatch({
+      type: "CONFLICT_RESOLUTION_STARTED",
+      claimId: "claim-a",
+    });
     expect(actorA.getSnapshot().state.type).toBe("idle");
+  });
+
+  it("preserves the claim through reconcile and rejects a second window", async () => {
+    service.getConflicts.mockResolvedValue(["src/conflicted.ts"]);
+    const { actorA, actorB, host } = createHarness();
+    await actorA.resync();
+    await actorB.resync();
+    const local: GithubOpsHostedActor = host.ensure(
+      githubOpsDefinition,
+      githubOpsKey(7),
+    );
+    local.send({ type: "CONFLICTS", files: ["src/conflicted.ts"] });
+    await flush();
+
+    await actorA.dispatch({
+      type: "RESOLVE_WITH_AI_STARTED",
+      claimId: "claim-a",
+    });
+    await actorB.dispatch({ type: "RECONCILE_REQUESTED" });
+
+    expect(actorB.getSnapshot().conflictResolutionClaimed).toBe(true);
+    await expect(
+      actorB.dispatch({
+        type: "RESOLVE_WITH_AI_STARTED",
+        claimId: "claim-b",
+      }),
+    ).resolves.toMatchObject({
+      kind: "ignored",
+      reason: "invalid-in-current-state",
+    });
+  });
+
+  it("accepts a claim-correlated follow-up with a stale revision", async () => {
+    const { actorA, connectionA, host } = createHarness();
+    await actorA.resync();
+    const local: GithubOpsHostedActor = host.ensure(
+      githubOpsDefinition,
+      githubOpsKey(7),
+    );
+    local.send({ type: "CONFLICTS", files: ["src/conflicted.ts"] });
+    await flush();
+    const staleRevision = actorA.getSnapshot().revision;
+
+    await actorA.dispatch({
+      type: "RESOLVE_WITH_AI_STARTED",
+      claimId: "claim-a",
+    });
+    await expect(
+      connectionA.dispatch({
+        protocolVersion: githubOpsClientDefinition.remote.protocolVersion,
+        machineId: githubOpsClientDefinition.id,
+        encodedKey: { appId: 7 },
+        encodedEvent: {
+          type: "CONFLICT_RESOLUTION_STARTED",
+          claimId: "claim-a",
+        },
+        messageId: "stale-claim-follow-up",
+        expectedActorInstanceId: local.actorInstanceId,
+        expectedRevision: staleRevision,
+      }),
+    ).resolves.toMatchObject({ kind: "applied" });
+    expect(local.getSnapshot().state.type).toBe("idle");
+  });
+
+  it("rejects a follow-up from the wrong claimant", async () => {
+    const { actorA, actorB, host } = createHarness();
+    await actorA.resync();
+    await actorB.resync();
+    const local: GithubOpsHostedActor = host.ensure(
+      githubOpsDefinition,
+      githubOpsKey(7),
+    );
+    local.send({ type: "CONFLICTS", files: ["src/conflicted.ts"] });
+    await flush();
+    await actorA.dispatch({
+      type: "RESOLVE_WITH_AI_STARTED",
+      claimId: "claim-a",
+    });
+
+    await expect(
+      actorB.dispatch({
+        type: "CONFLICT_RESOLUTION_CANCELLED",
+        claimId: "claim-b",
+      }),
+    ).resolves.toMatchObject({
+      kind: "ignored",
+      reason: "stale-operation",
+    });
+    expect(local.getSnapshot().conflictResolutionClaimId).toBe("claim-a");
+  });
+
+  it("expires an abandoned claim so another window can reclaim it", async () => {
+    const { actorA, actorB, clientA, clock, host, releaseA } = createHarness();
+    await actorA.resync();
+    await actorB.resync();
+    const local: GithubOpsHostedActor = host.ensure(
+      githubOpsDefinition,
+      githubOpsKey(7),
+    );
+    local.send({ type: "CONFLICTS", files: ["src/conflicted.ts"] });
+    await flush();
+    await actorA.dispatch({
+      type: "RESOLVE_WITH_AI_STARTED",
+      claimId: "abandoned-claim",
+    });
+
+    releaseA();
+    clientA.dispose();
+    clock.advanceBy(CONFLICT_RESOLUTION_CLAIM_TIMEOUT_MS);
+    await flush();
+
+    expect(local.getSnapshot().conflictResolutionClaimId).toBeNull();
+    await expect(
+      actorB.dispatch({
+        type: "RESOLVE_WITH_AI_STARTED",
+        claimId: "replacement-claim",
+      }),
+    ).resolves.toMatchObject({ kind: "applied" });
   });
 
   it("reconciles repository truth after actor recreation", async () => {
@@ -292,5 +444,75 @@ describe("main-hosted github_ops actor", () => {
 
     expect(service.getGitState).toHaveBeenCalledWith(7);
     expect(replacement.getSnapshot().state.type).toBe("rebase-paused");
+  });
+
+  it("rejects dispatch for the null-app subscription sentinel", async () => {
+    const { clientA } = createHarness();
+    const sentinel = clientA.actor(githubOpsClientDefinition, githubOpsKey(0));
+    const release = sentinel.subscribe(() => undefined);
+    await sentinel.resync();
+
+    await expect(
+      sentinel.dispatch({
+        type: "OP_REQUESTED",
+        operationId: "sentinel-operation",
+        op: {
+          type: "connect-repo",
+          mode: "create",
+          org: "acme",
+          repo: "orphan",
+          thenAutoPush: false,
+        },
+      }),
+    ).resolves.toMatchObject({
+      kind: "rejected",
+      reason: "unauthorized",
+    });
+    expect(service.run).not.toHaveBeenCalled();
+    release();
+  });
+
+  it("keeps actor disposal pending until admitted Git work settles", async () => {
+    const settlement = deferred();
+    service.settle.mockReturnValue(settlement.promise);
+    const { actorA, host } = createHarness();
+    await actorA.resync();
+
+    let disposed = false;
+    const disposal = host
+      .disposeKey(githubOpsDefinition.id, githubOpsKey(7), "entity-deletion")
+      .then(() => {
+        disposed = true;
+      });
+    await vi.waitFor(() => expect(service.settle).toHaveBeenCalledWith(7));
+    expect(disposed).toBe(false);
+
+    settlement.resolve();
+    await disposal;
+    expect(disposed).toBe(true);
+  });
+
+  it("does not project repository paths from Git failures", async () => {
+    service.run.mockRejectedValue(
+      new Error(
+        "fatal: Unable to create '/Users/alice/apps/demo/.git/index.lock'",
+      ),
+    );
+    const { actorA } = createHarness();
+    await actorA.resync();
+    await actorA.dispatch({
+      type: "OP_REQUESTED",
+      operationId: "unsafe-error",
+      op: { type: "push", mode: "normal" },
+    });
+    await vi.waitFor(() =>
+      expect(actorA.getSnapshot().state).toMatchObject({
+        type: "idle",
+        banner: {
+          kind: "error",
+          message: "GitHub operation failed",
+        },
+      }),
+    );
   });
 });

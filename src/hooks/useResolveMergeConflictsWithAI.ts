@@ -12,8 +12,8 @@ import { useLoadApp } from "@/hooks/useLoadApp";
 interface UseResolveMergeConflictsWithAIProps {
   appId: number;
   conflicts: readonly string[];
-  onStartResolving?: () => void;
-  onStartFailed?: () => void;
+  onStartResolving?: () => void | Promise<void>;
+  onStartFailed?: () => void | Promise<void>;
 }
 
 /**
@@ -59,7 +59,7 @@ export function useResolveMergeConflictsWithAI({
           initialChatMode: "build",
         });
         // Clear conflicts state after successful chat creation
-        onStartResolving?.();
+        await onStartResolving?.();
 
         // Build the prompt for resolving all conflicts
         const fileList = requestedConflicts.map((f) => `- ${f}`).join("\n");
@@ -94,7 +94,14 @@ For each file, review the conflict markers (<<<<<<<, =======, >>>>>>>) and choos
           },
         });
       } catch (error: unknown) {
-        onStartFailed?.();
+        try {
+          await onStartFailed?.();
+        } catch (rollbackError) {
+          console.error(
+            "Failed to release conflict-resolution claim:",
+            rollbackError,
+          );
+        }
         showError(
           error instanceof Error
             ? error.message

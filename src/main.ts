@@ -111,7 +111,11 @@ import {
   createPlatformThumbnailFromPath,
   getMediaThumbnailCacheRoot,
 } from "./ipc/utils/media_thumbnail";
-import { createMcpBeforeQuitHandler } from "./ipc/utils/mcp_shutdown";
+import {
+  createMcpBeforeQuitHandler,
+  disposeMcpClientsForShutdown,
+} from "./ipc/utils/mcp_shutdown";
+import { remoteMachineHost } from "./ipc/services/distributed_machine_host";
 import { configureTrustedRenderer } from "./ipc/utils/renderer_security";
 import {
   getWindowOpenHandlerResponse,
@@ -1251,6 +1255,12 @@ app.on("window-all-closed", () => {
 // (e.g. Windows WM_ENDSESSION) and leave the sentinel behind as a false positive.
 const handleMcpBeforeQuit = createMcpBeforeQuitHandler({
   quit: () => app.quit(),
+  cleanup: async () => {
+    await Promise.all([
+      disposeMcpClientsForShutdown(),
+      remoteMachineHost.dispose(),
+    ]);
+  },
 });
 
 app.on("before-quit", (event) => {

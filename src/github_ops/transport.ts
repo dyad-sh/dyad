@@ -12,6 +12,7 @@ export const GITHUB_OPS_MACHINE_ID = "github_ops";
 export const GITHUB_OPS_INVOCATION_KIND = "github-operation";
 
 const operationIdSchema = z.string().min(1);
+const conflictResolutionClaimIdSchema = z.string().min(1);
 const repositoryRelativePathSchema = z
   .string()
   .refine(
@@ -218,11 +219,26 @@ export const GithubOpsIntentEventSchema = z.union([
     })
     .strict(),
   z.object({ type: z.literal("BLOCKED_DISMISSED") }).strict(),
-  z.object({ type: z.literal("RESOLVE_WITH_AI_STARTED") }).strict(),
+  z
+    .object({
+      type: z.literal("RESOLVE_WITH_AI_STARTED"),
+      claimId: conflictResolutionClaimIdSchema,
+    })
+    .strict(),
   z.object({ type: z.literal("BANNER_DISMISSED") }).strict(),
   z.object({ type: z.literal("RECONCILE_REQUESTED") }).strict(),
-  z.object({ type: z.literal("CONFLICT_RESOLUTION_STARTED") }).strict(),
-  z.object({ type: z.literal("CONFLICT_RESOLUTION_CANCELLED") }).strict(),
+  z
+    .object({
+      type: z.literal("CONFLICT_RESOLUTION_STARTED"),
+      claimId: conflictResolutionClaimIdSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("CONFLICT_RESOLUTION_CANCELLED"),
+      claimId: conflictResolutionClaimIdSchema,
+    })
+    .strict(),
 ]);
 export type GithubOpsIntentEvent = z.infer<typeof GithubOpsIntentEventSchema>;
 
@@ -265,6 +281,12 @@ export const GithubOpsProducerEventSchema = z.union([
       recoveryInvocationRef: GithubOpsInvocationRefSchema.optional(),
     })
     .strict(),
+  z
+    .object({
+      type: z.literal("CONFLICT_RESOLUTION_CLAIM_EXPIRED"),
+      claimId: conflictResolutionClaimIdSchema,
+    })
+    .strict(),
 ]);
 export type GithubOpsProducerEvent = z.infer<
   typeof GithubOpsProducerEventSchema
@@ -274,7 +296,7 @@ export type GithubOpsWireEvent = GithubOpsIntentEvent | GithubOpsProducerEvent;
 export interface GithubOpsActorState {
   readonly state: GithubOpsState;
   readonly activeInvocationRef: GithubOpsInvocationRef | null;
-  readonly conflictResolutionPending: boolean;
+  readonly conflictResolutionClaimId: string | null;
 }
 
 export const GithubOpsRemoteSnapshotSchema = z
@@ -283,6 +305,7 @@ export const GithubOpsRemoteSnapshotSchema = z
     revision: z.number().int().nonnegative(),
     state: GithubOpsStateSchema,
     activeInvocationRef: GithubOpsInvocationRefSchema.nullable(),
+    conflictResolutionClaimed: z.boolean(),
   })
   .strict();
 export type GithubOpsRemoteSnapshot = z.infer<
@@ -305,6 +328,7 @@ export function projectGithubOpsRemoteSnapshot(
     revision,
     state: actorState.state,
     activeInvocationRef: actorState.activeInvocationRef,
+    conflictResolutionClaimed: actorState.conflictResolutionClaimId !== null,
   };
 }
 
@@ -317,9 +341,12 @@ export function isGithubOpsStateSensitiveIntent(
     case "ABORT_AND_SWITCH_CONFIRMED":
     case "BLOCKED_DISMISSED":
     case "RESOLVE_WITH_AI_STARTED":
+      return true;
     case "CONFLICT_RESOLUTION_STARTED":
     case "CONFLICT_RESOLUTION_CANCELLED":
-      return true;
+      // The exact claim ID is the concurrency guard, so a follow-up remains
+      // safe even when its renderer has not received the claim snapshot yet.
+      return false;
     case "BANNER_DISMISSED":
     case "RECONCILE_REQUESTED":
       return false;
@@ -343,6 +370,8 @@ export function toGithubOpsDomainEvent(
     case "CONFLICT_RESOLUTION_STARTED":
       return { type: "CONFLICTS", files: [] };
     case "CONFLICT_RESOLUTION_CANCELLED":
+      return { type: "RECONCILE_REQUESTED" };
+    case "CONFLICT_RESOLUTION_CLAIM_EXPIRED":
       return { type: "RECONCILE_REQUESTED" };
     case "ABORT_AND_SWITCH_CONFIRMED":
     case "BLOCKED_DISMISSED":

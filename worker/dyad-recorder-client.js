@@ -561,8 +561,8 @@
       position: "fixed",
       pointerEvents: "none",
       zIndex: "2147483647",
-      border: "2px solid #e5484d",
-      background: "rgba(229,72,77,0.08)",
+      border: "2px solid #a855f7",
+      background: "rgba(168,85,247,0.08)",
       borderRadius: "3px",
       display: "none",
     });

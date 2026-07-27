@@ -50,7 +50,10 @@ import { reconcileOrphanTestBranches } from "./ipc/utils/neon_test_branch";
 import { reconcileOrphanTestUsers } from "./ipc/utils/supabase_test_user";
 import { UserSettings } from "./lib/schemas";
 import { handleNeonOAuthReturn } from "./neon_admin/neon_return_handler";
-import { runOAuthReturnExchange } from "./ipc/handlers/connection_flow_handlers";
+import {
+  disposeConnectionFlowsForShutdown,
+  runOAuthReturnExchange,
+} from "./ipc/handlers/connection_flow_handlers";
 import {
   AddMcpServerConfigSchema,
   AddMcpServerPayload,
@@ -115,6 +118,7 @@ import {
   createMcpBeforeQuitHandler,
   disposeMcpClientsForShutdown,
 } from "./ipc/utils/mcp_shutdown";
+import { disposeMcpOAuthForShutdown } from "./ipc/utils/mcp_oauth_flow";
 import { remoteMachineHost } from "./ipc/services/distributed_machine_host";
 import { configureTrustedRenderer } from "./ipc/utils/renderer_security";
 import {
@@ -1258,6 +1262,8 @@ const handleMcpBeforeQuit = createMcpBeforeQuitHandler({
   cleanup: async () => {
     await Promise.all([
       disposeMcpClientsForShutdown(),
+      disposeMcpOAuthForShutdown(),
+      disposeConnectionFlowsForShutdown(),
       remoteMachineHost.dispose(),
     ]);
   },

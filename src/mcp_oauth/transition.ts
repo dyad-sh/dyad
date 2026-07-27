@@ -1,5 +1,4 @@
-/** Pure, total transition function for one MCP OAuth callback port. */
-
+import { sameInvocationRef } from "@/state_machines/invocation_ref";
 import {
   change,
   ignore as ignoreTransition,
@@ -13,7 +12,7 @@ import type {
 } from "./state";
 
 export type IgnoreReason = SharedIgnoreReason<
-  | "stale-flow"
+  | "stale-invocation"
   | "state-mismatch"
   | "invalid-in-current-state"
   | "no-active-flow"
@@ -26,31 +25,27 @@ export type McpOAuthTransitionResult = TransitionResult<
   IgnoreReason
 >;
 
-function advance(state: McpOAuthState): McpOAuthTransitionResult {
-  return change(state);
-}
-
-function ignore(
-  state: McpOAuthState,
-  reason: IgnoreReason,
-): McpOAuthTransitionResult {
-  return ignoreTransition(state, reason);
-}
-
-function eventIdentity(event: Extract<McpOAuthEvent, { type: "CONNECT" }>) {
+function eventIdentity(
+  event: Extract<McpOAuthEvent, { type: "CONNECT" }>,
+): McpOAuthFlowIdentity {
   return {
-    flowId: event.flowId,
+    invocationRef: event.invocationRef,
+    rendererMessageId: event.rendererMessageId,
     expectedState: event.expectedState,
     serverId: event.serverId,
-  } satisfies McpOAuthFlowIdentity;
+  };
 }
 
-function hasCurrentFlowId(state: McpOAuthState, flowId: string): boolean {
+function hasCurrentInvocation(
+  state: McpOAuthState,
+  event: Exclude<McpOAuthEvent, { type: "CONNECT" }>,
+): boolean {
   if (state.status === "idle") return false;
-  if (state.status === "superseding") {
-    return state.closing.flowId === flowId;
-  }
-  return state.flowId === flowId;
+  const active =
+    state.status === "superseding"
+      ? state.closing.invocationRef
+      : state.invocationRef;
+  return sameInvocationRef(active, event.invocationRef);
 }
 
 export function transition(
@@ -64,23 +59,20 @@ export function transition(
       case "connected":
       case "failed":
       case "timedOut":
-        return advance({ status: "binding", ...next });
+        return change({ status: "binding", ...next });
       case "superseding":
-        if (
-          state.next.flowId === next.flowId &&
-          state.next.expectedState === next.expectedState &&
-          state.next.serverId === next.serverId
-        ) {
-          return ignore(state, "duplicate-connect");
+        if (sameInvocationRef(state.next.invocationRef, next.invocationRef)) {
+          return ignoreTransition(state, "duplicate-connect");
         }
-        return advance({ ...state, next });
+        return change({ ...state, next });
       case "binding":
       case "awaitingCallback":
       case "exchanging":
-        return advance({
+        return change({
           status: "superseding",
           closing: {
-            flowId: state.flowId,
+            invocationRef: state.invocationRef,
+            rendererMessageId: state.rendererMessageId,
             expectedState: state.expectedState,
             serverId: state.serverId,
           },
@@ -91,93 +83,69 @@ export function transition(
     }
   }
 
-  if (state.status === "idle") return ignore(state, "no-active-flow");
-  if (!hasCurrentFlowId(state, event.flowId)) {
-    return ignore(state, "stale-flow");
+  if (state.status === "idle") {
+    return ignoreTransition(state, "no-active-flow");
+  }
+  if (!hasCurrentInvocation(state, event)) {
+    return ignoreTransition(state, "stale-invocation");
   }
 
   switch (event.type) {
     case "SOCKETS_CLOSED":
-      if (state.status !== "superseding") {
-        return ignore(state, "invalid-in-current-state");
-      }
-      return advance({ status: "binding", ...state.next });
-
+      return state.status === "superseding"
+        ? change({ status: "binding", ...state.next })
+        : ignoreTransition(state, "invalid-in-current-state");
     case "BINDS_SETTLED":
       if (state.status !== "binding") {
-        return ignore(state, "invalid-in-current-state");
+        return ignoreTransition(state, "invalid-in-current-state");
       }
       if (event.anyInUse) {
-        return advance({
+        return change({
+          ...state,
           status: "failed",
-          flowId: state.flowId,
-          expectedState: state.expectedState,
-          serverId: state.serverId,
           message: "callback-port-in-use",
         });
       }
       if (event.boundHosts.length === 0) {
-        return advance({
+        return change({
+          ...state,
           status: "failed",
-          flowId: state.flowId,
-          expectedState: state.expectedState,
-          serverId: state.serverId,
           message: "callback-bind-failed",
         });
       }
-      return advance({
-        status: "awaitingCallback",
-        flowId: state.flowId,
-        expectedState: state.expectedState,
-        serverId: state.serverId,
-      });
-
+      return change({ ...state, status: "awaitingCallback" });
     case "AUTHORIZED_SILENTLY":
-      if (state.status !== "awaitingCallback") {
-        return ignore(state, "invalid-in-current-state");
-      }
-      return advance({ ...state, status: "connected" });
-
+      return state.status === "awaitingCallback"
+        ? change({ ...state, status: "connected" })
+        : ignoreTransition(state, "invalid-in-current-state");
     case "CALLBACK":
       if (state.status !== "awaitingCallback") {
-        return ignore(state, "invalid-in-current-state");
+        return ignoreTransition(state, "invalid-in-current-state");
       }
       if (event.state !== state.expectedState) {
-        return ignore(state, "state-mismatch");
+        return ignoreTransition(state, "state-mismatch");
       }
-      if (!event.code) {
-        return advance({
-          status: "failed",
-          flowId: state.flowId,
-          expectedState: state.expectedState,
-          serverId: state.serverId,
-          message: `OAuth callback error: ${event.error ?? "missing code"}`,
-        });
-      }
-      return advance({ ...state, status: "exchanging" });
-
+      return event.code
+        ? change({ ...state, status: "exchanging" })
+        : change({
+            ...state,
+            status: "failed",
+            message: `OAuth callback error: ${event.error ?? "missing code"}`,
+          });
     case "TIMEOUT":
-      if (state.status !== "binding" && state.status !== "awaitingCallback") {
-        return ignore(state, "invalid-in-current-state");
-      }
-      return advance({ ...state, status: "timedOut" });
-
+      return state.status === "binding" || state.status === "awaitingCallback"
+        ? change({ ...state, status: "timedOut" })
+        : ignoreTransition(state, "invalid-in-current-state");
     case "EXCHANGE_OK":
-      if (state.status !== "exchanging") {
-        return ignore(state, "invalid-in-current-state");
-      }
-      return advance({ ...state, status: "connected" });
-
+      return state.status === "exchanging"
+        ? change({ ...state, status: "connected" })
+        : ignoreTransition(state, "invalid-in-current-state");
     case "EXCHANGE_FAILED":
-      if (
-        state.status !== "binding" &&
-        state.status !== "awaitingCallback" &&
-        state.status !== "exchanging"
-      ) {
-        return ignore(state, "invalid-in-current-state");
-      }
-      return advance({ ...state, status: "failed", message: event.message });
-
+      return state.status === "binding" ||
+        state.status === "awaitingCallback" ||
+        state.status === "exchanging"
+        ? change({ ...state, status: "failed", message: event.message })
+        : ignoreTransition(state, "invalid-in-current-state");
     default: {
       const exhaustive: never = event;
       return exhaustive;

@@ -25,6 +25,7 @@ describe("hybrid chat harness testBuild mode", () => {
       const { started } = await ipc.connectionFlow.start({
         provider: "github",
         appId: harness.appId,
+        expectedRevision: 0,
       });
       expect(started).toBe(true);
 
@@ -56,8 +57,7 @@ describe("hybrid chat harness testBuild mode", () => {
               const data = event.args[0] as FlowStatePayload;
               return (
                 data?.provider === "github" &&
-                (data?.state?.status === "loading-resources" ||
-                  data?.state?.status === "connected")
+                data?.state?.status === "connected"
               );
             }),
           ).toBe(true),

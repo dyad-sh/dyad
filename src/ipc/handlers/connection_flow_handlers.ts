@@ -12,9 +12,12 @@ import {
 import {
   isTerminalFlowState,
   type ConnectionFlowFailureReason,
+  type ConnectionFlowInvocationRef,
   type ConnectionFlowProvider,
 } from "../../connection_flow/state";
 import { safeSend } from "../utils/safe_sender";
+import { publishQueryInvalidations } from "../utils/query_invalidation_delivery";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("connection_flow");
 
@@ -58,23 +61,40 @@ function broadcast(channel: string, payload: unknown): void {
 //
 // Provider-specific flow drivers (currently only GitHub's device flow)
 // register themselves here. `start` kicks off the provider's async work for a
-// freshly allocated flowId; `onFlowEnded` lets the provider release resources
+// freshly allocated invocation ref; `onFlowEnded` releases provider resources
 // (poll timers, device codes) whenever a flow reaches a terminal state, no
 // matter which event ended it (cancel IPC, timeout, failure, success).
 // -----------------------------------------------------------------------------
 
 export interface ConnectionFlowProviderHooks {
   start?: (args: {
-    flowId: string;
+    invocationRef: ConnectionFlowInvocationRef;
     appId: number | null;
+    signal: AbortSignal;
   }) => void | Promise<void>;
-  onFlowEnded?: (flowId: string) => void;
+  onFlowEnded?: (invocationRef: ConnectionFlowInvocationRef) => void;
+  dispose?: () => void | Promise<void>;
 }
 
 const providerHooks = new Map<
   ConnectionFlowProvider,
   ConnectionFlowProviderHooks
 >();
+const providerWork = new Map<string, AbortController>();
+
+function providerWorkKey(invocationRef: ConnectionFlowInvocationRef): string {
+  return invocationRef.operationId;
+}
+
+function endProviderWork(
+  provider: ConnectionFlowProvider,
+  invocationRef: ConnectionFlowInvocationRef,
+): void {
+  const controller = providerWork.get(providerWorkKey(invocationRef));
+  providerWork.delete(providerWorkKey(invocationRef));
+  controller?.abort();
+  providerHooks.get(provider)?.onFlowEnded?.(invocationRef);
+}
 
 export function registerConnectionFlowProvider(
   provider: ConnectionFlowProvider,
@@ -91,10 +111,12 @@ export const connectionFlowRegistry = createConnectionFlowRegistry({
   onStateChange: (provider, state) => {
     logger.debug(
       `[${provider}] flow state -> ${state.status}` +
-        ("flowId" in state ? ` (${state.flowId})` : ""),
+        ("invocationRef" in state
+          ? ` (${state.invocationRef.operationId})`
+          : ""),
     );
-    if (isTerminalFlowState(state) && "flowId" in state) {
-      providerHooks.get(provider)?.onFlowEnded?.(state.flowId);
+    if (isTerminalFlowState(state) && "invocationRef" in state) {
+      endProviderWork(provider, state.invocationRef);
     }
     broadcast(connectionFlowEvents.stateChanged.channel, { provider, state });
   },
@@ -121,15 +143,15 @@ export type OAuthReturnExchangeOutcome =
  * write; the renderer is then told to refresh connection state without
  * transitioning any flow.
  *
- * `expectedFlowId` correlates the return with the flow that produced it.
- * The GitHub device poll chain carries the flowId it was started for and
+ * `expectedInvocationRef` correlates the return with the flow that produced it.
+ * The GitHub device poll chain carries the ref it was started for and
  * MUST pass it, so a stale poll result can never claim (and advance) a
  * newer flow.
  *
  * The Supabase/Neon deep-link returns cannot pass it: the dyad.sh OAuth
  * proxy's login endpoints take no client-supplied state parameter, so the
  * dyad://…-oauth-return URL carries only tokens — there is nothing to
- * round-trip a flowId in. The closest safe correlation holds structurally
+ * round-trip an invocation ref. The closest safe correlation holds structurally
  * instead: the registry keeps at most one flow per provider and `start` is
  * a no-op while one is active, so the awaiting flow a return claims is
  * always the *newest* flow for that provider (an older flow must have
@@ -149,15 +171,15 @@ export async function runOAuthReturnExchange(
   exchange: () => void | Promise<void>,
   {
     failureReason = "token_invalid",
-    expectedFlowId,
+    expectedInvocationRef,
   }: {
     failureReason?: ConnectionFlowFailureReason;
-    expectedFlowId?: string;
+    expectedInvocationRef?: ConnectionFlowInvocationRef;
   } = {},
 ): Promise<OAuthReturnExchangeOutcome> {
   const claim: ClaimReturnResult = connectionFlowRegistry.claimReturn(
     provider,
-    expectedFlowId,
+    expectedInvocationRef,
   );
   try {
     await exchange();
@@ -165,7 +187,7 @@ export async function runOAuthReturnExchange(
     if (claim.claimed) {
       connectionFlowRegistry.fail(
         provider,
-        claim.flowId,
+        claim.invocationRef,
         failureReason,
         error instanceof Error ? error.message : String(error),
       );
@@ -173,11 +195,36 @@ export async function runOAuthReturnExchange(
     return { ok: false, claimed: claim.claimed, error };
   }
   if (claim.claimed) {
-    connectionFlowRegistry.completeTokenExchange(provider, claim.flowId);
+    connectionFlowRegistry.completeTokenExchange(provider, claim.invocationRef);
   } else {
     connectionFlowRegistry.notifyUnsolicitedReturn(provider);
   }
+  // Persistence completed before this global epoch event. Every live window
+  // invalidates independently, and a reloaded window recovers the scope from
+  // the query-invalidation journal instead of acknowledging main lifecycle.
+  publishQueryInvalidations([{ family: "provider-status", provider }]);
   return { ok: true, claimed: claim.claimed };
+}
+
+export async function disposeConnectionFlowsForShutdown(): Promise<void> {
+  const active = Object.entries(connectionFlowRegistry.getSnapshot()).flatMap(
+    ([provider, state]) =>
+      "invocationRef" in state
+        ? [
+            {
+              provider: provider as ConnectionFlowProvider,
+              invocationRef: state.invocationRef,
+            },
+          ]
+        : [],
+  );
+  connectionFlowRegistry.dispose();
+  for (const { provider, invocationRef } of active) {
+    endProviderWork(provider, invocationRef);
+  }
+  await Promise.all(
+    [...providerHooks.values()].map((hooks) => hooks.dispose?.()),
+  );
 }
 
 // -----------------------------------------------------------------------------
@@ -187,19 +234,37 @@ export async function runOAuthReturnExchange(
 export function registerConnectionFlowHandlers(): void {
   createTypedHandler(connectionFlowContracts.start, async (event, params) => {
     rememberSubscriber(event.sender);
-    const result = connectionFlowRegistry.start(params.provider);
+    const result = connectionFlowRegistry.start(
+      params.provider,
+      params.expectedRevision,
+    );
+    if (!result.admitted) {
+      throw new DyadError(
+        `Connection flow changed before ${params.provider} start was admitted.`,
+        DyadErrorKind.Conflict,
+      );
+    }
     if (result.started) {
       const starter = providerHooks.get(params.provider)?.start;
       if (starter) {
-        void starter({ flowId: result.flowId, appId: params.appId ?? null });
+        const controller = new AbortController();
+        providerWork.set(providerWorkKey(result.invocationRef), controller);
+        void starter({
+          invocationRef: result.invocationRef,
+          appId: params.appId ?? null,
+          signal: controller.signal,
+        });
       } else {
         // Deep-link providers (Supabase/Neon) have no async preparation:
         // the flow goes straight to awaiting the dyad:// return.
-        connectionFlowRegistry.markPrepared(params.provider, result.flowId);
+        connectionFlowRegistry.markPrepared(
+          params.provider,
+          result.invocationRef,
+        );
       }
     }
     return {
-      flowId: result.flowId,
+      invocationRef: result.invocationRef,
       started: result.started,
       state: connectionFlowRegistry.getState(params.provider),
     };
@@ -207,25 +272,24 @@ export function registerConnectionFlowHandlers(): void {
 
   createTypedHandler(connectionFlowContracts.cancel, async (event, params) => {
     rememberSubscriber(event.sender);
-    connectionFlowRegistry.cancel(params.provider, params.flowId);
+    connectionFlowRegistry.cancel(params.provider, params.invocationRef);
   });
-
-  createTypedHandler(
-    connectionFlowContracts.resourcesLoaded,
-    async (event, params) => {
-      rememberSubscriber(event.sender);
-      connectionFlowRegistry.completeResourceLoad(
-        params.provider,
-        params.flowId,
-      );
-    },
-  );
 
   createTypedHandler(
     connectionFlowContracts.acknowledge,
     async (event, params) => {
       rememberSubscriber(event.sender);
-      connectionFlowRegistry.acknowledge(params.provider, params.flowId);
+      const result = connectionFlowRegistry.acknowledge(
+        params.provider,
+        params.invocationRef,
+        params.expectedRevision,
+      );
+      if (!result.admitted) {
+        throw new DyadError(
+          `Connection flow changed before ${params.provider} acknowledgement was admitted.`,
+          DyadErrorKind.Conflict,
+        );
+      }
     },
   );
 

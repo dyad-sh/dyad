@@ -6,9 +6,11 @@ import {
   createEventClient,
 } from "../contracts/core";
 import type {
+  ConnectionFlowInvocationRef,
   ConnectionFlowProvider,
   ConnectionFlowState,
 } from "../../connection_flow/state";
+import { CONNECTION_FLOW_INVOCATION_KIND } from "../../connection_flow/state";
 
 // =============================================================================
 // Connection Flow Schemas
@@ -27,52 +29,63 @@ export const ConnectionFlowFailureReasonSchema = z.enum([
   "network",
 ]);
 
+export const ConnectionFlowInvocationRefSchema = z
+  .object({
+    kind: z.literal(CONNECTION_FLOW_INVOCATION_KIND),
+    entityKey: ConnectionFlowProviderSchema,
+    operationId: z.string().min(1),
+  })
+  .strict() satisfies z.ZodType<ConnectionFlowInvocationRef>;
+
+const RevisionSchema = z.number().int().nonnegative();
+
 export const ConnectionFlowStateSchema = z.discriminatedUnion("status", [
-  z.object({ status: z.literal("disconnected") }),
+  z.object({ status: z.literal("disconnected"), revision: RevisionSchema }),
   z.object({
     status: z.literal("starting"),
-    flowId: z.string(),
+    invocationRef: ConnectionFlowInvocationRefSchema,
     provider: ConnectionFlowProviderSchema,
+    revision: RevisionSchema,
   }),
   z.object({
     status: z.literal("awaiting-return"),
-    flowId: z.string(),
+    invocationRef: ConnectionFlowInvocationRefSchema,
     provider: ConnectionFlowProviderSchema,
+    revision: RevisionSchema,
     userCode: z.string().optional(),
     verificationUri: z.string().optional(),
   }),
   z.object({
     status: z.literal("exchanging-token"),
-    flowId: z.string(),
+    invocationRef: ConnectionFlowInvocationRefSchema,
     provider: ConnectionFlowProviderSchema,
-  }),
-  z.object({
-    status: z.literal("loading-resources"),
-    flowId: z.string(),
-    provider: ConnectionFlowProviderSchema,
+    revision: RevisionSchema,
   }),
   z.object({
     status: z.literal("connected"),
-    flowId: z.string(),
+    invocationRef: ConnectionFlowInvocationRefSchema,
     provider: ConnectionFlowProviderSchema,
+    revision: RevisionSchema,
   }),
   z.object({
     status: z.literal("failed"),
-    flowId: z.string(),
+    invocationRef: ConnectionFlowInvocationRefSchema,
     provider: ConnectionFlowProviderSchema,
+    revision: RevisionSchema,
     reason: ConnectionFlowFailureReasonSchema,
     message: z.string().optional(),
   }),
   z.object({
     status: z.literal("cancelled"),
-    flowId: z.string(),
+    invocationRef: ConnectionFlowInvocationRefSchema,
     provider: ConnectionFlowProviderSchema,
+    revision: RevisionSchema,
   }),
 ]) satisfies z.ZodType<ConnectionFlowState>;
 
-const FlowIdParamsSchema = z.object({
+const InvocationParamsSchema = z.object({
   provider: ConnectionFlowProviderSchema,
-  flowId: z.string(),
+  invocationRef: ConnectionFlowInvocationRefSchema,
 });
 
 // =============================================================================
@@ -85,9 +98,10 @@ export const connectionFlowContracts = {
     input: z.object({
       provider: ConnectionFlowProviderSchema,
       appId: z.number().nullable().optional(),
+      expectedRevision: RevisionSchema,
     }),
     output: z.object({
-      flowId: z.string(),
+      invocationRef: ConnectionFlowInvocationRefSchema,
       started: z.boolean(),
       state: ConnectionFlowStateSchema,
     }),
@@ -97,20 +111,16 @@ export const connectionFlowContracts = {
     channel: "connection-flow:cancel",
     input: z.object({
       provider: ConnectionFlowProviderSchema,
-      flowId: z.string().optional(),
+      invocationRef: ConnectionFlowInvocationRefSchema,
     }),
-    output: z.void(),
-  }),
-
-  resourcesLoaded: defineContract({
-    channel: "connection-flow:resources-loaded",
-    input: FlowIdParamsSchema,
     output: z.void(),
   }),
 
   acknowledge: defineContract({
     channel: "connection-flow:acknowledge",
-    input: FlowIdParamsSchema,
+    input: InvocationParamsSchema.extend({
+      expectedRevision: RevisionSchema,
+    }),
     output: z.void(),
   }),
 

@@ -77,6 +77,12 @@ vi.mock("@/db", () => ({
         }),
       }),
     })),
+    delete: vi.fn(() => ({
+      where: () => {
+        dbStore.delete(lastUpdateTargetId);
+        return Promise.resolve();
+      },
+    })),
     select: vi.fn(() => ({
       from: () => {
         const all = [...dbStore.values()];
@@ -151,6 +157,18 @@ vi.mock("@/ipc/utils/mcp_manager", () => ({
   },
 }));
 
+const runOAuthFlowMock = vi.fn();
+const disconnectOAuthMock = vi.fn(async () => ({ success: true }));
+const withMcpOAuthServerMutationMock = vi.fn(
+  async <T>(_serverId: number, _reason: string, mutate: () => Promise<T>) =>
+    mutate(),
+);
+vi.mock("@/ipc/utils/mcp_oauth_flow", () => ({
+  runOAuthFlow: runOAuthFlowMock,
+  disconnectOAuth: disconnectOAuthMock,
+  withMcpOAuthServerMutation: withMcpOAuthServerMutationMock,
+}));
+
 // Import the module under test last -- the vi.mock factories close
 // over file-scope variables (handlers, getClientMock, ...) that must
 // exist first. A static import would load too early and crash them.
@@ -205,6 +223,52 @@ describe("mcp updateServer handler", () => {
     seedRow({ id: 44 });
     await invoke("mcp:update-server", { id: 44, name: "renamed" });
     expect(disposeMock).toHaveBeenCalledWith(44);
+  });
+
+  it.each([
+    { oauthEnabled: false },
+    { enabled: false },
+    { url: "https://replacement.example/mcp" },
+    { transport: "stdio" },
+    { oauthClientId: "replacement-client" },
+    { oauthClientSecret: "replacement-secret" },
+    { oauthScope: "tools:read" },
+  ])("revokes OAuth before an OAuth-relevant update: %o", async (change) => {
+    seedRow({ id: 45 });
+    await invoke("mcp:update-server", { id: 45, ...change });
+    expect(withMcpOAuthServerMutationMock).toHaveBeenCalledWith(
+      45,
+      expect.stringMatching(/configuration changed/),
+      expect.any(Function),
+    );
+  });
+
+  it("does not revoke OAuth for a display-name-only update", async () => {
+    seedRow({ id: 46 });
+    await invoke("mcp:update-server", { id: 46, name: "renamed" });
+    expect(withMcpOAuthServerMutationMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("mcp destructive OAuth boundaries", () => {
+  beforeEach(() => {
+    dbStore.clear();
+    vi.clearAllMocks();
+  });
+
+  it("revokes OAuth before deleting a server row", async () => {
+    seedRow({ id: 47 });
+    await invoke("mcp:delete-server", 47);
+    expect(withMcpOAuthServerMutationMock).toHaveBeenCalledWith(
+      47,
+      expect.stringMatching(/deleted/),
+      expect.any(Function),
+    );
+  });
+
+  it("routes disconnect through the server-scoped OAuth cancellation path", async () => {
+    await invoke("mcp:disconnect-oauth", 48);
+    expect(disconnectOAuthMock).toHaveBeenCalledWith(48);
   });
 });
 

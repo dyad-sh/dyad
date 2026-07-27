@@ -38,7 +38,6 @@ import {
 import {
   acknowledgeConnectionFlow,
   cancelConnectionFlow,
-  reportConnectionFlowResourcesLoaded,
   startConnectionFlow,
   useConnectionFlow,
   useUnsolicitedConnectionReturn,
@@ -433,7 +432,7 @@ export function UnconnectedGitHubConnector({
   const [isExpanded, setIsExpanded] = useState(expanded || false);
 
   // --- GitHub Device Flow State ---
-  // The flow itself lives in the main process (flowId-correlated state
+  // The flow itself lives in the main process (typed-ref-correlated state
   // machine); this component only projects it. Unmounting and remounting
   // re-projects the current flow, so a device poll that succeeds while this
   // component is unmounted is still reflected in the UI.
@@ -460,7 +459,6 @@ export function UnconnectedGitHubConnector({
       case "awaiting-return":
         return "Please authorize in your browser.";
       case "exchanging-token":
-      case "loading-resources":
         return "Connecting to GitHub...";
       case "connected":
         return "Successfully connected to GitHub!";
@@ -514,25 +512,17 @@ export function UnconnectedGitHubConnector({
 
   useEffect(() => {
     const flow = githubFlowState;
-    if (flow.status === "loading-resources") {
-      // The access token has been written; refresh settings (which flips
-      // this component to the repo-setup UI) and report completion.
+    if (flow.status === "connected") {
+      setIsExpanded(true);
       void (async () => {
         try {
           await refreshSettingsRef.current();
         } finally {
-          await reportConnectionFlowResourcesLoaded("github", flow.flowId);
+          await acknowledgeConnectionFlow("github", flow.invocationRef);
         }
       })();
-    } else if (flow.status === "connected") {
-      setIsExpanded(true);
-      // Reset the registry to idle: by now settings carry the token (the
-      // loading-resources refresh ran first), so the UI has switched to the
-      // repo-setup view and nothing renders from the flow state anymore.
-      // Without this, a stale `connected` would linger in the registry.
-      void acknowledgeConnectionFlow("github", flow.flowId);
     } else if (flow.status === "cancelled") {
-      void acknowledgeConnectionFlow("github", flow.flowId);
+      void acknowledgeConnectionFlow("github", flow.invocationRef);
     }
     // `failed` is deliberately not acknowledged: the error stays visible
     // until the user retries (starting a new flow is allowed from `failed`).
@@ -779,7 +769,12 @@ export function UnconnectedGitHubConnector({
                 size="sm"
                 className="mt-3"
                 onClick={() => {
-                  void cancelConnectionFlow("github");
+                  if ("invocationRef" in githubFlowState) {
+                    void cancelConnectionFlow(
+                      "github",
+                      githubFlowState.invocationRef,
+                    );
+                  }
                 }}
               >
                 Cancel

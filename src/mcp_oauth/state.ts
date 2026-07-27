@@ -1,21 +1,23 @@
 /**
- * MCP OAuth loopback state machine — pure per-port lifecycle types.
+ * Private MCP OAuth lifecycle types.
  *
- * A callback port is the concurrency boundary: different ports progress in
- * parallel, while transitions for one port are synchronously serialized and
- * listener close/bind work is barrier-ordered. Different MCP servers may use
- * the same configured port, but only one listener can own it at a time.
- *
- * Asynchronous bind, authorization, exchange, timeout, and socket-close events
- * may be dropped after their flowId becomes stale or their phase has already
- * advanced. A callback with mismatched OAuth state is rejected without ending
- * the active flow. CONNECT is never silently dropped: every caller settles as
- * connected, failed, timed out, or explicitly superseded, including queued
- * attempts replaced while the prior listener is still closing.
+ * The typed invocation reference is correlation identity across listeners,
+ * waiters, timers, callbacks, exchange, and settlement. `rendererMessageId`
+ * is a separate retry-idempotency identity supplied by the renderer.
  */
 
+import type { InvocationRef } from "@/state_machines/invocation_ref";
+
+export const MCP_OAUTH_INVOCATION_KIND = "mcp-oauth";
+
+export type McpOAuthInvocationRef = InvocationRef<
+  typeof MCP_OAUTH_INVOCATION_KIND,
+  number
+>;
+
 export interface McpOAuthFlowIdentity {
-  flowId: string;
+  invocationRef: McpOAuthInvocationRef;
+  rendererMessageId: string;
   expectedState: string;
   serverId: number;
 }
@@ -38,24 +40,31 @@ export const IDLE_MCP_OAUTH_STATE: McpOAuthState = { status: "idle" };
 
 export type McpOAuthEvent =
   | ({ type: "CONNECT" } & McpOAuthFlowIdentity)
-  | { type: "SOCKETS_CLOSED"; flowId: string }
+  | { type: "SOCKETS_CLOSED"; invocationRef: McpOAuthInvocationRef }
   | {
       type: "BINDS_SETTLED";
-      flowId: string;
+      invocationRef: McpOAuthInvocationRef;
       boundHosts: readonly string[];
       anyInUse: boolean;
     }
-  | { type: "AUTHORIZED_SILENTLY"; flowId: string }
+  | {
+      type: "AUTHORIZED_SILENTLY";
+      invocationRef: McpOAuthInvocationRef;
+    }
   | {
       type: "CALLBACK";
-      flowId: string;
+      invocationRef: McpOAuthInvocationRef;
       state: string | null;
       code?: string;
       error?: string;
     }
-  | { type: "TIMEOUT"; flowId: string }
-  | { type: "EXCHANGE_OK"; flowId: string }
-  | { type: "EXCHANGE_FAILED"; flowId: string; message: string };
+  | { type: "TIMEOUT"; invocationRef: McpOAuthInvocationRef }
+  | { type: "EXCHANGE_OK"; invocationRef: McpOAuthInvocationRef }
+  | {
+      type: "EXCHANGE_FAILED";
+      invocationRef: McpOAuthInvocationRef;
+      message: string;
+    };
 
 export function identityOf(state: McpOAuthState): McpOAuthFlowIdentity | null {
   switch (state.status) {

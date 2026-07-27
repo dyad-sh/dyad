@@ -208,12 +208,14 @@ export const mcpContracts = {
     channel: "mcp:update-server",
     input: McpServerUpdateSchema,
     output: McpServerSchema,
+    invalidates: () => [{ family: "mcp-servers" }, { family: "mcp-tools" }],
   }),
 
   deleteServer: defineContract({
     channel: "mcp:delete-server",
     input: z.number(), // serverId
     output: z.object({ success: z.boolean() }),
+    invalidates: () => [{ family: "mcp-servers" }, { family: "mcp-tools" }],
   }),
 
   listTools: defineContract({
@@ -238,6 +240,9 @@ export const mcpContracts = {
     channel: "mcp:start-oauth",
     input: z.object({
       serverId: z.number(),
+      // Durable retry identity from the renderer. This is intentionally
+      // distinct from the main-minted McpOAuthInvocationRef.
+      rendererMessageId: z.string().min(1),
       // Optional per-flow override; lets the renderer pass a freshly
       // probed port for rows whose stored `oauthCallbackPort` is null
       // (e.g. created with OAuth off and then enabled via retry).
@@ -256,6 +261,7 @@ export const mcpContracts = {
     channel: "mcp:disconnect-oauth",
     input: z.number(), // serverId
     output: z.object({ success: z.boolean() }),
+    invalidates: () => [{ family: "mcp-servers" }, { family: "mcp-tools" }],
   }),
 
   probeCallbackPort: defineContract({

@@ -84,7 +84,12 @@ vi.mock("drizzle-orm", () => ({
 // work; resolve the provider module after mocks are in place.
 const electronImport = await import("electron");
 const providerImport = await import("@/ipc/utils/mcp_oauth_provider");
-const { DyadOAuthClientProvider, oauthStateHasTokens } = providerImport;
+const {
+  DyadOAuthClientProvider,
+  issueMcpOAuthWriteAuthority,
+  oauthStateHasTokens,
+  revokeMcpOAuthWriteAuthority,
+} = providerImport;
 const { shell, safeStorage } = electronImport;
 
 describe("DyadOAuthClientProvider", () => {
@@ -123,6 +128,41 @@ describe("DyadOAuthClientProvider", () => {
     const stored = dbStore.get(7);
     expect(stored).toBeDefined();
     expect(stored).not.toContain("tok");
+  });
+
+  it("rejects writes from a revoked OAuth flow authority", async () => {
+    const authority = issueMcpOAuthWriteAuthority(71);
+    const staleProvider = new DyadOAuthClientProvider({
+      serverId: 71,
+      allowInteractive: true,
+      writeAuthority: authority,
+    });
+    await staleProvider.saveTokens({
+      access_token: "before-revoke",
+      token_type: "Bearer",
+    });
+    const before = dbStore.get(71);
+
+    await revokeMcpOAuthWriteAuthority(71);
+    await staleProvider.saveTokens({
+      access_token: "stale-after-revoke",
+      token_type: "Bearer",
+    });
+    expect(dbStore.get(71)).toBe(before);
+
+    const replacementAuthority = issueMcpOAuthWriteAuthority(71);
+    const replacement = new DyadOAuthClientProvider({
+      serverId: 71,
+      allowInteractive: true,
+      writeAuthority: replacementAuthority,
+    });
+    await replacement.saveTokens({
+      access_token: "replacement",
+      token_type: "Bearer",
+    });
+    expect(await replacement.tokens()).toMatchObject({
+      access_token: "replacement",
+    });
   });
 
   it("seeds clientInformation from preregisteredClientId on first read", async () => {

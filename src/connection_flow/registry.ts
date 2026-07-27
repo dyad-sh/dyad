@@ -1,69 +1,50 @@
 /**
- * Connection flow registry — the main process' authoritative, per-provider
- * flow controller.
+ * Main-authoritative connection-flow resource registry.
  *
- * Replaces the previous module-global `currentFlowState` singleton (GitHub)
- * and the renderer-side ad-hoc timers (Neon/Supabase). Each provider has at
- * most one flow at a time, keyed by a freshly allocated `flowId`. Timeouts
- * are scheduled here and dispatched through the same pure transition
- * function as returns, so a timeout and a return are mutually exclusive:
- * whichever event arrives first wins; the loser is ignored by the machine.
- *
- * The registry itself is dependency-free (timers, id allocation and
- * broadcasting are injected) so it can be unit-tested without Electron.
- * Unlike renderer machines, it has no command channel: as an explicitly
- * constructed main-process registry it derives injected timer/broadcast
- * effects from applied transitions, keeping flowId correlation authoritative
- * in one process.
+ * The specialized timer and provider-resource ownership remains here. Remote
+ * intents are admitted against an authoritative revision, while all
+ * cross-lifetime correlation uses a typed invocation reference minted by the
+ * shared IdSource and claimed through InvocationRegistry.
  */
 
+import { systemClock, uuidIdSource } from "@/state_machines/clock";
+import type { Clock, IdSource } from "@/state_machines/clock";
 import {
+  createInvocationRef,
+  InvocationRegistry,
+  sameInvocationRef,
+} from "@/state_machines/invocation_ref";
+import { createTraceObserver } from "@/state_machines/trace";
+import type { TransitionObserver } from "@/state_machines/types";
+import {
+  CONNECTION_FLOW_INVOCATION_KIND,
   CONNECTION_FLOW_PROVIDERS,
   DISCONNECTED_FLOW_STATE,
   type ConnectionFlowEvent,
   type ConnectionFlowFailureReason,
+  type ConnectionFlowInvocationRef,
   type ConnectionFlowProvider,
   type ConnectionFlowState,
+  isActiveFlowState,
 } from "./state";
 import { transition, type IgnoreReason } from "./transition";
-import type { TransitionObserver } from "@/state_machines/types";
-import { createTraceObserver } from "@/state_machines/trace";
 
-/**
- * How long a provider waits in `awaiting-return` before the flow times out.
- * `null` disables the registry timeout (GitHub's device flow has its own
- * expiry, surfaced by GitHub as `expired_token` during polling).
- */
 export const DEFAULT_FLOW_TIMEOUTS_MS: Record<
   ConnectionFlowProvider,
   number | null
 > = {
-  // Generous: users routinely take well over the old renderer-side 20s to
-  // finish a real browser sign-in (the 20s timer produced spurious "timed
-  // out" toasts). Supabase historically had no timeout at all (a closed
-  // browser left it silently stuck) and now shares the same one. A return
-  // that arrives after the timeout still stores tokens via the unsolicited
-  // path.
   neon: 5 * 60_000,
   supabase: 5 * 60_000,
   github: null,
 };
 
 export interface ConnectionFlowRegistryOptions {
-  /** Called after every applied transition. */
   onStateChange?: (
     provider: ConnectionFlowProvider,
     state: ConnectionFlowState,
     previous: ConnectionFlowState,
   ) => void;
-  /**
-   * Called when an OAuth return was completed with no matching active flow
-   * (cold start, app restarted mid-flow, or a return that lost the race
-   * against a timeout). Tokens have already been written; the renderer
-   * should refresh connection state without transitioning any flow.
-   */
   onUnsolicitedReturn?: (provider: ConnectionFlowProvider) => void;
-  /** Called whenever an event is ignored by the machine (for logging). */
   onIgnoredEvent?: (
     provider: ConnectionFlowProvider,
     event: ConnectionFlowEvent,
@@ -76,22 +57,33 @@ export interface ConnectionFlowRegistryOptions {
     IgnoreReason
   >;
   timeoutsMs?: Partial<Record<ConnectionFlowProvider, number | null>>;
-  createFlowId?: (provider: ConnectionFlowProvider) => string;
-  scheduleTimeout?: (callback: () => void, ms: number) => unknown;
-  clearScheduledTimeout?: (handle: unknown) => void;
+  clock?: Clock;
+  ids?: IdSource;
 }
 
-export interface StartFlowResult {
-  /** flowId of the freshly started flow, or of the already-active one. */
-  flowId: string;
-  /** false when a flow was already active (double-start is a no-op). */
-  started: boolean;
-  state: ConnectionFlowState;
-}
+export type StartFlowResult =
+  | {
+      admitted: true;
+      started: boolean;
+      invocationRef: ConnectionFlowInvocationRef;
+      state: ConnectionFlowState;
+    }
+  | {
+      admitted: false;
+      reason: "stale-revision" | "disposed";
+      state: ConnectionFlowState;
+    };
 
-/** Result of claiming an OAuth return for an active flow. */
+export type RevisionedIntentResult =
+  | { admitted: true; applied: boolean; state: ConnectionFlowState }
+  | {
+      admitted: false;
+      reason: "stale-revision" | "disposed";
+      state: ConnectionFlowState;
+    };
+
 export type ClaimReturnResult =
-  | { claimed: true; flowId: string }
+  | { claimed: true; invocationRef: ConnectionFlowInvocationRef }
   | { claimed: false };
 
 export type ConnectionFlowRegistry = ReturnType<
@@ -106,24 +98,20 @@ export function createConnectionFlowRegistry(
     onUnsolicitedReturn,
     onIgnoredEvent,
     observer = createTraceObserver("connection_flow"),
-    scheduleTimeout = (callback, ms) => setTimeout(callback, ms),
-    clearScheduledTimeout = (handle) =>
-      clearTimeout(handle as ReturnType<typeof setTimeout>),
+    clock = systemClock,
+    ids = uuidIdSource,
   } = options;
-
-  const timeoutsMs: Record<ConnectionFlowProvider, number | null> = {
+  const timeoutsMs = {
     ...DEFAULT_FLOW_TIMEOUTS_MS,
     ...options.timeoutsMs,
   };
-
-  let flowCounter = 0;
-  const createFlowId =
-    options.createFlowId ??
-    ((provider: ConnectionFlowProvider) =>
-      `${provider}-${++flowCounter}-${Date.now().toString(36)}`);
-
   const states = new Map<ConnectionFlowProvider, ConnectionFlowState>();
-  const pendingTimeouts = new Map<ConnectionFlowProvider, unknown>();
+  const invocations = new InvocationRegistry<ConnectionFlowProvider>();
+  const pendingTimeouts = new Map<
+    ConnectionFlowProvider,
+    ReturnType<Clock["schedule"]>
+  >();
+  let disposed = false;
 
   function notifyIgnored(
     provider: ConnectionFlowProvider,
@@ -149,21 +137,16 @@ export function createConnectionFlowRegistry(
 
   function clearPendingTimeout(provider: ConnectionFlowProvider): void {
     const handle = pendingTimeouts.get(provider);
-    if (handle !== undefined) {
-      pendingTimeouts.delete(provider);
-      clearScheduledTimeout(handle);
-    }
+    if (handle === undefined) return;
+    pendingTimeouts.delete(provider);
+    clock.cancel(handle);
   }
 
-  /**
-   * Run an event through the pure transition function and apply side
-   * effects (timer scheduling, notifications). Returns whether the event
-   * transitioned the machine.
-   */
   function dispatch(
     provider: ConnectionFlowProvider,
     event: ConnectionFlowEvent,
   ): boolean {
+    if (disposed) return false;
     const previous = getState(provider);
     const result = transition(previous, event);
     if (result.kind === "ignored") {
@@ -172,21 +155,16 @@ export function createConnectionFlowRegistry(
     }
 
     states.set(provider, result.state);
-
-    // A timeout only makes sense while we wait for the user to come back
-    // from the browser; any transition away from `awaiting-return` (return,
-    // cancel, failure) defuses it. The stale timer would be ignored by the
-    // machine anyway (flowId + state guards), but clearing keeps it tidy.
     clearPendingTimeout(provider);
     if (result.state.status === "awaiting-return") {
       const timeoutMs = timeoutsMs[provider];
       if (timeoutMs !== null && timeoutMs !== undefined) {
-        const flowId = result.state.flowId;
+        const invocationRef = result.state.invocationRef;
         pendingTimeouts.set(
           provider,
-          scheduleTimeout(() => {
+          clock.schedule(() => {
             pendingTimeouts.delete(provider);
-            dispatch(provider, { type: "timeout", flowId });
+            dispatch(provider, { type: "timeout", invocationRef });
           }, timeoutMs),
         );
       }
@@ -202,130 +180,172 @@ export function createConnectionFlowRegistry(
     return true;
   }
 
-  /**
-   * Start a new flow. A no-op returning the active flow when one is already
-   * running (double-clicking Connect must not orphan timers or duplicate
-   * polling).
-   */
-  function start(provider: ConnectionFlowProvider): StartFlowResult {
+  function start(
+    provider: ConnectionFlowProvider,
+    expectedRevision: number,
+  ): StartFlowResult {
     const current = getState(provider);
-    const flowId = createFlowId(provider);
-    const started = dispatch(provider, { type: "start", flowId, provider });
-    if (!started) {
+    if (disposed)
+      return { admitted: false, reason: "disposed", state: current };
+    if (current.revision !== expectedRevision) {
+      return { admitted: false, reason: "stale-revision", state: current };
+    }
+    if (isActiveFlowState(current) && "invocationRef" in current) {
+      const started = false;
+      dispatch(provider, {
+        type: "start",
+        invocationRef: current.invocationRef,
+        provider,
+      });
       return {
-        flowId: "flowId" in current ? current.flowId : flowId,
-        started: false,
+        admitted: true,
+        started,
+        invocationRef: current.invocationRef,
         state: current,
       };
     }
-    return { flowId, started: true, state: getState(provider) };
+
+    const invocationRef = createInvocationRef(
+      CONNECTION_FLOW_INVOCATION_KIND,
+      provider,
+      ids,
+    );
+    invocations.register(invocationRef, provider);
+    const started = dispatch(provider, {
+      type: "start",
+      invocationRef,
+      provider,
+    });
+    return {
+      admitted: true,
+      started,
+      invocationRef,
+      state: getState(provider),
+    };
   }
 
-  /**
-   * Move a starting flow to `awaiting-return` (optionally attaching the
-   * GitHub device-flow user code). Returns false if the flow is no longer
-   * in a state that can be prepared (e.g. it was cancelled meanwhile).
-   */
   function markPrepared(
     provider: ConnectionFlowProvider,
-    flowId: string,
+    invocationRef: ConnectionFlowInvocationRef,
     info: { userCode?: string; verificationUri?: string } = {},
   ): boolean {
-    return dispatch(provider, { type: "prepared", flowId, ...info });
+    if (invocations.claim(invocationRef).kind !== "claimed") return false;
+    return dispatch(provider, { type: "prepared", invocationRef, ...info });
   }
 
-  /**
-   * An OAuth return arrived for `provider`. If an active flow is awaiting
-   * it, the flow advances to `exchanging-token` and is claimed; otherwise
-   * the return is unsolicited (no pending flow, or the flow already timed
-   * out/was cancelled) and the machine is left untouched.
-   *
-   * When the caller knows which flow produced the return (`expectedFlowId`
-   * — e.g. the GitHub device poll chain carries the flowId it was started
-   * for), a mismatch with the currently awaiting flow means the return is
-   * stale (the user has since started a newer flow) and it is routed to the
-   * unsolicited path instead of claiming — and advancing — the newer flow.
-   */
   function claimReturn(
     provider: ConnectionFlowProvider,
-    expectedFlowId?: string,
+    expectedInvocationRef?: ConnectionFlowInvocationRef,
   ): ClaimReturnResult {
     const current = getState(provider);
-    if (current.status !== "awaiting-return") {
+    if (disposed || current.status !== "awaiting-return") {
       return { claimed: false };
     }
-    if (expectedFlowId !== undefined && current.flowId !== expectedFlowId) {
-      notifyIgnored(
-        provider,
-        current,
-        { type: "return-received", flowId: expectedFlowId },
-        "flow-id-mismatch",
-      );
+    const claim =
+      expectedInvocationRef === undefined
+        ? invocations.claimStructurally(
+            CONNECTION_FLOW_INVOCATION_KIND,
+            provider,
+            {
+              structuralSafety:
+                "Supabase and Neon deep links cannot echo application state; one active flow per provider and no active-flow replacement makes the awaiting invocation the only possible claim.",
+            },
+          )
+        : invocations.claim(expectedInvocationRef);
+    if (claim.kind !== "claimed") {
+      if (expectedInvocationRef !== undefined) {
+        notifyIgnored(
+          provider,
+          current,
+          { type: "return-received", invocationRef: expectedInvocationRef },
+          "invocation-mismatch",
+        );
+      }
       return { claimed: false };
     }
+    const invocationRef = claim.ref as ConnectionFlowInvocationRef;
     const claimed = dispatch(provider, {
       type: "return-received",
-      flowId: current.flowId,
+      invocationRef,
     });
-    return claimed ? { claimed: true, flowId: current.flowId } : { claimed };
+    return claimed ? { claimed: true, invocationRef } : { claimed: false };
   }
 
-  /** The token write for a claimed return succeeded. */
   function completeTokenExchange(
     provider: ConnectionFlowProvider,
-    flowId: string,
+    invocationRef: ConnectionFlowInvocationRef,
   ): boolean {
-    return dispatch(provider, { type: "token-exchanged", flowId });
+    if (invocations.claim(invocationRef).kind !== "claimed") return false;
+    return dispatch(provider, { type: "token-exchanged", invocationRef });
   }
 
-  /**
-   * A token was written with no claimed flow. Notifies listeners so the
-   * renderer can refresh connection state without transitioning any flow.
-   * Unsolicited returns are legitimate (cold-start deep links, app restarted
-   * mid-flow) — the flowId correlation exists to stop stale returns from
-   * corrupting an active flow, not to reject tokens.
-   */
   function notifyUnsolicitedReturn(provider: ConnectionFlowProvider): void {
-    onUnsolicitedReturn?.(provider);
-  }
-
-  /** The renderer finished refreshing resources for the flow. */
-  function completeResourceLoad(
-    provider: ConnectionFlowProvider,
-    flowId: string,
-  ): boolean {
-    return dispatch(provider, { type: "resources-loaded", flowId });
+    if (!disposed) onUnsolicitedReturn?.(provider);
   }
 
   function fail(
     provider: ConnectionFlowProvider,
-    flowId: string,
+    invocationRef: ConnectionFlowInvocationRef,
     reason: ConnectionFlowFailureReason,
     message?: string,
   ): boolean {
-    return dispatch(provider, { type: "fail", flowId, reason, message });
+    if (invocations.claim(invocationRef).kind !== "claimed") return false;
+    return dispatch(provider, {
+      type: "fail",
+      invocationRef,
+      reason,
+      message,
+    });
   }
 
-  /**
-   * Cancel a flow. When `flowId` is omitted, cancels whatever flow is
-   * currently active for the provider.
-   */
-  function cancel(provider: ConnectionFlowProvider, flowId?: string): boolean {
-    const current = getState(provider);
-    const targetFlowId =
-      flowId ?? ("flowId" in current ? current.flowId : undefined);
-    if (targetFlowId === undefined) {
+  function cancel(
+    provider: ConnectionFlowProvider,
+    invocationRef: ConnectionFlowInvocationRef,
+  ): boolean {
+    if (
+      invocationRef.entityKey !== provider ||
+      invocations.claim(invocationRef).kind !== "claimed"
+    ) {
       return false;
     }
-    return dispatch(provider, { type: "cancel", flowId: targetFlowId });
+    return dispatch(provider, { type: "cancel", invocationRef });
   }
 
-  /** Acknowledge a terminal state, resetting the provider to idle. */
   function acknowledge(
     provider: ConnectionFlowProvider,
-    flowId: string,
-  ): boolean {
-    return dispatch(provider, { type: "acknowledge", flowId });
+    invocationRef: ConnectionFlowInvocationRef,
+    expectedRevision: number,
+  ): RevisionedIntentResult {
+    const current = getState(provider);
+    if (disposed)
+      return { admitted: false, reason: "disposed", state: current };
+    if (current.revision !== expectedRevision) {
+      return { admitted: false, reason: "stale-revision", state: current };
+    }
+    if (
+      invocationRef.entityKey !== provider ||
+      !("invocationRef" in current) ||
+      !sameInvocationRef(current.invocationRef, invocationRef) ||
+      invocations.claim(invocationRef).kind !== "claimed"
+    ) {
+      return { admitted: true, applied: false, state: current };
+    }
+    const applied = dispatch(provider, { type: "acknowledge", invocationRef });
+    if (applied) invocations.delete(invocationRef);
+    return { admitted: true, applied, state: getState(provider) };
+  }
+
+  function dispose(): void {
+    if (disposed) return;
+    disposed = true;
+    for (const provider of CONNECTION_FLOW_PROVIDERS) {
+      clearPendingTimeout(provider);
+      const state = states.get(provider);
+      if (state && "invocationRef" in state) {
+        invocations.delete(state.invocationRef);
+      }
+    }
+    states.clear();
   }
 
   return {
@@ -336,9 +356,9 @@ export function createConnectionFlowRegistry(
     claimReturn,
     completeTokenExchange,
     notifyUnsolicitedReturn,
-    completeResourceLoad,
     fail,
     cancel,
     acknowledge,
+    dispose,
   };
 }

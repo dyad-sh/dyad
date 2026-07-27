@@ -12,6 +12,8 @@ import { mcpServers } from "../../db/schema";
 import {
   DyadOAuthClientProvider,
   decryptFromString,
+  issueMcpOAuthWriteAuthority,
+  revokeMcpOAuthWriteAuthority,
 } from "./mcp_oauth_provider";
 import { DEFAULT_OAUTH_CALLBACK_PORT } from "../types/mcp";
 import { mcpManager } from "./mcp_manager";
@@ -22,9 +24,12 @@ import {
   type McpOAuthListenerRequest,
 } from "@/mcp_oauth/registry";
 import { systemClock, uuidIdSource } from "@/state_machines/clock";
+import { publishQueryInvalidations } from "./query_invalidation_delivery";
 
 const logger = log.scope("mcp_oauth_flow");
 const LOOPBACK_BIND_HOSTS = ["127.0.0.1", "::1"] as const;
+const mutatingServers = new Set<number>();
+const serverMutationBarriers = new Map<number, Promise<unknown>>();
 
 function escapeHtml(value: string): string {
   return value.replace(
@@ -170,6 +175,7 @@ function bindCallbackListener(
       const code = url.searchParams.get("code") ?? undefined;
       const error = url.searchParams.get("error") ?? undefined;
       const claim = request.onCallback({
+        invocationRef: request.invocationRef,
         state: url.searchParams.get("state"),
         code,
         error,
@@ -274,10 +280,18 @@ const mcpOAuthRegistry = createMcpOAuthRegistry({
   clock: systemClock,
   ids: uuidIdSource,
   bindListener: bindCallbackListener,
+  onSettled: (serverId) => {
+    publishQueryInvalidations([
+      { family: "mcp-servers" },
+      { family: "mcp-tools", serverId },
+    ]);
+  },
 });
 
 interface RunOAuthFlowParams {
   serverId: number;
+  /** Required by IPC; optional only for direct main-process callers/tests. */
+  rendererMessageId?: string;
   callbackPort?: number;
 }
 
@@ -285,11 +299,30 @@ interface RunOAuthFlowParams {
 export async function runOAuthFlow(
   params: RunOAuthFlowParams,
 ): Promise<{ success: boolean; error: string | null }> {
+  const rendererMessageId =
+    params.rendererMessageId ?? `main:${globalThis.crypto.randomUUID()}`;
+  const retry = mcpOAuthRegistry.retryResult(
+    rendererMessageId,
+    params.serverId,
+  );
+  if (retry) return retry;
+  if (mutatingServers.has(params.serverId)) {
+    return {
+      success: false,
+      error: "MCP server configuration is changing; retry OAuth in a moment.",
+    };
+  }
   const rows = await db
     .select()
     .from(mcpServers)
     .where(eq(mcpServers.id, params.serverId));
   const server = rows[0];
+  if (mutatingServers.has(params.serverId)) {
+    return {
+      success: false,
+      error: "MCP server configuration is changing; retry OAuth in a moment.",
+    };
+  }
   if (!server) {
     return {
       success: false,
@@ -319,6 +352,7 @@ export async function runOAuthFlow(
     ? decryptFromString(server.oauthClientSecret) || undefined
     : undefined;
   const expectedState = generateState();
+  const writeAuthority = issueMcpOAuthWriteAuthority(server.id);
   const provider = new DyadOAuthClientProvider({
     serverId: server.id,
     callbackPort,
@@ -327,12 +361,14 @@ export async function runOAuthFlow(
     preregisteredClientSecret: decryptedClientSecret,
     flowState: expectedState,
     allowInteractive: true,
+    writeAuthority,
   });
 
   let silentlyAuthorized = false;
   const result = await mcpOAuthRegistry.connect({
     port: callbackPort,
     serverId: server.id,
+    rendererMessageId,
     expectedState,
     authorize: async (authorizationCode) => {
       const authResult = await auth(provider, {
@@ -362,21 +398,71 @@ export async function runOAuthFlow(
 export async function disconnectOAuth(
   serverId: number,
 ): Promise<{ success: boolean }> {
-  const rows = await db
-    .select({ id: mcpServers.id })
-    .from(mcpServers)
-    .where(eq(mcpServers.id, serverId));
-  if (!rows[0]) {
-    throw new DyadError(
-      `MCP server not found: ${serverId}`,
-      DyadErrorKind.NotFound,
-    );
-  }
-  const provider = new DyadOAuthClientProvider({
+  return withMcpOAuthServerMutation(
     serverId,
-    allowInteractive: true,
+    "OAuth flow cancelled because the server was disconnected.",
+    async () => {
+      const rows = await db
+        .select({ id: mcpServers.id })
+        .from(mcpServers)
+        .where(eq(mcpServers.id, serverId));
+      if (!rows[0]) {
+        throw new DyadError(
+          `MCP server not found: ${serverId}`,
+          DyadErrorKind.NotFound,
+        );
+      }
+      const provider = new DyadOAuthClientProvider({
+        serverId,
+        allowInteractive: true,
+      });
+      await provider.invalidateCredentials("all");
+      void mcpManager.dispose(serverId).catch(() => {});
+      return { success: true };
+    },
+  );
+}
+
+/**
+ * Revoke a server flow before any deletion or OAuth-relevant row mutation.
+ * Registry cancellation aborts provider work and settles the renderer waiter;
+ * the authority barrier then fences writes that were already queued.
+ */
+export async function cancelMcpOAuthForServer(
+  serverId: number,
+  reason: string,
+): Promise<void> {
+  await mcpOAuthRegistry.cancelServer(serverId, reason);
+  await revokeMcpOAuthWriteAuthority(serverId);
+}
+
+export function withMcpOAuthServerMutation<T>(
+  serverId: number,
+  reason: string,
+  mutate: () => Promise<T>,
+): Promise<T> {
+  const previous =
+    serverMutationBarriers.get(serverId)?.catch(() => undefined) ??
+    Promise.resolve();
+  const operation = previous.then(async () => {
+    mutatingServers.add(serverId);
+    try {
+      await cancelMcpOAuthForServer(serverId, reason);
+      return await mutate();
+    } finally {
+      mutatingServers.delete(serverId);
+    }
   });
-  await provider.invalidateCredentials("all");
-  void mcpManager.dispose(serverId).catch(() => {});
-  return { success: true };
+  serverMutationBarriers.set(serverId, operation);
+  const clearBarrier = () => {
+    if (serverMutationBarriers.get(serverId) === operation) {
+      serverMutationBarriers.delete(serverId);
+    }
+  };
+  void operation.then(clearBarrier, clearBarrier);
+  return operation;
+}
+
+export function disposeMcpOAuthForShutdown(): Promise<void> {
+  return mcpOAuthRegistry.dispose();
 }

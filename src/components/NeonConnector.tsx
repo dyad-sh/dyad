@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import {
   acknowledgeConnectionFlow,
   cancelConnectionFlow,
-  reportConnectionFlowResourcesLoaded,
   startConnectionFlow,
   useConnectionFlow,
   useUnsolicitedConnectionReturn,
@@ -104,7 +103,7 @@ export function NeonConnector({ appId }: { appId: number }) {
 
   // The connection flow lives in the main process; this component only
   // projects it. Timeouts, double-start protection and OAuth-return
-  // correlation are all handled by the flowId-keyed state machine.
+  // correlation are all handled by the typed-ref-keyed state machine.
   const { flowState, isFlowActive } = useConnectionFlow("neon");
 
   const refreshAfterConnectRef = useRef<() => Promise<void>>(async () => {});
@@ -116,26 +115,24 @@ export function NeonConnector({ appId }: { appId: number }) {
 
   useEffect(() => {
     const flow = flowState;
-    if (flow.status === "loading-resources") {
+    if (flow.status === "connected") {
+      toast.success(t("integrations.neon.connectedSuccess"));
       void (async () => {
         try {
           await refreshAfterConnectRef.current();
         } finally {
-          await reportConnectionFlowResourcesLoaded("neon", flow.flowId);
+          await acknowledgeConnectionFlow("neon", flow.invocationRef);
         }
       })();
-    } else if (flow.status === "connected") {
-      toast.success(t("integrations.neon.connectedSuccess"));
-      void acknowledgeConnectionFlow("neon", flow.flowId);
     } else if (flow.status === "failed") {
       if (flow.reason === "timeout") {
         toast.warning(t("integrations.neon.signInTimedOut"));
       } else if (flow.reason !== "user_cancelled") {
         toast.error(flow.message ?? t("integrations.neon.connectFailed"));
       }
-      void acknowledgeConnectionFlow("neon", flow.flowId);
+      void acknowledgeConnectionFlow("neon", flow.invocationRef);
     } else if (flow.status === "cancelled") {
-      void acknowledgeConnectionFlow("neon", flow.flowId);
+      void acknowledgeConnectionFlow("neon", flow.invocationRef);
     }
   }, [flowState, t]);
 
@@ -154,7 +151,7 @@ export function NeonConnector({ appId }: { appId: number }) {
   const handleConnect = async () => {
     try {
       // Starting is a no-op while a flow is already active (double-click).
-      const { started, flowId } = await startConnectionFlow("neon");
+      const { started, invocationRef } = await startConnectionFlow("neon");
       if (!started) {
         return;
       }
@@ -167,7 +164,7 @@ export function NeonConnector({ appId }: { appId: number }) {
           );
         }
       } catch (error) {
-        await cancelConnectionFlow("neon", flowId);
+        await cancelConnectionFlow("neon", invocationRef);
         throw error;
       }
     } catch (error) {
@@ -894,7 +891,9 @@ export function NeonConnector({ appId }: { appId: number }) {
               variant="ghost"
               size="sm"
               onClick={() => {
-                void cancelConnectionFlow("neon");
+                if ("invocationRef" in flowState) {
+                  void cancelConnectionFlow("neon", flowState.invocationRef);
+                }
               }}
               data-testid="cancel-neon-flow-button"
             >

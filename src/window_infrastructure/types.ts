@@ -98,6 +98,15 @@ export const QueryInvalidationScopeSchema = z.discriminatedUnion("family", [
     family: z.literal("chat"),
     chatId: z.number().int().positive(),
   }),
+  z.object({
+    family: z.literal("provider-status"),
+    provider: z.enum(["github", "supabase", "neon"]),
+  }),
+  z.object({ family: z.literal("mcp-servers") }),
+  z.object({
+    family: z.literal("mcp-tools"),
+    serverId: z.number().int().positive().optional(),
+  }),
 ]);
 export type QueryInvalidationScope = z.infer<
   typeof QueryInvalidationScopeSchema
@@ -160,6 +169,10 @@ export function queryInvalidationScopeKey(
       return `${scope.family}:${scope.appId ?? "*"}`;
     case "chat":
       return `${scope.family}:${scope.chatId}`;
+    case "provider-status":
+      return `${scope.family}:${scope.provider}`;
+    case "mcp-tools":
+      return `${scope.family}:${scope.serverId ?? "*"}`;
     default:
       return scope.family;
   }

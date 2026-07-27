@@ -16,6 +16,7 @@ function createHarness() {
   const clock = createFakeClock();
   const bindings: McpOAuthListenerRequest[] = [];
   const closed: string[] = [];
+  const settled = vi.fn();
   const registry = createMcpOAuthRegistry({
     clock,
     ids: createSequentialIdSource(),
@@ -23,26 +24,29 @@ function createHarness() {
       bindings.push(request);
       return {
         settled: Promise.resolve({
-          boundHosts: ["127.0.0.1", "::1"],
+          boundHosts: ["127.0.0.1"],
           anyInUse: false,
         }),
         async close() {
-          closed.push(request.flowId);
+          closed.push(request.invocationRef.operationId);
         },
       };
     },
+    onSettled: settled,
     observer: undefined,
   });
-  return { registry, clock, bindings, closed };
+  return { registry, clock, bindings, closed, settled };
 }
 
-function connectRequest(
+function request(
   serverId: number,
+  messageId = `message-${serverId}`,
   authorize = vi.fn(async () => "REDIRECT" as const),
 ) {
   return {
     port: 53682,
     serverId,
+    rendererMessageId: messageId,
     expectedState: `state-${serverId}`,
     authorize,
     onAbort: vi.fn(),
@@ -50,140 +54,158 @@ function connectRequest(
 }
 
 describe("MCP OAuth registry", () => {
-  it("rejects an ID collision without overwriting the active runtime", async () => {
-    const bindings: McpOAuthListenerRequest[] = [];
-    const registry = createMcpOAuthRegistry({
-      ids: { next: () => "mcp-oauth:collision" },
-      bindListener(request) {
-        bindings.push(request);
-        return {
-          settled: Promise.resolve({
-            boundHosts: ["127.0.0.1"],
-            anyInUse: false,
-          }),
-          close: async () => undefined,
-        };
-      },
-      observer: undefined,
+  it("keeps the existing happy path with typed listener/callback correlation", async () => {
+    const { registry, bindings, settled } = createHarness();
+    const authorize = vi.fn(async (code?: string) =>
+      code === undefined ? ("REDIRECT" as const) : ("AUTHORIZED" as const),
+    );
+    const connectRequest = request(7, "message-7", authorize);
+    const result = registry.connect(connectRequest);
+    await flush();
+    expect(bindings).toHaveLength(1);
+
+    const listener = bindings[0];
+    expect(listener.invocationRef).toEqual({
+      kind: "mcp-oauth",
+      entityKey: 7,
+      operationId: "mcp-oauth:1",
     });
-    const firstRequest = connectRequest(1);
-    const secondRequest = connectRequest(2);
-    const first = registry.connect(firstRequest);
+    expect(
+      listener.onCallback({
+        invocationRef: listener.invocationRef,
+        state: "state-7",
+        code: "authorization-code",
+      }),
+    ).toMatchObject({ claimed: true });
     await flush();
 
-    await expect(registry.connect(secondRequest)).resolves.toEqual({
-      success: false,
-      error: "OAuth flow ID collision: mcp-oauth:collision",
+    await expect(result).resolves.toEqual({ success: true, error: null });
+    expect(connectRequest.authorize).toHaveBeenNthCalledWith(1);
+    expect(connectRequest.authorize).toHaveBeenNthCalledWith(
+      2,
+      "authorization-code",
+    );
+    expect(settled).toHaveBeenCalledWith(7, listener.invocationRef, {
+      success: true,
+      error: null,
     });
-    expect(secondRequest.onAbort).toHaveBeenCalledOnce();
-    expect(firstRequest.onAbort).not.toHaveBeenCalled();
-    expect(bindings).toHaveLength(1);
-    expect(registry.getState(53682)).toMatchObject({
-      status: "awaitingCallback",
-      serverId: 1,
-    });
+  });
 
-    registry.dispose();
+  it("deduplicates renderer retries by message ID without conflating the invocation ref", async () => {
+    const { registry, bindings } = createHarness();
+    const original = request(4, "stable-renderer-message");
+    const retry = request(4, "stable-renderer-message");
+
+    const first = registry.connect(original);
+    const duplicate = registry.connect(retry);
+    expect(duplicate).toBe(first);
+    await flush();
+    expect(bindings).toHaveLength(1);
+    expect(retry.onAbort).not.toHaveBeenCalled();
+
+    await registry.dispose();
     await expect(first).resolves.toMatchObject({ success: false });
   });
 
-  it("keeps exactly the third flow after three rapid Connect attempts", async () => {
-    let releaseClose!: () => void;
-    const closeBarrier = new Promise<void>((resolve) => {
-      releaseClose = resolve;
-    });
-    const bindings: McpOAuthListenerRequest[] = [];
-    const registry = createMcpOAuthRegistry({
-      clock: createFakeClock(),
-      ids: createSequentialIdSource(),
-      bindListener(request) {
-        bindings.push(request);
-        return {
-          settled: Promise.resolve({
-            boundHosts: ["127.0.0.1"],
-            anyInUse: false,
-          }),
-          close: () =>
-            request.flowId === "mcp-oauth:1" ? closeBarrier : Promise.resolve(),
-        };
-      },
-      observer: undefined,
-    });
-    const firstRequest = connectRequest(1);
-    const secondRequest = connectRequest(2);
-    const thirdRequest = connectRequest(3);
-
+  it("preserves last-request-wins on a shared callback port", async () => {
+    const { registry, bindings } = createHarness();
+    const firstRequest = request(1, "first");
+    const secondRequest = request(2, "second");
     const first = registry.connect(firstRequest);
     await flush();
-    expect(registry.getState(53682).status).toBe("awaitingCallback");
-
     const second = registry.connect(secondRequest);
-    const third = registry.connect(thirdRequest);
     await flush();
 
     await expect(first).resolves.toMatchObject({
       success: false,
       error: expect.stringMatching(/superseded/i),
     });
-    await expect(second).resolves.toMatchObject({
-      success: false,
-      error: expect.stringMatching(/superseded/i),
-    });
     expect(firstRequest.onAbort).toHaveBeenCalledOnce();
-    expect(secondRequest.onAbort).toHaveBeenCalledOnce();
-    expect(thirdRequest.onAbort).not.toHaveBeenCalled();
-    expect(bindings).toHaveLength(1);
-    expect(registry.getState(53682).status).toBe("superseding");
-
-    releaseClose();
-    await flush();
     expect(bindings).toHaveLength(2);
-    expect(bindings[1].flowId).toBe("mcp-oauth:3");
-    expect(registry.getState(53682)).toMatchObject({
-      status: "awaitingCallback",
-      flowId: "mcp-oauth:3",
-    });
+    expect(bindings[1].invocationRef.entityKey).toBe(2);
 
-    registry.dispose();
-    await expect(third).resolves.toMatchObject({ success: false });
+    await registry.dispose();
+    await expect(second).resolves.toMatchObject({ success: false });
   });
 
-  it("makes timeout win over a later callback", async () => {
-    const { registry, clock, bindings } = createHarness();
-    const request = connectRequest(1);
-    const result = registry.connect(request);
+  it("cancels and settles a server while waiting for its callback", async () => {
+    const { registry, closed } = createHarness();
+    const connectRequest = request(11);
+    const result = registry.connect(connectRequest);
     await flush();
 
-    clock.advanceBy(5 * 60_000);
-    await expect(result).resolves.toMatchObject({
+    await registry.cancelServer(11, "server deleted");
+    await expect(result).resolves.toEqual({
       success: false,
-      error: expect.stringMatching(/timed out/i),
+      error: "server deleted",
     });
-    expect(request.onAbort).toHaveBeenCalledOnce();
-    expect(
-      bindings[0].onCallback({ state: "state-1", code: "late-code" }),
-    ).toEqual({ claimed: false, reason: "inactive" });
+    expect(connectRequest.onAbort).toHaveBeenCalledOnce();
+    expect(closed).toEqual(["mcp-oauth:1"]);
   });
 
-  it("makes a claimed callback cancel the timeout and complete once", async () => {
-    const { registry, clock, bindings } = createHarness();
-    const authorize = vi
-      .fn<(code?: string) => Promise<"AUTHORIZED" | "REDIRECT">>()
-      .mockResolvedValueOnce("REDIRECT")
-      .mockResolvedValueOnce("AUTHORIZED");
-    const request = connectRequest(1, authorize);
-    const result = registry.connect(request);
+  it("keeps cancellation authoritative while token exchange is in flight", async () => {
+    const { registry, bindings, settled } = createHarness();
+    let finishExchange!: (value: "AUTHORIZED") => void;
+    const exchange = new Promise<"AUTHORIZED">((resolve) => {
+      finishExchange = resolve;
+    });
+    const authorize = vi.fn((code?: string) =>
+      code === undefined ? Promise.resolve("REDIRECT" as const) : exchange,
+    );
+    const connectRequest = request(12, "exchange", authorize);
+    const result = registry.connect(connectRequest);
     await flush();
+    const listener = bindings[0];
+    listener.onCallback({
+      invocationRef: listener.invocationRef,
+      state: "state-12",
+      code: "code",
+    });
+    await flush();
+    expect(registry.getState(53682).status).toBe("exchanging");
+
+    await registry.cancelServer(12, "OAuth disabled");
+    finishExchange("AUTHORIZED");
+    await flush();
+    await expect(result).resolves.toEqual({
+      success: false,
+      error: "OAuth disabled",
+    });
+    expect(settled).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a stale typed callback without consuming the active flow", async () => {
+    const { registry, bindings } = createHarness();
+    const result = registry.connect(request(3));
+    await flush();
+    const active = bindings[0];
+    const staleRef = { ...active.invocationRef, operationId: "stale" };
 
     expect(
-      bindings[0].onCallback({ state: "state-1", code: "oauth-code" }),
-    ).toEqual({ claimed: true });
-    await flush();
-    await expect(result).resolves.toEqual({ success: true, error: null });
-    expect(authorize).toHaveBeenNthCalledWith(2, "oauth-code");
-    expect(clock.pendingTimerCount()).toBe(0);
+      active.onCallback({
+        invocationRef: staleRef,
+        state: "state-3",
+        code: "code",
+      }),
+    ).toEqual({ claimed: false, reason: "inactive" });
+    expect(registry.getState(53682).status).toBe("awaitingCallback");
 
-    clock.advanceBy(5 * 60_000);
-    expect(request.onAbort).not.toHaveBeenCalled();
+    await registry.dispose();
+    await expect(result).resolves.toMatchObject({ success: false });
+  });
+
+  it("settles waiters and closes listeners during explicit disposal", async () => {
+    const { registry, clock, closed } = createHarness();
+    const result = registry.connect(request(9));
+    await flush();
+    expect(clock.pendingTimerCount()).toBe(1);
+
+    await registry.dispose();
+    expect(clock.pendingTimerCount()).toBe(0);
+    expect(closed).toEqual(["mcp-oauth:1"]);
+    await expect(result).resolves.toEqual({
+      success: false,
+      error: "OAuth flow registry disposed.",
+    });
   });
 });

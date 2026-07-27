@@ -34,5 +34,20 @@ export function queryKeysForInvalidationScope(
       ];
     case "chat":
       return [queryKeys.chats.detail({ chatId: scope.chatId })];
+    case "provider-status":
+      return [
+        queryKeys.settings.all,
+        scope.provider === "github"
+          ? queryKeys.github.all
+          : scope.provider === "supabase"
+            ? queryKeys.supabase.all
+            : queryKeys.neon.all,
+      ];
+    case "mcp-servers":
+      return [queryKeys.mcp.servers];
+    case "mcp-tools":
+      // Tool discovery is currently batched by the complete server-ID set.
+      // A server-scoped durable event therefore invalidates the family root.
+      return [queryKeys.mcp.toolsByServer.all];
   }
 }

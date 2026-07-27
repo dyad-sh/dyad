@@ -142,6 +142,8 @@ export class QueryInvalidationBus {
       case "branches":
       case "problems":
         return { family: scope.family };
+      case "mcp-tools":
+        return { family: "mcp-tools" };
       default:
         return scope;
     }

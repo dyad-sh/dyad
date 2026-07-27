@@ -1,13 +1,13 @@
 /**
  * Connection flow state machine — shared types.
  *
- * These types are shared between the main process (which owns the
- * authoritative flow state) and the renderer (which is a thin projection of
- * it). This file must stay pure: no Electron, React, or other runtime
- * imports so it can be consumed from any process and unit-tested trivially.
+ * Main owns the authoritative lifecycle. Renderers receive only this narrow,
+ * revisioned projection and must echo its invocation reference for correlated
+ * intents.
  */
 
-/** Providers whose OAuth/connection flows are driven by the state machine. */
+import type { InvocationRef } from "@/state_machines/invocation_ref";
+
 export type ConnectionFlowProvider = "github" | "supabase" | "neon";
 
 export const CONNECTION_FLOW_PROVIDERS: readonly ConnectionFlowProvider[] = [
@@ -16,97 +16,92 @@ export const CONNECTION_FLOW_PROVIDERS: readonly ConnectionFlowProvider[] = [
   "neon",
 ];
 
-/** Why a flow ended in the `failed` state. */
+export const CONNECTION_FLOW_INVOCATION_KIND = "connection-flow";
+
+export type ConnectionFlowInvocationRef = InvocationRef<
+  typeof CONNECTION_FLOW_INVOCATION_KIND,
+  ConnectionFlowProvider
+>;
+
 export type ConnectionFlowFailureReason =
   | "user_cancelled"
   | "timeout"
   | "token_invalid"
   | "network";
 
-/**
- * One provider's connection flow state.
- *
- * Lifecycle:
- *   disconnected → starting → awaiting-return → exchanging-token
- *     → loading-resources → connected | failed(reason) | cancelled
- *
- * Every non-idle state carries the `flowId` allocated when the flow started.
- * Events are correlated by flowId so stale timers or duplicate OAuth returns
- * can never advance (or corrupt) a different flow's state.
- */
+interface RevisionedState {
+  revision: number;
+}
+
+interface InvokedState extends RevisionedState {
+  invocationRef: ConnectionFlowInvocationRef;
+  provider: ConnectionFlowProvider;
+}
+
 export type ConnectionFlowState =
-  | { status: "disconnected" }
-  | { status: "starting"; flowId: string; provider: ConnectionFlowProvider }
-  | {
+  | ({ status: "disconnected" } & RevisionedState)
+  | ({ status: "starting" } & InvokedState)
+  | ({
       status: "awaiting-return";
-      flowId: string;
-      provider: ConnectionFlowProvider;
-      /** GitHub device flow: code the user enters at the verification URI. */
       userCode?: string;
-      /** GitHub device flow: where the user enters the code. */
       verificationUri?: string;
-    }
-  | {
-      status: "exchanging-token";
-      flowId: string;
-      provider: ConnectionFlowProvider;
-    }
-  | {
-      status: "loading-resources";
-      flowId: string;
-      provider: ConnectionFlowProvider;
-    }
-  | { status: "connected"; flowId: string; provider: ConnectionFlowProvider }
-  | {
+    } & InvokedState)
+  | ({ status: "exchanging-token" } & InvokedState)
+  | ({ status: "connected" } & InvokedState)
+  | ({
       status: "failed";
-      flowId: string;
-      provider: ConnectionFlowProvider;
       reason: ConnectionFlowFailureReason;
       message?: string;
-    }
-  | { status: "cancelled"; flowId: string; provider: ConnectionFlowProvider };
+    } & InvokedState)
+  | ({ status: "cancelled" } & InvokedState);
 
 export type ConnectionFlowStatus = ConnectionFlowState["status"];
 
-/** The idle state every provider starts (and is reset) to. */
 export const DISCONNECTED_FLOW_STATE: ConnectionFlowState = {
   status: "disconnected",
+  revision: 0,
 };
 
-/**
- * Events that drive the machine. All events except `start` carry the flowId
- * of the flow they belong to; mismatching events are ignored.
- */
 export type ConnectionFlowEvent =
-  | { type: "start"; flowId: string; provider: ConnectionFlowProvider }
+  | {
+      type: "start";
+      invocationRef: ConnectionFlowInvocationRef;
+      provider: ConnectionFlowProvider;
+    }
   | {
       type: "prepared";
-      flowId: string;
+      invocationRef: ConnectionFlowInvocationRef;
       userCode?: string;
       verificationUri?: string;
     }
-  | { type: "return-received"; flowId: string }
-  | { type: "token-exchanged"; flowId: string }
-  | { type: "resources-loaded"; flowId: string }
-  | { type: "timeout"; flowId: string }
-  | { type: "cancel"; flowId: string }
+  | {
+      type: "return-received";
+      invocationRef: ConnectionFlowInvocationRef;
+    }
+  | {
+      type: "token-exchanged";
+      invocationRef: ConnectionFlowInvocationRef;
+    }
+  | { type: "timeout"; invocationRef: ConnectionFlowInvocationRef }
+  | { type: "cancel"; invocationRef: ConnectionFlowInvocationRef }
   | {
       type: "fail";
-      flowId: string;
+      invocationRef: ConnectionFlowInvocationRef;
       reason: ConnectionFlowFailureReason;
       message?: string;
     }
-  | { type: "acknowledge"; flowId: string };
+  | {
+      type: "acknowledge";
+      invocationRef: ConnectionFlowInvocationRef;
+    };
 
 export type ConnectionFlowEventType = ConnectionFlowEvent["type"];
 
-/** A flow that has started but not yet reached a terminal state. */
 export function isActiveFlowState(state: ConnectionFlowState): boolean {
   switch (state.status) {
     case "starting":
     case "awaiting-return":
     case "exchanging-token":
-    case "loading-resources":
       return true;
     case "disconnected":
     case "connected":
@@ -120,7 +115,6 @@ export function isActiveFlowState(state: ConnectionFlowState): boolean {
   }
 }
 
-/** Terminal states: the flow is over and awaits acknowledgement. */
 export function isTerminalFlowState(state: ConnectionFlowState): boolean {
   switch (state.status) {
     case "connected":
@@ -131,7 +125,6 @@ export function isTerminalFlowState(state: ConnectionFlowState): boolean {
     case "starting":
     case "awaiting-return":
     case "exchanging-token":
-    case "loading-resources":
       return false;
     default: {
       const exhaustive: never = state;

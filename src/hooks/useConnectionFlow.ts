@@ -14,9 +14,11 @@ import { ipc } from "@/ipc/types";
 import {
   DISCONNECTED_FLOW_STATE,
   isActiveFlowState,
+  type ConnectionFlowInvocationRef,
   type ConnectionFlowProvider,
   type ConnectionFlowState,
 } from "@/connection_flow/state";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 type FlowSnapshot = Record<ConnectionFlowProvider, ConnectionFlowState>;
 
@@ -43,11 +45,25 @@ const pendingUnsolicitedReturns = new Set<ConnectionFlowProvider>();
 const pushedProviders = new Set<ConnectionFlowProvider>();
 
 let subscribedToIpc = false;
+let hydrationPromise: Promise<void> | undefined;
 
 function emit(): void {
   for (const listener of listeners) {
     listener();
   }
+}
+
+function replaceSnapshot(states: FlowSnapshot): void {
+  snapshot = states;
+  emit();
+}
+
+function isRevisionConflict(error: unknown): boolean {
+  return error instanceof DyadError && error.kind === DyadErrorKind.Conflict;
+}
+
+async function refreshSnapshot(): Promise<void> {
+  replaceSnapshot(await ipc.connectionFlow.getStates());
 }
 
 function ensureIpcSubscription(): void {
@@ -77,7 +93,7 @@ function ensureIpcSubscription(): void {
 
   // Hydrate with the current main-process state (covers flows that were
   // already running before this renderer/store loaded).
-  void ipc.connectionFlow
+  hydrationPromise = ipc.connectionFlow
     .getStates()
     .then((states) => {
       let changed = false;
@@ -109,41 +125,62 @@ function subscribe(listener: () => void): () => void {
 /**
  * Start a flow for a provider. Returns `started: false` when a flow is
  * already active (double-clicking Connect is a no-op — the existing flow's
- * flowId is returned).
+ * invocation reference is returned).
  */
 export async function startConnectionFlow(
   provider: ConnectionFlowProvider,
   args?: { appId?: number | null },
-): Promise<{ flowId: string; started: boolean }> {
-  const result = await ipc.connectionFlow.start({
-    provider,
-    appId: args?.appId ?? null,
-  });
-  return { flowId: result.flowId, started: result.started };
+): Promise<{
+  invocationRef: ConnectionFlowInvocationRef;
+  started: boolean;
+}> {
+  ensureIpcSubscription();
+  await hydrationPromise;
+  const invoke = () =>
+    ipc.connectionFlow.start({
+      provider,
+      appId: args?.appId ?? null,
+      expectedRevision: snapshot[provider].revision,
+    });
+  let result: Awaited<ReturnType<typeof invoke>>;
+  try {
+    result = await invoke();
+  } catch (error) {
+    if (!isRevisionConflict(error)) throw error;
+    await refreshSnapshot();
+    result = await invoke();
+  }
+  return {
+    invocationRef: result.invocationRef,
+    started: result.started,
+  };
 }
 
-/** Cancel the provider's active flow (or a specific flowId). */
+/** Cancel exactly the invocation the caller observed. */
 export async function cancelConnectionFlow(
   provider: ConnectionFlowProvider,
-  flowId?: string,
+  invocationRef: ConnectionFlowInvocationRef,
 ): Promise<void> {
-  await ipc.connectionFlow.cancel({ provider, flowId });
+  await ipc.connectionFlow.cancel({ provider, invocationRef });
 }
 
 /** Acknowledge a terminal flow state, resetting the provider to idle. */
 export async function acknowledgeConnectionFlow(
   provider: ConnectionFlowProvider,
-  flowId: string,
+  invocationRef: ConnectionFlowInvocationRef,
 ): Promise<void> {
-  await ipc.connectionFlow.acknowledge({ provider, flowId });
-}
-
-/** Report that the renderer finished refreshing resources for a flow. */
-export async function reportConnectionFlowResourcesLoaded(
-  provider: ConnectionFlowProvider,
-  flowId: string,
-): Promise<void> {
-  await ipc.connectionFlow.resourcesLoaded({ provider, flowId });
+  try {
+    await ipc.connectionFlow.acknowledge({
+      provider,
+      invocationRef,
+      expectedRevision: snapshot[provider].revision,
+    });
+  } catch (error) {
+    if (!isRevisionConflict(error)) throw error;
+    // Another window acknowledged first. Consume the authoritative snapshot
+    // so this passive renderer converges without an unhandled rejection.
+    await refreshSnapshot();
+  }
 }
 
 /**

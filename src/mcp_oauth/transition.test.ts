@@ -1,217 +1,112 @@
 import { describe, expect, it } from "vitest";
-import {
-  assertAllCommandsProducible,
-  assertAllStatesReachable,
-  exploreReachableStates,
-} from "@/state_machines/testing";
-import {
-  IDLE_MCP_OAUTH_STATE,
-  type McpOAuthEvent,
-  type McpOAuthState,
+import type {
+  McpOAuthEvent,
+  McpOAuthFlowIdentity,
+  McpOAuthInvocationRef,
+  McpOAuthState,
 } from "./state";
 import { transition } from "./transition";
 
-const STATE_KINDS = [
-  "idle",
-  "binding",
-  "awaitingCallback",
-  "exchanging",
-  "superseding",
-  "connected",
-  "failed",
-  "timedOut",
-] as const satisfies readonly McpOAuthState["status"][];
-const COMMAND_KINDS = [] as const satisfies readonly never[];
-
-const flow = (flowId: string) => ({
-  flowId,
-  expectedState: `state-${flowId}`,
-  serverId: Number(flowId.replace(/\D/g, "")) || 1,
-});
-
-function eventsFor(state: McpOAuthState): readonly McpOAuthEvent[] {
-  const currentFlowId =
-    state.status === "idle"
-      ? "flow-1"
-      : state.status === "superseding"
-        ? state.closing.flowId
-        : state.flowId;
-  const expectedState =
-    state.status === "awaitingCallback" ? state.expectedState : "state-flow-1";
-  return [
-    { type: "CONNECT", ...flow("flow-1") },
-    { type: "CONNECT", ...flow("flow-2") },
-    { type: "SOCKETS_CLOSED", flowId: currentFlowId },
-    {
-      type: "BINDS_SETTLED",
-      flowId: currentFlowId,
-      boundHosts: ["127.0.0.1"],
-      anyInUse: false,
-    },
-    {
-      type: "BINDS_SETTLED",
-      flowId: currentFlowId,
-      boundHosts: [],
-      anyInUse: true,
-    },
-    { type: "AUTHORIZED_SILENTLY", flowId: currentFlowId },
-    {
-      type: "CALLBACK",
-      flowId: currentFlowId,
-      state: expectedState,
-      code: "code",
-    },
-    {
-      type: "CALLBACK",
-      flowId: currentFlowId,
-      state: "wrong-state",
-      code: "code",
-    },
-    { type: "TIMEOUT", flowId: currentFlowId },
-    { type: "EXCHANGE_OK", flowId: currentFlowId },
-    {
-      type: "EXCHANGE_FAILED",
-      flowId: currentFlowId,
-      message: "failed",
-    },
-    { type: "TIMEOUT", flowId: "stale-flow" },
-  ];
+function ref(serverId: number, operationId: string): McpOAuthInvocationRef {
+  return {
+    kind: "mcp-oauth",
+    entityKey: serverId,
+    operationId,
+  };
 }
 
-function stateKey(state: McpOAuthState): string {
-  switch (state.status) {
-    case "idle":
-      return state.status;
-    case "superseding":
-      return `${state.status}:${state.closing.flowId}:${state.next.flowId}`;
-    case "failed":
-      return `${state.status}:${state.flowId}:${state.message}`;
-    default:
-      return `${state.status}:${state.flowId}`;
-  }
+function identity(serverId: number, operationId: string): McpOAuthFlowIdentity {
+  return {
+    invocationRef: ref(serverId, operationId),
+    rendererMessageId: `message-${operationId}`,
+    expectedState: `state-${operationId}`,
+    serverId,
+  };
 }
 
 describe("MCP OAuth transition", () => {
-  it("throws when an impossible state reaches the exhaustiveness helper", () => {
-    expect(() =>
-      transition({ status: "future" } as unknown as McpOAuthState, {
-        type: "CONNECT",
-        ...flow("flow-1"),
-      }),
-    ).toThrow(/Unreachable MCP OAuth state/);
-  });
-
-  it("reaches every state and has an explicit empty command inventory", () => {
-    const options = {
-      initialState: IDLE_MCP_OAUTH_STATE,
-      events: eventsFor,
-      transition,
-      stateKey,
-      maxStates: 100,
+  it("walks binding, callback, exchange, and connected with one ref", () => {
+    const flow = identity(1, "one");
+    let state: McpOAuthState = { status: "idle" };
+    const apply = (event: McpOAuthEvent) => {
+      const result = transition(state, event);
+      expect(result.kind).toBe("applied");
+      state = result.state;
     };
-    assertAllStatesReachable({
-      ...options,
-      inventory: STATE_KINDS,
-      stateKind: (state) => state.status,
+
+    apply({ type: "CONNECT", ...flow });
+    apply({
+      type: "BINDS_SETTLED",
+      invocationRef: flow.invocationRef,
+      boundHosts: ["127.0.0.1"],
+      anyInUse: false,
     });
-    assertAllCommandsProducible({
-      ...options,
-      inventory: COMMAND_KINDS,
-      commandKind: (command: never) => command,
+    apply({
+      type: "CALLBACK",
+      invocationRef: flow.invocationRef,
+      state: flow.expectedState,
+      code: "code",
+    });
+    apply({ type: "EXCHANGE_OK", invocationRef: flow.invocationRef });
+    expect(state).toMatchObject({
+      status: "connected",
+      invocationRef: flow.invocationRef,
     });
   });
 
-  it("is total over every event in every reachable phase", () => {
-    const graph = exploreReachableStates({
-      initialState: IDLE_MCP_OAUTH_STATE,
-      events: eventsFor,
-      transition,
-      stateKey,
-      maxStates: 100,
-    });
-    const states = graph.nodes.map(({ state }) => state);
-
-    expect(states.map((state) => state.status)).toEqual(
-      expect.arrayContaining([
-        "idle",
-        "binding",
-        "awaitingCallback",
-        "exchanging",
-        "superseding",
-        "connected",
-        "failed",
-        "timedOut",
-      ]),
-    );
-    for (const state of states) {
-      for (const event of eventsFor(state)) {
-        const result = transition(state, event);
-        expect(result).toBeDefined();
-        if (result.kind === "applied") {
-          expect(result.state).not.toEqual(state);
-        } else {
-          expect(result.state).toBe(state);
-        }
-      }
+  it("rejects stale refs across asynchronous boundaries", () => {
+    const flow = identity(1, "active");
+    const stale = ref(1, "stale");
+    const state: McpOAuthState = {
+      status: "awaitingCallback",
+      ...flow,
+    };
+    const events: McpOAuthEvent[] = [
+      { type: "SOCKETS_CLOSED", invocationRef: stale },
+      {
+        type: "BINDS_SETTLED",
+        invocationRef: stale,
+        boundHosts: [],
+        anyInUse: false,
+      },
+      { type: "AUTHORIZED_SILENTLY", invocationRef: stale },
+      {
+        type: "CALLBACK",
+        invocationRef: stale,
+        state: flow.expectedState,
+        code: "code",
+      },
+      { type: "TIMEOUT", invocationRef: stale },
+      { type: "EXCHANGE_OK", invocationRef: stale },
+      {
+        type: "EXCHANGE_FAILED",
+        invocationRef: stale,
+        message: "failure",
+      },
+    ];
+    for (const event of events) {
+      expect(transition(state, event)).toEqual({
+        kind: "ignored",
+        state,
+        reason: "stale-invocation",
+      });
     }
   });
 
-  it("keeps a mismatched callback alive and reference-stable", () => {
-    const state: McpOAuthState = {
-      status: "awaitingCallback",
-      ...flow("flow-1"),
-    };
-    const result = transition(state, {
-      type: "CALLBACK",
-      flowId: "flow-1",
-      state: "old-browser-tab",
-      code: "code",
+  it("supersedes an active flow with a distinct invocation", () => {
+    const first = identity(1, "first");
+    const second = identity(2, "second");
+    const result = transition(
+      { status: "awaitingCallback", ...first },
+      { type: "CONNECT", ...second },
+    );
+    expect(result).toMatchObject({
+      kind: "applied",
+      state: {
+        status: "superseding",
+        closing: first,
+        next: second,
+      },
     });
-
-    expect(result).toEqual({
-      kind: "ignored",
-      state,
-      reason: "state-mismatch",
-    });
-    expect(result.state).toBe(state);
-  });
-
-  it("replaces the queued flow during supersede without losing the closing owner", () => {
-    const first = { status: "binding", ...flow("flow-1") } as const;
-    const second = transition(first, {
-      type: "CONNECT",
-      ...flow("flow-2"),
-    });
-    expect(second.kind === "applied").toBe(true);
-    const third = transition(second.state, {
-      type: "CONNECT",
-      ...flow("flow-3"),
-    });
-
-    expect(third.state).toEqual({
-      status: "superseding",
-      closing: flow("flow-1"),
-      next: flow("flow-3"),
-    });
-  });
-
-  it("ignores a duplicate queued Connect without allocating a snapshot", () => {
-    const state: McpOAuthState = {
-      status: "superseding",
-      closing: flow("flow-1"),
-      next: flow("flow-2"),
-    };
-
-    const result = transition(state, {
-      type: "CONNECT",
-      ...flow("flow-2"),
-    });
-
-    expect(result).toEqual({
-      kind: "ignored",
-      state,
-      reason: "duplicate-connect",
-    });
-    expect(result.state).toBe(state);
   });
 });

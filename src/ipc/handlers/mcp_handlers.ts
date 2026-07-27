@@ -8,7 +8,11 @@ import { DyadError, DyadErrorKind } from "../../errors/dyad_error";
 
 import { getStoredConsent } from "../utils/mcp_consent";
 import { mcpManager } from "../utils/mcp_manager";
-import { disconnectOAuth, runOAuthFlow } from "../utils/mcp_oauth_flow";
+import {
+  disconnectOAuth,
+  runOAuthFlow,
+  withMcpOAuthServerMutation,
+} from "../utils/mcp_oauth_flow";
 import {
   encryptToString,
   oauthStateHasTokens,
@@ -344,27 +348,50 @@ export function registerMcpHandlers() {
         : null;
     if (params.oauthScope !== undefined) update.oauthScope = params.oauthScope;
 
-    const result = await db
-      .update(mcpServers)
-      .set(update)
-      .where(eq(mcpServers.id, params.id))
-      .returning();
-    if (!result[0])
-      throw new DyadError(
-        `MCP server not found: ${params.id}`,
-        DyadErrorKind.NotFound,
-      );
-    // Config may have changed; dispose the cached client so the next
-    // use rebuilds the transport with the updated row. Fire-and-forget: a
-    // hung transport's close must not block the handler.
-    void mcpManager.dispose(params.id).catch(() => {});
-    return toMcpServer(result[0]);
+    const mutate = async () => {
+      const result = await db
+        .update(mcpServers)
+        .set(update)
+        .where(eq(mcpServers.id, params.id))
+        .returning();
+      if (!result[0])
+        throw new DyadError(
+          `MCP server not found: ${params.id}`,
+          DyadErrorKind.NotFound,
+        );
+      // Config may have changed; dispose the cached client so the next
+      // use rebuilds the transport with the updated row. Fire-and-forget: a
+      // hung transport's close must not block the handler.
+      void mcpManager.dispose(params.id).catch(() => {});
+      return toMcpServer(result[0]);
+    };
+    const oauthRelevant =
+      params.enabled === false ||
+      params.transport !== undefined ||
+      params.url !== undefined ||
+      params.oauthEnabled !== undefined ||
+      params.oauthClientId !== undefined ||
+      params.oauthClientSecret !== undefined ||
+      params.oauthScope !== undefined;
+    return oauthRelevant
+      ? await withMcpOAuthServerMutation(
+          params.id,
+          "OAuth flow cancelled because its server configuration changed.",
+          mutate,
+        )
+      : await mutate();
   });
 
   createTypedHandler(mcpContracts.deleteServer, async (_, id) => {
-    void mcpManager.dispose(id).catch(() => {});
-    await db.delete(mcpServers).where(eq(mcpServers.id, id));
-    return { success: true };
+    return await withMcpOAuthServerMutation(
+      id,
+      "OAuth flow cancelled because its server was deleted.",
+      async () => {
+        void mcpManager.dispose(id).catch(() => {});
+        await db.delete(mcpServers).where(eq(mcpServers.id, id));
+        return { success: true };
+      },
+    );
   });
 
   // Tools listing (dynamic)
@@ -482,6 +509,7 @@ export function registerMcpHandlers() {
   createTypedHandler(mcpContracts.startOAuth, async (_, params) => {
     const result = await runOAuthFlow({
       serverId: params.serverId,
+      rendererMessageId: params.rendererMessageId,
       callbackPort: params.callbackPort,
     });
     if (result.success) {

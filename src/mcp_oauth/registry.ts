@@ -1,29 +1,36 @@
 /**
- * MCP OAuth loopback registry — authoritative per-port main-process owner.
+ * MCP OAuth loopback registry — authoritative resource owner.
  *
- * Like connection_flow, this is an explicitly constructed, dependency-
- * injected main-process registry. It deliberately has no command channel:
- * listener, timer, provider-abort, and promise-settlement effects are derived
- * from applied transitions so the per-port state and its external resources
- * cannot drift apart. This is the documented commandless derived-effects
- * deviation permitted by rules/state-machines.md.
+ * The private per-port lifecycle retains its listener, waiter, timer, and
+ * close-barrier internals. Typed invocation references correlate every
+ * asynchronous boundary; renderer message IDs independently deduplicate IPC
+ * retries. Server-scoped cancellation settles callers and closes resources
+ * before a row mutation is allowed to proceed.
  */
 
 import type { Clock, IdSource } from "@/state_machines/clock";
 import { systemClock, uuidIdSource } from "@/state_machines/clock";
+import {
+  createInvocationRef,
+  InvocationRegistry,
+  sameInvocationRef,
+} from "@/state_machines/invocation_ref";
 import { createTraceObserver } from "@/state_machines/trace";
 import type { TransitionObserver } from "@/state_machines/types";
 import {
   IDLE_MCP_OAUTH_STATE,
+  MCP_OAUTH_INVOCATION_KIND,
   identityOf,
   isTerminalMcpOAuthState,
   type McpOAuthEvent,
   type McpOAuthFlowIdentity,
+  type McpOAuthInvocationRef,
   type McpOAuthState,
 } from "./state";
 import { transition, type IgnoreReason } from "./transition";
 
 export const MCP_OAUTH_TIMEOUT_MS = 5 * 60_000;
+const MESSAGE_DEDUPE_LIMIT = 128;
 
 export interface McpOAuthBindResult {
   boundHosts: readonly string[];
@@ -36,13 +43,14 @@ export interface McpOAuthListenerHandle {
 }
 
 export type ClaimCallbackResult =
-  | { claimed: true }
+  | { claimed: true; invocationRef: McpOAuthInvocationRef }
   | { claimed: false; reason: "state-mismatch" | "inactive" };
 
 export interface McpOAuthListenerRequest {
   port: number;
-  flowId: string;
+  invocationRef: McpOAuthInvocationRef;
   onCallback(callback: {
+    invocationRef: McpOAuthInvocationRef;
     state: string | null;
     code?: string;
     error?: string;
@@ -52,6 +60,7 @@ export interface McpOAuthListenerRequest {
 export interface McpOAuthConnectRequest {
   port: number;
   serverId: number;
+  rendererMessageId: string;
   expectedState: string;
   authorize(code?: string): Promise<"AUTHORIZED" | "REDIRECT">;
   onAbort(): void;
@@ -63,6 +72,8 @@ export interface McpOAuthConnectResult {
 }
 
 interface FlowRuntime {
+  invocationRef: McpOAuthInvocationRef;
+  serverId: number;
   authorize(code?: string): Promise<"AUTHORIZED" | "REDIRECT">;
   onAbort(): void;
   resolve(result: McpOAuthConnectResult): void;
@@ -74,6 +85,11 @@ export interface McpOAuthRegistryOptions {
   ids?: IdSource;
   timeoutMs?: number;
   bindListener(request: McpOAuthListenerRequest): McpOAuthListenerHandle;
+  onSettled?: (
+    serverId: number,
+    invocationRef: McpOAuthInvocationRef,
+    result: McpOAuthConnectResult,
+  ) => void;
   observer?: TransitionObserver<
     McpOAuthState,
     McpOAuthEvent,
@@ -93,41 +109,66 @@ export function createMcpOAuthRegistry(options: McpOAuthRegistryOptions) {
   const states = new Map<number, McpOAuthState>();
   const flowPorts = new Map<string, number>();
   const runtimes = new Map<string, FlowRuntime>();
+  const activeInvocations = new InvocationRegistry<FlowRuntime>();
+  const activeByServer = new Map<number, McpOAuthInvocationRef>();
   const listeners = new Map<string, McpOAuthListenerHandle>();
   const timeoutHandles = new Map<string, ReturnType<Clock["schedule"]>>();
   const closeBarriers = new Map<number, Promise<void>>();
+  const messagePromises = new Map<
+    string,
+    { serverId: number; promise: Promise<McpOAuthConnectResult> }
+  >();
+  let disposed = false;
+
+  const keyOf = (ref: McpOAuthInvocationRef) => ref.operationId;
 
   function getState(port: number): McpOAuthState {
     return states.get(port) ?? IDLE_MCP_OAUTH_STATE;
   }
 
-  function cancelTimeout(flowId: string): void {
-    const handle = timeoutHandles.get(flowId);
+  function cancelTimeout(invocationRef: McpOAuthInvocationRef): void {
+    const key = keyOf(invocationRef);
+    const handle = timeoutHandles.get(key);
     if (handle === undefined) return;
-    timeoutHandles.delete(flowId);
+    timeoutHandles.delete(key);
     clock.cancel(handle);
   }
 
   function settleFlow(
-    flowId: string,
+    invocationRef: McpOAuthInvocationRef,
     result: McpOAuthConnectResult,
     abortProvider: boolean,
   ): void {
-    const runtime = runtimes.get(flowId);
+    const key = keyOf(invocationRef);
+    const runtime = runtimes.get(key);
     if (!runtime || runtime.settled) return;
     runtime.settled = true;
-    runtimes.delete(flowId);
-    flowPorts.delete(flowId);
-    cancelTimeout(flowId);
+    runtimes.delete(key);
+    flowPorts.delete(key);
+    activeInvocations.delete(invocationRef);
+    if (
+      sameInvocationRef(
+        activeByServer.get(runtime.serverId) ?? invocationRef,
+        invocationRef,
+      )
+    ) {
+      activeByServer.delete(runtime.serverId);
+    }
+    cancelTimeout(invocationRef);
     if (abortProvider) runtime.onAbort();
     runtime.resolve(result);
+    options.onSettled?.(runtime.serverId, invocationRef, result);
   }
 
-  function closeListener(port: number, flowId: string): Promise<void> {
-    cancelTimeout(flowId);
-    const listener = listeners.get(flowId);
+  function closeListener(
+    port: number,
+    invocationRef: McpOAuthInvocationRef,
+  ): Promise<void> {
+    cancelTimeout(invocationRef);
+    const key = keyOf(invocationRef);
+    const listener = listeners.get(key);
     if (!listener) return closeBarriers.get(port) ?? Promise.resolve();
-    listeners.delete(flowId);
+    listeners.delete(key);
     const closing = listener.close().catch(() => undefined);
     const barrier = Promise.all([
       closeBarriers.get(port) ?? Promise.resolve(),
@@ -164,7 +205,11 @@ export function createMcpOAuthRegistry(options: McpOAuthRegistryOptions) {
   ): Promise<void> {
     await (closeBarriers.get(port) ?? Promise.resolve());
     const current = getState(port);
-    if (current.status !== "binding" || current.flowId !== identity.flowId) {
+    if (
+      disposed ||
+      current.status !== "binding" ||
+      !sameInvocationRef(current.invocationRef, identity.invocationRef)
+    ) {
       return;
     }
 
@@ -172,89 +217,97 @@ export function createMcpOAuthRegistry(options: McpOAuthRegistryOptions) {
     try {
       listener = options.bindListener({
         port,
-        flowId: identity.flowId,
+        invocationRef: identity.invocationRef,
         onCallback: (callback) => claimCallback(port, callback),
       });
     } catch (error) {
       dispatch(port, {
         type: "EXCHANGE_FAILED",
-        flowId: identity.flowId,
+        invocationRef: identity.invocationRef,
         message: error instanceof Error ? error.message : String(error),
       });
       return;
     }
-    listeners.set(identity.flowId, listener);
+    listeners.set(keyOf(identity.invocationRef), listener);
 
-    let bindResult: McpOAuthBindResult;
     try {
-      bindResult = await listener.settled;
+      const bindResult = await listener.settled;
+      dispatch(port, {
+        type: "BINDS_SETTLED",
+        invocationRef: identity.invocationRef,
+        ...bindResult,
+      });
     } catch (error) {
       dispatch(port, {
         type: "EXCHANGE_FAILED",
-        flowId: identity.flowId,
+        invocationRef: identity.invocationRef,
         message: error instanceof Error ? error.message : String(error),
       });
-      return;
     }
-    dispatch(port, {
-      type: "BINDS_SETTLED",
-      flowId: identity.flowId,
-      ...bindResult,
-    });
   }
 
   function startAwaitingEffects(
     port: number,
     identity: McpOAuthFlowIdentity,
   ): void {
+    const key = keyOf(identity.invocationRef);
     timeoutHandles.set(
-      identity.flowId,
+      key,
       clock.schedule(
-        () => dispatch(port, { type: "TIMEOUT", flowId: identity.flowId }),
+        () =>
+          dispatch(port, {
+            type: "TIMEOUT",
+            invocationRef: identity.invocationRef,
+          }),
         timeoutMs,
       ),
     );
-    const runtime = runtimes.get(identity.flowId);
+    const runtime = runtimes.get(key);
     if (!runtime) return;
     void runtime.authorize().then(
       (result) => {
         if (result === "AUTHORIZED") {
           dispatch(port, {
             type: "AUTHORIZED_SILENTLY",
-            flowId: identity.flowId,
+            invocationRef: identity.invocationRef,
           });
         }
       },
       (error) =>
         dispatch(port, {
           type: "EXCHANGE_FAILED",
-          flowId: identity.flowId,
+          invocationRef: identity.invocationRef,
           message: error instanceof Error ? error.message : String(error),
         }),
     );
   }
 
-  function startExchange(port: number, flowId: string, code: string): void {
-    cancelTimeout(flowId);
-    void closeListener(port, flowId);
-    const runtime = runtimes.get(flowId);
+  function startExchange(
+    port: number,
+    invocationRef: McpOAuthInvocationRef,
+    code: string,
+  ): void {
+    cancelTimeout(invocationRef);
+    void closeListener(port, invocationRef);
+    const runtime = runtimes.get(keyOf(invocationRef));
     if (!runtime) return;
     void runtime.authorize(code).then(
-      (result) => {
-        if (result === "AUTHORIZED") {
-          dispatch(port, { type: "EXCHANGE_OK", flowId });
-        } else {
-          dispatch(port, {
-            type: "EXCHANGE_FAILED",
-            flowId,
-            message: "OAuth completed without authorization; please try again.",
-          });
-        }
-      },
+      (result) =>
+        dispatch(
+          port,
+          result === "AUTHORIZED"
+            ? { type: "EXCHANGE_OK", invocationRef }
+            : {
+                type: "EXCHANGE_FAILED",
+                invocationRef,
+                message:
+                  "OAuth completed without authorization; please try again.",
+              },
+        ),
       (error) =>
         dispatch(port, {
           type: "EXCHANGE_FAILED",
-          flowId,
+          invocationRef,
           message: error instanceof Error ? error.message : String(error),
         }),
     );
@@ -269,7 +322,7 @@ export function createMcpOAuthRegistry(options: McpOAuthRegistryOptions) {
     if (state.status === "superseding") {
       if (previous.status === "superseding") {
         settleFlow(
-          previous.next.flowId,
+          previous.next.invocationRef,
           {
             success: false,
             error: "OAuth flow superseded by a new Connect attempt.",
@@ -281,15 +334,18 @@ export function createMcpOAuthRegistry(options: McpOAuthRegistryOptions) {
       const closing = identityOf(previous);
       if (!closing) return;
       settleFlow(
-        closing.flowId,
+        closing.invocationRef,
         {
           success: false,
           error: "OAuth flow superseded by a new Connect attempt.",
         },
         true,
       );
-      void closeListener(port, closing.flowId).then(() => {
-        dispatch(port, { type: "SOCKETS_CLOSED", flowId: closing.flowId });
+      void closeListener(port, closing.invocationRef).then(() => {
+        dispatch(port, {
+          type: "SOCKETS_CLOSED",
+          invocationRef: closing.invocationRef,
+        });
       });
       return;
     }
@@ -298,40 +354,38 @@ export function createMcpOAuthRegistry(options: McpOAuthRegistryOptions) {
       void startBinding(port, state);
       return;
     }
-
     if (state.status === "awaitingCallback") {
       startAwaitingEffects(port, state);
       return;
     }
-
     if (
       state.status === "exchanging" &&
       event.type === "CALLBACK" &&
       event.code
     ) {
-      startExchange(port, state.flowId, event.code);
+      startExchange(port, state.invocationRef, event.code);
       return;
     }
-
     if (!isTerminalMcpOAuthState(state)) return;
 
     const terminalIdentity = identityOf(state);
     if (!terminalIdentity) return;
     const succeeded = state.status === "connected";
     settleFlow(
-      terminalIdentity.flowId,
+      terminalIdentity.invocationRef,
       succeeded
         ? { success: true, error: null }
         : { success: false, error: terminalMessage(port, state) },
       !succeeded,
     );
-    const closing = closeListener(port, terminalIdentity.flowId);
+    const closing = closeListener(port, terminalIdentity.invocationRef);
     void closing.then(() => {
       if (getState(port) === state) states.delete(port);
     });
   }
 
   function dispatch(port: number, event: McpOAuthEvent): boolean {
+    if (disposed) return false;
     const previous = getState(port);
     const result = transition(previous, event);
     if (result.kind === "ignored") {
@@ -353,45 +407,111 @@ export function createMcpOAuthRegistry(options: McpOAuthRegistryOptions) {
     return true;
   }
 
+  function rememberMessage(
+    rendererMessageId: string,
+    serverId: number,
+    promise: Promise<McpOAuthConnectResult>,
+  ): void {
+    messagePromises.set(rendererMessageId, { serverId, promise });
+    while (messagePromises.size > MESSAGE_DEDUPE_LIMIT) {
+      const oldest = messagePromises.keys().next().value;
+      if (oldest === undefined) break;
+      messagePromises.delete(oldest);
+    }
+  }
+
   function connect(
     request: McpOAuthConnectRequest,
   ): Promise<McpOAuthConnectResult> {
-    const identity: McpOAuthFlowIdentity = {
-      flowId: ids.next("mcp-oauth"),
-      expectedState: request.expectedState,
-      serverId: request.serverId,
-    };
-    if (runtimes.has(identity.flowId)) {
+    const duplicate = messagePromises.get(request.rendererMessageId);
+    if (duplicate) {
+      if (duplicate.serverId === request.serverId) return duplicate.promise;
       request.onAbort();
       return Promise.resolve({
         success: false,
-        error: `OAuth flow ID collision: ${identity.flowId}`,
+        error: "OAuth retry message ID was reused for a different server.",
       });
     }
-    const promise = new Promise<McpOAuthConnectResult>((resolve) => {
-      runtimes.set(identity.flowId, {
-        authorize: request.authorize,
-        onAbort: request.onAbort,
-        resolve,
-        settled: false,
+    if (disposed) {
+      request.onAbort();
+      return Promise.resolve({
+        success: false,
+        error: "OAuth flow registry disposed.",
       });
+    }
+
+    const previousForServer = activeByServer.get(request.serverId);
+    if (previousForServer) {
+      void cancelInvocation(
+        previousForServer,
+        "OAuth flow superseded by a new Connect attempt.",
+      );
+    }
+
+    const invocationRef = createInvocationRef(
+      MCP_OAUTH_INVOCATION_KIND,
+      request.serverId,
+      ids,
+    );
+    let resolvePromise!: (result: McpOAuthConnectResult) => void;
+    const promise = new Promise<McpOAuthConnectResult>((resolve) => {
+      resolvePromise = resolve;
     });
-    flowPorts.set(identity.flowId, request.port);
-    dispatch(request.port, { type: "CONNECT", ...identity });
+    const runtime: FlowRuntime = {
+      invocationRef,
+      serverId: request.serverId,
+      authorize: request.authorize,
+      onAbort: request.onAbort,
+      resolve: resolvePromise,
+      settled: false,
+    };
+    runtimes.set(keyOf(invocationRef), runtime);
+    activeInvocations.register(invocationRef, runtime);
+    activeByServer.set(request.serverId, invocationRef);
+    flowPorts.set(keyOf(invocationRef), request.port);
+    rememberMessage(request.rendererMessageId, request.serverId, promise);
+    dispatch(request.port, {
+      type: "CONNECT",
+      invocationRef,
+      rendererMessageId: request.rendererMessageId,
+      expectedState: request.expectedState,
+      serverId: request.serverId,
+    });
     return promise;
+  }
+
+  function retryResult(
+    rendererMessageId: string,
+    serverId: number,
+  ): Promise<McpOAuthConnectResult> | undefined {
+    const duplicate = messagePromises.get(rendererMessageId);
+    if (!duplicate) return undefined;
+    return duplicate.serverId === serverId
+      ? duplicate.promise
+      : Promise.resolve({
+          success: false,
+          error: "OAuth retry message ID was reused for a different server.",
+        });
   }
 
   function claimCallback(
     port: number,
-    callback: { state: string | null; code?: string; error?: string },
+    callback: {
+      invocationRef: McpOAuthInvocationRef;
+      state: string | null;
+      code?: string;
+      error?: string;
+    },
   ): ClaimCallbackResult {
     const current = getState(port);
-    if (current.status !== "awaitingCallback") {
+    if (
+      current.status !== "awaitingCallback" ||
+      activeInvocations.claim(callback.invocationRef).kind !== "claimed"
+    ) {
       return { claimed: false, reason: "inactive" };
     }
     const event: McpOAuthEvent = {
       type: "CALLBACK",
-      flowId: current.flowId,
       ...callback,
     };
     const result = transition(current, event);
@@ -404,21 +524,66 @@ export function createMcpOAuthRegistry(options: McpOAuthRegistryOptions) {
       return { claimed: false, reason: "state-mismatch" };
     }
     dispatch(port, event);
-    return { claimed: true };
+    return { claimed: true, invocationRef: callback.invocationRef };
   }
 
-  function dispose(): void {
-    for (const flowId of runtimes.keys()) {
-      const port = flowPorts.get(flowId);
+  async function cancelInvocation(
+    invocationRef: McpOAuthInvocationRef,
+    reason: string,
+  ): Promise<void> {
+    if (activeInvocations.claim(invocationRef).kind !== "claimed") return;
+    const port = flowPorts.get(keyOf(invocationRef));
+    settleFlow(invocationRef, { success: false, error: reason }, true);
+    if (port === undefined) return;
+    const state = states.get(port);
+    const ownsState =
+      state?.status === "superseding"
+        ? sameInvocationRef(state.closing.invocationRef, invocationRef) ||
+          sameInvocationRef(state.next.invocationRef, invocationRef)
+        : state !== undefined && state.status !== "idle"
+          ? sameInvocationRef(state.invocationRef, invocationRef)
+          : false;
+    if (ownsState) {
+      states.delete(port);
+    }
+    await closeListener(port, invocationRef);
+  }
+
+  function cancelServer(serverId: number, reason: string): Promise<void> {
+    const invocationRef = activeByServer.get(serverId);
+    return invocationRef
+      ? cancelInvocation(invocationRef, reason)
+      : Promise.resolve();
+  }
+
+  async function dispose(): Promise<void> {
+    if (disposed) {
+      await Promise.all(closeBarriers.values());
+      return;
+    }
+    disposed = true;
+    const closes: Promise<void>[] = [];
+    for (const runtime of runtimes.values()) {
+      const port = flowPorts.get(keyOf(runtime.invocationRef));
       settleFlow(
-        flowId,
+        runtime.invocationRef,
         { success: false, error: "OAuth flow registry disposed." },
         true,
       );
-      if (port !== undefined) void closeListener(port, flowId);
+      if (port !== undefined) {
+        closes.push(closeListener(port, runtime.invocationRef));
+      }
     }
     states.clear();
+    await Promise.all([...closes, ...closeBarriers.values()]);
   }
 
-  return { getState, connect, claimCallback, dispose };
+  return {
+    getState,
+    retryResult,
+    connect,
+    claimCallback,
+    cancelServer,
+    dispose,
+  };
 }

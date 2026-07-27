@@ -4,7 +4,10 @@ import type { QueryInvalidationScope } from "@/window_infrastructure/types";
 
 export function publishQueryInvalidations(
   scopes: readonly QueryInvalidationScope[],
-  origin: WebContents,
+  origin?: WebContents,
 ): void {
-  queryInvalidationBus.publish(scopes, { originEndpoint: origin });
+  queryInvalidationBus.publish(
+    scopes,
+    origin === undefined ? {} : { originEndpoint: origin },
+  );
 }

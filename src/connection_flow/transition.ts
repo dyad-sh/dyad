@@ -1,29 +1,23 @@
 /**
- * Connection flow state machine — pure transition function.
+ * Pure connection-flow transition function.
  *
- * Total over the state × event matrix: every (state, event) pair either
- * transitions or is explicitly ignored with a reason — it never throws.
- * Mutually exclusive outcomes (e.g. a timeout racing an OAuth return) are
- * resolved here: whichever event arrives first wins the transition and the
- * loser is ignored, because the machine has already left the state the losing
- * event is valid in.
- *
- * This file must stay pure: no Electron, React, or other runtime imports.
+ * Correlation uses the complete typed invocation reference. Every applied
+ * transition advances the authoritative revision exposed to renderers.
  */
 
-import type { ConnectionFlowEvent, ConnectionFlowState } from "./state";
+import { sameInvocationRef } from "@/state_machines/invocation_ref";
 import {
   change,
   ignore as ignoreTransition,
   type IgnoreReason as SharedIgnoreReason,
   type TransitionResult as SharedTransitionResult,
 } from "@/state_machines/types";
+import type { ConnectionFlowEvent, ConnectionFlowState } from "./state";
 
-/** Why an event was ignored instead of transitioning the machine. */
 export type IgnoreReason = SharedIgnoreReason<
   | "flow-already-active"
   | "no-active-flow"
-  | "flow-id-mismatch"
+  | "invocation-mismatch"
   | "invalid-in-current-state"
 >;
 
@@ -33,11 +27,20 @@ export type TransitionResult = SharedTransitionResult<
   IgnoreReason
 >;
 
-function advance(state: ConnectionFlowState): TransitionResult {
-  return change(state);
+type UnrevisionedState<
+  State extends ConnectionFlowState = ConnectionFlowState,
+> = State extends ConnectionFlowState ? Omit<State, "revision"> : never;
+
+function advance(
+  previous: ConnectionFlowState,
+  state: UnrevisionedState,
+): TransitionResult {
+  return change({
+    ...state,
+    revision: previous.revision + 1,
+  } as ConnectionFlowState);
 }
 
-/** Explicitly ignore an event, keeping the current state. */
 function ignore(
   state: ConnectionFlowState,
   reason: IgnoreReason,
@@ -45,250 +48,127 @@ function ignore(
   return ignoreTransition(state, reason);
 }
 
+function hasMatchingInvocation(
+  state: Exclude<ConnectionFlowState, { status: "disconnected" }>,
+  event: Exclude<ConnectionFlowEvent, { type: "start" }>,
+): boolean {
+  return sameInvocationRef(state.invocationRef, event.invocationRef);
+}
+
 export function transition(
   state: ConnectionFlowState,
   event: ConnectionFlowEvent,
 ): TransitionResult {
+  if (event.type === "start") {
+    switch (state.status) {
+      case "disconnected":
+      case "connected":
+      case "failed":
+      case "cancelled":
+        return advance(state, {
+          status: "starting",
+          invocationRef: event.invocationRef,
+          provider: event.provider,
+        });
+      case "starting":
+      case "awaiting-return":
+      case "exchanging-token":
+        return ignore(state, "flow-already-active");
+      default:
+        return unreachableState(state);
+    }
+  }
+
+  if (state.status === "disconnected") {
+    return ignore(state, "no-active-flow");
+  }
+  if (!hasMatchingInvocation(state, event)) {
+    return ignore(state, "invocation-mismatch");
+  }
+
   switch (event.type) {
-    case "start": {
-      switch (state.status) {
-        case "disconnected":
-        case "connected":
-        case "failed":
-        case "cancelled":
-          // A new flow may start from idle or from any terminal state
-          // (retry after failure/cancel, reconnect after success).
-          return advance({
-            status: "starting",
-            flowId: event.flowId,
-            provider: event.provider,
-          });
-        case "starting":
-        case "awaiting-return":
-        case "exchanging-token":
-        case "loading-resources":
-          // Double-start (e.g. double-clicked Connect) is a no-op.
-          return ignore(state, "flow-already-active");
-        default:
-          return unreachableState(state);
+    case "prepared":
+      if (state.status !== "starting") {
+        return ignore(state, "invalid-in-current-state");
       }
-    }
+      return advance(state, {
+        status: "awaiting-return",
+        invocationRef: state.invocationRef,
+        provider: state.provider,
+        userCode: event.userCode,
+        verificationUri: event.verificationUri,
+      });
 
-    case "prepared": {
-      if (state.status === "disconnected") {
-        return ignore(state, "no-active-flow");
+    case "return-received":
+      if (state.status !== "awaiting-return") {
+        return ignore(state, "invalid-in-current-state");
       }
-      if (state.flowId !== event.flowId) {
-        return ignore(state, "flow-id-mismatch");
-      }
-      switch (state.status) {
-        case "starting":
-          return advance({
-            status: "awaiting-return",
-            flowId: state.flowId,
-            provider: state.provider,
-            userCode: event.userCode,
-            verificationUri: event.verificationUri,
-          });
-        case "awaiting-return":
-        case "exchanging-token":
-        case "loading-resources":
-        case "connected":
-        case "failed":
-        case "cancelled":
-          return ignore(state, "invalid-in-current-state");
-        default:
-          return unreachableState(state);
-      }
-    }
+      return advance(state, {
+        status: "exchanging-token",
+        invocationRef: state.invocationRef,
+        provider: state.provider,
+      });
 
-    case "return-received": {
-      if (state.status === "disconnected") {
-        return ignore(state, "no-active-flow");
+    case "token-exchanged":
+      if (state.status !== "exchanging-token") {
+        return ignore(state, "invalid-in-current-state");
       }
-      if (state.flowId !== event.flowId) {
-        return ignore(state, "flow-id-mismatch");
-      }
-      switch (state.status) {
-        case "awaiting-return":
-          return advance({
-            status: "exchanging-token",
-            flowId: state.flowId,
-            provider: state.provider,
-          });
-        case "starting":
-        case "exchanging-token":
-        case "loading-resources":
-        case "connected":
-        // In particular: a return arriving after the flow already failed
-        // (e.g. by timeout) is ignored — the timeout won the race. The
-        // token write itself is handled outside the machine as an
-        // unsolicited return.
-        case "failed":
-        case "cancelled":
-          return ignore(state, "invalid-in-current-state");
-        default:
-          return unreachableState(state);
-      }
-    }
+      return advance(state, {
+        status: "connected",
+        invocationRef: state.invocationRef,
+        provider: state.provider,
+      });
 
-    case "token-exchanged": {
-      if (state.status === "disconnected") {
-        return ignore(state, "no-active-flow");
+    case "timeout":
+      if (state.status !== "starting" && state.status !== "awaiting-return") {
+        return ignore(state, "invalid-in-current-state");
       }
-      if (state.flowId !== event.flowId) {
-        return ignore(state, "flow-id-mismatch");
-      }
-      switch (state.status) {
-        case "exchanging-token":
-          return advance({
-            status: "loading-resources",
-            flowId: state.flowId,
-            provider: state.provider,
-          });
-        case "starting":
-        case "awaiting-return":
-        case "loading-resources":
-        case "connected":
-        case "failed":
-        case "cancelled":
-          return ignore(state, "invalid-in-current-state");
-        default:
-          return unreachableState(state);
-      }
-    }
+      return advance(state, {
+        status: "failed",
+        invocationRef: state.invocationRef,
+        provider: state.provider,
+        reason: "timeout",
+      });
 
-    case "resources-loaded": {
-      if (state.status === "disconnected") {
-        return ignore(state, "no-active-flow");
+    case "cancel":
+      if (
+        state.status !== "starting" &&
+        state.status !== "awaiting-return" &&
+        state.status !== "exchanging-token"
+      ) {
+        return ignore(state, "invalid-in-current-state");
       }
-      if (state.flowId !== event.flowId) {
-        return ignore(state, "flow-id-mismatch");
-      }
-      switch (state.status) {
-        case "loading-resources":
-          return advance({
-            status: "connected",
-            flowId: state.flowId,
-            provider: state.provider,
-          });
-        case "starting":
-        case "awaiting-return":
-        case "exchanging-token":
-        case "connected":
-        case "failed":
-        case "cancelled":
-          return ignore(state, "invalid-in-current-state");
-        default:
-          return unreachableState(state);
-      }
-    }
+      return advance(state, {
+        status: "cancelled",
+        invocationRef: state.invocationRef,
+        provider: state.provider,
+      });
 
-    case "timeout": {
-      if (state.status === "disconnected") {
-        return ignore(state, "no-active-flow");
+    case "fail":
+      if (
+        state.status !== "starting" &&
+        state.status !== "awaiting-return" &&
+        state.status !== "exchanging-token"
+      ) {
+        return ignore(state, "invalid-in-current-state");
       }
-      if (state.flowId !== event.flowId) {
-        return ignore(state, "flow-id-mismatch");
-      }
-      switch (state.status) {
-        case "starting":
-        case "awaiting-return":
-          return advance({
-            status: "failed",
-            flowId: state.flowId,
-            provider: state.provider,
-            reason: "timeout",
-          });
-        // Once the return has been received (or the flow otherwise ended)
-        // a late timeout is ignored — the return won the race. Timeout and
-        // success are mutually exclusive by construction.
-        case "exchanging-token":
-        case "loading-resources":
-        case "connected":
-        case "failed":
-        case "cancelled":
-          return ignore(state, "invalid-in-current-state");
-        default:
-          return unreachableState(state);
-      }
-    }
+      return advance(state, {
+        status: "failed",
+        invocationRef: state.invocationRef,
+        provider: state.provider,
+        reason: event.reason,
+        message: event.message,
+      });
 
-    case "cancel": {
-      if (state.status === "disconnected") {
-        return ignore(state, "no-active-flow");
+    case "acknowledge":
+      if (
+        state.status !== "connected" &&
+        state.status !== "failed" &&
+        state.status !== "cancelled"
+      ) {
+        return ignore(state, "invalid-in-current-state");
       }
-      if (state.flowId !== event.flowId) {
-        return ignore(state, "flow-id-mismatch");
-      }
-      switch (state.status) {
-        case "starting":
-        case "awaiting-return":
-        case "exchanging-token":
-        case "loading-resources":
-          return advance({
-            status: "cancelled",
-            flowId: state.flowId,
-            provider: state.provider,
-          });
-        case "connected":
-        case "failed":
-        case "cancelled":
-          return ignore(state, "invalid-in-current-state");
-        default:
-          return unreachableState(state);
-      }
-    }
-
-    case "fail": {
-      if (state.status === "disconnected") {
-        return ignore(state, "no-active-flow");
-      }
-      if (state.flowId !== event.flowId) {
-        return ignore(state, "flow-id-mismatch");
-      }
-      switch (state.status) {
-        case "starting":
-        case "awaiting-return":
-        case "exchanging-token":
-        case "loading-resources":
-          return advance({
-            status: "failed",
-            flowId: state.flowId,
-            provider: state.provider,
-            reason: event.reason,
-            message: event.message,
-          });
-        case "connected":
-        case "failed":
-        case "cancelled":
-          return ignore(state, "invalid-in-current-state");
-        default:
-          return unreachableState(state);
-      }
-    }
-
-    case "acknowledge": {
-      if (state.status === "disconnected") {
-        return ignore(state, "no-active-flow");
-      }
-      if (state.flowId !== event.flowId) {
-        return ignore(state, "flow-id-mismatch");
-      }
-      switch (state.status) {
-        case "connected":
-        case "failed":
-        case "cancelled":
-          return advance({ status: "disconnected" });
-        case "starting":
-        case "awaiting-return":
-        case "exchanging-token":
-        case "loading-resources":
-          return ignore(state, "invalid-in-current-state");
-        default:
-          return unreachableState(state);
-      }
-    }
+      return advance(state, { status: "disconnected" });
 
     default: {
       const exhaustive: never = event;

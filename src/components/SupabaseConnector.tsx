@@ -2,7 +2,6 @@ import { useEffect, useRef } from "react";
 import {
   acknowledgeConnectionFlow,
   cancelConnectionFlow,
-  reportConnectionFlowResourcesLoaded,
   startConnectionFlow,
   useConnectionFlow,
   useUnsolicitedConnectionReturn,
@@ -91,7 +90,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
   // The connection flow lives in the main process; this component only
   // projects it. Timeouts (Supabase historically had none — a closed
   // browser left it silently stuck), double-start protection and
-  // OAuth-return correlation are handled by the flowId-keyed state machine.
+  // OAuth-return correlation are handled by the typed-ref-keyed state machine.
   const { flowState, isFlowActive } = useConnectionFlow("supabase");
 
   const refreshAfterConnectRef = useRef<() => Promise<void>>(async () => {});
@@ -104,25 +103,23 @@ export function SupabaseConnector({ appId }: { appId: number }) {
 
   useEffect(() => {
     const flow = flowState;
-    if (flow.status === "loading-resources") {
+    if (flow.status === "connected") {
       void (async () => {
         try {
           await refreshAfterConnectRef.current();
         } finally {
-          await reportConnectionFlowResourcesLoaded("supabase", flow.flowId);
+          await acknowledgeConnectionFlow("supabase", flow.invocationRef);
         }
       })();
-    } else if (flow.status === "connected") {
-      void acknowledgeConnectionFlow("supabase", flow.flowId);
     } else if (flow.status === "failed") {
       if (flow.reason === "timeout") {
         toast.warning(t("integrations.supabase.signInTimedOut"));
       } else if (flow.reason !== "user_cancelled") {
         toast.error(flow.message ?? t("integrations.supabase.connectFailed"));
       }
-      void acknowledgeConnectionFlow("supabase", flow.flowId);
+      void acknowledgeConnectionFlow("supabase", flow.invocationRef);
     } else if (flow.status === "cancelled") {
-      void acknowledgeConnectionFlow("supabase", flow.flowId);
+      void acknowledgeConnectionFlow("supabase", flow.invocationRef);
     }
   }, [flowState, t]);
 
@@ -184,7 +181,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
   const handleAddAccount = async () => {
     try {
       // Starting is a no-op while a flow is already active (double-click).
-      const { started, flowId } = await startConnectionFlow("supabase");
+      const { started, invocationRef } = await startConnectionFlow("supabase");
       if (!started) {
         return;
       }
@@ -200,7 +197,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
           );
         }
       } catch (error) {
-        await cancelConnectionFlow("supabase", flowId);
+        await cancelConnectionFlow("supabase", invocationRef);
         throw error;
       }
     } catch (error) {
@@ -387,7 +384,12 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                   variant="ghost"
                   size="sm"
                   onClick={() => {
-                    void cancelConnectionFlow("supabase");
+                    if ("invocationRef" in flowState) {
+                      void cancelConnectionFlow(
+                        "supabase",
+                        flowState.invocationRef,
+                      );
+                    }
                   }}
                   data-testid="cancel-supabase-flow-button"
                 >
@@ -533,7 +535,9 @@ export function SupabaseConnector({ appId }: { appId: number }) {
             variant="ghost"
             size="sm"
             onClick={() => {
-              void cancelConnectionFlow("supabase");
+              if ("invocationRef" in flowState) {
+                void cancelConnectionFlow("supabase", flowState.invocationRef);
+              }
             }}
             data-testid="cancel-supabase-flow-button"
           >

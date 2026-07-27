@@ -3,7 +3,10 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { WindowSessionId } from "../types";
-import { WindowSessionPersistence } from "./window_session_persistence";
+import {
+  MAX_PRODUCT_WINDOWS,
+  WindowSessionPersistence,
+} from "./window_session_persistence";
 
 const temporaryDirectories: string[] = [];
 const session = (suffix: number) =>
@@ -61,5 +64,20 @@ describe("WindowSessionPersistence", () => {
     fs.writeFileSync(filePath, "{not-json", "utf8");
 
     expect(new WindowSessionPersistence(filePath).read()).toEqual([]);
+  });
+
+  it("rejects a session beyond the supported product-window capacity", () => {
+    const persistence = createPersistence();
+    for (let index = 1; index <= MAX_PRODUCT_WINDOWS; index += 1) {
+      persistence.remember(session(index), { kind: "app", id: index });
+    }
+
+    expect(() =>
+      persistence.remember(session(MAX_PRODUCT_WINDOWS + 1), {
+        kind: "app",
+        id: MAX_PRODUCT_WINDOWS + 1,
+      }),
+    ).toThrow("Window session capacity exceeded");
+    expect(persistence.read()).toHaveLength(MAX_PRODUCT_WINDOWS);
   });
 });

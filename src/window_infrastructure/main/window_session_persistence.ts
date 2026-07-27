@@ -8,7 +8,7 @@ import {
   type WindowSessionId,
 } from "@/window_infrastructure/types";
 
-const MAX_RESTORED_WINDOWS = 8;
+export const MAX_PRODUCT_WINDOWS = 8;
 
 const WindowSessionDescriptorSchema = z.object({
   windowSessionId: WindowSessionIdSchema,
@@ -17,7 +17,7 @@ const WindowSessionDescriptorSchema = z.object({
 
 const WindowSessionFileSchema = z.object({
   version: z.literal(1),
-  windows: z.array(WindowSessionDescriptorSchema).max(MAX_RESTORED_WINDOWS),
+  windows: z.array(WindowSessionDescriptorSchema).max(MAX_PRODUCT_WINDOWS),
 });
 
 export type WindowSessionDescriptor = z.infer<
@@ -48,8 +48,10 @@ export class WindowSessionPersistence {
     );
     if (existing) {
       existing.visibleEntity = visibleEntity;
-    } else if (windows.length < MAX_RESTORED_WINDOWS) {
+    } else if (windows.length < MAX_PRODUCT_WINDOWS) {
       windows.push({ windowSessionId, visibleEntity });
+    } else {
+      throw new Error("Window session capacity exceeded");
     }
     this.write(windows);
   }

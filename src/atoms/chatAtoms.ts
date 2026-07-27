@@ -112,14 +112,24 @@ function sessionsHaveSameShape(
   );
 }
 
+const chatTabSessionStorage = createChatTabSessionStorage(() =>
+  typeof window === "undefined" ? undefined : window.localStorage,
+);
+
 export const chatTabSessionStorageAtom = atomWithStorage<ChatTabSession>(
   "chat-tab-session",
   EMPTY_CHAT_TAB_SESSION,
-  createChatTabSessionStorage(() =>
-    typeof window === "undefined" ? undefined : window.localStorage,
-  ),
+  chatTabSessionStorage,
   { getOnInit: true },
 );
+
+export const initializeChatTabSessionStorageAtom = atom(null, (_get, set) => {
+  const configuredSession = chatTabSessionStorage.getItem(
+    "chat-tab-session",
+    EMPTY_CHAT_TAB_SESSION,
+  );
+  set(chatTabSessionStorageAtom, configuredSession);
+});
 
 // When enabled, tabs are kept grouped by app on every render (a live layout),
 // so newly opened chats automatically slot into their app's group. Turned off

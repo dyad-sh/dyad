@@ -1,10 +1,11 @@
 import type {
+  AppVisibleEntity,
   VisibleEntity,
   WindowSessionId,
 } from "@/window_infrastructure/types";
 
 export interface WindowProductController {
-  openEntityInNewWindow(entity: VisibleEntity): WindowSessionId;
+  openEntityInNewWindow(entity: AppVisibleEntity): WindowSessionId;
   initialEntityForSession(
     windowSessionId: WindowSessionId,
   ): VisibleEntity | undefined;
@@ -12,6 +13,8 @@ export interface WindowProductController {
     windowSessionId: WindowSessionId,
     entities: readonly VisibleEntity[],
   ): void;
+  mayMigrateLegacyChatTabSession(windowSessionId: WindowSessionId): boolean;
+  restorableWindowSessionIds(): readonly WindowSessionId[];
 }
 
 let controller: WindowProductController | undefined;

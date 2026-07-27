@@ -7,7 +7,7 @@ import {
   chatChunkInterests,
 } from "../../window_infrastructure/main/production_high_volume";
 import { db } from "../../db";
-import { chats } from "../../db/schema";
+import { apps, chats } from "../../db/schema";
 import { eq } from "drizzle-orm";
 import {
   rendererMessageColumns,
@@ -15,6 +15,7 @@ import {
 } from "../utils/renderer_chat_message";
 import type { ChatResponseChunk } from "../types/chat";
 import { getWindowProductController } from "../../window_infrastructure/main/window_product_controller";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 export function registerWindowInfrastructureHandlers(): void {
   createTypedHandler(
@@ -24,15 +25,28 @@ export function registerWindowInfrastructureHandlers(): void {
       const synchronization = queryInvalidationBus.synchronize(
         input.lastSeenQueryInvalidationEpoch,
       );
+      const controller = getWindowProductController();
+      let initialEntity = controller?.initialEntityForSession(windowSessionId);
+      if (initialEntity?.kind === "app") {
+        const existingApp = await db.query.apps.findFirst({
+          where: eq(apps.id, initialEntity.id),
+        });
+        if (!existingApp) {
+          controller?.setVisibleEntities(windowSessionId, []);
+          initialEntity = undefined;
+        }
+      }
       return {
         windowSessionId,
         currentQueryInvalidationEpoch: synchronization.currentEpoch,
         missedInvalidations: synchronization.invalidations,
         recoveryScopes: synchronization.recoveryScopes,
-        initialEntity:
-          getWindowProductController()?.initialEntityForSession(
-            windowSessionId,
-          ),
+        initialEntity,
+        mayMigrateLegacyChatTabSession:
+          controller?.mayMigrateLegacyChatTabSession(windowSessionId) ?? true,
+        restorableWindowSessionIds: Array.from(
+          controller?.restorableWindowSessionIds() ?? [windowSessionId],
+        ),
       };
     },
   );
@@ -43,6 +57,12 @@ export function registerWindowInfrastructureHandlers(): void {
       const controller = getWindowProductController();
       if (!controller) {
         throw new Error("Window product controller is not ready");
+      }
+      const existingApp = await db.query.apps.findFirst({
+        where: eq(apps.id, entity.id),
+      });
+      if (!existingApp) {
+        throw new DyadError("App not found", DyadErrorKind.NotFound);
       }
       return {
         windowSessionId: controller.openEntityInNewWindow(entity),

@@ -133,9 +133,11 @@ import { windowRegistry } from "./window_infrastructure/main/window_registry";
 import type { WindowSessionId } from "./window_infrastructure/types";
 import { configureWindowProductController } from "./window_infrastructure/main/window_product_controller";
 import {
+  MAX_PRODUCT_WINDOWS,
   WindowSessionPersistence,
   type WindowSessionDescriptor,
 } from "./window_infrastructure/main/window_session_persistence";
+import { DyadError, DyadErrorKind } from "./errors/dyad_error";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();
@@ -603,6 +605,7 @@ declare global {
 
 let mainWindow: BrowserWindow | null = null;
 const productWindows = new Map<WindowSessionId, BrowserWindow>();
+const readyProductWindows = new WeakSet<BrowserWindow>();
 let windowSessionPersistence: WindowSessionPersistence | undefined;
 let lastClosedWindowSession: WindowSessionDescriptor | undefined;
 let pendingForceCloseData: any = null;
@@ -622,34 +625,51 @@ const createWindow = ({
   windowSessionId = randomUUID() as WindowSessionId,
   visibleEntity,
 }: Partial<WindowSessionDescriptor> = {}): WindowSessionId => {
+  const persistence = getWindowSessionPersistence();
+  const wasAlreadyPersisted = persistence
+    .read()
+    .some((session) => session.windowSessionId === windowSessionId);
+  persistence.remember(windowSessionId, visibleEntity);
+
   // Create the browser window.
-  const browserWindow = new BrowserWindow({
-    width: process.env.NODE_ENV === "development" ? 1280 : 960,
-    minWidth: 800,
-    height: 700,
-    minHeight: 500,
-    titleBarStyle: "hidden",
-    titleBarOverlay: false,
-    trafficLightPosition: {
-      x: 13,
-      y: 13,
-    },
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      preload: path.join(__dirname, "preload.js"),
-      // transparent: true,
-    },
-    icon: path.join(app.getAppPath(), "assets/icon/logo.png"),
-    // backgroundColor: "#00000001",
-    // frame: false,
-  });
+  let browserWindow: BrowserWindow;
+  try {
+    browserWindow = new BrowserWindow({
+      width: process.env.NODE_ENV === "development" ? 1280 : 960,
+      minWidth: 800,
+      height: 700,
+      minHeight: 500,
+      titleBarStyle: "hidden",
+      titleBarOverlay: false,
+      trafficLightPosition: {
+        x: 13,
+        y: 13,
+      },
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        preload: path.join(__dirname, "preload.js"),
+        // transparent: true,
+      },
+      icon: path.join(app.getAppPath(), "assets/icon/logo.png"),
+      // backgroundColor: "#00000001",
+      // frame: false,
+    });
+  } catch (error) {
+    if (!wasAlreadyPersisted) persistence.forget(windowSessionId);
+    throw error;
+  }
   mainWindow = browserWindow;
+  deepLinkQueue.markNotReady();
   productWindows.set(windowSessionId, browserWindow);
-  getWindowSessionPersistence().remember(windowSessionId, visibleEntity);
   windowRegistry.register(browserWindow.webContents, windowSessionId);
   browserWindow.on("focus", () => {
     mainWindow = browserWindow;
+    if (readyProductWindows.has(browserWindow)) {
+      deepLinkQueue.markReady();
+    } else {
+      deepLinkQueue.markNotReady();
+    }
     windowRegistry.setFocused(windowSessionId);
   });
   browserWindow.once("closed", () => {
@@ -668,6 +688,11 @@ const createWindow = ({
         BrowserWindow.getFocusedWindow() ??
         [...productWindows.values()].at(-1) ??
         null;
+      if (mainWindow && readyProductWindows.has(mainWindow)) {
+        deepLinkQueue.markReady();
+      } else {
+        deepLinkQueue.markNotReady();
+      }
     }
   });
   const packagedRendererUrl = pathToFileURL(
@@ -741,15 +766,17 @@ const createWindow = ({
   let devToolsReloadedCount = 0;
 
   browserWindow.webContents.on("did-finish-load", () => {
-    // Must run on first load, else deep links break in dev.
-    deepLinkQueue.markReady();
-
     if (process.env.NODE_ENV === "development") {
       // In dev, wait until AFTER the DevTools-triggered reload before sending the message
       if (devToolsReloadedCount === 0) {
         devToolsReloadedCount++;
         return; // Ignore first load, we will reload momentarily
       }
+    }
+
+    readyProductWindows.add(browserWindow);
+    if (mainWindow === browserWindow) {
+      deepLinkQueue.markReady();
     }
 
     // Summarize native crash minidumps before sending app:crash_detected. If
@@ -952,11 +979,18 @@ function restoreWindowSessions(): void {
 }
 
 configureWindowProductController({
-  openEntityInNewWindow: (entity) =>
-    createWindow({
+  openEntityInNewWindow: (entity) => {
+    if (productWindows.size >= MAX_PRODUCT_WINDOWS) {
+      throw new DyadError(
+        `Dyad supports up to ${MAX_PRODUCT_WINDOWS} open windows`,
+        DyadErrorKind.Precondition,
+      );
+    }
+    return createWindow({
       windowSessionId: randomUUID() as WindowSessionId,
       visibleEntity: entity,
-    }),
+    });
+  },
   initialEntityForSession: (windowSessionId) =>
     getWindowSessionPersistence()
       .read()
@@ -966,6 +1000,13 @@ configureWindowProductController({
     const visibleEntity = entities.find((entity) => entity.kind === "app");
     getWindowSessionPersistence().remember(windowSessionId, visibleEntity);
   },
+  mayMigrateLegacyChatTabSession: (windowSessionId) =>
+    getWindowSessionPersistence().read()[0]?.windowSessionId ===
+    windowSessionId,
+  restorableWindowSessionIds: () =>
+    getWindowSessionPersistence()
+      .read()
+      .map((session) => session.windowSessionId),
 });
 
 /**

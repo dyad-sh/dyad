@@ -18,7 +18,10 @@ import { queryKeys } from "@/lib/queryKeys";
 import { showError } from "@/lib/toast";
 import { getUserInputReadModel } from "@/user_input/read_model";
 import { RendererQueryInvalidationConsumer } from "@/window_infrastructure/renderer_query_invalidation";
-import type { QueryInvalidationBatch } from "@/window_infrastructure/types";
+import type {
+  QueryInvalidationBatch,
+  VisibleEntity,
+} from "@/window_infrastructure/types";
 import type { EntityDisposalRegistry } from "@/state_machines/entity_disposal";
 
 export type RendererIpcClient = typeof defaultIpc;
@@ -41,6 +44,27 @@ export interface RegisterRendererIpcListenersOptions {
   chatStreamManager: ChatStreamRendererFacade;
   entityDisposal: EntityDisposalRegistry;
   onTelemetryEvent?: (payload: TelemetryEventPayload) => void;
+  getCurrentPathname?: () => string;
+  subscribeToNavigation?: (listener: () => void) => () => void;
+}
+
+export function visibleEntitiesForRoute(
+  pathname: string,
+  selectedAppId: number | null,
+  selectedChatId: number | null,
+): VisibleEntity[] {
+  if (pathname === "/app-details") {
+    return selectedAppId === null ? [] : [{ kind: "app", id: selectedAppId }];
+  }
+  if (pathname !== "/chat") return [];
+  return [
+    ...(selectedAppId === null
+      ? []
+      : [{ kind: "app" as const, id: selectedAppId }]),
+    ...(selectedChatId === null
+      ? []
+      : [{ kind: "chat" as const, id: selectedChatId }]),
+  ];
 }
 
 export function registerQueryInvalidationListener(
@@ -121,6 +145,8 @@ export function registerRendererIpcListeners({
   chatStreamManager,
   entityDisposal,
   onTelemetryEvent,
+  getCurrentPathname = () => "/",
+  subscribeToNavigation,
 }: RegisterRendererIpcListenersOptions): () => void {
   const unsubscribes: Array<() => void> = [];
   unsubscribes.push(registerQueryInvalidationListener(ipcClient, queryClient));
@@ -171,14 +197,11 @@ export function registerRendererIpcListeners({
   let selectedAppInterest = store.get(selectedAppIdAtom);
   let selectedChatInterest = store.get(selectedChatIdAtom);
   const publishVisibleEntities = () => {
-    const entities = [
-      ...(selectedAppInterest === null
-        ? []
-        : [{ kind: "app" as const, id: selectedAppInterest }]),
-      ...(selectedChatInterest === null
-        ? []
-        : [{ kind: "chat" as const, id: selectedChatInterest }]),
-    ];
+    const entities = visibleEntitiesForRoute(
+      getCurrentPathname(),
+      selectedAppInterest,
+      selectedChatInterest,
+    );
     void ipcClient.windowInfrastructure
       .setVisibleEntities(entities)
       .catch((error) =>
@@ -212,6 +235,9 @@ export function registerRendererIpcListeners({
   updateInterest(null, selectedAppInterest, "app-output");
   updateInterest(null, selectedChatInterest, "chat-chunk");
   publishVisibleEntities();
+  if (subscribeToNavigation) {
+    unsubscribes.push(subscribeToNavigation(publishVisibleEntities));
+  }
   const handleWindowFocus = () => {
     void ipcClient.windowInfrastructure
       .setFocused()
@@ -244,8 +270,14 @@ export function registerRendererIpcListeners({
         lastEntityDisposalEpochByRegistry.set(entityDisposal, epoch);
         try {
           if (entity.kind === "app") {
+            if (store.get(selectedAppIdAtom) === entity.id) {
+              store.set(selectedAppIdAtom, null);
+            }
             entityDisposal.disposeForApp(entity.id);
           } else {
+            if (store.get(selectedChatIdAtom) === entity.id) {
+              store.set(selectedChatIdAtom, null);
+            }
             entityDisposal.disposeForChat(entity.id);
           }
         } catch (error) {

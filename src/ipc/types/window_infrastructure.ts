@@ -9,6 +9,7 @@ import {
   QueryInvalidationBatchSchema,
   QueryInvalidationEventSchema,
   QueryInvalidationScopeSchema,
+  AppVisibleEntitySchema,
   EntityDisposalEventSchema,
   VisibleEntitySchema,
   WindowInterestSchema,
@@ -27,11 +28,13 @@ export const windowInfrastructureContracts = {
       missedInvalidations: z.array(QueryInvalidationEventSchema),
       recoveryScopes: z.array(QueryInvalidationScopeSchema),
       initialEntity: VisibleEntitySchema.optional(),
+      mayMigrateLegacyChatTabSession: z.boolean(),
+      restorableWindowSessionIds: z.array(WindowSessionIdSchema),
     }),
   }),
   openEntityInNewWindow: defineContract({
     channel: "window-infrastructure:open-entity-in-new-window",
-    input: VisibleEntitySchema,
+    input: AppVisibleEntitySchema,
     output: z.object({
       windowSessionId: WindowSessionIdSchema,
     }),

@@ -40,7 +40,11 @@ import {
   useRegisterEntityDisposer,
 } from "./state_machines/react";
 import { clearTestRuntimeForAppAtom } from "./atoms/testRuntimeAtoms";
-import { configureChatTabWindowSession } from "./window_infrastructure/chat_tab_session_storage";
+import { initializeChatTabSessionStorageAtom } from "./atoms/chatAtoms";
+import {
+  configureChatTabWindowSession,
+  pruneChatTabWindowSessions,
+} from "./window_infrastructure/chat_tab_session_storage";
 import type { VisibleEntity } from "./window_infrastructure/types";
 
 // @ts-ignore
@@ -198,7 +202,14 @@ function RendererServices() {
         .bootstrap({})
         .then((bootstrap) => {
           if (disposed) return;
-          configureChatTabWindowSession(bootstrap.windowSessionId);
+          configureChatTabWindowSession(bootstrap.windowSessionId, {
+            mayMigrateLegacySession: bootstrap.mayMigrateLegacyChatTabSession,
+          });
+          pruneChatTabWindowSessions(
+            window.localStorage,
+            bootstrap.restorableWindowSessionIds,
+          );
+          store.set(initializeChatTabSessionStorageAtom);
           const entity: VisibleEntity | undefined = bootstrap.initialEntity;
           if (entity?.kind === "app") {
             void router.navigate({
@@ -242,6 +253,9 @@ function RendererServices() {
 
         posthog.capture(eventName, properties);
       },
+      getCurrentPathname: () => router.state.location.pathname,
+      subscribeToNavigation: (listener) =>
+        router.subscribe("onResolved", listener),
     });
   }, [chatStreamManager, entityDisposal, queryClient, store, windowReady]);
 

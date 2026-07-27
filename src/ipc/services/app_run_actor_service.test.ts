@@ -91,3 +91,41 @@ describe("AppRunActorService.executeAlreadyLockedExternalRestart", () => {
     });
   });
 });
+
+describe("AppRunActorService lifecycle settlement", () => {
+  it("rejects disposal that races between admission and waiter setup", async () => {
+    let service!: AppRunActorService;
+    const actor = {
+      enqueue: vi.fn(() => ({
+        settled: Promise.resolve({
+          kind: "applied" as const,
+          state: {},
+        }).then((outcome) => {
+          void service.disposeAllApps();
+          return outcome;
+        }),
+      })),
+      getSnapshot: vi.fn(() => ({ lastSettlement: null })),
+      subscribe: vi.fn(() => () => undefined),
+    };
+    const host = {
+      ensure: vi.fn(() => actor),
+      peek: vi.fn(),
+      disposeKey: vi.fn(),
+      disposeMachine: vi.fn().mockResolvedValue(undefined),
+      dispose: vi.fn(),
+    };
+    service = new AppRunActorService(host as never);
+
+    await expect(
+      service.dispatchStart(7, {
+        operationId: "start-before-reset",
+        startedAt: 10,
+      }),
+    ).rejects.toMatchObject({
+      kind: "precondition",
+      message: "App run actor was disposed",
+    });
+    expect(actor.subscribe).not.toHaveBeenCalled();
+  });
+});

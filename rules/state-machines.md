@@ -117,6 +117,10 @@ Background and before/after examples of why this pattern exists:
 - Settle memory-owned requests on every destructive entity path, including
   parent-row cascade deletion, bulk deletion, and full reset—not only direct
   deletion of the child entity the request references.
+- Register an in-memory request's disposal rejector before its first
+  asynchronous admission await, and remove it in `finally`. Registering only
+  before the terminal subscription leaves an admission-to-subscription race
+  where owner disposal can strand the request forever.
 - Model user-initiated owner rejection as a typed non-error facade outcome.
   Rejecting the transport promise routes successful cancellation through
   generic failure toasts/retry logic and can incorrectly acknowledge dispatch.

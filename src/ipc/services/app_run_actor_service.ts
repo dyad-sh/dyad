@@ -211,66 +211,73 @@ export class AppRunActorService {
     event: AppRunIntentEvent,
   ): Promise<void> {
     const actor = this.actor(appId);
-    const outcome = await actor.enqueue(event).settled;
-    if (outcome.kind === "failed") throw outcome.error;
-    if (outcome.kind === "disposed") {
-      throw new DyadError(
-        "App run actor was disposed",
-        DyadErrorKind.Precondition,
-      );
-    }
-    if (outcome.kind === "ignored") {
-      throw new DyadError(
-        `App run request ignored: ${outcome.reason}`,
-        DyadErrorKind.Conflict,
-      );
-    }
-
-    const readSettlement = () => {
-      const settlement = actor.getSnapshot().lastSettlement;
-      return settlement?.operationId === operationId ? settlement : null;
-    };
-    const initialSettlement = readSettlement();
-    const settlement =
-      initialSettlement ??
-      (await new Promise<NonNullable<ReturnType<typeof readSettlement>>>(
-        (resolve, reject) => {
-          let unsubscribe: () => void = () => undefined;
-          let settled = false;
-          const finish = (
-            result:
-              | {
-                  kind: "resolved";
-                  value: NonNullable<ReturnType<typeof readSettlement>>;
-                }
-              | { kind: "rejected"; error: DyadError },
-          ) => {
-            if (settled) return;
-            settled = true;
-            unsubscribe();
-            this.removeSettlementRejector(appId, rejectSettlement);
-            if (result.kind === "resolved") resolve(result.value);
-            else reject(result.error);
-          };
-          const rejectSettlement = (error: DyadError) =>
-            finish({ kind: "rejected", error });
-          this.addSettlementRejector(appId, rejectSettlement);
-          unsubscribe = actor.subscribe(() => {
-            const current = readSettlement();
-            if (!current) return;
-            finish({ kind: "resolved", value: current });
-          });
-          const current = readSettlement();
-          if (current) finish({ kind: "resolved", value: current });
-        },
-      ));
-    if (settlement.outcome === "failed") {
-      if (settlement.error?.kind) {
-        throw new DyadError(settlement.error.message, settlement.error.kind);
+    let rejectDisposal!: (error: DyadError) => void;
+    const disposal = new Promise<never>((_resolve, reject) => {
+      rejectDisposal = reject;
+    });
+    this.addSettlementRejector(appId, rejectDisposal);
+    try {
+      const outcome = await Promise.race([
+        actor.enqueue(event).settled,
+        disposal,
+      ]);
+      if (outcome.kind === "failed") throw outcome.error;
+      if (outcome.kind === "disposed") {
+        throw new DyadError(
+          "App run actor was disposed",
+          DyadErrorKind.Precondition,
+        );
       }
-      throw new Error(
-        settlement.error?.message ?? "App runtime operation failed",
-      );
+      if (outcome.kind === "ignored") {
+        throw new DyadError(
+          `App run request ignored: ${outcome.reason}`,
+          DyadErrorKind.Conflict,
+        );
+      }
+
+      const readSettlement = () => {
+        const settlement = actor.getSnapshot().lastSettlement;
+        return settlement?.operationId === operationId ? settlement : null;
+      };
+      const initialSettlement = readSettlement();
+      let unsubscribe: () => void = () => undefined;
+      const waitForSettlement = new Promise<
+        NonNullable<ReturnType<typeof readSettlement>>
+      >((resolve) => {
+        let settled = false;
+        const finish = (
+          value: NonNullable<ReturnType<typeof readSettlement>>,
+        ) => {
+          if (settled) return;
+          settled = true;
+          unsubscribe();
+          resolve(value);
+        };
+        unsubscribe = actor.subscribe(() => {
+          const current = readSettlement();
+          if (current) finish(current);
+        });
+        const current = readSettlement();
+        if (current) finish(current);
+      });
+      let settlement: NonNullable<ReturnType<typeof readSettlement>>;
+      try {
+        settlement =
+          initialSettlement ??
+          (await Promise.race([waitForSettlement, disposal]));
+      } finally {
+        unsubscribe();
+      }
+      if (settlement.outcome === "failed") {
+        if (settlement.error?.kind) {
+          throw new DyadError(settlement.error.message, settlement.error.kind);
+        }
+        throw new Error(
+          settlement.error?.message ?? "App runtime operation failed",
+        );
+      }
+    } finally {
+      this.removeSettlementRejector(appId, rejectDisposal);
     }
   }
 

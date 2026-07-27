@@ -18,7 +18,12 @@ export function useGenerateImage() {
           },
           operationId: `image-generation-operation:${globalThis.crypto.randomUUID()}`,
         });
-        if (receipt.kind === "applied") return jobId;
+        if (
+          receipt.kind === "applied" ||
+          (receipt.kind === "ignored" && receipt.reason === "duplicate-job")
+        ) {
+          return jobId;
+        }
       } catch {
         // The shared error below is intentionally the same for rejected
         // admission and transport failures.

@@ -56,4 +56,20 @@ describe("useGenerateImage", () => {
     expect(jobId).toBeNull();
     expect(mocks.showError).toHaveBeenCalledOnce();
   });
+
+  it("treats an identical idempotent replay as admitted", async () => {
+    mocks.dispatch.mockResolvedValue({
+      kind: "ignored",
+      reason: "duplicate-job",
+    });
+    const { result } = renderHook(() => useGenerateImage());
+
+    let jobId: string | null = null;
+    await act(async () => {
+      jobId = await result.current.start(params);
+    });
+
+    expect(jobId).toMatch(/^image-generation-job:/);
+    expect(mocks.showError).not.toHaveBeenCalled();
+  });
 });

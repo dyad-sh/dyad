@@ -14,7 +14,7 @@ import path from "node:path";
 import { eq } from "drizzle-orm";
 import log from "electron-log";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { app as electronApp } from "electron";
+import { app as electronApp, shell } from "electron";
 import {
   getMediaThumbnailCacheRoot,
   invalidateMediaThumbnailCache,
@@ -265,6 +265,22 @@ export function registerMediaHandlers() {
       await invalidateThumbnail(filePath);
       logger.log(`Deleted media file: ${filePath}`);
     });
+  });
+
+  createTypedHandler(mediaContracts.openMediaFile, async (_, params) => {
+    const app = await getAppOrThrow(params.appId);
+    const appPath = getDyadAppPath(app.path);
+    const filePath = getMediaFilePath(appPath, params.fileName);
+    if (!fs.existsSync(filePath)) {
+      throw new DyadError("Media file not found", DyadErrorKind.NotFound);
+    }
+    const result = await shell.openPath(filePath);
+    if (result) {
+      throw new DyadError(
+        `Failed to open file: ${result}`,
+        DyadErrorKind.External,
+      );
+    }
   });
 
   createTypedHandler(mediaContracts.moveMediaFile, async (_, params) => {

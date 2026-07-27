@@ -8,6 +8,7 @@ interface ImageLightboxProps {
   imageUrl: string;
   alt: string;
   filePath?: string;
+  mediaFile?: { appId: number; fileName: string };
   onClose: () => void;
   onError?: () => void;
 }
@@ -22,10 +23,20 @@ export async function openFile(filePath: string) {
   }
 }
 
+export async function openMediaFile(appId: number, fileName: string) {
+  try {
+    await ipc.media.openMediaFile({ appId, fileName });
+  } catch (error) {
+    console.error("Failed to open media file:", error);
+    toast.error("Could not open file. It may have been moved or deleted.");
+  }
+}
+
 export const ImageLightbox: React.FC<ImageLightboxProps> = ({
   imageUrl,
   alt,
   filePath,
+  mediaFile,
   onClose,
   onError,
 }) => {
@@ -54,12 +65,16 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({
       aria-label={`Expanded image: ${alt}`}
     >
       <div className="absolute top-4 right-4 flex items-center gap-2">
-        {filePath && (
+        {(filePath || mediaFile) && (
           <button
             className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white cursor-pointer transition-colors"
             onClick={(e) => {
               e.stopPropagation();
-              openFile(filePath);
+              if (filePath) {
+                void openFile(filePath);
+              } else if (mediaFile) {
+                void openMediaFile(mediaFile.appId, mediaFile.fileName);
+              }
             }}
             title="Open file"
             aria-label="Open file"

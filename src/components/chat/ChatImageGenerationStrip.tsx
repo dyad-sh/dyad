@@ -184,6 +184,10 @@ export function ChatImageGenerationStrip({
             lightboxJob.result.fileName,
           )}
           alt={lightboxJob.prompt}
+          mediaFile={{
+            appId: lightboxJob.result.appId,
+            fileName: lightboxJob.result.fileName,
+          }}
           onClose={() => setLightboxJob(null)}
         />
       )}

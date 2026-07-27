@@ -30,6 +30,7 @@ export const LanguageModelSchema = z.object({
   maxOutputTokens: z.number().optional(),
   contextWindow: z.number().optional(),
   temperature: z.number().optional(),
+  supportsVision: z.boolean().optional(),
   dollarSigns: z.number().optional(),
   type: z.enum(["custom", "local", "cloud"]).optional(),
 });

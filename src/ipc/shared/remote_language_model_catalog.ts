@@ -64,6 +64,7 @@ const CatalogModelSchema = z.object({
   temperature: z.number().optional(),
   maxOutputTokens: z.number().optional(),
   contextWindow: z.number().optional(),
+  supportsVision: z.boolean().optional(),
   lifecycle: z
     .object({
       stage: z.enum(["stable", "preview", "deprecated"]).optional(),
@@ -80,6 +81,7 @@ const KNOWN_BUILTIN_MODEL_ALIASES = [
   "dyad/auto/google",
   "dyad/auto/openrouter",
   "dyad/help-bot/default",
+  "dyad/vision/default",
 ] as const;
 
 export type BuiltinModelAlias = (typeof KNOWN_BUILTIN_MODEL_ALIASES)[number];
@@ -97,7 +99,9 @@ const LanguageModelCatalogResponseSchema = z.object({
         apiName: z.string(),
       }),
       displayName: z.string().optional(),
-      purpose: z.enum(["theme-generation", "auto-mode", "help-bot"]).optional(),
+      purpose: z
+        .enum(["theme-generation", "auto-mode", "help-bot", "vision"])
+        .optional(),
     }),
   ),
   curatedSelections: z
@@ -163,6 +167,7 @@ function buildFallbackCatalog(): BuiltinLanguageModelCatalog {
       maxOutputTokens: model.maxOutputTokens,
       contextWindow: model.contextWindow,
       temperature: model.temperature,
+      supportsVision: model.supportsVision,
       dollarSigns: model.dollarSigns,
       type: "cloud",
     }));
@@ -244,6 +249,15 @@ function buildFallbackCatalog(): BuiltinLanguageModelCatalog {
         displayName: "Help Bot",
         purpose: "help-bot",
       },
+      {
+        id: "dyad/vision/default",
+        resolvedModel: {
+          providerId: "google",
+          apiName: GEMINI_3_5_FLASH,
+        },
+        displayName: "Vision Describer",
+        purpose: "vision",
+      },
     ],
     themeGenerationOptions: DEFAULT_THEME_GENERATION_OPTIONS,
     expiresAt: Date.now() + FALLBACK_CACHE_TTL_MS,
@@ -251,7 +265,8 @@ function buildFallbackCatalog(): BuiltinLanguageModelCatalog {
   };
 }
 
-function convertRemoteCatalog(
+// Exported for tests.
+export function convertRemoteCatalog(
   remoteCatalog: LanguageModelCatalogResponse,
 ): BuiltinLanguageModelCatalog {
   const providers: LanguageModelProvider[] = remoteCatalog.providers.map(
@@ -285,6 +300,17 @@ function convertRemoteCatalog(
           maxOutputTokens: model.maxOutputTokens,
           contextWindow: model.contextWindow,
           temperature: model.temperature,
+          // The catalog server does not emit supportsVision yet, and a remote
+          // provider entry completely shadows MODEL_OPTIONS in
+          // getLanguageModels. Without this overlay every locally-tagged
+          // text-only model (GLM, Qwen, DeepSeek, MiniMax...) reads back as
+          // undefined whenever the catalog is reachable, i.e. always, and the
+          // vision fallback never fires. Server value wins when present, so
+          // this becomes a no-op once the catalog ships the field.
+          supportsVision:
+            model.supportsVision ??
+            MODEL_OPTIONS[providerId]?.find((o) => o.name === model.apiName)
+              ?.supportsVision,
           dollarSigns: model.dollarSigns,
           type: "cloud" as const,
         })),
@@ -301,6 +327,7 @@ function convertRemoteCatalog(
     maxOutputTokens: model.maxOutputTokens,
     contextWindow: model.contextWindow,
     temperature: model.temperature,
+    supportsVision: model.supportsVision,
     dollarSigns: model.dollarSigns,
     type: "cloud" as const,
   }));

@@ -4,6 +4,7 @@ import {
   getCompactionThreshold,
   getTemperature,
   shouldTriggerCompaction,
+  supportsVision,
 } from "@/ipc/utils/token_utils";
 import { findLanguageModel } from "@/ipc/utils/findLanguageModel";
 
@@ -90,5 +91,75 @@ describe("shouldTriggerCompaction", () => {
     expect(shouldTriggerCompaction(175_000, 200_000, "openai")).toBe(true);
     expect(shouldTriggerCompaction(174_999, 200_000, "openai")).toBe(false);
     expect(shouldTriggerCompaction(175_000, 200_000, "google")).toBe(true);
+  });
+});
+
+describe("supportsVision", () => {
+  it("treats models without the flag as vision-capable", async () => {
+    mockFindLanguageModel.mockResolvedValueOnce({
+      apiName: "cloud-model",
+      displayName: "Cloud Model",
+      type: "cloud",
+    });
+
+    await expect(
+      supportsVision({ provider: "provider", name: "cloud-model" }),
+    ).resolves.toBe(true);
+  });
+
+  it("returns false only when the flag is explicitly false", async () => {
+    mockFindLanguageModel.mockResolvedValueOnce({
+      apiName: "text-only-model",
+      displayName: "Text Only Model",
+      type: "cloud",
+      supportsVision: false,
+    });
+
+    await expect(
+      supportsVision({ provider: "provider", name: "text-only-model" }),
+    ).resolves.toBe(false);
+  });
+
+  it("returns true when the flag is explicitly true", async () => {
+    mockFindLanguageModel.mockResolvedValueOnce({
+      apiName: "vision-model",
+      displayName: "Vision Model",
+      type: "cloud",
+      supportsVision: true,
+    });
+
+    await expect(
+      supportsVision({ provider: "provider", name: "vision-model" }),
+    ).resolves.toBe(true);
+  });
+
+  it("treats unknown models as vision-capable", async () => {
+    mockFindLanguageModel.mockResolvedValueOnce(undefined);
+
+    await expect(
+      supportsVision({ provider: "provider", name: "missing-model" }),
+    ).resolves.toBe(true);
+  });
+
+  // KNOWN GAP: user-added custom models never pass through
+  // convertRemoteCatalog, so the MODEL_OPTIONS overlay does not reach them —
+  // even when the apiName matches a builtin we know is text-only. They read as
+  // capable and fall through to the Layer 2 error message. Not worth a second
+  // lookup path; revisit if users report it.
+  it("does not tag custom models, even with a known text-only apiName", async () => {
+    mockFindLanguageModel.mockResolvedValueOnce({
+      id: 7,
+      apiName: "z-ai/glm-5.2",
+      displayName: "GLM 5.2 (custom)",
+      type: "custom",
+    });
+
+    await expect(
+      supportsVision({
+        provider: "openrouter",
+        name: "z-ai/glm-5.2",
+        customModelId: 7,
+      }),
+    ).resolves.toBe(true);
   });
 });

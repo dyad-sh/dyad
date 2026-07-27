@@ -10,6 +10,8 @@ import {
 import { processFullResponseActions } from "@/ipc/processors/response_processor";
 import {
   addTrackedValue,
+  isImageFormatError,
+  isImageInputUnsupportedError,
   removeDyadTags,
   removeTrackedValue,
   setPartialResponseForStream,
@@ -1499,5 +1501,60 @@ Some text after the unclosed tag`;
     const text = `<dyad-write path="src/file-name_with.special@chars.js" description="File with special chars in path">content</dyad-write>`;
     const result = hasUnclosedDyadWrite(text);
     expect(result).toBe(false);
+  });
+});
+
+describe("isImageInputUnsupportedError", () => {
+  const capabilityErrors = [
+    "Invalid content type. image_url is only supported by certain models.",
+    "This model does not support images",
+    "This model cannot accept images.",
+    "This model does not support image input.",
+    "This model doesn't support image input",
+    "Images are not supported by this model",
+    "multimodal input is disabled for this model",
+  ];
+
+  const formatErrors = [
+    "Unsupported image media type: image/tiff",
+    "Unsupported image format",
+    "Invalid content type: image/tiff",
+    "Unsupported content type: image/heic",
+  ];
+
+  const unrelatedErrors = [
+    "rate limit exceeded",
+    "context length exceeded",
+    "invalid api key",
+  ];
+
+  it.each(capabilityErrors)("matches the capability error %j", (message) => {
+    expect(isImageInputUnsupportedError(message)).toBe(true);
+    expect(isImageFormatError(message)).toBe(false);
+  });
+
+  it.each(formatErrors)("does not match the format error %j", (message) => {
+    expect(isImageInputUnsupportedError(message)).toBe(false);
+    expect(isImageFormatError(message)).toBe(true);
+  });
+
+  it.each(unrelatedErrors)(
+    "does not match the unrelated error %j",
+    (message) => {
+      expect(isImageInputUnsupportedError(message)).toBe(false);
+      expect(isImageFormatError(message)).toBe(false);
+    },
+  );
+
+  it("reports an unknown wording as neither, so onError logs it as a gap", () => {
+    const message = "the selected model rejected the attached picture";
+    expect(isImageInputUnsupportedError(message)).toBe(false);
+    expect(isImageFormatError(message)).toBe(false);
+  });
+
+  it("prefers the format guard when a message looks like both", () => {
+    const message = "Unsupported image media type image/tiff for image_url";
+    expect(isImageFormatError(message)).toBe(true);
+    expect(isImageInputUnsupportedError(message)).toBe(false);
   });
 });

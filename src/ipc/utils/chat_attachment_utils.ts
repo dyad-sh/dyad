@@ -131,23 +131,43 @@ export function hasScriptReadableAttachment(
   return attachments.some((attachment) => !isInlineImageAttachment(attachment));
 }
 
+/**
+ * Whether the turn carries an image the user attached *for the model to look at*.
+ *
+ * Narrower than "has an image attachment": `upload-to-codebase` images are
+ * project assets bound for `<dyad-copy>` / `copy_file`, so a model that cannot
+ * see them has lost nothing and should not be told to ask the user to switch
+ * models. Gate the vision fallback on this, not on the raw image check.
+ */
+export function hasDescribableImageAttachment(
+  attachments: StoredChatAttachment[],
+): boolean {
+  return attachments.some(
+    (attachment) =>
+      attachment.attachmentType === "chat-context" &&
+      attachment.mimeType.startsWith("image/"),
+  );
+}
+
 export function resolveAttachmentDeliveryConfig({
   mode,
   settings,
   hasImageAttachments,
   hasUploadedAttachments,
+  modelSupportsVision = true,
 }: {
   mode: ChatMode;
   settings: Pick<UserSettings, "enableSandboxScriptExecution">;
   hasImageAttachments: boolean;
   hasUploadedAttachments: boolean;
+  modelSupportsVision?: boolean;
 }): AttachmentDeliveryConfig {
   const willUseLocalAgentStream = isLocalAgentBackedMode(mode);
   const useOnDiskAttachmentBlock = mode === "local-agent" || mode === "ask";
 
   return {
     inlineTextAttachments: !useOnDiskAttachmentBlock,
-    includeImageParts: true,
+    includeImageParts: modelSupportsVision,
     useOnDiskAttachmentBlock,
     includeSandboxScriptHint:
       useOnDiskAttachmentBlock &&
@@ -158,6 +178,7 @@ export function resolveAttachmentDeliveryConfig({
       !willUseLocalAgentStream && hasUploadedAttachments && mode !== "ask",
     addSystemVisionInstructions:
       hasImageAttachments &&
+      modelSupportsVision &&
       (!willUseLocalAgentStream || mode === "plan") &&
       !(hasUploadedAttachments && mode !== "ask"),
   };

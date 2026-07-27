@@ -39,6 +39,20 @@ export async function getTemperature(
 }
 
 /**
+ * Whether the model accepts image input.
+ *
+ * Unknown means capable: only an explicit `false` changes how attachments are
+ * delivered. `convertRemoteCatalog` overlays the MODEL_OPTIONS value onto
+ * remote-catalog entries, so this single lookup sees locally-tagged models too.
+ */
+export async function supportsVision(
+  model: LargeLanguageModel,
+): Promise<boolean> {
+  const modelOption = await findLanguageModel(model);
+  return modelOption?.supportsVision !== false;
+}
+
+/**
  * Calculate the token threshold for triggering context compaction.
  *
  * Returns the lower of a per-provider cap or `contextWindow - 25k`. The 25k

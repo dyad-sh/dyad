@@ -363,6 +363,12 @@ export function createFakeLlmApp(getPort: () => number) {
             displayName: "GPT 5.2 Remote Only",
             description: "Remote-only catalog OpenAI model for E2E coverage",
           },
+          {
+            apiName: "gpt-5.2-no-vision",
+            displayName: "GPT 5.2 No Vision",
+            description: "Remote-only text-only model for vision-fallback E2E",
+            supportsVision: false,
+          },
         ],
         anthropic: [
           {
@@ -461,6 +467,14 @@ export function createFakeLlmApp(getPort: () => number) {
             apiName: "gpt-5.2",
           },
           purpose: "help-bot",
+        },
+        {
+          id: "dyad/vision/default",
+          resolvedModel: {
+            providerId: "google",
+            apiName: "gemini-3.1-pro-preview",
+          },
+          purpose: "vision",
         },
       ],
       curatedSelections: {

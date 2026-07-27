@@ -355,6 +355,41 @@ describe("version_preview main actor", () => {
     harness.transport.dispose();
   });
 
+  it("keeps recovery when an interrupted branch switch lands elsewhere", async () => {
+    persistence.load.mockReturnValue({
+      type: "switching-branch",
+      appId: 7,
+      branch: "requested-branch",
+      fallback: {
+        type: "previewing",
+        session: {
+          appId: 7,
+          originBranch: "feature/origin",
+          targetVersionId: "abc123",
+          checkedOutVersionId: "abc123",
+          exitIntent: { type: "none" },
+          selectedDiffFile: null,
+          isDiffVisible: false,
+        },
+      },
+    });
+    service.reconcile.mockResolvedValue({ branch: "unrelated-branch" });
+    const harness = createHarness();
+    await harness.actorA.resync();
+    await flush();
+
+    expect(harness.actorA.getSnapshot().state).toMatchObject({
+      type: "recovery-required",
+      session: { originBranch: "feature/origin" },
+    });
+
+    harness.releaseA();
+    harness.releaseB();
+    harness.clientA.dispose();
+    harness.clientB.dispose();
+    harness.transport.dispose();
+  });
+
   it("does not start Git mutation when the recovery checkpoint fails", async () => {
     service.resolveOriginBranch.mockResolvedValue({
       branch: "feature/origin",

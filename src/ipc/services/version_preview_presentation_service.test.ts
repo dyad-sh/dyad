@@ -33,4 +33,21 @@ describe("VersionPreviewPresentationService", () => {
       endpoints.get("window-256"),
     );
   });
+
+  it("does not let another window hijack an existing operation id", () => {
+    const original = { send: vi.fn() };
+    const attacker = { send: vi.fn() };
+    const windows = {
+      endpointForSession: vi.fn((sessionId: string) =>
+        sessionId === "original" ? original : attacker,
+      ),
+      routePresentation: vi.fn(),
+    };
+    const service = new VersionPreviewPresentationService(windows as never);
+
+    service.recordInitiator("shared-operation", "original");
+    service.recordInitiator("shared-operation", "other-window");
+
+    expect(service.originEndpointFor("shared-operation")).toBe(original);
+  });
 });

@@ -364,6 +364,13 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   renderer boundary, explicitly recombine the local presentation snapshot with
   every remote lifecycle state, including transient command states; otherwise a
   correct domain transition can silently reset the visible pane or selection.
+- Apply presentation for a remotely adjudicated selection only after an
+  applied receipt, and serialize rapid selections through resync. Suppressing
+  an earlier accepted presentation merely because a later stale dispatch is
+  pending can leave the UI disagreeing with the external resource.
+- Treat an operation ID's initiating window as a first-writer ownership claim.
+  A duplicate intent from another window must not overwrite that routing entry,
+  even if the duplicate transition will later be ignored.
 - Keep transport revisions separate from semantic presentation epochs. A
   revision may advance for bookkeeping-only transitions, while a reload token
   must advance exactly once for each user-visible remount.

@@ -86,7 +86,7 @@ export function useVersionPreview(appId: number | null): {
   const routedAppId = appId ?? NULL_APP_ID;
   const key = versionPreviewKey(routedAppId);
   const presentationStore = useVersionPreviewPresentationStore();
-  const selectionEpoch = useRef(0);
+  const selectionQueue = useRef<Promise<void>>(Promise.resolve());
   const client = useRemoteMachineClient();
   const actor = client.actor(versionPreviewClientDefinition, key);
   const remote = useDistributedMachine(versionPreviewClientDefinition, key);
@@ -107,12 +107,10 @@ export function useVersionPreview(appId: number | null): {
   const isPaneVisible =
     appId !== null && presentationStore.isPaneVisible(appId);
 
-  const dispatch = useCallback(
+  const dispatchNow = useCallback(
     async (event: PreviewEvent, waitForSettlement: boolean): Promise<void> => {
       if (appId === null) return;
-      const pendingSelectionEpoch =
-        event.type === "SELECT_VERSION" ? ++selectionEpoch.current : null;
-      if (pendingSelectionEpoch === null) {
+      if (event.type !== "SELECT_VERSION") {
         presentationStore.send(appId, event);
       }
       const id = operationId();
@@ -145,10 +143,7 @@ export function useVersionPreview(appId: number | null): {
         if (receipt.kind !== "applied") {
           throw new Error("The version operation was not accepted");
         }
-        if (
-          pendingSelectionEpoch !== null &&
-          pendingSelectionEpoch === selectionEpoch.current
-        ) {
+        if (event.type === "SELECT_VERSION") {
           presentationStore.send(appId, event);
         }
         await settlement;
@@ -158,6 +153,22 @@ export function useVersionPreview(appId: number | null): {
       }
     },
     [actor, appId, presentationStore],
+  );
+  const dispatch = useCallback(
+    (event: PreviewEvent, waitForSettlement: boolean): Promise<void> => {
+      if (event.type !== "SELECT_VERSION") {
+        return dispatchNow(event, waitForSettlement);
+      }
+      const operation = selectionQueue.current
+        .catch(() => undefined)
+        .then(async () => {
+          await actor.resync();
+          await dispatchNow(event, waitForSettlement);
+        });
+      selectionQueue.current = operation.catch(() => undefined);
+      return operation;
+    },
+    [actor, dispatchNow],
   );
   const send = useCallback(
     (event: PreviewEvent) => {

@@ -15,6 +15,12 @@ export class VersionPreviewPresentationService {
     windowSessionId: string | undefined,
   ): void {
     if (!windowSessionId) return;
+    const existing = this.initiatorByOperationId.get(operationId);
+    if (existing) {
+      // Operation IDs are ownership claims. A duplicate from another window
+      // must not redirect an already-running operation's presentation.
+      return;
+    }
     if (this.initiatorByOperationId.size >= 256) {
       // Never evict an unresolved operation: its eventual presentation must
       // remain bound to the initiating window. The new operation can still

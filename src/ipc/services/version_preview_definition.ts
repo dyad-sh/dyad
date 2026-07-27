@@ -128,8 +128,11 @@ function transitionActor(
       const fallback = current.fallback;
       const ownsCheckout =
         fallback.type === "previewing" || fallback.type === "recovery-required";
+      const reachedSafeBranch =
+        event.branch === current.branch ||
+        (ownsCheckout && event.branch === fallback.session.originBranch);
       state =
-        event.branch !== null || !ownsCheckout
+        !ownsCheckout || reachedSafeBranch
           ? CLOSED_STATE
           : {
               type: "recovery-required",

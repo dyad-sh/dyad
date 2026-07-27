@@ -58,6 +58,14 @@ function Probe() {
   );
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
 describe("VersionPreviewProvider", () => {
   beforeEach(() => {
     actor.dispatch.mockReset().mockResolvedValue({ kind: "applied" });
@@ -146,5 +154,56 @@ describe("VersionPreviewProvider", () => {
     expect(actor.dispatch.mock.calls[0]?.[0]).toEqual(
       actor.dispatch.mock.calls[1]?.[0],
     );
+  });
+
+  it("serializes rapid selections so an accepted version stays visible", async () => {
+    const first = deferred<{ kind: "applied" }>();
+    actor.dispatch.mockReturnValueOnce(first.promise).mockResolvedValueOnce({
+      kind: "ignored",
+      reason: "invalid-transition",
+    });
+    const queryClient = new QueryClient();
+
+    function RapidSelectionProbe() {
+      const { state, send } = useVersionPreview(1);
+      return (
+        <div
+          data-testid="rapid-selection"
+          data-version={
+            state.type === "viewing-diff"
+              ? state.session.targetVersionId
+              : "none"
+          }
+        >
+          <button
+            onClick={() => send({ type: "SELECT_VERSION", versionId: "a" })}
+          >
+            A
+          </button>
+          <button
+            onClick={() => send({ type: "SELECT_VERSION", versionId: "b" })}
+          >
+            B
+          </button>
+        </div>
+      );
+    }
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <VersionPreviewProvider>
+          <RapidSelectionProbe />
+        </VersionPreviewProvider>
+      </QueryClientProvider>,
+    );
+    fireEvent.click(screen.getByText("A"));
+    fireEvent.click(screen.getByText("B"));
+    await waitFor(() => expect(actor.dispatch).toHaveBeenCalledTimes(1));
+
+    first.resolve({ kind: "applied" });
+    await waitFor(() => expect(actor.dispatch).toHaveBeenCalledTimes(2));
+    expect(
+      screen.getByTestId("rapid-selection").getAttribute("data-version"),
+    ).toBe("a");
   });
 });

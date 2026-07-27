@@ -143,7 +143,6 @@ export const chats = sqliteTable("chats", {
   compactionBackupPath: text("compaction_backup_path"),
   pendingCompaction: integer("pending_compaction", { mode: "boolean" }),
   chatMode: text("chat_mode").$type<StoredChatMode | null>(),
-  planHandoffId: text("plan_handoff_id").unique(),
   isFavorite: integer("is_favorite", { mode: "boolean" })
     .notNull()
     .default(sql`0`),
@@ -166,7 +165,6 @@ export const messages = sqliteTable(
     // The commit hash of the codebase at the time the message was sent
     commitHash: text("commit_hash"),
     requestId: text("request_id"),
-    chatTurnIntentId: text("chat_turn_intent_id"),
     userInputRequestId: text("user_input_request_id"),
     // Max tokens used for this message (only for assistant messages)
     maxTokensUsed: integer("max_tokens_used"),
@@ -191,137 +189,6 @@ export const messages = sqliteTable(
       table.chatId,
       table.userInputRequestId,
     ),
-    uniqueIndex("messages_chat_turn_intent_unique").on(
-      table.chatId,
-      table.chatTurnIntentId,
-    ),
-  ],
-);
-
-export const chatTurnIntents = sqliteTable(
-  "chat_turn_intents",
-  {
-    intentId: text("intent_id").primaryKey(),
-    chatId: integer("chat_id")
-      .notNull()
-      .references(() => chats.id, { onDelete: "cascade" }),
-    payloadHash: text("payload_hash").notNull(),
-    envelopeJson: text("envelope_json").notNull(),
-    acceptance: text("acceptance", {
-      enum: ["queued", "message-accepted", "rejected"],
-    }).notNull(),
-    recovery: text("recovery", {
-      enum: ["not-started", "started", "interrupted", "terminal"],
-    })
-      .notNull()
-      .default("not-started"),
-    acceptedMessageId: integer("accepted_message_id").references(
-      () => messages.id,
-      { onDelete: "set null" },
-    ),
-    createdAt: integer("created_at", { mode: "timestamp" })
-      .notNull()
-      .default(sql`(unixepoch())`),
-    updatedAt: integer("updated_at", { mode: "timestamp" })
-      .notNull()
-      .default(sql`(unixepoch())`),
-  },
-  (table) => [
-    index("chat_turn_intents_chat_id_idx").on(table.chatId),
-    uniqueIndex("chat_turn_intents_chat_payload_unique").on(
-      table.chatId,
-      table.intentId,
-      table.payloadHash,
-    ),
-  ],
-);
-
-export const chatQueueState = sqliteTable("chat_queue_state", {
-  chatId: integer("chat_id")
-    .primaryKey()
-    .references(() => chats.id, { onDelete: "cascade" }),
-  revision: integer("revision").notNull().default(0),
-  paused: integer("paused", { mode: "boolean" }).notNull().default(false),
-  legacyMigrated: integer("legacy_migrated", { mode: "boolean" })
-    .notNull()
-    .default(false),
-});
-
-export const chatQueueEntries = sqliteTable(
-  "chat_queue_entries",
-  {
-    itemId: text("item_id").primaryKey(),
-    intentId: text("intent_id")
-      .notNull()
-      .unique()
-      .references(() => chatTurnIntents.intentId, { onDelete: "cascade" }),
-    chatId: integer("chat_id")
-      .notNull()
-      .references(() => chats.id, { onDelete: "cascade" }),
-    position: integer("position").notNull(),
-    payloadJson: text("payload_json").notNull(),
-    persistence: text("persistence", {
-      enum: ["durable", "main-session"],
-    })
-      .notNull()
-      .default("durable"),
-    createdAt: integer("created_at", { mode: "timestamp" })
-      .notNull()
-      .default(sql`(unixepoch())`),
-  },
-  (table) => [
-    uniqueIndex("chat_queue_entries_chat_position_unique").on(
-      table.chatId,
-      table.position,
-    ),
-    index("chat_queue_entries_chat_id_idx").on(table.chatId),
-  ],
-);
-
-export const planHandoffs = sqliteTable(
-  "plan_handoffs",
-  {
-    id: integer("id").primaryKey({ autoIncrement: true }),
-    handoffId: text("handoff_id").notNull().unique(),
-    sourceChatId: integer("source_chat_id")
-      .notNull()
-      .references(() => chats.id, { onDelete: "cascade" }),
-    targetChatId: integer("target_chat_id").references(() => chats.id, {
-      onDelete: "set null",
-    }),
-    appId: integer("app_id")
-      .notNull()
-      .references(() => apps.id, { onDelete: "cascade" }),
-    planId: text("plan_id").notNull(),
-    planVersion: text("plan_version").notNull(),
-    planJson: text("plan_json").notNull(),
-    acceptInNewChat: integer("accept_in_new_chat", {
-      mode: "boolean",
-    }).notNull(),
-    phase: text("phase", {
-      enum: [
-        "accepted",
-        "persisting",
-        "preparing-chat",
-        "awaiting-stream-idle",
-        "submitting",
-        "started",
-        "failed",
-        "cancelled",
-      ],
-    }).notNull(),
-    failure: text("failure"),
-    revision: integer("revision").notNull().default(0),
-    createdAt: integer("created_at", { mode: "timestamp" })
-      .notNull()
-      .default(sql`(unixepoch())`),
-    updatedAt: integer("updated_at", { mode: "timestamp" })
-      .notNull()
-      .default(sql`(unixepoch())`),
-  },
-  (table) => [
-    index("plan_handoffs_source_chat_idx").on(table.sourceChatId),
-    index("plan_handoffs_target_chat_idx").on(table.targetChatId),
   ],
 );
 

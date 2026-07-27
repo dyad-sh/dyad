@@ -1278,7 +1278,6 @@ ${componentSnippet}
           userInputRequestId: req.userInputRequestId,
           chatTurnIntentId: req.intentId,
           chatTurnIntent: executionObserver(req)?.intent,
-          sessionQueued: executionObserver(req)?.sessionQueued,
         }),
       );
       mutatedPersistedChat = true;

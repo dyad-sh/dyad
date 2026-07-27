@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { apps, chatQueueState, chatTurnIntents, chats } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { apps, chats } from "@/db/schema";
 import { DyadErrorKind } from "@/errors/dyad_error";
 import { createInMemoryTestDb, type TestDb } from "@/testing/test_db";
 import {
+  disposeSessionChatQueue,
   hydrateChatStreamPersistence,
   loadChatQueue,
   markIntentTerminal,
@@ -32,7 +32,10 @@ describe("chat stream persistence", () => {
       .get().id;
   });
 
-  afterEach(() => database.$client.close());
+  afterEach(() => {
+    disposeSessionChatQueue(chatId);
+    database.$client.close();
+  });
 
   function intent(
     intentId: string,
@@ -57,20 +60,19 @@ describe("chat stream persistence", () => {
     };
   }
 
-  it("atomically persists a durable intent, queue row, and revision", () => {
+  it("keeps an intent and queue revision in main-process memory", () => {
     const queued = persistQueuedIntent(database, intent("turn-1"));
 
     expect(queued).toMatchObject({
       kind: "queued",
       queueRevision: 1,
-      entry: { intentId: "turn-1", persistence: "durable" },
+      entry: { intentId: "turn-1", persistence: "main-session" },
     });
     expect(loadChatQueue(database, chatId)).toMatchObject({
       queueRevision: 1,
       queuePaused: false,
       queue: [{ intentId: "turn-1" }],
     });
-    expect(database.select().from(chatTurnIntents).all()).toHaveLength(1);
   });
 
   it("replays the original result for the same immutable intent", () => {
@@ -143,39 +145,22 @@ describe("chat stream persistence", () => {
     const queue = markIntentTerminal(database, turn, false, true);
 
     expect(queue).toMatchObject({ queueRevision: 2, queue: [] });
-    expect(
-      database
-        .select({ acceptance: chatTurnIntents.acceptance })
-        .from(chatTurnIntents)
-        .where(eq(chatTurnIntents.intentId, turn.intentId))
-        .get(),
-    ).toEqual({ acceptance: "rejected" });
+    expect(persistQueuedIntent(database, turn)).toEqual({
+      kind: "replayed",
+      acceptance: "rejected",
+    });
   });
 
-  it("hydrates restart work paused and marks executing turns interrupted", () => {
+  it("does not restore queued work after process-lifetime state is disposed", () => {
     persistQueuedIntent(database, intent("turn-1"));
-    database
-      .update(chatTurnIntents)
-      .set({ recovery: "started" })
-      .where(eq(chatTurnIntents.intentId, "turn-1"))
-      .run();
+    disposeSessionChatQueue(chatId);
 
     const hydrated = hydrateChatStreamPersistence(database, chatId);
 
-    expect(hydrated.queuePaused).toBe(true);
-    expect(
-      database
-        .select({ recovery: chatTurnIntents.recovery })
-        .from(chatTurnIntents)
-        .where(eq(chatTurnIntents.intentId, "turn-1"))
-        .get()?.recovery,
-    ).toBe("interrupted");
-    expect(
-      database
-        .select({ paused: chatQueueState.paused })
-        .from(chatQueueState)
-        .where(eq(chatQueueState.chatId, chatId))
-        .get()?.paused,
-    ).toBe(true);
+    expect(hydrated).toEqual({
+      queueRevision: 0,
+      queuePaused: false,
+      queue: [],
+    });
   });
 });

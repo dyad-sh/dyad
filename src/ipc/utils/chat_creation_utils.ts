@@ -14,28 +14,11 @@ export async function createChatForApp({
   appId,
   title,
   initialChatMode,
-  planHandoffId,
 }: {
   appId: number;
   title?: string;
   initialChatMode?: ChatMode;
-  planHandoffId?: string;
 }): Promise<number> {
-  if (planHandoffId) {
-    const existing = await db.query.chats.findFirst({
-      where: eq(chats.planHandoffId, planHandoffId),
-      columns: { id: true, appId: true },
-    });
-    if (existing) {
-      if (existing.appId !== appId) {
-        throw new DyadError(
-          "Plan handoff chat belongs to a different app",
-          DyadErrorKind.Conflict,
-        );
-      }
-      return existing.id;
-    }
-  }
   // Get the app's path first
   const app = await db.query.apps.findFirst({
     where: eq(apps.id, appId),
@@ -68,7 +51,6 @@ export async function createChatForApp({
       title,
       initialCommitHash,
       chatMode,
-      planHandoffId,
     })
     .returning();
   logger.info(

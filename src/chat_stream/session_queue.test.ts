@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { apps, chatQueueEntries, chatTurnIntents, chats } from "@/db/schema";
+import { apps, chats } from "@/db/schema";
 import { DyadErrorKind } from "@/errors/dyad_error";
 import { createInMemoryTestDb, type TestDb } from "@/testing/test_db";
 import { acceptChatTurn } from "@/ipc/handlers/chat_turn_acceptance";
 import {
   completeSessionQueueAcceptance,
   disposeSessionChatQueue,
+  getIntentAcceptance,
   loadChatQueue,
   markIntentTerminal,
   mutateChatQueue,
@@ -125,8 +126,6 @@ describe("main-session follow-up queue", () => {
 
     persistSessionQueuedIntent(database, intent);
 
-    expect(database.select().from(chatTurnIntents).all()).toEqual([]);
-    expect(database.select().from(chatQueueEntries).all()).toEqual([]);
     expect(loadChatQueue(database, chatId).queue).toMatchObject([
       { intentId: "follow-up-1", persistence: "main-session" },
     ]);
@@ -139,18 +138,11 @@ describe("main-session follow-up queue", () => {
       userInputRequestId: "follow-up-1",
       chatTurnIntentId: "follow-up-1",
       chatTurnIntent: intent,
-      sessionQueued: true,
     });
     completeSessionQueueAcceptance(intent.intentId);
 
     expect(accepted.userMessageId).toEqual(expect.any(Number));
-    expect(database.select().from(chatTurnIntents).all()).toMatchObject([
-      {
-        intentId: "follow-up-1",
-        acceptance: "message-accepted",
-        recovery: "started",
-      },
-    ]);
+    expect(getIntentAcceptance("follow-up-1")).toBe("message-accepted");
     expect(loadChatQueue(database, chatId).queue).toEqual([]);
   });
 
@@ -246,7 +238,7 @@ describe("main-session follow-up queue", () => {
 
     makeFollowUpDue();
     expect(stageActiveIntent(database, intent)).toBeNull();
-    expect(database.select().from(chatTurnIntents).all()).toEqual([]);
+    expect(getIntentAcceptance(intent.intentId)).toBe("queued");
   });
 
   it("finalizes a failed pre-acceptance follow-up without a durable shell", () => {
@@ -257,6 +249,6 @@ describe("main-session follow-up queue", () => {
       queuePaused: false,
       queue: [],
     });
-    expect(database.select().from(chatTurnIntents).all()).toEqual([]);
+    expect(getIntentAcceptance(intent.intentId)).toBeUndefined();
   });
 });

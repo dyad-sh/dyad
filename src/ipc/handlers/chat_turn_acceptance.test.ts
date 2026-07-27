@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 
-import { apps, chatQueueEntries, chats, messages } from "@/db/schema";
+import { apps, chats, messages } from "@/db/schema";
 import { createInMemoryTestDb, type TestDb } from "@/testing/test_db";
 import {
   loadChatQueue,
+  disposeSessionChatQueue,
   mutateChatQueue,
   persistQueuedIntent,
 } from "@/chat_stream/persistence";
@@ -31,6 +32,7 @@ describe("acceptChatTurn", () => {
   });
 
   afterEach(() => {
+    disposeSessionChatQueue(chatId);
     db.$client.close();
   });
 
@@ -109,12 +111,5 @@ describe("acceptChatTurn", () => {
     expect(
       loadChatQueue(db, chatId).queue.map((entry) => entry.intentId),
     ).toEqual(["first", "second"]);
-    expect(
-      db
-        .select({ position: chatQueueEntries.position })
-        .from(chatQueueEntries)
-        .orderBy(chatQueueEntries.position)
-        .all(),
-    ).toEqual([{ position: 0 }, { position: 1 }]);
   });
 });

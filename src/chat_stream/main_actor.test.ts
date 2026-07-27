@@ -101,7 +101,7 @@ vi.mock("./persistence", () => ({
         itemId: intent.intentId,
         intentId: intent.intentId,
         prompt: intent.prompt,
-        persistence: "durable",
+        persistence: "main-session",
         editable: true,
         removable: true,
       };

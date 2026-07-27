@@ -1,20 +1,12 @@
 import { createHash } from "node:crypto";
-import { afterEach, describe, expect, it } from "vitest";
-import {
-  isMatchingPlanHandoffReplay,
-  planHandoffDefinition,
-} from "./definition";
+import { describe, expect, it } from "vitest";
+import { planHandoffDefinition } from "./definition";
 import { transitionPlanHandoffHost } from "./host_transition";
 import {
   PlanHandoffIntentSchema,
   serializePlanDocument,
   type PlanHandoffIntent,
 } from "./transport";
-import {
-  type HandlerTestHarness,
-  setupHandlerTestHarness,
-} from "@/testing/handler_test_harness";
-import { apps, chats, planHandoffs } from "@/db/schema";
 
 function intent(handoffId = "handoff-1"): PlanHandoffIntent {
   const plan = { title: "Ship it", content: "Implementation steps" };
@@ -35,13 +27,6 @@ function intent(handoffId = "handoff-1"): PlanHandoffIntent {
 }
 
 describe("main plan handoff transition", () => {
-  let harness: HandlerTestHarness | undefined;
-
-  afterEach(() => {
-    harness?.dispose();
-    harness = undefined;
-  });
-
   it("captures one immutable handoff and starts its durable runner", () => {
     const accepted = transitionPlanHandoffHost(
       {
@@ -125,21 +110,6 @@ describe("main plan handoff transition", () => {
     });
   });
 
-  it("binds replay identity to the new-chat choice", () => {
-    const original = intent();
-
-    expect(
-      isMatchingPlanHandoffReplay(
-        {
-          sourceChatId: original.sourceChatId,
-          planVersion: original.planVersion,
-          acceptInNewChat: original.acceptInNewChat,
-        },
-        { ...original, acceptInNewChat: false },
-      ),
-    ).toBe(false);
-  });
-
   it("keeps the plan hash stable across schema key reordering", () => {
     const plan = {
       content: "Implementation steps",
@@ -154,44 +124,12 @@ describe("main plan handoff transition", () => {
     expect(after).toBe(before);
   });
 
-  it("hydrates tied handoffs deterministically", () => {
-    harness = setupHandlerTestHarness();
-    const appId = Number(
-      harness.db
-        .insert(apps)
-        .values({ name: "plan-app", path: "plan-app" })
-        .run().lastInsertRowid,
-    );
-    const sourceChatId = Number(
-      harness.db.insert(chats).values({ appId }).run().lastInsertRowid,
-    );
-    const timestamp = new Date("2026-01-01T00:00:00Z");
-    for (const handoffId of ["handoff-z", "handoff-a"]) {
-      const persisted = {
-        ...intent(handoffId),
-        sourceChatId,
-        appId,
-      };
-      harness.db
-        .insert(planHandoffs)
-        .values({
-          handoffId,
-          sourceChatId,
-          appId,
-          planId: persisted.planId,
-          planVersion: persisted.planVersion,
-          planJson: JSON.stringify(persisted),
-          acceptInNewChat: persisted.acceptInNewChat,
-          phase: handoffId === "handoff-a" ? "started" : "failed",
-          createdAt: timestamp,
-          updatedAt: timestamp,
-        })
-        .run();
-    }
-
-    expect(planHandoffDefinition.initialState({ sourceChatId })).toMatchObject({
-      intent: { handoffId: "handoff-a" },
-      phase: "started",
+  it("starts idle instead of hydrating handoffs across app restarts", () => {
+    expect(planHandoffDefinition.initialState({ sourceChatId: 4 })).toEqual({
+      intent: null,
+      targetChatId: null,
+      phase: "idle",
+      failure: null,
     });
   });
 });

@@ -1,9 +1,7 @@
-import { eq } from "drizzle-orm";
-import { db } from "@/db";
-import { chatTurnIntents } from "@/db/schema";
 import { remoteMachineHost } from "@/ipc/services/distributed_machine_actor_host";
 import { computeChatTurnPayloadHash } from "@/ipc/utils/chat_turn_intent_hash";
 import { chatStreamDefinition } from "@/chat_stream/definition";
+import { getIntentAcceptance } from "@/chat_stream/persistence";
 import {
   chatStreamKey,
   type SerializableChatTurnIntent,
@@ -141,12 +139,7 @@ export async function dispatchPlanImplementationTurn(input: {
   if (result === "rejected") {
     throw new Error("Implementation turn was rejected");
   }
-  const row = db
-    .select({ acceptance: chatTurnIntents.acceptance })
-    .from(chatTurnIntents)
-    .where(eq(chatTurnIntents.intentId, intentId))
-    .get();
-  if (row?.acceptance !== "message-accepted") {
+  if (getIntentAcceptance(intentId) !== "message-accepted") {
     throw new Error("Implementation turn acceptance was not committed");
   }
 }

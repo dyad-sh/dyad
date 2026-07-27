@@ -401,8 +401,8 @@ export const chatStreamDefinition = {
     entityDeletion: "dispose",
     rendererOwnership: "host",
     survivesRendererReload: true,
-    restartPersistence: "persistent",
-    flushOnShutdown: true,
+    restartPersistence: "ephemeral",
+    flushOnShutdown: false,
     onDisposed: ({ key }) => {
       disposeSessionChatQueue(key.chatId);
     },

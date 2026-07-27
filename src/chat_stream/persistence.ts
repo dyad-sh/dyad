@@ -1,7 +1,5 @@
-import { and, asc, eq, sql } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import * as schema from "@/db/schema";
-import { chatQueueEntries, chatQueueState, chatTurnIntents } from "@/db/schema";
+import type * as schema from "@/db/schema";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
   hasMatchingDueFollowUp,
@@ -9,14 +7,64 @@ import {
 } from "@/ipc/services/user_input_followup_service";
 import { computeChatTurnPayloadHash } from "@/ipc/utils/chat_turn_intent_hash";
 import type { ChatQueueEntry, SerializableChatTurnIntent } from "./transport";
-import { ChatQueueEntrySchema } from "./transport";
 import type { ChatStreamHostCommand } from "./host_state";
 import { withChatQueueLock } from "./queue_lock";
 
 type ChatDatabase = BetterSQLite3Database<typeof schema>;
 
-const sessionIntents = new Map<string, SerializableChatTurnIntent>();
-const queueOrderByChat = new Map<number, string[]>();
+interface IntentRecord {
+  intent: SerializableChatTurnIntent;
+  acceptance: "queued" | "message-accepted" | "rejected";
+  recovery: "not-started" | "started" | "terminal";
+  acceptedMessageId?: number;
+}
+
+interface QueueAggregate {
+  revision: number;
+  paused: boolean;
+  intentIds: string[];
+}
+
+const intentRecords = new Map<string, IntentRecord>();
+const queues = new Map<number, QueueAggregate>();
+
+function queueFor(chatId: number): QueueAggregate {
+  let queue = queues.get(chatId);
+  if (!queue) {
+    queue = { revision: 0, paused: false, intentIds: [] };
+    queues.set(chatId, queue);
+  }
+  return queue;
+}
+
+function recordFor(intentId: string): IntentRecord | undefined {
+  return intentRecords.get(intentId);
+}
+
+function assertMatchingIntent(
+  existing: IntentRecord,
+  intent: SerializableChatTurnIntent,
+): void {
+  if (
+    existing.intent.chatId !== intent.chatId ||
+    existing.intent.payloadHash !== intent.payloadHash
+  ) {
+    throw new DyadError(
+      "Intent id was already used with a different immutable payload",
+      DyadErrorKind.Conflict,
+    );
+  }
+}
+
+function replay(existing: IntentRecord): PersistAdmissionResult {
+  return {
+    kind: "replayed",
+    acceptance: existing.acceptance,
+    ...(existing.acceptedMessageId === undefined
+      ? {}
+      : { acceptedMessageId: existing.acceptedMessageId }),
+  };
+}
 
 export function assertChatTurnPayloadHash(
   intent: SerializableChatTurnIntent,
@@ -42,67 +90,28 @@ export function toQueueEntry(
     redo: intent.redo,
     appId: intent.appId,
     requestedChatMode: intent.requestedChatMode,
-    persistence:
-      intent.owner?.kind === "user-input-follow-up"
-        ? "main-session"
-        : "durable",
+    persistence: "main-session",
     editable: intent.owner === undefined,
     removable: intent.owner?.kind !== "plan-handoff",
   };
 }
 
-function readQueueRows(database: ChatDatabase, chatId: number) {
-  return database
-    .select()
-    .from(chatQueueEntries)
-    .where(eq(chatQueueEntries.chatId, chatId))
-    .orderBy(asc(chatQueueEntries.position))
-    .all();
-}
-
-function queueOrder(database: ChatDatabase, chatId: number): string[] {
-  let order = queueOrderByChat.get(chatId);
-  if (!order) {
-    order = readQueueRows(database, chatId).map((row) => row.intentId);
-    queueOrderByChat.set(chatId, order);
-  }
-  return order;
-}
-
 export function loadChatQueue(
-  database: ChatDatabase,
+  _database: ChatDatabase,
   chatId: number,
 ): {
   queueRevision: number;
   queuePaused: boolean;
   queue: ChatQueueEntry[];
 } {
-  const queueState = database
-    .select()
-    .from(chatQueueState)
-    .where(eq(chatQueueState.chatId, chatId))
-    .get();
-  const durable = new Map(
-    readQueueRows(database, chatId).map((row) => [
-      row.intentId,
-      ChatQueueEntrySchema.parse(JSON.parse(row.payloadJson)),
-    ]),
-  );
-  const order = queueOrder(database, chatId);
-  const queue = order.flatMap((intentId) => {
-    const durableEntry = durable.get(intentId);
-    if (durableEntry) return [durableEntry];
-    const sessionIntent = sessionIntents.get(intentId);
-    return sessionIntent ? [toQueueEntry(sessionIntent)] : [];
-  });
-  queueOrderByChat.set(
-    chatId,
-    queue.map((entry) => entry.intentId),
-  );
+  const aggregate = queueFor(chatId);
   return {
-    queueRevision: queueState?.revision ?? 0,
-    queuePaused: queueState?.paused ?? false,
-    queue,
+    queueRevision: aggregate.revision,
+    queuePaused: aggregate.paused,
+    queue: aggregate.intentIds.flatMap((intentId) => {
+      const record = recordFor(intentId);
+      return record ? [toQueueEntry(record.intent)] : [];
+    }),
   };
 }
 
@@ -110,89 +119,7 @@ export function hydrateChatStreamPersistence(
   database: ChatDatabase,
   chatId: number,
 ): ReturnType<typeof loadChatQueue> {
-  database.transaction((tx) => {
-    tx.update(chatTurnIntents)
-      .set({ recovery: "interrupted", updatedAt: new Date() })
-      .where(
-        and(
-          eq(chatTurnIntents.chatId, chatId),
-          eq(chatTurnIntents.recovery, "started"),
-        ),
-      )
-      .run();
-    const state = tx
-      .select()
-      .from(chatQueueState)
-      .where(eq(chatQueueState.chatId, chatId))
-      .get();
-    const hasQueue =
-      tx
-        .select({ itemId: chatQueueEntries.itemId })
-        .from(chatQueueEntries)
-        .where(eq(chatQueueEntries.chatId, chatId))
-        .get() !== undefined;
-    if (state && hasQueue && !state.paused) {
-      tx.update(chatQueueState)
-        .set({ paused: true, revision: state.revision + 1 })
-        .where(eq(chatQueueState.chatId, chatId))
-        .run();
-    }
-  });
   return loadChatQueue(database, chatId);
-}
-
-export function persistSessionQueuedIntent(
-  database: ChatDatabase,
-  intent: SerializableChatTurnIntent,
-): PersistAdmissionResult {
-  assertChatTurnPayloadHash(intent);
-  assertMatchingDueFollowUp(intent);
-  const owner = intent.owner;
-  if (owner?.kind !== "user-input-follow-up") {
-    throw new DyadError(
-      "Session queue requires a live user-input owner",
-      DyadErrorKind.Validation,
-    );
-  }
-  const existing = sessionIntents.get(intent.intentId);
-  if (existing) {
-    if (
-      existing.chatId !== intent.chatId ||
-      existing.payloadHash !== intent.payloadHash
-    ) {
-      throw new DyadError(
-        "Session intent id was reused with different content",
-        DyadErrorKind.Conflict,
-      );
-    }
-    return { kind: "replayed", acceptance: "queued" };
-  }
-  const queueRevision = database.transaction((tx) => {
-    const state = tx
-      .select()
-      .from(chatQueueState)
-      .where(eq(chatQueueState.chatId, intent.chatId))
-      .get() ?? {
-      chatId: intent.chatId,
-      revision: 0,
-      paused: false,
-      legacyMigrated: false,
-    };
-    tx.insert(chatQueueState).values(state).onConflictDoNothing().run();
-    const revision = state.revision + 1;
-    tx.update(chatQueueState)
-      .set({ revision })
-      .where(eq(chatQueueState.chatId, intent.chatId))
-      .run();
-    return revision;
-  });
-  sessionIntents.set(intent.intentId, intent);
-  queueOrder(database, intent.chatId).push(intent.intentId);
-  return {
-    kind: "queued",
-    entry: toQueueEntry(intent),
-    queueRevision,
-  };
 }
 
 function assertMatchingDueFollowUp(intent: SerializableChatTurnIntent): void {
@@ -202,10 +129,9 @@ function assertMatchingDueFollowUp(intent: SerializableChatTurnIntent): void {
       DyadErrorKind.Validation,
     );
   }
-  const owner = intent.owner;
   if (
     !hasMatchingDueFollowUp({
-      requestId: owner.requestId,
+      requestId: intent.owner.requestId,
       chatId: intent.chatId,
       prompt: intent.prompt,
     })
@@ -217,113 +143,33 @@ function assertMatchingDueFollowUp(intent: SerializableChatTurnIntent): void {
   }
 }
 
+export function persistSessionQueuedIntent(
+  database: ChatDatabase,
+  intent: SerializableChatTurnIntent,
+): PersistAdmissionResult {
+  assertMatchingDueFollowUp(intent);
+  return persistIntentInQueue(database, intent);
+}
+
 export function isSessionQueuedIntent(intentId: string): boolean {
-  return sessionIntents.has(intentId);
+  return recordFor(intentId)?.intent.owner?.kind === "user-input-follow-up";
 }
 
 export function completeSessionQueueAcceptance(intentId: string): void {
-  const intent = sessionIntents.get(intentId);
-  if (!intent) return;
-  sessionIntents.delete(intentId);
-  const order = queueOrderByChat.get(intent.chatId);
-  if (order) {
-    queueOrderByChat.set(
-      intent.chatId,
-      order.filter((candidate) => candidate !== intentId),
-    );
+  const record = recordFor(intentId);
+  if (!record || record.intent.owner?.kind !== "user-input-follow-up") return;
+  const queue = queueFor(record.intent.chatId);
+  const index = queue.intentIds.indexOf(intentId);
+  if (index >= 0) {
+    queue.intentIds.splice(index, 1);
   }
 }
 
 export function disposeSessionChatQueue(chatId: number): void {
-  const order = queueOrderByChat.get(chatId) ?? [];
-  for (const intentId of order) sessionIntents.delete(intentId);
-  queueOrderByChat.delete(chatId);
-}
-
-export function importLegacyChatQueue(
-  database: ChatDatabase,
-  chatId: number,
-  intents: readonly SerializableChatTurnIntent[],
-): void {
-  for (const intent of intents) assertChatTurnPayloadHash(intent);
-  database.transaction((tx) => {
-    const state = tx
-      .select()
-      .from(chatQueueState)
-      .where(eq(chatQueueState.chatId, chatId))
-      .get() ?? {
-      chatId,
-      revision: 0,
-      paused: false,
-      legacyMigrated: false,
-    };
-    if (state.legacyMigrated) return;
-    tx.insert(chatQueueState).values(state).onConflictDoNothing().run();
-    let position =
-      tx
-        .select({
-          value: sql<number>`coalesce(max(${chatQueueEntries.position}), -1)`,
-        })
-        .from(chatQueueEntries)
-        .where(eq(chatQueueEntries.chatId, chatId))
-        .get()?.value ?? -1;
-    for (const intent of intents) {
-      if (intent.chatId !== chatId || intent.owner) {
-        throw new DyadError(
-          "Legacy queue contains an invalid durable owner",
-          DyadErrorKind.Validation,
-        );
-      }
-      const existing = tx
-        .select()
-        .from(chatTurnIntents)
-        .where(eq(chatTurnIntents.intentId, intent.intentId))
-        .get();
-      if (existing) {
-        if (
-          existing.chatId !== chatId ||
-          existing.payloadHash !== intent.payloadHash
-        ) {
-          throw new DyadError(
-            "Legacy queue intent conflicts with durable state",
-            DyadErrorKind.Conflict,
-          );
-        }
-        continue;
-      }
-      const entry = toQueueEntry(intent);
-      position += 1;
-      tx.insert(chatTurnIntents)
-        .values({
-          intentId: intent.intentId,
-          chatId,
-          payloadHash: intent.payloadHash,
-          envelopeJson: JSON.stringify(intent),
-          acceptance: "queued",
-          recovery: "not-started",
-        })
-        .run();
-      tx.insert(chatQueueEntries)
-        .values({
-          itemId: entry.itemId,
-          intentId: entry.intentId,
-          chatId,
-          position,
-          payloadJson: JSON.stringify(entry),
-          persistence: "durable",
-        })
-        .run();
-    }
-    tx.update(chatQueueState)
-      .set({
-        paused: intents.length > 0 || state.paused,
-        revision: state.revision + (intents.length > 0 ? 1 : 0),
-        legacyMigrated: true,
-      })
-      .where(eq(chatQueueState.chatId, chatId))
-      .run();
-  });
-  queueOrderByChat.delete(chatId);
+  queues.delete(chatId);
+  for (const [intentId, record] of intentRecords) {
+    if (record.intent.chatId === chatId) intentRecords.delete(intentId);
+  }
 }
 
 export type PersistAdmissionResult =
@@ -338,165 +184,107 @@ export type PersistAdmissionResult =
       acceptedMessageId?: number;
     };
 
+function persistIntentInQueue(
+  _database: ChatDatabase,
+  intent: SerializableChatTurnIntent,
+): PersistAdmissionResult {
+  assertChatTurnPayloadHash(intent);
+  const existing = recordFor(intent.intentId);
+  if (existing) {
+    assertMatchingIntent(existing, intent);
+    return replay(existing);
+  }
+  intentRecords.set(intent.intentId, {
+    intent,
+    acceptance: "queued",
+    recovery: "not-started",
+  });
+  const aggregate = queueFor(intent.chatId);
+  aggregate.intentIds.push(intent.intentId);
+  aggregate.revision += 1;
+  return {
+    kind: "queued",
+    entry: toQueueEntry(intent),
+    queueRevision: aggregate.revision,
+  };
+}
+
 export function persistQueuedIntent(
   database: ChatDatabase,
   intent: SerializableChatTurnIntent,
 ): PersistAdmissionResult {
-  assertChatTurnPayloadHash(intent);
   if (intent.owner?.kind === "user-input-follow-up") {
     throw new DyadError(
       "Memory-owned follow-ups must use the live session queue",
       DyadErrorKind.Validation,
     );
   }
-  const order = queueOrder(database, intent.chatId);
-  const result = database.transaction((tx) => {
-    const existing = tx
-      .select()
-      .from(chatTurnIntents)
-      .where(eq(chatTurnIntents.intentId, intent.intentId))
-      .get();
-    if (existing) {
-      if (
-        existing.chatId !== intent.chatId ||
-        existing.payloadHash !== intent.payloadHash
-      ) {
-        throw new DyadError(
-          "Intent id was already used with a different immutable payload",
-          DyadErrorKind.Conflict,
-        );
-      }
-      return {
-        kind: "replayed" as const,
-        acceptance: existing.acceptance,
-        ...(existing.acceptedMessageId === null
-          ? {}
-          : { acceptedMessageId: existing.acceptedMessageId }),
-      };
-    }
-
-    const state = tx
-      .insert(chatQueueState)
-      .values({ chatId: intent.chatId, revision: 0, paused: false })
-      .onConflictDoNothing()
-      .returning()
-      .get();
-    const current =
-      state ??
-      tx
-        .select()
-        .from(chatQueueState)
-        .where(eq(chatQueueState.chatId, intent.chatId))
-        .get();
-    if (!current) {
-      throw new Error("Failed to initialize chat queue state");
-    }
-    const lastPosition =
-      tx
-        .select({
-          value: sql<number>`coalesce(max(${chatQueueEntries.position}), -1)`,
-        })
-        .from(chatQueueEntries)
-        .where(eq(chatQueueEntries.chatId, intent.chatId))
-        .get()?.value ?? -1;
-    const entry = toQueueEntry(intent);
-    tx.insert(chatTurnIntents)
-      .values({
-        intentId: intent.intentId,
-        chatId: intent.chatId,
-        payloadHash: intent.payloadHash,
-        envelopeJson: JSON.stringify(intent),
-        acceptance: "queued",
-        recovery: "not-started",
-      })
-      .run();
-    tx.insert(chatQueueEntries)
-      .values({
-        itemId: entry.itemId,
-        intentId: entry.intentId,
-        chatId: intent.chatId,
-        position: lastPosition + 1,
-        payloadJson: JSON.stringify(entry),
-        persistence: entry.persistence,
-      })
-      .run();
-    const nextRevision = current.revision + 1;
-    tx.update(chatQueueState)
-      .set({ revision: nextRevision })
-      .where(eq(chatQueueState.chatId, intent.chatId))
-      .run();
-    return { kind: "queued" as const, entry, queueRevision: nextRevision };
-  });
-  if (result.kind === "queued" && !order.includes(intent.intentId)) {
-    order.push(intent.intentId);
-  }
-  return result;
+  return persistIntentInQueue(database, intent);
 }
 
 export function stageActiveIntent(
-  database: ChatDatabase,
+  _database: ChatDatabase,
   intent: SerializableChatTurnIntent,
 ): PersistAdmissionResult | null {
   assertChatTurnPayloadHash(intent);
   if (intent.owner?.kind === "user-input-follow-up") {
     assertMatchingDueFollowUp(intent);
-    return null;
   }
-  return database.transaction((tx) => {
-    const existing = tx
-      .select()
-      .from(chatTurnIntents)
-      .where(eq(chatTurnIntents.intentId, intent.intentId))
-      .get();
-    if (existing) {
-      if (
-        existing.chatId !== intent.chatId ||
-        existing.payloadHash !== intent.payloadHash
-      ) {
-        throw new DyadError(
-          "Intent id was already used with a different immutable payload",
-          DyadErrorKind.Conflict,
-        );
-      }
-      return {
-        kind: "replayed" as const,
-        acceptance: existing.acceptance,
-        ...(existing.acceptedMessageId === null
-          ? {}
-          : { acceptedMessageId: existing.acceptedMessageId }),
-      };
-    }
-    tx.insert(chatTurnIntents)
-      .values({
-        intentId: intent.intentId,
-        chatId: intent.chatId,
-        payloadHash: intent.payloadHash,
-        envelopeJson: JSON.stringify(intent),
-        acceptance: "queued",
-        recovery: "not-started",
-      })
-      .run();
-    return null;
+  const existing = recordFor(intent.intentId);
+  if (existing) {
+    assertMatchingIntent(existing, intent);
+    return replay(existing);
+  }
+  intentRecords.set(intent.intentId, {
+    intent,
+    acceptance: "queued",
+    recovery: "not-started",
+  });
+  return null;
+}
+
+export function ensureIntentRecord(intent: SerializableChatTurnIntent): void {
+  assertChatTurnPayloadHash(intent);
+  const existing = recordFor(intent.intentId);
+  if (existing) {
+    assertMatchingIntent(existing, intent);
+    return;
+  }
+  intentRecords.set(intent.intentId, {
+    intent,
+    acceptance: "queued",
+    recovery: "not-started",
   });
 }
 
-function rewriteQueuePositions(
-  tx: Parameters<Parameters<ChatDatabase["transaction"]>[0]>[0],
-  chatId: number,
-  rows: ReturnType<typeof readQueueRows>,
+export function getIntentAcceptance(
+  intentId: string,
+): IntentRecord["acceptance"] | undefined {
+  return recordFor(intentId)?.acceptance;
+}
+
+export function getAcceptedMessageId(intentId: string): number | undefined {
+  return recordFor(intentId)?.acceptedMessageId;
+}
+
+export function markIntentAccepted(
+  intentId: string | undefined,
+  acceptedMessageId: number,
 ): void {
-  rows.forEach((row, index) => {
-    tx.update(chatQueueEntries)
-      .set({ position: -index - 1 })
-      .where(eq(chatQueueEntries.itemId, row.itemId))
-      .run();
-  });
-  rows.forEach((row, index) => {
-    tx.update(chatQueueEntries)
-      .set({ position: index })
-      .where(eq(chatQueueEntries.itemId, row.itemId))
-      .run();
-  });
+  if (!intentId) return;
+  const record = recordFor(intentId);
+  if (!record) {
+    throw new DyadError("Chat turn intent not found", DyadErrorKind.NotFound);
+  }
+  record.acceptance = "message-accepted";
+  record.recovery = "started";
+  record.acceptedMessageId = acceptedMessageId;
+  const aggregate = queueFor(record.intent.chatId);
+  const index = aggregate.intentIds.indexOf(intentId);
+  if (index >= 0) {
+    aggregate.intentIds.splice(index, 1);
+    aggregate.revision += 1;
+  }
 }
 
 export async function mutateChatQueue(
@@ -504,297 +292,156 @@ export async function mutateChatQueue(
   chatId: number,
   command: Extract<ChatStreamHostCommand, { type: "mutate-queue" }>,
 ): Promise<ReturnType<typeof loadChatQueue>> {
-  return withChatQueueLock(chatId, () =>
-    mutateChatQueueUnlocked(database, chatId, command),
-  );
-}
-
-async function mutateChatQueueUnlocked(
-  database: ChatDatabase,
-  chatId: number,
-  command: Extract<ChatStreamHostCommand, { type: "mutate-queue" }>,
-): Promise<ReturnType<typeof loadChatQueue>> {
-  const mutation = command.mutation;
-  const aggregateQueue = loadChatQueue(database, chatId).queue;
-  const sessionEntries = aggregateQueue.filter(
-    (entry) =>
-      entry.persistence === "main-session" &&
-      (mutation.type === "clear" ||
-        ("itemId" in mutation && mutation.itemId === entry.itemId)),
-  );
-  if (
-    (mutation.type === "edit" || mutation.type === "reorder") &&
-    sessionEntries.length > 0
-  ) {
-    throw new DyadError(
-      "Machine-owned queued messages cannot be edited or reordered",
-      DyadErrorKind.Precondition,
-    );
-  }
-  const queueState = database
-    .select()
-    .from(chatQueueState)
-    .where(eq(chatQueueState.chatId, chatId))
-    .get();
-  if ((queueState?.revision ?? 0) !== command.expectedQueueRevision) {
-    throw new DyadError(
-      "Chat queue changed in another window",
-      DyadErrorKind.Conflict,
-    );
-  }
-  const invocationRows = readQueueRows(database, chatId);
-  if (mutation.type === "remove" || mutation.type === "clear") {
-    const removed =
-      mutation.type === "clear"
-        ? invocationRows
-        : invocationRows.filter(
-            (candidate) => candidate.itemId === mutation.itemId,
-          );
-    if (
-      mutation.type === "remove" &&
-      removed.length === 0 &&
-      sessionEntries.length === 0
-    ) {
-      throw new DyadError("Queued message not found", DyadErrorKind.NotFound);
+  return withChatQueueLock(chatId, async () => {
+    const aggregate = queueFor(chatId);
+    if (aggregate.revision !== command.expectedQueueRevision) {
+      throw new DyadError(
+        "Chat queue changed in another window",
+        DyadErrorKind.Conflict,
+      );
     }
-    for (const row of removed) {
-      const entry = ChatQueueEntrySchema.parse(JSON.parse(row.payloadJson));
-      const intentRow = database
-        .select({ envelopeJson: chatTurnIntents.envelopeJson })
-        .from(chatTurnIntents)
-        .where(eq(chatTurnIntents.intentId, entry.intentId))
-        .get();
-      const intent = intentRow
-        ? (JSON.parse(intentRow.envelopeJson) as SerializableChatTurnIntent)
-        : undefined;
-      if (intent?.owner?.kind === "plan-handoff") {
-        throw new DyadError(
-          "Plan implementation turns cannot be removed while their handoff is active",
-          DyadErrorKind.Precondition,
-        );
-      }
-    }
-  }
-
-  // Claim memory-owned entries before committing the mutation so the queue
-  // driver cannot start them. All validation happens above; a transaction
-  // failure restores every claim before any external owner is settled.
-  const originalOrder = [...queueOrder(database, chatId)];
-  const claimedSessionIntents = sessionEntries.flatMap((entry) => {
-    const intent = sessionIntents.get(entry.intentId);
-    return intent ? [{ entry, intent }] : [];
-  });
-  const claimedIds = new Set(
-    claimedSessionIntents.map(({ entry }) => entry.intentId),
-  );
-  let removedSessionEntries = sessionEntries;
-  let ownerSettlementErrors: unknown[] = [];
-  if (claimedSessionIntents.length > 0) {
-    for (const { entry } of claimedSessionIntents) {
-      sessionIntents.delete(entry.intentId);
-    }
-    queueOrderByChat.set(
-      chatId,
-      originalOrder.filter((intentId) => !claimedIds.has(intentId)),
-    );
-  }
-  let nextOrder: string[] | undefined;
-  try {
-    database.transaction((tx) => {
-      const state = tx
-        .select()
-        .from(chatQueueState)
-        .where(eq(chatQueueState.chatId, chatId))
-        .get() ?? { chatId, revision: 0, paused: false };
-      if (state.revision !== command.expectedQueueRevision) {
-        throw new DyadError(
-          "Chat queue changed in another window",
-          DyadErrorKind.Conflict,
-        );
-      }
-      tx.insert(chatQueueState).values(state).onConflictDoNothing().run();
-      const rows = tx
-        .select()
-        .from(chatQueueEntries)
-        .where(eq(chatQueueEntries.chatId, chatId))
-        .orderBy(asc(chatQueueEntries.position))
-        .all();
-      let nextRows = rows;
-      let paused = state.paused;
-      switch (mutation.type) {
-        case "pause":
-          paused = true;
-          break;
-        case "resume":
-          paused = false;
-          break;
-        case "edit": {
-          const row = rows.find(
-            (candidate) => candidate.itemId === mutation.itemId,
-          );
-          if (!row) {
-            throw new DyadError(
-              "Queued message not found",
-              DyadErrorKind.NotFound,
-            );
-          }
-          const entry = ChatQueueEntrySchema.parse(JSON.parse(row.payloadJson));
-          if (!entry.editable) {
-            throw new DyadError(
-              "Machine-owned queued messages cannot be edited",
-              DyadErrorKind.Precondition,
-            );
-          }
-          const updated = {
-            ...entry,
-            prompt: mutation.prompt,
-            attachments: mutation.attachments,
-            selectedComponents: mutation.selectedComponents,
-          };
-          const intentRow = tx
-            .select({ envelopeJson: chatTurnIntents.envelopeJson })
-            .from(chatTurnIntents)
-            .where(eq(chatTurnIntents.intentId, entry.intentId))
-            .get();
-          if (!intentRow) {
-            throw new Error("Queued message is missing its owning intent");
-          }
-          const currentIntent = JSON.parse(
-            intentRow.envelopeJson,
-          ) as SerializableChatTurnIntent;
-          const updatedIntentWithoutHash = {
-            ...currentIntent,
-            prompt: mutation.prompt,
-            attachments: mutation.attachments,
-            selectedComponents: mutation.selectedComponents,
-          };
-          const updatedIntent: SerializableChatTurnIntent = {
-            ...updatedIntentWithoutHash,
-            payloadHash: computeChatTurnPayloadHash(updatedIntentWithoutHash),
-          };
-          tx.update(chatQueueEntries)
-            .set({ payloadJson: JSON.stringify(updated) })
-            .where(eq(chatQueueEntries.itemId, row.itemId))
-            .run();
-          tx.update(chatTurnIntents)
-            .set({
-              envelopeJson: JSON.stringify(updatedIntent),
-              payloadHash: updatedIntent.payloadHash,
-              updatedAt: new Date(),
-            })
-            .where(eq(chatTurnIntents.intentId, entry.intentId))
-            .run();
-          break;
-        }
-        case "reorder": {
-          const order = aggregateQueue.map((entry) => entry.intentId);
-          const from = order.indexOf(mutation.itemId);
-          if (from < 0 || mutation.toIndex >= order.length) {
-            throw new DyadError(
-              "Queued message reorder is out of range",
-              DyadErrorKind.Validation,
-            );
-          }
-          nextOrder = [...order];
-          const [moved] = nextOrder.splice(from, 1);
-          nextOrder.splice(mutation.toIndex, 0, moved);
-          const rowByIntent = new Map(rows.map((row) => [row.intentId, row]));
-          nextRows = nextOrder.flatMap((intentId) => {
-            const row = rowByIntent.get(intentId);
-            return row ? [row] : [];
-          });
-          rewriteQueuePositions(tx, chatId, nextRows);
-          break;
-        }
-        case "remove":
-        case "clear": {
-          const removed =
-            mutation.type === "clear"
-              ? rows
-              : rows.filter(
-                  (candidate) => candidate.itemId === mutation.itemId,
-                );
-          for (const row of removed) {
-            tx.delete(chatQueueEntries)
-              .where(eq(chatQueueEntries.itemId, row.itemId))
-              .run();
-            tx.update(chatTurnIntents)
-              .set({ acceptance: "rejected", updatedAt: new Date() })
-              .where(eq(chatTurnIntents.intentId, row.intentId))
-              .run();
-          }
-          nextRows = rows.filter(
-            (row) =>
-              !removed.some((removedRow) => removedRow.itemId === row.itemId),
-          );
-          const removedIds = new Set([
-            ...removed.map((row) => row.intentId),
-            ...removedSessionEntries.map((entry) => entry.intentId),
-          ]);
-          nextOrder = aggregateQueue
-            .map((entry) => entry.intentId)
-            .filter((intentId) => !removedIds.has(intentId));
-          rewriteQueuePositions(tx, chatId, nextRows);
-          break;
-        }
-      }
-      tx.update(chatQueueState)
-        .set({ revision: state.revision + 1, paused })
-        .where(eq(chatQueueState.chatId, chatId))
-        .run();
+    const mutation = command.mutation;
+    const entries = aggregate.intentIds.flatMap((intentId) => {
+      const record = recordFor(intentId);
+      return record ? [{ record, entry: toQueueEntry(record.intent) }] : [];
     });
-  } catch (error) {
-    for (const { intent } of claimedSessionIntents) {
-      sessionIntents.set(intent.intentId, intent);
+    const selected =
+      mutation.type === "clear"
+        ? entries
+        : "itemId" in mutation
+          ? entries.filter(({ entry }) => entry.itemId === mutation.itemId)
+          : [];
+    if (
+      (mutation.type === "remove" || mutation.type === "clear") &&
+      selected.some(
+        ({ record }) => record.intent.owner?.kind === "plan-handoff",
+      )
+    ) {
+      throw new DyadError(
+        "Plan implementation turns cannot be removed while their handoff is active",
+        DyadErrorKind.Precondition,
+      );
     }
-    queueOrderByChat.set(chatId, originalOrder);
-    throw error;
-  }
-  if (nextOrder) queueOrderByChat.set(chatId, nextOrder);
-  if (claimedSessionIntents.length > 0) {
-    const settlements = await Promise.allSettled(
-      claimedSessionIntents.map(({ intent }) => {
-        if (intent.owner?.kind !== "user-input-follow-up") {
-          return Promise.resolve();
+    if (
+      (mutation.type === "edit" || mutation.type === "reorder") &&
+      selected.some(({ entry }) => !entry.editable)
+    ) {
+      throw new DyadError(
+        "Machine-owned queued messages cannot be edited or reordered",
+        DyadErrorKind.Precondition,
+      );
+    }
+
+    const originalIntentIds = [...aggregate.intentIds];
+    switch (mutation.type) {
+      case "pause":
+        aggregate.paused = true;
+        break;
+      case "resume":
+        aggregate.paused = false;
+        break;
+      case "edit": {
+        const selectedRecord = selected[0]?.record;
+        if (!selectedRecord) {
+          throw new DyadError(
+            "Queued message not found",
+            DyadErrorKind.NotFound,
+          );
         }
-        return rejectDueFollowUp(intent.owner.requestId);
-      }),
+        const withoutHash = {
+          ...selectedRecord.intent,
+          prompt: mutation.prompt,
+          attachments: mutation.attachments,
+          selectedComponents: mutation.selectedComponents,
+        };
+        selectedRecord.intent = {
+          ...withoutHash,
+          payloadHash: computeChatTurnPayloadHash(withoutHash),
+        };
+        break;
+      }
+      case "reorder": {
+        const from = aggregate.intentIds.indexOf(mutation.itemId);
+        if (from < 0 || mutation.toIndex >= aggregate.intentIds.length) {
+          throw new DyadError(
+            "Queued message reorder is out of range",
+            DyadErrorKind.Validation,
+          );
+        }
+        const [moved] = aggregate.intentIds.splice(from, 1);
+        aggregate.intentIds.splice(mutation.toIndex, 0, moved);
+        break;
+      }
+      case "remove": {
+        if (selected.length === 0) {
+          throw new DyadError(
+            "Queued message not found",
+            DyadErrorKind.NotFound,
+          );
+        }
+        const removedId = selected[0].record.intent.intentId;
+        aggregate.intentIds = aggregate.intentIds.filter(
+          (intentId) => intentId !== removedId,
+        );
+        selected[0].record.acceptance = "rejected";
+        break;
+      }
+      case "clear": {
+        const removedIds = new Set(
+          selected.map(({ record }) => record.intent.intentId),
+        );
+        aggregate.intentIds = aggregate.intentIds.filter(
+          (intentId) => !removedIds.has(intentId),
+        );
+        for (const { record } of selected) record.acceptance = "rejected";
+        break;
+      }
+    }
+    aggregate.revision += 1;
+
+    const sessionRecords = selected.filter(
+      ({ record }) =>
+        record.intent.owner?.kind === "user-input-follow-up" &&
+        (mutation.type === "remove" || mutation.type === "clear"),
     );
-    const failed = claimedSessionIntents.filter(
+    const settlements = await Promise.allSettled(
+      sessionRecords.map(({ record }) =>
+        rejectDueFollowUp(
+          (
+            record.intent.owner as {
+              kind: "user-input-follow-up";
+              requestId: string;
+            }
+          ).requestId,
+        ),
+      ),
+    );
+    const failed = sessionRecords.filter(
       (_, index) => settlements[index]?.status === "rejected",
     );
     if (failed.length > 0) {
-      const failedIds = new Set(failed.map(({ entry }) => entry.intentId));
-      removedSessionEntries = sessionEntries.filter(
-        (entry) => !failedIds.has(entry.intentId),
+      const failedIds = new Set(
+        failed.map(({ record }) => record.intent.intentId),
       );
-      for (const { intent } of failed) {
-        sessionIntents.set(intent.intentId, intent);
-      }
-      const currentOrder = queueOrder(database, chatId);
-      const restoredOriginal = originalOrder.filter(
-        (intentId) => failedIds.has(intentId) || !claimedIds.has(intentId),
-      );
-      queueOrderByChat.set(chatId, [
-        ...restoredOriginal,
-        ...currentOrder.filter((intentId) => !originalOrder.includes(intentId)),
-      ]);
-      ownerSettlementErrors = settlements.flatMap((settlement) =>
-        settlement.status === "rejected" ? [settlement.reason] : [],
+      aggregate.intentIds = [
+        ...originalIntentIds.filter(
+          (intentId) =>
+            failedIds.has(intentId) || aggregate.intentIds.includes(intentId),
+        ),
+        ...aggregate.intentIds.filter(
+          (intentId) => !originalIntentIds.includes(intentId),
+        ),
+      ];
+      for (const { record } of failed) record.acceptance = "queued";
+      throw new AggregateError(
+        settlements.flatMap((settlement) =>
+          settlement.status === "rejected" ? [settlement.reason] : [],
+        ),
+        "Failed to settle one or more queued message owners",
       );
     }
-  }
-  for (const entry of removedSessionEntries) {
-    completeSessionQueueAcceptance(entry.intentId);
-  }
-  const queue = loadChatQueue(database, chatId);
-  if (ownerSettlementErrors.length > 0) {
-    throw new AggregateError(
-      ownerSettlementErrors,
-      "Failed to settle one or more queued message owners",
-    );
-  }
-  return queue;
+    return loadChatQueue(database, chatId);
+  });
 }
 
 export function markIntentTerminal(
@@ -803,119 +450,38 @@ export function markIntentTerminal(
   pauseQueue: boolean,
   rejectBeforeAcceptance = false,
 ): ReturnType<typeof loadChatQueue> {
-  const persistedIntent = database
-    .select()
-    .from(chatTurnIntents)
-    .where(eq(chatTurnIntents.intentId, intent.intentId))
-    .get();
-  if (!persistedIntent) {
+  const record = recordFor(intent.intentId);
+  if (!record) {
     if (intent.owner?.kind === "user-input-follow-up") {
       return loadChatQueue(database, intent.chatId);
     }
     throw new DyadError("Chat turn intent not found", DyadErrorKind.NotFound);
   }
-  let removedQueuedIntent = false;
-  database.transaction((tx) => {
-    if (
-      rejectBeforeAcceptance &&
-      persistedIntent.acceptance === "queued" &&
-      persistedIntent.acceptedMessageId === null
-    ) {
-      const queuedRow = tx
-        .select({ itemId: chatQueueEntries.itemId })
-        .from(chatQueueEntries)
-        .where(eq(chatQueueEntries.intentId, intent.intentId))
-        .get();
-      if (queuedRow) {
-        tx.delete(chatQueueEntries)
-          .where(eq(chatQueueEntries.itemId, queuedRow.itemId))
-          .run();
-        const remaining = tx
-          .select()
-          .from(chatQueueEntries)
-          .where(eq(chatQueueEntries.chatId, persistedIntent.chatId))
-          .orderBy(asc(chatQueueEntries.position))
-          .all();
-        rewriteQueuePositions(tx, persistedIntent.chatId, remaining);
-        removedQueuedIntent = true;
-      }
-      tx.update(chatTurnIntents)
-        .set({ acceptance: "rejected", updatedAt: new Date() })
-        .where(eq(chatTurnIntents.intentId, intent.intentId))
-        .run();
+  const aggregate = queueFor(record.intent.chatId);
+  let changed = false;
+  if (rejectBeforeAcceptance && record.acceptance === "queued") {
+    const index = aggregate.intentIds.indexOf(intent.intentId);
+    if (index >= 0) {
+      aggregate.intentIds.splice(index, 1);
+      changed = true;
     }
-    tx.update(chatTurnIntents)
-      .set({ recovery: "terminal", updatedAt: new Date() })
-      .where(eq(chatTurnIntents.intentId, intent.intentId))
-      .run();
-    const state = tx
-      .select()
-      .from(chatQueueState)
-      .where(eq(chatQueueState.chatId, persistedIntent.chatId))
-      .get() ?? {
-      chatId: persistedIntent.chatId,
-      revision: 0,
-      paused: false,
-    };
-    tx.insert(chatQueueState).values(state).onConflictDoNothing().run();
-    tx.update(chatQueueState)
-      .set({
-        revision:
-          state.revision +
-          (removedQueuedIntent || (pauseQueue && !state.paused) ? 1 : 0),
-        paused: state.paused || pauseQueue,
-      })
-      .where(eq(chatQueueState.chatId, persistedIntent.chatId))
-      .run();
-  });
-  if (removedQueuedIntent) {
-    queueOrderByChat.set(
-      persistedIntent.chatId,
-      queueOrder(database, persistedIntent.chatId).filter(
-        (intentId) => intentId !== intent.intentId,
-      ),
-    );
+    record.acceptance = "rejected";
   }
-  return loadChatQueue(database, persistedIntent.chatId);
+  record.recovery = "terminal";
+  if (pauseQueue && !aggregate.paused) {
+    aggregate.paused = true;
+    changed = true;
+  }
+  if (changed) aggregate.revision += 1;
+  return loadChatQueue(database, record.intent.chatId);
 }
 
 export function peekQueueHead(
-  database: ChatDatabase,
+  _database: ChatDatabase,
   chatId: number,
 ): SerializableChatTurnIntent | null {
-  const state = database
-    .select()
-    .from(chatQueueState)
-    .where(eq(chatQueueState.chatId, chatId))
-    .get();
-  if (state?.paused) return null;
-  const firstIntentId = loadChatQueue(database, chatId).queue[0]?.intentId;
-  if (!firstIntentId) return null;
-  const sessionIntent = sessionIntents.get(firstIntentId);
-  if (sessionIntent) return sessionIntent;
-  const head = database
-    .select()
-    .from(chatQueueEntries)
-    .where(
-      and(
-        eq(chatQueueEntries.chatId, chatId),
-        eq(chatQueueEntries.intentId, firstIntentId),
-      ),
-    )
-    .get();
-  if (!head) return null;
-  const intent = database
-    .select()
-    .from(chatTurnIntents)
-    .where(
-      and(
-        eq(chatTurnIntents.intentId, head.intentId),
-        eq(chatTurnIntents.chatId, chatId),
-      ),
-    )
-    .get();
-  if (!intent) {
-    throw new Error("Queued chat intent is missing its owning record");
-  }
-  return JSON.parse(intent.envelopeJson) as SerializableChatTurnIntent;
+  const aggregate = queueFor(chatId);
+  if (aggregate.paused) return null;
+  const intentId = aggregate.intentIds[0];
+  return intentId ? (recordFor(intentId)?.intent ?? null) : null;
 }

@@ -5,6 +5,12 @@
 **Decision: GO for C3, after the app-run remote-actor pilot proves the common
 transport. Do not lift the renderer controller into main unchanged.**
 
+**Implementation update:** C3 keeps chat queue, turn-intent, and plan-handoff
+coordination in main-process memory. It survives renderer reloads and window
+closure while the app process remains alive, but it is intentionally discarded
+on full app restart. The SQLite recovery design below remains the original
+study recommendation, not the implemented persistence model.
+
 The feasible design is a main-owned per-chat lifecycle actor plus a
 main-owned prompt queue with an explicit per-entry persistence policy. A
 serialized turn intent replaces `StreamRequest` callbacks. SQLite acceptance

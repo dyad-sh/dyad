@@ -114,7 +114,7 @@ describe("transitionChatStreamHost", () => {
       itemId: "queued",
       intentId: "queued",
       prompt: "Queued",
-      persistence: "durable" as const,
+      persistence: "main-session" as const,
       editable: true,
       removable: true,
     };

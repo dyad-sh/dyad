@@ -127,7 +127,7 @@ describe("main-hosted chat stream terminal projection", () => {
           itemId: "queued",
           intentId: "queued",
           prompt: "try later",
-          persistence: "durable",
+          persistence: "main-session",
           editable: true,
           removable: true,
         },

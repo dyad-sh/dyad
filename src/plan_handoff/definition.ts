@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
-import { and, desc, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import type { z } from "zod";
 import { db } from "@/db";
-import { apps, chats, planHandoffs } from "@/db/schema";
+import { apps, chats } from "@/db/schema";
 import type { DistributedMachineDefinition } from "@/distributed_machines/definition";
 import { REMOTE_MACHINE_PROTOCOL_VERSION } from "@/distributed_machines/remote_protocol";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
@@ -26,7 +26,6 @@ import {
   serializePlanDocument,
   type PlanHandoffIntent,
   type PlanHandoffKey,
-  type PlanHandoffRemoteSnapshot,
 } from "./transport";
 import {
   type PlanHandoffCommand,
@@ -39,26 +38,12 @@ import {
   transitionPlanHandoffHost,
 } from "./host_transition";
 
-function decodeState(sourceChatId: number): PlanHandoffHostState {
-  const row = db
-    .select()
-    .from(planHandoffs)
-    .where(eq(planHandoffs.sourceChatId, sourceChatId))
-    .orderBy(desc(planHandoffs.id))
-    .get();
-  if (!row) {
-    return {
-      intent: null,
-      targetChatId: null,
-      phase: "idle",
-      failure: null,
-    };
-  }
+function initialState(_key?: PlanHandoffKey): PlanHandoffHostState {
   return {
-    intent: JSON.parse(row.planJson) as PlanHandoffIntent,
-    targetChatId: row.targetChatId,
-    phase: row.phase,
-    failure: row.failure,
+    intent: null,
+    targetChatId: null,
+    phase: "idle",
+    failure: null,
   };
 }
 
@@ -72,78 +57,6 @@ function assertPlanHash(intent: PlanHandoffIntent): void {
       DyadErrorKind.Validation,
     );
   }
-}
-
-function checkpoint(
-  handoffId: string,
-  phase: Exclude<PlanHandoffRemoteSnapshot["phase"], "idle">,
-  targetChatId?: number,
-  failure?: string,
-): void {
-  db.update(planHandoffs)
-    .set({
-      phase,
-      ...(targetChatId === undefined ? {} : { targetChatId }),
-      failure: failure ?? null,
-      revision:
-        1 +
-        (db
-          .select({ revision: planHandoffs.revision })
-          .from(planHandoffs)
-          .where(eq(planHandoffs.handoffId, handoffId))
-          .get()?.revision ?? 0),
-      updatedAt: new Date(),
-    })
-    .where(eq(planHandoffs.handoffId, handoffId))
-    .run();
-}
-
-function persistAcceptance(
-  intent: PlanHandoffIntent,
-): typeof planHandoffs.$inferSelect {
-  assertPlanHash(intent);
-  const existing = db
-    .select()
-    .from(planHandoffs)
-    .where(eq(planHandoffs.handoffId, intent.handoffId))
-    .get();
-  if (existing) {
-    if (!isMatchingPlanHandoffReplay(existing, intent)) {
-      throw new DyadError(
-        "Plan handoff id was reused with different content",
-        DyadErrorKind.Conflict,
-      );
-    }
-    return existing;
-  }
-  return db
-    .insert(planHandoffs)
-    .values({
-      handoffId: intent.handoffId,
-      sourceChatId: intent.sourceChatId,
-      appId: intent.appId,
-      planId: intent.planId,
-      planVersion: intent.planVersion,
-      planJson: JSON.stringify(intent),
-      acceptInNewChat: intent.acceptInNewChat,
-      phase: "accepted",
-    })
-    .returning()
-    .get();
-}
-
-export function isMatchingPlanHandoffReplay(
-  existing: Pick<
-    typeof planHandoffs.$inferSelect,
-    "sourceChatId" | "planVersion" | "acceptInNewChat"
-  >,
-  intent: PlanHandoffIntent,
-): boolean {
-  return (
-    existing.sourceChatId === intent.sourceChatId &&
-    existing.planVersion === intent.planVersion &&
-    existing.acceptInNewChat === intent.acceptInNewChat
-  );
 }
 
 function createCommandRunner(
@@ -169,7 +82,7 @@ function createCommandRunner(
     const taskKey = `handoff:${intent.handoffId}`;
     if (command.type === "begin-handoff") {
       try {
-        persistAcceptance(intent);
+        assertPlanHash(intent);
         context.timers.replace(
           taskKey,
           intent.handoffId,
@@ -192,81 +105,41 @@ function createCommandRunner(
     let ownedTargetChatId: number | null = null;
     try {
       signal.throwIfAborted();
-      let row = persistAcceptance(intent);
-      if (
-        row.phase === "started" ||
-        row.phase === "failed" ||
-        row.phase === "cancelled"
-      ) {
-        return;
-      }
+      assertPlanHash(intent);
       emit({
         type: "CHECKPOINT",
         handoffId: intent.handoffId,
-        phase: row.phase,
-        ...(row.targetChatId === null
-          ? {}
-          : { targetChatId: row.targetChatId }),
+        phase: "persisting",
+      });
+      const app = db
+        .select({ path: apps.path })
+        .from(apps)
+        .where(eq(apps.id, intent.appId))
+        .get();
+      if (!app) {
+        throw new DyadError("App not found", DyadErrorKind.NotFound);
+      }
+      const planSlug = await savePlanToDisk({
+        appPath: getDyadAppPath(app.path),
+        chatId: intent.sourceChatId,
+        title: intent.plan.title,
+        summary: intent.plan.summary,
+        content: intent.plan.content,
+        status: "accepted",
+      });
+      signal.throwIfAborted();
+      emit({
+        type: "CHECKPOINT",
+        handoffId: intent.handoffId,
+        phase: "preparing-chat",
       });
 
-      let planSlug: string;
-      if (row.phase === "accepted" || row.phase === "persisting") {
-        checkpoint(intent.handoffId, "persisting");
-        emit({
-          type: "CHECKPOINT",
-          handoffId: intent.handoffId,
-          phase: "persisting",
-        });
-        const app = db
-          .select({ path: apps.path })
-          .from(apps)
-          .where(eq(apps.id, intent.appId))
-          .get();
-        if (!app) {
-          throw new DyadError("App not found", DyadErrorKind.NotFound);
-        }
-        planSlug = await savePlanToDisk({
-          appPath: getDyadAppPath(app.path),
-          chatId: intent.sourceChatId,
-          title: intent.plan.title,
-          summary: intent.plan.summary,
-          content: intent.plan.content,
-          status: "accepted",
-        });
-        signal.throwIfAborted();
-        checkpoint(intent.handoffId, "preparing-chat");
-      } else {
-        const app = db
-          .select({ path: apps.path })
-          .from(apps)
-          .where(eq(apps.id, intent.appId))
-          .get();
-        if (!app) {
-          throw new DyadError("App not found", DyadErrorKind.NotFound);
-        }
-        planSlug = await savePlanToDisk({
-          appPath: getDyadAppPath(app.path),
-          chatId: intent.sourceChatId,
-          title: intent.plan.title,
-          summary: intent.plan.summary,
-          content: intent.plan.content,
-          status: "accepted",
-        });
-        signal.throwIfAborted();
-      }
-
-      row = db
-        .select()
-        .from(planHandoffs)
-        .where(eq(planHandoffs.handoffId, intent.handoffId))
-        .get()!;
-      let targetChatId = row.targetChatId;
+      let targetChatId = context.getSnapshot().targetChatId;
       if (!targetChatId) {
         if (intent.acceptInNewChat) {
           targetChatId = await createChatForApp({
             appId: intent.appId,
             initialChatMode: "local-agent",
-            planHandoffId: intent.handoffId,
           });
           ownedTargetChatId = targetChatId;
           signal.throwIfAborted();
@@ -277,7 +150,6 @@ function createCommandRunner(
             .where(eq(chats.id, targetChatId))
             .run();
         }
-        checkpoint(intent.handoffId, "awaiting-stream-idle", targetChatId);
       }
       emit({
         type: "CHECKPOINT",
@@ -297,7 +169,6 @@ function createCommandRunner(
         signal,
       });
 
-      checkpoint(intent.handoffId, "submitting", targetChatId);
       emit({
         type: "CHECKPOINT",
         handoffId: intent.handoffId,
@@ -312,7 +183,6 @@ function createCommandRunner(
         originWindowSessionId: intent.originWindowSessionId,
         signal,
       });
-      checkpoint(intent.handoffId, "started", targetChatId);
       emit({
         type: "CHECKPOINT",
         handoffId: intent.handoffId,
@@ -323,25 +193,10 @@ function createCommandRunner(
     } catch (error) {
       if (signal.aborted) return;
       const message = error instanceof Error ? error.message : String(error);
-      checkpoint(intent.handoffId, "failed", undefined, message);
       emit({ type: "FAILED", handoffId: intent.handoffId, error: message });
     } finally {
-      if (
-        ownedTargetChatId !== null &&
-        !db
-          .select({ handoffId: planHandoffs.handoffId })
-          .from(planHandoffs)
-          .where(eq(planHandoffs.handoffId, intent.handoffId))
-          .get()
-      ) {
-        db.delete(chats)
-          .where(
-            and(
-              eq(chats.id, ownedTargetChatId),
-              eq(chats.planHandoffId, intent.handoffId),
-            ),
-          )
-          .run();
+      if (signal.aborted && ownedTargetChatId !== null) {
+        db.delete(chats).where(eq(chats.id, ownedTargetChatId)).run();
       }
       context.tasks.remove(taskKey);
     }
@@ -365,7 +220,7 @@ function requireSourceChat(sourceChatId: number, appId?: number): void {
 export const planHandoffDefinition = {
   id: PLAN_HANDOFF_MACHINE_ID,
   host: "main",
-  initialState: (key) => decodeState(key.sourceChatId),
+  initialState,
   transition: (state, event) => transitionPlanHandoffHost(state, event),
   createScheduler: () => ({
     schedule(batch, execute) {
@@ -388,8 +243,8 @@ export const planHandoffDefinition = {
     entityDeletion: "dispose",
     rendererOwnership: "host",
     survivesRendererReload: true,
-    restartPersistence: "persistent",
-    flushOnShutdown: true,
+    restartPersistence: "ephemeral",
+    flushOnShutdown: false,
   },
   remote: {
     protocolVersion: REMOTE_MACHINE_PROTOCOL_VERSION,

@@ -1231,8 +1231,7 @@ export function registerVersionHandlers() {
             | "id"
             | "chatId"
             | "usingFreeAgentModeQuota"
-            | "userInputRequestId"
-            | "chatTurnIntentId";
+            | "userInputRequestId";
           // If a column is neither copied nor excluded, this `Exclude` is no
           // longer `never` and the assignment fails to compile, flagging the
           // unclassified column.

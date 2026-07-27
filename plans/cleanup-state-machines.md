@@ -124,8 +124,8 @@ pilot/study):
 | `github_ops`       | main                               | Git mutation/recovery is per-app, not per-window; mid-rebase must survive window close                                                                               |
 | `version_preview`  | main                               | Checkout/branch recovery is per-app; mid-checkout must survive window close                                                                                          |
 | `image_generation` | main                               | Jobs are per-chat, visible from any window                                                                                                                           |
-| `chat_stream`      | main, C3 cutover complete          | Stream lifecycle is per-chat; main owns durable intent admission, queue mutation, lifecycle, and completion receipts                                                 |
-| `plan_handoff`     | main, C3 cutover complete          | Durable cross-chat workflow with persisted checkpoints and idempotent implementation-turn admission                                                                  |
+| `chat_stream`      | main, C3 cutover complete          | Stream lifecycle is per-chat; main owns process-lifetime intent admission, queue mutation, lifecycle, and completion receipts                                        |
+| `plan_handoff`     | main, C3 cutover complete          | Process-lifetime cross-chat workflow with in-memory checkpoints and idempotent implementation-turn admission                                                         |
 | `preview_iframe`   | renderer, per-window               | Owns a window's DOM/iframe identity                                                                                                                                  |
 | `screenshot`       | renderer, per-window               | Captures a window's iframe                                                                                                                                           |
 | `voice_to_text`    | renderer, per-window               | Owns a window's media resources                                                                                                                                      |
@@ -258,7 +258,8 @@ Each C-wave PR completes this matrix before implementation:
 | `github_ops`       | Active mutation retained                                    | Reattach                                                                                               | Continue while application remains alive           | Finish or enter explicit recovery                  | Reconcile repository state                                       | Dispose actor after safe settlement                                             |
 | `version_preview`  | Active checkout/recovery retained                           | Reattach                                                                                               | Continue while application remains alive           | Preserve/enter recovery contract                   | Reconcile branch/checkout state                                  | Dispose after safe return/settlement                                            |
 | `image_generation` | Active jobs retained; terminal jobs retained for 30 minutes | Reattach to the main-owned job-list read model                                                         | Continue while application remains alive           | Stop admission; best-effort cancel; bounded settle | No active-job persistence or auto-run; committed media remains   | Best-effort cancel, bounded settle, and prune jobs for deleted app              |
-| `chat_stream`      | Active stream and queue continue                            | Bootstrap all read models                                                                              | Follow real platform shutdown boundary             | Interrupt; abort; bounded unwind                   | Hydrate queue paused; reconcile interrupted                      | Settle owners and unwind before deletion                                        |
+| `chat_stream`      | Active stream and queue continue                            | Bootstrap all read models                                                                              | Follow real platform shutdown boundary             | Interrupt; abort; bounded unwind                   | Start with an empty queue                                        | Settle owners and unwind before deletion                                        |
+| `plan_handoff`     | Active handoff continues                                    | Reattach to the main-owned snapshot                                                                    | Continue while application remains alive           | Abort and compensate owned target chat             | Start idle                                                       | Abort and dispose                                                               |
 
 Renderer-local machines always die with their renderer resources, but must
 settle or compensate their callers. The matrix records product semantics; it
@@ -762,16 +763,17 @@ disposal.
 
 Implement the G1 design only after the app-run transport proves remote
 hydration and multi-window dispatch. Preserve existing batched chunk channels;
-snapshots carry lifecycle, not stream bytes. This wave owns durable acceptance,
+snapshots carry lifecycle, not stream bytes. This wave owns process-lifetime acceptance,
 editable queue semantics, notification routing, window reload, and
 window-close behavior as one reviewed protocol.
 
-The cutover PR moves both actors to the main process, stores immutable chat
-intents and plan-handoff checkpoints in SQLite, makes queue mutations
-revision-conditional, routes plan presentation through `WindowRegistry`, and
-keeps the existing keyed chunk fan-out. Renderer controllers, the legacy queue
-file writer, and superseded projection atoms remain only as compile-time
-adapters for the immediately following deletion PR required by Phase D.
+The cutover PR moves both actors to the main process, keeps immutable chat
+intents and plan-handoff checkpoints in main-process memory, makes queue
+mutations revision-conditional, routes plan presentation through
+`WindowRegistry`, and keeps the existing keyed chunk fan-out. Renderer
+controllers, the legacy queue file writer, and superseded projection atoms
+remain only as compile-time adapters for the immediately following deletion PR
+required by Phase D.
 
 **C4 — Multi-window product surface.**
 

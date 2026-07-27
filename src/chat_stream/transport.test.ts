@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { MAX_CHAT_ATTACHMENTS_TOTAL_BYTES } from "@/shared/chatAttachmentLimits";
+import {
+  MAX_CHAT_ATTACHMENTS_TOTAL_BYTES,
+  MAX_CHAT_ERROR_CHARS,
+  MAX_CHAT_PROMPT_CHARS,
+} from "@/shared/chatAttachmentLimits";
 import {
   CHAT_STREAM_MAX_DISPATCH_ENVELOPE_BYTES,
   CHAT_STREAM_MAX_QUEUE_BYTES,
@@ -12,7 +16,7 @@ describe("chat stream remote transport", () => {
   const intent = {
     schemaVersion: 1 as const,
     intentId: "turn-1",
-    payloadHash: "hash",
+    payloadHash: "a".repeat(64),
     chatId: 12,
     invocationRef: {
       kind: "chat-stream" as const,
@@ -64,5 +68,20 @@ describe("chat stream remote transport", () => {
     expect(CHAT_STREAM_MAX_SNAPSHOT_ENVELOPE_BYTES).toBeGreaterThan(
       CHAT_STREAM_MAX_QUEUE_BYTES,
     );
+  });
+
+  it("bounds renderer-controlled strings inside the enlarged envelope", () => {
+    expect(
+      SerializableChatTurnIntentSchema.safeParse({
+        ...intent,
+        prompt: "x".repeat(MAX_CHAT_PROMPT_CHARS + 1),
+      }).success,
+    ).toBe(false);
+    expect(
+      ChatStreamIntentEventSchema.safeParse({
+        type: "REPORT_ERROR",
+        error: "x".repeat(MAX_CHAT_ERROR_CHARS + 1),
+      }).success,
+    ).toBe(false);
   });
 });

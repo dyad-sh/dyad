@@ -200,7 +200,7 @@ function turn(intentId: string): SerializableChatTurnIntent {
   return {
     schemaVersion: 1,
     intentId,
-    payloadHash: `hash-${intentId}`,
+    payloadHash: "a".repeat(64),
     chatId: 7,
     appId: 3,
     invocationRef: {

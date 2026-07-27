@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import type { ComponentSelection, FileAttachment } from "@/ipc/types";
 import type { QueuedMessageItem } from "@/atoms/chatAtoms";
 import type { Chat } from "@/ipc/types";
@@ -35,18 +35,21 @@ export function useStreamChat({
     chatId = id;
   }
   const streamState = useChatStreamState(chatId);
-  const queuedMessages: QueuedMessageItem[] =
-    streamState?.queue.map((entry) => ({
-      id: entry.itemId,
-      prompt: entry.prompt,
-      attachments: entry.attachments?.map(chatAttachmentToFileAttachment),
-      selectedComponents: entry.selectedComponents,
-      redo: entry.redo,
-      appId: entry.appId,
-      requestedChatMode: entry.requestedChatMode,
-      editable: entry.editable,
-      removable: entry.removable,
-    })) ?? [];
+  const queuedMessages = useMemo<QueuedMessageItem[]>(
+    () =>
+      streamState?.queue.map((entry) => ({
+        id: entry.itemId,
+        prompt: entry.prompt,
+        attachments: entry.attachments?.map(chatAttachmentToFileAttachment),
+        selectedComponents: entry.selectedComponents,
+        redo: entry.redo,
+        appId: entry.appId,
+        requestedChatMode: entry.requestedChatMode,
+        editable: entry.editable,
+        removable: entry.removable,
+      })) ?? [],
+    [streamState?.queue],
+  );
 
   const streamMessage = useCallback(
     async ({

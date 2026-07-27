@@ -6,6 +6,11 @@ import {
 import { ChatStreamInvocationRefSchema } from "@/ipc/types/chat";
 import { REMOTE_MACHINE_PROTOCOL_VERSION } from "@/distributed_machines/remote_protocol";
 import type { RemoteClientDefinition } from "@/distributed_machines/remote_client";
+import {
+  MAX_CHAT_ERROR_CHARS,
+  MAX_CHAT_PROMPT_CHARS,
+  MAX_CHAT_WIRE_ID_CHARS,
+} from "@/shared/chatAttachmentLimits";
 
 export const CHAT_STREAM_MACHINE_ID = "chat_stream" as const;
 const MEBIBYTE = 1_024 * 1_024;
@@ -37,13 +42,13 @@ export const ChatTurnOwnerSchema = z.discriminatedUnion("kind", [
   z
     .object({
       kind: z.literal("user-input-follow-up"),
-      requestId: z.string().min(1),
+      requestId: z.string().min(1).max(MAX_CHAT_WIRE_ID_CHARS),
     })
     .strict(),
   z
     .object({
       kind: z.literal("plan-handoff"),
-      handoffId: z.string().min(1),
+      handoffId: z.string().min(1).max(MAX_CHAT_WIRE_ID_CHARS),
     })
     .strict(),
 ]);
@@ -53,8 +58,12 @@ export const SerializableChatTurnIntentSchema = z
     schemaVersion: z.literal(1),
     intentId: z.string().min(1).max(256),
     appId: z.number().int().positive().optional(),
-    originWindowSessionId: z.string().min(1).optional(),
-    payloadHash: z.string().min(1),
+    originWindowSessionId: z
+      .string()
+      .min(1)
+      .max(MAX_CHAT_WIRE_ID_CHARS)
+      .optional(),
+    payloadHash: z.string().regex(/^[a-f0-9]{64}$/),
     owner: ChatTurnOwnerSchema.optional(),
   })
   .and(ChatStreamParamsSchema)
@@ -76,9 +85,9 @@ export type SerializableChatTurnIntent = z.infer<
 
 export const ChatQueueEntrySchema = z
   .object({
-    itemId: z.string().min(1),
-    intentId: z.string().min(1),
-    prompt: z.string(),
+    itemId: z.string().min(1).max(MAX_CHAT_WIRE_ID_CHARS),
+    intentId: z.string().min(1).max(MAX_CHAT_WIRE_ID_CHARS),
+    prompt: z.string().max(MAX_CHAT_PROMPT_CHARS),
     attachments: ChatStreamParamsSchema.shape.attachments,
     selectedComponents: ChatStreamParamsSchema.shape.selectedComponents,
     redo: z.boolean().optional(),
@@ -92,7 +101,7 @@ export const ChatQueueEntrySchema = z
 export type ChatQueueEntry = z.infer<typeof ChatQueueEntrySchema>;
 
 const expectedQueueRevision = z.number().int().nonnegative();
-const queueMutationId = z.string().min(1);
+const queueMutationId = z.string().min(1).max(MAX_CHAT_WIRE_ID_CHARS);
 
 export const ChatStreamIntentEventSchema = z.discriminatedUnion("type", [
   z
@@ -110,7 +119,7 @@ export const ChatStreamIntentEventSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("REPORT_ERROR"),
-      error: z.string().min(1),
+      error: z.string().min(1).max(MAX_CHAT_ERROR_CHARS),
     })
     .strict(),
   z
@@ -130,10 +139,10 @@ export const ChatStreamIntentEventSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("EDIT_QUEUE_ENTRY"),
-      itemId: z.string().min(1),
+      itemId: z.string().min(1).max(MAX_CHAT_WIRE_ID_CHARS),
       expectedQueueRevision,
       mutationId: queueMutationId,
-      prompt: z.string(),
+      prompt: z.string().max(MAX_CHAT_PROMPT_CHARS),
       attachments: ChatStreamParamsSchema.shape.attachments,
       selectedComponents: ChatStreamParamsSchema.shape.selectedComponents,
     })
@@ -141,7 +150,7 @@ export const ChatStreamIntentEventSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("REORDER_QUEUE_ENTRY"),
-      itemId: z.string().min(1),
+      itemId: z.string().min(1).max(MAX_CHAT_WIRE_ID_CHARS),
       toIndex: z.number().int().nonnegative(),
       expectedQueueRevision,
       mutationId: queueMutationId,
@@ -150,7 +159,7 @@ export const ChatStreamIntentEventSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("REMOVE_QUEUE_ENTRY"),
-      itemId: z.string().min(1),
+      itemId: z.string().min(1).max(MAX_CHAT_WIRE_ID_CHARS),
       expectedQueueRevision,
       mutationId: queueMutationId,
     })

@@ -142,11 +142,6 @@ export interface RemoteMachineContract<
    */
   readonly canonicalizeKeyAfterAuthorization?: (key: Key) => Key;
   readonly eventCodec: z.ZodType<Event>;
-  /**
-   * Per-machine override for valid events that exceed the transport's
-   * conservative default. The event codec must independently bound payloads.
-   */
-  readonly maxDispatchEnvelopeBytes?: number;
   readonly snapshotCodec: z.ZodType<RemoteState>;
   readonly keyToString: (key: Key) => string;
   readonly projectSnapshot: (

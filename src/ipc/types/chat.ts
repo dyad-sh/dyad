@@ -14,6 +14,10 @@ import {
 import {
   CHAT_ATTACHMENT_COUNT_LIMIT_MESSAGE,
   MAX_CHAT_ATTACHMENTS,
+  MAX_CHAT_COMPONENT_FIELD_CHARS,
+  MAX_CHAT_COMPONENT_SELECTIONS,
+  MAX_CHAT_PROMPT_CHARS,
+  MAX_CHAT_WIRE_ID_CHARS,
   validateSerializedChatAttachments,
 } from "../../shared/chatAttachmentLimits";
 import type { ChatStreamInvocationRef } from "@/chat_stream/state";
@@ -64,10 +68,10 @@ export type Chat = z.infer<typeof ChatSchema>;
  * Schema for component selection (used in chat context).
  */
 export const ComponentSelectionSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  runtimeId: z.string().optional(),
-  relativePath: z.string(),
+  id: z.string().max(MAX_CHAT_COMPONENT_FIELD_CHARS),
+  name: z.string().max(MAX_CHAT_COMPONENT_FIELD_CHARS),
+  runtimeId: z.string().max(MAX_CHAT_COMPONENT_FIELD_CHARS).optional(),
+  relativePath: z.string().max(MAX_CHAT_COMPONENT_FIELD_CHARS),
   lineNumber: z.number(),
   columnNumber: z.number(),
 });
@@ -82,8 +86,8 @@ export type ComponentSelection = z.infer<typeof ComponentSelectionSchema>;
  * reject stored data that was valid when written.
  */
 export const ChatAttachmentShapeSchema = z.object({
-  name: z.string(),
-  type: z.string(),
+  name: z.string().max(1024),
+  type: z.string().max(256),
   data: z.string(), // Base64 encoded
   attachmentType: z.enum(["upload-to-codebase", "chat-context"]),
 });
@@ -139,7 +143,7 @@ export const ChatStreamInvocationRefSchema: z.ZodType<ChatStreamInvocationRef> =
   z.object({
     kind: z.literal("chat-stream"),
     entityKey: z.number(),
-    operationId: z.string().min(1),
+    operationId: z.string().min(1).max(MAX_CHAT_WIRE_ID_CHARS),
   });
 
 export const ChatStreamParamsSchema = z
@@ -150,14 +154,17 @@ export const ChatStreamParamsSchema = z
     invocationRef: ChatStreamInvocationRefSchema.optional(),
     /** @deprecated Compatibility with renderer generations predating InvocationRef. */
     streamId: z.number().optional(),
-    prompt: z.string(),
+    prompt: z.string().max(MAX_CHAT_PROMPT_CHARS),
     /** Durable idempotency identity owned by the main chat actor. */
     intentId: z.string().min(1).max(256).optional(),
     redo: z.boolean().optional(),
     attachments: ChatAttachmentsSchema.optional(),
-    selectedComponents: z.array(ComponentSelectionSchema).optional(),
+    selectedComponents: z
+      .array(ComponentSelectionSchema)
+      .max(MAX_CHAT_COMPONENT_SELECTIONS)
+      .optional(),
     requestedChatMode: ChatModeSchema.nullable().optional(),
-    userInputRequestId: z.string().optional(),
+    userInputRequestId: z.string().max(MAX_CHAT_WIRE_ID_CHARS).optional(),
     planAcceptInNewChat: z.boolean().optional(),
   })
   .superRefine((params, context) => {

@@ -137,6 +137,21 @@ describe("useStreamChat main-owned queue", () => {
 
     expect(mocks.showError).toHaveBeenCalledWith(rejection);
   });
+
+  it("does not rebuild queued attachments when the queue is unchanged", () => {
+    const { Wrapper } = makeWrapper();
+    mocks.streamState.current.queue = [
+      { itemId: "with-attachment", prompt: "Inspect", attachments: [] },
+    ];
+    const { result, rerender } = renderHook(() => useStreamChat(), {
+      wrapper: Wrapper,
+    });
+    const firstProjection = result.current.queuedMessages;
+
+    rerender();
+
+    expect(result.current.queuedMessages).toBe(firstProjection);
+  });
 });
 
 describe("useStreamChat lifecycle intents", () => {

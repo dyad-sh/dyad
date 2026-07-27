@@ -5,6 +5,9 @@ import {
   defineContract,
   defineEvent,
 } from "../contracts/core";
+// Relative import: this module is pulled into the preload bundle, which cannot
+// resolve the "@/" alias.
+import { AssertionPlanItemSchema } from "../../lib/test_recorder/assertion_proposal";
 
 // =============================================================================
 // E2E spec-file identity
@@ -280,10 +283,44 @@ export const MigrateLegacyTestsResultSchema = z.object({
 });
 
 // =============================================================================
+// AI-proposed assertions
+//
+// The proposal is produced by the agent's `generate_test_assertions` tool and
+// rendered as a chat card; only the user's approval comes back over IPC.
+// =============================================================================
+
+export const ApplyTestAssertionsParamsSchema = z.object({
+  appId: z.number(),
+  chatId: z.number(),
+  proposalId: z.string(),
+  /** The card's current plan, in the order the user approved. */
+  items: z.array(AssertionPlanItemSchema),
+});
+export type ApplyTestAssertionsParams = z.infer<
+  typeof ApplyTestAssertionsParamsSchema
+>;
+
+export const ApplyTestAssertionsResultSchema = z.object({
+  specPath: z.string(),
+  appliedCount: z.number(),
+  /** Set when the apply succeeded but something was skipped or was a no-op. */
+  warning: z.string().optional(),
+});
+export type ApplyTestAssertionsResult = z.infer<
+  typeof ApplyTestAssertionsResultSchema
+>;
+
+// =============================================================================
 // Tests Contracts
 // =============================================================================
 
 export const testsContracts = {
+  applyTestAssertions: defineContract({
+    channel: "tests:apply-assertions",
+    input: ApplyTestAssertionsParamsSchema,
+    output: ApplyTestAssertionsResultSchema,
+  }),
+
   listAppTests: defineContract({
     channel: "tests:list",
     input: ListAppTestsParamsSchema,

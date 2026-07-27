@@ -49,6 +49,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useStreamChat } from "@/hooks/useStreamChat";
+import { useChatMode } from "@/hooks/useChatMode";
+import { AgentModeRequiredDialog } from "./AgentModeRequiredDialog";
 import {
   selectedComponentsPreviewAtom,
   visualEditingSelectedComponentAtom,
@@ -253,7 +255,12 @@ export const PreviewIframe = ({
   const { appUrl, originalUrl, mode } = useCurrentAppUrl(selectedAppId);
   const appRunManager = useAppRunRemoteManager();
   const selectedChatId = useAtomValue(selectedChatIdAtom);
+  // Spec awaiting the Agent-mode confirmation, or null when no dialog is open.
+  const [assertionsAgentModeSpecPath, setAssertionsAgentModeSpecPath] =
+    useState<string | null>(null);
   const { streamMessage } = useStreamChat();
+  const { effectiveMode } = useChatMode(selectedChatId);
+  const isAgentMode = effectiveMode === "local-agent";
   const {
     routes: availableRoutes,
     loading: routesLoading,
@@ -335,20 +342,36 @@ export const PreviewIframe = ({
     recorder.dismissSaved();
   };
 
-  const handleEnhanceWithAI = (specPath: string) => {
+  // Ask the agent for assertions rather than letting it rewrite the file: its
+  // `generate_test_assertions` tool posts a reviewable card into the chat, and
+  // the user approves the assertions (and their order) before anything touches
+  // the spec.
+  const doEnhanceWithAI = (specPath: string) => {
     if (!selectedChatId) {
       showInfo("Open a chat to enhance the recorded test with AI.");
       return;
     }
     streamMessage({
-      prompt:
-        `I recorded a Playwright test at \`${specPath}\`. Read it, keep the recorded ` +
-        `interactions and the \`signIn\` fixture usage intact, and add meaningful ` +
-        `assertions (\`expect(...)\`) after the key steps so the test verifies the ` +
-        `flow's outcomes. Rewrite the whole file.`,
+      prompt: [
+        `Add assertions to the test I just recorded: ${specPath}`,
+        "",
+        "Read the spec, then call your generate_test_assertions tool with one step description per statement plus the assertions you'd propose. Don't edit the file or run the test — I'll review the assertions and approve them myself.",
+      ].join("\n"),
       chatId: selectedChatId,
+      requestedChatMode: "local-agent",
     });
+    showInfo("Sent to chat — asking the AI for assertions…");
     recorder.dismissSaved();
+  };
+
+  // Confirm the switch to Agent mode first when the chat is in another mode,
+  // matching the Tests panel's "Generate test" / "Fix with AI" entry points.
+  const handleEnhanceWithAI = (specPath: string) => {
+    if (isAgentMode) {
+      doEnhanceWithAI(specPath);
+    } else {
+      setAssertionsAgentModeSpecPath(specPath);
+    }
   };
   const previewToolbarRef = useRef<HTMLDivElement>(null);
   const [previewToolbarWidth, setPreviewToolbarWidth] = useState<number | null>(
@@ -1681,7 +1704,7 @@ export const PreviewIframe = ({
                     handleEnhanceWithAI(recorder.savedSpecPath)
                   }
                   data-testid="preview-recording-enhance-button"
-                  className="ml-auto flex items-center gap-1 rounded-md bg-purple-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-purple-700"
+                  className="ml-auto flex items-center gap-1 rounded-md bg-purple-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-purple-700 disabled:opacity-60"
                 >
                   <Sparkles size={12} /> Add assertions with AI
                 </button>
@@ -1724,6 +1747,20 @@ export const PreviewIframe = ({
           )}
         </div>
       )}
+
+      <AgentModeRequiredDialog
+        open={assertionsAgentModeSpecPath !== null}
+        onOpenChange={(open) => {
+          if (!open) setAssertionsAgentModeSpecPath(null);
+        }}
+        action="assertions"
+        onContinue={() => {
+          if (assertionsAgentModeSpecPath) {
+            doEnhanceWithAI(assertionsAgentModeSpecPath);
+          }
+          setAssertionsAgentModeSpecPath(null);
+        }}
+      />
 
       <div className="relative flex-grow overflow-hidden">
         {!loading && (

@@ -17,6 +17,10 @@ import {
   matchConsentClassifierPayload,
   SLOW_CONSENT_TOOL,
 } from "./consentClassifier";
+import {
+  matchAssertionCodePayload,
+  matchAssertionsAgentTurn,
+} from "./testAssertionsFixtures";
 
 let globalCounter = 0;
 
@@ -298,6 +302,24 @@ export const createChatCompletionHandler =
       messageContent =
         "## Key Decisions Made\n- Completed initial task as requested\n\n## Current Task State\nConversation was compacted to save context space.";
     }
+    // See testAssertionsFixtures.ts: read the recorded spec, then propose the
+    // plan through the agent's generate_test_assertions tool.
+    const assertionsToolCall = matchAssertionsAgentTurn(
+      userTextContent,
+      messages.map(getTextContent),
+    );
+    if (assertionsToolCall) {
+      if (stream) {
+        await streamToolCall(
+          res,
+          assertionsToolCall.name,
+          assertionsToolCall.args,
+        );
+        return;
+      }
+      sendToolCallJson(res, assertionsToolCall.name, assertionsToolCall.args);
+      return;
+    }
     if (isExploreCodeSubagentPrompt(userTextContent)) {
       const toolName = hasExploreCodeToolResult(messages, getTextContent)
         ? "submit_report"
@@ -553,6 +575,12 @@ export default Index;
     ) {
       messageContent = `[[STRING_IS_FINISHED]]";</dyad-write>\nFinished writing file.`;
       messageContent += "\n\n" + generateDump(req);
+    }
+    // See testAssertionsFixtures.ts: code synthesis for assertions the user
+    // edited before approving the card.
+    const assertionsMatch = matchAssertionCodePayload(lastMessageText);
+    if (assertionsMatch) {
+      messageContent = assertionsMatch;
     }
     // See consentClassifier.ts: fake decisions for the MCP auto-consent
     // classifier, shared with the responses fake route.

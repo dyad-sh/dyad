@@ -13,14 +13,22 @@ interface AgentModeRequiredDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onContinue: () => void;
-  action: "generate" | "fix";
+  action: "generate" | "fix" | "assertions";
 }
 
+const DESCRIPTIONS: Record<AgentModeRequiredDialogProps["action"], string> = {
+  generate:
+    "Generating an end-to-end test runs in Agent mode, which can explore your app, write the test, run it, and fix failures. Continue will send this request in Agent mode.",
+  fix: "Fixing a failing test runs in Agent mode, which can edit files and run your tests to verify the fix. Continue will send this request in Agent mode.",
+  assertions:
+    "Adding assertions runs in Agent mode, which reads your recorded test and proposes assertions you can review before they're saved. Continue will send this request in Agent mode.",
+};
+
 /**
- * Confirmation shown when the user triggers "Generate test" / "Fix with AI"
- * while the current chat isn't in Agent mode. Writing and fixing tests happens
- * in Agent mode (it edits files and runs tests), so Continue sends the request
- * in Agent mode regardless of the chat's current mode.
+ * Confirmation shown when the user triggers "Generate test" / "Fix with AI" /
+ * "Add assertions with AI" while the current chat isn't in Agent mode. All
+ * three run in Agent mode (they read the app and edit files), so Continue sends
+ * the request in Agent mode regardless of the chat's current mode.
  */
 export function AgentModeRequiredDialog({
   open,
@@ -34,9 +42,7 @@ export function AgentModeRequiredDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>Switch to Agent mode?</AlertDialogTitle>
           <AlertDialogDescription>
-            {action === "generate"
-              ? "Generating an end-to-end test runs in Agent mode, which can explore your app, write the test, run it, and fix failures. Continue will send this request in Agent mode."
-              : "Fixing a failing test runs in Agent mode, which can edit files and run your tests to verify the fix. Continue will send this request in Agent mode."}
+            {DESCRIPTIONS[action]}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

@@ -462,6 +462,16 @@ After writing or updating a spec, VERIFY it with \`run_tests\` and fix any failu
 If you're genuinely unsure whether a change warrants a test, lean toward covering real user-facing behavior; skip it (and say so) for trivial changes.`;
 
 /**
+ * Guidance for annotating a recorded spec, which goes through the
+ * `generate_test_assertions` tool's review card instead of a file edit.
+ */
+const AGENT_RECORDED_TEST_GUIDANCE = `## Adding assertions to a recorded test
+
+Dyad's recorder produces specs that are a flat list of the interactions it captured, with no assertions. When the user asks you to add assertions to (or "enhance") one of those, do NOT edit the file: \`read_file\` the spec, then call \`generate_test_assertions\` with one step description per statement plus the assertions you'd propose. It shows the user a card where they can reword, delete, add, and reorder assertions, and Dyad writes the approved ones into the spec itself. Stop after the call — don't edit the spec or run the test.
+
+This applies only to recorded specs. Write and edit hand-written specs normally with \`write_file\` / \`search_replace\`.`;
+
+/**
  * Local-agent test-writing guidance: proactively keep tests in sync, write the
  * spec with the `write_file` tool, then verify and iterate with `run_tests`.
  * Dyad detects `.spec.ts` files and surfaces them in the Tests panel where the
@@ -472,6 +482,8 @@ export const AGENT_TEST_WRITING_GUIDANCE = `${AGENT_PROACTIVE_TESTS_GUIDANCE}
 ${buildTestWritingGuidance(
   `- Write it with the \`write_file\` tool to a path ending in \`.spec.ts\` under \`e2e-tests/\` (e.g. \`e2e-tests/signup.spec.ts\`). Dyad detects \`.spec.ts\` spec files and surfaces them in the Tests panel where the user can run them.`,
 )}
+
+${AGENT_RECORDED_TEST_GUIDANCE}
 
 ${AGENT_RUN_TESTS_GUIDANCE}`;
 

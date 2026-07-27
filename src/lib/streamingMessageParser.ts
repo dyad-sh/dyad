@@ -73,6 +73,7 @@ const DYAD_CUSTOM_TAG_NAMES = [
   "dyad-script",
   "dyad-app-blueprint",
   "dyad-security-finding",
+  "dyad-test-assertions",
   // Legacy: no longer emitted (test writing moved to the agent's write_file /
   // run_tests tools), but historical chats still contain it and must render as
   // a file-write card rather than raw markup.

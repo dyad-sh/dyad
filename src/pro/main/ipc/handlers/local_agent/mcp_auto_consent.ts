@@ -6,6 +6,7 @@ import type { LargeLanguageModel, UserSettings } from "@/lib/schemas";
 import { buildMcpConsentSystemPrompt } from "@/prompts/mcp_consent_policy";
 import type { McpAutoApproveResult } from "@/ipc/utils/mcp_consent";
 import { fastTextOutput } from "@/ipc/utils/stream_text_utils";
+import { extractJson } from "@/ipc/utils/extract_json";
 import {
   formatRecentTurns,
   getRecentTurnsForConsent,
@@ -48,13 +49,6 @@ const rawDecisionSchema = z.object({
   reason: z.string().optional(),
   decision: z.enum(["allow", "ask"]),
 });
-
-function extractJson(text: string): string | null {
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start === -1 || end === -1 || end < start) return null;
-  return text.slice(start, end + 1);
-}
 
 function buildUserPayload(input: ClassifyMcpToolConsentInput): string {
   const schema = input.inputSchema

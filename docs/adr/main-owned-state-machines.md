@@ -352,6 +352,43 @@ Actionable user-input presentation is broadcast according to recorded decision
 | `BANNER_DISMISSED`, `RECONCILE_REQUESTED`                                                                                                                              | Idempotent/current-agnostic; no revision. Reconciliation probes repository truth before applying a lifecycle change. |
 | `OP_SUCCEEDED`, `OP_FAILED`, `CONFLICTS`, `GIT_STATE`                                                                                                                  | Host-only command/probe settlement correlated to the active operation internally.                                    |
 
+The C2 implementation verified the lifecycle row against the current Git
+operations: mutations already run to process settlement in main, repository
+truth is recoverable from Git metadata, and app deletion is serialized with
+the per-app mutation lock. The hosted actor therefore retains active work with
+no subscribers, survives reload and last-window close, reconciles Git state
+when recreated, and is disposed only after deletion has acquired the same
+per-app lock. Shutdown stops new admission and lets already-started Git
+commands settle; an interrupted process is recovered from repository truth on
+the next start rather than replayed.
+
+Serializability audit:
+
+- `GithubOpsState`, operations, banners, failures, conflict names, and all
+  renderer intents are plain encoded values. Active command settlement uses a
+  typed `GithubOpsInvocationRef`; callbacks, promises, process handles,
+  `Error` instances, and service objects are excluded from state and events.
+- `OP_SUCCEEDED`, `OP_FAILED`, `CONFLICTS`, and `GIT_STATE` are host-only.
+  Renderer codecs admit only the intent rows above.
+- The former per-app conflict-resolution callback registry is replaced by the
+  remote dispatch receipt. After main applies `RESOLVE_WITH_AI_STARTED`, only
+  the initiating renderer starts its local chat/navigation flow, using the
+  conflict names from the accepted snapshot.
+
+The remote read model contains the existing `GithubOpsState` projection,
+snapshot revision, and the active typed invocation reference needed for
+cancellation. Conflict entries are repository-relative names required by the
+existing resolution UI. It excludes access tokens, authenticated remote URLs,
+absolute app/repository paths, Git command handles, and settings/database
+records.
+
+The migration deletion budget is the renderer `GithubOpsController`,
+`GithubOpsManager`, `GithubOpsCommandRunner`, its hand-written FIFO and probe
+generation maps, the conflict-runner registry, and the mutation/probe IPC
+channels used only by that adapter. Branch and app cache refreshes move to the
+global query-invalidation epoch channel; the existing branch inventory query
+and `useGithubOps`/`projectGithubOps` consumer surface remain.
+
 ### `version_preview`
 
 | Event                                                                                                                                                                                                                 | Classification and admission                                                                                           |

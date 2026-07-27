@@ -628,7 +628,7 @@ async function handleIsRepoAvailable(
 }
 
 // --- GitHub Create Repo Handler ---
-async function handleCreateRepo(
+export async function handleCreateRepo(
   event: IpcMainInvokeEvent,
   {
     org,
@@ -736,7 +736,7 @@ async function handleCreateRepo(
 }
 
 // --- GitHub Connect to Existing Repo Handler ---
-async function handleConnectToExistingRepo(
+export async function handleConnectToExistingRepo(
   event: IpcMainInvokeEvent,
   {
     owner,
@@ -793,7 +793,7 @@ async function handleConnectToExistingRepo(
 }
 
 // --- GitHub Push Handler ---
-async function handlePushToGithub(
+export async function handlePushToGithub(
   event: IpcMainInvokeEvent,
   {
     appId,
@@ -868,7 +868,7 @@ async function handlePushToGithub(
   });
 }
 
-async function handleAbortRebase(
+export async function handleAbortRebase(
   event: IpcMainInvokeEvent,
   { appId }: { appId: number },
 ): Promise<void> {
@@ -879,7 +879,7 @@ async function handleAbortRebase(
   await gitRebaseAbort({ path: appPath });
 }
 
-async function handleContinueRebase(
+export async function handleContinueRebase(
   event: IpcMainInvokeEvent,
   { appId }: { appId: number },
 ): Promise<void> {
@@ -890,7 +890,7 @@ async function handleContinueRebase(
   await gitRebaseContinue({ path: appPath });
 }
 // --- GitHub Rebase Handler ---
-async function handleRebaseFromGithub(
+export async function handleRebaseFromGithub(
   event: IpcMainInvokeEvent,
   { appId }: { appId: number },
 ): Promise<void> {
@@ -950,7 +950,7 @@ export async function ensureCleanWorkspace(
   );
 }
 
-async function handleGetGitState(
+export async function handleGetGitState(
   event: IpcMainInvokeEvent,
   { appId }: { appId: number },
 ): Promise<{ mergeInProgress: boolean; rebaseInProgress: boolean }> {
@@ -1131,7 +1131,7 @@ async function handleRemoveCollaborator(
   }
 }
 
-async function handleGetMergeConflicts(
+export async function handleGetMergeConflicts(
   event: IpcMainInvokeEvent,
   { appId }: { appId: number },
 ): Promise<string[]> {
@@ -1143,7 +1143,7 @@ async function handleGetMergeConflicts(
   return conflicts;
 }
 
-async function handleDisconnectGithubRepo(
+export async function handleDisconnectGithubRepo(
   event: IpcMainInvokeEvent,
   { appId }: { appId: number },
 ): Promise<void> {

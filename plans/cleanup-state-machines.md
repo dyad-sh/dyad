@@ -656,6 +656,16 @@ Each requires serializability audit, safe remote projection, lifecycle-matrix
 completion, deletion budget, crash/reload tests, same-entity-two-window tests,
 and window-close-mid-operation tests.
 
+Status: **`github_ops` cutover implemented** — the verified lifecycle policy,
+serializability audit, safe projection, conflict-resolution receipt decision,
+and renderer adapter/channel deletion budget are recorded in the
+[B0 ADR](../docs/adr/main-owned-state-machines.md#github_ops). Main now owns
+the actor and Git command execution, renderers consume its revisioned read
+model, and B1 publishes branch/app/version invalidations. The superseded
+renderer controller/manager/IPC mutation stack remains temporarily for the
+required separate trailing deletion PR. Acceptance is pending review and
+merge.
+
 `connection_flow` and `mcp_oauth` are already correctly main-authoritative.
 First expose them through the common remote reference/read-model contract if
 needed. Their listener, timer, waiter, claim, and close-barrier registries stay

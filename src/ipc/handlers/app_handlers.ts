@@ -133,6 +133,7 @@ import { readAppFileForEditor } from "../utils/bounded_text_file";
 import { queryInvalidationBus } from "@/window_infrastructure/main/query_invalidation_bus";
 import { entityDisposalBus } from "@/window_infrastructure/main/entity_disposal_bus";
 import { appRunActorService } from "../services/app_run_actor_service";
+import { githubOpsActorService } from "../services/github_ops_actor_service";
 
 const logger = log.scope("app_handlers");
 const handle = createLoggedHandler(logger);
@@ -388,6 +389,7 @@ async function deleteAppById(
     if (!app) {
       if (options.allowMissing && options.knownAppPath) {
         await appRunActorService.disposeApp(appId);
+        await githubOpsActorService.disposeApp(appId);
         appRuntimeService.cleanup(appId);
         await removeAppFiles(appId, options.knownAppPath);
         return;
@@ -406,6 +408,7 @@ async function deleteAppById(
       }
     }
     await appRunActorService.disposeApp(appId);
+    await githubOpsActorService.disposeApp(appId);
 
     // Clear logs for this app to prevent memory leak
     appRuntimeService.clearRuntimeLogs(appId);
@@ -1396,6 +1399,8 @@ export function registerAppHandlers() {
     logger.log("all running apps stopped.");
     await appRunActorService.disposeAllApps();
     logger.log("all app run actors disposed.");
+    await githubOpsActorService.disposeAllApps();
+    logger.log("all GitHub operation actors disposed.");
     // Determine the paths of all apps in the database so that we can delete them.
     // We do the deletion last, so technically this is a TOCTOU race, but
     // it allows us to do the deletion last after removing the database

@@ -13,6 +13,7 @@ interface UseResolveMergeConflictsWithAIProps {
   appId: number;
   conflicts: readonly string[];
   onStartResolving?: () => void;
+  onStartFailed?: () => void;
 }
 
 /**
@@ -23,6 +24,7 @@ export function useResolveMergeConflictsWithAI({
   appId,
   conflicts,
   onStartResolving,
+  onStartFailed,
 }: UseResolveMergeConflictsWithAIProps) {
   const setSelectedChatId = useSetAtom(selectedChatIdAtom);
   const setSelectedAppId = useSetAtom(selectedAppIdAtom);
@@ -92,6 +94,7 @@ For each file, review the conflict markers (<<<<<<<, =======, >>>>>>>) and choos
           },
         });
       } catch (error: unknown) {
+        onStartFailed?.();
         showError(
           error instanceof Error
             ? error.message
@@ -104,6 +107,7 @@ For each file, review the conflict markers (<<<<<<<, =======, >>>>>>>) and choos
     [
       appId,
       onStartResolving,
+      onStartFailed,
       setSelectedChatId,
       setSelectedAppId,
       navigate,

@@ -32,8 +32,8 @@ import { GithubBranchManager } from "@/components/GithubBranchManager";
 import { useResolveMergeConflictsWithAI } from "@/hooks/useResolveMergeConflictsWithAI";
 import { slugifyAppPath } from "@/shared/slugify";
 import {
+  isAppliedGithubOpsReceipt,
   useGithubOps,
-  useRegisterGithubConflictResolution,
 } from "@/github_ops/useGithubOps";
 import {
   acknowledgeConnectionFlow,
@@ -85,7 +85,12 @@ function ConnectedGitHubConnector({
   app,
 }: ConnectedGitHubConnectorProps) {
   const [showForceDialog, setShowForceDialog] = useState(false);
-  const { projection, send } = useGithubOps(appId);
+  const {
+    projection,
+    send,
+    dispatchConflictResolutionStarted,
+    dispatchConflictResolutionCancelled,
+  } = useGithubOps(appId);
   const {
     banner,
     capabilities: {
@@ -111,16 +116,19 @@ function ConnectedGitHubConnector({
     runningOperation,
   } = projection;
 
-  const clearResolvedConflicts = useCallback(
-    () => send({ type: "CONFLICTS", files: [] }),
-    [send],
-  );
   const { resolveFilesWithAI, isResolving } = useResolveMergeConflictsWithAI({
     appId,
     conflicts,
-    onStartResolving: clearResolvedConflicts,
+    onStartResolving: () => void dispatchConflictResolutionStarted(),
+    onStartFailed: () => void dispatchConflictResolutionCancelled(),
   });
-  useRegisterGithubConflictResolution(appId, resolveFilesWithAI);
+
+  const startConflictResolution = useCallback(async () => {
+    const receipt = await send({ type: "RESOLVE_WITH_AI_STARTED" });
+    if (isAppliedGithubOpsReceipt(receipt)) {
+      await resolveFilesWithAI(conflicts);
+    }
+  }, [conflicts, resolveFilesWithAI, send]);
 
   const isDisconnecting = runningOperation?.type === "disconnect";
   const isRebaseActionPending = isOperationInFlight || !!rebaseAction;
@@ -304,7 +312,7 @@ function ConnectedGitHubConnector({
           </p>
           <div className="flex gap-2">
             <Button
-              onClick={() => send({ type: "RESOLVE_WITH_AI_STARTED" })}
+              onClick={() => void startConflictResolution()}
               disabled={!canResolveConflicts || isCancellingSync || isResolving}
             >
               {isResolving ? "Resolving..." : "Resolve merge conflicts with AI"}

@@ -387,6 +387,12 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   expected ignore reason.
 - `boundaries.test.ts` enforces kernel purity and machine-to-machine isolation;
   add new machine directories to its inventory when they are introduced.
+- Keep host-only distributed-machine definitions outside shared machine
+  directories (for example, under `src/ipc/services/` for a main-owned actor).
+  Shared machine directories are scanned as renderer-reachable code and may
+  not import IPC, Electron, or WindowRegistry internals. Add every intentional
+  distributed-machine consumer to the exact inventory in
+  `src/distributed_machines/boundaries.test.ts`.
 - Keep remote transport test doubles behind an existing domain test-support
   facade. Renderer and hybrid harnesses may consume that facade, but must not
   widen the allowlist of production modules that import transport internals.

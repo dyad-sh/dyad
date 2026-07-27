@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   controllerSend: vi.fn(),
   invalidateChats: vi.fn(),
   navigate: vi.fn(),
+  onStartFailed: vi.fn(),
   onStartResolving: vi.fn(),
   refreshApp: vi.fn(),
   showError: vi.fn(),
@@ -126,6 +127,7 @@ describe("useResolveMergeConflictsWithAI", () => {
         useResolveMergeConflictsWithAI({
           appId: APP_ID,
           conflicts: ["src/one.ts"],
+          onStartFailed: mocks.onStartFailed,
         }),
       { wrapper: Wrapper },
     );
@@ -147,6 +149,7 @@ describe("useResolveMergeConflictsWithAI", () => {
 
     expect(result.current.isResolving).toBe(false);
     expect(mocks.showError).toHaveBeenCalledExactlyOnceWith("create failed");
+    expect(mocks.onStartFailed).toHaveBeenCalledOnce();
     expect(mocks.controllerSend).not.toHaveBeenCalled();
   });
 

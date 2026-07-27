@@ -48,7 +48,7 @@ import type {
 
 const logger = log.scope("git_branch_handlers");
 
-async function handleAbortMerge(
+export async function handleAbortMerge(
   event: IpcMainInvokeEvent,
   { appId }: GitBranchAppIdParams,
 ): Promise<void> {
@@ -60,7 +60,7 @@ async function handleAbortMerge(
 }
 
 // --- GitHub Fetch Handler ---
-async function handleFetchFromGithub(
+export async function handleFetchFromGithub(
   event: IpcMainInvokeEvent,
   { appId }: GitBranchAppIdParams,
 ): Promise<void> {
@@ -86,7 +86,7 @@ async function handleFetchFromGithub(
 }
 
 // --- GitHub Branch Handlers ---
-async function handleCreateBranch(
+export async function handleCreateBranch(
   event: IpcMainInvokeEvent,
   { appId, branch, from }: CreateGitBranchParams,
 ): Promise<void> {
@@ -182,7 +182,7 @@ export async function handleDeleteBranch(
   }
 }
 
-async function handleSwitchBranch(
+export async function handleSwitchBranch(
   event: IpcMainInvokeEvent,
   { appId, branch }: GitBranchParams,
 ): Promise<void> {
@@ -221,7 +221,7 @@ async function handleSwitchBranch(
   });
 }
 
-async function handleRenameBranch(
+export async function handleRenameBranch(
   event: IpcMainInvokeEvent,
   { appId, oldBranch, newBranch }: RenameGitBranchParams,
 ): Promise<void> {
@@ -251,7 +251,7 @@ async function handleRenameBranch(
   }
 }
 
-async function handleMergeBranch(
+export async function handleMergeBranch(
   event: IpcMainInvokeEvent,
   { appId, branch }: GitBranchParams,
 ): Promise<void> {
@@ -426,7 +426,7 @@ async function handleDiscardChanges(
 }
 
 // --- GitHub Pull Handler ---
-async function handlePullFromGithub(
+export async function handlePullFromGithub(
   event: IpcMainInvokeEvent,
   { appId }: GitBranchAppIdParams,
 ): Promise<void> {

@@ -508,8 +508,22 @@ export const versionPreviewDefinition: Definition = {
     return runner;
   },
   createObserver: (context) => ({
-    onTransitionApplied: ({ state }) => {
+    onTransitionApplied: ({ state, event }) => {
       versionPreviewPersistence.schedule(context.key.appId, state.state);
+      if (state.activeInvocationRef === null) {
+        const operationId =
+          "operationId" in event
+            ? event.operationId
+            : "invocationRef" in event
+              ? event.invocationRef.operationId
+              : state.lastSettlement?.operationId;
+        if (operationId) versionPreviewPresentationService.forget(operationId);
+      }
+    },
+    onEventIgnored: ({ event }) => {
+      if ("operationId" in event) {
+        versionPreviewPresentationService.forget(event.operationId);
+      }
     },
   }),
   lifecycle: {

@@ -1,13 +1,23 @@
 import { StrictMode } from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { getDefaultStore } from "jotai";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useVersionPreview } from "@/hooks/useVersionPreview";
 import { CLOSED_STATE } from "./state";
 import { VersionPreviewProvider } from "./VersionPreviewProvider";
 
 const actor = {
   dispatch: vi.fn().mockResolvedValue({ kind: "applied" }),
+  getStatus: vi.fn(() => "ready"),
+  resync: vi.fn(async () => undefined),
   getView: () => ({
     state: {
       appId: 1,
@@ -51,6 +61,9 @@ function Probe() {
 describe("VersionPreviewProvider", () => {
   beforeEach(() => {
     actor.dispatch.mockReset().mockResolvedValue({ kind: "applied" });
+    actor.getStatus.mockReturnValue("ready");
+    actor.resync.mockClear();
+    getDefaultStore().set(selectedAppIdAtom, null);
   });
 
   it("keeps window-local presentation live across StrictMode replay", async () => {
@@ -107,5 +120,31 @@ describe("VersionPreviewProvider", () => {
     expect(
       screen.getByTestId("selection-probe").getAttribute("data-state"),
     ).toBe("closed");
+  });
+
+  it("resyncs and retries stale app-switch cleanup", async () => {
+    getDefaultStore().set(selectedAppIdAtom, 1);
+    actor.dispatch
+      .mockResolvedValueOnce({
+        kind: "rejected",
+        reason: "revision-conflict",
+      })
+      .mockResolvedValueOnce({ kind: "applied" });
+    const queryClient = new QueryClient();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <VersionPreviewProvider>
+          <div>content</div>
+        </VersionPreviewProvider>
+      </QueryClientProvider>,
+    );
+
+    act(() => getDefaultStore().set(selectedAppIdAtom, 2));
+
+    await waitFor(() => expect(actor.dispatch).toHaveBeenCalledTimes(2));
+    expect(actor.resync).toHaveBeenCalled();
+    expect(actor.dispatch.mock.calls[0]?.[0]).toEqual(
+      actor.dispatch.mock.calls[1]?.[0],
+    );
   });
 });

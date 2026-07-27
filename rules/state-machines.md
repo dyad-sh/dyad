@@ -353,7 +353,10 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   when acknowledgement fails or the claim expires.
 - An unavailable/bootstrap remote snapshot is not authoritative idle state.
   Gate every actor-backed capability on a ready connection and defer recovery
-  dispatches until subscription bootstrap has completed.
+  dispatches until subscription bootstrap has completed. Cleanup dispatched
+  while navigating away must temporarily retain the old actor, resync stale
+  revisions, and retry with the same stable operation identity; losing an exit
+  intent can leave the external resource under hidden retained ownership.
 - A safe remote projection contains only domain facts needed by consumers.
   Keep window-local presentation fields out of the authoritative snapshot and
   route one-shot toast/navigation outcomes to the initiating window. Publish

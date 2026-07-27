@@ -16,8 +16,10 @@ export class VersionPreviewPresentationService {
   ): void {
     if (!windowSessionId) return;
     if (this.initiatorByOperationId.size >= 256) {
-      const oldest = this.initiatorByOperationId.keys().next().value;
-      if (oldest) this.initiatorByOperationId.delete(oldest);
+      // Never evict an unresolved operation: its eventual presentation must
+      // remain bound to the initiating window. The new operation can still
+      // fall back through WindowRegistry routing if the bounded map is full.
+      return;
     }
     this.initiatorByOperationId.set(
       operationId,

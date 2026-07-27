@@ -30,6 +30,7 @@ const presentation = vi.hoisted(() => ({
   publishResult: vi.fn(),
   publishError: vi.fn(),
   originEndpointFor: vi.fn(),
+  forget: vi.fn(),
 }));
 const invalidations = vi.hoisted(() => ({ publish: vi.fn() }));
 const appRun = vi.hoisted(() => ({
@@ -219,6 +220,7 @@ describe("version_preview main actor", () => {
         checkedOutVersionId: "abc123",
       },
     });
+    expect(presentation.forget).toHaveBeenCalledWith("preview-1");
 
     harness.releaseB();
     harness.clientB.dispose();

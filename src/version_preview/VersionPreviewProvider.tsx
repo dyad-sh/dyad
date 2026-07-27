@@ -50,21 +50,49 @@ export function VersionPreviewProvider({ children }: PropsWithChildren) {
           type: "APP_CHANGED",
           nextAppId,
         });
-        void client
-          .actor(
-            versionPreviewClientDefinition,
-            versionPreviewKey(previousAppId),
-          )
-          .dispatch({
-            type: "APP_CHANGED",
-            nextAppId,
-            operationId: `version-preview:${globalThis.crypto.randomUUID()}`,
-          })
-          .catch(() => {
-            toast.error(
-              "Version preview could not finish switching apps. Reopen the app and try again.",
-            );
-          });
+        const actor = client.actor(
+          versionPreviewClientDefinition,
+          versionPreviewKey(previousAppId),
+        );
+        const event = {
+          type: "APP_CHANGED" as const,
+          nextAppId,
+          operationId: `version-preview:${globalThis.crypto.randomUUID()}`,
+        };
+        void (async () => {
+          const release = actor.subscribe(() => undefined);
+          try {
+            for (let attempt = 0; attempt < 3; attempt += 1) {
+              if (actor.getStatus() !== "ready") await actor.resync();
+              const receipt = await actor.dispatch(event);
+              if (receipt.kind === "applied") return;
+              if (
+                receipt.kind === "rejected" &&
+                (receipt.reason === "revision-conflict" ||
+                  receipt.reason === "stale-actor")
+              ) {
+                await actor.resync();
+                continue;
+              }
+              const state = actor.getView().state.state;
+              if (
+                state.type === "closed" ||
+                state.type === "returning" ||
+                state.type === "switching-branch"
+              ) {
+                return;
+              }
+              throw new Error("The app-switch cleanup event was not accepted");
+            }
+            throw new Error("The app-switch cleanup event remained stale");
+          } finally {
+            release();
+          }
+        })().catch(() => {
+          toast.error(
+            "Version preview could not finish switching apps. Reopen the app and try again.",
+          );
+        });
       }
       previousAppId = nextAppId;
     });
@@ -137,8 +165,16 @@ export function VersionPreviewProvider({ children }: PropsWithChildren) {
         versionPreviewClientDefinition,
         versionPreviewKey(appId),
       );
+      let previousStateType = actor.getView().state.state.type;
       const inspect = () => {
         const state = actor.getView().state.state;
+        if (
+          previousStateType === "switching-branch" &&
+          state.type === "closed"
+        ) {
+          presentation.send(appId, { type: "CLOSE" });
+        }
+        previousStateType = state.type;
         const toastId = `version-preview-recovery-${appId}`;
         if (state.type === "recovery-required") {
           toast.error(
@@ -180,7 +216,7 @@ export function VersionPreviewProvider({ children }: PropsWithChildren) {
       unsubscribeSelection();
       unsubscribeActor();
     };
-  }, [client, jotaiStore]);
+  }, [client, jotaiStore, presentation]);
 
   useEffect(() => () => presentation.dispose(), [presentation]);
 

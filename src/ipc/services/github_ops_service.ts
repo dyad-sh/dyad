@@ -32,6 +32,7 @@ const MAIN_SERVICE_EVENT = undefined as unknown as IpcMainInvokeEvent;
 export class GithubOpsService {
   private readonly deletionFences = new Map<number, number>();
   private readonly pendingByApp = new Map<number, Set<Promise<unknown>>>();
+  private resetFenceCount = 0;
 
   run(appId: number, op: GithubOperation): Promise<void> {
     // Check before queueing so deletion never waits on a command that is
@@ -60,8 +61,16 @@ export class GithubOpsService {
     else this.deletionFences.delete(appId);
   }
 
+  beginReset(): void {
+    this.resetFenceCount += 1;
+  }
+
+  endReset(): void {
+    this.resetFenceCount = Math.max(0, this.resetFenceCount - 1);
+  }
+
   assertAcceptingOperations(appId: number): void {
-    if (this.deletionFences.has(appId)) {
+    if (this.resetFenceCount > 0 || this.deletionFences.has(appId)) {
       throw new DyadError(
         "The app is being deleted",
         DyadErrorKind.Precondition,
@@ -142,10 +151,20 @@ export class GithubOpsService {
   }
 
   getGitState(appId: number) {
+    try {
+      this.assertAcceptingOperations(appId);
+    } catch (error) {
+      return Promise.reject(error);
+    }
     return this.track(appId, handleGetGitState(MAIN_SERVICE_EVENT, { appId }));
   }
 
   getConflicts(appId: number) {
+    try {
+      this.assertAcceptingOperations(appId);
+    } catch (error) {
+      return Promise.reject(error);
+    }
     return this.track(
       appId,
       handleGetMergeConflicts(MAIN_SERVICE_EVENT, { appId }),

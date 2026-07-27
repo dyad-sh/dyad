@@ -41,7 +41,11 @@ describe("distributed machine boundaries", () => {
       .filter((file) =>
         fs.readFileSync(file, "utf8").includes("@/distributed_machines"),
       )
-      .map((file) => path.relative(SOURCE_ROOT, file).replaceAll("\\", "/"));
+      .map((file) => path.relative(SOURCE_ROOT, file).replaceAll("\\", "/"))
+      // Filesystem enumeration order differs across operating systems.
+      // Sort with JavaScript's platform-independent UTF-16 ordering before
+      // comparing the inventory.
+      .sort();
 
     expect(offenders).toEqual([
       "app_run/client_definition.ts",

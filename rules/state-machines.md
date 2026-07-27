@@ -384,8 +384,10 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   controller's real snapshot. Disposal assertions compare with the snapshot
   captured immediately before disposal; never normalize or fabricate snapshots
   to make them pass.
-- Normalize discovered file paths to `/` before asserting literal repository
-  paths; `path.relative()` returns `\` on Windows CI.
+- Normalize discovered file paths to `/` and sort filesystem-derived
+  inventories before asserting literal repository paths. `path.relative()`
+  returns `\` on Windows CI, and directory enumeration order differs by
+  filesystem and case-sensitivity.
 - `driveTransitionMatrix` remains available for hand-enumerated totality
   tests; new machines may instead use `exploreReachableStates` when a finite
   event generator can discover the reachable graph. Existing bespoke suites

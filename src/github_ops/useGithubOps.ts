@@ -100,15 +100,24 @@ export function useGithubOps(
     },
     [appId, remote.dispatch, remote.state.activeInvocationRef],
   );
-  const send = useCallback(
-    (event: GithubOpsEvent): void => {
-      void dispatch(event).catch(() => {
+  const dispatchWithErrorFeedback = useCallback(
+    async (event: GithubOpsEvent) => {
+      try {
+        return await dispatch(event);
+      } catch {
         showError(
           "GitHub controls are temporarily unavailable. Please try again.",
         );
-      });
+        return undefined;
+      }
     },
     [dispatch],
+  );
+  const sendWithoutReceipt = useCallback(
+    (event: GithubOpsEvent): void => {
+      void dispatchWithErrorFeedback(event);
+    },
+    [dispatchWithErrorFeedback],
   );
 
   const projection = useMemo(
@@ -127,11 +136,11 @@ export function useGithubOps(
     if (appId === null || !reconcileOnMount || remote.connection !== "ready") {
       return;
     }
-    const reconcile = () => send({ type: "RECONCILE_REQUESTED" });
+    const reconcile = () => sendWithoutReceipt({ type: "RECONCILE_REQUESTED" });
     reconcile();
     window.addEventListener("focus", reconcile);
     return () => window.removeEventListener("focus", reconcile);
-  }, [appId, reconcileOnMount, remote.connection, send]);
+  }, [appId, reconcileOnMount, remote.connection, sendWithoutReceipt]);
 
   const dispatchConflictResolutionStarted = useCallback(async () => {
     const claimId = conflictClaimRef.current;
@@ -169,7 +178,8 @@ export function useGithubOps(
     revision: remote.state.revision,
     activeInvocationRef: remote.state.activeInvocationRef,
     conflictResolutionClaimed: remote.state.conflictResolutionClaimed,
-    send,
+    send: sendWithoutReceipt,
+    dispatchWithErrorFeedback,
     dispatch,
     dispatchConflictResolutionStarted,
     dispatchConflictResolutionCancelled,

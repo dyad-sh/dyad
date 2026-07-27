@@ -46,6 +46,25 @@ describe("GithubOpsService lifecycle", () => {
     service.endAppDeletion(7);
   });
 
+  it("rejects every app while a full reset is fenced", async () => {
+    const service = new GithubOpsService();
+    service.beginReset();
+
+    await expect(
+      service.run(7, { type: "push", mode: "normal" }),
+    ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
+    await expect(
+      service.run(8, { type: "push", mode: "normal" }),
+    ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
+    expect(handlers.push).not.toHaveBeenCalled();
+
+    service.endReset();
+    handlers.push.mockResolvedValue();
+    await expect(
+      service.run(7, { type: "push", mode: "normal" }),
+    ).resolves.toBeUndefined();
+  });
+
   it("keeps settlement pending until an admitted operation finishes", async () => {
     let release!: () => void;
     handlers.push.mockImplementation(

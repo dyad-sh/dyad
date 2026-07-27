@@ -1390,79 +1390,84 @@ export function registerAppHandlers() {
   });
 
   createTypedHandler(systemContracts.resetAll, async () => {
-    logger.log("start: resetting all apps and settings.");
-    appRuntimeService.cleanupAll();
-    // Stop all running apps first
-    logger.log("stopping all running apps...");
-    const runningAppIds = Array.from(runningApps.keys());
-    for (const appId of runningAppIds) {
-      try {
-        const appInfo = runningApps.get(appId)!;
-        await stopAppByInfo(appId, appInfo);
-      } catch (error) {
-        logger.error(`Error stopping app ${appId} during reset:`, error);
-        // Continue with reset even if stopping fails
+    githubOpsService.beginReset();
+    try {
+      logger.log("start: resetting all apps and settings.");
+      appRuntimeService.cleanupAll();
+      // Stop all running apps first
+      logger.log("stopping all running apps...");
+      const runningAppIds = Array.from(runningApps.keys());
+      for (const appId of runningAppIds) {
+        try {
+          const appInfo = runningApps.get(appId)!;
+          await stopAppByInfo(appId, appInfo);
+        } catch (error) {
+          logger.error(`Error stopping app ${appId} during reset:`, error);
+          // Continue with reset even if stopping fails
+        }
       }
-    }
-    logger.log("all running apps stopped.");
-    await appRunActorService.disposeAllApps();
-    logger.log("all app run actors disposed.");
-    await githubOpsActorService.disposeAllApps();
-    logger.log("all GitHub operation actors disposed.");
-    // Determine the paths of all apps in the database so that we can delete them.
-    // We do the deletion last, so technically this is a TOCTOU race, but
-    // it allows us to do the deletion last after removing the database
-    const allAppPaths = await db.select({ appPath: apps.path }).from(apps);
-    // To resolve app paths later
-    const basePath = getDyadAppsBaseDirectory();
-    logger.log("deleting database...");
-    await userInputRegistry.settleAll();
-    // 1. Drop the database by closing the singleton and deleting SQLite files
-    const dbFilePaths = getDatabaseFilePaths();
-    closeDatabase();
-    for (const dbFilePath of dbFilePaths) {
-      if (fs.existsSync(dbFilePath)) {
-        await fsPromises.unlink(dbFilePath);
-        logger.log(`Database file deleted: ${dbFilePath}`);
+      logger.log("all running apps stopped.");
+      await appRunActorService.disposeAllApps();
+      logger.log("all app run actors disposed.");
+      await githubOpsActorService.disposeAllApps();
+      logger.log("all GitHub operation actors disposed.");
+      // Determine the paths of all apps in the database so that we can delete them.
+      // We do the deletion last, so technically this is a TOCTOU race, but
+      // it allows us to do the deletion last after removing the database
+      const allAppPaths = await db.select({ appPath: apps.path }).from(apps);
+      // To resolve app paths later
+      const basePath = getDyadAppsBaseDirectory();
+      logger.log("deleting database...");
+      await userInputRegistry.settleAll();
+      // 1. Drop the database by closing the singleton and deleting SQLite files
+      const dbFilePaths = getDatabaseFilePaths();
+      closeDatabase();
+      for (const dbFilePath of dbFilePaths) {
+        if (fs.existsSync(dbFilePath)) {
+          await fsPromises.unlink(dbFilePath);
+          logger.log(`Database file deleted: ${dbFilePath}`);
+        }
       }
-    }
-    logger.log("database deleted.");
-    logger.log("deleting settings...");
-    // 2. Remove settings
-    const userDataPath = getUserDataPath();
-    const settingsPath = path.join(userDataPath, "user-settings.json");
+      logger.log("database deleted.");
+      logger.log("deleting settings...");
+      // 2. Remove settings
+      const userDataPath = getUserDataPath();
+      const settingsPath = path.join(userDataPath, "user-settings.json");
 
-    if (fs.existsSync(settingsPath)) {
-      await fsPromises.unlink(settingsPath);
-      logger.log(`Settings file deleted: ${settingsPath}`);
+      if (fs.existsSync(settingsPath)) {
+        await fsPromises.unlink(settingsPath);
+        logger.log(`Settings file deleted: ${settingsPath}`);
+      }
+      // Reset base directory cache to default, because settings are gone anyway
+      invalidateDyadAppsBaseDirectoryCache();
+      logger.log("settings deleted.");
+      // 3. Remove all app files recursively
+      // Doing this last because it's the most time-consuming and the least important
+      // in terms of resetting the app state.
+      logger.log("removing all app files...");
+      // Delete any app paths that were in the database before we deleted it
+      for (const { appPath } of allAppPaths) {
+        // We don't rely on getDyadAppPath here because we've already cleared the settings
+        const resolvedAppPath = path.isAbsolute(appPath)
+          ? appPath
+          : path.join(basePath, appPath);
+        await fsPromises.rm(resolvedAppPath, {
+          recursive: true,
+          force: true,
+        });
+      }
+      const dyadAppPath = getDefaultDyadAppsDirectory();
+      // Delete the default `dyad-apps` folder, even if the user no longer uses it
+      if (fs.existsSync(dyadAppPath)) {
+        await fsPromises.rm(dyadAppPath, { recursive: true, force: true });
+        // Recreate the base directory
+        await fsPromises.mkdir(dyadAppPath, { recursive: true });
+      }
+      logger.log("all app files removed.");
+      logger.log("reset all complete.");
+    } finally {
+      githubOpsService.endReset();
     }
-    // Reset base directory cache to default, because settings are gone anyway
-    invalidateDyadAppsBaseDirectoryCache();
-    logger.log("settings deleted.");
-    // 3. Remove all app files recursively
-    // Doing this last because it's the most time-consuming and the least important
-    // in terms of resetting the app state.
-    logger.log("removing all app files...");
-    // Delete any app paths that were in the database before we deleted it
-    for (const { appPath } of allAppPaths) {
-      // We don't rely on getDyadAppPath here because we've already cleared the settings
-      const resolvedAppPath = path.isAbsolute(appPath)
-        ? appPath
-        : path.join(basePath, appPath);
-      await fsPromises.rm(resolvedAppPath, {
-        recursive: true,
-        force: true,
-      });
-    }
-    const dyadAppPath = getDefaultDyadAppsDirectory();
-    // Delete the default `dyad-apps` folder, even if the user no longer uses it
-    if (fs.existsSync(dyadAppPath)) {
-      await fsPromises.rm(dyadAppPath, { recursive: true, force: true });
-      // Recreate the base directory
-      await fsPromises.mkdir(dyadAppPath, { recursive: true });
-    }
-    logger.log("all app files removed.");
-    logger.log("reset all complete.");
   });
 
   createTypedHandler(systemContracts.getAppVersion, async () => {

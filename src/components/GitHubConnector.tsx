@@ -89,7 +89,7 @@ function ConnectedGitHubConnector({
     projection,
     connection,
     send,
-    dispatch,
+    dispatchWithErrorFeedback,
     dispatchConflictResolutionStarted,
     dispatchConflictResolutionCancelled,
     conflictResolutionClaimed,
@@ -127,11 +127,13 @@ function ConnectedGitHubConnector({
   });
 
   const startConflictResolution = useCallback(async () => {
-    const receipt = await dispatch({ type: "RESOLVE_WITH_AI_STARTED" });
+    const receipt = await dispatchWithErrorFeedback({
+      type: "RESOLVE_WITH_AI_STARTED",
+    });
     if (isAppliedGithubOpsReceipt(receipt)) {
       await resolveFilesWithAI(conflicts);
     }
-  }, [conflicts, dispatch, resolveFilesWithAI]);
+  }, [conflicts, dispatchWithErrorFeedback, resolveFilesWithAI]);
 
   const isDisconnecting = runningOperation?.type === "disconnect";
   const isRebaseActionPending = isOperationInFlight || !!rebaseAction;

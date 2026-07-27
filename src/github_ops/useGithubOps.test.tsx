@@ -70,4 +70,23 @@ describe("useGithubOps remote readiness", () => {
 
     await vi.waitFor(() => expect(mocks.showError).toHaveBeenCalledOnce());
   });
+
+  it("returns no receipt and reports conflict-claim dispatch failures", async () => {
+    mocks.connection = "ready";
+    mocks.remote = { ...mocks.remote, connection: "ready" };
+    mocks.dispatch.mockRejectedValue(new Error("disconnected"));
+    const { result } = renderHook(() =>
+      useGithubOps(7, { reconcileOnMount: false }),
+    );
+
+    let receipt: unknown;
+    await act(async () => {
+      receipt = await result.current.dispatchWithErrorFeedback({
+        type: "RESOLVE_WITH_AI_STARTED",
+      });
+    });
+
+    expect(receipt).toBeUndefined();
+    expect(mocks.showError).toHaveBeenCalledOnce();
+  });
 });

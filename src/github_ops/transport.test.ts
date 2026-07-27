@@ -58,6 +58,12 @@ describe("github_ops wire contracts", () => {
     expect(
       GithubOpsProducerEventSchema.safeParse({
         type: "CONFLICTS",
+        files: ["\\Users\\alice\\secret\\app.ts"],
+      }).success,
+    ).toBe(false);
+    expect(
+      GithubOpsProducerEventSchema.safeParse({
+        type: "CONFLICTS",
         files: ["src/app.tsx"],
       }).success,
     ).toBe(true);

@@ -19,7 +19,7 @@ const repositoryRelativePathSchema = z
     (value) =>
       value.length > 0 &&
       !value.startsWith("/") &&
-      !value.startsWith("\\\\") &&
+      !value.startsWith("\\") &&
       !/^[a-zA-Z]:[\\/]/.test(value) &&
       !value.split(/[\\/]/).includes(".."),
     "Conflict names must be repository-relative paths",

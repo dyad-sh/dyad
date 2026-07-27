@@ -847,4 +847,36 @@ describe("main-hosted chat stream actor", () => {
 
     await host.dispose();
   });
+
+  it("mutates a queue without requiring an already-mounted chat subscriber", async () => {
+    const clock = createFakeClock();
+    const host = new ActorHost({
+      placement: "main",
+      clock,
+      ids: createSequentialIdSource(),
+    });
+    const manifest = createRemoteMachineManifest([chatStreamDefinition]);
+    const windows = new TwoWindowHarness();
+    const transport = new RemoteMachineTransport({
+      host,
+      manifest,
+      windows: windows.registry,
+      clock,
+    });
+    const duplex = new FakeDuplexRemoteTransport(transport, manifest, windows);
+    const manager = new ChatStreamRemoteManager(
+      createStore(),
+      createSequentialIdSource(),
+      duplex.connect(),
+    );
+    manager.start();
+
+    await manager.dispatchQueueEvent(7, { type: "PAUSE_QUEUE" });
+
+    expect(persisted).toMatchObject({ paused: true, revision: 1 });
+
+    manager.dispose();
+    await transport.dispose();
+    await host.dispose();
+  });
 });

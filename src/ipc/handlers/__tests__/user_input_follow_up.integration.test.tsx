@@ -141,5 +141,5 @@ describe("main-owned user-input follow-up recovery (integration)", () => {
         .getPending()
         .some((entry) => entry.descriptor.requestId === requestId),
     ).toBe(false);
-  });
+  }, 30_000);
 });

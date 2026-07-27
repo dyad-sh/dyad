@@ -54,6 +54,12 @@ export const PlanHandoffIntentSchema = z
   .strict();
 export type PlanHandoffIntent = z.infer<typeof PlanHandoffIntentSchema>;
 
+export function serializePlanHandoffPlan(
+  plan: PlanHandoffIntent["plan"],
+): string {
+  return JSON.stringify([plan.title, plan.summary ?? null, plan.content]);
+}
+
 export const PlanHandoffIntentEventSchema = z.discriminatedUnion("type", [
   z
     .object({

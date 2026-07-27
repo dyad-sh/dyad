@@ -61,20 +61,6 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
   },
   {
     rule: "writable-projection-export",
-    atom: "queuedMessagesByIdAtom",
-    file: "atoms/chatAtoms.ts",
-    detail: "exported writable atom",
-    deletionPr: "A6",
-  },
-  {
-    rule: "writable-projection-export",
-    atom: "queuePausedByIdAtom",
-    file: "atoms/chatAtoms.ts",
-    detail: "exported writable atom",
-    deletionPr: "A6",
-  },
-  {
-    rule: "writable-projection-export",
     atom: "planStateAtom",
     file: "atoms/planAtoms.ts",
     detail: "exported writable atom",
@@ -999,5 +985,37 @@ describe("state-machine boundaries", () => {
       });
     }
     expectExactAllowlist("cross-machine-atom-read", violations);
+  });
+
+  it("keeps C3 renderer authorities and snapshot queue IPC deleted", () => {
+    const deletedFiles = [
+      "chat_stream/commands.ts",
+      "chat_stream/controller.ts",
+      "chat_stream/manager.ts",
+      "chat_stream/main_model.ts",
+      "plan_handoff/commands.ts",
+      "plan_handoff/controller.ts",
+      "plan_handoff/registry.ts",
+      "plan_handoff/state.ts",
+      "plan_handoff/transition.ts",
+      "hooks/useQueuePersistence.ts",
+      "ipc/handlers/queue_handlers.ts",
+    ];
+    for (const relativePath of deletedFiles) {
+      expect(fs.existsSync(path.join(SOURCE_ROOT, relativePath))).toBe(false);
+    }
+
+    const productionSource = productionFiles(SOURCE_ROOT)
+      .map((filePath) => fs.readFileSync(filePath, "utf8"))
+      .join("\n");
+    for (const obsoleteAuthority of [
+      "queuedMessagesByIdAtom",
+      "queuePausedByIdAtom",
+      "getQueuedPrompts",
+      "setQueuedPrompts",
+      "createUserInputChatStreamFacade",
+    ]) {
+      expect(productionSource).not.toContain(obsoleteAuthority);
+    }
   });
 });

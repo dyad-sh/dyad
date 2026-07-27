@@ -8,8 +8,8 @@
 // renders the "Cancelled" indicator in the message list, and a follow-up
 // request KEEPS the cancelled turn in the context sent to the LLM.
 //
-// The real Cancel click consumes the chat:cancel result, but the bridge keeps
-// the raw invoke envelope so this test can assert both the handler result and
+// The real Cancel click dispatches a main-actor intent; the bridge keeps the
+// remote-machine envelope so this test can assert both actor acceptance and
 // the renderer-observable cancelled end event.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -80,7 +80,7 @@ describe("cancelled message (integration)", () => {
       { timeout: 15_000 },
     );
 
-    // Click the real Cancel control (ChatInput.handleCancel -> chat:cancel).
+    // Click the real Cancel control (ChatInput.handleCancel -> actor CANCEL).
     fireEvent.click(cancelButton);
 
     // The cancel handler notifies the renderer that the stream ended cancelled.
@@ -97,10 +97,29 @@ describe("cancelled message (integration)", () => {
       wasCancelled: true,
     });
     await waitFor(() =>
-      expect(harness.bridge.lastInvoke("chat:cancel")).toMatchObject({
-        channel: "chat:cancel",
+      expect(
+        harness.bridge.invokeLog.find(
+          (entry) =>
+            entry.channel === "distributed-machine:dispatch" &&
+            (
+              entry.args[0] as {
+                encodedEvent?: { type?: string };
+              }
+            )?.encodedEvent?.type === "CANCEL",
+        ),
+      ).toMatchObject({
+        channel: "distributed-machine:dispatch",
+        args: [
+          expect.objectContaining({
+            machineId: "chat_stream",
+            encodedEvent: expect.objectContaining({ type: "CANCEL" }),
+          }),
+        ],
         status: "fulfilled",
-        result: { ok: true, value: true },
+        result: expect.objectContaining({
+          ok: true,
+          value: expect.objectContaining({ kind: "applied" }),
+        }),
       }),
     );
 

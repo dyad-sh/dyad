@@ -13,10 +13,8 @@ function renderList(
         {
           id: "follow-up",
           prompt: "Continue after integration",
-          owner: {
-            kind: "user-input-follow-up",
-            requestId: "integration:1",
-          },
+          editable: false,
+          userInputRequestId: "integration:1",
           ...capabilities,
         },
       ]}
@@ -34,9 +32,10 @@ function renderList(
 }
 
 describe("QueuedMessagesList", () => {
-  it("labels machine-owned deletion as rejection", () => {
+  it("hides editing for a machine-owned queued action", () => {
     const onDelete = vi.fn(() => Promise.resolve());
     renderList(onDelete);
+    expect(screen.queryByTitle("Edit")).toBeNull();
     const deleteButton = screen.getByTitle("Reject and delete");
 
     fireEvent.click(deleteButton);

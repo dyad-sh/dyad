@@ -20,7 +20,6 @@ import type {
 } from "@/ipc/types/user_input";
 import { ipc as defaultIpc } from "@/ipc/types";
 import { showError } from "@/lib/toast";
-import { createLateBinding } from "@/state_machines/late_binding";
 import { SnapshotStore } from "@/state_machines/snapshot_store";
 import { TaskScope } from "@/state_machines/task_scope";
 
@@ -72,21 +71,10 @@ export type UserInputReadModelIpc = Pick<typeof defaultIpc, "userInput"> & {
   events: Pick<typeof defaultIpc.events, "userInput">;
 };
 
-export interface UserInputChatStreamFacade {
-  submit(request: {
-    requestId: string;
-    chatId: number;
-    prompt: string;
-    selectedComponents: [];
-    requestedChatMode: "local-agent";
-  }): { accepted: boolean } | Promise<{ accepted: boolean }>;
-}
-
 export interface UserInputReadModel {
   getSnapshot(): UserInputReadModelSnapshot;
   subscribe(listener: () => void): () => void;
   start(): () => void;
-  configureChatStream(chatStream: UserInputChatStreamFacade): void;
   respond(
     requestId: string,
     response: UserInputResponsePayload,
@@ -96,7 +84,6 @@ export interface UserInputReadModel {
 interface AdapterOptions {
   store: JotaiStore;
   ipcClient?: UserInputReadModelIpc;
-  chatStream?: UserInputChatStreamFacade;
   showErrorToast?: (message: unknown) => unknown;
 }
 
@@ -120,14 +107,10 @@ function snapshotToReadModel(
 export function getUserInputReadModel({
   store,
   ipcClient = defaultIpc,
-  chatStream,
   showErrorToast = showError,
 }: AdapterOptions): UserInputReadModel {
   const existing = readModels.get(store);
-  if (existing) {
-    if (chatStream) existing.configureChatStream(chatStream);
-    return existing;
-  }
+  if (existing) return existing;
 
   let stop: (() => void) | undefined;
   let activeTasks: TaskScope<string> | undefined;
@@ -146,10 +129,6 @@ export function getUserInputReadModel({
     { prompt: string; revision: number }
   >();
   const pendingResponses = new Map<string, UserInputResponsePayload>();
-  const dispatchingFollowUps = new Set<string>();
-  const chatStreamBinding =
-    createLateBinding<UserInputChatStreamFacade>("replaceable");
-  if (chatStream) chatStreamBinding.configure(chatStream);
   const readModelStore = new SnapshotStore<UserInputReadModelSnapshot>(
     EMPTY_READ_MODEL,
   );
@@ -220,61 +199,6 @@ export function getUserInputReadModel({
         Math.max(0, nextExpiry - Date.now()),
       );
       tasks.replace("settled-cleanup", () => clearTimeout(timer));
-    }
-  };
-
-  const dispatchDueFollowUp = async (requestId: string): Promise<void> => {
-    if (dispatchingFollowUps.has(requestId)) return;
-    const request = readModelStore.getSnapshot().requests.get(requestId);
-    if (
-      !request ||
-      request.status !== "due" ||
-      request.descriptor.kind !== "integration" ||
-      !request.followUpPrompt
-    ) {
-      return;
-    }
-    let chatStream: UserInputChatStreamFacade;
-    try {
-      chatStream = chatStreamBinding.get();
-    } catch {
-      activeTasks?.replace(
-        `follow-up:${requestId}`,
-        chatStreamBinding.onConfigured(
-          () => void dispatchDueFollowUp(requestId),
-          showErrorToast,
-        ),
-      );
-      return;
-    }
-    activeTasks?.remove(`follow-up:${requestId}`);
-
-    dispatchingFollowUps.add(requestId);
-    try {
-      const result = await chatStream.submit({
-        requestId,
-        chatId: request.descriptor.chatId,
-        prompt: request.followUpPrompt,
-        selectedComponents: [],
-        requestedChatMode: "local-agent",
-      });
-      if (!result.accepted) return;
-      await ipcClient.userInput.respond({
-        requestId,
-        response: { kind: "follow-up-dispatched" },
-      });
-    } catch (error) {
-      showErrorToast(error);
-    } finally {
-      dispatchingFollowUps.delete(requestId);
-    }
-  };
-
-  const dispatchAllDueFollowUps = () => {
-    for (const [requestId, request] of readModelStore.getSnapshot().requests) {
-      if (request.status === "due") {
-        void dispatchDueFollowUp(requestId);
-      }
     }
   };
 
@@ -361,26 +285,15 @@ export function getUserInputReadModel({
       }
       return next;
     });
-    dispatchAllDueFollowUps();
   };
 
   const readModel: UserInputReadModel = {
     getSnapshot: readModelStore.getSnapshot,
     subscribe: readModelStore.subscribe,
-    configureChatStream(nextChatStream) {
-      chatStreamBinding.configure(nextChatStream);
-      dispatchAllDueFollowUps();
-    },
-
     start() {
       if (stop) return stop;
       const tasks = new TaskScope<string>();
       activeTasks = tasks;
-      const handleWindowFocus = () => dispatchAllDueFollowUps();
-      window.addEventListener("focus", handleWindowFocus);
-      tasks.replace("window-focus", () =>
-        window.removeEventListener("focus", handleWindowFocus),
-      );
       const subscriptions = [
         [
           "requested",
@@ -503,7 +416,6 @@ export function getUserInputReadModel({
               });
               return next;
             });
-            void dispatchDueFollowUp(requestId);
           }),
         ],
       ] satisfies ReadonlyArray<readonly [string, () => void]>;

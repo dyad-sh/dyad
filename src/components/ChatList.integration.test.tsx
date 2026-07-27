@@ -148,7 +148,7 @@ describe("ChatList favorites (integration)", () => {
       ).toBeTruthy();
     });
 
-    harness.seedChatStreamResidue(olderChat.id);
+    await harness.seedChatStreamResidue(olderChat.id);
     expect(harness.hasChatStreamResidue(olderChat.id)).toBe(true);
     await harness.openPopover(
       screen.getByRole("button", {

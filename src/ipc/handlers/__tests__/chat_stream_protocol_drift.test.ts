@@ -9,7 +9,7 @@ const HANDLER_PATH = path.resolve(
 );
 const HANDLER_SOURCE = fs.readFileSync(HANDLER_PATH, "utf8");
 const UPDATE_MESSAGE =
-  "Update src/chat_stream/main_model.ts and src/chat_stream/__tests__/cosim.chat_stream.test.ts in the same PR.";
+  "Update src/chat_stream/host_transition.ts and src/chat_stream/main_actor.test.ts in the same PR.";
 
 function parse(source: string): ts.SourceFile {
   return ts.createSourceFile(
@@ -176,7 +176,7 @@ describe("chat stream protocol drift tripwire", () => {
       "        await Promise.resolve();\n        admissionPendingStreams.delete(abortController);",
     );
     expect(() => assertAtomicAdmission(mutant)).toThrow(
-      /main_model\.ts.*cosim\.chat_stream\.test\.ts/,
+      /host_transition\.ts.*main_actor\.test\.ts/,
     );
   });
 
@@ -188,7 +188,7 @@ describe("chat stream protocol drift tripwire", () => {
       "wasCancelled: false,",
     )}`;
     expect(() => assertSoleCancelledSender(mutant)).toThrow(
-      /main_model\.ts.*cosim\.chat_stream\.test\.ts/,
+      /host_transition\.ts.*main_actor\.test\.ts/,
     );
   });
 
@@ -200,7 +200,7 @@ describe("chat stream protocol drift tripwire", () => {
       "if (true) {",
     );
     expect(() => assertGuardedFinalTransportEnd(mutant)).toThrow(
-      /main_model\.ts.*cosim\.chat_stream\.test\.ts/,
+      /host_transition\.ts.*main_actor\.test\.ts/,
     );
   });
 });

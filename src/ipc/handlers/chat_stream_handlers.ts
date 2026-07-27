@@ -381,8 +381,8 @@ function executionObserver(
   );
 }
 
-// MODEL-GROUNDED REGION: tracking/completion abstraction. Keep in sync with
-// src/chat_stream/main_model.ts and its co-simulation suite.
+// PROTOCOL-GROUNDED REGION: tracking/completion abstraction. Keep in sync with
+// src/chat_stream/host_transition.ts and src/chat_stream/main_actor.test.ts.
 interface TrackedStream {
   abortController: AbortController;
   invocationRef?: ChatStreamInvocationRef;
@@ -555,8 +555,8 @@ export function takePartialResponseForStream(
   return response;
 }
 
-// MODEL-GROUNDED REGION: cancellation selection, early terminals, and unwind
-// waiting. Keep in sync with src/chat_stream/main_model.ts.
+// PROTOCOL-GROUNDED REGION: cancellation selection, early terminals, and
+// unwind waiting. Keep in sync with src/chat_stream/host_transition.ts.
 async function cancelTrackedStreams(
   chatIds: number[],
   sender: WebContents,
@@ -900,8 +900,8 @@ export function registerChatStreamHandlers() {
         );
       }
 
-      // MODEL-GROUNDED REGION: admission barrier loop and atomic admission.
-      // Keep in sync with src/chat_stream/main_model.ts.
+      // PROTOCOL-GROUNDED REGION: admission barrier loop and atomic admission.
+      // Keep in sync with src/chat_stream/host_transition.ts.
       while (true) {
         if ((chatStreamAdmissionBlockCounts.get(req.chatId) ?? 0) > 0) {
           const admitted = await waitForAdmissionBlockToClear({
@@ -2471,9 +2471,9 @@ This conversation includes one or more image attachments. When the user uploads 
         }
       }
 
-      // MODEL-GROUNDED REGION: handler terminal emission, outer catch, guarded
-      // transport end, and completion resolution. Keep in sync with
-      // src/chat_stream/main_model.ts.
+      // PROTOCOL-GROUNDED REGION: handler terminal emission, outer catch,
+      // guarded transport end, and completion resolution. Keep in sync with
+      // src/chat_stream/host_transition.ts.
       // Only save the response and process it if we weren't aborted
       if (!abortController.signal.aborted && fullResponse) {
         // Scrape from: <dyad-chat-summary>Renaming profile file</dyad-chat-title>

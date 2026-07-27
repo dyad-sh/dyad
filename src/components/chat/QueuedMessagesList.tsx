@@ -46,7 +46,7 @@ function QueuedMessageItemRow({
   onMoveUp,
   onMoveDown,
 }: QueuedMessageItemRowProps) {
-  const editable = message.editable ?? !message.owner;
+  const editable = message.editable ?? true;
   const removable = message.removable ?? true;
   const isRejectableMachineEntry = !editable && removable;
 

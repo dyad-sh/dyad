@@ -1,8 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { createStore, Provider } from "jotai";
+import { Provider } from "jotai";
 import type { PropsWithChildren } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { queuedMessagesByIdAtom } from "@/atoms/chatAtoms";
 import { useStreamChat } from "./useStreamChat";
 
 const CHAT_ID = 42;
@@ -16,13 +15,21 @@ const mocks = vi.hoisted(() => ({
       phase: "idle",
       capabilities: { canCancel: false },
       error: null,
+      queue: [],
+      queuePaused: false,
     },
   } as {
     current: {
       phase: string;
       capabilities: { canCancel: boolean };
       error: string | null;
-      queueRevision?: number;
+      queue: Array<{
+        itemId: string;
+        prompt: string;
+        attachments?: [];
+        selectedComponents?: [];
+      }>;
+      queuePaused: boolean;
     };
   },
 }));
@@ -47,21 +54,14 @@ vi.mock("@/lib/toast", () => ({
 }));
 
 function makeWrapper() {
-  const store = createStore();
   const Wrapper = ({ children }: PropsWithChildren) => (
-    <Provider store={store}>{children}</Provider>
+    <Provider>{children}</Provider>
   );
-  return { store, Wrapper };
+  return { Wrapper };
 }
 
 describe("useStreamChat main-owned queue", () => {
   beforeEach(() => {
-    mocks.streamState.current = {
-      phase: "idle",
-      capabilities: { canCancel: false },
-      error: null,
-      queueRevision: 7,
-    };
     mocks.send.mockReset();
     mocks.dispatchQueueEvent.mockReset();
     mocks.dispatchQueueEvent.mockResolvedValue(undefined);
@@ -69,14 +69,13 @@ describe("useStreamChat main-owned queue", () => {
   });
 
   it("submits queue requests to the actor without writing renderer state", () => {
-    const { store, Wrapper } = makeWrapper();
+    const { Wrapper } = makeWrapper();
     const { result } = renderHook(() => useStreamChat(), { wrapper: Wrapper });
 
     expect(
       result.current.queueMessage({ prompt: "queued during render lag" }),
     ).toBe(true);
 
-    expect(store.get(queuedMessagesByIdAtom).has(CHAT_ID)).toBe(false);
     expect(mocks.send).toHaveBeenCalledExactlyOnceWith({
       type: "submit",
       request: {
@@ -87,19 +86,11 @@ describe("useStreamChat main-owned queue", () => {
   });
 
   it("routes edit, remove, reorder, and clear through revisioned actor intents", async () => {
-    const { store, Wrapper } = makeWrapper();
-    store.set(
-      queuedMessagesByIdAtom,
-      new Map([
-        [
-          CHAT_ID,
-          [
-            { id: "first", prompt: "First" },
-            { id: "second", prompt: "Second" },
-          ],
-        ],
-      ]),
-    );
+    const { Wrapper } = makeWrapper();
+    mocks.streamState.current.queue = [
+      { itemId: "first", prompt: "First" },
+      { itemId: "second", prompt: "Second" },
+    ];
     const { result } = renderHook(() => useStreamChat(), { wrapper: Wrapper });
 
     act(() => {
@@ -112,42 +103,26 @@ describe("useStreamChat main-owned queue", () => {
     });
 
     await waitFor(() => {
-      expect(mocks.dispatchQueueEvent).toHaveBeenCalledWith(
-        CHAT_ID,
-        {
-          type: "EDIT_QUEUE_ENTRY",
-          itemId: "first",
-          prompt: "Changed",
-          attachments: [],
-          selectedComponents: undefined,
-        },
-        7,
-      );
-    });
-    expect(mocks.dispatchQueueEvent).toHaveBeenCalledWith(
-      CHAT_ID,
-      {
-        type: "REORDER_QUEUE_ENTRY",
+      expect(mocks.dispatchQueueEvent).toHaveBeenCalledWith(CHAT_ID, {
+        type: "EDIT_QUEUE_ENTRY",
         itemId: "first",
-        toIndex: 1,
-      },
-      7,
-    );
-    expect(mocks.dispatchQueueEvent).toHaveBeenCalledWith(
-      CHAT_ID,
-      {
-        type: "REMOVE_QUEUE_ENTRY",
-        itemId: "second",
-      },
-      7,
-    );
-    expect(mocks.dispatchQueueEvent).toHaveBeenCalledWith(
-      CHAT_ID,
-      {
-        type: "CLEAR_QUEUE",
-      },
-      7,
-    );
+        prompt: "Changed",
+        attachments: [],
+        selectedComponents: undefined,
+      });
+    });
+    expect(mocks.dispatchQueueEvent).toHaveBeenCalledWith(CHAT_ID, {
+      type: "REORDER_QUEUE_ENTRY",
+      itemId: "first",
+      toIndex: 1,
+    });
+    expect(mocks.dispatchQueueEvent).toHaveBeenCalledWith(CHAT_ID, {
+      type: "REMOVE_QUEUE_ENTRY",
+      itemId: "second",
+    });
+    expect(mocks.dispatchQueueEvent).toHaveBeenCalledWith(CHAT_ID, {
+      type: "CLEAR_QUEUE",
+    });
   });
 
   it("surfaces authoritative queue rejection", async () => {
@@ -171,6 +146,8 @@ describe("useStreamChat lifecycle intents", () => {
       phase: "streaming",
       capabilities: { canCancel: true },
       error: null,
+      queue: [],
+      queuePaused: false,
     };
   });
 
@@ -187,6 +164,8 @@ describe("useStreamChat lifecycle intents", () => {
       phase: "cancelling",
       capabilities: { canCancel: false },
       error: null,
+      queue: [],
+      queuePaused: false,
     };
     rerender();
     act(() => result.current.cancelStream());

@@ -4,11 +4,11 @@ import { createStore } from "jotai";
 import { describe, expect, it, vi } from "vitest";
 
 import { ChatStreamProvider } from "./ChatStreamProvider";
-import { ChatStreamManager } from "./manager";
+import { ChatStreamRemoteManager } from "./remote_manager";
 
 describe("ChatStreamProvider", () => {
   it("survives StrictMode effect replay and disposes after unmount", async () => {
-    const manager = new ChatStreamManager(createStore());
+    const manager = new ChatStreamRemoteManager(createStore());
     const dispose = vi.spyOn(manager, "dispose");
     const view = render(
       <StrictMode>

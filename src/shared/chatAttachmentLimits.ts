@@ -3,6 +3,12 @@ const MEBIBYTE = 1024 * 1024;
 export const MAX_CHAT_ATTACHMENTS = 10;
 export const MAX_CHAT_ATTACHMENT_BYTES = 10 * MEBIBYTE;
 export const MAX_CHAT_ATTACHMENTS_TOTAL_BYTES = 25 * MEBIBYTE;
+/**
+ * Serialized base64 expands the 25 MiB aggregate attachment limit by roughly
+ * one third. Leave room for the prompt and dispatch envelope while keeping
+ * the larger transport allowance scoped to the chat-stream machine.
+ */
+export const MAX_CHAT_STREAM_DISPATCH_ENVELOPE_BYTES = 40 * MEBIBYTE;
 export const CHAT_ATTACHMENT_COUNT_LIMIT_MESSAGE = `You can attach up to ${MAX_CHAT_ATTACHMENTS} files at a time.`;
 
 const BASE64_MARKER = ";base64,";

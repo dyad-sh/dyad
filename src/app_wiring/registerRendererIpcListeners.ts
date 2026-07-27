@@ -7,7 +7,7 @@ import {
   selectedChatIdAtom,
 } from "@/atoms/chatAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import type { ChatStreamInvocationRef, StreamEvent } from "@/chat_stream/state";
+import type { StreamEvent } from "@/chat_stream/state";
 import {
   ipc as defaultIpc,
   type ChatResponseChunk,
@@ -16,10 +16,7 @@ import {
 import { applyStreamingPatch } from "@/lib/applyStreamingPatch";
 import { queryKeys } from "@/lib/queryKeys";
 import { showError } from "@/lib/toast";
-import {
-  getUserInputReadModel,
-  type UserInputChatStreamFacade,
-} from "@/user_input/read_model";
+import { getUserInputReadModel } from "@/user_input/read_model";
 import { RendererQueryInvalidationConsumer } from "@/window_infrastructure/renderer_query_invalidation";
 import type { QueryInvalidationBatch } from "@/window_infrastructure/types";
 import type { EntityDisposalRegistry } from "@/state_machines/entity_disposal";
@@ -29,10 +26,6 @@ type JotaiStore = ReturnType<typeof createStore>;
 type ChatStreamRendererFacade = {
   ensure(chatId: number): { send(event: StreamEvent): void };
   setPreview(chatId: number, content: string): boolean;
-  notifyStreamRegistered(
-    chatId: number,
-    invocationRef?: ChatStreamInvocationRef,
-  ): void;
 };
 
 const lastQueryInvalidationEpochByClient = new WeakMap<QueryClient, number>();
@@ -118,46 +111,6 @@ export function registerQueryInvalidationListener(
     if (retryTimer) clearTimeout(retryTimer);
     rememberEpoch();
     unsubscribe();
-  };
-}
-
-export function createUserInputChatStreamFacade(
-  ipcClient: Pick<RendererIpcClient, "userInput">,
-  chatStreamManager: ChatStreamRendererFacade,
-): UserInputChatStreamFacade {
-  return {
-    submit: ({ requestId, ...request }) =>
-      new Promise<{ accepted: boolean }>((resolve, reject) => {
-        let completed = false;
-        chatStreamManager.ensure(request.chatId).send({
-          type: "submit",
-          request: {
-            ...request,
-            owner: { kind: "user-input-follow-up", requestId },
-            onAccepted: () => {
-              if (completed) return;
-              completed = true;
-              resolve({ accepted: true });
-            },
-            onAcceptanceError: (error) => {
-              if (completed) return;
-              completed = true;
-              reject(error);
-            },
-            onAcceptanceRejected: async (reason) => {
-              if (completed) return;
-              completed = true;
-              try {
-                await ipcClient.userInput.rejectFollowUp({ requestId, reason });
-                resolve({ accepted: false });
-              } catch (error) {
-                reject(error);
-                throw error;
-              }
-            },
-          },
-        });
-      }),
   };
 }
 
@@ -314,16 +267,12 @@ export function registerRendererIpcListeners({
   );
 
   unsubscribes.push(
-    ipcClient.events.misc.onChatStreamStart(({ chatId, invocationRef }) => {
+    ipcClient.events.misc.onChatStreamStart(({ chatId }) => {
       store.set(agentTodosByChatIdAtom, (prev) => {
         const next = new Map(prev);
         next.delete(chatId);
         return next;
       });
-      // Registration confirmation for the chat stream machine: main has
-      // registered the AbortController for this chat's stream (drives the
-      // starting -> streaming transition and cancel reconciliation).
-      chatStreamManager.notifyStreamRegistered(chatId, invocationRef);
     }),
   );
 

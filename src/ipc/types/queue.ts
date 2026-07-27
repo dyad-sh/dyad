@@ -1,10 +1,4 @@
 import { z } from "zod";
-import {
-  defineContract,
-  defineSendContract,
-  createClient,
-  createSendClient,
-} from "../contracts/core";
 import { ChatAttachmentShapeSchema, ComponentSelectionSchema } from "./chat";
 import { ChatModeSchema } from "../../lib/schemas";
 
@@ -55,47 +49,3 @@ export const PersistedQueueSchema = z.record(
 );
 
 export type PersistedQueue = z.infer<typeof PersistedQueueSchema>;
-
-export const queueContracts = {
-  /**
-   * Get the persisted queued prompts for all chats. Prunes entries whose chat
-   * no longer exists before returning.
-   */
-  getQueuedPrompts: defineContract({
-    channel: "get-queued-prompts",
-    input: z.void(),
-    output: PersistedQueueSchema,
-  }),
-} as const;
-
-export const queueSendContracts = {
-  /**
-   * Replace the persisted queued prompts for all chats.
-   *
-   * Deliberately a one-way (fire-and-forget) send rather than an `invoke`: the
-   * renderer flushes the queue from its `pagehide` handler as the window is
-   * being destroyed on app quit. A two-way `invoke` would leave the main
-   * process replying to an already-destroyed frame, which Electron throws as
-   * "Object has been destroyed". A one-way send has no reply to deliver back.
-   */
-  setQueuedPrompts: defineSendContract({
-    channel: "set-queued-prompts",
-    input: PersistedQueueSchema,
-  }),
-} as const;
-
-// =============================================================================
-// Queue Client
-// =============================================================================
-
-/**
- * Type-safe client for queued-prompt persistence.
- *
- * @example
- * const queued = await queueClient.getQueuedPrompts();
- * queueClient.setQueuedPrompts(queued); // one-way, returns void
- */
-export const queueClient = {
-  ...createClient(queueContracts),
-  ...createSendClient(queueSendContracts),
-};

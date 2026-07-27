@@ -1,19 +1,12 @@
 import type { createStore } from "jotai";
-import {
-  chatMessagesByIdAtom,
-  queuePausedByIdAtom,
-  queuedMessagesByIdAtom,
-  type QueuedMessageItem,
-} from "@/atoms/chatAtoms";
+import { chatMessagesByIdAtom } from "@/atoms/chatAtoms";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 import { RemoteMachineClient } from "@/distributed_machines/remote_client";
 import type { RemoteMachineClientConnection } from "@/distributed_machines/remote_client";
 import { IpcRemoteMachineConnection } from "@/distributed_machines/ipc_connection";
 import { convertFileAttachmentsToChatAttachments } from "@/lib/chatAttachmentConversion";
-import { planAcceptInNewChatByChatIdAtom } from "@/atoms/planAtoms";
-import { chatAttachmentToFileAttachment } from "@/lib/attachment_conversion";
 import { uuidIdSource, type IdSource } from "@/state_machines/clock";
-import type { ChatStreamRuntimeDeps } from "./commands";
+import type { ChatStreamRuntimeDeps } from "./runtime_deps";
 import { ChatStreamPreviewStore } from "./preview_store";
 import { CHAT_STREAM_INVOCATION_KIND } from "./state";
 import type { StreamEvent, StreamRequest, StreamSettledResult } from "./state";
@@ -232,14 +225,6 @@ export class ChatStreamRemoteManager {
     return () => this.streamFinishedListeners.delete(listener);
   }
 
-  notifyStreamRegistered(
-    _chatId?: number,
-    _invocationRef?: ChatStreamRemoteSnapshot["invocationRef"],
-  ): void {
-    // Registration is represented by the main actor's admitting→streaming
-    // snapshot. The legacy start event remains harmless during the cutover.
-  }
-
   getPreviewSnapshot = this.previews.getSnapshot;
   subscribePreview = this.previews.subscribeKey;
   setPreview = (chatId: number, content: string): boolean =>
@@ -255,22 +240,23 @@ export class ChatStreamRemoteManager {
     // transport freshness; it must not silently rebase stale renderer intent.
     const mutationQueueRevision =
       expectedQueueRevision ?? actor.getSnapshot().queueRevision;
-    await actor.resync();
-    const mutationId = this.ids.next("chat-queue");
+    const release = this.retainSubscription(chatId, actor);
     let releaseSettlement = IDLE_UNSUBSCRIBE;
-    const settlement = new Promise<
-      NonNullable<ChatStreamRemoteSnapshot["lastQueueMutation"]>
-    >((resolve) => {
-      const inspect = () => {
-        const result = actor.getSnapshot().lastQueueMutation;
-        if (result?.mutationId !== mutationId) return;
-        releaseSettlement();
-        resolve(result);
-      };
-      releaseSettlement = actor.subscribe(inspect);
-      inspect();
-    });
     try {
+      await actor.resync();
+      const mutationId = this.ids.next("chat-queue");
+      const settlement = new Promise<
+        NonNullable<ChatStreamRemoteSnapshot["lastQueueMutation"]>
+      >((resolve) => {
+        const inspect = () => {
+          const result = actor.getSnapshot().lastQueueMutation;
+          if (result?.mutationId !== mutationId) return;
+          releaseSettlement();
+          resolve(result);
+        };
+        releaseSettlement = actor.subscribe(inspect);
+        inspect();
+      });
       const receipt = await actor.dispatch({
         ...event,
         mutationId,
@@ -289,6 +275,7 @@ export class ChatStreamRemoteManager {
       }
     } finally {
       releaseSettlement();
+      release();
     }
   }
 
@@ -306,16 +293,6 @@ export class ChatStreamRemoteManager {
         this.takePendingSubmission(intentId);
     }
     this.submissionTails.delete(chatId);
-    this.store.set(queuedMessagesByIdAtom, (previous) => {
-      const next = new Map(previous);
-      next.delete(chatId);
-      return next;
-    });
-    this.store.set(queuePausedByIdAtom, (previous) => {
-      const next = new Map(previous);
-      next.delete(chatId);
-      return next;
-    });
     this.previews.disposeKey(chatId);
   };
 
@@ -362,27 +339,6 @@ export class ChatStreamRemoteManager {
         );
         return;
       }
-      case "queue-poked":
-        if (this.getSnapshot(chatId).queuePaused) {
-          void this.dispatchQueueEvent(
-            chatId,
-            { type: "RESUME_QUEUE" },
-            this.getSnapshot(chatId).queueRevision,
-          ).catch((error) =>
-            this.reportCompatibilityDispatchFailure(
-              "resume the prompt queue",
-              error,
-            ),
-          );
-        }
-        return;
-      case "registered":
-      case "stream-context":
-      case "chunk-received":
-      case "stream-ended":
-      case "stream-errored":
-      case "finalize-complete":
-        return;
       case "external-error":
         this.dispatchCompatibilityCommand(
           chatId,
@@ -481,9 +437,6 @@ export class ChatStreamRemoteManager {
         selectedComponents: request.selectedComponents ?? [],
         requestedChatMode: request.requestedChatMode,
         userInputRequestId: request.owner?.requestId,
-        planAcceptInNewChat:
-          request.planAcceptInNewChat ??
-          this.store.get(planAcceptInNewChatByChatIdAtom).get(request.chatId),
         owner: request.owner,
       };
       const intent: SerializableChatTurnIntent = {
@@ -588,7 +541,6 @@ export class ChatStreamRemoteManager {
     chatId: number,
     snapshot: ChatStreamRemoteSnapshot,
   ): void {
-    this.projectQueue(chatId, snapshot);
     const acceptance = snapshot.lastAcceptance;
     if (
       acceptance &&
@@ -821,43 +773,6 @@ export class ChatStreamRemoteManager {
     }
   }
 
-  private projectQueue(
-    chatId: number,
-    snapshot: ChatStreamRemoteSnapshot,
-  ): void {
-    this.store.set(queuedMessagesByIdAtom, (previous) => {
-      const next = new Map(previous);
-      if (snapshot.queue.length === 0) {
-        next.delete(chatId);
-      } else {
-        next.set(
-          chatId,
-          snapshot.queue.map(
-            (entry): QueuedMessageItem => ({
-              id: entry.itemId,
-              prompt: entry.prompt,
-              attachments: entry.attachments?.map(
-                chatAttachmentToFileAttachment,
-              ),
-              selectedComponents: entry.selectedComponents,
-              redo: entry.redo,
-              appId: entry.appId,
-              requestedChatMode: entry.requestedChatMode,
-              editable: entry.editable,
-              removable: entry.removable,
-            }),
-          ),
-        );
-      }
-      return next;
-    });
-    this.store.set(queuePausedByIdAtom, (previous) => {
-      const next = new Map(previous);
-      if (snapshot.queuePaused) next.set(chatId, true);
-      else next.delete(chatId);
-      return next;
-    });
-  }
 }
 
 export const NO_CHAT_STREAM_REMOTE_SNAPSHOT = unavailableChatStreamSnapshot(1);

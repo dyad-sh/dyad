@@ -3,10 +3,8 @@ import { useStore } from "jotai";
 
 import { planAcceptInNewChatByChatIdAtom } from "@/atoms/planAtoms";
 import type { PlanExitPayload } from "@/ipc/types/plan";
-import type { HandoffState } from "./state";
-import { useKeyedController } from "@/state_machines/react";
 import { usePlanHandoffManager } from "./PlanHandoffProvider";
-import { PlanHandoffRemoteManager } from "./remote_manager";
+import type { PlanHandoffRemoteManager } from "./remote_manager";
 import type { PlanHandoffRemoteSnapshot } from "./transport";
 import { useSyncExternalStore } from "react";
 import { readPlanDocument } from "@/hooks/usePlanDocument";
@@ -40,12 +38,9 @@ export function getRemotePlanHandoffSnapshot(
  */
 export function usePlanHandoffState(
   chatId: number | null,
-): HandoffState | PlanHandoffRemoteSnapshot {
+): PlanHandoffRemoteSnapshot {
   const manager = usePlanHandoffManager();
-  if (manager instanceof PlanHandoffRemoteManager) {
-    return useRemotePlanHandoffState(manager, chatId);
-  }
-  return useKeyedController(manager, chatId ?? NO_CHAT_ID);
+  return useRemotePlanHandoffState(manager, chatId);
 }
 
 function useRemotePlanHandoffState(
@@ -77,8 +72,6 @@ export function usePlanHandoff(): {
 } {
   const store = useStore();
   const manager = usePlanHandoffManager();
-  const remoteManager =
-    manager instanceof PlanHandoffRemoteManager ? manager : null;
 
   const acceptPlan = useCallback(
     async (payload: PlanExitPayload) => {
@@ -88,30 +81,20 @@ export function usePlanHandoff(): {
       // so we don't surprise-create a chat.
       const acceptInNewChat =
         store.get(planAcceptInNewChatByChatIdAtom).get(payload.chatId) ?? false;
-      if (remoteManager) {
-        const plan = readPlanDocument(store, payload.chatId);
-        if (!plan) {
-          throw new Error("Failed to accept plan: missing immutable plan data");
-        }
-        const planHash = await sha256Hex(serializePlanDocument(plan));
-        await remoteManager.accept({
-          sourceChatId: payload.chatId,
-          appId: payload.appId,
-          acceptInNewChat,
-          plan,
-          planHash,
-        });
-        return;
+      const plan = readPlanDocument(store, payload.chatId);
+      if (!plan) {
+        throw new Error("Failed to accept plan: missing immutable plan data");
       }
-      if (!("getOrCreate" in manager)) return;
-      manager.getOrCreate(payload.chatId).send({
-        type: "PLAN_ACCEPTED",
-        chatId: payload.chatId,
+      const planHash = await sha256Hex(serializePlanDocument(plan));
+      await manager.accept({
+        sourceChatId: payload.chatId,
         appId: payload.appId,
         acceptInNewChat,
+        plan,
+        planHash,
       });
     },
-    [manager, remoteManager, store],
+    [manager, store],
   );
 
   return { acceptPlan };

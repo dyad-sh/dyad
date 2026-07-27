@@ -942,10 +942,13 @@ ways:
    phase rather than persisting a separate plan-slug checkpoint. Target-chat
    identity and implementation intent identity remain durable and idempotent.
 4. Legacy `.dyad/queue` files are imported once and intentionally retained
-   during the cutover. SQLite stores the migration marker; removal of the old
-   reader/writer and files belongs to the separate trailing deletion PR.
+   during the cutover. SQLite stores the migration marker. The trailing
+   deletion removes the writer and renderer IPC while retaining a read-only
+   importer so existing queued prompts can still migrate.
 
-The renderer controller, queue persistence hook, and obsolete atom projections
-remain only as adapters for existing callers/tests in the cutover diff. They
-are not production command authorities and are the explicit deletion budget
-for the immediately following Phase D PR.
+The stacked `c3-chat-delete-adapters` PR fulfills the Phase D budget: renderer
+chat and plan controllers, mixed command adapters, the shadow main model,
+queue atoms, full-snapshot queue IPC/persistence, and renderer follow-up
+dispatch are deleted. Queue UI now reads the actor snapshot directly, and the
+hybrid harness uses the real remote actors. The wave becomes complete when
+that stacked PR lands.

@@ -8,33 +8,24 @@ import {
   ChatStreamRemoteManager,
   type StreamFinishedEvent,
 } from "./remote_manager";
-import type { ChatStreamManager } from "./manager";
-
-export type AcceptedChatStreamManager =
-  | ChatStreamRemoteManager
-  | ChatStreamManager;
-
-function useOwnedChatStreamManager(): AcceptedChatStreamManager {
+function useOwnedChatStreamManager(): ChatStreamRemoteManager {
   const store = useStore();
   const [manager] = useState(() => new ChatStreamRemoteManager(store));
   return manager;
 }
 
-function useChatStreamMount(manager: AcceptedChatStreamManager): void {
+function useChatStreamMount(manager: ChatStreamRemoteManager): void {
   useRegisterEntityDisposer("chat", manager.disposeKey);
 }
 
-const chatStreamProvider = createMachineProvider<AcceptedChatStreamManager>({
+const chatStreamProvider = createMachineProvider<ChatStreamRemoteManager>({
   name: "ChatStream",
   useOwnedManager: useOwnedChatStreamManager,
   useOnMount: useChatStreamMount,
 });
 
 export const ChatStreamProvider = chatStreamProvider.Provider;
-export function useChatStreamManager(): AcceptedChatStreamManager {
-  // Production always constructs the main-process adapter. Accepting the
-  // legacy manager at the provider boundary is limited to cutover test
-  // harnesses, which exercise the unchanged compatibility event surface.
+export function useChatStreamManager(): ChatStreamRemoteManager {
   return chatStreamProvider.useManager();
 }
 

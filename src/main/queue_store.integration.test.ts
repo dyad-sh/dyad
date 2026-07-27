@@ -2,11 +2,11 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { readPersistedQueue, writePersistedQueue } from "@/main/queue_store";
+import { readPersistedQueue } from "@/main/queue_store";
 import { setDatabaseForTesting } from "@/db";
 import { apps, chats } from "@/db/schema";
 import { createInMemoryTestDb, type TestDb } from "@/testing/test_db";
-import type { PersistedQueue, PersistedQueuedMessage } from "@/ipc/types/queue";
+import type { PersistedQueuedMessage } from "@/ipc/types/queue";
 
 let tempDir: string;
 let db: TestDb;
@@ -70,48 +70,16 @@ describe("queue_store", () => {
     expect(await readPersistedQueue()).toEqual({});
   });
 
-  it("round-trips a chat's queue through write + read", async () => {
+  it("reads a legacy chat queue for one-time import", async () => {
     const appId = createApp("app1");
     const chatId = createChat(appId);
-    const queue: PersistedQueue = { [String(chatId)]: [sampleItem] };
+    const filePath = queueFilePath("app1", chatId);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify([sampleItem]));
 
-    await writePersistedQueue(queue);
-
-    expect(fs.existsSync(queueFilePath("app1", chatId))).toBe(true);
-    expect(await readPersistedQueue()).toEqual(queue);
-    // The app's `.dyad/` folder is kept out of git.
-    const gitignore = fs.readFileSync(
-      path.join(tempDir, "app1", ".gitignore"),
-      "utf-8",
-    );
-    expect(gitignore).toContain(".dyad/");
-  });
-
-  it("writes each chat's queue under its own app directory", async () => {
-    const app1 = createApp("app1");
-    const app2 = createApp("app2");
-    const chat1 = createChat(app1);
-    const chat2 = createChat(app2);
-
-    await writePersistedQueue({
-      [String(chat1)]: [{ id: "a", prompt: "one" }],
-      [String(chat2)]: [{ id: "b", prompt: "two" }],
+    expect(await readPersistedQueue()).toEqual({
+      [String(chatId)]: [sampleItem],
     });
-
-    expect(fs.existsSync(queueFilePath("app1", chat1))).toBe(true);
-    expect(fs.existsSync(queueFilePath("app2", chat2))).toBe(true);
-  });
-
-  it("removes the file for a chat that is no longer queued", async () => {
-    const appId = createApp("app1");
-    const chatId = createChat(appId);
-    await writePersistedQueue({ [String(chatId)]: [sampleItem] });
-    expect(fs.existsSync(queueFilePath("app1", chatId))).toBe(true);
-
-    // Chat's queue is now empty (completed / cleared).
-    await writePersistedQueue({});
-    expect(fs.existsSync(queueFilePath("app1", chatId))).toBe(false);
-    expect(await readPersistedQueue()).toEqual({});
   });
 
   it("skips and cleans up a corrupt queue file instead of throwing", async () => {
@@ -140,20 +108,14 @@ describe("queue_store", () => {
   it("cleans up an orphan file whose chat no longer exists", async () => {
     const appId = createApp("app1");
     const chatId = createChat(appId);
-    await writePersistedQueue({ [String(chatId)]: [sampleItem] });
     const filePath = queueFilePath("app1", chatId);
-    expect(fs.existsSync(filePath)).toBe(true);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify([sampleItem]));
 
     // Delete the chat, leaving the queue file orphaned.
     db.delete(chats).run();
 
     expect(await readPersistedQueue()).toEqual({});
     expect(fs.existsSync(filePath)).toBe(false);
-  });
-
-  it("does not persist queues for unknown chats", async () => {
-    createApp("app1");
-    await writePersistedQueue({ "99999": [sampleItem] });
-    expect(await readPersistedQueue()).toEqual({});
   });
 });

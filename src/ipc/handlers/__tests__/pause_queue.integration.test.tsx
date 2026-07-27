@@ -117,11 +117,29 @@ describe("pause queue (integration)", () => {
     fireEvent.click(screen.getByRole("button", { name: /pause queue/i }));
     await screen.findByText("Paused");
 
+    const streamEnded = harness.waitForEvent(
+      "chat:stream:end",
+      (payload) =>
+        typeof payload === "object" &&
+        payload !== null &&
+        (payload as { chatId?: number }).chatId === chatId,
+    );
     fireEvent.click(stopButton);
+    await streamEnded;
+    await screen.findByLabelText(/^(sendMessage|Send message)$/, undefined, {
+      timeout: 15_000,
+    });
     await waitFor(() =>
       expect(queueHeader.textContent).toMatch(queuedCountText(4)),
     );
 
+    const resumedStreamEnded = harness.waitForEvent(
+      "chat:stream:end",
+      (payload) =>
+        typeof payload === "object" &&
+        payload !== null &&
+        (payload as { chatId?: number }).chatId === chatId,
+    );
     fireEvent.click(screen.getByRole("button", { name: /resume queue/i }));
     await waitFor(() => expect(screen.queryByText("Paused")).toBeNull(), {
       timeout: 15_000,
@@ -134,6 +152,7 @@ describe("pause queue (integration)", () => {
       },
       { timeout: 20_000 },
     );
+    await resumedStreamEnded;
   }, 60_000);
 
   it("keeps an unpaused queue when stopped and parks it in the paused state", async () => {
@@ -225,16 +244,35 @@ describe("pause queue (integration)", () => {
     fireEvent.click(screen.getByRole("button", { name: /pause queue/i }));
     await screen.findByText("Paused");
 
+    const streamEnded = harness.waitForEvent(
+      "chat:stream:end",
+      (payload) =>
+        typeof payload === "object" &&
+        payload !== null &&
+        (payload as { chatId?: number }).chatId === chatId,
+    );
     fireEvent.click(stopButton);
+    await streamEnded;
+    await screen.findByLabelText(/^(sendMessage|Send message)$/, undefined, {
+      timeout: 15_000,
+    });
     await waitFor(() =>
       expect(queueHeader.textContent).toMatch(queuedCountText(3)),
     );
     await waitForStreamTermination();
 
+    const immediateStreamEnded = harness.waitForEvent(
+      "chat:stream:end",
+      (payload) =>
+        typeof payload === "object" &&
+        payload !== null &&
+        (payload as { chatId?: number }).chatId === chatId,
+    );
     await harness.pressEnterInChat("should send immediately", { chatId });
 
     await screen.findByText("should send immediately");
     expect(queueHeader.textContent).toMatch(queuedCountText(3));
     expect(screen.getByText("Paused")).toBeTruthy();
+    await immediateStreamEnded;
   }, 60_000);
 });

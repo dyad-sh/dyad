@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 
 import { apps, chats, messages } from "@/db/schema";
 import {
@@ -134,6 +134,7 @@ describe("local-agent basic flows (integration)", () => {
     );
     const storedMessages = await harness.db.query.messages.findMany({
       where: eq(messages.chatId, app.chatId),
+      orderBy: [asc(messages.id)],
     });
     expect(storedMessages.map((m) => m.role)).toEqual(["user", "assistant"]);
     expect(storedMessages.at(-1)?.content).toContain("UPDATED imported app");

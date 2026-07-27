@@ -50,6 +50,12 @@ await po.navigation.goToChatTab();
 
 Key sub-components: `po.appManagement`, `po.navigation`, `po.chatActions`, `po.previewPanel`, `po.codeEditor`, `po.githubConnector`, `po.toastNotifications`, `po.settings`, `po.securityReview`, `po.modelPicker`.
 
+When an E2E assertion needs main-owned state after a legacy read IPC channel is
+deleted, read the authoritative remote-machine snapshot through
+`distributed-machine:subscribe` and immediately balance it with
+`distributed-machine:unsubscribe`. Do not retain a test-only legacy channel or
+leak a subscription reference just to inspect state.
+
 ## Base UI Radio component selection in Playwright
 
 Base UI Radio components render a hidden native `<input type="radio">` with `aria-hidden="true"`. Both `getByRole('radio', { name: '...' })` and `getByLabel('...')` find this hidden input but can't click it (element is outside viewport). Use `getByText` to click the visible label text instead.

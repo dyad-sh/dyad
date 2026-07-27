@@ -1,5 +1,12 @@
 # C3 — Chat-stream and plan-handoff execution
 
+## Implementation status
+
+The main-authority cutover is published from `c3-chat-main-authority`. Its
+required trailing Phase D deletion is implemented in
+`c3-chat-delete-adapters` and is pending review/landing. C3 is not marked
+complete until both land.
+
 Implement C3 of plans/cleanup-state-machines.md. HARD GATES — verify all
 three before starting: (1) plans/g1-chat-stream-study.md accepted with a
 GO for the host move (if the study said no-go, this prompt is void — the

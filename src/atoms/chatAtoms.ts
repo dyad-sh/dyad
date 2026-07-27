@@ -527,32 +527,14 @@ export const needsFreshPlanChatAtom = atom<boolean>(false);
 export interface QueuedMessageItem {
   id: string; // UUID for stable identification during reordering/editing
   prompt: string;
-  /** Main-owned entries expose only the mutations their owner can settle. */
-  editable?: boolean;
-  removable?: boolean;
   attachments?: FileAttachment[];
   selectedComponents?: ComponentSelection[];
-  // Extra stream-request fields preserved when the chat stream machine queues
-  // a submission that arrived while a stream was active, so the queued
-  // dispatch replays the ORIGINAL request (e.g. a Retry keeps its redo
-  // semantics). Ordinary queue fields round-trip through persistence; machine
-  // follow-ups are intentionally memory-only because their owner/callbacks are.
+  // Extra stream-request fields projected from the main-owned queue snapshot.
   redo?: boolean;
   appId?: number;
   requestedChatMode?: Chat["chatMode"] | null;
-  planAcceptInNewChat?: boolean;
-  owner?: import("@/state_machines/handoff_types").UserInputFollowUpQueueOwner;
+  editable?: boolean;
+  removable?: boolean;
   /** Legacy persisted marker; never written by current queue code. */
   userInputRequestId?: string;
-  onAccepted?: () => void;
-  onAcceptanceError?: (error: Error) => void;
-  onAcceptanceRejected?: (reason: string) => void | Promise<void>;
 }
-
-// Map<chatId, QueuedMessageItem[]>
-export const queuedMessagesByIdAtom = atom<Map<number, QueuedMessageItem[]>>(
-  new Map(),
-);
-
-// Tracks if the queue is paused for each chat (Map<chatId, isPaused>)
-export const queuePausedByIdAtom = atom<Map<number, boolean>>(new Map());

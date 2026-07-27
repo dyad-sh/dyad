@@ -55,7 +55,7 @@ ipc.chatStream.start(params, { onChunk, onEnd, onError });
 - Mint an `InvocationRef` through the injected `IdSource` at the authoritative start boundary. Globally unique operation IDs eliminate cross-controller lifetime reuse without retaining per-key generation maps.
 - Terminal stream callbacks may synchronously start a replacement stream with the same key. Cleanup after `onEnd`/`onError` (including invoke rejection) must delete the entry only when the map still points to the generation that ended; an unconditional keyed delete can orphan the replacement stream.
 - By default the entry is removed when the end/error event arrives (`autoRelease: true`). Pass `{ autoRelease: false }` to keep receiving events after a terminal event, and call `release(key, { invocationRef })` when done — the chat stream machine uses this to keep entry ownership with its controller until finalization side effects complete (a stale release is a no-op).
-- Chat streams: do NOT call `ipc.chatStream.start` or guard against duplicate streams outside `src/chat_stream/commands.ts`. The per-chat state machine is the single source of truth for the lifecycle; submit through `useStreamChat().streamMessage` or `ChatStreamManager.ensure(chatId).send({ type: "submit", ... })`, and it serializes/queues by construction.
+- Chat streams: do NOT call `ipc.chatStream.start` or guard against duplicate streams from renderer code. The main-owned `chat_stream` actor is the single lifecycle and queue authority; submit through `useStreamChat().streamMessage` or `ChatStreamRemoteManager.ensure(chatId).send({ type: "submit", ... })`.
 - A null chat mode means the automatic default is still implicit. Renderer
   submissions must preserve that distinction with the existing null
   `requestedChatMode` sentinel instead of sending the computed display mode as
@@ -74,8 +74,13 @@ ipc.chatStream.start(params, { onChunk, onEnd, onError });
   idempotency insert, implicit-mode latch, and renderer acceptance event.
   Otherwise a rejected request leaves durable state and replays as accepted
   even though no model turn ran.
-- If a legacy UI path appends directly to `queuedMessagesByIdAtom` instead of submitting through the machine, poke the chat controller immediately after the synchronous atom write. The render that chose the queue path may be stale after finalization's one automatic dispatch, otherwise leaving the new item without a driver.
-- **Never gate global-state cleanup in `onEnd`/`onError` on a local `isMountedRef`.** Stream callbacks outlive the component that started them. If the user navigates away mid-stream, an unmount-guarded `onEnd` skips `setIsStreamingByIdAtom(false)` and `syncChatFromDb`, leaving the chat permanently `isStreaming=true` — `ChatPanel.fetchChatMessages` then skips IPC fetches forever and only a page refresh recovers. Always run global Jotai state writes and DB syncs unconditionally; only guard UI-only side effects (toasts, console logs, local React state) on mount. See `src/chat_stream/commands.ts` for the no-guard pattern.
+- Queue mutations must go through the main actor's revisioned events. Do not add renderer-owned queue atoms or full-snapshot queue persistence.
+- Terminal observation and cleanup belong to the main actor and must not depend on renderer liveness. Renderer callbacks are window-local receipts only.
+- The remote-machine transport rejects dispatch envelopes above 256 KiB before
+  running the event codec and reports `invalid-event`. If a bounded domain
+  schema legitimately permits larger payloads (for example base64 chat
+  attachments), set that machine's `remote.maxDispatchEnvelopeBytes` to match
+  the schema limit instead of raising the global transport limit.
 
 ## Settings write safety (`writeSettings`)
 

@@ -38,19 +38,13 @@ export const PlanPanel: React.FC = () => {
   const planData = usePlanDocument(chatId);
   const handoff = usePlanHandoffState(chatId);
   const handoffFailure =
-    "phase" in handoff
-      ? handoff.phase === "failed"
-        ? (handoff.failure ?? "Plan implementation could not be started.")
-        : null
-      : handoff.type === "failed"
-        ? (handoff.error ?? "Plan implementation could not be started.")
-        : null;
+    handoff.phase === "failed"
+      ? (handoff.failure ?? "Plan implementation could not be started.")
+      : null;
   const isAccepted =
-    ("phase" in handoff &&
-      handoff.phase !== "idle" &&
-      handoff.phase !== "failed" &&
-      handoff.phase !== "cancelled") ||
-    ("type" in handoff && handoff.type !== "idle" && handoff.type !== "failed");
+    handoff.phase !== "idle" &&
+    handoff.phase !== "failed" &&
+    handoff.phase !== "cancelled";
   const previewMode = useAtomValue(previewModeAtom);
   const setPreviewMode = useSetAtom(previewModeAtom);
   const { streamMessage, isStreaming } = useStreamChat();

@@ -55,6 +55,7 @@ import React, { Suspense, lazy, useCallback, useEffect } from "react";
 import { Toaster } from "sonner";
 import { fetch as undiciFetch } from "undici";
 import { expect } from "vitest";
+import { eq } from "drizzle-orm";
 
 // IMPORTANT: `./chat_flow_harness` must be imported BEFORE `@/components/ChatPanel`.
 // Loading it first pulls an app module that initializes `tslib`'s CJS interop
@@ -71,8 +72,6 @@ import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import {
   attachmentsAtom,
   chatInputValuesByIdAtom,
-  queuePausedByIdAtom,
-  queuedMessagesByIdAtom,
   selectedChatIdAtom,
 } from "@/atoms/chatAtoms";
 import { selectedComponentsPreviewAtom } from "@/atoms/previewAtoms";
@@ -113,8 +112,7 @@ import {
 } from "@/app_run/AppRunRemoteProvider";
 import { TestAppRunRemoteConnection } from "@/app_run/testing";
 import { PlanHandoffProvider } from "@/plan_handoff/PlanHandoffProvider";
-import { ChatStreamManager } from "@/chat_stream/manager";
-import { selectStreamError } from "@/chat_stream/transition";
+import { ChatStreamRemoteManager } from "@/chat_stream/remote_manager";
 import { ChatStreamProvider } from "@/chat_stream/ChatStreamProvider";
 import {
   EntityDisposalProvider,
@@ -136,7 +134,7 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import { TitleBar } from "@/app/TitleBar";
 import { DeepLinkProvider } from "@/contexts/DeepLinkContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
-import { chats } from "@/db/schema";
+import { chatQueueState, chats } from "@/db/schema";
 import { ipc } from "@/ipc/types";
 import type {
   ComponentSelection,
@@ -330,8 +328,8 @@ export interface HybridChatHarness extends ChatFlowHarness {
   setPlanAcceptInNewChat: (chatId: number, value: boolean) => void;
   getPlanAcceptInNewChat: (chatId: number) => boolean | undefined;
 
-  /** Seed/read the four transient maps owned by ChatStreamManager. */
-  seedChatStreamResidue: (chatId: number) => void;
+  /** Seed/read representative main-owned stream residue. */
+  seedChatStreamResidue: (chatId: number) => Promise<void>;
   hasChatStreamResidue: (chatId: number) => boolean;
 
   /** Seed/read representative app-scoped preview and test runtime state. */
@@ -549,7 +547,7 @@ function HybridAppEventWiring({
 }: {
   store: JotaiStore;
   queryClient: QueryClient;
-  chatStreamManager: ChatStreamManager;
+  chatStreamManager: ChatStreamRemoteManager;
 }) {
   const entityDisposal = useEntityDisposal();
   useEffect(
@@ -668,8 +666,8 @@ export async function setupHybridChatHarness(
     let activeStore: JotaiStore | undefined;
     let activeQueryClient: QueryClient | undefined;
     const queryClients: QueryClient[] = [];
-    const chatStreamManagers: ChatStreamManager[] = [];
-    let activeChatStreamManager: ChatStreamManager | undefined;
+    const chatStreamManagers: ChatStreamRemoteManager[] = [];
+    let activeChatStreamManager: ChatStreamRemoteManager | undefined;
     let activePreviewIframeManager: PreviewIframeManager | undefined;
     const assertNoMissingChannels = options.assertNoMissingChannels ?? true;
 
@@ -722,7 +720,7 @@ export async function setupHybridChatHarness(
       const appId = opts.appId ?? nodeHarness.appId;
       const route = opts.route ?? "/chat";
       const store = createStore();
-      const chatStreamManager = new ChatStreamManager(store);
+      const chatStreamManager = new ChatStreamRemoteManager(store);
       const firstPromptClock = createFakeClock();
       const firstPromptIdSource = createSequentialIdSource();
       chatStreamManagers.push(chatStreamManager);
@@ -733,22 +731,6 @@ export async function setupHybridChatHarness(
       store.set(selectedAppIdAtom, appId);
       store.set(selectedChatIdAtom, route === "/chat" ? chatId : null);
 
-      const planHandoffChatStream = {
-        isIdle: (targetChatId: number) =>
-          chatStreamManager.isIdle(targetChatId),
-        watchIdle: (targetChatId: number, callback: () => void) =>
-          chatStreamManager.watchIdle(targetChatId, callback),
-        submit: (request: {
-          chatId: number;
-          prompt: string;
-          selectedComponents: [];
-          requestedChatMode: "local-agent";
-        }) =>
-          chatStreamManager.ensure(request.chatId).send({
-            type: "submit",
-            request,
-          }),
-      };
       const firstPromptChatStream = {
         submit: (request: {
           prompt: string;
@@ -774,7 +756,7 @@ export async function setupHybridChatHarness(
           idSource={firstPromptIdSource}
           settleDelayMs={0}
         >
-          <PlanHandoffProvider chatStream={planHandoffChatStream}>
+          <PlanHandoffProvider>
             <div data-testid="hybrid-surface-root">
               {opts.wireAppEvents !== false && <HybridAppShellHooks />}
               {opts.withTitleBar && <TitleBar />}
@@ -1093,28 +1075,19 @@ export async function setupHybridChatHarness(
     const getPlanAcceptInNewChat = (chatId: number) =>
       getActiveStore().get(planAcceptInNewChatByChatIdAtom).get(chatId);
 
-    const seedChatStreamResidue = (chatId: number) => {
-      const store = getActiveStore();
+    const seedChatStreamResidue = async (chatId: number) => {
       const manager = activeChatStreamManager;
       if (!manager) throw new Error("Chat stream manager is not mounted");
-      act(() => {
-        store.set(queuedMessagesByIdAtom, new Map([[chatId, []]]));
-        store.set(queuePausedByIdAtom, new Map([[chatId, true]]));
-        manager.ensure(chatId).send({
-          type: "external-error",
-          error: "seeded",
-        });
-      });
+      await manager.dispatchQueueEvent(chatId, { type: "PAUSE_QUEUE" });
     };
 
     const hasChatStreamResidue = (chatId: number) => {
-      const store = getActiveStore();
-      const manager = activeChatStreamManager;
-      if (!manager) throw new Error("Chat stream manager is not mounted");
       return (
-        store.get(queuedMessagesByIdAtom).has(chatId) ||
-        store.get(queuePausedByIdAtom).has(chatId) ||
-        selectStreamError(manager.ensure(chatId).getSnapshot()) !== null
+        nodeHarness.db
+          .select({ chatId: chatQueueState.chatId })
+          .from(chatQueueState)
+          .where(eq(chatQueueState.chatId, chatId))
+          .get() !== undefined
       );
     };
 

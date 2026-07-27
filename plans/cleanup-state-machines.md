@@ -759,7 +759,8 @@ configuration mutation/deletion, stale-write fencing, and explicit shutdown
 disposal.
 
 **C3 — Chat-stream and plan-handoff execution: cutover complete
-(`c3-chat-main-authority`); trailing deletion PR pending.**
+(`c3-chat-main-authority`); trailing deletion implemented
+(`c3-chat-delete-adapters`) and pending review/landing.**
 
 Implement the G1 design only after the app-run transport proves remote
 hydration and multi-window dispatch. Preserve existing batched chunk channels;
@@ -770,10 +771,10 @@ window-close behavior as one reviewed protocol.
 The cutover PR moves both actors to the main process, keeps immutable chat
 intents and plan-handoff checkpoints in main-process memory, makes queue
 mutations revision-conditional, routes plan presentation through
-`WindowRegistry`, and keeps the existing keyed chunk fan-out. Renderer
-controllers, the legacy queue file writer, and superseded projection atoms
-remain only as compile-time adapters for the immediately following deletion PR
-required by Phase D.
+`WindowRegistry`, and keeps the existing keyed chunk fan-out. The stacked
+trailing PR deletes the renderer controllers, legacy queue writer and
+full-snapshot IPC, superseded projection atoms, and shadow lifecycle model.
+Only the read-only legacy queue importer remains for one-time migration.
 
 **C4 — Multi-window product surface.**
 

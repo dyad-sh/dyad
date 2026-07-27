@@ -19,20 +19,14 @@ export const DyadExitPlan: React.FC<DyadExitPlanProps> = ({ node }) => {
   const acceptInNewChatByChatId = useAtomValue(planAcceptInNewChatByChatIdAtom);
   const handoffState = usePlanHandoffState(chatId);
   const failure =
-    "phase" in handoffState
-      ? handoffState.phase === "failed"
-        ? (handoffState.failure ?? "Plan implementation could not be started.")
-        : null
-      : handoffState.type === "failed"
-        ? (handoffState.error ?? "Plan implementation could not be started.")
-        : null;
+    handoffState.phase === "failed"
+      ? (handoffState.failure ?? "Plan implementation could not be started.")
+      : null;
   const isTransitioning =
-    ("type" in handoffState && handoffState.type === "transitioning") ||
-    ("phase" in handoffState &&
-      handoffState.phase !== "idle" &&
-      handoffState.phase !== "started" &&
-      handoffState.phase !== "failed" &&
-      handoffState.phase !== "cancelled");
+    handoffState.phase !== "idle" &&
+    handoffState.phase !== "started" &&
+    handoffState.phase !== "failed" &&
+    handoffState.phase !== "cancelled";
   // Defaults to continuing in the current chat when the choice is unknown
   // (typed acceptance, or after a reload), matching usePlanHandoff routing.
   const useNewChat = chatId

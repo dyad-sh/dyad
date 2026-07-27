@@ -2,13 +2,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useStore } from "jotai";
 import { usePostHog } from "posthog-js/react";
 import { usePackageManagerWarningStore } from "@/package_manager_warnings/PackageManagerWarningProvider";
-import type { ChatStreamRuntimeDeps } from "@/chat_stream/commands";
+import type { ChatStreamRuntimeDeps } from "@/chat_stream/runtime_deps";
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
 
 import { useChatStreamManager } from "@/chat_stream/ChatStreamProvider";
 import type { ChatStreamRemoteSnapshot } from "@/chat_stream/transport";
-import type { StreamState } from "@/chat_stream/state";
 
 import { useSettings } from "./useSettings";
 
@@ -21,7 +20,7 @@ const IDLE_UNSUBSCRIBE = () => {};
  */
 export function useChatStreamState(
   chatId: number | undefined,
-): ChatStreamRemoteSnapshot | StreamState | undefined {
+): ChatStreamRemoteSnapshot | undefined {
   const manager = useChatStreamManager();
   const subscribe = useCallback(
     (onStoreChange: () => void) => {

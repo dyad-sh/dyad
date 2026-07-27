@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
-import { ChatStreamManager } from "@/chat_stream/manager";
+import { ChatStreamRemoteManager } from "@/chat_stream/remote_manager";
 import { ChatStreamProvider } from "@/chat_stream/ChatStreamProvider";
 import { applyPreviewChunk } from "@/lib/streamingPreviewSync";
 import { makeAgentContext } from "@/pro/main/ipc/handlers/local_agent/tools/chat_search_spec_utils";
@@ -78,7 +78,7 @@ describe("explore_chat_history streaming preview", () => {
 
     const chatId = 1;
     const store = createStore();
-    const manager = new ChatStreamManager(store);
+    const manager = new ChatStreamRemoteManager(store);
     store.set(selectedChatIdAtom, chatId);
 
     let latestPreviewXml = "";
@@ -142,7 +142,7 @@ describe("explore_chat_history streaming preview", () => {
   it("normalizes mixed read_chat arguments before the pending card completes", async () => {
     const chatId = 1;
     const store = createStore();
-    const manager = new ChatStreamManager(store);
+    const manager = new ChatStreamRemoteManager(store);
     store.set(selectedChatIdAtom, chatId);
 
     const mixedArgs = {

@@ -124,10 +124,11 @@ Background and before/after examples of why this pattern exists:
 - Model user-initiated owner rejection as a typed non-error facade outcome.
   Rejecting the transport promise routes successful cancellation through
   generic failure toasts/retry logic and can incorrectly acknowledge dispatch.
-- If queue removal awaits owner settlement, atomically claim/remove the
-  invocation-time items before the await so the queue driver cannot start
-  them. Restore failed owners, preserve items enqueued during the await, and
-  surface settlement errors without aborting the whole clear.
+- If queue removal awaits owner settlement, first validate the optimistic
+  revision and atomically claim/remove the invocation-time items so a rejected
+  mutation has no external effect and the queue driver cannot start them.
+  Restore failed owners, preserve items enqueued during the await, and surface
+  settlement errors without aborting the whole clear.
 - When a callback's direct caller owns rollback or restoration, settlement
   failure must reject that callback itself. Rejecting only a separate outer
   promise hides the failure from the component responsible for compensation.
@@ -358,6 +359,9 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   contract as well as lifecycle state: query invalidations, authoritative
   message refresh, preview-open policy, reload/capture requests, and settlement
   callbacks all belong in the completion projection.
+- Main-owned work must report terminal settlement through a main-owned observer
+  or return path. Renderer delivery is best-effort: a destroyed `WebContents`
+  can make `safeSend` a no-op and must not strand the authoritative actor.
 - `useSyncExternalStore` snapshots must be referentially stable between store
   changes. If an adapter overlays optimistic admission on a remote snapshot,
   cache the projected object by base snapshot and operation identity instead of

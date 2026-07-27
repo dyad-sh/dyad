@@ -1,5 +1,5 @@
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
 
 import * as schema from "@/db/schema";
 import {
@@ -175,15 +175,31 @@ function markIntentAccepted(
   tx.delete(chatQueueEntries)
     .where(eq(chatQueueEntries.intentId, intentId))
     .run();
-  tx.update(chatQueueEntries)
-    .set({ position: sql`${chatQueueEntries.position} - 1` })
+  const trailingRows = tx
+    .select({
+      itemId: chatQueueEntries.itemId,
+    })
+    .from(chatQueueEntries)
     .where(
       and(
         eq(chatQueueEntries.chatId, queued.chatId),
         sql`${chatQueueEntries.position} > ${queued.position}`,
       ),
     )
-    .run();
+    .orderBy(asc(chatQueueEntries.position))
+    .all();
+  trailingRows.forEach((row, index) => {
+    tx.update(chatQueueEntries)
+      .set({ position: -index - 1 })
+      .where(eq(chatQueueEntries.itemId, row.itemId))
+      .run();
+  });
+  trailingRows.forEach((row, index) => {
+    tx.update(chatQueueEntries)
+      .set({ position: queued.position + index })
+      .where(eq(chatQueueEntries.itemId, row.itemId))
+      .run();
+  });
   tx.update(chatQueueState)
     .set({ revision: sql`${chatQueueState.revision} + 1` })
     .where(eq(chatQueueState.chatId, queued.chatId))

@@ -7,7 +7,7 @@ import React, {
 } from "react";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { Button } from "@/components/ui/button";
-import { Check, FileText } from "lucide-react";
+import { AlertCircle, Check, FileText } from "lucide-react";
 import { VanillaMarkdownParser } from "@/components/chat/DyadMarkdownParser";
 import {
   clearPlanAnnotations,
@@ -33,6 +33,14 @@ export const PlanPanel: React.FC = () => {
   const chatId = useAtomValue(selectedChatIdAtom);
   const planData = usePlanDocument(chatId);
   const handoff = usePlanHandoffState(chatId);
+  const handoffFailure =
+    "phase" in handoff
+      ? handoff.phase === "failed"
+        ? (handoff.failure ?? "Plan implementation could not be started.")
+        : null
+      : handoff.type === "failed"
+        ? (handoff.error ?? "Plan implementation could not be started.")
+        : null;
   const isAccepted =
     ("phase" in handoff &&
       handoff.phase !== "idle" &&
@@ -85,6 +93,12 @@ export const PlanPanel: React.FC = () => {
     ? (acceptInNewChatByChatId.get(chatId) ?? null)
     : null;
   const [isSendingComments, setIsSendingComments] = useState(false);
+
+  useEffect(() => {
+    if (handoffFailure) {
+      setIsSubmitting(false);
+    }
+  }, [handoffFailure]);
 
   const chatAnnotations = useMemo(
     () => (chatId ? (annotations.get(chatId) ?? []) : []),
@@ -265,7 +279,35 @@ export const PlanPanel: React.FC = () => {
       )}
 
       <div className="border-t p-4 space-y-4 bg-background">
-        {isAccepted || isAcceptedPlan ? (
+        {handoffFailure ? (
+          <div className="flex flex-col gap-2">
+            <div className="flex items-start gap-2 text-red-700 dark:text-red-300">
+              <AlertCircle size={16} className="mt-0.5 shrink-0" />
+              <span className="text-sm font-medium">
+                Failed to start implementation: {handoffFailure}
+              </span>
+            </div>
+            <Button
+              onClick={() => handleAccept(true)}
+              disabled={isStreaming || isSubmitting}
+              className="w-full"
+              data-testid="accept-plan-new-chat"
+            >
+              <Check size={16} className="mr-2" />
+              Retry in a new chat
+            </Button>
+            <Button
+              onClick={() => handleAccept(false)}
+              disabled={isStreaming || isSubmitting}
+              variant="outline"
+              className="w-full"
+              data-testid="accept-plan-continue-here"
+            >
+              <Check size={16} className="mr-2" />
+              Retry in this chat
+            </Button>
+          </div>
+        ) : isAccepted || isAcceptedPlan ? (
           <div className="flex items-center gap-2 text-green-700 dark:text-green-300">
             <Check size={16} />
             <span className="text-sm font-medium">

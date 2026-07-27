@@ -197,6 +197,7 @@ export const ChatStreamHostEventSchema = z.discriminatedUnion("type", [
       intentId: z.string(),
       invocationRef: ChatStreamInvocationRefSchema,
       response: ChatResponseEndSchema,
+      targetAppId: z.number().int().positive(),
     })
     .strict(),
   z
@@ -205,6 +206,8 @@ export const ChatStreamHostEventSchema = z.discriminatedUnion("type", [
       intentId: z.string(),
       invocationRef: ChatStreamInvocationRefSchema,
       error: z.string(),
+      warningMessages: z.array(z.string()).optional(),
+      targetAppId: z.number().int().positive(),
     })
     .strict(),
   z
@@ -275,6 +278,10 @@ export const ChatStreamRemoteSnapshotSchema = z
         chatSummary: z.string().optional(),
         pausePromptQueue: z.boolean().optional(),
         updatedFiles: z.boolean().optional(),
+        extraFiles: z.array(z.string()).optional(),
+        extraFilesError: z.string().optional(),
+        warningMessages: z.array(z.string()).optional(),
+        targetAppId: z.number().int().positive().nullable(),
         error: z.string().optional(),
       })
       .strict()

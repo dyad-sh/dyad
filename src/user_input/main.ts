@@ -33,16 +33,20 @@ async function dispatchDueFollowUpInMain(
 ): Promise<void> {
   const { dispatchUserInputFollowUp, waitForChatActorIdle } =
     await import("@/ipc/services/chat_actor_service");
-  while (
+  const isStillDue = () =>
     userInputRegistry
       .getPending()
       .some(
         (pending) =>
           pending.status === "due" &&
           pending.descriptor.requestId === command.requestId,
-      )
-  ) {
+      );
+  while (isStillDue()) {
     await waitForChatActorIdle(command.chatId);
+    // App/chat deletion can settle the owner while this dispatcher waits for
+    // the previous turn to drain. Do not create a new actor after that sweep;
+    // it could otherwise wait forever behind the deletion admission barrier.
+    if (!isStillDue()) return;
     const result = await dispatchUserInputFollowUp({
       requestId: command.requestId,
       chatId: command.chatId,
@@ -62,6 +66,8 @@ async function dispatchDueFollowUpInMain(
       }
       return;
     }
+    await userInputRegistry.followUpRejected(command.requestId);
+    return;
   }
 }
 

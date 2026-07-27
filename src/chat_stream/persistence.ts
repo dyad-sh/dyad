@@ -145,23 +145,12 @@ export function persistSessionQueuedIntent(
   intent: SerializableChatTurnIntent,
 ): PersistAdmissionResult {
   assertChatTurnPayloadHash(intent);
-  if (intent.owner?.kind !== "user-input-follow-up") {
+  assertMatchingDueFollowUp(intent);
+  const owner = intent.owner;
+  if (owner?.kind !== "user-input-follow-up") {
     throw new DyadError(
       "Session queue requires a live user-input owner",
       DyadErrorKind.Validation,
-    );
-  }
-  const owner = intent.owner;
-  if (
-    !hasMatchingDueFollowUp({
-      requestId: owner.requestId,
-      chatId: intent.chatId,
-      prompt: intent.prompt,
-    })
-  ) {
-    throw new DyadError(
-      "No matching due user-input follow-up",
-      DyadErrorKind.NotFound,
     );
   }
   const existing = sessionIntents.get(intent.intentId);
@@ -203,6 +192,28 @@ export function persistSessionQueuedIntent(
     entry: toQueueEntry(intent),
     queueRevision,
   };
+}
+
+function assertMatchingDueFollowUp(intent: SerializableChatTurnIntent): void {
+  if (intent.owner?.kind !== "user-input-follow-up") {
+    throw new DyadError(
+      "Session queue requires a live user-input owner",
+      DyadErrorKind.Validation,
+    );
+  }
+  const owner = intent.owner;
+  if (
+    !hasMatchingDueFollowUp({
+      requestId: owner.requestId,
+      chatId: intent.chatId,
+      prompt: intent.prompt,
+    })
+  ) {
+    throw new DyadError(
+      "No matching due user-input follow-up",
+      DyadErrorKind.NotFound,
+    );
+  }
 }
 
 export function isSessionQueuedIntent(intentId: string): boolean {
@@ -426,7 +437,10 @@ export function stageActiveIntent(
   intent: SerializableChatTurnIntent,
 ): PersistAdmissionResult | null {
   assertChatTurnPayloadHash(intent);
-  if (intent.owner?.kind === "user-input-follow-up") return null;
+  if (intent.owner?.kind === "user-input-follow-up") {
+    assertMatchingDueFollowUp(intent);
+    return null;
+  }
   return database.transaction((tx) => {
     const existing = tx
       .select()
@@ -510,7 +524,7 @@ export async function mutateChatQueue(
   for (const entry of sessionEntries) {
     const owner = sessionIntents.get(entry.intentId)?.owner;
     if (owner?.kind === "user-input-follow-up") {
-      await rejectDueFollowUp(owner.requestId);
+      ownersToReject.push(owner.requestId);
     }
   }
   let nextOrder: string[] | undefined;
@@ -638,15 +652,22 @@ export async function mutateChatQueue(
         }
         for (const row of removed) {
           const entry = ChatQueueEntrySchema.parse(JSON.parse(row.payloadJson));
+          const intentRow = tx
+            .select({ envelopeJson: chatTurnIntents.envelopeJson })
+            .from(chatTurnIntents)
+            .where(eq(chatTurnIntents.intentId, entry.intentId))
+            .get();
+          const intent = intentRow
+            ? (JSON.parse(intentRow.envelopeJson) as SerializableChatTurnIntent)
+            : sessionIntents.get(entry.intentId);
+          if (intent?.owner?.kind === "plan-handoff") {
+            throw new DyadError(
+              "Plan implementation turns cannot be removed while their handoff is active",
+              DyadErrorKind.Precondition,
+            );
+          }
           if (entry.persistence === "main-session") {
-            const intent = JSON.parse(
-              tx
-                .select({ envelopeJson: chatTurnIntents.envelopeJson })
-                .from(chatTurnIntents)
-                .where(eq(chatTurnIntents.intentId, entry.intentId))
-                .get()?.envelopeJson ?? "{}",
-            ) as SerializableChatTurnIntent;
-            if (intent.owner?.kind === "user-input-follow-up") {
+            if (intent?.owner?.kind === "user-input-follow-up") {
               ownersToReject.push(intent.owner.requestId);
             }
           }
@@ -690,37 +711,44 @@ export async function mutateChatQueue(
 
 export function markIntentTerminal(
   database: ChatDatabase,
-  intentId: string,
+  intent: Pick<SerializableChatTurnIntent, "chatId" | "intentId" | "owner">,
   pauseQueue: boolean,
 ): ReturnType<typeof loadChatQueue> {
-  const intent = database
+  const persistedIntent = database
     .select()
     .from(chatTurnIntents)
-    .where(eq(chatTurnIntents.intentId, intentId))
+    .where(eq(chatTurnIntents.intentId, intent.intentId))
     .get();
-  if (!intent) {
+  if (!persistedIntent) {
+    if (intent.owner?.kind === "user-input-follow-up") {
+      return loadChatQueue(database, intent.chatId);
+    }
     throw new DyadError("Chat turn intent not found", DyadErrorKind.NotFound);
   }
   database.transaction((tx) => {
     tx.update(chatTurnIntents)
       .set({ recovery: "terminal", updatedAt: new Date() })
-      .where(eq(chatTurnIntents.intentId, intentId))
+      .where(eq(chatTurnIntents.intentId, intent.intentId))
       .run();
     const state = tx
       .select()
       .from(chatQueueState)
-      .where(eq(chatQueueState.chatId, intent.chatId))
-      .get() ?? { chatId: intent.chatId, revision: 0, paused: false };
+      .where(eq(chatQueueState.chatId, persistedIntent.chatId))
+      .get() ?? {
+      chatId: persistedIntent.chatId,
+      revision: 0,
+      paused: false,
+    };
     tx.insert(chatQueueState).values(state).onConflictDoNothing().run();
     tx.update(chatQueueState)
       .set({
         revision: state.revision + (pauseQueue && !state.paused ? 1 : 0),
         paused: state.paused || pauseQueue,
       })
-      .where(eq(chatQueueState.chatId, intent.chatId))
+      .where(eq(chatQueueState.chatId, persistedIntent.chatId))
       .run();
   });
-  return loadChatQueue(database, intent.chatId);
+  return loadChatQueue(database, persistedIntent.chatId);
 }
 
 export function peekQueueHead(

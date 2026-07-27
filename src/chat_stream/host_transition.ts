@@ -24,7 +24,7 @@ export function initialChatStreamHostState(input?: {
     queue: input?.queue ?? [],
     lastAcceptance: null,
     lastCompletion: null,
-    queueMutationPending: false,
+    pendingQueueMutationId: null,
     lastQueueMutation: null,
   };
 }
@@ -51,7 +51,7 @@ function queueMutation(
   if (event.expectedQueueRevision !== state.queueRevision) {
     return ignore(state, "queue-revision-conflict");
   }
-  if (state.queueMutationPending) {
+  if (state.pendingQueueMutationId !== null) {
     return ignore(state, "queue-revision-conflict");
   }
   const mutation: Extract<
@@ -81,7 +81,7 @@ function queueMutation(
               : { type: "clear" };
   return {
     kind: "applied",
-    state: { ...state, queueMutationPending: true },
+    state: { ...state, pendingQueueMutationId: event.mutationId },
     commands: [
       {
         type: "mutate-queue",
@@ -233,7 +233,7 @@ export function transitionChatStreamHost(
                 : null,
             lastAcceptance: {
               intentId: event.intentId,
-              acceptance: "replayed",
+              acceptance: event.acceptance,
               ...(event.acceptedMessageId === undefined
                 ? {}
                 : { acceptedMessageId: event.acceptedMessageId }),
@@ -251,7 +251,7 @@ export function transitionChatStreamHost(
           ...state,
           lastAcceptance: {
             intentId: event.intentId,
-            acceptance: "replayed",
+            acceptance: event.acceptance,
             ...(event.acceptedMessageId === undefined
               ? {}
               : { acceptedMessageId: event.acceptedMessageId }),
@@ -309,6 +309,10 @@ export function transitionChatStreamHost(
             chatSummary: event.response.chatSummary,
             pausePromptQueue: event.response.pausePromptQueue,
             updatedFiles: event.response.updatedFiles,
+            extraFiles: event.response.extraFiles,
+            extraFilesError: event.response.extraFilesError,
+            warningMessages: event.response.warningMessages,
+            targetAppId: event.targetAppId,
           },
         },
         commands: [
@@ -332,11 +336,14 @@ export function transitionChatStreamHost(
         state: {
           ...state,
           phase: "finalizing",
+          error: event.error,
           lastCompletion: {
             intentId: event.intentId,
             invocationRef: event.invocationRef,
             outcome: "errored",
             error: event.error,
+            warningMessages: event.warningMessages,
+            targetAppId: event.targetAppId,
           },
         },
         commands: [
@@ -344,39 +351,61 @@ export function transitionChatStreamHost(
         ],
       };
     case "QUEUE_MUTATED":
-      return {
-        kind: "applied",
-        state: {
-          ...state,
-          queueRevision: event.queueRevision,
-          queuePaused: event.paused,
-          queue: event.entries,
-          queueMutationPending: false,
-          ...(event.mutationId
-            ? {
-                lastQueueMutation: {
-                  mutationId: event.mutationId,
-                  outcome: "applied" as const,
-                },
-              }
-            : {}),
-          ...(state.phase === "finalizing"
-            ? { phase: "idle" as const, active: null }
-            : {}),
-        },
-        commands:
-          !event.paused &&
-          event.entries.length > 0 &&
-          (state.phase === "finalizing" || state.phase === "idle")
-            ? [{ type: "dispatch-next" }]
-            : [],
-      };
+      if (
+        event.mutationId !== undefined &&
+        event.mutationId !== state.pendingQueueMutationId
+      ) {
+        return ignore(state, "invalid-host-event");
+      }
+      {
+        const pendingQueueMutationId =
+          event.mutationId === state.pendingQueueMutationId
+            ? null
+            : state.pendingQueueMutationId;
+        return {
+          kind: "applied",
+          state: {
+            ...state,
+            queueRevision: event.queueRevision,
+            queuePaused: event.paused,
+            queue: event.entries,
+            pendingQueueMutationId,
+            ...(event.mutationId
+              ? {
+                  lastQueueMutation: {
+                    mutationId: event.mutationId,
+                    outcome: "applied" as const,
+                  },
+                }
+              : {}),
+            ...(state.phase === "finalizing"
+              ? {
+                  phase:
+                    state.lastCompletion?.outcome === "errored"
+                      ? ("errored" as const)
+                      : ("idle" as const),
+                  active: null,
+                }
+              : {}),
+          },
+          commands:
+            pendingQueueMutationId === null &&
+            !event.paused &&
+            event.entries.length > 0 &&
+            (state.phase === "finalizing" || state.phase === "idle")
+              ? [{ type: "dispatch-next" }]
+              : [],
+        };
+      }
     case "QUEUE_MUTATION_REJECTED":
+      if (event.mutationId !== state.pendingQueueMutationId) {
+        return ignore(state, "invalid-host-event");
+      }
       return {
         kind: "applied",
         state: {
           ...state,
-          queueMutationPending: false,
+          pendingQueueMutationId: null,
           lastQueueMutation: {
             mutationId: event.mutationId,
             outcome: "rejected",

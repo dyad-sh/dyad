@@ -153,6 +153,9 @@ function createCommandRunner(
             context.key.chatId,
             command.intent.originWindowSessionId,
           );
+          const targetAppId =
+            command.intent.appId ??
+            (await requireExistingChat(context.key.chatId));
           void executeChatStreamFromActor(
             endpoint,
             {
@@ -179,7 +182,7 @@ function createCommandRunner(
                   intentId: command.intent.intentId,
                   invocationRef,
                   acceptedMessageId,
-                  targetAppId: command.intent.appId ?? null,
+                  targetAppId,
                 });
                 const queue = loadChatQueue(db, context.key.chatId);
                 emit({
@@ -195,13 +198,16 @@ function createCommandRunner(
                   intentId: command.intent.intentId,
                   invocationRef,
                   response,
+                  targetAppId,
                 }),
-              onError: (error) =>
+              onError: ({ error, warningMessages }) =>
                 emit({
                   type: "STREAM_ERRORED",
                   intentId: command.intent.intentId,
                   invocationRef,
-                  error,
+                  error: error ?? "Chat stream failed",
+                  warningMessages,
+                  targetAppId,
                 }),
             },
           ).catch((error) =>
@@ -210,6 +216,7 @@ function createCommandRunner(
               intentId: command.intent.intentId,
               invocationRef,
               error: error instanceof Error ? error.message : String(error),
+              targetAppId,
             }),
           );
         } catch (error) {
@@ -224,23 +231,6 @@ function createCommandRunner(
       case "cancel-active": {
         const endpoint = chatExecutionEndpoint(context.key.chatId);
         await cancelActiveStreamsForChat(context.key.chatId, endpoint);
-        const active = context.getSnapshot().active;
-        if (
-          active &&
-          active.invocationRef.operationId === command.invocationRef.operationId
-        ) {
-          emit({
-            type: "STREAM_ENDED",
-            intentId: active.intent.intentId,
-            invocationRef: active.invocationRef,
-            response: {
-              chatId: context.key.chatId,
-              invocationRef: active.invocationRef,
-              updatedFiles: false,
-              wasCancelled: true,
-            },
-          });
-        }
         return;
       }
       case "mutate-queue": {
@@ -264,9 +254,13 @@ function createCommandRunner(
         return;
       }
       case "finalize": {
+        const active = context.getSnapshot().active;
+        if (!active || active.intent.intentId !== command.intentId) {
+          throw new Error("Finalization does not match the active chat intent");
+        }
         const queue = markIntentTerminal(
           db,
-          command.intentId,
+          active.intent,
           command.response?.pausePromptQueue === true,
         );
         publishChatInvalidations(context.key.chatId);

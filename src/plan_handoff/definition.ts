@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import type { z } from "zod";
 import { db } from "@/db";
 import { apps, chats, planHandoffs } from "@/db/schema";
@@ -61,7 +61,11 @@ function decodeState(sourceChatId: number): PlanHandoffHostState {
     .select()
     .from(planHandoffs)
     .where(eq(planHandoffs.sourceChatId, sourceChatId))
-    .orderBy(planHandoffs.createdAt)
+    .orderBy(
+      asc(planHandoffs.createdAt),
+      asc(planHandoffs.updatedAt),
+      asc(planHandoffs.handoffId),
+    )
     .all()
     .at(-1);
   if (!row) {
@@ -87,8 +91,11 @@ export function transitionPlanHandoffHost(
   switch (event.type) {
     case "ACCEPT":
       if (
-        state.intent?.handoffId === event.intent.handoffId &&
-        state.phase !== "failed"
+        state.intent?.handoffId === event.intent.handoffId ||
+        (state.phase !== "idle" &&
+          state.phase !== "started" &&
+          state.phase !== "failed" &&
+          state.phase !== "cancelled")
       ) {
         return {
           kind: "ignored" as const,
@@ -205,10 +212,7 @@ function persistAcceptance(
     .where(eq(planHandoffs.handoffId, intent.handoffId))
     .get();
   if (existing) {
-    if (
-      existing.sourceChatId !== intent.sourceChatId ||
-      existing.planVersion !== intent.planVersion
-    ) {
+    if (!isMatchingPlanHandoffReplay(existing, intent)) {
       throw new DyadError(
         "Plan handoff id was reused with different content",
         DyadErrorKind.Conflict,
@@ -230,6 +234,20 @@ function persistAcceptance(
     })
     .returning()
     .get();
+}
+
+export function isMatchingPlanHandoffReplay(
+  existing: Pick<
+    typeof planHandoffs.$inferSelect,
+    "sourceChatId" | "planVersion" | "acceptInNewChat"
+  >,
+  intent: PlanHandoffIntent,
+): boolean {
+  return (
+    existing.sourceChatId === intent.sourceChatId &&
+    existing.planVersion === intent.planVersion &&
+    existing.acceptInNewChat === intent.acceptInNewChat
+  );
 }
 
 function createCommandRunner(

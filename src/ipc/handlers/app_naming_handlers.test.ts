@@ -5,7 +5,7 @@ import path from "node:path";
 import { eq } from "drizzle-orm";
 
 import { DyadErrorKind } from "@/errors/dyad_error";
-import { apps } from "@/db/schema";
+import { apps, chats } from "@/db/schema";
 import {
   type HandlerTestHarness,
   setupHandlerTestHarness,
@@ -27,6 +27,7 @@ const createFromTemplateMock = vi.hoisted(() =>
     await fs.promises.writeFile(path.join(fullAppPath, "index.ts"), "// app");
   }),
 );
+const deletionOrder = vi.hoisted(() => [] as string[]);
 
 vi.mock("electron", () => ({
   ipcMain: {
@@ -81,8 +82,24 @@ vi.mock("@/ipc/handlers/chat_mode_resolution", () => ({
 }));
 
 vi.mock("@/ipc/services/chat_actor_deletion_service", () => ({
-  settleChatActorsForDeletion: vi.fn(async () => {}),
+  settleChatActorsForDeletion: vi.fn(async () => {
+    deletionOrder.push("settle-actors");
+  }),
 }));
+
+vi.mock("@/ipc/handlers/chat_stream_handlers", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/ipc/handlers/chat_stream_handlers")
+    >();
+  return {
+    ...actual,
+    blockNewStreamsForApp: vi.fn(() => {
+      deletionOrder.push("barrier");
+      return () => deletionOrder.push("release");
+    }),
+  };
+});
 
 import { registerAppHandlers } from "./app_handlers";
 import { registerImportHandlers } from "./import_handlers";
@@ -125,6 +142,7 @@ describe("app naming handlers", () => {
     fs.rmSync(TEMP_BASE, { recursive: true, force: true });
     fs.mkdirSync(TEMP_BASE, { recursive: true });
     harness = setupHandlerTestHarness();
+    deletionOrder.length = 0;
     createFromTemplateMock.mockClear();
     registerAppHandlers();
     registerImportHandlers();
@@ -299,6 +317,18 @@ describe("app naming handlers", () => {
           withHistory: false,
         }),
       ).rejects.toMatchObject({ kind: DyadErrorKind.Conflict });
+    });
+  });
+
+  describe("delete-app", () => {
+    it("drains chat actors before entering the destructive app mutation", async () => {
+      const appId = seedAppWithFolder("Delete Me", "delete-me");
+      harness.db.insert(chats).values({ appId }).run();
+
+      await harness.invokeHandler("delete-app", { appId });
+
+      expect(getAppRow(appId)).toBeUndefined();
+      expect(deletionOrder).toEqual(["barrier", "settle-actors", "release"]);
     });
   });
 

@@ -29,10 +29,12 @@ const logger = log.scope("chat_handlers");
 async function mutateChatAfterDrainingStreams({
   chatId,
   sender,
+  beforeLock,
   mutation,
 }: {
   chatId: number;
   sender: WebContents;
+  beforeLock?: () => Promise<void>;
   mutation: () => Promise<void>;
 }): Promise<void> {
   const chat = await db.query.chats.findFirst({
@@ -45,6 +47,7 @@ async function mutateChatAfterDrainingStreams({
 
   const releaseStreamAdmissionBlock = blockNewStreamsForChat(chatId);
   try {
+    await beforeLock?.();
     // Drain outside the app lock: an aborted stream may need the same lock to
     // finish a file write. The admission block closes the gap between draining
     // and mutating so another stream cannot enter the chat in between.
@@ -190,11 +193,13 @@ export function registerChatHandlers() {
   });
 
   createTypedHandler(chatContracts.deleteChat, async (event, chatId) => {
-    await userInputRegistry.settleChat(chatId);
-    await settleChatActorsForDeletion(chatId);
     await mutateChatAfterDrainingStreams({
       chatId,
       sender: event.sender,
+      beforeLock: async () => {
+        await userInputRegistry.settleChat(chatId);
+        await settleChatActorsForDeletion(chatId);
+      },
       mutation: async () => {
         await db.delete(chats).where(eq(chats.id, chatId));
         entityDisposalBus.publish({ kind: "chat", id: chatId });

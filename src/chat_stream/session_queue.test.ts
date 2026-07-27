@@ -1,23 +1,29 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apps, chatQueueEntries, chatTurnIntents, chats } from "@/db/schema";
+import { DyadErrorKind } from "@/errors/dyad_error";
 import { createInMemoryTestDb, type TestDb } from "@/testing/test_db";
 import { acceptChatTurn } from "@/ipc/handlers/chat_turn_acceptance";
 import {
   completeSessionQueueAcceptance,
+  disposeSessionChatQueue,
   loadChatQueue,
+  markIntentTerminal,
+  mutateChatQueue,
   persistSessionQueuedIntent,
+  stageActiveIntent,
 } from "./persistence";
 import { computeChatTurnPayloadHash } from "@/ipc/utils/chat_turn_intent_hash";
 import type { SerializableChatTurnIntent } from "./transport";
 
 const liveOwner = vi.hoisted(() => ({
   pending: [] as unknown[],
+  followUpRejected: vi.fn(async () => undefined),
 }));
 
 vi.mock("@/user_input/main", () => ({
   userInputRegistry: {
     getPending: () => liveOwner.pending,
-    followUpRejected: vi.fn(async () => undefined),
+    followUpRejected: liveOwner.followUpRejected,
   },
 }));
 
@@ -26,6 +32,8 @@ describe("main-session follow-up queue", () => {
   let chatId: number;
 
   beforeEach(() => {
+    liveOwner.pending = [];
+    liveOwner.followUpRejected.mockClear();
     database = createInMemoryTestDb();
     const appId = database
       .insert(apps)
@@ -39,7 +47,47 @@ describe("main-session follow-up queue", () => {
       .get().id;
   });
 
-  afterEach(() => database.$client.close());
+  afterEach(() => {
+    disposeSessionChatQueue(chatId);
+    database.$client.close();
+  });
+
+  function followUpIntent(): SerializableChatTurnIntent {
+    const withoutHash = {
+      schemaVersion: 1 as const,
+      intentId: "follow-up-race",
+      chatId,
+      invocationRef: {
+        kind: "chat-stream" as const,
+        entityKey: chatId,
+        operationId: "follow-up-race-operation",
+      },
+      prompt: "Continue safely",
+      userInputRequestId: "follow-up-race",
+      owner: {
+        kind: "user-input-follow-up" as const,
+        requestId: "follow-up-race",
+      },
+    };
+    return {
+      ...withoutHash,
+      payloadHash: computeChatTurnPayloadHash(withoutHash),
+    };
+  }
+
+  function makeFollowUpDue(): void {
+    liveOwner.pending = [
+      {
+        status: "due",
+        descriptor: {
+          requestId: "follow-up-race",
+          chatId,
+          kind: "integration",
+        },
+        followUpPrompt: "Continue safely",
+      },
+    ];
+  }
 
   it("persists no owner shell until message acceptance commits", () => {
     const withoutHash = {
@@ -103,5 +151,48 @@ describe("main-session follow-up queue", () => {
       },
     ]);
     expect(loadChatQueue(database, chatId).queue).toEqual([]);
+  });
+
+  it("does not settle a session owner before queue revision validation", async () => {
+    const intent = followUpIntent();
+    makeFollowUpDue();
+    persistSessionQueuedIntent(database, intent);
+
+    await expect(
+      mutateChatQueue(database, chatId, {
+        type: "mutate-queue",
+        mutation: { type: "remove", itemId: intent.intentId },
+        expectedQueueRevision: 0,
+        mutationId: "stale-remove",
+      }),
+    ).rejects.toMatchObject({ kind: DyadErrorKind.Conflict });
+
+    expect(liveOwner.followUpRejected).not.toHaveBeenCalled();
+    expect(loadChatQueue(database, chatId).queue).toMatchObject([
+      { intentId: intent.intentId },
+    ]);
+  });
+
+  it("validates a live due owner before starting an active follow-up", () => {
+    const intent = followUpIntent();
+
+    expect(() => stageActiveIntent(database, intent)).toThrowError(
+      expect.objectContaining({ kind: DyadErrorKind.NotFound }),
+    );
+
+    makeFollowUpDue();
+    expect(stageActiveIntent(database, intent)).toBeNull();
+    expect(database.select().from(chatTurnIntents).all()).toEqual([]);
+  });
+
+  it("finalizes a failed pre-acceptance follow-up without a durable shell", () => {
+    const intent = followUpIntent();
+
+    expect(markIntentTerminal(database, intent, false)).toEqual({
+      queueRevision: 0,
+      queuePaused: false,
+      queue: [],
+    });
+    expect(database.select().from(chatTurnIntents).all()).toEqual([]);
   });
 });

@@ -138,6 +138,7 @@ import { imageGenerationActorService } from "../services/image_generation_actor_
 import { imageGenerationService } from "../services/image_generation_service";
 import { githubOpsService } from "../services/github_ops_service";
 import { settleChatActorsForDeletion } from "@/ipc/services/chat_actor_deletion_service";
+import { blockNewStreamsForApp } from "./chat_stream_handlers";
 
 const logger = log.scope("app_handlers");
 const handle = createLoggedHandler(logger);
@@ -385,9 +386,24 @@ async function deleteAppById(
   appId: number,
   options: DeleteAppByIdOptions = {},
 ): Promise<void> {
+  const releaseStreamAdmissionBlock = blockNewStreamsForApp(appId);
   githubOpsService.beginAppDeletion(appId);
   imageGenerationService.beginAppDeletion(appId);
   try {
+    // Actor cancellation can wait for an in-flight stream to finish writes
+    // under this app's lock. Drain before taking the lock, while the admission
+    // barrier prevents another turn from entering behind us.
+    const appChats = await db
+      .select({ id: chats.id })
+      .from(chats)
+      .where(eq(chats.appId, appId));
+    await Promise.all(
+      appChats.map(({ id: chatId }) => userInputRegistry.settleChat(chatId)),
+    );
+    await Promise.all(
+      appChats.map(({ id: chatId }) => settleChatActorsForDeletion(chatId)),
+    );
+
     return await withLock(appId, async () => {
       const app = await db.query.apps.findFirst({
         where: eq(apps.id, appId),
@@ -424,20 +440,6 @@ async function deleteAppById(
       getPtySessionManager().killForApp(appId);
 
       try {
-        const appChats = await db
-          .select({ id: chats.id })
-          .from(chats)
-          .where(eq(chats.appId, appId));
-        await Promise.all(
-          appChats.map(({ id: chatId }) =>
-            userInputRegistry.settleChat(chatId),
-          ),
-        );
-        await Promise.all(
-          appChats.map(({ id: chatId }) =>
-            settleChatActorsForDeletion(chatId),
-          ),
-        );
         await db.delete(apps).where(eq(apps.id, appId));
         // Note: Associated chats will cascade delete
         if (options.publishDisposal !== false) {
@@ -470,6 +472,7 @@ async function deleteAppById(
   } finally {
     imageGenerationService.endAppDeletion(appId);
     githubOpsService.endAppDeletion(appId);
+    releaseStreamAdmissionBlock();
   }
 }
 

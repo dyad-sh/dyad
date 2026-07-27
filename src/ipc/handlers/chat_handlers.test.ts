@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apps, chats, messages } from "@/db/schema";
 import { DyadErrorKind } from "@/errors/dyad_error";
 import {
@@ -7,10 +7,43 @@ import {
 } from "@/testing/handler_test_harness";
 import { registerChatHandlers } from "./chat_handlers";
 
+const deletionOrder = vi.hoisted(() => [] as string[]);
+
+vi.mock("./chat_stream_handlers", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("./chat_stream_handlers")>();
+  return {
+    ...actual,
+    blockNewStreamsForChat: vi.fn(() => {
+      deletionOrder.push("barrier");
+      return () => deletionOrder.push("release");
+    }),
+    cancelActiveStreamsForChat: vi.fn(async () => {
+      deletionOrder.push("drain");
+      return true;
+    }),
+  };
+});
+
+vi.mock("@/ipc/services/chat_actor_deletion_service", () => ({
+  settleChatActorsForDeletion: vi.fn(async () => {
+    deletionOrder.push("settle-actors");
+  }),
+}));
+
+vi.mock("@/user_input/main", () => ({
+  userInputRegistry: {
+    settleChat: vi.fn(async () => {
+      deletionOrder.push("settle-input");
+    }),
+  },
+}));
+
 describe("registerChatHandlers", () => {
   let harness: HandlerTestHarness;
 
   beforeEach(() => {
+    deletionOrder.length = 0;
     harness = setupHandlerTestHarness();
     registerChatHandlers();
   });
@@ -135,5 +168,35 @@ describe("registerChatHandlers", () => {
       kind: DyadErrorKind.NotFound,
       message: "Chat not found",
     });
+  });
+
+  it("holds the stream barrier while actors drain and the chat is deleted", async () => {
+    const appId = Number(
+      harness.db
+        .insert(apps)
+        .values({ name: "delete-app", path: "delete-app" })
+        .run().lastInsertRowid,
+    );
+    const chatId = Number(
+      harness.db.insert(chats).values({ appId }).run().lastInsertRowid,
+    );
+
+    await harness.invokeHandler("delete-chat", chatId);
+    deletionOrder.push(
+      (await harness.db.query.chats.findFirst({
+        where: (row, { eq }) => eq(row.id, chatId),
+      }))
+        ? "row-present"
+        : "row-deleted",
+    );
+
+    expect(deletionOrder).toEqual([
+      "barrier",
+      "settle-input",
+      "settle-actors",
+      "drain",
+      "release",
+      "row-deleted",
+    ]);
   });
 });

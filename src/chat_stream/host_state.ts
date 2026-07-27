@@ -36,9 +36,13 @@ export interface ChatStreamHostState {
     readonly chatSummary?: string;
     readonly pausePromptQueue?: boolean;
     readonly updatedFiles?: boolean;
+    readonly extraFiles?: string[];
+    readonly extraFilesError?: string;
+    readonly warningMessages?: string[];
+    readonly targetAppId: number | null;
     readonly error?: string;
   } | null;
-  readonly queueMutationPending: boolean;
+  readonly pendingQueueMutationId: string | null;
   readonly lastQueueMutation: {
     readonly mutationId: string;
     readonly outcome: "applied" | "rejected";

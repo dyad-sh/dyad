@@ -177,7 +177,7 @@ export interface ChatStreamExecutionObserver {
   sessionQueued: boolean;
   onAccepted?(acceptedMessageId: number): void;
   onEnd?(response: ChatStreamEndPayload): void;
-  onError?(error: string): void;
+  onError?(error: ChatStreamErrorPayload): void;
 }
 
 type InternalChatStreamHandler = (
@@ -219,20 +219,48 @@ export async function executeChatStreamFromActor(
     observer,
   );
   let terminalObserved = false;
+  let deferredCancellation: ChatStreamEndPayload | undefined;
+  const observeTerminal = (channel: string, payload: unknown) => {
+    if (terminalObserved) return;
+    if (channel === "chat:response:end") {
+      terminalObserved = true;
+      const response = payload as ChatStreamEndPayload;
+      if (response.wasCancelled) {
+        // Cancellation is announced to renderers before the handler has
+        // finished persisting its partial response. Keep actor authority
+        // pending until the handler unwinds so its completion snapshot only
+        // becomes observable after the cancellation notice is durable.
+        deferredCancellation = response;
+      } else {
+        observer.onEnd?.(response);
+      }
+    } else if (channel === "chat:response:error") {
+      terminalObserved = true;
+      observer.onError?.(payload as ChatStreamErrorPayload);
+    }
+  };
   const observedSender = new Proxy(sender, {
     get(target, property, receiver) {
+      // `safeSend` must reach the proxy's `send` trap even if the presentation
+      // endpoint disappeared. Actor completion is independent of renderer
+      // delivery; the trap below separately checks whether delivery is safe.
+      if (property === "isDestroyed" || property === "isCrashed") {
+        return () => false;
+      }
       if (property === "send") {
         return (channel: string, payload: unknown) => {
-          target.send(channel, payload);
-          if (terminalObserved) return;
-          if (channel === "chat:response:end") {
-            terminalObserved = true;
-            observer.onEnd?.(payload as ChatStreamEndPayload);
-          } else if (channel === "chat:response:error") {
-            terminalObserved = true;
-            observer.onError?.(
-              (payload as ChatStreamErrorPayload).error ?? "Chat stream failed",
-            );
+          observeTerminal(channel, payload);
+          if (target.isDestroyed()) return;
+          // `isCrashed` exists at runtime but is absent from Electron's type.
+          const targetWithCrashState = target as WebContents & {
+            isCrashed?: () => boolean;
+          };
+          if (targetWithCrashState.isCrashed?.()) return;
+          try {
+            target.send(channel, payload);
+          } catch {
+            // Presentation delivery is best effort. The observer above is the
+            // main-owned lifecycle authority and has already been notified.
           }
         };
       }
@@ -241,12 +269,15 @@ export async function executeChatStreamFromActor(
     },
   });
   try {
-    return (
+    const result =
       (await internalChatStreamHandler(
         { sender: observedSender } as IpcMainInvokeEvent,
         request,
-      )) ?? "error"
-    );
+      )) ?? "error";
+    if (deferredCancellation) {
+      observer.onEnd?.(deferredCancellation);
+    }
+    return result;
   } finally {
     executionObservers.delete(
       request.intentId ?? request.invocationRef?.operationId ?? "",

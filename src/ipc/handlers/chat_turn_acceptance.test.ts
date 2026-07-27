@@ -1,8 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 
-import { apps, chats, messages } from "@/db/schema";
+import { apps, chatQueueEntries, chats, messages } from "@/db/schema";
 import { createInMemoryTestDb, type TestDb } from "@/testing/test_db";
+import {
+  loadChatQueue,
+  mutateChatQueue,
+  persistQueuedIntent,
+} from "@/chat_stream/persistence";
+import { computeChatTurnPayloadHash } from "@/ipc/utils/chat_turn_intent_hash";
+import type { SerializableChatTurnIntent } from "@/chat_stream/transport";
 import { acceptChatTurn } from "./chat_turn_acceptance";
 
 describe("acceptChatTurn", () => {
@@ -59,5 +66,55 @@ describe("acceptChatTurn", () => {
         .where(eq(messages.chatId, chatId))
         .all(),
     ).toHaveLength(2);
+  });
+
+  it("compacts reordered queue positions without uniqueness collisions", async () => {
+    const intent = (intentId: string): SerializableChatTurnIntent => {
+      const envelope = {
+        schemaVersion: 1 as const,
+        intentId,
+        chatId,
+        invocationRef: {
+          kind: "chat-stream" as const,
+          entityKey: chatId,
+          operationId: `operation-${intentId}`,
+        },
+        prompt: intentId,
+      };
+      return {
+        ...envelope,
+        payloadHash: computeChatTurnPayloadHash(envelope),
+      };
+    };
+    persistQueuedIntent(db, intent("first"));
+    persistQueuedIntent(db, intent("second"));
+    persistQueuedIntent(db, intent("third"));
+    await mutateChatQueue(db, chatId, {
+      type: "mutate-queue",
+      mutation: { type: "reorder", itemId: "third", toIndex: 0 },
+      expectedQueueRevision: 3,
+      mutationId: "reorder-third",
+    });
+
+    expect(() =>
+      acceptChatTurn(db, {
+        chatId,
+        storedChatMode: null,
+        selectedChatMode: "build",
+        content: "third",
+        chatTurnIntentId: "third",
+      }),
+    ).not.toThrow();
+
+    expect(
+      loadChatQueue(db, chatId).queue.map((entry) => entry.intentId),
+    ).toEqual(["first", "second"]);
+    expect(
+      db
+        .select({ position: chatQueueEntries.position })
+        .from(chatQueueEntries)
+        .orderBy(chatQueueEntries.position)
+        .all(),
+    ).toEqual([{ position: 0 }, { position: 1 }]);
   });
 });

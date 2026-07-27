@@ -36,6 +36,7 @@ describe("chat stream persistence", () => {
   function intent(
     intentId: string,
     prompt = "Build it",
+    owner?: SerializableChatTurnIntent["owner"],
   ): SerializableChatTurnIntent {
     const envelope = {
       schemaVersion: 1 as const,
@@ -47,6 +48,7 @@ describe("chat stream persistence", () => {
         operationId: `operation-${intentId}`,
       },
       prompt,
+      owner,
     };
     return {
       ...envelope,
@@ -109,6 +111,28 @@ describe("chat stream persistence", () => {
     expect(peekQueueHead(database, chatId)?.prompt).toBe(
       "Build the edited version",
     );
+  });
+
+  it("does not remove a queued plan implementation from its live handoff", async () => {
+    persistQueuedIntent(
+      database,
+      intent("plan-turn", "Implement it", {
+        kind: "plan-handoff",
+        handoffId: "handoff-1",
+      }),
+    );
+
+    await expect(
+      mutateChatQueue(database, chatId, {
+        type: "mutate-queue",
+        mutation: { type: "remove", itemId: "plan-turn" },
+        expectedQueueRevision: 1,
+        mutationId: "remove-plan",
+      }),
+    ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
+    expect(loadChatQueue(database, chatId).queue).toMatchObject([
+      { intentId: "plan-turn" },
+    ]);
   });
 
   it("hydrates restart work paused and marks executing turns interrupted", () => {

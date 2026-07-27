@@ -63,8 +63,30 @@ describe("transitionChatStreamHost", () => {
     expect(replayed.state.active).toBeNull();
     expect(replayed.state.lastAcceptance).toEqual({
       intentId: "accepted",
-      acceptance: "replayed",
+      acceptance: "message-accepted",
       acceptedMessageId: 42,
+    });
+  });
+
+  it("preserves queued acceptance when replaying a durable queued turn", () => {
+    const admitted = transitionChatStreamHost(initialChatStreamHostState(), {
+      type: "SUBMIT",
+      intent: intent("queued"),
+    });
+    expect(admitted.kind).toBe("applied");
+    if (admitted.kind !== "applied") return;
+
+    const replayed = transitionChatStreamHost(admitted.state, {
+      type: "ADMISSION_REPLAYED",
+      intentId: "queued",
+      acceptance: "queued",
+    });
+
+    expect(replayed.kind).toBe("applied");
+    if (replayed.kind !== "applied") return;
+    expect(replayed.state.lastAcceptance).toEqual({
+      intentId: "queued",
+      acceptance: "queued",
     });
   });
 
@@ -85,5 +107,82 @@ describe("transitionChatStreamHost", () => {
       state,
       reason: "queue-revision-conflict",
     });
+  });
+
+  it("does not clear or dispatch across an uncorrelated queue refresh", () => {
+    const queuedEntry = {
+      itemId: "queued",
+      intentId: "queued",
+      prompt: "Queued",
+      persistence: "durable" as const,
+      editable: true,
+      removable: true,
+    };
+    const submitted = transitionChatStreamHost(
+      initialChatStreamHostState({
+        queueRevision: 2,
+        queuePaused: false,
+        queue: [queuedEntry],
+      }),
+      { type: "SUBMIT", intent: intent("active") },
+    );
+    expect(submitted.kind).toBe("applied");
+    if (submitted.kind !== "applied") return;
+    const accepted = transitionChatStreamHost(submitted.state, {
+      type: "ADMISSION_ACCEPTED",
+      intentId: "active",
+      invocationRef: intent("active").invocationRef!,
+      targetAppId: 3,
+    });
+    expect(accepted.kind).toBe("applied");
+    if (accepted.kind !== "applied") return;
+    const mutation = transitionChatStreamHost(accepted.state, {
+      type: "REMOVE_QUEUE_ENTRY",
+      itemId: "queued",
+      expectedQueueRevision: 2,
+      mutationId: "remove-queued",
+    });
+    expect(mutation.kind).toBe("applied");
+    if (mutation.kind !== "applied") return;
+    const ending = transitionChatStreamHost(mutation.state, {
+      type: "STREAM_ENDED",
+      intentId: "active",
+      invocationRef: intent("active").invocationRef!,
+      response: {
+        chatId: 7,
+        invocationRef: intent("active").invocationRef!,
+        updatedFiles: false,
+      },
+      targetAppId: 3,
+    });
+    expect(ending.kind).toBe("applied");
+    if (ending.kind !== "applied") return;
+
+    const finalizationRefresh = transitionChatStreamHost(ending.state, {
+      type: "QUEUE_MUTATED",
+      queueRevision: 2,
+      paused: false,
+      entries: [queuedEntry],
+    });
+    expect(finalizationRefresh.kind).toBe("applied");
+    if (finalizationRefresh.kind !== "applied") return;
+    expect(finalizationRefresh.state.pendingQueueMutationId).toBe(
+      "remove-queued",
+    );
+    expect(finalizationRefresh.commands).toEqual([]);
+
+    const mutationCompleted = transitionChatStreamHost(
+      finalizationRefresh.state,
+      {
+        type: "QUEUE_MUTATED",
+        mutationId: "remove-queued",
+        queueRevision: 3,
+        paused: false,
+        entries: [],
+      },
+    );
+    expect(mutationCompleted.kind).toBe("applied");
+    if (mutationCompleted.kind !== "applied") return;
+    expect(mutationCompleted.state.pendingQueueMutationId).toBeNull();
   });
 });

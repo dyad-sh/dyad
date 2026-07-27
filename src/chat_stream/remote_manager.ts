@@ -29,6 +29,10 @@ import { serializeImmutableChatTurnPayload } from "./intent_payload";
 import { queryKeys } from "@/lib/queryKeys";
 import { isFreeProModel } from "@/lib/freeProModel";
 import { ipc } from "@/ipc/types";
+import { mergeResyncMessages } from "@/lib/resyncChat";
+import { shouldShowPnpmMinimumReleaseAgeWarning } from "@/lib/schemas";
+import { showExtraFilesToast, showWarning } from "@/lib/toast";
+import { PNPM_MINIMUM_RELEASE_AGE_WARNING_PREFIX } from "@/shared/packageManagerWarnings";
 
 type JotaiStore = ReturnType<typeof createStore>;
 
@@ -471,7 +475,7 @@ export class ChatStreamRemoteManager {
     this.lastCompletionByChat.set(chatId, completion.intentId);
     this.previews.disposeKey(chatId);
     const pending = this.pendingSubmissions.get(completion.intentId);
-    const targetAppId = pending?.request.appId ?? null;
+    const targetAppId = completion.targetAppId;
     if (pending) {
       const result: StreamSettledResult = {
         success: completion.outcome === "completed",
@@ -508,18 +512,74 @@ export class ChatStreamRemoteManager {
       this.runtimeDeps?.queryClient.invalidateQueries({
         queryKey: queryKeys.versions.list({ appId: targetAppId }),
       });
+      this.runtimeDeps?.queryClient.invalidateQueries({
+        queryKey: queryKeys.uncommittedFiles.byApp({ appId: targetAppId }),
+      });
     }
-    if (completion.outcome !== "cancelled" && this.runtimeDeps) {
+    for (const warningMessage of completion.warningMessages ?? []) {
+      if (warningMessage.startsWith(PNPM_MINIMUM_RELEASE_AGE_WARNING_PREFIX)) {
+        if (
+          !shouldShowPnpmMinimumReleaseAgeWarning(
+            this.runtimeDeps?.getSettings(),
+          )
+        ) {
+          continue;
+        }
+        if (targetAppId !== null) {
+          this.runtimeDeps?.setPackageManagerWarning?.(targetAppId, {
+            kind: "release-age",
+            message: warningMessage,
+          });
+          continue;
+        }
+      }
+      showWarning(warningMessage);
+    }
+    if (completion.extraFiles) {
+      const posthog = this.runtimeDeps?.getPosthog();
+      if (posthog) {
+        showExtraFilesToast({
+          files: completion.extraFiles,
+          error: completion.extraFilesError,
+          posthog,
+        });
+      }
+    }
+    if (this.runtimeDeps) {
+      const completedInvocation = completion.invocationRef.operationId;
       void ipc.chat
         .getChat(chatId)
         .then((latestChat) => {
+          const currentSnapshot = this.getSnapshot(chatId);
+          if (
+            (currentSnapshot.invocationRef?.operationId !== undefined &&
+              currentSnapshot.invocationRef.operationId !==
+                completedInvocation) ||
+            (currentSnapshot.lastCompletion !== null &&
+              currentSnapshot.lastCompletion.invocationRef.operationId !==
+                completedInvocation)
+          ) {
+            return;
+          }
           this.runtimeDeps?.queryClient.setQueryData(
             queryKeys.chats.detail({ chatId }),
             latestChat,
           );
           this.store.set(chatMessagesByIdAtom, (previous) => {
+            const currentMessages = previous.get(chatId);
+            if (
+              currentMessages &&
+              currentMessages.length > latestChat.messages.length
+            ) {
+              return previous;
+            }
             const next = new Map(previous);
-            next.set(chatId, latestChat.messages);
+            next.set(
+              chatId,
+              currentMessages
+                ? mergeResyncMessages(latestChat.messages, currentMessages)
+                : latestChat.messages,
+            );
             return next;
           });
         })

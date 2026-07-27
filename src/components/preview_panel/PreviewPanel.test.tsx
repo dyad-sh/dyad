@@ -97,7 +97,8 @@ vi.mock("@/ipc/types", () => ({
   },
 }));
 
-vi.mock("@/hooks/useRunApp", () => ({
+vi.mock("@/hooks/useRunApp", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/hooks/useRunApp")>()),
   useRunApp: () => ({
     loading: false,
     runApp: mocks.runApp,
@@ -191,6 +192,7 @@ describe("PreviewPanel", () => {
     mocks.refetchNodeStatus.mockReset();
     mocks.reloadEnvPath.mockReset();
     mocks.runApp.mockReset();
+    mocks.runApp.mockResolvedValue(undefined);
     mocks.previewIframeMounted.mockReset();
     mocks.previewIframeUnmounted.mockReset();
     mocks.selectedAppId = 1;

@@ -29,7 +29,7 @@ function makeWrapper(store = createStore()) {
   );
   // Establish the app-specific remote subscription that production
   // useAppRunState consumers create.
-  appRunManager.getSnapshot(1);
+  appRunManager.subscribeKey(1, () => undefined);
   return {
     appRunManager,
     connection,
@@ -93,15 +93,15 @@ describe("useSendPreviewIframeEvent", () => {
       );
 
       await act(async () => {
-        await Promise.resolve();
         connection.publishStarting(1, `${operation}-1`, operation, 1_000);
-        await Promise.resolve();
       });
 
-      expect(result.current.state).toMatchObject({
-        history: [],
-        currentUrl: null,
-        preservedUrl: null,
+      await vi.waitFor(() => {
+        expect(result.current.state).toMatchObject({
+          history: [],
+          currentUrl: null,
+          preservedUrl: null,
+        });
       });
     },
   );
@@ -148,7 +148,13 @@ describe("useSendPreviewIframeEvent", () => {
 
     await act(async () => {
       result.current.entityDisposal.disposeForApp(1);
-      appRunManager.getSnapshot(1);
+      appRunManager.subscribeKey(1, () => undefined);
+      connection.publishStarting(
+        1,
+        invocationRef.operationId,
+        "restart",
+        2_000,
+      );
     });
     await vi.waitFor(() => {
       expect(appRunManager.getSnapshot(1).phase).toBe("starting");

@@ -14,6 +14,25 @@ import { sha256Hex } from "@/lib/browser_hash";
 import { serializePlanDocument } from "./transport";
 
 const NO_CHAT_ID = -1;
+const NO_CHAT_HANDOFF_SNAPSHOT: PlanHandoffRemoteSnapshot = Object.freeze({
+  schemaVersion: 1,
+  sourceChatId: NO_CHAT_ID,
+  revision: 0,
+  handoffId: null,
+  targetChatId: null,
+  planId: null,
+  phase: "idle",
+  failure: null,
+});
+
+export function getRemotePlanHandoffSnapshot(
+  manager: Pick<PlanHandoffRemoteManager, "getSnapshot">,
+  chatId: number | null,
+): PlanHandoffRemoteSnapshot {
+  return chatId === null
+    ? NO_CHAT_HANDOFF_SNAPSHOT
+    : manager.getSnapshot(chatId);
+}
 
 /**
  * React binding for reading a chat's handoff state. Snapshots are immutable
@@ -42,8 +61,8 @@ function useRemotePlanHandoffState(
     [chatId, manager, sourceChatId],
   );
   const getSnapshot = useCallback(
-    () => manager.getSnapshot(sourceChatId),
-    [manager, sourceChatId],
+    () => getRemotePlanHandoffSnapshot(manager, chatId),
+    [chatId, manager],
   );
   return useSyncExternalStore(subscribe, getSnapshot);
 }

@@ -188,6 +188,28 @@ type InternalChatStreamHandler = (
 
 let internalChatStreamHandler: InternalChatStreamHandler | undefined;
 
+export function settleUnobservedChatStreamResult(
+  request: ChatStreamParams,
+  result: number | "error",
+  observer: ChatStreamExecutionObserver,
+): void {
+  if (result === "error") {
+    observer.onError?.({
+      chatId: request.chatId,
+      invocationRef: request.invocationRef,
+      streamId: request.streamId,
+      error: "Chat stream ended without reporting a terminal error",
+    });
+    return;
+  }
+  observer.onEnd?.({
+    chatId: request.chatId,
+    invocationRef: request.invocationRef,
+    streamId: request.streamId,
+    updatedFiles: false,
+  });
+}
+
 /**
  * Compatibility seam for the in-process Vitest harness. Production renderers
  * must dispatch through the remote chat actor and never receive this endpoint.
@@ -277,6 +299,8 @@ export async function executeChatStreamFromActor(
       )) ?? "error";
     if (deferredCancellation) {
       observer.onEnd?.(deferredCancellation);
+    } else if (!terminalObserved) {
+      settleUnobservedChatStreamResult(request, result, observer);
     }
     return result;
   } finally {

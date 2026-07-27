@@ -105,6 +105,7 @@ export class ChatStreamRemoteManager {
     (event: StreamFinishedEvent) => void
   >();
   private readonly pendingSubmissions = new Map<string, PendingSubmission>();
+  private readonly submissionTails = new Map<number, Promise<void>>();
   private readonly snapshotListeners = new Map<number, Set<() => void>>();
   private readonly optimisticSnapshots = new Map<
     number,
@@ -296,7 +297,11 @@ export class ChatStreamRemoteManager {
     this.refs.clear();
     this.snapshotListeners.clear();
     this.optimisticSnapshots.clear();
+    for (const pending of this.pendingSubmissions.values()) {
+      pending.releaseSubscription();
+    }
     this.pendingSubmissions.clear();
+    this.submissionTails.clear();
     this.streamFinishedListeners.clear();
     this.previews.dispose();
     this.client.dispose();
@@ -309,7 +314,7 @@ export class ChatStreamRemoteManager {
   private sendCompatibilityEvent(chatId: number, event: StreamEvent): void {
     switch (event.type) {
       case "submit":
-        void this.submit(event.request);
+        this.submit(event.request);
         return;
       case "cancel": {
         const invocationRef = this.getSnapshot(chatId).invocationRef;
@@ -338,7 +343,7 @@ export class ChatStreamRemoteManager {
     }
   }
 
-  private async submit(request: StreamRequest): Promise<void> {
+  private submit(request: StreamRequest): void {
     this.start();
     const actor = this.actor(request.chatId);
     const release = this.retainSubscription(request.chatId, actor);
@@ -358,7 +363,33 @@ export class ChatStreamRemoteManager {
       releaseSubscription: release,
     });
     this.notifySnapshotListeners(request.chatId);
+    const previous = this.submissionTails.get(request.chatId);
+    const submission = (previous ?? Promise.resolve())
+      .catch(() => undefined)
+      .then(() =>
+        this.prepareAndDispatchSubmission(
+          request,
+          actor,
+          intentId,
+          invocationRef,
+        ),
+      );
+    this.submissionTails.set(request.chatId, submission);
+    void submission.finally(() => {
+      if (this.submissionTails.get(request.chatId) === submission) {
+        this.submissionTails.delete(request.chatId);
+      }
+    });
+  }
+
+  private async prepareAndDispatchSubmission(
+    request: StreamRequest,
+    actor: ReturnType<ChatStreamRemoteManager["actor"]>,
+    intentId: string,
+    invocationRef: NonNullable<ChatStreamRemoteSnapshot["invocationRef"]>,
+  ): Promise<void> {
     try {
+      if (this.disposed || !this.pendingSubmissions.has(intentId)) return;
       const attachments =
         request.attachments && request.attachments.length > 0
           ? await convertFileAttachmentsToChatAttachments(request.attachments)
@@ -382,17 +413,19 @@ export class ChatStreamRemoteManager {
           serializeImmutableChatTurnPayload(withoutHash),
         ),
       };
+      if (this.disposed || !this.pendingSubmissions.has(intentId)) return;
       const receipt = await actor.dispatch({ type: "SUBMIT", intent });
       if (receipt.kind === "rejected") {
         throw new Error(`Chat submission rejected: ${receipt.reason}`);
       }
     } catch (error) {
-      this.takePendingSubmission(intentId);
+      const pending = this.takePendingSubmission(intentId);
+      if (!pending) return;
       this.notifySnapshotListeners(request.chatId);
-      request.onAcceptanceError?.(
+      pending.request.onAcceptanceError?.(
         error instanceof Error ? error : new Error(String(error)),
       );
-      request.onSettled?.({ success: false });
+      pending.request.onSettled?.({ success: false });
     }
   }
 

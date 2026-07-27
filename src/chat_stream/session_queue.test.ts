@@ -9,6 +9,7 @@ import {
   loadChatQueue,
   markIntentTerminal,
   mutateChatQueue,
+  persistQueuedIntent,
   persistSessionQueuedIntent,
   stageActiveIntent,
 } from "./persistence";
@@ -194,6 +195,46 @@ describe("main-session follow-up queue", () => {
       queueRevision: 2,
       queue: [{ intentId: intent.intentId }],
     });
+  });
+
+  it("validates a blocked clear before settling session owners", async () => {
+    const followUp = followUpIntent();
+    makeFollowUpDue();
+    persistSessionQueuedIntent(database, followUp);
+    const planWithoutHash = {
+      schemaVersion: 1 as const,
+      intentId: "plan-turn",
+      chatId,
+      invocationRef: {
+        kind: "chat-stream" as const,
+        entityKey: chatId,
+        operationId: "plan-operation",
+      },
+      prompt: "Implement the plan",
+      owner: {
+        kind: "plan-handoff" as const,
+        handoffId: "handoff",
+      },
+    };
+    persistQueuedIntent(database, {
+      ...planWithoutHash,
+      payloadHash: computeChatTurnPayloadHash(planWithoutHash),
+    });
+
+    await expect(
+      mutateChatQueue(database, chatId, {
+        type: "mutate-queue",
+        mutation: { type: "clear" },
+        expectedQueueRevision: 2,
+        mutationId: "blocked-clear",
+      }),
+    ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
+
+    expect(liveOwner.followUpRejected).not.toHaveBeenCalled();
+    expect(loadChatQueue(database, chatId).queue).toMatchObject([
+      { intentId: followUp.intentId },
+      { intentId: "plan-turn" },
+    ]);
   });
 
   it("validates a live due owner before starting an active follow-up", () => {

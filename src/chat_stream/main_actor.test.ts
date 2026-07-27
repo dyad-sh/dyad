@@ -22,6 +22,12 @@ import {
 
 const execution = vi.hoisted(() => ({
   observers: new Map<string, ChatStreamExecutionObserver>(),
+  admissions: [] as string[],
+  convertAttachments: vi.fn(async () => []),
+}));
+
+vi.mock("@/lib/chatAttachmentConversion", () => ({
+  convertFileAttachmentsToChatAttachments: execution.convertAttachments,
 }));
 
 const persisted = vi.hoisted(() => ({
@@ -78,13 +84,19 @@ vi.mock("./persistence", () => ({
     queuePaused: persisted.paused,
     queue: [...persisted.entries],
   })),
-  stageActiveIntent: vi.fn(() => null),
+  stageActiveIntent: vi.fn(
+    (_database: unknown, intent: SerializableChatTurnIntent) => {
+      execution.admissions.push(intent.prompt);
+      return null;
+    },
+  ),
   isSessionQueuedIntent: vi.fn(() => false),
   completeSessionQueueAcceptance: vi.fn(),
   disposeSessionChatQueue: vi.fn(),
   persistSessionQueuedIntent: vi.fn(),
   persistQueuedIntent: vi.fn(
     (_database: unknown, intent: SerializableChatTurnIntent) => {
+      execution.admissions.push(intent.prompt);
       const entry: ChatQueueEntry = {
         itemId: intent.intentId,
         intentId: intent.intentId,
@@ -150,6 +162,9 @@ async function flush(): Promise<void> {
 describe("main-hosted chat stream actor", () => {
   beforeEach(() => {
     execution.observers.clear();
+    execution.admissions = [];
+    execution.convertAttachments.mockReset();
+    execution.convertAttachments.mockResolvedValue([]);
     persisted.revision = 0;
     persisted.paused = false;
     persisted.entries = [];
@@ -298,6 +313,71 @@ describe("main-hosted chat stream actor", () => {
       phase: "admitting",
       capabilities: { canCancel: false },
     });
+
+    release();
+    manager.dispose();
+    await transport.dispose();
+    await host.dispose();
+  });
+
+  it("preserves submission order across asynchronous attachment preparation", async () => {
+    let releaseAttachment!: () => void;
+    const attachmentGate = new Promise<void>((resolve) => {
+      releaseAttachment = resolve;
+    });
+    execution.convertAttachments.mockImplementationOnce(async () => {
+      await attachmentGate;
+      return [];
+    });
+    const clock = createFakeClock();
+    const host = new ActorHost({
+      placement: "main",
+      clock,
+      ids: createSequentialIdSource(),
+    });
+    const manifest = createRemoteMachineManifest([chatStreamDefinition]);
+    const windows = new TwoWindowHarness();
+    const transport = new RemoteMachineTransport({
+      host,
+      manifest,
+      windows: windows.registry,
+      clock,
+    });
+    const duplex = new FakeDuplexRemoteTransport(transport, manifest, windows);
+    const manager = new ChatStreamRemoteManager(
+      createStore(),
+      createSequentialIdSource(),
+      duplex.connect(),
+    );
+    manager.start();
+    const actor = manager.ensure(7);
+    const release = actor.subscribe(() => undefined);
+    await flush();
+
+    actor.send({
+      type: "submit",
+      request: {
+        chatId: 7,
+        prompt: "first",
+        attachments: [
+          {
+            file: {} as File,
+            type: "chat-context",
+          },
+        ],
+      },
+    });
+    actor.send({
+      type: "submit",
+      request: { chatId: 7, prompt: "second" },
+    });
+    await flush();
+
+    expect(execution.admissions).toEqual([]);
+    releaseAttachment();
+    await vi.waitFor(() =>
+      expect(execution.admissions).toEqual(["first", "second"]),
+    );
 
     release();
     manager.dispose();

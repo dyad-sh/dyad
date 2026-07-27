@@ -542,21 +542,54 @@ async function mutateChatQueueUnlocked(
       DyadErrorKind.Conflict,
     );
   }
+  const invocationRows = readQueueRows(database, chatId);
+  if (mutation.type === "remove" || mutation.type === "clear") {
+    const removed =
+      mutation.type === "clear"
+        ? invocationRows
+        : invocationRows.filter(
+            (candidate) => candidate.itemId === mutation.itemId,
+          );
+    if (
+      mutation.type === "remove" &&
+      removed.length === 0 &&
+      sessionEntries.length === 0
+    ) {
+      throw new DyadError("Queued message not found", DyadErrorKind.NotFound);
+    }
+    for (const row of removed) {
+      const entry = ChatQueueEntrySchema.parse(JSON.parse(row.payloadJson));
+      const intentRow = database
+        .select({ envelopeJson: chatTurnIntents.envelopeJson })
+        .from(chatTurnIntents)
+        .where(eq(chatTurnIntents.intentId, entry.intentId))
+        .get();
+      const intent = intentRow
+        ? (JSON.parse(intentRow.envelopeJson) as SerializableChatTurnIntent)
+        : undefined;
+      if (intent?.owner?.kind === "plan-handoff") {
+        throw new DyadError(
+          "Plan implementation turns cannot be removed while their handoff is active",
+          DyadErrorKind.Precondition,
+        );
+      }
+    }
+  }
 
-  // Claim memory-owned entries before awaiting their owners so the queue
-  // driver cannot start them during settlement. A failed settlement restores
-  // the exact entries and their original relative order before surfacing.
+  // Claim memory-owned entries before committing the mutation so the queue
+  // driver cannot start them. All validation happens above; a transaction
+  // failure restores every claim before any external owner is settled.
   const originalOrder = [...queueOrder(database, chatId)];
   const claimedSessionIntents = sessionEntries.flatMap((entry) => {
     const intent = sessionIntents.get(entry.intentId);
     return intent ? [{ entry, intent }] : [];
   });
+  const claimedIds = new Set(
+    claimedSessionIntents.map(({ entry }) => entry.intentId),
+  );
   let removedSessionEntries = sessionEntries;
   let ownerSettlementErrors: unknown[] = [];
   if (claimedSessionIntents.length > 0) {
-    const claimedIds = new Set(
-      claimedSessionIntents.map(({ entry }) => entry.intentId),
-    );
     for (const { entry } of claimedSessionIntents) {
       sessionIntents.delete(entry.intentId);
     }
@@ -564,7 +597,161 @@ async function mutateChatQueueUnlocked(
       chatId,
       originalOrder.filter((intentId) => !claimedIds.has(intentId)),
     );
-
+  }
+  let nextOrder: string[] | undefined;
+  try {
+    database.transaction((tx) => {
+      const state = tx
+        .select()
+        .from(chatQueueState)
+        .where(eq(chatQueueState.chatId, chatId))
+        .get() ?? { chatId, revision: 0, paused: false };
+      if (state.revision !== command.expectedQueueRevision) {
+        throw new DyadError(
+          "Chat queue changed in another window",
+          DyadErrorKind.Conflict,
+        );
+      }
+      tx.insert(chatQueueState).values(state).onConflictDoNothing().run();
+      const rows = tx
+        .select()
+        .from(chatQueueEntries)
+        .where(eq(chatQueueEntries.chatId, chatId))
+        .orderBy(asc(chatQueueEntries.position))
+        .all();
+      let nextRows = rows;
+      let paused = state.paused;
+      switch (mutation.type) {
+        case "pause":
+          paused = true;
+          break;
+        case "resume":
+          paused = false;
+          break;
+        case "edit": {
+          const row = rows.find(
+            (candidate) => candidate.itemId === mutation.itemId,
+          );
+          if (!row) {
+            throw new DyadError(
+              "Queued message not found",
+              DyadErrorKind.NotFound,
+            );
+          }
+          const entry = ChatQueueEntrySchema.parse(JSON.parse(row.payloadJson));
+          if (!entry.editable) {
+            throw new DyadError(
+              "Machine-owned queued messages cannot be edited",
+              DyadErrorKind.Precondition,
+            );
+          }
+          const updated = {
+            ...entry,
+            prompt: mutation.prompt,
+            attachments: mutation.attachments,
+            selectedComponents: mutation.selectedComponents,
+          };
+          const intentRow = tx
+            .select({ envelopeJson: chatTurnIntents.envelopeJson })
+            .from(chatTurnIntents)
+            .where(eq(chatTurnIntents.intentId, entry.intentId))
+            .get();
+          if (!intentRow) {
+            throw new Error("Queued message is missing its owning intent");
+          }
+          const currentIntent = JSON.parse(
+            intentRow.envelopeJson,
+          ) as SerializableChatTurnIntent;
+          const updatedIntentWithoutHash = {
+            ...currentIntent,
+            prompt: mutation.prompt,
+            attachments: mutation.attachments,
+            selectedComponents: mutation.selectedComponents,
+          };
+          const updatedIntent: SerializableChatTurnIntent = {
+            ...updatedIntentWithoutHash,
+            payloadHash: computeChatTurnPayloadHash(updatedIntentWithoutHash),
+          };
+          tx.update(chatQueueEntries)
+            .set({ payloadJson: JSON.stringify(updated) })
+            .where(eq(chatQueueEntries.itemId, row.itemId))
+            .run();
+          tx.update(chatTurnIntents)
+            .set({
+              envelopeJson: JSON.stringify(updatedIntent),
+              payloadHash: updatedIntent.payloadHash,
+              updatedAt: new Date(),
+            })
+            .where(eq(chatTurnIntents.intentId, entry.intentId))
+            .run();
+          break;
+        }
+        case "reorder": {
+          const order = aggregateQueue.map((entry) => entry.intentId);
+          const from = order.indexOf(mutation.itemId);
+          if (from < 0 || mutation.toIndex >= order.length) {
+            throw new DyadError(
+              "Queued message reorder is out of range",
+              DyadErrorKind.Validation,
+            );
+          }
+          nextOrder = [...order];
+          const [moved] = nextOrder.splice(from, 1);
+          nextOrder.splice(mutation.toIndex, 0, moved);
+          const rowByIntent = new Map(rows.map((row) => [row.intentId, row]));
+          nextRows = nextOrder.flatMap((intentId) => {
+            const row = rowByIntent.get(intentId);
+            return row ? [row] : [];
+          });
+          rewriteQueuePositions(tx, chatId, nextRows);
+          break;
+        }
+        case "remove":
+        case "clear": {
+          const removed =
+            mutation.type === "clear"
+              ? rows
+              : rows.filter(
+                  (candidate) => candidate.itemId === mutation.itemId,
+                );
+          for (const row of removed) {
+            tx.delete(chatQueueEntries)
+              .where(eq(chatQueueEntries.itemId, row.itemId))
+              .run();
+            tx.update(chatTurnIntents)
+              .set({ acceptance: "rejected", updatedAt: new Date() })
+              .where(eq(chatTurnIntents.intentId, row.intentId))
+              .run();
+          }
+          nextRows = rows.filter(
+            (row) =>
+              !removed.some((removedRow) => removedRow.itemId === row.itemId),
+          );
+          const removedIds = new Set([
+            ...removed.map((row) => row.intentId),
+            ...removedSessionEntries.map((entry) => entry.intentId),
+          ]);
+          nextOrder = aggregateQueue
+            .map((entry) => entry.intentId)
+            .filter((intentId) => !removedIds.has(intentId));
+          rewriteQueuePositions(tx, chatId, nextRows);
+          break;
+        }
+      }
+      tx.update(chatQueueState)
+        .set({ revision: state.revision + 1, paused })
+        .where(eq(chatQueueState.chatId, chatId))
+        .run();
+    });
+  } catch (error) {
+    for (const { intent } of claimedSessionIntents) {
+      sessionIntents.set(intent.intentId, intent);
+    }
+    queueOrderByChat.set(chatId, originalOrder);
+    throw error;
+  }
+  if (nextOrder) queueOrderByChat.set(chatId, nextOrder);
+  if (claimedSessionIntents.length > 0) {
     const settlements = await Promise.allSettled(
       claimedSessionIntents.map(({ intent }) => {
         if (intent.owner?.kind !== "user-input-follow-up") {
@@ -597,174 +784,6 @@ async function mutateChatQueueUnlocked(
       );
     }
   }
-  let nextOrder: string[] | undefined;
-  database.transaction((tx) => {
-    const state = tx
-      .select()
-      .from(chatQueueState)
-      .where(eq(chatQueueState.chatId, chatId))
-      .get() ?? { chatId, revision: 0, paused: false };
-    if (state.revision !== command.expectedQueueRevision) {
-      throw new DyadError(
-        "Chat queue changed in another window",
-        DyadErrorKind.Conflict,
-      );
-    }
-    tx.insert(chatQueueState).values(state).onConflictDoNothing().run();
-    const rows = tx
-      .select()
-      .from(chatQueueEntries)
-      .where(eq(chatQueueEntries.chatId, chatId))
-      .orderBy(asc(chatQueueEntries.position))
-      .all();
-    let nextRows = rows;
-    let paused = state.paused;
-    switch (mutation.type) {
-      case "pause":
-        paused = true;
-        break;
-      case "resume":
-        paused = false;
-        break;
-      case "edit": {
-        const row = rows.find(
-          (candidate) => candidate.itemId === mutation.itemId,
-        );
-        if (!row) {
-          throw new DyadError(
-            "Queued message not found",
-            DyadErrorKind.NotFound,
-          );
-        }
-        const entry = ChatQueueEntrySchema.parse(JSON.parse(row.payloadJson));
-        if (!entry.editable) {
-          throw new DyadError(
-            "Machine-owned queued messages cannot be edited",
-            DyadErrorKind.Precondition,
-          );
-        }
-        const updated = {
-          ...entry,
-          prompt: mutation.prompt,
-          attachments: mutation.attachments,
-          selectedComponents: mutation.selectedComponents,
-        };
-        const intentRow = tx
-          .select({ envelopeJson: chatTurnIntents.envelopeJson })
-          .from(chatTurnIntents)
-          .where(eq(chatTurnIntents.intentId, entry.intentId))
-          .get();
-        if (!intentRow) {
-          throw new Error("Queued message is missing its owning intent");
-        }
-        const currentIntent = JSON.parse(
-          intentRow.envelopeJson,
-        ) as SerializableChatTurnIntent;
-        const updatedIntentWithoutHash = {
-          ...currentIntent,
-          prompt: mutation.prompt,
-          attachments: mutation.attachments,
-          selectedComponents: mutation.selectedComponents,
-        };
-        const updatedIntent: SerializableChatTurnIntent = {
-          ...updatedIntentWithoutHash,
-          payloadHash: computeChatTurnPayloadHash(updatedIntentWithoutHash),
-        };
-        tx.update(chatQueueEntries)
-          .set({ payloadJson: JSON.stringify(updated) })
-          .where(eq(chatQueueEntries.itemId, row.itemId))
-          .run();
-        tx.update(chatTurnIntents)
-          .set({
-            envelopeJson: JSON.stringify(updatedIntent),
-            payloadHash: updatedIntent.payloadHash,
-            updatedAt: new Date(),
-          })
-          .where(eq(chatTurnIntents.intentId, entry.intentId))
-          .run();
-        break;
-      }
-      case "reorder": {
-        const order = aggregateQueue.map((entry) => entry.intentId);
-        const from = order.indexOf(mutation.itemId);
-        if (from < 0 || mutation.toIndex >= order.length) {
-          throw new DyadError(
-            "Queued message reorder is out of range",
-            DyadErrorKind.Validation,
-          );
-        }
-        nextOrder = [...order];
-        const [moved] = nextOrder.splice(from, 1);
-        nextOrder.splice(mutation.toIndex, 0, moved);
-        const rowByIntent = new Map(rows.map((row) => [row.intentId, row]));
-        nextRows = nextOrder.flatMap((intentId) => {
-          const row = rowByIntent.get(intentId);
-          return row ? [row] : [];
-        });
-        rewriteQueuePositions(tx, chatId, nextRows);
-        break;
-      }
-      case "remove":
-      case "clear": {
-        const removed =
-          mutation.type === "clear"
-            ? rows
-            : rows.filter((candidate) => candidate.itemId === mutation.itemId);
-        if (
-          mutation.type === "remove" &&
-          removed.length === 0 &&
-          sessionEntries.length === 0
-        ) {
-          throw new DyadError(
-            "Queued message not found",
-            DyadErrorKind.NotFound,
-          );
-        }
-        for (const row of removed) {
-          const entry = ChatQueueEntrySchema.parse(JSON.parse(row.payloadJson));
-          const intentRow = tx
-            .select({ envelopeJson: chatTurnIntents.envelopeJson })
-            .from(chatTurnIntents)
-            .where(eq(chatTurnIntents.intentId, entry.intentId))
-            .get();
-          const intent = intentRow
-            ? (JSON.parse(intentRow.envelopeJson) as SerializableChatTurnIntent)
-            : sessionIntents.get(entry.intentId);
-          if (intent?.owner?.kind === "plan-handoff") {
-            throw new DyadError(
-              "Plan implementation turns cannot be removed while their handoff is active",
-              DyadErrorKind.Precondition,
-            );
-          }
-          tx.delete(chatQueueEntries)
-            .where(eq(chatQueueEntries.itemId, row.itemId))
-            .run();
-          tx.update(chatTurnIntents)
-            .set({ acceptance: "rejected", updatedAt: new Date() })
-            .where(eq(chatTurnIntents.intentId, row.intentId))
-            .run();
-        }
-        nextRows = rows.filter(
-          (row) =>
-            !removed.some((removedRow) => removedRow.itemId === row.itemId),
-        );
-        const removedIds = new Set([
-          ...removed.map((row) => row.intentId),
-          ...removedSessionEntries.map((entry) => entry.intentId),
-        ]);
-        nextOrder = aggregateQueue
-          .map((entry) => entry.intentId)
-          .filter((intentId) => !removedIds.has(intentId));
-        rewriteQueuePositions(tx, chatId, nextRows);
-        break;
-      }
-    }
-    tx.update(chatQueueState)
-      .set({ revision: state.revision + 1, paused })
-      .where(eq(chatQueueState.chatId, chatId))
-      .run();
-  });
-  if (nextOrder) queueOrderByChat.set(chatId, nextOrder);
   for (const entry of removedSessionEntries) {
     completeSessionQueueAcceptance(entry.intentId);
   }

@@ -6,7 +6,14 @@ import type { WindowSessionId } from "@/window_infrastructure/types";
 import type { VersionCommandResult } from "@/ipc/types";
 
 export class VersionPreviewPresentationService {
-  private readonly initiatorByOperationId = new Map<string, WindowSessionId>();
+  private readonly initiatorByOperationId = new Map<
+    string,
+    {
+      readonly windowSessionId: WindowSessionId;
+      confirmed: boolean;
+      expiry: ReturnType<typeof setTimeout> | null;
+    }
+  >();
 
   constructor(private readonly windows: WindowRegistry = windowRegistry) {}
 
@@ -27,10 +34,20 @@ export class VersionPreviewPresentationService {
       // fall back through WindowRegistry routing if the bounded map is full.
       return;
     }
-    this.initiatorByOperationId.set(
-      operationId,
-      windowSessionId as WindowSessionId,
-    );
+    const entry = {
+      windowSessionId: windowSessionId as WindowSessionId,
+      confirmed: false,
+      expiry: null as ReturnType<typeof setTimeout> | null,
+    };
+    entry.expiry = setTimeout(() => {
+      if (
+        this.initiatorByOperationId.get(operationId) === entry &&
+        !entry.confirmed
+      ) {
+        this.initiatorByOperationId.delete(operationId);
+      }
+    }, 0);
+    this.initiatorByOperationId.set(operationId, entry);
   }
 
   publishResult(
@@ -54,12 +71,24 @@ export class VersionPreviewPresentationService {
   }
 
   forget(operationId: string): void {
+    const entry = this.initiatorByOperationId.get(operationId);
+    if (entry?.expiry) clearTimeout(entry.expiry);
     this.initiatorByOperationId.delete(operationId);
   }
 
+  confirm(operationId: string): void {
+    const entry = this.initiatorByOperationId.get(operationId);
+    if (!entry) return;
+    entry.confirmed = true;
+    if (entry.expiry) clearTimeout(entry.expiry);
+    entry.expiry = null;
+  }
+
   originEndpointFor(operationId: string) {
-    const sessionId = this.initiatorByOperationId.get(operationId);
-    return sessionId ? this.windows.endpointForSession(sessionId) : undefined;
+    const entry = this.initiatorByOperationId.get(operationId);
+    return entry
+      ? this.windows.endpointForSession(entry.windowSessionId)
+      : undefined;
   }
 
   private send(
@@ -74,7 +103,8 @@ export class VersionPreviewPresentationService {
       createdChatId: number | null;
     },
   ): void {
-    const initiator = this.initiatorByOperationId.get(operationId);
+    const initiator =
+      this.initiatorByOperationId.get(operationId)?.windowSessionId;
     const target = this.windows.routePresentation({
       effect: payload.createdChatId !== null ? "navigation" : "operation-toast",
       ...(initiator ? { initiatorWindowSessionId: initiator } : {}),

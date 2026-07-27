@@ -513,6 +513,9 @@ export const versionPreviewDefinition: Definition = {
   createObserver: (context) => ({
     onTransitionApplied: ({ state, event }) => {
       versionPreviewPersistence.schedule(context.key.appId, state.state);
+      if ("operationId" in event) {
+        versionPreviewPresentationService.confirm(event.operationId);
+      }
       if (state.activeInvocationRef === null) {
         const operationId =
           "operationId" in event

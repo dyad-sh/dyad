@@ -110,7 +110,8 @@ export function useVersionPreview(appId: number | null): {
   const dispatchNow = useCallback(
     async (event: PreviewEvent, waitForSettlement: boolean): Promise<void> => {
       if (appId === null) return;
-      if (event.type !== "SELECT_VERSION") {
+      const isCleanup = event.type === "CLOSE";
+      if (event.type !== "SELECT_VERSION" && !isCleanup) {
         presentationStore.send(appId, event);
       }
       const id = operationId();
@@ -139,14 +140,40 @@ export function useVersionPreview(appId: number | null): {
           })
         : Promise.resolve();
       try {
-        const receipt = await actor.dispatch(intent);
-        if (receipt.kind !== "applied") {
+        for (let attempt = 0; attempt < (isCleanup ? 3 : 1); attempt += 1) {
+          if (isCleanup && actor.getStatus() !== "ready") {
+            await actor.resync();
+          }
+          const receipt = await actor.dispatch(intent);
+          if (receipt.kind === "applied") {
+            if (isCleanup || event.type === "SELECT_VERSION") {
+              presentationStore.send(appId, event);
+            }
+            await settlement;
+            return;
+          }
+          if (
+            isCleanup &&
+            receipt.kind === "rejected" &&
+            (receipt.reason === "revision-conflict" ||
+              receipt.reason === "stale-actor")
+          ) {
+            await actor.resync();
+            continue;
+          }
+          if (isCleanup && receipt.kind === "ignored") {
+            const remoteState = actor.getView().state.state;
+            if (
+              remoteState.type === "closed" ||
+              remoteState.type === "returning"
+            ) {
+              presentationStore.send(appId, event);
+              return;
+            }
+          }
           throw new Error("The version operation was not accepted");
         }
-        if (event.type === "SELECT_VERSION") {
-          presentationStore.send(appId, event);
-        }
-        await settlement;
+        throw new Error("The version cleanup operation remained stale");
       } catch (error) {
         unsubscribe();
         throw error;

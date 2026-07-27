@@ -48,6 +48,7 @@ vi.mock("./version_preview_presentation_service", () => ({
     publishError: vi.fn(),
     originEndpointFor: vi.fn(),
     forget: vi.fn(),
+    confirm: vi.fn(),
   },
 }));
 vi.mock(

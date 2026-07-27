@@ -50,4 +50,27 @@ describe("VersionPreviewPresentationService", () => {
 
     expect(service.originEndpointFor("shared-operation")).toBe(original);
   });
+
+  it("expires unadmitted ownership but retains confirmed operations", () => {
+    vi.useFakeTimers();
+    try {
+      const endpoint = { send: vi.fn() };
+      const windows = {
+        endpointForSession: vi.fn(() => endpoint),
+        routePresentation: vi.fn(),
+      };
+      const service = new VersionPreviewPresentationService(windows as never);
+
+      service.recordInitiator("rejected", "window");
+      vi.runAllTimers();
+      expect(service.originEndpointFor("rejected")).toBeUndefined();
+
+      service.recordInitiator("admitted", "window");
+      service.confirm("admitted");
+      vi.runAllTimers();
+      expect(service.originEndpointFor("admitted")).toBe(endpoint);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

@@ -371,6 +371,14 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
 - Treat an operation ID's initiating window as a first-writer ownership claim.
   A duplicate intent from another window must not overwrite that routing entry,
   even if the duplicate transition will later be ignored.
+- Authorization can run before revision admission. Keep any presentation
+  ownership recorded there tentative and expire it unless an applied
+  transition confirms the claim; rejected stale dispatches never reach actor
+  observers and otherwise leak bounded routing capacity.
+- Do not hide local presentation for a cleanup intent until main accepts the
+  exit (or already reports a safe terminal state). Resync and retry stale
+  cleanup receipts with one operation ID so a hidden pane cannot mask retained
+  external ownership.
 - Keep transport revisions separate from semantic presentation epochs. A
   revision may advance for bookkeeping-only transitions, while a reload token
   must advance exactly once for each user-visible remount.

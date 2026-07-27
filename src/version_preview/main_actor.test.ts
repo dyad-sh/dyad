@@ -31,6 +31,7 @@ const presentation = vi.hoisted(() => ({
   publishError: vi.fn(),
   originEndpointFor: vi.fn(),
   forget: vi.fn(),
+  confirm: vi.fn(),
 }));
 const invalidations = vi.hoisted(() => ({ publish: vi.fn() }));
 const appRun = vi.hoisted(() => ({

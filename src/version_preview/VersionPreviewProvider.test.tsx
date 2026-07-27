@@ -206,4 +206,50 @@ describe("VersionPreviewProvider", () => {
       screen.getByTestId("rapid-selection").getAttribute("data-version"),
     ).toBe("a");
   });
+
+  it("keeps the pane visible until stale close cleanup is accepted", async () => {
+    const accepted = deferred<{ kind: "applied" }>();
+    actor.dispatch
+      .mockResolvedValueOnce({
+        kind: "rejected",
+        reason: "revision-conflict",
+      })
+      .mockReturnValueOnce(accepted.promise);
+    const queryClient = new QueryClient();
+
+    function CloseProbe() {
+      const { state, send } = useVersionPreview(1);
+      return (
+        <div data-testid="close-probe" data-state={state.type}>
+          <button onClick={() => send({ type: "OPEN", appId: 1 })}>Open</button>
+          <button onClick={() => send({ type: "CLOSE" })}>Close</button>
+        </div>
+      );
+    }
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <VersionPreviewProvider>
+          <CloseProbe />
+        </VersionPreviewProvider>
+      </QueryClientProvider>,
+    );
+    fireEvent.click(screen.getByText("Open"));
+    expect(screen.getByTestId("close-probe").getAttribute("data-state")).toBe(
+      "browsing",
+    );
+
+    fireEvent.click(screen.getByText("Close"));
+    await waitFor(() => expect(actor.dispatch).toHaveBeenCalledTimes(2));
+    expect(screen.getByTestId("close-probe").getAttribute("data-state")).toBe(
+      "browsing",
+    );
+
+    accepted.resolve({ kind: "applied" });
+    await waitFor(() =>
+      expect(screen.getByTestId("close-probe").getAttribute("data-state")).toBe(
+        "closed",
+      ),
+    );
+  });
 });

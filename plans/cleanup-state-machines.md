@@ -673,10 +673,12 @@ IDs make creation idempotent, cancellation requires the exact active
 invocation ref, provider settlements remain host-only, and targeted
 presentation events follow initiator-first routing. The renderer controller,
 manager, command runner, invoke channels, and Jotai-style projection adapter
-are deleted in the same change. Terminal jobs retain for 30 minutes; shutdown
-and app deletion request best-effort cancellation with bounded settlement, and
-restart begins with no active-job state while preserving media already
-committed to disk.
+are deleted in the same change. The singleton collection remains available to
+mounted windows while every terminal job receives its own 30-minute prune
+deadline. Shutdown requests best-effort cancellation with bounded settlement;
+app deletion first fences admission and prunes its read-model entries before
+bounded cancellation. Restart begins with no active-job state while preserving
+media already committed to disk.
 
 `connection_flow` and `mcp_oauth` are already correctly main-authoritative.
 First expose them through the common remote reference/read-model contract if

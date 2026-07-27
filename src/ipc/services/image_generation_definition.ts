@@ -95,6 +95,12 @@ function createCommandRunner(
           command.jobId,
         );
         return;
+      case "RecordInitiator":
+        imageGenerationPresentationService.recordInitiator(
+          command.jobId,
+          command.windowSessionId,
+        );
+        return;
       case "InvalidateMediaQueries":
         queryInvalidationBus.publish([{ family: "media" }]);
         return;
@@ -157,8 +163,7 @@ export const imageGenerationDefinition: ImageGenerationDefinition = {
     dispatchCreates: false,
     idleEviction: { kind: "retain" },
     terminalRetention: {
-      kind: "dispose-after",
-      delayMs: IMAGE_GENERATION_TERMINAL_RETENTION_MS,
+      kind: "retain",
     },
     entityDeletion: "retain",
     rendererOwnership: "host",
@@ -187,15 +192,16 @@ export const imageGenerationDefinition: ImageGenerationDefinition = {
     authorizeDispatch: async ({ sender, event, currentState }) => {
       const intent = event as ImageGenerationIntentEvent;
       if (intent.type === "SUBMIT") {
+        imageGenerationService.assertAcceptingGenerations(
+          intent.job.targetAppId,
+        );
         if (!(await appExists(intent.job.targetAppId))) {
           throw new DyadError("Target app not found", DyadErrorKind.Auth);
         }
-        if (!currentState?.jobs.some(({ job }) => job.id === intent.job.id)) {
-          imageGenerationPresentationService.recordInitiator(
-            intent.job.id,
-            sender.windowSessionId,
-          );
-        }
+        imageGenerationService.assertAcceptingGenerations(
+          intent.job.targetAppId,
+        );
+        intent.initiatorWindowSessionId = sender.windowSessionId;
         return;
       }
       if (

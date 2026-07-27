@@ -86,6 +86,33 @@ describe("image generation transition", () => {
     ).toMatchObject({ kind: "ignored", reason: "operation-id-conflict" });
   });
 
+  it("records the host-authorized initiator only for an applied submission", () => {
+    const first = transition(
+      { jobs: [] },
+      {
+        type: "SUBMIT",
+        job,
+        operationId: invocationRef.operationId,
+        initiatorWindowSessionId: "window-a",
+      },
+    );
+    expect(first.kind).toBe("applied");
+    if (first.kind !== "applied") throw new Error("submit was ignored");
+    expect(first.commands[0]).toEqual({
+      type: "RecordInitiator",
+      jobId: job.id,
+      windowSessionId: "window-a",
+    });
+    expect(
+      transition(first.state, {
+        type: "SUBMIT",
+        job,
+        operationId: "duplicate-operation",
+        initiatorWindowSessionId: "window-b",
+      }),
+    ).toMatchObject({ kind: "ignored", reason: "duplicate-job" });
+  });
+
   it("keeps the generation settlement as terminal authority after cancel", () => {
     const cancelling = transition(submittedState(), {
       type: "CANCEL_REQUESTED",
@@ -126,6 +153,11 @@ describe("image generation transition", () => {
           },
         ],
       },
+      commands: [
+        { type: "InvalidateMediaQueries" },
+        { type: "SchedulePrune", jobId: job.id },
+        { type: "Present", jobId: job.id },
+      ],
     });
   });
 

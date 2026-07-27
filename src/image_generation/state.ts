@@ -83,6 +83,11 @@ export type SubmitImageGenerationEvent = {
   readonly type: "SUBMIT";
   readonly job: ImageGenerationJobDetails;
   readonly operationId: string;
+  /**
+   * Host-enriched after remote authorization. The wire codec does not accept
+   * this value from renderers.
+   */
+  initiatorWindowSessionId?: string;
 };
 
 export type CancelImageGenerationEvent = {
@@ -141,6 +146,11 @@ export type ImageGenerationCommand =
   | {
       readonly type: "Present";
       readonly jobId: string;
+    }
+  | {
+      readonly type: "RecordInitiator";
+      readonly jobId: string;
+      readonly windowSessionId: string;
     }
   | { readonly type: "InvalidateMediaQueries" };
 

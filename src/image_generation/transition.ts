@@ -43,6 +43,15 @@ export function transition(
         ],
       },
       commands: [
+        ...(event.initiatorWindowSessionId
+          ? [
+              {
+                type: "RecordInitiator" as const,
+                jobId: event.job.id,
+                windowSessionId: event.initiatorWindowSessionId,
+              },
+            ]
+          : []),
         {
           type: "GenerateImage",
           jobId: event.job.id,
@@ -150,10 +159,9 @@ export function transition(
         },
         activeInvocationRef: null,
       };
-      const nextJobs = replaceJob(state.jobs, index, nextJob);
       return replace(state, index, nextJob, [
         { type: "InvalidateMediaQueries" },
-        ...pruneCommands(current.job.id, nextJobs),
+        { type: "SchedulePrune", jobId: current.job.id },
         { type: "Present", jobId: current.job.id },
       ]);
     }
@@ -172,9 +180,8 @@ export function transition(
             },
         activeInvocationRef: null,
       };
-      const nextJobs = replaceJob(state.jobs, index, nextJob);
       return replace(state, index, nextJob, [
-        ...pruneCommands(current.job.id, nextJobs),
+        { type: "SchedulePrune", jobId: current.job.id },
         { type: "Present", jobId: current.job.id },
       ]);
     }
@@ -213,15 +220,6 @@ function replaceJob(
   return jobs.map((current, currentIndex) =>
     currentIndex === index ? job : current,
   );
-}
-
-function pruneCommands(
-  jobId: string,
-  jobs: readonly ImageGenerationActorJob[],
-): readonly ImageGenerationCommand[] {
-  return jobs.some(({ job }) => !isTerminal(job))
-    ? [{ type: "SchedulePrune", jobId }]
-    : [];
 }
 
 function sameJob(

@@ -135,6 +135,7 @@ import { entityDisposalBus } from "@/window_infrastructure/main/entity_disposal_
 import { appRunActorService } from "../services/app_run_actor_service";
 import { githubOpsActorService } from "../services/github_ops_actor_service";
 import { imageGenerationActorService } from "../services/image_generation_actor_service";
+import { imageGenerationService } from "../services/image_generation_service";
 import { githubOpsService } from "../services/github_ops_service";
 
 const logger = log.scope("app_handlers");
@@ -384,6 +385,7 @@ async function deleteAppById(
   options: DeleteAppByIdOptions = {},
 ): Promise<void> {
   githubOpsService.beginAppDeletion(appId);
+  imageGenerationService.beginAppDeletion(appId);
   try {
     return await withLock(appId, async () => {
       const app = await db.query.apps.findFirst({
@@ -460,6 +462,7 @@ async function deleteAppById(
       }
     });
   } finally {
+    imageGenerationService.endAppDeletion(appId);
     githubOpsService.endAppDeletion(appId);
   }
 }
@@ -1394,6 +1397,7 @@ export function registerAppHandlers() {
 
   createTypedHandler(systemContracts.resetAll, async () => {
     githubOpsService.beginReset();
+    imageGenerationService.beginReset();
     try {
       logger.log("start: resetting all apps and settings.");
       appRuntimeService.cleanupAll();
@@ -1471,6 +1475,7 @@ export function registerAppHandlers() {
       logger.log("all app files removed.");
       logger.log("reset all complete.");
     } finally {
+      imageGenerationService.endReset();
       githubOpsService.endReset();
     }
   });

@@ -22,6 +22,7 @@ const service = vi.hoisted(() => ({
   generate: vi.fn(),
   cancel: vi.fn(() => true),
   cancelAndSettleAll: vi.fn(async () => undefined),
+  assertAcceptingGenerations: vi.fn(),
 }));
 const database = vi.hoisted(() => ({
   findFirst: vi.fn(async () => ({ id: 7 }) as { id: number } | undefined),
@@ -140,6 +141,7 @@ describe("main-hosted image generation actor", () => {
     service.cancel.mockReturnValue(true);
     service.cancelAndSettleAll.mockReset();
     service.cancelAndSettleAll.mockResolvedValue(undefined);
+    service.assertAcceptingGenerations.mockReset();
     database.findFirst.mockReset();
     database.findFirst.mockResolvedValue({ id: 7 });
     invalidations.publish.mockReset();
@@ -235,7 +237,7 @@ describe("main-hosted image generation actor", () => {
     expect(service.cancelAndSettleAll).toHaveBeenCalled();
   });
 
-  it("retains terminal jobs for 30 minutes, then disposes the collection", async () => {
+  it("prunes terminal jobs after 30 minutes while retaining the collection", async () => {
     service.generate.mockResolvedValue({
       fileName: "generated.png",
       filePath: "/tmp/generated.png",
@@ -258,7 +260,16 @@ describe("main-hosted image generation actor", () => {
     clock.advanceBy(1);
     await flush();
     expect(
-      host.peek(imageGenerationDefinition.id, getImageGenerationKey()),
-    ).toBeUndefined();
+      host
+        .peek(imageGenerationDefinition.id, getImageGenerationKey())
+        ?.getSnapshot(),
+    ).toEqual({ jobs: [] });
+    await expect(
+      actorA.dispatch({
+        ...submit,
+        job: { ...submit.job, id: "job-2" },
+        operationId: "operation-2",
+      }),
+    ).resolves.toMatchObject({ kind: "applied" });
   });
 });

@@ -65,8 +65,11 @@ const THEME_SYSTEM_PROMPTS: Record<ImageThemeMode, string | null> = {
 
 export class ImageGenerationService {
   private readonly active = new Map<string, ActiveGeneration>();
+  private readonly deletionFences = new Map<number, number>();
+  private resetFenceCount = 0;
 
   generate(params: GenerateImageInput) {
+    this.assertAcceptingGenerations(params.targetAppId);
     if (this.active.has(params.requestId)) {
       throw new DyadError(
         "Image generation invocation is already active",
@@ -85,6 +88,33 @@ export class ImageGenerationService {
       settlement,
     });
     return settlement;
+  }
+
+  beginAppDeletion(appId: number): void {
+    this.deletionFences.set(appId, (this.deletionFences.get(appId) ?? 0) + 1);
+  }
+
+  endAppDeletion(appId: number): void {
+    const remaining = (this.deletionFences.get(appId) ?? 1) - 1;
+    if (remaining > 0) this.deletionFences.set(appId, remaining);
+    else this.deletionFences.delete(appId);
+  }
+
+  beginReset(): void {
+    this.resetFenceCount += 1;
+  }
+
+  endReset(): void {
+    this.resetFenceCount = Math.max(0, this.resetFenceCount - 1);
+  }
+
+  assertAcceptingGenerations(appId: number): void {
+    if (this.resetFenceCount > 0 || this.deletionFences.has(appId)) {
+      throw new DyadError(
+        "The app is being deleted",
+        DyadErrorKind.Precondition,
+      );
+    }
   }
 
   private async execute(
@@ -246,6 +276,8 @@ export class ImageGenerationService {
     const { fileName, filePath, appPath } = await withLock(
       `media:${params.targetAppId}`,
       async () => {
+        this.assertAcceptingGenerations(params.targetAppId);
+        throwIfGenerationCancelled(controller.signal);
         const appPath = getDyadAppPath(app.path);
         const mediaDir = path.join(appPath, DYAD_MEDIA_DIR_NAME);
         await fs.promises.mkdir(mediaDir, { recursive: true });

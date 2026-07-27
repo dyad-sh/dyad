@@ -20,19 +20,19 @@ export class ImageGenerationActorService {
   ) {}
 
   async disposeApp(appId: number): Promise<void> {
-    await imageGenerationService.cancelAndSettleApp(appId);
     const actor = this.host.peek<
       ImageGenerationActorState,
       ImageGenerationEvent,
       ImageGenerationIgnoreReason
     >(imageGenerationDefinition.id, getImageGenerationKey());
-    if (!actor) return;
-    imageGenerationPresentationService.forgetApp(appId, actor.getSnapshot());
-    actor.send({ type: "APP_DELETED", appId });
+    if (actor) {
+      imageGenerationPresentationService.forgetApp(appId, actor.getSnapshot());
+      await actor.enqueue({ type: "APP_DELETED", appId }).settled;
+    }
+    await imageGenerationService.cancelAndSettleApp(appId);
   }
 
   async disposeAllApps(): Promise<void> {
-    await imageGenerationService.cancelAndSettleAll();
     await this.host.disposeMachine(imageGenerationDefinition.id);
   }
 }

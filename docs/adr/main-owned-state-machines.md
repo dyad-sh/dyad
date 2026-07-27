@@ -443,12 +443,14 @@ Serializability audit:
   `CANCEL_REQUESTED`. Provider settlement, pruning, and app-deletion events are
   host-only.
 
-The lifecycle policy retains active jobs without subscribers, reattaches
-windows to the same list, and retains terminal jobs for 30 minutes. App quit
+The lifecycle policy retains the singleton collection without subscribers,
+reattaches windows to the same list, and gives each terminal job an independent
+30-minute prune deadline. App quit
 stops actor admission, aborts every active provider request, and waits only for
 a bounded settlement window. State is ephemeral across app restart and jobs
-are never replayed; committed media remains. App deletion best-effort cancels
-and settles matching work before pruning its jobs.
+are never replayed; committed media remains. App deletion fences new admission,
+prunes matching jobs before aborting provider work, and waits only for bounded
+settlement.
 
 The atomic deletion budget is complete: the renderer
 `ImageGenerationController`, `ImageGenerationManager`, IPC command runner,

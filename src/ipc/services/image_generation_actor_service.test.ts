@@ -45,21 +45,26 @@ describe("ImageGenerationActorService", () => {
         },
       ],
     };
-    const send = vi.fn<(event: ImageGenerationEvent) => void>();
+    const enqueue = vi.fn((_event: ImageGenerationEvent) => ({
+      settled: Promise.resolve({ kind: "applied" }),
+    }));
     const host = {
-      peek: vi.fn(() => ({ getSnapshot: () => state, send })),
+      peek: vi.fn(() => ({ getSnapshot: () => state, enqueue })),
       disposeMachine: vi.fn(async () => undefined),
     };
     const actorService = new ImageGenerationActorService(host as never);
 
     await actorService.disposeApp(7);
 
-    expect(service.cancelAndSettleApp).toHaveBeenCalledWith(7);
     expect(presentation.forgetApp).toHaveBeenCalledWith(7, state);
-    expect(send).toHaveBeenCalledWith({ type: "APP_DELETED", appId: 7 });
+    expect(enqueue).toHaveBeenCalledWith({ type: "APP_DELETED", appId: 7 });
+    expect(service.cancelAndSettleApp).toHaveBeenCalledWith(7);
+    expect(enqueue.mock.invocationCallOrder[0]).toBeLessThan(
+      service.cancelAndSettleApp.mock.invocationCallOrder[0],
+    );
   });
 
-  it("settles all provider work before reset disposes the actor", async () => {
+  it("disposes the actor before reset continues", async () => {
     const disposeMachine = vi.fn(async () => undefined);
     const actorService = new ImageGenerationActorService({
       peek: vi.fn(),
@@ -68,7 +73,6 @@ describe("ImageGenerationActorService", () => {
 
     await actorService.disposeAllApps();
 
-    expect(service.cancelAndSettleAll).toHaveBeenCalled();
     expect(disposeMachine).toHaveBeenCalledWith("image_generation");
   });
 });

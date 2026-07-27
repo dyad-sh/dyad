@@ -94,6 +94,16 @@ describe("ImageGenerationService", () => {
     return { cancelled: service.cancel(requestId) };
   }
 
+  it("rejects admission while an app deletion or reset fence is active", () => {
+    service.beginAppDeletion(appId);
+    expect(() => generate("during-delete")).toThrow("The app is being deleted");
+    service.endAppDeletion(appId);
+
+    service.beginReset();
+    expect(() => generate("during-reset")).toThrow("The app is being deleted");
+    service.endReset();
+  });
+
   it("aborts the initial generation request", async () => {
     const fetchMock = vi.fn((_url: string, init?: RequestInit) =>
       abortableFetch(init?.signal ?? undefined),

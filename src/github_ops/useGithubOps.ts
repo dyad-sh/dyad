@@ -147,27 +147,32 @@ export function useGithubOps(
     if (!claimId) {
       throw new Error("Conflict-resolution claim is no longer available");
     }
-    const receipt = await remote.dispatch({
-      type: "CONFLICT_RESOLUTION_STARTED",
-      claimId,
-    });
-    if (receipt.kind !== "applied") {
+    try {
+      const receipt = await remote.dispatch({
+        type: "CONFLICT_RESOLUTION_STARTED",
+        claimId,
+      });
+      if (receipt.kind !== "applied") {
+        throw new Error("Conflict-resolution claim was not accepted");
+      }
+    } finally {
       conflictClaimRef.current = null;
-      throw new Error("Conflict-resolution claim was not accepted");
     }
-    conflictClaimRef.current = null;
   }, [remote.dispatch]);
 
   const dispatchConflictResolutionCancelled = useCallback(async () => {
     const claimId = conflictClaimRef.current;
     if (!claimId) return;
-    const receipt = await remote.dispatch({
-      type: "CONFLICT_RESOLUTION_CANCELLED",
-      claimId,
-    });
-    conflictClaimRef.current = null;
-    if (receipt.kind !== "applied") {
-      throw new Error("Conflict-resolution cancellation was not accepted");
+    try {
+      const receipt = await remote.dispatch({
+        type: "CONFLICT_RESOLUTION_CANCELLED",
+        claimId,
+      });
+      if (receipt.kind !== "applied") {
+        throw new Error("Conflict-resolution cancellation was not accepted");
+      }
+    } finally {
+      conflictClaimRef.current = null;
     }
   }, [remote.dispatch]);
 

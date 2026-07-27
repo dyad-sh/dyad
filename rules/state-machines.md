@@ -331,6 +331,10 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   boolean. Matching follow-ups may be revision-stale only when the opaque claim
   ID is validated by the host. Unrelated reconciliation must not release the
   claim, and renderer loss needs an owner signal or bounded actor-owned expiry.
+  Clear claimant-local identity in `finally` when a matching settlement
+  dispatch fails, because actor expiry cannot clear renderer memory. If the
+  claimant creates a durable resource before host acknowledgement, delete it
+  when acknowledgement fails or the claim expires.
 - An unavailable/bootstrap remote snapshot is not authoritative idle state.
   Gate every actor-backed capability on a ready connection and defer recovery
   dispatches until subscription bootstrap has completed.

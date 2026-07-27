@@ -14,6 +14,7 @@ const CHAT_ID = 42;
 
 const mocks = vi.hoisted(() => ({
   createChat: vi.fn(),
+  deleteChat: vi.fn(),
   controllerSend: vi.fn(),
   invalidateChats: vi.fn(),
   navigate: vi.fn(),
@@ -24,7 +25,12 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/ipc/types", () => ({
-  ipc: { chat: { createChat: mocks.createChat } },
+  ipc: {
+    chat: {
+      createChat: mocks.createChat,
+      deleteChat: mocks.deleteChat,
+    },
+  },
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -59,6 +65,7 @@ describe("useResolveMergeConflictsWithAI", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.createChat.mockResolvedValue(CHAT_ID);
+    mocks.deleteChat.mockResolvedValue(undefined);
     mocks.refreshApp.mockResolvedValue(undefined);
   });
 
@@ -172,6 +179,7 @@ describe("useResolveMergeConflictsWithAI", () => {
     });
 
     expect(mocks.onStartFailed).toHaveBeenCalledOnce();
+    expect(mocks.deleteChat).toHaveBeenCalledExactlyOnceWith(CHAT_ID);
     expect(mocks.showError).toHaveBeenCalledExactlyOnceWith("claim expired");
     expect(mocks.controllerSend).not.toHaveBeenCalled();
     expect(result.current.isResolving).toBe(false);

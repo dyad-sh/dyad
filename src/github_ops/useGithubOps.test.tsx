@@ -89,4 +89,33 @@ describe("useGithubOps remote readiness", () => {
     expect(receipt).toBeUndefined();
     expect(mocks.showError).toHaveBeenCalledOnce();
   });
+
+  it("clears the local claim when cancellation dispatch rejects", async () => {
+    mocks.connection = "ready";
+    mocks.remote = { ...mocks.remote, connection: "ready" };
+    mocks.dispatch
+      .mockResolvedValueOnce({ kind: "applied", messageId: "claim-1" })
+      .mockRejectedValueOnce(new Error("disconnected"))
+      .mockResolvedValueOnce({ kind: "applied", messageId: "claim-2" });
+    const { result } = renderHook(() =>
+      useGithubOps(7, { reconcileOnMount: false }),
+    );
+
+    await act(async () => {
+      await result.current.dispatchWithErrorFeedback({
+        type: "RESOLVE_WITH_AI_STARTED",
+      });
+      await expect(
+        result.current.dispatchConflictResolutionCancelled(),
+      ).rejects.toThrow("disconnected");
+      await result.current.dispatchWithErrorFeedback({
+        type: "RESOLVE_WITH_AI_STARTED",
+      });
+    });
+
+    expect(mocks.dispatch).toHaveBeenCalledTimes(3);
+    expect(mocks.dispatch.mock.calls[2][0]).toMatchObject({
+      type: "RESOLVE_WITH_AI_STARTED",
+    });
+  });
 });

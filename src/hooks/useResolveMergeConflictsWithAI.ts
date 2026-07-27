@@ -58,8 +58,22 @@ export function useResolveMergeConflictsWithAI({
           appId,
           initialChatMode: "build",
         });
-        // Clear conflicts state after successful chat creation
-        await onStartResolving?.();
+        try {
+          // Clear conflicts state after successful chat creation.
+          await onStartResolving?.();
+        } catch (error) {
+          // The claim can expire while durable chat creation is in flight.
+          // Remove the chat if main does not accept the corresponding start.
+          try {
+            await ipc.chat.deleteChat(newChatId);
+          } catch (deleteError) {
+            console.error(
+              "Failed to delete unused conflict-resolution chat:",
+              deleteError,
+            );
+          }
+          throw error;
+        }
 
         // Build the prompt for resolving all conflicts
         const fileList = requestedConflicts.map((f) => `- ${f}`).join("\n");

@@ -7,7 +7,10 @@ import {
 import type { WindowSessionId } from "@/window_infrastructure/types";
 
 const nullEndpoint: WindowEndpoint = {
-  id: -1,
+  // Synthetic endpoints must never look like registrable Electron webContents.
+  // The execution proxy still observes terminal sends, but high-volume
+  // presentation routing takes the non-producer path for this non-integer id.
+  id: Number.NaN,
   isDestroyed: () => true,
   send: () => undefined,
   once: () => undefined,

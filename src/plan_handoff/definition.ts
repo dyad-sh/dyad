@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import type { z } from "zod";
 import { db } from "@/db";
 import { apps, chats, planHandoffs } from "@/db/schema";
@@ -189,6 +189,7 @@ function createCommandRunner(
     const abortController = new AbortController();
     context.tasks.replace(taskKey, () => abortController.abort());
     const { signal } = abortController;
+    let ownedTargetChatId: number | null = null;
     try {
       signal.throwIfAborted();
       let row = persistAcceptance(intent);
@@ -267,6 +268,7 @@ function createCommandRunner(
             initialChatMode: "local-agent",
             planHandoffId: intent.handoffId,
           });
+          ownedTargetChatId = targetChatId;
           signal.throwIfAborted();
         } else {
           targetChatId = intent.sourceChatId;
@@ -324,6 +326,23 @@ function createCommandRunner(
       checkpoint(intent.handoffId, "failed", undefined, message);
       emit({ type: "FAILED", handoffId: intent.handoffId, error: message });
     } finally {
+      if (
+        ownedTargetChatId !== null &&
+        !db
+          .select({ handoffId: planHandoffs.handoffId })
+          .from(planHandoffs)
+          .where(eq(planHandoffs.handoffId, intent.handoffId))
+          .get()
+      ) {
+        db.delete(chats)
+          .where(
+            and(
+              eq(chats.id, ownedTargetChatId),
+              eq(chats.planHandoffId, intent.handoffId),
+            ),
+          )
+          .run();
+      }
       context.tasks.remove(taskKey);
     }
   };

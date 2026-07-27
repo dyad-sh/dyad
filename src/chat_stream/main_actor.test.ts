@@ -320,6 +320,110 @@ describe("main-hosted chat stream actor", () => {
     await host.dispose();
   });
 
+  it("bootstraps actor interest before dispatching a first submission", async () => {
+    const clock = createFakeClock();
+    const host = new ActorHost({
+      placement: "main",
+      clock,
+      ids: createSequentialIdSource(),
+    });
+    const manifest = createRemoteMachineManifest([chatStreamDefinition]);
+    const windows = new TwoWindowHarness();
+    const transport = new RemoteMachineTransport({
+      host,
+      manifest,
+      windows: windows.registry,
+      clock,
+    });
+    const duplex = new FakeDuplexRemoteTransport(transport, manifest, windows);
+    const manager = new ChatStreamRemoteManager(
+      createStore(),
+      createSequentialIdSource(),
+      duplex.connect(),
+    );
+    const acceptanceError = vi.fn();
+
+    manager.start();
+    manager.ensure(7).send({
+      type: "submit",
+      request: {
+        chatId: 7,
+        appId: 3,
+        prompt: "first prompt",
+        onAcceptanceError: acceptanceError,
+      },
+    });
+
+    await vi.waitFor(() =>
+      expect(execution.admissions).toEqual(["first prompt"]),
+    );
+    expect(acceptanceError).not.toHaveBeenCalled();
+
+    manager.dispose();
+    await transport.dispose();
+    await host.dispose();
+  });
+
+  it("seeds the completion cursor without replaying stale terminal effects", async () => {
+    const clock = createFakeClock();
+    const host = new ActorHost({
+      placement: "main",
+      clock,
+      ids: createSequentialIdSource(),
+    });
+    const manifest = createRemoteMachineManifest([chatStreamDefinition]);
+    const windows = new TwoWindowHarness();
+    const transport = new RemoteMachineTransport({
+      host,
+      manifest,
+      windows: windows.registry,
+      clock,
+    });
+    const duplex = new FakeDuplexRemoteTransport(transport, manifest, windows);
+    const producer = new RemoteMachineClient(
+      duplex.connect(),
+      createSequentialIdSource(),
+    );
+    producer.start();
+    const actor = producer.actor(chatStreamClientDefinition, chatStreamKey(7));
+    const releaseProducer = actor.subscribe(() => undefined);
+    await actor.resync();
+    await actor.dispatch({ type: "SUBMIT", intent: turn("completed") });
+    await flush();
+    execution.observers.get("completed")?.onEnd?.({
+      chatId: 7,
+      invocationRef: turn("completed").invocationRef,
+      updatedFiles: false,
+    });
+    await vi.waitFor(() =>
+      expect(actor.getSnapshot().lastCompletion?.intentId).toBe("completed"),
+    );
+
+    const reloaded = new ChatStreamRemoteManager(
+      createStore(),
+      createSequentialIdSource(),
+      duplex.connect(),
+    );
+    const terminalEffect = vi.fn();
+    reloaded.start();
+    reloaded.subscribeStreamFinished(terminalEffect);
+    const releaseReloaded = reloaded.ensure(7).subscribe(() => undefined);
+    await vi.waitFor(() =>
+      expect(reloaded.getSnapshot(7).lastCompletion?.intentId).toBe(
+        "completed",
+      ),
+    );
+
+    expect(terminalEffect).not.toHaveBeenCalled();
+
+    releaseReloaded();
+    releaseProducer();
+    reloaded.dispose();
+    producer.dispose();
+    await transport.dispose();
+    await host.dispose();
+  });
+
   it("preserves submission order across asynchronous attachment preparation", async () => {
     let releaseAttachment!: () => void;
     const attachmentGate = new Promise<void>((resolve) => {

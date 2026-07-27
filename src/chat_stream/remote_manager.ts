@@ -99,7 +99,11 @@ export class ChatStreamRemoteManager {
   private readonly client: RemoteMachineClient;
   private readonly subscriptions = new Map<
     number,
-    { consumers: number; unsubscribe: () => void }
+    {
+      consumers: number;
+      unsubscribe: () => void;
+      bootstrap: Promise<void>;
+    }
   >();
   private readonly streamFinishedListeners = new Set<
     (event: StreamFinishedEvent) => void
@@ -117,6 +121,7 @@ export class ChatStreamRemoteManager {
   >();
   private readonly lastAcceptanceByChat = new Map<number, string>();
   private readonly lastCompletionByChat = new Map<number, string>();
+  private readonly completionCursorInitialized = new Set<number>();
   private readonly refs = new Map<number, RemoteChatRef>();
   private readonly previews = new ChatStreamPreviewStore();
   private runtimeDeps: Omit<ChatStreamRuntimeDeps, "getIsStreaming"> | null =
@@ -289,6 +294,7 @@ export class ChatStreamRemoteManager {
     this.optimisticSnapshots.delete(chatId);
     this.lastAcceptanceByChat.delete(chatId);
     this.lastCompletionByChat.delete(chatId);
+    this.completionCursorInitialized.delete(chatId);
     for (const [intentId, pending] of this.pendingSubmissions) {
       if (pending.request.chatId === chatId)
         this.takePendingSubmission(intentId);
@@ -318,6 +324,9 @@ export class ChatStreamRemoteManager {
     this.refs.clear();
     this.snapshotListeners.clear();
     this.optimisticSnapshots.clear();
+    this.lastAcceptanceByChat.clear();
+    this.lastCompletionByChat.clear();
+    this.completionCursorInitialized.clear();
     for (const pending of this.pendingSubmissions.values()) {
       pending.releaseSubscription();
     }
@@ -411,6 +420,8 @@ export class ChatStreamRemoteManager {
   ): Promise<void> {
     try {
       if (this.disposed || !this.pendingSubmissions.has(intentId)) return;
+      await this.subscriptions.get(request.chatId)?.bootstrap;
+      if (this.disposed || !this.pendingSubmissions.has(intentId)) return;
       const attachments =
         request.attachments && request.attachments.length > 0
           ? await convertFileAttachmentsToChatAttachments(request.attachments)
@@ -469,22 +480,29 @@ export class ChatStreamRemoteManager {
       existing.consumers += 1;
       return this.releaseSubscription(chatId, existing);
     }
-    const subscription = {
-      consumers: 1,
-      unsubscribe: actor.subscribe(() =>
-        this.handleSnapshot(chatId, actor.getSnapshot()),
-      ),
-    };
-    this.subscriptions.set(chatId, subscription);
-    void actor.resync().catch((error) => {
+    const unsubscribe = actor.subscribe(() =>
+      this.handleSnapshot(chatId, actor.getSnapshot()),
+    );
+    const bootstrap = actor.resync();
+    void bootstrap.catch((error) => {
       console.error("[chat-stream] Remote bootstrap failed", error);
     });
+    const subscription = {
+      consumers: 1,
+      unsubscribe,
+      bootstrap,
+    };
+    this.subscriptions.set(chatId, subscription);
     return this.releaseSubscription(chatId, subscription);
   }
 
   private releaseSubscription(
     chatId: number,
-    subscription: { consumers: number; unsubscribe: () => void },
+    subscription: {
+      consumers: number;
+      unsubscribe: () => void;
+      bootstrap: Promise<void>;
+    },
   ): () => void {
     let active = true;
     return () => {
@@ -530,6 +548,13 @@ export class ChatStreamRemoteManager {
       }
     }
     const completion = snapshot.lastCompletion;
+    if (!this.completionCursorInitialized.has(chatId)) {
+      this.completionCursorInitialized.add(chatId);
+      if (completion) {
+        this.lastCompletionByChat.set(chatId, completion.intentId);
+        if (!this.pendingSubmissions.has(completion.intentId)) return;
+      }
+    }
     if (
       !completion ||
       this.lastCompletionByChat.get(chatId) === completion.intentId

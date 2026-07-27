@@ -393,6 +393,13 @@ channels used only by that adapter. Branch and app cache refreshes move to the
 global query-invalidation epoch channel; the existing branch inventory query
 and `useGithubOps`/`projectGithubOps` consumer surface remain.
 
+The stacked deletion PR completes that budget: all three renderer adapter
+modules and their tests are removed, along with the Git mutation and
+repository-state probe contracts and registrations that only the command
+runner invoked. Main keeps the underlying handler functions as internal
+service operations, while branch inventory and other independently used
+read-only contracts remain registered.
+
 ### `version_preview`
 
 | Event                                                                                                                                                                                                                 | Classification and admission                                                                                           |

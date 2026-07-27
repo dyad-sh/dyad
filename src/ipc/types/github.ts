@@ -83,16 +83,6 @@ export const UncommittedFileDiffSchema = z.object({
   newContent: z.string(),
 });
 
-export const GithubSyncOptionsSchema = z.object({
-  force: z.boolean().optional(),
-  forceWithLease: z.boolean().optional(),
-});
-
-export const GitStateSchema = z.object({
-  mergeInProgress: z.boolean(),
-  rebaseInProgress: z.boolean(),
-});
-
 export const LocalBranchesResultSchema = z.object({
   branches: z.array(z.string()),
   current: z.string().nullable(),
@@ -129,19 +119,6 @@ export const CloneRepoResultSchema = z.union([
 // Note: the GitHub device flow (start/cancel + state updates) goes through
 // the connection-flow contracts (`connection_flow.ts`) — it is driven by the
 // flowId-correlated state machine shared with Supabase/Neon.
-const gitMutationInvalidations = (appId: number) =>
-  [
-    { family: "branches", appId },
-    { family: "versions", appId },
-    { family: "app", appId },
-  ] as const;
-
-const gitMutationOriginHandles = (appId: number) =>
-  [
-    { family: "branches", appId },
-    { family: "app", appId },
-  ] as const;
-
 export const githubContracts = {
   listRepos: defineContract({
     channel: "github:list-repos",
@@ -161,96 +138,6 @@ export const githubContracts = {
     output: RepoAvailabilitySchema,
   }),
 
-  createRepo: defineContract({
-    channel: "github:create-repo",
-    input: z.object({
-      org: z.string(),
-      repo: z.string(),
-      appId: z.number(),
-      branch: z.string().optional(),
-    }),
-    output: z.void(),
-    invalidates: (input) => [
-      { family: "apps" },
-      { family: "app", appId: input.appId },
-    ],
-  }),
-
-  connectExistingRepo: defineContract({
-    channel: "github:connect-existing-repo",
-    input: z.object({
-      owner: z.string(),
-      repo: z.string(),
-      branch: z.string(),
-      appId: z.number(),
-    }),
-    output: z.void(),
-    invalidates: (input) => [
-      { family: "apps" },
-      { family: "app", appId: input.appId },
-    ],
-  }),
-
-  push: defineContract({
-    channel: "github:push",
-    input: z.object({
-      appId: z.number(),
-      force: z.boolean().optional(),
-      forceWithLease: z.boolean().optional(),
-    }),
-    output: z.void(),
-    invalidates: (input) => gitMutationInvalidations(input.appId),
-    originHandles: (input) => gitMutationOriginHandles(input.appId),
-  }),
-
-  fetch: defineContract({
-    channel: "github:fetch",
-    input: GitBranchAppIdParamsSchema,
-    output: z.void(),
-    invalidates: (input) => [{ family: "branches", appId: input.appId }],
-    originHandles: (input) => [{ family: "branches", appId: input.appId }],
-  }),
-
-  pull: defineContract({
-    channel: "github:pull",
-    input: GitBranchAppIdParamsSchema,
-    output: z.void(),
-    invalidates: (input) => gitMutationInvalidations(input.appId),
-    originHandles: (input) => gitMutationOriginHandles(input.appId),
-  }),
-
-  rebase: defineContract({
-    channel: "github:rebase",
-    input: z.object({ appId: z.number() }),
-    output: z.void(),
-    invalidates: (input) => gitMutationInvalidations(input.appId),
-    originHandles: (input) => gitMutationOriginHandles(input.appId),
-  }),
-
-  rebaseAbort: defineContract({
-    channel: "github:rebase-abort",
-    input: z.object({ appId: z.number() }),
-    output: z.void(),
-    invalidates: (input) => gitMutationInvalidations(input.appId),
-    originHandles: (input) => gitMutationOriginHandles(input.appId),
-  }),
-
-  mergeAbort: defineContract({
-    channel: "github:merge-abort",
-    input: GitBranchAppIdParamsSchema,
-    output: z.void(),
-    invalidates: (input) => gitMutationInvalidations(input.appId),
-    originHandles: (input) => gitMutationOriginHandles(input.appId),
-  }),
-
-  rebaseContinue: defineContract({
-    channel: "github:rebase-continue",
-    input: z.object({ appId: z.number() }),
-    output: z.void(),
-    invalidates: (input) => gitMutationInvalidations(input.appId),
-    originHandles: (input) => gitMutationOriginHandles(input.appId),
-  }),
-
   listLocalBranches: defineContract({
     channel: "github:list-local-branches",
     input: GitBranchAppIdParamsSchema,
@@ -261,68 +148,6 @@ export const githubContracts = {
     channel: "github:list-remote-branches",
     input: ListRemoteGitBranchesParamsSchema,
     output: z.array(z.string()),
-  }),
-
-  createBranch: defineContract({
-    channel: "github:create-branch",
-    input: CreateGitBranchParamsSchema,
-    output: z.void(),
-    invalidates: (input) => gitMutationInvalidations(input.appId),
-    originHandles: (input) => gitMutationOriginHandles(input.appId),
-  }),
-
-  switchBranch: defineContract({
-    channel: "github:switch-branch",
-    input: GitBranchParamsSchema,
-    output: z.void(),
-    invalidates: (input) => gitMutationInvalidations(input.appId),
-    originHandles: (input) => gitMutationOriginHandles(input.appId),
-  }),
-
-  deleteBranch: defineContract({
-    channel: "github:delete-branch",
-    input: GitBranchParamsSchema,
-    output: z.void(),
-    invalidates: (input) => gitMutationInvalidations(input.appId),
-    originHandles: (input) => gitMutationOriginHandles(input.appId),
-  }),
-
-  renameBranch: defineContract({
-    channel: "github:rename-branch",
-    input: RenameGitBranchParamsSchema,
-    output: z.void(),
-    invalidates: (input) => gitMutationInvalidations(input.appId),
-    originHandles: (input) => gitMutationOriginHandles(input.appId),
-  }),
-
-  mergeBranch: defineContract({
-    channel: "github:merge-branch",
-    input: GitBranchParamsSchema,
-    output: z.void(),
-    invalidates: (input) => gitMutationInvalidations(input.appId),
-    originHandles: (input) => gitMutationOriginHandles(input.appId),
-  }),
-
-  getConflicts: defineContract({
-    channel: "github:get-conflicts",
-    input: z.object({ appId: z.number() }),
-    output: z.array(z.string()),
-  }),
-
-  getGitState: defineContract({
-    channel: "github:get-git-state",
-    input: z.object({ appId: z.number() }),
-    output: GitStateSchema,
-  }),
-
-  disconnect: defineContract({
-    channel: "github:disconnect",
-    input: z.object({ appId: z.number() }),
-    output: z.void(),
-    invalidates: (input) => [
-      { family: "apps" },
-      { family: "app", appId: input.appId },
-    ],
   }),
 
   listCollaborators: defineContract({
@@ -404,6 +229,5 @@ export type GetUncommittedFileDiffParams = z.infer<
   typeof GetUncommittedFileDiffParamsSchema
 >;
 export type UncommittedFileDiff = z.infer<typeof UncommittedFileDiffSchema>;
-export type GithubSyncOptions = z.infer<typeof GithubSyncOptionsSchema>;
 export type CloneRepoParams = z.infer<typeof CloneRepoParamsSchema>;
 export type CloneRepoResult = z.infer<typeof CloneRepoResultSchema>;

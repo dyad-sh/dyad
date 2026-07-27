@@ -33,7 +33,6 @@ import log from "electron-log";
 import { withLock } from "../utils/lock_utils";
 import { updateAppGithubRepo, ensureCleanWorkspace } from "./github_handlers";
 import { createTypedHandler } from "./base";
-import { createAppMutationLock } from "../utils/app_mutation_lock";
 import { githubContracts, gitContracts } from "../types/github";
 import { ensureDyadGitignored } from "./gitignoreUtils";
 import type {
@@ -472,38 +471,6 @@ export async function handlePullFromGithub(
 
 // --- Registration ---
 export function registerGithubBranchHandlers() {
-  createTypedHandler(
-    githubContracts.mergeAbort,
-    createAppMutationLock(handleAbortMerge),
-  );
-  createTypedHandler(
-    githubContracts.fetch,
-    createAppMutationLock(handleFetchFromGithub),
-  );
-  createTypedHandler(
-    githubContracts.pull,
-    createAppMutationLock(handlePullFromGithub),
-  );
-  createTypedHandler(
-    githubContracts.createBranch,
-    createAppMutationLock(handleCreateBranch),
-  );
-  createTypedHandler(
-    githubContracts.deleteBranch,
-    createAppMutationLock(handleDeleteBranch),
-  );
-  createTypedHandler(
-    githubContracts.switchBranch,
-    createAppMutationLock(handleSwitchBranch),
-  );
-  createTypedHandler(
-    githubContracts.renameBranch,
-    createAppMutationLock(handleRenameBranch),
-  );
-  createTypedHandler(
-    githubContracts.mergeBranch,
-    createAppMutationLock(handleMergeBranch),
-  );
   createTypedHandler(
     githubContracts.listLocalBranches,
     handleListLocalBranches,

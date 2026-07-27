@@ -203,7 +203,6 @@ export type {
   UncommittedFileStatus,
   GetUncommittedFileDiffParams,
   UncommittedFileDiff,
-  GithubSyncOptions,
   CloneRepoParams,
   GithubRepository,
 } from "./github";

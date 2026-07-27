@@ -34,7 +34,6 @@ import log from "electron-log";
 import { IS_TEST_BUILD } from "../utils/test_utils";
 import path from "node:path";
 import { createTypedHandler } from "./base";
-import { createAppMutationLock } from "../utils/app_mutation_lock";
 import { githubContracts } from "../types/github";
 import type { CloneRepoParams, CloneRepoResult } from "../types/github";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
@@ -1328,36 +1327,6 @@ export function registerGithubHandlers() {
   });
 
   createTypedHandler(
-    githubContracts.createRepo,
-    createAppMutationLock(handleCreateRepo),
-  );
-
-  createTypedHandler(
-    githubContracts.connectExistingRepo,
-    createAppMutationLock(handleConnectToExistingRepo),
-  );
-
-  createTypedHandler(
-    githubContracts.push,
-    createAppMutationLock(handlePushToGithub),
-  );
-
-  createTypedHandler(
-    githubContracts.rebase,
-    createAppMutationLock(handleRebaseFromGithub),
-  );
-
-  createTypedHandler(
-    githubContracts.rebaseAbort,
-    createAppMutationLock(handleAbortRebase),
-  );
-
-  createTypedHandler(
-    githubContracts.rebaseContinue,
-    createAppMutationLock(handleContinueRebase),
-  );
-
-  createTypedHandler(
     githubContracts.listCollaborators,
     async (event, params) => {
       return handleListCollaborators(event, params);
@@ -1376,19 +1345,6 @@ export function registerGithubHandlers() {
     async (event, params) => {
       return handleRemoveCollaborator(event, params);
     },
-  );
-
-  createTypedHandler(githubContracts.getConflicts, async (event, params) => {
-    return handleGetMergeConflicts(event, params);
-  });
-
-  createTypedHandler(githubContracts.getGitState, async (event, params) => {
-    return handleGetGitState(event, params);
-  });
-
-  createTypedHandler(
-    githubContracts.disconnect,
-    createAppMutationLock(handleDisconnectGithubRepo),
   );
 
   createTypedHandler(

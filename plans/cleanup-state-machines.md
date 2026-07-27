@@ -656,15 +656,15 @@ Each requires serializability audit, safe remote projection, lifecycle-matrix
 completion, deletion budget, crash/reload tests, same-entity-two-window tests,
 and window-close-mid-operation tests.
 
-Status: **`github_ops` cutover implemented** — the verified lifecycle policy,
+Status: **`github_ops` cutover and trailing deletion implemented** — the verified lifecycle policy,
 serializability audit, safe projection, conflict-resolution receipt decision,
 and renderer adapter/channel deletion budget are recorded in the
 [B0 ADR](../docs/adr/main-owned-state-machines.md#github_ops). Main now owns
 the actor and Git command execution, renderers consume its revisioned read
-model, and B1 publishes branch/app/version invalidations. The superseded
-renderer controller/manager/IPC mutation stack remains temporarily for the
-required separate trailing deletion PR. Acceptance is pending review and
-merge.
+model, and B1 publishes branch/app/version invalidations. The required
+separate trailing PR deletes the superseded renderer controller, manager,
+command runner, and mutation/probe IPC channels. Acceptance is pending review
+and merge of the cutover and its stacked deletion.
 
 `connection_flow` and `mcp_oauth` are already correctly main-authoritative.
 First expose them through the common remote reference/read-model contract if

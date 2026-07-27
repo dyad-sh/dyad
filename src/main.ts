@@ -100,6 +100,11 @@ import {
   getUserDataPath,
 } from "./paths/paths";
 import { createDeepLinkQueue } from "./main/deep_link_queue";
+import { DeepLinkWindowReadiness } from "./main/deep_link_window_readiness";
+import {
+  closedWindowSessionDisposition,
+  shouldQuitAfterAllWindowsClosed,
+} from "./main/window_lifecycle_policy";
 import { registerDyadProtocolLinux } from "./main/linux_protocol_registration";
 import {
   applyManagedPnpmToProcessPath,
@@ -309,6 +314,9 @@ function crashReportName(dumpPath: string): string {
   return `crash-${ts}-${id}.dmp`;
 }
 const deepLinkQueue = createDeepLinkQueue(handleDeepLinkReturn);
+const deepLinkWindowReadiness = new DeepLinkWindowReadiness<BrowserWindow>(
+  deepLinkQueue,
+);
 
 // Load environment variables from .env file
 dotenv.config();
@@ -605,7 +613,6 @@ declare global {
 
 let mainWindow: BrowserWindow | null = null;
 const productWindows = new Map<WindowSessionId, BrowserWindow>();
-const readyProductWindows = new WeakSet<BrowserWindow>();
 let windowSessionPersistence: WindowSessionPersistence | undefined;
 let lastClosedWindowSession: WindowSessionDescriptor | undefined;
 let pendingForceCloseData: any = null;
@@ -660,39 +667,34 @@ const createWindow = ({
     throw error;
   }
   mainWindow = browserWindow;
-  deepLinkQueue.markNotReady();
+  deepLinkWindowReadiness.setTarget(browserWindow);
   productWindows.set(windowSessionId, browserWindow);
   windowRegistry.register(browserWindow.webContents, windowSessionId);
   browserWindow.on("focus", () => {
     mainWindow = browserWindow;
-    if (readyProductWindows.has(browserWindow)) {
-      deepLinkQueue.markReady();
-    } else {
-      deepLinkQueue.markNotReady();
-    }
+    deepLinkWindowReadiness.setTarget(browserWindow);
     windowRegistry.setFocused(windowSessionId);
   });
   browserWindow.once("closed", () => {
     const descriptor = getWindowSessionPersistence()
       .read()
       .find((candidate) => candidate.windowSessionId === windowSessionId);
-    const wasLastWindow = productWindows.size === 1;
+    const sessionDisposition = closedWindowSessionDisposition({
+      isAppQuitting,
+      openWindowCountBeforeClose: productWindows.size,
+    });
     productWindows.delete(windowSessionId);
-    if (!isAppQuitting && !wasLastWindow) {
+    if (sessionDisposition === "forget") {
       getWindowSessionPersistence().forget(windowSessionId);
     } else if (descriptor) {
       lastClosedWindowSession = descriptor;
     }
     if (mainWindow === browserWindow) {
       mainWindow =
-        BrowserWindow.getFocusedWindow() ??
+        [...productWindows.values()].find((window) => window.isFocused()) ??
         [...productWindows.values()].at(-1) ??
         null;
-      if (mainWindow && readyProductWindows.has(mainWindow)) {
-        deepLinkQueue.markReady();
-      } else {
-        deepLinkQueue.markNotReady();
-      }
+      deepLinkWindowReadiness.setTarget(mainWindow);
     }
   });
   const packagedRendererUrl = pathToFileURL(
@@ -774,10 +776,7 @@ const createWindow = ({
       }
     }
 
-    readyProductWindows.add(browserWindow);
-    if (mainWindow === browserWindow) {
-      deepLinkQueue.markReady();
-    }
+    deepLinkWindowReadiness.markReady(browserWindow);
 
     // Summarize native crash minidumps before sending app:crash_detected. If
     // the main process crashed natively, that summary becomes the crash cause
@@ -1367,7 +1366,7 @@ app.on("child-process-gone", (_event, details) => {
 // for applications and their menu bar to stay active until the user quits
 // explicitly with Cmd + Q.
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
+  if (shouldQuitAfterAllWindowsClosed(process.platform)) {
     app.quit();
   }
 });

@@ -7,7 +7,7 @@ import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useGenerateImage } from "@/hooks/useGenerateImage";
 import { buildDyadMediaUrl } from "@/lib/dyadMediaUrl";
 import { ImageLightbox } from "./ImageLightbox";
-import type { ImageGenerationJob } from "@/image_generation/state";
+import type { ImageGenerationJobView } from "@/image_generation/state";
 
 interface ChatImageGenerationStripProps {
   onGenerateImage: () => void;
@@ -22,7 +22,7 @@ export function ChatImageGenerationStrip({
   const [dismissedJobIds, setDismissedJobIds] = useAtom(
     dismissedImageGenerationJobIdsAtom,
   );
-  const [lightboxJob, setLightboxJob] = useState<ImageGenerationJob | null>(
+  const [lightboxJob, setLightboxJob] = useState<ImageGenerationJobView | null>(
     null,
   );
 
@@ -55,7 +55,7 @@ export function ChatImageGenerationStrip({
     setDismissedJobIds((prev: Set<string>) => new Set(prev).add(jobId));
   };
 
-  const handleRetry = (job: ImageGenerationJob) => {
+  const handleRetry = (job: ImageGenerationJobView) => {
     setDismissedJobIds((prev: Set<string>) => new Set(prev).add(job.id));
     start({
       prompt: job.prompt,
@@ -184,7 +184,6 @@ export function ChatImageGenerationStrip({
             lightboxJob.result.fileName,
           )}
           alt={lightboxJob.prompt}
-          filePath={lightboxJob.result.filePath}
           onClose={() => setLightboxJob(null)}
         />
       )}

@@ -43,7 +43,6 @@ import { registerFreeAgentQuotaHandlers } from "./handlers/free_agent_quota_hand
 import { registerFreeModelQuotaHandlers } from "./handlers/free_model_quota_handlers";
 import { registerPlanHandlers } from "./handlers/plan_handlers";
 import { registerMediaHandlers } from "./handlers/media_handlers";
-import { registerImageGenerationHandlers } from "./handlers/image_generation_handlers";
 import { registerMiscHandlers } from "./handlers/misc_handlers";
 import { registerAppBlueprintHandlers } from "./handlers/app_blueprint_handlers";
 import { registerAppCollectionHandlers } from "./handlers/app_collection_handlers";
@@ -102,7 +101,6 @@ export function registerIpcHandlers() {
   registerFreeModelQuotaHandlers();
   registerPlanHandlers();
   registerMediaHandlers();
-  registerImageGenerationHandlers();
   registerMiscHandlers();
   registerAppBlueprintHandlers();
   registerAppCollectionHandlers();

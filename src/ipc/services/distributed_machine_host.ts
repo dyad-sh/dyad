@@ -9,6 +9,7 @@ import { systemClock, uuidIdSource } from "@/state_machines/clock";
 import { windowRegistry } from "@/window_infrastructure/main/window_registry";
 import type { WindowSessionId } from "@/window_infrastructure/types";
 import { githubOpsDefinition } from "./github_ops_definition";
+import { imageGenerationDefinition } from "./image_generation_definition";
 
 export const remoteMachineHost = new ActorHost({
   placement: "main",
@@ -19,6 +20,7 @@ export const remoteMachineHost = new ActorHost({
 export const remoteMachineManifest = createRemoteMachineManifest([
   appRunDefinition,
   githubOpsDefinition,
+  imageGenerationDefinition,
 ]);
 
 export const remoteMachineTransport = new RemoteMachineTransport({

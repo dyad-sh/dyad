@@ -1,4 +1,4 @@
-import { act, render, renderHook, waitFor } from "@testing-library/react";
+import { act, render, renderHook } from "@testing-library/react";
 import { QueryClient } from "@tanstack/react-query";
 import { createStore, Provider } from "jotai";
 import type { PropsWithChildren } from "react";
@@ -8,15 +8,10 @@ import { AppRunRemoteProvider } from "@/app_run/AppRunRemoteProvider";
 import { TestAppRunRemoteConnection } from "@/app_run/testing";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useAppOutputSubscription, useRunApp } from "@/hooks/useRunApp";
-import { createImageGenerationCommandRunner } from "@/image_generation/commands";
 import { ImageGenerationProvider } from "@/image_generation/ImageGenerationProvider";
-import { ImageGenerationManager } from "@/image_generation/manager";
 import { PackageManagerWarningProvider } from "@/package_manager_warnings/PackageManagerWarningProvider";
 import { PackageManagerWarningStore } from "@/package_manager_warnings/store";
-import {
-  createFakeClock,
-  createSequentialIdSource,
-} from "@/state_machines/testing";
+import { createSequentialIdSource } from "@/state_machines/testing";
 import { createVersionPreviewRuntime } from "@/version_preview/commands";
 import {
   DeferredPreviewErrorFacade,
@@ -27,7 +22,19 @@ const mocks = vi.hoisted(() => ({
   appOutputBatchListeners: new Set<(outputs: any[]) => void>(),
   appOutputListeners: new Set<(output: any) => void>(),
   dismissImageGenerationToast: vi.fn(),
-  generateImage: vi.fn(),
+  imagePresentationListener: undefined as
+    | ((event: {
+        type: "succeeded";
+        result: {
+          fileName: string;
+          filePath: string;
+          appPath: string;
+          appId: number;
+          appName: string;
+        };
+        pendingCount: number;
+      }) => void)
+    | undefined,
   runApp: vi.fn(),
   showImageGeneratingToast: vi.fn(),
   showImageSuccessToast: vi.fn(),
@@ -48,6 +55,16 @@ vi.mock("@/ipc/types", async (importOriginal) => {
       },
       events: {
         ...original.ipc.events,
+        imageGeneration: {
+          onPresentation: (
+            listener: NonNullable<typeof mocks.imagePresentationListener>,
+          ) => {
+            mocks.imagePresentationListener = listener;
+            return () => {
+              mocks.imagePresentationListener = undefined;
+            };
+          },
+        },
         misc: {
           onAppOutput: (listener: (output: any) => void) => {
             mocks.appOutputListeners.add(listener);
@@ -58,11 +75,6 @@ vi.mock("@/ipc/types", async (importOriginal) => {
             return () => mocks.appOutputBatchListeners.delete(listener);
           },
         },
-      },
-      imageGeneration: {
-        ...original.ipc.imageGeneration,
-        generateImage: mocks.generateImage,
-        cancelImageGeneration: vi.fn(),
       },
       misc: {
         ...original.ipc.misc,
@@ -210,11 +222,7 @@ describe("golden single-window: runtime presentation delivery", () => {
     hook.unmount();
   });
 
-  it("invalidates media and presents success once when generation settles", async () => {
-    const queryClient = new QueryClient();
-    const invalidate = vi
-      .spyOn(queryClient, "invalidateQueries")
-      .mockResolvedValue(undefined);
+  it("presents one routed success when generation settles", () => {
     const result = {
       fileName: "generated.png",
       filePath: "/tmp/generated.png",
@@ -222,29 +230,20 @@ describe("golden single-window: runtime presentation delivery", () => {
       appId: 7,
       appName: "Golden app",
     };
-    mocks.generateImage.mockResolvedValue(result);
-    const manager = new ImageGenerationManager({
-      clock: createFakeClock(10),
-      idSource: createSequentialIdSource(),
-      runner: createImageGenerationCommandRunner({ queryClient }),
-    });
     const view = render(
-      <ImageGenerationProvider manager={manager}>
+      <ImageGenerationProvider>
         <div />
       </ImageGenerationProvider>,
     );
 
     act(() => {
-      manager.submit({
-        prompt: "A lighthouse",
-        themeMode: "plain",
-        targetAppId: 7,
-        targetAppName: "Golden app",
+      mocks.imagePresentationListener?.({
+        type: "succeeded",
+        result,
+        pendingCount: 0,
       });
     });
 
-    await waitFor(() => expect(invalidate).toHaveBeenCalledTimes(1));
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["media"] });
     expect(mocks.showImageSuccessToast).toHaveBeenCalledExactlyOnceWith(
       result,
       expect.any(Function),

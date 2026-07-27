@@ -121,12 +121,10 @@ import {
   useEntityDisposal,
   useRegisterEntityDisposer,
 } from "@/state_machines/react";
-import { createImageGenerationCommandRunner } from "@/image_generation/commands";
 import { ImageGenerationProvider } from "@/image_generation/ImageGenerationProvider";
-import { ImageGenerationManager } from "@/image_generation/manager";
 import { FirstPromptProvider } from "@/first_prompt/FirstPromptProvider";
 import { GithubOpsProvider } from "@/github_ops/GithubOpsProvider";
-import { systemClock, uuidIdSource } from "@/state_machines/clock";
+import { uuidIdSource } from "@/state_machines/clock";
 import {
   createFakeClock,
   createSequentialIdSource,
@@ -997,11 +995,6 @@ export async function setupHybridChatHarness(
         createPreviewIframeCommandAdapter(store),
       );
       activePreviewIframeManager = previewIframeManager;
-      const imageGenerationManager = new ImageGenerationManager({
-        clock: systemClock,
-        idSource: uuidIdSource,
-        runner: createImageGenerationCommandRunner({ queryClient }),
-      });
       const versionPreviewManager = new VersionPreviewManager(
         createVersionPreviewRuntime({
           queryClient,
@@ -1029,9 +1022,7 @@ export async function setupHybridChatHarness(
                   <ChatStreamProvider manager={chatStreamManager}>
                     <AppRunRemoteProvider manager={appRunManager}>
                       <GithubOpsProvider>
-                        <ImageGenerationProvider
-                          manager={imageGenerationManager}
-                        >
+                        <ImageGenerationProvider>
                           <VersionPreviewProvider
                             manager={versionPreviewManager}
                           >

@@ -1,26 +1,43 @@
-import { useSyncExternalStore } from "react";
-import type { ImageGenerationJob } from "./state";
-import { useImageGenerationManager } from "./ImageGenerationProvider";
+import { useDistributedMachine } from "@/distributed_machines/react";
+import {
+  getImageGenerationKey,
+  imageGenerationClientDefinition,
+} from "./transport";
+import type { ImageGenerationJobView } from "./state";
 import {
   selectChatImageGenerationJobs,
   selectImageGenerationPendingCount,
 } from "./selectors";
 
-export function useImageGenerationJobs(): readonly ImageGenerationJob[] {
-  const manager = useImageGenerationManager();
-  return useSyncExternalStore(manager.subscribeJobs, manager.getJobsSnapshot);
+const selectJobs = (snapshot: { jobs: readonly ImageGenerationJobView[] }) =>
+  snapshot.jobs;
+
+export function useImageGenerationActor() {
+  return useDistributedMachine(
+    imageGenerationClientDefinition,
+    getImageGenerationKey(),
+    selectJobs,
+  );
 }
 
-export function useChatImageGenerationJobs(): readonly ImageGenerationJob[] {
-  const manager = useImageGenerationManager();
-  return useSyncExternalStore(manager.subscribeJobs, () =>
-    selectChatImageGenerationJobs(manager.getJobsSnapshot()),
+export function useImageGenerationJobs(): readonly ImageGenerationJobView[] {
+  return useImageGenerationActor().projection;
+}
+
+export function useChatImageGenerationJobs(): readonly ImageGenerationJobView[] {
+  const remote = useDistributedMachine(
+    imageGenerationClientDefinition,
+    getImageGenerationKey(),
+    (snapshot) => selectChatImageGenerationJobs(snapshot.jobs),
   );
+  return remote.projection;
 }
 
 export function useImageGenerationPendingCount(): number {
-  const manager = useImageGenerationManager();
-  return useSyncExternalStore(manager.subscribeJobs, () =>
-    selectImageGenerationPendingCount(manager.getJobsSnapshot()),
+  const remote = useDistributedMachine(
+    imageGenerationClientDefinition,
+    getImageGenerationKey(),
+    (snapshot) => selectImageGenerationPendingCount(snapshot.jobs),
   );
+  return remote.projection;
 }

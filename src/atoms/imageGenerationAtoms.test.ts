@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { ImageGenerationJob } from "@/image_generation/state";
+import type { ImageGenerationJobView } from "@/image_generation/state";
 import {
   selectChatImageGenerationJobs,
   selectImageGenerationPendingCount,
 } from "@/image_generation/selectors";
 
-const baseJob: ImageGenerationJob = {
+const baseJob: ImageGenerationJobView = {
   id: "job-1",
   prompt: "A lighthouse",
   themeMode: "plain",
@@ -14,6 +14,7 @@ const baseJob: ImageGenerationJob = {
   status: "success",
   startedAt: 1_000,
   source: "chat",
+  activeInvocationRef: null,
 };
 
 describe("image generation selectors", () => {
@@ -26,7 +27,7 @@ describe("image generation selectors", () => {
   });
 
   it("does not count cancellation requests as pending generations", () => {
-    const jobs: ImageGenerationJob[] = [
+    const jobs: ImageGenerationJobView[] = [
       { ...baseJob, status: "pending" },
       { ...baseJob, id: "job-2", status: "cancelling" },
     ];

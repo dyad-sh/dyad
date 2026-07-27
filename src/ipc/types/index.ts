@@ -58,7 +58,7 @@ export { freeAgentQuotaContracts } from "./free_agent_quota";
 export { freeModelQuotaContracts } from "./free_model_quota";
 export { audioContracts } from "./audio";
 export { mediaContracts } from "./media";
-export { imageGenerationContracts } from "./image_generation";
+export { imageGenerationEvents } from "./image_generation";
 export { appBlueprintContracts, appBlueprintEvents } from "./app_blueprint";
 export { appCollectionContracts } from "./app_collections";
 export { terminalContracts } from "./terminal";
@@ -110,7 +110,7 @@ export { freeAgentQuotaClient } from "./free_agent_quota";
 export { freeModelQuotaClient } from "./free_model_quota";
 export { audioClient } from "./audio";
 export { mediaClient } from "./media";
-export { imageGenerationClient } from "./image_generation";
+export { imageGenerationEventClient } from "./image_generation";
 export { appBlueprintClient, appBlueprintEventClient } from "./app_blueprint";
 export { appCollectionClient } from "./app_collections";
 export { terminalClient } from "./terminal";
@@ -374,11 +374,7 @@ export type {
 } from "./media";
 
 // Image generation types
-export type {
-  ImageThemeMode,
-  GenerateImageParams,
-  GenerateImageResponse,
-} from "./image_generation";
+export type { ImageThemeMode, GenerateImageResponse } from "./image_generation";
 
 // Tests types
 export type {
@@ -471,7 +467,7 @@ import { freeAgentQuotaClient } from "./free_agent_quota";
 import { freeModelQuotaClient } from "./free_model_quota";
 import { audioClient } from "./audio";
 import { mediaClient } from "./media";
-import { imageGenerationClient } from "./image_generation";
+import { imageGenerationEventClient } from "./image_generation";
 import { appBlueprintClient, appBlueprintEventClient } from "./app_blueprint";
 import { appCollectionClient } from "./app_collections";
 import { terminalClient } from "./terminal";
@@ -547,7 +543,6 @@ export const ipc = {
   freeModelQuota: freeModelQuotaClient,
   audio: audioClient,
   media: mediaClient,
-  imageGeneration: imageGenerationClient,
   appBlueprint: appBlueprintClient,
   appCollection: appCollectionClient,
   terminal: terminalClient,
@@ -567,6 +562,7 @@ export const ipc = {
     appBlueprint: appBlueprintEventClient,
     tests: testsEventClient,
     userInput: userInputEventClient,
+    imageGeneration: imageGenerationEventClient,
     windowInfrastructure: windowInfrastructureEventClient,
     distributedMachine: distributedMachineEventClient,
   },

@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useImageGenerationJobs } from "@/image_generation/hooks";
 import type {
-  ImageGenerationJob,
+  ImageGenerationJobView,
   ImageGenerationStatus,
 } from "@/image_generation/state";
 import { buildDyadMediaUrl } from "@/lib/dyadMediaUrl";
@@ -103,7 +103,7 @@ function RelativeTime({ timestamp }: { timestamp: number }) {
   return <span className="text-xs text-muted-foreground">{label}</span>;
 }
 
-function ImageGenerationCard({ job }: { job: ImageGenerationJob }) {
+function ImageGenerationCard({ job }: { job: ImageGenerationJobView }) {
   const [expanded, setExpanded] = useState(false);
   const { cancel } = useGenerateImage();
   const [imgError, setImgError] = useState(false);

@@ -1,83 +1,71 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import {
-  createFakeClock,
-  createSequentialIdSource,
-} from "@/state_machines/testing";
-import type { ImageGenerationEvent } from "./state";
-import { ImageGenerationManager } from "./manager";
+import type { ImageGenerationPresentationEvent } from "@/ipc/types/image_generation";
 import { ImageGenerationProvider } from "./ImageGenerationProvider";
-import { useImageGenerationJobs } from "./hooks";
 
-vi.mock("@/components/ImageGenerationToast", () => ({
-  dismissImageGenerationToast: vi.fn(),
-  showImageGeneratingToast: vi.fn(),
-  showImageSuccessToast: vi.fn(),
+const mocks = vi.hoisted(() => ({
+  dismiss: vi.fn(),
+  generating: vi.fn(),
+  success: vi.fn(),
+  error: vi.fn(),
+  listener: undefined as
+    | ((event: ImageGenerationPresentationEvent) => void)
+    | undefined,
 }));
-vi.mock("@/lib/toast", () => ({ showError: vi.fn() }));
 
-function ProjectionProbe() {
-  const jobs = useImageGenerationJobs();
-  return <div data-testid="jobs-snapshot">{jobs[0]?.status ?? "empty"}</div>;
-}
-
-describe("ImageGenerationProvider", () => {
-  it("publishes manager job snapshots directly to renderer readers", async () => {
-    let generationEmit: ((event: ImageGenerationEvent) => void) | undefined;
-    const manager = new ImageGenerationManager({
-      clock: createFakeClock(10),
-      idSource: createSequentialIdSource(),
-      runner: {
-        run(command, emit) {
-          if (command.type === "GenerateImage") generationEmit = emit;
+vi.mock("@/ipc/types", () => ({
+  ipc: {
+    events: {
+      imageGeneration: {
+        onPresentation: (
+          listener: (event: ImageGenerationPresentationEvent) => void,
+        ) => {
+          mocks.listener = listener;
+          return () => {
+            mocks.listener = undefined;
+          };
         },
       },
-    });
+    },
+  },
+}));
+vi.mock("@/components/ImageGenerationToast", () => ({
+  dismissImageGenerationToast: mocks.dismiss,
+  showImageGeneratingToast: mocks.generating,
+  showImageSuccessToast: mocks.success,
+}));
+vi.mock("@/lib/toast", () => ({ showError: mocks.error }));
+
+describe("ImageGenerationProvider", () => {
+  it("renders targeted presentation events without owning job authority", () => {
     const view = render(
-      <ImageGenerationProvider manager={manager}>
-        <ProjectionProbe />
+      <ImageGenerationProvider>
+        <div />
       </ImageGenerationProvider>,
     );
 
-    act(() => {
-      manager.submit({
-        prompt: "A lighthouse",
-        themeMode: "plain",
-        targetAppId: 1,
-        targetAppName: "App",
-      });
-    });
-    await waitFor(() =>
-      expect(screen.getByTestId("jobs-snapshot").textContent).toBe("pending"),
-    );
+    mocks.listener?.({ type: "progress", pendingCount: 2 });
+    expect(mocks.generating).toHaveBeenCalledWith(2);
 
-    act(() => {
-      generationEmit?.({
-        type: "JOB_SUCCEEDED",
-        result: {
-          fileName: "generated.png",
-          filePath: "/tmp/generated.png",
-          appPath: "app",
-          appId: 1,
-          appName: "App",
-        },
-      });
+    const result = {
+      fileName: "generated.png",
+      filePath: "/tmp/generated.png",
+      appPath: "app",
+      appId: 1,
+      appName: "App",
+    };
+    mocks.listener?.({ type: "succeeded", result, pendingCount: 1 });
+    expect(mocks.success).toHaveBeenCalledWith(result, expect.any(Function));
+
+    mocks.listener?.({
+      type: "failed",
+      message: "Provider failed",
+      pendingCount: 0,
     });
-    await waitFor(() =>
-      expect(screen.getByTestId("jobs-snapshot").textContent).toBe("success"),
-    );
-    expect(manager.getJobsSnapshot()).toHaveLength(1);
+    expect(mocks.error).toHaveBeenCalledWith("Provider failed");
+    expect(mocks.dismiss).toHaveBeenCalled();
 
     view.unmount();
-    await waitFor(() =>
-      expect(() =>
-        manager.submit({
-          prompt: "disposed",
-          themeMode: "plain",
-          targetAppId: 1,
-          targetAppName: "App",
-        }),
-      ).toThrow("disposed"),
-    );
+    expect(mocks.listener).toBeUndefined();
   });
 });

@@ -1,97 +1,276 @@
 import { ignore } from "@/state_machines/types";
-import type {
-  ImageGenerationEvent,
-  ImageGenerationState,
-  ImageGenerationTransitionResult,
+import {
+  IMAGE_GENERATION_INVOCATION_KIND,
+  type ImageGenerationActorJob,
+  type ImageGenerationActorState,
+  type ImageGenerationCommand,
+  type ImageGenerationEvent,
+  type ImageGenerationInvocationRef,
+  type ImageGenerationJob,
+  type ImageGenerationTransitionResult,
 } from "./state";
 
 export function transition(
-  state: ImageGenerationState,
+  state: ImageGenerationActorState,
   event: ImageGenerationEvent,
 ): ImageGenerationTransitionResult {
-  switch (state.type) {
-    case "pending":
-      switch (event.type) {
-        case "JOB_SUCCEEDED":
-          return succeed(state, event, false);
-        case "JOB_FAILED":
-          return {
-            kind: "applied",
-            state: { type: "failed", job: state.job, message: event.message },
-            commands: [],
-          };
-        case "CANCEL_REQUESTED":
-          return {
-            kind: "applied",
-            state: { type: "cancelling", job: state.job },
-            commands: [{ type: "RequestCancel", jobId: state.job.id }],
-          };
-        case "CANCEL_CONFIRMED":
-          return ignore(state, "invalid-in-current-state");
-        default:
-          return assertNever(event);
-      }
+  if (event.type === "SUBMIT") {
+    const existing = state.jobs.find(({ job }) => job.id === event.job.id);
+    if (existing) {
+      return ignore(
+        state,
+        sameJob(existing.job, event.job) ? "duplicate-job" : "job-id-conflict",
+      );
+    }
+    if (
+      state.jobs.some(
+        ({ activeInvocationRef }) =>
+          activeInvocationRef?.operationId === event.operationId,
+      )
+    ) {
+      return ignore(state, "operation-id-conflict");
+    }
+    const activeInvocationRef = invocation(event.job.id, event.operationId);
+    return {
+      kind: "applied",
+      state: {
+        jobs: [
+          ...state.jobs,
+          {
+            job: { ...event.job, status: "pending" },
+            activeInvocationRef,
+          },
+        ],
+      },
+      commands: [
+        {
+          type: "GenerateImage",
+          jobId: event.job.id,
+          invocationRef: activeInvocationRef,
+          params: {
+            prompt: event.job.prompt,
+            themeMode: event.job.themeMode,
+            targetAppId: event.job.targetAppId,
+            targetAppName: event.job.targetAppName,
+            source: event.job.source,
+          },
+        },
+        { type: "Present", jobId: event.job.id },
+      ],
+    };
+  }
 
-    case "cancelling":
-      switch (event.type) {
-        case "JOB_SUCCEEDED":
-          return succeed(state, event, true);
-        case "JOB_FAILED":
-          return event.kind === "user_cancelled"
-            ? {
-                kind: "applied",
-                state: { type: "cancelled", job: state.job },
-                commands: [],
-              }
-            : {
-                kind: "applied",
-                state: {
-                  type: "failed",
-                  job: state.job,
-                  message: event.message,
-                },
-                commands: [],
-              };
-        case "CANCEL_REQUESTED":
-          return ignore(state, "already-cancelling");
-        case "CANCEL_CONFIRMED":
-          // Applied command-settlement event. `cancelled: false` means main
-          // already settled; either way the generation promise remains the
-          // authority for the terminal state.
-          return { kind: "applied", state, commands: [] };
-        default:
-          return assertNever(event);
-      }
+  if (event.type === "APP_DELETED") {
+    const removed = state.jobs.filter(
+      ({ job }) => job.targetAppId === event.appId,
+    );
+    if (removed.length === 0) return ignore(state, "job-not-found");
+    return {
+      kind: "applied",
+      state: {
+        jobs: state.jobs.filter(({ job }) => job.targetAppId !== event.appId),
+      },
+      commands: removed.flatMap(({ job, activeInvocationRef }) =>
+        activeInvocationRef &&
+        (job.status === "pending" || job.status === "cancelling")
+          ? [
+              {
+                type: "RequestCancel" as const,
+                jobId: job.id,
+                invocationRef: activeInvocationRef,
+              },
+            ]
+          : [],
+      ),
+    };
+  }
 
-    case "succeeded":
-    case "failed":
-    case "cancelled":
-      return ignore(state, "already-terminal");
+  if (event.type === "PRUNE_JOB") {
+    const existing = state.jobs.find(({ job }) => job.id === event.jobId);
+    if (!existing) return ignore(state, "job-not-found");
+    if (!isTerminal(existing.job)) return ignore(state, "stale-operation");
+    return {
+      kind: "applied",
+      state: {
+        jobs: state.jobs.filter(({ job }) => job.id !== event.jobId),
+      },
+      commands: [],
+    };
+  }
+
+  const index = state.jobs.findIndex(({ job }) => job.id === event.jobId);
+  if (index === -1) return ignore(state, "job-not-found");
+  const current = state.jobs[index];
+
+  if (
+    event.type !== "CANCEL_REQUESTED" &&
+    !sameInvocation(current.activeInvocationRef, event.invocationRef)
+  ) {
+    return ignore(state, "stale-operation");
+  }
+  if (
+    event.type === "CANCEL_REQUESTED" &&
+    !sameInvocation(current.activeInvocationRef, event.activeInvocationRef)
+  ) {
+    return ignore(state, "stale-operation");
+  }
+
+  switch (event.type) {
+    case "CANCEL_REQUESTED":
+      if (current.job.status === "cancelling") {
+        return ignore(state, "already-cancelling");
+      }
+      if (isTerminal(current.job)) return ignore(state, "already-terminal");
+      return replace(
+        state,
+        index,
+        {
+          job: { ...current.job, status: "cancelling" },
+          activeInvocationRef: current.activeInvocationRef,
+        },
+        [
+          {
+            type: "RequestCancel",
+            jobId: current.job.id,
+            invocationRef: event.activeInvocationRef,
+          },
+          { type: "Present", jobId: current.job.id },
+        ],
+      );
+
+    case "JOB_SUCCEEDED": {
+      if (isTerminal(current.job)) return ignore(state, "already-terminal");
+      const lateAfterCancel = current.job.status === "cancelling";
+      const nextJob: ImageGenerationActorJob = {
+        job: {
+          ...current.job,
+          status: "success",
+          result: event.result,
+          lateAfterCancel,
+        },
+        activeInvocationRef: null,
+      };
+      const nextJobs = replaceJob(state.jobs, index, nextJob);
+      return replace(state, index, nextJob, [
+        { type: "InvalidateMediaQueries" },
+        ...pruneCommands(current.job.id, nextJobs),
+        { type: "Present", jobId: current.job.id },
+      ]);
+    }
+
+    case "JOB_FAILED": {
+      if (isTerminal(current.job)) return ignore(state, "already-terminal");
+      const cancelled =
+        current.job.status === "cancelling" && event.kind === "user_cancelled";
+      const nextJob: ImageGenerationActorJob = {
+        job: cancelled
+          ? { ...current.job, status: "cancelled" }
+          : {
+              ...current.job,
+              status: "error",
+              error: event.message,
+            },
+        activeInvocationRef: null,
+      };
+      const nextJobs = replaceJob(state.jobs, index, nextJob);
+      return replace(state, index, nextJob, [
+        ...pruneCommands(current.job.id, nextJobs),
+        { type: "Present", jobId: current.job.id },
+      ]);
+    }
+
+    case "CANCEL_CONFIRMED":
+      if (isTerminal(current.job)) return ignore(state, "already-terminal");
+      // Best-effort acknowledgement only. The generation promise remains the
+      // terminal authority whether cancellation was observed or raced settle.
+      return { kind: "applied", state, commands: [] };
 
     default:
-      return assertNever(state);
+      return assertNever(event);
   }
 }
 
-function succeed(
-  state: Extract<ImageGenerationState, { type: "pending" | "cancelling" }>,
-  event: Extract<ImageGenerationEvent, { type: "JOB_SUCCEEDED" }>,
-  lateAfterCancel: boolean,
+function replace(
+  state: ImageGenerationActorState,
+  index: number,
+  job: ImageGenerationActorJob,
+  commands: readonly ImageGenerationCommand[],
 ): ImageGenerationTransitionResult {
   return {
     kind: "applied",
     state: {
-      type: "succeeded",
-      job: state.job,
-      result: event.result,
-      lateAfterCancel,
+      jobs: replaceJob(state.jobs, index, job),
     },
-    commands: [{ type: "InvalidateMediaQueries" }],
+    commands,
   };
+}
+
+function replaceJob(
+  jobs: readonly ImageGenerationActorJob[],
+  index: number,
+  job: ImageGenerationActorJob,
+): readonly ImageGenerationActorJob[] {
+  return jobs.map((current, currentIndex) =>
+    currentIndex === index ? job : current,
+  );
+}
+
+function pruneCommands(
+  jobId: string,
+  jobs: readonly ImageGenerationActorJob[],
+): readonly ImageGenerationCommand[] {
+  return jobs.some(({ job }) => !isTerminal(job))
+    ? [{ type: "SchedulePrune", jobId }]
+    : [];
+}
+
+function sameJob(
+  left: ImageGenerationJob,
+  right: Omit<ImageGenerationJob, "status">,
+): boolean {
+  return (
+    left.id === right.id &&
+    left.startedAt === right.startedAt &&
+    left.prompt === right.prompt &&
+    left.themeMode === right.themeMode &&
+    left.targetAppId === right.targetAppId &&
+    left.targetAppName === right.targetAppName &&
+    left.source === right.source
+  );
+}
+
+export function isTerminal(job: ImageGenerationJob): boolean {
+  return (
+    job.status === "success" ||
+    job.status === "error" ||
+    job.status === "cancelled"
+  );
+}
+
+function invocation(
+  jobId: string,
+  operationId: string,
+): ImageGenerationInvocationRef {
+  return {
+    kind: IMAGE_GENERATION_INVOCATION_KIND,
+    entityKey: jobId,
+    operationId,
+  };
+}
+
+function sameInvocation(
+  left: ImageGenerationInvocationRef | null,
+  right: ImageGenerationInvocationRef,
+): boolean {
+  return (
+    left?.kind === right.kind &&
+    left.entityKey === right.entityKey &&
+    left.operationId === right.operationId
+  );
 }
 
 function assertNever(value: never): never {
   throw new Error(
-    `Unexpected image-generation value: ${JSON.stringify(value)}`,
+    `Unexpected image-generation event: ${JSON.stringify(value)}`,
   );
 }

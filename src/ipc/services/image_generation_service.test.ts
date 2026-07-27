@@ -8,7 +8,7 @@ import {
   type HandlerTestHarness,
   setupHandlerTestHarness,
 } from "@/testing/handler_test_harness";
-import { registerImageGenerationHandlers } from "./image_generation_handlers";
+import { ImageGenerationService } from "./image_generation_service";
 
 vi.mock("@/main/settings", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/main/settings")>();
@@ -57,15 +57,16 @@ function abortableFetch(signal?: AbortSignal): Promise<Response> {
   });
 }
 
-describe("registerImageGenerationHandlers", () => {
+describe("ImageGenerationService", () => {
   const tempBase = path.join(os.tmpdir(), "dyad-image-generation-tests");
   let harness: HandlerTestHarness;
   let appId: number;
+  let service: ImageGenerationService;
 
   beforeEach(() => {
     fs.rmSync(tempBase, { recursive: true, force: true });
     harness = setupHandlerTestHarness();
-    registerImageGenerationHandlers();
+    service = new ImageGenerationService();
     const result = harness.db
       .insert(apps)
       .values({ name: "Test app", path: "test-app" })
@@ -81,7 +82,7 @@ describe("registerImageGenerationHandlers", () => {
   });
 
   function generate(requestId: string) {
-    return harness.invokeHandler("generate-image", {
+    return service.generate({
       requestId,
       prompt: "A tiny lighthouse",
       themeMode: "plain",
@@ -90,7 +91,7 @@ describe("registerImageGenerationHandlers", () => {
   }
 
   async function cancel(requestId: string): Promise<{ cancelled: boolean }> {
-    return harness.invokeHandler("cancel-image-generation", { requestId });
+    return { cancelled: service.cancel(requestId) };
   }
 
   it("aborts the initial generation request", async () => {

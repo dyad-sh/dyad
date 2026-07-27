@@ -420,6 +420,44 @@ state-sensitive checkout intent, not from pane visibility.
 | `CANCEL_REQUESTED`                                                              | Cancellation; the remote form must add and require the active image-job invocation ref.                         |
 | `JOB_SUCCEEDED`, `JOB_FAILED`, `CANCEL_CONFIRMED`                               | Host-only provider/cancellation settlement correlated to the job invocation internally.                         |
 
+The C2 implementation uses one main-owned collection actor because the
+existing manager projection consumed by renderers is exactly the complete job
+list. Commands remain concurrent per job, while ActorHost serializes changes
+to that shared read model. An immutable renderer-minted `jobId` is the retry
+idempotency identity; the separately minted `ImageGenerationInvocationRef`
+correlates provider settlement and is required for cancellation.
+
+Serializability audit:
+
+- job payloads contain prompt text, theme, target app identity, source, and
+  timestamps as plain structured-clone values; no attachment bytes are part of
+  image-generation state;
+- generated image bytes, fetch responses, `AbortController`s, promises,
+  filesystem locks, API credentials, and provider `Error` objects remain in
+  the main service;
+- the remote job-list projection includes relative media/app references and
+  the active invocation ref needed for cancellation, but excludes the
+  generated file's absolute path; the initiator-targeted success presentation
+  event carries that path only for the existing “Open file” action;
+- renderer codecs admit only `SUBMIT` and correlated
+  `CANCEL_REQUESTED`. Provider settlement, pruning, and app-deletion events are
+  host-only.
+
+The lifecycle policy retains active jobs without subscribers, reattaches
+windows to the same list, and retains terminal jobs for 30 minutes. App quit
+stops actor admission, aborts every active provider request, and waits only for
+a bounded settlement window. State is ephemeral across app restart and jobs
+are never replayed; committed media remains. App deletion best-effort cancels
+and settles matching work before pruning its jobs.
+
+The atomic deletion budget is complete: the renderer
+`ImageGenerationController`, `ImageGenerationManager`, IPC command runner,
+per-job keyed dispatcher host, generate/cancel invoke contracts and handlers,
+and provider-owned projection/toast orchestration are removed. The provider
+now consumes typed presentation events, while
+`dismissedImageGenerationJobIdsAtom` remains intentionally window-local UI
+state composed with the remote read model.
+
 ### `chat_stream` (accepted G1 target; current union provisional)
 
 G1 is accepted, but the current renderer event union predates its target

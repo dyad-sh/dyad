@@ -1,13 +1,13 @@
-import type { ImageGenerationJob } from "./state";
+import type { ImageGenerationJobView } from "./state";
 
 const chatJobsCache = new WeakMap<
-  readonly ImageGenerationJob[],
-  readonly ImageGenerationJob[]
+  readonly ImageGenerationJobView[],
+  readonly ImageGenerationJobView[]
 >();
 
 export function selectChatImageGenerationJobs(
-  jobs: readonly ImageGenerationJob[],
-): readonly ImageGenerationJob[] {
+  jobs: readonly ImageGenerationJobView[],
+): readonly ImageGenerationJobView[] {
   const cached = chatJobsCache.get(jobs);
   if (cached) return cached;
   const selected = jobs.filter(
@@ -18,7 +18,7 @@ export function selectChatImageGenerationJobs(
 }
 
 export function selectImageGenerationPendingCount(
-  jobs: readonly ImageGenerationJob[],
+  jobs: readonly ImageGenerationJobView[],
 ): number {
   return jobs.filter((job) => job.status === "pending").length;
 }

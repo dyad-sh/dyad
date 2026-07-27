@@ -1,12 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
-import {
-  createFakeClock,
-  createSequentialIdSource,
-} from "@/state_machines/testing";
-import { ImageGenerationManager } from "@/image_generation/manager";
-import { ImageGenerationProvider } from "@/image_generation/ImageGenerationProvider";
 import { ImageGenerationProgressDialog } from "./ImageGenerationProgressDialog";
 
 vi.mock("@/components/ui/dialog", () => ({
@@ -27,28 +21,29 @@ vi.mock("@/components/ui/dialog", () => ({
 vi.mock("@/hooks/useGenerateImage", () => ({
   useGenerateImage: () => ({ cancel: vi.fn() }),
 }));
-
-describe("ImageGenerationProgressDialog", () => {
-  it("acknowledges a cancellation request and removes the cancel action", () => {
-    const manager = new ImageGenerationManager({
-      clock: createFakeClock(Date.now()),
-      idSource: createSequentialIdSource(),
-      runner: { run: vi.fn() },
-    });
-    const jobId = manager.submit({
+vi.mock("@/image_generation/hooks", () => ({
+  useImageGenerationJobs: () => [
+    {
+      id: "job-1",
       prompt: "A lighthouse",
       themeMode: "plain",
       targetAppId: 1,
       targetAppName: "App",
       source: "chat",
-    });
-    manager.cancel(jobId);
+      startedAt: Date.now(),
+      status: "cancelling",
+      activeInvocationRef: {
+        kind: "image-generation",
+        entityKey: "job-1",
+        operationId: "operation-1",
+      },
+    },
+  ],
+}));
 
-    render(
-      <ImageGenerationProvider manager={manager}>
-        <ImageGenerationProgressDialog open onOpenChange={vi.fn()} />
-      </ImageGenerationProvider>,
-    );
+describe("ImageGenerationProgressDialog", () => {
+  it("acknowledges a cancellation request and removes the cancel action", () => {
+    render(<ImageGenerationProgressDialog open onOpenChange={vi.fn()} />);
 
     fireEvent.click(screen.getByRole("button", { name: /a lighthouse/i }));
 

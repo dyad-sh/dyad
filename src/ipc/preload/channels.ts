@@ -48,7 +48,7 @@ import { freeModelQuotaContracts } from "../types/free_model_quota";
 import { planEvents, planContracts } from "../types/plan";
 import { audioContracts } from "../types/audio";
 import { mediaContracts } from "../types/media";
-import { imageGenerationContracts } from "../types/image_generation";
+import { imageGenerationEvents } from "../types/image_generation";
 import {
   appBlueprintContracts,
   appBlueprintEvents,
@@ -127,7 +127,6 @@ export const VALID_INVOKE_CHANNELS = [
   ...getInvokeChannels(planContracts),
   ...getInvokeChannels(audioContracts),
   ...getInvokeChannels(mediaContracts),
-  ...getInvokeChannels(imageGenerationContracts),
   ...getInvokeChannels(appBlueprintContracts),
   ...getInvokeChannels(appCollectionContracts),
   ...getInvokeChannels(terminalContracts),
@@ -176,6 +175,7 @@ export const VALID_RECEIVE_CHANNELS = [
   ...getReceiveChannels(appBlueprintEvents),
   ...getReceiveChannels(testsEvents),
   ...getReceiveChannels(userInputEvents),
+  ...getReceiveChannels(imageGenerationEvents),
   ...getReceiveChannels(windowInfrastructureEvents),
   ...getReceiveChannels(distributedMachineEvents),
 ] as const;

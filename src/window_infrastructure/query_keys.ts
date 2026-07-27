@@ -12,6 +12,8 @@ export function queryKeysForInvalidationScope(
       return [queryKeys.chats.all];
     case "app-collections":
       return [queryKeys.appCollections.all];
+    case "media":
+      return [queryKeys.media.all];
     case "app":
       return [queryKeys.apps.detail({ appId: scope.appId })];
     case "versions":

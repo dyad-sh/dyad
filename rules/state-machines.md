@@ -127,6 +127,10 @@ Background and before/after examples of why this pattern exists:
 - When a callback's direct caller owns rollback or restoration, settlement
   failure must reject that callback itself. Rejecting only a separate outer
   promise hides the failure from the component responsible for compensation.
+- When changing a lifecycle facade from projecting failures in state to
+  rejecting its returned promise, audit every event-handler and automatic
+  fire-and-forget caller. Attach an explicit rejection consumer there while
+  preserving rejection for callers that await the operation for sequencing.
 - Do not persist machine-generated queue entries when their authority or
   acceptance callbacks are memory-only. Let the live authoritative registry
   rehydrate and re-enqueue them; a full restart must not restore orphan shells.

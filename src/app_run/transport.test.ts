@@ -159,6 +159,46 @@ describe("app-run transport codecs", () => {
     expect(roundTrip(AppRunRemoteSnapshotSchema, snapshot)).toEqual(snapshot);
   });
 
+  it("projects an admitted exit that errored RunState cannot represent", () => {
+    expect(
+      projectAppRunRemoteSnapshot(
+        APP_ID,
+        3,
+        {
+          type: "errored",
+          appId: APP_ID,
+          invocationRef,
+          error: { message: "readiness timed out" },
+        },
+        0,
+        null,
+        { exitCode: 1, timestamp: 300 },
+      ),
+    ).toMatchObject({
+      phase: "errored",
+      exit: { exitCode: 1, timestamp: 300 },
+    });
+  });
+
+  it("prefers a later admitted exit over the first stopped-state exit", () => {
+    expect(
+      projectAppRunRemoteSnapshot(
+        APP_ID,
+        4,
+        {
+          type: "stopped",
+          appId: APP_ID,
+          invocationRef,
+          exitCode: 1,
+          timestamp: 200,
+        },
+        0,
+        null,
+        { exitCode: 2, timestamp: 300 },
+      ).exit,
+    ).toEqual({ exitCode: 2, timestamp: 300 });
+  });
+
   it("preserves an early proxy URL until spawn settlement", () => {
     const state: RunState = {
       type: "starting",

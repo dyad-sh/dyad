@@ -26,11 +26,15 @@ const runtime = vi.hoisted(() => ({
   cleanup: vi.fn(),
 }));
 
+const database = vi.hoisted(() => ({
+  findFirst: vi.fn(async () => ({ id: 7 }) as { id: number } | undefined),
+}));
+
 vi.mock("@/db", () => ({
   db: {
     query: {
       apps: {
-        findFirst: vi.fn(async () => ({ id: 7 })),
+        findFirst: database.findFirst,
       },
     },
   },
@@ -109,9 +113,42 @@ describe("main-hosted app-run actor", () => {
     runtime.restart.mockReset();
     runtime.stop.mockReset();
     runtime.cleanup.mockReset();
+    database.findFirst.mockReset();
+    database.findFirst.mockResolvedValue({ id: 7 });
     runtime.start.mockResolvedValue(undefined);
     runtime.restart.mockResolvedValue(undefined);
     runtime.stop.mockResolvedValue(undefined);
+  });
+
+  it("authorizes manual reload independently of the current phase", async () => {
+    const { actorA } = createHarness();
+    await actorA.resync();
+
+    await expect(
+      actorA.dispatch({
+        type: "MANUAL_RELOAD",
+        operationId: "reload-idle",
+        startedAt: 1,
+      }),
+    ).resolves.toMatchObject({
+      kind: "applied",
+    });
+  });
+
+  it("uses NotFound for trusted missing-app access and Auth remotely", async () => {
+    database.findFirst.mockResolvedValue(undefined);
+    const service = new AppRunActorService();
+
+    await expect(service.getRunState(7)).rejects.toMatchObject({
+      kind: DyadErrorKind.NotFound,
+    });
+    await expect(
+      appRunDefinition.remote.authorizeSubscribe?.({
+        key: appRunKey(7),
+      } as never),
+    ).rejects.toMatchObject({
+      kind: DyadErrorKind.Auth,
+    });
   });
 
   it("shares one actor across windows and preserves proxy-before-spawn ordering", async () => {
@@ -325,6 +362,45 @@ describe("main-hosted app-run actor", () => {
     manager.dispose();
   });
 
+  it("temporarily subscribes an unobserved actor for manual reload", async () => {
+    const { actorA, actorB, duplex, host, releaseA, releaseB, transport } =
+      createHarness();
+    await actorA.resync();
+    await actorB.resync();
+    await actorA.dispatch({
+      type: "START",
+      operationId: "initial",
+      startedAt: 1,
+      expectedRevision: 0,
+    });
+    await flush();
+    releaseA();
+    releaseB();
+    await vi.waitFor(() => {
+      expect(transport.inspectSubscriptions()).toHaveLength(0);
+    });
+
+    const manager = new AppRunRemoteManager(
+      createSequentialIdSource(),
+      duplex.connect(),
+    );
+    manager.start();
+    manager.requestManualReload(7);
+
+    await vi.waitFor(() => {
+      expect(
+        host.ensure(appRunDefinition, appRunKey(7)).getSnapshot(),
+      ).toMatchObject({
+        runState: { type: "ready" },
+        previewReloadEpoch: 1,
+      });
+    });
+    await vi.waitFor(() => {
+      expect(transport.inspectSubscriptions()).toHaveLength(0);
+    });
+    manager.dispose();
+  });
+
   it("rejects main lifecycle waiters when their actor is disposed", async () => {
     const pending = deferred<void>();
     runtime.start.mockReturnValue(pending.promise);
@@ -474,6 +550,8 @@ describe("main-hosted app-run actor", () => {
           url: null,
         },
         previewReloadEpoch: 0,
+        observedExit: null,
+        reusableStartInvocation: null,
         pendingOperations: [
           {
             operationId: "request-a",
@@ -507,7 +585,7 @@ describe("main-hosted app-run actor", () => {
     });
   });
 
-  it("preserves the runtime invocation when retrying an errored start", () => {
+  it("mints a fresh invocation when retrying an ordinary errored start", () => {
     const liveInvocation = {
       kind: "app-run",
       entityKey: 7,
@@ -522,6 +600,8 @@ describe("main-hosted app-run actor", () => {
           error: { message: "readiness timed out" },
         },
         previewReloadEpoch: 0,
+        observedExit: null,
+        reusableStartInvocation: null,
         pendingOperations: [],
         lastSettlement: null,
       },
@@ -539,12 +619,16 @@ describe("main-hosted app-run actor", () => {
       state: {
         runState: {
           type: "starting",
-          invocationRef: liveInvocation,
+          invocationRef: {
+            operationId: "retry-request",
+          },
         },
         pendingOperations: [
           {
             operationId: "retry-request",
-            invocationRef: liveInvocation,
+            invocationRef: {
+              operationId: "retry-request",
+            },
           },
         ],
       },
@@ -552,9 +636,163 @@ describe("main-hosted app-run actor", () => {
         {
           type: "start",
           operationId: "retry-request",
-          invocationRef: liveInvocation,
+          invocationRef: {
+            operationId: "retry-request",
+          },
         },
       ],
+    });
+  });
+
+  it("reuses a live external invocation after readiness failure", () => {
+    const liveInvocation = {
+      kind: "app-run",
+      entityKey: 7,
+      operationId: "still-installing",
+    } as const;
+    const failed = appRunDefinition.transition(
+      {
+        runState: {
+          type: "starting",
+          appId: 7,
+          invocationRef: liveInvocation,
+          operation: "restart",
+          startedAt: 10,
+          pendingUrl: null,
+        },
+        previewReloadEpoch: 0,
+        observedExit: null,
+        reusableStartInvocation: null,
+        pendingOperations: [],
+        lastSettlement: null,
+      },
+      {
+        type: "PROCESS_FAILED",
+        operationId: liveInvocation.operationId,
+        invocationRef: liveInvocation,
+        error: { message: "readiness timed out" },
+        runtimeMayBeLive: true,
+      },
+      appRunKey(7),
+    );
+    expect(failed.kind).toBe("applied");
+    if (failed.kind !== "applied") throw new Error("expected applied");
+
+    const retried = appRunDefinition.transition(
+      failed.state,
+      {
+        type: "START",
+        operationId: "retry-request",
+        startedAt: 20,
+        expectedRevision: 1,
+      },
+      appRunKey(7),
+    );
+
+    expect(retried).toMatchObject({
+      kind: "applied",
+      state: {
+        runState: { type: "starting", invocationRef: liveInvocation },
+        reusableStartInvocation: null,
+      },
+      commands: [{ type: "start", invocationRef: liveInvocation }],
+    });
+  });
+
+  it("records a current exit even when RunState ignores it", () => {
+    const invocationRef = {
+      kind: "app-run",
+      entityKey: 7,
+      operationId: "failed-run",
+    } as const;
+    const result = appRunDefinition.transition(
+      {
+        runState: {
+          type: "errored",
+          appId: 7,
+          invocationRef,
+          error: { message: "readiness timed out" },
+        },
+        previewReloadEpoch: 0,
+        observedExit: null,
+        reusableStartInvocation: invocationRef,
+        pendingOperations: [],
+        lastSettlement: null,
+      },
+      {
+        type: "PROCESS_EXITED",
+        invocationRef,
+        exitCode: 1,
+        timestamp: 30,
+      },
+      appRunKey(7),
+    );
+
+    expect(result).toMatchObject({
+      kind: "applied",
+      state: {
+        runState: { type: "errored" },
+        observedExit: { exitCode: 1, timestamp: 30 },
+        reusableStartInvocation: null,
+      },
+    });
+  });
+
+  it("keeps only a later ignored exit in the actor fallback", () => {
+    const invocationRef = {
+      kind: "app-run",
+      entityKey: 7,
+      operationId: "completed-run",
+    } as const;
+    const initial = {
+      runState: {
+        type: "ready" as const,
+        appId: 7,
+        invocationRef,
+        url: null,
+      },
+      previewReloadEpoch: 0,
+      observedExit: null,
+      reusableStartInvocation: null,
+      pendingOperations: [],
+      lastSettlement: null,
+    };
+    const first = appRunDefinition.transition(
+      initial,
+      {
+        type: "PROCESS_EXITED",
+        invocationRef,
+        exitCode: 1,
+        timestamp: 20,
+      },
+      appRunKey(7),
+    );
+    expect(first).toMatchObject({
+      kind: "applied",
+      state: {
+        runState: { type: "stopped", timestamp: 20 },
+        observedExit: null,
+      },
+    });
+    if (first.kind !== "applied") throw new Error("expected applied");
+
+    const second = appRunDefinition.transition(
+      first.state,
+      {
+        type: "PROCESS_EXITED",
+        invocationRef,
+        exitCode: 2,
+        timestamp: 30,
+      },
+      appRunKey(7),
+    );
+
+    expect(second).toMatchObject({
+      kind: "applied",
+      state: {
+        runState: { type: "stopped", timestamp: 20 },
+        observedExit: { exitCode: 2, timestamp: 30 },
+      },
     });
   });
 

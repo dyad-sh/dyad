@@ -221,6 +221,81 @@ describe("AppRuntimeService", () => {
     );
   });
 
+  it("marks readiness failure as potentially retaining a live runtime", async () => {
+    const harness = createHarness();
+    const { output, sent } = createOutput();
+    vi.mocked(harness.dependencies.waitForReady).mockRejectedValue(
+      new Error("readiness timed out"),
+    );
+
+    await expect(
+      harness.service.executeExternalLifecycle({
+        appId: APP_ID,
+        output,
+        operation: "restart",
+        invocationRef: REF,
+      }),
+    ).rejects.toThrow("readiness timed out");
+
+    expect(sent).toContainEqual(
+      expect.objectContaining({
+        type: "agent-lifecycle-failed",
+        lifecycleRuntimeMayBeLive: true,
+      }),
+    );
+  });
+
+  it("does not mark restart failure as retaining a live runtime", async () => {
+    const harness = createHarness();
+    const { output, sent } = createOutput();
+    vi.mocked(harness.dependencies.startProcess).mockRejectedValue(
+      new Error("spawn failed"),
+    );
+
+    await expect(
+      harness.service.executeExternalLifecycle({
+        appId: APP_ID,
+        output,
+        operation: "restart",
+        invocationRef: REF,
+      }),
+    ).rejects.toThrow("spawn failed");
+
+    expect(sent).toContainEqual(
+      expect.objectContaining({
+        type: "agent-lifecycle-failed",
+        lifecycleRuntimeMayBeLive: false,
+      }),
+    );
+  });
+
+  it("does not reuse identity when the runtime exits during readiness", async () => {
+    const harness = createHarness();
+    const { output, sent } = createOutput();
+    vi.mocked(harness.dependencies.waitForReady).mockImplementation(
+      async () => {
+        harness.setRunning(undefined);
+        throw new Error("process exited before readiness");
+      },
+    );
+
+    await expect(
+      harness.service.executeExternalLifecycle({
+        appId: APP_ID,
+        output,
+        operation: "restart",
+        invocationRef: REF,
+      }),
+    ).rejects.toThrow("process exited before readiness");
+
+    expect(sent).toContainEqual(
+      expect.objectContaining({
+        type: "agent-lifecycle-failed",
+        lifecycleRuntimeMayBeLive: false,
+      }),
+    );
+  });
+
   it("settles the real outcome when abort happens after restart begins", async () => {
     const harness = createHarness();
     const { output, sent } = createOutput();

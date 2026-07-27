@@ -21,7 +21,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PanelGroup, Panel, PanelResizeHandle } from "react-resizable-panels";
 import { Console } from "./Console";
-import { useRunApp } from "@/hooks/useRunApp";
+import { runAppLifecycleInBackground, useRunApp } from "@/hooks/useRunApp";
 import { PublishPanel } from "./PublishPanel";
 import { SecurityPanel } from "./SecurityPanel";
 import { TestsPanel } from "./TestsPanel";
@@ -141,7 +141,7 @@ export function PreviewPanel() {
           "Running app (will start if not already running)",
           selectedAppId,
         );
-        runApp(selectedAppId);
+        runAppLifecycleInBackground("start", runApp(selectedAppId));
       }
     };
 

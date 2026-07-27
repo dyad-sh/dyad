@@ -27,6 +27,7 @@ import {
   projectAppRunRemoteSnapshot,
   type AppRunKey,
   type AppRunProducerEvent,
+  type AppRunRemoteSnapshot,
   type AppRunWireEvent,
 } from "./transport";
 import { transition } from "./transition";
@@ -71,7 +72,7 @@ function invocation(appId: number, operationId: string): AppRunInvocationRef {
 
 function toDomainEvent(
   key: AppRunKey,
-  state: RunState,
+  state: AppRunActorState,
   event: AppRunWireEvent,
 ): RunEvent {
   switch (event.type) {
@@ -80,11 +81,16 @@ function toDomainEvent(
         type: "START",
         appId: key.appId,
         invocationRef:
-          state.type === "ready" ||
-          state.type === "reloading" ||
-          state.type === "errored"
-            ? state.invocationRef
-            : invocation(key.appId, event.operationId),
+          state.runState.type === "ready" || state.runState.type === "reloading"
+            ? state.runState.invocationRef
+            : state.runState.type === "errored" &&
+                state.reusableStartInvocation &&
+                isCurrentInvocation(
+                  state.runState,
+                  state.reusableStartInvocation,
+                )
+              ? state.reusableStartInvocation
+              : invocation(key.appId, event.operationId),
         startedAt: event.startedAt,
       };
     case "RESTART":
@@ -182,6 +188,8 @@ function isCurrentInvocation(
 interface AppRunActorState {
   readonly runState: RunState;
   readonly previewReloadEpoch: number;
+  readonly observedExit: AppRunRemoteSnapshot["exit"];
+  readonly reusableStartInvocation: AppRunInvocationRef | null;
   readonly pendingOperations: readonly {
     operationId: string;
     invocationRef: AppRunInvocationRef;
@@ -263,10 +271,13 @@ function pendingInvocationFor(
   switch (event.type) {
     case "START":
       return state.runState.type === "ready" ||
-        state.runState.type === "reloading" ||
-        state.runState.type === "errored"
+        state.runState.type === "reloading"
         ? state.runState.invocationRef
-        : invocation(key.appId, event.operationId);
+        : state.runState.type === "errored" &&
+            state.reusableStartInvocation &&
+            isCurrentInvocation(state.runState, state.reusableStartInvocation)
+          ? state.reusableStartInvocation
+          : invocation(key.appId, event.operationId);
     case "RESTART":
     case "STOP_REQUESTED":
       return invocation(key.appId, event.operationId);
@@ -295,10 +306,15 @@ function transitionActor(
   ) {
     return ignore(state, "stale-operation");
   }
-  const result = transition(
-    state.runState,
-    toDomainEvent(key, state.runState, event),
-  );
+  const admittedExit =
+    event.type === "PROCESS_EXITED" &&
+    isCurrentInvocation(state.runState, event.invocationRef)
+      ? {
+          exitCode: event.exitCode,
+          timestamp: event.timestamp,
+        }
+      : null;
+  const result = transition(state.runState, toDomainEvent(key, state, event));
   const settlement = settlementFor(state, event);
   const settledPendingIndex = settlement ? pendingIndexFor(state, event) : -1;
   const pendingOperationId = pendingOperationFor(event);
@@ -317,14 +333,38 @@ function transitionActor(
             },
           ]
         : state.pendingOperations;
+  const observedExit =
+    event.type === "START" ||
+    event.type === "RESTART" ||
+    event.type === "EXTERNAL_RESTART_STARTED"
+      ? null
+      : event.type === "PROCESS_EXITED"
+        ? result.kind === "ignored"
+          ? (admittedExit ?? state.observedExit)
+          : null
+        : state.observedExit;
+  const reusableStartInvocation =
+    event.type === "PROCESS_FAILED" &&
+    event.runtimeMayBeLive === true &&
+    isCurrentInvocation(state.runState, event.invocationRef)
+      ? event.invocationRef
+      : event.type === "PROCESS_FAILED" ||
+          event.type === "START" ||
+          event.type === "RESTART" ||
+          event.type === "EXTERNAL_RESTART_STARTED" ||
+          event.type === "PROCESS_EXITED"
+        ? null
+        : state.reusableStartInvocation;
   if (result.kind === "ignored") {
-    return settlement
+    return settlement || admittedExit
       ? {
           kind: "applied" as const,
           state: {
             ...state,
             pendingOperations,
-            lastSettlement: settlement,
+            observedExit,
+            reusableStartInvocation,
+            lastSettlement: settlement ?? state.lastSettlement,
           },
           commands: [],
         }
@@ -342,12 +382,18 @@ function transitionActor(
   return {
     kind: "applied" as const,
     state:
-      result.state === state.runState && !bumpsPreviewReload && !settlement
+      result.state === state.runState &&
+      !bumpsPreviewReload &&
+      !settlement &&
+      observedExit === state.observedExit &&
+      reusableStartInvocation === state.reusableStartInvocation
         ? state
         : {
             runState: result.state,
             previewReloadEpoch:
               state.previewReloadEpoch + (bumpsPreviewReload ? 1 : 0),
+            observedExit,
+            reusableStartInvocation,
             pendingOperations,
             lastSettlement: settlement ?? state.lastSettlement,
           },
@@ -355,12 +401,24 @@ function transitionActor(
   };
 }
 
-export async function requireApp(appId: number): Promise<void> {
+async function appExists(appId: number): Promise<boolean> {
   const app = await db.query.apps.findFirst({
     columns: { id: true },
     where: eq(apps.id, appId),
   });
-  if (!app) throw new DyadError("App not found", DyadErrorKind.Auth);
+  return !!app;
+}
+
+export async function requireExistingApp(appId: number): Promise<void> {
+  if (!(await appExists(appId))) {
+    throw new DyadError("App not found", DyadErrorKind.NotFound);
+  }
+}
+
+async function authorizeApp(appId: number): Promise<void> {
+  if (!(await appExists(appId))) {
+    throw new DyadError("App not found", DyadErrorKind.Auth);
+  }
 }
 
 function runErrorInfo(error: unknown): RunErrorInfo {
@@ -431,6 +489,7 @@ function createCommandRunner(
               operationId: command.operationId,
               invocationRef: command.invocationRef,
               error: runErrorInfo(error),
+              runtimeMayBeLive: false,
             }),
         );
         return;
@@ -474,6 +533,8 @@ export const appRunDefinition = {
   initialState: (): AppRunActorState => ({
     runState: { type: "idle" },
     previewReloadEpoch: 0,
+    observedExit: null,
+    reusableStartInvocation: null,
     pendingOperations: [],
     lastSettlement: null,
   }),
@@ -514,6 +575,7 @@ export const appRunDefinition = {
         state.runState,
         state.previewReloadEpoch,
         state.lastSettlement,
+        state.observedExit,
       ),
     unavailableSnapshot: (key) =>
       projectAppRunRemoteSnapshot(key.appId, 0, { type: "idle" }),
@@ -521,24 +583,15 @@ export const appRunDefinition = {
       event.type === "START" || event.type === "RESTART"
         ? "reject-stale"
         : "allow-stale",
-    authorizeSubscribe: ({ key }) => requireApp(key.appId),
+    authorizeSubscribe: ({ key }) => authorizeApp(key.appId),
     authorizeDispatch: async ({ key, event, currentState }) => {
-      await requireApp(key.appId);
+      await authorizeApp(key.appId);
       if (
         event.type === "STOP_REQUESTED" &&
         !isCurrentInvocation(currentState?.runState, event.activeInvocationRef)
       ) {
         throw new DyadError(
           "Cancellation does not target the active app run",
-          DyadErrorKind.Auth,
-        );
-      }
-      if (
-        event.type === "MANUAL_RELOAD" &&
-        currentState?.runState.type !== "ready"
-      ) {
-        throw new DyadError(
-          "The app preview is not ready to reload",
           DyadErrorKind.Auth,
         );
       }

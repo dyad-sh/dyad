@@ -4,6 +4,7 @@ import type { PropsWithChildren } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import {
+  runAppLifecycleInBackground,
   useAppOutputSubscription,
   useRebuildAppAfterPnpmInstall,
   useRunApp,
@@ -896,5 +897,24 @@ describe("useAppOutputSubscription", () => {
       removeNodeModules: false,
       recreateSandbox: false,
     });
+  });
+});
+
+describe("runAppLifecycleInBackground", () => {
+  it("handles lifecycle rejection without changing awaited dispatch semantics", async () => {
+    const error = new Error("spawn failed");
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+
+    runAppLifecycleInBackground("start", Promise.reject(error));
+    await vi.waitFor(() => {
+      expect(consoleError).toHaveBeenCalledWith(
+        "[app-run] Failed to start app:",
+        error,
+      );
+    });
+
+    consoleError.mockRestore();
   });
 });

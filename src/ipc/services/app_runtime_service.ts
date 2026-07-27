@@ -1757,6 +1757,7 @@ export class AppRuntimeService {
         DyadErrorKind.UserCancelled,
       );
     }
+    let runtimeMayBeLive = false;
     try {
       await this.restart({
         appId: options.appId,
@@ -1766,12 +1767,18 @@ export class AppRuntimeService {
         recreateSandbox: options.operation === "rebuild",
         clearRuntimeLogs: true,
       });
+      runtimeMayBeLive = true;
       await this.waitForReady(options.appId, {
         timeoutMs: options.timeoutMs,
       });
       this.settleExternalClaim(claim);
     } catch (error) {
-      this.settleExternalClaim(claim, error);
+      this.settleExternalClaim(
+        claim,
+        error,
+        runtimeMayBeLive &&
+          this.dependencies.getRunningApp(options.appId) !== undefined,
+      );
       throw error;
     }
   }
@@ -1857,6 +1864,7 @@ export class AppRuntimeService {
   private settleExternalClaim(
     claim: ExternalAppRuntimeClaim,
     error?: unknown,
+    runtimeMayBeLive = false,
   ): void {
     const active = this.externalClaims.get(
       invocationRegistryKey(claim.invocationRef),
@@ -1874,6 +1882,7 @@ export class AppRuntimeService {
       invocationRef: claim.invocationRef,
       lifecycleRequestId: claim.requestId,
       lifecycleOperation: claim.operation,
+      ...(error ? { lifecycleRuntimeMayBeLive: runtimeMayBeLive } : {}),
     });
     this.releaseExternalClaim(claim);
   }

@@ -36,7 +36,7 @@ import {
 import type { TestCase, TestCaseResult, FileAttachment } from "@/ipc/types";
 import { ipc } from "@/ipc/types";
 import { useLoadApp } from "@/hooks/useLoadApp";
-import { useRunApp } from "@/hooks/useRunApp";
+import { runAppLifecycleInBackground, useRunApp } from "@/hooks/useRunApp";
 import { useSetTestingEnabled } from "@/hooks/useSetTestingEnabled";
 import { useSettings } from "@/hooks/useSettings";
 import { useStreamChat } from "@/hooks/useStreamChat";
@@ -1064,7 +1064,9 @@ export function TestsPanel() {
               <AlertTriangle size={15} className="shrink-0" />
               <span className="flex-1">Start the app to run tests.</span>
               <button
-                onClick={() => runApp(selectedAppId)}
+                onClick={() =>
+                  runAppLifecycleInBackground("start", runApp(selectedAppId))
+                }
                 className="px-2 py-1 rounded-md bg-amber-200 dark:bg-amber-800 hover:bg-amber-300 dark:hover:bg-amber-700 cursor-pointer text-xs font-medium"
               >
                 Start

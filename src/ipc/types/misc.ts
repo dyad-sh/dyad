@@ -439,6 +439,7 @@ export const AppOutputSchema = z.object({
   signal: z.string().nullable().optional(),
   lifecycleRequestId: z.string().optional(),
   lifecycleOperation: z.enum(["restart", "rebuild"]).optional(),
+  lifecycleRuntimeMayBeLive: z.boolean().optional(),
 });
 
 export type AppOutput = z.infer<typeof AppOutputSchema>;

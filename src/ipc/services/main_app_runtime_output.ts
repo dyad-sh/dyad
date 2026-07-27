@@ -93,6 +93,7 @@ export class MainAppRuntimeOutput implements AppRuntimeOutput {
               operationId: invocationRef.operationId,
               invocationRef,
               error: { message: output.message },
+              runtimeMayBeLive: output.lifecycleRuntimeMayBeLive === true,
             },
       );
       return;

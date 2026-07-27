@@ -382,24 +382,26 @@ async function restartAppInPlace({
   app: AppRow;
   appPath: string;
 }): Promise<number | undefined> {
-  const appInfo = runningApps.get(app.id);
-  const output = await appRunActorService.outputForCurrentRun(
+  return appRunActorService.executeAlreadyLockedExternalRestart(
     app.id,
-    appInfo?.invocationRef,
+    async ({ invocationRef, output }) => {
+      const appInfo = runningApps.get(app.id);
+      if (appInfo) {
+        await stopAppByInfo(app.id, appInfo);
+      }
+      await cleanUpPort(getAppPort(app.id));
+      await executeApp({
+        appPath,
+        appId: app.id,
+        output,
+        isNeon: !!app.neonProjectId,
+        installCommand: app.installCommand,
+        startCommand: app.startCommand,
+        invocationRef,
+      });
+      return runningApps.get(app.id)?.processId;
+    },
   );
-  if (appInfo) {
-    await stopAppByInfo(app.id, appInfo);
-  }
-  await cleanUpPort(getAppPort(app.id));
-  await executeApp({
-    appPath,
-    appId: app.id,
-    output,
-    isNeon: !!app.neonProjectId,
-    installCommand: app.installCommand,
-    startCommand: app.startCommand,
-  });
-  return runningApps.get(app.id)?.processId;
 }
 
 /**

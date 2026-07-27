@@ -13,7 +13,7 @@ import type { ConsoleEntry } from "@/ipc/types";
 import type { AppExit } from "@/app_run/selectors";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
-import { useRunApp } from "@/hooks/useRunApp";
+import { runAppLifecycleInBackground, useRunApp } from "@/hooks/useRunApp";
 import { useAppExit, useAppRunState } from "@/hooks/useAppRun";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { cn } from "@/lib/utils";
@@ -252,7 +252,10 @@ export function PreviewLoadingScreen({
   };
 
   const handleRebuild = () => {
-    void restartApp({ removeNodeModules: true });
+    runAppLifecycleInBackground(
+      "rebuild",
+      restartApp({ removeNodeModules: true }),
+    );
   };
 
   const handleFixAllErrors = () => {

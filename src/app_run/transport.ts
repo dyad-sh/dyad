@@ -193,6 +193,7 @@ const processFailedSchema = z
     operationId: operationIdSchema,
     invocationRef: AppRunInvocationRefSchema,
     error: runErrorSchema,
+    runtimeMayBeLive: z.boolean().optional(),
   })
   .strict();
 
@@ -353,6 +354,7 @@ export function projectAppRunRemoteSnapshot(
   state: RunState,
   previewReloadEpoch = 0,
   lastSettlement: AppRunRemoteSnapshot["lastSettlement"] = null,
+  observedExit: AppRunRemoteSnapshot["exit"] = null,
 ): AppRunRemoteSnapshot {
   if (
     state.type !== "idle" &&
@@ -370,7 +372,7 @@ export function projectAppRunRemoteSnapshot(
     startedAt: null,
     url: null,
     operationError: null,
-    exit: null,
+    exit: observedExit,
     capabilities: selectRemoteCapabilities(state),
     invocationRef: state.type === "idle" ? null : state.invocationRef,
     lastSettlement,
@@ -395,12 +397,13 @@ export function projectAppRunRemoteSnapshot(
       return {
         ...base,
         exit:
-          state.timestamp === null
+          observedExit ??
+          (state.timestamp === null
             ? null
             : {
                 exitCode: state.exitCode,
                 timestamp: state.timestamp,
-              },
+              }),
       };
     case "errored":
       return { ...base, operationError: state.error };

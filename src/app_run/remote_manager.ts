@@ -233,18 +233,27 @@ export class AppRunRemoteManager {
   requestManualReload = (appId: number): void => {
     this.start();
     const actor = this.actor(appId);
-    void actor
-      .resync()
-      .then(() =>
-        actor.dispatch({
+    const releaseManagerSubscription = this.retainActorSubscription(
+      appId,
+      actor,
+    );
+    void (async () => {
+      try {
+        await actor.resync();
+        const receipt = await actor.dispatch({
           type: "MANUAL_RELOAD",
           operationId: this.ids.next("app-run-reload"),
           startedAt: Date.now(),
-        }),
-      )
-      .catch((error) => {
+        });
+        if (receipt.kind === "rejected") {
+          throw new Error(`App reload request rejected: ${receipt.reason}`);
+        }
+      } catch (error) {
         console.error("[app-run] Preview reload dispatch failed:", error);
-      });
+      } finally {
+        releaseManagerSubscription();
+      }
+    })();
   };
 
   disposeKey = (appId: number): void => {

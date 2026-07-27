@@ -10,7 +10,27 @@ const mocks = vi.hoisted(() => ({
   readEnvFileIfExists: vi.fn().mockResolvedValue(null),
   executeApp: vi.fn().mockResolvedValue(undefined),
   cleanUpPort: vi.fn().mockResolvedValue(undefined),
-  outputForCurrentRun: vi.fn().mockResolvedValue({}),
+  executeAlreadyLockedExternalRestart: vi.fn(
+    (
+      _appId: number,
+      execute: (context: {
+        invocationRef: {
+          kind: "app-run";
+          entityKey: number;
+          operationId: string;
+        };
+        output: object;
+      }) => Promise<unknown>,
+    ) =>
+      execute({
+        invocationRef: {
+          kind: "app-run",
+          entityKey: 1,
+          operationId: "isolated-restart",
+        },
+        output: {},
+      }),
+  ),
   stopAppByInfo: vi.fn().mockResolvedValue(undefined),
   runningApps: new Map<number, any>(),
 }));
@@ -46,7 +66,8 @@ vi.mock("./app_runtime_service", () => ({
 }));
 vi.mock("./app_run_actor_service", () => ({
   appRunActorService: {
-    outputForCurrentRun: mocks.outputForCurrentRun,
+    executeAlreadyLockedExternalRestart:
+      mocks.executeAlreadyLockedExternalRestart,
   },
 }));
 vi.mock("../../paths/paths", () => ({
@@ -238,14 +259,8 @@ describe("prepareIsolatedTestDatabase — Neon happy path", () => {
       cookieSecret: "secret",
     });
     // Server comes up immediately.
-    const invocationRef = {
-      kind: "app-run",
-      entityKey: 1,
-      operationId: "preview-run",
-    };
     mocks.runningApps.set(1, {
       proxyUrl: "http://localhost:42100",
-      invocationRef,
     });
     // try/finally so a failing assertion can't leak the mocked fetch into
     // other tests (vi.clearAllMocks in beforeEach doesn't restore spies).
@@ -264,9 +279,19 @@ describe("prepareIsolatedTestDatabase — Neon happy path", () => {
         expect.objectContaining({ connectionUri: "postgres://temp" }),
       );
       expect(mocks.executeApp).toHaveBeenCalled();
-      expect(mocks.outputForCurrentRun).toHaveBeenCalledWith(1, invocationRef);
+      expect(mocks.executeAlreadyLockedExternalRestart).toHaveBeenCalledWith(
+        1,
+        expect.any(Function),
+      );
       expect(mocks.executeApp).toHaveBeenCalledWith(
-        expect.objectContaining({ output: {} }),
+        expect.objectContaining({
+          output: {},
+          invocationRef: {
+            kind: "app-run",
+            entityKey: 1,
+            operationId: "isolated-restart",
+          },
+        }),
       );
       expect(prepared.isolation).toEqual({ mode: "neon-branch" });
       expect(prepared.infraError).toBeUndefined();

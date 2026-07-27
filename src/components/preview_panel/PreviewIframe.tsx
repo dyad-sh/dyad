@@ -66,7 +66,7 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from "@/components/ui/tooltip";
-import { useRunApp } from "@/hooks/useRunApp";
+import { runAppLifecycleInBackground, useRunApp } from "@/hooks/useRunApp";
 import { useSettings } from "@/hooks/useSettings";
 import { useShortcut } from "@/hooks/useShortcut";
 import { cn } from "@/lib/utils";
@@ -1043,7 +1043,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   }
 
   const onRestart = () => {
-    restartApp();
+    runAppLifecycleInBackground("restart", restartApp());
   };
 
   const openPreviewInBrowser = async () => {
@@ -1065,11 +1065,17 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   };
 
   const onCleanRestart = () => {
-    restartApp({ removeNodeModules: true });
+    runAppLifecycleInBackground(
+      "rebuild",
+      restartApp({ removeNodeModules: true }),
+    );
   };
 
   const onRecreateSandbox = () => {
-    restartApp({ recreateSandbox: true });
+    runAppLifecycleInBackground(
+      "restart",
+      restartApp({ recreateSandbox: true }),
+    );
   };
 
   const { showOpenBrowser } =

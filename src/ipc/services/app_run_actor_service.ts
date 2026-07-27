@@ -3,7 +3,7 @@ import {
   type AppRunIntentEvent,
   type AppRunProducerEvent,
 } from "@/app_run/transport";
-import { appRunDefinition, requireApp } from "@/app_run/definition";
+import { appRunDefinition, requireExistingApp } from "@/app_run/definition";
 import { MainAppRuntimeOutput } from "./main_app_runtime_output";
 import type { AppRunInvocationRef } from "@/app_run/state";
 import { appRuntimeService } from "./app_runtime_service";
@@ -33,7 +33,7 @@ export class AppRunActorService {
   }
 
   async getRunState(appId: number) {
-    await requireApp(appId);
+    await requireExistingApp(appId);
     return this.actor(appId).getSnapshot().runState;
   }
 
@@ -50,7 +50,7 @@ export class AppRunActorService {
     appId: number,
     fallbackInvocationRef?: AppRunInvocationRef,
   ): Promise<MainAppRuntimeOutput> {
-    await requireApp(appId);
+    await requireExistingApp(appId);
     const state = this.actor(appId).getSnapshot().runState;
     const invocationRef =
       state.type === "idle"
@@ -68,7 +68,7 @@ export class AppRunActorService {
       expectedRevision?: number;
     },
   ): Promise<void> {
-    await requireApp(appId);
+    await requireExistingApp(appId);
     await this.dispatchAndWait(appId, input.operationId, {
       type: "START",
       operationId: input.operationId,
@@ -87,7 +87,7 @@ export class AppRunActorService {
       expectedRevision?: number;
     },
   ): Promise<void> {
-    await requireApp(appId);
+    await requireExistingApp(appId);
     const common = {
       type: "RESTART" as const,
       operationId: input.operationId,
@@ -112,7 +112,7 @@ export class AppRunActorService {
       activeInvocationRef: AppRunInvocationRef;
     },
   ): Promise<void> {
-    await requireApp(appId);
+    await requireExistingApp(appId);
     await this.dispatchAndWait(appId, input.operationId, {
       type: "STOP_REQUESTED",
       operationId: input.operationId,
@@ -127,7 +127,7 @@ export class AppRunActorService {
     abortSignal?: AbortSignal;
     timeoutMs?: number;
   }): Promise<void> {
-    await requireApp(options.appId);
+    await requireExistingApp(options.appId);
     this.actor(options.appId);
     const invocationRef = appRuntimeService.createExternalLifecycleRef(
       options.appId,
@@ -137,6 +137,53 @@ export class AppRunActorService {
       invocationRef,
       output: this.outputFor(options.appId, invocationRef),
     });
+  }
+
+  /**
+   * Runs the process-replacement portion of an external restart when the
+   * caller already owns the app runtime lock.
+   *
+   * The ordinary external lifecycle path acquires that lock itself, so using
+   * it from isolated database setup would deadlock. This adapter still gives
+   * the replacement a fresh actor-owned invocation and publishes correlated
+   * terminal producer events around the caller's already-locked work.
+   */
+  async executeAlreadyLockedExternalRestart<T>(
+    appId: number,
+    execute: (context: {
+      invocationRef: AppRunInvocationRef;
+      output: MainAppRuntimeOutput;
+    }) => Promise<T>,
+  ): Promise<T> {
+    await requireExistingApp(appId);
+    this.actor(appId);
+    const invocationRef = appRuntimeService.createExternalLifecycleRef(appId);
+    const output = this.outputFor(appId, invocationRef);
+    this.sendProducer(appId, {
+      type: "EXTERNAL_RESTART_STARTED",
+      invocationRef,
+      operation: "restart",
+      startedAt: Date.now(),
+    });
+    try {
+      const result = await execute({ invocationRef, output });
+      this.sendProducer(appId, {
+        type: "PROCESS_SPAWNED",
+        operationId: invocationRef.operationId,
+        invocationRef,
+      });
+      return result;
+    } catch (error) {
+      this.sendProducer(appId, {
+        type: "PROCESS_FAILED",
+        operationId: invocationRef.operationId,
+        invocationRef,
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+      throw error;
+    }
   }
 
   async disposeApp(appId: number): Promise<void> {

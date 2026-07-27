@@ -15,6 +15,15 @@ import { usePackageManagerWarningStore } from "@/package_manager_warnings/Packag
 
 const CLOUD_SYNC_ERROR_TOAST_WINDOW_MS = 30_000;
 
+export function runAppLifecycleInBackground(
+  operation: "start" | "restart" | "rebuild",
+  promise: Promise<void>,
+): void {
+  void promise.catch((error) => {
+    console.error(`[app-run] Failed to ${operation} app:`, error);
+  });
+}
+
 export function useRebuildAppAfterPnpmInstall() {
   const manager = useAppRunManager();
 

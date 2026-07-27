@@ -1,0 +1,81 @@
+name: Remove Unauthorized Release
+
+on:
+  release:
+    types: [published]
+
+permissions: {}
+
+concurrency:
+  group: remove-unauthorized-release-${{ github.event.release.id }}
+  cancel-in-progress: false
+
+jobs:
+  delete-release:
+    name: Delete Unauthorized Release
+    if: github.event.release.author.login != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Record unauthorized release
+        env:
+          RELEASE_AUTHOR: ${{ github.event.release.author.login }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          {
+            echo "## Unauthorized release detected"
+            echo
+            echo "- Tag: \`$RELEASE_TAG\`"
+            echo "- Author: \`$RELEASE_AUTHOR\`"
+            echo
+            echo "Deleting the release without deleting its tag."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Delete release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ github.event.release.id }}
+          REPOSITORY: ${{ github.repository }}
+        run: gh api --method DELETE "repos/$REPOSITORY/releases/$RELEASE_ID"
+
+  send-email:
+    name: Send Unauthorized Release Alert
+    needs: delete-release
+    if: always() && github.event.release.author.login != 'github-actions[bot]'
+    environment: ai-bots
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: v24.13.1
+          package-manager-cache: false
+
+      - name: Send unauthorized release alert email
+        env:
+          DELETE_RESULT: ${{ needs.delete-release.result }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+          MAILGUN_API_KEY: ${{ secrets.MAILGUN_API_KEY }}
+          MAILGUN_DOMAIN: ${{ vars.MAILGUN_DOMAIN }}
+          MAILGUN_FROM_EMAIL: ${{ vars.MAILGUN_FROM_EMAIL }}
+          RELEASE_AUTHOR: ${{ github.event.release.author.login }}
+          RELEASE_CREATED_AT: ${{ github.event.release.created_at }}
+          RELEASE_ID: ${{ github.event.release.id }}
+          RELEASE_NAME: ${{ github.event.release.name }}
+          RELEASE_PUBLISHED_AT: ${{ github.event.release.published_at }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          UNAUTHORIZED_RELEASE_ALERT_EMAILS: ${{ vars.UNAUTHORIZED_RELEASE_ALERT_EMAILS || vars.SECURITY_ADVISORY_ALERT_EMAILS }}
+        run: node scripts/unauthorized-release-alert.mjs

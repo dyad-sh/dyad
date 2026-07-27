@@ -135,6 +135,7 @@ import {
   resolveChatModeForTurn,
 } from "./chat_mode_resolution";
 import { acceptChatTurn } from "./chat_turn_acceptance";
+import { withChatQueueLock } from "@/chat_stream/queue_lock";
 import {
   getFreeAgentQuotaStatus,
   markMessageAsUsingFreeAgentQuota,
@@ -1223,19 +1224,21 @@ ${componentSnippet}
       // synchronous transaction. This keeps the idempotent message insert and
       // the mode latch atomic. The conditional update also arbitrates
       // concurrent first turns; a loser reloads and uses the winner below.
-      const acceptedTurn = acceptChatTurn(db, {
-        chatId: req.chatId,
-        storedChatMode: chat.chatMode,
-        selectedChatMode,
-        content:
-          implementPlanDisplayPrompt ??
-          displayUserPrompt ??
-          defaultAiUserPrompt,
-        userInputRequestId: req.userInputRequestId,
-        chatTurnIntentId: req.intentId,
-        chatTurnIntent: executionObserver(req)?.intent,
-        sessionQueued: executionObserver(req)?.sessionQueued,
-      });
+      const acceptedTurn = await withChatQueueLock(req.chatId, () =>
+        acceptChatTurn(db, {
+          chatId: req.chatId,
+          storedChatMode: chat.chatMode,
+          selectedChatMode,
+          content:
+            implementPlanDisplayPrompt ??
+            displayUserPrompt ??
+            defaultAiUserPrompt,
+          userInputRequestId: req.userInputRequestId,
+          chatTurnIntentId: req.intentId,
+          chatTurnIntent: executionObserver(req)?.intent,
+          sessionQueued: executionObserver(req)?.sessionQueued,
+        }),
+      );
       mutatedPersistedChat = true;
       if (acceptedTurn.userMessageId !== null) {
         executionObserver(req)?.onAccepted?.(acceptedTurn.userMessageId);

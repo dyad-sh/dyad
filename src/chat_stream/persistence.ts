@@ -11,6 +11,7 @@ import { computeChatTurnPayloadHash } from "@/ipc/utils/chat_turn_intent_hash";
 import type { ChatQueueEntry, SerializableChatTurnIntent } from "./transport";
 import { ChatQueueEntrySchema } from "./transport";
 import type { ChatStreamHostCommand } from "./host_state";
+import { withChatQueueLock } from "./queue_lock";
 
 type ChatDatabase = BetterSQLite3Database<typeof schema>;
 
@@ -499,6 +500,16 @@ function rewriteQueuePositions(
 }
 
 export async function mutateChatQueue(
+  database: ChatDatabase,
+  chatId: number,
+  command: Extract<ChatStreamHostCommand, { type: "mutate-queue" }>,
+): Promise<ReturnType<typeof loadChatQueue>> {
+  return withChatQueueLock(chatId, () =>
+    mutateChatQueueUnlocked(database, chatId, command),
+  );
+}
+
+async function mutateChatQueueUnlocked(
   database: ChatDatabase,
   chatId: number,
   command: Extract<ChatStreamHostCommand, { type: "mutate-queue" }>,

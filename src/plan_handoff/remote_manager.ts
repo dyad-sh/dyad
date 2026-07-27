@@ -15,6 +15,8 @@ export type PlanHandoffRemoteConnection = RemoteMachineClientConnection & {
 
 export class PlanHandoffRemoteManager {
   private readonly client: RemoteMachineClient;
+  private readonly listeners = new Map<number, Set<() => void>>();
+  private readonly localFailures = new Map<number, string>();
   private stopConnection?: () => void;
   private disposed = false;
 
@@ -37,16 +39,33 @@ export class PlanHandoffRemoteManager {
     this.stopConnection = undefined;
   }
 
-  getSnapshot = (sourceChatId: number): PlanHandoffRemoteSnapshot =>
-    this.actor(sourceChatId).getSnapshot();
+  getSnapshot = (sourceChatId: number): PlanHandoffRemoteSnapshot => {
+    const snapshot = this.actor(sourceChatId).getSnapshot();
+    const failure = this.localFailures.get(sourceChatId);
+    return failure
+      ? {
+          ...snapshot,
+          phase: "failed",
+          failure,
+        }
+      : snapshot;
+  };
 
   subscribeKey = (sourceChatId: number, listener: () => void): (() => void) => {
     const actor = this.actor(sourceChatId);
+    const listeners = this.listeners.get(sourceChatId) ?? new Set();
+    listeners.add(listener);
+    this.listeners.set(sourceChatId, listeners);
     const unsubscribe = actor.subscribe(listener);
     void actor.resync().catch((error) => {
       console.error("[plan-handoff] Remote bootstrap failed", error);
+      this.setLocalFailure(sourceChatId, error);
     });
-    return unsubscribe;
+    return () => {
+      unsubscribe();
+      listeners.delete(listener);
+      if (listeners.size === 0) this.listeners.delete(sourceChatId);
+    };
   };
 
   async accept(
@@ -58,6 +77,8 @@ export class PlanHandoffRemoteManager {
     },
   ): Promise<string> {
     this.start();
+    this.localFailures.delete(input.sourceChatId);
+    this.notify(input.sourceChatId);
     const handoffId = this.ids.next("plan-handoff");
     const intent: PlanHandoffIntent = {
       ...input,
@@ -75,6 +96,9 @@ export class PlanHandoffRemoteManager {
         throw new Error(`Plan handoff rejected: ${receipt.reason}`);
       }
       return handoffId;
+    } catch (error) {
+      this.setLocalFailure(input.sourceChatId, error);
+      throw error;
     } finally {
       release();
     }
@@ -89,6 +113,20 @@ export class PlanHandoffRemoteManager {
     this.disposed = true;
     this.stop();
     this.client.dispose();
+    this.listeners.clear();
+    this.localFailures.clear();
+  }
+
+  private setLocalFailure(sourceChatId: number, error: unknown): void {
+    this.localFailures.set(
+      sourceChatId,
+      error instanceof Error ? error.message : String(error),
+    );
+    this.notify(sourceChatId);
+  }
+
+  private notify(sourceChatId: number): void {
+    for (const listener of this.listeners.get(sourceChatId) ?? []) listener();
   }
 
   private actor(sourceChatId: number) {

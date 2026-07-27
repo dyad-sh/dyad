@@ -14,13 +14,16 @@ import {
   planAcceptInNewChatByChatIdAtom,
   planAnnotationsAtom,
 } from "@/atoms/planAtoms";
-import { previewModeAtom } from "@/atoms/appAtoms";
+import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { usePlan } from "@/hooks/usePlan";
 import { useChatMode } from "@/hooks/useChatMode";
 import { usePlanDocument } from "@/hooks/usePlanDocument";
-import { usePlanHandoffState } from "@/plan_handoff/usePlanHandoff";
+import {
+  usePlanHandoff,
+  usePlanHandoffState,
+} from "@/plan_handoff/usePlanHandoff";
 import { SelectionCommentButton } from "./plan/SelectionCommentButton";
 import { CommentsFloatingButton } from "./plan/CommentsFloatingButton";
 import { CommentPopover } from "./plan/CommentPopover";
@@ -31,6 +34,7 @@ import {
 
 export const PlanPanel: React.FC = () => {
   const chatId = useAtomValue(selectedChatIdAtom);
+  const appId = useAtomValue(selectedAppIdAtom);
   const planData = usePlanDocument(chatId);
   const handoff = usePlanHandoffState(chatId);
   const handoffFailure =
@@ -52,6 +56,7 @@ export const PlanPanel: React.FC = () => {
   const { streamMessage, isStreaming } = useStreamChat();
   const { savedPlan } = usePlan();
   const { selectedMode } = useChatMode(chatId);
+  const { acceptPlan } = usePlanHandoff();
 
   const annotations = useAtomValue(planAnnotationsAtom);
   const planContentRef = useRef<HTMLDivElement>(null);
@@ -194,8 +199,8 @@ export const PlanPanel: React.FC = () => {
   }, [chatId, isSendingComments, annotations, streamMessage, setAnnotations]);
 
   const handleAccept = (useNewChat: boolean) => {
-    if (!chatId) return;
-    if (selectedMode !== "plan") return;
+    if (!chatId || !appId) return;
+    if (!handoffFailure && selectedMode !== "plan") return;
     if (isSubmitting) return;
     setIsSubmitting(true);
 
@@ -207,6 +212,10 @@ export const PlanPanel: React.FC = () => {
       return next;
     });
 
+    if (handoffFailure) {
+      acceptPlan({ chatId, appId });
+      return;
+    }
     streamMessage({
       chatId,
       prompt:

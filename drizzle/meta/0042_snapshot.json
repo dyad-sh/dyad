@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "5d140456-6469-4ff6-98d3-294a05c8aa0d",
+  "id": "ab67d66b-e28e-451e-8176-8a0e1a30a9c4",
   "prevId": "e71de7c2-2987-48f2-9b6f-bf53190f7f2e",
   "tables": {
     "app_collections": {
@@ -441,6 +441,14 @@
           "notNull": true,
           "autoincrement": false,
           "default": false
+        },
+        "legacy_migrated": {
+          "name": "legacy_migrated",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
         }
       },
       "indexes": {},
@@ -708,6 +716,13 @@
           "notNull": false,
           "autoincrement": false
         },
+        "plan_handoff_id": {
+          "name": "plan_handoff_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "is_favorite": {
           "name": "is_favorite",
           "type": "integer",
@@ -717,7 +732,15 @@
           "default": "0"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "chats_plan_handoff_id_unique": {
+          "name": "chats_plan_handoff_id_unique",
+          "columns": [
+            "plan_handoff_id"
+          ],
+          "isUnique": true
+        }
+      },
       "foreignKeys": {
         "chats_app_id_apps_id_fk": {
           "name": "chats_app_id_apps_id_fk",
@@ -1316,10 +1339,17 @@
     "plan_handoffs": {
       "name": "plan_handoffs",
       "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
         "handoff_id": {
           "name": "handoff_id",
           "type": "text",
-          "primaryKey": true,
+          "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
@@ -1412,6 +1442,13 @@
         }
       },
       "indexes": {
+        "plan_handoffs_handoff_id_unique": {
+          "name": "plan_handoffs_handoff_id_unique",
+          "columns": [
+            "handoff_id"
+          ],
+          "isUnique": true
+        },
         "plan_handoffs_source_chat_idx": {
           "name": "plan_handoffs_source_chat_idx",
           "columns": [

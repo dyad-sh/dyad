@@ -108,4 +108,35 @@ describe("main-hosted chat stream terminal projection", () => {
       },
     });
   });
+
+  it("keeps queued turns parked after a failed stream finalizes", () => {
+    const errored = appliedState(streamingState(), {
+      type: "STREAM_ERRORED",
+      intentId: intent.intentId,
+      invocationRef,
+      error: "provider unavailable",
+      targetAppId: 3,
+    });
+
+    const finalized = transitionChatStreamHost(errored, {
+      type: "QUEUE_MUTATED",
+      queueRevision: 2,
+      paused: false,
+      entries: [
+        {
+          itemId: "queued",
+          intentId: "queued",
+          prompt: "try later",
+          persistence: "durable",
+          editable: true,
+          removable: true,
+        },
+      ],
+    });
+
+    expect(finalized.kind).toBe("applied");
+    if (finalized.kind !== "applied") return;
+    expect(finalized.state.phase).toBe("errored");
+    expect(finalized.commands).toEqual([]);
+  });
 });

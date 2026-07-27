@@ -62,5 +62,10 @@ export function routePlanHandoffPresentation(input: {
   if (!session) return;
   windowRegistry
     .endpointForSession(session)
-    ?.send("plan:handoff-presentation", input);
+    ?.send("plan:handoff-presentation", {
+      handoffId: input.handoffId,
+      sourceChatId: input.sourceChatId,
+      targetChatId: input.targetChatId,
+      appId: input.appId,
+    });
 }

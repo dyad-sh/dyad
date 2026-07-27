@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { asc, eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import type { z } from "zod";
 import { db } from "@/db";
 import { apps, chats, planHandoffs } from "@/db/schema";
@@ -28,47 +28,24 @@ import {
   type PlanHandoffKey,
   type PlanHandoffRemoteSnapshot,
 } from "./transport";
-
-interface PlanHandoffHostState {
-  readonly intent: PlanHandoffIntent | null;
-  readonly targetChatId: number | null;
-  readonly phase: PlanHandoffRemoteSnapshot["phase"];
-  readonly failure: string | null;
-}
-
-type PlanHandoffHostEvent =
-  | { type: "ACCEPT"; intent: PlanHandoffIntent }
-  | { type: "RESUME" }
-  | {
-      type: "CHECKPOINT";
-      handoffId: string;
-      phase: Exclude<PlanHandoffRemoteSnapshot["phase"], "idle">;
-      targetChatId?: number;
-    }
-  | { type: "FAILED"; handoffId: string; error: string };
-
-type PlanHandoffCommand = {
-  type: "run-handoff";
-  intent: PlanHandoffIntent;
-};
-
-type PlanHandoffIgnoreReason =
-  | "no-handoff"
-  | "stale-handoff"
-  | "already-running";
+import {
+  type PlanHandoffCommand,
+  type PlanHandoffHostEvent,
+  type PlanHandoffHostState,
+  type PlanHandoffIgnoreReason,
+} from "./host_state";
+import {
+  PLAN_HANDOFF_DISPLAY_MS,
+  transitionPlanHandoffHost,
+} from "./host_transition";
 
 function decodeState(sourceChatId: number): PlanHandoffHostState {
   const row = db
     .select()
     .from(planHandoffs)
     .where(eq(planHandoffs.sourceChatId, sourceChatId))
-    .orderBy(
-      asc(planHandoffs.createdAt),
-      asc(planHandoffs.updatedAt),
-      asc(planHandoffs.handoffId),
-    )
-    .all()
-    .at(-1);
+    .orderBy(desc(planHandoffs.id))
+    .get();
   if (!row) {
     return {
       intent: null,
@@ -83,88 +60,6 @@ function decodeState(sourceChatId: number): PlanHandoffHostState {
     phase: row.phase,
     failure: row.failure,
   };
-}
-
-export function transitionPlanHandoffHost(
-  state: PlanHandoffHostState,
-  event: PlanHandoffHostEvent,
-) {
-  switch (event.type) {
-    case "ACCEPT":
-      if (
-        state.intent?.handoffId === event.intent.handoffId ||
-        (state.phase !== "idle" &&
-          state.phase !== "started" &&
-          state.phase !== "failed" &&
-          state.phase !== "cancelled")
-      ) {
-        return {
-          kind: "ignored" as const,
-          state,
-          reason: "already-running" as const,
-        };
-      }
-      return {
-        kind: "applied" as const,
-        state: {
-          intent: event.intent,
-          targetChatId: null,
-          phase: "accepted" as const,
-          failure: null,
-        },
-        commands: [{ type: "run-handoff" as const, intent: event.intent }],
-      };
-    case "RESUME":
-      if (
-        !state.intent ||
-        state.phase === "idle" ||
-        state.phase === "started" ||
-        state.phase === "failed" ||
-        state.phase === "cancelled"
-      ) {
-        return {
-          kind: "ignored" as const,
-          state,
-          reason: "no-handoff" as const,
-        };
-      }
-      return {
-        kind: "applied" as const,
-        state,
-        commands: [{ type: "run-handoff" as const, intent: state.intent }],
-      };
-    case "CHECKPOINT":
-      if (state.intent?.handoffId !== event.handoffId) {
-        return {
-          kind: "ignored" as const,
-          state,
-          reason: "stale-handoff" as const,
-        };
-      }
-      return {
-        kind: "applied" as const,
-        state: {
-          ...state,
-          phase: event.phase,
-          targetChatId: event.targetChatId ?? state.targetChatId,
-          failure: null,
-        },
-        commands: [],
-      };
-    case "FAILED":
-      if (state.intent?.handoffId !== event.handoffId) {
-        return {
-          kind: "ignored" as const,
-          state,
-          reason: "stale-handoff" as const,
-        };
-      }
-      return {
-        kind: "applied" as const,
-        state: { ...state, phase: "failed" as const, failure: event.error },
-        commands: [],
-      };
-  }
 }
 
 function assertPlanHash(intent: PlanHandoffIntent): void {
@@ -272,6 +167,25 @@ function createCommandRunner(
   ) => {
     const { intent } = command;
     const taskKey = `handoff:${intent.handoffId}`;
+    if (command.type === "begin-handoff") {
+      try {
+        persistAcceptance(intent);
+        context.timers.replace(
+          taskKey,
+          intent.handoffId,
+          PLAN_HANDOFF_DISPLAY_MS,
+          () => ({
+            type: "DISPLAY_ELAPSED",
+            handoffId: intent.handoffId,
+          }),
+          emit,
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        emit({ type: "FAILED", handoffId: intent.handoffId, error: message });
+      }
+      return;
+    }
     const abortController = new AbortController();
     context.tasks.replace(taskKey, () => abortController.abort());
     const { signal } = abortController;

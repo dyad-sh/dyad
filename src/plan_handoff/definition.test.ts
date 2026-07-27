@@ -3,8 +3,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   isMatchingPlanHandoffReplay,
   planHandoffDefinition,
-  transitionPlanHandoffHost,
 } from "./definition";
+import { transitionPlanHandoffHost } from "./host_transition";
 import {
   PlanHandoffIntentSchema,
   serializePlanDocument,
@@ -56,6 +56,31 @@ describe("main plan handoff transition", () => {
     expect(accepted).toMatchObject({
       kind: "applied",
       state: { phase: "accepted", intent: { handoffId: "handoff-1" } },
+      commands: [{ type: "begin-handoff" }],
+    });
+  });
+
+  it("waits for the accepted-plan display interval before running", () => {
+    const accepted = transitionPlanHandoffHost(
+      {
+        intent: null,
+        targetChatId: null,
+        phase: "idle",
+        failure: null,
+      },
+      { type: "ACCEPT", intent: intent() },
+    );
+    expect(accepted.kind).toBe("applied");
+    if (accepted.kind !== "applied") return;
+
+    expect(
+      transitionPlanHandoffHost(accepted.state, {
+        type: "DISPLAY_ELAPSED",
+        handoffId: "handoff-1",
+      }),
+    ).toMatchObject({
+      kind: "applied",
+      state: { phase: "accepted" },
       commands: [{ type: "run-handoff" }],
     });
   });
@@ -141,7 +166,7 @@ describe("main plan handoff transition", () => {
       harness.db.insert(chats).values({ appId }).run().lastInsertRowid,
     );
     const timestamp = new Date("2026-01-01T00:00:00Z");
-    for (const handoffId of ["handoff-a", "handoff-z"]) {
+    for (const handoffId of ["handoff-z", "handoff-a"]) {
       const persisted = {
         ...intent(handoffId),
         sourceChatId,
@@ -157,7 +182,7 @@ describe("main plan handoff transition", () => {
           planVersion: persisted.planVersion,
           planJson: JSON.stringify(persisted),
           acceptInNewChat: persisted.acceptInNewChat,
-          phase: handoffId === "handoff-z" ? "started" : "failed",
+          phase: handoffId === "handoff-a" ? "started" : "failed",
           createdAt: timestamp,
           updatedAt: timestamp,
         })
@@ -165,7 +190,7 @@ describe("main plan handoff transition", () => {
     }
 
     expect(planHandoffDefinition.initialState({ sourceChatId })).toMatchObject({
-      intent: { handoffId: "handoff-z" },
+      intent: { handoffId: "handoff-a" },
       phase: "started",
     });
   });

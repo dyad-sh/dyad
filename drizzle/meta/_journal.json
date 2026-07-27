@@ -299,22 +299,8 @@
     {
       "idx": 42,
       "version": "6",
-      "when": 1785171950839,
-      "tag": "0042_orange_randall",
-      "breakpoints": true
-    },
-    {
-      "idx": 43,
-      "version": "6",
-      "when": 1785173346436,
-      "tag": "0043_pink_surge",
-      "breakpoints": true
-    },
-    {
-      "idx": 44,
-      "version": "6",
-      "when": 1785173943365,
-      "tag": "0044_bent_rhodey",
+      "when": 1785191809640,
+      "tag": "0042_lethal_scalphunter",
       "breakpoints": true
     }
   ]

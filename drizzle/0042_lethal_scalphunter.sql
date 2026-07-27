@@ -17,6 +17,7 @@ CREATE TABLE `chat_queue_state` (
 	`chat_id` integer PRIMARY KEY NOT NULL,
 	`revision` integer DEFAULT 0 NOT NULL,
 	`paused` integer DEFAULT false NOT NULL,
+	`legacy_migrated` integer DEFAULT false NOT NULL,
 	FOREIGN KEY (`chat_id`) REFERENCES `chats`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
@@ -37,7 +38,8 @@ CREATE TABLE `chat_turn_intents` (
 CREATE INDEX `chat_turn_intents_chat_id_idx` ON `chat_turn_intents` (`chat_id`);--> statement-breakpoint
 CREATE UNIQUE INDEX `chat_turn_intents_chat_payload_unique` ON `chat_turn_intents` (`chat_id`,`intent_id`,`payload_hash`);--> statement-breakpoint
 CREATE TABLE `plan_handoffs` (
-	`handoff_id` text PRIMARY KEY NOT NULL,
+	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+	`handoff_id` text NOT NULL,
 	`source_chat_id` integer NOT NULL,
 	`target_chat_id` integer,
 	`app_id` integer NOT NULL,
@@ -55,7 +57,10 @@ CREATE TABLE `plan_handoffs` (
 	FOREIGN KEY (`app_id`) REFERENCES `apps`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
+CREATE UNIQUE INDEX `plan_handoffs_handoff_id_unique` ON `plan_handoffs` (`handoff_id`);--> statement-breakpoint
 CREATE INDEX `plan_handoffs_source_chat_idx` ON `plan_handoffs` (`source_chat_id`);--> statement-breakpoint
 CREATE INDEX `plan_handoffs_target_chat_idx` ON `plan_handoffs` (`target_chat_id`);--> statement-breakpoint
+ALTER TABLE `chats` ADD `plan_handoff_id` text;--> statement-breakpoint
+CREATE UNIQUE INDEX `chats_plan_handoff_id_unique` ON `chats` (`plan_handoff_id`);--> statement-breakpoint
 ALTER TABLE `messages` ADD `chat_turn_intent_id` text;--> statement-breakpoint
 CREATE UNIQUE INDEX `messages_chat_turn_intent_unique` ON `messages` (`chat_id`,`chat_turn_intent_id`);

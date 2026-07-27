@@ -27,6 +27,43 @@ function createFailingConnection(error: Error): PlanHandoffRemoteConnection {
   };
 }
 
+function createRecoveringConnection() {
+  let failing = true;
+  const connection: PlanHandoffRemoteConnection = {
+    getStatus: () => "connected",
+    onStatusChange: () => () => undefined,
+    onSnapshot: () => () => undefined,
+    onDisposed: () => () => undefined,
+    subscribe: (address) =>
+      failing
+        ? Promise.reject(new Error("temporary outage"))
+        : Promise.resolve({
+            ...address,
+            actorInstanceId: "plan-actor",
+            revision: 0,
+            encodedState: {
+              schemaVersion: 1,
+              sourceChatId: 42,
+              revision: 0,
+              handoffId: null,
+              targetChatId: null,
+              planId: null,
+              phase: "idle",
+              failure: null,
+            },
+          }),
+    unsubscribe: () => Promise.resolve(),
+    dispatch: () => Promise.reject(new Error("not used")),
+    start: () => () => undefined,
+  };
+  return {
+    connection,
+    recover: () => {
+      failing = false;
+    },
+  };
+}
+
 async function flush(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
@@ -58,6 +95,7 @@ describe("PlanHandoffRemoteManager", () => {
       phase: "failed",
       failure: "gateway unavailable",
     });
+    expect(manager.getSnapshot(42)).toBe(manager.getSnapshot(42));
     expect(listener).toHaveBeenCalled();
 
     unsubscribe();
@@ -96,6 +134,27 @@ describe("PlanHandoffRemoteManager", () => {
     expect(listener).toHaveBeenCalled();
 
     unsubscribe();
+    manager.dispose();
+  });
+
+  it("clears a bootstrap failure after a successful resync", async () => {
+    const recovering = createRecoveringConnection();
+    const manager = new PlanHandoffRemoteManager(
+      createSequentialIdSource(),
+      recovering.connection,
+    );
+
+    manager.start();
+    const first = manager.subscribeKey(42, () => undefined);
+    await waitFor(() => manager.getSnapshot(42).phase === "failed");
+
+    recovering.recover();
+    const second = manager.subscribeKey(42, () => undefined);
+    await waitFor(() => manager.getSnapshot(42).phase === "idle");
+
+    expect(manager.getSnapshot(42).failure).toBeNull();
+    first();
+    second();
     manager.dispose();
   });
 });

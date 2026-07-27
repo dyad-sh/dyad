@@ -259,23 +259,25 @@ export class ChatStreamRemoteManager {
       releaseSettlement = actor.subscribe(inspect);
       inspect();
     });
-    const receipt = await actor.dispatch({
-      ...event,
-      mutationId,
-      expectedQueueRevision: actor.getSnapshot().queueRevision,
-    } as ChatStreamIntentEvent);
-    if (receipt.kind === "rejected") {
+    try {
+      const receipt = await actor.dispatch({
+        ...event,
+        mutationId,
+        expectedQueueRevision: actor.getSnapshot().queueRevision,
+      } as ChatStreamIntentEvent);
+      if (receipt.kind === "rejected") {
+        throw new Error(`Chat queue request rejected: ${receipt.reason}`);
+      }
+      if (receipt.kind === "ignored") {
+        await actor.resync();
+        throw new Error("Chat queue changed in another window");
+      }
+      const result = await settlement;
+      if (result.outcome === "rejected") {
+        throw new Error(result.error ?? "Chat queue mutation was rejected");
+      }
+    } finally {
       releaseSettlement();
-      throw new Error(`Chat queue request rejected: ${receipt.reason}`);
-    }
-    if (receipt.kind === "ignored") {
-      releaseSettlement();
-      await actor.resync();
-      throw new Error("Chat queue changed in another window");
-    }
-    const result = await settlement;
-    if (result.outcome === "rejected") {
-      throw new Error(result.error ?? "Chat queue mutation was rejected");
     }
   }
 
@@ -283,6 +285,25 @@ export class ChatStreamRemoteManager {
     this.subscriptions.get(chatId)?.unsubscribe();
     this.subscriptions.delete(chatId);
     this.refs.delete(chatId);
+    this.snapshotListeners.delete(chatId);
+    this.optimisticSnapshots.delete(chatId);
+    this.lastAcceptanceByChat.delete(chatId);
+    this.lastCompletionByChat.delete(chatId);
+    for (const [intentId, pending] of this.pendingSubmissions) {
+      if (pending.request.chatId === chatId)
+        this.takePendingSubmission(intentId);
+    }
+    this.submissionTails.delete(chatId);
+    this.store.set(queuedMessagesByIdAtom, (previous) => {
+      const next = new Map(previous);
+      next.delete(chatId);
+      return next;
+    });
+    this.store.set(queuePausedByIdAtom, (previous) => {
+      const next = new Map(previous);
+      next.delete(chatId);
+      return next;
+    });
     this.previews.disposeKey(chatId);
   };
 

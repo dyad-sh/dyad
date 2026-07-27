@@ -281,7 +281,8 @@ export const chatQueueEntries = sqliteTable(
 export const planHandoffs = sqliteTable(
   "plan_handoffs",
   {
-    handoffId: text("handoff_id").primaryKey(),
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    handoffId: text("handoff_id").notNull().unique(),
     sourceChatId: integer("source_chat_id")
       .notNull()
       .references(() => chats.id, { onDelete: "cascade" }),

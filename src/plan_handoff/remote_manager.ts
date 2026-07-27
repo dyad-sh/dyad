@@ -13,10 +13,17 @@ export type PlanHandoffRemoteConnection = RemoteMachineClientConnection & {
   start?: () => () => void;
 };
 
+interface LocalFailure {
+  readonly message: string;
+  readonly source: "bootstrap" | "accept";
+  base?: PlanHandoffRemoteSnapshot;
+  projected?: PlanHandoffRemoteSnapshot;
+}
+
 export class PlanHandoffRemoteManager {
   private readonly client: RemoteMachineClient;
   private readonly listeners = new Map<number, Set<() => void>>();
-  private readonly localFailures = new Map<number, string>();
+  private readonly localFailures = new Map<number, LocalFailure>();
   private stopConnection?: () => void;
   private disposed = false;
 
@@ -42,13 +49,17 @@ export class PlanHandoffRemoteManager {
   getSnapshot = (sourceChatId: number): PlanHandoffRemoteSnapshot => {
     const snapshot = this.actor(sourceChatId).getSnapshot();
     const failure = this.localFailures.get(sourceChatId);
-    return failure
-      ? {
-          ...snapshot,
-          phase: "failed",
-          failure,
-        }
-      : snapshot;
+    if (!failure) return snapshot;
+    if (failure.base === snapshot && failure.projected) {
+      return failure.projected;
+    }
+    failure.base = snapshot;
+    failure.projected = {
+      ...snapshot,
+      phase: "failed",
+      failure: failure.message,
+    };
+    return failure.projected;
   };
 
   subscribeKey = (sourceChatId: number, listener: () => void): (() => void) => {
@@ -56,11 +67,19 @@ export class PlanHandoffRemoteManager {
     const listeners = this.listeners.get(sourceChatId) ?? new Set();
     listeners.add(listener);
     this.listeners.set(sourceChatId, listeners);
-    const unsubscribe = actor.subscribe(listener);
-    void actor.resync().catch((error) => {
-      console.error("[plan-handoff] Remote bootstrap failed", error);
-      this.setLocalFailure(sourceChatId, error);
+    const unsubscribe = actor.subscribe(() => {
+      if (actor.getStatus() === "ready") {
+        this.clearLocalFailure(sourceChatId, "bootstrap", false);
+      }
+      listener();
     });
+    void actor
+      .resync()
+      .then(() => this.clearLocalFailure(sourceChatId, "bootstrap"))
+      .catch((error) => {
+        console.error("[plan-handoff] Remote bootstrap failed", error);
+        this.setLocalFailure(sourceChatId, error, "bootstrap");
+      });
     return () => {
       unsubscribe();
       listeners.delete(listener);
@@ -95,9 +114,20 @@ export class PlanHandoffRemoteManager {
       if (receipt.kind === "rejected") {
         throw new Error(`Plan handoff rejected: ${receipt.reason}`);
       }
+      if (receipt.kind === "ignored") {
+        throw new Error(`Plan handoff ignored: ${receipt.reason}`);
+      }
       return handoffId;
     } catch (error) {
-      this.setLocalFailure(input.sourceChatId, error);
+      try {
+        await actor.resync();
+        if (actor.getSnapshot().handoffId === handoffId) {
+          return handoffId;
+        }
+      } catch {
+        // Preserve the original acceptance error below.
+      }
+      this.setLocalFailure(input.sourceChatId, error, "accept");
       throw error;
     } finally {
       release();
@@ -117,12 +147,27 @@ export class PlanHandoffRemoteManager {
     this.localFailures.clear();
   }
 
-  private setLocalFailure(sourceChatId: number, error: unknown): void {
-    this.localFailures.set(
-      sourceChatId,
-      error instanceof Error ? error.message : String(error),
-    );
+  private setLocalFailure(
+    sourceChatId: number,
+    error: unknown,
+    source: LocalFailure["source"],
+  ): void {
+    this.localFailures.set(sourceChatId, {
+      message: error instanceof Error ? error.message : String(error),
+      source,
+    });
     this.notify(sourceChatId);
+  }
+
+  private clearLocalFailure(
+    sourceChatId: number,
+    source?: LocalFailure["source"],
+    notify = true,
+  ): void {
+    const failure = this.localFailures.get(sourceChatId);
+    if (!failure || (source && failure.source !== source)) return;
+    this.localFailures.delete(sourceChatId);
+    if (notify) this.notify(sourceChatId);
   }
 
   private notify(sourceChatId: number): void {

@@ -6,20 +6,20 @@ Use Jotai for client-only state, not as a second cache for IPC data.
 
 The renderer mounts no root Jotai `<Provider>`, so production components and
 `useStore()` resolve to jotai's default store, while tests wrap components in
-`<Provider store={createStore()}>`. Module-scope services that read/write
-atoms outside React (e.g. the version preview command adapter in
-`src/version_preview/commands.ts`) must receive the store from `useStore()`
-at initialization instead of importing `getDefaultStore()`, or test stores
-will silently diverge from the store the service writes to.
+`<Provider store={createStore()}>`. Module-scope services that read/write atoms
+outside React must receive the store from `useStore()` at initialization
+instead of importing `getDefaultStore()`, or test stores will silently diverge
+from the store the service writes to.
 
 ## Version preview state is machine-owned
 
-Git preview orchestration and its ephemeral presentation selection live in
-the app-keyed state machine under `src/version_preview/`. Never add a parallel
-Jotai atom for the selected version, diff file, return branch, or mutation
-status; read the machine snapshot and send events through
-`useVersionPreview(appId)`. The command adapter is the only renderer caller of
-version-mutation IPC (see `plans/better-state-machine.md`).
+Git preview orchestration lives in the main-owned app-keyed actor under
+`src/version_preview/`. Its renderer provider owns only window-local
+presentation state such as pane visibility and selected diff file. Never add a
+parallel Jotai atom for the selected version, return branch, or mutation status;
+read the remote actor snapshot and send revisioned events through
+`useVersionPreview(appId)`. Mutation IPC is not a renderer escape hatch:
+checkout, restore, switch, and recovery commands execute behind the main actor.
 
 Derive UI visibility and action availability from the lifecycle state as well
 as retained session fields. Returning/recovery states may intentionally retain

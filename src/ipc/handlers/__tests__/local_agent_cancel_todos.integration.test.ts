@@ -15,8 +15,8 @@ import {
 import { h } from "@/testing/hybrid.setup";
 import { chats, messages } from "@/db/schema";
 import { getCurrentCommitHash } from "@/ipc/utils/git_utils";
-import { ipc } from "@/ipc/types";
 import { blockNewStreamsForApp } from "@/ipc/handlers/chat_stream_handlers";
+import { versionPreviewHandlerService } from "@/ipc/handlers/version_handlers";
 
 describe("local-agent cancel todos (integration)", () => {
   let harness: HybridChatHarness;
@@ -158,12 +158,15 @@ describe("local-agent cancel todos (integration)", () => {
     );
 
     const restoreStartedAt = Date.now();
-    const result = await ipc.version.restoreToMessageVersion({
-      appId: harness.appId,
-      chatId: selectedChat.id,
-      messageId: restoreTarget.id,
-      restoreCodebase: true,
-    });
+    const result = await versionPreviewHandlerService.restoreToMessage(
+      {
+        appId: harness.appId,
+        chatId: selectedChat.id,
+        messageId: restoreTarget.id,
+        restoreCodebase: true,
+      },
+      harness.bridge.fakeEvent.sender,
+    );
     await Promise.all([selectedStream, backgroundStream]);
 
     expect(result).toHaveProperty("createdChatId");

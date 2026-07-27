@@ -354,6 +354,13 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
 - An unavailable/bootstrap remote snapshot is not authoritative idle state.
   Gate every actor-backed capability on a ready connection and defer recovery
   dispatches until subscription bootstrap has completed.
+- A safe remote projection contains only domain facts needed by consumers.
+  Keep window-local presentation fields out of the authoritative snapshot and
+  route one-shot toast/navigation outcomes to the initiating window. Publish
+  durable query scopes separately so every attached window converges. At the
+  renderer boundary, explicitly recombine the local presentation snapshot with
+  every remote lifecycle state, including transient command states; otherwise a
+  correct domain transition can silently reset the visible pane or selection.
 - Keep transport revisions separate from semantic presentation epochs. A
   revision may advance for bookkeeping-only transitions, while a reload token
   must advance exactly once for each user-visible remount.
@@ -394,6 +401,10 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   entity lock. Recheck the fence inside the lock, stop actor admission before
   unrelated awaited cleanup, and make actor disposal flush every admitted
   command before database or filesystem deletion.
+- A persisted main-owned recovery actor must reconcile its domain facts with
+  the external resource before accepting new mutations after restart. Treat
+  matching origin state as closed and detached/divergent state as explicit
+  recovery; never serialize command handles or renderer presentation state.
 
 ## Query keys and recorded decisions
 

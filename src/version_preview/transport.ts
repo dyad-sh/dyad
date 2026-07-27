@@ -1,0 +1,377 @@
+import { z } from "zod";
+import type { InvocationRef } from "@/state_machines/invocation_ref";
+import type {
+  PreviewError,
+  PreviewEvent,
+  PreviewSession,
+  PreviewState,
+} from "./state";
+
+export const VERSION_PREVIEW_MACHINE_ID = "version_preview";
+export const VERSION_PREVIEW_INVOCATION_KIND = "version-preview-operation";
+
+const keys = new Map<number, { appId: number }>();
+
+export function versionPreviewKey(appId: number): { appId: number } {
+  let key = keys.get(appId);
+  if (!key) {
+    key = Object.freeze({ appId });
+    keys.set(appId, key);
+  }
+  return key;
+}
+
+export const VersionPreviewKeySchema = z
+  .object({ appId: z.number().int().nonnegative() })
+  .strict()
+  .transform(({ appId }) => Object.freeze({ appId }));
+export type VersionPreviewKey = z.infer<typeof VersionPreviewKeySchema>;
+
+export type VersionPreviewInvocationRef = InvocationRef<
+  typeof VERSION_PREVIEW_INVOCATION_KIND,
+  number
+>;
+
+export const VersionPreviewInvocationRefSchema = z
+  .object({
+    kind: z.literal(VERSION_PREVIEW_INVOCATION_KIND),
+    entityKey: z.number().int().positive(),
+    operationId: z.string().min(1),
+  })
+  .strict();
+
+const currentChatMessageIdSchema = z
+  .object({
+    chatId: z.number().int().positive(),
+    messageId: z.number().int().positive(),
+  })
+  .strict();
+
+export const VersionPreviewIntentEventSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("CLOSE"),
+      operationId: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("APP_CHANGED"),
+      nextAppId: z.number().int().positive().nullable(),
+      operationId: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("SELECT_VERSION"),
+      versionId: z.string().min(1),
+      operationId: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("SWITCH_BRANCH"),
+      branch: z.string().min(1),
+      operationId: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("RESTORE"),
+      versionId: z.string().min(1),
+      expectedHeadOid: z.string().optional(),
+      currentChatMessageId: currentChatMessageIdSchema.optional(),
+      operationId: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("RESTORE_TO_MESSAGE"),
+      chatId: z.number().int().positive(),
+      messageId: z.number().int().positive(),
+      restoreCodebase: z.boolean(),
+      operationId: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("RETRY_RETURN"),
+      operationId: z.string().min(1),
+    })
+    .strict(),
+]);
+export type VersionPreviewIntentEvent = z.infer<
+  typeof VersionPreviewIntentEventSchema
+>;
+
+export type VersionPreviewProducerEvent =
+  | { type: "RECONCILE_REQUESTED" }
+  | {
+      type: "RECONCILED";
+      branch: string | null;
+    }
+  | {
+      type: "ORIGIN_RESOLVED";
+      branch: string;
+      invocationRef: VersionPreviewInvocationRef;
+    }
+  | {
+      type: "ORIGIN_RESOLUTION_FAILED";
+      invocationRef: VersionPreviewInvocationRef;
+    }
+  | {
+      type: "CHECKOUT_SUCCEEDED";
+      invocationRef: VersionPreviewInvocationRef;
+    }
+  | {
+      type: "CHECKOUT_FAILED";
+      error: PreviewError;
+      invocationRef: VersionPreviewInvocationRef;
+    }
+  | {
+      type: "RESTORE_SUCCEEDED";
+      repositoryOutcome: "target-applied" | "unchanged";
+      invocationRef: VersionPreviewInvocationRef;
+    }
+  | {
+      type: "RESTORE_FAILED";
+      error: PreviewError;
+      invocationRef: VersionPreviewInvocationRef;
+    }
+  | {
+      type: "RETURN_SUCCEEDED";
+      invocationRef: VersionPreviewInvocationRef;
+    }
+  | {
+      type: "RETURN_FAILED";
+      error: PreviewError;
+      invocationRef: VersionPreviewInvocationRef;
+    }
+  | {
+      type: "SWITCH_BRANCH_SUCCEEDED";
+      invocationRef: VersionPreviewInvocationRef;
+    }
+  | {
+      type: "SWITCH_BRANCH_FAILED";
+      error: PreviewError;
+      invocationRef: VersionPreviewInvocationRef;
+    };
+
+export type VersionPreviewWireEvent =
+  | VersionPreviewIntentEvent
+  | VersionPreviewProducerEvent;
+
+export interface VersionPreviewSettlement {
+  readonly operationId: string;
+  readonly outcome: "succeeded" | "failed";
+  readonly error?: PreviewError;
+}
+
+export interface VersionPreviewActorState {
+  readonly state: PreviewState;
+  readonly activeInvocationRef: VersionPreviewInvocationRef | null;
+  readonly lastSettlement: VersionPreviewSettlement | null;
+}
+
+const previewErrorSchema = z.object({ message: z.string() }).strict();
+const exitIntentSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("none") }).strict(),
+  z.object({ type: z.literal("close") }).strict(),
+  z
+    .object({
+      type: z.literal("switch-app"),
+      nextAppId: z.number().int().positive().nullable(),
+    })
+    .strict(),
+]);
+const sessionSchema = z
+  .object({
+    appId: z.number().int().nonnegative(),
+    originBranch: z.string().nullable(),
+    targetVersionId: z.string().nullable(),
+    checkedOutVersionId: z.string().nullable(),
+    exitIntent: exitIntentSchema,
+    selectedDiffFile: z.null(),
+    isDiffVisible: z.literal(false),
+  })
+  .strict();
+const fallbackSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("closed") }).strict(),
+  z
+    .object({ type: z.literal("viewing-diff"), session: sessionSchema })
+    .strict(),
+  z.object({ type: z.literal("browsing"), session: sessionSchema }).strict(),
+  z.object({ type: z.literal("previewing"), session: sessionSchema }).strict(),
+  z
+    .object({
+      type: z.literal("recovery-required"),
+      session: sessionSchema,
+      error: previewErrorSchema,
+    })
+    .strict(),
+]);
+export const PreviewStateSchema: z.ZodType<PreviewState> = z.discriminatedUnion(
+  "type",
+  [
+    z.object({ type: z.literal("closed") }).strict(),
+    z
+      .object({ type: z.literal("viewing-diff"), session: sessionSchema })
+      .strict(),
+    z.object({ type: z.literal("browsing"), session: sessionSchema }).strict(),
+    z
+      .object({ type: z.literal("resolving-origin"), session: sessionSchema })
+      .strict(),
+    z
+      .object({ type: z.literal("checking-out"), session: sessionSchema })
+      .strict(),
+    z
+      .object({ type: z.literal("previewing"), session: sessionSchema })
+      .strict(),
+    z
+      .object({
+        type: z.literal("restoring"),
+        session: sessionSchema,
+        fallback: z.enum(["closed", "browsing", "previewing"]),
+      })
+      .strict(),
+    z.object({ type: z.literal("returning"), session: sessionSchema }).strict(),
+    z
+      .object({
+        type: z.literal("switching-branch"),
+        appId: z.number().int().nonnegative(),
+        branch: z.string(),
+        fallback: fallbackSchema,
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("recovery-required"),
+        session: sessionSchema,
+        error: previewErrorSchema,
+      })
+      .strict(),
+  ],
+);
+
+export const VersionPreviewRemoteSnapshotSchema = z
+  .object({
+    appId: z.number().int().nonnegative(),
+    revision: z.number().int().nonnegative(),
+    state: PreviewStateSchema,
+    activeInvocationRef: VersionPreviewInvocationRefSchema.nullable(),
+    lastSettlement: z
+      .object({
+        operationId: z.string(),
+        outcome: z.enum(["succeeded", "failed"]),
+        error: previewErrorSchema.optional(),
+      })
+      .strict()
+      .nullable(),
+  })
+  .strict();
+export type VersionPreviewRemoteSnapshot = z.infer<
+  typeof VersionPreviewRemoteSnapshotSchema
+>;
+
+export function projectVersionPreviewRemoteSnapshot(
+  appId: number,
+  revision: number,
+  actorState: VersionPreviewActorState,
+): VersionPreviewRemoteSnapshot {
+  return {
+    appId,
+    revision,
+    state: stripWindowPresentation(actorState.state),
+    activeInvocationRef: actorState.activeInvocationRef,
+    lastSettlement: actorState.lastSettlement,
+  };
+}
+
+function stripSessionPresentation(session: PreviewSession) {
+  return {
+    ...session,
+    selectedDiffFile: null,
+    isDiffVisible: false,
+  } as const;
+}
+
+function stripWindowPresentation(state: PreviewState): PreviewState {
+  switch (state.type) {
+    case "closed":
+      return state;
+    case "switching-branch":
+      return {
+        ...state,
+        fallback:
+          state.fallback.type === "closed"
+            ? state.fallback
+            : state.fallback.type === "recovery-required"
+              ? {
+                  ...state.fallback,
+                  session: stripSessionPresentation(state.fallback.session),
+                }
+              : {
+                  ...state.fallback,
+                  session: stripSessionPresentation(state.fallback.session),
+                },
+      };
+    default:
+      return {
+        ...state,
+        session: stripSessionPresentation(state.session),
+      };
+  }
+}
+
+export function toPreviewDomainEvent(
+  appId: number,
+  event: VersionPreviewWireEvent,
+): PreviewEvent {
+  switch (event.type) {
+    case "RECONCILE_REQUESTED":
+    case "RECONCILED":
+      throw new Error(`${event.type} is handled by the hosted actor`);
+    case "CLOSE":
+    case "RETRY_RETURN":
+      return { type: event.type };
+    case "APP_CHANGED":
+      return { type: event.type, nextAppId: event.nextAppId };
+    case "SELECT_VERSION":
+      return { type: event.type, versionId: event.versionId };
+    case "SWITCH_BRANCH":
+      return { type: event.type, appId, branch: event.branch };
+    case "RESTORE":
+      return {
+        type: event.type,
+        appId,
+        versionId: event.versionId,
+        expectedHeadOid: event.expectedHeadOid,
+        currentChatMessageId: event.currentChatMessageId,
+      };
+    case "RESTORE_TO_MESSAGE":
+      return {
+        type: event.type,
+        appId,
+        chatId: event.chatId,
+        messageId: event.messageId,
+        restoreCodebase: event.restoreCodebase,
+      };
+    case "ORIGIN_RESOLVED":
+      return { type: event.type, branch: event.branch };
+    case "ORIGIN_RESOLUTION_FAILED":
+    case "CHECKOUT_SUCCEEDED":
+    case "RETURN_SUCCEEDED":
+    case "SWITCH_BRANCH_SUCCEEDED":
+      return { type: event.type };
+    case "CHECKOUT_FAILED":
+    case "RESTORE_FAILED":
+    case "RETURN_FAILED":
+    case "SWITCH_BRANCH_FAILED":
+      return { type: event.type, error: event.error };
+    case "RESTORE_SUCCEEDED":
+      return {
+        type: event.type,
+        repositoryOutcome: event.repositoryOutcome,
+      };
+  }
+}

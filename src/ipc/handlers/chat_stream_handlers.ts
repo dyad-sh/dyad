@@ -28,17 +28,16 @@ import {
 } from "../../prompts/system_prompt";
 import { detectFrameworkType } from "../utils/framework_utils";
 import { getThemePromptById } from "../utils/theme_utils";
+import { registerTrustedIpcHandler } from "./trusted_handle";
 import {
   getSupabaseAvailableSystemPrompt,
   SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT,
 } from "../../prompts/supabase_prompt";
-import { registerTrustedIpcHandler } from "./trusted_handle";
 import { buildNeonPromptForApp } from "../../neon_admin/neon_prompt_context";
 import { getDyadAppPath } from "../../paths/paths";
 import { buildDyadMediaUrl } from "../../lib/dyadMediaUrl";
 import type { ChatStreamParams } from "@/ipc/types";
 import type { ChatStreamInvocationRef } from "@/chat_stream/state";
-import type { SerializableChatTurnIntent } from "@/chat_stream/transport";
 import type {
   ChatStreamChunkPayload,
   ChatStreamEndPayload,
@@ -84,7 +83,7 @@ import {
 } from "../../pro/main/ipc/handlers/local_agent/local_agent_handler";
 import { userInputRegistry } from "../../user_input/main";
 
-import { safeSend } from "../utils/safe_sender";
+import { safeSend, type SafeSender } from "../utils/safe_sender";
 import {
   releaseChatProducerInterest,
   sendChatChunk,
@@ -135,7 +134,6 @@ import {
   resolveChatModeForTurn,
 } from "./chat_mode_resolution";
 import { acceptChatTurn } from "./chat_turn_acceptance";
-import { withChatQueueLock } from "@/chat_stream/queue_lock";
 import {
   getFreeAgentQuotaStatus,
   markMessageAsUsingFreeAgentQuota,
@@ -173,218 +171,11 @@ function createEmptyTextStream(): AsyncIterableStream<TextStreamPart<ToolSet>> {
 
 const logger = log.scope("chat_stream_handlers");
 
-export interface ChatStreamExecutionObserver {
-  intent: SerializableChatTurnIntent;
-  sessionQueued: boolean;
-  onAccepted?(acceptedMessageId: number): void;
-  onEnd?(response: ChatStreamEndPayload): void;
-  onError?(error: ChatStreamErrorPayload): void;
-}
-
-type InternalChatStreamHandler = (
-  event: IpcMainInvokeEvent,
-  request: ChatStreamParams,
-) => Promise<number | "error" | undefined>;
-
-let internalChatStreamHandler: InternalChatStreamHandler | undefined;
-
-export function settleUnobservedChatStreamResult(
-  request: ChatStreamParams,
-  result: number | "error",
-  observer: ChatStreamExecutionObserver,
-  wasCancelled = false,
-): void {
-  if (wasCancelled) {
-    observer.onEnd?.({
-      chatId: request.chatId,
-      invocationRef: request.invocationRef,
-      streamId: request.streamId,
-      updatedFiles: false,
-      wasCancelled: true,
-    });
-    return;
-  }
-  if (result === "error") {
-    observer.onError?.({
-      chatId: request.chatId,
-      invocationRef: request.invocationRef,
-      streamId: request.streamId,
-      error: "Chat stream ended without reporting a terminal error",
-    });
-    return;
-  }
-  observer.onEnd?.({
-    chatId: request.chatId,
-    invocationRef: request.invocationRef,
-    streamId: request.streamId,
-    updatedFiles: false,
-  });
-}
-
-export function createObservedChatStreamSender(
-  sender: WebContents,
-  observeTerminal: (channel: string, payload: unknown) => void,
-): WebContents {
-  const targetIsUnavailable = (): boolean => {
-    if (sender.isDestroyed()) return true;
-    const senderWithCrashState = sender as WebContents & {
-      isCrashed?: () => boolean;
-    };
-    return senderWithCrashState.isCrashed?.() ?? false;
-  };
-  return new Proxy(sender, {
-    get(target, property, receiver) {
-      if (property === "id" && targetIsUnavailable()) {
-        // High-volume routing treats non-integer endpoints as non-producers.
-        // This prevents a real webContents that closed after route selection
-        // from being re-registered through this observation proxy.
-        return Number.NaN;
-      }
-      // `safeSend` must reach the proxy's `send` trap even if the presentation
-      // endpoint disappeared. Actor completion is independent of renderer
-      // delivery; the trap below separately checks whether delivery is safe.
-      if (property === "isDestroyed" || property === "isCrashed") {
-        return () => false;
-      }
-      if (property === "send") {
-        return (channel: string, payload: unknown) => {
-          observeTerminal(channel, payload);
-          if (targetIsUnavailable()) return;
-          try {
-            target.send(channel, payload);
-          } catch {
-            // Presentation delivery is best effort. The observer above is the
-            // main-owned lifecycle authority and has already been notified.
-          }
-        };
-      }
-      const value = Reflect.get(target, property, receiver);
-      return typeof value === "function" ? value.bind(target) : value;
-    },
-  });
-}
-
-/**
- * Compatibility seam for the in-process Vitest harness. Production renderers
- * must dispatch through the remote chat actor and never receive this endpoint.
- */
-export function registerLegacyChatStreamTestHandler(): void {
-  if (!process.env.VITEST) {
-    throw new Error("Legacy chat stream IPC is test-only");
-  }
-  registerTrustedIpcHandler("chat:stream", async (event, request) => {
-    if (!internalChatStreamHandler) {
-      throw new Error("Chat stream handlers have not been registered");
-    }
-    return internalChatStreamHandler(
-      event,
-      ChatStreamParamsSchema.parse(request),
-    );
-  });
-}
-
-export async function executeChatStreamFromActor(
-  sender: WebContents,
-  request: ChatStreamParams,
-  observer: ChatStreamExecutionObserver,
-): Promise<number | "error"> {
-  if (!internalChatStreamHandler) {
-    throw new Error("Chat stream handlers have not been registered");
-  }
-  if (
-    request.invocationRef &&
-    takePendingActorStreamCancellation(request.invocationRef)
-  ) {
-    return request.chatId;
-  }
-  executionObservers.set(
-    request.intentId ?? request.invocationRef?.operationId ?? "",
-    observer,
-  );
-  let terminalObserved = false;
-  let deferredCancellation: ChatStreamEndPayload | undefined;
-  const observeTerminal = (channel: string, payload: unknown) => {
-    if (terminalObserved) return;
-    if (channel === "chat:response:end") {
-      terminalObserved = true;
-      const response = payload as ChatStreamEndPayload;
-      if (response.wasCancelled) {
-        // Cancellation is announced to renderers before the handler has
-        // finished persisting its partial response. Keep actor authority
-        // pending until the handler unwinds so its completion snapshot only
-        // becomes observable after the cancellation notice is durable.
-        deferredCancellation = response;
-      } else {
-        observer.onEnd?.(response);
-      }
-    } else if (channel === "chat:response:error") {
-      terminalObserved = true;
-      observer.onError?.(payload as ChatStreamErrorPayload);
-    }
-  };
-  const observedSender = createObservedChatStreamSender(
-    sender,
-    observeTerminal,
-  );
-  try {
-    const result =
-      (await internalChatStreamHandler(
-        { sender: observedSender } as IpcMainInvokeEvent,
-        request,
-      )) ?? "error";
-    if (deferredCancellation) {
-      observer.onEnd?.(deferredCancellation);
-    } else if (!terminalObserved) {
-      const wasCancelled = request.invocationRef
-        ? cancelledActorInvocations.delete(request.invocationRef.operationId)
-        : false;
-      settleUnobservedChatStreamResult(request, result, observer, wasCancelled);
-    }
-    return result;
-  } finally {
-    if (request.invocationRef) {
-      cancelledActorInvocations.delete(request.invocationRef.operationId);
-    }
-    executionObservers.delete(
-      request.intentId ?? request.invocationRef?.operationId ?? "",
-    );
-  }
-}
-
-const executionObservers = new Map<string, ChatStreamExecutionObserver>();
-const cancelledActorInvocations = new Set<string>();
-const pendingActorStreamCancellations = new Set<string>();
-
-export function markPendingActorStreamCancellation(
-  invocationRef: ChatStreamInvocationRef,
-): void {
-  pendingActorStreamCancellations.add(invocationRef.operationId);
-}
-
-export function takePendingActorStreamCancellation(
-  invocationRef: ChatStreamInvocationRef,
-): boolean {
-  return pendingActorStreamCancellations.delete(invocationRef.operationId);
-}
-
-export function clearPendingActorStreamCancellation(
-  invocationRef: ChatStreamInvocationRef,
-): void {
-  pendingActorStreamCancellations.delete(invocationRef.operationId);
-}
-
-function executionObserver(
-  request: ChatStreamParams,
-): ChatStreamExecutionObserver | undefined {
-  return executionObservers.get(
-    request.intentId ?? request.invocationRef?.operationId ?? "",
-  );
-}
-
 // PROTOCOL-GROUNDED REGION: tracking/completion abstraction. Keep in sync with
 // src/chat_stream/host_transition.ts and src/chat_stream/main_actor.test.ts.
 interface TrackedStream {
   abortController: AbortController;
+  sender: SafeSender;
   invocationRef?: ChatStreamInvocationRef;
   /** @deprecated Correlation used only by pre-InvocationRef renderers. */
   streamId?: number;
@@ -559,7 +350,7 @@ export function takePartialResponseForStream(
 // unwind waiting. Keep in sync with src/chat_stream/host_transition.ts.
 async function cancelTrackedStreams(
   chatIds: number[],
-  sender: WebContents,
+  sender: SafeSender | undefined,
 ): Promise<boolean> {
   const trackedStreams = chatIds
     .map((chatId) => ({
@@ -598,26 +389,37 @@ async function cancelTrackedStreams(
   for (const { chatId, streams } of trackedStreams) {
     const correlations =
       streams.length > 0
-        ? streams.map(({ invocationRef, streamId }) => ({
+        ? streams.map(({ invocationRef, streamId, sender: streamSender }) => ({
             invocationRef,
             streamId,
+            sender: streamSender,
           }))
-        : [{ invocationRef: undefined, streamId: undefined }];
-    for (const { invocationRef, streamId } of correlations) {
-      if (invocationRef) {
-        cancelledActorInvocations.add(invocationRef.operationId);
+        : [{ invocationRef: undefined, streamId: undefined, sender }];
+    for (const {
+      invocationRef,
+      streamId,
+      sender: streamSender,
+    } of correlations) {
+      const targetSender = streamSender ?? sender;
+      if (targetSender) {
+        safeSend(targetSender, "chat:response:end", {
+          chatId,
+          invocationRef,
+          streamId,
+          updatedFiles: false,
+          wasCancelled: true,
+        } satisfies ChatStreamEndPayload);
       }
-      safeSend(sender, "chat:response:end", {
-        chatId,
-        invocationRef,
-        streamId,
-        updatedFiles: false,
-        wasCancelled: true,
-      } satisfies ChatStreamEndPayload);
     }
-    safeSend(sender, "chat:stream:end", {
-      chatId,
-    } satisfies ChatStreamTransportEndPayload);
+    const terminalSenders = new Set(
+      streams.map(({ sender: streamSender }) => streamSender),
+    );
+    if (terminalSenders.size === 0 && sender) terminalSenders.add(sender);
+    for (const terminalSender of terminalSenders) {
+      safeSend(terminalSender, "chat:stream:end", {
+        chatId,
+      } satisfies ChatStreamTransportEndPayload);
+    }
   }
 
   await Promise.all(
@@ -641,16 +443,7 @@ async function cancelTrackedStreams(
 export async function cancelActiveStreamsForChat(
   chatId: number,
   sender: WebContents,
-  pendingInvocationRef?: ChatStreamInvocationRef,
 ): Promise<boolean> {
-  if (
-    pendingInvocationRef &&
-    (activeStreams.get(chatId)?.size ?? 0) === 0 &&
-    (streamCompletions.get(chatId)?.size ?? 0) === 0
-  ) {
-    markPendingActorStreamCancellation(pendingInvocationRef);
-    return true;
-  }
   return cancelTrackedStreams([chatId], sender);
 }
 
@@ -661,7 +454,7 @@ export async function cancelActiveStreamsForChat(
  */
 export async function cancelActiveStreamsForApp(
   appId: number,
-  sender: WebContents,
+  sender?: SafeSender,
 ): Promise<boolean> {
   const inFlightChatIds = [
     ...new Set([...activeStreams.keys(), ...streamCompletions.keys()]),
@@ -819,7 +612,6 @@ export function registerChatStreamHandlers() {
     streamAdmissionBlockCounts.clear();
     chatStreamAdmissionBlockCounts.clear();
     admissionPendingStreams.clear();
-    pendingActorStreamCancellations.clear();
     resolveAllAdmissionWaiters(streamAdmissionWaiters);
     resolveAllAdmissionWaiters(chatStreamAdmissionWaiters);
   });
@@ -863,6 +655,7 @@ export function registerChatStreamHandlers() {
       let dyadRequestId: string | undefined;
       trackedStream = {
         abortController,
+        sender: event.sender,
         invocationRef: req.invocationRef,
         streamId: req.streamId,
       };
@@ -874,10 +667,7 @@ export function registerChatStreamHandlers() {
           where: eq(chats.id, req.chatId),
           with: {
             messages: {
-              orderBy: (messages, { asc }) => [
-                asc(messages.createdAt),
-                asc(messages.id),
-              ],
+              orderBy: (messages, { asc }) => [asc(messages.createdAt)],
             },
             app: true, // Include app information
           },
@@ -1322,24 +1112,17 @@ ${componentSnippet}
       // synchronous transaction. This keeps the idempotent message insert and
       // the mode latch atomic. The conditional update also arbitrates
       // concurrent first turns; a loser reloads and uses the winner below.
-      const acceptedTurn = await withChatQueueLock(req.chatId, () =>
-        acceptChatTurn(db, {
-          chatId: req.chatId,
-          storedChatMode: chat.chatMode,
-          selectedChatMode,
-          content:
-            implementPlanDisplayPrompt ??
-            displayUserPrompt ??
-            defaultAiUserPrompt,
-          userInputRequestId: req.userInputRequestId,
-          chatTurnIntentId: req.intentId,
-          chatTurnIntent: executionObserver(req)?.intent,
-        }),
-      );
+      const acceptedTurn = acceptChatTurn(db, {
+        chatId: req.chatId,
+        storedChatMode: chat.chatMode,
+        selectedChatMode,
+        content:
+          implementPlanDisplayPrompt ??
+          displayUserPrompt ??
+          defaultAiUserPrompt,
+        userInputRequestId: req.userInputRequestId,
+      });
       mutatedPersistedChat = true;
-      if (acceptedTurn.userMessageId !== null) {
-        executionObserver(req)?.onAccepted?.(acceptedTurn.userMessageId);
-      }
 
       if (acceptedTurn.userMessageId === null) {
         // A renderer replayed a continuation after main had already accepted
@@ -1353,13 +1136,12 @@ ${componentSnippet}
           streamId: req.streamId,
           acceptedUserInputRequestId: req.userInputRequestId,
         } satisfies ChatStreamChunkPayload);
-        const terminalResponse = {
+        safeSend(event.sender, "chat:response:end", {
           chatId: req.chatId,
           invocationRef: req.invocationRef,
           streamId: req.streamId,
           updatedFiles: false,
-        } satisfies ChatStreamEndPayload;
-        safeSend(event.sender, "chat:response:end", terminalResponse);
+        } satisfies ChatStreamEndPayload);
         return req.chatId;
       }
 
@@ -1443,10 +1225,7 @@ ${componentSnippet}
         where: eq(chats.id, req.chatId),
         with: {
           messages: {
-            orderBy: (messages, { asc }) => [
-              asc(messages.createdAt),
-              asc(messages.id),
-            ],
+            orderBy: (messages, { asc }) => [asc(messages.createdAt)],
           },
           app: true, // Include app information
         },
@@ -1922,10 +1701,7 @@ This conversation includes one or more image attachments. When the user uploads 
             where: eq(chats.id, parseInt(req.prompt.split("=")[1])),
             with: {
               messages: {
-                orderBy: (messages, { asc }) => [
-                  asc(messages.createdAt),
-                  asc(messages.id),
-                ],
+                orderBy: (messages, { asc }) => [asc(messages.createdAt)],
               },
             },
           });
@@ -2517,10 +2293,7 @@ This conversation includes one or more image attachments. When the user uploads 
             where: eq(chats.id, req.chatId),
             with: {
               messages: {
-                orderBy: (messages, { asc }) => [
-                  asc(messages.createdAt),
-                  asc(messages.id),
-                ],
+                orderBy: (messages, { asc }) => [asc(messages.createdAt)],
               },
             },
           });
@@ -2543,7 +2316,7 @@ This conversation includes one or more image attachments. When the user uploads 
           }
 
           // Signal that the stream has completed
-          const terminalResponse = {
+          safeSend(event.sender, "chat:response:end", {
             chatId: req.chatId,
             invocationRef: req.invocationRef,
             streamId: req.streamId,
@@ -2552,17 +2325,15 @@ This conversation includes one or more image attachments. When the user uploads 
             extraFilesError: status.extraFilesError,
             warningMessages: status.warningMessages,
             chatSummary,
-          } satisfies ChatStreamEndPayload;
-          safeSend(event.sender, "chat:response:end", terminalResponse);
+          } satisfies ChatStreamEndPayload);
         } else {
-          const terminalResponse = {
+          safeSend(event.sender, "chat:response:end", {
             chatId: req.chatId,
             invocationRef: req.invocationRef,
             streamId: req.streamId,
             updatedFiles: false,
             chatSummary,
-          } satisfies ChatStreamEndPayload;
-          safeSend(event.sender, "chat:response:end", terminalResponse);
+          } satisfies ChatStreamEndPayload);
         }
       }
 
@@ -2572,12 +2343,11 @@ This conversation includes one or more image attachments. When the user uploads 
     } catch (error) {
       logger.error("Error calling LLM:", error);
       const errorMessage = isDyadError(error) ? error.message : String(error);
-      const rendererError = `Sorry, there was an error processing your request: ${errorMessage}`;
       safeSend(event.sender, "chat:response:error", {
         chatId: req.chatId,
         invocationRef: req.invocationRef,
         streamId: req.streamId,
-        error: rendererError,
+        error: `Sorry, there was an error processing your request: ${errorMessage}`,
       } satisfies ChatStreamErrorPayload);
 
       return "error";
@@ -2632,7 +2402,7 @@ This conversation includes one or more image attachments. When the user uploads 
       removeTrackedValue(streamCompletions, req.chatId, completion);
     }
   };
-  internalChatStreamHandler = chatStreamHandler;
+  registerTrustedIpcHandler("chat:stream", chatStreamHandler);
 
   // Handler to cancel an ongoing stream
   createTypedHandler(chatContracts.cancelStream, async (event, chatId) => {

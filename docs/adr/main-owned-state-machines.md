@@ -412,6 +412,29 @@ read-only contracts remain registered.
 work. Any origin-resolution needed before a later checkout starts from that
 state-sensitive checkout intent, not from pane visibility.
 
+Main owns one `version_preview` actor per app. Its remote projection contains
+the serializable checkout/recovery state, revision, origin branch, semantic
+checkout intent, active invocation reference, and pure capability selectors.
+It excludes window-local pane visibility, selected diff file, navigation,
+toast state, repository paths, command handles, and Electron objects.
+Presentation settlement is routed once to the initiating window; durable
+branch/version/app/problem convergence is also published through the global
+epoch-keyed query-invalidation channel.
+
+Only domain recovery state is persisted under a versioned adapter schema.
+During process restart, main compares that state with the repository's current
+branch: an origin checkout closes the retained session, while a detached or
+divergent checkout enters `recovery-required` and retains the origin branch for
+an explicit retry. Active work is retained without subscribers and across
+window close, and new windows bootstrap from the same actor snapshot.
+
+Entity deletion fences new version-preview admission before the app lock,
+requests return/settlement for an active or recovery actor, and disposes that
+actor before repository and database removal. The deletion budget removes the
+renderer controller, manager, per-command adapter plumbing, and the
+version-mutation IPC contracts; independently used read-only version queries
+remain.
+
 ### `image_generation`
 
 | Event                                                                           | Classification and admission                                                                                    |

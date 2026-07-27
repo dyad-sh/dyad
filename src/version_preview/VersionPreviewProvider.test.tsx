@@ -1,29 +1,39 @@
 import { StrictMode } from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { createStore } from "jotai";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 import { useVersionPreview } from "@/hooks/useVersionPreview";
-import type { VersionPreviewRuntime } from "./controller";
-import { VersionPreviewManager } from "./manager";
+import { CLOSED_STATE } from "./state";
 import { VersionPreviewProvider } from "./VersionPreviewProvider";
 
-function runtime(): VersionPreviewRuntime {
-  return {
-    notifyError: vi.fn(),
-    notifyRecovery: vi.fn(),
-    dismissRecovery: vi.fn(),
-    commands: {
-      resolveOriginBranch: vi.fn().mockResolvedValue({ branch: "main" }),
-      checkoutVersion: vi.fn().mockResolvedValue(undefined),
-      returnToBranch: vi.fn().mockResolvedValue(undefined),
-      switchBranch: vi.fn().mockResolvedValue(undefined),
-      restoreVersion: vi.fn().mockResolvedValue(undefined),
-      restoreToMessage: vi
-        .fn()
-        .mockResolvedValue({ repositoryOutcome: "target-applied" }),
+const actor = {
+  dispatch: vi.fn().mockResolvedValue({ kind: "applied" }),
+  getView: () => ({
+    state: {
+      appId: 1,
+      revision: 0,
+      state: CLOSED_STATE,
+      activeInvocationRef: null,
+      lastSettlement: null,
     },
-  };
-}
+  }),
+  subscribe: () => () => undefined,
+};
+
+vi.mock("@/distributed_machines/react", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/distributed_machines/react")>()),
+  useRemoteMachineClient: () => ({ actor: () => actor }),
+  useDistributedMachine: () => ({
+    state: actor.getView().state,
+    projection: actor.getView().state,
+    connection: "ready",
+    dispatch: actor.dispatch,
+  }),
+}));
+
+vi.mock("@/hooks/useSelectChat", () => ({
+  useSelectChat: () => ({ selectChat: vi.fn() }),
+}));
 
 function Probe() {
   const { state, send } = useVersionPreview(1);
@@ -39,13 +49,15 @@ function Probe() {
 }
 
 describe("VersionPreviewProvider", () => {
-  it("keeps its manager live across StrictMode effect replay", async () => {
-    const manager = new VersionPreviewManager(runtime(), createStore());
+  it("keeps window-local presentation live across StrictMode replay", async () => {
+    const queryClient = new QueryClient();
     render(
       <StrictMode>
-        <VersionPreviewProvider manager={manager}>
-          <Probe />
-        </VersionPreviewProvider>
+        <QueryClientProvider client={queryClient}>
+          <VersionPreviewProvider>
+            <Probe />
+          </VersionPreviewProvider>
+        </QueryClientProvider>
       </StrictMode>,
     );
 

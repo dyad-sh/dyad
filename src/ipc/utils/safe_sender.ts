@@ -1,5 +1,10 @@
-import type { WebContents } from "electron";
 import log from "electron-log";
+
+export interface SafeSender {
+  isDestroyed(): boolean;
+  isCrashed?(): boolean;
+  send(channel: string, ...args: unknown[]): void;
+}
 
 /**
  * Sends an IPC message to the renderer only if the provided `WebContents` is
@@ -8,18 +13,15 @@ import log from "electron-log";
  * already been closed (e.g. during e2e test teardown).
  */
 export function safeSend(
-  sender: WebContents | null | undefined,
+  sender: SafeSender | null | undefined,
   channel: string,
   ...args: unknown[]
 ): void {
   if (!sender) return;
   if (sender.isDestroyed()) return;
-  // @ts-ignore – `isCrashed` exists at runtime but is not in the type defs
   if (typeof sender.isCrashed === "function" && sender.isCrashed()) return;
 
   try {
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore – allow variadic args beyond `data`
     sender.send(channel, ...args);
   } catch (error) {
     log.debug(

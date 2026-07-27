@@ -88,8 +88,6 @@ import { AppList } from "@/components/AppList";
 import { ChatList } from "@/components/ChatList";
 import { PrivacyBanner } from "@/components/TelemetryBanner";
 import { SubscriptionStatusBanner } from "@/components/SubscriptionStatusBanner";
-import { createVersionPreviewRuntime } from "@/version_preview/commands";
-import { VersionPreviewManager } from "@/version_preview/manager";
 import { VersionPreviewProvider } from "@/version_preview/VersionPreviewProvider";
 import { PreviewIframeProvider } from "@/preview_iframe/PreviewIframeProvider";
 import { PreviewIframeManager } from "@/preview_iframe/manager";
@@ -981,23 +979,6 @@ export async function setupHybridChatHarness(
         createPreviewIframeCommandAdapter(store),
       );
       activePreviewIframeManager = previewIframeManager;
-      const versionPreviewManager = new VersionPreviewManager(
-        createVersionPreviewRuntime({
-          queryClient,
-          store,
-          restartApp: (appId) =>
-            appRunManager.dispatch(appId, {
-              type: "RESTART",
-              startedAt: Date.now(),
-              options: {
-                removeNodeModules: false,
-                recreateSandbox: false,
-              },
-            }),
-        }),
-        store,
-      );
-
       const result = render(
         <QueryClientProvider client={queryClient}>
           <Provider store={store}>
@@ -1009,9 +990,7 @@ export async function setupHybridChatHarness(
                     <AppRunRemoteProvider manager={appRunManager}>
                       <GithubOpsProvider>
                         <ImageGenerationProvider>
-                          <VersionPreviewProvider
-                            manager={versionPreviewManager}
-                          >
+                          <VersionPreviewProvider>
                             <PreviewIframeProvider
                               appRunState={appRunManager}
                               manager={previewIframeManager}

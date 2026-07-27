@@ -680,6 +680,20 @@ app deletion first fences admission and prunes its read-model entries before
 bounded cancellation. Restart begins with no active-job state while preserving
 media already committed to disk.
 
+Status: **`version_preview` cutover implemented** — main owns the per-app
+checkout/recovery actor, command execution, restart reconciliation, and
+domain-only recovery persistence. Renderers attach to its safe revisioned
+projection while pane visibility, diff selection, toast, navigation, and
+query-refresh effects remain window-local. Active checkout continues after an
+initiating window closes; a second window can reattach; deletion fences new
+work, returns or settles the actor, and disposes it before repository removal.
+The renderer controller, manager, command adapter, and version-mutation IPC
+channels in this wave's deletion budget are removed in the same review stack.
+The verified lifecycle row remains the policy recorded above, and the
+serializability, projection, event-admission, and deletion decisions are
+recorded in the
+[B0 ADR](../docs/adr/main-owned-state-machines.md#version_preview).
+
 `connection_flow` and `mcp_oauth` are already correctly main-authoritative.
 First expose them through the common remote reference/read-model contract if
 needed. Their listener, timer, waiter, claim, and close-barrier registries stay

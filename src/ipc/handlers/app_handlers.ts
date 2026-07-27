@@ -137,6 +137,8 @@ import { githubOpsActorService } from "../services/github_ops_actor_service";
 import { imageGenerationActorService } from "../services/image_generation_actor_service";
 import { imageGenerationService } from "../services/image_generation_service";
 import { githubOpsService } from "../services/github_ops_service";
+import { versionPreviewActorService } from "../services/version_preview_actor_service";
+import { versionPreviewService } from "../services/version_preview_service";
 import {
   beginChatActorDeletion,
   settleChatActorsForDeletion,
@@ -391,12 +393,14 @@ async function deleteAppById(
   appId: number,
   options: DeleteAppByIdOptions = {},
 ): Promise<void> {
+  versionPreviewActorService.beginAppDeletion(appId);
   const releaseStreamAdmissionBlock = blockNewStreamsForApp(appId);
   githubOpsService.beginAppDeletion(appId);
   imageGenerationService.beginAppDeletion(appId);
   const releaseChatCreation = beginAppChatDeletion(appId);
   const releaseChatActorAdmission: (() => void)[] = [];
   try {
+    await versionPreviewActorService.prepareAppDeletion(appId);
     // Actor cancellation can wait for an in-flight stream to finish writes
     // under this app's lock. Drain before taking the lock, while the admission
     // barrier prevents another turn from entering behind us.
@@ -455,6 +459,7 @@ async function deleteAppById(
     });
 
     const actorCleanup = await Promise.allSettled([
+      versionPreviewActorService.disposeApp(appId),
       githubOpsActorService.disposeApp(appId),
       imageGenerationActorService.disposeApp(appId),
       appRunActorService.disposeApp(appId),
@@ -490,6 +495,7 @@ async function deleteAppById(
     releaseChatCreation();
     imageGenerationService.endAppDeletion(appId);
     githubOpsService.endAppDeletion(appId);
+    versionPreviewActorService.endAppDeletion(appId);
     releaseStreamAdmissionBlock();
   }
 }
@@ -1423,6 +1429,7 @@ export function registerAppHandlers() {
   });
 
   createTypedHandler(systemContracts.resetAll, async () => {
+    versionPreviewService.beginReset();
     githubOpsService.beginReset();
     imageGenerationService.beginReset();
     try {
@@ -1447,6 +1454,8 @@ export function registerAppHandlers() {
       logger.log("all GitHub operation actors disposed.");
       await imageGenerationActorService.disposeAllApps();
       logger.log("all image generation actors disposed.");
+      await versionPreviewActorService.disposeAllApps();
+      logger.log("all version preview actors disposed.");
       // Determine the paths of all apps in the database so that we can delete them.
       // We do the deletion last, so technically this is a TOCTOU race, but
       // it allows us to do the deletion last after removing the database
@@ -1504,6 +1513,7 @@ export function registerAppHandlers() {
     } finally {
       imageGenerationService.endReset();
       githubOpsService.endReset();
+      versionPreviewService.endReset();
     }
   });
 

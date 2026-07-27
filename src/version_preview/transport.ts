@@ -1,11 +1,75 @@
 import { z } from "zod";
 import type { InvocationRef } from "@/state_machines/invocation_ref";
 import type {
+  BranchSwitchFallback,
   PreviewError,
   PreviewEvent,
   PreviewSession,
   PreviewState,
 } from "./state";
+
+type SafeRemoteSession = Omit<
+  PreviewSession,
+  "selectedDiffFile" | "isDiffVisible"
+> & {
+  readonly selectedDiffFile: null;
+  readonly isDiffVisible: false;
+};
+
+type SafeRemoteFallback =
+  | Extract<BranchSwitchFallback, { type: "closed" }>
+  | {
+      [Kind in Exclude<
+        BranchSwitchFallback["type"],
+        "closed" | "recovery-required"
+      >]: {
+        readonly type: Kind;
+        readonly session: SafeRemoteSession;
+      };
+    }[Exclude<BranchSwitchFallback["type"], "closed" | "recovery-required">]
+  | {
+      readonly type: "recovery-required";
+      readonly session: SafeRemoteSession;
+      readonly error: PreviewError;
+    };
+
+type SafeRemotePreviewState =
+  | { readonly type: "closed" }
+  | {
+      [Kind in Exclude<
+        PreviewState["type"],
+        "closed" | "restoring" | "switching-branch" | "recovery-required"
+      >]: {
+        readonly type: Kind;
+        readonly session: SafeRemoteSession;
+      };
+    }[Exclude<
+      PreviewState["type"],
+      "closed" | "restoring" | "switching-branch" | "recovery-required"
+    >]
+  | {
+      readonly type: "restoring";
+      readonly session: SafeRemoteSession;
+      readonly fallback: "closed" | "browsing" | "previewing";
+    }
+  | {
+      readonly type: "switching-branch";
+      readonly appId: number;
+      readonly branch: string;
+      readonly fallback: SafeRemoteFallback;
+    }
+  | {
+      readonly type: "recovery-required";
+      readonly session: SafeRemoteSession;
+      readonly error: PreviewError;
+    };
+
+type MutuallyAssignable<Left, Right> = [Left] extends [Right]
+  ? [Right] extends [Left]
+    ? true
+    : false
+  : false;
+type AssertTrue<Value extends true> = Value;
 
 export const VERSION_PREVIEW_MACHINE_ID = "version_preview";
 export const VERSION_PREVIEW_INVOCATION_KIND = "version-preview-operation";
@@ -210,48 +274,52 @@ const fallbackSchema = z.discriminatedUnion("type", [
     })
     .strict(),
 ]);
-export const PreviewStateSchema: z.ZodType<PreviewState> = z.discriminatedUnion(
-  "type",
-  [
-    z.object({ type: z.literal("closed") }).strict(),
-    z
-      .object({ type: z.literal("viewing-diff"), session: sessionSchema })
-      .strict(),
-    z.object({ type: z.literal("browsing"), session: sessionSchema }).strict(),
-    z
-      .object({ type: z.literal("resolving-origin"), session: sessionSchema })
-      .strict(),
-    z
-      .object({ type: z.literal("checking-out"), session: sessionSchema })
-      .strict(),
-    z
-      .object({ type: z.literal("previewing"), session: sessionSchema })
-      .strict(),
-    z
-      .object({
-        type: z.literal("restoring"),
-        session: sessionSchema,
-        fallback: z.enum(["closed", "browsing", "previewing"]),
-      })
-      .strict(),
-    z.object({ type: z.literal("returning"), session: sessionSchema }).strict(),
-    z
-      .object({
-        type: z.literal("switching-branch"),
-        appId: z.number().int().nonnegative(),
-        branch: z.string(),
-        fallback: fallbackSchema,
-      })
-      .strict(),
-    z
-      .object({
-        type: z.literal("recovery-required"),
-        session: sessionSchema,
-        error: previewErrorSchema,
-      })
-      .strict(),
-  ],
-);
+export const PreviewStateSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("closed") }).strict(),
+  z
+    .object({ type: z.literal("viewing-diff"), session: sessionSchema })
+    .strict(),
+  z.object({ type: z.literal("browsing"), session: sessionSchema }).strict(),
+  z
+    .object({ type: z.literal("resolving-origin"), session: sessionSchema })
+    .strict(),
+  z
+    .object({ type: z.literal("checking-out"), session: sessionSchema })
+    .strict(),
+  z.object({ type: z.literal("previewing"), session: sessionSchema }).strict(),
+  z
+    .object({
+      type: z.literal("restoring"),
+      session: sessionSchema,
+      fallback: z.enum(["closed", "browsing", "previewing"]),
+    })
+    .strict(),
+  z.object({ type: z.literal("returning"), session: sessionSchema }).strict(),
+  z
+    .object({
+      type: z.literal("switching-branch"),
+      appId: z.number().int().nonnegative(),
+      branch: z.string(),
+      fallback: fallbackSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("recovery-required"),
+      session: sessionSchema,
+      error: previewErrorSchema,
+    })
+    .strict(),
+]);
+type _PreviewStateSchemaMatchesSafeRemoteState = AssertTrue<
+  MutuallyAssignable<z.infer<typeof PreviewStateSchema>, SafeRemotePreviewState>
+>;
+type _SafeRemoteStateIsAPreviewState = AssertTrue<
+  SafeRemotePreviewState extends PreviewState ? true : false
+>;
+type _SafeRemoteStateCoversEveryDomainTag = AssertTrue<
+  MutuallyAssignable<SafeRemotePreviewState["type"], PreviewState["type"]>
+>;
 
 export const VersionPreviewRemoteSnapshotSchema = z
   .object({
@@ -295,7 +363,7 @@ function stripSessionPresentation(session: PreviewSession) {
   } as const;
 }
 
-function stripWindowPresentation(state: PreviewState): PreviewState {
+function stripWindowPresentation(state: PreviewState): SafeRemotePreviewState {
   switch (state.type) {
     case "closed":
       return state;

@@ -6,7 +6,7 @@ import type { PropsWithChildren } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import type { Version } from "@/ipc/types";
-import type { PreviewState } from "@/version_preview/state";
+import { isPaneVisibleState, type PreviewState } from "@/version_preview/state";
 import { projectVersionPreview } from "@/version_preview/projection";
 import { VersionPane } from "./VersionPane";
 
@@ -62,6 +62,7 @@ vi.mock("@/hooks/useVersionPreview", () => ({
   useVersionPreview: () => ({
     state: mocks.state,
     projection: projectVersionPreview(mocks.state),
+    isPaneVisible: isPaneVisibleState(mocks.state),
     send: mocks.send,
     sendAndWaitForMutation: vi.fn(),
   }),

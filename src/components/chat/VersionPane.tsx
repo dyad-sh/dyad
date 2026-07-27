@@ -26,10 +26,7 @@ import {
 import { Virtuoso } from "react-virtuoso";
 
 import { useVersionPreview } from "@/hooks/useVersionPreview";
-import {
-  diffVersionIdForState,
-  isPaneVisibleState,
-} from "@/version_preview/state";
+import { diffVersionIdForState } from "@/version_preview/state";
 
 function HighlightMatch({
   text,
@@ -358,9 +355,9 @@ export function VersionPane() {
   const {
     state: previewState,
     projection: previewProjection,
+    isPaneVisible: isVisible,
     send,
   } = useVersionPreview(appId);
-  const isVisible = isPaneVisibleState(previewState);
   const isResolvingPreviewBranch = previewState.type === "resolving-origin";
   const isCheckingOutVersion = previewState.type === "checking-out";
   const isRevertingVersion = previewState.type === "restoring";

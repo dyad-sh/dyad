@@ -7,6 +7,7 @@ import type { HostedActorRef } from "@/distributed_machines/definition";
 import { remoteMachineHost } from "./distributed_machine_host";
 import { versionPreviewDefinition } from "./version_preview_definition";
 import { versionPreviewService } from "./version_preview_service";
+import { versionPreviewPersistence } from "./version_preview_persistence";
 
 type Host = Pick<
   typeof remoteMachineHost,
@@ -54,16 +55,24 @@ export class VersionPreviewActorService {
     await versionPreviewService.settle(appId);
   }
 
-  disposeApp(appId: number): Promise<void> {
-    return this.host.disposeKey(
-      versionPreviewDefinition.id,
-      versionPreviewKey(appId),
-      "entity-deletion",
-    );
+  async disposeApp(appId: number): Promise<void> {
+    try {
+      await this.host.disposeKey(
+        versionPreviewDefinition.id,
+        versionPreviewKey(appId),
+        "entity-deletion",
+      );
+    } finally {
+      versionPreviewPersistence.remove(appId);
+    }
   }
 
-  disposeAllApps(): Promise<void> {
-    return this.host.disposeMachine(versionPreviewDefinition.id);
+  async disposeAllApps(): Promise<void> {
+    try {
+      await this.host.disposeMachine(versionPreviewDefinition.id);
+    } finally {
+      versionPreviewPersistence.removeAll();
+    }
   }
 }
 

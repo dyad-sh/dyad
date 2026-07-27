@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useRef, useSyncExternalStore } from "react";
 import {
   useDistributedMachine,
   useRemoteMachineClient,
@@ -79,12 +79,14 @@ function toIntent(
 export function useVersionPreview(appId: number | null): {
   state: PreviewState;
   projection: VersionPreviewProjection;
+  isPaneVisible: boolean;
   send: (event: PreviewEvent) => void;
   sendAndWaitForMutation: (event: PreviewEvent) => Promise<void>;
 } {
   const routedAppId = appId ?? NULL_APP_ID;
   const key = versionPreviewKey(routedAppId);
   const presentationStore = useVersionPreviewPresentationStore();
+  const selectionEpoch = useRef(0);
   const client = useRemoteMachineClient();
   const actor = client.actor(versionPreviewClientDefinition, key);
   const remote = useDistributedMachine(versionPreviewClientDefinition, key);
@@ -102,11 +104,17 @@ export function useVersionPreview(appId: number | null): {
     appId === null
       ? CLOSED_STATE
       : combineVersionPreviewState(appId, remote.state.state, presentation);
+  const isPaneVisible =
+    appId !== null && presentationStore.isPaneVisible(appId);
 
   const dispatch = useCallback(
     async (event: PreviewEvent, waitForSettlement: boolean): Promise<void> => {
       if (appId === null) return;
-      presentationStore.send(appId, event);
+      const pendingSelectionEpoch =
+        event.type === "SELECT_VERSION" ? ++selectionEpoch.current : null;
+      if (pendingSelectionEpoch === null) {
+        presentationStore.send(appId, event);
+      }
       const id = operationId();
       const intent = toIntent(event, id);
       if (!intent) return;
@@ -136,6 +144,12 @@ export function useVersionPreview(appId: number | null): {
         const receipt = await actor.dispatch(intent);
         if (receipt.kind !== "applied") {
           throw new Error("The version operation was not accepted");
+        }
+        if (
+          pendingSelectionEpoch !== null &&
+          pendingSelectionEpoch === selectionEpoch.current
+        ) {
+          presentationStore.send(appId, event);
         }
         await settlement;
       } catch (error) {
@@ -172,5 +186,11 @@ export function useVersionPreview(appId: number | null): {
     };
   }, [remote.connection, state]);
 
-  return { state, projection, send, sendAndWaitForMutation };
+  return {
+    state,
+    projection,
+    isPaneVisible,
+    send,
+    sendAndWaitForMutation,
+  };
 }

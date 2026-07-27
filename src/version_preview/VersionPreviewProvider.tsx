@@ -59,6 +59,11 @@ export function VersionPreviewProvider({ children }: PropsWithChildren) {
             type: "APP_CHANGED",
             nextAppId,
             operationId: `version-preview:${globalThis.crypto.randomUUID()}`,
+          })
+          .catch(() => {
+            toast.error(
+              "Version preview could not finish switching apps. Reopen the app and try again.",
+            );
           });
       }
       previousAppId = nextAppId;
@@ -90,13 +95,20 @@ export function VersionPreviewProvider({ children }: PropsWithChildren) {
           toast.error(result.notification.message);
         }
         if (result.affectedChatId !== null) {
-          void ipc.chat.getChat(result.affectedChatId).then((chat) => {
-            jotaiStore.set(chatMessagesByIdAtom, (previous) => {
-              const next = new Map(previous);
-              next.set(result.affectedChatId!, chat.messages);
-              return next;
+          void ipc.chat
+            .getChat(result.affectedChatId)
+            .then((chat) => {
+              jotaiStore.set(chatMessagesByIdAtom, (previous) => {
+                const next = new Map(previous);
+                next.set(result.affectedChatId!, chat.messages);
+                return next;
+              });
+            })
+            .catch(() => {
+              toast.warning(
+                "The version changed, but the restored chat could not be refreshed.",
+              );
             });
-          });
         }
         if (result.createdChatId !== null) {
           selectChat({
@@ -138,10 +150,16 @@ export function VersionPreviewProvider({ children }: PropsWithChildren) {
               action: {
                 label: "Retry",
                 onClick: () => {
-                  void actor.dispatch({
-                    type: "RETRY_RETURN",
-                    operationId: `version-preview:${globalThis.crypto.randomUUID()}`,
-                  });
+                  void actor
+                    .dispatch({
+                      type: "RETRY_RETURN",
+                      operationId: `version-preview:${globalThis.crypto.randomUUID()}`,
+                    })
+                    .catch(() => {
+                      toast.error(
+                        "Version recovery could not be started. Please try again.",
+                      );
+                    });
                 },
               },
             },

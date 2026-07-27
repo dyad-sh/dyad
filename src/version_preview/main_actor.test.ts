@@ -20,6 +20,10 @@ const service = vi.hoisted(() => ({
   reconcile: vi.fn(),
   settle: vi.fn(async () => undefined),
   assertAcceptingOperations: vi.fn(),
+  assertReadyForIntent: vi.fn(),
+  beginReconciliation: vi.fn(),
+  endReconciliation: vi.fn(),
+  trackLifecycle: vi.fn((_appId: number, promise: Promise<unknown>) => promise),
 }));
 const presentation = vi.hoisted(() => ({
   recordInitiator: vi.fn(),
@@ -36,8 +40,11 @@ const database = vi.hoisted(() => ({
 }));
 const persistence = vi.hoisted(() => ({
   load: vi.fn((): any => ({ type: "closed" })),
-  save: vi.fn(),
+  schedule: vi.fn(),
+  checkpoint: vi.fn(),
+  flush: vi.fn(),
   remove: vi.fn(),
+  removeAll: vi.fn(),
 }));
 
 vi.mock("@/ipc/services/version_preview_service", () => ({
@@ -150,6 +157,7 @@ describe("version_preview main actor", () => {
     vi.clearAllMocks();
     database.findFirst.mockResolvedValue({ id: 7 });
     persistence.load.mockReturnValue({ type: "closed" });
+    persistence.checkpoint.mockImplementation(() => undefined);
   });
 
   it("continues checkout after the initiating window closes and reattaches", async () => {
@@ -293,6 +301,7 @@ describe("version_preview main actor", () => {
     service.reconcile.mockResolvedValue({ branch: null });
     const harness = createHarness();
     await harness.actorA.resync();
+    expect(service.beginReconciliation).toHaveBeenCalledWith(7);
     await flush();
 
     expect(harness.actorA.getSnapshot().state).toMatchObject({
@@ -303,6 +312,71 @@ describe("version_preview main actor", () => {
     expect(
       reconciled.type === "recovery-required" && reconciled.error.message,
     ).toMatch(/restarted during a version checkout/);
+    expect(service.endReconciliation).toHaveBeenCalledWith(7);
+
+    harness.releaseA();
+    harness.releaseB();
+    harness.clientA.dispose();
+    harness.clientB.dispose();
+    harness.transport.dispose();
+  });
+
+  it("closes an interrupted live-branch restore without inventing a return branch", async () => {
+    persistence.load.mockReturnValue({
+      type: "restoring",
+      fallback: "closed",
+      session: {
+        appId: 7,
+        originBranch: null,
+        targetVersionId: "abc123",
+        checkedOutVersionId: null,
+        exitIntent: { type: "none" },
+        selectedDiffFile: null,
+        isDiffVisible: false,
+      },
+    });
+    service.reconcile.mockResolvedValue({ branch: "main" });
+    const harness = createHarness();
+    await harness.actorA.resync();
+    await flush();
+
+    expect(harness.actorA.getSnapshot().state.type).toBe("closed");
+    expect(service.run).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "return", branch: "" }),
+      expect.anything(),
+    );
+
+    harness.releaseA();
+    harness.releaseB();
+    harness.clientA.dispose();
+    harness.clientB.dispose();
+    harness.transport.dispose();
+  });
+
+  it("does not start Git mutation when the recovery checkpoint fails", async () => {
+    service.resolveOriginBranch.mockResolvedValue({
+      branch: "feature/origin",
+    });
+    persistence.checkpoint.mockImplementationOnce(() => {
+      throw new Error("disk full");
+    });
+    const harness = createHarness();
+    await harness.actorA.resync();
+
+    await harness.actorA.dispatch({
+      type: "SELECT_VERSION",
+      versionId: "abc123",
+      operationId: "preview-checkpoint-failure",
+    });
+    await flush();
+
+    expect(service.run).not.toHaveBeenCalled();
+    expect(harness.actorA.getSnapshot().state.type).toBe("browsing");
+    expect(presentation.publishError).toHaveBeenCalledWith(
+      7,
+      "preview-checkpoint-failure",
+      expect.stringContaining("disk full"),
+    );
 
     harness.releaseA();
     harness.releaseB();

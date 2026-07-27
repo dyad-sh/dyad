@@ -6,9 +6,16 @@ const service = vi.hoisted(() => ({
   endAppDeletion: vi.fn(),
   settle: vi.fn(async () => undefined),
 }));
+const persistence = vi.hoisted(() => ({
+  remove: vi.fn(),
+  removeAll: vi.fn(),
+}));
 
 vi.mock("./version_preview_service", () => ({
   versionPreviewService: service,
+}));
+vi.mock("./version_preview_persistence", () => ({
+  versionPreviewPersistence: persistence,
 }));
 
 describe("VersionPreviewActorService", () => {
@@ -85,5 +92,20 @@ describe("VersionPreviewActorService", () => {
       operationId: "version-preview:delete:7",
     });
     expect(service.settle).toHaveBeenCalledWith(7);
+  });
+
+  it("removes persisted state even when no actor was instantiated", async () => {
+    const host = {
+      peek: vi.fn(() => undefined),
+      disposeKey: vi.fn(async () => undefined),
+      disposeMachine: vi.fn(async () => undefined),
+    };
+    const actors = new VersionPreviewActorService(host as never);
+
+    await actors.disposeApp(7);
+    await actors.disposeAllApps();
+
+    expect(persistence.remove).toHaveBeenCalledWith(7);
+    expect(persistence.removeAll).toHaveBeenCalled();
   });
 });

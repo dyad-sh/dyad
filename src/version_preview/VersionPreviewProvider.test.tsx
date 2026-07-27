@@ -1,7 +1,7 @@
 import { StrictMode } from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useVersionPreview } from "@/hooks/useVersionPreview";
 import { CLOSED_STATE } from "./state";
 import { VersionPreviewProvider } from "./VersionPreviewProvider";
@@ -49,6 +49,10 @@ function Probe() {
 }
 
 describe("VersionPreviewProvider", () => {
+  beforeEach(() => {
+    actor.dispatch.mockReset().mockResolvedValue({ kind: "applied" });
+  });
+
   it("keeps window-local presentation live across StrictMode replay", async () => {
     const queryClient = new QueryClient();
     render(
@@ -66,5 +70,42 @@ describe("VersionPreviewProvider", () => {
     expect(screen.getByTestId("probe").getAttribute("data-state")).toBe(
       "browsing",
     );
+  });
+
+  it("does not commit a local version selection when main rejects it", async () => {
+    actor.dispatch.mockResolvedValueOnce({
+      kind: "ignored",
+      reason: "invalid-transition",
+    });
+    const queryClient = new QueryClient();
+
+    function SelectionProbe() {
+      const { state, send } = useVersionPreview(1);
+      return (
+        <button
+          data-testid="selection-probe"
+          data-state={state.type}
+          onClick={() =>
+            send({ type: "SELECT_VERSION", versionId: "rejected-version" })
+          }
+        >
+          Select
+        </button>
+      );
+    }
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <VersionPreviewProvider>
+          <SelectionProbe />
+        </VersionPreviewProvider>
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(screen.getByTestId("selection-probe"));
+    await waitFor(() => expect(actor.dispatch).toHaveBeenCalled());
+    expect(
+      screen.getByTestId("selection-probe").getAttribute("data-state"),
+    ).toBe("closed");
   });
 });

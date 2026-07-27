@@ -13,6 +13,7 @@ type PresentationState =
       readonly type: "viewing-diff";
       readonly versionId: string;
       readonly file: PreviewSession["selectedDiffFile"];
+      readonly paneVisible: boolean;
     };
 
 const CLOSED_PRESENTATION: PresentationState = { type: "closed" };
@@ -32,6 +33,12 @@ export class VersionPreviewPresentationStore {
     return store.subscribe(listener);
   };
 
+  isPaneVisible(appId: number): boolean {
+    const state = this.getSnapshot(appId);
+    if (state.type === "browsing") return true;
+    return state.type === "viewing-diff" && state.paneVisible;
+  }
+
   send(appId: number, event: PreviewEvent): void {
     const store = this.ensure(appId);
     const current = store.getSnapshot();
@@ -44,6 +51,7 @@ export class VersionPreviewPresentationStore {
           type: "viewing-diff",
           versionId: event.versionId,
           file: null,
+          paneVisible: true,
         });
         return;
       case "VIEW_VERSION_DIFF":
@@ -51,6 +59,7 @@ export class VersionPreviewPresentationStore {
           type: "viewing-diff",
           versionId: event.versionId,
           file: event.file,
+          paneVisible: false,
         });
         return;
       case "SELECT_DIFF_FILE":
@@ -126,16 +135,14 @@ export function combineVersionPreviewState(
     remote.type !== "browsing" &&
     remote.type !== "viewing-diff"
   ) {
-    const isDiffVisible = presentation.type === "viewing-diff";
+    const isDiffVisible =
+      presentation.type === "viewing-diff" &&
+      presentation.versionId === remote.session.targetVersionId;
     return {
       ...remote,
       session: {
         ...remote.session,
-        selectedDiffFile:
-          isDiffVisible &&
-          presentation.versionId === remote.session.targetVersionId
-            ? presentation.file
-            : null,
+        selectedDiffFile: isDiffVisible ? presentation.file : null,
         isDiffVisible,
       },
     };

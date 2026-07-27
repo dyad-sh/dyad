@@ -15,6 +15,7 @@ const NO_BRANCH = "<no-branch>";
 
 export class VersionPreviewService {
   private readonly deletionFences = new Map<number, number>();
+  private readonly reconcilingApps = new Set<number>();
   private readonly pendingByApp = new Map<number, Set<Promise<unknown>>>();
   private resetFenceCount = 0;
 
@@ -140,10 +141,35 @@ export class VersionPreviewService {
     }
   }
 
+  beginReconciliation(appId: number): void {
+    this.reconcilingApps.add(appId);
+  }
+
+  endReconciliation(appId: number): void {
+    this.reconcilingApps.delete(appId);
+  }
+
+  assertReadyForIntent(appId: number): void {
+    this.assertAcceptingOperations(appId);
+    if (this.reconcilingApps.has(appId)) {
+      throw new DyadError(
+        "Version preview is reconciling after restart",
+        DyadErrorKind.Precondition,
+      );
+    }
+  }
+
   async settle(appId: number): Promise<void> {
     while (this.pendingByApp.get(appId)?.size) {
       await Promise.allSettled(this.pendingByApp.get(appId) ?? []);
     }
+  }
+
+  trackLifecycle<Result>(
+    appId: number,
+    promise: Promise<Result>,
+  ): Promise<Result> {
+    return this.track(appId, promise);
   }
 
   private track<Result>(

@@ -394,6 +394,10 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
 - Model hydration explicitly when persisted state gates machine behavior.
   Persist through an adapter-owned, debounced command using a versioned zod
   schema; do not let components write snapshots independently.
+- When a side effect can make recovery state externally observable (for
+  example, detaching Git HEAD), force and await persistence of the exact
+  committed checkpoint before starting it. Observer error isolation must not
+  allow the side effect to run after that checkpoint fails.
 - Define merge/replacement semantics for events received during hydration.
   On teardown, flush the latest accepted snapshot through a transport that is
   safe for the lifecycle boundary (for example, one-way IPC during pagehide).
@@ -401,6 +405,10 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   entity lock. Recheck the fence inside the lock, stop actor admission before
   unrelated awaited cleanup, and make actor disposal flush every admitted
   command before database or filesystem deletion.
+- Deletion settlement tracks the full command-runner continuation, including
+  post-handler lifecycle work and the terminal event that may synchronously
+  enqueue compensation. Waiting only for the low-level handler promise can
+  dispose the actor before its compensating command exists.
 - A persisted main-owned recovery actor must reconcile its domain facts with
   the external resource before accepting new mutations after restart. Treat
   matching origin state as closed and detached/divergent state as explicit

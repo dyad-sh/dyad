@@ -167,21 +167,37 @@ describe("local-agent cancel todos (integration)", () => {
       },
       harness.bridge.fakeEvent.sender,
     );
-    await Promise.all([selectedStream, backgroundStream]);
+    const [selectedStreamResult, backgroundStreamResult] = await Promise.all([
+      selectedStream,
+      backgroundStream,
+    ]);
 
     expect(result).toHaveProperty("createdChatId");
     expect(Date.now() - restoreStartedAt).toBeLessThan(15_000);
-    const cancelledChatIds = harness.bridge.sentEvents
-      .slice(cancellationEventBaseline)
+    const cancelledChatIds = [
+      selectedStreamResult.event("chat:response:end")?.payload,
+      backgroundStreamResult.event("chat:response:end")?.payload,
+    ]
       .filter(
-        (event) =>
-          event.channel === "chat:response:end" &&
-          (event.args[0] as { wasCancelled?: boolean })?.wasCancelled,
+        (payload): payload is { chatId: number; wasCancelled: boolean } =>
+          typeof payload === "object" &&
+          payload !== null &&
+          "wasCancelled" in payload &&
+          payload.wasCancelled === true,
       )
-      .map((event) => (event.args[0] as { chatId: number }).chatId);
+      .map(({ chatId }) => chatId);
     expect(new Set(cancelledChatIds)).toEqual(
       new Set([selectedChat.id, backgroundChat.id]),
     );
+    expect(
+      harness.bridge.sentEvents
+        .slice(cancellationEventBaseline)
+        .some(
+          (event) =>
+            event.channel === "chat:response:end" &&
+            (event.args[0] as { wasCancelled?: boolean })?.wasCancelled,
+        ),
+    ).toBe(false);
   }, 60_000);
 
   it("waits streams admitted while an app restore barrier is active", async () => {

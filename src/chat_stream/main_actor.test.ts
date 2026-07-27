@@ -633,4 +633,34 @@ describe("main-hosted chat stream actor", () => {
     await transport.dispose();
     await host.dispose();
   });
+
+  it("settles cancellation that arrives before stream registration", async () => {
+    const clock = createFakeClock();
+    const host = new ActorHost({
+      placement: "main",
+      clock,
+      ids: createSequentialIdSource(),
+    });
+    host.register(chatStreamDefinition);
+    const actor = host.ensure(chatStreamDefinition, chatStreamKey(7));
+
+    actor.enqueue({ type: "SUBMIT", intent: turn("cancel-during-admission") });
+    actor.enqueue({
+      type: "CANCEL",
+      invocationRef: turn("cancel-during-admission").invocationRef!,
+    });
+
+    await vi.waitFor(() =>
+      expect(actor.getSnapshot()).toMatchObject({
+        phase: "idle",
+        lastCompletion: {
+          intentId: "cancel-during-admission",
+          outcome: "cancelled",
+        },
+      }),
+    );
+    expect(execution.observers.has("cancel-during-admission")).toBe(false);
+
+    await host.dispose();
+  });
 });

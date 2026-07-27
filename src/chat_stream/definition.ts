@@ -170,6 +170,27 @@ function createCommandRunner(
             command.intent.originWindowSessionId,
           );
           const targetAppId = await requireExistingChat(context.key.chatId);
+          const current = context.getSnapshot();
+          if (
+            current.phase === "cancelling" &&
+            current.active?.intent.intentId === command.intent.intentId &&
+            current.active.invocationRef.operationId ===
+              invocationRef.operationId
+          ) {
+            emit({
+              type: "STREAM_ENDED",
+              intentId: command.intent.intentId,
+              invocationRef,
+              response: {
+                chatId: context.key.chatId,
+                invocationRef,
+                updatedFiles: false,
+                wasCancelled: true,
+              },
+              targetAppId,
+            });
+            return;
+          }
           void executeChatStreamFromActor(
             endpoint,
             {

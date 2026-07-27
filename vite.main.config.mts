@@ -26,7 +26,6 @@ export default defineConfig({
         "better-sqlite3",
         "dyad-keychain-reader",
         "node-pty",
-        "mustardscript",
         "pg",
       ],
     },

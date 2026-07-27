@@ -4,6 +4,7 @@ import {
   BoundedOutputBuffer,
   DEFAULT_MAX_BUFFERED_OUTPUT_BYTES,
 } from "./bounded_output_buffer";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const DEFAULT_PTY_NAME = "xterm-color";
 const DEFAULT_PTY_COLS = 160;
@@ -121,6 +122,7 @@ class StreamingAnsiStripper {
 export interface PtyCommandExecutionOptions {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
+  signal?: AbortSignal;
   timeoutMs?: number;
   cols?: number;
   rows?: number;
@@ -342,9 +344,16 @@ export async function runPtyCommand(
   options: PtyCommandExecutionOptions = {},
   ptySpawner: PtySpawner = spawnPty,
 ): Promise<PtyCommandExecutionResult> {
+  const displayedCommand =
+    options.displayCommand ?? buildDisplayedCommand(command, args);
+  if (options.signal?.aborted) {
+    throw new DyadError(
+      `Command '${displayedCommand}' was cancelled.`,
+      DyadErrorKind.UserCancelled,
+    );
+  }
+
   return new Promise((resolve, reject) => {
-    const displayedCommand =
-      options.displayCommand ?? buildDisplayedCommand(command, args);
     const timeoutMs = options.timeoutMs ?? DEFAULT_PTY_COMMAND_TIMEOUT_MS;
     const outputBuffer = new BoundedOutputBuffer(
       options.maxOutputBytes ?? DEFAULT_MAX_BUFFERED_OUTPUT_BYTES,
@@ -364,6 +373,7 @@ export async function runPtyCommand(
       if (timeoutId) {
         clearTimeout(timeoutId);
       }
+      options.signal?.removeEventListener("abort", handleAbort);
       dataSubscription.dispose();
       exitSubscription.dispose();
       callback();
@@ -417,6 +427,30 @@ export async function runPtyCommand(
         ),
       );
     });
+
+    function handleAbort() {
+      outputBuffer.clear();
+      settle(() =>
+        reject(
+          new DyadError(
+            `Command '${displayedCommand}' was cancelled.`,
+            DyadErrorKind.UserCancelled,
+          ),
+        ),
+      );
+
+      try {
+        terminatePtyProcess(ptyProcess);
+      } catch {
+        // Best effort only. Cancellation remains the source of truth.
+      }
+    }
+
+    options.signal?.addEventListener("abort", handleAbort, { once: true });
+    if (options.signal?.aborted) {
+      handleAbort();
+      return;
+    }
 
     timeoutId = setTimeout(() => {
       const timeoutMessage = buildTimeoutMessage(displayedCommand, timeoutMs);

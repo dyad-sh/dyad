@@ -130,7 +130,7 @@ export class AppManagement {
 
   async expectNoAppUpgrades() {
     await expect(this.page.getByTestId("no-app-upgrades-needed")).toBeVisible({
-      timeout: Timeout.LONG,
+      timeout: Timeout.EXTRA_LONG * 2,
     });
   }
 
@@ -197,16 +197,17 @@ export class AppManagement {
   // Imported apps default to needs_app_blueprint=0; flip it so tests can
   // exercise the blueprint approval flow against an imported fixture.
   async enableAppBlueprintForCurrentApp() {
-    const appName = await this.getCurrentAppName();
-    if (!appName) {
+    const appPath =
+      await this.getTitleBarAppNameButton().getAttribute("data-app-path");
+    if (!appPath) {
       throw new Error("No current app to enable blueprint for");
     }
-    await this.page.evaluate(async (appName) => {
+    await this.page.evaluate(async (appPath) => {
       await (window as any).electron.ipcRenderer.invoke(
         "test:set-needs-app-blueprint",
-        { appName, value: true },
+        { appPath, value: true },
       );
-    }, appName);
+    }, appPath);
   }
 
   async importApp(appDir: string) {
@@ -306,7 +307,7 @@ export class AppManagement {
     );
   }
 
-  async ensureCodeExplorerReady() {
+  async ensureTypeScriptProjectReady() {
     const appPath = await this.getCurrentAppPath();
     if (!appPath) {
       throw new Error("No app selected");
@@ -330,7 +331,7 @@ export class AppManagement {
               'require.resolve("typescript", { paths: [appPath] });',
               'const hasTsconfig = fs.existsSync(path.join(appPath, "tsconfig.app.json")) || fs.existsSync(path.join(appPath, "tsconfig.json"));',
               'if (!hasTsconfig) throw new Error("No tsconfig.app.json or tsconfig.json found");',
-              'console.log("Code explorer ready");',
+              'console.log("TypeScript project ready");',
             ].join(""),
           ],
           {
@@ -340,7 +341,7 @@ export class AppManagement {
           },
         );
         lastOutput = (stdout || "").toString().trim();
-        if (lastOutput.includes("Code explorer ready")) {
+        if (lastOutput.includes("TypeScript project ready")) {
           return;
         }
       } catch (error: any) {
@@ -359,7 +360,7 @@ export class AppManagement {
     }
 
     throw new Error(
-      `Code explorer was not ready in ${appPath} after 3 minutes. Last output: ${lastOutput}`,
+      `TypeScript project was not ready in ${appPath} after 3 minutes. Last output: ${lastOutput}`,
     );
   }
 }

@@ -1,52 +1,25 @@
-# Hybrid chat harness — rendering the real UI over the real IPC stack
+# Hybrid Chat Harness
 
-`setupHybridChatHarness` renders the **real** `<ChatPanel>` (React Testing
-Library under happy-dom) wired to the **real** main-process IPC handlers in the
-same Node process. Clicking the real Send button drives the whole stack — real
-fake-LLM HTTP, real tag processor, real file writes / git / sqlite — and the
-streamed assistant message renders in the DOM, exactly like production.
+`setupHybridChatHarness` mounts real React surfaces under happy-dom and wires
+them to the real main-process IPC handlers in the same process. It composes the
+node chat-flow harness, full IPC registration, and a renderer IPC bridge.
 
-It is a superset of the node [`setupChatFlowHarness`](./CHAT_FLOW_HARNESS.md):
-it reuses that harness verbatim (server, db, git checkout, `chat:stream`) and
-adds `registerIpcHandlers()` (every channel the UI invokes) + a fake
-`window.electron` bridge + a `mount()` helper.
+Use it only when the behavior must be observed through rendered UI or driven
+through a real renderer event. Prefer the node harness for files, Git, database,
+stream protocol, or request payload assertions.
 
----
-
-## 1. When to use hybrid vs node
-
-Default to the **node** harness. It is faster (no DOM), simpler, and covers
-almost everything a migrated `chat:stream` spec asserts.
-
-| Use the **node** harness (`setupChatFlowHarness`) when…    | Use the **hybrid** harness when…                                                                                 |
-| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| You assert on files / git / db / the LLM request `[dump]`. | You assert on **rendered UI** (a streamed message, a banner, a badge).                                           |
-| You call `chat:stream` directly and inspect its events.    | The behavior can only be driven through a **real UI event** (clicking Send, an approval button, input clearing). |
-| You don't care how the renderer displays anything.         | You are porting a Playwright spec whose assertions are DOM-shaped.                                               |
-
-If a test would pass with the node harness, use the node harness.
-
----
-
-## 2. Test-file skeleton
-
-Hybrid harness tests are named `*.integration.test.ts` or
-`*.integration.test.tsx`. The Vitest `integration` project supplies
-the happy-dom environment, `disableSameOriginPolicy`, the shared `electron` /
-PostHog / i18n mocks, `NODE_ENV=development`, and failure DOM dumps via
-`src/testing/hybrid.setup.ts`.
+## Test skeleton
 
 ```tsx
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-
-import { screen, waitFor } from "@testing-library/react";
+import { cleanup, screen } from "@testing-library/react";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   setupHybridChatHarness,
   type HybridChatHarness,
 } from "@/testing/hybrid_chat_harness";
 import { h } from "@/testing/hybrid.setup";
 
-describe("my UI feature (hybrid)", () => {
+describe("rendered chat behavior", () => {
   let harness: HybridChatHarness;
 
   beforeAll(async () => {
@@ -54,335 +27,86 @@ describe("my UI feature (hybrid)", () => {
       electronMock: h,
       settings: { isTestMode: true },
     });
-  }, 60_000);
-
-  afterAll(async () => {
-    await harness?.dispose();
   });
 
-  it("renders the streamed message", async () => {
+  afterEach(cleanup);
+
+  afterAll(async () => {
+    await harness.dispose();
+  });
+
+  it("renders a streamed response", async () => {
     harness.mount();
-    const { send } = await harness.typeInChat("tc=dyad-write-angle");
+    const { send } = await harness.typeInChat("tc=agent/simple-response");
     send();
-    await waitFor(() => expect(screen.getByText(/AFTER TAG/)).toBeTruthy());
-    await harness.waitForStreamEnd(harness.chatId); // BEFORE any main-side assert
-    expect(harness.appFileExists("src/foo/bar.tsx")).toBe(true);
-  }, 60_000);
+    await harness.waitForStreamEnd(harness.chatId);
+    expect(await screen.findByTestId("messages-list")).toBeTruthy();
+  });
 });
 ```
 
-Notes:
+Call `mount()` or `mountSurface()` in every test. Each mount gets a new Jotai
+store. React Testing Library cleanup removes the tree but does not dispose the
+main-process harness.
 
-- `settings: { isTestMode: true }` makes `MessagesList` render a plain
-  (non-Virtuoso) list — the same path the Playwright suite renders and the one
-  `screen.getByText` can see.
-- The setup file's three mocks are the **only** shared mocks needed: `electron`
-  (the shared node-mock),
-  `posthog-js/react` (offline telemetry), `react-i18next` (so `t()` works without
-  the renderer's i18next bootstrap). Lexical, framer-motion, and Virtuoso mount
-  cleanly — do not mock them.
-- If a test needs genuinely import-time env such as `E2E_TEST_BUILD`, keep a
-  small local `vi.hoisted` block before app imports and still pass
-  `electronMock: h` from `@/testing/hybrid.setup`.
-- On test failure, `src/testing/hybrid.setup.ts` prints
-  `prettyDOM(document.body, 20_000)`. Bridge event history is still available on
-  `harness.bridge.sentEvents`; automatic failure printing of those events needs
-  a future harness/bridge hook to expose the active bridge to the setup file.
+## Setup options
 
----
+All node harness options are available. Hybrid-specific options are:
 
-## 3. API reference
+- `silenceActWarnings`: wrap bridge dispatch in `act`; defaults to
+  `true`.
+- `assertNoMissingChannels`: fail disposal if renderer code called an
+  unregistered channel; defaults to `true`.
+- `testBuild`: set call-time E2E environment for fake GitHub/catalog routes.
+  Modules that capture `IS_TEST_BUILD` at import time still require a
+  `vi.hoisted` environment assignment before imports.
 
-### `setupHybridChatHarness(options): Promise<HybridChatHarness>`
+## Mounting
 
-`options` extends [`ChatFlowHarnessOptions`](./CHAT_FLOW_HARNESS.md#2-setupchatflowharnessoptions)
-(so `electronMock` is required, and `fixtureApp`, `autoApprove`, `chatMode`,
-`selectedModel`, `provider`, `model`, `settings`, … all pass straight through),
-plus:
+`mount()` renders ChatPanel. `mountSurface()` supports the home, chat,
+app-details, database, import, settings, provider-settings, and media routes.
+Mount options can add plan/security panels, app/chat lists, the privacy banner,
+title bar, and renderer event wiring.
 
-| Option                    | Default | Purpose                                                                                                                                                                                                                                                                                                                                                                       |
-| ------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `silenceActWarnings`      | `true`  | Wrap bridge event dispatch in `act` so async stream events don't log "not wrapped in act".                                                                                                                                                                                                                                                                                    |
-| `assertNoMissingChannels` | `true`  | Fail teardown if renderer code invoked an unregistered IPC channel.                                                                                                                                                                                                                                                                                                           |
-| `testBuild`               | `false` | Set `E2E_TEST_BUILD` / `FAKE_LLM_PORT` for handlers that re-read the env at call time (GitHub, remote model catalog). Does **not** reach import-time `IS_TEST_BUILD` snapshots (Neon, Supabase, Vercel, provider key validation) — those also need a `vi.hoisted(() => { process.env.E2E_TEST_BUILD = "true"; })` block above the imports; the harness warns if it's missing. |
+## Common helpers
 
-Common option recipes:
+- `typeInChat`, `setChatInputValue`, `pressEnterInChat`
+- `setChatAttachments`
+- `waitForStreamEnd`, `waitForNextStreamEnd`, `waitForEvent`
+- `waitForRenderedText`
+- `openPopover`, `clickMenuItem`, `findDialog`, `confirmDialog`
+- `setSwitch`, `selectFromBaseUiSelect`, `selectChatMode`
+- `createChat`
+- `bridge.settleInFlight()`
+- route, plan-handoff, stream-residue, and app-runtime state helpers
 
-- **seed settings** — `settings: { isTestMode: true, autoApproveChanges: false, ... }`.
-- **auto-approve off** — `autoApprove: false` (proposals stay pending; assert the
-  approval UI, then drive it).
-- **a specific chat mode** — `chatMode: "ask"` seeds `selectedChatMode`; per-turn
-  overrides go on `streamChat({ requestedChatMode })` or come from the real chat
-  mode selector in the UI.
-- **multiple chats** — `const c2 = await harness.createChat()` then
-  `harness.mount({ chatId: c2 })`.
-- **Dyad Pro / engine routes** — pass `engine: true` so
-  `DYAD_ENGINE_URL` / `DYAD_GATEWAY_URL` point at the harness fake server.
+Happy-dom cannot type into the Lexical contenteditable reliably, so chat input
+helpers seed the same Jotai state that Lexical's `onChange` owns, then drive
+the real submit path. Base UI popovers and selects also require the harness
+helpers because a bare click is insufficient in happy-dom.
 
-### The harness object
+## Stream synchronization
 
-Everything on [`ChatFlowHarness`](./CHAT_FLOW_HARNESS.md#harness-object) is
-re-exported unchanged (`db`, `appDir`, `appId`, `chatId`, `userDataDir`,
-`fakeLlmUrl`, `streamChat`, `getServerDump`, `getAppFiles`, `readAppFile`,
-`appFileExists`, `gitLog`, …), plus:
+Rendered text can appear before main-process finalization, Git commits, and
+database post-effects complete. Await `waitForStreamEnd` before asserting
+main-side outcomes.
 
-```ts
-harness.bridge          // RendererIpcBridge: missingChannels, sentEvents, settleInFlight, pendingCount
-harness.mount(opts?)    // render <ChatPanel>; opts: { chatId?, appId? }. Returns RTL RenderResult.
-harness.mountSurface(opts?) // render /chat, /app-details, /settings, /media, etc.
-harness.typeInChat(text, opts?)       // seed input + wait for Send enabled -> { sendButton, send() }
-harness.pressEnterInChat(text, opts?) // seed input + Lexical Enter submit (QUEUES while streaming)
-harness.setChatAttachments([{ name, content, mimeType?, type? }]) // seed real File attachments into ChatInput
-harness.setSelectedComponents(components) // seed selected preview components into ChatInput
-harness.waitForStreamEnd(chatId?, ms?)      // consume the NEXT unconsumed chat:response:end (per chatId)
-harness.waitForNextStreamEnd(chatId?, ms?)  // baseline-aware: resolve on a NEW end past the call point
-harness.eventCount(channel)                 // how many events on `channel` the bridge has seen (a baseline)
-harness.waitForEvent(channel, predicate?, ms?) // resolve on the first matching bridge event
-harness.waitForRenderedText(textOrRegex, ms?)  // wait for text with stable match count
-harness.selectFromBaseUiSelect(trigger, optionMatcher)  // drive a Base UI <Select> in happy-dom
-harness.openPopover(trigger)             // drive a Base UI popover/menu trigger in happy-dom
-harness.clickMenuItem(name)              // click a button item in an open popup/dialog
-harness.findDialog(name)                 // find a named Base UI Dialog
-harness.confirmDialog(dialog, button)    // click dialog action and wait for close
-harness.setSwitch(element, checked)       // click a Base UI switch and wait for checked state
-harness.selectChatMode("build" | "ask" | "plan" | "local-agent") // open the chat-mode selector + pick
-harness.createChat(appId?)            // insert a chats row -> new chatId
-harness.mcp.resetServers()            // delete all MCP servers through real mcp:* IPC
-harness.mcp.addStdioServer({ env? })   // add testing/fake-stdio-mcp-server.mjs + wait for calculator_add
-harness.mcp.addHttpServer({ headers? }) // spawn fake HTTP MCP server on an ephemeral port + add it
-harness.mcp.waitForTool(serverId, name) // poll real mcp:list-tools until a tool is discovered
-harness.dispose()                     // race-free teardown (see §6)
-```
+For a second turn in the same test, create the promise with
+`waitForNextStreamEnd` immediately before the action. It captures an event
+baseline so an earlier terminal event cannot satisfy the new wait.
 
-- `mount()` creates a fresh Jotai store, seeds `selectedAppIdAtom` /
-  `selectedChatIdAtom`, wires the same renderer IPC listeners as the app root,
-  mounts the real `ThemeProvider` + `Toaster`, and builds a private tanstack
-  route tree with a `/chat` route at `/chat?id=<chatId>&appId=<appId>`, because
-  `useStreamChat`/`ChatInput` call `useSearch({ from: "/chat" })`. It imports the
-  REAL search schema (`chatSearchSchema` from `src/routes/chatSearchSchema.ts`)
-  so the replica can't drift from production. It renders `<ChatPanel>` directly
-  — **not** `<ChatPage>`, which would drag in `PreviewPanel` (Monaco, iframe
-  runtime).
-- `waitForEvent`/`waitForStreamEnd`/`waitForNextStreamEnd` use the bridge's
-  event-driven `once()` subscription while keeping `bridge.sentEvents` available
-  for debugging/baselines. The payload is `event.args[0]`.
-- **`waitForStreamEnd` consumes.** Each call (keyed by `chatId`) hands out the
-  next not-yet-consumed `chat:response:end`: the first call in a test resolves
-  on turn 1's end even if it already arrived; a second call genuinely waits for
-  turn 2's end. A stale prior-turn event can never satisfy a later wait, so
-  sequential multi-turn tests can just call it once per turn. For an explicit
-  pre-action baseline (e.g. a Retry click where you want to capture the promise
-  before acting), `waitForNextStreamEnd(chatId?)` snapshots the current
-  end-count **synchronously** and resolves only when a NEW one arrives:
-  ```ts
-  const nextEnd = harness.waitForNextStreamEnd(harness.chatId); // snapshot baseline now
-  fireEvent.click(retryButton); // start the new turn
-  await waitFor(() => expect(screen.getByText(/counter=2/)).toBeTruthy());
-  await nextEnd; // gate on the NEW end
-  ```
-  `eventCount(channel)` is the general-purpose baseline primitive if you need it
-  for a non-end channel.
-- **Driving Base UI popovers/dialogs**: use `openPopover(trigger)` before
-  clicking items in overflow menus such as app-details more options. Use
-  `clickMenuItem(/Copy app/)` for button-like menu items, `findDialog(/Copy/)`
-  to wait for Base UI dialogs, and `confirmDialog(/Delete/, /Delete App/)` when
-  the assertion should wait for the dialog to close. These helpers reproduce the
-  pointer/focus sequence happy-dom needs; a bare click can leave Base UI popups
-  closed.
-- **Driving Base UI switches**: use `setSwitch(element, checked)` rather than a
-  bare click when the assertion depends on a persisted settings update. It only
-  clicks when the switch is not already in the requested state and waits for the
-  `aria-checked` state to settle.
-- **Driving a Base UI (Radix) `<Select>`** (the chat-mode selector, model picker,
-  etc.): a bare `fireEvent.click` on the trigger or option does nothing in
-  happy-dom. Use `selectFromBaseUiSelect(trigger, /OptionText/)`, which focuses +
-  ArrowDowns to open the popup, then pointerDown+pointerUp+click+Enter on the
-  matched option to commit. `selectChatMode(mode)` wraps it for the chat-mode
-  selector and waits for the trigger's `aria-label` to reflect the pick (which is
-  what persists `chatMode` onto the chat row).
-- **Seeding attachments**: use `setChatAttachments([{ name, content, mimeType }])`
-  after `mount()` and before `typeInChat()` / `pressEnterInChat()`. It writes the
-  same `attachmentsAtom` shape that the file picker/drop/paste paths store:
-  browser `File` objects plus the `chat-context` / `upload-to-codebase` type.
-  Submit still runs through the real `ChatInput` path, including `FileReader`
-  conversion to IPC attachments and `.dyad/media` persistence.
-- **Seeding selected components**: use `setSelectedComponents(components)` for
-  queue edit/restore assertions that only need ChatInput state. Keep Playwright
-  coverage for picking a component inside the real preview iframe.
-- **Seeding MCP servers**: use `harness.mcp.addStdioServer()` /
-  `harness.mcp.addHttpServer()` rather than driving the Settings page when the
-  test's subject is ChatPanel MCP behavior. These helpers still go through the
-  real `mcp:create-server` and `mcp:list-tools` handlers, use the same fake MCP
-  servers as E2E, and wait for live discovery before the prompt is sent. Call
-  `harness.mcp.resetServers()` in `beforeEach` when multiple tests need the
-  canonical `testing-mcp-server` name so stored consent and duplicate sanitized
-  tool names do not leak between cases. Consent itself should be exercised
-  through the rendered banner buttons.
+Call `bridge.settleInFlight()` when a renderer action awaits IPC post-effects
+that can outlive the first visible DOM change.
 
----
+## Teardown and isolation
 
-## 3b. Cookbook: patterns you'll reuse
-
-### Call `mount()` in EVERY `it` (RTL auto-cleanup)
-
-`globals: true` in `vitest.config.ts` auto-registers React Testing Library's
-`afterEach(cleanup)`, which **unmounts the tree after every `it`**. So each test
-starts with an empty DOM — a `mount()` in `beforeAll`/`beforeEach` or a previous
-`it` is already gone. Mount inside the test:
-
-```ts
-it("first turn", async () => {
-  harness.mount(); // required
-  const { send } = await harness.typeInChat("hi");
-  send();
-  // ...
-});
-
-it("second turn", async () => {
-  harness.mount(); // required again — the first it's tree was unmounted.
-  // The same chat reloads from the db (its earlier messages are still there),
-  // so this turn appends, exactly like the node harness's sequential streamChat.
-  // ...
-});
-```
-
-The db, git checkout, and fake server live on the single `beforeAll` harness and
-persist across `it`s; only the **React tree** is per-`it`.
-
-### Keep describe/it names identical → snapshots become a cross-harness oracle
-
-When you convert a node `chat:stream` test that has `toMatchSnapshot()`, keep the
-`describe` and `it` names **byte-identical** to the node version and reuse the
-same `__snapshots__/*.snap` file. The snapshot key is derived from those names,
-so the existing (node-written) snapshot now also gates the UI-driven payload —
-proving that clicking the real Send button sends the LLM **exactly** the same
-`getServerDump()` bytes the node harness did. A drift shows up as a snapshot
-diff. `chat_mode.integration.test.ts` does this: its
-`chat-mode-build-all-messages` / `chat-mode-ask-all-messages` snapshots are
-unchanged from the node era. Do not rewrite or `-u` these on conversion — an
-unchanged snapshot is the whole point.
-
----
-
-## 4. The typing concession
-
-happy-dom cannot type into Lexical's `contenteditable`, so `typeInChat` does not
-simulate keystrokes. It writes exactly what `LexicalChatInput`'s `onChange`
-writes — `chatInputValuesByIdAtom[chatId] = text` — then waits for the real Send
-button to enable and hands you a `send()` that clicks it. From the click onward
-the path is 100% real (`ChatInput.handleSubmit` → `chat:stream`).
-
-This means you exercise everything **except** the Lexical editor's own
-keystroke→state plumbing. If a test's entire point is Lexical input behavior,
-it stays a Playwright E2E test.
-
----
-
-## 5. The stream-end teardown rule
-
-The streamed assistant **text** reaches the DOM before the main-process
-post-stream work (tag processing, file writes, git commit, approval) finishes.
-So a test that asserts on files/git/db **must** await the real end-of-stream
-event first:
-
-```ts
-await waitFor(() => expect(screen.getByText(/AFTER TAG/)).toBeTruthy());
-await harness.waitForStreamEnd(harness.chatId); // <-- gate main-side asserts on this
-expect(harness.gitLog().length).toBeGreaterThan(1);
-```
-
-Skipping this races the commit/approval and yields flakes or "Database not
-initialized" during teardown.
-
----
-
-## 6. Race-free teardown (handled for you)
-
-`harness.dispose()` unwinds in a fixed order so background UI queries can't hit a
-closed db:
-
-1. `cleanup()` — unmount the React tree (stops new UI-driven invokes);
-2. `bridge.settleInFlight()` — await every in-flight `invoke` (the UI fires
-   background queries — proposals, token counts, codebase scans — whose handlers
-   read the db);
-3. `queryClient.clear()` for each mounted tree + drop the per-mount Jotai store;
-4. `bridge.uninstall()` (remove `window.electron`);
-5. the node harness `dispose()` (closes the db, removes the temp dir).
-
-You just call `await harness.dispose()` in `afterAll`. The app `db` is a process
-singleton, so the same rule as the node harness applies: **one harness per test
-file**, run under the default forks pool. Both harnesses throw on a second setup
-before the active one fully disposes.
-
----
-
-## 7. Pitfalls
-
-- **Missing `waitForStreamEnd` before main-side asserts** → flaky files/git/db
-  and teardown "Database not initialized". See §5.
-- **Mounting `ChatPage` instead of `ChatPanel`** → pulls in Monaco/iframe and
-  hangs. Always mount via `harness.mount()`.
-- **Trying to type into the editor** → happy-dom can't. Use `typeInChat`. See §4.
-- **Reordering harness imports** → `hybrid_chat_harness.tsx` imports
-  `./chat_flow_harness` **before** `@/components/ChatPanel` on purpose: loading an
-  app module first initializes `tslib`'s CJS interop, without which ChatPanel's
-  transitive `react-remove-scroll` throws `tslib_1.__importStar is not a function`
-  at load. Don't reorder those imports.
-- **Sync subprocesses that talk to the fake server deadlock.** The fake
-  LLM/GitHub/Neon server runs in the test's own process, so `execFileSync("git",
-["clone", <fake remote>...])` blocks the event loop the server needs to answer
-  the request — the test hangs until timeout. Use an async `execFile` (and
-  `await` it) for any child process that hits `localhost:<fakeLlmPort>`; sync is
-  fine for purely local git/fs commands.
-- **`get-proposal` / `checkProblems` / cloud-sandbox / desktop-config log lines**
-  are benign. Registering the full handler set means the UI polls handlers that
-  have nothing to do (`runTypeScriptCheck` is stubbed to `{ problems: [] }` in
-  `hybrid.setup.ts` because the app-local TypeScript CLI needs a real app
-  node_modules tree, no Pro key, a CORS-blocked
-  `api.dyad.sh/v1/desktop-config`). They are caught and logged, not failures. The act, pnpm-install, and DB-teardown noise **is** handled (§6, §8).
-
----
-
-## 8. Product-code touchpoints (test-only guards)
-
-Two product modules short-circuit an eager side effect under test so it can't
-fire during a hybrid run. Both are inert in production/dev/E2E and must stay:
-
-- **Implicit pnpm install** — the UI's `nodejs-status` query, when pnpm is
-  missing, schedules a **real** background `npm install pnpm`.
-  `node_handlers.ts`'s `scheduleManagedPnpmInstall` returns early when
-  `process.env.DYAD_SKIP_MANAGED_PNPM_INSTALL === "true"` (the harness sets it).
-  It only skips the _implicit_ convenience install; an explicit `installPnpm`
-  handler call is unaffected, and production never sets the flag.
-- **Monaco eager init** — `src/components/chat/monaco.ts` runs `loader.init()` at
-  module load to register editor themes. The chat message tree imports it
-  transitively (`DyadWrite` → `FileEditor`), so a hybrid test pulls it in even
-  though it never renders an editor. The async (CDN) load gets **canceled on
-  teardown**, surfacing as a `Canceled` **unhandled rejection** that fails the
-  whole run (non-zero exit) even when every `it` passed. `monaco.ts` now guards
-  the `loader.init()` call behind `process.env.VITEST !== "true"`. Do not remove
-  this guard, and do not "fix" a `Canceled: Canceled` rejection by re-enabling it.
-
----
-
-## 9. Pro / engine routing
-
-Pass `engine: true` to route Dyad Engine and Gateway calls to the harness fake
-server. `get_model_client` and LM Studio URL reads happen at call time, so tests
-no longer need a hoisted relay just to know the fake server's ephemeral port.
-
----
-
-## 10. Limitations: assertions that must stay on the node harness
-
-- **`chatMode` option trap.** The harness `chatMode` option only seeds
-  `settings.selectedChatMode`; `ChatInput` submits the chat row's mode /
-  effective default, and with Dyad Pro enabled the effective default is
-  `local-agent`. An ask-mode hybrid test silently runs in local-agent mode
-  unless it drives the real selector: `await harness.selectChatMode("ask")`
-  (see `local_agent_ask.integration.test.ts`).
-- **Post-stream DOM duplication.** Around stream end, assistant text can
-  transiently render in two nodes (streamed + persisted renderings), so
-  `getByText` may throw "found multiple elements". Use
-  `harness.waitForRenderedText(...)` for text that lands near
-  `chat:response:end` (see `context_compaction.integration.test.ts`).
+- Use one harness per test file.
+- Do not overlap streams for the same chat.
+- Always call `cleanup()` after each mounted test and `dispose()` after all
+  tests.
+- Keep provider roots and machine providers in the harness mount; do not add
+  production fallbacks solely for tests.
+- The shared Electron utility-process mock is inert. Mock a processor in
+  `hybrid.setup.ts` when a tested surface crosses a packaged worker boundary.
+- Missing IPC channels are product or harness wiring failures. Do not suppress
+  them unless the test intentionally exercises that failure.

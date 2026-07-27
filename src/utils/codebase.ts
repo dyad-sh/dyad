@@ -422,8 +422,6 @@ async function prepareCodebaseFiles({
   chatContext: AppChatContext;
 }): Promise<PreparedCodebaseFile[] | undefined> {
   const settings = readSettings();
-  const isSmartContextEnabled =
-    settings?.enableDyadPro && settings?.enableProSmartFilesContextMode;
 
   try {
     await fsAsync.access(appPath);
@@ -433,7 +431,7 @@ async function prepareCodebaseFiles({
 
   let files = await collectFilesNativeGit(appPath);
 
-  const { contextPaths, smartContextAutoIncludes, excludePaths } = chatContext;
+  const { contextPaths, excludePaths } = chatContext;
   const includedFiles = new Set<string>();
   const autoIncludedFiles = new Set<string>();
   const excludedFiles = new Set<string>();
@@ -449,28 +447,6 @@ async function prepareCodebaseFiles({
         },
       );
       matches.forEach((file) => includedFiles.add(path.normalize(file)));
-    }
-  }
-
-  if (
-    isSmartContextEnabled &&
-    smartContextAutoIncludes &&
-    smartContextAutoIncludes.length > 0
-  ) {
-    for (const autoInclude of smartContextAutoIncludes) {
-      const matches = await glob(
-        createFullGlobPath({ appPath, globPath: autoInclude.globPath }),
-        {
-          nodir: true,
-          absolute: true,
-          ignore: "**/node_modules/**",
-        },
-      );
-      matches.forEach((file) => {
-        const normalizedFile = path.normalize(file);
-        autoIncludedFiles.add(normalizedFile);
-        includedFiles.add(normalizedFile);
-      });
     }
   }
 

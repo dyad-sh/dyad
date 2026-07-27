@@ -6,8 +6,7 @@
  * encrypted under).
  *
  * Background (the bug these tests now guard against):
- * - `registerAppHandlers()` fires `reconcileCloudSandboxes()` at module scope
- *   (src/ipc/handlers/app_handlers.ts), which calls `readSettings()` BEFORE
+ * - An early startup settings read can call `readSettings()` BEFORE
  *   `app.whenReady()`. When the settings file contains an
  *   `electron-safe-storage` secret, decrypting it touches safeStorage
  *   pre-ready.
@@ -348,8 +347,8 @@ test.describe("safeStorage keychain identity (issue #3837)", () => {
     writeGithubTokenCiphertext(userDataDir, ciphertext);
 
     // Session 2: the settings file now contains an encrypted secret, so the
-    // module-scope reconcileCloudSandboxes() -> readSettings() call decrypts
-    // BEFORE app.ready. That pre-ready race silently resolves the "Chromium
+    // early readSettings() call decrypts BEFORE app.ready. That pre-ready race
+    // silently resolves the "Chromium
     // Safe Storage" identity, which cannot decrypt the dyad-identity ciphertext
     // from session 1. This race is deliberately left unfixed; the fix instead
     // makes the secret survive it.

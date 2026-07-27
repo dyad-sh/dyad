@@ -75,6 +75,20 @@ function isToolResultMessage(msg: any): boolean {
   );
 }
 
+function isToolCallMessage(msg: any): boolean {
+  if (msg?.role !== "assistant") return false;
+  if (Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) return true;
+  return (
+    Array.isArray(msg.content) &&
+    msg.content.some(
+      (part: any) =>
+        part.type === "tool_use" ||
+        part.type === "tool-call" ||
+        part.type === "tool_call",
+    )
+  );
+}
+
 /**
  * Count the number of todo reminder messages in the conversation.
  * This determines which outer loop pass we're on.
@@ -99,10 +113,18 @@ function countToolResultRounds(messages: any[]): number {
     }
   }
 
-  // Count tool results only after the last user message
+  const messagesInCurrentTurn = messages.slice(lastUserIndex + 1);
+
+  // A model round may contain several tool calls. Count the assistant tool-call
+  // messages when available so separate OpenAI tool-result messages do not skip
+  // fixture turns. Fall back to result messages for older request formats.
+  const toolCallRounds = messagesInCurrentTurn.filter(isToolCallMessage).length;
+  if (toolCallRounds > 0) {
+    return toolCallRounds;
+  }
+
   let rounds = 0;
-  for (let i = lastUserIndex + 1; i < messages.length; i++) {
-    const msg = messages[i];
+  for (const msg of messagesInCurrentTurn) {
     if (isToolResultMessage(msg)) {
       rounds++;
     }
@@ -140,7 +162,7 @@ async function loadFixture(fixtureName: string): Promise<LocalAgentFixture> {
     return fixtureCache.get(fixtureName)!;
   }
 
-  const fixtureDir = path.join(resolveFixturesDir(), "engine", "local-agent");
+  const fixtureDir = path.join(resolveFixturesDir(), "agent");
 
   // Try .ts first, then .js
   let fixturePath = path.join(fixtureDir, `${fixtureName}.ts`);
@@ -539,7 +561,11 @@ export async function handleLocalAgentFixture(
   req: Request,
   res: Response,
   fixtureName: string,
-  options: { protocol?: "openai" | "anthropic" } = {},
+  options: {
+    protocol?: "openai" | "anthropic";
+    dumpRequest?: () => string;
+    dumpRequestTurn?: number;
+  } = {},
 ): Promise<void> {
   const { messages = [] } = req.body;
   const protocol = options.protocol ?? "openai";
@@ -575,6 +601,12 @@ export async function handleLocalAgentFixture(
     }
 
     let turn = turns[turnIndex];
+    if (turnIndex === (options.dumpRequestTurn ?? 0) && options.dumpRequest) {
+      turn = {
+        ...turn,
+        text: [turn.text, options.dumpRequest()].filter(Boolean).join("\n\n"),
+      };
+    }
     fakeLlmLog(
       `[local-agent] Executing pass ${passIndex}, turn ${turnIndex}:`,
       {

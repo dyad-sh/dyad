@@ -148,51 +148,6 @@ describe("GitHub import dialog (integration)", () => {
     ).toContain("defineConfig");
   }, 90_000);
 
-  it("skips the tagger upgrade when 'Optimize for Dyad' is unchecked", async () => {
-    await harness.github.resetRepos();
-    writeSettings({
-      githubAccessToken: { value: "fake_access_token_12345" },
-      githubUser: {
-        email: "testuser@example.com",
-      },
-    });
-    await mountImportDialog();
-
-    clickTab("Your GitHub Repos");
-
-    const repoRow = await screen.findByTestId(
-      "github-repo-row-testuser-existing-vite-app",
-      {},
-      { timeout: 20_000 },
-    );
-
-    // A distinct app name so this import doesn't collide with the default-upgrade
-    // test's "existing-vite-app" row; the repo cloned is still the same one.
-    fireEvent.change(screen.getByPlaceholderText(/Leave empty/), {
-      target: { value: "no-optimize-vite-app" },
-    });
-
-    // Reveal the advanced options so the "Optimize for Dyad" checkbox mounts,
-    // then uncheck it (it defaults to checked).
-    fireEvent.click(screen.getByRole("button", { name: "Advanced options" }));
-    const optimizeCheckbox = await screen.findByRole("checkbox");
-    expect(optimizeCheckbox.getAttribute("aria-checked")).toBe("true");
-    await harness.setSwitch(optimizeCheckbox, false);
-
-    fireEvent.click(within(repoRow).getByRole("button", { name: "Import" }));
-
-    await waitForDialogClosed();
-    const app = await findImportedApp("no-optimize-vite-app");
-    const appDir = importedAppPath(app.path);
-
-    // The inverse of the default-upgrade test: no component-tagger rewrite.
-    const config = fs.readFileSync(path.join(appDir, "vite.config.ts"), "utf8");
-    expect(config).not.toContain("dyadComponentTagger");
-
-    const pkg = fs.readFileSync(path.join(appDir, "package.json"), "utf8");
-    expect(pkg).not.toContain("@dyad-sh/react-vite-component-tagger");
-  }, 90_000);
-
   it("requires both custom commands before enabling import", async () => {
     await mountImportDialog();
 

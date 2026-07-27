@@ -88,8 +88,6 @@ const DebugSettingsSchema = z.object({
   defaultChatMode: z.string().nullable(),
   /** Whether changes are auto-approved without review */
   autoApproveChanges: z.boolean().nullable(),
-  /** Whether Dyad Pro is enabled */
-  enableDyadPro: z.boolean().nullable(),
   /** Thinking budget level: "low" | "medium" | "high" */
   thinkingBudget: z.string().nullable(),
   /** Max chat turns kept in context window */
@@ -104,16 +102,6 @@ const DebugSettingsSchema = z.object({
   zoomLevel: z.string().nullable(),
   /** Preview device mode: "desktop" | "tablet" | "mobile" */
   previewDeviceMode: z.string().nullable(),
-  /** Whether turbo edits mode is enabled */
-  enableProLazyEditsMode: z.boolean().nullable(),
-  /** Turbo edits mode variant: "off" | "v1" | "v2" */
-  proLazyEditsMode: z.string().nullable(),
-  /** Whether smart files context mode is enabled (Pro) */
-  enableProSmartFilesContextMode: z.boolean().nullable(),
-  /** Whether web search is enabled (Pro) */
-  enableProWebSearch: z.boolean().nullable(),
-  /** Smart context option: "balanced" | "conservative" | "deep" */
-  proSmartContextOption: z.string().nullable(),
   /** Whether Supabase write SQL migration is enabled */
   enableSupabaseWriteSqlMigration: z.boolean().nullable(),
   /** Agent tool consent settings per tool */
@@ -179,10 +167,8 @@ const DebugMessageSchema = z.object({
   sourceCommitHash: z.string().nullable(),
   /** Git commit hash of codebase after changes from this message were applied */
   commitHash: z.string().nullable(),
-  /** Pro request UUID for billing/tracking */
+  /** Request UUID for correlation */
   requestId: z.string().nullable(),
-  /** Whether this message used the free agent mode quota */
-  usingFreeAgentModeQuota: z.boolean().nullable(),
 });
 
 // -- Chat with messages --
@@ -222,19 +208,6 @@ const DebugProvidersSchema = z.object({
       contextWindow: z.number().nullable(),
     }),
   ),
-});
-
-// -- MCP server configuration (no env/header secrets) --
-
-const DebugMcpServerSchema = z.object({
-  id: z.number(),
-  name: z.string(),
-  transport: z.string(),
-  command: z.string().nullable(),
-  args: z.array(z.string()).nullable(),
-  url: z.string().nullable(),
-  enabled: z.boolean(),
-  // NOTE: envJson and headersJson are intentionally EXCLUDED (may contain secrets)
 });
 
 // -- Process memory diagnostics --
@@ -356,11 +329,11 @@ export type ProcessMemoryDiagnostics = z.infer<
  *
  * Contains all non-sensitive data needed to debug a chat session:
  * system info, user settings, app config, full chat messages with
- * AI SDK JSON, provider/model setup, MCP servers, codebase snapshot,
+ * model transcript JSON, provider/model setup, codebase snapshot,
  * and application logs.
  *
- * Sensitive data (API keys, OAuth tokens, MCP env vars) is stripped.
- * Base64 image data in AI SDK messages is replaced with placeholders.
+ * Sensitive data such as API keys is stripped. Base64 image data in model
+ * transcripts is replaced with placeholders.
  */
 export const SessionDebugBundleSchema = z.object({
   /** Schema version number. Bump on breaking changes. */
@@ -377,8 +350,6 @@ export const SessionDebugBundleSchema = z.object({
   chat: DebugChatSchema,
   /** Custom provider and model definitions (no secrets) */
   providers: DebugProvidersSchema,
-  /** MCP server configurations (no env/header secrets) */
-  mcpServers: z.array(DebugMcpServerSchema),
   /** Formatted codebase snapshot */
   codebase: z.string(),
   /** Application logs (last 1000 lines) */
@@ -422,8 +393,6 @@ export const AppOutputSchema = z.object({
     "client-error",
     "info",
     "package-manager-warning",
-    "sync-error",
-    "sync-recovered",
     "app-exit",
     "agent-lifecycle-started",
     "agent-lifecycle-succeeded",

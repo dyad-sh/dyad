@@ -54,15 +54,6 @@ function queueFilePath(appName: string, chatId: number): string {
 const sampleItem: PersistedQueuedMessage = {
   id: "item-1",
   prompt: "hello",
-  selectedComponents: [
-    {
-      id: "c1",
-      name: "Button",
-      relativePath: "src/Button.tsx",
-      lineNumber: 10,
-      columnNumber: 2,
-    },
-  ],
 };
 
 describe("queue_store", () => {

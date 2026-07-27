@@ -2,7 +2,6 @@ import express from "express";
 import { createServer } from "http";
 import type { AddressInfo } from "net";
 import cors from "cors";
-import crypto from "node:crypto";
 import { createChatCompletionHandler } from "./chatCompletionHandler";
 import { createResponsesHandler } from "./responsesHandler";
 import { createAnthropicMessagesHandler } from "./anthropicMessagesHandler";
@@ -56,175 +55,18 @@ export function createStreamChunk(
   return `data: ${JSON.stringify(chunk)}\n\n${isLast ? "data: [DONE]\n\n" : ""}`;
 }
 
-export const CANNED_MESSAGE = `
-  <dyad-write path="file1.txt">
-  A file (2)
-  </dyad-write>
-  More
-  EOM`;
-
-type FakeCloudSandbox = {
-  id: string;
-  files: Record<string, Buffer>;
-  createdAt: number;
-  previewAuthToken: string;
-  syncRevision: number;
-  initialSyncCompleted: boolean;
-  lastActiveAt: number;
-  lastSuccessfulSyncAt: number | null;
-};
-
-function createServiceResponse<T>(responseObject: T) {
-  return {
-    success: true,
-    message: "ok",
-    responseObject,
-    statusCode: 200,
-  };
-}
-
-async function parseMultipartFormData(req: express.Request) {
-  const headers = new Headers();
-  for (const [key, value] of Object.entries(req.headers)) {
-    if (Array.isArray(value)) {
-      for (const entry of value) {
-        headers.append(key, entry);
-      }
-      continue;
-    }
-
-    if (value !== undefined) {
-      headers.set(key, value);
-    }
-  }
-
-  const chunks: Buffer[] = [];
-  for await (const chunk of req) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-  }
-
-  const request = new Request("http://localhost/fake-cloud-upload", {
-    method: req.method,
-    headers,
-    body: Buffer.concat(chunks),
-  });
-
-  return request.formData();
-}
-
-async function parseCloudSandboxUpload(req: express.Request) {
-  if (!req.is("multipart/form-data")) {
-    return {
-      replaceAll: req.body.replaceAll === true,
-      deletedFiles: Array.isArray(req.body.deletedFiles)
-        ? req.body.deletedFiles
-        : [],
-      files: Object.fromEntries(
-        Object.entries(req.body.files ?? {}).map(([filePath, content]) => [
-          filePath,
-          Buffer.from(String(content), "utf8"),
-        ]),
-      ) as Record<string, Buffer>,
-    };
-  }
-
-  const formData = await parseMultipartFormData(req);
-  const manifestValue = formData.get("manifest");
-
-  if (typeof manifestValue !== "string") {
-    throw new Error("Expected multipart sandbox upload manifest.");
-  }
-
-  const manifest = JSON.parse(manifestValue) as {
-    replaceAll: boolean;
-    deletedFiles?: string[];
-    files?: Array<{ path: string; fieldName: string }>;
-  };
-  const files: Record<string, Buffer> = {};
-
-  for (const entry of manifest.files ?? []) {
-    const filePart = formData.get(entry.fieldName);
-    if (!(filePart instanceof File)) {
-      throw new Error(`Expected multipart file part ${entry.fieldName}.`);
-    }
-
-    files[entry.path] = Buffer.from(await filePart.arrayBuffer());
-  }
-
-  return {
-    replaceAll: manifest.replaceAll === true,
-    deletedFiles: manifest.deletedFiles ?? [],
-    files,
-  };
-}
-
-function escapeHtml(text: string) {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-function getSandboxPreviewHtml(sandbox: FakeCloudSandbox) {
-  const interestingSource =
-    sandbox.files["src/App.tsx"]?.toString("utf8") ??
-    sandbox.files["src/App.jsx"]?.toString("utf8") ??
-    sandbox.files["app/page.tsx"]?.toString("utf8") ??
-    sandbox.files["index.html"]?.toString("utf8") ??
-    "";
-
-  const fileList = Object.keys(sandbox.files)
-    .sort()
-    .slice(0, 12)
-    .map((file) => `<li>${escapeHtml(file)}</li>`)
-    .join("");
-  const snapshotHasher = crypto.createHash("sha1");
-  for (const [filePath, content] of Object.entries(sandbox.files).sort(
-    ([leftPath], [rightPath]) => leftPath.localeCompare(rightPath),
-  )) {
-    snapshotHasher.update(filePath);
-    snapshotHasher.update("\0");
-    snapshotHasher.update(content);
-    snapshotHasher.update("\0");
-  }
-  const snapshotDigest = snapshotHasher.digest("hex").slice(0, 12);
-
-  return `<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <title>Cloud Sandbox Preview</title>
-  </head>
-  <body>
-    <main>
-      <h1>Cloud Sandbox Preview</h1>
-      <p data-testid="cloud-sandbox-id">Sandbox: ${escapeHtml(sandbox.id)}</p>
-      <p>Uploaded files: ${Object.keys(sandbox.files).length}</p>
-      <p data-testid="cloud-snapshot-digest">Snapshot digest: ${snapshotDigest}</p>
-      <ul>${fileList}</ul>
-      <pre>${escapeHtml(interestingSource.slice(0, 1500))}</pre>
-    </main>
-  </body>
-</html>`;
-}
+export const CANNED_MESSAGE = "This is a fake response.";
 
 /**
  * Builds the fake-LLM Express app with every route mounted. The app does NOT
  * listen; the caller (the CLI entry below, or the vitest chat-flow harness)
- * decides when/where to listen. `getPort()` returns the actually-bound port so
- * cloud-preview URLs can be self-referential even when listening on an
- * ephemeral port (port 0).
+ * decides when/where to listen.
  */
-export function createFakeLlmApp(getPort: () => number) {
+export function createFakeLlmApp(_getPort: () => number) {
   const app = express();
   app.use(cors());
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ extended: true, limit: "50mb" }));
-
-  const cloudSandboxes = new Map<string, FakeCloudSandbox>();
-
-  const getFakeCloudPreviewUrl = (sandboxId: string) =>
-    `http://localhost:${getPort()}/cloud-preview/${sandboxId}`;
 
   app.get("/health", (req, res) => {
     res.send("OK");
@@ -244,82 +86,6 @@ export function createFakeLlmApp(getPort: () => number) {
           "",
         ].join("\n"),
       );
-  });
-
-  // Fake api.dyad.sh user info (Dyad Pro budget). Tests point
-  // DYAD_USER_INFO_URL here so get-user-budget never hits the real API.
-  app.get("/api/user/info", (req, res) => {
-    if (!req.headers.authorization?.startsWith("Bearer ")) {
-      res.status(401).json({ error: "Unauthorized" });
-      return;
-    }
-    res.json({
-      usedCredits: 100,
-      totalCredits: 1000,
-      budgetResetDate: "2099-01-01T00:00:00.000Z",
-      userId: "user_fake1234",
-      isTrial: false,
-    });
-  });
-
-  app.get("/api/mcp-catalog", (req, res) => {
-    // The URLs below hardcode the ports that mcp_catalog.spec.ts spawns
-    // its fake MCP servers on (4010 for OAuth, 3002 for http). Keep them
-    // in sync with that spec.
-    res.json({
-      expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-      servers: [
-        {
-          slug: "e2e-oauth",
-          name: "E2E OAuth Server",
-          description: "Fake OAuth-protected MCP server",
-          category: "Testing",
-          transport: "http",
-          url: "http://localhost:4010/mcp",
-          oauth: { required: true },
-        },
-        {
-          slug: "e2e-open",
-          name: "E2E Open Server",
-          description: "Fake MCP server without auth",
-          category: "Testing",
-          transport: "http",
-          url: "http://localhost:3002/mcp",
-        },
-        {
-          slug: "e2e-headers",
-          name: "E2E Header Server",
-          description: "Sends a static header",
-          category: "Other Tools",
-          transport: "http",
-          url: "http://localhost:3002/mcp",
-          headers: { "X-Test-Header": "dyad-e2e" },
-        },
-        // Valid stdio entry. The package is scoped under @dyad-sh so it
-        // can never resolve against the real npm registry: the spec only
-        // exercises the add flow, and an actual `npx` spawn in CI must
-        // fail with a 404 instead of executing someone's package.
-        {
-          slug: "e2e-stdio",
-          name: "E2E Stdio Server",
-          description: "Fake local stdio MCP server",
-          category: "Testing",
-          transport: "stdio",
-          command: "npx",
-          args: ["-y", "@dyad-sh/e2e-nonexistent-mcp@1.0.0"],
-        },
-        // The desktop client must drop these: a stdio entry whose command
-        // isn't npx, and a malformed one.
-        {
-          slug: "e2e-stdio-node",
-          name: "E2E Stdio Node Server",
-          transport: "stdio",
-          command: "node",
-          args: ["server.mjs"],
-        },
-        { slug: "e2e-broken" },
-      ],
-    });
   });
 
   app.get("/api/language-model-catalog", (req, res) => {
@@ -399,83 +165,6 @@ export function createFakeLlmApp(getPort: () => number) {
             displayName: "Gemini 2.5 Pro",
             description: "Remote catalog Google model",
             maxOutputTokens: 65_535,
-          },
-        ],
-      },
-      aliases: [
-        {
-          id: "dyad/theme-generator/google",
-          resolvedModel: {
-            providerId: "google",
-            apiName: "gemini-3.1-pro-preview",
-          },
-          displayName: "Google Remote",
-          purpose: "theme-generation",
-        },
-        {
-          id: "dyad/theme-generator/anthropic",
-          resolvedModel: {
-            providerId: "anthropic",
-            apiName: "claude-sonnet-4-6",
-          },
-          displayName: "Anthropic Remote",
-          purpose: "theme-generation",
-        },
-        {
-          id: "dyad/theme-generator/openai",
-          resolvedModel: {
-            providerId: "openai",
-            apiName: "gpt-5.2",
-          },
-          displayName: "OpenAI Remote",
-          purpose: "theme-generation",
-        },
-        {
-          id: "dyad/auto/openai",
-          resolvedModel: {
-            providerId: "openai",
-            apiName: "gpt-5.2",
-          },
-          purpose: "auto-mode",
-        },
-        {
-          id: "dyad/auto/anthropic",
-          resolvedModel: {
-            providerId: "anthropic",
-            apiName: "claude-sonnet-4-6",
-          },
-          purpose: "auto-mode",
-        },
-        {
-          id: "dyad/auto/google",
-          resolvedModel: {
-            providerId: "google",
-            apiName: "gemini-3.1-pro-preview",
-          },
-          purpose: "auto-mode",
-        },
-        {
-          id: "dyad/help-bot/default",
-          resolvedModel: {
-            providerId: "openai",
-            apiName: "gpt-5.2",
-          },
-          purpose: "help-bot",
-        },
-      ],
-      curatedSelections: {
-        themeGenerationOptions: [
-          {
-            id: "dyad/theme-generator/google",
-            label: "Google Remote",
-          },
-          {
-            id: "dyad/theme-generator/anthropic",
-            label: "Anthropic Remote",
-          },
-          {
-            id: "dyad/theme-generator/openai",
-            label: "OpenAI Remote",
           },
         ],
       },
@@ -611,23 +300,22 @@ export function createFakeLlmApp(getPort: () => number) {
     },
   );
 
-  ["lmstudio", "gateway", "engine", "ollama", "azure", "openrouter"].forEach(
-    (provider) => {
-      app.post(
-        `/${provider}/v1/chat/completions`,
-        createChatCompletionHandler(provider),
-      );
-      // Also add responses API endpoints for each provider
-      app.post(`/${provider}/v1/responses`, createResponsesHandler(provider));
-      app.post(
-        `/${provider}/v1/messages`,
-        createAnthropicMessagesHandler(provider),
-      );
-    },
-  );
+  ["lmstudio", "ollama", "azure", "openrouter"].forEach((provider) => {
+    app.post(
+      `/${provider}/v1/chat/completions`,
+      createChatCompletionHandler(provider),
+    );
+    // Also add responses API endpoints for each provider
+    app.post(`/${provider}/v1/responses`, createResponsesHandler(provider));
+    app.post(
+      `/${provider}/v1/messages`,
+      createAnthropicMessagesHandler(provider),
+    );
+  });
 
   // Azure-specific endpoints (Azure client uses different URL patterns)
   app.post("/azure/chat/completions", createChatCompletionHandler("azure"));
+  app.post("/azure/responses", createResponsesHandler("azure"));
   app.post(
     "/azure/openai/deployments/:deploymentId/chat/completions",
     createChatCompletionHandler("azure"),
@@ -637,6 +325,43 @@ export function createFakeLlmApp(getPort: () => number) {
   app.post("/v1/chat/completions", createChatCompletionHandler("."));
   app.post("/v1/responses", createResponsesHandler("."));
   app.post("/v1/messages", createAnthropicMessagesHandler("."));
+
+  app.post("/images/v1/chat/completions", (req, res) => {
+    const { model } = req.body;
+    fakeLlmLog(`* image generation: model=${model}`);
+
+    const tinyPngBase64 =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";
+    res.json({
+      id: "image-response",
+      object: "chat.completion",
+      created: Math.floor(Date.now() / 1000),
+      model,
+      choices: [
+        {
+          index: 0,
+          finish_reason: "stop",
+          message: {
+            role: "assistant",
+            content: "",
+            images: [
+              {
+                type: "image_url",
+                image_url: {
+                  url: `data:image/png;base64,${tinyPngBase64}`,
+                },
+              },
+            ],
+          },
+        },
+      ],
+      usage: {
+        prompt_tokens: 1,
+        completion_tokens: 1,
+        total_tokens: 2,
+      },
+    });
+  });
 
   // GitHub API Mock Endpoints
   fakeLlmLog("Setting up GitHub mock endpoints");
@@ -674,276 +399,11 @@ export function createFakeLlmApp(getPort: () => number) {
   // GitHub Git endpoints - intercept all paths with /github/git prefix
   app.all("/github/git/*", handleGitPush);
 
-  // Dyad Engine free-model quota endpoint (free_model_quota_handlers).
-  app.get("/engine/v1/free/quota", (req, res) => {
-    if (!req.headers.authorization?.startsWith("Bearer ")) {
-      res.status(401).json({ error: "Unauthorized" });
-      return;
-    }
-    res.json({
-      used: 5,
-      limit: 25,
-      remaining: 20,
-      resetAt: "2099-01-01T00:00:00.000Z",
-    });
-  });
-
-  // Dyad Engine code-search endpoint for code_search tool
-  app.post("/engine/v1/tools/code-search", (req, res) => {
-    const { query, filesContext } = req.body;
-    fakeLlmLog(
-      `* code-search: "${query}" - searching ${filesContext?.length || 0} files`,
-    );
-
-    try {
-      // Return mock relevant files based on the files provided
-      // For testing, return the first few files that exist in the context
-      const relevantFiles = (filesContext || [])
-        .slice(0, 3)
-        .map((f: { path: string }) => f.path);
-
-      res.json({ relevantFiles });
-    } catch (error) {
-      console.error(`* code-search error:`, error);
-      res.status(400).json({ error: String(error) });
-    }
-  });
-
-  // Dyad Engine image generation endpoint for generate_image tool
-  app.post("/engine/v1/images/generations", (req, res) => {
-    const { prompt, model } = req.body;
-    fakeLlmLog(
-      `* images/generations: model=${model}, prompt="${prompt?.slice(0, 50)}..."`,
-    );
-
-    try {
-      // Return a small 1x1 white PNG as base64 for testing
-      const TINY_PNG_B64 =
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";
-
-      res.json({
-        created: Math.floor(Date.now() / 1000),
-        data: [
-          {
-            b64_json: TINY_PNG_B64,
-          },
-        ],
-      });
-    } catch (error) {
-      console.error(`* images/generations error:`, error);
-      res.status(400).json({ error: String(error) });
-    }
-  });
-
   app.get("/test-image.png", (_req, res) => {
     const tinyPngBase64 =
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";
 
     res.type("png").send(Buffer.from(tinyPngBase64, "base64"));
-  });
-
-  // Dyad Engine web-crawl endpoint for web_fetch tool
-  app.post("/engine/v1/tools/web-crawl", (req, res) => {
-    const { url, markdownOnly } = req.body;
-    fakeLlmLog(`* web-crawl: url="${url}", markdownOnly=${markdownOnly}`);
-
-    try {
-      res.json({
-        rootUrl: url,
-        markdown: `# Page content from ${url}`,
-        pages: [
-          {
-            url,
-            markdown: `# Page content from ${url}\n\nThis is the fetched content of the web page.\n\n- Item 1\n- Item 2\n- Item 3`,
-          },
-        ],
-      });
-    } catch (error) {
-      console.error(`* web-crawl error:`, error);
-      res.status(400).json({ error: String(error) });
-    }
-  });
-
-  app.post("/engine/v1/sandboxes", (_req, res) => {
-    const sandboxId = `sandbox-${Date.now()}-${Math.round(Math.random() * 1000)}`;
-    const previewAuthToken = `fake-preview-auth-token-${sandboxId}`;
-    const createdAt = Date.now();
-    cloudSandboxes.set(sandboxId, {
-      id: sandboxId,
-      files: {},
-      createdAt,
-      previewAuthToken,
-      syncRevision: 0,
-      initialSyncCompleted: false,
-      lastActiveAt: createdAt,
-      lastSuccessfulSyncAt: null,
-    });
-
-    res.json({
-      sandboxId,
-      previewUrl: getFakeCloudPreviewUrl(sandboxId),
-      previewAuthToken,
-    });
-  });
-
-  app.delete("/engine/v1/sandboxes/:sandboxId", (req, res) => {
-    cloudSandboxes.delete(req.params.sandboxId);
-    res.status(204).end();
-  });
-
-  app.post("/engine/v1/sandboxes/:sandboxId/files", async (req, res) => {
-    const sandbox = cloudSandboxes.get(req.params.sandboxId);
-    if (!sandbox) {
-      res.status(404).json({ error: "Sandbox not found" });
-      return;
-    }
-
-    const upload = await parseCloudSandboxUpload(req);
-
-    fakeLlmLog(
-      `[fake-cloud] upload sandbox=${sandbox.id} replaceAll=${String(upload.replaceAll)} fileCount=${Object.keys(upload.files).length} deletedCount=${upload.deletedFiles.length}`,
-    );
-
-    sandbox.lastActiveAt = Date.now();
-    sandbox.lastSuccessfulSyncAt = Date.now();
-    sandbox.initialSyncCompleted = true;
-    sandbox.syncRevision += 1;
-    sandbox.files = upload.replaceAll
-      ? { ...upload.files }
-      : {
-          ...sandbox.files,
-          ...upload.files,
-        };
-
-    for (const deletedFile of upload.deletedFiles) {
-      delete sandbox.files[deletedFile];
-    }
-
-    res.json({
-      previewUrl: getFakeCloudPreviewUrl(sandbox.id),
-      previewAuthToken: sandbox.previewAuthToken,
-    });
-  });
-
-  app.post("/engine/v1/sandboxes/reconcile", (_req, res) => {
-    res.json({
-      reconciledSandboxIds: [],
-    });
-  });
-
-  app.get("/engine/v1/sandboxes/:sandboxId/status", (req, res) => {
-    const sandbox = cloudSandboxes.get(req.params.sandboxId);
-    if (!sandbox) {
-      res.status(404).json({ error: "Sandbox not found" });
-      return;
-    }
-
-    sandbox.lastActiveAt = Date.now();
-
-    res.json(
-      createServiceResponse({
-        sandboxId: sandbox.id,
-        status: "running",
-        previewUrl: getFakeCloudPreviewUrl(sandbox.id),
-        previewAuthToken: sandbox.previewAuthToken,
-        previewPort: getPort(),
-        syncRevision: sandbox.syncRevision,
-        initialSyncCompleted: sandbox.initialSyncCompleted,
-        appStatus: "running",
-        syncAgentHealthy: true,
-        createdAt: new Date(sandbox.createdAt).toISOString(),
-        lastActiveAt: new Date(sandbox.lastActiveAt).toISOString(),
-        lastSuccessfulSyncAt: sandbox.lastSuccessfulSyncAt
-          ? new Date(sandbox.lastSuccessfulSyncAt).toISOString()
-          : null,
-        expiresAt: new Date(
-          sandbox.lastActiveAt + 10 * 60 * 1000,
-        ).toISOString(),
-        billingState: "active",
-        billingStartedAt: new Date(sandbox.createdAt).toISOString(),
-        billingLockedAt: null,
-        lastChargedAt: null,
-        nextChargeAt: new Date(sandbox.createdAt + 60 * 1000).toISOString(),
-        billingSlicesCharged: 0,
-        creditsCharged: 0,
-        terminationReason: null,
-        lastErrorCode: null,
-        lastErrorMessage: null,
-      }),
-    );
-  });
-
-  app.post("/engine/v1/sandboxes/:sandboxId/restart", (req, res) => {
-    const sandbox = cloudSandboxes.get(req.params.sandboxId);
-    if (!sandbox) {
-      res.status(404).json({ error: "Sandbox not found" });
-      return;
-    }
-
-    sandbox.lastActiveAt = Date.now();
-
-    res.json({
-      previewUrl: getFakeCloudPreviewUrl(sandbox.id),
-      previewAuthToken: sandbox.previewAuthToken,
-    });
-  });
-
-  app.post("/engine/v1/sandboxes/:sandboxId/share-links", (req, res) => {
-    const sandbox = cloudSandboxes.get(req.params.sandboxId);
-    if (!sandbox) {
-      res.status(404).json({ error: "Sandbox not found" });
-      return;
-    }
-
-    const expiresInSeconds =
-      typeof req.body.expiresInSeconds === "number"
-        ? req.body.expiresInSeconds
-        : 600;
-    const shareLinkId = `share-link-${sandbox.id}`;
-
-    res.json(
-      createServiceResponse({
-        sandboxId: sandbox.id,
-        shareLinkId,
-        url: `${getFakeCloudPreviewUrl(sandbox.id)}?share=${shareLinkId}`,
-        expiresAt: new Date(Date.now() + expiresInSeconds * 1000).toISOString(),
-      }),
-    );
-  });
-
-  app.get("/engine/v1/sandboxes/:sandboxId/logs", (req, res) => {
-    const sandbox = cloudSandboxes.get(req.params.sandboxId);
-    if (!sandbox) {
-      res.status(404).json({ error: "Sandbox not found" });
-      return;
-    }
-
-    res.setHeader("Content-Type", "text/event-stream");
-    res.setHeader("Cache-Control", "no-cache");
-    res.setHeader("Connection", "keep-alive");
-
-    const messages = [
-      "Creating sandbox...",
-      "Installing dependencies...",
-      `Starting preview for ${sandbox.id}...`,
-    ];
-
-    messages.forEach((message) => {
-      res.write(`data: ${JSON.stringify({ message })}\n\n`);
-    });
-    res.write("data: [DONE]\n\n");
-    res.end();
-  });
-
-  app.get("/cloud-preview/:sandboxId", (req, res) => {
-    const sandbox = cloudSandboxes.get(req.params.sandboxId);
-    if (!sandbox) {
-      res.status(404).send("Sandbox not found");
-      return;
-    }
-
-    res.setHeader("Content-Type", "text/html; charset=utf-8");
-    res.send(getSandboxPreviewHtml(sandbox));
   });
 
   return app;
@@ -998,7 +458,9 @@ if (require.main === module) {
     throw new Error(`Invalid port: ${portArg || process.env.PORT}`);
   }
 
-  startFakeLlmServer({ port: PORT, host: "0.0.0.0" })
+  // Bind the IPv6 wildcard with dual-stack enabled (Node's default) so both
+  // localhost resolutions, ::1 and 127.0.0.1, reach the same E2E server.
+  startFakeLlmServer({ port: PORT, host: "::" })
     .then((handle) => {
       console.log(`Fake LLM server running on http://localhost:${handle.port}`);
 

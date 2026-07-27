@@ -48,7 +48,7 @@ describe("queued messages (integration)", () => {
     await harness?.dispose();
   }, 60_000);
 
-  it("restores and clears queued message attachments and selected components while editing", async () => {
+  it("restores and clears queued message attachments while editing", async () => {
     const chatId = await harness.createChat();
     harness.mount({ chatId });
 
@@ -61,17 +61,7 @@ describe("queued messages (integration)", () => {
         mimeType: "text/plain",
       },
     ]);
-    harness.setSelectedComponents([
-      {
-        id: "component-hero",
-        name: "HeroTitle",
-        relativePath: "src/App.tsx",
-        lineNumber: 1,
-        columnNumber: 1,
-      },
-    ]);
     await screen.findByText("queued-notes.txt");
-    await screen.findByTestId("selected-component-display");
 
     await harness.pressEnterInChat("queued with extras", { chatId });
     await waitFor(() =>
@@ -80,7 +70,6 @@ describe("queued messages (integration)", () => {
       ),
     );
     expect(screen.queryByText("queued-notes.txt")).toBeNull();
-    expect(screen.queryByTestId("selected-component-display")).toBeNull();
 
     const queuedRow = within(screen.getByTestId("queue-header"))
       .getByText("queued with extras")
@@ -94,18 +83,10 @@ describe("queued messages (integration)", () => {
       ),
     );
     await screen.findByText("queued-notes.txt");
-    const selectedDisplay = await screen.findByTestId(
-      "selected-component-display",
-    );
-    expect(selectedDisplay.textContent).toContain("HeroTitle");
-    expect(selectedDisplay.textContent).toContain("src/App.tsx:1");
 
     fireEvent.keyDown(getEditable(), { key: "Enter", keyCode: 13 });
     await waitFor(() =>
       expect(screen.queryByText("queued-notes.txt")).toBeNull(),
-    );
-    await waitFor(() =>
-      expect(screen.queryByTestId("selected-component-display")).toBeNull(),
     );
 
     await harness.waitForStreamEnd(chatId, 40_000);

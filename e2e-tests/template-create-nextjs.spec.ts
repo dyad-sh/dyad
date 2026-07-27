@@ -1,18 +1,19 @@
-import { test } from "./helpers/test_helper";
+import { test, Timeout } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 
-test("create next.js app", async ({ po }) => {
+test("create next.js app", async ({ po }, testInfo) => {
+  testInfo.setTimeout(Timeout.EXTRA_LONG * 3);
+
   // This test covers template creation and preview startup, not the proposal
   // review flow. Auto-approve keeps the generated edit deterministic while
   // the imported template may still be installing dependencies.
   await po.setUp({ autoApprove: true });
   const beforeSettings = po.settings.recordSettings();
   await po.navigation.goToTemplatesAndSelectTemplate("Next.js Template");
-  await po.chatActions.selectChatMode("build");
   po.settings.snapshotSettingsDelta(beforeSettings);
 
   // Create an app
-  await po.sendPrompt("tc=edit-made-with-dyad");
+  await po.sendPrompt("tc=local-agent/edit-made-with-dyad");
 
   await po.clickRestart();
 

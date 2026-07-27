@@ -421,6 +421,7 @@ async function runCli(
   cli: TypeScriptCli,
   appPath: string,
   args: string[],
+  signal?: AbortSignal,
 ): Promise<BufferedProcessResult> {
   // Run the TypeScript JS entry point with the user's selected Node runtime,
   // resolved from PATH like every other app child process (reloadNodePath
@@ -434,6 +435,7 @@ async function runCli(
     cwd: appPath,
     env: getTypeScriptCommandEnv(appPath),
     shell: false,
+    signal,
     timeoutMs: TSC_TIMEOUT_MS,
     maxOutputBytes: TSC_MAX_OUTPUT_BYTES,
     // The scheduler must not release its memory-heavy-work slot until the
@@ -445,7 +447,9 @@ async function runCli(
 async function getTypeScriptVersion(
   cli: TypeScriptCli,
   appPath: string,
+  signal?: AbortSignal,
 ): Promise<string> {
+  throwIfTypeCheckCancelled(signal);
   const realEntryPath = await fs.realpath(cli.entryPath);
   const stats = await fs.stat(realEntryPath);
   const cacheKey = `${realEntryPath}:${stats.mtimeMs}`;
@@ -454,7 +458,8 @@ async function getTypeScriptVersion(
     return cached;
   }
 
-  const result = await runCli(cli, appPath, ["--version"]);
+  const result = await runCli(cli, appPath, ["--version"], signal);
+  throwIfTypeCheckCancelled(signal, result);
   if (
     result.code !== 0 ||
     result.signal ||
@@ -476,6 +481,18 @@ async function getTypeScriptVersion(
   return match[1];
 }
 
+function throwIfTypeCheckCancelled(
+  signal?: AbortSignal,
+  result?: BufferedProcessResult,
+): void {
+  if (signal?.aborted || result?.aborted) {
+    throw new DyadError(
+      "Type checking was cancelled.",
+      DyadErrorKind.UserCancelled,
+    );
+  }
+}
+
 function getBuildInfoPath({
   appPath,
   configPath,
@@ -493,14 +510,17 @@ function getBuildInfoPath({
 
 export async function runTypeScriptCheck({
   appPath,
+  signal,
 }: {
   appPath: string;
+  signal?: AbortSignal;
 }): Promise<ProblemReport> {
   return typescriptUtilityProcessScheduler.runExclusive("tsc", async () => {
     try {
+      throwIfTypeCheckCancelled(signal);
       const cli = await resolveTypeScriptCli(appPath);
       const configPath = await findTypeScriptConfig(appPath);
-      const version = await getTypeScriptVersion(cli, appPath);
+      const version = await getTypeScriptVersion(cli, appPath, signal);
       const buildInfoPath = getBuildInfoPath({
         appPath,
         configPath,
@@ -509,33 +529,39 @@ export async function runTypeScriptCheck({
       await fs.mkdir(path.dirname(buildInfoPath), { recursive: true });
 
       logger.info(`Starting TypeScript ${version} CLI check for ${appPath}`);
-      const result = await runCli(cli, appPath, [
-        "--pretty",
-        "false",
-        "--diagnostics",
-        "false",
-        "--extendedDiagnostics",
-        "false",
-        "--listFiles",
-        "false",
-        "--listEmittedFiles",
-        "false",
-        "--explainFiles",
-        "false",
-        "--traceResolution",
-        "false",
-        "--noEmit",
-        "--incremental",
-        "--tsBuildInfoFile",
-        buildInfoPath,
-        "--project",
-        configPath,
-      ]);
+      const result = await runCli(
+        cli,
+        appPath,
+        [
+          "--pretty",
+          "false",
+          "--diagnostics",
+          "false",
+          "--extendedDiagnostics",
+          "false",
+          "--listFiles",
+          "false",
+          "--listEmittedFiles",
+          "false",
+          "--explainFiles",
+          "false",
+          "--traceResolution",
+          "false",
+          "--noEmit",
+          "--incremental",
+          "--tsBuildInfoFile",
+          buildInfoPath,
+          "--project",
+          configPath,
+        ],
+        signal,
+      );
 
       if (result.timedOut) {
         throw new Error(`Type check timed out after ${TSC_TIMEOUT_MS / 1000}s`);
       }
-      if (result.aborted || result.signal) {
+      throwIfTypeCheckCancelled(signal, result);
+      if (result.signal) {
         throw new Error(
           `Type check process terminated${result.signal ? ` with ${result.signal}` : ""}`,
         );

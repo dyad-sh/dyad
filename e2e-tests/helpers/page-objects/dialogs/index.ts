@@ -3,4 +3,3 @@
  */
 
 export { ContextFilesPickerDialog } from "./ContextFilesPickerDialog";
-export { ProModesDialog } from "./ProModesDialog";

@@ -9,7 +9,8 @@ test("captures an app screenshot after the first generated commit", async ({
   po,
 }) => {
   await po.setUp({ autoApprove: true });
-  await po.sendPrompt("tc=write-index");
+  await po.sendPrompt("tc=local-agent/write-index");
+  await po.previewPanel.ensurePreviewPanelIsOpen();
   await po.previewPanel.expectPreviewIframeIsVisible();
 
   const appPath = await po.appManagement.getCurrentAppPath();

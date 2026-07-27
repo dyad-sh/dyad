@@ -28,11 +28,7 @@ export function DeepLinkProvider({ children }: { children: React.ReactNode }) {
     const unsubscribe = earlyDeepLinkEvents.subscribe((data) => {
       // Update with timestamp to ensure state change even if same type comes twice
       setLastDeepLink({ ...data, timestamp: Date.now() });
-      if (data.type === "add-mcp-server") {
-        // Navigate to the Plugins page; it opens the add dialog with
-        // the prefilled form.
-        navigate({ to: "/plugins" });
-      } else if (data.type === "add-prompt") {
+      if (data.type === "add-prompt") {
         // Navigate to library page
         navigate({ to: "/library" });
       }

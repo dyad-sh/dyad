@@ -8,15 +8,21 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 import { relations } from "drizzle-orm";
-import type { ModelMessage } from "ai";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { StoredChatMode } from "@/lib/schemas";
 
-export const AI_MESSAGES_SDK_VERSION = "ai@v6" as const;
-
-export type AiMessagesJsonV6 = {
-  messages: ModelMessage[];
-  sdkVersion: typeof AI_MESSAGES_SDK_VERSION;
+export type LegacyAiMessagesJson = {
+  messages: Record<string, unknown>[];
+  sdkVersion: `ai@${string}`;
 };
+
+export type PiMessagesJsonV1 = {
+  runtime: "pi";
+  version: 1;
+  messages: AgentMessage[];
+};
+
+export type StoredAiMessagesJson = LegacyAiMessagesJson | PiMessagesJsonV1;
 
 export const prompts = sqliteTable(
   "prompts",
@@ -170,14 +176,10 @@ export const messages = sqliteTable(
     maxTokensUsed: integer("max_tokens_used"),
     // Model name used for this message (only for assistant messages)
     model: text("model"),
-    // AI SDK messages (v5 envelope) for preserving tool calls/results in agent mode
+    // Versioned structured transcript for preserving tool calls/results.
     aiMessagesJson: text("ai_messages_json", {
       mode: "json",
-    }).$type<AiMessagesJsonV6 | null>(),
-    // Track if this message used the free agent quota (for non-Pro users)
-    usingFreeAgentModeQuota: integer("using_free_agent_mode_quota", {
-      mode: "boolean",
-    }),
+    }).$type<StoredAiMessagesJson | null>(),
     // Indicates this message is a compaction summary
     isCompactionSummary: integer("is_compaction_summary", { mode: "boolean" }),
     createdAt: integer("created_at", { mode: "timestamp" })
@@ -369,97 +371,6 @@ export const versionsRelations = relations(versions, ({ one }) => ({
     references: [apps.id],
   }),
 }));
-
-// --- MCP (Model Context Protocol) tables ---
-export const mcpServers = sqliteTable(
-  "mcp_servers",
-  {
-    id: integer("id").primaryKey({ autoIncrement: true }),
-    name: text("name").notNull(),
-    transport: text("transport").notNull(),
-    command: text("command"),
-    // Store typed JSON for args and environment variables
-    args: text("args", { mode: "json" }).$type<string[] | null>(),
-    // Legacy plaintext env vars and headers. These remain for unedited
-    // rows so older builds can still use their existing configuration;
-    // new writes and secret edits clear them in favor of the encrypted
-    // columns below, which are what this build reads.
-    envJson: text("env_json", { mode: "json" }).$type<Record<
-      string,
-      string
-    > | null>(),
-    headersJson: text("headers_json", { mode: "json" }).$type<Record<
-      string,
-      string
-    > | null>(),
-    // Env vars and headers encrypted via Electron `safeStorage`, or
-    // base64 plaintext where no keyring is available (see
-    // encryptSecretMap). Both hold a JSON object of strings.
-    envEncrypted: text("env_encrypted"),
-    headersEncrypted: text("headers_encrypted"),
-    url: text("url"),
-    enabled: integer("enabled", { mode: "boolean" })
-      .notNull()
-      .default(sql`0`),
-    // Whether this server requires OAuth. When true, the MCP manager wires
-    // an `OAuthClientProvider` into the streamable HTTP transport so the
-    // Vercel `@ai-sdk/mcp` `auth()` flow can drive PKCE + refresh.
-    oauthEnabled: integer("oauth_enabled", { mode: "boolean" })
-      .notNull()
-      .default(sql`0`),
-    // OAuth state (tokens, expiry, client info). Encrypted via Electron
-    // `safeStorage`, or base64 plaintext where no keyring is available
-    // (see encryptToString). Read/written only by DyadOAuthClientProvider.
-    oauthState: text("oauth_state"),
-    // Optional pre-registered OAuth client_id for servers that don't
-    // support dynamic client registration (RFC 7591). User-supplied via
-    // the add-server UI; left blank for servers that support DCR.
-    oauthClientId: text("oauth_client_id"),
-    // Optional pre-registered OAuth client_secret for confidential
-    // clients. Encrypted via `safeStorage` (base64 plaintext fallback
-    // where no keyring exists). Never sent to the renderer.
-    oauthClientSecret: text("oauth_client_secret"),
-    // Space-separated OAuth scopes requested at the authorize endpoint.
-    // Server-defined values; check provider docs. Blank means omit the
-    // `scope` parameter entirely so the server applies its own default
-    // (rather than us guessing a value that fits a minority of providers).
-    oauthScope: text("oauth_scope"),
-    // Per-server callback port. Manual (non-DCR) flows pre-register a
-    // redirect URI that includes the port, so it must stay stable for
-    // those rows. Null falls back to DEFAULT_OAUTH_CALLBACK_PORT.
-    oauthCallbackPort: integer("oauth_callback_port"),
-    // Slug of the curated catalog entry this server was added from.
-    // Null for manually configured servers.
-    catalogSlug: text("catalog_slug"),
-    createdAt: integer("created_at", { mode: "timestamp" })
-      .notNull()
-      .default(sql`(unixepoch())`),
-    updatedAt: integer("updated_at", { mode: "timestamp" })
-      .notNull()
-      .default(sql`(unixepoch())`),
-  },
-  (table) => [
-    // Provenance/dedupe key for catalog adds. SQLite allows multiple
-    // NULLs, so manually-configured servers are unaffected.
-    uniqueIndex("uniq_mcp_catalog_slug").on(table.catalogSlug),
-  ],
-);
-
-export const mcpToolConsents = sqliteTable(
-  "mcp_tool_consents",
-  {
-    id: integer("id").primaryKey({ autoIncrement: true }),
-    serverId: integer("server_id")
-      .notNull()
-      .references(() => mcpServers.id, { onDelete: "cascade" }),
-    toolName: text("tool_name").notNull(),
-    consent: text("consent").notNull().default("ask"), // ask | always | denied
-    updatedAt: integer("updated_at", { mode: "timestamp" })
-      .notNull()
-      .default(sql`(unixepoch())`),
-  },
-  (table) => [unique("uniq_mcp_consent").on(table.serverId, table.toolName)],
-);
 
 // --- Chat search (FTS5) support tables ---
 // Dirty queues for the chat_search_fts index (created in a custom migration —

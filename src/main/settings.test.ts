@@ -109,14 +109,9 @@ describe("readSettings", () => {
           "disablePreviewNodeAutoInstall": false,
           "enableAppBlueprint": true,
           "enableAutoUpdate": true,
-          "enableCodeExplorer": true,
           "enableContextCompaction": true,
-          "enableMcpToolSearch": true,
           "enableMultiWindow": false,
           "enablePnpmMinimumReleaseAgeWarning": true,
-          "enableProLazyEditsMode": true,
-          "enableProSmartFilesContextMode": true,
-          "enableSandboxScriptExecution": true,
           "enableTestingForNewApps": false,
           "experiments": {},
           "hasRunBefore": false,
@@ -126,10 +121,10 @@ describe("readSettings", () => {
           "previewIdleTimeoutPolicy": "default",
           "providerSettings": {},
           "releaseChannel": "stable",
-          "selectedChatMode": "build",
+          "selectedChatMode": "local-agent",
           "selectedModel": {
-            "name": "auto",
-            "provider": "auto",
+            "name": "claude-sonnet-4-6",
+            "provider": "anthropic",
           },
           "selectedTemplateId": "react",
           "selectedThemeId": "default",
@@ -382,7 +377,7 @@ describe("readSettings", () => {
       );
     });
 
-    it("should migrate deprecated 'agent' chat mode to 'build'", () => {
+    it("should migrate deprecated 'agent' chat mode to 'local-agent'", () => {
       const mockFileContent = {
         selectedModel: {
           name: "gpt-4",
@@ -397,9 +392,8 @@ describe("readSettings", () => {
 
       const result = readSettings();
 
-      // "agent" should be migrated to "build"
-      expect(result.selectedChatMode).toBe("build");
-      expect(result.defaultChatMode).toBe("build");
+      expect(result.selectedChatMode).toBe("local-agent");
+      expect(result.defaultChatMode).toBe("local-agent");
     });
 
     it("should preserve non-deprecated chat modes", () => {
@@ -421,14 +415,14 @@ describe("readSettings", () => {
       expect(result.defaultChatMode).toBe("ask");
     });
 
-    it("should migrate deprecated 'agent' chat mode to 'build'", () => {
+    it("should migrate deprecated 'build' chat mode to 'local-agent'", () => {
       const mockFileContent = {
         selectedModel: {
           name: "gpt-4",
           provider: "openai",
         },
-        selectedChatMode: "agent",
-        defaultChatMode: "agent",
+        selectedChatMode: "build",
+        defaultChatMode: "build",
       };
 
       mockFs.existsSync.mockReturnValue(true);
@@ -436,9 +430,8 @@ describe("readSettings", () => {
 
       const result = readSettings();
 
-      // "agent" should be converted to "build" on read
-      expect(result.selectedChatMode).toBe("build");
-      expect(result.defaultChatMode).toBe("build");
+      expect(result.selectedChatMode).toBe("local-agent");
+      expect(result.defaultChatMode).toBe("local-agent");
     });
 
     it("should preserve non-deprecated chat modes during migration", () => {
@@ -543,14 +536,9 @@ describe("readSettings", () => {
           "disablePreviewNodeAutoInstall": false,
           "enableAppBlueprint": true,
           "enableAutoUpdate": true,
-          "enableCodeExplorer": true,
           "enableContextCompaction": true,
-          "enableMcpToolSearch": true,
           "enableMultiWindow": false,
           "enablePnpmMinimumReleaseAgeWarning": true,
-          "enableProLazyEditsMode": true,
-          "enableProSmartFilesContextMode": true,
-          "enableSandboxScriptExecution": true,
           "enableTestingForNewApps": false,
           "experiments": {},
           "hasRunBefore": false,
@@ -560,10 +548,10 @@ describe("readSettings", () => {
           "previewIdleTimeoutPolicy": "default",
           "providerSettings": {},
           "releaseChannel": "stable",
-          "selectedChatMode": "build",
+          "selectedChatMode": "local-agent",
           "selectedModel": {
-            "name": "auto",
-            "provider": "auto",
+            "name": "claude-sonnet-4-6",
+            "provider": "anthropic",
           },
           "selectedTemplateId": "react",
           "selectedThemeId": "default",
@@ -581,8 +569,8 @@ describe("readSettings", () => {
 
       expect(result).toMatchObject({
         selectedModel: {
-          name: "auto",
-          provider: "auto",
+          name: "claude-sonnet-4-6",
+          provider: "anthropic",
         },
         releaseChannel: "stable",
       });
@@ -604,8 +592,8 @@ describe("readSettings", () => {
 
       expect(result).toMatchObject({
         selectedModel: {
-          name: "auto",
-          provider: "auto",
+          name: "claude-sonnet-4-6",
+          provider: "anthropic",
         },
         releaseChannel: "stable",
       });
@@ -672,8 +660,8 @@ describe("readSettings", () => {
       const result = readSettings();
 
       expect(result.selectedModel).toEqual({
-        name: "auto",
-        provider: "auto",
+        name: "claude-sonnet-4-6",
+        provider: "anthropic",
       });
       expect(result.githubAccessToken).toBeUndefined();
     });
@@ -852,7 +840,7 @@ describe("writeSettings", () => {
     );
   });
 
-  it("preserves the legacy Build-mode MCP setting across unrelated writes", () => {
+  it("removes retired agent settings during unrelated writes", () => {
     mockFs.existsSync.mockReturnValue(true);
     mockFs.readFileSync.mockReturnValue(
       JSON.stringify({
@@ -865,6 +853,13 @@ describe("writeSettings", () => {
         enableAutoUpdate: true,
         releaseChannel: "stable",
         enableMcpServersForBuildMode: true,
+        enableMcpToolSearch: true,
+        autoApproveSafeMcpTools: true,
+        enableDyadPro: true,
+        enableProLazyEditsMode: true,
+        enableProSmartFilesContextMode: true,
+        enableSandboxScriptExecution: true,
+        enableCodeExplorer: true,
       }),
     );
 
@@ -874,10 +869,18 @@ describe("writeSettings", () => {
       String(filePath).startsWith(`${mockSettingsPath}.tmp-`),
     );
     expect(tempFileWrite).toBeDefined();
-    expect(JSON.parse(String(tempFileWrite?.[1]))).toMatchObject({
-      enableAutoUpdate: false,
-      enableMcpServersForBuildMode: true,
-    });
+    const writtenSettings = JSON.parse(String(tempFileWrite?.[1]));
+    expect(writtenSettings.enableAutoUpdate).toBe(false);
+    expect(writtenSettings).not.toHaveProperty("enableMcpServersForBuildMode");
+    expect(writtenSettings).not.toHaveProperty("enableMcpToolSearch");
+    expect(writtenSettings).not.toHaveProperty("autoApproveSafeMcpTools");
+    expect(writtenSettings).not.toHaveProperty("enableDyadPro");
+    expect(writtenSettings).not.toHaveProperty("enableProLazyEditsMode");
+    expect(writtenSettings).not.toHaveProperty(
+      "enableProSmartFilesContextMode",
+    );
+    expect(writtenSettings).not.toHaveProperty("enableSandboxScriptExecution");
+    expect(writtenSettings).not.toHaveProperty("enableCodeExplorer");
   });
 
   it("throws a classified error when the settings file cannot be written", () => {

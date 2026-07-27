@@ -1,18 +1,19 @@
 - button "Restore to this point"
 - paragraph: basic
-- button "file1.txt file1.txt Edit"
-- paragraph: More EOM
+- paragraph: This is a fake response.
+- button "Copy"
+- button "Copy Request ID"
+- button "Restore to this point"
+- paragraph: tc=local-agent/upload-to-codebase
+- 'button "Expand image: logo.png"'
+- paragraph: I'll upload your file to the codebase.
+- text: uploaded-file.png Copy
+- text: "Copied From: attachments:logo.png To: assets/uploaded-file.png Copy uploaded file to codebase"
+- paragraph: I've successfully copied your file to assets/uploaded-file.png in the codebase.
 - button "Copy"
 - text: "[[Version 2: files changed]]"
-- button "Restore to this point"
-- paragraph: "[[UPLOAD_IMAGE_TO_CODEBASE]]"
-- 'button "Expand image: logo.png"'
-- paragraph: Uploading image to codebase
-- text: file.png Copy
-- text: "Copied To: new/image/file.png Uploaded image to codebase"
-- paragraph: "[[dyad-dump-path=*]]"
-- button "Copy"
-- text: "[[Version 3: files changed]]"
-- button "A new/image/file.png"
+- button "Copy Request ID"
+- text: 0 Modified files (1)
+- button "A assets/uploaded-file.png"
 - button "Undo"
 - button "Retry"

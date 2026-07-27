@@ -40,7 +40,9 @@ describe("legacy chat stream message projection", () => {
       },
     });
 
-    const { eventsFor } = await harness.streamChat("tc=dyad-write-angle");
+    const { eventsFor } = await harness.streamChat(
+      "tc=local-agent/simple-response",
+    );
     const fullChunks = eventsFor("chat:response:chunk")
       .map((event) => event.payload)
       .filter(
@@ -50,9 +52,9 @@ describe("legacy chat stream message projection", () => {
           Array.isArray((payload as { messages?: unknown }).messages),
       );
 
-    // The initial placeholder refresh and post-auto-apply refresh are both
-    // full chunks. Neither may expose the main-process-only agent history.
-    expect(fullChunks).toHaveLength(2);
+    // The initial placeholder refresh is a full chunk. It must not expose the
+    // main-process-only agent history; normal pi streaming uses tail patches.
+    expect(fullChunks).toHaveLength(1);
     for (const chunk of fullChunks) {
       expect(JSON.stringify(chunk)).not.toContain(mainOnlyPayload);
       expect(

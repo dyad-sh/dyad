@@ -331,54 +331,6 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       dollarSigns: 2,
     },
   ],
-  auto: [
-    {
-      name: "auto",
-      displayName: "Auto",
-      description: "Automatically selects the best model",
-      tag: "Default",
-      tagColor: "bg-primary text-primary-foreground",
-      // The following is reasonable defaults.
-      maxOutputTokens: 32_000,
-      contextWindow: 200_000,
-      temperature: 0,
-    },
-    {
-      name: "free",
-      displayName: "Free (OpenRouter)",
-      description: "Selects from one of the free OpenRouter models",
-      tag: "Free",
-      tagColor: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
-      // These are below Gemini 2.5 Pro & Flash limits
-      // which are the ones defaulted to for both regular auto
-      // and smart auto.
-      maxOutputTokens: 32_000,
-      contextWindow: 128_000,
-      temperature: 0,
-    },
-    {
-      name: "free-pro",
-      displayName: "Free (Daily)",
-      description:
-        "5 free messages per day for Dyad Pro users (note: your data may be used for training models)",
-      tag: "Free",
-      tagColor: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
-      maxOutputTokens: 32_000,
-      contextWindow: 128_000,
-      temperature: 0,
-      dollarSigns: 0,
-    },
-    {
-      name: "value",
-      displayName: "Super Value",
-      description: "Uses the most cost-effective models available",
-      maxOutputTokens: 32_000,
-      contextWindow: 256_000,
-      temperature: 0,
-      tag: "Budget",
-      tagColor: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
-    },
-  ],
   azure: [
     {
       name: "gpt-5.1",
@@ -584,7 +536,6 @@ export const CLOUD_PROVIDERS: Record<
     displayName: "Google Vertex AI",
     hasFreeTier: false,
     websiteUrl: "https://console.cloud.google.com/vertex-ai",
-    // Use the same gateway prefix as Google Gemini for Dyad Pro compatibility.
     gatewayPrefix: "gemini/",
     secondary: true,
   },
@@ -593,11 +544,6 @@ export const CLOUD_PROVIDERS: Record<
     hasFreeTier: true,
     websiteUrl: "https://openrouter.ai/settings/keys",
     gatewayPrefix: "openrouter/",
-  },
-  auto: {
-    displayName: "Dyad",
-    websiteUrl: "https://academy.dyad.sh/subscription",
-    gatewayPrefix: "dyad/",
   },
   azure: {
     displayName: "Azure OpenAI",

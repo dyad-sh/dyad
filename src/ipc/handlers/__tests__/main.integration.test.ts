@@ -46,19 +46,19 @@ describe("main chat flow (hybrid)", () => {
     );
 
     // Type + click the real Send button (the whole path is real from here).
-    const { send } = await harness.typeInChat("hi");
+    const { send } = await harness.typeInChat("tc=local-agent/basic-write");
     send();
 
     // The user's prompt renders first...
-    await waitFor(() => expect(screen.getByText("hi")).toBeTruthy(), {
-      timeout: 15_000,
-    });
-    // ...then the streamed assistant response. The canned response's dyad-write
-    // tag is parsed into a DyadWrite card; the trailing literal text ("EOM")
-    // renders directly and is what we can assert on in the DOM.
-    await waitFor(() => expect(screen.getByText(/EOM/)).toBeTruthy(), {
-      timeout: 20_000,
-    });
+    await waitFor(
+      () => expect(screen.getByText("tc=local-agent/basic-write")).toBeTruthy(),
+      { timeout: 15_000 },
+    );
+    // ...then the pi tool fixture renders its write card and completion text.
+    await waitFor(
+      () => expect(screen.getByText(/I've created the file/)).toBeTruthy(),
+      { timeout: 20_000 },
+    );
 
     // Gate main-side assertions on the real end-of-stream event.
     await harness.waitForStreamEnd(harness.chatId);
@@ -69,13 +69,19 @@ describe("main chat flow (hybrid)", () => {
     expect(messages).toHaveLength(2);
     const [userMessage, assistantMessage] = messages;
     expect(userMessage.role).toBe("user");
-    expect(userMessage.content).toBe("hi");
+    expect(userMessage.content).toBe("tc=local-agent/basic-write");
     expect(assistantMessage.role).toBe("assistant");
-    expect(assistantMessage.content).toContain('<dyad-write path="file1.txt">');
-    expect(assistantMessage.content).toContain("EOM");
+    expect(assistantMessage.content).toContain(
+      '<dyad-write path="src/hello.ts"',
+    );
+    expect(assistantMessage.content).toContain(
+      "I've created the file successfully.",
+    );
 
-    // The dyad-write was applied and committed (auto-approve).
-    expect(harness.readAppFile("file1.txt").trim()).toBe("A file (2)");
+    // The pi write_file tool was applied and committed (auto-approve).
+    expect(harness.readAppFile("src/hello.ts")).toContain(
+      'return "Hello, World!";',
+    );
     expect(assistantMessage.approvalState).toBe("approved");
     expect(assistantMessage.commitHash).toBeTruthy();
 

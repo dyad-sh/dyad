@@ -14,7 +14,6 @@ export type UserInputIgnoreReason =
   | "request-id-mismatch"
   | "chat-id-mismatch"
   | "already-settled"
-  | "classifier-not-racing"
   | "response-kind-mismatch"
   | "follow-up-not-armed"
   | "follow-up-not-due"
@@ -65,8 +64,7 @@ function settle(
 
 function isAlways(response: UserInputResponse): boolean {
   return (
-    (response.kind === "mcp-consent" || response.kind === "agent-consent") &&
-    response.decision === "accept-always"
+    response.kind === "agent-consent" && response.decision === "accept-always"
   );
 }
 
@@ -97,7 +95,6 @@ export function transition(
     const next: UserInputState = {
       status: "awaiting",
       descriptor: event.descriptor,
-      classifier: event.descriptor.classifier,
     };
     commands.push(
       { type: "broadcast-requested", descriptor: event.descriptor },
@@ -176,21 +173,6 @@ export function transition(
         );
       }
       return settle(descriptor, "human", event.response, persist);
-    }
-    case "classifier-decided": {
-      if (state.status !== "awaiting" || state.classifier !== "racing") {
-        return ignore(state, "classifier-not-racing");
-      }
-      if (event.approved) {
-        return settle(descriptor, "classifier-approved", {
-          kind: "classifier-approved",
-          reason: event.reason,
-        });
-      }
-      return applied(
-        { ...state, classifier: "review", classifierReason: event.reason },
-        [{ type: "broadcast-classified", descriptor, reason: event.reason }],
-      );
     }
     case "timed-out":
       return settle(descriptor, "timed-out", null);

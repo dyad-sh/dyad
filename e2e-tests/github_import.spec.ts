@@ -1,6 +1,3 @@
-import fs from "node:fs";
-import path from "node:path";
-
 import { expect } from "@playwright/test";
 
 import { test, Timeout, type PageObject } from "./helpers/test_helper";
@@ -42,22 +39,6 @@ test("imports apps from the authenticated list and a GitHub URL", async ({
     timeout: Timeout.LONG,
   });
   await expectImportedApp(po, "existing-vite-app");
-
-  const importedPath = await po.appManagement.getCurrentAppPath();
-  await expect
-    .poll(
-      () => {
-        const packageJson = path.join(importedPath, "package.json");
-        return (
-          fs.existsSync(packageJson) &&
-          fs
-            .readFileSync(packageJson, "utf8")
-            .includes("@dyad-sh/react-vite-component-tagger")
-        );
-      },
-      { timeout: Timeout.LONG },
-    )
-    .toBe(true);
 
   await po.navigation.goToAppsTab();
   await po.page.getByRole("button", { name: "Import App" }).click();

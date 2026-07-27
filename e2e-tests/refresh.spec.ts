@@ -33,7 +33,7 @@ testSkipIfWindows("refresh preserves current route", async ({ po }) => {
   await po.setUp({ autoApprove: true });
 
   // Create a multi-page app with react-router navigation
-  await po.sendPrompt("tc=multi-page");
+  await po.sendPrompt("tc=local-agent/multi-page");
 
   // Wait for the preview iframe to be visible and loaded
   await po.previewPanel.expectPreviewIframeIsVisible();
@@ -97,7 +97,7 @@ testSkipIfWindows(
     await po.setUp({ autoApprove: true });
 
     // Create a multi-page app with react-router navigation
-    await po.sendPrompt("tc=multi-page");
+    await po.sendPrompt("tc=local-agent/multi-page");
 
     // Wait for the preview iframe to be visible and loaded
     await po.previewPanel.expectPreviewIframeIsVisible();
@@ -168,7 +168,7 @@ testSkipIfWindows(
   "preview address bar accepts typed relative routes",
   async ({ po }) => {
     await po.setUp({ autoApprove: true });
-    await po.sendPrompt("tc=manual-preview-route");
+    await po.sendPrompt("tc=local-agent/manual-preview-route");
 
     await po.previewPanel.expectPreviewIframeIsVisible();
 
@@ -206,7 +206,7 @@ testSkipIfWindows(
   "spa navigation inside iframe does not change iframe src attribute",
   async ({ po }) => {
     await po.setUp({ autoApprove: true });
-    await po.sendPrompt("tc=multi-page");
+    await po.sendPrompt("tc=local-agent/multi-page");
 
     await po.previewPanel.expectPreviewIframeIsVisible();
 

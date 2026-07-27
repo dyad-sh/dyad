@@ -45,17 +45,15 @@ const logger = log.scope("settings");
 // readSettings instead of using this directly.)
 export const DEFAULT_SETTINGS: UserSettings = {
   selectedModel: {
-    name: "auto",
-    provider: "auto",
+    name: "claude-sonnet-4-6",
+    provider: "anthropic",
   },
   providerSettings: {},
   telemetryConsent: "unset",
   telemetryUserId: uuidv4(),
   hasRunBefore: false,
   experiments: {},
-  enableProLazyEditsMode: true,
-  enableProSmartFilesContextMode: true,
-  selectedChatMode: "build",
+  selectedChatMode: "local-agent",
   enableAppBlueprint: true,
   enableTestingForNewApps: false,
   enableAutoUpdate: true,
@@ -64,9 +62,6 @@ export const DEFAULT_SETTINGS: UserSettings = {
   selectedThemeId: DEFAULT_THEME_ID,
   isRunning: false,
   lastKnownPerformance: undefined,
-  enableSandboxScriptExecution: true,
-  enableMcpToolSearch: true,
-  enableCodeExplorer: true,
   enableMultiWindow: false,
   autoApproveNonSchemaSql: true,
   autoExpandPreviewPanel: true,
@@ -671,9 +666,6 @@ function readExistingSettingsFile(
   // Validate stored settings (allows deprecated values like "agent" chat mode)
   const storedSettings = StoredUserSettingsSchema.parse(combinedSettings);
   // "conservative" is deprecated, use undefined to use the default value
-  if (storedSettings.proSmartContextOption === "conservative") {
-    storedSettings.proSmartContextOption = undefined;
-  }
   // Migrate stored settings to active settings (converts deprecated values)
   const migratedSettings = migrateStoredSettings(storedSettings);
   // Validate the migrated settings against the active schema

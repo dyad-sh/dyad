@@ -76,13 +76,10 @@
     }
   },
   "dismissError": "Dismiss error",
-  "askDyadToBuild": "Ask Dyad to build...",
   "cancelGeneration": "Cancel generation",
   "sendMessage": "Send message",
   "loadingProposal": "Loading proposal...",
   "errorLoadingProposal": "Error loading proposal: {{message}}",
-  "visualEditor": "Visual editor (Pro)",
-  "visualEditorDescription": "Visual editing lets you make UI changes without AI and is a Pro-only feature",
   "summarizeNewChatTip": "Creating a new chat makes the AI more focused and efficient",
   "summarizeToNewChat": "Summarize to new chat",
   "refactorFile": "Refactor {{path}} and make it more modular",
@@ -121,19 +118,6 @@
     "didNotFinish": "Did not finish",
     "chatNumber": "Chat #{{chatId}}",
     "messagesRange": "messages {{range}}"
-  },
-  "exploreChatHistory": {
-    "badge": "HISTORY",
-    "title": "Explore chat history",
-    "chatCount_one": "{{count}} chat",
-    "chatCount_other": "{{count}} chats",
-    "evidenceCount_one": "{{count}} evidence item",
-    "evidenceCount_other": "{{count}} evidence items",
-    "noRelevantHistory": "no relevant history",
-    "partial": "partial",
-    "exploring": "Exploring...",
-    "didNotFinish": "Did not finish",
-    "failed": "Failed"
   },
   "git": {
     "checkingChanges": "Checking project changes",
@@ -245,8 +229,6 @@
   "currentInput": "Current Input",
   "total": "Total",
   "failedCountTokens": "Failed to count tokens",
-  "optimizeTokens": "Optimize your tokens with",
-  "dyadProSmartContext": "Dyad Pro's Smart Context",
   "attachFiles": "Attach files",
   "themes": "Themes",
   "noTheme": "No Theme",
@@ -266,20 +248,13 @@
     "descriptionSingular": "Choose how the file should be used.",
     "descriptionPlural": "Choose how the files should be used."
   },
-  "selectedComponents": "Selected Components ({{count}})",
-  "clearAllComponents": "Clear all selected components",
-  "deselectComponent": "Deselect component",
   "chatMode": {
     "openMenu": "Open mode menu",
     "toggleShortcut": "{{shortcut}} to toggle",
     "agentV2": "Agent v2",
     "agentV2Description": "Better at bigger tasks and debugging",
-    "build": "Build",
-    "buildDescription": "Generate and edit code",
     "ask": "Ask",
-    "askDescription": "Ask questions about the app",
-    "buildWithMcp": "Build with MCP",
-    "buildWithMcpDescription": "Like Build, but can use tools (MCP) to generate code"
+    "askDescription": "Ask questions about the app"
   },
   "modelPicker": {
     "modelLabel": "Model:",
@@ -322,38 +297,9 @@
     "versionCount": "Version {{count}}"
   },
   "errorBox": {
-    "accessWithDyadPro": "Access with Dyad Pro",
     "orSwitchModel": "or switch to another model.",
-    "upgradeToDyadPro": "Upgrade to Dyad Pro",
     "troubleshootingGuide": "Troubleshooting guide",
-    "invalidProKey": "Looks like you don't have a valid Dyad Pro key.",
-    "today": "today.",
-    "creditsUsed": "You have used all of your Dyad AI credits this month.",
-    "reloadOrUpgrade": "Reload or upgrade your subscription",
-    "getMoreCredits": "and get more AI credits",
     "readDocs": "Read docs"
-  },
-  "promo": {
-    "tiredOfWaiting": "Tired of waiting on AI?",
-    "getDyadPro": "Get Dyad Pro",
-    "fasterEdits": "for faster edits with Turbo Edits.",
-    "saveOnCosts": "Save up to 3x on AI costs with",
-    "debuggingLoop": "Getting stuck in a debugging loop? Try a different model.",
-    "joinBuilders": "Join 600+ builders in the",
-    "dyadSubreddit": "Dyad subreddit",
-    "foundBug": "Found a bug? Click Help > Report a Bug",
-    "reportBadResponse": "Want to report a bad AI response? Upload the chat by clicking Help",
-    "watch": "Watch",
-    "creatorBuildApp": "the creator of Dyad build a Bible app step-by-step",
-    "gettingStuck": "Getting stuck? Read our",
-    "debuggingTips": "debugging tips",
-    "advancedTip": "Advanced tip: Customize your",
-    "aiRules": "AI rules",
-    "keepFocused": "Want to keep the AI focused? Start a new chat.",
-    "whatsNext": "Want to know what's next? Check out our",
-    "roadmap": "roadmap",
-    "likeDyad": "Like Dyad? Star it on",
-    "gitHub": "GitHub"
   },
   "consent": {
     "toolWantsToRun": "Tool wants to run",

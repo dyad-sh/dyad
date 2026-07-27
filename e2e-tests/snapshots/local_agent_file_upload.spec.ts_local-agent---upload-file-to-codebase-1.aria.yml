@@ -1,7 +1,8 @@
 - button "Restore to this point"
 - paragraph: "[[AI_RULES_GENERATION_PROMPT]]"
-- button "file1.txt file1.txt Edit"
-- paragraph: More EOM
+- paragraph: I'll document the imported app's stack and coding rules.
+- 'button "AI_RULES.md AI_RULES.md Edit Summary: Create AI rules for the imported app"'
+- paragraph: AI_RULES.md is ready.
 - button "Copy"
 - text: "[[Version 2: files changed]]"
 - button "Copy Request ID"
@@ -15,7 +16,7 @@
 - button "Copy"
 - text: "[[Version 3: files changed]]"
 - button "Copy Request ID"
-- text: Modified files (1)
+- text: 0 Modified files (1)
 - button "A assets/uploaded-file.png"
 - button "Undo"
 - button "Retry"

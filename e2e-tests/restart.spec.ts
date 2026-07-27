@@ -4,6 +4,7 @@ import { expect } from "@playwright/test";
 testSkipIfWindows("restart app", async ({ po }) => {
   await po.setUp({ autoApprove: true });
   await po.sendPrompt("hi");
+  await po.previewPanel.expectPreviewIframeIsVisible(Timeout.EXTRA_LONG);
 
   await po.clickRestart();
   await expect(po.previewPanel.locateLoadingAppPreview()).toBeVisible();

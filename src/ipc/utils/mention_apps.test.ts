@@ -36,7 +36,10 @@ vi.mock("electron-log", () => ({
   },
 }));
 
-import { extractMentionedAppsReferencesFromPrompt } from "@/ipc/utils/mention_apps";
+import {
+  appendReferencedAppsReminder,
+  extractMentionedAppsReferencesFromPrompt,
+} from "@/ipc/utils/mention_apps";
 
 describe("mention app utilities", () => {
   beforeEach(() => {
@@ -72,5 +75,24 @@ describe("mention app utilities", () => {
         appPath: "/dyad-apps/foo-app",
       },
     ]);
+  });
+
+  it("adds the referenced app allow-list and read-only boundary to the prompt", () => {
+    const reminder = appendReferencedAppsReminder(
+      "Compare @app:Foo and @app:Bar",
+      [{ appName: "Foo" }, { appName: "Bar" }],
+    );
+
+    expect(reminder).toContain(
+      "following apps in their prompt: `Foo`, `Bar`. These apps are separate from the current app and are READ-ONLY",
+    );
+    expect(reminder).toContain("`read_file`, `list_files`, `grep`");
+    expect(reminder).not.toContain("code_search");
+  });
+
+  it("leaves prompts without referenced apps unchanged", () => {
+    expect(appendReferencedAppsReminder("Update the page", [])).toBe(
+      "Update the page",
+    );
   });
 });

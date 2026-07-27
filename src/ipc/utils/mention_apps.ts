@@ -18,6 +18,19 @@ export interface MentionedAppCodebaseEntry extends MentionedAppReference {
   files: CodebaseFile[];
 }
 
+export function appendReferencedAppsReminder(
+  prompt: string,
+  referencedApps: readonly Pick<MentionedAppReference, "appName">[],
+): string {
+  if (referencedApps.length === 0) {
+    return prompt;
+  }
+  const appNames = referencedApps
+    .map(({ appName }) => `\`${appName}\``)
+    .join(", ");
+  return `${prompt}\n\n<system-reminder>\nThe user has mentioned the following apps in their prompt: ${appNames}. These apps are separate from the current app and are READ-ONLY. To inspect them, pass the app name as the \`app_name\` parameter to read-only tools (\`read_file\`, \`list_files\`, \`grep\`); matching is case-insensitive. Write tools cannot target these apps. Omit \`app_name\` to operate on the current app.\n</system-reminder>`;
+}
+
 async function resolveMentionedApps(
   mentionedAppNames: string[],
   excludeCurrentAppId?: number,

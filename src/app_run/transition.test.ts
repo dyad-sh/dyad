@@ -121,7 +121,7 @@ function makeEventFixtures(invocationRef: AppRunInvocationRef): RunEvent[] {
       appId: APP_ID,
       invocationRef: FRESH_REF,
       startedAt: 200,
-      options: { removeNodeModules: true, recreateSandbox: true },
+      options: { removeNodeModules: true },
     },
     {
       type: "REBUILD",
@@ -323,7 +323,7 @@ describe("transition scenarios", () => {
       appId: APP_ID,
       invocationRef: REF_2,
       startedAt: 150,
-      options: { removeNodeModules: false, recreateSandbox: false },
+      options: { removeNodeModules: false },
     });
     expect(restart.state).toMatchObject({
       type: "starting",
@@ -521,7 +521,7 @@ describe("transition scenarios", () => {
         appId: APP_ID,
         invocationRef: REF_1,
         startedAt: 100,
-        options: { removeNodeModules: true, recreateSandbox: true },
+        options: { removeNodeModules: true },
       },
     );
     expect(commandsOf(result)).toEqual([
@@ -531,7 +531,7 @@ describe("transition scenarios", () => {
         invocationRef: REF_1,
         operation: "restart",
         startedAt: 100,
-        options: { removeNodeModules: true, recreateSandbox: true },
+        options: { removeNodeModules: true },
       },
     ]);
   });
@@ -582,7 +582,7 @@ describe("transition scenarios", () => {
         invocationRef: REF_1,
         operation: "rebuild",
         startedAt: 100,
-        options: { removeNodeModules: true, recreateSandbox: false },
+        options: { removeNodeModules: true },
       },
     ]);
   });

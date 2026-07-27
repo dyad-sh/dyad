@@ -22,5 +22,9 @@ test("concurrent chat", async ({ po }) => {
 
   // Click the button inside the tab to select it
   await chat1TabContainer.locator("button").first().click();
-  await po.snapshotMessages({ timeout: 12_000 });
+  await po.chatActions.waitForChatCompletion({ timeout: 12_000 });
+  await expect(
+    po.page.getByTestId("messages-list").getByText("chat1", { exact: true }),
+  ).toBeVisible();
+  await po.snapshotMessages();
 });

@@ -95,4 +95,30 @@ describe("bulkUpdateFunctions deploy queueing", () => {
     expect(bulkUpdateResolved).toBe(true);
     expect(laterBundleStarted).toBe(true);
   });
+
+  it("removes a cancelled deployment before it starts", async () => {
+    let releaseActive: () => void = () => {};
+    const active = enqueueSupabaseDeploy("project-1", false, async () => {
+      await new Promise<void>((resolve) => {
+        releaseActive = resolve;
+      });
+    });
+    const controller = new AbortController();
+    const cancellation = new Error("cancelled");
+    const pendingOperation = vi.fn(async () => undefined);
+    const pending = enqueueSupabaseDeploy(
+      "project-1",
+      false,
+      pendingOperation,
+      controller.signal,
+    );
+    const expectation = expect(pending).rejects.toBe(cancellation);
+
+    controller.abort(cancellation);
+
+    await expectation;
+    releaseActive();
+    await active;
+    expect(pendingOperation).not.toHaveBeenCalled();
+  });
 });

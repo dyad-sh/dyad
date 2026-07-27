@@ -209,15 +209,13 @@ export function ModelsSection({ providerId }: ModelsSectionProps) {
       )}
       {/* End Custom Models List Area */}
 
-      {providerId !== "auto" && (
-        <Button
-          onClick={() => setIsCustomModelDialogOpen(true)}
-          variant="outline"
-          className="mt-6"
-        >
-          <PlusIcon className="mr-2 h-4 w-4" /> Add Custom Model
-        </Button>
-      )}
+      <Button
+        onClick={() => setIsCustomModelDialogOpen(true)}
+        variant="outline"
+        className="mt-6"
+      >
+        <PlusIcon className="mr-2 h-4 w-4" /> Add Custom Model
+      </Button>
 
       {/* Render the dialogs */}
       <CreateCustomModelDialog

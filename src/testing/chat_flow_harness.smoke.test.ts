@@ -2,8 +2,8 @@
 //
 // Smoke test for setupChatFlowHarness — this is the converted feasibility
 // spike. It proves the full chat flow end-to-end: real chat:stream handler ->
-// real AI-SDK HTTP streaming -> in-process fake-LLM server (serving
-// e2e-tests/fixtures via tc=) -> real tag processor -> real file writes + git
+// real pi HTTP streaming -> in-process fake-LLM server (serving
+// e2e-tests/fixtures via tc=) -> real tool execution -> real file writes + git
 // commit -> real sqlite.
 //
 // The repo default vitest environment is happy-dom, whose fetch enforces
@@ -40,16 +40,16 @@ describe("chat flow harness (smoke)", () => {
 
   it("streams dyad tags, writes files, commits, and records messages", async () => {
     const { result, events, messages, eventsFor } = await harness.streamChat(
-      "tc=dyad-write-angle",
+      "tc=local-agent/basic-write",
     );
 
     // Handler resolves with the chat id on success.
     expect(result).toBe(harness.chatId);
 
-    // File write from the <dyad-write> tag in dyad-write-angle.md.
-    expect(harness.appFileExists("src/foo/bar.tsx")).toBe(true);
-    expect(harness.readAppFile("src/foo/bar.tsx")).toContain(
-      "// BEGINNING OF FILE",
+    // File write from the deterministic tool fixture.
+    expect(harness.appFileExists("src/hello.ts")).toBe(true);
+    expect(harness.readAppFile("src/hello.ts")).toContain(
+      'return "Hello, World!";',
     );
 
     // Git commit of the applied change.
@@ -59,9 +59,11 @@ describe("chat flow harness (smoke)", () => {
     expect(messages).toHaveLength(2);
     const userMessage = messages.find((m) => m.role === "user")!;
     const assistantMessage = messages.find((m) => m.role === "assistant")!;
-    expect(userMessage.content).toBe("tc=dyad-write-angle");
+    expect(userMessage.content).toBe("tc=local-agent/basic-write");
     expect(assistantMessage.content).toContain("<dyad-write");
-    expect(assistantMessage.content).toContain("AFTER TAG");
+    expect(assistantMessage.content).toContain(
+      "I've created the file successfully.",
+    );
     expect(assistantMessage.approvalState).toBe("approved");
     expect(assistantMessage.commitHash).toBeTruthy();
 

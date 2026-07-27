@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAtomValue } from "jotai";
 import { hasManuallySelectedChatModeAtom } from "@/atoms/chatAtoms";
@@ -9,14 +9,8 @@ import {
   type ChatMode,
   type UserSettings,
 } from "@/lib/schemas";
-import {
-  getUnavailableChatModeReason,
-  type ChatModeFallbackReason,
-} from "@/lib/chatMode";
-import { getFreeProCompatibleChatMode } from "@/lib/freeProModel";
 import { queryKeys } from "@/lib/queryKeys";
 import { useSettings } from "./useSettings";
-import { useFreeAgentQuota } from "./useFreeAgentQuota";
 
 type ChatModeMutationContext = {
   previousChat?: Chat;
@@ -30,8 +24,7 @@ const chatListQueryFilter = {
 
 export function useChatMode(chatId: number | null | undefined) {
   const queryClient = useQueryClient();
-  const { settings, envVars, updateSettings } = useSettings();
-  const { isQuotaExceeded, isLoading: isQuotaLoading } = useFreeAgentQuota();
+  const { settings, updateSettings } = useSettings();
   const hasManuallySelectedChatMode = useAtomValue(
     hasManuallySelectedChatModeAtom,
   );
@@ -43,13 +36,9 @@ export function useChatMode(chatId: number | null | undefined) {
     enabled: activeChatId !== null,
   });
 
-  const freeAgentQuotaAvailable = isQuotaLoading ? undefined : !isQuotaExceeded;
   const effectiveDefaultMode = settings
-    ? getFreeProCompatibleChatMode(
-        settings.selectedModel,
-        getEffectiveDefaultChatMode(settings, envVars, freeAgentQuotaAvailable),
-      )
-    : "build";
+    ? getEffectiveDefaultChatMode(settings)
+    : "local-agent";
 
   const storedChatMode = chatQuery.data?.chatMode ?? null;
   const selectedMode = activeChatId
@@ -58,20 +47,7 @@ export function useChatMode(chatId: number | null | undefined) {
       ? (settings?.selectedChatMode ?? effectiveDefaultMode)
       : effectiveDefaultMode;
 
-  const fallbackReason = useMemo<ChatModeFallbackReason | undefined>(() => {
-    if (!settings || !activeChatId || !storedChatMode) {
-      return undefined;
-    }
-
-    return getUnavailableChatModeReason({
-      mode: storedChatMode,
-      settings,
-      freeAgentQuotaAvailable,
-    });
-  }, [activeChatId, freeAgentQuotaAvailable, settings, storedChatMode]);
-
-  const effectiveMode =
-    activeChatId && fallbackReason ? effectiveDefaultMode : selectedMode;
+  const effectiveMode = selectedMode;
 
   const updateChatModeMutation = useMutation<
     void,
@@ -159,7 +135,6 @@ export function useChatMode(chatId: number | null | undefined) {
     selectedMode,
     effectiveMode,
     effectiveDefaultMode,
-    fallbackReason,
     setChatMode,
     isUpdating: updateChatModeMutation.isPending,
     settings: settings as UserSettings | null,

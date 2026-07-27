@@ -70,7 +70,7 @@ describe("supabase migrations (integration)", () => {
       fakeProjectId: "fake-project-id",
     });
 
-    await sendPrompt("tc=execute-sql-1");
+    await sendPrompt("tc=local-agent/execute-sql-1");
     await waitFor(() => {
       expect(fs.readdirSync(migrationsDir)).toHaveLength(1);
     });

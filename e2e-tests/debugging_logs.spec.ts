@@ -4,14 +4,13 @@ import { expect } from "@playwright/test";
 testSkipIfWindows(
   "console logs should appear in the console",
   async ({ po }) => {
-    await po.setUp();
+    await po.setUp({ autoApprove: true });
 
-    await po.sendPrompt("tc=console-logs");
-    await po.approveProposal();
+    await po.sendPrompt("tc=local-agent/console-logs");
 
     // Wait for app to run
-    const picker = po.page.getByTestId("preview-pick-element-button");
-    await expect(picker).toBeEnabled({ timeout: Timeout.EXTRA_LONG });
+    await po.previewPanel.ensurePreviewPanelIsOpen();
+    await po.previewPanel.expectPreviewIframeIsVisible(Timeout.EXTRA_LONG);
 
     // Wait for iframe to load and app to render
     const iframe = po.previewPanel.getPreviewIframeElement();
@@ -87,14 +86,13 @@ testSkipIfWindows(
 testSkipIfWindows(
   "network requests and responses should appear in the console",
   async ({ po }) => {
-    await po.setUp();
+    await po.setUp({ autoApprove: true });
 
-    await po.sendPrompt("tc=network-requests");
-    await po.approveProposal();
+    await po.sendPrompt("tc=local-agent/network-requests");
 
     // Wait for app to run
-    const picker = po.page.getByTestId("preview-pick-element-button");
-    await expect(picker).toBeEnabled({ timeout: Timeout.EXTRA_LONG });
+    await po.previewPanel.ensurePreviewPanelIsOpen();
+    await po.previewPanel.expectPreviewIframeIsVisible(Timeout.EXTRA_LONG);
 
     // Wait for iframe to load - wait for content to appear
     const iframe = po.previewPanel.getPreviewIframeElement();
@@ -185,12 +183,11 @@ testSkipIfWindows(
     await po.setUp();
 
     // Create an app with console output using fixture
-    await po.sendPrompt("tc=write-index");
-    await po.approveProposal();
+    await po.sendPrompt("tc=local-agent/write-index");
 
     // Wait for app to run
-    const picker = po.page.getByTestId("preview-pick-element-button");
-    await expect(picker).toBeEnabled({ timeout: Timeout.EXTRA_LONG });
+    await po.previewPanel.ensurePreviewPanelIsOpen();
+    await po.previewPanel.expectPreviewIframeIsVisible(Timeout.EXTRA_LONG);
 
     // Open the system messages console
     const consoleHeader = po.page.locator('text="System Messages"').first();
@@ -217,16 +214,14 @@ testSkipIfWindows(
 );
 
 testSkipIfWindows("clear filters button works", async ({ po }) => {
-  await po.setUp();
+  await po.setUp({ autoApprove: true });
 
   // Create a basic app using fixture
-  await po.sendPrompt("tc=write-index");
-  await po.approveProposal();
+  await po.sendPrompt("tc=local-agent/write-index");
 
   // Wait for app to run
-  await po.page
-    .getByTestId("preview-pick-element-button")
-    .click({ timeout: Timeout.EXTRA_LONG });
+  await po.previewPanel.ensurePreviewPanelIsOpen();
+  await po.previewPanel.expectPreviewIframeIsVisible(Timeout.EXTRA_LONG);
 
   // Open the system messages console
   const consoleHeader = po.page.locator('text="System Messages"').first();
@@ -251,15 +246,14 @@ testSkipIfWindows("clear filters button works", async ({ po }) => {
 });
 
 testSkipIfWindows("clear logs button clears all logs", async ({ po }) => {
-  await po.setUp();
+  await po.setUp({ autoApprove: true });
 
   // Create an app with console logs
-  await po.sendPrompt("tc=console-logs");
-  await po.approveProposal();
+  await po.sendPrompt("tc=local-agent/console-logs");
 
   // Wait for app to run
-  const picker = po.page.getByTestId("preview-pick-element-button");
-  await expect(picker).toBeEnabled({ timeout: Timeout.EXTRA_LONG });
+  await po.previewPanel.ensurePreviewPanelIsOpen();
+  await po.previewPanel.expectPreviewIframeIsVisible(Timeout.EXTRA_LONG);
 
   // Wait for iframe to load
   const iframe = po.previewPanel.getPreviewIframeElement();

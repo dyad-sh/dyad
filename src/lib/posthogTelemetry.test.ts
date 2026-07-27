@@ -3,14 +3,14 @@ import {
   createExceptionFromTelemetry,
   getExceptionTelemetryContext,
   getInitialLoadTelemetryProperties,
-  shouldBypassNonProTelemetrySampling,
+  shouldBypassTelemetrySampling,
   shouldFilterPostHogExceptionEvent,
 } from "@/lib/posthogTelemetry";
 import type { UserSettings } from "@/lib/schemas";
 
 function makeSettings(overrides: Partial<UserSettings> = {}): UserSettings {
   return {
-    selectedModel: { provider: "auto", name: "auto" },
+    selectedModel: { provider: "openrouter", name: "test-model" },
     providerSettings: {},
     selectedTemplateId: "react",
     enableAutoUpdate: true,
@@ -86,10 +86,10 @@ describe("getInitialLoadTelemetryProperties", () => {
         settings: makeSettings({
           releaseChannel: "beta",
           defaultChatMode: "ask",
-          selectedChatMode: "build",
+          selectedChatMode: "local-agent",
           runtimeMode2: "docker",
           providerSettings: {
-            auto: { apiKey: { value: "secret" } },
+            openrouter: { apiKey: { value: "secret" } },
           },
         }),
         appVersion: "1.1.0",
@@ -97,12 +97,11 @@ describe("getInitialLoadTelemetryProperties", () => {
         isFirstSession: false,
       }),
     ).toEqual({
-      isPro: true,
       appVersion: "1.1.0",
       platform: "darwin",
       releaseChannel: "beta",
       isFirstSession: false,
-      modelProvider: "auto",
+      modelProvider: "openrouter",
       defaultChatMode: "ask",
       runtimeMode2: "docker",
     });
@@ -119,97 +118,51 @@ describe("getInitialLoadTelemetryProperties", () => {
         isFirstSession: true,
       }),
     ).toEqual({
-      isPro: false,
       appVersion: "1.1.0",
       platform: null,
       releaseChannel: "stable",
       isFirstSession: true,
-      modelProvider: "auto",
+      modelProvider: "openrouter",
       defaultChatMode: null,
       runtimeMode2: "host",
     });
   });
 });
 
-describe("shouldBypassNonProTelemetrySampling", () => {
-  it("always sends sandbox.script.* events for non-Pro sampling", () => {
+describe("shouldBypassTelemetrySampling", () => {
+  it("always sends app:initial-load", () => {
     expect(
-      shouldBypassNonProTelemetrySampling({
-        event: "sandbox.script.completed",
-        properties: { chatId: 1, appId: 2 },
-      }),
-    ).toBe(true);
-    expect(
-      shouldBypassNonProTelemetrySampling({
-        event: "sandbox.script.truncated",
-        properties: { chatId: 1 },
-      }),
-    ).toBe(true);
-    expect(
-      shouldBypassNonProTelemetrySampling({
-        event: "sandbox.script.failed",
-        properties: { error: "Unexpected token" },
-      }),
-    ).toBe(true);
-    expect(
-      shouldBypassNonProTelemetrySampling({
-        event: "sandbox.script.timeout",
-        properties: { error: "Script timed out" },
-      }),
-    ).toBe(true);
-  });
-
-  it("always sends app:initial-load for non-Pro sampling", () => {
-    expect(
-      shouldBypassNonProTelemetrySampling({
+      shouldBypassTelemetrySampling({
         event: "app:initial-load",
-        properties: { isPro: false, appVersion: "1.0.0" },
+        properties: { appVersion: "1.0.0" },
       }),
     ).toBe(true);
   });
 
-  it("always sends promo_click for non-Pro sampling", () => {
+  it("always sends pnpm build policy telemetry", () => {
     expect(
-      shouldBypassNonProTelemetrySampling({
-        event: "promo_click",
-        properties: { messageId: "pro-trial" },
-      }),
-    ).toBe(true);
-  });
-
-  it("always sends pnpm build policy telemetry for non-Pro sampling", () => {
-    expect(
-      shouldBypassNonProTelemetrySampling({
+      shouldBypassTelemetrySampling({
         event: "pnpm:build-auto-denied",
         properties: { packages: ["core-js@3.49.0"] },
       }),
     ).toBe(true);
   });
 
-  it("does not bypass unrelated sandbox telemetry", () => {
-    expect(
-      shouldBypassNonProTelemetrySampling({
-        event: "sandbox.tool.unused_with_attachment",
-        properties: { chatId: 1 },
-      }),
-    ).toBe(false);
-  });
-
   it("still bypasses sampling for error-shaped events", () => {
     expect(
-      shouldBypassNonProTelemetrySampling({
+      shouldBypassTelemetrySampling({
         event: "$exception",
         properties: { exception_message: "boom" },
       }),
     ).toBe(true);
     expect(
-      shouldBypassNonProTelemetrySampling({
+      shouldBypassTelemetrySampling({
         event: "extra-files:error",
         properties: {},
       }),
     ).toBe(true);
     expect(
-      shouldBypassNonProTelemetrySampling({
+      shouldBypassTelemetrySampling({
         event: "app:crash_detected",
         properties: { error: true },
       }),
@@ -218,9 +171,9 @@ describe("shouldBypassNonProTelemetrySampling", () => {
 
   it("allows routine events to be sampled", () => {
     expect(
-      shouldBypassNonProTelemetrySampling({
+      shouldBypassTelemetrySampling({
         event: "chat:submit",
-        properties: { chatMode: "build" },
+        properties: { chatMode: "local-agent" },
       }),
     ).toBe(false);
   });

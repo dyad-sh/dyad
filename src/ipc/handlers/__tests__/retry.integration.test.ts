@@ -20,7 +20,7 @@ import path from "node:path";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 
 import {
   setupHybridChatHarness,
@@ -46,6 +46,13 @@ function commitWithTestIdentity(cwd: string, message: string) {
 
 describe("retry (hybrid)", () => {
   let harness: HybridChatHarness;
+
+  const settleRendererActions = async () => {
+    await act(async () => {
+      await harness.bridge.settleInFlight();
+      await Promise.resolve();
+    });
+  };
 
   beforeAll(async () => {
     harness = await setupHybridChatHarness({
@@ -76,6 +83,7 @@ describe("retry (hybrid)", () => {
       timeout: 20_000,
     });
     await harness.waitForStreamEnd(harness.chatId);
+    await settleRendererActions();
 
     // Original db assertions for the first turn.
     const firstMessages = await harness.db.query.messages.findMany();
@@ -140,9 +148,10 @@ describe("retry (hybrid)", () => {
       const { send } = await harness.typeInChat(prompt);
       send();
       await end;
+      await settleRendererActions();
     };
 
-    await sendTurn("tc=write-index");
+    await sendTurn("tc=local-agent/write-index");
     const earlierManualPath = path.join(
       harness.appDir,
       "retry-earlier-manual-change.txt",
@@ -152,12 +161,13 @@ describe("retry (hybrid)", () => {
       cwd: harness.appDir,
     });
     commitWithTestIdentity(harness.appDir, "Manual work before latest AI turn");
-    await sendTurn("tc=write-index-2");
+    await sendTurn("tc=local-agent/write-index-2");
 
     const directRetryEnd = harness.waitForNextStreamEnd(harness.chatId);
     fireEvent.click(await screen.findByRole("button", { name: /Retry/ }));
     expect(screen.queryByTestId("extra-commits-revert-dialog")).toBeNull();
     await directRetryEnd;
+    await settleRendererActions();
     expect(fs.existsSync(earlierManualPath)).toBe(true);
 
     const newerManualPath = path.join(
@@ -208,9 +218,10 @@ describe("retry (hybrid)", () => {
     );
 
     const end = harness.waitForNextStreamEnd(harness.chatId);
-    const { send } = await harness.typeInChat("tc=write-index");
+    const { send } = await harness.typeInChat("tc=local-agent/write-index");
     send();
     await end;
+    await settleRendererActions();
 
     const manualPath = path.join(
       harness.appDir,
@@ -246,9 +257,10 @@ describe("retry (hybrid)", () => {
     );
 
     const end = harness.waitForNextStreamEnd(harness.chatId);
-    const { send } = await harness.typeInChat("tc=write-index-2");
+    const { send } = await harness.typeInChat("tc=local-agent/write-index-2");
     send();
     await end;
+    await settleRendererActions();
 
     const uncommittedPath = path.join(
       harness.appDir,
@@ -286,6 +298,7 @@ describe("retry (hybrid)", () => {
     const { send } = await harness.typeInChat("[increment]");
     send();
     await firstEnd;
+    await settleRendererActions();
 
     const uncommittedPath = path.join(
       harness.appDir,

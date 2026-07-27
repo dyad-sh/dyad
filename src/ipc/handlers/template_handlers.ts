@@ -3,9 +3,9 @@ import path from "node:path";
 import fs from "node:fs";
 import { promises as fsPromises } from "node:fs";
 import log from "electron-log";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { apps, chats } from "@/db/schema";
+import { apps, chats, customThemes } from "@/db/schema";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { getAllTemplates } from "../utils/template_utils";
 import { localTemplatesData } from "../../shared/templates";
@@ -20,6 +20,7 @@ import { slugifyAppFolderName } from "@/shared/app_names";
 import { resolveUniqueFolderName } from "../utils/app_name_resolution";
 import { getGitUncommittedFiles } from "../utils/git_utils";
 import { gitService } from "../services/git_service";
+import { themesData } from "@/shared/themes";
 
 const logger = log.scope("template_handlers");
 
@@ -151,6 +152,161 @@ export function registerTemplateHandlers() {
       logger.error("Error fetching templates:", error);
       return localTemplatesData;
     }
+  });
+
+  createTypedHandler(templateContracts.getThemes, async () => themesData);
+
+  createTypedHandler(templateContracts.setAppTheme, async (_, params) => {
+    await db
+      .update(apps)
+      .set({ themeId: params.themeId || sql`NULL` })
+      .where(eq(apps.id, params.appId));
+  });
+
+  createTypedHandler(templateContracts.getAppTheme, async (_, params) => {
+    const app = await db.query.apps.findFirst({
+      where: eq(apps.id, params.appId),
+      columns: { themeId: true },
+    });
+    return app?.themeId ?? null;
+  });
+
+  createTypedHandler(templateContracts.getCustomThemes, async () => {
+    return db.query.customThemes.findMany({
+      orderBy: (themes, { desc }) => [desc(themes.createdAt)],
+    });
+  });
+
+  createTypedHandler(templateContracts.createCustomTheme, async (_, params) => {
+    const name = params.name.trim();
+    const description = params.description?.trim();
+    const prompt = params.prompt.trim();
+
+    if (!name) {
+      throw new DyadError("Theme name is required", DyadErrorKind.Validation);
+    }
+    if (name.length > 100) {
+      throw new DyadError(
+        "Theme name must be less than 100 characters",
+        DyadErrorKind.Validation,
+      );
+    }
+    if (description && description.length > 500) {
+      throw new DyadError(
+        "Theme description must be less than 500 characters",
+        DyadErrorKind.Validation,
+      );
+    }
+    if (!prompt) {
+      throw new DyadError("Theme prompt is required", DyadErrorKind.Validation);
+    }
+    if (prompt.length > 50_000) {
+      throw new DyadError(
+        "Theme prompt must be less than 50,000 characters",
+        DyadErrorKind.Validation,
+      );
+    }
+
+    const existingTheme = await db.query.customThemes.findFirst({
+      where: sql`LOWER(${customThemes.name}) = LOWER(${name})`,
+    });
+    if (existingTheme) {
+      throw new DyadError(
+        `A theme named "${name}" already exists. Please choose a different name.`,
+        DyadErrorKind.Conflict,
+      );
+    }
+
+    const [theme] = await db
+      .insert(customThemes)
+      .values({
+        name,
+        description: description || null,
+        prompt,
+      })
+      .returning();
+    return theme;
+  });
+
+  createTypedHandler(templateContracts.updateCustomTheme, async (_, params) => {
+    const currentTheme = await db.query.customThemes.findFirst({
+      where: eq(customThemes.id, params.id),
+    });
+    if (!currentTheme) {
+      throw new DyadError("Theme not found", DyadErrorKind.NotFound);
+    }
+
+    const updateData: Partial<{
+      name: string;
+      description: string | null;
+      prompt: string;
+      updatedAt: Date;
+    }> = { updatedAt: new Date() };
+
+    if (params.name !== undefined) {
+      const name = params.name.trim();
+      if (!name) {
+        throw new DyadError("Theme name is required", DyadErrorKind.Validation);
+      }
+      if (name.length > 100) {
+        throw new DyadError(
+          "Theme name must be less than 100 characters",
+          DyadErrorKind.Validation,
+        );
+      }
+      const existingTheme = await db.query.customThemes.findFirst({
+        where: sql`LOWER(${customThemes.name}) = LOWER(${name}) AND ${customThemes.id} != ${params.id}`,
+      });
+      if (existingTheme) {
+        throw new DyadError(
+          `A theme named "${name}" already exists. Please choose a different name.`,
+          DyadErrorKind.Conflict,
+        );
+      }
+      updateData.name = name;
+    }
+
+    if (params.description !== undefined) {
+      const description = params.description.trim();
+      if (description.length > 500) {
+        throw new DyadError(
+          "Theme description must be less than 500 characters",
+          DyadErrorKind.Validation,
+        );
+      }
+      updateData.description = description || null;
+    }
+
+    if (params.prompt !== undefined) {
+      const prompt = params.prompt.trim();
+      if (!prompt) {
+        throw new DyadError(
+          "Theme prompt is required",
+          DyadErrorKind.Validation,
+        );
+      }
+      if (prompt.length > 50_000) {
+        throw new DyadError(
+          "Theme prompt must be less than 50,000 characters",
+          DyadErrorKind.Validation,
+        );
+      }
+      updateData.prompt = prompt;
+    }
+
+    const [theme] = await db
+      .update(customThemes)
+      .set(updateData)
+      .where(eq(customThemes.id, params.id))
+      .returning();
+    if (!theme) {
+      throw new DyadError("Theme not found", DyadErrorKind.NotFound);
+    }
+    return theme;
+  });
+
+  createTypedHandler(templateContracts.deleteCustomTheme, async (_, params) => {
+    await db.delete(customThemes).where(eq(customThemes.id, params.id));
   });
 
   createTypedHandler(templateContracts.applyAppTemplate, async (_, params) => {

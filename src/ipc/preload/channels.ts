@@ -24,7 +24,6 @@ import {
   connectionFlowContracts,
   connectionFlowEvents,
 } from "../types/connection_flow";
-import { mcpContracts } from "../types/mcp";
 import { vercelContracts } from "../types/vercel";
 import { supabaseContracts } from "../types/supabase";
 import { neonContracts } from "../types/neon";
@@ -34,19 +33,13 @@ import { versionContracts, versionEvents } from "../types/version";
 import { languageModelContracts } from "../types/language-model";
 import { promptContracts } from "../types/prompts";
 import { templateContracts } from "../types/templates";
-import { proposalContracts } from "../types/proposals";
 import { importContracts } from "../types/import";
-import { helpContracts, helpStreamContract } from "../types/help";
 import { capacitorContracts } from "../types/capacitor";
 import { contextContracts } from "../types/context";
 import { upgradeContracts } from "../types/upgrade";
-import { visualEditingContracts } from "../types/visual-editing";
 import { securityContracts } from "../types/security";
 import { miscContracts, miscEvents } from "../types/misc";
-import { freeAgentQuotaContracts } from "../types/free_agent_quota";
-import { freeModelQuotaContracts } from "../types/free_model_quota";
 import { planEvents, planContracts } from "../types/plan";
-import { audioContracts } from "../types/audio";
 import { mediaContracts } from "../types/media";
 import {
   imageGenerationContracts,
@@ -75,11 +68,9 @@ import {
 // =============================================================================
 
 const CHAT_STREAM_CHANNELS = getStreamChannels(chatStreamContract);
-const HELP_STREAM_CHANNELS = getStreamChannels(helpStreamContract);
 
 // Test-only channels (handler only registered in E2E test builds, but channel always allowed)
 const TEST_INVOKE_CHANNELS = [
-  "test:simulateQuotaTimeElapsed",
   "test:set-node-mock",
   "test:set-needs-app-blueprint",
 ] as const;
@@ -97,13 +88,11 @@ export const VALID_INVOKE_CHANNELS = [
 
   // Stream invoke channels
   CHAT_STREAM_CHANNELS.invoke,
-  HELP_STREAM_CHANNELS.invoke,
 
   // Integrations
   ...getInvokeChannels(connectionFlowContracts),
   ...getInvokeChannels(githubContracts),
   ...getInvokeChannels(gitContracts),
-  ...getInvokeChannels(mcpContracts),
   ...getInvokeChannels(vercelContracts),
   ...getInvokeChannels(supabaseContracts),
   ...getInvokeChannels(neonContracts),
@@ -115,19 +104,13 @@ export const VALID_INVOKE_CHANNELS = [
   ...getInvokeChannels(languageModelContracts),
   ...getInvokeChannels(promptContracts),
   ...getInvokeChannels(templateContracts),
-  ...getInvokeChannels(proposalContracts),
   ...getInvokeChannels(importContracts),
-  ...getInvokeChannels(helpContracts),
   ...getInvokeChannels(capacitorContracts),
   ...getInvokeChannels(contextContracts),
   ...getInvokeChannels(upgradeContracts),
-  ...getInvokeChannels(visualEditingContracts),
   ...getInvokeChannels(securityContracts),
   ...getInvokeChannels(miscContracts),
-  ...getInvokeChannels(freeAgentQuotaContracts),
-  ...getInvokeChannels(freeModelQuotaContracts),
   ...getInvokeChannels(planContracts),
-  ...getInvokeChannels(audioContracts),
   ...getInvokeChannels(mediaContracts),
   ...getInvokeChannels(appBlueprintContracts),
   ...getInvokeChannels(appCollectionContracts),
@@ -165,7 +148,6 @@ export const VALID_SEND_CHANNELS = [
 export const VALID_RECEIVE_CHANNELS = [
   // Stream receive channels
   ...CHAT_STREAM_CHANNELS.receive,
-  ...HELP_STREAM_CHANNELS.receive,
 
   // Event channels
   ...getReceiveChannels(agentEvents),

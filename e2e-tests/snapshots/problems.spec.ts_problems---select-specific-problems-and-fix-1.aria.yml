@@ -9,8 +9,14 @@
 - button "Copy"
 - code: nonExistentFunction2(); nonExistentFunction3(); // <-- TypeScript compiler error here
 - paragraph: Please fix all errors in a concise way.
-- 'button "bad-file.ts src/bad-file.ts Edit Summary: Fix 2 errors and introduce a new error."'
 - paragraph: "[[dyad-dump-path=*]]"
+- 'button "bad-file.tsx src/bad-file.tsx Edit Summary: Fix the selected TypeScript errors"'
+- paragraph: The selected TypeScript errors were fixed.
 - button "Copy"
+- text: "[[Version 2: files changed]]"
+- button "Copy Request ID"
+- text: 0 Modified files (2)
+- button "M .gitignore +1"
+- button "A src/bad-file.tsx +4"
 - button "Undo"
 - button "Retry"

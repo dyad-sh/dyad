@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ipc } from "@/ipc/types";
-import { type UserSettings, hasDyadProKey } from "@/lib/schemas";
+import type { UserSettings } from "@/lib/schemas";
 import { getInitialLoadTelemetryProperties } from "@/lib/posthogTelemetry";
 import { usePostHog } from "posthog-js/react";
 import { useAppVersion } from "./useAppVersion";
@@ -9,7 +9,6 @@ import { queryKeys } from "@/lib/queryKeys";
 
 const TELEMETRY_CONSENT_KEY = "dyadTelemetryConsent";
 const TELEMETRY_USER_ID_KEY = "dyadTelemetryUserId";
-const DYAD_PRO_STATUS_KEY = "dyadProStatus";
 
 export function isTelemetryOptedIn() {
   return window.localStorage.getItem(TELEMETRY_CONSENT_KEY) === "opted_in";
@@ -17,10 +16,6 @@ export function isTelemetryOptedIn() {
 
 export function getTelemetryUserId(): string | null {
   return window.localStorage.getItem(TELEMETRY_USER_ID_KEY);
-}
-
-export function isDyadProUser(): boolean {
-  return window.localStorage.getItem(DYAD_PRO_STATUS_KEY) === "true";
 }
 
 let initialLoadTelemetryState: "idle" | "sent" = "idle";
@@ -65,8 +60,6 @@ export function useSettings() {
     }
 
     processSettingsForTelemetry(settingsQuery.data);
-    const isPro = hasDyadProKey(settingsQuery.data);
-    posthog?.people?.set({ isPro });
 
     if (
       initialLoadTelemetryState !== "idle" ||
@@ -114,7 +107,6 @@ export function useSettings() {
     onSuccess: (updatedSettings) => {
       queryClient.setQueryData(queryKeys.settings.user, updatedSettings);
       processSettingsForTelemetry(updatedSettings);
-      posthog?.people?.set({ isPro: hasDyadProKey(updatedSettings) });
     },
     meta: { showErrorToast: true },
   });
@@ -164,8 +156,4 @@ function processSettingsForTelemetry(settings: UserSettings) {
   } else {
     window.localStorage.removeItem(TELEMETRY_USER_ID_KEY);
   }
-  window.localStorage.setItem(
-    DYAD_PRO_STATUS_KEY,
-    hasDyadProKey(settings) ? "true" : "false",
-  );
 }

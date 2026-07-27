@@ -29,7 +29,6 @@ describe("supabase stale app details UI (integration)", () => {
   beforeAll(async () => {
     harness = await setupHybridChatHarness({
       electronMock: h,
-      engine: true,
       testBuild: true,
       settings: { isTestMode: true },
     });

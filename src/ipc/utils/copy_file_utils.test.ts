@@ -76,6 +76,7 @@ describe.runIf(process.platform !== "win32")(
         functionName: "hello-world",
         appPath,
         organizationSlug: null,
+        signal: undefined,
       });
     });
   },

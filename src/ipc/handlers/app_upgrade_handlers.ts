@@ -31,10 +31,10 @@ function getAvailableUpgrades(): Omit<AppUpgrade, "isNeeded">[] {
   return [
     {
       id: "component-tagger",
-      title: "Enable select component to edit",
+      title: "Enable preview screenshots",
       description:
-        "Installs the Dyad component tagger Vite plugin and its dependencies.",
-      manualUpgradeUrl: "https://dyad.sh/docs/upgrades/select-component",
+        "Installs Dyad's preview bridge so version screenshots can be captured.",
+      manualUpgradeUrl: "https://dyad.sh/docs",
     },
     {
       id: "capacitor",

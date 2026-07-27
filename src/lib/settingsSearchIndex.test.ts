@@ -6,30 +6,6 @@ import {
 } from "./settingsSearchIndex";
 
 describe("SETTINGS_SEARCH_INDEX", () => {
-  it("includes the cloud sandbox experiment", () => {
-    expect(
-      SETTINGS_SEARCH_INDEX.find(
-        (item) => item.id === SETTING_IDS.enableCloudSandbox,
-      ),
-    ).toEqual({
-      id: SETTING_IDS.enableCloudSandbox,
-      label: "Enable Cloud Sandbox (Pro)",
-      description:
-        "Run your app on the Cloud for a more secure runtime that uses fewer local system resources",
-      keywords: [
-        "cloud",
-        "sandbox",
-        "runtime",
-        "experiment",
-        "pro",
-        "credits",
-        "secure",
-      ],
-      sectionId: SECTION_IDS.experiments,
-      sectionLabel: "Experiments",
-    });
-  });
-
   it("includes the multi-window experiment", () => {
     expect(
       SETTINGS_SEARCH_INDEX.find(
@@ -88,45 +64,6 @@ describe("SETTINGS_SEARCH_INDEX", () => {
         "upgrade",
         "experiment",
       ],
-      sectionId: SECTION_IDS.experiments,
-      sectionLabel: "Experiments",
-    });
-  });
-
-  it("includes the sandbox script execution setting", () => {
-    expect(
-      SETTINGS_SEARCH_INDEX.find(
-        (item) => item.id === SETTING_IDS.enableSandboxScriptExecution,
-      ),
-    ).toEqual({
-      id: SETTING_IDS.enableSandboxScriptExecution,
-      label: "Enable sandbox script execution",
-      description:
-        "Allow local-agent attachment scripts to inspect files with execute_sandbox_script",
-      keywords: [
-        "script",
-        "scripts",
-        "sandbox",
-        "attachments",
-        "mustard",
-        "agent",
-      ],
-      sectionId: SECTION_IDS.advanced,
-      sectionLabel: "Advanced",
-    });
-  });
-
-  it("includes the MCP tool search setting", () => {
-    expect(
-      SETTINGS_SEARCH_INDEX.find(
-        (item) => item.id === SETTING_IDS.enableMcpToolSearch,
-      ),
-    ).toEqual({
-      id: SETTING_IDS.enableMcpToolSearch,
-      label: "Enable MCP tool search",
-      description:
-        "When many MCP tools are enabled, let the agent search for the tools on demand instead of listing every tool in its context. Requires sandbox script execution",
-      keywords: ["mcp", "search", "tools", "agent", "sandbox", "context"],
       sectionId: SECTION_IDS.experiments,
       sectionLabel: "Experiments",
     });

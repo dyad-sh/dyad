@@ -87,12 +87,6 @@ const ignore = (file: string) => {
   if (file.startsWith("/node_modules/node-pty")) {
     return false;
   }
-  if (file.startsWith("/node_modules/mustardscript")) {
-    return false;
-  }
-  if (file.startsWith("/node_modules/@mustardscript")) {
-    return false;
-  }
   if (file.startsWith("/node_modules/node-addon-api")) {
     return false;
   }
@@ -127,7 +121,6 @@ const shouldSkipNativeRebuild = process.env.DYAD_SKIP_NATIVE_REBUILD === "true";
 const nativeRebuildModules = [
   "better-sqlite3",
   "node-pty",
-  "mustardscript",
   ...(process.platform === "darwin" ? ["dyad-keychain-reader"] : []),
 ];
 
@@ -190,8 +183,7 @@ const config: ForgeConfig = {
         },
     asar: {
       // Native modules and node-pty helper binaries must be loadable from disk.
-      unpackDir:
-        "{node_modules/dyad-keychain-reader,node_modules/node-pty,node_modules/mustardscript,node_modules/@mustardscript}",
+      unpackDir: "{node_modules/dyad-keychain-reader,node_modules/node-pty}",
     },
     ignore,
     extraResource: ["node_modules/dugite/git", "node_modules/@vscode"],
@@ -268,19 +260,9 @@ const config: ForgeConfig = {
           target: "preload",
         },
         {
-          entry: "workers/code_explorer/code_explorer_worker.ts",
-          config: "vite.code-explorer-worker.config.mts",
-          target: "main",
-        },
-        {
           entry:
             "workers/supabase_dependency_analysis/supabase_dependency_analysis_worker.ts",
           config: "vite.supabase-dependency-analysis-worker.config.mts",
-          target: "main",
-        },
-        {
-          entry: "src/ipc/utils/sandbox/sandbox_worker.ts",
-          config: "vite.sandbox-worker.config.mts",
           target: "main",
         },
       ],

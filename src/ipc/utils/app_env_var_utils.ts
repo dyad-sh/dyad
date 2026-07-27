@@ -11,7 +11,6 @@ import fs from "fs";
 import crypto from "crypto";
 import log from "electron-log";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { queueCloudSandboxSnapshotSync } from "./cloud_sandbox_provider";
 
 const logger = log.scope("app_env_var_utils");
 
@@ -46,10 +45,6 @@ export async function updatePostgresUrlEnvVar({
 
   const envFileContents = serializeEnvFile(envVars);
   await fs.promises.writeFile(getEnvFilePath({ appPath }), envFileContents);
-  queueCloudSandboxSnapshotSync({
-    appPath: getDyadAppPath(appPath),
-    changedPaths: [ENV_FILE_NAME],
-  });
 }
 
 export async function updateDbPushEnvVar({
@@ -77,10 +72,6 @@ export async function updateDbPushEnvVar({
 
     const envFileContents = serializeEnvFile(envVars);
     await fs.promises.writeFile(getEnvFilePath({ appPath }), envFileContents);
-    queueCloudSandboxSnapshotSync({
-      appPath: getDyadAppPath(appPath),
-      changedPaths: [ENV_FILE_NAME],
-    });
   } catch (error) {
     logger.error(
       `Failed to update DB push environment variable for app ${appPath}: ${error}`,
@@ -259,10 +250,6 @@ export async function updateNeonEnvVars({
 
   const envFileContents = serializeEnvFile(envVars);
   await fs.promises.writeFile(getEnvFilePath({ appPath }), envFileContents);
-  queueCloudSandboxSnapshotSync({
-    appPath: getDyadAppPath(appPath),
-    changedPaths: [ENV_FILE_NAME],
-  });
 }
 
 /** Keys that are unambiguously Neon-owned and always safe to remove. */
@@ -299,10 +286,6 @@ export async function removeNeonEnvVars({
 
   const envFileContents = serializeEnvFile(filtered);
   await fs.promises.writeFile(getEnvFilePath({ appPath }), envFileContents);
-  queueCloudSandboxSnapshotSync({
-    appPath: getDyadAppPath(appPath),
-    changedPaths: [ENV_FILE_NAME],
-  });
 }
 
 // Helper function to serialize environment variables to .env.local format

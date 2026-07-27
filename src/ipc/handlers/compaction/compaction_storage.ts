@@ -1,7 +1,6 @@
 /**
  * Compaction Storage Module
  * Stores human/LLM-readable conversation transcripts before compaction.
- * Uses XML-structured format with truncated tool results for token efficiency.
  */
 
 import fs from "node:fs";
@@ -10,11 +9,6 @@ import log from "electron-log";
 import { ensureDyadGitignored } from "@/ipc/handlers/gitignoreUtils";
 
 const logger = log.scope("compaction_storage");
-
-/**
- * Maximum characters to keep from tool results before truncating.
- */
-export const TOOL_RESULT_TRUNCATION_LIMIT = 1000;
 
 /**
  * Message structure passed to the storage module.
@@ -32,40 +26,6 @@ function getChatBackupDir(appPath: string, chatId: number): string {
 }
 
 /**
- * Transform dyad-specific tool XML tags to shorter, LLM-friendly equivalents
- * and truncate large tool results for token efficiency.
- */
-export function transformToolTags(content: string): string {
-  // Transform <dyad-mcp-tool-call> to <tool-use>. Tolerates extra attributes
-  // (e.g. call-id); expects server before tool, which every emitter does.
-  let result = content.replace(
-    /<dyad-mcp-tool-call\b[^>]*?\bserver="([^"]*)"[^>]*?\btool="([^"]*)"[^>]*>\n([\s\S]*?)\n<\/dyad-mcp-tool-call>/g,
-    '<tool-use name="$2" server="$1">\n$3\n</tool-use>',
-  );
-
-  // Transform <dyad-mcp-tool-result> to <tool-result> with truncation
-  result = result.replace(
-    /<dyad-mcp-tool-result\b[^>]*?\bserver="([^"]*)"[^>]*?\btool="([^"]*)"[^>]*>\n([\s\S]*?)\n<\/dyad-mcp-tool-result>/g,
-    (_match, server, tool, resultContent: string) => {
-      const chars = resultContent.length;
-      const truncated = chars > TOOL_RESULT_TRUNCATION_LIMIT;
-      const attrs = [
-        `name="${tool}"`,
-        `server="${server}"`,
-        `chars="${chars}"`,
-        ...(truncated ? ['truncated="true"'] : []),
-      ].join(" ");
-      const body = truncated
-        ? resultContent.slice(0, TOOL_RESULT_TRUNCATION_LIMIT) + "\n..."
-        : resultContent;
-      return `<tool-result ${attrs}>\n${body}\n</tool-result>`;
-    },
-  );
-
-  return result;
-}
-
-/**
  * Format messages as an XML-structured conversation transcript
  * that is easy for a future LLM to read.
  */
@@ -77,9 +37,7 @@ export function formatAsTranscript(
   const header = `<transcript chatId="${chatId}" messageCount="${messages.length}" compactedAt="${timestamp}">`;
 
   const body = messages
-    .map(
-      (m) => `<msg role="${m.role}">\n${transformToolTags(m.content)}\n</msg>`,
-    )
+    .map((m) => `<msg role="${m.role}">\n${m.content}\n</msg>`)
     .join("\n\n");
 
   return `${header}\n\n${body}\n\n</transcript>`;

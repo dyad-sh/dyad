@@ -4,7 +4,6 @@ import {
   type PageObject,
 } from "./helpers/test_helper";
 import { expect, type Locator } from "@playwright/test";
-import type { ElectronApplication } from "playwright";
 import * as fs from "fs";
 
 const testSetup = testWithConfig({
@@ -18,20 +17,12 @@ testSetup.describe("Setup Flow", () => {
     await expect(
       dialog.getByText("Your prompt is saved — it'll send as soon as"),
     ).toBeVisible();
-    await expect(
-      dialog.getByRole("button", { name: /Start free Dyad Pro trial/ }),
-    ).toBeVisible();
     await expect(dialog.getByRole("button", { name: "Google" })).toBeVisible();
     await expect(
       dialog.getByRole("button", { name: "OpenRouter" }),
     ).toBeVisible();
     await expect(
       dialog.getByRole("button", { name: "Other providers" }),
-    ).toBeVisible();
-    await expect(
-      dialog.getByRole("button", {
-        name: "Already have Dyad Pro? Add your key",
-      }),
     ).toBeVisible();
   });
 
@@ -98,13 +89,11 @@ testSetup.describe("Setup Flow", () => {
   );
 
   testSetup(
-    "OpenRouter API key setup switches the pending first prompt from Build to Basic Agent",
+    "OpenRouter API key setup resumes the pending first prompt in Agent mode",
     async ({ po }) => {
       await seedFakeModelSelection(po);
-      await expectInitialBuildMode(po);
       const prompt = "Build a tiny meal planner";
       const dialog = await openAiSetupDialog(po, prompt);
-      await restoreLocalAgentDefault(po);
 
       await dialog.getByRole("button", { name: "OpenRouter" }).click();
       await expect(
@@ -129,7 +118,7 @@ testSetup.describe("Setup Flow", () => {
       });
       await expect(po.page.getByRole("dialog")).not.toBeVisible();
       await expectSelectedApp(po);
-      await expectLocalAgentMode(po, "Basic Agent");
+      await expectLocalAgentMode(po);
     },
   );
 
@@ -278,59 +267,11 @@ testSetup.describe("Setup Flow", () => {
       expect(serializedDump).toContain("Attachment-only setup resume fixture.");
     },
   );
-
-  testSetup(
-    "Dyad Pro return deep link switches the pending first prompt from Build to Agent",
-    async ({ po, electronApp }) => {
-      await expectInitialBuildMode(po);
-      const prompt = "Build a tiny workout planner";
-      await openAiSetupDialog(po, prompt);
-      await restoreLocalAgentDefault(po);
-
-      await triggerDyadProReturnDeepLink(electronApp);
-
-      await expect(
-        po.page.getByTestId("messages-list").getByText(prompt),
-      ).toBeVisible({ timeout: Timeout.EXTRA_LONG });
-      await po.chatActions.waitForChatCompletion({
-        timeout: Timeout.EXTRA_LONG,
-      });
-      await expect(po.page.getByRole("dialog")).not.toBeVisible();
-      await expect(po.page.getByText("Welcome to Dyad Pro!")).not.toBeVisible();
-      await expectSelectedApp(po);
-      await expectLocalAgentMode(po, "Agent");
-    },
-  );
 });
 
-async function expectInitialBuildMode(po: PageObject) {
-  await po.pinBuildChatModeForSetup();
-  await po.navigation.goToAppsTab();
+async function expectLocalAgentMode(po: PageObject) {
   await expect(po.page.getByTestId("chat-mode-selector")).toContainText(
-    "Build",
-    { timeout: Timeout.MEDIUM },
-  );
-}
-
-async function restoreLocalAgentDefault(po: PageObject) {
-  await po.page.evaluate(async () => {
-    await (window as any).electron.ipcRenderer.invoke("set-user-settings", {
-      defaultChatMode: "local-agent",
-    });
-  });
-  await expect
-    .poll(() => po.settings.recordSettings().defaultChatMode, {
-      timeout: Timeout.MEDIUM,
-    })
-    .toBe("local-agent");
-}
-
-async function expectLocalAgentMode(
-  po: PageObject,
-  expectedDisplayName: "Basic Agent" | "Agent",
-) {
-  await expect(po.page.getByTestId("chat-mode-selector")).toContainText(
-    expectedDisplayName,
+    "Agent",
     { timeout: Timeout.MEDIUM },
   );
   await expect
@@ -417,16 +358,6 @@ async function seedFakeModelSelection(po: PageObject) {
       },
     });
   }, po.fakeLlmPort);
-}
-
-async function triggerDyadProReturnDeepLink(electronApp: ElectronApplication) {
-  await electronApp.evaluate(({ app }) => {
-    app.emit(
-      "open-url",
-      { preventDefault: () => {} },
-      "dyad://dyad-pro-return?key=test-dyad-pro-key",
-    );
-  });
 }
 
 async function openAiSetupDialog(

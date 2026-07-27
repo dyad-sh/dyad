@@ -36,7 +36,6 @@ export type ReloadReason = "hmr" | "manual";
 
 export interface RestartOptions {
   removeNodeModules: boolean;
-  recreateSandbox: boolean;
 }
 
 export interface RunErrorInfo {
@@ -61,8 +60,7 @@ export type RunState =
       startedAt: number;
       /**
        * A URL from this same invocation that arrived before the run/restart
-       * IPC settled. Cloud restarts legitimately report the current URL
-       * first, so this distinct ordering race still requires buffering.
+       * IPC settled, so this distinct ordering race requires buffering.
        */
       pendingUrl: RunUrl | null;
     }

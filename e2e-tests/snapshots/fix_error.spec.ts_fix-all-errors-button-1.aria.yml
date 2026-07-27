@@ -1,25 +1,33 @@
 - button "Restore to this point"
-- paragraph: tc=create-multiple-errors
-- paragraph: I will intentionally add multiple errors to test the Fix All Errors button
-- 'button "Index.tsx src/pages/Index.tsx Edit Summary: intentionally add first error"'
+- paragraph: tc=local-agent/create-multiple-errors
+- paragraph: I will intentionally add multiple errors to test the Fix All Errors button.
+- 'button "Index.tsx src/pages/Index.tsx Edit Summary: Intentionally add first error"'
+- 'button "ErrorComponent.tsx src/components/ErrorComponent.tsx Edit Summary: Intentionally add second error"'
+- 'button "helper.ts src/utils/helper.ts Edit Summary: Intentionally add third error"'
 - button "Error First error in Index Copy Fix with AI"
-- 'button "ErrorComponent.tsx src/components/ErrorComponent.tsx Edit Summary: intentionally add second error"'
 - button "Error Second error in ErrorComponent Copy Fix with AI"
-- 'button "helper.ts src/utils/helper.ts Edit Summary: intentionally add third error"'
 - button "Error Third error in helper Copy Fix with AI"
 - button "Fix All Errors (3)"
 - button "Copy"
 - text: "[[Version 2: files changed]]"
+- button "Copy Request ID"
 - button "Restore to this point"
 - paragraph: "Fix all of the following errors:"
 - list:
   - listitem: First error in Index
   - listitem: Second error in ErrorComponent
   - listitem: Third error in helper
-- button "file1.txt file1.txt Edit"
-- paragraph: More EOM
+- paragraph: I'll fix all three runtime errors.
+- 'button "Index.tsx src/pages/Index.tsx Edit Summary: Fix the index page error"'
+- 'button "ErrorComponent.tsx src/components/ErrorComponent.tsx Edit Summary: Fix the component error"'
+- 'button "helper.ts src/utils/helper.ts Edit Summary: Fix the helper error"'
+- paragraph: All three runtime errors are fixed.
 - button "Copy"
 - text: "[[Version 3: files changed]]"
-- button "A file1.txt +1"
+- button "Copy Request ID"
+- text: 0 Modified files (3)
+- button "M src/components/ErrorComponent.tsx +1 -4"
+- button "M src/pages/Index.tsx +1 -4"
+- button "M src/utils/helper.ts +1 -3"
 - button "Undo"
 - button "Retry"

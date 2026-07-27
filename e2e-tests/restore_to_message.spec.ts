@@ -28,13 +28,13 @@ testSkipIfWindows(
       );
 
     // Turn A: writes src/pages/Index.tsx -> creates a version.
-    await po.sendPrompt("tc=write-index");
+    await po.sendPrompt("tc=local-agent/write-index");
     expect(fs.readFileSync(await indexPath(), "utf-8")).toContain(
       "Testing:write-index!",
     );
 
     // Turn B: overwrites src/pages/Index.tsx -> creates a newer version.
-    await po.sendPrompt("tc=write-index-2");
+    await po.sendPrompt("tc=local-agent/write-index-2");
     expect(fs.readFileSync(await indexPath(), "utf-8")).toContain(
       "Testing:write-index(2)!",
     );
@@ -67,8 +67,10 @@ testSkipIfWindows(
     await expect(restoreButtons).toHaveCount(2);
 
     const messagesList = po.page.getByTestId("messages-list");
-    await expect(messagesList).toContainText("tc=write-index");
-    await expect(messagesList).not.toContainText("tc=write-index-2");
+    await expect(messagesList).toContainText("tc=local-agent/write-index");
+    await expect(messagesList).not.toContainText(
+      "tc=local-agent/write-index-2",
+    );
 
     // The app code is reverted to the state right before turn B.
     await expect(async () => {
@@ -89,8 +91,8 @@ testSkipIfWindows(
       const currentChatId = po.page.url().match(/[?&]id=(\d+)/)?.[1];
       expect(currentChatId).toBe(originalChatId);
     }).toPass({ timeout: Timeout.MEDIUM });
-    await expect(messagesList).toContainText("tc=write-index");
-    await expect(messagesList).toContainText("tc=write-index-2");
+    await expect(messagesList).toContainText("tc=local-agent/write-index");
+    await expect(messagesList).toContainText("tc=local-agent/write-index-2");
   },
 );
 
@@ -112,8 +114,8 @@ testSkipIfWindows(
         "Index.tsx",
       );
 
-    await po.sendPrompt("tc=write-index");
-    await po.sendPrompt("tc=write-index-2");
+    await po.sendPrompt("tc=local-agent/write-index");
+    await po.sendPrompt("tc=local-agent/write-index-2");
     expect(fs.readFileSync(await indexPath(), "utf-8")).toContain(
       "Testing:write-index(2)!",
     );
@@ -139,8 +141,10 @@ testSkipIfWindows(
     await expect(restoreButtons).toHaveCount(2);
 
     const messagesList = po.page.getByTestId("messages-list");
-    await expect(messagesList).toContainText("tc=write-index");
-    await expect(messagesList).not.toContainText("tc=write-index-2");
+    await expect(messagesList).toContainText("tc=local-agent/write-index");
+    await expect(messagesList).not.toContainText(
+      "tc=local-agent/write-index-2",
+    );
 
     // The app code must NOT be reverted: forking only touches the chat.
     expect(fs.readFileSync(await indexPath(), "utf-8")).toContain(

@@ -110,55 +110,6 @@ export const DoesReleaseNoteExistResultSchema = z.object({
   url: z.string().optional(),
 });
 
-export const UserBudgetInfoSchema = z
-  .object({
-    usedCredits: z.number(),
-    totalCredits: z.number(),
-    budgetResetDate: z.date(),
-    redactedUserId: z.string(),
-    isTrial: z.boolean(),
-  })
-  .nullable();
-
-export type UserBudgetInfo = z.infer<typeof UserBudgetInfoSchema>;
-
-export const SubscriptionStatusSchema = z
-  .object({
-    alert: z
-      .enum(["subscription_ending", "payment_past_due", "subscription_paused"])
-      .nullable(),
-    effectiveAt: z.string().datetime().nullable(),
-    actionUrl: z.string().url().nullable(),
-  })
-  .strict()
-  .superRefine((status, context) => {
-    if (status.alert === null) {
-      if (status.effectiveAt !== null || status.actionUrl !== null) {
-        context.addIssue({
-          code: "custom",
-          message: "A healthy subscription status cannot include alert data",
-        });
-      }
-      return;
-    }
-    if (status.actionUrl === null) {
-      context.addIssue({
-        code: "custom",
-        path: ["actionUrl"],
-        message: "Billing alerts require an action URL",
-      });
-    }
-    if (status.alert === "subscription_ending" && status.effectiveAt === null) {
-      context.addIssue({
-        code: "custom",
-        path: ["effectiveAt"],
-        message: "Ending subscriptions require an effective date",
-      });
-    }
-  });
-
-export type SubscriptionStatus = z.infer<typeof SubscriptionStatusSchema>;
-
 export const TelemetryEventPayloadSchema = z.object({
   eventName: z.string(),
   properties: z.record(z.string(), z.any()).optional(),
@@ -352,25 +303,6 @@ export const systemContracts = {
     channel: "does-release-note-exist",
     input: DoesReleaseNoteExistParamsSchema,
     output: DoesReleaseNoteExistResultSchema,
-  }),
-
-  // Budget
-  getUserBudget: defineContract({
-    channel: "get-user-budget",
-    input: z.void(),
-    output: UserBudgetInfoSchema,
-  }),
-
-  getSubscriptionStatus: defineContract({
-    channel: "get-subscription-status",
-    input: z.void(),
-    output: SubscriptionStatusSchema.nullable(),
-  }),
-
-  openBillingAction: defineContract({
-    channel: "open-billing-action",
-    input: z.string(),
-    output: z.void(),
   }),
 
   // Upload

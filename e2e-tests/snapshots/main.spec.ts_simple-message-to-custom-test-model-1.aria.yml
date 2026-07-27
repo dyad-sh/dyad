@@ -1,7 +1,8 @@
 - button "Restore to this point"
 - paragraph: hi
-- button "file1.txt file1.txt Edit"
-- paragraph: More EOM
+- paragraph: This is a fake response.
 - button "Copy"
+- button "Copy Request ID"
+- text: "0"
 - button "Undo"
 - button "Retry"

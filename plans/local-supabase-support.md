@@ -158,22 +158,22 @@ For local mode:
 
 ### Components Affected
 
-| File                                                                       | Change                                                                                             |
-| -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `src/db/schema.ts`                                                         | Add `supabaseMode` column to `apps` table                                                          |
-| `src/lib/schemas.ts`                                                       | Add `localSupabase` settings object to `SupabaseSchema`                                            |
-| `src/supabase_admin/supabase_local_client.ts`                              | **New file.** CLI detection, `supabase status` parsing, direct Postgres queries via `postgres` npm |
-| `src/supabase_admin/supabase_management_client.ts`                         | Add local routing in `executeSupabaseSql` and key functions                                        |
-| `src/supabase_admin/supabase_context.ts`                                   | Update `getSupabaseClientCode()` and `getPublishableKey()` for local URLs/keys                     |
-| `src/supabase_admin/supabase_schema_query.ts`                              | No change (same SQL queries, different execution path)                                             |
-| `src/components/SupabaseConnector.tsx`                                     | Add local Supabase entry point, local connected state, prerequisite check UI, status display       |
-| `src/components/SupabaseIntegration.tsx`                                   | Conditionally render settings based on `supabaseMode`                                              |
-| `src/ipc/types/supabase.ts`                                                | Add new contracts: `checkLocalPrerequisites`, `getLocalStatus`, `connectLocal`, `disconnectLocal`  |
-| `src/ipc/handlers/supabase_handlers.ts`                                    | Add local handlers, route existing handlers by mode                                                |
-| `src/hooks/useSupabase.ts`                                                 | Add hooks for local status, prerequisites                                                          |
-| `src/prompts/supabase_prompt.ts`                                           | Add local-specific agent instructions (URLs, edge function serving, limitations)                   |
-| `src/pro/main/ipc/handlers/local_agent/tools/get_supabase_project_info.ts` | Return local connection details when in local mode                                                 |
-| `src/pro/main/ipc/handlers/local_agent/tools/get_supabase_table_schema.ts` | Route schema queries through local Postgres when in local mode                                     |
+| File                                                 | Change                                                                                             |
+| ---------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `src/db/schema.ts`                                   | Add `supabaseMode` column to `apps` table                                                          |
+| `src/lib/schemas.ts`                                 | Add `localSupabase` settings object to `SupabaseSchema`                                            |
+| `src/supabase_admin/supabase_local_client.ts`        | **New file.** CLI detection, `supabase status` parsing, direct Postgres queries via `postgres` npm |
+| `src/supabase_admin/supabase_management_client.ts`   | Add local routing in `executeSupabaseSql` and key functions                                        |
+| `src/supabase_admin/supabase_context.ts`             | Update `getSupabaseClientCode()` and `getPublishableKey()` for local URLs/keys                     |
+| `src/supabase_admin/supabase_schema_query.ts`        | No change (same SQL queries, different execution path)                                             |
+| `src/components/SupabaseConnector.tsx`               | Add local Supabase entry point, local connected state, prerequisite check UI, status display       |
+| `src/components/SupabaseIntegration.tsx`             | Conditionally render settings based on `supabaseMode`                                              |
+| `src/ipc/types/supabase.ts`                          | Add new contracts: `checkLocalPrerequisites`, `getLocalStatus`, `connectLocal`, `disconnectLocal`  |
+| `src/ipc/handlers/supabase_handlers.ts`              | Add local handlers, route existing handlers by mode                                                |
+| `src/hooks/useSupabase.ts`                           | Add hooks for local status, prerequisites                                                          |
+| `src/prompts/supabase_prompt.ts`                     | Add local-specific agent instructions (URLs, edge function serving, limitations)                   |
+| `src/ipc/pi/tools/dyad/get_supabase_project_info.ts` | Return local connection details when in Agent mode                                                 |
+| `src/ipc/pi/tools/dyad/get_database_table_schema.ts` | Route schema queries through local Postgres when in Agent mode                                     |
 
 ### Data Model Changes
 

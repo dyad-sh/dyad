@@ -13,7 +13,6 @@ import { generateAppFilesSnapshotData } from "../generateAppFilesSnapshotData";
 import {
   normalizeItemReferences,
   normalizeToolCallIds,
-  normalizeMcpCallIds,
   normalizeGitContextHashes,
   normalizeVersionedFiles,
   normalizePath,
@@ -34,13 +33,11 @@ import { ModelPicker } from "./components/ModelPicker";
 import { Settings } from "./components/Settings";
 import { AppManagement } from "./components/AppManagement";
 import { PromptLibrary } from "./components/PromptLibrary";
-import { Plugins } from "./components/Plugins";
 import { Catalog } from "./components/Catalog";
 import { BrowserNotifications } from "./components/BrowserNotifications";
 
 // Import dialog page objects
 import { ContextFilesPickerDialog } from "./dialogs/ContextFilesPickerDialog";
-import { ProModesDialog } from "./dialogs/ProModesDialog";
 import { Timeout } from "../constants";
 
 const IGNORED_SNAPSHOT_FILE_PATHS = new Set([".gitattributes"]);
@@ -175,7 +172,6 @@ export class PageObject {
   public settings: Settings;
   public appManagement: AppManagement;
   public promptLibrary: PromptLibrary;
-  public plugins: Plugins;
   public catalog: Catalog;
   public browserNotifications: BrowserNotifications;
   private stableMessageSnapshotIndex = 0;
@@ -206,7 +202,6 @@ export class PageObject {
     this.settings = new Settings(this.page, userDataDir, fakeLlmPort);
     this.appManagement = new AppManagement(this.page, electronApp, userDataDir);
     this.promptLibrary = new PromptLibrary(this.page);
-    this.plugins = new Plugins(this.page);
     this.catalog = new Catalog(this.page);
     this.browserNotifications = new BrowserNotifications(this.page);
   }
@@ -323,35 +318,40 @@ export class PageObject {
     await this.githubConnector.resetRepos();
   }
 
-  async pinBuildChatModeForSetup() {
-    await this.page.evaluate(async () => {
+  async pinAgentChatModeForSetup({
+    enableAppBlueprint = false,
+  }: { enableAppBlueprint?: boolean } = {}) {
+    await this.page.evaluate(async (enableAppBlueprint) => {
       await (window as any).electron.ipcRenderer.invoke("set-user-settings", {
-        selectedChatMode: "build",
-        defaultChatMode: "build",
+        selectedChatMode: "local-agent",
+        defaultChatMode: "local-agent",
+        enableAppBlueprint,
       });
-    });
+    }, enableAppBlueprint);
     await expect
       .poll(
         () => ({
           selectedChatMode: this.settings.recordSettings().selectedChatMode,
           defaultChatMode: this.settings.recordSettings().defaultChatMode,
+          enableAppBlueprint: this.settings.recordSettings().enableAppBlueprint,
         }),
         { timeout: Timeout.MEDIUM },
       )
       .toEqual({
-        selectedChatMode: "build",
-        defaultChatMode: "build",
+        selectedChatMode: "local-agent",
+        defaultChatMode: "local-agent",
+        enableAppBlueprint,
       });
   }
 
   async setUp({
     autoApprove = false,
-    enableBasicAgent = false,
     enableSelectAppFromHomeChatInput = false,
+    enableAppBlueprint = false,
   }: {
     autoApprove?: boolean;
-    enableBasicAgent?: boolean;
     enableSelectAppFromHomeChatInput?: boolean;
+    enableAppBlueprint?: boolean;
   } = {}) {
     await this.baseSetup();
     await this.navigation.goToSettingsTab();
@@ -363,52 +363,10 @@ export class PageObject {
     }
     await this.settings.setUpTestProvider();
     await this.settings.setUpTestModel();
-    if (!enableBasicAgent) {
-      await this.pinBuildChatModeForSetup();
-    }
+    await this.pinAgentChatModeForSetup({ enableAppBlueprint });
     await this.navigation.goToAppsTab();
-    if (!enableBasicAgent) {
-      await this.chatActions.selectChatMode("build");
-    }
     await this.modelPicker.selectTestModel();
-    if (!enableBasicAgent) {
-      await this.pinBuildChatModeForSetup();
-    }
-  }
-
-  async setUpDyadPro({
-    autoApprove = false,
-    localAgent = false,
-    localAgentUseAutoModel = false,
-  }: {
-    autoApprove?: boolean;
-    localAgent?: boolean;
-    localAgentUseAutoModel?: boolean;
-  } = {}) {
-    await this.baseSetup();
-    await this.navigation.goToSettingsTab();
-    if (autoApprove) {
-      await this.settings.toggleAutoApprove();
-    }
-    await this.settings.setUpDyadProvider();
-    if (!localAgent) {
-      await this.pinBuildChatModeForSetup();
-    }
-    await this.navigation.goToAppsTab();
-    if (!localAgent) {
-      await this.chatActions.selectChatMode("build");
-    }
-    // Select a non-openAI model for local agent mode,
-    // since openAI models go to the responses API.
-    if (localAgent && !localAgentUseAutoModel) {
-      await this.modelPicker.selectModel({
-        provider: "Anthropic",
-        model: "Claude Opus 4.5",
-      });
-    }
-    if (!localAgent) {
-      await this.pinBuildChatModeForSetup();
-    }
+    await this.pinAgentChatModeForSetup({ enableAppBlueprint });
   }
 
   async setUpAzure({ autoApprove = false }: { autoApprove?: boolean } = {}) {
@@ -417,8 +375,7 @@ export class PageObject {
     if (autoApprove) {
       await this.settings.toggleAutoApprove();
     }
-    // Azure should already be configured via environment variables
-    // so we don't need additional setup steps like setUpDyadProvider
+    // Azure is configured through environment variables in the E2E fixture.
     await this.navigation.goToAppsTab();
   }
 
@@ -473,42 +430,8 @@ export class PageObject {
     });
   }
 
-  async openProModesDialog({
-    location = "chat-input-container",
-  }: {
-    location?: "chat-input-container" | "home-chat-input-container";
-  } = {}): Promise<ProModesDialog> {
-    const proButton = this.page
-      // Assumes you're on the chat page.
-      .getByTestId(location)
-      .getByRole("button", { name: "Pro", exact: true });
-    await proButton.click();
-    return new ProModesDialog(this.page, async () => {
-      await proButton.click();
-    });
-  }
-
-  // ================================
-  // Proposal Actions
-  // ================================
-
-  async approveProposal() {
-    const approveButton = this.page
-      .getByTestId("approve-proposal-button")
-      .last();
-    await expect(approveButton).toBeEnabled({ timeout: Timeout.MEDIUM });
-    await approveButton.click();
-    await expect(approveButton).toBeHidden({ timeout: Timeout.MEDIUM });
-  }
-
-  async rejectProposal() {
-    const rejectButton = this.page.getByTestId("reject-proposal-button").last();
-    await expect(rejectButton).toBeEnabled({ timeout: Timeout.MEDIUM });
-    await rejectButton.click();
-    await expect(rejectButton).toBeHidden({ timeout: Timeout.MEDIUM });
-  }
-
   async clickRestart() {
+    await this.previewPanel.ensurePreviewPanelIsOpen();
     await this.page.getByRole("button", { name: "Restart" }).click();
   }
 
@@ -732,7 +655,6 @@ export class PageObject {
     // message dumps. Anthropic direct passthrough stores tool IDs inside content
     // blocks instead of OpenAI-style message.tool_calls arrays.
     normalizeToolCallIds(parsedDump);
-    normalizeMcpCallIds(parsedDump);
     normalizeGitContextHashes(parsedDump);
     if (type === "request") {
       // Normalize fileIds to be deterministic based on content

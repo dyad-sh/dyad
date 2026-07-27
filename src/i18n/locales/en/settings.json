@@ -123,10 +123,7 @@
     "errorLoadingSettings": "Error Loading Settings",
     "couldNotLoadProvider": "Could not load provider data: {{message}}",
     "couldNotLoadSettings": "Could not load configuration data: {{message}}",
-    "enableDyadPro": "Enable Dyad Pro",
-    "toggleDyadPro": "Toggle to enable Dyad Pro",
     "apiKeyEmpty": "API Key cannot be empty.",
-    "errorTogglingPro": "Error toggling Dyad Pro: {{error}}",
     "failedSaveApiKey": "Failed to save API key.",
     "failedDeleteApiKey": "Failed to delete API key."
   },
@@ -149,40 +146,12 @@
     "title": "Integrations"
   },
   "agentPermissions": {
-    "title": "Agent Permissions (Pro)",
+    "title": "Agent Permissions",
     "description": "Configure permissions for Agent built-in tools.",
     "defaultAllowedTools": "Default allowed tools ({{count}})",
     "ask": "Ask",
     "alwaysAllow": "Always allow",
     "neverAllow": "Never allow"
-  },
-  "toolsMcp": {
-    "title": "Tools (MCP)",
-    "name": "Name",
-    "namePlaceholder": "My MCP Server",
-    "transport": "Transport",
-    "stdio": "stdio",
-    "http": "http",
-    "command": "Command",
-    "commandPlaceholder": "node",
-    "args": "Args",
-    "argsPlaceholder": "path/to/mcp-server.js --flag",
-    "url": "URL",
-    "urlPlaceholder": "http://localhost:3000",
-    "addServer": "Add Server",
-    "environmentVariables": "Environment Variables",
-    "key": "Key",
-    "keyPlaceholder": "e.g., PATH",
-    "value": "Value",
-    "valuePlaceholder": "e.g., /usr/local/bin",
-    "addEnvVar": "Add Environment Variable",
-    "noEnvVars": "No environment variables configured",
-    "keyValueRequired": "Both key and value are required",
-    "duplicateKey": "Environment variable with this key already exists",
-    "noToolsDiscovered": "No tools discovered.",
-    "noServersConfigured": "No servers configured yet.",
-    "prefilledServer": "Prefilled {{name}} MCP server",
-    "deny": "Deny"
   },
   "experiments": {
     "title": "Experiments"
@@ -304,7 +273,5 @@
     "addProvider": "Add Provider",
     "updateProvider": "Update Provider",
     "failedCreate": "Failed to create custom provider"
-  },
-  "manageDyadPro": "Manage Dyad Pro Subscription",
-  "setupDyadPro": "Setup Dyad Pro Subscription"
+  }
 }

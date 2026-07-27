@@ -18,6 +18,6 @@ testSkipIfWindows("supabase client is generated", async ({ po }) => {
   await expect(po.page.getByTestId("connect-supabase-button")).toBeHidden();
   await po.navigation.clickBackButton();
 
-  await po.sendPrompt("tc=generate-supabase-client");
+  await po.sendPrompt("tc=local-agent/generate-supabase-client");
   await po.snapshotAppFiles({ name: "supabase-client-generated" });
 });

@@ -1,35 +1,13 @@
-import {
-  StopCircleIcon,
-  X,
-  ChevronDown,
-  ChevronUp,
-  AlertTriangle,
-  AlertOctagon,
-  FileText,
-  Check,
-  Loader2,
-  Package,
-  FileX,
-  SendToBack,
-  Database,
-  ChevronsUpDown,
-  ChevronsDownUp,
-  SendHorizontalIcon,
-  Lock,
-  Mic,
-  MicOff,
-} from "lucide-react";
+import { StopCircleIcon, SendHorizontalIcon } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { getNpmPackagePageUrl } from "./npmPackageUrl";
 
 import { useSettings } from "@/hooks/useSettings";
 import { useChatMessageCount, useChatMessages } from "@/hooks/useChatMessages";
 import { ipc } from "@/ipc/types";
 import {
   chatInputValuesByIdAtom,
-  chatMessagesByIdAtom,
   selectedChatIdAtom,
   agentTodosByChatIdAtom,
   needsFreshPlanChatAtom,
@@ -38,28 +16,17 @@ import { atom, useAtom, useSetAtom, useAtomValue, useStore } from "jotai";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { Button } from "@/components/ui/button";
-import { useProposal } from "@/hooks/useProposal";
-import {
-  ActionProposal,
-  Proposal,
-  SuggestedAction,
-  FileChange,
-  SqlQuery,
-} from "@/lib/schemas";
+import type { SuggestedAction } from "@/lib/schemas";
 
-import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 import { useRunApp } from "@/hooks/useRunApp";
-import { AutoApproveSwitch } from "../AutoApproveSwitch";
 import { usePostHog } from "posthog-js/react";
-import { CodeHighlight } from "./CodeHighlight";
 import { TokenBar } from "./TokenBar";
 
-import { useVersions } from "@/hooks/useVersions";
 import { useAttachments } from "@/hooks/useAttachments";
 import { AttachmentsList } from "./AttachmentsList";
 import { DragDropOverlay } from "./DragDropOverlay";
 import { FileAttachmentTypeDialog } from "./FileAttachmentTypeDialog";
-import { showExtraFilesToast, showInfo, showWarning } from "@/lib/toast";
+import { showInfo } from "@/lib/toast";
 import { useSummarizeInNewChat } from "./SummarizeInNewChatButton";
 import { ChatInputControls } from "../ChatInputControls";
 import { ChatErrorBox } from "./ChatErrorBox";
@@ -67,27 +34,13 @@ import { AgentConsentBanner } from "./AgentConsentBanner";
 import { TodoList } from "./TodoList";
 import { QuestionnaireInput } from "./QuestionnaireInput";
 import { QueuedMessagesList } from "./QueuedMessagesList";
-import {
-  selectedComponentsPreviewAtom,
-  previewIframeRefAtom,
-  visualEditingSelectedComponentAtom,
-  currentComponentCoordinatesAtom,
-  pendingVisualChangesAtom,
-} from "@/atoms/previewAtoms";
-import { SelectedComponentsDisplay } from "./SelectedComponentDisplay";
 import { LexicalChatInput } from "./LexicalChatInput";
 import { AuxiliaryActionsMenu } from "./AuxiliaryActionsMenu";
-import {
-  doesSqlDeleteData,
-  doesSqlMutateSchema,
-} from "@/lib/sqlSchemaMutation";
 import { ChatImageGenerationStrip } from "./ChatImageGenerationStrip";
 import { dismissedImageGenerationJobIdsAtom } from "@/atoms/imageGenerationAtoms";
 import { useChatImageGenerationJobs } from "@/image_generation/hooks";
 import { ImageGeneratorDialog } from "@/components/ImageGeneratorDialog";
 import { useChatModeToggle } from "@/hooks/useChatModeToggle";
-import { VisualEditingChangesDialog } from "@/components/preview_panel/VisualEditingChangesDialog";
-import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 import {
@@ -99,14 +52,11 @@ import {
   ContextLimitBanner,
   shouldShowContextLimitBanner,
 } from "./ContextLimitBanner";
-import { PromoMessage, usePromoMessage } from "./PromoMessage";
 import { useCountTokens } from "@/hooks/useCountTokens";
 import { useChats } from "@/hooks/useChats";
 import { useRouter } from "@tanstack/react-router";
 import { showError as showErrorToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
-import { useVoiceToText } from "@/hooks/useVoiceToText";
-import { isDyadProEnabled } from "@/lib/schemas";
 import { useChatMode } from "@/hooks/useChatMode";
 import { useOpenPreviewIfSetupRequired } from "@/hooks/useOpenPreviewIfSetupRequired";
 import { getUserInputReadModel } from "@/user_input/read_model";
@@ -143,12 +93,10 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const { settings } = useSettings();
   const {
     selectedMode: chatMode,
-    effectiveMode,
     storedChatMode,
     isLoading: isChatModeLoading,
   } = useChatMode(chatId);
   const appId = useAtomValue(selectedAppIdAtom);
-  const { refreshVersions } = useVersions(appId);
   const openPreviewIfSetupRequired = useOpenPreviewIfSetupRequired();
   const {
     streamMessage,
@@ -156,7 +104,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     isStreaming,
     isCancellationSettling,
     error,
-    setError,
     queuedMessages,
     queueMessage,
     updateQueuedMessage,
@@ -168,33 +115,17 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     resumeQueue,
   } = useStreamChat();
   const [showError, setShowError] = useState(true);
-  const [isApproving, setIsApproving] = useState(false); // State for approving
-  const [isRejecting, setIsRejecting] = useState(false); // State for rejecting
   const [editingQueuedMessageId, setEditingQueuedMessageId] = useState<
     string | null
   >(null);
   const messages = useChatMessages(chatId);
   const messageCount = useChatMessageCount(chatId);
-  const setMessagesById = useSetAtom(chatMessagesByIdAtom);
-  const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
   const [showTokenBar, setShowTokenBar] = useAtom(showTokenBarAtom);
   const queryClient = useQueryClient();
   const toggleShowTokenBar = useCallback(() => {
     setShowTokenBar((prev) => !prev);
     queryClient.invalidateQueries({ queryKey: queryKeys.tokenCount.all });
   }, [setShowTokenBar, queryClient]);
-  const [selectedComponents, setSelectedComponents] = useAtom(
-    selectedComponentsPreviewAtom,
-  );
-  const previewIframeRef = useAtomValue(previewIframeRefAtom);
-  const setVisualEditingSelectedComponent = useSetAtom(
-    visualEditingSelectedComponentAtom,
-  );
-  const setCurrentComponentCoordinates = useSetAtom(
-    currentComponentCoordinatesAtom,
-  );
-  const setPendingVisualChanges = useSetAtom(pendingVisualChangesAtom);
-  const sendPreviewIframeEvent = useSendPreviewIframeEvent(appId);
   const store = useStore();
   const userInputReadModel = getUserInputReadModel({ store });
   const consentsForThisChat = usePendingToolConsents(chatId);
@@ -207,7 +138,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     decision: "accept-once" | "accept-always" | "decline",
   ) => {
     await userInputReadModel.respond(consent.requestId, {
-      kind: consent.kind === "mcp" ? "mcp-consent" : "agent-consent",
+      kind: "agent-consent",
       decision,
     });
   };
@@ -215,7 +146,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   // Get todos for this chat
   const agentTodosByChatId = useAtomValue(agentTodosByChatIdAtom);
   const chatTodos = chatId ? (agentTodosByChatId.get(chatId) ?? []) : [];
-  const { refreshAppIframe } = useRunApp();
   const { navigate } = useRouter();
   const setSelectedChatId = useSetAtom(selectedChatIdAtom);
   const { invalidateChats } = useChats(appId);
@@ -259,24 +189,9 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     cancelPendingFiles,
   } = useAttachments();
 
-  // Use the hook to fetch the proposal
-  const {
-    proposalResult,
-    isLoading: isProposalLoading,
-    error: proposalError,
-    refreshProposal,
-  } = useProposal(chatId);
-  const { proposal, messageId } = proposalResult ?? {};
   useChatModeToggle();
 
-  const lastMessage = messages.at(-1);
-  const disableSendButton =
-    effectiveMode !== "local-agent" &&
-    lastMessage?.role === "assistant" &&
-    !lastMessage.approvalState &&
-    !!proposal &&
-    proposal.type === "code-proposal" &&
-    messageId === lastMessage.id;
+  const disableSendButton = false;
 
   // Extract user message history for terminal-style navigation
   const userMessageHistory = useMemo(() => {
@@ -285,22 +200,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       .map((msg) => msg.content)
       .reverse(); // Most recent first
   }, [messages]);
-
-  const { userBudget } = useUserBudgetInfo();
-  const isProEnabled = settings ? isDyadProEnabled(settings) : false;
-
-  const handleTranscription = useCallback(
-    (text: string) => {
-      setInputValue((prev: string) => (prev.trim() ? prev + " " + text : text));
-    },
-    [setInputValue],
-  );
-
-  const { isRecording, isTranscribing, toggleRecording } = useVoiceToText({
-    enabled: isProEnabled,
-    onTranscription: handleTranscription,
-    onError: (message) => showErrorToast(message),
-  });
 
   const [needsFreshPlanChat, setNeedsFreshPlanChat] = useAtom(
     needsFreshPlanChatAtom,
@@ -353,52 +252,16 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       contextWindow: tokenCountResult.contextWindow,
     });
 
-  // Promo cap row on the composer; never stack two caps — the context limit
-  // warning wins the slot.
-  const promo = usePromoMessage(chatId);
-  const showPromo = promo.visible && !showBanner;
-
   useEffect(() => {
     if (error) {
       setShowError(true);
     }
   }, [error]);
 
-  const fetchChatMessages = useCallback(async () => {
-    if (!chatId) {
-      return;
-    }
-    const chat = await ipc.chat.getChat(chatId);
-    setMessagesById((prev) => {
-      const next = new Map(prev);
-      next.set(chatId, chat.messages);
-      return next;
-    });
-  }, [chatId, setMessagesById]);
-
-  // Shared cleanup run after a submit consumes the composer's contents: clears
-  // the input, any selected/visual-editing components, and the preview overlay.
-  // Attachments are cleared separately because their timing varies by path
-  // (they must be handed to stream/queue first, then cleared).
+  // Attachments are cleared separately because their timing varies by path.
   const clearComposerAfterSubmit = useCallback(() => {
     setInputValue("");
-    setSelectedComponents([]);
-    sendPreviewIframeEvent({ type: "PICKER_DEACTIVATED" });
-    setVisualEditingSelectedComponent(null);
-    // Clear overlays in the preview iframe
-    if (previewIframeRef?.contentWindow) {
-      previewIframeRef.contentWindow.postMessage(
-        { type: "clear-dyad-component-overlays" },
-        "*",
-      );
-    }
-  }, [
-    setInputValue,
-    setSelectedComponents,
-    sendPreviewIframeEvent,
-    setVisualEditingSelectedComponent,
-    previewIframeRef,
-  ]);
+  }, [setInputValue]);
 
   // Shared cleanup for exiting queued message editing state
   const resetEditingState = useCallback(() => {
@@ -427,8 +290,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     return () => {
       if (editingQueuedMessageIdRef.current) {
         clearAttachments();
-        setSelectedComponents([]);
-        setVisualEditingSelectedComponent(null);
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -463,24 +324,15 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       if (!msg) return;
       // Auto-save current edits if switching between queued messages
       if (editingQueuedMessageId && editingQueuedMessageId !== id) {
-        const componentsToSave =
-          selectedComponents && selectedComponents.length > 0
-            ? selectedComponents
-            : [];
         updateQueuedMessage(editingQueuedMessageId, {
           prompt: inputValue,
           attachments,
-          selectedComponents: componentsToSave,
         });
       }
       // Load the message content into the input
       setInputValue(msg.prompt);
-      // Restore attachments and selected components from the queued message
+      // Restore attachments from the queued message.
       replaceAttachments(msg.attachments ?? []);
-      setSelectedComponents(msg.selectedComponents ?? []);
-      sendPreviewIframeEvent({ type: "SELECTION_RESTORE_QUEUED" });
-      // Reset visual editing target to avoid stale toolbar state
-      setVisualEditingSelectedComponent(null);
       // Set editing mode
       setEditingQueuedMessageId(id);
     },
@@ -489,12 +341,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       editingQueuedMessageId,
       inputValue,
       attachments,
-      selectedComponents,
       setInputValue,
       replaceAttachments,
-      setSelectedComponents,
-      setVisualEditingSelectedComponent,
-      sendPreviewIframeEvent,
       updateQueuedMessage,
     ],
   );
@@ -539,10 +387,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       pendingFiles
     ) {
       return;
-    }
-
-    if (isRecording) {
-      await toggleRecording();
     }
 
     // Build prompt with auto-added image mentions
@@ -601,18 +445,11 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
     const currentInput = promptWithImages;
 
-    // Use all selected components for multi-component editing
-    const componentsToSend =
-      selectedComponents && selectedComponents.length > 0
-        ? selectedComponents
-        : [];
-
     // Handle editing a queued message
     if (editingQueuedMessageId) {
       updateQueuedMessage(editingQueuedMessageId, {
         prompt: currentInput,
         attachments,
-        selectedComponents: componentsToSend,
       });
       resetEditingState();
       return;
@@ -624,7 +461,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       const queued = queueMessage({
         prompt: currentInput,
         attachments,
-        selectedComponents: componentsToSend,
       });
       if (queued) {
         // Only clear input, attachments, and components on successful queue
@@ -646,7 +482,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       chatId,
       attachments,
       redo: false,
-      selectedComponents: componentsToSend,
       requestedChatMode: isChatModeLoading ? null : storedChatMode,
     });
     clearAttachments();
@@ -708,72 +543,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     }
   };
 
-  const handleApprove = async () => {
-    if (!chatId || !messageId || isApproving || isRejecting || isStreaming)
-      return;
-    console.log(
-      `Approving proposal for chatId: ${chatId}, messageId: ${messageId}`,
-    );
-    setIsApproving(true);
-    posthog.capture("chat:approve");
-    try {
-      const result = await ipc.proposal.approveProposal({
-        chatId,
-        messageId,
-      });
-      if (result.extraFiles) {
-        showExtraFilesToast({
-          files: result.extraFiles,
-          error: result.extraFilesError,
-          posthog,
-        });
-      }
-      for (const warningMessage of result.warningMessages ?? []) {
-        showWarning(warningMessage);
-      }
-      if (!result.success) {
-        setError(result.error ?? "An error occurred while approving");
-      }
-    } catch (err) {
-      console.error("Error approving proposal:", err);
-      setError((err as Error)?.message || "An error occurred while approving");
-    } finally {
-      setIsApproving(false);
-      if (settings?.autoExpandPreviewPanel) {
-        setIsPreviewOpen(true);
-      }
-      refreshVersions();
-
-      // Keep same as handleReject
-      refreshProposal();
-      fetchChatMessages();
-    }
-  };
-
-  const handleReject = async () => {
-    if (!chatId || !messageId || isApproving || isRejecting || isStreaming)
-      return;
-    console.log(
-      `Rejecting proposal for chatId: ${chatId}, messageId: ${messageId}`,
-    );
-    setIsRejecting(true);
-    posthog.capture("chat:reject");
-    try {
-      await ipc.proposal.rejectProposal({
-        chatId,
-        messageId,
-      });
-    } catch (err) {
-      console.error("Error rejecting proposal:", err);
-      setError((err as Error)?.message || "An error occurred while rejecting");
-    } finally {
-      setIsRejecting(false);
-      // Keep same as handleApprove
-      refreshProposal();
-      fetchChatMessages();
-    }
-  };
-
   if (!settings) {
     return null; // Or loading state
   }
@@ -784,24 +553,10 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         <ChatErrorBox
           onDismiss={dismissError}
           error={error}
-          isDyadProEnabled={isProEnabled}
           onStartNewChat={handleNewChat}
         />
       )}
-      {/* Display loading or error state for proposal */}
-      {isProposalLoading && (
-        <div className="p-4 text-sm text-muted-foreground">
-          {t("loadingProposal")}
-        </div>
-      )}
-      {proposalError && (
-        <div className="p-4 text-sm text-red-600">
-          {t("errorLoadingProposal", { message: proposalError.message })}
-        </div>
-      )}
       <div className="p-2 pt-0" data-testid="chat-input-container">
-        {/* Promo cap row fused to the top of the composer */}
-        {showPromo && <PromoMessage seed={promo.seed} />}
         {/* Show context limit banner above chat input for visibility */}
         {showBanner && tokenCountResult && (
           <ContextLimitBanner
@@ -814,7 +569,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
             "relative flex flex-col border border-border rounded-2xl bg-(--background-lighter) transition-colors duration-200",
             "focus-within:border-primary/30 focus-within:ring-1 focus-within:ring-primary/20",
             isDraggingOver && "ring-2 ring-blue-500 border-blue-500",
-            (showBanner || showPromo) && "rounded-t-none border-t-0",
+            showBanner && "rounded-t-none border-t-0",
           )}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
@@ -866,73 +621,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               </button>
             </div>
           )}
-          {/* Only render ChatInputActions if proposal is loaded and no pending consent */}
-          {!pendingToolConsent &&
-            proposal &&
-            proposalResult?.chatId === chatId &&
-            effectiveMode !== "ask" &&
-            effectiveMode !== "local-agent" && (
-              <ChatInputActions
-                proposal={proposal}
-                onApprove={handleApprove}
-                onReject={handleReject}
-                isApprovable={
-                  !isProposalLoading &&
-                  !!proposal &&
-                  !!messageId &&
-                  !isApproving &&
-                  !isRejecting &&
-                  !isStreaming
-                }
-                isApproving={isApproving}
-                isRejecting={isRejecting}
-              />
-            )}
-
-          {userBudget ? (
-            <VisualEditingChangesDialog
-              iframeRef={
-                previewIframeRef
-                  ? { current: previewIframeRef }
-                  : { current: null }
-              }
-              onReset={() => {
-                // Exit component selection mode and visual editing
-                setSelectedComponents([]);
-                sendPreviewIframeEvent({ type: "PICKER_DEACTIVATED" });
-                setVisualEditingSelectedComponent(null);
-                setCurrentComponentCoordinates(null);
-                setPendingVisualChanges(new Map());
-                refreshAppIframe();
-              }}
-            />
-          ) : (
-            selectedComponents.length > 0 && (
-              <div className="border-b border-border p-3 bg-muted/30">
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <button
-                        onClick={() => {
-                          ipc.system.openExternalUrl("https://dyad.sh/pro");
-                        }}
-                        className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors cursor-pointer"
-                      />
-                    }
-                  >
-                    <Lock size={16} />
-                    <span className="font-medium">{t("visualEditor")}</span>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    {t("visualEditorDescription")}
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-            )
-          )}
-
-          <SelectedComponentsDisplay />
-
           {/* Use the AttachmentsList component */}
           <AttachmentsList
             attachments={attachments}
@@ -960,73 +648,11 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               onChange={setInputValue}
               onSubmit={handleSubmit}
               onPaste={handlePaste}
-              placeholder={t("askDyadToBuild")}
+              placeholder={t("sendMessage")}
               excludeCurrentApp={true}
               disableSendButton={disableSendButton}
               messageHistory={userMessageHistory}
             />
-
-            {/* Voice-to-text button */}
-            {isProEnabled ? (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <button
-                      onClick={toggleRecording}
-                      disabled={isTranscribing}
-                      aria-label={
-                        isRecording
-                          ? t("stopRecording", "Stop recording")
-                          : isTranscribing
-                            ? t("transcribing", "Transcribing...")
-                            : t("voiceToText", "Voice to text")
-                      }
-                      className={cn(
-                        "px-2 py-2 mb-0.5 text-muted-foreground rounded-lg transition-colors duration-150 cursor-pointer disabled:cursor-default disabled:opacity-30",
-                        isRecording &&
-                          "text-red-500 hover:text-red-600 animate-pulse",
-                        !isRecording && !isTranscribing && "hover:text-primary",
-                      )}
-                    />
-                  }
-                >
-                  {isTranscribing ? (
-                    <Loader2 size={20} className="animate-spin" />
-                  ) : isRecording ? (
-                    <MicOff size={20} />
-                  ) : (
-                    <Mic size={20} />
-                  )}
-                </TooltipTrigger>
-                <TooltipContent>
-                  {isRecording
-                    ? t("stopRecording", "Stop recording")
-                    : isTranscribing
-                      ? t("transcribing", "Transcribing...")
-                      : t("voiceToText", "Voice to text")}
-                </TooltipContent>
-              </Tooltip>
-            ) : (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <button
-                      onClick={() =>
-                        ipc.system.openExternalUrl("https://dyad.sh/pro")
-                      }
-                      aria-label={t("voiceToTextPro", "Voice to text (Pro)")}
-                      className="px-2 py-2 mb-0.5 text-muted-foreground hover:text-primary rounded-lg transition-colors duration-150 cursor-pointer relative"
-                    />
-                  }
-                >
-                  <Mic size={20} />
-                  <Lock size={10} className="absolute -top-0.5 -right-0.5" />
-                </TooltipTrigger>
-                <TooltipContent>
-                  {t("voiceToTextRequiresPro", "Voice to text (requires Pro)")}
-                </TooltipContent>
-              </Tooltip>
-            )}
 
             {isStreaming ? (
               <Tooltip>
@@ -1328,383 +954,4 @@ export function mapActionToButton(action: SuggestedAction) {
         </Button>
       );
   }
-}
-
-function ActionProposalActions({ proposal }: { proposal: ActionProposal }) {
-  return (
-    <div className="border-b border-border p-2 pb-0 flex items-center justify-between">
-      <div className="flex items-center space-x-2 overflow-x-auto pb-2">
-        {proposal.actions.map((action) => mapActionToButton(action))}
-      </div>
-    </div>
-  );
-}
-
-interface ChatInputActionsProps {
-  proposal: Proposal;
-  onApprove: () => void;
-  onReject: () => void;
-  isApprovable: boolean; // Can be used to enable/disable buttons
-  isApproving: boolean; // State for approving
-  isRejecting: boolean; // State for rejecting
-}
-
-// Update ChatInputActions to accept props
-function ChatInputActions({
-  proposal,
-  onApprove,
-  onReject,
-  isApprovable,
-  isApproving,
-  isRejecting,
-}: ChatInputActionsProps) {
-  const { t } = useTranslation("chat");
-  const [isDetailsVisible, setIsDetailsVisible] = useState(false);
-
-  if (proposal.type === "tip-proposal") {
-    return <div>{t("tipProposal")}</div>;
-  }
-  if (proposal.type === "action-proposal") {
-    return <ActionProposalActions proposal={proposal}></ActionProposalActions>;
-  }
-
-  // Split files into server functions and other files - only for CodeProposal
-  const serverFunctions =
-    proposal.filesChanged?.filter((f: FileChange) => f.isServerFunction) ?? [];
-  const otherFilesChanged =
-    proposal.filesChanged?.filter((f: FileChange) => !f.isServerFunction) ?? [];
-
-  function formatTitle({
-    title,
-    isDetailsVisible,
-  }: {
-    title: string;
-    isDetailsVisible: boolean;
-  }) {
-    if (isDetailsVisible) {
-      return title;
-    }
-    return title.slice(0, 60) + "...";
-  }
-
-  return (
-    <div className="border-b border-border">
-      <div className="p-2">
-        {/* Row 1: Title, Expand Icon, and Security Chip */}
-        <div className="flex items-center gap-2 mb-1">
-          <button
-            className="flex flex-col text-left text-sm hover:bg-muted p-1 rounded justify-start w-full"
-            onClick={() => setIsDetailsVisible(!isDetailsVisible)}
-          >
-            <div className="flex items-center">
-              {isDetailsVisible ? (
-                <ChevronUp size={16} className="mr-1 flex-shrink-0" />
-              ) : (
-                <ChevronDown size={16} className="mr-1 flex-shrink-0" />
-              )}
-              <span className="font-medium">
-                {formatTitle({ title: proposal.title, isDetailsVisible })}
-              </span>
-            </div>
-            <div className="text-xs text-muted-foreground ml-6">
-              <ProposalSummary
-                sqlQueries={proposal.sqlQueries}
-                serverFunctions={serverFunctions}
-                packagesAdded={proposal.packagesAdded}
-                filesChanged={otherFilesChanged}
-              />
-            </div>
-          </button>
-          {proposal.securityRisks.length > 0 && (
-            <span className="bg-red-100 text-red-700 text-xs font-medium px-2 py-0.5 rounded-full flex-shrink-0">
-              {t("securityRisksFound")}
-            </span>
-          )}
-        </div>
-
-        {/* Row 2: Buttons and Toggle */}
-        <div className="flex items-center justify-start space-x-2">
-          <Button
-            className="px-8"
-            size="sm"
-            variant="outline"
-            onClick={onApprove}
-            disabled={!isApprovable || isApproving || isRejecting}
-            data-testid="approve-proposal-button"
-          >
-            {isApproving ? (
-              <Loader2 size={16} className="mr-1 animate-spin" />
-            ) : (
-              <Check size={16} className="mr-1" />
-            )}
-            {t("approve")}
-          </Button>
-          <Button
-            className="px-8"
-            size="sm"
-            variant="outline"
-            onClick={onReject}
-            disabled={!isApprovable || isApproving || isRejecting}
-            data-testid="reject-proposal-button"
-          >
-            {isRejecting ? (
-              <Loader2 size={16} className="mr-1 animate-spin" />
-            ) : (
-              <X size={16} className="mr-1" />
-            )}
-            {t("reject")}
-          </Button>
-          <div className="flex items-center space-x-1 ml-auto">
-            <AutoApproveSwitch />
-          </div>
-        </div>
-      </div>
-
-      <div className="overflow-y-auto max-h-[calc(100vh-300px)]">
-        {isDetailsVisible && (
-          <div className="p-3 border-t border-border bg-muted/50 text-sm">
-            {!!proposal.securityRisks.length && (
-              <div className="mb-3">
-                <h4 className="font-semibold mb-1">{t("securityRisks")}</h4>
-                <ul className="space-y-1">
-                  {proposal.securityRisks.map((risk, index) => (
-                    <li key={index} className="flex items-start space-x-2">
-                      {risk.type === "warning" ? (
-                        <AlertTriangle
-                          size={16}
-                          className="text-yellow-500 mt-0.5 flex-shrink-0"
-                        />
-                      ) : (
-                        <AlertOctagon
-                          size={16}
-                          className="text-red-500 mt-0.5 flex-shrink-0"
-                        />
-                      )}
-                      <div>
-                        <span className="font-medium">{risk.title}:</span>{" "}
-                        <span>{risk.description}</span>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {proposal.sqlQueries?.length > 0 && (
-              <div className="mb-3">
-                <h4 className="font-semibold mb-1">{t("sqlQueries")}</h4>
-                <ul className="space-y-2">
-                  {proposal.sqlQueries.map((query, index) => (
-                    <SqlQueryItem key={index} query={query} />
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {proposal.packagesAdded?.length > 0 && (
-              <div className="mb-3">
-                <h4 className="font-semibold mb-1">{t("packagesAdded")}</h4>
-                <ul className="space-y-1">
-                  {proposal.packagesAdded.map((pkg, index) => (
-                    <li
-                      key={index}
-                      className="flex items-center space-x-2"
-                      onClick={() => {
-                        ipc.system.openExternalUrl(getNpmPackagePageUrl(pkg));
-                      }}
-                    >
-                      <Package
-                        size={16}
-                        className="text-muted-foreground flex-shrink-0"
-                      />
-                      <span className="cursor-pointer text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300">
-                        {pkg}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {serverFunctions.length > 0 && (
-              <div className="mb-3">
-                <h4 className="font-semibold mb-1">
-                  {t("serverFunctionsChanged")}
-                </h4>
-                <ul className="space-y-1">
-                  {serverFunctions.map((file: FileChange, index: number) => (
-                    <li key={index} className="flex items-center space-x-2">
-                      {getIconForFileChange(file)}
-                      <span
-                        title={file.path}
-                        className="truncate cursor-default"
-                      >
-                        {file.name}
-                      </span>
-                      <span className="text-muted-foreground text-xs truncate">
-                        - {file.summary}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {otherFilesChanged.length > 0 && (
-              <div>
-                <h4 className="font-semibold mb-1">{t("filesChanged")}</h4>
-                <ul className="space-y-1">
-                  {otherFilesChanged.map((file: FileChange, index: number) => (
-                    <li key={index} className="flex items-center space-x-2">
-                      {getIconForFileChange(file)}
-                      <span
-                        title={file.path}
-                        className="truncate cursor-default"
-                      >
-                        {file.name}
-                      </span>
-                      <span className="text-muted-foreground text-xs truncate">
-                        - {file.summary}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function getIconForFileChange(file: FileChange) {
-  switch (file.type) {
-    case "write":
-      return (
-        <FileText size={16} className="text-muted-foreground flex-shrink-0" />
-      );
-    case "rename":
-      return (
-        <SendToBack size={16} className="text-muted-foreground flex-shrink-0" />
-      );
-    case "delete":
-      return (
-        <FileX size={16} className="text-muted-foreground flex-shrink-0" />
-      );
-  }
-}
-
-// Proposal summary component to show counts of changes
-function ProposalSummary({
-  sqlQueries = [],
-  serverFunctions = [],
-  packagesAdded = [],
-  filesChanged = [],
-}: {
-  sqlQueries?: Array<SqlQuery>;
-  serverFunctions?: FileChange[];
-  packagesAdded?: string[];
-  filesChanged?: FileChange[];
-}) {
-  const { t } = useTranslation("chat");
-
-  // If no changes, show a simple message
-  if (
-    !sqlQueries.length &&
-    !serverFunctions.length &&
-    !packagesAdded.length &&
-    !filesChanged.length
-  ) {
-    return <span>{t("noChanges")}</span>;
-  }
-
-  // Build parts array with only the segments that have content
-  const parts: string[] = [];
-
-  if (sqlQueries.length) {
-    parts.push(
-      `${sqlQueries.length} SQL ${sqlQueries.length === 1 ? "query" : "queries"}`,
-    );
-  }
-
-  if (serverFunctions.length) {
-    parts.push(
-      `${serverFunctions.length} Server ${serverFunctions.length === 1 ? "Function" : "Functions"}`,
-    );
-  }
-
-  if (packagesAdded.length) {
-    parts.push(
-      `${packagesAdded.length} ${packagesAdded.length === 1 ? "package" : "packages"}`,
-    );
-  }
-
-  if (filesChanged.length) {
-    parts.push(
-      `${filesChanged.length} ${filesChanged.length === 1 ? "file" : "files"}`,
-    );
-  }
-
-  // Join all parts with separator
-  return <span>{parts.join(" | ")}</span>;
-}
-
-// SQL Query item with expandable functionality
-function SqlQueryItem({ query }: { query: SqlQuery }) {
-  const { t } = useTranslation("chat");
-  const [isExpanded, setIsExpanded] = useState(false);
-
-  const queryContent = query.content;
-  const queryDescription = query.description;
-  const sqlMutatesSchema = useMemo(
-    () => doesSqlMutateSchema(queryContent),
-    [queryContent],
-  );
-  const sqlDeletesData = useMemo(
-    () => doesSqlDeleteData(queryContent),
-    [queryContent],
-  );
-
-  return (
-    <li
-      className="bg-(--background-lightest) hover:bg-(--background-lighter) rounded-lg px-3 py-2 border border-border cursor-pointer"
-      onClick={() => setIsExpanded(!isExpanded)}
-    >
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Database size={16} className="text-muted-foreground flex-shrink-0" />
-          <span className="text-sm font-medium">
-            {queryDescription || t("sqlQuery")}
-          </span>
-          {sqlMutatesSchema && (
-            <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-400">
-              <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" />
-              {t("changesDatabaseSchema")}
-            </span>
-          )}
-          {sqlDeletesData && (
-            <span className="inline-flex items-center gap-1 text-xs font-medium text-red-700 dark:text-red-400">
-              <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" />
-              {t("destructiveDataChange")}
-            </span>
-          )}
-        </div>
-        <div>
-          {isExpanded ? (
-            <ChevronsDownUp size={18} className="text-muted-foreground" />
-          ) : (
-            <ChevronsUpDown size={18} className="text-muted-foreground" />
-          )}
-        </div>
-      </div>
-      {isExpanded && (
-        <div className="mt-2 text-xs max-h-[200px] overflow-auto">
-          <CodeHighlight className="language-sql ">
-            {queryContent}
-          </CodeHighlight>
-        </div>
-      )}
-    </li>
-  );
 }

@@ -1,50 +1,49 @@
 import { describe, expect, it } from "vitest";
 
 import type { UserSettings } from "@/lib/schemas";
-import {
-  assertChatModeCompatibleWithModel,
-  resolveChatModeForTurn,
-} from "./chat_mode_resolution";
+import { resolveChatModeForTurn } from "./chat_mode_resolution";
 
-function makeFreeProSettings(
-  overrides: Partial<UserSettings> = {},
-): UserSettings {
+function makeSettings(overrides: Partial<UserSettings> = {}): UserSettings {
   return {
-    defaultChatMode: "build",
+    defaultChatMode: "local-agent",
     enableAutoUpdate: true,
     providerSettings: {},
     releaseChannel: "stable",
-    selectedModel: { provider: "auto", name: "free-pro" },
+    selectedModel: { provider: "openrouter", name: "test-model" },
     selectedTemplateId: "react",
     ...overrides,
   } as UserSettings;
 }
 
 describe("resolveChatModeForTurn", () => {
-  it("keeps automatic Free Pro chats out of Build mode", async () => {
+  it("uses an explicit request for the current turn", async () => {
     await expect(
       resolveChatModeForTurn({
-        storedChatMode: null,
-        settings: makeFreeProSettings(),
+        requestedChatMode: "plan",
+        storedChatMode: "ask",
+        settings: makeSettings(),
       }),
-    ).resolves.toMatchObject({ mode: "local-agent" });
+    ).resolves.toMatchObject({ mode: "plan" });
   });
 
-  it("does not rewrite an explicit Build request", async () => {
+  it("uses the stored mode when the request has no override", async () => {
     await expect(
       resolveChatModeForTurn({
-        requestedChatMode: "build",
-        storedChatMode: null,
-        settings: makeFreeProSettings(),
+        storedChatMode: "ask",
+        settings: makeSettings(),
       }),
-    ).resolves.toMatchObject({ mode: "build" });
+    ).resolves.toMatchObject({ mode: "ask" });
   });
 
-  it("rejects an explicit Free Pro Build request before acceptance", () => {
-    expect(() =>
-      assertChatModeCompatibleWithModel(makeFreeProSettings(), "build"),
-    ).toThrow(
-      "Dyad Free is not available in Build mode. Switch to Agent, Ask, or Plan mode, or choose a paid model.",
-    );
-  });
+  it.each(["agent", "build"])(
+    "migrates legacy %s chats to Agent",
+    async (storedChatMode) => {
+      await expect(
+        resolveChatModeForTurn({
+          storedChatMode,
+          settings: makeSettings(),
+        }),
+      ).resolves.toMatchObject({ mode: "local-agent" });
+    },
+  );
 });

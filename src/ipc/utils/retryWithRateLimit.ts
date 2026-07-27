@@ -73,6 +73,42 @@ export interface RetryWithRateLimitOptions {
   baseDelay?: number;
   /** Maximum delay in ms */
   maxDelay?: number;
+  /** Cancels the active operation and any pending retry delay. */
+  signal?: AbortSignal;
+}
+
+function getAbortReason(signal: AbortSignal): unknown {
+  return signal.reason ?? new DOMException("Aborted", "AbortError");
+}
+
+function runAbortable<T>(
+  operation: Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> {
+  if (!signal) return operation;
+  if (signal.aborted) return Promise.reject(getAbortReason(signal));
+
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(getAbortReason(signal));
+    signal.addEventListener("abort", onAbort, { once: true });
+    operation.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+  });
+}
+
+function waitForRetry(delay: number, signal?: AbortSignal): Promise<void> {
+  return runAbortable(
+    new Promise<void>((resolve) => setTimeout(resolve, delay)),
+    signal,
+  );
 }
 
 /**
@@ -91,12 +127,13 @@ export async function retryWithRateLimit<T>(
   const maxRetries = options?.maxRetries ?? RETRY_CONFIG.maxRetries;
   const baseDelay = options?.baseDelay ?? RETRY_CONFIG.baseDelay;
   const maxDelay = options?.maxDelay ?? RETRY_CONFIG.maxDelay;
+  const signal = options?.signal;
 
   let lastError: any;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      const result = await operation();
+      const result = await runAbortable(operation(), signal);
       if (attempt > 0) {
         logger.info(`${context}: Success after ${attempt + 1} attempts`);
       }
@@ -143,7 +180,7 @@ export async function retryWithRateLimit<T>(
         );
       }
 
-      await new Promise((resolve) => setTimeout(resolve, delay));
+      await waitForRetry(delay, signal);
     }
   }
 
@@ -166,6 +203,7 @@ export async function fetchWithRetry(
   context: string,
   retryOptions?: RetryWithRateLimitOptions,
 ): Promise<Response> {
+  const signal = retryOptions?.signal ?? init?.signal ?? undefined;
   return retryWithRateLimit(
     async () => {
       const response = await fetch(input, init);
@@ -182,6 +220,6 @@ export async function fetchWithRetry(
       return response;
     },
     context,
-    retryOptions,
+    { ...retryOptions, signal },
   );
 }

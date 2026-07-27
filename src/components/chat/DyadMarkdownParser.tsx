@@ -12,12 +12,9 @@ import { DyadLogs } from "./DyadLogs";
 import { DyadGrep } from "./DyadGrep";
 import { DyadSearchChats } from "./DyadSearchChats";
 import { DyadReadChat } from "./DyadReadChat";
-import { DyadExploreCode } from "./DyadExploreCode";
-import { DyadExploreChatHistory } from "./DyadExploreChatHistory";
 import { DyadAddIntegration } from "./DyadAddIntegration";
 import { DyadEnableNitro } from "./DyadEnableNitro";
 import { DyadEdit } from "./DyadEdit";
-import { DyadSearchReplace } from "./DyadSearchReplace";
 import { DyadCodebaseContext } from "./DyadCodebaseContext";
 import { DyadThink } from "./DyadThink";
 import { CodeHighlight } from "./CodeHighlight";
@@ -33,23 +30,7 @@ import { DyadOutput } from "./DyadOutput";
 import { DyadProblemSummary } from "./DyadProblemSummary";
 import { DyadSecurityFinding } from "./DyadSecurityFinding";
 import { ipc } from "@/ipc/types";
-import { DyadMcpToolCall } from "./DyadMcpToolCall";
-import { DyadMcpToolResult } from "./DyadMcpToolResult";
-import {
-  buildMcpPairing,
-  EMPTY_MCP_PAIRING,
-  type McpPairing,
-  type CustomTagBlock,
-} from "./mcpPairing";
-import { DyadMcpToolSearch } from "./DyadMcpToolSearch";
-import { DyadMcpToolSchema } from "./DyadMcpToolSchema";
-import { DyadWebSearchResult } from "./DyadWebSearchResult";
-import { DyadWebSearch } from "./DyadWebSearch";
-import { DyadWebCrawl } from "./DyadWebCrawl";
-import { DyadWebFetch } from "./DyadWebFetch";
 import { DyadImageGeneration } from "./DyadImageGeneration";
-import { DyadCodeSearchResult } from "./DyadCodeSearchResult";
-import { DyadCodeSearch } from "./DyadCodeSearch";
 import { DyadRead } from "./DyadRead";
 import { DyadListFiles } from "./DyadListFiles";
 import { DyadDatabaseSchema } from "./DyadDatabaseSchema";
@@ -64,7 +45,6 @@ import { DyadQuestionnaire } from "./DyadQuestionnaire";
 import { DyadStepLimit } from "./DyadStepLimit";
 import { DyadAppBlueprintCard } from "./DyadAppBlueprintCard";
 import { DyadReadGuide } from "./DyadReadGuide";
-import { DyadScript } from "./DyadScript";
 import { DyadGit } from "./DyadGit";
 import { mapActionToButton } from "./ChatInput";
 import { SuggestedAction } from "@/lib/schemas";
@@ -77,6 +57,8 @@ import {
   parseFullMessage,
   type ParserState,
 } from "@/lib/streamingMessageParser";
+
+type CustomTagBlock = Extract<Block, { kind: "custom-tag" }>;
 
 interface DyadMarkdownParserProps {
   content: string;
@@ -172,15 +154,6 @@ export const DyadMarkdownParser: React.FC<DyadMarkdownParserProps> = ({
   const closedBlocks = parserState.blocks;
   const openBlock = getOpenBlock(parserState);
 
-  // Pair MCP tool-call blocks with their tool-result blocks by call-id so the
-  // renderer can collapse the two into one card. Keyed on `closedBlocks`, which
-  // only changes when a block closes (not per streamed token), so the scan
-  // stays off the streaming hot path.
-  const mcpPairing = useMemo(
-    () => buildMcpPairing(closedBlocks),
-    [closedBlocks],
-  );
-
   // The button is hidden while streaming, so avoid scanning the block list on
   // every chunk. Do the full scan only for settled content.
   const { errorMessages, errorCount, lastErrorIndex } = useMemo(() => {
@@ -220,11 +193,8 @@ export const DyadMarkdownParser: React.FC<DyadMarkdownParserProps> = ({
         errorMessages={errorMessages}
         showFixAll={showFixAll}
         chatId={chatId ?? null}
-        resultByCallId={mcpPairing.resultByCallId}
-        callIds={mcpPairing.callIds}
-        isStreaming={isStreaming}
       />
-      {openBlock ? renderOpenBlock(openBlock, isStreaming, mcpPairing) : null}
+      {openBlock ? renderBlock(openBlock, isStreaming) : null}
       {showStreamingPreview && chatId !== null && chatId !== undefined && (
         <StreamingPreviewBlocks chatId={chatId} isStreaming={isStreaming} />
       )}
@@ -253,18 +223,13 @@ function StreamingPreviewBlocks({
     return parseFullMessage(previewXml).blocks;
   }, [previewXml]);
 
-  const previewPairing = useMemo(
-    () => (previewBlocks ? buildMcpPairing(previewBlocks) : EMPTY_MCP_PAIRING),
-    [previewBlocks],
-  );
-
   if (!previewBlocks) return null;
 
   return (
     <>
       {previewBlocks.map((block) => (
         <React.Fragment key={`preview-${block.id}`}>
-          {renderOpenBlock(block, isStreaming, previewPairing)}
+          {renderBlock(block, isStreaming)}
         </React.Fragment>
       ))}
     </>
@@ -278,115 +243,6 @@ function renderBlock(block: Block, isStreaming: boolean): React.ReactNode {
   return <MemoBlockCustomTag block={block} isStreaming={isStreaming} />;
 }
 
-// Render the trailing open block, accounting for MCP pairing: an open
-// tool-call shows as a pending card; an open tool-result whose call already
-// has a card is hidden (the call card will absorb it once it closes).
-function renderOpenBlock(
-  block: Block,
-  isStreaming: boolean,
-  pairing: McpPairing,
-): React.ReactNode {
-  if (block.kind === "custom-tag") {
-    const callId = block.attributes["call-id"];
-    if (callId && block.tag === "dyad-mcp-tool-call") {
-      return (
-        <MemoMcpToolPair
-          callBlock={block}
-          resultBlock={pairing.resultByCallId.get(callId)}
-          isStreaming={isStreaming}
-        />
-      );
-    }
-    if (
-      callId &&
-      block.tag === "dyad-mcp-tool-result" &&
-      pairing.callIds.has(callId)
-    ) {
-      return null;
-    }
-  }
-  return renderBlock(block, isStreaming);
-}
-
-// Render a closed block, collapsing MCP call/result pairs into one card and
-// hiding the standalone result block that the call card now renders.
-function renderClosedBlock(
-  block: Block,
-  {
-    resultByCallId,
-    callIds,
-    isStreaming,
-  }: {
-    resultByCallId: Map<string, CustomTagBlock>;
-    callIds: Set<string>;
-    isStreaming: boolean;
-  },
-): React.ReactNode {
-  if (block.kind === "custom-tag") {
-    const callId = block.attributes["call-id"];
-    if (callId && block.tag === "dyad-mcp-tool-call") {
-      return (
-        <MemoMcpToolPair
-          callBlock={block}
-          resultBlock={resultByCallId.get(callId)}
-          isStreaming={isStreaming}
-        />
-      );
-    }
-    // Hide the standalone result only when its call is on screen to absorb it;
-    // an unmatched result still renders on its own.
-    if (callId && block.tag === "dyad-mcp-tool-result" && callIds.has(callId)) {
-      return null;
-    }
-  }
-  return renderBlock(block, false);
-}
-
-// One card for an MCP tool call + its result. Memoizes on both block refs;
-// once the result is present the card is "finished" regardless of streaming,
-// so isStreaming is only compared while still waiting for a result.
-const MemoMcpToolPair = React.memo(
-  function MemoMcpToolPair({
-    callBlock,
-    resultBlock,
-    isStreaming,
-  }: {
-    callBlock: CustomTagBlock;
-    resultBlock: CustomTagBlock | undefined;
-    isStreaming: boolean;
-  }) {
-    const isError = resultBlock?.attributes["is-error"] === "true";
-    const state: CustomTagState = !resultBlock
-      ? isStreaming
-        ? "pending"
-        : "aborted"
-      : isError
-        ? "aborted"
-        : "finished";
-    return (
-      <DyadMcpToolCall
-        node={{
-          properties: {
-            serverName: callBlock.attributes.server || "",
-            toolName: callBlock.attributes.tool || "",
-            autoApprovedReason:
-              callBlock.attributes["auto-approved-reason"] || "",
-          },
-        }}
-        resultContent={resultBlock?.content}
-        state={state}
-        isError={isError}
-      >
-        {callBlock.content}
-      </DyadMcpToolCall>
-    );
-  },
-  (prev, next) =>
-    prev.callBlock === next.callBlock &&
-    prev.resultBlock === next.resultBlock &&
-    (next.resultBlock != null || prev.isStreaming === next.isStreaming),
-);
-
 // Memoized wrapper for closed blocks. Memo hits when blocks ref + error
 // props are unchanged, so the closed-block subtree is skipped per chunk.
 // Closed children also memo on `prev.block === next.block` and skip their
@@ -397,26 +253,18 @@ const MemoClosedBlocks = React.memo(function MemoClosedBlocks({
   errorMessages,
   showFixAll,
   chatId,
-  resultByCallId,
-  callIds,
-  isStreaming,
 }: {
   blocks: Block[];
   lastErrorIndex: number;
   errorMessages: string[];
   showFixAll: boolean;
   chatId: number | null;
-  resultByCallId: Map<string, CustomTagBlock>;
-  callIds: Set<string>;
-  isStreaming: boolean;
 }) {
-  // Hoisted once per render rather than allocated per block in the map.
-  const mcpCtx = { resultByCallId, callIds, isStreaming };
   return (
     <>
       {blocks.map((block, index) => (
         <React.Fragment key={block.id}>
-          {renderClosedBlock(block, mcpCtx)}
+          {renderBlock(block, false)}
           {showFixAll &&
             index === lastErrorIndex &&
             chatId !== null &&
@@ -542,19 +390,6 @@ function renderCustomTag(
           {content}
         </DyadGit>
       );
-    case "dyad-web-search":
-      return (
-        <DyadWebSearch
-          node={{
-            properties: {
-              query: attributes.query || "",
-              state: getState({ isStreaming, inProgress }),
-            },
-          }}
-        >
-          {content}
-        </DyadWebSearch>
-      );
     case "dyad-search-chats":
       return (
         <DyadSearchChats
@@ -592,64 +427,6 @@ function renderCustomTag(
         >
           {content}
         </DyadReadChat>
-      );
-    case "dyad-web-crawl":
-      return (
-        <DyadWebCrawl
-          node={{
-            properties: {},
-          }}
-        >
-          {content}
-        </DyadWebCrawl>
-      );
-    case "dyad-web-fetch":
-      return (
-        <DyadWebFetch
-          node={{
-            properties: {
-              state: getState({ isStreaming, inProgress }),
-            },
-          }}
-        >
-          {content}
-        </DyadWebFetch>
-      );
-    case "dyad-code-search":
-      return (
-        <DyadCodeSearch
-          node={{
-            properties: {
-              query: attributes.query || "",
-              state: getState({ isStreaming, inProgress }),
-              appName: attributes.app_name || "",
-            },
-          }}
-        >
-          {content}
-        </DyadCodeSearch>
-      );
-    case "dyad-code-search-result":
-      return (
-        <DyadCodeSearchResult
-          node={{
-            properties: {},
-          }}
-        >
-          {content}
-        </DyadCodeSearchResult>
-      );
-    case "dyad-web-search-result":
-      return (
-        <DyadWebSearchResult
-          node={{
-            properties: {
-              state: getState({ isStreaming, inProgress }),
-            },
-          }}
-        >
-          {content}
-        </DyadWebSearchResult>
       );
     case "think":
       return (
@@ -790,43 +567,6 @@ function renderCustomTag(
         </DyadGrep>
       );
 
-    case "dyad-explore-chat-history":
-      return (
-        <DyadExploreChatHistory
-          node={{
-            properties: {
-              state: getState({ isStreaming, inProgress }),
-              query: attributes.query || "",
-              chats: attributes.chats || "",
-              evidence: attributes.evidence || "",
-              outcome: attributes.outcome || "",
-            },
-          }}
-        >
-          {content}
-        </DyadExploreChatHistory>
-      );
-
-    case "dyad-explore-code":
-      return (
-        <DyadExploreCode
-          node={{
-            properties: {
-              state: getState({ isStreaming, inProgress }),
-              query: attributes.query || "",
-              appName: attributes.app_name || "",
-              files: attributes.files || "",
-              symbols: attributes.symbols || "",
-              indexMs: attributes.index_ms || "",
-              searchMs: attributes.search_ms || "",
-              truncated: attributes.truncated || "",
-            },
-          }}
-        >
-          {content}
-        </DyadExploreCode>
-      );
-
     case "dyad-add-integration":
       return (
         <DyadAddIntegration
@@ -858,21 +598,6 @@ function renderCustomTag(
         </DyadEdit>
       );
 
-    case "dyad-search-replace":
-      return (
-        <DyadSearchReplace
-          node={{
-            properties: {
-              path: attributes.path || "",
-              description: attributes.description || "",
-              state: getState({ isStreaming, inProgress }),
-            },
-          }}
-        >
-          {content}
-        </DyadSearchReplace>
-      );
-
     case "dyad-codebase-context":
       return (
         <DyadCodebaseContext
@@ -887,63 +612,6 @@ function renderCustomTag(
         </DyadCodebaseContext>
       );
 
-    case "dyad-mcp-tool-search":
-      return (
-        <DyadMcpToolSearch
-          node={{
-            properties: {
-              query: attributes.query || "",
-              server: attributes.server || "",
-              state: getState({ isStreaming, inProgress }),
-            },
-          }}
-        >
-          {content}
-        </DyadMcpToolSearch>
-      );
-
-    case "dyad-mcp-tool-schema":
-      return (
-        <DyadMcpToolSchema
-          node={{
-            properties: {
-              tools: attributes.tools || "",
-              state: getState({ isStreaming, inProgress }),
-            },
-          }}
-        >
-          {content}
-        </DyadMcpToolSchema>
-      );
-    case "dyad-mcp-tool-call":
-      return (
-        <DyadMcpToolCall
-          node={{
-            properties: {
-              serverName: attributes.server || "",
-              toolName: attributes.tool || "",
-              autoApprovedReason: attributes["auto-approved-reason"] || "",
-            },
-          }}
-        >
-          {content}
-        </DyadMcpToolCall>
-      );
-
-    case "dyad-mcp-tool-result":
-      return (
-        <DyadMcpToolResult
-          node={{
-            properties: {
-              serverName: attributes.server || "",
-              toolName: attributes.tool || "",
-            },
-          }}
-        >
-          {content}
-        </DyadMcpToolResult>
-      );
-
     case "dyad-output":
       return (
         <DyadOutput
@@ -952,22 +620,6 @@ function renderCustomTag(
         >
           {content}
         </DyadOutput>
-      );
-
-    case "dyad-script":
-      return (
-        <DyadScript
-          node={{
-            properties: {
-              description: attributes.description || "",
-              truncated: attributes.truncated || "",
-              executionMs: attributes["execution-ms"] || "",
-              fullOutputPath: attributes["full-output-path"] || "",
-            },
-          }}
-        >
-          {content}
-        </DyadScript>
       );
 
     case "dyad-problem-report":

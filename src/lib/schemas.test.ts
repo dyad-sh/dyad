@@ -76,4 +76,17 @@ describe("migrateStoredSettings", () => {
 
     expect(migrateStoredSettings(stored)).not.toHaveProperty("enableNativeGit");
   });
+
+  it("migrates the removed cloud runtime to the local host", () => {
+    const stored = StoredUserSettingsSchema.parse({
+      ...baseSettings,
+      runtimeMode2: "cloud",
+      experiments: { enableCloudSandbox: true },
+    });
+
+    expect(migrateStoredSettings(stored)).toMatchObject({
+      runtimeMode2: "host",
+      experiments: {},
+    });
+  });
 });

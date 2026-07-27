@@ -245,12 +245,7 @@ export const ChatResponseChunkSchema = z.object({
   streamingMessageId: z.number().optional(),
   streamingPatch: StreamingPatchSchema.optional(),
   streamingPreview: StreamingPreviewSchema.optional(),
-  // Monotonic chunk sequence used for ack-based backpressure on the canned
-  // test streaming path. Real LLM streams omit this field; the renderer
-  // only acks when chunkSeq is present.
-  chunkSeq: z.number().int().nonnegative().finite().optional(),
   effectiveChatMode: ChatModeSchema.optional(),
-  chatModeFallbackReason: z.literal("quota-exhausted").optional(),
   acceptedUserInputRequestId: z.string().optional(),
 });
 
@@ -461,19 +456,6 @@ export const chatContracts = {
     channel: "chat:cancel",
     input: z.number(), // chatId
     output: z.boolean(),
-  }),
-
-  // Renderer→main ack for stress-test backpressure on the canned test
-  // streaming path. The handler is registered unconditionally, but real
-  // LLM streams omit `chunkSeq`, so the renderer only invokes this
-  // channel for canned [dyad-qa=...] streams.
-  responseAck: defineContract({
-    channel: "chat:response:ack",
-    input: z.object({
-      chatId: z.number().int().nonnegative().finite(),
-      lastSeq: z.number().int().nonnegative().finite(),
-    }),
-    output: z.void(),
   }),
 } as const;
 

@@ -139,7 +139,7 @@ phases).
 `src/supabase_admin/supabase_return_handler.ts`,
 `src/neon_admin/neon_return_handler.ts`, `src/atoms/integrationAtoms.ts`,
 `src/hooks/useIntegration{Events,Continue,Continuation}.ts`,
-`src/pro/main/ipc/handlers/local_agent/userInputResolver.ts`.
+`src/user_input/registry.ts`.
 
 ### Evidence
 

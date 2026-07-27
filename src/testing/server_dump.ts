@@ -21,7 +21,6 @@ import { prettifyDump } from "../../e2e-tests/helpers/utils/dump-prettifier";
 import {
   normalizeGitContextHashes,
   normalizeItemReferences,
-  normalizeMcpCallIds,
   normalizeToolCallIds,
   normalizeVersionedFiles,
   normalizePath,
@@ -286,7 +285,6 @@ export function readServerDump(
   removeIgnoredSnapshotFilesFromDump(parsed);
   maskSystemMessages(parsed);
   normalizeToolCallIds(parsed);
-  normalizeMcpCallIds(parsed);
   normalizeGitContextHashes(parsed);
 
   if (doMaskToolDescriptions) {

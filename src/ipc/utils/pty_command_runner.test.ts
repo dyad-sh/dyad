@@ -6,6 +6,7 @@ import {
   runPtyCommand,
 } from "./pty_command_runner";
 import { OUTPUT_TRUNCATION_MARKER } from "./bounded_output_buffer";
+import { DyadErrorKind } from "@/errors/dyad_error";
 
 const { processSpawnMock, spawnMock } = vi.hoisted(() => ({
   processSpawnMock: vi.fn(),
@@ -281,6 +282,45 @@ describe("runPtyCommand", () => {
       } satisfies Partial<PtyCommandExecutionError>);
       expect(controller.pty.kill).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it("kills the PTY, removes listeners, and rejects when cancelled", async () => {
+    await withPlatform("darwin", async () => {
+      const controller = createMockPtyController();
+      const abortController = new AbortController();
+      spawnMock.mockReturnValue(controller.pty);
+
+      const promise = runPtyCommand("pnpm", ["add", "react"], {
+        signal: abortController.signal,
+      });
+      const handledPromise = promise.catch((error) => error);
+
+      controller.emitData("installing");
+      abortController.abort();
+
+      await expect(handledPromise).resolves.toMatchObject({
+        name: "DyadError",
+        kind: DyadErrorKind.UserCancelled,
+      });
+      expect(controller.pty.kill).toHaveBeenCalledTimes(1);
+      expect(controller.dataListenerCount()).toBe(0);
+      expect(controller.exitListenerCount()).toBe(0);
+    });
+  });
+
+  it("does not spawn a PTY when already cancelled", async () => {
+    const abortController = new AbortController();
+    abortController.abort();
+
+    await expect(
+      runPtyCommand("pnpm", ["add", "react"], {
+        signal: abortController.signal,
+      }),
+    ).rejects.toMatchObject({
+      name: "DyadError",
+      kind: DyadErrorKind.UserCancelled,
+    });
+    expect(spawnMock).not.toHaveBeenCalled();
   });
 
   it("uses the display-command override in PTY exit errors", async () => {

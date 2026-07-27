@@ -76,13 +76,10 @@
     }
   },
   "dismissError": "Dispensar erro",
-  "askDyadToBuild": "Peça ao Dyad para construir...",
   "cancelGeneration": "Cancelar geração",
   "sendMessage": "Enviar mensagem",
   "loadingProposal": "Carregando proposta...",
   "errorLoadingProposal": "Erro ao carregar proposta: {{message}}",
-  "visualEditor": "Editor visual (Pro)",
-  "visualEditorDescription": "A edição visual permite fazer alterações na interface sem IA e é um recurso exclusivo do Pro",
   "summarizeNewChatTip": "Criar um novo chat torna a IA mais focada e eficiente",
   "summarizeToNewChat": "Resumir em novo chat",
   "refactorFile": "Refatorar {{path}} e torná-lo mais modular",
@@ -121,19 +118,6 @@
     "didNotFinish": "Não terminou",
     "chatNumber": "Chat nº {{chatId}}",
     "messagesRange": "mensagens {{range}}"
-  },
-  "exploreChatHistory": {
-    "badge": "HISTÓRICO",
-    "title": "Explorar histórico de chats",
-    "chatCount_one": "{{count}} chat",
-    "chatCount_other": "{{count}} chats",
-    "evidenceCount_one": "{{count}} evidência",
-    "evidenceCount_other": "{{count}} evidências",
-    "noRelevantHistory": "nenhum histórico relevante",
-    "partial": "parcial",
-    "exploring": "Explorando...",
-    "didNotFinish": "Não foi concluído",
-    "failed": "Falhou"
   },
   "git": {
     "checkingChanges": "Verificando alterações do projeto",
@@ -242,8 +226,6 @@
   "currentInput": "Entrada Atual",
   "total": "Total",
   "failedCountTokens": "Falha ao contar tokens",
-  "optimizeTokens": "Otimize seus tokens com",
-  "dyadProSmartContext": "Contexto Inteligente do Dyad Pro",
   "attachFiles": "Anexar arquivos",
   "themes": "Temas",
   "noTheme": "Sem Tema",
@@ -263,20 +245,13 @@
     "descriptionSingular": "Escolha como o arquivo deve ser usado.",
     "descriptionPlural": "Escolha como os arquivos devem ser usados."
   },
-  "selectedComponents": "Componentes Selecionados ({{count}})",
-  "clearAllComponents": "Limpar todos os componentes selecionados",
-  "deselectComponent": "Desmarcar componente",
   "chatMode": {
     "openMenu": "Abrir menu de modo",
     "toggleShortcut": "{{shortcut}} para alternar",
     "agentV2": "Agente v2",
     "agentV2Description": "Melhor para tarefas maiores e depuração",
-    "build": "Construir",
-    "buildDescription": "Gerar e editar código",
     "ask": "Perguntar",
-    "askDescription": "Fazer perguntas sobre o app",
-    "buildWithMcp": "Construir com MCP",
-    "buildWithMcpDescription": "Como Construir, mas pode usar ferramentas (MCP) para gerar código"
+    "askDescription": "Fazer perguntas sobre o app"
   },
   "modelPicker": {
     "modelLabel": "Modelo:",
@@ -319,38 +294,9 @@
     "versionCount": "Versão {{count}}"
   },
   "errorBox": {
-    "accessWithDyadPro": "Acessar com Dyad Pro",
     "orSwitchModel": "ou mudar para outro modelo.",
-    "upgradeToDyadPro": "Atualizar para Dyad Pro",
     "troubleshootingGuide": "Guia de solução de problemas",
-    "invalidProKey": "Parece que você não tem uma chave válida do Dyad Pro.",
-    "today": "hoje.",
-    "creditsUsed": "Você utilizou todos os seus créditos de IA do Dyad neste mês.",
-    "reloadOrUpgrade": "Recarregue ou atualize sua assinatura",
-    "getMoreCredits": "e obtenha mais créditos de IA",
     "readDocs": "Ler documentação"
-  },
-  "promo": {
-    "tiredOfWaiting": "Cansado de esperar pela IA?",
-    "getDyadPro": "Obtenha o Dyad Pro",
-    "fasterEdits": "para edições mais rápidas com Turbo Edits.",
-    "saveOnCosts": "Economize até 3x nos custos de IA com",
-    "debuggingLoop": "Preso em um loop de depuração? Tente um modelo diferente.",
-    "joinBuilders": "Junte-se a mais de 600 criadores no",
-    "dyadSubreddit": "subreddit do Dyad",
-    "foundBug": "Encontrou um bug? Clique em Ajuda > Reportar um Bug",
-    "reportBadResponse": "Quer reportar uma resposta ruim da IA? Envie o chat clicando em Ajuda",
-    "watch": "Assista",
-    "creatorBuildApp": "o criador do Dyad construir um app bíblico passo a passo",
-    "gettingStuck": "Travando? Leia nossas",
-    "debuggingTips": "dicas de depuração",
-    "advancedTip": "Dica avançada: Personalize suas",
-    "aiRules": "regras de IA",
-    "keepFocused": "Quer manter a IA focada? Inicie um novo chat.",
-    "whatsNext": "Quer saber o que vem a seguir? Confira nosso",
-    "roadmap": "roadmap",
-    "likeDyad": "Gostou do Dyad? Dê uma estrela no",
-    "gitHub": "GitHub"
   },
   "consent": {
     "toolWantsToRun": "Ferramenta quer executar",

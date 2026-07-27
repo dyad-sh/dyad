@@ -87,7 +87,7 @@ describe("useResolveMergeConflictsWithAI", () => {
 
     expect(mocks.createChat).toHaveBeenCalledExactlyOnceWith({
       appId: APP_ID,
-      initialChatMode: "build",
+      initialChatMode: "local-agent",
     });
     expect(mocks.onStartResolving).toHaveBeenCalledOnce();
     expect(store.get(selectedChatIdAtom)).toBe(CHAT_ID);

@@ -123,10 +123,7 @@
     "errorLoadingSettings": "설정 불러오기 오류",
     "couldNotLoadProvider": "공급자 데이터를 불러올 수 없습니다: {{message}}",
     "couldNotLoadSettings": "설정 데이터를 불러올 수 없습니다: {{message}}",
-    "enableDyadPro": "Dyad Pro 사용",
-    "toggleDyadPro": "Dyad Pro 사용 여부 전환",
     "apiKeyEmpty": "API 키는 비워둘 수 없습니다.",
-    "errorTogglingPro": "Dyad Pro 전환 오류: {{error}}",
     "failedSaveApiKey": "API 키 저장에 실패했습니다.",
     "failedDeleteApiKey": "API 키 삭제에 실패했습니다."
   },
@@ -149,40 +146,12 @@
     "title": "연동"
   },
   "agentPermissions": {
-    "title": "에이전트 권한 (Pro)",
+    "title": "에이전트 권한",
     "description": "에이전트 내장 도구에 대한 권한을 설정합니다.",
     "defaultAllowedTools": "기본 허용 도구 ({{count}})",
     "ask": "물어보기",
     "alwaysAllow": "항상 허용",
     "neverAllow": "허용 안 함"
-  },
-  "toolsMcp": {
-    "title": "도구 (MCP)",
-    "name": "이름",
-    "namePlaceholder": "내 MCP 서버",
-    "transport": "전송 방식",
-    "stdio": "stdio",
-    "http": "http",
-    "command": "명령어",
-    "commandPlaceholder": "node",
-    "args": "인수",
-    "argsPlaceholder": "path/to/mcp-server.js --flag",
-    "url": "URL",
-    "urlPlaceholder": "http://localhost:3000",
-    "addServer": "서버 추가",
-    "environmentVariables": "환경 변수",
-    "key": "키",
-    "keyPlaceholder": "예: PATH",
-    "value": "값",
-    "valuePlaceholder": "예: /usr/local/bin",
-    "addEnvVar": "환경 변수 추가",
-    "noEnvVars": "설정된 환경 변수가 없습니다",
-    "keyValueRequired": "키와 값이 모두 필요합니다",
-    "duplicateKey": "이 키를 가진 환경 변수가 이미 존재합니다",
-    "noToolsDiscovered": "발견된 도구가 없습니다.",
-    "noServersConfigured": "설정된 서버가 아직 없습니다.",
-    "prefilledServer": "{{name}} MCP 서버가 미리 채워졌습니다",
-    "deny": "거부"
   },
   "experiments": {
     "title": "실험 기능"
@@ -304,7 +273,5 @@
     "addProvider": "공급자 추가",
     "updateProvider": "공급자 업데이트",
     "failedCreate": "사용자 지정 공급자 생성에 실패했습니다"
-  },
-  "manageDyadPro": "Dyad Pro 구독 관리",
-  "setupDyadPro": "Dyad Pro 구독 설정"
+  }
 }

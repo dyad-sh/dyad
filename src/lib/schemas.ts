@@ -1,8 +1,4 @@
 import { z } from "zod";
-import {
-  isGoogleProviderSetup,
-  isNonGoogleProviderSetup,
-} from "./providerUtils";
 
 export const SecretSchema = z.object({
   value: z.string(),
@@ -18,7 +14,7 @@ export const ChatSummarySchema = z.object({
   appId: z.number(),
   title: z.string().nullable(),
   createdAt: z.date(),
-  chatMode: z.enum(["build", "ask", "local-agent", "plan"]).nullable(),
+  chatMode: z.enum(["ask", "local-agent", "plan"]).nullable(),
   isFavorite: z.boolean(),
 });
 
@@ -69,7 +65,6 @@ const providers = [
   "anthropic",
   "google",
   "vertex",
-  "auto",
   "openrouter",
   "ollama",
   "lmstudio",
@@ -146,8 +141,10 @@ export type VertexProviderSetting = z.infer<typeof VertexProviderSettingSchema>;
 export const RuntimeModeSchema = z.enum(["web-sandbox", "local-node", "unset"]);
 export type RuntimeMode = z.infer<typeof RuntimeModeSchema>;
 
-export const RuntimeMode2Schema = z.enum(["host", "docker", "cloud"]);
+export const RuntimeMode2Schema = z.enum(["host", "docker"]);
 export type RuntimeMode2 = z.infer<typeof RuntimeMode2Schema>;
+
+const StoredRuntimeMode2Schema = z.enum(["host", "docker", "cloud"]);
 
 /**
  * Chat modes that can be stored in settings (includes deprecated values for backwards compat)
@@ -155,7 +152,7 @@ export type RuntimeMode2 = z.infer<typeof RuntimeMode2Schema>;
 export const StoredChatModeSchema = z.enum([
   "build",
   "ask",
-  "agent", // DEPRECATED: converted to "build" on read
+  "agent", // DEPRECATED: converted to "local-agent" on read
   "local-agent",
   "plan",
 ]);
@@ -164,15 +161,11 @@ export type StoredChatMode = z.infer<typeof StoredChatModeSchema>;
 /**
  * Active chat modes (excludes deprecated values)
  */
-export const ChatModeSchema = z.enum(["build", "ask", "local-agent", "plan"]);
+export const ChatModeSchema = z.enum(["local-agent", "ask", "plan"]);
 export type ChatMode = z.infer<typeof ChatModeSchema>;
 
 /**
- * Modes that stream through the local agent (tool-calling) path rather than
- * the build-mode path that injects full codebases into the prompt. Keep this
- * in sync with the chat-stream and token-count handlers: whenever a new mode
- * routes through the local agent, add it here so the token estimate matches
- * what's actually sent to the model.
+ * Active chat modes backed by the pi agent runtime.
  */
 export function isLocalAgentBackedMode(mode: ChatMode | undefined): boolean {
   return mode === "local-agent" || mode === "ask" || mode === "plan";
@@ -228,23 +221,14 @@ export type Neon = z.infer<typeof NeonSchema>;
 // It's hard to turn experiments on by default when you put them in
 // ExperimentsSchema.
 export const ExperimentsSchema = z.object({
-  enableCloudSandbox: z.boolean().optional(),
   //////////////////////////////////////////////////////////////////////////////
   // Deprecated experiments
   //////////////////////////////////////////////////////////////////////////////
   enableLocalAgent: z.boolean().describe("DEPRECATED").optional(),
   enableSupabaseIntegration: z.boolean().describe("DEPRECATED").optional(),
   enableFileEditing: z.boolean().describe("DEPRECATED").optional(),
-  // do NOT read off these property, instead use BaseUserSettingsFields#enableSandboxScriptExecution
-  enableSandboxScriptExecution: z.boolean("DEPRECATED").optional(),
 });
 export type Experiments = z.infer<typeof ExperimentsSchema>;
-
-export const DyadProBudgetSchema = z.object({
-  budgetResetAt: z.string(),
-  maxBudget: z.number(),
-});
-export type DyadProBudget = z.infer<typeof DyadProBudgetSchema>;
 
 export const GlobPathSchema = z.object({
   globPath: z.string(),
@@ -293,19 +277,11 @@ export type Language = z.infer<typeof LanguageSchema>;
 export const DeviceModeSchema = z.enum(["desktop", "tablet", "mobile"]);
 export type DeviceMode = z.infer<typeof DeviceModeSchema>;
 
-export const SmartContextModeSchema = z.enum([
-  "balanced",
-  "conservative",
-  "deep",
-]);
-export type SmartContextMode = z.infer<typeof SmartContextModeSchema>;
-
 export const AgentToolConsentSchema = z.enum(["ask", "always", "never"]);
 export type AgentToolConsent = z.infer<typeof AgentToolConsentSchema>;
 
 // The kinds of TypeScript utility process the scheduler can run.
 export const TypeScriptUtilityProcessKindSchema = z.enum([
-  "code-explorer",
   "supabase-dependency-analysis",
   "tsc",
 ]);
@@ -362,8 +338,6 @@ const BaseUserSettingsFields = {
   ////////////////////////////////
   // DEPRECATED.
   ////////////////////////////////
-  enableProSaverMode: z.boolean().optional(),
-  dyadProBudget: DyadProBudgetSchema.optional(),
   runtimeMode: RuntimeModeSchema.optional(),
 
   ////////////////////////////////
@@ -381,22 +355,15 @@ const BaseUserSettingsFields = {
   telemetryConsent: z.enum(["opted_in", "opted_out", "unset"]).optional(),
   telemetryUserId: z.string().optional(),
   hasRunBefore: z.boolean().optional(),
-  enableDyadPro: z.boolean().optional(),
   experiments: ExperimentsSchema.optional(),
   lastShownReleaseNotesVersion: z.string().optional(),
   maxChatTurnsInContext: z.number().optional(),
   maxToolCallSteps: z.number().optional(),
   thinkingBudget: z.enum(["low", "medium", "high"]).optional(),
-  enableProLazyEditsMode: z.boolean().optional(),
-  proLazyEditsMode: z.enum(["off", "v1", "v2"]).optional(),
-  enableProSmartFilesContextMode: z.boolean().optional(),
-  enableProWebSearch: z.boolean().optional(),
-  proSmartContextOption: SmartContextModeSchema.optional(),
   selectedTemplateId: z.string(),
   selectedThemeId: z.string().optional(),
   enableSupabaseWriteSqlMigration: z.boolean().optional(),
   autoApproveNonSchemaSql: z.boolean().optional(),
-  autoApproveSafeMcpTools: z.boolean().optional(),
   skipPruneEdgeFunctions: z.boolean().optional(),
   acceptedCommunityCode: z.boolean().optional(),
   zoomLevel: ZoomLevelSchema.optional(),
@@ -417,9 +384,6 @@ const BaseUserSettingsFields = {
   blockUnsafeNpmPackages: z.boolean().optional(),
   enablePnpmMinimumReleaseAgeWarning: z.boolean().optional(),
   hidePnpmMinimumReleaseAgeWarning: z.boolean().optional(),
-  enableSandboxScriptExecution: z.boolean().optional(),
-  enableMcpToolSearch: z.boolean().optional(),
-  enableCodeExplorer: z.boolean().optional(),
   enableMultiWindow: z.boolean().optional(),
   enableAutoUpdate: z.boolean(),
   releaseChannel: ReleaseChannelSchema,
@@ -444,6 +408,8 @@ const BaseUserSettingsFields = {
 export const StoredUserSettingsSchema = z
   .object({
     ...BaseUserSettingsFields,
+    // Deprecated: cloud sandboxes were removed; migrated to the local host.
+    runtimeMode2: StoredRuntimeMode2Schema.optional(),
     // Use StoredChatModeSchema to allow deprecated "agent" value
     selectedChatMode: StoredChatModeSchema.optional(),
     defaultChatMode: StoredChatModeSchema.optional(),
@@ -485,13 +451,13 @@ export type UserSettings = z.infer<typeof UserSettingsSchema>;
 
 /**
  * Migrates a stored chat mode to an active chat mode.
- * Converts deprecated "agent" mode to "build".
+ * Converts legacy build/agent modes to the pi-backed local agent.
  */
 export function migrateStoredChatMode(
   mode: StoredChatMode | undefined,
 ): ChatMode | undefined {
-  if (mode === "agent") {
-    return "build";
+  if (mode === "agent" || mode === "build") {
+    return "local-agent";
   }
   return mode;
 }
@@ -506,9 +472,21 @@ export function migrateStoredSettings(
   const activeSettings = { ...stored };
   delete activeSettings.enableNativeGit;
   delete activeSettings.enableAutoFixProblems;
+  delete activeSettings.enableMcpServersForBuildMode;
+  delete activeSettings.enableMcpToolSearch;
+  delete activeSettings.autoApproveSafeMcpTools;
+  delete activeSettings.enableDyadPro;
+  delete activeSettings.enableProLazyEditsMode;
+  delete activeSettings.enableProSmartFilesContextMode;
+  delete activeSettings.proLazyEditsMode;
+  delete activeSettings.proSmartContextOption;
+  delete activeSettings.enableSandboxScriptExecution;
+  delete activeSettings.enableCodeExplorer;
 
   return {
     ...activeSettings,
+    runtimeMode2:
+      stored.runtimeMode2 === "cloud" ? "host" : stored.runtimeMode2,
     selectedChatMode: migrateStoredChatMode(stored.selectedChatMode),
     defaultChatMode: migrateStoredChatMode(stored.defaultChatMode),
     enableChatEventNotifications:
@@ -516,14 +494,6 @@ export function migrateStoredSettings(
       stored.enableChatCompletionNotifications,
     enableAppBlueprint: stored.enableAppBlueprint ?? true,
   };
-}
-
-export function isDyadProEnabled(settings: UserSettings): boolean {
-  return settings.enableDyadPro === true && hasDyadProKey(settings);
-}
-
-export function hasDyadProKey(settings: UserSettings): boolean {
-  return !!settings.providerSettings?.auto?.apiKey?.value;
 }
 
 type PnpmMinimumReleaseAgeWarningSettings = Pick<
@@ -540,45 +510,9 @@ export function shouldShowPnpmMinimumReleaseAgeWarning(
   );
 }
 
-/**
- * Gets the effective default chat mode based on settings, pro status, and free quota availability.
- * - Explicit non-Agent defaults are always honored
- * - Pro users default to Agent
- * - Non-Pro users default optimistically to Agent while quota is unresolved
- * - Confirmed quota exhaustion falls back to Build
- * - Google-only users fall back to Build because free Gemini keys commonly
- *   have limits that are too restrictive for Agent mode
- */
-export function getEffectiveDefaultChatMode(
-  settings: UserSettings,
-  envVars: Record<string, string | undefined>,
-  freeAgentQuotaAvailable?: boolean,
-): ChatMode {
-  const isPro = isDyadProEnabled(settings);
-  const hasGoogleProviderSetup = isGoogleProviderSetup(settings, envVars);
-  const hasNonGoogleProviderSetup = isNonGoogleProviderSetup(settings, envVars);
-
-  if (settings.defaultChatMode && settings.defaultChatMode !== "local-agent") {
-    return settings.defaultChatMode;
-  }
-
-  if (isPro) return "local-agent";
-  if (freeAgentQuotaAvailable === false) return "build";
-  if (settings.defaultChatMode === "local-agent") return "local-agent";
-  if (hasGoogleProviderSetup && !hasNonGoogleProviderSetup) return "build";
-  return "local-agent";
-}
-
-/**
- * Determines if the current session is using Basic Agent mode (free tier with quota).
- * Basic Agent mode is when:
- * - User is NOT a Pro subscriber
- * - User is using local-agent chat mode
- */
-export function isBasicAgentMode(settings: UserSettings): boolean {
-  return (
-    !isDyadProEnabled(settings) && settings.selectedChatMode === "local-agent"
-  );
+/** Gets the active default mode. All active modes use the pi runtime. */
+export function getEffectiveDefaultChatMode(settings: UserSettings): ChatMode {
+  return settings.defaultChatMode ?? "local-agent";
 }
 
 export function isSupabaseConnected(settings: UserSettings | null): boolean {
@@ -590,38 +524,6 @@ export function isSupabaseConnected(settings: UserSettings | null): boolean {
     (settings.supabase?.organizations &&
       Object.keys(settings.supabase.organizations).length > 0),
   );
-}
-
-export function isTurboEditsV2Enabled(settings: UserSettings): boolean {
-  return Boolean(
-    isDyadProEnabled(settings) &&
-    settings.enableProLazyEditsMode === true &&
-    settings.proLazyEditsMode === "v2",
-  );
-}
-
-// Define interfaces for the props
-export interface SecurityRisk {
-  type: "warning" | "danger";
-  title: string;
-  description: string;
-}
-
-export interface FileChange {
-  name: string;
-  path: string;
-  summary: string;
-  type: "write" | "rename" | "delete";
-  isServerFunction: boolean;
-}
-
-export interface CodeProposal {
-  type: "code-proposal";
-  title: string;
-  securityRisks: SecurityRisk[];
-  filesChanged: FileChange[];
-  packagesAdded: string[];
-  sqlQueries: SqlQuery[];
 }
 
 export type SuggestedAction =
@@ -670,28 +572,4 @@ export interface AddTypeScriptAction {
 
 export interface KeepGoingAction {
   id: "keep-going";
-}
-
-export interface ActionProposal {
-  type: "action-proposal";
-  actions: SuggestedAction[];
-}
-
-export interface TipProposal {
-  type: "tip-proposal";
-  title: string;
-  description: string;
-}
-
-export type Proposal = CodeProposal | ActionProposal | TipProposal;
-
-export interface ProposalResult {
-  proposal: Proposal;
-  chatId: number;
-  messageId: number;
-}
-
-export interface SqlQuery {
-  content: string;
-  description?: string;
 }

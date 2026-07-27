@@ -1292,14 +1292,14 @@ async function handleCloneRepoFromUrl(
       try {
         await applyComponentTagger(appPath, { installDependencies: false });
         logger.log(
-          `Automatically applied component tagger upgrade for ${owner}/${repoName}`,
+          `Automatically enabled the preview bridge for ${owner}/${repoName}`,
         );
       } catch (upgradeError) {
         // Auto-upgrade  Failures are logged but don't block import.
         // User will be notified via warning toast to manually upgrade if needed.
         autoUpgradeWarning = true;
         logger.warn(
-          `Failed to auto-apply component tagger upgrade for ${owner}/${repoName}: `,
+          `Failed to enable the preview bridge for ${owner}/${repoName}: `,
           upgradeError,
         );
       }

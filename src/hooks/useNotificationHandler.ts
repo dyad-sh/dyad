@@ -22,7 +22,7 @@ function truncate(text: string, limit: number): string {
 }
 
 /**
- * Hook that handles all OS-level notifications (Completions, Agent Consent, MCP Consent, Planning Questionnaire).
+ * Hook that handles OS-level completion, agent consent, and questionnaire notifications.
  * Listens for browser events for completions and IPC events for consent and questionnaire.
  */
 export function useNotificationHandler() {
@@ -67,11 +67,10 @@ export function useNotificationHandler() {
       string,
       Extract<
         UserInputDescriptorPayload,
-        { kind: "agent-consent" | "mcp-consent" | "questionnaire" }
+        { kind: "agent-consent" | "questionnaire" }
       >
     >(),
   );
-  const pendingClassifiedNotificationRequestIdsRef = useRef(new Set<string>());
   const projectedUserInputRequests = useUserInputRequests();
 
   const requestNotificationPermission = useCallback(async () => {
@@ -153,7 +152,7 @@ export function useNotificationHandler() {
   );
 
   /**
-   * Unified logic for handling Agent and MCP consent requests.
+   * Unified logic for handling agent consent requests.
    * All consent requests are scoped to a specific chat (chatId always > 0).
    * Respects enableChatEventNotifications setting.
    */
@@ -280,9 +279,8 @@ export function useNotificationHandler() {
   );
 
   // getPending hydrates the read model after a renderer reload. Seed the
-  // notification lookup from that same source so a later classified event can
-  // still identify a racing MCP request. If classification beats hydration,
-  // replay the notification once the descriptor appears in the read model.
+  // notification lookup from that same source so later settlement events can
+  // resolve the corresponding native notification.
   useEffect(() => {
     for (const [requestId, request] of projectedUserInputRequests) {
       if (request.status === "settled") continue;
@@ -291,21 +289,8 @@ export function useNotificationHandler() {
         continue;
       }
       userInputNotificationDescriptorsRef.current.set(requestId, descriptor);
-      if (
-        descriptor.kind === "mcp-consent" &&
-        request.classifier === "review" &&
-        pendingClassifiedNotificationRequestIdsRef.current.delete(requestId)
-      ) {
-        startConsentNotification({
-          chatId: descriptor.chatId,
-          toolName: descriptor.toolName,
-          requestId,
-          sourceLabel: descriptor.serverName || "an MCP server",
-          tagPrefix: "dyad-mcp-consent",
-        });
-      }
     }
-  }, [projectedUserInputRequests, startConsentNotification]);
+  }, [projectedUserInputRequests]);
 
   useStreamFinished(({ chatId, chatSummary: summary, outcome }) => {
     if (outcome !== "completed") return;
@@ -426,35 +411,7 @@ export function useNotificationHandler() {
           sourceLabel: `${descriptor.questions.length} questions`,
           tagPrefix: "dyad-plan-questionnaire",
         });
-      } else if (descriptor.classifier !== "racing") {
-        startConsentNotification({
-          chatId: descriptor.chatId,
-          toolName: descriptor.toolName,
-          requestId: descriptor.requestId,
-          sourceLabel: descriptor.serverName || "an MCP server",
-          tagPrefix: "dyad-mcp-consent",
-        });
       }
-    });
-    return () => unsubscribe();
-  }, [startConsentNotification]);
-
-  useEffect(() => {
-    const unsubscribe = ipc.events.userInput.onClassified(({ requestId }) => {
-      const descriptor =
-        userInputNotificationDescriptorsRef.current.get(requestId);
-      if (!descriptor) {
-        pendingClassifiedNotificationRequestIdsRef.current.add(requestId);
-        return;
-      }
-      if (descriptor.kind !== "mcp-consent") return;
-      startConsentNotification({
-        chatId: descriptor.chatId,
-        toolName: descriptor.toolName,
-        requestId,
-        sourceLabel: descriptor.serverName || "an MCP server",
-        tagPrefix: "dyad-mcp-consent",
-      });
     });
     return () => unsubscribe();
   }, [startConsentNotification]);
@@ -463,15 +420,12 @@ export function useNotificationHandler() {
     const unsubscribe = ipc.events.userInput.onSettled(({ requestId }) => {
       const descriptor =
         userInputNotificationDescriptorsRef.current.get(requestId);
-      pendingClassifiedNotificationRequestIdsRef.current.delete(requestId);
       if (!descriptor) return;
       userInputNotificationDescriptorsRef.current.delete(requestId);
       resolveConsentNotification(
         descriptor.kind === "agent-consent"
           ? "dyad-agent-consent"
-          : descriptor.kind === "mcp-consent"
-            ? "dyad-mcp-consent"
-            : "dyad-plan-questionnaire",
+          : "dyad-plan-questionnaire",
         requestId,
       );
     });
@@ -496,7 +450,6 @@ export function useNotificationHandler() {
         // to avoid OS + in-app UI duplication
         else if (
           (tag.startsWith("dyad-agent-consent-") ||
-            tag.startsWith("dyad-mcp-consent-") ||
             tag.startsWith("dyad-plan-questionnaire-")) &&
           currentChatId
         ) {

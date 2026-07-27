@@ -17,7 +17,7 @@ Use `DyadError` from `src/errors/dyad_error.ts` when throwing from **main proces
 | `Validation`    | Invalid input, limits, malformed URLs, Zod-style client mistakes surfaced as errors |
 | `NotFound`      | App/chat/plan/file missing, stale IDs                                               |
 | `Auth`          | Not signed in, missing token, GitHub not linked                                     |
-| `Precondition`  | Wrong state for the operation (e.g. feature not installed, sandbox/path rules)      |
+| `Precondition`  | Wrong state for the operation (e.g. feature not installed or path rules)            |
 | `Conflict`      | Duplicates, git working-tree conflicts, push rejected — user/environment fixable    |
 | `UserCancelled` | User declined a tool or similar explicit refusal                                    |
 | `RateLimited`   | Quota / 429-style limits (also see legacy `RateLimitError` handling)                |
@@ -25,10 +25,6 @@ Use `DyadError` from `src/errors/dyad_error.ts` when throwing from **main proces
 **Always sent** (actionable or unknown): `External`, `Internal`, `Unknown`.
 
 Prefer **`DyadError`** over growing `FILTERED_EXCEPTION_MESSAGES` in `telemetry.ts` when the failure is stable and classified.
-
-## Non-Pro event sampling (renderer)
-
-The renderer PostHog `before_send` (in `src/renderer.tsx`) drops ~90% of events for **non-Pro** users. Any event whose audience is primarily free users (conversion funnels like `promo_click`, upgrade CTAs) must be added to `shouldBypassNonProTelemetrySampling` in `src/lib/posthogTelemetry.ts`, or it will be silently undercounted 10x. Errors, `app:initial-load`, and `sandbox.script.*` already bypass sampling.
 
 ## IPC handlers
 

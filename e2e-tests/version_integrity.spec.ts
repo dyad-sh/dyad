@@ -38,11 +38,11 @@ const runVersionIntegrityTest = async (po: PageObject) => {
   await po.snapshotAppFiles({ name: "v1", files: VERSION_INTEGRITY_FILES });
 
   // Add a file and delete a file
-  await po.sendPrompt("tc=version-integrity-add-edit-delete");
+  await po.sendPrompt("tc=local-agent/version-integrity-add-edit-delete");
   await po.snapshotAppFiles({ name: "v2", files: VERSION_INTEGRITY_FILES });
 
   // Move a file
-  await po.sendPrompt("tc=version-integrity-move-file");
+  await po.sendPrompt("tc=local-agent/version-integrity-move-file");
   await po.snapshotAppFiles({ name: "v3", files: VERSION_INTEGRITY_FILES });
 
   // Open version pane

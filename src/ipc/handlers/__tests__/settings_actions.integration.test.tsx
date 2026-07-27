@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 
 import { readSettings, writeSettings } from "@/main/settings";
 import {
@@ -9,15 +9,6 @@ import {
 } from "@/testing/hybrid_chat_harness";
 import { h } from "@/testing/hybrid.setup";
 import type { UserSettings } from "@/lib/schemas";
-
-const PRO_SETTINGS: Partial<UserSettings> = {
-  enableDyadPro: true,
-  providerSettings: {
-    auto: {
-      apiKey: { value: "testdyadkey" },
-    },
-  },
-};
 
 const CONNECTED_SUPABASE_SETTINGS: Partial<UserSettings> = {
   supabase: {
@@ -35,7 +26,6 @@ describe("settings actions (integration)", () => {
   beforeAll(async () => {
     harness = await setupHybridChatHarness({
       electronMock: h,
-      engine: true,
       settings: { isTestMode: true },
     });
   }, 60_000);
@@ -48,12 +38,7 @@ describe("settings actions (integration)", () => {
     writeSettings({
       telemetryConsent: "unset",
       maxToolCallSteps: undefined,
-      enableDyadPro: false,
       providerSettings: {},
-      enableProLazyEditsMode: true,
-      proLazyEditsMode: "v1",
-      enableProSmartFilesContextMode: true,
-      proSmartContextOption: "deep",
       supabase: undefined,
       enableSupabaseWriteSqlMigration: false,
       ...settings,
@@ -97,7 +82,7 @@ describe("settings actions (integration)", () => {
   });
 
   it("persists max tool call step selections from settings", async () => {
-    resetSettings(PRO_SETTINGS);
+    resetSettings();
 
     harness.mountSurface({ route: "/settings" });
     const trigger = await screen.findByRole("combobox", {
@@ -115,117 +100,6 @@ describe("settings actions (integration)", () => {
       expect(readSettings().maxToolCallSteps).toBeUndefined(),
     );
   });
-
-  it("persists smart context options from the Pro mode popover", async () => {
-    resetSettings(PRO_SETTINGS);
-
-    harness.mount();
-    await harness.openPopover(
-      await screen.findByRole("button", { name: /Pro/ }),
-    );
-    fireEvent.click(
-      screen.getByRole("button", { name: "Build mode settings" }),
-    );
-
-    const smartContext = await screen.findByTestId("smart-context-selector");
-    fireEvent.click(
-      within(smartContext).getByRole("button", { name: "Balanced" }),
-    );
-    await waitFor(() => {
-      const settings = readSettings();
-      expect(settings.enableProSmartFilesContextMode).toBe(true);
-      expect(settings.proSmartContextOption).toBe("balanced");
-    });
-
-    fireEvent.click(within(smartContext).getByRole("button", { name: "Off" }));
-    await waitFor(() => {
-      const settings = readSettings();
-      expect(settings.enableProSmartFilesContextMode).toBe(false);
-      expect(settings.proSmartContextOption).toBeUndefined();
-    });
-
-    fireEvent.click(within(smartContext).getByRole("button", { name: "Deep" }));
-    await waitFor(() => {
-      const settings = readSettings();
-      expect(settings.enableProSmartFilesContextMode).toBe(true);
-      expect(settings.proSmartContextOption).toBe("deep");
-    });
-  });
-
-  it("persists turbo edit options from the Pro mode popover", async () => {
-    resetSettings(PRO_SETTINGS);
-
-    harness.mount();
-    await harness.openPopover(
-      await screen.findByRole("button", { name: /Pro/ }),
-    );
-    fireEvent.click(
-      screen.getByRole("button", { name: "Build mode settings" }),
-    );
-
-    const turboEdits = await screen.findByTestId("turbo-edits-selector");
-    fireEvent.click(
-      within(turboEdits).getByRole("button", { name: "Classic" }),
-    );
-    await waitFor(() => {
-      const settings = readSettings();
-      expect(settings.enableProLazyEditsMode).toBe(true);
-      expect(settings.proLazyEditsMode).toBe("v1");
-    });
-
-    fireEvent.click(
-      within(turboEdits).getByRole("button", { name: "Search & replace" }),
-    );
-    await waitFor(() => {
-      const settings = readSettings();
-      expect(settings.enableProLazyEditsMode).toBe(true);
-      expect(settings.proLazyEditsMode).toBe("v2");
-    });
-
-    fireEvent.click(within(turboEdits).getByRole("button", { name: "Off" }));
-    await waitFor(() => {
-      const settings = readSettings();
-      expect(settings.enableProLazyEditsMode).toBe(false);
-      expect(settings.proLazyEditsMode).toBe("off");
-    });
-  });
-
-  it("validates Dyad Pro keys before saving provider settings", async () => {
-    resetSettings();
-
-    harness.mountSurface({
-      route: "/settings/providers/$provider",
-      params: { provider: "auto" },
-    });
-
-    const keyInput = await screen.findByRole("textbox", {
-      name: "Set Dyad API Key",
-    });
-    fireEvent.change(keyInput, { target: { value: "invalid-dyad-key" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save Key" }));
-
-    const dialog = await screen.findByRole("alertdialog");
-    expect(
-      within(dialog).getByRole("heading", { name: "API key rejected" }),
-    ).toBeTruthy();
-    expect(within(dialog).getByText(/Dyad rejected this API key/)).toBeTruthy();
-    fireEvent.click(
-      within(dialog).getByRole("button", { name: "Try another API key" }),
-    );
-    await waitFor(() => expect(dialog.isConnected).toBe(false));
-    expect(readSettings().providerSettings.auto).toBeUndefined();
-    expect(readSettings().enableDyadPro).not.toBe(true);
-
-    fireEvent.change(keyInput, { target: { value: "testdyadkey" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save Key" }));
-
-    await screen.findByText("Current Key (Settings)");
-    await waitFor(() => {
-      const settings = readSettings();
-      expect(settings.providerSettings.auto?.apiKey?.value).toBe("testdyadkey");
-      expect(settings.enableDyadPro).toBe(true);
-    });
-  }, 60_000);
 
   it("persists the Supabase SQL migration toggle from settings", async () => {
     resetSettings(CONNECTED_SUPABASE_SETTINGS);

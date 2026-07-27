@@ -4,11 +4,7 @@ import { router } from "./router";
 import { RouterProvider } from "@tanstack/react-router";
 import { PostHogProvider } from "posthog-js/react";
 import posthog from "posthog-js";
-import {
-  getTelemetryUserId,
-  isTelemetryOptedIn,
-  isDyadProUser,
-} from "./hooks/useSettings";
+import { getTelemetryUserId, isTelemetryOptedIn } from "./hooks/useSettings";
 
 // Initialize i18next before any rendering
 import "./i18n";
@@ -17,16 +13,14 @@ import {
   QueryClient,
   QueryClientProvider,
   MutationCache,
-  useQueryClient,
 } from "@tanstack/react-query";
 import { showError } from "./lib/toast";
 import { ipc } from "./ipc/types";
 import { useStore } from "jotai";
-import { queryKeys } from "./lib/queryKeys";
 import {
   createExceptionFromTelemetry,
   getExceptionTelemetryContext,
-  shouldBypassNonProTelemetrySampling,
+  shouldBypassTelemetrySampling,
   shouldFilterPostHogExceptionEvent,
 } from "./lib/posthogTelemetry";
 import { registerRendererIpcListeners } from "./app_wiring/registerRendererIpcListeners";
@@ -126,17 +120,9 @@ const posthogClient = posthog.init(
         event.properties["$ip"] = null;
       }
 
-      // For non-Pro users, only send 10% of events (but always send errors,
-      // app:initial-load, promo_click, and sandbox.script.* — see
-      // shouldBypassNonProTelemetrySampling).
-      if (!isDyadProUser()) {
-        if (
-          !shouldBypassNonProTelemetrySampling(event) &&
-          Math.random() > 0.1
-        ) {
-          console.debug("Non-Pro user: sampling out event", event?.event);
-          return null;
-        }
+      if (!shouldBypassTelemetrySampling(event) && Math.random() > 0.1) {
+        console.debug("Sampling out telemetry event", event?.event);
+        return null;
       }
 
       console.debug(
@@ -160,7 +146,6 @@ function App() {
 }
 
 function RendererServices() {
-  const queryClient = useQueryClient();
   const store = useStore();
   const chatStreamManager = useChatStreamManager();
   const entityDisposal = useEntityDisposal();
@@ -172,14 +157,6 @@ function RendererServices() {
     [store],
   );
   useRegisterEntityDisposer("app", clearAppRuntime);
-
-  // Fetch user budget on app load
-  useEffect(() => {
-    queryClient.prefetchQuery({
-      queryKey: queryKeys.userBudget.info,
-      queryFn: () => ipc.system.getUserBudget(),
-    });
-  }, [queryClient]);
 
   useEffect(() => {
     // Subscribe to navigation state changes

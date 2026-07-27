@@ -1,8 +1,9 @@
 - button "Restore to this point"
 - paragraph: hi
-- button "file1.txt file1.txt Edit"
-- paragraph: More EOM
+- paragraph: This is a fake response.
 - button "Copy"
 - text: lmstudio-model-1
+- button "Copy Request ID"
+- text: "0"
 - button "Undo"
 - button "Retry"

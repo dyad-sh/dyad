@@ -1,10 +1,9 @@
-import { createGoogleGenerativeAI as createGoogle } from "@ai-sdk/google";
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { streamText, type LanguageModel } from "ai";
 import log from "electron-log";
 
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import type { ProviderApiKeyValidationProvider } from "@/ipc/types";
+import { getPiModels, resolveDyadModel } from "@/ipc/pi/model_runtime";
+import { buildStreamOptions } from "@/ipc/pi/stream_fn";
 import { readEffectiveSettings } from "@/main/settings";
 import {
   findInvalidProviderApiKeyCharacter,
@@ -12,12 +11,7 @@ import {
   normalizeProviderApiKeyInput,
 } from "@/lib/providerApiKey";
 import type { UserSettings } from "@/lib/schemas";
-import { createDyadEngine } from "@/ipc/utils/llm_engine_provider";
-import { fastTextOutput } from "@/ipc/utils/stream_text_utils";
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
-import { getDyadEngineBaseUrl } from "@/ipc/utils/dyad_engine_url";
-import { getTestFetchOption } from "@/ipc/utils/test_fetch_override";
-import { getOpenRouterAppAttributionHeaders } from "@/ipc/utils/openrouter_attribution";
 
 const logger = log.scope("provider_api_key_validation");
 
@@ -29,8 +23,12 @@ const PROVIDER_DISPLAY_NAMES: Record<ProviderApiKeyValidationProvider, string> =
   {
     google: "Google",
     openrouter: "OpenRouter",
-    auto: "Dyad",
   };
+
+const VALIDATION_MODELS = {
+  google: "gemini-flash-latest",
+  openrouter: "openrouter/free",
+} as const satisfies Record<ProviderApiKeyValidationProvider, string>;
 
 export async function validateProviderApiKey({
   provider,
@@ -68,38 +66,25 @@ export async function validateProviderApiKey({
     }, VALIDATION_TIMEOUT_MS);
   });
 
-  // Some providers (e.g. the Dyad engine) report auth failures as an error
-  // event inside an HTTP 200 stream. streamText surfaces those through
-  // onError while its text promise resolves with empty text, so capture
-  // and re-throw them to fail validation. For HTTP-level failures the text
-  // promise rejects with a NoOutputGeneratedError wrapper while onError
-  // receives the underlying APICallError, so the captured error is also the
-  // better one to classify.
-  let streamError: unknown;
   try {
-    const stream = streamText({
-      output: fastTextOutput(),
-      model: await createValidationModel(provider, normalizedApiKey),
-      maxOutputTokens: 8,
-      temperature: 0,
-      maxRetries: 0,
-      abortSignal: controller.signal,
-      onError: ({ error }) => {
-        streamError = error;
-      },
-      messages: [{ role: "user", content: VALIDATION_PROMPT }],
-    });
-
-    const textPromise = Promise.resolve(stream.text);
-    textPromise.catch(() => {});
-    await Promise.race([textPromise, timeout]);
-    if (streamError !== undefined) {
-      throw streamError;
+    const completionPromise = createValidationCompletion(
+      provider,
+      normalizedApiKey,
+      controller.signal,
+    );
+    completionPromise.catch(() => {});
+    const completion = await Promise.race([completionPromise, timeout]);
+    if (
+      completion.stopReason === "error" ||
+      completion.stopReason === "aborted"
+    ) {
+      throw new Error(
+        completion.errorMessage || `${providerDisplayName} validation failed`,
+      );
     }
     return { ok: true };
   } catch (error) {
-    const rootError = isDyadError(error) ? error : (streamError ?? error);
-    throw classifyValidationError(rootError, providerDisplayName);
+    throw classifyValidationError(error, providerDisplayName);
   } finally {
     if (timer) {
       clearTimeout(timer);
@@ -107,55 +92,49 @@ export async function validateProviderApiKey({
   }
 }
 
-async function createValidationModel(
+async function createValidationCompletion(
   provider: ProviderApiKeyValidationProvider,
   apiKey: string,
-): Promise<LanguageModel> {
-  switch (provider) {
-    case "google": {
-      const google = createGoogle({
-        apiKey,
-        baseURL: getGoogleBaseUrl(),
-        ...getTestFetchOption(),
-      });
-      return google("gemini-flash-latest");
-    }
-    case "openrouter": {
-      const openrouter = createOpenAICompatible({
-        name: "openrouter",
-        apiKey,
-        baseURL: getOpenRouterBaseUrl(),
-        headers: getOpenRouterAppAttributionHeaders(),
-        ...getTestFetchOption(),
-      });
-      return openrouter("openrouter/free");
-    }
-    case "auto": {
-      const settings = await readEffectiveSettings();
-      const dyad = createDyadEngine({
-        apiKey,
-        baseURL: getDyadEngineBaseUrl(),
-        ...getTestFetchOption(),
-        dyadOptions: {
-          enableLazyEdits: false,
-          enableSmartFilesContext: false,
-          enableWebSearch: false,
+  signal: AbortSignal,
+) {
+  const selectedModel = {
+    provider,
+    name: VALIDATION_MODELS[provider],
+  };
+  const settings = {
+    ...(await readEffectiveSettings()),
+    selectedModel,
+  } satisfies UserSettings;
+  const resolvedModel = await resolveDyadModel(selectedModel);
+  const model = {
+    ...resolvedModel,
+    baseUrl:
+      provider === "google"
+        ? (getGoogleBaseUrl() ?? resolvedModel.baseUrl)
+        : getOpenRouterBaseUrl(),
+  };
+  const streamOptions = await buildStreamOptions(selectedModel, settings);
+
+  return getPiModels().completeSimple(
+    model,
+    {
+      messages: [
+        {
+          role: "user",
+          content: VALIDATION_PROMPT,
+          timestamp: Date.now(),
         },
-        settings: {
-          ...settings,
-          enableDyadPro: true,
-          providerSettings: {
-            ...settings.providerSettings,
-            auto: {
-              ...settings.providerSettings?.auto,
-              apiKey: { value: apiKey },
-            },
-          },
-        } satisfies UserSettings,
-      });
-      return dyad("dyad/auto", { providerId: "openai" });
-    }
-  }
+      ],
+    },
+    {
+      ...streamOptions,
+      apiKey,
+      maxTokens: 8,
+      temperature: 0,
+      maxRetries: 0,
+      signal,
+    },
+  );
 }
 
 function getGoogleBaseUrl() {
@@ -240,7 +219,7 @@ function extractStatusCode(error: unknown, depth = 0): number | undefined {
   return extractStatusCode(candidate.cause, depth + 1);
 }
 
-// Stream error events (e.g. from the Dyad engine's LiteLLM proxy) are plain
+// Stream error events from OpenAI-compatible proxies are plain
 // strings that lead with the upstream status code, like
 // "401 LiteLLM Virtual Key expected. ...".
 function extractStatusCodeFromMessage(message: string): number | undefined {

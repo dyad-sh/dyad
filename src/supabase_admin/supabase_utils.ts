@@ -183,6 +183,7 @@ export async function deployAffectedSupabaseFunctions({
   changedSharedModulePaths,
   pendingFunctionDeploys,
   onProgress,
+  signal,
 }: {
   appPath: string;
   supabaseProjectId: string;
@@ -192,6 +193,7 @@ export async function deployAffectedSupabaseFunctions({
   changedSharedModulePaths: string[];
   pendingFunctionDeploys: string[];
   onProgress?: (progress: SupabaseDeployProgress) => void;
+  signal?: AbortSignal;
 }): Promise<string[]> {
   const deployArgs = {
     appPath,
@@ -199,6 +201,7 @@ export async function deployAffectedSupabaseFunctions({
     supabaseOrganizationSlug,
     skipPruneEdgeFunctions,
     onProgress,
+    signal,
   };
 
   if (sharedModulesChanged) {
@@ -259,6 +262,7 @@ export async function deploySupabaseFunctions({
   skipPruneEdgeFunctions,
   functionNames,
   onProgress,
+  signal,
 }: {
   appPath: string;
   supabaseProjectId: string;
@@ -266,13 +270,17 @@ export async function deploySupabaseFunctions({
   skipPruneEdgeFunctions: boolean;
   functionNames?: string[];
   onProgress?: (progress: SupabaseDeployProgress) => void;
+  signal?: AbortSignal;
 }): Promise<string[]> {
+  signal?.throwIfAborted();
   const functionsDir = path.join(appPath, "supabase", "functions");
 
   // Check if supabase/functions directory exists
   try {
     await fs.access(functionsDir);
+    signal?.throwIfAborted();
   } catch {
+    signal?.throwIfAborted();
     logger.info(`No supabase/functions directory found at ${functionsDir}`);
     return [];
   }
@@ -352,6 +360,7 @@ export async function deploySupabaseFunctions({
       validFunctions,
       SUPABASE_BUNDLE_ONLY_DEPLOY_CONCURRENCY,
       async (functionName) => {
+        signal?.throwIfAborted();
         activeFunctions++;
         emitProgress("deploying", functionName);
         logger.info(`Bundling function: ${functionName}`);
@@ -362,6 +371,7 @@ export async function deploySupabaseFunctions({
             functionName,
             appPath,
             bundleOnly: true,
+            signal,
           });
           succeededFunctions++;
           logger.info(`Successfully bundled function: ${functionName}`);
@@ -376,6 +386,7 @@ export async function deploySupabaseFunctions({
         }
       },
     );
+    signal?.throwIfAborted();
 
     // Collect successful results and errors
     const successfulDeploys: DeployedFunctionResponse[] = [];
@@ -404,11 +415,13 @@ export async function deploySupabaseFunctions({
           supabaseProjectId,
           functions: successfulDeploys,
           organizationSlug: supabaseOrganizationSlug,
+          signal,
         });
         logger.info(
           `Successfully activated ${successfulDeploys.length} functions`,
         );
       } catch (error: any) {
+        signal?.throwIfAborted();
         const errorMessage = `Failed to bulk update functions: ${error.message}`;
         logger.error(errorMessage, error);
         errors.push(errorMessage);
@@ -418,10 +431,12 @@ export async function deploySupabaseFunctions({
     // Prune dangling edge functions (deployed but not in codebase)
     if (!skipPruneEdgeFunctions) {
       try {
+        signal?.throwIfAborted();
         logger.info("Checking for dangling edge functions to prune...");
         const deployedFunctions = await listSupabaseFunctions({
           supabaseProjectId,
           organizationSlug: supabaseOrganizationSlug,
+          signal,
         });
 
         const localFunctionNames = new Set(allValidFunctions);
@@ -440,9 +455,11 @@ export async function deploySupabaseFunctions({
                 supabaseProjectId,
                 functionName: fn.slug,
                 organizationSlug: supabaseOrganizationSlug,
+                signal,
               });
               logger.info(`Pruned dangling edge function: ${fn.slug}`);
             } catch (deleteError: any) {
+              signal?.throwIfAborted();
               const errorMessage = `Failed to prune edge function ${fn.slug}: ${deleteError.message}`;
               logger.error(errorMessage, deleteError);
               errors.push(errorMessage);
@@ -452,6 +469,7 @@ export async function deploySupabaseFunctions({
           logger.info("No dangling edge functions found");
         }
       } catch (pruneError: any) {
+        signal?.throwIfAborted();
         const errorMessage = `Failed to check for dangling edge functions: ${pruneError.message}`;
         logger.error(errorMessage, pruneError);
         errors.push(errorMessage);
@@ -464,6 +482,7 @@ export async function deploySupabaseFunctions({
       );
     }
   } catch (error: any) {
+    signal?.throwIfAborted();
     const errorMessage = `Error reading functions directory: ${error.message}`;
     logger.error(errorMessage, error);
     errors.push(errorMessage);
@@ -486,6 +505,7 @@ export async function deployAllSupabaseFunctions(args: {
   supabaseOrganizationSlug: string | null;
   skipPruneEdgeFunctions: boolean;
   onProgress?: (progress: SupabaseDeployProgress) => void;
+  signal?: AbortSignal;
 }): Promise<string[]> {
   return deploySupabaseFunctions(args);
 }

@@ -40,7 +40,7 @@ describe("acceptChatTurn", () => {
     const first = acceptChatTurn(db, {
       chatId,
       storedChatMode: null,
-      selectedChatMode: "build",
+      selectedChatMode: "local-agent",
       content: "first",
       userInputRequestId: "first-request",
     });
@@ -52,15 +52,15 @@ describe("acceptChatTurn", () => {
       userInputRequestId: "second-request",
     });
 
-    expect(first.authoritativeChatMode).toBe("build");
-    expect(second.authoritativeChatMode).toBe("build");
+    expect(first.authoritativeChatMode).toBe("local-agent");
+    expect(second.authoritativeChatMode).toBe("local-agent");
     expect(
       db
         .select({ chatMode: chats.chatMode })
         .from(chats)
         .where(eq(chats.id, chatId))
         .get()?.chatMode,
-    ).toBe("build");
+    ).toBe("local-agent");
     expect(
       db
         .select({ id: messages.id })

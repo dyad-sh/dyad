@@ -89,7 +89,7 @@ describe("context limit banner (integration)", () => {
       `Summarize from chat-id=${originalChatId}`,
     );
     expect(newChatMessages[1].content.replace(/\s+/g, " ")).toContain(
-      "More EOM",
+      "This is a fake response.",
     );
   }, 60_000);
 

@@ -11,7 +11,7 @@ The Problems panel remains available through its explicit **Run checks** and **F
 - Remove the `enableAutoFixProblems` setting end-to-end: defaults and active schema, Settings UI/switch, Settings search entry and ID, all locale strings, help/debug-report fields, test setup options, and settings snapshots. Retain it only as a deprecated stored-settings field so older files parse, then strip it during migration; it disappears on a later settings write.
 - Delete the Build-mode repair loop in `chat_stream_handlers.ts`, including speculative type checks, `<dyad-problem-report>` generation, retry prompts, and the virtual codebase assembled from pending write/rename/delete tags. Preserve parsing/rendering and transcript cleanup for `<dyad-problem-report>` so historical chats continue to display and replay safely.
 - Remove automatic Problems-query triggers from file saves, proposal approval, and completed Build turns. Make `useCheckProblems` manual-only (`enabled: false`) while retaining its `refetch` API for the Problems panel. Local Agent continues updating the Problems cache through `agent-tool:problems-update` after `run_type_checks`.
-- Keep manual Problems workflows unchanged: users can run checks, select diagnostics, and ask Build mode to fix the selected problems through `createProblemFixPrompt`.
+- Keep manual Problems workflows unchanged: users can run checks, select diagnostics, and ask Agent mode to fix the selected problems through `createProblemFixPrompt`.
 - Remove the auto-fix-only E2E cases, fixtures, page-object helpers, and snapshots. Update remaining Problems tests to invoke **Run checks** explicitly before asserting diagnostics or using **Fix selected/Fix all**.
 
 ## 2. Use the App-local TypeScript CLI for Type Checking

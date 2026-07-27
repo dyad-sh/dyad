@@ -23,7 +23,6 @@ export const queryKeys = {
     appVersion: ["system", "appVersion"] as const,
     nodejsStatus: ["system", "nodejsStatus"] as const,
     platform: ["system", "platform"] as const,
-    subscriptionStatus: ["system", "subscriptionStatus"] as const,
     initialLoadTelemetryContext: [
       "system",
       "initialLoadTelemetryContext",
@@ -236,10 +235,6 @@ export const queryKeys = {
   customThemes: {
     all: ["custom-themes"] as const,
   },
-  themeGenerationModelOptions: {
-    all: ["theme-generation-model-options"] as const,
-  },
-
   // ─────────────────────────────────────────────────────────────────────────────
   // Templates
   // ─────────────────────────────────────────────────────────────────────────────
@@ -274,32 +269,6 @@ export const queryKeys = {
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // User Budget
-  // ─────────────────────────────────────────────────────────────────────────────
-  userBudget: {
-    info: ["userBudgetInfo"] as const,
-  },
-
-  cloudSandboxes: {
-    status: ({ appId }: { appId: number | null }) =>
-      ["cloudSandboxStatus", appId] as const,
-  },
-
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Free Agent Quota
-  // ─────────────────────────────────────────────────────────────────────────────
-  freeAgentQuota: {
-    status: ["freeAgentQuotaStatus"] as const,
-  },
-
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Free Pro Model Quota
-  // ─────────────────────────────────────────────────────────────────────────────
-  freeModelQuota: {
-    status: ["freeModelQuotaStatus"] as const,
-  },
-
-  // ─────────────────────────────────────────────────────────────────────────────
   // Vercel Deployments
   // ─────────────────────────────────────────────────────────────────────────────
   vercel: {
@@ -318,21 +287,6 @@ export const queryKeys = {
       ["app-upgrades", appId] as const,
     isCapacitor: ({ appId }: { appId: number | null }) =>
       ["is-capacitor", appId] as const,
-  },
-
-  // ─────────────────────────────────────────────────────────────────────────────
-  // MCP (Model Context Protocol)
-  // ─────────────────────────────────────────────────────────────────────────────
-  mcp: {
-    all: ["mcp"] as const,
-    servers: ["mcp", "servers"] as const,
-    toolsByServer: {
-      all: ["mcp", "tools-by-server"] as const,
-      list: ({ serverIds }: { serverIds: number[] }) =>
-        ["mcp", "tools-by-server", serverIds] as const,
-    },
-    consents: ["mcp", "consents"] as const,
-    catalog: ["mcp", "catalog"] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -465,21 +419,10 @@ export type AppQueryKey =
   | QueryKeyOf<
       (typeof queryKeys.languageModels)[keyof typeof queryKeys.languageModels]
     >
-  | QueryKeyOf<(typeof queryKeys.userBudget)[keyof typeof queryKeys.userBudget]>
-  | QueryKeyOf<
-      (typeof queryKeys.cloudSandboxes)[keyof typeof queryKeys.cloudSandboxes]
-    >
-  | QueryKeyOf<
-      (typeof queryKeys.freeAgentQuota)[keyof typeof queryKeys.freeAgentQuota]
-    >
-  | QueryKeyOf<
-      (typeof queryKeys.freeModelQuota)[keyof typeof queryKeys.freeModelQuota]
-    >
   | QueryKeyOf<(typeof queryKeys.vercel)[keyof typeof queryKeys.vercel]>
   | QueryKeyOf<
       (typeof queryKeys.appUpgrades)[keyof typeof queryKeys.appUpgrades]
     >
-  | QueryKeyOf<(typeof queryKeys.mcp)[keyof typeof queryKeys.mcp]>
   | QueryKeyOf<(typeof queryKeys.supabase)[keyof typeof queryKeys.supabase]>
   | QueryKeyOf<(typeof queryKeys.github)[keyof typeof queryKeys.github]>
   | QueryKeyOf<(typeof queryKeys.migration)[keyof typeof queryKeys.migration]>

@@ -1,2 +1,8 @@
 - button "Restore to this point"
 - paragraph: tc=chat1 [sleep=medium]
+- paragraph: chat1
+- button "Copy"
+- button "Copy Request ID"
+- text: "0"
+- button "Undo"
+- button "Retry"

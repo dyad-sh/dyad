@@ -23,19 +23,19 @@ import {
   stepCountIs,
   type LanguageModel,
   type ToolSet,
-} from "ai";
+} from "./pi_eval_compat";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
-import { searchChatsTool } from "@/pro/main/ipc/handlers/local_agent/tools/search_chats";
-import { readChatTool } from "@/pro/main/ipc/handlers/local_agent/tools/read_chat";
-import { projectChatMessageForSearch } from "@/pro/main/ipc/handlers/local_agent/tools/chat_search_text";
-import { drainChatSearchIndexOnce } from "@/pro/main/ipc/handlers/local_agent/chat_search_indexer";
+import { searchChatsTool } from "@/ipc/pi/tools/dyad/search_chats";
+import { readChatTool } from "@/ipc/pi/tools/dyad/read_chat";
+import { projectChatMessageForSearch } from "@/ipc/pi/tools/dyad/chat_search_text";
+import { drainChatSearchIndexOnce } from "@/ipc/pi/tools/dyad/chat_search_indexer";
 import {
   setupChatSearchTestDb,
   makeAgentContext,
   type ChatSearchTestHarness,
-} from "@/pro/main/ipc/handlers/local_agent/tools/chat_search_spec_utils";
-import type { AgentContext } from "@/pro/main/ipc/handlers/local_agent/tools/types";
+} from "@/ipc/pi/tools/dyad/chat_search_spec_utils";
+import type { AgentContext } from "@/ipc/pi/tools/dyad/types";
 
 // ── Fixture schema ─────────────────────────────────────────────
 
@@ -1061,6 +1061,5 @@ export function makeEvalContext(seeded: SeededCategory): AgentContext {
     appId: seeded.appId,
     chatId: seeded.currentChatId,
     messageId: seeded.cutoffMessageId,
-    isDyadPro: true,
   });
 }

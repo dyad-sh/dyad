@@ -15,14 +15,11 @@ import type {
 import { transition } from "./transition";
 
 const descriptor: UserInputDescriptor = {
-  kind: "mcp-consent",
-  requestId: "mcp-consent:1",
+  kind: "agent-consent",
+  requestId: "agent-consent:1",
   chatId: 10,
   deadlineAt: 300_000,
-  serverId: 2,
-  serverName: "server",
   toolName: "read",
-  classifier: "racing",
 };
 const request: UserInputEvent = {
   type: "requested",
@@ -35,7 +32,6 @@ const followUpDescriptor: UserInputDescriptor = {
   chatId: 11,
   deadlineAt: 1_800_000,
   provider: "supabase",
-  classifier: "none",
   followUpPrompt: "continue",
 };
 const followUpRequest: UserInputEvent = {
@@ -47,12 +43,7 @@ const raceEvents: UserInputEvent[] = [
   {
     type: "human-decided",
     requestId: descriptor.requestId,
-    response: { kind: "mcp-consent", decision: "accept-once" },
-  },
-  {
-    type: "classifier-decided",
-    requestId: descriptor.requestId,
-    approved: true,
+    response: { kind: "agent-consent", decision: "accept-once" },
   },
   { type: "timed-out", requestId: descriptor.requestId },
   { type: "chat-swept", chatId: descriptor.chatId },
@@ -61,11 +52,6 @@ const EVENTS: UserInputEvent[] = [
   request,
   followUpRequest,
   ...raceEvents,
-  {
-    type: "classifier-decided",
-    requestId: descriptor.requestId,
-    approved: false,
-  },
   { type: "stream-finished", chatId: descriptor.chatId },
   { type: "follow-up-dispatched", requestId: descriptor.requestId },
   { type: "follow-up-rejected", requestId: descriptor.requestId },
@@ -91,7 +77,7 @@ const EVENTS: UserInputEvent[] = [
   {
     type: "human-decided",
     requestId: descriptor.requestId,
-    response: { kind: "mcp-consent", decision: "accept-always" },
+    response: { kind: "agent-consent", decision: "accept-always" },
   },
 ];
 const STATE_KINDS = [
@@ -104,7 +90,6 @@ const STATE_KINDS = [
 const COMMAND_KINDS = [
   "broadcast-requested",
   "broadcast-armed",
-  "broadcast-classified",
   "broadcast-settled",
   "broadcast-follow-up-due",
   "resolve-park",

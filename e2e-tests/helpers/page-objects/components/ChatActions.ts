@@ -19,7 +19,7 @@ export class ChatActions {
 
   getChatInput() {
     return this.page.locator(
-      '[data-testid="chat-input-container"]:visible [data-lexical-editor="true"][aria-placeholder^="Ask Dyad to build"], [data-testid="home-chat-input-container"]:visible [data-lexical-editor="true"][aria-placeholder^="Ask Dyad to build"]',
+      '[data-testid="chat-input-container"]:visible [data-lexical-editor="true"], [data-testid="home-chat-input-container"]:visible [data-lexical-editor="true"]',
     );
   }
 
@@ -192,16 +192,11 @@ export class ChatActions {
     }
   }
 
-  async selectChatMode(
-    mode: "build" | "ask" | "agent" | "local-agent" | "basic-agent" | "plan",
-  ) {
+  async selectChatMode(mode: "ask" | "local-agent" | "plan") {
     await this.page.getByTestId("chat-mode-selector").click();
     const mapping: Record<string, string> = {
-      build: "Build Generate and edit code",
-      ask: "Ask Ask",
-      agent: "Build with MCP",
-      "local-agent": "Agent v2",
-      "basic-agent": "Basic Agent", // For free users
+      ask: "Ask.*Ask questions about the app",
+      "local-agent": "Agent.*Build and debug with tools",
       plan: "Plan.*Design before you build",
     };
     const optionName = mapping[mode];

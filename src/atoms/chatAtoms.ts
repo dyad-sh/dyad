@@ -1,10 +1,4 @@
-import type {
-  Chat,
-  FileAttachment,
-  Message,
-  AgentTodo,
-  ComponentSelection,
-} from "@/ipc/types";
+import type { Chat, FileAttachment, Message, AgentTodo } from "@/ipc/types";
 import type { ListedApp } from "@/ipc/types/app";
 import type { Getter, Setter } from "jotai";
 import { atom } from "jotai";
@@ -559,6 +553,11 @@ export interface QueuedMessageItem {
   attachments?: FileAttachment[];
   selectedComponents?: ComponentSelection[];
   // Extra stream-request fields projected from the main-owned queue snapshot.
+  // Extra stream-request fields preserved when the chat stream machine queues
+  // a submission that arrived while a stream was active, so the queued
+  // dispatch replays the ORIGINAL request (e.g. a Retry keeps its redo
+  // semantics). Ordinary queue fields round-trip through persistence; machine
+  // follow-ups are intentionally memory-only because their owner/callbacks are.
   redo?: boolean;
   appId?: number;
   requestedChatMode?: Chat["chatMode"] | null;

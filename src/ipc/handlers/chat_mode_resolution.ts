@@ -1,34 +1,12 @@
-import {
-  isDyadProEnabled,
-  type ChatMode,
-  type UserSettings,
-} from "@/lib/schemas";
+import { type ChatMode, type UserSettings } from "@/lib/schemas";
 import {
   normalizeStoredChatMode,
   resolveChatMode,
   type ChatModeResolution,
 } from "@/lib/chatMode";
-import {
-  FREE_PRO_BUILD_MODE_ERROR,
-  getFreeProCompatibleChatMode,
-  isFreeProBuildModeCombination,
-} from "@/lib/freeProModel";
-import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { readSettings } from "@/main/settings";
-import { PROVIDER_TO_ENV_VAR } from "@/ipc/shared/language_model_constants";
-import { getEnvVar } from "@/ipc/utils/read_env";
-import { getFreeAgentQuotaStatus } from "./free_agent_quota_handlers";
 
 export { normalizeStoredChatMode };
-
-export function assertChatModeCompatibleWithModel(
-  settings: UserSettings,
-  chatMode: ChatMode,
-): void {
-  if (isFreeProBuildModeCombination(settings.selectedModel, chatMode)) {
-    throw new DyadError(FREE_PRO_BUILD_MODE_ERROR, DyadErrorKind.Precondition);
-  }
-}
 
 export async function resolveChatModeForTurn({
   storedChatMode,
@@ -41,26 +19,13 @@ export async function resolveChatModeForTurn({
 }): Promise<ChatModeResolution & { settings: UserSettings }> {
   const modeForTurn =
     requestedChatMode === undefined ? storedChatMode : requestedChatMode;
-  const normalizedChatMode = normalizeStoredChatMode(modeForTurn);
-  const envVars = getChatModeEnvVars();
-  const freeAgentQuotaAvailable = await getFreeAgentQuotaAvailableIfNeeded(
-    settings,
-    normalizedChatMode,
-  );
-
   const resolution = resolveChatMode({
     storedChatMode: modeForTurn,
     settings,
-    envVars,
-    freeAgentQuotaAvailable,
   });
 
   return {
     ...resolution,
-    mode:
-      normalizedChatMode === null
-        ? getFreeProCompatibleChatMode(settings.selectedModel, resolution.mode)
-        : resolution.mode,
     settings,
   };
 }
@@ -69,37 +34,4 @@ export async function getInitialChatModeForNewChat(
   initialChatMode?: ChatMode,
 ): Promise<ChatMode | null> {
   return initialChatMode ?? null;
-}
-
-function getChatModeEnvVars(): Record<string, string | undefined> {
-  const envVarNames = new Set([
-    ...Object.values(PROVIDER_TO_ENV_VAR),
-    "AZURE_RESOURCE_NAME",
-  ]);
-
-  return Object.fromEntries(
-    [...envVarNames].map((envVarName) => [envVarName, getEnvVar(envVarName)]),
-  );
-}
-
-async function getFreeAgentQuotaAvailableIfNeeded(
-  settings: UserSettings,
-  chatMode: ChatMode | null,
-): Promise<boolean | undefined> {
-  if (isDyadProEnabled(settings)) {
-    return undefined;
-  }
-
-  const defaultMayUseLocalAgent =
-    !settings.defaultChatMode || settings.defaultChatMode === "local-agent";
-  const needsQuota =
-    chatMode === "local-agent" ||
-    (chatMode === null && defaultMayUseLocalAgent);
-
-  if (!needsQuota) {
-    return undefined;
-  }
-
-  const quotaStatus = await getFreeAgentQuotaStatus();
-  return !quotaStatus.isQuotaExceeded;
 }

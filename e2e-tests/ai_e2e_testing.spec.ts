@@ -12,8 +12,8 @@ testSkipIfWindows(
     await po.setUp({ autoApprove: true });
     await po.importApp("minimal");
 
-    // Put the chat in a non-agent mode (Build) so the button must confirm.
-    await po.chatActions.selectChatMode("build");
+    // Put the chat in a non-agent mode so the button must confirm.
+    await po.chatActions.selectChatMode("ask");
 
     await po.previewPanel.selectPreviewMode("tests");
     await po.previewPanel.clickEnableTesting();
@@ -96,7 +96,6 @@ testSkipIfWindows(
   async ({ po }) => {
     await po.setUp({ autoApprove: true });
     await po.navigation.goToTemplatesAndSelectTemplate("Next.js Template");
-    await po.chatActions.selectChatMode("build");
     await po.sendPrompt("tc=basic", { timeout: Timeout.EXTRA_LONG });
     await po.sendPrompt("tc=add-neon");
 

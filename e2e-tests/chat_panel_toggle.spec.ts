@@ -5,6 +5,7 @@ testSkipIfWindows("toggle chat panel visibility", async ({ po }) => {
   await po.setUp({ autoApprove: true });
   // We are in the chat view after setUp
   await po.sendPrompt("basic");
+  await po.previewPanel.ensurePreviewPanelIsOpen();
 
   // Chat panel content should be visible initially.
   // We check the ChatPanel content rather than the panel container itself,

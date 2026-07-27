@@ -53,47 +53,23 @@ describe("AgentConsentBanner", () => {
     expect(screen.getByText("Destructive data change")).toBeTruthy();
   });
 
-  it("shows the server name and classifier reason for an MCP consent", () => {
+  it("does not offer persistent approval for bash", () => {
     render(
       <AgentConsentBanner
         consent={{
-          kind: "mcp",
+          kind: "agent",
           requestId: "request",
           chatId: 1,
-          toolName: "send_email",
-          serverName: "email-server",
-          classifierReason: "Sends an email to an external address.",
+          toolName: "bash",
+          inputPreview: "npm test",
         }}
         onDecision={vi.fn()}
         onClose={vi.fn()}
       />,
     );
 
-    expect(screen.getByText("email-server")).toBeTruthy();
-    expect(
-      screen.getByText(/Sends an email to an external address/),
-    ).toBeTruthy();
-  });
-
-  it("shows the reviewing spinner and live buttons while the classifier is pending", () => {
-    render(
-      <AgentConsentBanner
-        consent={{
-          kind: "mcp",
-          requestId: "request",
-          chatId: 1,
-          toolName: "calculator_add",
-          serverName: "calc-server",
-          classifierPending: true,
-        }}
-        onDecision={vi.fn()}
-        onClose={vi.fn()}
-      />,
-    );
-
-    expect(screen.getByText(/reviewing this request/i)).toBeTruthy();
-    // Buttons stay clickable during review.
-    expect(screen.getByRole("button", { name: "Allow once" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Decline" })).toBeTruthy();
+    expect(screen.queryByText("Always allow")).toBeNull();
+    expect(screen.getByText("Allow once")).toBeTruthy();
+    expect(screen.getByText("npm test")).toBeTruthy();
   });
 });

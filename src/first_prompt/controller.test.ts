@@ -14,7 +14,7 @@ import type { FirstPromptPayload } from "./state";
 const payload: FirstPromptPayload = {
   prompt: "Build a notes app",
   attachments: [],
-  chatMode: "build",
+  chatMode: "local-agent",
   isChatModeExplicit: false,
 };
 

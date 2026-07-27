@@ -6,7 +6,6 @@ testSkipIfWindows(
   async ({ po }) => {
     await po.setUp({ autoApprove: true });
     await po.navigation.goToTemplatesAndSelectTemplate("Next.js Template");
-    await po.chatActions.selectChatMode("build");
     await po.sendPrompt("tc=basic", { timeout: Timeout.EXTRA_LONG });
     await po.sendPrompt("tc=add-neon");
 

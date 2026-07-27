@@ -55,7 +55,6 @@ interface ApiKeyConfigurationProps {
   onSaveKey: (value: string) => Promise<void>;
   onTestKey?: (value: string) => Promise<void>;
   onDeleteKey: () => Promise<void>;
-  isDyad: boolean;
   updateSettings: (settings: Partial<UserSettings>) => Promise<UserSettings>;
   highlightPasteButton?: boolean;
   onDismissPasteHighlight?: () => void;
@@ -76,7 +75,6 @@ export function ApiKeyConfiguration({
   onSaveKey,
   onTestKey,
   onDeleteKey,
-  isDyad,
   updateSettings,
   highlightPasteButton = false,
   onDismissPasteHighlight,
@@ -130,7 +128,7 @@ export function ApiKeyConfiguration({
   if (isValidUserKey || !hasEnvKey) {
     defaultAccordionValue.push("settings-key");
   }
-  if (!isDyad && hasEnvKey) {
+  if (hasEnvKey) {
     defaultAccordionValue.push("env-key");
   }
 
@@ -295,7 +293,7 @@ export function ApiKeyConfiguration({
         </AccordionContent>
       </AccordionItem>
 
-      {!isDyad && envVarName && (
+      {envVarName && (
         <AccordionItem
           value="env-key"
           className="border rounded-lg px-4 bg-(--background-lightest)"

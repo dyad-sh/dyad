@@ -7,7 +7,7 @@ import { miscContracts, SESSION_DEBUG_SCHEMA_VERSION } from "../types/misc";
 import type { SystemDebugInfo } from "../types/system";
 import type { SessionDebugBundle } from "../types/misc";
 import type { UserSettings } from "@/lib/schemas";
-import type { AiMessagesJsonV6 } from "../../db/schema";
+import type { StoredAiMessagesJson } from "../../db/schema";
 
 import log from "electron-log";
 import path from "path";
@@ -20,7 +20,6 @@ import {
   apps,
   language_model_providers,
   language_models,
-  mcpServers,
 } from "../../db/schema";
 import { eq } from "drizzle-orm";
 import { getDyadAppPath } from "../../paths/paths";
@@ -204,7 +203,6 @@ function sanitizeSettingsForDebug(settings: UserSettings) {
     selectedChatMode: settings.selectedChatMode ?? null,
     defaultChatMode: settings.defaultChatMode ?? null,
     autoApproveChanges: settings.autoApproveChanges ?? null,
-    enableDyadPro: settings.enableDyadPro ?? null,
     thinkingBudget: settings.thinkingBudget ?? null,
     maxChatTurnsInContext: settings.maxChatTurnsInContext ?? null,
     enableAutoUpdate: settings.enableAutoUpdate,
@@ -212,12 +210,6 @@ function sanitizeSettingsForDebug(settings: UserSettings) {
     runtimeMode2: settings.runtimeMode2 ?? null,
     zoomLevel: settings.zoomLevel ?? null,
     previewDeviceMode: settings.previewDeviceMode ?? null,
-    enableProLazyEditsMode: settings.enableProLazyEditsMode ?? null,
-    proLazyEditsMode: settings.proLazyEditsMode ?? null,
-    enableProSmartFilesContextMode:
-      settings.enableProSmartFilesContextMode ?? null,
-    enableProWebSearch: settings.enableProWebSearch ?? null,
-    proSmartContextOption: settings.proSmartContextOption ?? null,
     enableSupabaseWriteSqlMigration:
       settings.enableSupabaseWriteSqlMigration ?? null,
     agentToolConsents: settings.agentToolConsents ?? null,
@@ -240,7 +232,9 @@ function sanitizeSettingsForDebug(settings: UserSettings) {
  *
  * Works on the raw JSON representation to avoid tight coupling with AI SDK types.
  */
-function stripImagesFromAiMessagesJson(json: AiMessagesJsonV6 | null): unknown {
+function stripImagesFromAiMessagesJson(
+  json: StoredAiMessagesJson | null,
+): unknown {
   if (!json || !json.messages) return json;
 
   // Work on raw JSON to avoid AI SDK type constraints when modifying content
@@ -258,6 +252,16 @@ function stripImagesFromAiMessagesJson(json: AiMessagesJsonV6 | null): unknown {
           ...part,
           _strippedByteLength: part.image.length,
           image: "[stripped]",
+        };
+      } else if (
+        part.type === "image" &&
+        typeof part.data === "string" &&
+        part.data.length > 200
+      ) {
+        msg.content[i] = {
+          ...part,
+          _strippedByteLength: part.data.length,
+          data: "[stripped]",
         };
       } else if (
         part.type === "file" &&
@@ -386,17 +390,14 @@ export function registerDebugHandlers() {
         );
       }
 
-      // Query custom providers, custom models, and MCP servers in parallel
-      const [customProviders, customModels, mcpServerRecords, codebase] =
-        await Promise.all([
-          db.select().from(language_model_providers),
-          db.select().from(language_models),
-          db.select().from(mcpServers),
-          extractCodebase({
-            appPath: getDyadAppPath(app.path),
-            chatContext: validateChatContext(app.chatContext),
-          }).then((result) => result.formattedOutput),
-        ]);
+      const [customProviders, customModels, codebase] = await Promise.all([
+        db.select().from(language_model_providers),
+        db.select().from(language_models),
+        extractCodebase({
+          appPath: getDyadAppPath(app.path),
+          chatContext: validateChatContext(app.chatContext),
+        }).then((result) => result.formattedOutput),
+      ]);
 
       // Read logs
       const logs = readAppLogs(5_000, "info");
@@ -463,7 +464,6 @@ export function registerDebugHandlers() {
             sourceCommitHash: msg.sourceCommitHash ?? null,
             commitHash: msg.commitHash ?? null,
             requestId: msg.requestId ?? null,
-            usingFreeAgentModeQuota: msg.usingFreeAgentModeQuota ?? null,
           })),
         },
 
@@ -484,17 +484,6 @@ export function registerDebugHandlers() {
             contextWindow: m.context_window,
           })),
         },
-
-        mcpServers: mcpServerRecords.map((s) => ({
-          id: s.id,
-          name: s.name,
-          transport: s.transport,
-          command: s.command,
-          args: s.args,
-          url: s.url,
-          enabled: s.enabled,
-          // envJson and headersJson intentionally excluded (may contain secrets)
-        })),
 
         codebase,
         logs,

@@ -83,7 +83,9 @@ describe("version search (integration)", () => {
     const chatId = await harness.createChat();
     harness.mount({ chatId });
 
-    const { send } = await harness.typeInChat("tc=write-index", { chatId });
+    const { send } = await harness.typeInChat("tc=local-agent/write-index", {
+      chatId,
+    });
     send();
     await harness.waitForStreamEnd(chatId);
     await screen.findByRole(

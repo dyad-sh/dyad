@@ -6,17 +6,8 @@ import {
   handleLocalAgentFixture,
   extractLocalAgentFixture,
 } from "./localAgentHandler";
-import {
-  buildExploreCodeNestedToolArgs,
-  buildExploreCodeSubmitReportArgs,
-  isExploreCodeSubagentPrompt,
-} from "./exploreCodeFixtures";
 import { fakeLlmLog } from "./log";
 import { resolveDumpDir, resolveFixturesDir } from "./paths";
-import {
-  matchConsentClassifierPayload,
-  SLOW_CONSENT_TOOL,
-} from "./consentClassifier";
 
 let globalCounter = 0;
 
@@ -44,136 +35,12 @@ async function waitForDelayOrDisconnect(
   });
   return disconnected;
 }
-
-function hasExploreCodeToolResult(
-  messages: any[],
-  getTextContent: (msg: any) => string,
-): boolean {
-  return messages.some((message: any) => {
-    if (message?.role !== "tool") {
-      return false;
-    }
-    const text = getTextContent(message);
-    return (
-      text.includes("Found ") ||
-      text.includes("Code exploration:") ||
-      text.includes("src/App.tsx")
-    );
-  });
-}
-
-function sendToolCallJson(
-  res: Response,
-  toolName: string,
-  args: Record<string, unknown>,
-) {
-  res.json({
-    id: `chatcmpl-${Date.now()}`,
-    object: "chat.completion",
-    created: Math.floor(Date.now() / 1000),
-    model: "fake-model",
-    choices: [
-      {
-        index: 0,
-        message: {
-          role: "assistant",
-          content: null,
-          tool_calls: [
-            {
-              id: `call_${Date.now()}`,
-              type: "function",
-              function: {
-                name: toolName,
-                arguments: JSON.stringify(args),
-              },
-            },
-          ],
-        },
-        finish_reason: "tool_calls",
-      },
-    ],
-  });
-}
-
-async function streamToolCall(
-  res: Response,
-  toolName: string,
-  args: Record<string, unknown>,
-) {
-  res.setHeader("Content-Type", "text/event-stream");
-  res.setHeader("Cache-Control", "no-cache");
-  res.setHeader("Connection", "keep-alive");
-
-  const now = Date.now();
-  const mkChunk = (delta: any, finish: string | null = null) =>
-    `data: ${JSON.stringify({
-      id: `chatcmpl-${now}`,
-      object: "chat.completion.chunk",
-      created: Math.floor(now / 1000),
-      model: "fake-model",
-      choices: [{ index: 0, delta, finish_reason: finish }],
-    })}\n\n`;
-
-  res.write(mkChunk({ role: "assistant" }));
-  res.write(
-    mkChunk({
-      tool_calls: [
-        {
-          index: 0,
-          id: `call_${now}`,
-          type: "function",
-          function: { name: toolName, arguments: "" },
-        },
-      ],
-    }),
-  );
-
-  const argsText = JSON.stringify(args);
-  const batchSize = 20;
-  for (let index = 0; index < argsText.length; index += batchSize) {
-    res.write(
-      mkChunk({
-        tool_calls: [
-          {
-            index: 0,
-            function: { arguments: argsText.slice(index, index + batchSize) },
-          },
-        ],
-      }),
-    );
-    await new Promise((resolve) => setTimeout(resolve, 5));
-  }
-
-  res.write(mkChunk({}, "tool_calls"));
-  res.write("data: [DONE]\n\n");
-  res.end();
-}
-
 export const createChatCompletionHandler =
   (prefix: string) => async (req: Request, res: Response) => {
     const { stream = false, messages = [] } = req.body;
     fakeLlmLog("* Received messages", messages);
 
     if (hasInvalidApiKey(req)) {
-      // The Dyad engine (a LiteLLM proxy) reports auth failures as an SSE
-      // error event on an HTTP 200 response rather than an HTTP 401.
-      if (prefix === "engine") {
-        res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
-        res.setHeader("Cache-Control", "no-cache");
-        res.write(
-          `event: error\ndata: ${JSON.stringify({
-            error: {
-              message:
-                "401 LiteLLM Virtual Key expected. Received=inva****-key, expected to start with 'sk-'.",
-              type: "server_error",
-              param: null,
-            },
-          })}\n\n`,
-        );
-        res.write("data: [DONE]\n\n");
-        res.end();
-        return;
-      }
       return res.status(401).json({
         error: {
           message: "Invalid API key",
@@ -197,8 +64,13 @@ export const createChatCompletionHandler =
       if (typeof msg.content === "string") {
         return msg.content;
       } else if (Array.isArray(msg.content)) {
-        const textPart = msg.content.find((p: any) => p.type === "text");
-        return textPart ? textPart.text : "";
+        return msg.content
+          .filter(
+            (part: any) =>
+              part.type === "text" && typeof part.text === "string",
+          )
+          .map((part: any) => part.text)
+          .join("\n");
       }
       return "";
     };
@@ -208,8 +80,6 @@ export const createChatCompletionHandler =
     const userTextContent = lastUserMessage
       ? getTextContent(lastUserMessage)
       : "";
-    const lastMessageText = lastMessage ? getTextContent(lastMessage) : "";
-
     // Check if the last user message contains "[429]" to simulate rate limiting.
     if (userTextContent === "[429]") {
       return res.status(429).json({
@@ -251,9 +121,33 @@ export const createChatCompletionHandler =
       return handleLocalAgentFixture(req, res, localAgentFixture);
     }
 
+    if (userTextContent.startsWith("Generate an AI_RULES.md file")) {
+      return handleLocalAgentFixture(req, res, "generate-ai-rules");
+    }
+
+    if (userTextContent.includes("attachment-only-setup-resume.txt")) {
+      return handleLocalAgentFixture(req, res, "attachment-context-dump", {
+        dumpRequest: () => generateDump(req),
+        dumpRequestTurn: 1,
+      });
+    }
+
     // Route plan acceptance message to exit-plan fixture
     if (userTextContent.includes("I accept this plan")) {
       return handleLocalAgentFixture(req, res, "exit-plan");
+    }
+
+    if (
+      /^Please fix the following(?: \d+)? security issues?\b/.test(
+        userTextContent,
+      )
+    ) {
+      return handleLocalAgentFixture(req, res, "basic-write");
+    }
+    if (
+      userTextContent.startsWith("Please resolve the Git merge conflicts in")
+    ) {
+      return handleLocalAgentFixture(req, res, "resolve-merge-conflicts");
     }
 
     let messageContent = CANNED_MESSAGE;
@@ -271,33 +165,37 @@ export const createChatCompletionHandler =
       messageContent =
         "## Key Decisions Made\n- Completed initial task as requested\n\n## Current Task State\nConversation was compacted to save context space.";
     }
-    if (isExploreCodeSubagentPrompt(userTextContent)) {
-      const toolName = hasExploreCodeToolResult(messages, getTextContent)
-        ? "submit_report"
-        : "explore_code";
-      const input =
-        toolName === "submit_report"
-          ? buildExploreCodeSubmitReportArgs()
-          : buildExploreCodeNestedToolArgs();
-      if (stream) {
-        await streamToolCall(res, toolName, input);
-        return;
-      }
-      sendToolCallJson(res, toolName, input);
-      return;
+    if (
+      userTextContent.startsWith("Fix these 3 TypeScript compile-time error") &&
+      userTextContent.includes("src/bad-file.tsx")
+    ) {
+      return handleLocalAgentFixture(req, res, "fix-tsx-errors-all", {
+        dumpRequest: () => generateDump(req),
+      });
     }
-
-    // Check for upload image to codebase using lastUserMessage (which already handles both string and array content)
-    if (userTextContent.includes("[[UPLOAD_IMAGE_TO_CODEBASE]]")) {
-      // Extract the attachment path from the user message (format: "path: /path/to/app/.dyad/media/...")
-      const pathMatch = userTextContent.match(/\(path: ([^\s)]+)\)/);
-      const attachmentPath = pathMatch?.[1] ?? ".dyad/media/unknown.png";
-      messageContent = `Uploading image to codebase
-<dyad-copy from="${attachmentPath}" to="new/image/file.png" description="Uploaded image to codebase"></dyad-copy>
-`;
-      messageContent += "\n\n" + generateDump(req);
+    if (
+      userTextContent.startsWith("Fix these 2 TypeScript compile-time error")
+    ) {
+      const fixtureName = userTextContent.includes("src/bad-file.tsx")
+        ? "fix-tsx-errors-selected"
+        : "fix-ts-errors-two";
+      return handleLocalAgentFixture(req, res, fixtureName, {
+        dumpRequest: () => generateDump(req),
+      });
     }
-
+    if (
+      userTextContent.startsWith("Fix these 1 TypeScript compile-time error")
+    ) {
+      return handleLocalAgentFixture(req, res, "fix-ts-errors-one", {
+        dumpRequest: () => generateDump(req),
+      });
+    }
+    if (userTextContent.startsWith("Fix error: Error Line 6 error")) {
+      return handleLocalAgentFixture(req, res, "fix-runtime-error");
+    }
+    if (userTextContent.startsWith("Fix all of the following errors:")) {
+      return handleLocalAgentFixture(req, res, "fix-multiple-errors");
+    }
     const responseDelayMs = userTextContent.includes("[sleep=long]")
       ? 30_000
       : userTextContent.includes("[sleep=medium]")
@@ -310,82 +208,6 @@ export const createChatCompletionHandler =
       return;
     }
 
-    // Handle merge conflict resolution prompts (both old and new formats)
-    if (
-      lastMessage &&
-      typeof lastMessage.content === "string" &&
-      (lastMessage.content.includes("Resolve the Git conflict(s) in ") ||
-        lastMessage.content.includes(
-          "Please resolve the Git merge conflicts in the following file",
-        ))
-    ) {
-      // Extract conflict file path from different prompt formats
-      let conflictPath = "conflict.txt";
-      if (lastMessage.content.includes("Resolve the Git conflict(s) in ")) {
-        conflictPath =
-          lastMessage.content
-            .split("Resolve the Git conflict(s) in ")[1]
-            ?.split("\n")[0]
-            ?.replace(/\.$/, "")
-            .trim() || "conflict.txt";
-      } else {
-        // New format: "Please resolve the Git merge conflicts in the following file(s):\n\n- conflict.txt"
-        const fileListMatch = lastMessage.content.match(/^- (.+)$/m);
-        if (fileListMatch) {
-          conflictPath = fileListMatch[1].trim();
-        }
-      }
-      messageContent = `Resolved conflicts in ${conflictPath}.
-<dyad-write path="${conflictPath}" description="Resolve merge conflicts.">
-Line 1
-Line 2 Modified Feature
-Line 3
-</dyad-write>
-`;
-    }
-
-    // TS auto-fix prefixes
-    if (
-      lastMessage &&
-      typeof lastMessage.content === "string" &&
-      lastMessage.content.startsWith(
-        "Fix these 2 TypeScript compile-time error",
-      )
-    ) {
-      // Fix errors in create-ts-errors.md and introduce a new error
-      messageContent = `
-<dyad-write path="src/bad-file.ts" description="Fix 2 errors and introduce a new error.">
-// Import doesn't exist
-// import NonExistentClass from 'non-existent-class';
-
-
-const x = new Object();
-x.nonExistentMethod2();
-</dyad-write>
-
-      `;
-    }
-    if (
-      lastMessage &&
-      typeof lastMessage.content === "string" &&
-      lastMessage.content.startsWith(
-        "Fix these 1 TypeScript compile-time error",
-      )
-    ) {
-      // Fix errors in create-ts-errors.md and introduce a new error
-      messageContent = `
-<dyad-write path="src/bad-file.ts" description="Fix remaining error.">
-// Import doesn't exist
-// import NonExistentClass from 'non-existent-class';
-
-
-const x = new Object();
-x.toString(); // replaced with existing method
-</dyad-write>
-
-      `;
-    }
-
     if (
       lastMessage &&
       typeof lastMessage.content === "string" &&
@@ -393,70 +215,6 @@ x.toString(); // replaced with existing method
     ) {
       messageContent += "\n\n" + generateDump(req);
     }
-    if (
-      lastMessage &&
-      typeof lastMessage.content === "string" &&
-      lastMessage.content.startsWith("Fix error: Error Line 6 error")
-    ) {
-      messageContent = `
-      Fixing the error...
-      <dyad-write path="src/pages/Index.tsx">
-      
-
-import { MadeWithDyad } from "@/components/made-with-dyad";
-
-const Index = () => {
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold mb-4">No more errors!</h1>
-      </div>
-      <MadeWithDyad />
-    </div>
-  );
-};
-
-export default Index;
-
-      </dyad-write>
-      `;
-    }
-    if (
-      lastMessage &&
-      typeof lastMessage.content === "string" &&
-      lastMessage.content.startsWith(
-        "There was an issue with the following `dyad-search-replace` tags.",
-      )
-    ) {
-      if (lastMessage.content.includes("Make sure you use `dyad-read`")) {
-        // Fix errors in create-ts-errors.md and introduce a new error
-        messageContent =
-          `
-<dyad-read path="src/pages/Index.tsx"></dyad-read>
-
-<dyad-search-replace path="src/pages/Index.tsx">
-<<<<<<< SEARCH
-        // STILL Intentionally DO NOT MATCH ANYTHING TO TRIGGER FALLBACK
-        <h1 className="text-4xl font-bold mb-4">Welcome to Your Blank App</h1>
-=======
-        <h1 className="text-4xl font-bold mb-4">Welcome to the UPDATED App</h1>
->>>>>>> REPLACE
-</dyad-search-replace>
-` +
-          "\n\n" +
-          generateDump(req);
-      } else {
-        // Fix errors in create-ts-errors.md and introduce a new error
-        messageContent =
-          `
-<dyad-write path="src/pages/Index.tsx" description="Rewrite file.">
-// FILE IS REPLACED WITH FALLBACK WRITE.
-</dyad-write>` +
-          "\n\n" +
-          generateDump(req);
-      }
-    }
-
     fakeLlmLog("LASTMESSAGE", lastMessage);
     // Check if the last message is "[dump]" to write messages to file and return path
     if (
@@ -471,11 +229,7 @@ export default Index;
       messageContent = generateDump(req);
     }
 
-    if (
-      lastMessage &&
-      typeof lastMessage.content === "string" &&
-      lastMessage.content.startsWith("/security-review")
-    ) {
+    if (userTextContent.startsWith("/security-review")) {
       messageContent = fs
         .readFileSync(
           path.join(resolveFixturesDir(), "security-review", "findings.md"),
@@ -485,7 +239,11 @@ export default Index;
       messageContent += "\n\n" + generateDump(req);
     }
 
-    if (lastMessage && lastMessage.content === "[increment]") {
+    if (
+      userMessages.some(
+        (message: any) => getTextContent(message) === "[increment]",
+      )
+    ) {
       globalCounter++;
       messageContent = `counter=${globalCounter}`;
     }
@@ -519,45 +277,6 @@ export default Index;
       }
     }
 
-    // Continuation requests: the partial assistant output is in a preceding assistant
-    // message, then a user message asks to continue ("did not finish completely").
-    // Check any message for the marker. See chat_stream_handlers continuation prompt.
-    if (
-      messages.some((m: any) =>
-        getTextContent(m).includes("[[STRING_TO_BE_FINISHED]]"),
-      )
-    ) {
-      messageContent = `[[STRING_IS_FINISHED]]";</dyad-write>\nFinished writing file.`;
-      messageContent += "\n\n" + generateDump(req);
-    }
-    // See consentClassifier.ts: fake decisions for the MCP auto-consent
-    // classifier, shared with the responses fake route.
-    const consentMatch = matchConsentClassifierPayload(lastMessageText);
-    if (consentMatch) {
-      messageContent = consentMatch.content;
-      if (consentMatch.toolName === SLOW_CONSENT_TOOL) {
-        await new Promise<void>((resolve) => {
-          const timer = setTimeout(() => {
-            req.off("close", onClose);
-            resolve();
-          }, 4000);
-          const onClose = () => {
-            clearTimeout(timer);
-            resolve();
-          };
-          req.on("close", onClose);
-        });
-        if (req.destroyed) return;
-      }
-    }
-    const isToolCall = !!(
-      lastMessage && lastMessageText.includes("[call_tool=calculator_add]")
-    );
-    // Emit two parallel tool calls (slow first, fast second) so their results
-    // land out of order. See mcp_out_of_order.spec.ts.
-    const isParallelOutOfOrderToolCall = !!(
-      lastMessage && lastMessageText.includes("[call_tools_out_of_order]")
-    );
     let message = {
       role: "assistant",
       content: messageContent,
@@ -565,34 +284,6 @@ export default Index;
 
     // Non-streaming response
     if (!stream) {
-      if (isToolCall) {
-        const toolCallId = `call_${Date.now()}`;
-        return res.json({
-          id: `chatcmpl-${Date.now()}`,
-          object: "chat.completion",
-          created: Math.floor(Date.now() / 1000),
-          model: "fake-model",
-          choices: [
-            {
-              index: 0,
-              message: {
-                role: "assistant",
-                tool_calls: [
-                  {
-                    id: toolCallId,
-                    type: "function",
-                    function: {
-                      name: "calculator_add",
-                      arguments: JSON.stringify({ a: 1, b: 2 }),
-                    },
-                  },
-                ],
-              },
-              finish_reason: "tool_calls",
-            },
-          ],
-        });
-      }
       return res.json({
         id: `chatcmpl-${Date.now()}`,
         object: "chat.completion",
@@ -613,123 +304,10 @@ export default Index;
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
 
-    // Two parallel tool calls in a single assistant message (slow + fast).
-    // The AI SDK runs the executes concurrently, so the fast tool's result
-    // streams back before the slow tool's.
-    if (isParallelOutOfOrderToolCall) {
-      const now = Date.now();
-      const mkChunk = (delta: any, finish: null | string = null) => {
-        const chunk = {
-          id: `chatcmpl-${now}`,
-          object: "chat.completion.chunk",
-          created: Math.floor(now / 1000),
-          model: "fake-model",
-          choices: [{ index: 0, delta, finish_reason: finish }],
-        };
-        return `data: ${JSON.stringify(chunk)}\n\n`;
-      };
-
-      res.write(mkChunk({ role: "assistant" }));
-      res.write(
-        mkChunk({
-          tool_calls: [
-            {
-              index: 0,
-              id: `call_${now}_slow`,
-              type: "function",
-              function: {
-                name: "testing-mcp-server__slow_add",
-                arguments: JSON.stringify({ a: 10, b: 20 }),
-              },
-            },
-            {
-              index: 1,
-              id: `call_${now}_fast`,
-              type: "function",
-              function: {
-                name: "testing-mcp-server__calculator_add",
-                arguments: JSON.stringify({ a: 1, b: 2 }),
-              },
-            },
-          ],
-        }),
-      );
-      res.write(mkChunk({}, "tool_calls"));
-      res.write("data: [DONE]\n\n");
-      res.end();
-      return;
-    }
-
-    // Tool call streaming (OpenAI-style)
-    if (isToolCall) {
-      const now = Date.now();
-      const mkChunk = (delta: any, finish: null | string = null) => {
-        const chunk = {
-          id: `chatcmpl-${now}`,
-          object: "chat.completion.chunk",
-          created: Math.floor(now / 1000),
-          model: "fake-model",
-          choices: [
-            {
-              index: 0,
-              delta,
-              finish_reason: finish,
-            },
-          ],
-        };
-        return `data: ${JSON.stringify(chunk)}\n\n`;
-      };
-
-      // 1) Send role
-      res.write(mkChunk({ role: "assistant" }));
-
-      // 2) Send tool_calls init with id + name + empty args
-      const toolCallId = `call_${now}`;
-      res.write(
-        mkChunk({
-          tool_calls: [
-            {
-              index: 0,
-              id: toolCallId,
-              type: "function",
-              function: {
-                name: "testing-mcp-server__calculator_add",
-                arguments: "",
-              },
-            },
-          ],
-        }),
-      );
-
-      // 3) Stream arguments gradually
-      const args = JSON.stringify({ a: 1, b: 2 });
-      let i = 0;
-      const argBatchSize = 6;
-      const argInterval = setInterval(() => {
-        if (i < args.length) {
-          const part = args.slice(i, i + argBatchSize);
-          i += argBatchSize;
-          res.write(
-            mkChunk({
-              tool_calls: [{ index: 0, function: { arguments: part } }],
-            }),
-          );
-        } else {
-          // 4) Finalize with finish_reason tool_calls and [DONE]
-          res.write(mkChunk({}, "tool_calls"));
-          res.write("data: [DONE]\n\n");
-          clearInterval(argInterval);
-          res.end();
-        }
-      }, 10);
-      return;
-    }
-
     // Check for high token usage marker to simulate near context limit
     const highTokensMatch =
-      typeof lastMessage?.content === "string" &&
-      !lastMessage?.content.startsWith("Summarize the following chat:") &&
-      lastMessage?.content?.match?.(/\[high-tokens=(\d+)\]/);
+      !userTextContent.startsWith("Summarize the following chat:") &&
+      userTextContent.match(/\[high-tokens=(\d+)\]/);
     const highTokensValue = highTokensMatch
       ? parseInt(highTokensMatch[1], 10)
       : null;

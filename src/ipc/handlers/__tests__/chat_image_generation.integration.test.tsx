@@ -1,5 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
+import { createImagesProvider } from "@earendil-works/pi-ai";
+import * as openrouterImagesApi from "@earendil-works/pi-ai/api/openrouter-images";
 
 import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { eq } from "drizzle-orm";
@@ -18,21 +20,15 @@ vi.hoisted(() => {
 });
 
 import { messages } from "@/db/schema";
-import type { UserSettings } from "@/lib/schemas";
+import {
+  getPiImageModels,
+  resetPiModelRuntimeForTesting,
+} from "@/ipc/pi/model_runtime";
 import {
   setupHybridChatHarness,
   type HybridChatHarness,
 } from "@/testing/hybrid_chat_harness";
 import { h } from "@/testing/hybrid.setup";
-
-const PRO_SETTINGS: Partial<UserSettings> = {
-  enableDyadPro: true,
-  providerSettings: {
-    auto: {
-      apiKey: { value: "testdyadkey" },
-    },
-  },
-};
 
 describe("chat image generation (integration)", () => {
   let harness: HybridChatHarness;
@@ -41,13 +37,40 @@ describe("chat image generation (integration)", () => {
     harness = await setupHybridChatHarness({
       electronMock: h,
       autoApprove: true,
-      engine: true,
       testBuild: true,
+      provider: { id: "custom::testing" },
       settings: {
         isTestMode: true,
-        ...PRO_SETTINGS,
       },
     });
+    getPiImageModels().setProvider(
+      createImagesProvider({
+        id: "openrouter",
+        name: "OpenRouter test",
+        auth: {
+          apiKey: {
+            name: "test key",
+            resolve: async () => ({
+              auth: { apiKey: "image-test-key" },
+              source: "test",
+            }),
+          },
+        },
+        models: [
+          {
+            id: "openrouter/auto",
+            name: "OpenRouter Auto",
+            api: "openrouter-images",
+            provider: "openrouter",
+            baseUrl: `${harness.fakeLlmUrl}/images/v1`,
+            input: ["text"],
+            output: ["image"],
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+          },
+        ],
+        api: openrouterImagesApi,
+      }),
+    );
   }, 60_000);
 
   afterEach(() => {
@@ -56,6 +79,7 @@ describe("chat image generation (integration)", () => {
 
   afterAll(async () => {
     await harness?.dispose();
+    resetPiModelRuntimeForTesting();
   });
 
   it("generates an image from the chat menu and auto-adds it when sending", async () => {
@@ -63,7 +87,11 @@ describe("chat image generation (integration)", () => {
     harness.mount({ chatId });
 
     const prompt = "A beautiful sunset over mountains";
-    const menuTrigger = await screen.findByTestId("auxiliary-actions-menu");
+    const menuTrigger = await screen.findByTestId(
+      "auxiliary-actions-menu",
+      undefined,
+      { timeout: 20_000 },
+    );
     menuTrigger.focus();
     fireEvent.keyDown(menuTrigger, { key: "ArrowDown" });
 

@@ -11,7 +11,7 @@ import path from "node:path";
 testSkipIfWindows(
   "local-agent - run_type_checks updates problems panel",
   async ({ po }) => {
-    await po.setUpDyadPro({ localAgent: true });
+    await po.setUp();
     await po.importApp("minimal");
     await po.chatActions.selectLocalAgentMode();
 
@@ -62,12 +62,12 @@ testSkipIfWindows(
 testSkipIfWindows(
   "local-agent - run_type_checks warns when project configuration blocks a scoped check",
   async ({ po }) => {
-    await po.setUpDyadPro({ localAgent: true });
+    await po.setUp();
     await po.importApp("minimal");
     await po.chatActions.selectLocalAgentMode();
 
     await po.appManagement.ensurePnpmInstall();
-    await po.appManagement.ensureCodeExplorerReady();
+    await po.appManagement.ensureTypeScriptProjectReady();
 
     await po.sendPrompt("tc=local-agent/run-type-checks-incomplete");
 
@@ -98,12 +98,12 @@ testSkipIfWindows(
 testSkipIfWindows(
   "local-agent - run_type_checks succeeds for a clean app",
   async ({ po }) => {
-    await po.setUpDyadPro({ localAgent: true });
+    await po.setUp();
     await po.importApp("minimal");
     await po.chatActions.selectLocalAgentMode();
 
     await po.appManagement.ensurePnpmInstall();
-    await po.appManagement.ensureCodeExplorerReady();
+    await po.appManagement.ensureTypeScriptProjectReady();
 
     await po.sendPrompt("tc=local-agent/run-type-checks-happy-path");
 
@@ -124,12 +124,12 @@ testSkipIfWindows(
 testSkipIfWindows(
   "local-agent - run_type_checks sees TypeScript replaced by rebuild",
   async ({ po }) => {
-    await po.setUpDyadPro({ localAgent: true });
+    await po.setUp();
     await po.importApp("minimal");
     await po.chatActions.selectLocalAgentMode();
 
     await po.appManagement.ensurePnpmInstall();
-    await po.appManagement.ensureCodeExplorerReady();
+    await po.appManagement.ensureTypeScriptProjectReady();
 
     // Establish a successful TypeScript 5 baseline before Rebuild replaces it.
     await po.sendPrompt("tc=local-agent/run-type-checks-happy-path");
@@ -155,7 +155,7 @@ testSkipIfWindows(
       timeout: Timeout.LONG,
     });
     await po.appManagement.ensurePnpmInstall();
-    await po.appManagement.ensureCodeExplorerReady();
+    await po.appManagement.ensureTypeScriptProjectReady();
 
     await po.sendPrompt("tc=local-agent/run-type-checks-incomplete");
 

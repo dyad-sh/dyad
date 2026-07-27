@@ -1,10 +1,8 @@
 /**
  * Explicitly constructed main-side owner for all user-input round trips.
  *
- * API deviation from the Phase 3 sketch: `classifierDecided` and
- * `followUpDispatched` are public because the first is the correlated MCP
- * classifier port and the second is the acknowledgement leg already named by
- * the state-machine event enumeration. `request` also accepts an optional
+ * `followUpDispatched` is public because it is the acknowledgement leg named
+ * by the state-machine event enumeration. `request` also accepts an optional
  * requestId solely to preserve/test duplicate-correlation supersession.
  */
 import { DyadError, DyadErrorKind } from "../errors/dyad_error";
@@ -38,8 +36,6 @@ export interface PendingUserInputSnapshot {
   status: "awaiting" | "armed" | "due";
   descriptor: UserInputDescriptor;
   deadlineAt: number;
-  classifier?: "none" | "racing" | "review";
-  classifierReason?: string;
   followUpPrompt?: string;
 }
 
@@ -59,11 +55,6 @@ export interface UserInputRegistry {
     abortSignal?: AbortSignal,
   ): Promise<UserInputParkValue | null>;
   respond(requestId: string, response: UserInputResponse): Promise<void>;
-  classifierDecided(
-    requestId: string,
-    approved: boolean,
-    reason?: string,
-  ): Promise<boolean>;
   sweepChat(chatId: number, exceptRequestId?: string): void;
   settleChat(chatId: number): Promise<void>;
   settleAll(): Promise<void>;
@@ -165,7 +156,6 @@ export function createUserInputRegistry(deps: {
         break;
       case "broadcast-requested":
       case "broadcast-armed":
-      case "broadcast-classified":
       case "broadcast-settled":
       case "broadcast-follow-up-due":
       case "persist-always":
@@ -349,15 +339,6 @@ export function createUserInputRegistry(deps: {
       }
     },
 
-    classifierDecided(requestId, approved, reason) {
-      return dispatch(requestId, {
-        type: "classifier-decided",
-        requestId,
-        approved,
-        reason,
-      });
-    },
-
     sweepChat(chatId, exceptRequestId) {
       for (const requestId of chatIndex.get(chatId) ?? []) {
         if (requestId === exceptRequestId) continue;
@@ -431,10 +412,6 @@ export function createUserInputRegistry(deps: {
           status: state.status,
           descriptor: state.descriptor,
           deadlineAt: state.descriptor.deadlineAt,
-          classifier:
-            state.status === "awaiting" ? state.classifier : undefined,
-          classifierReason:
-            state.status === "awaiting" ? state.classifierReason : undefined,
           followUpPrompt:
             state.status === "armed" || state.status === "due"
               ? state.followUpPrompt

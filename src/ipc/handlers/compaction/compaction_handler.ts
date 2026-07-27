@@ -4,24 +4,20 @@
  */
 
 import { IpcMainInvokeEvent } from "electron";
-import { streamText, ModelMessage } from "ai";
 import log from "electron-log";
 import { eq } from "drizzle-orm";
 
 import { db } from "@/db";
 import { chats, messages } from "@/db/schema";
 import { readSettings } from "@/main/settings";
-import { getModelClient } from "@/ipc/utils/get_model_client";
+import { getPiModels, resolveDyadModel } from "@/ipc/pi/model_runtime";
+import { buildStreamOptions } from "@/ipc/pi/stream_fn";
 import {
   getCompactionThreshold,
   getContextWindow,
   shouldTriggerCompaction,
 } from "@/ipc/utils/token_utils";
 import { safeSend } from "@/ipc/utils/safe_sender";
-import {
-  cancelOrphanedBaseStream,
-  fastTextOutput,
-} from "@/ipc/utils/stream_text_utils";
 import { COMPACTION_SYSTEM_PROMPT } from "@/prompts/compaction_system_prompt";
 import {
   storePreCompactionMessages,
@@ -29,11 +25,7 @@ import {
   type CompactionMessage,
 } from "./compaction_storage";
 import { getPostCompactionMessages } from "./compaction_utils";
-import {
-  getProviderOptions,
-  getAiHeaders,
-  DYAD_INTERNAL_REQUEST_ID_HEADER,
-} from "@/ipc/utils/provider_options";
+import { DYAD_INTERNAL_REQUEST_ID_HEADER } from "@/ipc/utils/provider_options";
 import { escapeXmlContent } from "../../../../shared/xmlEscape";
 import { isDyadProEnabled } from "@/lib/schemas";
 
@@ -213,60 +205,51 @@ export async function performCompaction(
     // Prepare conversation for summarization using the same XML format as the backup
     const conversationText = formatAsTranscript(messagesToBackup, chatId);
 
-    // Get model client
-    const { modelClient } = await getModelClient(
-      isDyadProEnabled(settings)
-        ? PRO_COMPACTION_MODEL
-        : settings.selectedModel,
+    const compactionModel = isDyadProEnabled(settings)
+      ? PRO_COMPACTION_MODEL
+      : settings.selectedModel;
+    const model = await resolveDyadModel(compactionModel);
+    const streamOptions = await buildStreamOptions(
+      compactionModel,
       settings,
     );
-
-    // Generate summary
-    const summaryMessages: ModelMessage[] = [
+    const summaryStream = getPiModels().streamSimple(
+      model,
       {
-        role: "user",
-        content: `Please summarize the following conversation:\n\n${conversationText}`,
+        systemPrompt: COMPACTION_SYSTEM_PROMPT,
+        messages: [
+          {
+            role: "user",
+            content: `Please summarize the following conversation:\n\n${conversationText}`,
+            timestamp: Date.now(),
+          },
+        ],
       },
-    ];
-
-    const summaryResult = streamText({
-      output: fastTextOutput(),
-      model: modelClient.model,
-      headers: {
-        ...getAiHeaders({
-          builtinProviderId: modelClient.builtinProviderId,
-        }),
-        [DYAD_INTERNAL_REQUEST_ID_HEADER]: dyadRequestId,
+      {
+        ...streamOptions,
+        signal: abortSignal,
+        maxRetries: 2,
+        headers: {
+          ...streamOptions.headers,
+          [DYAD_INTERNAL_REQUEST_ID_HEADER]: dyadRequestId,
+        },
       },
-      providerOptions: getProviderOptions({
-        dyadAppId: 0,
-        dyadRequestId,
-        dyadDisableFiles: true,
-        files: [],
-        mentionedAppsCodebases: [],
-        builtinProviderId: modelClient.builtinProviderId,
-        settings,
-      }),
-      system: COMPACTION_SYSTEM_PROMPT,
-      messages: summaryMessages,
-      maxRetries: 2,
-      abortSignal,
-    });
-
-    // Read .textStream now (not lazily) so the SDK's tee runs
-    // synchronously, then cancel the orphaned branch before any chunks
-    // are pumped. See `cancelOrphanedBaseStream` for why this is required.
-    const textStream = summaryResult.textStream;
-    cancelOrphanedBaseStream(summaryResult);
+    );
 
     // Stream summary text to the frontend as it generates
     let summary = "";
-    for await (const chunk of textStream) {
+    for await (const streamEvent of summaryStream) {
       if (abortSignal?.aborted) {
         return abortedResult();
       }
-      summary += chunk;
-      onSummaryChunk?.(summary);
+      if (streamEvent.type === "text_delta") {
+        summary += streamEvent.delta;
+        onSummaryChunk?.(summary);
+      } else if (streamEvent.type === "error") {
+        throw new Error(
+          streamEvent.error.errorMessage || "Compaction model request failed",
+        );
+      }
     }
 
     if (abortSignal?.aborted) {
@@ -289,9 +272,9 @@ Note: This file may be large. Read only the sections you need or use grep to sea
     // (the one that triggered compaction). This is critical because:
     // 1. Messages are ordered by createdAt, and the compaction summary must
     //    appear before the new user message in the message array.
-    // 2. The local_agent_handler slices from the last compaction summary onward
-    //    to build the LLM's message history — if the summary comes after the
-    //    user message, the user's prompt is excluded from the LLM context.
+    // 2. Pi history reconstruction slices from the last compaction summary
+    //    onward. If the summary comes after the user message, the user's
+    //    prompt is excluded from the provider context.
     // 3. sendResponseChunk updates the last assistant message, so the summary
     //    must not be the last assistant message (the placeholder should be).
     const latestUserMessage = [...chatMessages]

@@ -6,7 +6,7 @@ These principles guide feature design decisions in Dyad. Reference them when pla
 
 Users should be able to swap out underlying providers and backends without being locked in.
 
-- **LLM providers**: Users bring their own API keys for OpenAI, Anthropic, Google, Ollama, etc. Features must not assume a specific provider. Example: the chat system uses the Vercel AI SDK abstraction, not provider-specific APIs.
+- **LLM providers**: Users bring their own API keys for OpenAI, Anthropic, Google, Ollama, etc. Features must not assume a specific provider. The chat system uses the pi SDK provider abstraction rather than provider-specific APIs.
 - **Database backends**: Supabase (cloud and local), Neon, and custom Postgres are all supported. The IPC handler layer routes by configuration, so the same UI flow works regardless of backend. Example: `executeSupabaseSql` dispatches to either the Management API or local Postgres based on `supabaseMode`.
 - **Deployment targets**: Vercel today, but the architecture shouldn't preclude other platforms. Deployment-specific logic lives behind clear interfaces.
 

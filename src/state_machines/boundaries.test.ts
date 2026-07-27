@@ -12,12 +12,10 @@ const MACHINE_DIRECTORIES = [
   "first_prompt",
   "github_ops",
   "image_generation",
-  "mcp_oauth",
   "plan_handoff",
   "preview_iframe",
   "screenshot",
   "version_preview",
-  "voice_to_text",
   "user_input",
 ] as const;
 type MachineDirectory = (typeof MACHINE_DIRECTORIES)[number];

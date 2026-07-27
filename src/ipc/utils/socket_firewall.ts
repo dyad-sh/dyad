@@ -21,6 +21,7 @@ import {
   buildWindowsCommandInvocation,
   resolveWindowsExecutableName,
 } from "@/ipc/utils/windows_command";
+import { isDyadError } from "@/errors/dyad_error";
 
 export const SOCKET_FIREWALL_WARNING_MESSAGE =
   "the npm firewall could not be installed. Warning: can not check if npm packages are safe";
@@ -75,6 +76,7 @@ const DYAD_ALLOW_BUILDS_MAX_BYTES = 256 * 1024;
 export interface CommandExecutionOptions {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
+  signal?: AbortSignal;
   timeoutMs?: number;
 }
 
@@ -1133,6 +1135,7 @@ export async function runCommand(
         cwd: options.cwd,
         displayCommand: buildCommandDisplay(command, args),
         env: options.env,
+        signal: options.signal,
         timeoutMs: options.timeoutMs,
       },
     );
@@ -1142,6 +1145,9 @@ export async function runCommand(
       stderr: "",
     };
   } catch (error) {
+    if (isDyadError(error)) {
+      throw error;
+    }
     if (error instanceof PtyCommandExecutionError) {
       throw new CommandExecutionError({
         message: error.message,

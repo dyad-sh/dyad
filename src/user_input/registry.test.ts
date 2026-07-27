@@ -34,7 +34,6 @@ describe("user-input registry", () => {
       kind: "agent-consent",
       chatId: 1,
       toolName: "write_file",
-      classifier: "none",
     });
     expect(requestId).toBe("agent-consent:1");
     expect(registry.getPending()[0].deadlineAt).toBe(301_000);
@@ -55,13 +54,11 @@ describe("user-input registry", () => {
       kind: "agent-consent",
       chatId: 9,
       toolName: "read_file",
-      classifier: "none",
     });
     const questionnaire = registry.request({
       kind: "questionnaire",
       chatId: 9,
       questions: [],
-      classifier: "none",
     });
     const parks = [registry.park(consent), registry.park(questionnaire)];
     registry.sweepChat(9);
@@ -81,7 +78,6 @@ describe("user-input registry", () => {
       kind: "integration",
       chatId: 9,
       provider: "supabase",
-      classifier: "none",
       followUpPrompt: "Continue after integration",
     });
     const park = registry.park(requestId);
@@ -109,7 +105,6 @@ describe("user-input registry", () => {
         kind: "integration",
         chatId,
         provider: "supabase",
-        classifier: "none",
         followUpPrompt: `Continue chat ${chatId}`,
       }),
     );
@@ -125,13 +120,12 @@ describe("user-input registry", () => {
     }
   });
 
-  it("maps human and classifier resolutions into park values", async () => {
+  it("maps human resolutions into park values", async () => {
     const { registry } = setup();
     const agent = registry.request({
       kind: "agent-consent",
       chatId: 1,
       toolName: "write_file",
-      classifier: "none",
     });
     const agentPark = registry.park(agent);
     await registry.respond(agent, {
@@ -142,40 +136,6 @@ describe("user-input registry", () => {
       kind: "agent-consent",
       decision: "accept-once",
     });
-
-    const mcp = registry.request({
-      kind: "mcp-consent",
-      chatId: 1,
-      serverId: 1,
-      serverName: "server",
-      toolName: "read",
-      classifier: "racing",
-    });
-    const mcpPark = registry.park(mcp);
-    await registry.classifierDecided(mcp, true, "safe");
-    await expect(mcpPark).resolves.toEqual({
-      kind: "classifier-approved",
-      reason: "safe",
-    });
-  });
-
-  it("retains the classifier review reason in pending snapshots", async () => {
-    const { registry } = setup();
-    const requestId = registry.request({
-      kind: "mcp-consent",
-      chatId: 1,
-      serverId: 1,
-      serverName: "server",
-      toolName: "read",
-      classifier: "racing",
-    });
-
-    await registry.classifierDecided(requestId, false, "sensitive input");
-
-    expect(registry.getPending()[0]).toMatchObject({
-      classifier: "review",
-      classifierReason: "sensitive input",
-    });
   });
 
   it("supersedes a duplicate live request without orphaning its old park", async () => {
@@ -184,7 +144,6 @@ describe("user-input registry", () => {
       kind: "agent-consent" as const,
       chatId: 1,
       toolName: "write_file",
-      classifier: "none" as const,
     };
     const requestId = registry.request(input, "duplicate");
     const oldPark = registry.park(requestId);
@@ -205,7 +164,6 @@ describe("user-input registry", () => {
       kind: "agent-consent",
       chatId: 2,
       toolName: "write_file",
-      classifier: "none",
     });
     const park = registry.park(requestId, controller.signal);
     controller.abort();
@@ -221,7 +179,6 @@ describe("user-input registry", () => {
       kind: "integration",
       chatId: 4,
       provider: "supabase",
-      classifier: "none",
       followUpPrompt: "continue",
     });
     await registry.respond(requestId, {
@@ -248,7 +205,6 @@ describe("user-input registry", () => {
       kind: "integration",
       chatId: 4,
       provider: "supabase",
-      classifier: "none",
       followUpPrompt: "continue",
     });
     await registry.respond(requestId, {
@@ -268,7 +224,6 @@ describe("user-input registry", () => {
       kind: "integration",
       chatId: 8,
       provider: "neon",
-      classifier: "none",
       followUpPrompt: "Continue. I have completed the neon integration.",
     });
     await registry.respond(requestId, {
@@ -298,14 +253,12 @@ describe("user-input registry", () => {
       kind: "integration",
       chatId: 18,
       provider: "neon",
-      classifier: "none",
       followUpPrompt: "continue",
     });
     const consent = registry.request({
       kind: "agent-consent",
       chatId: 18,
       toolName: "read_file",
-      classifier: "none",
     });
     await registry.respond(followUp, {
       kind: "integration",
@@ -329,7 +282,6 @@ describe("user-input registry", () => {
     const requestId = registry.request({
       kind: "integration",
       chatId: 12,
-      classifier: "none",
       followUpPrompt: "Continue. I have completed the database integration.",
     });
     const park = registry.park(requestId);
@@ -360,7 +312,6 @@ describe("user-input registry", () => {
       kind: "agent-consent",
       chatId: 5,
       toolName: "write_file",
-      classifier: "none",
     });
     const park = registry.park(requestId);
     registry.dispose();
@@ -385,7 +336,6 @@ describe("user-input registry", () => {
       kind: "agent-consent",
       chatId: 6,
       toolName: "write_file",
-      classifier: "none",
     });
     const park = registry.park(requestId);
 
@@ -413,7 +363,6 @@ describe("user-input registry", () => {
       kind: "agent-consent",
       chatId: 7,
       toolName: "read_file",
-      classifier: "none",
     });
     await registry.respond(requestId, {
       kind: "agent-consent",

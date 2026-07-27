@@ -15,7 +15,7 @@
  * deterministically before navigation.
  */
 
-export type FirstPromptChatMode = "build" | "ask" | "local-agent" | "plan";
+export type FirstPromptChatMode = "ask" | "local-agent" | "plan";
 
 export interface FirstPromptAttachment {
   readonly file: File;

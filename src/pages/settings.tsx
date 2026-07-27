@@ -36,10 +36,8 @@ import { LanguageSelector } from "@/components/LanguageSelector";
 import { DefaultChatModeSelector } from "@/components/DefaultChatModeSelector";
 import { ContextCompactionSwitch } from "@/components/ContextCompactionSwitch";
 import { BlockUnsafeNpmPackagesSwitch } from "@/components/BlockUnsafeNpmPackagesSwitch";
-import { CloudSandboxExperimentSwitch } from "@/components/CloudSandboxExperimentSwitch";
 import { MultiWindowExperimentSwitch } from "@/components/MultiWindowExperimentSwitch";
 import { AutoApproveSqlSwitch } from "@/components/AutoApproveSqlSwitch";
-import { AutoApproveMcpSwitch } from "@/components/AutoApproveMcpSwitch";
 import { useSetAtom } from "jotai";
 import { activeSettingsSectionAtom } from "@/atoms/viewAtoms";
 import { SECTION_IDS, SETTING_IDS } from "@/lib/settingsSearchIndex";
@@ -185,7 +183,7 @@ export default function SettingsPage() {
           <SettingsSection
             id={SECTION_IDS.agentPermissions}
             title="Agent Permissions"
-            description="Control what the agent can do on your behalf. Requires Pro."
+            description="Control what the agent can do on your behalf."
           >
             <AgentToolsSettings />
           </SettingsSection>
@@ -195,31 +193,6 @@ export default function SettingsPage() {
             title="Advanced"
             description="We recommend keeping the defaults unless something isn't working."
           >
-            <div
-              id={SETTING_IDS.enableSandboxScriptExecution}
-              className="space-y-1.5"
-            >
-              <div className="flex items-center gap-2">
-                <Switch
-                  id="enable-sandbox-script-execution"
-                  aria-label="Enable sandbox script execution"
-                  checked={!!settings?.enableSandboxScriptExecution}
-                  onCheckedChange={(checked) => {
-                    updateSettings({
-                      enableSandboxScriptExecution: checked,
-                    });
-                  }}
-                />
-                <Label htmlFor="enable-sandbox-script-execution">
-                  Enable sandbox script execution
-                </Label>
-              </div>
-              <p className={hint}>
-                Allow local-agent attachment scripts to inspect files with
-                execute_sandbox_script.
-              </p>
-            </div>
-
             <div id={SETTING_IDS.blockUnsafeNpmPackages}>
               <BlockUnsafeNpmPackagesSwitch />
             </div>
@@ -234,50 +207,9 @@ export default function SettingsPage() {
             title="Experiments"
             description="Early features that may not be stable yet. Enable at your own risk."
           >
-            <div id={SETTING_IDS.enableCloudSandbox}>
-              <CloudSandboxExperimentSwitch />
-            </div>
-
             <div id={SETTING_IDS.enableMultiWindow}>
               <MultiWindowExperimentSwitch />
             </div>
-
-            <div id={SETTING_IDS.autoApproveSafeMcpTools}>
-              <AutoApproveMcpSwitch />
-            </div>
-
-            <div id={SETTING_IDS.enableMcpToolSearch} className="space-y-1.5">
-              <div className="flex items-center gap-2">
-                <Switch
-                  id="enable-mcp-tool-search"
-                  aria-label="Enable MCP tool search"
-                  disabled={!settings?.enableSandboxScriptExecution}
-                  checked={
-                    !!settings?.enableMcpToolSearch &&
-                    !!settings?.enableSandboxScriptExecution
-                  }
-                  onCheckedChange={(checked) => {
-                    updateSettings({
-                      enableMcpToolSearch: checked,
-                    });
-                  }}
-                />
-                <Label htmlFor="enable-mcp-tool-search">
-                  Enable MCP tool search
-                </Label>
-              </div>
-              <p className={hint}>
-                When many MCP tools are enabled, let the agent search for the
-                tools on demand instead of listing every tool in its context.
-                Requires sandbox script execution.
-              </p>
-              {!settings?.enableSandboxScriptExecution && (
-                <p className="text-xs text-amber-700 dark:text-amber-500">
-                  Cannot be enabled unless sandbox script execution is on.
-                </p>
-              )}
-            </div>
-
             <div
               id={SETTING_IDS.enablePnpmMinimumReleaseAgeWarning}
               className="space-y-1.5"
@@ -325,28 +257,6 @@ export default function SettingsPage() {
               <p className={hint}>
                 Show an app selector in the home chat input to start a chat
                 referencing an existing app.
-              </p>
-            </div>
-
-            <div id={SETTING_IDS.enableCodeExplorer} className="space-y-1.5">
-              <div className="flex items-center gap-2">
-                <Switch
-                  id="enable-code-explorer"
-                  aria-label="Enable code explorer (Pro)"
-                  checked={!!settings?.enableCodeExplorer}
-                  onCheckedChange={(checked) => {
-                    updateSettings({
-                      enableCodeExplorer: checked,
-                    });
-                  }}
-                />
-                <Label htmlFor="enable-code-explorer">
-                  Enable code explorer (Pro)
-                </Label>
-              </div>
-              <p className={hint}>
-                Let the local agent explore configured TypeScript projects with
-                a compiler-backed code graph.
               </p>
             </div>
           </SettingsSection>

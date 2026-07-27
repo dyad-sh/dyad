@@ -27,7 +27,9 @@ testSkipIfWindows(
 
 testSkipIfWindows(
   "preview loading screen surfaces errors when dev script is missing",
-  async ({ po }) => {
+  async ({ po }, testInfo) => {
+    testInfo.setTimeout(Timeout.EXTRA_LONG * 2);
+
     await po.setUp({ autoApprove: true });
 
     // Bring up a working app first so node_modules are populated and we
@@ -39,7 +41,7 @@ testSkipIfWindows(
     // The next `npm run dev` will exit non-zero with "Missing script: dev",
     // producing server-level error entries that should flow into the
     // loading screen's error banner.
-    await po.sendPrompt("tc=break-package-json");
+    await po.sendPrompt("tc=local-agent/break-package-json");
 
     await po.clickRestart();
 

@@ -37,9 +37,8 @@ The load-bearing ones:
   warnings ahead of pnpm migration warnings" at
   `previewRuntimeAtoms.test.ts:310`). Porting the rule as originally traced
   would silently invert product behavior.
-- **Four missed preview-error writers** in `PreviewIframe.tsx` (`:415-426`
-  cloud-sandbox errors with source `dyad-app`, `:438-445` cloud sync errors,
-  `:449-451` sync-recovery clear, `:1501` dismiss-any). `dyad-app` errors
+- **Four missed preview-error writers** in `PreviewIframe.tsx` (runtime errors
+  with source `dyad-app`, sync errors, sync-recovery clear, and dismiss-any). `dyad-app` errors
   are therefore _not_ exclusively the app_run machine's, and
   `useAppRunState` alone cannot replace the reader.
 - **Mount-order reality for facade injection**: `ChatStreamProvider` mounts
@@ -589,10 +588,9 @@ does not exist today.
   synchronous facade calls forbidden); `useRunApp.ts:175-186/:191-195`
   (`dyad-sync`, priority-merge updaters); PreviewIframe `setErrorMessage`
   (`:223-231`) with call sites `:884/:901` (`preview-app`) **plus the four
-  the trace missed**: `:415-426` cloud-sandbox errors with source
-  `dyad-app` (so app_run state alone can never replace the reader),
-  `:438-445` cloud sync errors (`dyad-sync`, same clobber guard),
-  `:449-451` sync-recovery clear, `:1501` user dismiss (clears any source).
+  the trace missed**: runtime errors with source `dyad-app` (so app_run state
+  alone can never replace the reader), sync errors (`dyad-sync`, same clobber
+  guard), sync-recovery clear, and user dismiss (clears any source).
   clearPreviewRuntimeForAppAtom and the harness also write the base atom
   directly.
 - Owner decision: **preview_iframe** — it already issues both clears and

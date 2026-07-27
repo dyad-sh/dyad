@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { cloneElement, type ReactElement, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { HomeChatInput } from "./HomeChatInput";
@@ -6,7 +6,6 @@ import { HomeChatInput } from "./HomeChatInput";
 const mocks = vi.hoisted(() => ({
   setInputValue: vi.fn(),
   setSelectedApp: vi.fn(),
-  transcription: null as null | ((text: string) => void),
 }));
 
 vi.mock("jotai", async (importOriginal) => ({
@@ -20,7 +19,6 @@ vi.mock("jotai", async (importOriginal) => ({
 vi.mock("@/hooks/useSettings", () => ({
   useSettings: () => ({
     settings: {
-      enableDyadPro: true,
       enableSelectAppFromHomeChatInput: true,
     },
   }),
@@ -30,9 +28,6 @@ vi.mock("@/hooks/useStreamChat", () => ({
 }));
 vi.mock("@/hooks/useChatModeToggle", () => ({
   useChatModeToggle: () => undefined,
-}));
-vi.mock("@/hooks/useUserBudgetInfo", () => ({
-  useUserBudgetInfo: () => ({ userBudget: { budget: 1 } }),
 }));
 vi.mock("@/hooks/useTypingPlaceholder", () => ({
   useTypingPlaceholder: () => "something",
@@ -54,20 +49,6 @@ vi.mock("@/hooks/useAttachments", () => ({
     confirmPendingFiles: vi.fn(),
     cancelPendingFiles: vi.fn(),
   }),
-}));
-vi.mock("@/hooks/useVoiceToText", () => ({
-  useVoiceToText: ({
-    onTranscription,
-  }: {
-    onTranscription: (text: string) => void;
-  }) => {
-    mocks.transcription = onTranscription;
-    return {
-      isRecording: false,
-      isTranscribing: false,
-      toggleRecording: vi.fn(),
-    };
-  },
 }));
 vi.mock("@/components/ui/tooltip", () => ({
   Tooltip: ({ children }: { children: ReactNode }) => children,
@@ -110,7 +91,6 @@ describe("HomeChatInput disabled state", () => {
   beforeEach(() => {
     mocks.setInputValue.mockReset();
     mocks.setSelectedApp.mockReset();
-    mocks.transcription = null;
   });
 
   it("makes the entire snapshotted composer inert", () => {
@@ -125,13 +105,6 @@ describe("HomeChatInput disabled state", () => {
         .disabled,
     ).toBe(true);
     expect(
-      (
-        screen.getByRole("button", {
-          name: "Voice to text",
-        }) as HTMLButtonElement
-      ).disabled,
-    ).toBe(true);
-    expect(
       (screen.getByTestId("home-app-selector") as HTMLButtonElement).disabled,
     ).toBe(true);
     expect(
@@ -140,13 +113,5 @@ describe("HomeChatInput disabled state", () => {
     expect(
       composer?.contains(screen.getByRole("button", { name: "More actions" })),
     ).toBe(true);
-  });
-
-  it("ignores a transcription that completes after the payload is locked", () => {
-    render(<HomeChatInput onSubmit={vi.fn()} disabled />);
-
-    act(() => mocks.transcription?.("late transcript"));
-
-    expect(mocks.setInputValue).not.toHaveBeenCalled();
   });
 });

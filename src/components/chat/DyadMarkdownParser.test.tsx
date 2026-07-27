@@ -121,29 +121,6 @@ describe("DyadMarkdownParser dyad-command", () => {
   });
 });
 
-describe("DyadMarkdownParser dyad-explore-chat-history", () => {
-  afterEach(() => {
-    cleanup();
-  });
-
-  it.each(["partial", "no_match"])(
-    "keeps a persisted %s report expanded",
-    (outcome) => {
-      render(
-        <DyadMarkdownParser
-          content={`<dyad-explore-chat-history query="auth" chats="1" evidence="2" outcome="${outcome}">Historical evidence</dyad-explore-chat-history>`}
-        />,
-      );
-
-      expect(
-        screen
-          .getByTestId("dyad-explore-chat-history")
-          .getAttribute("aria-expanded"),
-      ).toBe("true");
-    },
-  );
-});
-
 describe("DyadMarkdownParser dyad-git", () => {
   afterEach(() => {
     cleanup();

@@ -1,12 +1,6 @@
 import path from "node:path";
 
-import {
-  isLocalAgentBackedMode,
-  type ChatMode,
-  type UserSettings,
-} from "@/lib/schemas";
-import { isSandboxSupportedPlatform } from "@/ipc/utils/sandbox/runner";
-import { isSandboxScriptExecutionEnabled } from "@/pro/main/ipc/handlers/local_agent/tools/execute_sandbox_script";
+import type { ChatMode } from "@/lib/schemas";
 import {
   toAttachmentLogicalPath,
   type StoredAttachmentInfo,
@@ -24,13 +18,8 @@ export type PendingStoredChatAttachment = Omit<
 };
 
 export type AttachmentDeliveryConfig = {
-  inlineTextAttachments: boolean;
-  includeImageParts: boolean;
   useOnDiskAttachmentBlock: boolean;
-  includeSandboxScriptHint: boolean;
   includeCopyFileHint: boolean;
-  addSystemCopyInstructions: boolean;
-  addSystemVisionInstructions: boolean;
 };
 
 const TEXT_FILE_EXTENSIONS = [
@@ -102,13 +91,7 @@ export function buildLocalAgentAttachmentInfo(
     (attachment) => !isInlineImageAttachment(attachment),
   );
   const lines = hasReadableAttachment
-    ? deliveryConfig.includeSandboxScriptHint
-      ? [
-          "Attachments available on disk (use attachments:<name> with read_file / execute_sandbox_script):",
-        ]
-      : [
-          "Attachments available on disk (use attachments:<name> with read_file):",
-        ]
+    ? ["Attachments available on disk (use attachments:<name> with read_file):"]
     : ["Attachments available on disk for copying into the codebase:"];
 
   for (const attachment of diskAttachments) {
@@ -125,40 +108,15 @@ export function buildLocalAgentAttachmentInfo(
   return `\n\n${lines.join("\n")}\n`;
 }
 
-export function hasScriptReadableAttachment(
-  attachments: StoredChatAttachment[],
-): boolean {
-  return attachments.some((attachment) => !isInlineImageAttachment(attachment));
-}
-
 export function resolveAttachmentDeliveryConfig({
   mode,
-  settings,
-  hasImageAttachments,
-  hasUploadedAttachments,
 }: {
   mode: ChatMode;
-  settings: Pick<UserSettings, "enableSandboxScriptExecution">;
-  hasImageAttachments: boolean;
-  hasUploadedAttachments: boolean;
 }): AttachmentDeliveryConfig {
-  const willUseLocalAgentStream = isLocalAgentBackedMode(mode);
   const useOnDiskAttachmentBlock = mode === "local-agent" || mode === "ask";
 
   return {
-    inlineTextAttachments: !useOnDiskAttachmentBlock,
-    includeImageParts: true,
     useOnDiskAttachmentBlock,
-    includeSandboxScriptHint:
-      useOnDiskAttachmentBlock &&
-      isSandboxScriptExecutionEnabled(settings) &&
-      isSandboxSupportedPlatform(),
     includeCopyFileHint: mode === "local-agent",
-    addSystemCopyInstructions:
-      !willUseLocalAgentStream && hasUploadedAttachments && mode !== "ask",
-    addSystemVisionInstructions:
-      hasImageAttachments &&
-      (!willUseLocalAgentStream || mode === "plan") &&
-      !(hasUploadedAttachments && mode !== "ask"),
   };
 }

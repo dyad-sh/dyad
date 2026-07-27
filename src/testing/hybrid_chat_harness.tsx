@@ -1,6 +1,3 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import path from "node:path";
-
 /**
  * setupHybridChatHarness — the "hybrid" chat-flow harness: the real React
  * <ChatPanel> (React Testing Library under happy-dom) wired to the REAL
@@ -73,7 +70,6 @@ import {
   chatInputValuesByIdAtom,
   selectedChatIdAtom,
 } from "@/atoms/chatAtoms";
-import { selectedComponentsPreviewAtom } from "@/atoms/previewAtoms";
 import {
   clearTestRuntimeForAppAtom,
   testRunOutputByAppIdAtom,
@@ -87,7 +83,6 @@ import { ChatPanel } from "@/components/ChatPanel";
 import { AppList } from "@/components/AppList";
 import { ChatList } from "@/components/ChatList";
 import { PrivacyBanner } from "@/components/TelemetryBanner";
-import { SubscriptionStatusBanner } from "@/components/SubscriptionStatusBanner";
 import { VersionPreviewProvider } from "@/version_preview/VersionPreviewProvider";
 import { PreviewIframeProvider } from "@/preview_iframe/PreviewIframeProvider";
 import { PreviewIframeManager } from "@/preview_iframe/manager";
@@ -134,12 +129,7 @@ import { DeepLinkProvider } from "@/contexts/DeepLinkContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { chats } from "@/db/schema";
 import { ipc } from "@/ipc/types";
-import type {
-  ComponentSelection,
-  FileAttachment,
-  McpServer,
-} from "@/ipc/types";
-import { setModelClientFetchForTesting } from "@/ipc/utils/get_model_client";
+import type { FileAttachment } from "@/ipc/types";
 // Import from the dedicated schema module, NOT "@/routes/chat": the route file
 // statically imports ChatPage -> PreviewPanel -> Monaco, which would load into
 // every hybrid test and throw "Canceled" rejections on teardown.
@@ -188,13 +178,6 @@ const LazyDatabaseSection = lazy(() =>
     default: module.DatabaseSection,
   })),
 );
-const LazyPluginsPage = lazy(() => import("@/pages/plugins"));
-const LazyPluginDetailPage = lazy(() =>
-  import("@/components/plugins/PluginDetailPage").then((module) => ({
-    default: module.PluginDetailPage,
-  })),
-);
-
 export interface HybridChatHarnessOptions extends ChatFlowHarnessOptions {
   /**
    * Silence React's "not wrapped in act(...)" warnings by wrapping the bridge's
@@ -236,8 +219,6 @@ export type HybridSurfaceRoute =
   | "/database"
   | "/import-app"
   | "/settings"
-  | "/plugins"
-  | "/plugins/$serverId"
   | "/settings/providers/$provider"
   | "/library/media"
   | "/media";
@@ -259,8 +240,6 @@ export interface MountOptions {
   withChatList?: boolean;
   /** Render the real telemetry privacy banner next to the mounted route. */
   withPrivacyBanner?: boolean;
-  /** Render the real global subscription status banner. */
-  withSubscriptionStatusBanner?: boolean;
 }
 
 export interface MountSurfaceOptions extends MountOptions {
@@ -268,7 +247,7 @@ export interface MountSurfaceOptions extends MountOptions {
   route?: HybridSurfaceRoute;
   /** Route search params. Defaults are filled for chat/app-details. */
   search?: Record<string, unknown>;
-  /** Route params, e.g. `{ provider: "auto" }` for provider settings. */
+  /** Route params, e.g. `{ provider: "openai" }` for provider settings. */
   params?: Record<string, string>;
   /** Render the real title bar above the mounted route. */
   withTitleBar?: boolean;
@@ -373,9 +352,6 @@ export interface HybridChatHarness extends ChatFlowHarness {
    */
   setChatAttachments: (attachments: ChatAttachmentSeed[]) => void;
 
-  /** Seed selected preview components for queue edit/restore assertions. */
-  setSelectedComponents: (components: ComponentSelection[]) => void;
-
   /**
    * Seed the chat input, then submit via the Lexical Enter command (a real
    * keydown on the contenteditable, handled by EnterKeyPlugin ->
@@ -447,9 +423,7 @@ export interface HybridChatHarness extends ChatFlowHarness {
    * the `chat-mode-selector` and picks `mode`, then waits for the trigger's
    * aria-label to reflect it (which persists chatMode onto the chat row).
    */
-  selectChatMode: (
-    mode: "build" | "ask" | "plan" | "local-agent",
-  ) => Promise<void>;
+  selectChatMode: (mode: "ask" | "plan" | "local-agent") => Promise<void>;
 
   /** Insert a new chat row (same app by default) and return its id. */
   createChat: (appId?: number) => Promise<number>;
@@ -458,28 +432,6 @@ export interface HybridChatHarness extends ChatFlowHarness {
     pushEvents: () => Promise<unknown>;
     clearPushEvents: () => Promise<void>;
     resetRepos: () => Promise<void>;
-  };
-
-  mcp: {
-    fakeStdioServerPath: string;
-    resetServers: () => Promise<void>;
-    addStdioServer: (opts?: {
-      name?: string;
-      env?: Record<string, string>;
-    }) => Promise<McpServer>;
-    addHttpServer: (opts?: {
-      name?: string;
-      headers?: Record<string, string>;
-    }) => Promise<{
-      server: McpServer;
-      url: string;
-      stop: () => Promise<void>;
-    }>;
-    waitForTool: (
-      serverId: number,
-      toolName: string,
-      timeoutMs?: number,
-    ) => Promise<void>;
   };
 }
 
@@ -506,25 +458,6 @@ function restoreHybridEnv(snapshot: Map<string, string | undefined>): void {
       process.env[key] = value;
     }
   }
-}
-
-function stopChildProcess(
-  child: ChildProcessWithoutNullStreams,
-): Promise<void> {
-  if (child.exitCode !== null || child.signalCode !== null) {
-    return Promise.resolve();
-  }
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => {
-      child.kill("SIGKILL");
-      resolve();
-    }, 2_000);
-    child.once("exit", () => {
-      clearTimeout(timer);
-      resolve();
-    });
-    child.kill("SIGTERM");
-  });
 }
 
 function encodeSearch(search: Record<string, unknown>): string {
@@ -613,12 +546,6 @@ export async function setupHybridChatHarness(
     }
     process.env.E2E_TEST_BUILD = "true";
   }
-  setModelClientFetchForTesting(
-    undiciFetch as unknown as Parameters<
-      typeof setModelClientFetchForTesting
-    >[0],
-  );
-
   let node: ChatFlowHarness | undefined;
 
   try {
@@ -681,18 +608,6 @@ export async function setupHybridChatHarness(
 
     let activeRouter: HybridRouter | undefined;
     let activeFirstPromptClock: FakeClock | undefined;
-    const mcpHttpProcesses = new Set<ChildProcessWithoutNullStreams>();
-    const fakeStdioServerPath = path.join(
-      process.cwd(),
-      "testing",
-      "fake-stdio-mcp-server.mjs",
-    );
-    const fakeHttpServerPath = path.join(
-      process.cwd(),
-      "testing",
-      "fake-http-mcp-server.mjs",
-    );
-
     const getActiveRouter = (): HybridRouter => {
       if (!activeRouter) {
         throw new Error(
@@ -736,14 +651,13 @@ export async function setupHybridChatHarness(
           chatId: number;
           appId: number;
           attachments: readonly FileAttachment[];
-          requestedChatMode?: "build" | "ask" | "local-agent" | "plan";
+          requestedChatMode?: "ask" | "local-agent" | "plan" | null;
         }) =>
           chatStreamManager.ensure(request.chatId).send({
             type: "submit",
             request: {
               ...request,
               attachments: [...request.attachments],
-              selectedComponents: [],
             },
           }),
       };
@@ -762,9 +676,6 @@ export async function setupHybridChatHarness(
               {opts.withAppList && <AppList show />}
               {opts.withChatList && <ChatList show />}
               {opts.withPrivacyBanner && <PrivacyBanner />}
-              {opts.withSubscriptionStatusBanner && (
-                <SubscriptionStatusBanner />
-              )}
               <Outlet />
             </div>
           </PlanHandoffProvider>
@@ -874,39 +785,6 @@ export async function setupHybridChatHarness(
           );
         },
       });
-      const pluginsTestRoute = createRoute({
-        getParentRoute: () => rootRoute,
-        path: "/plugins",
-        component: function HybridPluginsRoute() {
-          return (
-            <Suspense fallback={<div data-testid="hybrid-surface-loading" />}>
-              <LazyPluginsPage />
-            </Suspense>
-          );
-        },
-      });
-      const pluginDetailTestRoute = createRoute({
-        getParentRoute: () => rootRoute,
-        path: "/plugins/$serverId",
-        params: {
-          parse: (params: { serverId: string }) => ({
-            serverId: Number(params.serverId),
-          }),
-          stringify: (params: { serverId: number }) => ({
-            serverId: String(params.serverId),
-          }),
-        },
-        component: function HybridPluginDetailRoute() {
-          const params = pluginDetailTestRoute.useParams() as {
-            serverId: number;
-          };
-          return (
-            <Suspense fallback={<div data-testid="hybrid-surface-loading" />}>
-              <LazyPluginDetailPage serverId={params.serverId} />
-            </Suspense>
-          );
-        },
-      });
       const homeLiteRoute = createRoute({
         getParentRoute: () => rootRoute,
         path: "/",
@@ -924,8 +802,6 @@ export async function setupHybridChatHarness(
         providerSettingsTestRoute,
         mediaTestRoute,
         importAppTestRoute,
-        pluginsTestRoute,
-        pluginDetailTestRoute,
       ]);
 
       const search = opts.search ?? {};
@@ -937,7 +813,7 @@ export async function setupHybridChatHarness(
       } else if (route === "/database") {
         initialPath = `/database${encodeSearch(search)}`;
       } else if (route === "/settings/providers/$provider") {
-        const provider = opts.params?.provider ?? "auto";
+        const provider = opts.params?.provider ?? "openai";
         initialPath = `/settings/providers/${provider}${encodeSearch(search)}`;
       } else if (route === "/media" || route === "/library/media") {
         initialPath = `/library/media${encodeSearch(search)}`;
@@ -945,10 +821,6 @@ export async function setupHybridChatHarness(
         initialPath = `/import-app${encodeSearch(search)}`;
       } else if (route === "/settings") {
         initialPath = `/settings${encodeSearch(search)}`;
-      } else if (route === "/plugins") {
-        initialPath = `/plugins${encodeSearch(search)}`;
-      } else if (route === "/plugins/$serverId") {
-        initialPath = `/plugins/${opts.params?.serverId ?? ""}${encodeSearch(search)}`;
       } else {
         initialPath = `/${encodeSearch(search)}`;
       }
@@ -1101,13 +973,6 @@ export async function setupHybridChatHarness(
       );
       act(() => {
         store.set(attachmentsAtom, fileAttachments);
-      });
-    };
-
-    const setSelectedComponents = (components: ComponentSelection[]) => {
-      const store = getActiveStore();
-      act(() => {
-        store.set(selectedComponentsPreviewAtom, components);
       });
     };
 
@@ -1360,14 +1225,9 @@ export async function setupHybridChatHarness(
     };
 
     const selectChatMode = async (
-      mode: "build" | "ask" | "plan" | "local-agent",
+      mode: "ask" | "plan" | "local-agent",
     ): Promise<void> => {
-      // One matcher per mode works for both the option text and the trigger's
-      // resulting aria-label ("Chat mode: <name>"): Build/Ask/Plan match verbatim;
-      // "Agent" matches "Agent v2"/"Basic Agent" (pro/non-pro) and the "Agent"/
-      // "Basic Agent" aria label.
       const matcher: Record<typeof mode, RegExp> = {
-        build: /Build/,
         ask: /Ask/,
         plan: /Plan/,
         "local-agent": /Agent/,
@@ -1441,121 +1301,6 @@ export async function setupHybridChatHarness(
       },
     };
 
-    const resetMcpServers = async (): Promise<void> => {
-      const servers = await ipc.mcp.listServers();
-      for (const server of servers) {
-        await ipc.mcp.deleteServer(server.id);
-      }
-    };
-
-    const waitForMcpTool = async (
-      serverId: number,
-      toolName: string,
-      timeoutMs = 10_000,
-    ): Promise<void> => {
-      await waitFor(
-        async () => {
-          const result = await ipc.mcp.listTools(serverId);
-          expect(result.status).toBe("ok");
-          expect(result.tools.map((tool) => tool.name)).toContain(toolName);
-        },
-        { timeout: timeoutMs },
-      );
-    };
-
-    const addStdioMcpServer = async (opts?: {
-      name?: string;
-      env?: Record<string, string>;
-    }): Promise<McpServer> => {
-      const server = await ipc.mcp.createServer({
-        name: opts?.name ?? "testing-mcp-server",
-        transport: "stdio",
-        command: "node",
-        args: [fakeStdioServerPath],
-        envJson: opts?.env ?? null,
-        enabled: true,
-      });
-      await waitForMcpTool(server.id, "calculator_add");
-      return server;
-    };
-
-    const addHttpMcpServer = async (opts?: {
-      name?: string;
-      headers?: Record<string, string>;
-    }): Promise<{
-      server: McpServer;
-      url: string;
-      stop: () => Promise<void>;
-    }> => {
-      // PORT=0 lets the OS pick a free port race-free; the child reports the
-      // bound port in its startup line and we parse it from there.
-      const child = spawn("node", [fakeHttpServerPath], {
-        env: { ...process.env, PORT: "0" },
-        stdio: "pipe",
-      });
-      mcpHttpProcesses.add(child);
-
-      const port = await new Promise<number>((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          reject(new Error(`HTTP MCP server failed to start within timeout`));
-        }, 10_000);
-        let stdoutBuffer = "";
-        child.stdout.on("data", (data: Buffer) => {
-          stdoutBuffer += data.toString();
-          const match = stdoutBuffer.match(
-            /HTTP MCP server running on http:\/\/localhost:(\d+)\/mcp/,
-          );
-          if (match) {
-            clearTimeout(timeout);
-            resolve(Number(match[1]));
-          }
-        });
-        child.stderr.on("data", (data: Buffer) => {
-          const text = data.toString().trim();
-          if (text) {
-            // Surface the server's own startup/runtime errors in vitest output.
-            console.error(`HTTP MCP server stderr: ${text}`);
-          }
-        });
-        child.once("error", (error) => {
-          clearTimeout(timeout);
-          reject(error);
-        });
-        child.once("exit", (code, signal) => {
-          clearTimeout(timeout);
-          reject(
-            new Error(
-              `HTTP MCP server exited before ready: code=${code} signal=${signal}`,
-            ),
-          );
-        });
-      });
-
-      const url = `http://localhost:${port}/mcp`;
-      const server = await ipc.mcp.createServer({
-        name: opts?.name ?? "testing-mcp-server",
-        transport: "http",
-        url,
-        headersJson: opts?.headers ?? null,
-        enabled: true,
-      });
-      await waitForMcpTool(server.id, "calculator_add");
-
-      const stop = async () => {
-        mcpHttpProcesses.delete(child);
-        await stopChildProcess(child);
-      };
-      return { server, url, stop };
-    };
-
-    const mcp = {
-      fakeStdioServerPath,
-      resetServers: resetMcpServers,
-      addStdioServer: addStdioMcpServer,
-      addHttpServer: addHttpMcpServer,
-      waitForTool: waitForMcpTool,
-    };
-
     const dispose = async (): Promise<void> => {
       // Teardown ordering is load-bearing (see HYBRID_HARNESS.md "Race-free
       // teardown"):
@@ -1590,16 +1335,6 @@ export async function setupHybridChatHarness(
         activeQueryClient = undefined;
         activeRouter = undefined;
         bridge.uninstall();
-        // Server ids restart at 1 in the next harness's fresh db, so a cached
-        // client left here would be silently reused for a different server.
-        // Dynamic import: static top-level imports of the handler graph break
-        // module-load ordering (see the ipc_host import above).
-        const { mcpManager } = await import("@/ipc/utils/mcp_manager");
-        await mcpManager.disposeAll();
-        await Promise.all(
-          Array.from(mcpHttpProcesses, (child) => stopChildProcess(child)),
-        );
-        mcpHttpProcesses.clear();
         await nodeHarness.dispose();
       } catch (error) {
         teardownError = error;
@@ -1609,7 +1344,6 @@ export async function setupHybridChatHarness(
           delete diagnosticGlobal.__DYAD_HYBRID_BRIDGE__;
         }
         activeHybridChatHarness = false;
-        setModelClientFetchForTesting(undefined);
         restoreHybridEnv(envSnapshot);
       }
 
@@ -1659,7 +1393,6 @@ export async function setupHybridChatHarness(
       setChatInputValue: seedChatInput,
       getChatInputValue,
       setChatAttachments,
-      setSelectedComponents,
       typeInChat,
       pressEnterInChat,
       waitForStreamEnd,
@@ -1671,12 +1404,10 @@ export async function setupHybridChatHarness(
       selectChatMode,
       createChat,
       github,
-      mcp,
       dispose,
     };
   } catch (error) {
     activeHybridChatHarness = false;
-    setModelClientFetchForTesting(undefined);
     restoreHybridEnv(envSnapshot);
     if (node) {
       await node.dispose();

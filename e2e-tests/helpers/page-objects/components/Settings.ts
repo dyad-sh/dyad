@@ -22,18 +22,6 @@ export class Settings {
     await this.page.getByRole("switch", { name: "Enable Agent v2" }).click();
   }
 
-  async toggleSandboxScriptExecution() {
-    await this.page
-      .getByRole("switch", { name: "Enable sandbox script execution" })
-      .click();
-  }
-
-  async toggleCloudSandboxExperiment() {
-    await this.page
-      .getByRole("switch", { name: "Enable Cloud Sandbox" })
-      .click();
-  }
-
   async toggleEnableSelectAppFromHomeChatInput() {
     await this.page
       .getByRole("switch", {
@@ -72,16 +60,11 @@ export class Settings {
       .click();
   }
 
-  async changeRuntimeMode(mode: "host" | "docker" | "cloud") {
+  async changeRuntimeMode(mode: "host" | "docker") {
     await this.page.getByRole("combobox", { name: "Runtime Mode" }).click();
     await this.page
       .getByRole("option", {
-        name:
-          mode === "host"
-            ? "Local (default)"
-            : mode === "docker"
-              ? "Docker (experimental)"
-              : "Cloud Sandbox (Pro)",
+        name: mode === "host" ? "Local (default)" : "Docker (experimental)",
       })
       .click();
   }
@@ -252,18 +235,5 @@ export class Settings {
     await this.page.getByRole("button", { name: "Save Key" }).click();
     // Wait for the key to be saved
     await expect(this.page.getByText(/test.+2345/)).toBeVisible();
-  }
-
-  async setUpDyadProvider() {
-    await this.page
-      .locator("div")
-      .filter({ hasText: /^DyadNeeds Setup$/ })
-      .nth(1)
-      .click();
-    await this.page.getByRole("textbox", { name: "Set Dyad API Key" }).click();
-    await this.page
-      .getByRole("textbox", { name: "Set Dyad API Key" })
-      .fill("testdyadkey");
-    await this.page.getByRole("button", { name: "Save Key" }).click();
   }
 }

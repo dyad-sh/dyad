@@ -12,14 +12,8 @@ import {
 } from "@/components/ui/tooltip";
 import { useSettings } from "@/hooks/useSettings";
 import { useChatMode } from "@/hooks/useChatMode";
-import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
 import type { ChatMode } from "@/lib/schemas";
-import { isDyadProEnabled } from "@/lib/schemas";
-import {
-  getChatModeFallbackToastId,
-  getChatModeDisplayName,
-  showChatModeFallbackToast,
-} from "@/lib/chatModeToast";
+import { getChatModeDisplayName } from "@/lib/chatModeToast";
 import { cn } from "@/lib/utils";
 import { detectIsMac } from "@/hooks/useChatModeToggle";
 import { useRouterState } from "@tanstack/react-router";
@@ -28,13 +22,7 @@ import { LocalAgentNewChatToast } from "./LocalAgentNewChatToast";
 import { useSetAtom } from "jotai";
 import { hasManuallySelectedChatModeAtom } from "@/atoms/chatAtoms";
 import { useChatMessageCount } from "@/hooks/useChatMessages";
-import { Hammer, Bot, MessageCircle, Lightbulb } from "lucide-react";
-import { useEffect, useRef } from "react";
-import {
-  FREE_PRO_MODEL_FALLBACK_CHAT_MODE,
-  isFreeProBuildModeCombination,
-  isFreeProModel,
-} from "@/lib/freeProModel";
+import { Bot, MessageCircle, Lightbulb } from "lucide-react";
 
 export function ChatModeSelector() {
   const { updateSettings } = useSettings();
@@ -42,67 +30,14 @@ export function ChatModeSelector() {
   const isChatRoute = routerState.location.pathname === "/chat";
   const chatId = routerState.location.search.id as number | undefined;
   const currentChatMessageCount = useChatMessageCount(chatId);
-  const {
-    selectedMode,
-    effectiveMode,
-    storedChatMode,
-    fallbackReason,
-    setChatMode,
-    settings,
-  } = useChatMode(isChatRoute ? chatId : null);
+  const { selectedMode, setChatMode, settings } = useChatMode(
+    isChatRoute ? chatId : null,
+  );
   const setHasManuallySelectedChatMode = useSetAtom(
     hasManuallySelectedChatModeAtom,
   );
-  const fallbackToastKeyRef = useRef<string | null>(null);
-
-  const isProEnabled = settings ? isDyadProEnabled(settings) : false;
-  const { messagesRemaining, messagesLimit, isQuotaExceeded } =
-    useFreeAgentQuota();
-  const isDyadFreeSelected = isFreeProModel(settings?.selectedModel);
-  const buildUnavailableForDyadFree = isDyadFreeSelected;
-
-  useEffect(() => {
-    if (!chatId || !fallbackReason || !storedChatMode) {
-      fallbackToastKeyRef.current = null;
-      return;
-    }
-
-    const toastKey = getChatModeFallbackToastId({
-      chatId,
-      reason: fallbackReason,
-      effectiveMode,
-    });
-    if (fallbackToastKeyRef.current === toastKey) {
-      return;
-    }
-
-    fallbackToastKeyRef.current = toastKey;
-    showChatModeFallbackToast({
-      effectiveMode,
-      isPro: isProEnabled,
-      toastId: toastKey,
-    });
-  }, [chatId, effectiveMode, fallbackReason, isProEnabled, storedChatMode]);
-
-  useEffect(() => {
-    if (
-      settings &&
-      storedChatMode === "build" &&
-      isFreeProBuildModeCombination(settings.selectedModel, selectedMode)
-    ) {
-      void setChatMode(FREE_PRO_MODEL_FALLBACK_CHAT_MODE).catch(() => {});
-    }
-  }, [selectedMode, setChatMode, settings, storedChatMode]);
-
   const handleModeChange = (value: string) => {
     const newMode = value as ChatMode;
-    if (
-      settings &&
-      isFreeProBuildModeCombination(settings.selectedModel, newMode)
-    ) {
-      toast.error("Dyad Free is not available in Build mode.");
-      return;
-    }
     // An explicit pick outside a chat updates settings.selectedChatMode;
     // latch so the home page stops syncing it to the effective default.
     if (!isChatRoute || chatId == null) {
@@ -138,22 +73,16 @@ export function ChatModeSelector() {
     }
   };
 
-  const getModeDisplayName = (mode: ChatMode) => {
-    return getChatModeDisplayName(mode, isProEnabled);
-  };
+  const getModeDisplayName = (mode: ChatMode) => getChatModeDisplayName(mode);
 
   const getModeIcon = (mode: ChatMode) => {
     switch (mode) {
-      case "build":
-        return <Hammer size={14} />;
       case "ask":
         return <MessageCircle size={14} />;
       case "local-agent":
         return <Bot size={14} />;
       case "plan":
         return <Lightbulb size={14} />;
-      default:
-        return <Hammer size={14} />;
     }
   };
   const isMac = detectIsMac();
@@ -172,7 +101,7 @@ export function ChatModeSelector() {
                 aria-label={`Chat mode: ${getModeDisplayName(selectedMode)}`}
                 className={cn(
                   "cursor-pointer w-fit px-2 py-0 text-xs font-medium border-none shadow-none gap-1 rounded-lg transition-colors",
-                  selectedMode === "build" || selectedMode === "local-agent"
+                  selectedMode === "local-agent"
                     ? "text-foreground/80 hover:text-foreground hover:bg-muted/60"
                     : selectedMode === "ask"
                       ? "bg-purple-500/10 text-purple-600 hover:bg-purple-500/15 dark:bg-purple-500/15 dark:text-purple-400 dark:hover:bg-purple-500/20"
@@ -196,19 +125,17 @@ export function ChatModeSelector() {
           </TooltipContent>
         </Tooltip>
         <SelectContent align="start">
-          {isProEnabled && (
-            <SelectItem value="local-agent">
-              <div className="flex flex-col items-start">
-                <div className="flex items-center gap-1.5">
-                  <Bot size={14} className="text-muted-foreground" />
-                  <span className="font-medium">Agent v2</span>
-                </div>
-                <span className="text-xs text-muted-foreground ml-[22px]">
-                  Better at bigger tasks and debugging
-                </span>
+          <SelectItem value="local-agent">
+            <div className="flex flex-col items-start">
+              <div className="flex items-center gap-1.5">
+                <Bot size={14} className="text-muted-foreground" />
+                <span className="font-medium">Agent</span>
               </div>
-            </SelectItem>
-          )}
+              <span className="text-xs text-muted-foreground ml-[22px]">
+                Build and debug with tools
+              </span>
+            </div>
+          </SelectItem>
           <SelectItem value="plan">
             <div className="flex flex-col items-start">
               <div className="flex items-center gap-1.5">
@@ -217,37 +144,6 @@ export function ChatModeSelector() {
               </div>
               <span className="text-xs text-muted-foreground ml-[22px]">
                 Design before you build
-              </span>
-            </div>
-          </SelectItem>
-          {!isProEnabled && (
-            <SelectItem value="local-agent" disabled={isQuotaExceeded}>
-              <div className="flex flex-col items-start">
-                <div className="flex items-center gap-1.5">
-                  <Bot size={14} className="text-muted-foreground" />
-                  <span className="font-medium">Basic Agent</span>
-                  <span className="text-xs text-muted-foreground">
-                    {`(${isQuotaExceeded ? "0" : messagesRemaining}/${messagesLimit} remaining for today)`}
-                  </span>
-                </div>
-                <span className="text-xs text-muted-foreground ml-[22px]">
-                  {isQuotaExceeded
-                    ? "Daily limit reached"
-                    : "Try our AI agent for free"}
-                </span>
-              </div>
-            </SelectItem>
-          )}
-          <SelectItem value="build" disabled={buildUnavailableForDyadFree}>
-            <div className="flex flex-col items-start">
-              <div className="flex items-center gap-1.5">
-                <Hammer size={14} className="text-muted-foreground" />
-                <span className="font-medium">Build</span>
-              </div>
-              <span className="text-xs text-muted-foreground ml-[22px]">
-                {buildUnavailableForDyadFree
-                  ? "Use Agent, Ask, or Plan with Dyad Free"
-                  : "Generate and edit code"}
               </span>
             </div>
           </SelectItem>

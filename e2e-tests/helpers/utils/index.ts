@@ -5,7 +5,6 @@
 export {
   normalizeItemReferences,
   normalizeToolCallIds,
-  normalizeMcpCallIds,
   normalizeGitContextHashes,
   normalizeVersionedFiles,
   normalizePath,

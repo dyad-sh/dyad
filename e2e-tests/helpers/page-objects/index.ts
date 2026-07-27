@@ -6,7 +6,7 @@
 export { PageObject } from "./PageObject";
 
 // Dialog page objects
-export { ContextFilesPickerDialog, ProModesDialog } from "./dialogs";
+export { ContextFilesPickerDialog } from "./dialogs";
 
 // Component page objects
 export {

@@ -271,9 +271,8 @@ Summary (full tables and recipes in `plans/claude-cleanup-machines.md`):
 116 atoms — 69 UI-only (keep, per-window), 32 machine-mirror (retire),
 12 cross-machine + 3 mixed (retire, worst class). Load-bearing verified
 corrections that Phase A recipes already encode: release-age outranks
-pnpm-migration in the warning priority; six preview-error writer sites
-(four in `PreviewIframe.tsx`, including `dyad-app`-sourced cloud-sandbox
-errors); `subscribeStreamFinished` is deferred but does not fire on
+pnpm-migration in the warning priority; the preview-error writer sites;
+`subscribeStreamFinished` is deferred but does not fire on
 `disposeKey` (watchIdle facades must observe disposal); provider mount
 order constrains facade injection sites.
 

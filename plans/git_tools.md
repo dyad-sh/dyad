@@ -132,11 +132,11 @@ git_restore_file({
   before selecting line ranges; reject binary/non-UTF-8 content while still
   allowing binary restoration.
 - Execute restore under the existing per-file write lock using worktree-only
-  Git restoration after confirming the historical tree entry. Preserve cloud
-  sandbox synchronization, shared Supabase module tracking/deployment,
+  Git restoration after confirming the historical tree entry. Preserve shared
+  Supabase module tracking/deployment,
   blueprint gating, end-of-turn commits, and normal tool-consent behavior.
 - Register the tools under
-  `src/pro/main/ipc/handlers/local_agent/tools/` and expose compact Git cards
+  `src/ipc/pi/tools/dyad/` and expose compact Git cards
   through `src/components/chat/DyadMarkdownParser.tsx`, showing operation,
   scope, short revision, path, and pending/finished state without embedding
   full output in the card.

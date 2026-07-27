@@ -8,7 +8,6 @@ import {
   Check,
   Ban,
   AlertTriangle,
-  Loader2,
 } from "lucide-react";
 import type { PendingToolConsent } from "@/user_input/selectors";
 import {
@@ -37,14 +36,7 @@ export function AgentConsentBanner({
   queueTotal = 1,
 }: AgentConsentBannerProps) {
   const { t } = useTranslation("chat");
-  const {
-    toolName,
-    toolDescription,
-    inputPreview,
-    serverName,
-    classifierReason,
-    classifierPending,
-  } = consent;
+  const { toolName, toolDescription, inputPreview } = consent;
   const sqlMutatesSchema = consent.metadata?.sqlMutatesSchema === true;
   const sqlDeletesData = consent.metadata?.sqlDeletesData === true;
 
@@ -89,14 +81,7 @@ export function AgentConsentBanner({
         <div className="flex items-center gap-2 mb-1">
           <Bot className="w-4 h-4 text-muted-foreground flex-shrink-0" />
           <span className="text-sm font-medium">
-            Allow <span className="font-mono">{toolName}</span>
-            {serverName && (
-              <>
-                {" "}
-                from <span className="font-mono">{serverName}</span>
-              </>
-            )}{" "}
-            to run?
+            Allow <span className="font-mono">{toolName}</span> to run?
             {queueTotal > 1 && (
               <span className="ml-1.5 text-xs text-muted-foreground font-normal">
                 (1 of {queueTotal})
@@ -123,28 +108,6 @@ export function AgentConsentBanner({
             <X className="w-3.5 h-3.5" />
           </button>
         </div>
-        {classifierPending ? (
-          <div
-            className="ml-6 mb-1.5 flex items-center gap-1.5 text-xs text-muted-foreground"
-            role="status"
-            aria-live="polite"
-          >
-            <Loader2 className="h-3.5 w-3.5 flex-shrink-0 animate-spin" />
-            <span>{t("aiReviewingRequest")}</span>
-          </div>
-        ) : classifierReason ? (
-          <div className="ml-6 mb-1.5 flex gap-2 rounded-lg border-l-4 border-orange-400 bg-amber-50 px-3 py-2 dark:border-orange-500 dark:bg-amber-950/30">
-            <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-orange-500 dark:text-orange-400" />
-            <div className="min-w-0">
-              <div className="text-xs font-semibold uppercase tracking-wide text-orange-600 dark:text-orange-400">
-                {t("flaggedForReview")}
-              </div>
-              <div className="mt-0.5 whitespace-pre-wrap break-words text-sm text-orange-900 dark:text-orange-200">
-                {classifierReason}
-              </div>
-            </div>
-          </div>
-        ) : null}
         {inputPreview && (
           <div className="ml-6 mb-1.5">
             {sqlMutatesSchema && (
@@ -186,15 +149,17 @@ export function AgentConsentBanner({
           </div>
         )}
         <div className="flex items-center gap-2 ml-6">
-          <Button
-            onClick={() => onDecision("accept-always")}
-            size="sm"
-            variant="outline"
-            className="h-7 px-3 text-xs"
-          >
-            <ShieldCheck className="w-3.5 h-3.5 mr-1" />
-            Always allow
-          </Button>
+          {toolName !== "bash" && (
+            <Button
+              onClick={() => onDecision("accept-always")}
+              size="sm"
+              variant="outline"
+              className="h-7 px-3 text-xs"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 mr-1" />
+              Always allow
+            </Button>
+          )}
           <Button
             onClick={() => onDecision("accept-once")}
             size="sm"

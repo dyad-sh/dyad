@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { Message } from "@/ipc/types";
 import { readEffectiveSettings } from "@/main/settings";
-import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import {
   ADD_DEPENDENCY_INSTALL_TIMEOUT_MS,
   buildAddDependencyCommand,
@@ -16,6 +16,7 @@ import {
   getPackageManagerCommandEnv,
   getPnpmMinimumReleaseAgeSupport,
   runCommand,
+  type CommandRunner,
 } from "@/ipc/utils/socket_firewall";
 import {
   recordAndReportDeniedPnpmBuilds,
@@ -305,6 +306,7 @@ export class ExecuteAddDependencyError extends Error {
 async function runAddDependencyCommand(
   command: { command: string; args: string[] },
   appPath: string,
+  signal?: AbortSignal,
 ): Promise<{
   succeeded: boolean;
   installResults: string;
@@ -314,6 +316,7 @@ async function runAddDependencyCommand(
     const options = {
       cwd: appPath,
       env: getPackageManagerCommandEnv(),
+      signal,
       timeoutMs: ADD_DEPENDENCY_INSTALL_TIMEOUT_MS,
     };
     const { stdout, stderr } = await runCommand(
@@ -327,6 +330,9 @@ async function runAddDependencyCommand(
       lastError: null,
     };
   } catch (error) {
+    if (isDyadError(error)) {
+      throw error;
+    }
     return {
       succeeded: false,
       installResults: "",
@@ -347,6 +353,7 @@ function formatDeniedBuildsNote(packageNames: string[]): string {
 async function rebuildPromotedPnpmBuilds(
   appPath: string,
   packageNames: string[],
+  signal?: AbortSignal,
 ): Promise<void> {
   if (packageNames.length === 0) {
     return;
@@ -356,10 +363,23 @@ async function rebuildPromotedPnpmBuilds(
     await runCommand("pnpm", ["rebuild", ...packageNames], {
       cwd: appPath,
       env: getPackageManagerCommandEnv(),
+      signal,
       timeoutMs: ADD_DEPENDENCY_INSTALL_TIMEOUT_MS,
     });
-  } catch {
+  } catch (error) {
+    if (isDyadError(error)) {
+      throw error;
+    }
     // Best effort: if the build is still broken, the install should not regress.
+  }
+}
+
+function throwIfDependencyInstallCancelled(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new DyadError(
+      "Dependency installation was cancelled.",
+      DyadErrorKind.UserCancelled,
+    );
   }
 }
 
@@ -367,11 +387,14 @@ export async function installPackages({
   packages,
   appPath,
   dev = false,
+  signal,
 }: {
   packages: string[];
   appPath: string;
   dev?: boolean;
+  signal?: AbortSignal;
 }): Promise<ExecuteAddDependencyResult> {
+  throwIfDependencyInstallCancelled(signal);
   let parsedSpecs: ParsedPackageSpec[];
   let installedDependencyNames: Set<string>;
   try {
@@ -401,11 +424,15 @@ export async function installPackages({
     .map(({ raw }) => raw);
 
   const settings = await readEffectiveSettings();
+  throwIfDependencyInstallCancelled(signal);
   const warningMessages: string[] = [];
+  const commandRunner: CommandRunner = (command, args, options) =>
+    runCommand(command, args, { ...options, signal });
 
   let useSocketFirewall = settings.blockUnsafeNpmPackages !== false;
   if (useSocketFirewall) {
-    const socketFirewall = await ensureSocketFirewallInstalled();
+    const socketFirewall = await ensureSocketFirewallInstalled(commandRunner);
+    throwIfDependencyInstallCancelled(signal);
     if (!socketFirewall.available) {
       useSocketFirewall = false;
       if (socketFirewall.warningMessage) {
@@ -414,18 +441,19 @@ export async function installPackages({
     }
   }
 
-  const pnpmSupport = await getPnpmMinimumReleaseAgeSupport();
+  const pnpmSupport = await getPnpmMinimumReleaseAgeSupport(commandRunner);
+  throwIfDependencyInstallCancelled(signal);
   // Choose from the app's own signals (packageManager field, lockfiles,
   // node_modules shape) so add-dependency and the run command agree on the
   // package manager — a pnpm add against an npm-shaped app would purge its
   // node_modules and write a lockfile the run command ignores.
-  const signal = getPackageManagerSignal(appPath);
+  const packageManagerSignal = getPackageManagerSignal(appPath);
   const packageManager = choosePackageManagerFromSignal({
-    signal,
+    signal: packageManagerSignal,
     pnpmAvailable: pnpmSupport.available,
   });
   if (
-    signalPrefersPnpm(signal) &&
+    signalPrefersPnpm(packageManagerSignal) &&
     !pnpmSupport.minimumReleaseAgeSupported &&
     pnpmSupport.warningMessage &&
     shouldShowPnpmMinimumReleaseAgeWarning(settings)
@@ -482,7 +510,8 @@ export async function installPackages({
   const completedPackages: string[] = [];
   for (const command of commands) {
     const { succeeded, installResults, lastError } =
-      await runAddDependencyCommand(command.invocation, appPath);
+      await runAddDependencyCommand(command.invocation, appPath, signal);
+    throwIfDependencyInstallCancelled(signal);
     if (!succeeded && lastError) {
       throw new ExecuteAddDependencyError({
         error: lastError,
@@ -498,7 +527,8 @@ export async function installPackages({
   }
   const installResults = commandResults.join("\n");
 
-  await rebuildPromotedPnpmBuilds(appPath, promotedPackages);
+  await rebuildPromotedPnpmBuilds(appPath, promotedPackages, signal);
+  throwIfDependencyInstallCancelled(signal);
 
   let installResultsWithPolicyNotes = installResults;
   if (packageManager === "pnpm") {
@@ -530,15 +560,19 @@ export async function executeAddDependency({
   packages,
   message,
   appPath,
+  signal,
 }: {
   packages: string[];
   message: Message;
   appPath: string;
+  signal?: AbortSignal;
 }): Promise<ExecuteAddDependencyResult> {
   const { installResults, warningMessages } = await installPackages({
     packages,
     appPath,
+    signal,
   });
+  throwIfDependencyInstallCancelled(signal);
 
   // Update the message content with the installation results
   const escapedPackages = escapeXmlAttr(packages.join(" "));

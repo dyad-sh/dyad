@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PtyCommandExecutionError } from "@/ipc/utils/pty_command_runner";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
@@ -1400,6 +1401,35 @@ describe("buildPtyInvocation", () => {
 });
 
 describe("runCommand", () => {
+  it("passes cancellation to the PTY command", async () => {
+    const controller = new AbortController();
+    runPtyCommandMock.mockResolvedValueOnce({ output: "installed" });
+
+    await expect(
+      runCommand("pnpm", ["add", "react"], {
+        signal: controller.signal,
+      }),
+    ).resolves.toEqual({ stdout: "installed", stderr: "" });
+
+    expect(runPtyCommandMock).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(Array),
+      expect.objectContaining({ signal: controller.signal }),
+    );
+  });
+
+  it("preserves user cancellation errors from the PTY command", async () => {
+    const cancellation = new DyadError(
+      "Command cancelled.",
+      DyadErrorKind.UserCancelled,
+    );
+    runPtyCommandMock.mockRejectedValueOnce(cancellation);
+
+    await expect(runCommand("pnpm", ["add", "react"])).rejects.toBe(
+      cancellation,
+    );
+  });
+
   it("preserves the original command in Windows-facing PTY errors", async () => {
     await withPlatform("win32", async () => {
       runPtyCommandMock.mockRejectedValueOnce(

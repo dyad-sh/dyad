@@ -12,14 +12,17 @@ describe("TypeScriptUtilityProcessScheduler", () => {
     const events: string[] = [];
     let finishFirst!: () => void;
 
-    const first = scheduler.runExclusive("code-explorer", async () => {
-      events.push("first:start");
-      await new Promise<void>((resolve) => {
-        finishFirst = resolve;
-      });
-      events.push("first:end");
-      return 1;
-    });
+    const first = scheduler.runExclusive(
+      "supabase-dependency-analysis",
+      async () => {
+        events.push("first:start");
+        await new Promise<void>((resolve) => {
+          finishFirst = resolve;
+        });
+        events.push("first:end");
+        return 1;
+      },
+    );
     const second = scheduler.runExclusive("tsc", async () => {
       events.push("second:start");
       return 2;
@@ -32,37 +35,40 @@ describe("TypeScriptUtilityProcessScheduler", () => {
     expect(events).toEqual(["first:start", "first:end", "second:start"]);
   });
 
-  it("reuses an idle explorer for another explorer request", async () => {
+  it("reuses a compatible idle resident process", async () => {
     const scheduler = new TypeScriptUtilityProcessScheduler();
     const stop = vi.fn(async () => undefined);
     const token = {};
 
-    await scheduler.runExclusive("code-explorer", async () => {
+    await scheduler.runExclusive("supabase-dependency-analysis", async () => {
       scheduler.registerResidentProcess({
-        kind: "code-explorer",
+        kind: "supabase-dependency-analysis",
         reusable: true,
         token,
         stop,
       });
     });
-    await scheduler.runExclusive("code-explorer", async () => undefined);
+    await scheduler.runExclusive(
+      "supabase-dependency-analysis",
+      async () => undefined,
+    );
 
     expect(stop).not.toHaveBeenCalled();
   });
 
-  it("stops an idle explorer before starting TSC", async () => {
+  it("stops an idle dependency-analysis process before starting TSC", async () => {
     const scheduler = new TypeScriptUtilityProcessScheduler();
     const events: string[] = [];
     const token = {};
     let registration: ReturnType<typeof scheduler.registerResidentProcess>;
 
-    await scheduler.runExclusive("code-explorer", async () => {
+    await scheduler.runExclusive("supabase-dependency-analysis", async () => {
       registration = scheduler.registerResidentProcess({
-        kind: "code-explorer",
+        kind: "supabase-dependency-analysis",
         reusable: true,
         token,
         stop: async () => {
-          events.push("explorer:stop");
+          events.push("analysis:stop");
           registration.clear();
         },
       });
@@ -71,45 +77,48 @@ describe("TypeScriptUtilityProcessScheduler", () => {
       events.push("tsc:start");
     });
 
-    expect(events).toEqual(["explorer:stop", "tsc:start"]);
+    expect(events).toEqual(["analysis:stop", "tsc:start"]);
   });
 
-  it("waits for an already-stopping explorer before reusing its kind", async () => {
+  it("waits for an already-stopping process before reusing its kind", async () => {
     const scheduler = new TypeScriptUtilityProcessScheduler();
     const events: string[] = [];
     const token = {};
     let finishStop!: () => void;
     let registration: ReturnType<typeof scheduler.registerResidentProcess>;
 
-    await scheduler.runExclusive("code-explorer", async () => {
+    await scheduler.runExclusive("supabase-dependency-analysis", async () => {
       registration = scheduler.registerResidentProcess({
-        kind: "code-explorer",
+        kind: "supabase-dependency-analysis",
         reusable: true,
         token,
         stop: async () => {
-          events.push("explorer:stopping");
+          events.push("analysis:stopping");
           await new Promise<void>((resolve) => {
             finishStop = resolve;
           });
           registration.clear();
-          events.push("explorer:stopped");
+          events.push("analysis:stopped");
         },
       });
     });
 
     const stopping = registration!.stop();
-    const next = scheduler.runExclusive("code-explorer", async () => {
-      events.push("explorer:next");
-    });
+    const next = scheduler.runExclusive(
+      "supabase-dependency-analysis",
+      async () => {
+        events.push("analysis:next");
+      },
+    );
     await Promise.resolve();
-    expect(events).toEqual(["explorer:stopping"]);
+    expect(events).toEqual(["analysis:stopping"]);
 
     finishStop();
     await Promise.all([stopping, next]);
     expect(events).toEqual([
-      "explorer:stopping",
-      "explorer:stopped",
-      "explorer:next",
+      "analysis:stopping",
+      "analysis:stopped",
+      "analysis:next",
     ]);
   });
 
@@ -141,7 +150,10 @@ describe("TypeScriptUtilityProcessScheduler", () => {
     const first = scheduler.runExclusive("tsc", async () => {
       throw new Error("boom");
     });
-    const second = scheduler.runExclusive("code-explorer", async () => 2);
+    const second = scheduler.runExclusive(
+      "supabase-dependency-analysis",
+      async () => 2,
+    );
 
     await expect(first).rejects.toThrow("boom");
     await expect(second).resolves.toBe(2);
@@ -152,9 +164,9 @@ describe("TypeScriptUtilityProcessScheduler", () => {
     let stopAttempts = 0;
     let registration: ReturnType<typeof scheduler.registerResidentProcess>;
 
-    await scheduler.runExclusive("code-explorer", async () => {
+    await scheduler.runExclusive("supabase-dependency-analysis", async () => {
       registration = scheduler.registerResidentProcess({
-        kind: "code-explorer",
+        kind: "supabase-dependency-analysis",
         reusable: true,
         token: {},
         stop: async () => {
@@ -181,14 +193,14 @@ describe("TypeScriptUtilityProcessScheduler", () => {
     expect(secondOperation).toHaveBeenCalledOnce();
   });
 
-  it("does not reuse an explorer whose stop attempt failed", async () => {
+  it("does not reuse a resident whose stop attempt failed", async () => {
     const scheduler = new TypeScriptUtilityProcessScheduler();
     let stopAttempts = 0;
     let registration: ReturnType<typeof scheduler.registerResidentProcess>;
 
-    await scheduler.runExclusive("code-explorer", async () => {
+    await scheduler.runExclusive("supabase-dependency-analysis", async () => {
       registration = scheduler.registerResidentProcess({
-        kind: "code-explorer",
+        kind: "supabase-dependency-analysis",
         reusable: true,
         token: {},
         stop: async () => {
@@ -210,7 +222,7 @@ describe("TypeScriptUtilityProcessScheduler", () => {
     // resident, since the owner already detached its handle.
     const nextOperation = vi.fn(async () => undefined);
     await expect(
-      scheduler.runExclusive("code-explorer", nextOperation),
+      scheduler.runExclusive("supabase-dependency-analysis", nextOperation),
     ).resolves.toBeUndefined();
     expect(stopAttempts).toBe(2);
     expect(nextOperation).toHaveBeenCalledOnce();
@@ -221,9 +233,9 @@ describe("TypeScriptUtilityProcessScheduler", () => {
     const scheduler = new TypeScriptUtilityProcessScheduler();
     let registration: ReturnType<typeof scheduler.registerResidentProcess>;
 
-    await scheduler.runExclusive("code-explorer", async () => {
+    await scheduler.runExclusive("supabase-dependency-analysis", async () => {
       registration = scheduler.registerResidentProcess({
-        kind: "code-explorer",
+        kind: "supabase-dependency-analysis",
         reusable: true,
         token: {},
         stop: () => new Promise<void>(() => undefined),
@@ -233,7 +245,7 @@ describe("TypeScriptUtilityProcessScheduler", () => {
     const blockedOperation = vi.fn(async () => undefined);
     const blocked = scheduler.runExclusive("tsc", blockedOperation);
     const expectation = expect(blocked).rejects.toThrow(
-      "Timed out after 30000ms waiting for code-explorer process to exit",
+      "Timed out after 30000ms waiting for supabase-dependency-analysis process to exit",
     );
     await vi.advanceTimersByTimeAsync(30_000);
     await expectation;

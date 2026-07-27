@@ -76,13 +76,10 @@
     }
   },
   "dismissError": "오류 무시",
-  "askDyadToBuild": "Dyad에게 빌드 요청하기...",
   "cancelGeneration": "생성 취소",
   "sendMessage": "메시지 보내기",
   "loadingProposal": "제안을 불러오는 중...",
   "errorLoadingProposal": "제안 불러오기 오류: {{message}}",
-  "visualEditor": "비주얼 에디터 (Pro)",
-  "visualEditorDescription": "비주얼 편집을 사용하면 AI 없이 UI를 변경할 수 있으며, 이는 Pro 전용 기능입니다",
   "summarizeNewChatTip": "새 채팅을 만들면 AI가 더 집중적이고 효율적으로 작동합니다",
   "summarizeToNewChat": "새 채팅으로 요약",
   "refactorFile": "{{path}} 리팩터링하여 더 모듈화하기",
@@ -121,19 +118,6 @@
     "didNotFinish": "완료되지 않음",
     "chatNumber": "채팅 #{{chatId}}",
     "messagesRange": "메시지 {{range}}"
-  },
-  "exploreChatHistory": {
-    "badge": "기록",
-    "title": "채팅 기록 탐색",
-    "chatCount_one": "채팅 {{count}}개",
-    "chatCount_other": "채팅 {{count}}개",
-    "evidenceCount_one": "근거 {{count}}개",
-    "evidenceCount_other": "근거 {{count}}개",
-    "noRelevantHistory": "관련 기록 없음",
-    "partial": "일부 결과",
-    "exploring": "탐색 중...",
-    "didNotFinish": "완료되지 않음",
-    "failed": "실패"
   },
   "git": {
     "checkingChanges": "프로젝트 변경 사항 확인 중",
@@ -245,8 +229,6 @@
   "currentInput": "현재 입력",
   "total": "합계",
   "failedCountTokens": "토큰 계산 실패",
-  "optimizeTokens": "다음으로 토큰을 최적화하세요:",
-  "dyadProSmartContext": "Dyad Pro의 스마트 컨텍스트",
   "attachFiles": "파일 첨부",
   "themes": "테마",
   "noTheme": "테마 없음",
@@ -266,20 +248,13 @@
     "descriptionSingular": "파일 사용 방식을 선택하세요.",
     "descriptionPlural": "파일 사용 방식을 선택하세요."
   },
-  "selectedComponents": "선택된 컴포넌트 ({{count}})",
-  "clearAllComponents": "선택된 컴포넌트 모두 지우기",
-  "deselectComponent": "컴포넌트 선택 해제",
   "chatMode": {
     "openMenu": "모드 메뉴 열기",
     "toggleShortcut": "{{shortcut}}(으)로 전환",
     "agentV2": "에이전트 v2",
     "agentV2Description": "더 큰 작업과 디버깅에 강함",
-    "build": "빌드",
-    "buildDescription": "코드 생성 및 편집",
     "ask": "질문",
-    "askDescription": "앱에 대해 질문하기",
-    "buildWithMcp": "MCP로 빌드",
-    "buildWithMcpDescription": "빌드와 유사하지만 코드 생성을 위해 도구(MCP)를 사용할 수 있음"
+    "askDescription": "앱에 대해 질문하기"
   },
   "modelPicker": {
     "modelLabel": "모델:",
@@ -322,38 +297,9 @@
     "versionCount": "버전 {{count}}"
   },
   "errorBox": {
-    "accessWithDyadPro": "Dyad Pro로 이용하기",
     "orSwitchModel": "또는 다른 모델로 전환하세요.",
-    "upgradeToDyadPro": "Dyad Pro로 업그레이드",
     "troubleshootingGuide": "문제 해결 가이드",
-    "invalidProKey": "유효한 Dyad Pro 키가 없는 것 같습니다.",
-    "today": "오늘.",
-    "creditsUsed": "이번 달 Dyad AI 크레딧을 모두 사용했습니다.",
-    "reloadOrUpgrade": "다시 불러오거나 구독을 업그레이드하고",
-    "getMoreCredits": "더 많은 AI 크레딧을 받으세요",
     "readDocs": "문서 읽기"
-  },
-  "promo": {
-    "tiredOfWaiting": "AI를 기다리는 데 지치셨나요?",
-    "getDyadPro": "Dyad Pro 받기",
-    "fasterEdits": "Turbo Edits로 더 빠른 편집을 경험하세요.",
-    "saveOnCosts": "다음으로 AI 비용을 최대 3배 절약하세요:",
-    "debuggingLoop": "디버깅 루프에 갇히셨나요? 다른 모델을 시도해보세요.",
-    "joinBuilders": "600명 이상의 빌더가 참여 중인",
-    "dyadSubreddit": "Dyad 서브레딧에 참여하세요",
-    "foundBug": "버그를 발견하셨나요? 도움말 > 버그 신고를 클릭하세요",
-    "reportBadResponse": "잘못된 AI 응답을 신고하고 싶으신가요? 도움말을 클릭하여 채팅을 업로드하세요",
-    "watch": "시청하기",
-    "creatorBuildApp": "Dyad 제작자가 Bible 앱을 단계별로 만드는 과정",
-    "gettingStuck": "막히셨나요? 다음을 읽어보세요:",
-    "debuggingTips": "디버깅 팁",
-    "advancedTip": "고급 팁: 다음을 사용자 지정하세요:",
-    "aiRules": "AI 규칙",
-    "keepFocused": "AI가 계속 집중하기를 원하시나요? 새 채팅을 시작하세요.",
-    "whatsNext": "다음에 무엇이 있는지 궁금하신가요? 다음을 확인하세요:",
-    "roadmap": "로드맵",
-    "likeDyad": "Dyad가 마음에 드시나요? 다음에서 스타를 눌러주세요:",
-    "gitHub": "GitHub"
   },
   "consent": {
     "toolWantsToRun": "도구가 실행을 요청합니다",

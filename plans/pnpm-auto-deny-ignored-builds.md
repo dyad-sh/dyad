@@ -114,9 +114,9 @@ Reuse the `commitPnpmAllowBuildsConfigIfChanged` pattern: `gitAdd` + `gitCommit(
 
 ### 4. Telemetry
 
-Emit one event per install that produced new denials, via the existing main→renderer telemetry channel (`system.onTelemetryEvent` → PostHog): event `pnpm:build-auto-denied`, properties `{ packages: ["core-js@3.49.0"], source: "add-dependency" | "app-run" | "self-heal" | "cloud-sandbox" }`. This is the input signal for curating the remote allow-list.
+Emit one event per install that produced new denials, via the existing main→renderer telemetry channel (`system.onTelemetryEvent` → PostHog): event `pnpm:build-auto-denied`, properties `{ packages: ["core-js@3.49.0"], source: "add-dependency" | "app-run" | "self-heal" }`. This is the input signal for curating the remote allow-list.
 
-**Must bypass the non-Pro 10% sampling.** The renderer's `before_send` (`renderer.tsx`) drops ~90% of non-Pro events unless `shouldBypassNonProTelemetrySampling` (`src/lib/posthogTelemetry.ts`) matches. `pnpm:build-auto-denied` matches none of the current bypass rules (not error-shaped, no bypassed prefix), so without an explicit entry the curation signal would shrink 10× and skew toward Pro users' package mix — free users are the volume that curation depends on. Add the event name (or a shared `pnpm:build-` prefix, if a promotion-success event is added later) to the bypass list. Volume is safe to exempt: the event fires at most once per install _that produces new denials_, so it is rare and self-extinguishing (after the first denial is recorded, later installs of the same app emit nothing).
+Keep this event content-free apart from package names and the bounded source enum. It fires at most once per install that produces new denials and becomes silent after the denial is recorded.
 
 ### 5. Reactive self-heal for strict paths
 
@@ -180,7 +180,6 @@ Append a line to the install results written back into the `<dyad-add-dependency
 ## Resolved Questions
 
 - ~~Should the promotion pass run `pnpm rebuild <pkg>` immediately, or defer to the next fresh install?~~ **Decided: middle ground (§2b).** The YAML pass stays pure and returns promoted names; callers that already spawn pnpm run a best-effort `pnpm rebuild <pkgs>` after install. Verified empirically that neither a plain up-to-date install nor `.modules.yaml` inspection can substitute: the flip alone never runs the build, and explicitly-denied packages are absent from `ignoredBuilds`.
-- ~~Should denials recorded during cloud-sandbox installs also be committed locally, or only in the sandbox file map?~~ **Decided: commit locally** (same `commitPnpmAllowBuildsConfigIfChanged`-style flow as the other hook points). The local repo is the source of truth the sandbox file map is built from, so committing locally keeps sandbox restarts and exports consistent.
 
 ## Open Questions
 

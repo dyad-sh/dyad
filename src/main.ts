@@ -45,7 +45,6 @@ import {
   sendTelemetryEventToWindow,
 } from "./ipc/utils/telemetry";
 import { handleSupabaseOAuthReturn } from "./supabase_admin/supabase_return_handler";
-import { handleDyadProReturn } from "./main/pro";
 import { IS_TEST_BUILD } from "./ipc/utils/test_utils";
 import { BackupManager } from "./backup_manager";
 import { db, getDatabasePath, initializeDatabase } from "./db";
@@ -60,8 +59,6 @@ import {
   runOAuthReturnExchange,
 } from "./ipc/handlers/connection_flow_handlers";
 import {
-  AddMcpServerConfigSchema,
-  AddMcpServerPayload,
   AddPromptDataSchema,
   AddPromptPayload,
 } from "./ipc/deep_link_data";
@@ -88,14 +85,12 @@ import {
   stopAllAppsSync,
   stopAppGarbageCollection,
 } from "./ipc/utils/process_manager";
-import { cleanupOldAiMessagesJson } from "./pro/main/ipc/handlers/local_agent/ai_messages_cleanup";
 import {
   startChatSearchIndexer,
   stopChatSearchIndexer,
-} from "./pro/main/ipc/handlers/local_agent/chat_search_indexer";
+} from "./ipc/pi/tools/dyad/chat_search_indexer";
 import { cleanupOldMediaFiles } from "./ipc/utils/media_cleanup";
 import { scrubGithubTokenFromRemotes } from "./ipc/utils/git_remote_token_scrub";
-import { encryptStoredMcpSecrets } from "./ipc/utils/mcp_secret_encryption";
 import fs from "fs";
 import { gitAddSafeDirectory } from "./ipc/utils/git_utils";
 import {
@@ -125,11 +120,6 @@ import {
   createPlatformThumbnailFromPath,
   getMediaThumbnailCacheRoot,
 } from "./ipc/utils/media_thumbnail";
-import {
-  createMcpBeforeQuitHandler,
-  disposeMcpClientsForShutdown,
-} from "./ipc/utils/mcp_shutdown";
-import { disposeMcpOAuthForShutdown } from "./ipc/utils/mcp_oauth_flow";
 import { remoteMachineHost } from "./ipc/services/distributed_machine_host";
 import { configureTrustedRenderer } from "./ipc/utils/renderer_security";
 import {
@@ -416,9 +406,6 @@ export async function onReady() {
   void reconcileOrphanTestBranches();
   void reconcileOrphanTestUsers();
 
-  // Cleanup old ai_messages_json entries to prevent database bloat
-  cleanupOldAiMessagesJson();
-
   // Start the chat-search FTS index maintenance (backfill runs in the
   // background; never blocks startup)
   startChatSearchIndexer();
@@ -433,7 +420,6 @@ export async function onReady() {
   // plaintext. Awaited so no MCP read can see a row the pass is about
   // to correct. It returns rather than throwing on failure, and does
   // no work at all once there are no plaintext values left.
-  await encryptStoredMcpSecrets();
 
   const settings = await readEffectiveSettings();
 
@@ -1361,67 +1347,6 @@ async function handleDeepLinkReturn(url: string) {
     }
     return;
   }
-  // dyad://dyad-pro-return?key=123&budget_reset_at=2025-05-26T16:31:13.492000Z&max_budget=100
-  if (parsed.hostname === "dyad-pro-return") {
-    const apiKey = parsed.searchParams.get("key");
-    if (!apiKey) {
-      dialog.showErrorBox("Invalid URL", "Expected key");
-      return;
-    }
-    try {
-      handleDyadProReturn({
-        apiKey,
-      });
-    } catch (error) {
-      showDeepLinkSettingsError("save Dyad Pro settings", error);
-      return;
-    }
-    // Send message to renderer to trigger re-render
-    mainWindow?.webContents.send("deep-link-received", {
-      type: parsed.hostname,
-    });
-    return;
-  }
-  // Fired by the OAuth callback page to hand focus back to Dyad
-  // after consent. Tokens land via the loopback listener; focusing
-  // the window is the only side-effect needed here.
-  if (parsed.hostname === "mcp-oauth-return") {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
-    }
-    return;
-  }
-  // dyad://add-mcp-server?name=Chrome%20DevTools&config=eyJjb21tYW5kIjpudWxsLCJ0eXBlIjoic3RkaW8ifQ%3D%3D
-  if (parsed.hostname === "add-mcp-server") {
-    const name = parsed.searchParams.get("name");
-    const config = parsed.searchParams.get("config");
-    if (!name || !config) {
-      dialog.showErrorBox("Invalid URL", "Expected name and config");
-      return;
-    }
-
-    try {
-      const decodedConfigJson = atob(config);
-      const decodedConfig = JSON.parse(decodedConfigJson);
-      const parsedConfig = AddMcpServerConfigSchema.parse(decodedConfig);
-
-      mainWindow?.webContents.send("deep-link-received", {
-        type: parsed.hostname,
-        payload: {
-          name,
-          config: parsedConfig,
-        } as AddMcpServerPayload,
-      });
-    } catch (error) {
-      logger.error("Failed to parse add-mcp-server deep link:", error);
-      dialog.showErrorBox(
-        "Invalid MCP Server Configuration",
-        "The deep link contains malformed configuration data. Please check the URL and try again.",
-      );
-    }
-    return;
-  }
   // dyad://add-prompt?data=<base64-encoded-json>
   if (parsed.hostname === "add-prompt") {
     const data = parsed.searchParams.get("data");
@@ -1451,7 +1376,7 @@ async function handleDeepLinkReturn(url: string) {
   dialog.showErrorBox("Invalid deep link URL", url);
 }
 
-// Report unexpected utility process deaths (tsc worker, code explorer).
+// Report unexpected utility process deaths (for example, the tsc worker).
 // These do not take down the app, so we can report them right away.
 // Skip clean-exit and killed: routine teardown stops these workers with
 // kill(), and reporting that would flood telemetry with non-crashes.
@@ -1492,22 +1417,27 @@ app.on("window-all-closed", () => {
 // Clear the crash sentinel as early as possible on clean exit so that slow
 // cleanup in will-quit cannot race against OS-imposed termination timeouts
 // (e.g. Windows WM_ENDSESSION) and leave the sentinel behind as a false positive.
-const handleMcpBeforeQuit = createMcpBeforeQuitHandler({
-  quit: () => app.quit(),
-  cleanup: async () => {
-    await Promise.all([
-      disposeMcpClientsForShutdown(),
-      disposeMcpOAuthForShutdown(),
-      disposeConnectionFlowsForShutdown(),
-      remoteMachineHost.dispose(),
-    ]);
-  },
-});
-
+let shutdownCleanupStarted = false;
 app.on("before-quit", (event) => {
   isAppQuitting = true;
   clearCrashSentinel();
-  handleMcpBeforeQuit(event);
+
+  if (shutdownCleanupStarted) return;
+  shutdownCleanupStarted = true;
+  event.preventDefault();
+
+  const cleanupTimeout = new Promise<void>((resolve) => {
+    setTimeout(resolve, 5_000);
+  });
+  void Promise.race([
+    Promise.all([
+      disposeConnectionFlowsForShutdown(),
+      remoteMachineHost.dispose(),
+    ]).then(() => undefined),
+    cleanupTimeout,
+  ])
+    .catch((error) => logger.error("Failed to clean up before quit", error))
+    .finally(() => app.quit());
 });
 
 // IMPORTANT: This handler must be synchronous because Electron's EventEmitter

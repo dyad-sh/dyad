@@ -1532,6 +1532,8 @@ interface AgentGitExecutionResult extends IGitStringResult {
   truncated: boolean;
 }
 
+type AgentGitBaseParams = GitBaseParams & { signal?: AbortSignal };
+
 function agentGitEnvironment(): Record<string, string> {
   return {
     GIT_NO_REPLACE_OBJECTS: "1",
@@ -1549,6 +1551,7 @@ async function execAgentGit(
     encoding?: BufferEncoding;
     stdin?: string | Buffer;
     allowTruncation?: boolean;
+    signal?: AbortSignal;
   } = {},
 ): Promise<AgentGitExecutionResult> {
   const globalArgs = [
@@ -1566,9 +1569,16 @@ async function execAgentGit(
       env: agentGitEnvironment(),
       maxBuffer: options.maxBuffer ?? AGENT_GIT_EXEC_BUFFER_BYTES,
       stdin: options.stdin,
+      signal: options.signal,
     });
     return { ...result, truncated: false };
   } catch (error) {
+    if (options.signal?.aborted) {
+      throw new DyadError(
+        "The Git operation was cancelled",
+        DyadErrorKind.UserCancelled,
+      );
+    }
     if (
       error instanceof ExecError &&
       error.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER" &&
@@ -1685,11 +1695,13 @@ function normalizeAgentGitFilterPath(
 export async function resolveAgentGitCommit({
   path,
   revision,
-}: GitBaseParams & { revision: string }): Promise<string> {
+  signal,
+}: AgentGitBaseParams & { revision: string }): Promise<string> {
   assertAgentGitRevisionInput(revision);
   const result = await execAgentGit(
     ["rev-parse", "--verify", "--end-of-options", `${revision}^{commit}`],
     path,
+    { signal },
   );
   if (result.exitCode !== 0) {
     throw new DyadError(
@@ -1716,11 +1728,12 @@ function addStatusPath(target: Set<string>, filePath: string): void {
 
 export async function getAgentGitStatus({
   path,
-}: GitBaseParams): Promise<AgentGitStatus> {
+  signal,
+}: AgentGitBaseParams): Promise<AgentGitStatus> {
   const result = await execAgentGit(
     ["status", "--porcelain=v2", "--branch", "-z", "--untracked-files=all"],
     path,
-    { allowTruncation: true },
+    { allowTruncation: true, signal },
   );
   assertAgentGitSuccess(result, "Failed to inspect Git status");
 
@@ -1815,10 +1828,12 @@ async function listAgentDiffEntries({
   path,
   comparisonArgs,
   filePath,
+  signal,
 }: {
   path: string;
   comparisonArgs: string[];
   filePath?: string;
+  signal?: AbortSignal;
 }): Promise<{ entries: DiffEntry[]; truncated: boolean }> {
   const result = await execAgentGit(
     [
@@ -1830,7 +1845,7 @@ async function listAgentDiffEntries({
       ...comparisonArgs,
     ],
     path,
-    { maxBuffer: 1024 * 1024, allowTruncation: true },
+    { maxBuffer: 1024 * 1024, allowTruncation: true, signal },
   );
   assertAgentGitSuccess(result, "Failed to list changed Git paths");
   const rawFields = result.stdout.split("\0");
@@ -1868,16 +1883,19 @@ async function renderSafeAgentDiff({
   comparisonArgs,
   filePath,
   contextLines,
+  signal,
 }: {
   path: string;
   comparisonArgs: string[];
   filePath?: string;
   contextLines: number;
+  signal?: AbortSignal;
 }): Promise<AgentGitTextResult> {
   const discovery = await listAgentDiffEntries({
     path,
     comparisonArgs,
     filePath,
+    signal,
   });
   const sensitive: string[] = [];
   const allowedPathGroups: string[][] = [];
@@ -1934,7 +1952,7 @@ async function renderSafeAgentDiff({
         ...uniqueAllowed,
       ],
       path,
-      { allowTruncation: true },
+      { allowTruncation: true, signal },
     );
     assertAgentGitSuccess(result, "Failed to render Git diff");
     patch = result.stdout;
@@ -1958,10 +1976,14 @@ async function renderSafeAgentDiff({
   );
 }
 
-async function hasAgentGitHead(path: string): Promise<boolean> {
+async function hasAgentGitHead(
+  path: string,
+  signal?: AbortSignal,
+): Promise<boolean> {
   const result = await execAgentGit(
     ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"],
     path,
+    { signal },
   );
   return result.exitCode === 0;
 }
@@ -1971,19 +1993,21 @@ export async function getAgentGitDiff({
   scope = "all",
   filePath,
   contextLines = 3,
-}: GitBaseParams & {
+  signal,
+}: AgentGitBaseParams & {
   scope?: AgentGitDiffScope;
   filePath?: string;
   contextLines?: number;
 }): Promise<AgentGitTextResult> {
   const normalizedPath = normalizeAgentGitFilterPath(path, filePath);
-  const hasHead = await hasAgentGitHead(path);
+  const hasHead = await hasAgentGitHead(path, signal);
   if (scope === "unstaged") {
     return renderSafeAgentDiff({
       path,
       comparisonArgs: [],
       filePath: normalizedPath,
       contextLines,
+      signal,
     });
   }
   if (scope === "staged") {
@@ -1992,6 +2016,7 @@ export async function getAgentGitDiff({
       comparisonArgs: ["--cached"],
       filePath: normalizedPath,
       contextLines,
+      signal,
     });
   }
   if (hasHead) {
@@ -2000,6 +2025,7 @@ export async function getAgentGitDiff({
       comparisonArgs: ["HEAD"],
       filePath: normalizedPath,
       contextLines,
+      signal,
     });
   }
 
@@ -2009,12 +2035,14 @@ export async function getAgentGitDiff({
       comparisonArgs: ["--cached"],
       filePath: normalizedPath,
       contextLines,
+      signal,
     }),
     renderSafeAgentDiff({
       path,
       comparisonArgs: [],
       filePath: normalizedPath,
       contextLines,
+      signal,
     }),
   ]);
   return boundAgentGitContent(
@@ -2033,12 +2061,13 @@ export async function getAgentGitLog({
   revision = "HEAD",
   maxCount = 20,
   filePath,
-}: GitBaseParams & {
+  signal,
+}: AgentGitBaseParams & {
   revision?: string;
   maxCount?: number;
   filePath?: string;
 }): Promise<AgentGitTextResult> {
-  const oid = await resolveAgentGitCommit({ path, revision });
+  const oid = await resolveAgentGitCommit({ path, revision, signal });
   const normalizedPath = normalizeAgentGitFilterPath(path, filePath);
   const result = await execAgentGit(
     [
@@ -2053,7 +2082,7 @@ export async function getAgentGitLog({
       ...(normalizedPath ? ["--", normalizedPath] : []),
     ],
     path,
-    { allowTruncation: true },
+    { allowTruncation: true, signal },
   );
   assertAgentGitSuccess(result, "Failed to read Git log");
   const rawRecords = result.stdout.split("\0");
@@ -2080,23 +2109,29 @@ export async function getAgentGitLog({
 async function getAgentGitParent({
   path,
   oid,
+  signal,
 }: {
   path: string;
   oid: string;
+  signal?: AbortSignal;
 }): Promise<string | null> {
   const result = await execAgentGit(
     ["rev-list", "--parents", "-n", "1", "--end-of-options", oid],
     path,
+    { signal },
   );
   assertAgentGitSuccess(result, "Failed to inspect commit parents");
   return result.stdout.trim().split(/\s+/)[1] ?? null;
 }
 
-async function getAgentGitEmptyTree(path: string): Promise<string> {
+async function getAgentGitEmptyTree(
+  path: string,
+  signal?: AbortSignal,
+): Promise<string> {
   const result = await execAgentGit(
     ["hash-object", "-t", "tree", "--stdin"],
     path,
-    { stdin: "" },
+    { stdin: "", signal },
   );
   assertAgentGitSuccess(result, "Failed to calculate the empty Git tree");
   return result.stdout.trim();
@@ -2106,11 +2141,12 @@ export async function getAgentGitCommit({
   path,
   revision,
   filePath,
-}: GitBaseParams & {
+  signal,
+}: AgentGitBaseParams & {
   revision: string;
   filePath?: string;
 }): Promise<AgentGitTextResult & { patch: string }> {
-  const oid = await resolveAgentGitCommit({ path, revision });
+  const oid = await resolveAgentGitCommit({ path, revision, signal });
   const normalizedPath = normalizeAgentGitFilterPath(path, filePath);
   const metadataResult = await execAgentGit(
     [
@@ -2122,16 +2158,17 @@ export async function getAgentGitCommit({
       oid,
     ],
     path,
-    { allowTruncation: true },
+    { allowTruncation: true, signal },
   );
   assertAgentGitSuccess(metadataResult, "Failed to read Git commit metadata");
-  const parent = await getAgentGitParent({ path, oid });
-  const base = parent ?? (await getAgentGitEmptyTree(path));
+  const parent = await getAgentGitParent({ path, oid, signal });
+  const base = parent ?? (await getAgentGitEmptyTree(path, signal));
   const diff = await renderSafeAgentDiff({
     path,
     comparisonArgs: [base, oid],
     filePath: normalizedPath,
     contextLines: 3,
+    signal,
   });
   return {
     ...boundAgentGitContent(
@@ -2153,14 +2190,17 @@ async function getAgentGitTreeEntry({
   path,
   oid,
   filePath,
+  signal,
 }: {
   path: string;
   oid: string;
   filePath: string;
+  signal?: AbortSignal;
 }): Promise<AgentGitTreeEntry> {
   const result = await execAgentGit(
     ["ls-tree", "-z", "--end-of-options", oid, "--", filePath],
     path,
+    { signal },
   );
   assertAgentGitSuccess(result, "Failed to inspect historical Git path");
   const record = result.stdout.split("\0").find(Boolean);
@@ -2203,18 +2243,20 @@ export async function getAgentGitFile({
   filePath,
   startLine,
   endLineInclusive,
-}: GitBaseParams & {
+  signal,
+}: AgentGitBaseParams & {
   revision: string;
   filePath: string;
   startLine?: number;
   endLineInclusive?: number;
 }): Promise<AgentGitTextResult> {
-  const oid = await resolveAgentGitCommit({ path, revision });
+  const oid = await resolveAgentGitCommit({ path, revision, signal });
   const normalizedPath = normalizeAgentGitPath(path, filePath);
   const entry = await getAgentGitTreeEntry({
     path,
     oid,
     filePath: normalizedPath,
+    signal,
   });
   if (entry.type !== "blob") {
     throw new DyadError(
@@ -2222,7 +2264,9 @@ export async function getAgentGitFile({
       DyadErrorKind.Validation,
     );
   }
-  const sizeResult = await execAgentGit(["cat-file", "-s", entry.oid], path);
+  const sizeResult = await execAgentGit(["cat-file", "-s", entry.oid], path, {
+    signal,
+  });
   assertAgentGitSuccess(sizeResult, "Failed to inspect historical file size");
   const size = Number(sizeResult.stdout.trim());
   if (!Number.isSafeInteger(size) || size < 0) {
@@ -2243,6 +2287,7 @@ export async function getAgentGitFile({
     {
       encoding: "latin1",
       maxBuffer: AGENT_GIT_SOURCE_FILE_LIMIT_BYTES + 1024,
+      signal,
     },
   );
   assertAgentGitSuccess(contentResult, "Failed to read historical Git file");
@@ -2261,16 +2306,18 @@ export async function restoreAgentGitFile({
   path,
   revision,
   filePath,
-}: GitBaseParams & {
+  signal,
+}: AgentGitBaseParams & {
   revision: string;
   filePath: string;
 }): Promise<{ oid: string; mode: string; path: string }> {
-  const oid = await resolveAgentGitCommit({ path, revision });
+  const oid = await resolveAgentGitCommit({ path, revision, signal });
   const normalizedPath = normalizeAgentGitPath(path, filePath);
   const entry = await getAgentGitTreeEntry({
     path,
     oid,
     filePath: normalizedPath,
+    signal,
   });
   if (
     entry.type !== "blob" ||
@@ -2281,7 +2328,9 @@ export async function restoreAgentGitFile({
       DyadErrorKind.Validation,
     );
   }
-  const sizeResult = await execAgentGit(["cat-file", "-s", entry.oid], path);
+  const sizeResult = await execAgentGit(["cat-file", "-s", entry.oid], path, {
+    signal,
+  });
   assertAgentGitSuccess(sizeResult, "Failed to inspect historical file size");
   const size = Number(sizeResult.stdout.trim());
   if (!Number.isSafeInteger(size) || size < 0) {
@@ -2302,9 +2351,11 @@ export async function restoreAgentGitFile({
     {
       encoding: "latin1",
       maxBuffer: AGENT_GIT_SOURCE_FILE_LIMIT_BYTES + 1024,
+      signal,
     },
   );
   assertAgentGitSuccess(contentResult, `Failed to read ${normalizedPath}`);
+  signal?.throwIfAborted();
   const destination = safeJoin(path, normalizedPath);
   const parent = pathModule.dirname(destination);
   await fsPromises.mkdir(parent, { recursive: true });

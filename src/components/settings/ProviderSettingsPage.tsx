@@ -4,8 +4,6 @@ import { useNavigate } from "@tanstack/react-router";
 import { BackButton } from "@/components/ui/back-button";
 import { useSettings } from "@/hooks/useSettings";
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
-import { useQueryClient } from "@tanstack/react-query";
-import { queryKeys } from "@/lib/queryKeys";
 import {
   useFirstPromptProviderResume,
   useFirstPromptSaga,
@@ -26,13 +24,10 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-import { Switch } from "@/components/ui/switch";
-import { showError } from "@/lib/toast";
 import {
   UserSettings,
   AzureProviderSetting,
   VertexProviderSetting,
-  hasDyadProKey,
 } from "@/lib/schemas";
 import { DyadErrorKind } from "@/errors/dyad_error";
 import {
@@ -56,11 +51,7 @@ type ApiKeyValidationDialogState = {
   errorKind?: DyadErrorKind;
 };
 
-const VALIDATED_API_KEY_PROVIDERS = new Set<string>([
-  "google",
-  "openrouter",
-  "auto",
-]);
+const VALIDATED_API_KEY_PROVIDERS = new Set<string>(["google", "openrouter"]);
 
 function getErrorKind(error: unknown): DyadErrorKind | undefined {
   const kind =
@@ -113,8 +104,6 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
   const supportsCustomModels =
     providerData?.type === "custom" || providerData?.type === "cloud";
 
-  const isDyad = provider === "auto";
-
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
@@ -129,17 +118,13 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
   // window refocus we nudge them toward the paste button.
   const [awaitingKeyFromWebsite, setAwaitingKeyFromWebsite] = useState(false);
   const [highlightPasteButton, setHighlightPasteButton] = useState(false);
-  const queryClient = useQueryClient();
   const { hasArmedPayload } = useFirstPromptSaga();
   const resumeFirstPrompt = useFirstPromptProviderResume();
 
-  // Use fetched data (or defaults for Dyad)
-  const providerDisplayName = isDyad
-    ? "Dyad"
-    : (providerData?.name ?? "Unknown Provider");
+  const providerDisplayName = providerData?.name ?? "Unknown Provider";
   const providerWebsiteUrl = providerData?.websiteUrl;
-  const hasFreeTier = isDyad ? false : providerData?.hasFreeTier;
-  const envVarName = isDyad ? undefined : providerData?.envVarName;
+  const hasFreeTier = providerData?.hasFreeTier;
+  const envVarName = providerData?.envVarName;
 
   // Use provider ID (which is the 'provider' prop)
   const userApiKey = settings?.providerSettings?.[provider]?.apiKey?.value;
@@ -242,9 +227,6 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
       }
 
       const isFirstProviderSetup = !isAnyProviderSetup();
-      // Check if this is the first time user is setting up Dyad Pro
-      const isNewDyadProSetup = isDyad && settings && !hasDyadProKey(settings);
-
       const settingsUpdate: Partial<UserSettings> = {
         providerSettings: {
           ...settings?.providerSettings,
@@ -256,13 +238,6 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
           },
         },
       };
-      if (isDyad) {
-        settingsUpdate.enableDyadPro = true;
-        // Set default chat mode to local-agent when user upgrades to pro
-        if (isNewDyadProSetup) {
-          settingsUpdate.defaultChatMode = "local-agent";
-        }
-      }
       await updateSettings(settingsUpdate);
       setApiKeyInput(""); // Clear input on success
       if (isFirstProviderSetup && hasArmedPayload) {
@@ -272,11 +247,6 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
         resumeFirstPrompt(nextSettings);
       } else if (isFirstProviderSetup) {
         setShowStartBuildingBanner(true);
-      }
-
-      // Refetch user budget when Dyad Pro key is saved
-      if (isDyad) {
-        queryClient.invalidateQueries({ queryKey: queryKeys.userBudget.info });
       }
     } catch (error: any) {
       console.error("Error saving API key:", error);
@@ -337,20 +307,6 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
     } catch (error: any) {
       console.error("Error deleting API key:", error);
       setSaveError(error.message || "Failed to delete API key.");
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  // --- Toggle Dyad Pro Handler ---
-  const handleToggleDyadPro = async (enabled: boolean) => {
-    setIsSaving(true);
-    try {
-      await updateSettings({
-        enableDyadPro: enabled,
-      });
-    } catch (error: any) {
-      showError(`Error toggling Dyad Pro: ${error}`);
     } finally {
       setIsSaving(false);
     }
@@ -421,7 +377,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
   }
 
   // Handle case where provider is not found (e.g., invalid ID in URL)
-  if (!providerData && !isDyad) {
+  if (!providerData) {
     return (
       <div className="min-h-screen px-8 py-4">
         <div className="max-w-4xl mx-auto">
@@ -519,7 +475,6 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
             isLoading={settingsLoading}
             hasFreeTier={hasFreeTier}
             providerWebsiteUrl={providerWebsiteUrl}
-            isDyad={isDyad}
             onOpenProviderWebsite={() => {
               if (!isConfigured) {
                 setAwaitingKeyFromWebsite(true);
@@ -557,28 +512,10 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
               onSaveKey={handleSaveKey}
               onTestKey={shouldValidateApiKey ? handleTestKey : undefined}
               onDeleteKey={handleDeleteKey}
-              isDyad={isDyad}
               updateSettings={updateSettings}
               highlightPasteButton={highlightPasteButton}
               onDismissPasteHighlight={() => setHighlightPasteButton(false)}
             />
-          )}
-
-          {isDyad && !settingsLoading && (
-            <div className="mt-6 flex items-center justify-between p-4 bg-(--background-lightest) rounded-lg border">
-              <div>
-                <h3 className="font-medium">Enable Dyad Pro</h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Toggle to enable Dyad Pro
-                </p>
-              </div>
-              <Switch
-                aria-label="Enable Dyad Pro"
-                checked={settings?.enableDyadPro}
-                onCheckedChange={handleToggleDyadPro}
-                disabled={isSaving}
-              />
-            </div>
           )}
 
           {/* Conditionally render CustomModelsSection */}

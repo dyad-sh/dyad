@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { DyadErrorKind } from "@/errors/dyad_error";
 
 vi.mock("electron-log", () => ({
   default: {
@@ -56,6 +57,29 @@ describe("agent Git utilities", () => {
 
   afterEach(async () => {
     await fs.promises.rm(repo, TEMP_DIR_REMOVE_OPTIONS);
+  });
+
+  it("rejects promptly when Git inspection is already cancelled", async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      getAgentGitStatus({ path: repo, signal: controller.signal }),
+    ).rejects.toMatchObject({ kind: DyadErrorKind.UserCancelled });
+  });
+
+  it("cancels a Git inspection that has started", async () => {
+    const controller = new AbortController();
+    const status = getAgentGitStatus({
+      path: repo,
+      signal: controller.signal,
+    });
+
+    controller.abort();
+
+    await expect(status).rejects.toMatchObject({
+      kind: DyadErrorKind.UserCancelled,
+    });
   });
 
   it("reports structured status and each diff scope", async () => {

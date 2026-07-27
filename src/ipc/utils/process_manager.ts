@@ -4,11 +4,6 @@ import log from "electron-log";
 import type { Worker } from "node:worker_threads";
 import type { RuntimeMode2 } from "@/lib/schemas";
 import { withLock } from "./lock_utils";
-import {
-  destroyCloudSandbox,
-  stopCloudSandboxFileSync,
-  unregisterRunningCloudSandbox,
-} from "./cloud_sandbox_provider";
 import { readSettings } from "../../main/settings";
 import type { AppRunInvocationRef } from "@/app_run/state";
 import type { AppRuntimeOutput } from "@/ipc/types/app_runtime";
@@ -26,12 +21,6 @@ export interface RunningAppInfo {
   /** Output producer captured when this runtime invocation is created. */
   output?: AppRuntimeOutput;
   containerName?: string;
-  cloudSandboxId?: string;
-  cloudPreviewUrl?: string;
-  cloudPreviewAuthToken?: string;
-  proxyAuthToken?: string;
-  cloudSyncErrorMessage?: string;
-  cloudLogAbortController?: AbortController;
   /** Timestamp of when this app was last viewed/selected in the preview panel */
   lastViewedAt: number;
   /** Proxy URL for the running app, set when the proxy server starts */
@@ -167,13 +156,7 @@ export async function stopAppByInfo(
   appId: number,
   appInfo: RunningAppInfo,
 ): Promise<void> {
-  stopCloudSandboxFileSync(appId);
-
-  if (appInfo.mode === "cloud") {
-    if (appInfo.cloudSandboxId) {
-      await destroyCloudSandbox(appInfo.cloudSandboxId);
-    }
-  } else if (appInfo.mode === "docker") {
+  if (appInfo.mode === "docker") {
     const containerName = appInfo.containerName || `dyad-app-${appId}`;
     await stopDockerContainer(containerName);
   } else if (appInfo.process) {
@@ -185,9 +168,6 @@ export async function stopAppByInfo(
     appInfo.proxyWorker = undefined;
   }
 
-  appInfo.cloudLogAbortController?.abort();
-  appInfo.cloudLogAbortController = undefined;
-  unregisterRunningCloudSandbox({ appId });
   runningApps.delete(appId);
 }
 
@@ -206,10 +186,6 @@ export function removeAppIfCurrentProcess(
       void currentAppInfo.proxyWorker.terminate();
       currentAppInfo.proxyWorker = undefined;
     }
-    currentAppInfo.cloudLogAbortController?.abort();
-    currentAppInfo.cloudLogAbortController = undefined;
-    stopCloudSandboxFileSync(appId);
-    unregisterRunningCloudSandbox({ appId });
     runningApps.delete(appId);
     logger.info(
       `Removed app ${appId} (processId ${currentAppInfo.processId}) from running map. Current size: ${runningApps.size}`,
@@ -391,22 +367,7 @@ export function stopAllAppsSync(): void {
       appInfo.proxyWorker = undefined;
     }
 
-    if (appInfo.mode === "cloud") {
-      appInfo.cloudLogAbortController?.abort();
-      appInfo.cloudLogAbortController = undefined;
-      stopCloudSandboxFileSync(appId);
-      unregisterRunningCloudSandbox({ appId });
-      if (appInfo.cloudSandboxId) {
-        void destroyCloudSandbox(appInfo.cloudSandboxId).catch((error) => {
-          logger.warn(
-            `Failed to destroy cloud sandbox ${appInfo.cloudSandboxId} for app ${appId} during quit: ${error}`,
-          );
-        });
-      }
-      logger.info(
-        `Cloud sandbox ${appInfo.cloudSandboxId ?? "<unknown>"} for app ${appId} will be reconciled asynchronously after quit if needed.`,
-      );
-    } else if (appInfo.mode === "docker") {
+    if (appInfo.mode === "docker") {
       const containerName = appInfo.containerName || `dyad-app-${appId}`;
       // Fire-and-forget: spawn docker stop without awaiting
       const stop = spawn("docker", ["stop", containerName], {

@@ -11,7 +11,7 @@ testSkipIfWindows(
     await po.setUp();
     await po.importApp(MINIMAL_APP);
     await po.appManagement.ensurePnpmInstall();
-    await po.appManagement.ensureCodeExplorerReady();
+    await po.appManagement.ensureTypeScriptProjectReady();
 
     const appPath = await po.appManagement.getCurrentAppPath();
     const typeScriptLibPath = path.join(
@@ -91,14 +91,16 @@ export default App;
 `,
   );
   await po.appManagement.ensurePnpmInstall();
-  await po.appManagement.ensureCodeExplorerReady();
+  await po.appManagement.ensureTypeScriptProjectReady();
 
-  await po.sendPrompt("tc=create-ts-errors");
   await po.previewPanel.selectPreviewMode("problems");
   await po.previewPanel.clickRecheckProblems();
   await po.previewPanel.clickFixAllProblems();
   await po.chatActions.waitForChatCompletion();
 
+  expect(fs.readFileSync(badFilePath, "utf8")).not.toContain(
+    "nonExistentFunction",
+  );
   await po.snapshotServerDump("last-message");
   await po.snapshotMessages({ replaceDumpPath: true });
 });
@@ -126,7 +128,7 @@ export default App;
     await po.appManagement.ensurePnpmInstall();
 
     // Trigger creation of problems and open problems panel
-    // await po.sendPrompt("tc=create-ts-errors");
+    // await po.sendPrompt("tc=local-agent/create-ts-errors");
     await po.previewPanel.selectPreviewMode("problems");
     await po.previewPanel.clickRecheckProblems();
 
@@ -164,6 +166,10 @@ export default App;
 
     await fixButton.click();
     await po.chatActions.waitForChatCompletion();
+    const fixedContent = fs.readFileSync(badFilePath, "utf8");
+    expect(fixedContent).toContain("nonExistentFunction2");
+    expect(fixedContent).not.toContain("nonExistentFunction1");
+    expect(fixedContent).not.toContain("nonExistentFunction3");
     await po.snapshotServerDump("last-message");
     await po.snapshotMessages({ replaceDumpPath: true });
   },
@@ -184,7 +190,7 @@ export default App;
 `,
   );
   await po.appManagement.ensurePnpmInstall();
-  await po.appManagement.ensureCodeExplorerReady();
+  await po.appManagement.ensureTypeScriptProjectReady();
   await po.previewPanel.clickTogglePreviewPanel();
 
   await po.previewPanel.selectPreviewMode("problems");
@@ -216,7 +222,7 @@ testSkipIfWindows("problems - manual edit (next.js)", async ({ po }) => {
   `,
   );
   await po.appManagement.ensurePnpmInstall();
-  await po.appManagement.ensureCodeExplorerReady();
+  await po.appManagement.ensureTypeScriptProjectReady();
   await po.previewPanel.clickTogglePreviewPanel();
 
   await po.previewPanel.selectPreviewMode("problems");

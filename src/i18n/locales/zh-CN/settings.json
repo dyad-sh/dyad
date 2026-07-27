@@ -118,10 +118,7 @@
     "errorLoadingSettings": "加载设置出错",
     "couldNotLoadProvider": "无法加载提供商数据：{{message}}",
     "couldNotLoadSettings": "无法加载配置数据：{{message}}",
-    "enableDyadPro": "启用 Dyad Pro",
-    "toggleDyadPro": "切换以启用 Dyad Pro",
     "apiKeyEmpty": "API 密钥不能为空。",
-    "errorTogglingPro": "切换 Dyad Pro 时出错：{{error}}",
     "failedSaveApiKey": "保存 API 密钥失败。",
     "failedDeleteApiKey": "删除 API 密钥失败。"
   },
@@ -144,40 +141,12 @@
     "title": "集成"
   },
   "agentPermissions": {
-    "title": "Agent 权限 (Pro)",
+    "title": "Agent 权限",
     "description": "配置 Agent 内置工具的权限。",
     "defaultAllowedTools": "默认允许的工具 ({{count}})",
     "ask": "询问",
     "alwaysAllow": "始终允许",
     "neverAllow": "从不允许"
-  },
-  "toolsMcp": {
-    "title": "工具 (MCP)",
-    "name": "名称",
-    "namePlaceholder": "我的 MCP 服务器",
-    "transport": "传输方式",
-    "stdio": "stdio",
-    "http": "http",
-    "command": "命令",
-    "commandPlaceholder": "node",
-    "args": "参数",
-    "argsPlaceholder": "path/to/mcp-server.js --flag",
-    "url": "URL",
-    "urlPlaceholder": "http://localhost:3000",
-    "addServer": "添加服务器",
-    "environmentVariables": "环境变量",
-    "key": "键",
-    "keyPlaceholder": "例如 PATH",
-    "value": "值",
-    "valuePlaceholder": "例如 /usr/local/bin",
-    "addEnvVar": "添加环境变量",
-    "noEnvVars": "未配置环境变量",
-    "keyValueRequired": "键和值都是必填项",
-    "duplicateKey": "该键名的环境变量已存在",
-    "noToolsDiscovered": "未发现工具。",
-    "noServersConfigured": "尚未配置服务器。",
-    "prefilledServer": "已预填 {{name}} MCP 服务器",
-    "deny": "拒绝"
   },
   "experiments": {
     "title": "实验性功能"
@@ -299,7 +268,5 @@
     "addProvider": "添加提供商",
     "updateProvider": "更新提供商",
     "failedCreate": "创建自定义提供商失败"
-  },
-  "manageDyadPro": "管理 Dyad Pro 订阅",
-  "setupDyadPro": "设置 Dyad Pro 订阅"
+  }
 }

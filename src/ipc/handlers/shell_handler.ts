@@ -10,8 +10,7 @@ import { registerDyadProtocolLinux } from "../../main/linux_protocol_registratio
 const logger = log.scope("shell_handlers");
 const handle = createLoggedHandler(logger);
 
-// Hosts whose OAuth flows redirect back into the app via a dyad:// deep link
-// (Neon, Supabase, and Dyad Pro all live under *.dyad.sh).
+// Hosts whose OAuth flows redirect back into the app via a dyad:// deep link.
 function isDyadOAuthUrl(url: string): boolean {
   try {
     const host = new URL(url).hostname;

@@ -10,8 +10,7 @@ export type PnpmDeniedBuildsTelemetrySource =
   | "add-dependency"
   | "app-run"
   | "app-upgrade"
-  | "self-heal"
-  | "cloud-sandbox";
+  | "self-heal";
 
 /**
  * Resolves the ignored-builds list the way every local flow should:

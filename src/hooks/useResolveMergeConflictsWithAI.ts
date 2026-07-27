@@ -56,7 +56,7 @@ export function useResolveMergeConflictsWithAI({
         // Create a new chat for conflict resolution
         const newChatId = await ipc.chat.createChat({
           appId,
-          initialChatMode: "build",
+          initialChatMode: "local-agent",
         });
         try {
           // Clear conflicts state after successful chat creation.

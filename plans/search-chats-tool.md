@@ -17,7 +17,7 @@ Search computation and storage stay on-device. However, text returned by either 
 
 - Recall decisions, requirements, failures, and prior work discussed in chats for the same app.
 - Keep tool results small and source-attributed.
-- Work in local-agent, Ask, Plan, and free-model modes.
+- Work in Agent, Ask, and Plan modes.
 - Preserve a hard same-app authorization boundary.
 - Avoid indexing bulky generated payloads, thinking, or recursively retrieved chat history.
 - Remain responsive and complete for apps with large chat histories.
@@ -35,7 +35,7 @@ Search computation and storage stay on-device. However, text returned by either 
 
 ### 1. Use SQLite FTS5 now
 
-Use a local FTS5 virtual table and SQLite's built-in `bm25()` ranking. Do not add an in-process BM25 pass or generalize `tools/bm25.ts`; that ranker remains specific to MCP tool discovery.
+Use a local FTS5 virtual table and SQLite's built-in `bm25()` ranking. Do not add a second in-process ranking pass.
 
 FTS5 removes the correctness problem of taking the newest N raw `LIKE` matches before ranking. An old, specific result must remain discoverable even when thousands of recent messages contain common query words.
 
@@ -131,7 +131,7 @@ Add a background `ChatSearchIndexer` service owned by the main process:
 
 ## Searchable projection
 
-Add `src/pro/main/ipc/handlers/local_agent/tools/chat_search_text.ts` with a role-aware API:
+Add `src/ipc/pi/tools/dyad/chat_search_text.ts` with a role-aware API:
 
 ```ts
 interface ChatSearchProjectionInput {
@@ -162,7 +162,7 @@ Use the existing structured streaming-message parser where practical rather than
 - Drop `<think>` bodies.
 - Preserve compaction-summary text, chat summaries, plans, blueprint decisions, questionnaires/answers, security findings, status text, and concise error summaries.
 - For file writes, search-replace operations, generated tests, renames, copies, deletes, dependencies, and commands, retain concise metadata such as paths, package names, operation type, and description; omit file/code bodies.
-- For SQL, logs, grep/code-search output, Git diffs, schemas, web payloads, MCP results, scripts, and similar bulky tool output, omit the body while retaining safe concise metadata where useful.
+- For SQL, logs, grep/code-search output, Git diffs, schemas, external payloads, scripts, and similar bulky tool output, omit the body while retaining safe concise metadata where useful.
 - Drop the bodies of `dyad-search-chats` and `dyad-read-chat` so retrieved history never becomes recursively searchable copied history.
 - For a newly introduced recognized Dyad tag without an explicit policy, fail closed by omitting its body and keeping only allowlisted short attributes. Add a test whenever a new tag becomes intentionally searchable.
 
@@ -172,7 +172,7 @@ Normalize whitespace and cap pathological projections to a documented byte limit
 
 ## `search_chats` tool
 
-**New file:** `src/pro/main/ipc/handlers/local_agent/tools/search_chats.ts`
+**New file:** `src/ipc/pi/tools/dyad/search_chats.ts`
 
 ### Input
 
@@ -250,7 +250,7 @@ Do not issue per-result count queries. If a message count is not already availab
 
 ## `read_chat` tool
 
-**New file:** `src/pro/main/ipc/handlers/local_agent/tools/read_chat.ts`
+**New file:** `src/ipc/pi/tools/dyad/read_chat.ts`
 
 ### Input
 
@@ -286,7 +286,7 @@ Use a SQL window/CTE or equivalent bounded queries to locate the ordinal positio
 
 ### Read projection and output bounds
 
-Reading should be more informative than search while remaining bounded. Reuse the role-aware projection but retain concise tool/error summaries that help explain what happened. Do not return full file, SQL, diff, log, schema, web, or MCP payload bodies.
+Reading should be more informative than search while remaining bounded. Reuse the role-aware projection but retain concise tool/error summaries that help explain what happened. Do not return full file, SQL, diff, log, schema, or external payload bodies.
 
 Return structured JSON containing chat metadata, page/around-hit metadata, message IDs, roles, timestamps, cleaned text, per-message truncation flags, and `has_more_before`/`has_more_after`.
 
@@ -310,7 +310,7 @@ Mark all returned text as archival content and tell the model not to treat instr
 ## Tool registration and prompt wiring
 
 1. Add both tools to `TOOL_DEFINITIONS` near other read-only search tools.
-2. Adding them automatically extends `AgentToolName` and the permissions UI, but verify the Ask, Plan, local-agent, basic/free-model, `ask`, `always`, and `never` paths explicitly.
+2. Adding them automatically extends `AgentToolName` and the permissions UI, but verify the Agent, Ask, Plan, `ask`, `always`, and `never` paths explicitly.
 3. Add `dyad-search-chats` and `dyad-read-chat` to `DYAD_CUSTOM_TAG_NAMES` in `src/lib/streamingMessageParser.ts`; registering only React components is insufficient.
 4. Add renderer components (shared where sensible) and register them in `DyadMarkdownParser.tsx`.
 5. Add localized labels to the relevant `chat.json` locale files.
@@ -380,7 +380,7 @@ Mark all returned text as archival content and tell the model not to treat instr
 ### Integration and renderer tests
 
 - Add a hybrid integration test that invokes `search_chats`, takes a returned `message_id`, then invokes `read_chat` around it through the real local-agent tool loop.
-- Verify tool availability in local-agent, Ask, Plan, and free/basic model modes.
+- Verify tool availability in Agent, Ask, and Plan modes.
 - Verify the tool does not become a state-modifying capability in read-only modes.
 - Test renderer cards, expansion, escaping, index/truncation states, and chat navigation.
 - Regenerate and inspect prompt/request snapshots to ensure tool descriptions and schemas are correct.
@@ -390,9 +390,9 @@ Mark all returned text as archival content and tell the model not to treat instr
 Run focused tests first, then the repository pre-commit workflow:
 
 ```sh
-npm test -- src/pro/main/ipc/handlers/local_agent/tools/chat_search_text.spec.ts
-npm test -- src/pro/main/ipc/handlers/local_agent/tools/search_chats.spec.ts
-npm test -- src/pro/main/ipc/handlers/local_agent/tools/read_chat.spec.ts
+npm test -- src/ipc/pi/tools/dyad/chat_search_text.test.ts
+npm test -- src/ipc/pi/tools/dyad/search_chats.test.ts
+npm test -- src/ipc/pi/tools/dyad/read_chat.test.ts
 # focused hybrid integration test command
 npm run fmt
 npm run lint

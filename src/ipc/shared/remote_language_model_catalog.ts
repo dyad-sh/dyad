@@ -6,20 +6,8 @@ import type {
   LanguageModelProvider,
 } from "@/ipc/types/language-model";
 import {
-  ThemeGenerationModelOptionSchema,
-  type ThemeGenerationModelOption,
-} from "@/ipc/types/templates";
-import {
   CLOUD_PROVIDERS,
-  GEMINI_3_5_FLASH,
-  GEMINI_3_1_PRO_PREVIEW,
-  GPT_5_2_MODEL_NAME,
-  GPT_5_5_MODEL_NAME,
-  GPT_5_NANO,
   MODEL_OPTIONS,
-  NEMOTRON_3_SUPER_FREE,
-  OPUS_4_6,
-  OPUS_4_8,
   PROVIDER_TO_ENV_VAR,
 } from "./language_model_constants";
 
@@ -40,8 +28,6 @@ function getRemoteLanguageModelCatalogUrl() {
 
   return "https://api.dyad.sh/v1/language-model-catalog";
 }
-
-export type { ThemeGenerationModelOption };
 
 const CatalogProviderSchema = z.object({
   id: z.string(),
@@ -71,40 +57,11 @@ const CatalogModelSchema = z.object({
     .optional(),
 });
 
-const KNOWN_BUILTIN_MODEL_ALIASES = [
-  "dyad/theme-generator/google",
-  "dyad/theme-generator/anthropic",
-  "dyad/theme-generator/openai",
-  "dyad/auto/openai",
-  "dyad/auto/anthropic",
-  "dyad/auto/google",
-  "dyad/auto/openrouter",
-  "dyad/help-bot/default",
-] as const;
-
-export type BuiltinModelAlias = (typeof KNOWN_BUILTIN_MODEL_ALIASES)[number];
-
 const LanguageModelCatalogResponseSchema = z.object({
   version: z.string(),
   expiresAt: z.string().datetime().optional(),
   providers: z.array(CatalogProviderSchema),
   modelsByProvider: z.record(z.string(), z.array(CatalogModelSchema)),
-  aliases: z.array(
-    z.object({
-      id: z.string(),
-      resolvedModel: z.object({
-        providerId: z.string(),
-        apiName: z.string(),
-      }),
-      displayName: z.string().optional(),
-      purpose: z.enum(["theme-generation", "auto-mode", "help-bot"]).optional(),
-    }),
-  ),
-  curatedSelections: z
-    .object({
-      themeGenerationOptions: z.array(ThemeGenerationModelOptionSchema),
-    })
-    .optional(),
 });
 
 type LanguageModelCatalogResponse = z.infer<
@@ -114,27 +71,14 @@ type LanguageModelCatalogResponse = z.infer<
 type BuiltinLanguageModelCatalog = {
   providers: LanguageModelProvider[];
   modelsByProvider: Record<string, LanguageModel[]>;
-  aliases: LanguageModelCatalogResponse["aliases"];
-  themeGenerationOptions: ThemeGenerationModelOption[];
   expiresAt: number;
   source: "fallback" | "remote";
   version?: string;
 };
 
-type ResolvedBuiltinModel = {
-  providerId: string;
-  apiName: string;
-};
-
 let builtinCatalogCache: BuiltinLanguageModelCatalog | null = null;
 let builtinCatalogFetchPromise: Promise<BuiltinLanguageModelCatalog> | null =
   null;
-
-const DEFAULT_THEME_GENERATION_OPTIONS: ThemeGenerationModelOption[] = [
-  { id: "dyad/theme-generator/google", label: "Google" },
-  { id: "dyad/theme-generator/anthropic", label: "Anthropic" },
-  { id: "dyad/theme-generator/openai", label: "OpenAI" },
-];
 
 function buildFallbackCatalog(): BuiltinLanguageModelCatalog {
   const providers: LanguageModelProvider[] = Object.entries(
@@ -171,81 +115,6 @@ function buildFallbackCatalog(): BuiltinLanguageModelCatalog {
   return {
     providers,
     modelsByProvider,
-    aliases: [
-      {
-        id: "dyad/theme-generator/google",
-        resolvedModel: {
-          providerId: "google",
-          apiName: GEMINI_3_1_PRO_PREVIEW,
-        },
-        displayName: "Google",
-        purpose: "theme-generation",
-      },
-      {
-        id: "dyad/theme-generator/anthropic",
-        resolvedModel: {
-          providerId: "anthropic",
-          apiName: OPUS_4_6,
-        },
-        displayName: "Anthropic",
-        purpose: "theme-generation",
-      },
-      {
-        id: "dyad/theme-generator/openai",
-        resolvedModel: {
-          providerId: "openai",
-          apiName: GPT_5_2_MODEL_NAME,
-        },
-        displayName: "OpenAI",
-        purpose: "theme-generation",
-      },
-      {
-        id: "dyad/auto/openai",
-        resolvedModel: {
-          providerId: "openai",
-          apiName: GPT_5_5_MODEL_NAME,
-        },
-        displayName: "Auto OpenAI",
-        purpose: "auto-mode",
-      },
-      {
-        id: "dyad/auto/anthropic",
-        resolvedModel: {
-          providerId: "anthropic",
-          apiName: OPUS_4_8,
-        },
-        displayName: "Auto Anthropic",
-        purpose: "auto-mode",
-      },
-      {
-        id: "dyad/auto/google",
-        resolvedModel: {
-          providerId: "google",
-          apiName: GEMINI_3_5_FLASH,
-        },
-        displayName: "Auto Google",
-        purpose: "auto-mode",
-      },
-      {
-        id: "dyad/auto/openrouter",
-        resolvedModel: {
-          providerId: "openrouter",
-          apiName: NEMOTRON_3_SUPER_FREE,
-        },
-        displayName: "Auto OpenRouter",
-        purpose: "auto-mode",
-      },
-      {
-        id: "dyad/help-bot/default",
-        resolvedModel: {
-          providerId: "openai",
-          apiName: GPT_5_NANO,
-        },
-        displayName: "Help Bot",
-        purpose: "help-bot",
-      },
-    ],
-    themeGenerationOptions: DEFAULT_THEME_GENERATION_OPTIONS,
     expiresAt: Date.now() + FALLBACK_CACHE_TTL_MS,
     source: "fallback",
   };
@@ -291,43 +160,13 @@ function convertRemoteCatalog(
       ],
     ),
   );
-  const remoteAutoModels = modelsByProvider.auto ?? [];
-  const fallbackAutoModels = MODEL_OPTIONS.auto.map((model) => ({
-    apiName: model.name,
-    displayName: model.displayName,
-    description: model.description,
-    tag: model.tag,
-    tagColor: model.tagColor,
-    maxOutputTokens: model.maxOutputTokens,
-    contextWindow: model.contextWindow,
-    temperature: model.temperature,
-    dollarSigns: model.dollarSigns,
-    type: "cloud" as const,
-  }));
-  if (remoteAutoModels.length === 0) {
-    modelsByProvider.auto = fallbackAutoModels;
-  }
-
   const parsedExpiresAt = remoteCatalog.expiresAt
     ? new Date(remoteCatalog.expiresAt).getTime()
     : NaN;
 
-  // Merge required builtin aliases that may be missing from the remote catalog.
-  const fallback = buildFallbackCatalog();
-  const remoteAliasIds = new Set(remoteCatalog.aliases.map((a) => a.id));
-  const mergedAliases = [
-    ...remoteCatalog.aliases,
-    ...fallback.aliases.filter((a) => !remoteAliasIds.has(a.id)),
-  ];
-
   return {
     providers,
     modelsByProvider,
-    aliases: mergedAliases,
-    themeGenerationOptions: remoteCatalog.curatedSelections
-      ?.themeGenerationOptions?.length
-      ? remoteCatalog.curatedSelections.themeGenerationOptions
-      : DEFAULT_THEME_GENERATION_OPTIONS,
     expiresAt:
       Number.isFinite(parsedExpiresAt) && parsedExpiresAt > Date.now()
         ? parsedExpiresAt
@@ -370,9 +209,6 @@ async function fetchRemoteCatalog(): Promise<BuiltinLanguageModelCatalog | null>
       catalogUrl,
       version: convertedCatalog.version,
       providerCount: convertedCatalog.providers.length,
-      aliasCount: convertedCatalog.aliases.length,
-      themeGenerationOptionCount:
-        convertedCatalog.themeGenerationOptions.length,
     });
 
     return convertedCatalog;
@@ -455,7 +291,6 @@ export async function getBuiltinLanguageModelCatalog(): Promise<BuiltinLanguageM
             source: builtinCatalogCache.source,
             version: builtinCatalogCache.version,
             providerCount: builtinCatalogCache.providers.length,
-            aliasCount: builtinCatalogCache.aliases.length,
           },
         );
         return builtinCatalogCache;
@@ -468,30 +303,4 @@ export async function getBuiltinLanguageModelCatalog(): Promise<BuiltinLanguageM
   }
 
   return builtinCatalogFetchPromise;
-}
-
-export async function getThemeGenerationModelOptions(): Promise<
-  ThemeGenerationModelOption[]
-> {
-  const catalog = await getBuiltinLanguageModelCatalog();
-  return catalog.themeGenerationOptions;
-}
-
-export async function resolveBuiltinModelAlias(
-  aliasId: BuiltinModelAlias | string,
-): Promise<ResolvedBuiltinModel | null> {
-  const catalog = await getBuiltinLanguageModelCatalog();
-  const resolvedModel =
-    catalog.aliases.find((alias) => alias.id === aliasId)?.resolvedModel ??
-    null;
-
-  logger.info("Resolved builtin model alias", {
-    aliasId,
-    source: catalog.source,
-    version: catalog.version,
-    resolvedProviderId: resolvedModel?.providerId,
-    resolvedApiName: resolvedModel?.apiName,
-  });
-
-  return resolvedModel;
 }

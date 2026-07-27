@@ -33,7 +33,7 @@ The shared product core will depend on a `HostProvider` contract, not directly o
 - `exec`: run/stop commands, stream logs/output
 - `git`: branch/commit/status/sync operations
 - `preview`: start/stop/status/getPreviewUrl
-- `integration`: provider-specific operations (supabase/vercel/neon/mcp)
+- `integration`: provider-specific operations (Supabase/Vercel/Neon)
 - `system`: optional host/system functions (open external URL, show in folder, clipboard/screenshot)
 - `session`: session cache/state controls
 

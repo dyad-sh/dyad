@@ -3,7 +3,7 @@
 // process. It is the reference conversion for the hybrid harness.
 //
 // Flow under test: click the real Send button -> real `chat:stream` handler ->
-// in-process fake-LLM server (HTTP) -> real tag processor / file writes / git /
+// in-process fake-LLM server (HTTP) -> real tool execution / file writes / git /
 // sqlite -> `chat:response:chunk` events fan back through the bridge -> jotai
 // atoms update -> the assistant message renders in the DOM.
 //
@@ -51,7 +51,7 @@ describe("hybrid chat harness (smoke)", () => {
       { timeout: 15_000 },
     );
 
-    const prompt = "tc=dyad-write-angle";
+    const prompt = "tc=local-agent/basic-write";
     const { send } = await harness.typeInChat(prompt);
     send();
 
@@ -60,9 +60,13 @@ describe("hybrid chat harness (smoke)", () => {
       timeout: 15_000,
     });
     // ...then the streamed assistant response text renders in the DOM.
-    await waitFor(() => expect(screen.getByText(/AFTER TAG/)).toBeTruthy(), {
-      timeout: 20_000,
-    });
+    await waitFor(
+      () =>
+        expect(
+          screen.getByText(/I've created the file successfully\./),
+        ).toBeTruthy(),
+      { timeout: 20_000 },
+    );
 
     // The streamed text hits the DOM before the main-process post-stream work
     // (tag processing, file writes, commit, approval) completes — wait for the
@@ -70,10 +74,10 @@ describe("hybrid chat harness (smoke)", () => {
     await harness.waitForStreamEnd(harness.chatId);
 
     // Prove it went through the REAL main-process pipeline:
-    // 1. The dyad-write tag was executed against the real app checkout.
-    expect(harness.appFileExists("src/foo/bar.tsx")).toBe(true);
-    expect(harness.readAppFile("src/foo/bar.tsx").trim()).toBe(
-      "// BEGINNING OF FILE",
+    // 1. The write tool was executed against the real app checkout.
+    expect(harness.appFileExists("src/hello.ts")).toBe(true);
+    expect(harness.readAppFile("src/hello.ts")).toContain(
+      'return "Hello, World!";',
     );
     // 2. A real commit was made.
     expect(harness.gitLog().length).toBeGreaterThan(1);
@@ -81,7 +85,7 @@ describe("hybrid chat harness (smoke)", () => {
     const messages = await harness.db.query.messages.findMany();
     const assistant = messages.find((m) => m.role === "assistant");
     expect(assistant).toBeTruthy();
-    expect(assistant!.content).toContain("AFTER TAG");
+    expect(assistant!.content).toContain("I've created the file successfully.");
     expect(assistant!.approvalState).toBe("approved");
     expect(assistant!.commitHash).toBeTruthy();
     // 4. The renderer got the stream events through the bridge.

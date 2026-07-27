@@ -184,8 +184,6 @@ export const test = base.extend<{
       process.env.DYAD_E2E_PORT_BLOCK_INDEX = String(testInfo.parallelIndex);
       process.env.OLLAMA_HOST = `http://localhost:${fakeLlmPort}/ollama`;
       process.env.LM_STUDIO_BASE_URL_FOR_TESTING = `http://localhost:${fakeLlmPort}/lmstudio`;
-      process.env.DYAD_ENGINE_URL = `http://localhost:${fakeLlmPort}/engine/v1`;
-      process.env.DYAD_GATEWAY_URL = `http://localhost:${fakeLlmPort}/gateway/v1`;
       process.env.DYAD_DEFAULT_APPROVE_BUILDS_URL = `http://localhost:${fakeLlmPort}/api/default-approve-builds.txt`;
       process.env.DYAD_TEST_PNPM_VERSION = "11.1.2";
       process.env.E2E_TEST_BUILD = "true";
@@ -207,6 +205,7 @@ export const test = base.extend<{
         args: [
           appInfo.main,
           "--enable-logging",
+          ...(process.platform === "darwin" ? ["--use-mock-keychain"] : []),
           `--user-data-dir=${userDataDir}`,
           ...(electronConfig.launchArgs ?? []),
         ],

@@ -33,6 +33,10 @@ vi.mock("posthog-js/react", () => ({
   usePostHog: () => ({ capture: vi.fn() }),
 }));
 
+vi.mock("@/ipc/shared/remote_desktop_config", () => ({
+  getRemoteDesktopConfig: async () => null,
+}));
+
 // The tsc problem-report worker needs a compiled worker script and Electron
 // app paths, neither of which exists under vitest — every problems check would
 // otherwise fail and dump a TypeError stack into the test output.

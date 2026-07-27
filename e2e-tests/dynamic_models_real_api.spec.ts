@@ -36,26 +36,5 @@ testWithRealCatalog(
     await expect(po.page.getByText("OpenAI Models")).toBeVisible({
       timeout: Timeout.SHORT,
     });
-
-    // Close the model picker
-    await po.page.keyboard.press("Escape");
-
-    // Navigate to Themes and verify theme generation model options from real API
-    await po.navigation.goToLibraryTab();
-    await po.page.getByRole("link", { name: "Themes" }).click();
-    await po.page.getByRole("button", { name: "New Theme" }).click();
-    await expect(
-      po.page.getByRole("dialog").getByText("Create Custom Theme"),
-    ).toBeVisible();
-
-    // Verify the "Model Selection" label is visible and at least one model
-    // option button is rendered from the real catalog
-    const dialog = po.page.getByRole("dialog");
-    await expect(dialog.getByText("Model Selection")).toBeVisible({
-      timeout: Timeout.MEDIUM,
-    });
-    // The real catalog provides 3 theme generation model options;
-    // verify at least one is rendered as a button after the label
-    await expect(dialog.getByText("Generate Theme Prompt")).toBeVisible();
   },
 );

@@ -11,9 +11,6 @@ import type { UserSettings } from "@/lib/schemas";
 import { useChatMode } from "./useChatMode";
 
 const mocks = vi.hoisted(() => ({
-  envVars: {} as Record<string, string | undefined>,
-  isQuotaExceeded: false,
-  isQuotaLoading: true,
   settings: {} as UserSettings,
   updateSettings: vi.fn(),
 }));
@@ -21,15 +18,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("./useSettings", () => ({
   useSettings: () => ({
     settings: mocks.settings,
-    envVars: mocks.envVars,
     updateSettings: mocks.updateSettings,
-  }),
-}));
-
-vi.mock("./useFreeAgentQuota", () => ({
-  useFreeAgentQuota: () => ({
-    isQuotaExceeded: mocks.isQuotaExceeded,
-    isLoading: mocks.isQuotaLoading,
   }),
 }));
 
@@ -37,7 +26,7 @@ function makeSettings(overrides: Partial<UserSettings> = {}): UserSettings {
   return {
     selectedModel: { provider: "openrouter", name: "test-model" },
     providerSettings: {},
-    selectedChatMode: "build",
+    selectedChatMode: "ask",
     selectedTemplateId: "react",
     enableAutoUpdate: true,
     releaseChannel: "stable",
@@ -71,14 +60,11 @@ function makeWrapper(manuallySelected = false, initialChat?: Chat) {
 
 describe("useChatMode without an active chat", () => {
   beforeEach(() => {
-    mocks.envVars = {};
-    mocks.isQuotaExceeded = false;
-    mocks.isQuotaLoading = true;
     mocks.settings = makeSettings();
     mocks.updateSettings.mockReset();
   });
 
-  it("shows the optimistic Agent default without persisting it", () => {
+  it("shows the Agent default without persisting it", () => {
     const { result } = renderHook(() => useChatMode(null), {
       wrapper: makeWrapper(),
     });
@@ -92,43 +78,17 @@ describe("useChatMode without an active chat", () => {
       wrapper: makeWrapper(true),
     });
 
-    expect(result.current.selectedMode).toBe("build");
-  });
-
-  it("shows Build when the automatic Google-only fallback applies", () => {
-    mocks.isQuotaLoading = false;
-    mocks.settings = makeSettings({
-      selectedChatMode: "local-agent",
-      providerSettings: {
-        google: { apiKey: { value: "test-key" } },
-      },
-    });
-
-    const { result } = renderHook(() => useChatMode(null), {
-      wrapper: makeWrapper(),
-    });
-
-    expect(result.current.selectedMode).toBe("build");
+    expect(result.current.selectedMode).toBe("ask");
   });
 });
 
 describe("useChatMode with an active chat", () => {
   beforeEach(() => {
-    mocks.envVars = {};
-    mocks.isQuotaExceeded = false;
-    mocks.isQuotaLoading = false;
-    mocks.settings = makeSettings({
-      defaultChatMode: "build",
-      enableDyadPro: true,
-      providerSettings: {
-        auto: { apiKey: { value: "dyad-pro-key" } },
-      },
-      selectedModel: { provider: "auto", name: "free-pro" },
-    });
+    mocks.settings = makeSettings({ defaultChatMode: "local-agent" });
     mocks.updateSettings.mockReset();
   });
 
-  it("projects a compatible mode without latching an implicit chat", () => {
+  it("uses the default without latching an implicit chat", () => {
     const chat = {
       id: 123,
       appId: 1,
@@ -145,20 +105,20 @@ describe("useChatMode with an active chat", () => {
     expect(result.current.selectedMode).toBe("local-agent");
   });
 
-  it("preserves an explicitly stored Build mode for compatibility repair", () => {
+  it("preserves an explicitly stored mode", () => {
     const chat = {
       id: 123,
       appId: 1,
       title: "",
       messages: [],
-      chatMode: "build",
+      chatMode: "plan",
     } satisfies Chat;
 
     const { result } = renderHook(() => useChatMode(chat.id), {
       wrapper: makeWrapper(false, chat),
     });
 
-    expect(result.current.storedChatMode).toBe("build");
-    expect(result.current.selectedMode).toBe("build");
+    expect(result.current.storedChatMode).toBe("plan");
+    expect(result.current.selectedMode).toBe("plan");
   });
 });

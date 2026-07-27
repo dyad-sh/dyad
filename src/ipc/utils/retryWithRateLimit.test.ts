@@ -242,6 +242,25 @@ describe("retryWithRateLimit", () => {
     });
   });
 
+  it("cancels during rate-limit backoff without retrying", async () => {
+    const rateLimitError = { response: { status: 429 } };
+    const operation = vi.fn().mockRejectedValue(rateLimitError);
+    const controller = new AbortController();
+    const cancellation = new Error("cancelled");
+
+    const result = retryWithRateLimit(operation, "test-operation", {
+      baseDelay: 60_000,
+      signal: controller.signal,
+    });
+    const expectation = expect(result).rejects.toBe(cancellation);
+    await vi.advanceTimersByTimeAsync(0);
+
+    controller.abort(cancellation);
+
+    await expectation;
+    expect(operation).toHaveBeenCalledOnce();
+  });
+
   describe("exhausted retries", () => {
     it("should throw after max retries are exhausted", async () => {
       const rateLimitError = { response: { status: 429 } };

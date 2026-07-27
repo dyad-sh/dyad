@@ -2,7 +2,7 @@ const locks = new Map<number | string, Promise<void>>();
 
 /**
  * Build the lock ID used to serialize writes to a single file path.
- * Some tool calls (e.g. `write_file` and `search_replace`) must use
+ * File-writing tool calls such as `write_file` and `edit_file` must use
  * this so they don't race against each other on the same file.
  */
 export function getFileWriteKey(filePath: string): string {

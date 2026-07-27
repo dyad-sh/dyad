@@ -23,3 +23,14 @@ That policy:
 
 When users configure scripts to always allow, this path policy remains the sole
 runtime guard. Keep it conservative when adding new host capabilities.
+
+## Agent Bash Commands
+
+The agent `bash` tool executes an arbitrary host shell command; its app-root
+working directory is not a security boundary. This is an explicit,
+user-approved host capability rather than a sandbox. Dyad shows the complete
+command and requires approval for every invocation, even when other changes
+are auto-approved. The child receives a small allowlist of non-secret
+environment variables, and Dyad checks for workspace mutations after both
+successful and failed commands. That signal covers user-visible Git paths;
+ignored dependencies and Dyad-managed internals do not trigger checkpoints.

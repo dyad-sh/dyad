@@ -19,17 +19,13 @@ export interface PendingIntegration {
 }
 
 export interface PendingToolConsent {
-  kind: "agent" | "mcp";
+  kind: "agent";
   requestId: string;
   chatId: number;
   toolName: string;
   toolDescription?: string | null;
   inputPreview?: string | null;
   metadata?: SqlConsentMetadata | null;
-  serverId?: number;
-  serverName?: string | null;
-  classifierReason?: string | null;
-  classifierPending?: boolean;
 }
 
 const toolConsentCache = new WeakMap<
@@ -106,19 +102,6 @@ export function selectPendingToolConsents(
         toolDescription: descriptor.toolDescription,
         inputPreview: descriptor.inputPreview,
         metadata: descriptor.metadata as SqlConsentMetadata | null | undefined,
-      });
-    } else if (descriptor.kind === "mcp-consent") {
-      consents.push({
-        kind: "mcp",
-        requestId: descriptor.requestId,
-        chatId: descriptor.chatId,
-        serverId: descriptor.serverId,
-        serverName: descriptor.serverName,
-        toolName: descriptor.toolName,
-        toolDescription: descriptor.toolDescription,
-        inputPreview: descriptor.inputPreview,
-        classifierReason: request.classifierReason,
-        classifierPending: request.classifier === "racing",
       });
     }
   }

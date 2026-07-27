@@ -136,22 +136,23 @@ describe("security review (integration)", () => {
     const assistant = messages.find((m) => m.role === "assistant")!;
     expect(assistant.content).toContain("<dyad-security-finding");
 
-    // The request payload for the review turn: security system prompt (masked),
-    // fresh codebase context, and the raw "/security-review" prompt.
+    // The request payload for the review turn: security system prompt (masked)
+    // and the structured pi user message containing "/security-review".
     const dump = harness.getServerDump({ type: "all-messages" });
     expect(dump.text).toContain("message: [[SYSTEM_MESSAGE]]");
-    expect(dump.text).toContain("This is my codebase.");
     expect(dump.text.trimEnd()).toMatch(
-      /role: user\nmessage: \/security-review$/,
+      /role: user\nmessage: \[\{"type":"text","text":"\/security-review"\}\]$/,
     );
     expect(dump.text).toMatchSnapshot("security-review-dump");
 
-    // The unmasked system prompt actually sent is the security review prompt.
+    // The unmasked system prompt contains both the security instructions and
+    // the fresh codebase context in the pi request shape.
     const raw = JSON.parse(fs.readFileSync(dump.dumpPath, "utf-8"));
     const systemMessage = raw.body.messages.find(
       (m: { role: string }) => m.role === "system",
     );
     expect(systemMessage.content).toContain("Security expert");
+    expect(systemMessage.content).toContain("This is my codebase.");
 
     // The real get-latest-security-review handler parses the findings.
     const review = await getLatestSecurityReview();
@@ -188,8 +189,8 @@ ${finding.description}`;
     const { send } = await harness.typeInChat(prompt, { chatId: fixChatId });
     send();
 
-    // The fix prompt renders as the user message, and the canned response's
-    // trailing "EOM" text renders once the assistant turn streams in.
+    // The fix prompt renders as the user message, and the deterministic pi
+    // fixture's completion text renders once the assistant turn streams in.
     await waitFor(
       () =>
         expect(
@@ -197,9 +198,13 @@ ${finding.description}`;
         ).toBeTruthy(),
       { timeout: 15_000 },
     );
-    await waitFor(() => expect(screen.getByText(/EOM/)).toBeTruthy(), {
-      timeout: 20_000,
-    });
+    await waitFor(
+      () =>
+        expect(
+          screen.getByText(/I've created the file successfully\./),
+        ).toBeTruthy(),
+      { timeout: 20_000 },
+    );
     await fixEnd;
 
     const messages = await loadChatMessages(fixChatId);
@@ -207,12 +212,12 @@ ${finding.description}`;
     expect(user.content).toMatch(/^Please fix the following security issue/);
     expect(user.content).toContain(finding.title);
 
-    // The canned response writes file1.txt; auto-approve commits it — the
-    // "Version 2:" marker asserted in the e2e messages list.
+    // The pi fixture calls write_file and commits it. This is the same version
+    // transition represented by the "Version 2" marker in the packaged UI.
     const assistant = messages.find((m) => m.role === "assistant")!;
     expect(assistant.approvalState).toBe("approved");
     expect(assistant.commitHash).toBeTruthy();
-    expect(harness.appFileExists("file1.txt")).toBe(true);
+    expect(harness.appFileExists("src/hello.ts")).toBe(true);
     expect(harness.gitLog().length).toBeGreaterThan(commitsBefore);
     await harness.bridge.settleInFlight();
   }, 60_000);
@@ -220,10 +225,10 @@ ${finding.description}`;
   it("fixes all issues, shows the bulk fix, and re-runs it in the same chat", async () => {
     expect(findings.length).toBeGreaterThanOrEqual(2);
 
-    // The previous test committed the canned file1.txt write. Perturb and
+    // The previous test committed the fixture's src/hello.ts write. Perturb and
     // commit it so this UI-driven bulk fix produces another real change.
     await harness.bridge.settleInFlight();
-    fs.writeFileSync(path.join(harness.appDir, "file1.txt"), "perturbed\n");
+    fs.writeFileSync(path.join(harness.appDir, "src/hello.ts"), "perturbed\n");
     execFileSync("git", ["add", "-A"], { cwd: harness.appDir });
     execFileSync(
       "git",
@@ -294,7 +299,7 @@ ${finding.description}`;
     // Make the canned rerun write produce a fresh commit too.
     await harness.bridge.settleInFlight();
     fs.writeFileSync(
-      path.join(harness.appDir, "file1.txt"),
+      path.join(harness.appDir, "src/hello.ts"),
       "perturbed again\n",
     );
     execFileSync("git", ["add", "-A"], { cwd: harness.appDir });
@@ -380,14 +385,14 @@ ${finding.description}`;
     await reviewEnd;
 
     const dump = harness.getServerDump({ type: "all-messages" });
-    // The rules file shows up in the codebase context...
-    expect(dump.text).toContain('<dyad-file path="SECURITY_RULES.md">');
-    expect(dump.text).toContain("rules123");
-
-    // ...and is appended to the (unmasked) security system prompt.
+    // The rules file appears in the codebase context and is appended to the
+    // unmasked security system prompt.
     const raw = JSON.parse(fs.readFileSync(dump.dumpPath, "utf-8"));
     const systemMessage = raw.body.messages.find(
       (m: { role: string }) => m.role === "system",
+    );
+    expect(systemMessage.content).toContain(
+      '<dyad-file path="SECURITY_RULES.md">',
     );
     expect(systemMessage.content).toContain(
       "# Project-specific security rules:",

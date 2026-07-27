@@ -131,7 +131,7 @@ Note: No `convex_return_handler.ts` needed (no OAuth). No separate `ConvexIntegr
 |------|--------|------|
 | `src/db/schema.ts` | Add `convexDeploymentUrl`, `convexProjectSlug`, `convexTeamSlug` to `apps` table | Small |
 | `src/ipc/handlers/chat_stream_handlers.ts` | Add Convex context injection branch (parallel to Supabase block ~line 726) | Small |
-| `src/pro/main/ipc/handlers/local_agent/tool_definitions.ts` | Add Convex agent tools | Medium |
+| `src/ipc/pi/tools/dyad/tool_registry.ts` | Add Convex agent tools | Medium |
 | `src/prompts/local_agent_prompt.ts` | Add Convex-aware instructions | Small |
 | `src/pages/app-details.tsx` | Add ConvexConnector to integrations section | Small |
 

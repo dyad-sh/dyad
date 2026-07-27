@@ -23,6 +23,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+.dyad/
 
 
 === a.txt ===
@@ -41,6 +42,7 @@ dir/c.txt
 === new-file.js ===
 new-file
 end of new-file
+
 
 === package.json ===
 {

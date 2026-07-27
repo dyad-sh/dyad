@@ -129,7 +129,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
     }
     showSuccess(t("home:successfullyImported", { name: result.app.name }));
     if (result.autoUpgradeWarning) {
-      showWarning(t("home:autoUpgradeFailed"));
+      showWarning(t("home:previewOptimizationFailed"));
     }
     const chatId = await ipc.chat.createChat(result.app.id);
     await queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
@@ -651,7 +651,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                                 htmlFor="optimize-for-dyad-repos"
                                 className="text-xs sm:text-sm cursor-pointer"
                               >
-                                {t("home:autoUpgradeAnnotator")} (
+                                {t("home:optimizeForDyad")} (
                                 {t("common:recommended")})
                               </Label>
                             </div>
@@ -752,8 +752,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                         htmlFor="optimize-for-dyad-url"
                         className="text-xs sm:text-sm cursor-pointer"
                       >
-                        {t("home:autoUpgradeAnnotator")} (
-                        {t("common:recommended")})
+                        {t("home:optimizeForDyad")} ({t("common:recommended")})
                       </Label>
                     </div>
                     <div className="grid gap-2">

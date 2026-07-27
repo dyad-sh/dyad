@@ -10,7 +10,7 @@ import { Timeout, testSkipIfWindows } from "./helpers/test_helper";
 testSkipIfWindows(
   "local-agent - app blueprint name conflict auto-suffixes the name",
   async ({ po }) => {
-    await po.setUpDyadPro({ localAgent: true });
+    await po.setUp({ enableAppBlueprint: true });
 
     // Seed a name collision: rename the first imported app to the exact name
     // the blueprint fixture will try to claim ("Lumen Notes").
@@ -59,7 +59,7 @@ testSkipIfWindows(
 testSkipIfWindows(
   "local-agent - app blueprint approval sanitizes invalid folder characters",
   async ({ po }) => {
-    await po.setUpDyadPro({ localAgent: true });
+    await po.setUp({ enableAppBlueprint: true });
     await po.importApp("minimal");
     await po.chatActions.selectLocalAgentMode();
     await po.appManagement.enableAppBlueprintForCurrentApp();

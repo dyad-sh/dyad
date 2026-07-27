@@ -456,17 +456,14 @@ testWithNotificationsEnabled(
       ({ BrowserWindow }, { chatId }) => {
         const window = BrowserWindow.getAllWindows()[0];
         window.webContents.send("user-input:requested", {
-          requestId: "mcp-in-flight-request",
-          serverId: 1,
+          requestId: "agent-in-flight-request",
           chatId,
           deadlineAt: Date.now() + 300_000,
-          kind: "mcp-consent",
-          toolName: "mcp_tool",
-          serverName: "Test Server",
-          classifier: "none",
+          kind: "agent-consent",
+          toolName: "test_tool",
         });
         window.webContents.send("user-input:settled", {
-          requestId: "mcp-in-flight-request",
+          requestId: "agent-in-flight-request",
           outcome: "human",
         });
       },
@@ -478,7 +475,7 @@ testWithNotificationsEnabled(
       await po.browserNotifications.getCreatedNotifications();
     expect(
       notifications.some(
-        (item) => item.tag === "dyad-mcp-consent-mcp-in-flight-request",
+        (item) => item.tag === "dyad-agent-consent-agent-in-flight-request",
       ),
     ).toBe(false);
   },
@@ -548,120 +545,6 @@ testWithNotificationsEnabled(
     );
 
     const tag = "dyad-agent-consent-test-request";
-    await po.browserNotifications.waitForNotificationWithTag(tag);
-
-    await po.browserNotifications.clickNotificationWithTag(tag);
-    await expectNavigatedToChat(po, chatId);
-  },
-);
-
-// MCP consent (app hidden): sticky notification with tool info
-testWithNotificationsEnabled(
-  "mcp consent notification when app hidden",
-  async ({ po, electronApp }) => {
-    await po.setUp({ autoApprove: false });
-    await po.importApp("minimal");
-    await po.chatActions.waitForChatCompletion({ timeout: Timeout.LONG });
-    await enableNotifications(po);
-
-    const chatId = await createChat(po);
-    await triggerHidden(po);
-    await po.browserNotifications.injectFakeNotifications();
-    // Simulate MCP Consent IPC Event from Main process
-    await electronApp.evaluate(
-      ({ BrowserWindow }, { chatId }) => {
-        const window = BrowserWindow.getAllWindows()[0];
-        window.webContents.send("user-input:requested", {
-          requestId: "mcp-request",
-          serverId: 1,
-          chatId,
-          deadlineAt: Date.now() + 300_000,
-          kind: "mcp-consent",
-          toolName: "mcp_tool",
-          serverName: "Test Server",
-          classifier: "none",
-        });
-      },
-      { chatId },
-    );
-
-    const tag = "dyad-mcp-consent-mcp-request";
-    const notification =
-      await po.browserNotifications.waitForNotificationWithTag(tag);
-    expect(notification.body).toContain("mcp_tool");
-    expect(notification.requireInteraction).toBe(true);
-  },
-);
-
-// MCP consent (different chat): sticky notification with tool info
-testWithNotificationsEnabled(
-  "mcp consent notification when viewing different chat",
-  async ({ po, electronApp }) => {
-    await po.setUp({ autoApprove: false });
-    await po.importApp("minimal");
-    await po.chatActions.waitForChatCompletion({ timeout: Timeout.LONG });
-    await enableNotifications(po);
-
-    const chatId = await createChat(po);
-    await triggerDifferentChat(po, chatId);
-    await po.browserNotifications.injectFakeNotifications();
-
-    await electronApp.evaluate(
-      ({ BrowserWindow }, { chatId }) => {
-        const window = BrowserWindow.getAllWindows()[0];
-        window.webContents.send("user-input:requested", {
-          requestId: "mcp-request",
-          serverId: 1,
-          chatId,
-          deadlineAt: Date.now() + 300_000,
-          kind: "mcp-consent",
-          toolName: "mcp_tool",
-          serverName: "Test Server",
-          classifier: "none",
-        });
-      },
-      { chatId },
-    );
-
-    const tag = "dyad-mcp-consent-mcp-request";
-    const notification =
-      await po.browserNotifications.waitForNotificationWithTag(tag);
-    expect(notification.body).toContain("mcp_tool");
-    expect(notification.requireInteraction).toBe(true);
-  },
-);
-
-// MCP consent click navigates back to chat (different chat)
-testWithNotificationsEnabled(
-  "mcp consent notification click navigates to chat",
-  async ({ po, electronApp }) => {
-    await po.setUp({ autoApprove: false });
-    await po.importApp("minimal");
-    await po.chatActions.waitForChatCompletion({ timeout: Timeout.LONG });
-    await enableNotifications(po);
-
-    const chatId = await createChat(po);
-    await triggerDifferentChat(po, chatId);
-    await po.browserNotifications.injectFakeNotifications();
-
-    await electronApp.evaluate(
-      ({ BrowserWindow }, { chatId }) => {
-        const window = BrowserWindow.getAllWindows()[0];
-        window.webContents.send("user-input:requested", {
-          requestId: "mcp-request",
-          serverId: 1,
-          chatId,
-          deadlineAt: Date.now() + 300_000,
-          kind: "mcp-consent",
-          toolName: "mcp_tool",
-          serverName: "Test Server",
-          classifier: "none",
-        });
-      },
-      { chatId },
-    );
-
-    const tag = "dyad-mcp-consent-mcp-request";
     await po.browserNotifications.waitForNotificationWithTag(tag);
 
     await po.browserNotifications.clickNotificationWithTag(tag);

@@ -51,7 +51,7 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
             invocationRef: event.invocationRef,
             operation: "run",
             startedAt: event.startedAt,
-            options: { removeNodeModules: false, recreateSandbox: false },
+            options: { removeNodeModules: false },
           },
         ],
       };
@@ -97,7 +97,7 @@ export function transition(state: RunState, event: RunEvent): TransitionResult {
             invocationRef: event.invocationRef,
             operation: "rebuild",
             startedAt: event.startedAt,
-            options: { removeNodeModules: true, recreateSandbox: false },
+            options: { removeNodeModules: true },
           },
         ],
       };

@@ -1,4 +1,4 @@
-import { hasDyadProKey, type UserSettings } from "@/lib/schemas";
+import type { UserSettings } from "@/lib/schemas";
 
 type TelemetryProperties = Record<string, unknown> | undefined;
 
@@ -16,7 +16,6 @@ export function getInitialLoadTelemetryProperties({
   isFirstSession,
 }: InitialLoadTelemetryInput) {
   return {
-    isPro: hasDyadProKey(settings),
     appVersion,
     platform,
     releaseChannel: settings.releaseChannel,
@@ -33,10 +32,6 @@ export type PostHogTelemetryEvent = {
   properties?: TelemetryProperties;
 };
 
-/**
- * Non-Pro telemetry sends only ~10% of events. These events are always sent.
- * Keep `sandbox.script.*` here so script instrumentation is never sampled out.
- */
 /** Node/Electron undici network failure with no actionable stack context. */
 export function isGenericFetchFailedError(
   name: string | undefined,
@@ -76,27 +71,17 @@ export function shouldFilterPostHogExceptionEvent(
   );
 }
 
-export function shouldBypassNonProTelemetrySampling(
+export function shouldBypassTelemetrySampling(
   event: PostHogTelemetryEvent | null | undefined,
 ): boolean {
   const eventName = event?.event;
   const properties = event?.properties;
-
-  if (eventName?.startsWith("sandbox.script.")) {
-    return true;
-  }
 
   if (eventName?.startsWith("pnpm:build-")) {
     return true;
   }
 
   if (eventName === "app:initial-load") {
-    return true;
-  }
-
-  // Promo clicks are only ever fired by non-Pro users; sampling would drop
-  // 90% of them and make conversion funnels unreadable.
-  if (eventName === "promo_click") {
     return true;
   }
 

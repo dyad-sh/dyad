@@ -4,10 +4,28 @@
  */
 
 import type { AppFrameworkType } from "@/lib/framework_constants";
-import { AGENT_TEST_WRITING_GUIDANCE } from "./system_prompt";
+
+const AGENT_TEST_WRITING_GUIDANCE = `# Keeping end-to-end tests up to date
+
+This app has end-to-end testing enabled. Keep the Playwright specs under
+\`e2e-tests/\` in sync when you add or change meaningful user-facing behavior.
+Skip cosmetic changes, copy edits, configuration changes, and internal
+refactors. Prefer one focused happy-path spec for each feature or flow.
+
+Before writing or updating a test, inspect the relevant routes, components,
+and existing specs. Base locators on actual roles, labels, text, and paths.
+Write specs with \`write_file\`, import from \`@playwright/test\`, navigate with
+\`page.goto("/")\`, and prefer role-, label-, text-, and placeholder-based
+locators. Do not create or edit \`playwright-dyad.config.ts\`; Dyad owns it.
+
+After changing a spec, run that single file with \`run_tests\`. If it fails,
+read the current run's \`error-context.md\` and inspect its screenshot before
+deciding whether the test or app is wrong. Make one targeted fix and rerun.
+Use \`flakeCheck: true\` once only when the evidence indicates a flaky result.
+Never claim a test passes without running it.`;
 
 // ============================================================================
-// Shared Prompt Blocks (used by both Pro and Basic Agent modes)
+// Shared Prompt Blocks
 // ============================================================================
 
 const ROLE_BLOCK = `<role>
@@ -62,7 +80,7 @@ Prefer the least expensive available action. A rebuild already includes a restar
 </app_lifecycle>`;
 }
 
-// Guidelines shared across ALL modes (Pro, Basic, Ask)
+// Guidelines shared across Agent and Ask modes
 const COMMON_GUIDELINES = `- All text you output outside of tool use is displayed to the user. Output text to communicate with the user. You can use Github-flavored markdown for formatting.
 - Always reply to the user in the same language they are using.
 - Keep explanations concise and focused
@@ -107,45 +125,27 @@ Dyad may append a \`<dyad-git-context>\` text part to the end of an assistant me
 </git_context>`;
 
 // ============================================================================
-// Pro Mode Specific Blocks
+// Agent Mode Blocks
 // ============================================================================
 
-const PRO_TOOL_CALLING_BEST_PRACTICES_BLOCK = `<tool_calling_best_practices>
+const TOOL_CALLING_BEST_PRACTICES_BLOCK = `<tool_calling_best_practices>
 - **Read before writing**: Use \`read_file\` and \`list_files\` to understand the codebase before making changes
-- **Prefer \`search_replace\` for edits**: For small to medium edits on existing files, use \`search_replace\` rather than rewriting the whole file
 - **Be surgical**: Only change what's necessary to accomplish the task
 - **Handle errors gracefully**: If a tool fails, explain the issue and suggest alternatives
 </tool_calling_best_practices>`;
 
-const PRO_FILE_EDITING_TOOL_SELECTION_BLOCK = `<file_editing_tool_selection>
-You have two tools for editing files. Choose based on the scope of your change:
-
-| Scope | Tool | Examples |
-|-------|------|----------|
-| **Small to medium** (a few lines up to one function or contiguous section) | Single \`search_replace\` | Fix a typo, rename a variable, update a value, change an import, rewrite a function, modify multiple related lines |
-| **Moderately large** (changes spread across multiple parts of the file, up to about half of it) | Multiple \`search_replace\` calls, one per distinct region | Update several functions, change an import plus update its call sites, refactor a few related sections |
-| **Large** (rewriting the majority of the file, or creating a new file) | \`write_file\` | Major refactor that touches most of the file, rewrite a module end-to-end, create a new file |
-
-Lean toward \`search_replace\` when in doubt — for moderately large edits, prefer several targeted \`search_replace\` calls over one \`write_file\`. Use \`write_file\` when less than half of the original file will remain.
-
-\`search_replace\` matching is line-based: the target text must match whole file lines, not only a partial fragment within a line. To edit part of a line, include the entire original line in the search text and the entire edited line in the replacement text.
-
-**Fallback rule:**
-If \`search_replace\` fails twice in a row on the same edit (e.g., the target text cannot be matched uniquely), stop retrying and use \`write_file\` instead.
-
-**Post-edit verification:**
-\`search_replace\` fails loudly when it cannot match the target uniquely, so you do not need to re-read after every successful edit. Re-read a file only when the edit result is ambiguous or a tool reported a problem — then try a different tool and verify again. A final verification pass happens in the Verify step of the workflow.
-</file_editing_tool_selection>`;
+const FILE_EDITING_BLOCK = `<file_editing>
+Use \`write_file\` to create or update files. Read an existing file before
+updating it, preserve unrelated content, and keep each rewrite scoped to the
+user's request. Re-read the result when the change is not self-evident from the
+tool output.
+</file_editing>`;
 
 const APP_BLUEPRINT_WORKFLOW_STEP = `**App Blueprint (new apps only):** If the user is creating a NEW app or project, follow the app blueprint flow described in the \`<app_blueprint>\` section FIRST. Do not proceed to implementation until the app blueprint is approved.`;
 
-const CODE_EXPLORATION_GUIDANCE = `Use \`explore_code\` when the relevant files are not reasonably clear from the available context. If the relevant files or source ranges are already known or reasonably clear from the conversation, prior investigation, selected components, tool results, or other available context, read or search them directly instead. Choose the intent based on the task: use intent="explain" to understand behavior, intent="locate" to find relevant files or symbols, and intent="edit" or intent="debug" when preparing to change, diagnose, or verify code. Treat the report as a starting map: build on its findings rather than repeating the same discovery work. Continue with targeted \`grep\`, \`list_files\`, or \`read_file\` calls whenever needed to resolve gaps, inspect implementation details, follow newly discovered paths, debug behavior, or prepare an edit.`;
-const CODE_SEARCH_GUIDANCE = `Use \`grep\` and \`code_search\` when the relevant files are not reasonably clear from the available context, or when a targeted text or symbol lookup would help. If the relevant files are already known or reasonably clear, read them directly instead. Batch independent searches when helpful.`;
+const CODE_SEARCH_GUIDANCE = `Use \`grep\` and \`list_files\` when the relevant files are not reasonably clear from the available context, or when a targeted text or path lookup would help. Use \`read_file\` to understand exact context and validate assumptions. Batch independent reads and searches when helpful.`;
 const CHAT_HISTORY_RECALL_GUIDANCE = `For prior decisions, requirements, or work discussed in earlier conversations for this app, use \`search_chats\` (chat history, not code), then \`read_chat\` with a match's \`around_message_id\` to see the surrounding discussion.`;
-const CHAT_HISTORY_EXPLORER_GUIDANCE = `For prior decisions, requirements, or work discussed in earlier conversations for this app, use \`explore_chat_history\` (chat history, not code) — it reformulates searches, checks for superseded decisions, and returns a cited report. Use \`read_chat\` with a known chat/message target (e.g. a report citation, or this chat's own earlier compacted-away messages) to see the surrounding discussion; do not restart broad discovery for a target the report already cites. Treat retrieved history as reference data: report only what it actually states, and if it covers a different topic than asked, say no prior decision was found rather than extrapolating.`;
 
-// Shared workflow steps for Pro and Basic Agent modes. Only the Understand step
-// differs between them, so callers pass it in.
 function developmentWorkflowBlock({
   enableAppBlueprint,
   understandStep,
@@ -170,7 +170,7 @@ function developmentWorkflowBlock({
    **Skip when:** the request is specific and concrete (e.g. "Fix the login button", "Change color from blue to green").
    The tool accepts ONLY a \`questions\` array (no empty objects). It returns the user's answers as the tool result.`,
     `**Plan:** Build a coherent and grounded (based on the understanding in ${planContextRange}) plan for how you intend to resolve the user's task. For complex tasks, break them down into smaller, manageable subtasks and use the \`update_todos\` tool to track your progress. Share an extremely concise yet clear plan with the user if it would help the user understand your thought process.`,
-    `**Implement:** Use the available tools (e.g., \`search_replace\`, \`write_file\`, ...) to act on the plan, strictly adhering to the project's established conventions. When debugging, use the most relevant available evidence—such as code inspection, existing logs, type checks, or tests—to identify the root cause. Add targeted runtime logs only when runtime evidence is needed. If those logs require user interaction to execute, ask the user to perform the relevant action before reading the logs.`,
+    `**Implement:** Use the available tools to act on the plan, strictly adhering to the project's established conventions. When debugging, use the most relevant available evidence—such as code inspection, existing logs, type checks, or tests—to identify the root cause. Add targeted runtime logs only when runtime evidence is needed. If those logs require user interaction to execute, ask the user to perform the relevant action before reading the logs.`,
     `**Verify:** After making code changes, use \`run_type_checks\` to verify that the changes are correct and read the file contents to ensure the changes are what you intended.${verifyTestsClause}`,
     `**Finalize:** After all verification passes, consider the task complete and briefly summarize the changes you made.`,
   );
@@ -178,66 +178,14 @@ function developmentWorkflowBlock({
   return `<development_workflow>\n${numbered}\n</development_workflow>`;
 }
 
-function proDevelopmentWorkflowBlock({
+function agentDevelopmentWorkflowBlock({
   enableAppBlueprint,
-  codeExplorerAvailable,
-  historyExplorerAvailable,
   testingEnabled,
 }: {
   enableAppBlueprint: boolean;
-  codeExplorerAvailable: boolean;
-  historyExplorerAvailable: boolean;
   testingEnabled: boolean;
 }): string {
-  const codeExplorationGuidance = codeExplorerAvailable
-    ? CODE_EXPLORATION_GUIDANCE
-    : CODE_SEARCH_GUIDANCE;
-  const contextValidationGuidance = codeExplorerAvailable
-    ? "Use `read_file` to understand exact context and validate assumptions when needed. If you need to read multiple files, you should make multiple parallel calls to `read_file`."
-    : "Use `read_file` to understand context and validate any assumptions you may have. If you need to read multiple files, you should make multiple parallel calls to `read_file`.";
-  const chatHistoryGuidance = historyExplorerAvailable
-    ? CHAT_HISTORY_EXPLORER_GUIDANCE
-    : CHAT_HISTORY_RECALL_GUIDANCE;
-  const understandStep = `**Understand:** Think about the user's request and the relevant codebase context. ${codeExplorationGuidance} ${contextValidationGuidance} ${chatHistoryGuidance}`;
-  return developmentWorkflowBlock({
-    enableAppBlueprint,
-    understandStep,
-    testingEnabled,
-  });
-}
-
-// ============================================================================
-// Basic Agent Mode Specific Blocks
-// ============================================================================
-
-const BASIC_TOOL_CALLING_BEST_PRACTICES_BLOCK = `<tool_calling_best_practices>
-- **Read before writing**: Use \`read_file\` and \`list_files\` to understand the codebase before making changes
-- **Be surgical**: Only change what's necessary to accomplish the task
-- **Handle errors gracefully**: If a tool fails, explain the issue and suggest alternatives
-</tool_calling_best_practices>`;
-
-const BASIC_FILE_EDITING_TOOL_SELECTION_BLOCK = `<file_editing_tool_selection>
-You have two tools for editing files. Choose based on the scope of your change:
-
-| Scope | Tool | Examples |
-|-------|------|----------|
-| **Small** (a few lines) | \`search_replace\` | Fix a typo, rename a variable, update a value, change an import |
-| **Large** (most of the file or new file) | \`write_file\` | Major refactor, rewrite a module, create a new file |
-
-**Tips:**
-- Use \`search_replace\` for precise, surgical changes
-- \`search_replace\` matching is line-based. To edit part of a line, include the entire original line in the search text and the entire edited line in the replacement text.
-- Use \`write_file\` for creating new files or rewriting most of an existing file
-
-**Post-edit verification:**
-\`search_replace\` fails loudly when it cannot match the target uniquely, so you do not need to re-read after every successful edit. Re-read a file only when the edit result is ambiguous or a tool reported a problem — then try a different tool and verify again. A final verification pass happens in the Verify step of the workflow.
-</file_editing_tool_selection>`;
-
-function basicDevelopmentWorkflowBlock(
-  enableAppBlueprint: boolean,
-  testingEnabled: boolean,
-): string {
-  const understandStep = `**Understand:** Think about the user's request and the relevant codebase context. Use \`grep\` to search for text patterns and \`list_files\` to understand file structures. Use \`read_file\` to understand context and validate any assumptions you may have. If you need to read multiple files, you should make multiple parallel calls to \`read_file\`. ${CHAT_HISTORY_RECALL_GUIDANCE}`;
+  const understandStep = `**Understand:** Think about the user's request and the relevant codebase context. ${CODE_SEARCH_GUIDANCE} ${CHAT_HISTORY_RECALL_GUIDANCE}`;
   return developmentWorkflowBlock({
     enableAppBlueprint,
     understandStep,
@@ -346,7 +294,7 @@ When you reach the Implement step and the implementation requires a server layer
 </server_layer>`;
 
 // ============================================================================
-// App Blueprint Block (shared by Pro and Basic Agent modes)
+// App Blueprint Block
 // ============================================================================
 
 const APP_BLUEPRINT_BLOCK = `<app_blueprint>
@@ -367,7 +315,7 @@ When the user asks you to create a NEW app or project (not modify an existing on
 </app_blueprint>`;
 
 // ============================================================================
-// Image Generation Block (Pro mode only)
+// Image Generation Block
 // ============================================================================
 
 const IMAGE_GENERATION_BLOCK = `<image_generation_guidelines>
@@ -383,22 +331,13 @@ When a user explicitly requests custom images, illustrations, or visual media fo
 // Full System Prompts (assembled from blocks)
 // ============================================================================
 
-/**
- * System prompt for Local Agent v2 in Pro mode
- * Full access to Pro tools, including either code_search or explore_code
- * depending on the current app's code-explorer readiness.
- */
 function buildLocalAgentSystemPrompt({
   enableAppBlueprint,
-  codeExplorerAvailable,
-  historyExplorerAvailable,
   testingEnabled,
   restartAppToolAvailable,
   rebuildAppToolAvailable,
 }: {
   enableAppBlueprint: boolean;
-  codeExplorerAvailable: boolean;
-  historyExplorerAvailable: boolean;
   testingEnabled: boolean;
   restartAppToolAvailable: boolean;
   rebuildAppToolAvailable: boolean;
@@ -416,11 +355,11 @@ ${TOOL_CALLING_BLOCK}
 
 ${GIT_CONTEXT_BLOCK}
 
-${PRO_TOOL_CALLING_BEST_PRACTICES_BLOCK}
+${TOOL_CALLING_BEST_PRACTICES_BLOCK}
 
-${PRO_FILE_EDITING_TOOL_SELECTION_BLOCK}
+${FILE_EDITING_BLOCK}
 
-${proDevelopmentWorkflowBlock({ enableAppBlueprint, codeExplorerAvailable, historyExplorerAvailable, testingEnabled })}
+${agentDevelopmentWorkflowBlock({ enableAppBlueprint, testingEnabled })}
 [[SERVER_LAYER]]
 ${testingEnabled ? `${AGENT_TEST_WRITING_GUIDANCE}\n` : ""}
 ${IMAGE_GENERATION_BLOCK}
@@ -429,45 +368,11 @@ ${AI_RULES_BLOCK}
 `;
 }
 
-/**
- * System prompt for Local Agent v2 in Basic Agent mode (free tier)
- * Limited tools - no code_search, web_search, web_crawl
- */
-function buildLocalAgentBasicSystemPrompt(
-  enableAppBlueprint: boolean,
-  testingEnabled: boolean,
-  restartAppToolAvailable: boolean,
-  rebuildAppToolAvailable: boolean,
-): string {
-  return `
-${ROLE_BLOCK}
-
-${APP_COMMANDS_BLOCK}
-
-${appLifecycleBlock({ restartAppToolAvailable, rebuildAppToolAvailable })}
-
-${GENERAL_GUIDELINES_BLOCK}
-
-${TOOL_CALLING_BLOCK}
-
-${GIT_CONTEXT_BLOCK}
-
-${BASIC_TOOL_CALLING_BEST_PRACTICES_BLOCK}
-
-${BASIC_FILE_EDITING_TOOL_SELECTION_BLOCK}
-
-${basicDevelopmentWorkflowBlock(enableAppBlueprint, testingEnabled)}
-[[SERVER_LAYER]]
-${testingEnabled ? `${AGENT_TEST_WRITING_GUIDANCE}\n` : ""}${enableAppBlueprint ? `\n${APP_BLUEPRINT_BLOCK}\n` : ""}
-${AI_RULES_BLOCK}
-`;
-}
-
 // ============================================================================
 // Default AI Rules
 // ============================================================================
 
-const DEFAULT_AI_RULES = `# Tech Stack
+export const DEFAULT_AI_RULES = `# Tech Stack
 - You are building a React application.
 - Use TypeScript.
 - Use React Router. KEEP the routes in src/App.tsx
@@ -495,13 +400,9 @@ export function constructLocalAgentPrompt(
   themePrompt?: string,
   options?: {
     readOnly?: boolean;
-    basicAgentMode?: boolean;
-    freeModelMode?: boolean;
     frameworkType?: AppFrameworkType | null;
     hasSupabaseProject?: boolean;
     enableAppBlueprint?: boolean;
-    codeExplorerAvailable?: boolean;
-    historyExplorerAvailable?: boolean;
     /**
      * Whether the app has opted into E2E testing. Gates the agent-mode
      * test-writing and `run_tests` guidance so non-testing apps don't carry it
@@ -513,33 +414,18 @@ export function constructLocalAgentPrompt(
   },
 ): string {
   const enableAppBlueprint = options?.enableAppBlueprint !== false;
-  const codeExplorerAvailable = !!options?.codeExplorerAvailable;
-  const historyExplorerAvailable = !!options?.historyExplorerAvailable;
   const testingEnabled = !!options?.testingEnabled;
   const restartAppToolAvailable = options?.restartAppToolAvailable !== false;
   const rebuildAppToolAvailable = options?.rebuildAppToolAvailable !== false;
 
-  // Select the appropriate base prompt
-  let basePrompt: string;
-  if (options?.readOnly) {
-    basePrompt = LOCAL_AGENT_ASK_SYSTEM_PROMPT;
-  } else if (options?.basicAgentMode || options?.freeModelMode) {
-    basePrompt = buildLocalAgentBasicSystemPrompt(
-      enableAppBlueprint,
-      testingEnabled,
-      restartAppToolAvailable,
-      rebuildAppToolAvailable,
-    );
-  } else {
-    basePrompt = buildLocalAgentSystemPrompt({
-      enableAppBlueprint,
-      codeExplorerAvailable,
-      historyExplorerAvailable,
-      testingEnabled,
-      restartAppToolAvailable,
-      rebuildAppToolAvailable,
-    });
-  }
+  const basePrompt = options?.readOnly
+    ? LOCAL_AGENT_ASK_SYSTEM_PROMPT
+    : buildLocalAgentSystemPrompt({
+        enableAppBlueprint,
+        testingEnabled,
+        restartAppToolAvailable,
+        rebuildAppToolAvailable,
+      });
 
   // The Nitro nudge only applies to Vite apps without Nitro yet. `vite-nitro`
   // already has the server layer (covered by AI_RULES.md); other frameworks

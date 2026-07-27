@@ -226,7 +226,7 @@ const realPnpmStrictBuildsTestSkipIfWindows = testWithConfigSkipIfWindows({
   postLaunchHook: restorePackageManagerCache,
 });
 
-async function openMinimalBuildChat(po: PageObject) {
+async function openMinimalAgentChat(po: PageObject) {
   await po.setUp();
   await po.page.evaluate(
     async (nodeBinDir) => {
@@ -250,7 +250,6 @@ async function openMinimalBuildChat(po: PageObject) {
   await po.importApp("minimal");
   await po.chatActions.waitForChatCompletion({ timeout: Timeout.LONG });
   await po.chatActions.clickNewChat();
-  await po.chatActions.selectChatMode("build");
 
   const appPath = await po.appManagement.getCurrentAppPath();
   return {
@@ -321,30 +320,35 @@ function extendSocketFirewallTestTimeout(testInfo: TestInfo) {
   testInfo.setTimeout(SOCKET_FIREWALL_TEST_TIMEOUT);
 }
 
-async function clickApproveProposal(po: PageObject) {
-  const approveButton = po.page.getByTestId("approve-proposal-button").last();
-  await expect(approveButton).toBeEnabled({ timeout: Timeout.MEDIUM });
-  await approveButton.click();
-  await expect(approveButton).toBeDisabled({ timeout: Timeout.MEDIUM });
+async function allowDependencyToolOnce(po: PageObject) {
+  const allowButton = po.page.getByRole("button", { name: "Allow once" });
+  await expect(allowButton).toBeEnabled({ timeout: Timeout.MEDIUM });
+  await allowButton.click();
+  await expect(allowButton).not.toBeVisible({ timeout: Timeout.MEDIUM });
 }
 
 testSkipIfWindows(
-  "build mode - safe npm package installs through the real socket firewall path",
+  "agent mode - safe npm package installs through the real socket firewall path",
   async ({ po }, testInfo) => {
     extendSocketFirewallTestTimeout(testInfo);
 
     const { packageJsonPath, pnpmLockPath, pnpmWorkspacePath } =
-      await openMinimalBuildChat(po);
+      await openMinimalAgentChat(po);
     const initialPackageJson = await fs.readFile(packageJsonPath, "utf8");
     const initialPnpmLock = await fs.readFile(pnpmLockPath, "utf8");
     await fs.rm(pnpmWorkspacePath, { force: true });
 
-    await po.sendPrompt("tc=add-safe-dependency");
-    await expect(po.page.getByTestId("approve-proposal-button")).toBeVisible({
+    await po.sendPrompt("tc=local-agent/add-safe-dependency", {
+      skipWaitForCompletion: true,
+    });
+    await expect(
+      po.page.getByRole("button", { name: "Allow once" }),
+    ).toBeVisible({
       timeout: Timeout.LONG,
     });
 
-    await clickApproveProposal(po);
+    await allowDependencyToolOnce(po);
+    await po.chatActions.waitForChatCompletion({ timeout: Timeout.EXTRA_LONG });
     await expect(async () => {
       const packageJson = JSON.parse(
         await fs.readFile(packageJsonPath, "utf8"),
@@ -379,23 +383,27 @@ testSkipIfWindows(
 );
 
 testSkipIfWindows(
-  "build mode - blocked unsafe npm package shows the real socket verdict and preserves app files",
+  "agent mode - blocked unsafe npm package shows the real socket verdict and preserves app files",
   async ({ po }, testInfo) => {
     extendSocketFirewallTestTimeout(testInfo);
 
-    const { packageJsonPath, pnpmLockPath } = await openMinimalBuildChat(po);
+    const { packageJsonPath, pnpmLockPath } = await openMinimalAgentChat(po);
     const initialPackageJson = await fs.readFile(packageJsonPath, "utf8");
     const initialPnpmLock = await fs.readFile(pnpmLockPath, "utf8");
 
-    await po.sendPrompt("tc=add-unsafe-dependency");
-    await expect(po.page.getByTestId("approve-proposal-button")).toBeVisible({
+    await po.sendPrompt("tc=local-agent/add-unsafe-dependency", {
+      skipWaitForCompletion: true,
+    });
+    await expect(
+      po.page.getByRole("button", { name: "Allow once" }),
+    ).toBeVisible({
       timeout: Timeout.LONG,
     });
 
-    await clickApproveProposal(po);
+    await allowDependencyToolOnce(po);
 
     const errorCard = po.page.getByRole("button", {
-      name: /Failed to add dependencies: axois\./i,
+      name: /Tool 'add_dependency' failed:/i,
     });
     await expect(errorCard).toBeVisible({
       timeout: SOCKET_FIREWALL_VERDICT_TIMEOUT,

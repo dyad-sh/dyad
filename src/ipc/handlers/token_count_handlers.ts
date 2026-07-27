@@ -14,7 +14,6 @@ import { buildNeonPromptForApp } from "../../neon_admin/neon_prompt_context";
 import { getDyadAppPath } from "../../paths/paths";
 import { detectFrameworkType } from "../utils/framework_utils";
 import log from "electron-log";
-import { extractCodebase } from "../../utils/codebase";
 import {
   getSupabaseContext,
   getSupabaseClientCode,
@@ -23,10 +22,7 @@ import {
 import { TokenCountParams, TokenCountResult } from "@/ipc/types";
 import { estimateTokens, getContextWindow } from "../utils/token_utils";
 import { createLoggedHandler } from "./safe_handle";
-import { validateChatContext } from "../utils/context_paths_utils";
 import { readSettings } from "@/main/settings";
-import { extractMentionedAppsCodebasesFromPrompt } from "../utils/mention_apps";
-import { isLocalAgentBackedMode, isTurboEditsV2Enabled } from "@/lib/schemas";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { resolveChatModeForTurn } from "./chat_mode_resolution";
 
@@ -72,20 +68,13 @@ export function registerTokenCountHandlers() {
         storedChatMode: chat.chatMode,
         settings: storedSettings,
       });
-      const settings = {
-        ...storedSettings,
-        selectedChatMode,
-      };
-
       // Count system prompt tokens
-      // Migration on read converts "agent" to "build", so no need to check for it here
       const themePrompt = await getThemePromptById(chat.app?.themeId ?? null);
       const frameworkType = detectFrameworkType(getDyadAppPath(chat.app.path));
       let systemPrompt = constructSystemPrompt({
         aiRules: await readAiRules(getDyadAppPath(chat.app.path)),
-        chatMode:
-          selectedChatMode === "local-agent" ? "build" : selectedChatMode,
-        enableTurboEditsV2: isTurboEditsV2Enabled(settings),
+        chatMode: selectedChatMode,
+        readOnly: selectedChatMode === "ask",
         themePrompt,
         frameworkType,
         hasSupabaseProject: !!chat.app?.supabaseProjectId,
@@ -121,65 +110,10 @@ export function registerTokenCountHandlers() {
 
       const systemPromptTokens = estimateTokens(systemPrompt + supabaseContext);
 
-      // Extract codebase information if app is associated with the chat
-      let codebaseInfo = "";
-      let codebaseTokens = 0;
-
-      if (chat.app) {
-        const appPath = getDyadAppPath(chat.app.path);
-        const { formattedOutput, files } = await extractCodebase({
-          appPath,
-          chatContext: validateChatContext(chat.app.chatContext),
-        });
-        codebaseInfo = formattedOutput;
-        if (settings.enableDyadPro && settings.enableProSmartFilesContextMode) {
-          codebaseTokens = estimateTokens(
-            files
-              // It doesn't need to be the exact format but it's just to get a token estimate
-              .map(
-                (file) => `<dyad-file=${file.path}>${file.content}</dyad-file>`,
-              )
-              .join("\n\n"),
-          );
-        } else {
-          codebaseTokens = estimateTokens(codebaseInfo);
-        }
-        logger.debug(
-          `Extracted codebase information from ${appPath}, tokens: ${codebaseTokens}`,
-        );
-      }
-
-      // Agent/ask/plan modes reach referenced apps via tool calls rather than
-      // injecting full codebases into the prompt, so mentioned apps contribute
-      // ~0 tokens upfront. Match the extraction behavior in chat_stream_handlers
-      // so the UI estimate tracks what's actually sent.
-      const willUseLocalAgentStream = isLocalAgentBackedMode(
-        settings.selectedChatMode,
-      );
-
-      let mentionedAppsTokens = 0;
-      if (!willUseLocalAgentStream) {
-        const mentionedAppsCodebases =
-          await extractMentionedAppsCodebasesFromPrompt(
-            req.input,
-            chat.app?.id, // Exclude current app
-          );
-
-        if (mentionedAppsCodebases.length > 0) {
-          const mentionedAppsContent = mentionedAppsCodebases
-            .map(
-              ({ appName, codebaseInfo }) =>
-                `\n\n=== Referenced App: ${appName} ===\n${codebaseInfo}`,
-            )
-            .join("");
-
-          mentionedAppsTokens = estimateTokens(mentionedAppsContent);
-
-          logger.debug(
-            `Extracted ${mentionedAppsCodebases.length} mentioned app codebases, tokens: ${mentionedAppsTokens}`,
-          );
-        }
-      }
+      // Pi agents read app and referenced-app files through tools instead of
+      // injecting complete codebases into each request.
+      const codebaseTokens = 0;
+      const mentionedAppsTokens = 0;
 
       // Calculate total tokens
       const totalTokens =

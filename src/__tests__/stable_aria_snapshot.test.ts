@@ -22,10 +22,8 @@ describe("normalizeMessagesAriaSnapshot", () => {
 
   it("normalizes volatile durations in button accessible names", () => {
     expect(
-      normalizeMessagesAriaSnapshot(
-        `- button "Script Call calculator_add through MCP 12ms"\n`,
-      ),
-    ).toBe(`- button "Script Call calculator_add through MCP [[duration]]"\n`);
+      normalizeMessagesAriaSnapshot(`- button "Tool Call read_file 12ms"\n`),
+    ).toBe(`- button "Tool Call read_file [[duration]]"\n`);
   });
 
   it("normalizes generated pnpm lockfile diff stats", () => {
@@ -141,7 +139,7 @@ describe("normalizeMessagesAriaSnapshot", () => {
   it("is idempotent over its own output", () => {
     const input = `- 'button "Error Tool ''add_dependency'' failed: oops" [expanded]':
   - img
-- button "Script Call calculator_add through MCP 12ms"
+- button "Tool Call read_file 12ms"
 - text: Approved
 - paragraph: Done
 `;

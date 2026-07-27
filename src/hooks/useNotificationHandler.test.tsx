@@ -49,7 +49,6 @@ vi.mock("../ipc/types", () => ({
     events: {
       userInput: {
         onRequested: () => vi.fn(),
-        onClassified: () => vi.fn(),
         onSettled: () => vi.fn(),
       },
     },

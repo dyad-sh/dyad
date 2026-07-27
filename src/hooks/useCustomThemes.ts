@@ -4,10 +4,6 @@ import type {
   CustomTheme,
   CreateCustomThemeParams,
   UpdateCustomThemeParams,
-  GenerateThemePromptParams,
-  GenerateThemePromptResult,
-  GenerateThemeFromUrlParams,
-  ThemeGenerationModelOption,
 } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
 
@@ -83,41 +79,4 @@ export function useDeleteCustomTheme() {
       });
     },
   });
-}
-
-export function useGenerateThemePrompt() {
-  return useMutation({
-    mutationFn: async (
-      params: GenerateThemePromptParams,
-    ): Promise<GenerateThemePromptResult> => {
-      return ipc.template.generateThemePrompt(params);
-    },
-  });
-}
-
-export function useGenerateThemeFromUrl() {
-  return useMutation({
-    mutationFn: async (
-      params: GenerateThemeFromUrlParams,
-    ): Promise<GenerateThemePromptResult> => {
-      return ipc.template.generateThemeFromUrl(params);
-    },
-  });
-}
-
-export function useThemeGenerationModelOptions() {
-  const query = useQuery({
-    queryKey: queryKeys.themeGenerationModelOptions.all,
-    queryFn: async (): Promise<ThemeGenerationModelOption[]> => {
-      return ipc.template.getThemeGenerationModelOptions();
-    },
-    meta: {
-      showErrorToast: true,
-    },
-  });
-
-  return {
-    themeGenerationModelOptions: query.data ?? [],
-    isLoadingThemeGenerationModelOptions: query.isLoading,
-  };
 }

@@ -76,13 +76,10 @@
     }
   },
   "dismissError": "忽略错误",
-  "askDyadToBuild": "让 Dyad 来构建...",
   "cancelGeneration": "取消生成",
   "sendMessage": "发送消息",
   "loadingProposal": "正在加载提案...",
   "errorLoadingProposal": "加载提案出错：{{message}}",
-  "visualEditor": "可视化编辑器 (Pro)",
-  "visualEditorDescription": "可视化编辑让您无需 AI 即可进行 UI 更改，这是 Pro 专属功能",
   "summarizeNewChatTip": "创建新聊天可以让 AI 更加专注和高效",
   "summarizeToNewChat": "总结到新聊天",
   "refactorFile": "重构 {{path}} 并使其更模块化",
@@ -121,19 +118,6 @@
     "didNotFinish": "未完成",
     "chatNumber": "聊天 #{{chatId}}",
     "messagesRange": "消息 {{range}}"
-  },
-  "exploreChatHistory": {
-    "badge": "历史记录",
-    "title": "探索聊天历史",
-    "chatCount_one": "{{count}} 个聊天",
-    "chatCount_other": "{{count}} 个聊天",
-    "evidenceCount_one": "{{count}} 条证据",
-    "evidenceCount_other": "{{count}} 条证据",
-    "noRelevantHistory": "没有相关历史记录",
-    "partial": "部分结果",
-    "exploring": "正在探索...",
-    "didNotFinish": "未完成",
-    "failed": "失败"
   },
   "git": {
     "checkingChanges": "正在检查项目更改",
@@ -242,8 +226,6 @@
   "currentInput": "当前输入",
   "total": "总计",
   "failedCountTokens": "令牌计数失败",
-  "optimizeTokens": "通过以下方式优化您的令牌",
-  "dyadProSmartContext": "Dyad Pro 的智能上下文",
   "attachFiles": "附加文件",
   "themes": "主题",
   "noTheme": "无主题",
@@ -263,20 +245,13 @@
     "descriptionSingular": "选择文件的使用方式。",
     "descriptionPlural": "选择文件的使用方式。"
   },
-  "selectedComponents": "已选择的组件 ({{count}})",
-  "clearAllComponents": "清除所有已选择的组件",
-  "deselectComponent": "取消选择组件",
   "chatMode": {
     "openMenu": "打开模式菜单",
     "toggleShortcut": "{{shortcut}} 切换",
     "agentV2": "Agent v2",
     "agentV2Description": "更擅长处理大型任务和调试",
-    "build": "构建",
-    "buildDescription": "生成和编辑代码",
     "ask": "提问",
-    "askDescription": "关于应用的提问",
-    "buildWithMcp": "使用 MCP 构建",
-    "buildWithMcpDescription": "类似构建模式，但可以使用工具 (MCP) 来生成代码"
+    "askDescription": "关于应用的提问"
   },
   "modelPicker": {
     "modelLabel": "模型：",
@@ -319,38 +294,9 @@
     "versionCount": "版本 {{count}}"
   },
   "errorBox": {
-    "accessWithDyadPro": "使用 Dyad Pro 访问",
     "orSwitchModel": "或切换到其他模型。",
-    "upgradeToDyadPro": "升级到 Dyad Pro",
     "troubleshootingGuide": "故障排除指南",
-    "invalidProKey": "您似乎没有有效的 Dyad Pro 密钥。",
-    "today": "今天。",
-    "creditsUsed": "您本月的 Dyad AI 额度已用完。",
-    "reloadOrUpgrade": "重新加载或升级您的订阅",
-    "getMoreCredits": "获取更多 AI 额度",
     "readDocs": "阅读文档"
-  },
-  "promo": {
-    "tiredOfWaiting": "厌倦了等待 AI？",
-    "getDyadPro": "获取 Dyad Pro",
-    "fasterEdits": "使用 Turbo Edits 实现更快的编辑。",
-    "saveOnCosts": "使用以下功能节省高达 3 倍的 AI 成本",
-    "debuggingLoop": "陷入调试循环？尝试换一个模型。",
-    "joinBuilders": "加入 600 多名开发者，访问",
-    "dyadSubreddit": "Dyad 论坛",
-    "foundBug": "发现了 Bug？点击「帮助」>「报告 Bug」",
-    "reportBadResponse": "想要报告不良的 AI 回复？点击「帮助」上传聊天",
-    "watch": "观看",
-    "creatorBuildApp": "Dyad 创建者一步步构建圣经应用",
-    "gettingStuck": "遇到困难？阅读我们的",
-    "debuggingTips": "调试技巧",
-    "advancedTip": "高级技巧：自定义您的",
-    "aiRules": "AI 规则",
-    "keepFocused": "想让 AI 更专注？开始新聊天。",
-    "whatsNext": "想知道接下来有什么？查看我们的",
-    "roadmap": "路线图",
-    "likeDyad": "喜欢 Dyad？在 GitHub 上给个 Star",
-    "gitHub": "GitHub"
   },
   "consent": {
     "toolWantsToRun": "工具请求运行",

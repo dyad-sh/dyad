@@ -39,7 +39,7 @@ testSkipIfWindows(
     await po.chatActions.clickNewChat();
     const appAName = await po.appManagement.getCurrentAppName();
     const appAPath = await po.appManagement.getCurrentAppPath();
-    await po.sendPrompt("tc=write-index");
+    await po.sendPrompt("tc=local-agent/write-index");
     await expect(
       po.previewPanel.getPreviewIframeElement().contentFrame().locator("body"),
     ).toBeVisible({ timeout: Timeout.LONG });

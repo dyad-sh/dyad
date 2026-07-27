@@ -1,20 +1,24 @@
 - button "Restore to this point"
-- paragraph: tc=create-error
-- paragraph: I will intentionally add an error
-- 'button "Index.tsx src/pages/Index.tsx Edit Summary: intentionally add an error"'
+- paragraph: tc=local-agent/create-error
+- paragraph: I will intentionally add an error.
+- 'button "Index.tsx src/pages/Index.tsx Edit Summary: Intentionally add an error"'
+- paragraph: The runtime error is ready.
 - button "Copy"
 - text: "[[Version 2: files changed]]"
+- button "Copy Request ID"
 - button "Restore to this point"
 - paragraph:
   - text: "Fix error: Error Line 6 error Stack trace: Index ("
   - link "http://localhost:[[port]]/src/pages/Index.tsx:6:6":
     - /url: http://localhost:[[port]]/src/pages/Index.tsx:6:6
   - text: )
-- button "Copy"
-- code: Fixing the error...
-- button "Index.tsx src/pages/Index.tsx Edit"
+- paragraph: Fixing the runtime error.
+- 'button "Index.tsx src/pages/Index.tsx Edit Summary: Remove the runtime error"'
+- paragraph: The runtime error was fixed.
 - button "Copy"
 - text: "[[Version 3: files changed]]"
-- button "M src/pages/Index.tsx +8 -15"
+- button "Copy Request ID"
+- text: 0 Modified files (1)
+- button "M src/pages/Index.tsx +7 -12"
 - button "Undo"
 - button "Retry"

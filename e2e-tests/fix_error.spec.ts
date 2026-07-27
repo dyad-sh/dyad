@@ -3,7 +3,7 @@ import { expect } from "@playwright/test";
 
 testSkipIfWindows("fix error with AI", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.sendPrompt("tc=create-error");
+  await po.sendPrompt("tc=local-agent/create-error");
 
   await po.previewPanel.snapshotPreviewErrorBanner({
     name: "fix-error-with-AI-1.aria.yml",
@@ -33,11 +33,11 @@ testSkipIfWindows("fix error with AI", async ({ po }) => {
 
 testSkipIfWindows("copy error message from banner", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.sendPrompt("tc=create-error");
+  await po.sendPrompt("tc=local-agent/create-error");
 
   await expect(
     po.page.getByText("Error Line 6 error", { exact: true }),
-  ).toBeVisible({ timeout: Timeout.MEDIUM });
+  ).toBeVisible({ timeout: Timeout.LONG });
 
   await po.previewPanel.clickCopyErrorMessage();
 
@@ -53,11 +53,11 @@ testSkipIfWindows("copy error message from banner", async ({ po }) => {
 });
 test("fix all errors button", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.sendPrompt("tc=create-multiple-errors");
+  await po.sendPrompt("tc=local-agent/create-multiple-errors");
 
   await expect(
     po.page.getByRole("button", { name: /Fix All Errors/ }),
-  ).toBeVisible({ timeout: Timeout.MEDIUM });
+  ).toBeVisible({ timeout: Timeout.LONG });
   await po.previewPanel.clickFixAllErrors();
   await po.chatActions.waitForChatCompletion();
 

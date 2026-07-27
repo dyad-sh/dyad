@@ -55,6 +55,7 @@ export function AgentToolsSettings() {
             name={tool.name}
             description={tool.description}
             consent={tool.consent}
+            allowAlways={tool.name !== "bash"}
             onConsentChange={(consent) =>
               handleConsentChange(tool.name as AgentToolName, consent)
             }
@@ -86,6 +87,7 @@ export function AgentToolsSettings() {
                 name={tool.name}
                 description={tool.description}
                 consent={tool.consent}
+                allowAlways={tool.name !== "bash"}
                 onConsentChange={(consent) =>
                   handleConsentChange(tool.name as AgentToolName, consent)
                 }
@@ -102,11 +104,13 @@ function ToolConsentRow({
   name,
   description,
   consent,
+  allowAlways,
   onConsentChange,
 }: {
   name: string;
   description: string;
   consent: AgentToolConsent;
+  allowAlways: boolean;
   onConsentChange: (consent: AgentToolConsent) => void;
 }) {
   const { t } = useTranslation("settings");
@@ -121,16 +125,20 @@ function ToolConsentRow({
         </div>
         <Select
           value={consent}
-          onValueChange={(v) => onConsentChange(v as AgentToolConsent)}
+          onValueChange={(value) => {
+            if (value) onConsentChange(value as AgentToolConsent);
+          }}
         >
           <SelectTrigger className="w-[140px] h-8">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="ask">{t("agentPermissions.ask")}</SelectItem>
-            <SelectItem value="always">
-              {t("agentPermissions.alwaysAllow")}
-            </SelectItem>
+            {allowAlways && (
+              <SelectItem value="always">
+                {t("agentPermissions.alwaysAllow")}
+              </SelectItem>
+            )}
             <SelectItem value="never">
               {t("agentPermissions.neverAllow")}
             </SelectItem>

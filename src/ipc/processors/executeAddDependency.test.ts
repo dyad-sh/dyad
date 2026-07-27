@@ -8,7 +8,7 @@ import {
   PNPM_INSTALL_POLICY_ARGS,
   SOCKET_FIREWALL_WARNING_MESSAGE,
 } from "@/ipc/utils/socket_firewall";
-import { DyadErrorKind } from "@/errors/dyad_error";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
   executeAddDependency,
   ExecuteAddDependencyError,
@@ -94,6 +94,38 @@ describe("executeAddDependency", () => {
     readEffectiveSettingsMock.mockResolvedValue({
       blockUnsafeNpmPackages: true,
     });
+  });
+
+  it("passes cancellation to package commands without rewrapping it", async () => {
+    const controller = new AbortController();
+    const cancellation = new DyadError(
+      "Dependency installation cancelled.",
+      DyadErrorKind.UserCancelled,
+    );
+    ensureSocketFirewallInstalledMock.mockResolvedValue({
+      available: false,
+    });
+    runCommandMock.mockRejectedValueOnce(cancellation);
+
+    await expect(
+      executeAddDependency({
+        packages: ["react"],
+        message: {
+          id: 1,
+          content:
+            '<dyad-add-dependency packages="react"></dyad-add-dependency>',
+        } as any,
+        appPath: "/tmp/app",
+        signal: controller.signal,
+      }),
+    ).rejects.toBe(cancellation);
+
+    expect(runCommandMock).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(Array),
+      expect.objectContaining({ signal: controller.signal }),
+    );
+    expect(dbUpdateSetMock).not.toHaveBeenCalled();
   });
 
   it("preserves the firewall warning when package installation later fails", async () => {

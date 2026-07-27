@@ -1,7 +1,0 @@
-- button "Restore to this point"
-- paragraph: "[dump] tc=turbo-edits"
-- paragraph: "[[dyad-dump-path=*]]"
-- button "Copy"
-- button "Copy Request ID"
-- button "Undo"
-- button "Retry"

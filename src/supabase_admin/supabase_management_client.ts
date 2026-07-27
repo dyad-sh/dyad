@@ -656,10 +656,12 @@ export async function deleteSupabaseFunction({
   supabaseProjectId,
   functionName,
   organizationSlug,
+  signal,
 }: {
   supabaseProjectId: string;
   functionName: string;
   organizationSlug: string | null;
+  signal?: AbortSignal;
 }): Promise<void> {
   logger.info(
     `Deleting Supabase function: ${functionName} from project: ${supabaseProjectId}`,
@@ -668,6 +670,7 @@ export async function deleteSupabaseFunction({
   await retryWithRateLimit(
     () => supabase.deleteFunction(supabaseProjectId, functionName),
     `Delete function ${functionName}`,
+    { signal },
   );
   logger.info(
     `Deleted Supabase function: ${functionName} from project: ${supabaseProjectId}`,
@@ -677,9 +680,11 @@ export async function deleteSupabaseFunction({
 export async function listSupabaseFunctions({
   supabaseProjectId,
   organizationSlug,
+  signal,
 }: {
   supabaseProjectId: string;
   organizationSlug: string | null;
+  signal?: AbortSignal;
 }): Promise<DeployedFunctionResponse[]> {
   if (IS_TEST_BUILD) {
     return [];
@@ -695,6 +700,7 @@ export async function listSupabaseFunctions({
       headers: {
         Authorization: `Bearer ${(supabase as any).options.accessToken}`,
       },
+      signal,
     },
     `List Supabase functions for ${supabaseProjectId}`,
   );
@@ -781,21 +787,28 @@ export async function deploySupabaseFunction({
   appPath,
   bundleOnly = false,
   organizationSlug,
+  signal,
 }: {
   supabaseProjectId: string;
   functionName: string;
   appPath: string;
   bundleOnly?: boolean;
   organizationSlug: string | null;
+  signal?: AbortSignal;
 }): Promise<DeployedFunctionResponse> {
-  return enqueueSupabaseDeploy(supabaseProjectId, bundleOnly, () =>
-    deploySupabaseFunctionUnqueued({
-      supabaseProjectId,
-      functionName,
-      appPath,
-      bundleOnly,
-      organizationSlug,
-    }),
+  return enqueueSupabaseDeploy(
+    supabaseProjectId,
+    bundleOnly,
+    () =>
+      deploySupabaseFunctionUnqueued({
+        supabaseProjectId,
+        functionName,
+        appPath,
+        bundleOnly,
+        organizationSlug,
+        signal,
+      }),
+    signal,
   );
 }
 
@@ -805,13 +818,16 @@ async function deploySupabaseFunctionUnqueued({
   appPath,
   bundleOnly = false,
   organizationSlug,
+  signal,
 }: {
   supabaseProjectId: string;
   functionName: string;
   appPath: string;
   bundleOnly?: boolean;
   organizationSlug: string | null;
+  signal?: AbortSignal;
 }): Promise<DeployedFunctionResponse> {
+  signal?.throwIfAborted();
   logger.info(
     `Deploying Supabase function: ${functionName} to project: ${supabaseProjectId}`,
   );
@@ -828,9 +844,11 @@ async function deploySupabaseFunctionUnqueued({
     functionPath,
     functionName,
   });
+  signal?.throwIfAborted();
 
   // 2) Collect shared files (from supabase/functions/_shared/)
   const sharedFiles = await getSharedFiles(appPath);
+  signal?.throwIfAborted();
 
   // 3) Combine all files
   const filesToUpload = [...functionFiles.files, ...sharedFiles.files];
@@ -852,7 +870,11 @@ async function deploySupabaseFunctionUnqueued({
   });
 
   if (IS_TEST_BUILD) {
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await retryWithRateLimit(
+      () => new Promise((resolve) => setTimeout(resolve, 100)),
+      `Prepare test Supabase function ${functionName}`,
+      { maxRetries: 0, signal },
+    );
     return {
       id: `fake-${functionName}`,
       slug: functionName,
@@ -893,20 +915,25 @@ async function deploySupabaseFunctionUnqueued({
     supabaseProjectId,
   )}/functions/deploy?slug=${encodeURIComponent(functionName)}${bundleOnly ? "&bundleOnly=true" : ""}`;
 
-  const response = await retryWithRateLimit(async () => {
-    const res = await fetch(deployUrl, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${(supabase as any).options.accessToken}`,
-      },
-      // Safer to rebuild form data each time.
-      body: buildFormData(),
-    });
-    if (res.status === 429) {
-      throw new RateLimitError(`Rate limited (429): ${res.statusText}`, res);
-    }
-    return res;
-  }, `Deploy Supabase function ${functionName}`);
+  const response = await retryWithRateLimit(
+    async () => {
+      const res = await fetch(deployUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${(supabase as any).options.accessToken}`,
+        },
+        // Safer to rebuild form data each time.
+        body: buildFormData(),
+        signal,
+      });
+      if (res.status === 429) {
+        throw new RateLimitError(`Rate limited (429): ${res.statusText}`, res);
+      }
+      return res;
+    },
+    `Deploy Supabase function ${functionName}`,
+    { signal },
+  );
 
   if (response.status !== 201) {
     throw await createResponseError(response, "create function");
@@ -925,17 +952,24 @@ export async function bulkUpdateFunctions({
   supabaseProjectId,
   functions,
   organizationSlug,
+  signal,
 }: {
   supabaseProjectId: string;
   functions: DeployedFunctionResponse[];
   organizationSlug: string | null;
+  signal?: AbortSignal;
 }): Promise<void> {
-  return enqueueSupabaseDeploy(supabaseProjectId, false, () =>
-    bulkUpdateFunctionsUnqueued({
-      supabaseProjectId,
-      functions,
-      organizationSlug,
-    }),
+  return enqueueSupabaseDeploy(
+    supabaseProjectId,
+    false,
+    () =>
+      bulkUpdateFunctionsUnqueued({
+        supabaseProjectId,
+        functions,
+        organizationSlug,
+        signal,
+      }),
+    signal,
   );
 }
 
@@ -943,10 +977,12 @@ async function bulkUpdateFunctionsUnqueued({
   supabaseProjectId,
   functions,
   organizationSlug,
+  signal,
 }: {
   supabaseProjectId: string;
   functions: DeployedFunctionResponse[];
   organizationSlug: string | null;
+  signal?: AbortSignal;
 }): Promise<void> {
   logger.info(
     `Bulk updating ${functions.length} functions for project: ${supabaseProjectId}`,
@@ -970,6 +1006,7 @@ async function bulkUpdateFunctionsUnqueued({
         "Content-Type": "application/json",
       },
       body: JSON.stringify(functions),
+      signal,
     },
     `Bulk update functions for ${supabaseProjectId}`,
   );

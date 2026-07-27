@@ -11,7 +11,7 @@ test("copy message content - basic functionality", async ({ po }) => {
     .context()
     .grantPermissions(["clipboard-read", "clipboard-write"]);
 
-  const copyButton = po.page.getByTestId("copy-message-button").first();
+  const copyButton = po.page.getByTestId("copy-message-button").last();
   await copyButton.click();
 
   const clipboardContent = await po.page.evaluate(() =>
@@ -27,15 +27,13 @@ test("copy message content - dyad-write conversion", async ({ po }) => {
   await po.setUp({ autoApprove: true });
   await po.importApp("minimal");
 
-  await po.sendPrompt(
-    "Create a simple React component in src/components/Button.tsx",
-  );
+  await po.sendPrompt("tc=local-agent/write-index");
 
   await po.page
     .context()
     .grantPermissions(["clipboard-read", "clipboard-write"]);
 
-  const copyButton = po.page.getByTestId("copy-message-button").first();
+  const copyButton = po.page.getByTestId("copy-message-button").last();
   await copyButton.click();
 
   const clipboardContent = await po.page.evaluate(() =>

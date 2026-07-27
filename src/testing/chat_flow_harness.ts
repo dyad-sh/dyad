@@ -4,10 +4,10 @@
  *
  * What is real: the `chat:stream` IPC handler, a real sqlite db built by the
  * app's own `initializeDatabase()`, real settings via `writeSettings`, a real
- * git checkout of an e2e fixture app, the real AI-SDK streaming client talking
- * HTTP to the real fake-LLM server (the same one the Playwright suite uses,
- * serving `e2e-tests/fixtures/*.md` via the `tc=<name>` protocol), and the real
- * response processor (dyad-tag parsing, file writes, git commits, db messages).
+ * git checkout of an e2e fixture app, the real pi runtime talking HTTP to the
+ * real fake-LLM server (the same one the Playwright suite uses, serving
+ * `e2e-tests/fixtures/` via the `tc=<name>` protocol), and real tool execution,
+ * git commits, and database messages.
  *
  * What is mocked: only the `electron` module (see ./electron_mock).
  *
@@ -42,6 +42,7 @@ import {
   beginAppChatActorMutation,
   settleChatActorsForDeletion,
 } from "@/ipc/services/chat_actor_service";
+import { ensureDyadGitignored } from "@/ipc/handlers/gitignoreUtils";
 import type { ChatStreamParams } from "@/ipc/types";
 import {
   runningApps,
@@ -87,10 +88,6 @@ const HARNESS_ENV_KEYS = [
   "FAKE_LLM_FIXTURES_DIR",
   "FAKE_LLM_QUIET",
   "DYAD_LANGUAGE_MODEL_CATALOG_URL",
-  "DYAD_ENGINE_URL",
-  "DYAD_GATEWAY_URL",
-  "DYAD_USER_INFO_URL",
-  "DYAD_SUBSCRIPTION_STATUS_URL",
 ] as const;
 
 function snapshotHarnessEnv(): Map<string, string | undefined> {
@@ -158,11 +155,6 @@ export interface ChatFlowHarnessOptions {
    * true (matches the e2e setup). Set false to leave the env var untouched.
    */
   useFakeCatalog?: boolean;
-  /**
-   * Point Dyad Engine and Gateway calls at this harness's fake LLM server.
-   * Useful for Pro/local-agent fixtures without import-time env relay setup.
-   */
-  engine?: boolean;
   /** Show the fake-LLM server's per-request logs. Default false (quiet). */
   verboseFakeLlm?: boolean;
   /**
@@ -296,26 +288,17 @@ export async function setupChatFlowHarness(
     if (options.useFakeCatalog !== false) {
       process.env.DYAD_LANGUAGE_MODEL_CATALOG_URL = `${fakeLlmUrl}/api/language-model-catalog`;
     }
-    // Always fake the Dyad Pro user-info endpoint: any test that configures an
-    // auto API key would otherwise send get-user-budget requests to the real
-    // api.dyad.sh.
-    process.env.DYAD_USER_INFO_URL = `${fakeLlmUrl}/api/user/info`;
-    if (options.engine) {
-      process.env.DYAD_ENGINE_URL = `${fakeLlmUrl}/engine/v1`;
-      process.env.DYAD_GATEWAY_URL = `${fakeLlmUrl}/gateway/v1`;
-    }
-
     // 2. Real sqlite db (drizzle migrations) in the temp userData dir.
     initializeDatabase();
 
     // 3. Settings file via the app's own writer (mirrors the e2e test provider).
     const settings: Partial<UserSettings> = {
       selectedModel: options.selectedModel ?? {
-        provider: options.provider?.id ?? "testing",
+        provider: options.provider?.id ?? "custom::testing",
         name: options.model?.apiName ?? "test-model",
       },
-      selectedChatMode: options.chatMode ?? "build",
-      defaultChatMode: options.chatMode ?? "build",
+      selectedChatMode: options.chatMode ?? "local-agent",
+      defaultChatMode: options.chatMode ?? "local-agent",
       autoApproveChanges: options.autoApprove ?? true,
       hasRunBefore: true,
       ...options.settings,
@@ -323,7 +306,7 @@ export async function setupChatFlowHarness(
     writeSettings(settings);
 
     // 4. Custom provider + model rows (same shape the Settings UI creates).
-    const providerId = options.provider?.id ?? "testing";
+    const providerId = options.provider?.id ?? "custom::testing";
     await db.insert(language_model_providers).values({
       id: providerId,
       name: options.provider?.name ?? "test-provider",
@@ -340,6 +323,7 @@ export async function setupChatFlowHarness(
     // 5. Real app checkout of the fixture + a real git repo.
     const appDir = path.join(tmpRootPath, "app");
     fs.cpSync(fixtureAppDir, appDir, { recursive: true });
+    await ensureDyadGitignored(appDir);
     git(appDir, "init");
     git(appDir, "add", "-A");
     git(appDir, "commit", "-m", "init");

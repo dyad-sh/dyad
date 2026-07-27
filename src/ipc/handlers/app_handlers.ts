@@ -48,15 +48,8 @@ import {
   MAX_SCREENSHOTS_PER_APP,
   SCREENSHOT_FILENAME_REGEX,
 } from "../utils/media_path_utils";
-import {
-  appRuntimeService,
-  ensureProxyForRunningApp,
-  formatCloudSandboxError,
-  registerCloudSandboxSyncUpdateListener,
-} from "../services/app_runtime_service";
-import { getIpcAppRuntimeOutput } from "../services/app_runtime_transport";
+import { appRuntimeService } from "../services/app_runtime_service";
 import { getPtySessionManager } from "../utils/pty_session_manager";
-import { sameInvocationRef } from "@/state_machines/invocation_ref";
 import { userInputRegistry } from "@/user_input/main";
 import { clearWindowSessionPersistence } from "@/window_infrastructure/main/window_session_persistence";
 
@@ -95,12 +88,6 @@ import {
 import { createLoggedHandler } from "./safe_handle";
 import { registerTrustedIpcHandler } from "./trusted_handle";
 import { getLanguageModelProviders } from "../shared/language_model_helpers";
-import {
-  createCloudSandboxShareLink,
-  getCloudSandboxStatus,
-  queueCloudSandboxSnapshotSync,
-  reconcileCloudSandboxes,
-} from "../utils/cloud_sandbox_provider";
 import { createFromTemplate } from "./createFromTemplate";
 import { getInitialChatModeForNewChat } from "./chat_mode_resolution";
 import { ensureDyadGitignored } from "./gitignoreUtils";
@@ -584,8 +571,6 @@ async function deleteAppByIdExclusive(
 }
 
 export function registerAppHandlers() {
-  registerCloudSandboxSyncUpdateListener();
-
   createTypedHandler(systemContracts.restartDyad, async () => {
     app.relaunch();
     app.quit();
@@ -944,99 +929,6 @@ export function registerAppHandlers() {
     });
   });
 
-  createTypedHandler(
-    appContracts.getCloudSandboxStatus,
-    async (event, params) => {
-      const { appId } = params;
-      const appInfo = runningApps.get(appId);
-
-      if (!appInfo || appInfo.mode !== "cloud" || !appInfo.cloudSandboxId) {
-        return null;
-      }
-      const sandboxId = appInfo.cloudSandboxId;
-      const invocationRef = appInfo.invocationRef;
-
-      try {
-        const status = await getCloudSandboxStatus(sandboxId);
-        const latestAppInfo = runningApps.get(appId);
-        const sameInvocation = invocationRef
-          ? !!latestAppInfo?.invocationRef &&
-            sameInvocationRef(latestAppInfo.invocationRef, invocationRef)
-          : !latestAppInfo?.invocationRef;
-        if (
-          latestAppInfo !== appInfo ||
-          latestAppInfo.cloudSandboxId !== sandboxId ||
-          !sameInvocation
-        ) {
-          return null;
-        }
-        const previewChanged =
-          appInfo.cloudPreviewUrl !== status.previewUrl ||
-          appInfo.cloudPreviewAuthToken !== status.previewAuthToken;
-        appInfo.cloudPreviewUrl = status.previewUrl;
-        appInfo.cloudPreviewAuthToken = status.previewAuthToken;
-
-        if (previewChanged && appInfo.proxyWorker) {
-          await ensureProxyForRunningApp({
-            appId,
-            output: invocationRef
-              ? appRunActorService.outputFor(appId, invocationRef)
-              : getIpcAppRuntimeOutput(event.sender),
-            originalUrl: status.previewUrl,
-            mode: "cloud",
-            invocationRef,
-          });
-        } else {
-          appInfo.originalUrl = status.previewUrl;
-        }
-
-        return {
-          ...status,
-          localSyncErrorMessage: appInfo.cloudSyncErrorMessage ?? null,
-        };
-      } catch (error) {
-        logger.error(
-          `Failed to fetch cloud sandbox status for app ${appId}:`,
-          error,
-        );
-        throw new DyadError(
-          formatCloudSandboxError(error),
-          DyadErrorKind.External,
-        );
-      }
-    },
-  );
-
-  createTypedHandler(
-    appContracts.createCloudSandboxShareLink,
-    async (_, params) => {
-      const { appId, expiresInSeconds } = params;
-      const appInfo = runningApps.get(appId);
-
-      if (!appInfo || appInfo.mode !== "cloud" || !appInfo.cloudSandboxId) {
-        throw new DyadError(
-          `App ${appId} is not running in cloud mode`,
-          DyadErrorKind.External,
-        );
-      }
-
-      try {
-        return await createCloudSandboxShareLink(appInfo.cloudSandboxId, {
-          expiresInSeconds,
-        });
-      } catch (error) {
-        logger.error(
-          `Failed to create cloud sandbox share link for app ${appId}:`,
-          error,
-        );
-        throw new DyadError(
-          formatCloudSandboxError(error),
-          DyadErrorKind.External,
-        );
-      }
-    },
-  );
-
   createTypedHandler(appContracts.restartApp, async (_, params) => {
     await appRunActorService.dispatchRestart(params.appId, {
       operationId: params.invocationRef?.operationId ?? randomUUID(),
@@ -1098,11 +990,6 @@ export function registerAppHandlers() {
         DyadErrorKind.External,
       );
     }
-
-    queueCloudSandboxSnapshotSync({
-      appId,
-      changedPaths: [filePath],
-    });
 
     if (app.supabaseProjectId) {
       // Check if shared module was modified - redeploy all functions
@@ -2192,10 +2079,6 @@ export function registerAppHandlers() {
     return { thumbnails };
   });
 
-  void reconcileCloudSandboxes().catch((error) => {
-    logger.warn("Failed to reconcile cloud sandboxes on startup:", error);
-  });
-
   // Test-only: flip needs_app_blueprint for an imported app so E2E tests can
   // exercise the blueprint flow (imports default to 0; only createApp sets it).
   if (IS_TEST_BUILD) {
@@ -2203,15 +2086,15 @@ export function registerAppHandlers() {
       "test:set-needs-app-blueprint",
       async (
         _event,
-        { appName, value }: { appName: string; value: boolean },
+        { appPath, value }: { appPath: string; value: boolean },
       ) => {
         const result = await db
           .update(apps)
           .set({ needsAppBlueprint: value })
-          .where(eq(apps.name, appName))
+          .where(eq(apps.path, appPath))
           .returning({ id: apps.id });
         if (result.length === 0) {
-          throw new Error(`No app found for name=${appName}`);
+          throw new Error(`No app found for path=${appPath}`);
         }
       },
     );

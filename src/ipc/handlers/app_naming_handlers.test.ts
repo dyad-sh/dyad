@@ -79,7 +79,7 @@ vi.mock("@/ipc/handlers/gitignoreUtils", () => ({
 }));
 
 vi.mock("@/ipc/handlers/chat_mode_resolution", () => ({
-  getInitialChatModeForNewChat: vi.fn(async () => "build"),
+  getInitialChatModeForNewChat: vi.fn(async () => "local-agent"),
 }));
 
 vi.mock("@/ipc/services/chat_actor_deletion_service", () => ({

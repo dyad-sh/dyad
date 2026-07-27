@@ -13,11 +13,6 @@ export type UserInputCommand =
       followUpPrompt: string;
     }
   | {
-      type: "broadcast-classified";
-      descriptor: UserInputDescriptor;
-      reason?: string;
-    }
-  | {
       type: "broadcast-settled";
       descriptor: UserInputDescriptor;
       outcome: UserInputOutcome;
@@ -63,13 +58,6 @@ export function createUserInputCommandRunner(deps: {
           deps.broadcast("user-input:armed", {
             requestId: command.descriptor.requestId,
             followUpPrompt: command.followUpPrompt,
-          });
-          return;
-        }
-        case "broadcast-classified": {
-          deps.broadcast("user-input:classified", {
-            requestId: command.descriptor.requestId,
-            reason: command.reason,
           });
           return;
         }

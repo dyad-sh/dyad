@@ -43,6 +43,7 @@ export async function executeCopyFile({
   supabaseProjectId,
   supabaseOrganizationSlug,
   isSharedModulesChanged,
+  signal,
 }: {
   from: string;
   to: string;
@@ -51,6 +52,7 @@ export async function executeCopyFile({
   supabaseProjectId?: string | null;
   supabaseOrganizationSlug?: string | null;
   isSharedModulesChanged?: boolean;
+  signal?: AbortSignal;
 }): Promise<CopyFileResult> {
   return withLock(appId, async () => {
     // Resolve the source path: allow both .dyad/media paths and app-relative paths
@@ -140,8 +142,10 @@ export async function executeCopyFile({
             functionName,
             appPath,
             organizationSlug: supabaseOrganizationSlug ?? null,
+            signal,
           });
         } catch (error) {
+          signal?.throwIfAborted();
           logger.error("Failed to deploy Supabase function after copy:", error);
           deployError = error;
         }

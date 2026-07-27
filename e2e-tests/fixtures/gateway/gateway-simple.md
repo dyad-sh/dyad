@@ -1,1 +1,0 @@
-Simple-response-from-gateway

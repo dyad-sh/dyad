@@ -25,10 +25,13 @@
   - strong: Relevant Files
   - text: ":"
   - code: "`src/api/users.ts`"
-- button "file1.txt file1.txt Edit"
-- paragraph: More EOM
+- paragraph: I'll create a hello function for you.
+- 'button "hello.ts src/hello.ts Edit Summary: Create hello function"'
+- paragraph: I've created the file successfully. The hello function is now available at src/hello.ts and is ready to use.
 - button "Copy"
 - text: "[[Version 2: files changed]]"
-- button "A file1.txt +1"
+- button "Copy Request ID"
+- text: 0 Modified files (1)
+- button "A src/hello.ts +3"
 - button "Undo"
 - button "Retry"

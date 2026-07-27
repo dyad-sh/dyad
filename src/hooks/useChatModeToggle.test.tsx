@@ -11,10 +11,10 @@ const mocks = vi.hoisted(() => ({
   pathname: "/",
   posthogCapture: vi.fn(),
   search: {} as { id?: number },
-  selectedMode: "build",
+  selectedMode: "local-agent",
   setChatMode: vi.fn(),
   settings: {
-    selectedChatMode: "build",
+    selectedChatMode: "local-agent",
   },
 }));
 
@@ -57,11 +57,11 @@ describe("useChatModeToggle", () => {
     mocks.pathname = "/";
     mocks.posthogCapture.mockReset();
     mocks.search = {};
-    mocks.selectedMode = "build";
+    mocks.selectedMode = "local-agent";
     mocks.setChatMode.mockReset();
     mocks.setChatMode.mockResolvedValue(undefined);
     mocks.settings = {
-      selectedChatMode: "build",
+      selectedChatMode: "local-agent",
     };
   });
 
@@ -86,7 +86,7 @@ describe("useChatModeToggle", () => {
     expect(mocks.setChatMode).toHaveBeenCalledWith("ask");
     expect(result.current.hasManuallySelectedChatMode).toBe(true);
     expect(mocks.posthogCapture).toHaveBeenCalledWith("chat:mode_toggle", {
-      from: "build",
+      from: "local-agent",
       to: "ask",
       trigger: "keyboard_shortcut",
     });

@@ -37,37 +37,24 @@ export const UserInputQuestionSchema = z
   );
 export const UserInputDescriptorSchema = z.discriminatedUnion("kind", [
   DescriptorBaseSchema.extend({
-    kind: z.literal("mcp-consent"),
-    serverId: z.number(),
-    serverName: z.string(),
-    toolName: z.string(),
-    toolDescription: z.string().nullable().optional(),
-    inputPreview: z.string().nullable().optional(),
-    classifier: z.enum(["none", "racing"]),
-  }),
-  DescriptorBaseSchema.extend({
     kind: z.literal("agent-consent"),
     toolName: z.string(),
     toolDescription: z.string().nullable().optional(),
     inputPreview: z.string().nullable().optional(),
     metadata: z.unknown().optional(),
-    classifier: z.literal("none"),
   }),
   DescriptorBaseSchema.extend({
     kind: z.literal("questionnaire"),
     questions: z.array(UserInputQuestionSchema),
-    classifier: z.literal("none"),
   }),
   DescriptorBaseSchema.extend({
     kind: z.literal("integration"),
     provider: z.enum(["supabase", "neon"]).optional(),
-    classifier: z.literal("none"),
     followUpPrompt: z.string(),
   }),
 ]);
 
 export const UserInputResponseSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("mcp-consent"), decision: ConsentDecisionSchema }),
   z.object({
     kind: z.literal("agent-consent"),
     decision: ConsentDecisionSchema,
@@ -88,13 +75,10 @@ const PendingSnapshotSchema = z.object({
   status: z.enum(["awaiting", "armed", "due"]),
   descriptor: UserInputDescriptorSchema,
   deadlineAt: z.number(),
-  classifier: z.enum(["none", "racing", "review"]).optional(),
-  classifierReason: z.string().optional(),
   followUpPrompt: z.string().optional(),
 });
 const OutcomeSchema = z.enum([
   "human",
-  "classifier-approved",
   "timed-out",
   "swept",
   "superseded",
@@ -134,10 +118,6 @@ export const userInputEvents = {
       requestId: z.string(),
       followUpPrompt: z.string(),
     }),
-  }),
-  classified: defineEvent({
-    channel: "user-input:classified",
-    payload: z.object({ requestId: z.string(), reason: z.string().optional() }),
   }),
   settled: defineEvent({
     channel: "user-input:settled",

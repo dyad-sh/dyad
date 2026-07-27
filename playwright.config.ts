@@ -4,6 +4,19 @@ import { FAKE_LLM_BASE_PORT } from "./e2e-tests/helpers/test-ports";
 
 export { FAKE_LLM_BASE_PORT };
 
+// Playwright's webServer readiness probe honors proxy environment variables.
+// Keep loopback traffic local so a proxy response cannot be mistaken for an
+// already-running fake server.
+const noProxy = [process.env.NO_PROXY, process.env.no_proxy]
+  .flatMap((value) => value?.split(",") ?? [])
+  .map((value) => value.trim())
+  .filter(Boolean);
+for (const host of ["localhost", "127.0.0.1", "::1"]) {
+  if (!noProxy.includes(host)) noProxy.push(host);
+}
+process.env.NO_PROXY = noProxy.join(",");
+process.env.no_proxy = process.env.NO_PROXY;
+
 const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
 
 const playwrightParallelism = parseInt(

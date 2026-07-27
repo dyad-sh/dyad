@@ -102,21 +102,20 @@ test("attach image - chat - upload to codebase", async ({ po }) => {
   const fileChooser = await fileChooserPromise;
   await fileChooser.setFiles("e2e-tests/fixtures/images/logo.png");
 
-  await po.sendPrompt("[[UPLOAD_IMAGE_TO_CODEBASE]]");
+  await po.sendPrompt("tc=local-agent/upload-to-codebase");
 
   // Wait for the uploaded file card to render before snapshotting. Use .first()
   // because the modified-files card at the bottom of the chat now also lists
   // "file.png"; the attachment card is rendered above it, so it comes first.
   await expect(
-    po.page.getByText("file.png", { exact: true }).first(),
+    po.page.getByText("uploaded-file.png", { exact: true }).first(),
   ).toBeVisible();
 
-  await po.snapshotServerDump("last-message", { name: "upload-to-codebase" });
   await po.snapshotMessages({ replaceDumpPath: true });
 
-  // new/image/file.png
+  // assets/uploaded-file.png
   const appPath = await po.appManagement.getCurrentAppPath();
-  const filePath = path.join(appPath, "new", "image", "file.png");
+  const filePath = path.join(appPath, "assets", "uploaded-file.png");
   expect(fs.existsSync(filePath)).toBe(true);
   // check contents of filePath is equal in value to e2e-tests/fixtures/images/logo.png
   const expectedContents = fs.readFileSync(

@@ -5,7 +5,7 @@ const runVersionDiffViewTest = async (po: PageObject) => {
   await po.setUp({ autoApprove: true });
 
   // Create a second version so there's a commit with file changes to inspect.
-  await po.sendPrompt("tc=write-index");
+  await po.sendPrompt("tc=local-agent/write-index");
   await expect(po.page.getByRole("button", { name: "Version 2" })).toBeVisible({
     timeout: Timeout.MEDIUM,
   });

@@ -26,7 +26,7 @@ describe("hybrid chat harness guards", () => {
       { route: "/settings" as const, text: "Settings" },
       {
         route: "/settings/providers/$provider" as const,
-        text: "Configure Dyad",
+        text: "Configure OpenAI",
       },
       { route: "/library/media" as const, text: "Media" },
       { route: "/import-app" as const, text: "Import App" },

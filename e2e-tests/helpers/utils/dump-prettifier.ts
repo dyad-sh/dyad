@@ -2,11 +2,6 @@
  * Utility for prettifying server dump data for snapshot comparisons.
  */
 
-import {
-  BUILD_SYSTEM_POSTFIX,
-  BUILD_SYSTEM_PREFIX,
-} from "@/prompts/system_prompt";
-
 export interface PrettifyDumpOptions {
   onlyLastMessage?: boolean;
 }
@@ -40,8 +35,6 @@ export function prettifyDump(
               "/.dyad/media/[[ATTACHMENT_HASH]]",
             )
         : message.content
-            .replace(BUILD_SYSTEM_PREFIX, "\n${BUILD_SYSTEM_PREFIX}")
-            .replace(BUILD_SYSTEM_POSTFIX, "${BUILD_SYSTEM_POSTFIX}")
             // Normalize line endings to always use \n
             .replace(/\r\n/g, "\n")
             // We remove package.json because it's flaky.

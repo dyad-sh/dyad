@@ -4,7 +4,7 @@ import HomePage from "./home";
 
 const mocks = vi.hoisted(() => ({
   attachments: [] as any[],
-  effectiveDefaultChatMode: "build",
+  effectiveDefaultChatMode: "local-agent",
   hasManuallySelectedChatMode: false,
   inputValue: "Build a notes app",
   isAnyProviderSetup: false,
@@ -16,7 +16,7 @@ const mocks = vi.hoisted(() => ({
   posthogCapture: vi.fn(),
   selectedApp: null as any,
   send: vi.fn(() => true),
-  settings: { selectedChatMode: "build" } as any,
+  settings: { selectedChatMode: "local-agent" } as any,
   setInputValue: vi.fn(),
   updateSettings: vi.fn(),
 }));
@@ -67,13 +67,9 @@ vi.mock("@/hooks/useSettings", () => ({
     updateSettings: mocks.updateSettings,
   }),
 }));
-vi.mock("@/hooks/useFreeAgentQuota", () => ({
-  useFreeAgentQuota: () => ({ quotaStatus: undefined }),
-}));
 vi.mock("@/lib/schemas", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/schemas")>()),
   getEffectiveDefaultChatMode: () => mocks.effectiveDefaultChatMode,
-  hasDyadProKey: () => false,
 }));
 vi.mock("@/lib/homeChatMode", () => ({
   getHomeDefaultChatMode: () => mocks.effectiveDefaultChatMode,
@@ -111,7 +107,7 @@ vi.mock("@/components/FeaturedAppShowcase", () => ({
 describe("HomePage first-prompt projection", () => {
   beforeEach(() => {
     mocks.attachments = [];
-    mocks.effectiveDefaultChatMode = "build";
+    mocks.effectiveDefaultChatMode = "local-agent";
     mocks.hasManuallySelectedChatMode = false;
     mocks.inputValue = "Build a notes app";
     mocks.isAnyProviderSetup = false;
@@ -123,7 +119,7 @@ describe("HomePage first-prompt projection", () => {
     mocks.selectedApp = null;
     mocks.send.mockReset();
     mocks.send.mockReturnValue(true);
-    mocks.settings = { selectedChatMode: "build" };
+    mocks.settings = { selectedChatMode: "local-agent" };
     mocks.updateSettings.mockReset();
   });
 
@@ -161,7 +157,7 @@ describe("HomePage first-prompt projection", () => {
         prompt: "Build a notes app",
         attachments: [],
         selectedApp: undefined,
-        chatMode: "build",
+        chatMode: "local-agent",
         isChatModeExplicit: false,
       },
     });

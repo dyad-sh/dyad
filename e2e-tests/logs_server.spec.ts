@@ -9,19 +9,20 @@ import { testSkipIfWindows, Timeout } from "./helpers/test_helper";
 testSkipIfWindows(
   "system messages UI shows server logs with correct type",
   async ({ po }) => {
-    await po.setUp();
+    await po.setUp({ autoApprove: true });
 
     // Create an app to generate server logs
-    await po.sendPrompt("tc=write-index");
-    await po.approveProposal();
+    await po.sendPrompt("tc=local-agent/write-index");
 
-    // Wait for app to run - this generates server logs from stdout/stderr
-    // Use toPass() for resilience since the picker button needs time to appear and become enabled
-    await expect(async () => {
-      const picker = po.page.getByTestId("preview-pick-element-button");
-      await expect(picker).toBeVisible();
-      await expect(picker).toBeEnabled();
-    }).toPass({ timeout: Timeout.EXTRA_LONG });
+    // Wait for the app to run and render. Starting the preview generates the
+    // server stdout/stderr entries asserted below.
+    await po.previewPanel.expectPreviewIframeIsVisible(Timeout.EXTRA_LONG);
+    await expect(
+      po.previewPanel
+        .getPreviewIframeElement()
+        .contentFrame()
+        .getByText("Testing:write-index!"),
+    ).toBeVisible({ timeout: Timeout.EXTRA_LONG });
 
     // Open the system messages console
     const consoleHeader = po.page.locator('text="System Messages"').first();

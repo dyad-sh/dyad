@@ -8,21 +8,18 @@ import { createInMemoryTestDb, type TestDb } from "@/testing/test_db";
 const {
   mockSafeSend,
   mockStorePreCompactionMessages,
-  mockStreamText,
-  mockGetModelClient,
+  mockStreamSimple,
+  mockResolveDyadModel,
+  mockBuildStreamOptions,
   settingsState,
 } = vi.hoisted(() => ({
   mockSafeSend: vi.fn(),
   mockStorePreCompactionMessages: vi.fn(
     async () => ".dyad/chats/1/compaction-test.md",
   ),
-  mockStreamText: vi.fn(),
-  mockGetModelClient: vi.fn(async () => ({
-    modelClient: {
-      model: {},
-      builtinProviderId: "test-provider",
-    },
-  })),
+  mockStreamSimple: vi.fn(),
+  mockResolveDyadModel: vi.fn(async () => ({})),
+  mockBuildStreamOptions: vi.fn(async () => ({})),
   settingsState: {
     current: {
       selectedModel: { provider: "anthropic", name: "test-model" },
@@ -30,32 +27,25 @@ const {
   },
 }));
 
-vi.mock("ai", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("ai")>();
-  return { ...actual, streamText: mockStreamText };
-});
-
 vi.mock("@/main/settings", () => ({
   readSettings: () => settingsState.current,
 }));
 
-vi.mock("@/ipc/utils/get_model_client", () => ({
-  getModelClient: mockGetModelClient,
+vi.mock("@/ipc/pi/model_runtime", () => ({
+  getPiModels: () => ({ streamSimple: mockStreamSimple }),
+  resolveDyadModel: mockResolveDyadModel,
+}));
+
+vi.mock("@/ipc/pi/stream_fn", () => ({
+  buildStreamOptions: mockBuildStreamOptions,
 }));
 
 vi.mock("@/ipc/utils/provider_options", () => ({
   DYAD_INTERNAL_REQUEST_ID_HEADER: "x-dyad-request-id",
-  getAiHeaders: () => ({}),
-  getProviderOptions: () => ({}),
 }));
 
 vi.mock("@/ipc/utils/safe_sender", () => ({
   safeSend: mockSafeSend,
-}));
-
-vi.mock("@/ipc/utils/stream_text_utils", () => ({
-  cancelOrphanedBaseStream: vi.fn(),
-  fastTextOutput: () => undefined,
 }));
 
 vi.mock("./compaction_storage", () => ({
@@ -65,11 +55,11 @@ vi.mock("./compaction_storage", () => ({
 
 import { performCompaction } from "./compaction_handler";
 
-function textStream(chunks: string[]): AsyncIterable<string> {
+function textEvents(chunks: string[]): AsyncIterable<unknown> {
   return {
     async *[Symbol.asyncIterator]() {
-      for (const chunk of chunks) {
-        yield chunk;
+      for (const delta of chunks) {
+        yield { type: "text_delta", delta };
       }
     },
   };
@@ -102,10 +92,11 @@ describe("performCompaction", () => {
       ])
       .run();
 
-    mockStreamText.mockReset();
+    mockStreamSimple.mockReset();
     mockSafeSend.mockClear();
     mockStorePreCompactionMessages.mockClear();
-    mockGetModelClient.mockClear();
+    mockResolveDyadModel.mockClear();
+    mockBuildStreamOptions.mockClear();
     settingsState.current = {
       selectedModel: { provider: "anthropic", name: "test-model" },
     };
@@ -128,9 +119,7 @@ describe("performCompaction", () => {
 
   it("aborts mid-summary without persisting or broadcasting and retains the pending mark", async () => {
     const controller = new AbortController();
-    mockStreamText.mockReturnValue({
-      textStream: textStream(["partial", "ignored"]),
-    });
+    mockStreamSimple.mockReturnValue(textEvents(["partial", "ignored"]));
 
     const result = await performCompaction(
       { sender: {} } as never,
@@ -146,8 +135,10 @@ describe("performCompaction", () => {
       aborted: true,
       error: "Compaction aborted",
     });
-    expect(mockStreamText).toHaveBeenCalledWith(
-      expect.objectContaining({ abortSignal: controller.signal }),
+    expect(mockStreamSimple).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ signal: controller.signal }),
     );
     await expect(loadSummaryMessages()).resolves.toEqual([]);
     await expect(loadChat()).resolves.toMatchObject({
@@ -176,7 +167,7 @@ describe("performCompaction", () => {
       aborted: true,
       error: "Compaction aborted",
     });
-    expect(mockStreamText).not.toHaveBeenCalled();
+    expect(mockStreamSimple).not.toHaveBeenCalled();
     expect(mockStorePreCompactionMessages).not.toHaveBeenCalled();
     await expect(loadSummaryMessages()).resolves.toEqual([]);
     await expect(loadChat()).resolves.toMatchObject({
@@ -189,9 +180,7 @@ describe("performCompaction", () => {
 
   it("preserves the normal compaction path", async () => {
     const controller = new AbortController();
-    mockStreamText.mockReturnValue({
-      textStream: textStream(["Complete summary"]),
-    });
+    mockStreamSimple.mockReturnValue(textEvents(["Complete summary"]));
 
     const result = await performCompaction(
       { sender: {} } as never,
@@ -223,9 +212,7 @@ describe("performCompaction", () => {
   });
 
   it("summarizes with the user's selected model for non-Pro users", async () => {
-    mockStreamText.mockReturnValue({
-      textStream: textStream(["Complete summary"]),
-    });
+    mockStreamSimple.mockReturnValue(textEvents(["Complete summary"]));
 
     const result = await performCompaction(
       { sender: {} } as never,
@@ -235,7 +222,11 @@ describe("performCompaction", () => {
     );
 
     expect(result).toMatchObject({ success: true });
-    expect(mockGetModelClient).toHaveBeenCalledWith(
+    expect(mockResolveDyadModel).toHaveBeenCalledWith({
+      provider: "anthropic",
+      name: "test-model",
+    });
+    expect(mockBuildStreamOptions).toHaveBeenCalledWith(
       { provider: "anthropic", name: "test-model" },
       settingsState.current,
     );
@@ -247,9 +238,7 @@ describe("performCompaction", () => {
       enableDyadPro: true,
       providerSettings: { auto: { apiKey: { value: "dyad-pro-key" } } },
     };
-    mockStreamText.mockReturnValue({
-      textStream: textStream(["Complete summary"]),
-    });
+    mockStreamSimple.mockReturnValue(textEvents(["Complete summary"]));
 
     const result = await performCompaction(
       { sender: {} } as never,
@@ -259,7 +248,11 @@ describe("performCompaction", () => {
     );
 
     expect(result).toMatchObject({ success: true });
-    expect(mockGetModelClient).toHaveBeenCalledWith(
+    expect(mockResolveDyadModel).toHaveBeenCalledWith({
+      provider: "openai",
+      name: "gpt-5.6-luna",
+    });
+    expect(mockBuildStreamOptions).toHaveBeenCalledWith(
       { provider: "openai", name: "gpt-5.6-luna" },
       settingsState.current,
     );
@@ -270,12 +263,10 @@ describe("performCompaction", () => {
     const summaryGate = new Promise<void>((resolve) => {
       releaseSummary = resolve;
     });
-    mockStreamText.mockReturnValue({
-      textStream: {
-        async *[Symbol.asyncIterator]() {
-          await summaryGate;
-          yield "Only summary";
-        },
+    mockStreamSimple.mockReturnValue({
+      async *[Symbol.asyncIterator]() {
+        await summaryGate;
+        yield { type: "text_delta", delta: "Only summary" };
       },
     });
 
@@ -285,7 +276,7 @@ describe("performCompaction", () => {
       "/tmp/test-app",
       "winner-request",
     );
-    await vi.waitFor(() => expect(mockStreamText).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(mockStreamSimple).toHaveBeenCalledOnce());
 
     await expect(
       performCompaction(
@@ -314,13 +305,11 @@ describe("performCompaction", () => {
     const abortedSummaryGate = new Promise<void>((resolve) => {
       releaseAbortedSummary = resolve;
     });
-    mockStreamText.mockReturnValueOnce({
-      textStream: {
-        async *[Symbol.asyncIterator]() {
-          yield "partial";
-          await abortedSummaryGate;
-          yield "ignored";
-        },
+    mockStreamSimple.mockReturnValueOnce({
+      async *[Symbol.asyncIterator]() {
+        yield { type: "text_delta", delta: "partial" };
+        await abortedSummaryGate;
+        yield { type: "text_delta", delta: "ignored" };
       },
     });
 
@@ -354,9 +343,7 @@ describe("performCompaction", () => {
       pendingCompaction: true,
     });
 
-    mockStreamText.mockReturnValueOnce({
-      textStream: textStream(["Retried summary"]),
-    });
+    mockStreamSimple.mockReturnValueOnce(textEvents(["Retried summary"]));
     await expect(
       performCompaction(
         { sender: {} } as never,
@@ -380,12 +367,10 @@ describe("performCompaction", () => {
     const summaryFailureGate = new Promise<void>((resolve) => {
       rejectSummary = resolve;
     });
-    mockStreamText.mockReturnValueOnce({
-      textStream: {
-        async *[Symbol.asyncIterator]() {
-          await summaryFailureGate;
-          yield await Promise.reject(new Error("provider failed"));
-        },
+    mockStreamSimple.mockReturnValueOnce({
+      async *[Symbol.asyncIterator]() {
+        await summaryFailureGate;
+        yield await Promise.reject(new Error("provider failed"));
       },
     });
 
@@ -395,7 +380,7 @@ describe("performCompaction", () => {
       "/tmp/test-app",
       "winner-request",
     );
-    await vi.waitFor(() => expect(mockStreamText).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(mockStreamSimple).toHaveBeenCalledOnce());
 
     await expect(
       performCompaction(
@@ -416,9 +401,7 @@ describe("performCompaction", () => {
       pendingCompaction: true,
     });
 
-    mockStreamText.mockReturnValueOnce({
-      textStream: textStream(["Retried summary"]),
-    });
+    mockStreamSimple.mockReturnValueOnce(textEvents(["Retried summary"]));
     await expect(
       performCompaction(
         { sender: {} } as never,

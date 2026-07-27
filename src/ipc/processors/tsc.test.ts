@@ -464,6 +464,41 @@ describe("runTypeScriptCheck", () => {
     });
   });
 
+  it("passes the abort signal to version detection and compilation", async () => {
+    const controller = new AbortController();
+    mockVersion();
+    runBufferedProcessMock.mockResolvedValueOnce(processResult());
+
+    await expect(
+      runTypeScriptCheck({ appPath, signal: controller.signal }),
+    ).resolves.toEqual({
+      problems: [],
+      outcome: "passed",
+    });
+
+    expect(runBufferedProcessMock).toHaveBeenCalledTimes(2);
+    expect(runBufferedProcessMock.mock.calls[0][0]).toMatchObject({
+      signal: controller.signal,
+    });
+    expect(runBufferedProcessMock.mock.calls[1][0]).toMatchObject({
+      signal: controller.signal,
+    });
+  });
+
+  it("classifies an aborted TypeScript process as user cancellation", async () => {
+    const controller = new AbortController();
+    runBufferedProcessMock.mockResolvedValueOnce(
+      processResult({ code: null, aborted: true }),
+    );
+
+    await expect(
+      runTypeScriptCheck({ appPath, signal: controller.signal }),
+    ).rejects.toMatchObject({
+      name: "DyadError",
+      kind: DyadErrorKind.UserCancelled,
+    });
+  });
+
   it("returns project-level diagnostics instead of failing the check", async () => {
     mockVersion();
     runBufferedProcessMock.mockResolvedValueOnce(

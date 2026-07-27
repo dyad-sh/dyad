@@ -4,8 +4,9 @@ import { testSkipIfWindows, Timeout } from "./helpers/test_helper";
  * Test for security review in local-agent mode
  */
 testSkipIfWindows("local-agent - security review fix", async ({ po }) => {
-  await po.setUpDyadPro({ localAgent: true });
+  await po.setUp();
   await po.importApp("minimal");
+  await po.chatActions.waitForChatCompletion({ timeout: Timeout.LONG });
   await po.chatActions.selectLocalAgentMode();
 
   // First, trigger a security review
@@ -19,7 +20,7 @@ testSkipIfWindows("local-agent - security review fix", async ({ po }) => {
  * Test for mention apps feature in local-agent mode
  */
 testSkipIfWindows("local-agent - mention apps", async ({ po }) => {
-  await po.setUpDyadPro({ localAgent: true });
+  await po.setUp();
 
   // Import app and reference it.
   await po.importApp("minimal-with-ai-rules");
@@ -36,7 +37,7 @@ testSkipIfWindows("local-agent - mention apps", async ({ po }) => {
  * Test for enable_nitro tool in local-agent mode on a Vite app.
  */
 testSkipIfWindows("local-agent - enable nitro", async ({ po }) => {
-  await po.setUpDyadPro({ localAgent: true });
+  await po.setUp();
   await po.importApp("minimal");
   await po.chatActions.selectLocalAgentMode();
 

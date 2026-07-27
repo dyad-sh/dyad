@@ -7,6 +7,11 @@ import { shellEnvSync } from "shell-env";
 let _env: Record<string, string> | null = null;
 
 export function getEnvVar(key: string) {
+  const inherited = process.env[key]?.trim();
+  if (inherited) {
+    return inherited;
+  }
+
   // Cache it
   if (!_env) {
     _env = shellEnvSync();

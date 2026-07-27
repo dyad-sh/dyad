@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
-import { cleanup, screen, waitFor } from "@testing-library/react";
+import { cleanup, screen } from "@testing-library/react";
 
 import {
   setupHybridChatHarness,
@@ -27,12 +27,12 @@ describe("streaming renderer (integration)", () => {
     await harness?.dispose();
   });
 
-  it("keeps closed dyad-write blocks mounted while later blocks stream", async () => {
+  it("keeps completed write tool cards mounted while later tools run", async () => {
     const chatId = await harness.createChat();
     harness.mount({ chatId });
 
     const { send } = await harness.typeInChat(
-      "tc=streaming-render-multi-write",
+      "tc=local-agent/streaming-render-multi-write",
       { chatId },
     );
     send();
@@ -66,36 +66,13 @@ describe("streaming renderer (integration)", () => {
     }
   }, 60_000);
 
-  it("shows pending write path and clears pending indicator after close tag", async () => {
-    const chatId = await harness.createChat();
-    harness.mount({ chatId });
-
-    const { send } = await harness.typeInChat(
-      "tc=streaming-render-large-block",
-      { chatId },
-    );
-    send();
-
-    await screen.findByText("Writing...", {}, { timeout: 30_000 });
-    expect(
-      screen.getByText("StreamingRenderLargeBlock.tsx", { exact: true }),
-    ).toBeTruthy();
-
-    await harness.waitForStreamEnd(chatId, 60_000);
-
-    expect(
-      screen.getByText("StreamingRenderLargeBlock.tsx", { exact: true }),
-    ).toBeTruthy();
-    await waitFor(() => expect(screen.queryByText("Writing...")).toBeNull());
-  }, 60_000);
-
   it("echoes one invocation ref through registration, chunks, and completion", async () => {
     const chatId = await harness.createChat();
     harness.mount({ chatId });
     const eventStart = harness.bridge.sentEvents.length;
 
     const { send } = await harness.typeInChat(
-      "tc=streaming-render-multi-write",
+      "tc=local-agent/streaming-render-multi-write",
       {
         chatId,
       },

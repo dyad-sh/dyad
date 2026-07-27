@@ -41,7 +41,7 @@ Primary files:
   - `isSharedServerModule(...)`
   - `extractFunctionNameFromPath(...)`
   - `deployAllSupabaseFunctions(...)`
-- `src/pro/main/ipc/handlers/local_agent/processors/file_operations.ts`
+- `src/ipc/pi/chat/file_operations.ts`
   - `deployAllFunctionsIfNeeded(...)`
 - `src/ipc/processors/response_processor.ts`
   - legacy full-response file operation processing

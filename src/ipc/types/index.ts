@@ -35,7 +35,6 @@ export {
   connectionFlowContracts,
   connectionFlowEvents,
 } from "./connection_flow";
-export { mcpContracts } from "./mcp";
 export { vercelContracts } from "./vercel";
 export { supabaseContracts } from "./supabase";
 export { neonContracts } from "./neon";
@@ -50,18 +49,12 @@ export {
 export { languageModelContracts } from "./language-model";
 export { promptContracts } from "./prompts";
 export { templateContracts } from "./templates";
-export { proposalContracts } from "./proposals";
 export { importContracts } from "./import";
-export { helpContracts, helpStreamContract } from "./help";
 export { capacitorContracts } from "./capacitor";
 export { contextContracts } from "./context";
 export { upgradeContracts } from "./upgrade";
-export { visualEditingContracts } from "./visual-editing";
 export { securityContracts } from "./security";
 export { miscContracts, miscEvents } from "./misc";
-export { freeAgentQuotaContracts } from "./free_agent_quota";
-export { freeModelQuotaContracts } from "./free_model_quota";
-export { audioContracts } from "./audio";
 export { mediaContracts } from "./media";
 export {
   imageGenerationContracts,
@@ -95,7 +88,6 @@ export {
   connectionFlowClient,
   connectionFlowEventClient,
 } from "./connection_flow";
-export { mcpClient } from "./mcp";
 export { vercelClient } from "./vercel";
 export { supabaseClient } from "./supabase";
 export { neonClient } from "./neon";
@@ -105,18 +97,12 @@ export { versionClient } from "./version";
 export { languageModelClient } from "./language-model";
 export { promptClient } from "./prompts";
 export { templateClient } from "./templates";
-export { proposalClient } from "./proposals";
 export { importClient } from "./import";
-export { helpClient, helpStreamClient } from "./help";
 export { capacitorClient } from "./capacitor";
 export { contextClient } from "./context";
 export { upgradeClient } from "./upgrade";
-export { visualEditingClient } from "./visual-editing";
 export { securityClient } from "./security";
 export { miscClient, miscEventClient } from "./misc";
-export { freeAgentQuotaClient } from "./free_agent_quota";
-export { freeModelQuotaClient } from "./free_model_quota";
-export { audioClient } from "./audio";
 export { mediaClient } from "./media";
 export {
   imageGenerationClient,
@@ -172,7 +158,6 @@ export type {
 export type {
   Message,
   Chat,
-  ComponentSelection,
   FileAttachment,
   ChatAttachment,
   ChatStreamParams,
@@ -217,19 +202,6 @@ export type {
   CloneRepoParams,
   GithubRepository,
 } from "./github";
-
-// MCP types
-export type {
-  McpServer,
-  McpTransport,
-  CreateMcpServer,
-  McpServerUpdate,
-  McpTool,
-  McpListToolsResult,
-  McpToolConsent,
-  McpConsentValue,
-  SetMcpToolConsentParams,
-} from "./mcp";
 
 // Vercel types
 export type {
@@ -279,8 +251,6 @@ export type {
   SystemDebugInfo,
   SelectNodeFolderResult,
   DoesReleaseNoteExistParams,
-  UserBudgetInfo,
-  SubscriptionStatus,
   TelemetryEventPayload,
 } from "./system";
 
@@ -323,40 +293,18 @@ export type {
   CreateCustomThemeParams,
   UpdateCustomThemeParams,
   DeleteCustomThemeParams,
-  ThemeGenerationMode,
-  ThemeGenerationModel,
-  ThemeGenerationModelOption,
-  ThemeInputSource,
-  CrawlStatus,
-  GenerateThemePromptParams,
-  GenerateThemePromptResult,
-  GenerateThemeFromUrlParams,
-  SaveThemeImageParams,
-  SaveThemeImageResult,
-  CleanupThemeImagesParams,
 } from "./templates";
 
 // Proposal types
-export type { ProposalResult, ApproveProposalResult } from "./proposals";
 
 // Import types
 export type { ImportAppParams, ImportAppResult } from "./import";
-
-// Help types
-export type { HelpChatStartParams } from "./help";
 
 // Context types
 export type { ContextPathResults, AppChatContext } from "./context";
 
 // Upgrade types
 export type { AppUpgrade } from "./upgrade";
-
-// Visual editing types
-export type {
-  VisualEditingChange,
-  ApplyVisualEditingChangesParams,
-  AnalyseComponentParams,
-} from "./visual-editing";
 
 // Security types
 export type { SecurityReviewResult } from "./security";
@@ -369,12 +317,7 @@ export type {
   EnvVar,
 } from "./misc";
 
-// Free agent quota types
-export type { FreeAgentQuotaStatus } from "./free_agent_quota";
-export type { FreeModelQuotaStatus } from "./free_model_quota";
-
 // Pro types
-export type { TranscribeAudioParams, TranscribeAudioResult } from "./audio";
 
 // Media types
 export type {
@@ -444,8 +387,6 @@ export {
   AgentToolSchema,
 } from "./agent";
 
-export { SubscriptionStatusSchema, UserBudgetInfoSchema } from "./system";
-
 // =============================================================================
 // Aggregated IPC Client
 // =============================================================================
@@ -459,7 +400,6 @@ import {
   connectionFlowClient,
   connectionFlowEventClient,
 } from "./connection_flow";
-import { mcpClient } from "./mcp";
 import { vercelClient } from "./vercel";
 import { supabaseClient } from "./supabase";
 import { neonClient } from "./neon";
@@ -469,18 +409,12 @@ import { versionClient } from "./version";
 import { languageModelClient } from "./language-model";
 import { promptClient } from "./prompts";
 import { templateClient } from "./templates";
-import { proposalClient } from "./proposals";
 import { importClient } from "./import";
-import { helpClient, helpStreamClient } from "./help";
 import { capacitorClient } from "./capacitor";
 import { contextClient } from "./context";
 import { upgradeClient } from "./upgrade";
-import { visualEditingClient } from "./visual-editing";
 import { securityClient } from "./security";
 import { miscClient, miscEventClient } from "./misc";
-import { freeAgentQuotaClient } from "./free_agent_quota";
-import { freeModelQuotaClient } from "./free_model_quota";
-import { audioClient } from "./audio";
 import { mediaClient } from "./media";
 import {
   imageGenerationClient,
@@ -529,13 +463,11 @@ export const ipc = {
 
   // Streaming clients
   chatStream: chatStreamClient,
-  helpStream: helpStreamClient,
 
   // Integrations
   github: githubClient,
   git: gitClient,
   connectionFlow: connectionFlowClient,
-  mcp: mcpClient,
   vercel: vercelClient,
   supabase: supabaseClient,
   neon: neonClient,
@@ -547,18 +479,12 @@ export const ipc = {
   languageModel: languageModelClient,
   prompt: promptClient,
   template: templateClient,
-  proposal: proposalClient,
   import: importClient,
-  help: helpClient,
   capacitor: capacitorClient,
   context: contextClient,
   upgrade: upgradeClient,
-  visualEditing: visualEditingClient,
   security: securityClient,
   misc: miscClient,
-  freeAgentQuota: freeAgentQuotaClient,
-  freeModelQuota: freeModelQuotaClient,
-  audio: audioClient,
   media: mediaClient,
   appBlueprint: appBlueprintClient,
   appCollection: appCollectionClient,

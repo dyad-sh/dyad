@@ -118,10 +118,7 @@
     "errorLoadingSettings": "Erro ao Carregar Configurações",
     "couldNotLoadProvider": "Não foi possível carregar os dados do provedor: {{message}}",
     "couldNotLoadSettings": "Não foi possível carregar os dados de configuração: {{message}}",
-    "enableDyadPro": "Ativar Dyad Pro",
-    "toggleDyadPro": "Alternar para ativar o Dyad Pro",
     "apiKeyEmpty": "A Chave de API não pode estar vazia.",
-    "errorTogglingPro": "Erro ao alternar Dyad Pro: {{error}}",
     "failedSaveApiKey": "Falha ao salvar a chave de API.",
     "failedDeleteApiKey": "Falha ao excluir a chave de API."
   },
@@ -144,40 +141,12 @@
     "title": "Integrações"
   },
   "agentPermissions": {
-    "title": "Permissões do Agente (Pro)",
+    "title": "Permissões do Agente",
     "description": "Configure as permissões para as ferramentas integradas do Agente.",
     "defaultAllowedTools": "Ferramentas permitidas por padrão ({{count}})",
     "ask": "Perguntar",
     "alwaysAllow": "Sempre permitir",
     "neverAllow": "Nunca permitir"
-  },
-  "toolsMcp": {
-    "title": "Ferramentas (MCP)",
-    "name": "Nome",
-    "namePlaceholder": "Meu Servidor MCP",
-    "transport": "Transporte",
-    "stdio": "stdio",
-    "http": "http",
-    "command": "Comando",
-    "commandPlaceholder": "node",
-    "args": "Argumentos",
-    "argsPlaceholder": "caminho/para/servidor-mcp.js --flag",
-    "url": "URL",
-    "urlPlaceholder": "http://localhost:3000",
-    "addServer": "Adicionar Servidor",
-    "environmentVariables": "Variáveis de Ambiente",
-    "key": "Chave",
-    "keyPlaceholder": "ex.: PATH",
-    "value": "Valor",
-    "valuePlaceholder": "ex.: /usr/local/bin",
-    "addEnvVar": "Adicionar Variável de Ambiente",
-    "noEnvVars": "Nenhuma variável de ambiente configurada",
-    "keyValueRequired": "A chave e o valor são obrigatórios",
-    "duplicateKey": "Já existe uma variável de ambiente com esta chave",
-    "noToolsDiscovered": "Nenhuma ferramenta encontrada.",
-    "noServersConfigured": "Nenhum servidor configurado ainda.",
-    "prefilledServer": "Servidor MCP {{name}} pré-preenchido",
-    "deny": "Negar"
   },
   "experiments": {
     "title": "Experimentos"
@@ -299,7 +268,5 @@
     "addProvider": "Adicionar Provedor",
     "updateProvider": "Atualizar Provedor",
     "failedCreate": "Falha ao criar provedor personalizado"
-  },
-  "manageDyadPro": "Gerenciar Assinatura Dyad Pro",
-  "setupDyadPro": "Configurar Assinatura Dyad Pro"
+  }
 }

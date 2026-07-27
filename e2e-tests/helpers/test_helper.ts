@@ -29,7 +29,6 @@ export {
 export {
   PageObject,
   ContextFilesPickerDialog,
-  ProModesDialog,
   GitHubConnector,
   ChatActions,
   PreviewPanel,

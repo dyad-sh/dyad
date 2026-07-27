@@ -7,19 +7,9 @@ import {
   extractLocalAgentFixture,
   handleLocalAgentFixture,
 } from "./localAgentHandler";
-import {
-  buildExploreCodeNestedToolArgs,
-  buildExploreCodeSubmitReportArgs,
-  isExploreCodeSubagentPrompt,
-} from "./exploreCodeFixtures";
 import { fakeLlmLog } from "./log";
 
-const CANNED_MESSAGE = `
-  <dyad-write path="file1.txt">
-  A file (2)
-  </dyad-write>
-  More
-  EOM`;
+const CANNED_MESSAGE = "This is a fake response.";
 
 function getTextContent(message: any): string {
   if (typeof message?.content === "string") {
@@ -51,20 +41,6 @@ function getLastRealUserMessage(messages: any[]): any {
     }
   }
   return undefined;
-}
-
-function hasExploreCodeToolResult(messages: any[]): boolean {
-  return messages.some((message) => {
-    if (!isToolResultMessage(message)) {
-      return false;
-    }
-    const text = getTextContent(message);
-    return (
-      text.includes("Found ") ||
-      text.includes("Code exploration:") ||
-      text.includes("src/App.tsx")
-    );
-  });
 }
 
 function getLatestMatchingUserText(
@@ -132,34 +108,6 @@ function sendJsonMessage(res: Response, req: Request, text: string) {
   });
 }
 
-function sendJsonToolUseMessage(
-  res: Response,
-  req: Request,
-  toolName: string,
-  input: Record<string, unknown>,
-) {
-  res.json({
-    type: "message",
-    id: `msg_${Date.now()}`,
-    role: "assistant",
-    model: req.body?.model ?? "fake-anthropic-model",
-    content: [
-      {
-        type: "tool_use",
-        id: `call_${Date.now()}`,
-        name: toolName,
-        input,
-      },
-    ],
-    stop_reason: "tool_use",
-    stop_sequence: null,
-    usage: {
-      input_tokens: 1,
-      output_tokens: 1,
-    },
-  });
-}
-
 async function streamTextMessage(res: Response, req: Request, text: string) {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
@@ -207,67 +155,6 @@ async function streamTextMessage(res: Response, req: Request, text: string) {
   res.end();
 }
 
-async function streamToolUseMessage(
-  res: Response,
-  req: Request,
-  toolName: string,
-  input: Record<string, unknown>,
-) {
-  res.setHeader("Content-Type", "text/event-stream");
-  res.setHeader("Cache-Control", "no-cache");
-  res.setHeader("Connection", "keep-alive");
-
-  writeEvent(res, "message_start", {
-    type: "message_start",
-    message: {
-      id: `msg_${Date.now()}`,
-      type: "message",
-      role: "assistant",
-      model: req.body?.model ?? "fake-anthropic-model",
-      content: [],
-      stop_reason: null,
-      stop_sequence: null,
-      usage: { input_tokens: 1, output_tokens: 0 },
-    },
-  });
-  writeEvent(res, "content_block_start", {
-    type: "content_block_start",
-    index: 0,
-    content_block: {
-      type: "tool_use",
-      id: `call_${Date.now()}`,
-      name: toolName,
-      input: {},
-    },
-  });
-
-  const inputText = JSON.stringify(input);
-  const batchSize = 20;
-  for (let index = 0; index < inputText.length; index += batchSize) {
-    writeEvent(res, "content_block_delta", {
-      type: "content_block_delta",
-      index: 0,
-      delta: {
-        type: "input_json_delta",
-        partial_json: inputText.slice(index, index + batchSize),
-      },
-    });
-    await new Promise((resolve) => setTimeout(resolve, 5));
-  }
-
-  writeEvent(res, "content_block_stop", {
-    type: "content_block_stop",
-    index: 0,
-  });
-  writeEvent(res, "message_delta", {
-    type: "message_delta",
-    delta: { stop_reason: "tool_use", stop_sequence: null },
-    usage: { input_tokens: 1, output_tokens: 1 },
-  });
-  writeEvent(res, "message_stop", { type: "message_stop" });
-  res.end();
-}
-
 export const createAnthropicMessagesHandler =
   (prefix: string) => async (req: Request, res: Response) => {
     const { messages = [], stream = false } = req.body ?? {};
@@ -300,6 +187,18 @@ export const createAnthropicMessagesHandler =
         protocol: "anthropic",
       });
     }
+    if (userTextContent.startsWith("Generate an AI_RULES.md file")) {
+      return handleLocalAgentFixture(req, res, "generate-ai-rules", {
+        protocol: "anthropic",
+      });
+    }
+    if (
+      userTextContent.startsWith("Please resolve the Git merge conflicts in")
+    ) {
+      return handleLocalAgentFixture(req, res, "resolve-merge-conflicts", {
+        protocol: "anthropic",
+      });
+    }
 
     let messageContent = CANNED_MESSAGE;
     const planCommentsMessage = getLatestMatchingUserText(messages, (text) =>
@@ -329,22 +228,6 @@ export const createAnthropicMessagesHandler =
       messageContent =
         "## Key Decisions Made\n- Completed initial task as requested\n\n## Current Task State\nConversation was compacted to save context space.";
     }
-    if (isExploreCodeSubagentPrompt(userTextContent)) {
-      const toolName = hasExploreCodeToolResult(messages)
-        ? "submit_report"
-        : "explore_code";
-      const input =
-        toolName === "submit_report"
-          ? buildExploreCodeSubmitReportArgs()
-          : buildExploreCodeNestedToolArgs();
-      if (stream) {
-        await streamToolUseMessage(res, req, toolName, input);
-        return;
-      }
-      sendJsonToolUseMessage(res, req, toolName, input);
-      return;
-    }
-
     if (
       localAgentFixture &&
       messageContent === CANNED_MESSAGE &&

@@ -165,6 +165,25 @@ describe("DyadOAuthClientProvider", () => {
     });
   });
 
+  it("also revokes background providers that captured the prior epoch", async () => {
+    const background = new DyadOAuthClientProvider({
+      serverId: 72,
+      allowInteractive: false,
+    });
+    await background.saveTokens({
+      access_token: "background-before-revoke",
+      token_type: "Bearer",
+    });
+    const before = dbStore.get(72);
+
+    await revokeMcpOAuthWriteAuthority(72);
+    await background.saveTokens({
+      access_token: "stale-background-refresh",
+      token_type: "Bearer",
+    });
+    expect(dbStore.get(72)).toBe(before);
+  });
+
   it("seeds clientInformation from preregisteredClientId on first read", async () => {
     const p = new DyadOAuthClientProvider({
       serverId: 9,

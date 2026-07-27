@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
+  captureMcpOAuthWriteAuthority,
   DyadOAuthClientProvider,
   decryptFromString,
 } from "./mcp_oauth_provider";
@@ -107,6 +108,7 @@ export class McpManager {
             preregisteredClientSecret: s.oauthClientSecret
               ? decryptFromString(s.oauthClientSecret) || undefined
               : undefined,
+            writeAuthority: captureMcpOAuthWriteAuthority(s.id),
           })
         : undefined;
       client = await createMCPClient({

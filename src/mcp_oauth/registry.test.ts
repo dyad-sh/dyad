@@ -3,6 +3,7 @@ import {
   createFakeClock,
   createSequentialIdSource,
 } from "@/state_machines/testing";
+import type { IdSource } from "@/state_machines/clock";
 import {
   createMcpOAuthRegistry,
   type McpOAuthListenerRequest,
@@ -12,14 +13,14 @@ async function flush(): Promise<void> {
   for (let index = 0; index < 10; index += 1) await Promise.resolve();
 }
 
-function createHarness() {
+function createHarness(ids: IdSource = createSequentialIdSource()) {
   const clock = createFakeClock();
   const bindings: McpOAuthListenerRequest[] = [];
   const closed: string[] = [];
   const settled = vi.fn();
   const registry = createMcpOAuthRegistry({
     clock,
-    ids: createSequentialIdSource(),
+    ids,
     bindListener(request) {
       bindings.push(request);
       return {
@@ -41,10 +42,13 @@ function createHarness() {
 function request(
   serverId: number,
   messageId = `message-${serverId}`,
-  authorize = vi.fn(async () => "REDIRECT" as const),
+  authorize: (code?: string) => Promise<"AUTHORIZED" | "REDIRECT"> = vi.fn(
+    async () => "REDIRECT" as const,
+  ),
+  port = 53682,
 ) {
   return {
-    port: 53682,
+    port,
     serverId,
     rendererMessageId: messageId,
     expectedState: `state-${serverId}`,
@@ -105,6 +109,45 @@ describe("MCP OAuth registry", () => {
 
     await registry.dispose();
     await expect(first).resolves.toMatchObject({ success: false });
+  });
+
+  it("never evicts unresolved renderer receipts", async () => {
+    const { registry, bindings } = createHarness();
+    const requests = Array.from({ length: 128 }, (_, index) =>
+      request(index + 1, `pending-${index + 1}`, undefined, 40_000 + index),
+    );
+    const pending = requests.map((entry) => registry.connect(entry));
+    await flush();
+    expect(bindings).toHaveLength(128);
+
+    const overflowRequest = request(999, "overflow", undefined, 50_000);
+    await expect(registry.connect(overflowRequest)).resolves.toMatchObject({
+      success: false,
+      error: expect.stringMatching(/too many/i),
+    });
+    expect(overflowRequest.onAbort).toHaveBeenCalledOnce();
+    expect(registry.connect(requests[0])).toBe(pending[0]);
+    expect(bindings).toHaveLength(128);
+
+    await registry.dispose();
+    await Promise.all(pending);
+  });
+
+  it("keys resources by the complete typed ref when operation IDs collide", async () => {
+    const { registry, bindings } = createHarness({
+      next: () => "collision",
+    });
+    const first = registry.connect(request(1, "first", undefined, 45_001));
+    const second = registry.connect(request(2, "second", undefined, 45_002));
+    await flush();
+
+    expect(bindings).toHaveLength(2);
+    expect(bindings.map((binding) => binding.invocationRef.entityKey)).toEqual([
+      1, 2,
+    ]);
+    await registry.dispose();
+    await expect(first).resolves.toMatchObject({ success: false });
+    await expect(second).resolves.toMatchObject({ success: false });
   });
 
   it("preserves last-request-wins on a shared callback port", async () => {
@@ -207,5 +250,28 @@ describe("MCP OAuth registry", () => {
       success: false,
       error: "OAuth flow registry disposed.",
     });
+  });
+
+  it("awaits an active authorization effect during explicit disposal", async () => {
+    const { registry } = createHarness();
+    let finishAuthorization!: (value: "REDIRECT") => void;
+    const authorization = new Promise<"REDIRECT">((resolve) => {
+      finishAuthorization = resolve;
+    });
+    const result = registry.connect(
+      request(10, "deferred", () => authorization),
+    );
+    await flush();
+
+    let disposed = false;
+    const disposal = registry.dispose().then(() => {
+      disposed = true;
+    });
+    await flush();
+    expect(disposed).toBe(false);
+
+    finishAuthorization("REDIRECT");
+    await disposal;
+    await expect(result).resolves.toMatchObject({ success: false });
   });
 });

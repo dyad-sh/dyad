@@ -89,6 +89,7 @@ describe("RendererQueryInvalidationConsumer", () => {
       [
         { family: "provider-status", provider: "neon" },
         { family: "mcp-servers" },
+        { family: "mcp-catalog" },
         { family: "mcp-tools" },
       ],
     );
@@ -102,6 +103,7 @@ describe("RendererQueryInvalidationConsumer", () => {
       queryKeys.settings.all,
       queryKeys.neon.all,
       queryKeys.mcp.servers,
+      queryKeys.mcp.catalog,
       queryKeys.mcp.toolsByServer.all,
     ]);
   });

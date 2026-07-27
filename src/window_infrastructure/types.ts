@@ -103,6 +103,7 @@ export const QueryInvalidationScopeSchema = z.discriminatedUnion("family", [
     provider: z.enum(["github", "supabase", "neon"]),
   }),
   z.object({ family: z.literal("mcp-servers") }),
+  z.object({ family: z.literal("mcp-catalog") }),
   z.object({
     family: z.literal("mcp-tools"),
     serverId: z.number().int().positive().optional(),

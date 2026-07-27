@@ -30,6 +30,30 @@ const logger = log.scope("mcp_oauth_flow");
 const LOOPBACK_BIND_HOSTS = ["127.0.0.1", "::1"] as const;
 const mutatingServers = new Set<number>();
 const serverMutationBarriers = new Map<number, Promise<unknown>>();
+const oauthRequestReceipts = new Map<
+  string,
+  {
+    serverId: number;
+    promise: Promise<{ success: boolean; error: string | null }>;
+    pending: boolean;
+  }
+>();
+const latestOAuthRequestGeneration = new Map<number, number>();
+const OAUTH_REQUEST_RECEIPT_LIMIT = 128;
+let oauthShuttingDown = false;
+
+function compactOAuthRequestReceipts(): void {
+  let settledCount = [...oauthRequestReceipts.values()].filter(
+    (receipt) => !receipt.pending,
+  ).length;
+  if (settledCount <= OAUTH_REQUEST_RECEIPT_LIMIT) return;
+  for (const [messageId, receipt] of oauthRequestReceipts) {
+    if (receipt.pending) continue;
+    oauthRequestReceipts.delete(messageId);
+    settledCount -= 1;
+    if (settledCount <= OAUTH_REQUEST_RECEIPT_LIMIT) break;
+  }
+}
 
 function escapeHtml(value: string): string {
   return value.replace(
@@ -281,6 +305,11 @@ const mcpOAuthRegistry = createMcpOAuthRegistry({
   ids: uuidIdSource,
   bindListener: bindCallbackListener,
   onSettled: (serverId) => {
+    // Issuing an interactive authority invalidates any cached background
+    // provider for this server. Rebuild it after every terminal outcome,
+    // including cancellation/failure, so later refreshes capture the current
+    // epoch instead of remaining permanently fenced.
+    void mcpManager.dispose(serverId).catch(() => {});
     publishQueryInvalidations([
       { family: "mcp-servers" },
       { family: "mcp-tools", serverId },
@@ -296,20 +325,86 @@ interface RunOAuthFlowParams {
 }
 
 /** Preserve the IPC-facing `{success, error}` contract. */
-export async function runOAuthFlow(
+export function runOAuthFlow(
   params: RunOAuthFlowParams,
 ): Promise<{ success: boolean; error: string | null }> {
   const rendererMessageId =
     params.rendererMessageId ?? `main:${globalThis.crypto.randomUUID()}`;
-  const retry = mcpOAuthRegistry.retryResult(
-    rendererMessageId,
-    params.serverId,
+  const existingReceipt = oauthRequestReceipts.get(rendererMessageId);
+  if (existingReceipt) {
+    return existingReceipt.serverId === params.serverId
+      ? existingReceipt.promise
+      : Promise.resolve({
+          success: false,
+          error: "OAuth retry message ID was reused for a different server.",
+        });
+  }
+  if (oauthShuttingDown) {
+    return Promise.resolve({
+      success: false,
+      error: "OAuth is shutting down.",
+    });
+  }
+  const pendingReceiptCount = [...oauthRequestReceipts.values()].filter(
+    (receipt) => receipt.pending,
+  ).length;
+  if (pendingReceiptCount >= OAUTH_REQUEST_RECEIPT_LIMIT) {
+    const promise = Promise.resolve({
+      success: false,
+      error:
+        "Too many OAuth requests are already pending; finish or cancel one and retry.",
+    });
+    oauthRequestReceipts.set(rendererMessageId, {
+      serverId: params.serverId,
+      promise,
+      pending: false,
+    });
+    compactOAuthRequestReceipts();
+    return promise;
+  }
+  const generation =
+    (latestOAuthRequestGeneration.get(params.serverId) ?? 0) + 1;
+  latestOAuthRequestGeneration.set(params.serverId, generation);
+  const promise = prepareAndRunOAuthFlow(
+    { ...params, rendererMessageId },
+    generation,
   );
-  if (retry) return retry;
-  if (mutatingServers.has(params.serverId)) {
+  oauthRequestReceipts.set(rendererMessageId, {
+    serverId: params.serverId,
+    promise,
+    pending: true,
+  });
+  void promise.then(
+    () => settleOAuthRequestReceipt(rendererMessageId, promise),
+    () => settleOAuthRequestReceipt(rendererMessageId, promise),
+  );
+  return promise;
+}
+
+function settleOAuthRequestReceipt(
+  rendererMessageId: string,
+  promise: Promise<{ success: boolean; error: string | null }>,
+): void {
+  const receipt = oauthRequestReceipts.get(rendererMessageId);
+  if (receipt?.promise !== promise || !receipt.pending) return;
+  oauthRequestReceipts.delete(rendererMessageId);
+  oauthRequestReceipts.set(rendererMessageId, {
+    ...receipt,
+    pending: false,
+  });
+  compactOAuthRequestReceipts();
+}
+
+async function prepareAndRunOAuthFlow(
+  params: RunOAuthFlowParams & { rendererMessageId: string },
+  generation: number,
+): Promise<{ success: boolean; error: string | null }> {
+  if (oauthShuttingDown || mutatingServers.has(params.serverId)) {
     return {
       success: false,
-      error: "MCP server configuration is changing; retry OAuth in a moment.",
+      error: oauthShuttingDown
+        ? "OAuth is shutting down."
+        : "MCP server configuration is changing; retry OAuth in a moment.",
     };
   }
   const rows = await db
@@ -317,10 +412,18 @@ export async function runOAuthFlow(
     .from(mcpServers)
     .where(eq(mcpServers.id, params.serverId));
   const server = rows[0];
-  if (mutatingServers.has(params.serverId)) {
+  if (
+    oauthShuttingDown ||
+    mutatingServers.has(params.serverId) ||
+    latestOAuthRequestGeneration.get(params.serverId) !== generation
+  ) {
     return {
       success: false,
-      error: "MCP server configuration is changing; retry OAuth in a moment.",
+      error: oauthShuttingDown
+        ? "OAuth is shutting down."
+        : latestOAuthRequestGeneration.get(params.serverId) !== generation
+          ? "OAuth flow superseded by a newer Connect attempt."
+          : "MCP server configuration is changing; retry OAuth in a moment.",
     };
   }
   if (!server) {
@@ -368,7 +471,7 @@ export async function runOAuthFlow(
   const result = await mcpOAuthRegistry.connect({
     port: callbackPort,
     serverId: server.id,
-    rendererMessageId,
+    rendererMessageId: params.rendererMessageId,
     expectedState,
     authorize: async (authorizationCode) => {
       const authResult = await auth(provider, {
@@ -441,28 +544,39 @@ export function withMcpOAuthServerMutation<T>(
   reason: string,
   mutate: () => Promise<T>,
 ): Promise<T> {
+  // Fence both active flows and preparations that are currently awaiting the
+  // row read. Keep the admission fence raised across an entire queued
+  // mutation chain; only the last barrier for this server may lower it.
+  mutatingServers.add(serverId);
+  latestOAuthRequestGeneration.set(
+    serverId,
+    (latestOAuthRequestGeneration.get(serverId) ?? 0) + 1,
+  );
   const previous =
     serverMutationBarriers.get(serverId)?.catch(() => undefined) ??
     Promise.resolve();
   const operation = previous.then(async () => {
-    mutatingServers.add(serverId);
-    try {
-      await cancelMcpOAuthForServer(serverId, reason);
-      return await mutate();
-    } finally {
-      mutatingServers.delete(serverId);
-    }
+    await cancelMcpOAuthForServer(serverId, reason);
+    return await mutate();
   });
   serverMutationBarriers.set(serverId, operation);
   const clearBarrier = () => {
     if (serverMutationBarriers.get(serverId) === operation) {
       serverMutationBarriers.delete(serverId);
+      mutatingServers.delete(serverId);
     }
   };
   void operation.then(clearBarrier, clearBarrier);
   return operation;
 }
 
-export function disposeMcpOAuthForShutdown(): Promise<void> {
-  return mcpOAuthRegistry.dispose();
+export async function disposeMcpOAuthForShutdown(): Promise<void> {
+  oauthShuttingDown = true;
+  const pendingPreparations = [...oauthRequestReceipts.values()]
+    .filter((receipt) => receipt.pending)
+    .map((receipt) => receipt.promise);
+  await Promise.all([
+    mcpOAuthRegistry.dispose(),
+    Promise.allSettled(pendingPreparations),
+  ]);
 }

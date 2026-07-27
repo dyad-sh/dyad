@@ -15,6 +15,7 @@ type Row = {
   oauthState: string | null;
 };
 const dbStore = new Map<number, Row>();
+const delayedSelects = new Map<number, Promise<void>>();
 
 let currentTargetId = 0;
 
@@ -44,8 +45,13 @@ vi.mock("@/db", () => ({
     select: vi.fn(() => ({
       from: () => ({
         where: () => {
-          const row = dbStore.get(currentTargetId);
-          return Promise.resolve(row ? [row] : []);
+          const serverId = currentTargetId;
+          const delay = delayedSelects.get(serverId);
+          delayedSelects.delete(serverId);
+          return (delay ?? Promise.resolve()).then(() => {
+            const row = dbStore.get(serverId);
+            return row ? [row] : [];
+          });
         },
       }),
     })),
@@ -91,7 +97,8 @@ vi.mock("@/ipc/utils/mcp_manager", () => ({
 }));
 
 const flowImport = await import("@/ipc/utils/mcp_oauth_flow");
-const { disconnectOAuth, runOAuthFlow } = flowImport;
+const { disconnectOAuth, runOAuthFlow, withMcpOAuthServerMutation } =
+  flowImport;
 
 function seedRow(row: Partial<Row> & { id: number }): void {
   dbStore.set(row.id, {
@@ -111,6 +118,7 @@ function seedRow(row: Partial<Row> & { id: number }): void {
 describe("runOAuthFlow validation", () => {
   beforeEach(() => {
     dbStore.clear();
+    delayedSelects.clear();
     authMock.mockReset();
   });
 
@@ -157,6 +165,97 @@ describe("runOAuthFlow happy path (auth resolves AUTHORIZED first call)", () => 
     expect(result.success).toBe(true);
     expect(result.error).toBeNull();
     expect(authMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("reserves renderer retry identity before database preparation", async () => {
+    seedRow({ id: 4, transport: "http", url: "https://example.com/mcp" });
+    authMock.mockResolvedValueOnce("AUTHORIZED");
+
+    const first = runOAuthFlow({
+      serverId: 4,
+      rendererMessageId: "stable-message",
+      callbackPort: 53_691,
+    });
+    const retry = runOAuthFlow({
+      serverId: 4,
+      rendererMessageId: "stable-message",
+      callbackPort: 53_691,
+    });
+
+    expect(retry).toBe(first);
+    await expect(first).resolves.toMatchObject({ success: true });
+    expect(authMock).toHaveBeenCalledOnce();
+  });
+
+  it("keeps arrival-order last-request-wins when database reads resolve out of order", async () => {
+    seedRow({ id: 6, transport: "http", url: "https://example.com/mcp" });
+    let releaseOlder!: () => void;
+    delayedSelects.set(
+      6,
+      new Promise<void>((resolve) => {
+        releaseOlder = resolve;
+      }),
+    );
+    authMock
+      .mockResolvedValueOnce("REDIRECT")
+      .mockResolvedValueOnce("AUTHORIZED");
+
+    const older = runOAuthFlow({
+      serverId: 6,
+      rendererMessageId: "older",
+      callbackPort: 53_692,
+    });
+    const newer = runOAuthFlow({
+      serverId: 6,
+      rendererMessageId: "newer",
+      callbackPort: 53_692,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    releaseOlder();
+
+    await expect(older).resolves.toMatchObject({
+      success: false,
+      error: expect.stringMatching(/superseded/i),
+    });
+    const cleanup = await runOAuthFlow({
+      serverId: 6,
+      rendererMessageId: "cleanup",
+      callbackPort: 53_692,
+    });
+    expect(cleanup.success).toBe(true);
+    await expect(newer).resolves.toMatchObject({
+      success: false,
+      error: expect.stringMatching(/superseded/i),
+    });
+  });
+
+  it("fences a preparation whose row read spans a server mutation", async () => {
+    seedRow({ id: 8, transport: "http", url: "https://example.com/mcp" });
+    let releasePreparation!: () => void;
+    delayedSelects.set(
+      8,
+      new Promise<void>((resolve) => {
+        releasePreparation = resolve;
+      }),
+    );
+    const preparation = runOAuthFlow({
+      serverId: 8,
+      rendererMessageId: "before-mutation",
+      callbackPort: 53_693,
+    });
+
+    await withMcpOAuthServerMutation(
+      8,
+      "configuration changed",
+      async () => undefined,
+    );
+    releasePreparation();
+
+    await expect(preparation).resolves.toMatchObject({
+      success: false,
+      error: expect.stringMatching(/superseded/i),
+    });
+    expect(authMock).not.toHaveBeenCalled();
   });
 });
 

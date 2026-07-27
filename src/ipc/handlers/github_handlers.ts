@@ -111,9 +111,11 @@ interface DeviceFlowRecord {
   interval: number;
   timeoutId: NodeJS.Timeout | null;
   signal: AbortSignal;
+  disposedForShutdown: boolean;
 }
 
 const deviceFlows = new Map<string, DeviceFlowRecord>();
+let githubFlowsShuttingDown = false;
 
 // --- Helper Functions ---
 
@@ -315,6 +317,7 @@ async function pollForAccessToken(invocationRef: ConnectionFlowInvocationRef) {
       error?: string;
       error_description?: string;
     };
+    if (githubFlowsShuttingDown || record.disposedForShutdown) return;
 
     if (response.ok && data.access_token) {
       logger.log("Successfully obtained GitHub Access Token.");
@@ -349,6 +352,7 @@ async function pollForAccessToken(invocationRef: ConnectionFlowInvocationRef) {
       switch (data.error) {
         case "authorization_pending":
           logger.debug("Authorization pending...");
+          if (deviceFlows.get(key) !== record) return;
           record.timeoutId = setTimeout(
             () => pollForAccessToken(invocationRef),
             record.interval * 1000,
@@ -358,6 +362,7 @@ async function pollForAccessToken(invocationRef: ConnectionFlowInvocationRef) {
           const newInterval = record.interval + 5;
           logger.debug(`Slow down requested. New interval: ${newInterval}s`);
           record.interval = newInterval;
+          if (deviceFlows.get(key) !== record) return;
           record.timeoutId = setTimeout(
             () => pollForAccessToken(invocationRef),
             newInterval * 1000,
@@ -480,6 +485,7 @@ async function startGithubDeviceFlow({
       interval: data.interval || 5,
       timeoutId: null,
       signal,
+      disposedForShutdown: false,
     };
     deviceFlows.set(key, record);
 
@@ -1327,7 +1333,9 @@ export function registerGithubHandlers() {
     start: startGithubDeviceFlow,
     onFlowEnded: cleanupDeviceFlow,
     dispose: () => {
+      githubFlowsShuttingDown = true;
       for (const record of deviceFlows.values()) {
+        record.disposedForShutdown = true;
         if (record.timeoutId) clearTimeout(record.timeoutId);
       }
       deviceFlows.clear();

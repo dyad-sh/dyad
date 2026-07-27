@@ -12,6 +12,7 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { ipc } from "@/ipc/types";
 import {
+  CONNECTION_FLOW_PROVIDERS,
   DISCONNECTED_FLOW_STATE,
   isActiveFlowState,
   type ConnectionFlowInvocationRef,
@@ -53,9 +54,29 @@ function emit(): void {
   }
 }
 
-function replaceSnapshot(states: FlowSnapshot): void {
-  snapshot = states;
-  emit();
+export function mergeConnectionFlowSnapshots(
+  current: FlowSnapshot,
+  incoming: FlowSnapshot,
+): FlowSnapshot {
+  const next = { ...current };
+  for (const provider of CONNECTION_FLOW_PROVIDERS) {
+    if (incoming[provider].revision >= current[provider].revision) {
+      next[provider] = incoming[provider];
+    }
+  }
+  return next;
+}
+
+function mergeSnapshot(states: FlowSnapshot): void {
+  const next = mergeConnectionFlowSnapshots(snapshot, states);
+  if (
+    CONNECTION_FLOW_PROVIDERS.some(
+      (provider) => next[provider] !== snapshot[provider],
+    )
+  ) {
+    snapshot = next;
+    emit();
+  }
 }
 
 function isRevisionConflict(error: unknown): boolean {
@@ -63,7 +84,7 @@ function isRevisionConflict(error: unknown): boolean {
 }
 
 async function refreshSnapshot(): Promise<void> {
-  replaceSnapshot(await ipc.connectionFlow.getStates());
+  mergeSnapshot(await ipc.connectionFlow.getStates());
 }
 
 function ensureIpcSubscription(): void {
@@ -74,8 +95,10 @@ function ensureIpcSubscription(): void {
 
   ipc.events.connectionFlow.onStateChanged(({ provider, state }) => {
     pushedProviders.add(provider);
-    snapshot = { ...snapshot, [provider]: state };
-    emit();
+    if (state.revision >= snapshot[provider].revision) {
+      snapshot = { ...snapshot, [provider]: state };
+      emit();
+    }
   });
 
   ipc.events.connectionFlow.onUnsolicitedReturn(({ provider }) => {
@@ -96,18 +119,13 @@ function ensureIpcSubscription(): void {
   hydrationPromise = ipc.connectionFlow
     .getStates()
     .then((states) => {
-      let changed = false;
       const next = { ...snapshot };
       for (const provider of Object.keys(states) as ConnectionFlowProvider[]) {
         if (!pushedProviders.has(provider)) {
           next[provider] = states[provider];
-          changed = true;
         }
       }
-      if (changed) {
-        snapshot = next;
-        emit();
-      }
+      mergeSnapshot(next);
     })
     .catch((error) => {
       console.error("Failed to load connection flow states:", error);

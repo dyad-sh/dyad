@@ -196,6 +196,16 @@ export const mcpContracts = {
         .optional(),
     }),
     output: McpServerSchema,
+    invalidates: () => [
+      { family: "mcp-servers" },
+      { family: "mcp-catalog" },
+      { family: "mcp-tools" },
+    ],
+    originHandles: () => [
+      { family: "mcp-servers" },
+      { family: "mcp-catalog" },
+      { family: "mcp-tools" },
+    ],
   }),
 
   createServer: defineContract({
@@ -209,13 +219,23 @@ export const mcpContracts = {
     input: McpServerUpdateSchema,
     output: McpServerSchema,
     invalidates: () => [{ family: "mcp-servers" }, { family: "mcp-tools" }],
+    originHandles: () => [{ family: "mcp-servers" }, { family: "mcp-tools" }],
   }),
 
   deleteServer: defineContract({
     channel: "mcp:delete-server",
     input: z.number(), // serverId
     output: z.object({ success: z.boolean() }),
-    invalidates: () => [{ family: "mcp-servers" }, { family: "mcp-tools" }],
+    invalidates: () => [
+      { family: "mcp-servers" },
+      { family: "mcp-tools" },
+      { family: "mcp-catalog" },
+    ],
+    originHandles: () => [
+      { family: "mcp-servers" },
+      { family: "mcp-tools" },
+      { family: "mcp-catalog" },
+    ],
   }),
 
   listTools: defineContract({
@@ -262,6 +282,7 @@ export const mcpContracts = {
     input: z.number(), // serverId
     output: z.object({ success: z.boolean() }),
     invalidates: () => [{ family: "mcp-servers" }, { family: "mcp-tools" }],
+    originHandles: () => [{ family: "mcp-servers" }, { family: "mcp-tools" }],
   }),
 
   probeCallbackPort: defineContract({

@@ -156,6 +156,16 @@ export function issueMcpOAuthWriteAuthority(
   return { serverId, generation };
 }
 
+/** Captures the current epoch without replacing another provider's authority. */
+export function captureMcpOAuthWriteAuthority(
+  serverId: number,
+): McpOAuthWriteAuthority {
+  return {
+    serverId,
+    generation: writeAuthorityGenerations.get(serverId) ?? 0,
+  };
+}
+
 async function withStateLock<T>(
   serverId: number,
   fn: () => Promise<T>,
@@ -237,16 +247,16 @@ export class DyadOAuthClientProvider implements OAuthClientProvider {
     this.preregisteredClientSecret = config.preregisteredClientSecret;
     this.flowState = config.flowState;
     this.allowInteractive = config.allowInteractive ?? false;
-    this.writeAuthority = config.writeAuthority;
+    this.writeAuthority =
+      config.writeAuthority ?? captureMcpOAuthWriteAuthority(config.serverId);
   }
 
   private canWrite(): boolean {
     return (
       !this.aborted &&
-      (this.writeAuthority === undefined ||
-        (this.writeAuthority.serverId === this.serverId &&
-          writeAuthorityGenerations.get(this.serverId) ===
-            this.writeAuthority.generation))
+      this.writeAuthority?.serverId === this.serverId &&
+      (writeAuthorityGenerations.get(this.serverId) ?? 0) ===
+        this.writeAuthority.generation
     );
   }
 

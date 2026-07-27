@@ -45,6 +45,8 @@ export function queryKeysForInvalidationScope(
       ];
     case "mcp-servers":
       return [queryKeys.mcp.servers];
+    case "mcp-catalog":
+      return [queryKeys.mcp.catalog];
     case "mcp-tools":
       // Tool discovery is currently batched by the complete server-ID set.
       // A server-scoped durable event therefore invalidates the family root.

@@ -13,6 +13,7 @@ import { systemClock, uuidIdSource } from "@/state_machines/clock";
 import {
   createInvocationRef,
   InvocationRegistry,
+  invocationRegistryKey,
   sameInvocationRef,
 } from "@/state_machines/invocation_ref";
 import { createTraceObserver } from "@/state_machines/trace";
@@ -74,8 +75,10 @@ export interface McpOAuthConnectResult {
 interface FlowRuntime {
   invocationRef: McpOAuthInvocationRef;
   serverId: number;
+  rendererMessageId: string;
   authorize(code?: string): Promise<"AUTHORIZED" | "REDIRECT">;
   onAbort(): void;
+  promise: Promise<McpOAuthConnectResult>;
   resolve(result: McpOAuthConnectResult): void;
   settled: boolean;
 }
@@ -116,11 +119,39 @@ export function createMcpOAuthRegistry(options: McpOAuthRegistryOptions) {
   const closeBarriers = new Map<number, Promise<void>>();
   const messagePromises = new Map<
     string,
-    { serverId: number; promise: Promise<McpOAuthConnectResult> }
+    {
+      serverId: number;
+      promise: Promise<McpOAuthConnectResult>;
+      pending: boolean;
+    }
   >();
+  const activeEffects = new Set<Promise<void>>();
+  let pendingMessageCount = 0;
   let disposed = false;
 
-  const keyOf = (ref: McpOAuthInvocationRef) => ref.operationId;
+  const keyOf = (ref: McpOAuthInvocationRef) => invocationRegistryKey(ref);
+
+  function trackEffect(effect: Promise<unknown>): void {
+    const tracked = effect.then(
+      () => undefined,
+      () => undefined,
+    );
+    activeEffects.add(tracked);
+    void tracked.finally(() => activeEffects.delete(tracked));
+  }
+
+  function compactSettledMessages(): void {
+    let settledCount = [...messagePromises.values()].filter(
+      (entry) => !entry.pending,
+    ).length;
+    if (settledCount <= MESSAGE_DEDUPE_LIMIT) return;
+    for (const [messageId, entry] of messagePromises) {
+      if (entry.pending) continue;
+      messagePromises.delete(messageId);
+      settledCount -= 1;
+      if (settledCount <= MESSAGE_DEDUPE_LIMIT) break;
+    }
+  }
 
   function getState(port: number): McpOAuthState {
     return states.get(port) ?? IDLE_MCP_OAUTH_STATE;
@@ -157,6 +188,16 @@ export function createMcpOAuthRegistry(options: McpOAuthRegistryOptions) {
     cancelTimeout(invocationRef);
     if (abortProvider) runtime.onAbort();
     runtime.resolve(result);
+    const receipt = messagePromises.get(runtime.rendererMessageId);
+    if (receipt?.promise === runtime.promise && receipt.pending) {
+      messagePromises.delete(runtime.rendererMessageId);
+      messagePromises.set(runtime.rendererMessageId, {
+        ...receipt,
+        pending: false,
+      });
+      pendingMessageCount -= 1;
+      compactSettledMessages();
+    }
     options.onSettled?.(runtime.serverId, invocationRef, result);
   }
 
@@ -264,21 +305,24 @@ export function createMcpOAuthRegistry(options: McpOAuthRegistryOptions) {
     );
     const runtime = runtimes.get(key);
     if (!runtime) return;
-    void runtime.authorize().then(
-      (result) => {
-        if (result === "AUTHORIZED") {
+    trackEffect(
+      runtime.authorize().then(
+        (result) => {
+          if (result === "AUTHORIZED") {
+            dispatch(port, {
+              type: "AUTHORIZED_SILENTLY",
+              invocationRef: identity.invocationRef,
+            });
+          }
+        },
+        (error) => {
           dispatch(port, {
-            type: "AUTHORIZED_SILENTLY",
+            type: "EXCHANGE_FAILED",
             invocationRef: identity.invocationRef,
+            message: error instanceof Error ? error.message : String(error),
           });
-        }
-      },
-      (error) =>
-        dispatch(port, {
-          type: "EXCHANGE_FAILED",
-          invocationRef: identity.invocationRef,
-          message: error instanceof Error ? error.message : String(error),
-        }),
+        },
+      ),
     );
   }
 
@@ -291,25 +335,29 @@ export function createMcpOAuthRegistry(options: McpOAuthRegistryOptions) {
     void closeListener(port, invocationRef);
     const runtime = runtimes.get(keyOf(invocationRef));
     if (!runtime) return;
-    void runtime.authorize(code).then(
-      (result) =>
-        dispatch(
-          port,
-          result === "AUTHORIZED"
-            ? { type: "EXCHANGE_OK", invocationRef }
-            : {
-                type: "EXCHANGE_FAILED",
-                invocationRef,
-                message:
-                  "OAuth completed without authorization; please try again.",
-              },
-        ),
-      (error) =>
-        dispatch(port, {
-          type: "EXCHANGE_FAILED",
-          invocationRef,
-          message: error instanceof Error ? error.message : String(error),
-        }),
+    trackEffect(
+      runtime.authorize(code).then(
+        (result) => {
+          dispatch(
+            port,
+            result === "AUTHORIZED"
+              ? { type: "EXCHANGE_OK", invocationRef }
+              : {
+                  type: "EXCHANGE_FAILED",
+                  invocationRef,
+                  message:
+                    "OAuth completed without authorization; please try again.",
+                },
+          );
+        },
+        (error) => {
+          dispatch(port, {
+            type: "EXCHANGE_FAILED",
+            invocationRef,
+            message: error instanceof Error ? error.message : String(error),
+          });
+        },
+      ),
     );
   }
 
@@ -411,13 +459,11 @@ export function createMcpOAuthRegistry(options: McpOAuthRegistryOptions) {
     rendererMessageId: string,
     serverId: number,
     promise: Promise<McpOAuthConnectResult>,
+    pending: boolean,
   ): void {
-    messagePromises.set(rendererMessageId, { serverId, promise });
-    while (messagePromises.size > MESSAGE_DEDUPE_LIMIT) {
-      const oldest = messagePromises.keys().next().value;
-      if (oldest === undefined) break;
-      messagePromises.delete(oldest);
-    }
+    messagePromises.set(rendererMessageId, { serverId, promise, pending });
+    if (pending) pendingMessageCount += 1;
+    compactSettledMessages();
   }
 
   function connect(
@@ -438,6 +484,21 @@ export function createMcpOAuthRegistry(options: McpOAuthRegistryOptions) {
         success: false,
         error: "OAuth flow registry disposed.",
       });
+    }
+    if (pendingMessageCount >= MESSAGE_DEDUPE_LIMIT) {
+      request.onAbort();
+      const promise = Promise.resolve({
+        success: false,
+        error:
+          "Too many OAuth requests are already pending; finish or cancel one and retry.",
+      });
+      rememberMessage(
+        request.rendererMessageId,
+        request.serverId,
+        promise,
+        false,
+      );
+      return promise;
     }
 
     const previousForServer = activeByServer.get(request.serverId);
@@ -460,8 +521,10 @@ export function createMcpOAuthRegistry(options: McpOAuthRegistryOptions) {
     const runtime: FlowRuntime = {
       invocationRef,
       serverId: request.serverId,
+      rendererMessageId: request.rendererMessageId,
       authorize: request.authorize,
       onAbort: request.onAbort,
+      promise,
       resolve: resolvePromise,
       settled: false,
     };
@@ -469,7 +532,7 @@ export function createMcpOAuthRegistry(options: McpOAuthRegistryOptions) {
     activeInvocations.register(invocationRef, runtime);
     activeByServer.set(request.serverId, invocationRef);
     flowPorts.set(keyOf(invocationRef), request.port);
-    rememberMessage(request.rendererMessageId, request.serverId, promise);
+    rememberMessage(request.rendererMessageId, request.serverId, promise, true);
     dispatch(request.port, {
       type: "CONNECT",
       invocationRef,
@@ -575,7 +638,7 @@ export function createMcpOAuthRegistry(options: McpOAuthRegistryOptions) {
       }
     }
     states.clear();
-    await Promise.all([...closes, ...closeBarriers.values()]);
+    await Promise.all([...closes, ...closeBarriers.values(), ...activeEffects]);
   }
 
   return {

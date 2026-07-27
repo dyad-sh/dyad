@@ -36,6 +36,10 @@ const actor = {
 };
 
 const toastError = vi.hoisted(() => vi.fn());
+const windowInterest = vi.hoisted(() => ({
+  acquire: vi.fn(async () => undefined),
+  release: vi.fn(async () => ({ cleanupStarted: false })),
+}));
 vi.mock("sonner", () => ({
   toast: {
     custom: vi.fn(),
@@ -43,6 +47,12 @@ vi.mock("sonner", () => ({
     error: toastError,
     success: vi.fn(),
     warning: vi.fn(),
+  },
+}));
+vi.mock("./window_interest_client", () => ({
+  VersionPreviewWindowInterestClient: class {
+    acquire = windowInterest.acquire;
+    release = windowInterest.release;
   },
 }));
 
@@ -90,6 +100,10 @@ describe("VersionPreviewProvider", () => {
     actorListeners.clear();
     remoteState = CLOSED_STATE;
     toastError.mockClear();
+    windowInterest.acquire.mockReset().mockResolvedValue(undefined);
+    windowInterest.release
+      .mockReset()
+      .mockResolvedValue({ cleanupStarted: false });
     getDefaultStore().set(selectedAppIdAtom, null);
   });
 
@@ -107,8 +121,10 @@ describe("VersionPreviewProvider", () => {
 
     await waitFor(() => expect(screen.getByTestId("probe")).toBeTruthy());
     fireEvent.click(screen.getByTestId("probe"));
-    expect(screen.getByTestId("probe").getAttribute("data-state")).toBe(
-      "browsing",
+    await waitFor(() =>
+      expect(screen.getByTestId("probe").getAttribute("data-state")).toBe(
+        "browsing",
+      ),
     );
   });
 
@@ -149,14 +165,8 @@ describe("VersionPreviewProvider", () => {
     ).toBe("closed");
   });
 
-  it("resyncs and retries stale app-switch cleanup", async () => {
+  it("releases app-switch cleanup through the main interest coordinator", async () => {
     getDefaultStore().set(selectedAppIdAtom, 1);
-    actor.dispatch
-      .mockResolvedValueOnce({
-        kind: "rejected",
-        reason: "revision-conflict",
-      })
-      .mockResolvedValueOnce({ kind: "applied" });
     const queryClient = new QueryClient();
     render(
       <QueryClientProvider client={queryClient}>
@@ -166,17 +176,21 @@ describe("VersionPreviewProvider", () => {
       </QueryClientProvider>,
     );
     fireEvent.click(screen.getByTestId("probe"));
+    await waitFor(() => expect(windowInterest.acquire).toHaveBeenCalledWith(1));
 
     act(() => getDefaultStore().set(selectedAppIdAtom, 2));
 
-    await waitFor(() => expect(actor.dispatch).toHaveBeenCalledTimes(2));
-    expect(actor.resync).toHaveBeenCalled();
-    expect(actor.dispatch.mock.calls[0]?.[0]).toEqual(
-      actor.dispatch.mock.calls[1]?.[0],
+    await waitFor(() =>
+      expect(windowInterest.release).toHaveBeenCalledWith(
+        1,
+        expect.stringMatching(/^version-preview:/),
+        { type: "switch-app", nextAppId: 2 },
+      ),
     );
+    expect(actor.dispatch).not.toHaveBeenCalled();
   });
 
-  it("does not let a window with a closed pane clean up another window's preview", async () => {
+  it("releases retained interest when navigating with local presentation hidden", async () => {
     getDefaultStore().set(selectedAppIdAtom, 1);
     remoteState = {
       type: "previewing",
@@ -201,7 +215,8 @@ describe("VersionPreviewProvider", () => {
 
     act(() => getDefaultStore().set(selectedAppIdAtom, 2));
 
-    await waitFor(() => expect(actor.dispatch).not.toHaveBeenCalled());
+    await waitFor(() => expect(windowInterest.release).toHaveBeenCalled());
+    expect(actor.dispatch).not.toHaveBeenCalled();
   });
 
   it("resyncs a rejected recovery retry and surfaces terminal rejection", async () => {
@@ -305,14 +320,9 @@ describe("VersionPreviewProvider", () => {
     ).toBe("a");
   });
 
-  it("keeps the pane visible until stale close cleanup is accepted", async () => {
-    const accepted = deferred<{ kind: "applied" }>();
-    actor.dispatch
-      .mockResolvedValueOnce({
-        kind: "rejected",
-        reason: "revision-conflict",
-      })
-      .mockReturnValueOnce(accepted.promise);
+  it("keeps the pane visible until main accepts its window release", async () => {
+    const accepted = deferred<{ cleanupStarted: false }>();
+    windowInterest.release.mockReturnValueOnce(accepted.promise);
     const queryClient = new QueryClient();
 
     function CloseProbe() {
@@ -333,17 +343,19 @@ describe("VersionPreviewProvider", () => {
       </QueryClientProvider>,
     );
     fireEvent.click(screen.getByText("Open"));
-    expect(screen.getByTestId("close-probe").getAttribute("data-state")).toBe(
-      "browsing",
+    await waitFor(() =>
+      expect(screen.getByTestId("close-probe").getAttribute("data-state")).toBe(
+        "browsing",
+      ),
     );
 
     fireEvent.click(screen.getByText("Close"));
-    await waitFor(() => expect(actor.dispatch).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(windowInterest.release).toHaveBeenCalled());
     expect(screen.getByTestId("close-probe").getAttribute("data-state")).toBe(
       "browsing",
     );
 
-    accepted.resolve({ kind: "applied" });
+    accepted.resolve({ cleanupStarted: false });
     await waitFor(() =>
       expect(screen.getByTestId("close-probe").getAttribute("data-state")).toBe(
         "closed",

@@ -19,6 +19,7 @@ import { registerTokenCountHandlers } from "./handlers/token_count_handlers";
 import { registerWindowHandlers } from "./handlers/window_handlers";
 import { registerUploadHandlers } from "./handlers/upload_handlers";
 import { registerVersionHandlers } from "./handlers/version_handlers";
+import { registerVersionPreviewWindowInterestHandlers } from "./handlers/version_preview_window_interest_handlers";
 import { registerLanguageModelHandlers } from "./handlers/language_model_handlers";
 import { registerReleaseNoteHandlers } from "./handlers/release_note_handlers";
 import { registerImportHandlers } from "./handlers/import_handlers";
@@ -77,6 +78,7 @@ export function registerIpcHandlers() {
   registerWindowHandlers();
   registerUploadHandlers();
   registerVersionHandlers();
+  registerVersionPreviewWindowInterestHandlers();
   registerLanguageModelHandlers();
   registerReleaseNoteHandlers();
   registerImportHandlers();

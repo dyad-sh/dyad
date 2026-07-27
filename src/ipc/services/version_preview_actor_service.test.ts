@@ -108,4 +108,84 @@ describe("VersionPreviewActorService", () => {
     expect(persistence.remove).toHaveBeenCalledWith(7);
     expect(persistence.removeAll).toHaveBeenCalled();
   });
+
+  it("returns the repository only after the last window releases interest", () => {
+    const send = vi.fn();
+    const host = {
+      peek: vi.fn(() => ({
+        getSnapshot: () => ({
+          state: {
+            type: "previewing",
+            session: {
+              appId: 7,
+              originBranch: "main",
+              targetVersionId: "abc123",
+              checkedOutVersionId: "abc123",
+              exitIntent: { type: "none" },
+              selectedDiffFile: null,
+              isDiffVisible: false,
+            },
+          },
+        }),
+        send,
+      })),
+      disposeKey: vi.fn(async () => undefined),
+      disposeMachine: vi.fn(async () => undefined),
+    };
+    const owners = new Map<number, Set<number>>();
+    const interests = {
+      acquire: (appId: number, webContentsId: number) => {
+        const appOwners = owners.get(appId) ?? new Set<number>();
+        appOwners.add(webContentsId);
+        owners.set(appId, appOwners);
+      },
+      release: (appId: number, webContentsId: number) => {
+        const appOwners = owners.get(appId);
+        if (!appOwners?.delete(webContentsId)) return "not-owned" as const;
+        if (appOwners.size > 0) return "retained-by-other-window" as const;
+        owners.delete(appId);
+        return "last-owner-released" as const;
+      },
+      clearApp: vi.fn(),
+      clearAll: vi.fn(),
+    };
+    const presentation = { recordInitiator: vi.fn() };
+    const actors = new VersionPreviewActorService(
+      host as never,
+      interests as never,
+      presentation as never,
+    );
+    actors.acquireWindowInterest(7, 1);
+    actors.acquireWindowInterest(7, 2);
+
+    expect(
+      actors.releaseWindowInterest({
+        appId: 7,
+        webContentsId: 1,
+        windowSessionId: "window-1",
+        operationId: "leave-1",
+        exit: { type: "switch-app", nextAppId: 8 },
+      }),
+    ).toBe(false);
+    expect(send).not.toHaveBeenCalled();
+
+    expect(
+      actors.releaseWindowInterest({
+        appId: 7,
+        webContentsId: 2,
+        windowSessionId: "window-2",
+        operationId: "leave-2",
+        exit: { type: "switch-app", nextAppId: 8 },
+      }),
+    ).toBe(true);
+    expect(presentation.recordInitiator).toHaveBeenCalledWith(
+      "leave-2",
+      "window-2",
+    );
+    expect(send).toHaveBeenCalledWith({
+      type: "APP_CHANGED",
+      nextAppId: 8,
+      operationId: "leave-2",
+    });
+  });
 });

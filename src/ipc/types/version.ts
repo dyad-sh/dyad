@@ -5,6 +5,7 @@ import {
   createEventClient,
   defineEvent,
 } from "../contracts/core";
+import { SafeGitRefSchema } from "../../shared/git_refs";
 
 // =============================================================================
 // Version Schemas
@@ -63,11 +64,6 @@ export const VersionCommandResultSchema = z.object({
 
 export type VersionCommandResult = z.infer<typeof VersionCommandResultSchema>;
 export type RevertVersionResponse = VersionCommandResult;
-
-const SafeGitRefSchema = z
-  .string()
-  .min(1)
-  .refine((v) => !v.startsWith("-"), "git ref must not start with '-'");
 
 export const CheckoutVersionParamsSchema = z.discriminatedUnion("purpose", [
   z.object({
@@ -182,6 +178,32 @@ export const VersionPreviewPresentationResultSchema = z
 // =============================================================================
 
 export const versionContracts = {
+  acquirePreviewWindowInterest: defineContract({
+    channel: "version-preview:acquire-window-interest",
+    input: z.object({ appId: z.number().int().positive() }).strict(),
+    output: z.void(),
+  }),
+
+  releasePreviewWindowInterest: defineContract({
+    channel: "version-preview:release-window-interest",
+    input: z
+      .object({
+        appId: z.number().int().positive(),
+        operationId: z.string().min(1),
+        exit: z.discriminatedUnion("type", [
+          z.object({ type: z.literal("close") }).strict(),
+          z
+            .object({
+              type: z.literal("switch-app"),
+              nextAppId: z.number().int().positive().nullable(),
+            })
+            .strict(),
+        ]),
+      })
+      .strict(),
+    output: z.object({ cleanupStarted: z.boolean() }).strict(),
+  }),
+
   listVersions: defineContract({
     channel: "list-versions",
     input: z.object({ appId: z.number(), ref: SafeGitRefSchema.optional() }),

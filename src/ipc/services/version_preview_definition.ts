@@ -32,6 +32,7 @@ import { appRunActorService } from "./app_run_actor_service";
 import { versionPreviewPresentationService } from "./version_preview_presentation_service";
 import { versionPreviewService } from "./version_preview_service";
 import { versionPreviewPersistence } from "./version_preview_persistence";
+import { versionPreviewWindowInterestService } from "./version_preview_window_interest";
 
 interface VersionPreviewActorCommand {
   readonly command: PreviewCommand | { readonly type: "reconcile" };
@@ -513,6 +514,9 @@ export const versionPreviewDefinition: Definition = {
   createObserver: (context) => ({
     onTransitionApplied: ({ state, event }) => {
       versionPreviewPersistence.schedule(context.key.appId, state.state);
+      if (state.state.type === "closed") {
+        versionPreviewWindowInterestService.clearApp(context.key.appId);
+      }
       if ("operationId" in event) {
         versionPreviewPresentationService.confirm(event.operationId);
       }
@@ -549,6 +553,7 @@ export const versionPreviewDefinition: Definition = {
     },
     onDisposed: ({ key, cause }) => {
       versionPreviewService.endReconciliation(key.appId);
+      versionPreviewWindowInterestService.clearApp(key.appId);
       if (cause === "entity-deletion") {
         versionPreviewPersistence.remove(key.appId);
       }

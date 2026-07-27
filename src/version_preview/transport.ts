@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { InvocationRef } from "@/state_machines/invocation_ref";
+import { SafeGitRefSchema } from "@/shared/git_refs";
 import type {
   BranchSwitchFallback,
   PreviewError,
@@ -128,22 +129,22 @@ export const VersionPreviewIntentEventSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("SELECT_VERSION"),
-      versionId: z.string().min(1),
+      versionId: SafeGitRefSchema,
       operationId: z.string().min(1),
     })
     .strict(),
   z
     .object({
       type: z.literal("SWITCH_BRANCH"),
-      branch: z.string().min(1),
+      branch: SafeGitRefSchema,
       operationId: z.string().min(1),
     })
     .strict(),
   z
     .object({
       type: z.literal("RESTORE"),
-      versionId: z.string().min(1),
-      expectedHeadOid: z.string().optional(),
+      versionId: SafeGitRefSchema,
+      expectedHeadOid: SafeGitRefSchema.optional(),
       currentChatMessageId: currentChatMessageIdSchema.optional(),
       operationId: z.string().min(1),
     })

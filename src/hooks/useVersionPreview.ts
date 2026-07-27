@@ -16,6 +16,7 @@ import {
 import { versionPreviewClientDefinition } from "@/version_preview/client_definition";
 import { combineVersionPreviewState } from "@/version_preview/presentation_store";
 import { useVersionPreviewPresentationStore } from "@/version_preview/VersionPreviewProvider";
+import { useVersionPreviewWindowInterestClient } from "@/version_preview/VersionPreviewProvider";
 import {
   versionPreviewKey,
   type VersionPreviewIntentEvent,
@@ -86,6 +87,7 @@ export function useVersionPreview(appId: number | null): {
   const routedAppId = appId ?? NULL_APP_ID;
   const key = versionPreviewKey(routedAppId);
   const presentationStore = useVersionPreviewPresentationStore();
+  const windowInterest = useVersionPreviewWindowInterestClient();
   const selectionQueue = useRef<Promise<void>>(Promise.resolve());
   const client = useRemoteMachineClient();
   const actor = client.actor(versionPreviewClientDefinition, key);
@@ -111,6 +113,14 @@ export function useVersionPreview(appId: number | null): {
     async (event: PreviewEvent, waitForSettlement: boolean): Promise<void> => {
       if (appId === null) return;
       const isCleanup = event.type === "CLOSE";
+      if (event.type === "OPEN") {
+        await windowInterest.acquire(appId);
+        presentationStore.send(appId, event);
+        return;
+      }
+      if (event.type === "SELECT_VERSION") {
+        await windowInterest.acquire(appId);
+      }
       if (event.type !== "SELECT_VERSION" && !isCleanup) {
         presentationStore.send(appId, event);
       }
@@ -140,46 +150,37 @@ export function useVersionPreview(appId: number | null): {
           })
         : Promise.resolve();
       try {
-        for (let attempt = 0; attempt < (isCleanup ? 3 : 1); attempt += 1) {
-          if (isCleanup && actor.getStatus() !== "ready") {
-            await actor.resync();
-          }
-          const receipt = await actor.dispatch(intent);
-          if (receipt.kind === "applied") {
-            if (isCleanup || event.type === "SELECT_VERSION") {
-              presentationStore.send(appId, event);
-            }
-            await settlement;
+        if (isCleanup) {
+          const releaseResult = await windowInterest.release(appId, id, {
+            type: "close",
+          });
+          presentationStore.send(appId, event);
+          if (!releaseResult.cleanupStarted) {
+            unsubscribe();
             return;
           }
-          if (
-            isCleanup &&
-            receipt.kind === "rejected" &&
-            (receipt.reason === "revision-conflict" ||
-              receipt.reason === "stale-actor")
-          ) {
-            await actor.resync();
-            continue;
+          if (actor.getView().state.state.type === "closed") {
+            unsubscribe();
+            return;
           }
-          if (isCleanup && receipt.kind === "ignored") {
-            const remoteState = actor.getView().state.state;
-            if (
-              remoteState.type === "closed" ||
-              remoteState.type === "returning"
-            ) {
-              presentationStore.send(appId, event);
-              return;
-            }
-          }
-          throw new Error("The version operation was not accepted");
+          await settlement;
+          return;
         }
-        throw new Error("The version cleanup operation remained stale");
+        const receipt = await actor.dispatch(intent);
+        if (receipt.kind === "applied") {
+          if (event.type === "SELECT_VERSION") {
+            presentationStore.send(appId, event);
+          }
+          await settlement;
+          return;
+        }
+        throw new Error("The version operation was not accepted");
       } catch (error) {
         unsubscribe();
         throw error;
       }
     },
-    [actor, appId, presentationStore],
+    [actor, appId, presentationStore, windowInterest],
   );
   const dispatch = useCallback(
     (event: PreviewEvent, waitForSettlement: boolean): Promise<void> => {

@@ -357,6 +357,10 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   while navigating away must temporarily retain the old actor, resync stale
   revisions, and retry with the same stable operation identity; losing an exit
   intent can leave the external resource under hidden retained ownership.
+- When window-local presentation controls a shared external lifecycle, track
+  explicit per-window interest in main and clean up only when the last owner
+  explicitly releases it. Window destruction should drop stale interest without
+  triggering cleanup when the actor is designed to survive renderer reloads.
 - A safe remote projection contains only domain facts needed by consumers.
   Keep window-local presentation fields out of the authoritative snapshot and
   route one-shot toast/navigation outcomes to the initiating window. Publish

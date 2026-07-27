@@ -8,6 +8,8 @@ import { remoteMachineHost } from "./distributed_machine_host";
 import { versionPreviewDefinition } from "./version_preview_definition";
 import { versionPreviewService } from "./version_preview_service";
 import { versionPreviewPersistence } from "./version_preview_persistence";
+import { versionPreviewPresentationService } from "./version_preview_presentation_service";
+import { versionPreviewWindowInterestService } from "./version_preview_window_interest";
 
 type Host = Pick<
   typeof remoteMachineHost,
@@ -15,7 +17,58 @@ type Host = Pick<
 >;
 
 export class VersionPreviewActorService {
-  constructor(private readonly host: Host = remoteMachineHost) {}
+  constructor(
+    private readonly host: Host = remoteMachineHost,
+    private readonly windowInterests = versionPreviewWindowInterestService,
+    private readonly presentation = versionPreviewPresentationService,
+  ) {}
+
+  acquireWindowInterest(appId: number, webContentsId: number): void {
+    this.windowInterests.acquire(appId, webContentsId);
+  }
+
+  releaseWindowInterest({
+    appId,
+    webContentsId,
+    windowSessionId,
+    operationId,
+    exit,
+  }: {
+    appId: number;
+    webContentsId: number;
+    windowSessionId: string | undefined;
+    operationId: string;
+    exit: { type: "close" } | { type: "switch-app"; nextAppId: number | null };
+  }): boolean {
+    if (
+      this.windowInterests.release(appId, webContentsId) !==
+      "last-owner-released"
+    ) {
+      return false;
+    }
+    const actor = this.actor(appId);
+    const state = actor?.getSnapshot().state;
+    if (
+      !actor ||
+      !state ||
+      state.type === "closed" ||
+      state.type === "returning" ||
+      state.type === "switching-branch"
+    ) {
+      return false;
+    }
+    this.presentation.recordInitiator(operationId, windowSessionId);
+    actor.send(
+      exit.type === "close"
+        ? { type: "CLOSE", operationId }
+        : {
+            type: "APP_CHANGED",
+            nextAppId: exit.nextAppId,
+            operationId,
+          },
+    );
+    return true;
+  }
 
   beginAppDeletion(appId: number): void {
     versionPreviewService.beginAppDeletion(appId);
@@ -26,17 +79,7 @@ export class VersionPreviewActorService {
   }
 
   async prepareAppDeletion(appId: number): Promise<void> {
-    const actor = this.host.peek(
-      versionPreviewDefinition.id,
-      versionPreviewKey(appId),
-    ) as
-      | HostedActorRef<
-          VersionPreviewActorState,
-          VersionPreviewWireEvent,
-          | import("@/version_preview/transition").PreviewIgnoreReason
-          | "stale-operation"
-        >
-      | undefined;
+    const actor = this.actor(appId);
     const state = actor?.getSnapshot().state;
     if (
       actor &&
@@ -64,6 +107,7 @@ export class VersionPreviewActorService {
       );
     } finally {
       versionPreviewPersistence.remove(appId);
+      this.windowInterests.clearApp(appId);
     }
   }
 
@@ -72,7 +116,22 @@ export class VersionPreviewActorService {
       await this.host.disposeMachine(versionPreviewDefinition.id);
     } finally {
       versionPreviewPersistence.removeAll();
+      this.windowInterests.clearAll();
     }
+  }
+
+  private actor(appId: number) {
+    return this.host.peek(
+      versionPreviewDefinition.id,
+      versionPreviewKey(appId),
+    ) as
+      | HostedActorRef<
+          VersionPreviewActorState,
+          VersionPreviewWireEvent,
+          | import("@/version_preview/transition").PreviewIgnoreReason
+          | "stale-operation"
+        >
+      | undefined;
   }
 }
 

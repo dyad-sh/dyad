@@ -34,6 +34,21 @@ describe("version_preview wire contracts", () => {
     ).toBe(false);
   });
 
+  it.each(["SELECT_VERSION", "SWITCH_BRANCH", "RESTORE"] as const)(
+    "rejects dash-prefixed Git refs for %s",
+    (type) => {
+      const event =
+        type === "SELECT_VERSION"
+          ? { type, versionId: "-f", operationId: "preview-1" }
+          : type === "SWITCH_BRANCH"
+            ? { type, branch: "-f", operationId: "switch-1" }
+            : { type, versionId: "-f", operationId: "restore-1" };
+      expect(VersionPreviewIntentEventSchema.safeParse(event).success).toBe(
+        false,
+      );
+    },
+  );
+
   it("projects only serializable checkout and recovery data", () => {
     const snapshot = VersionPreviewRemoteSnapshotSchema.parse(
       projectVersionPreviewRemoteSnapshot(7, 3, {

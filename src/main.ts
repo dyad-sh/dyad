@@ -131,6 +131,11 @@ import {
 import { pathToFileURL } from "node:url";
 import { windowRegistry } from "./window_infrastructure/main/window_registry";
 import type { WindowSessionId } from "./window_infrastructure/types";
+import { configureWindowProductController } from "./window_infrastructure/main/window_product_controller";
+import {
+  WindowSessionPersistence,
+  type WindowSessionDescriptor,
+} from "./window_infrastructure/main/window_session_persistence";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();
@@ -496,7 +501,7 @@ export async function onReady() {
   }
 
   await onFirstRunMaybe(settings);
-  createWindow();
+  restoreWindowSessions();
   createApplicationMenu();
 
   sendTelemetryEvent("runtime_source", {
@@ -597,15 +602,28 @@ declare global {
 }
 
 let mainWindow: BrowserWindow | null = null;
+const productWindows = new Map<WindowSessionId, BrowserWindow>();
+let windowSessionPersistence: WindowSessionPersistence | undefined;
+let lastClosedWindowSession: WindowSessionDescriptor | undefined;
 let pendingForceCloseData: any = null;
 let pendingActiveChatId: number | null = null;
 let pendingCrashDetected = false;
 let isAppQuitting = false;
 let safeStorageKeychainUnlockRetryScheduled = false;
 
-const createWindow = () => {
+function getWindowSessionPersistence(): WindowSessionPersistence {
+  windowSessionPersistence ??= new WindowSessionPersistence(
+    path.join(app.getPath("userData"), "window-sessions.json"),
+  );
+  return windowSessionPersistence;
+}
+
+const createWindow = ({
+  windowSessionId = randomUUID() as WindowSessionId,
+  visibleEntity,
+}: Partial<WindowSessionDescriptor> = {}): WindowSessionId => {
   // Create the browser window.
-  mainWindow = new BrowserWindow({
+  const browserWindow = new BrowserWindow({
     width: process.env.NODE_ENV === "development" ? 1280 : 960,
     minWidth: 800,
     height: 700,
@@ -626,9 +644,32 @@ const createWindow = () => {
     // backgroundColor: "#00000001",
     // frame: false,
   });
-  const windowSessionId = randomUUID() as WindowSessionId;
-  windowRegistry.register(mainWindow.webContents, windowSessionId);
-  mainWindow.on("focus", () => windowRegistry.setFocused(windowSessionId));
+  mainWindow = browserWindow;
+  productWindows.set(windowSessionId, browserWindow);
+  getWindowSessionPersistence().remember(windowSessionId, visibleEntity);
+  windowRegistry.register(browserWindow.webContents, windowSessionId);
+  browserWindow.on("focus", () => {
+    mainWindow = browserWindow;
+    windowRegistry.setFocused(windowSessionId);
+  });
+  browserWindow.once("closed", () => {
+    const descriptor = getWindowSessionPersistence()
+      .read()
+      .find((candidate) => candidate.windowSessionId === windowSessionId);
+    const wasLastWindow = productWindows.size === 1;
+    productWindows.delete(windowSessionId);
+    if (!isAppQuitting && !wasLastWindow) {
+      getWindowSessionPersistence().forget(windowSessionId);
+    } else if (descriptor) {
+      lastClosedWindowSession = descriptor;
+    }
+    if (mainWindow === browserWindow) {
+      mainWindow =
+        BrowserWindow.getFocusedWindow() ??
+        [...productWindows.values()].at(-1) ??
+        null;
+    }
+  });
   const packagedRendererUrl = pathToFileURL(
     path.join(__dirname, "../renderer/main_window/index.html"),
   ).href;
@@ -652,10 +693,10 @@ const createWindow = () => {
       logger.warn("Blocked unexpected main-window navigation:", event.url);
     }
   };
-  mainWindow.webContents.on("will-navigate", rejectUnexpectedNavigation);
-  mainWindow.webContents.on("will-redirect", rejectUnexpectedNavigation);
+  browserWindow.webContents.on("will-navigate", rejectUnexpectedNavigation);
+  browserWindow.webContents.on("will-redirect", rejectUnexpectedNavigation);
   const previewPopupWindows = new Set<BrowserWindow>();
-  mainWindow.webContents.setWindowOpenHandler((details) => {
+  browserWindow.webContents.setWindowOpenHandler((details) => {
     const response = getWindowOpenHandlerResponse(details, allowedDevServerUrl);
     if (response.action === "deny") {
       logger.warn("Blocked unexpected child window:", details.url);
@@ -676,22 +717,21 @@ const createWindow = () => {
   });
   // In development, wait for DevTools to open, then reload the page once so React DevTools initializes correctly
   if (process.env.NODE_ENV === "development") {
-    mainWindow.webContents.once("devtools-opened", () => {
+    browserWindow.webContents.once("devtools-opened", () => {
       setTimeout(() => {
-        const windowRef = mainWindow;
-        if (!windowRef?.isDestroyed()) {
-          windowRef?.webContents.reloadIgnoringCache();
+        if (!browserWindow.isDestroyed()) {
+          browserWindow.webContents.reloadIgnoringCache();
         }
       }, 300);
     });
-    mainWindow.webContents.openDevTools();
+    browserWindow.webContents.openDevTools();
   }
 
   // and load the index.html of the app.
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+    browserWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
   } else {
-    mainWindow.loadFile(
+    browserWindow.loadFile(
       path.join(__dirname, "../renderer/main_window/index.html"),
     );
   }
@@ -700,7 +740,7 @@ const createWindow = () => {
   let forceCloseMessageSent = false;
   let devToolsReloadedCount = 0;
 
-  mainWindow.webContents.on("did-finish-load", () => {
+  browserWindow.webContents.on("did-finish-load", () => {
     // Must run on first load, else deep links break in dev.
     deepLinkQueue.markReady();
 
@@ -721,9 +761,8 @@ const createWindow = () => {
     if (pendingCrashDetected && !forceCloseMessageSent) {
       forceCloseMessageSent = true;
 
-      const windowRef = mainWindow;
-      if (!windowRef?.isDestroyed()) {
-        windowRef?.webContents.send("force-close-detected", {
+      if (!browserWindow.isDestroyed()) {
+        browserWindow.webContents.send("force-close-detected", {
           ...(pendingForceCloseData && {
             performanceData: pendingForceCloseData,
           }),
@@ -815,7 +854,7 @@ const createWindow = () => {
   // the next successful renderer load. We deliberately do nothing here besides
   // writing the record: triggering reloads/dialogs is out of scope for the
   // telemetry hook.
-  mainWindow.webContents.on("render-process-gone", (_event, details) => {
+  browserWindow.webContents.on("render-process-gone", (_event, details) => {
     if (isAppQuitting) {
       return;
     }
@@ -840,7 +879,7 @@ const createWindow = () => {
   });
 
   // Enable native context menu on right-click
-  mainWindow.webContents.on("context-menu", (event, params) => {
+  browserWindow.webContents.on("context-menu", (event, params) => {
     // Prevent any default behavior and show our own menu
     event.preventDefault();
 
@@ -861,7 +900,7 @@ const createWindow = () => {
             label: suggestion,
             click: () => {
               try {
-                mainWindow?.webContents.replaceMisspelling(suggestion);
+                browserWindow.webContents.replaceMisspelling(suggestion);
               } catch (error) {
                 logger.error("Failed to replace misspelling:", error);
               }
@@ -890,15 +929,44 @@ const createWindow = () => {
         {
           label: "Inspect Element",
           click: () =>
-            mainWindow?.webContents.inspectElement(params.x, params.y),
+            browserWindow.webContents.inspectElement(params.x, params.y),
         },
       );
     }
 
     const menu = Menu.buildFromTemplate(template);
-    menu.popup({ window: mainWindow! });
+    menu.popup({ window: browserWindow });
   });
+  return windowSessionId;
 };
+
+function restoreWindowSessions(): void {
+  const sessions = getWindowSessionPersistence().read();
+  if (sessions.length === 0) {
+    createWindow();
+    return;
+  }
+  for (const session of sessions) {
+    createWindow(session);
+  }
+}
+
+configureWindowProductController({
+  openEntityInNewWindow: (entity) =>
+    createWindow({
+      windowSessionId: randomUUID() as WindowSessionId,
+      visibleEntity: entity,
+    }),
+  initialEntityForSession: (windowSessionId) =>
+    getWindowSessionPersistence()
+      .read()
+      .find((window) => window.windowSessionId === windowSessionId)
+      ?.visibleEntity,
+  setVisibleEntities: (windowSessionId, entities) => {
+    const visibleEntity = entities.find((entity) => entity.kind === "app");
+    getWindowSessionPersistence().remember(windowSessionId, visibleEntity);
+  },
+});
 
 /**
  * Create application menu with Edit shortcuts (Undo, Redo, Cut, Copy, Paste, etc.)
@@ -1307,7 +1375,7 @@ app.on("activate", () => {
   // On OS X it's common to re-create a window in the app when the
   // dock icon is clicked and there are no other windows open.
   if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
+    createWindow(lastClosedWindowSession);
   }
 });
 

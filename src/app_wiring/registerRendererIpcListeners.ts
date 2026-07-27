@@ -170,6 +170,21 @@ export function registerRendererIpcListeners({
 
   let selectedAppInterest = store.get(selectedAppIdAtom);
   let selectedChatInterest = store.get(selectedChatIdAtom);
+  const publishVisibleEntities = () => {
+    const entities = [
+      ...(selectedAppInterest === null
+        ? []
+        : [{ kind: "app" as const, id: selectedAppInterest }]),
+      ...(selectedChatInterest === null
+        ? []
+        : [{ kind: "chat" as const, id: selectedChatInterest }]),
+    ];
+    void ipcClient.windowInfrastructure
+      .setVisibleEntities(entities)
+      .catch((error) =>
+        console.error("Failed to publish visible window entities", error),
+      );
+  };
   const updateInterest = (
     previous: number | null,
     next: number | null,
@@ -196,17 +211,27 @@ export function registerRendererIpcListeners({
   };
   updateInterest(null, selectedAppInterest, "app-output");
   updateInterest(null, selectedChatInterest, "chat-chunk");
+  publishVisibleEntities();
+  const handleWindowFocus = () => {
+    void ipcClient.windowInfrastructure
+      .setFocused()
+      .catch((error) => console.error("Failed to publish window focus", error));
+  };
+  window.addEventListener("focus", handleWindowFocus);
   unsubscribes.push(
     store.sub(selectedAppIdAtom, () => {
       const next = store.get(selectedAppIdAtom);
       updateInterest(selectedAppInterest, next, "app-output");
       selectedAppInterest = next;
+      publishVisibleEntities();
     }),
     store.sub(selectedChatIdAtom, () => {
       const next = store.get(selectedChatIdAtom);
       updateInterest(selectedChatInterest, next, "chat-chunk");
       selectedChatInterest = next;
+      publishVisibleEntities();
     }),
+    () => window.removeEventListener("focus", handleWindowFocus),
   );
   unsubscribes.push(
     ipcClient.events.windowInfrastructure.onEntityDisposed(

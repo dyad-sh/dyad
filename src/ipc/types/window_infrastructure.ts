@@ -26,6 +26,14 @@ export const windowInfrastructureContracts = {
       currentQueryInvalidationEpoch: z.number().int().nonnegative(),
       missedInvalidations: z.array(QueryInvalidationEventSchema),
       recoveryScopes: z.array(QueryInvalidationScopeSchema),
+      initialEntity: VisibleEntitySchema.optional(),
+    }),
+  }),
+  openEntityInNewWindow: defineContract({
+    channel: "window-infrastructure:open-entity-in-new-window",
+    input: VisibleEntitySchema,
+    output: z.object({
+      windowSessionId: WindowSessionIdSchema,
     }),
   }),
   setFocused: defineContract({

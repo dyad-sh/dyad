@@ -792,6 +792,12 @@ Only the read-only legacy queue importer remains for one-time migration.
 
 **C4 — Multi-window product surface.**
 
+Status: **C4a implemented; C4b pending C3.** C4a ships product-window
+creation, explicit app-surface duplication, stable per-window restore,
+per-window chat-tab session persistence with legacy migration, and live app
+visibility/focus routing. C4b owns chat-tab drag/transfer and chat-surface
+notification routing after the C3 authority cutover lands.
+
 Window creation, explicit duplication, tab drag/transfer, per-window session
 restore, and focus routing. Moving a tab preserves serializable presentation
 state—including scroll anchor/position, selected file and cursor, preview

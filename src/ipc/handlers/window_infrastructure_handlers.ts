@@ -14,6 +14,7 @@ import {
   toRendererMessage,
 } from "../utils/renderer_chat_message";
 import type { ChatResponseChunk } from "../types/chat";
+import { getWindowProductController } from "../../window_infrastructure/main/window_product_controller";
 
 export function registerWindowInfrastructureHandlers(): void {
   createTypedHandler(
@@ -28,6 +29,23 @@ export function registerWindowInfrastructureHandlers(): void {
         currentQueryInvalidationEpoch: synchronization.currentEpoch,
         missedInvalidations: synchronization.invalidations,
         recoveryScopes: synchronization.recoveryScopes,
+        initialEntity:
+          getWindowProductController()?.initialEntityForSession(
+            windowSessionId,
+          ),
+      };
+    },
+  );
+
+  createTypedHandler(
+    windowInfrastructureContracts.openEntityInNewWindow,
+    async (_event, entity) => {
+      const controller = getWindowProductController();
+      if (!controller) {
+        throw new Error("Window product controller is not ready");
+      }
+      return {
+        windowSessionId: controller.openEntityInNewWindow(entity),
       };
     },
   );
@@ -45,6 +63,7 @@ export function registerWindowInfrastructureHandlers(): void {
     async (event, entities) => {
       const sessionId = windowRegistry.ensureRegistered(event.sender);
       windowRegistry.setVisibleEntities(sessionId, entities);
+      getWindowProductController()?.setVisibleEntities(sessionId, entities);
     },
   );
 

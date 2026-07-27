@@ -1,4 +1,4 @@
-import { StrictMode, useCallback, useEffect } from "react";
+import { StrictMode, useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { router } from "./router";
 import { RouterProvider } from "@tanstack/react-router";
@@ -40,6 +40,8 @@ import {
   useRegisterEntityDisposer,
 } from "./state_machines/react";
 import { clearTestRuntimeForAppAtom } from "./atoms/testRuntimeAtoms";
+import { configureChatTabWindowSession } from "./window_infrastructure/chat_tab_session_storage";
+import type { VisibleEntity } from "./window_infrastructure/types";
 
 // @ts-ignore
 console.log("Running in mode:", import.meta.env.MODE);
@@ -149,6 +151,7 @@ function RendererServices() {
   const store = useStore();
   const chatStreamManager = useChatStreamManager();
   const entityDisposal = useEntityDisposal();
+  const [windowReady, setWindowReady] = useState(false);
   const clearAppRuntime = useCallback(
     (appId: number) => {
       store.set(clearTestRuntimeForAppAtom, appId);
@@ -187,6 +190,41 @@ function RendererServices() {
   }, []);
 
   useEffect(() => {
+    let disposed = false;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    let retryDelayMs = 100;
+    const bootstrapWindow = () => {
+      void ipc.windowInfrastructure
+        .bootstrap({})
+        .then((bootstrap) => {
+          if (disposed) return;
+          configureChatTabWindowSession(bootstrap.windowSessionId);
+          const entity: VisibleEntity | undefined = bootstrap.initialEntity;
+          if (entity?.kind === "app") {
+            void router.navigate({
+              to: "/app-details",
+              search: { appId: entity.id },
+              replace: true,
+            });
+          }
+          setWindowReady(true);
+        })
+        .catch((error) => {
+          if (disposed) return;
+          console.error("Failed to initialize window session", error);
+          retryTimer = setTimeout(bootstrapWindow, retryDelayMs);
+          retryDelayMs = Math.min(retryDelayMs * 2, 5_000);
+        });
+    };
+    bootstrapWindow();
+    return () => {
+      disposed = true;
+      if (retryTimer) clearTimeout(retryTimer);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!windowReady) return;
     return registerRendererIpcListeners({
       ipcClient: ipc,
       store,
@@ -205,9 +243,9 @@ function RendererServices() {
         posthog.capture(eventName, properties);
       },
     });
-  }, [chatStreamManager, entityDisposal, queryClient, store]);
+  }, [chatStreamManager, entityDisposal, queryClient, store, windowReady]);
 
-  return <RouterProvider router={router} />;
+  return windowReady ? <RouterProvider router={router} /> : null;
 }
 
 createRoot(document.getElementById("root")!).render(

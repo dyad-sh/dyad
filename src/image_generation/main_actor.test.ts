@@ -9,6 +9,7 @@ import {
   createSequentialIdSource,
 } from "@/state_machines/testing";
 import { TwoWindowHarness } from "@/testing/two_window_harness";
+import { DyadErrorKind } from "@/errors/dyad_error";
 import {
   IMAGE_GENERATION_TERMINAL_RETENTION_MS,
   imageGenerationDefinition,
@@ -217,6 +218,22 @@ describe("main-hosted image generation actor", () => {
       }),
     ).resolves.toMatchObject({ kind: "applied" });
     expect(actorA.getSnapshot().jobs[0]?.status).toBe("cancelling");
+  });
+
+  it("classifies a missing target app as not found", async () => {
+    database.findFirst.mockResolvedValue(undefined);
+
+    await expect(
+      imageGenerationDefinition.remote.authorizeDispatch({
+        sender: { webContentsId: 1 },
+        key: getImageGenerationKey(),
+        event: submit,
+        currentState: { jobs: [] },
+      }),
+    ).rejects.toMatchObject({
+      kind: DyadErrorKind.NotFound,
+      message: "Target app not found",
+    });
   });
 
   it("does not persist jobs across actor recreation", async () => {

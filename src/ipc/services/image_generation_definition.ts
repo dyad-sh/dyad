@@ -196,7 +196,7 @@ export const imageGenerationDefinition: ImageGenerationDefinition = {
           intent.job.targetAppId,
         );
         if (!(await appExists(intent.job.targetAppId))) {
-          throw new DyadError("Target app not found", DyadErrorKind.Auth);
+          throw new DyadError("Target app not found", DyadErrorKind.NotFound);
         }
         imageGenerationService.assertAcceptingGenerations(
           intent.job.targetAppId,

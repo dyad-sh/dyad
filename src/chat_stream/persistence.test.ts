@@ -6,6 +6,7 @@ import { createInMemoryTestDb, type TestDb } from "@/testing/test_db";
 import {
   hydrateChatStreamPersistence,
   loadChatQueue,
+  markIntentTerminal,
   mutateChatQueue,
   peekQueueHead,
   persistQueuedIntent,
@@ -133,6 +134,22 @@ describe("chat stream persistence", () => {
     expect(loadChatQueue(database, chatId).queue).toMatchObject([
       { intentId: "plan-turn" },
     ]);
+  });
+
+  it("removes a queued turn that fails before message acceptance", () => {
+    const turn = intent("failed-turn");
+    persistQueuedIntent(database, turn);
+
+    const queue = markIntentTerminal(database, turn, false, true);
+
+    expect(queue).toMatchObject({ queueRevision: 2, queue: [] });
+    expect(
+      database
+        .select({ acceptance: chatTurnIntents.acceptance })
+        .from(chatTurnIntents)
+        .where(eq(chatTurnIntents.intentId, turn.intentId))
+        .get(),
+    ).toEqual({ acceptance: "rejected" });
   });
 
   it("hydrates restart work paused and marks executing turns interrupted", () => {

@@ -23,6 +23,7 @@ import {
   PlanHandoffKeySchema,
   PlanHandoffRemoteSnapshotSchema,
   planHandoffKey,
+  serializePlanDocument,
   type PlanHandoffIntent,
   type PlanHandoffKey,
   type PlanHandoffRemoteSnapshot,
@@ -168,7 +169,7 @@ export function transitionPlanHandoffHost(
 
 function assertPlanHash(intent: PlanHandoffIntent): void {
   const actual = createHash("sha256")
-    .update(JSON.stringify(intent.plan))
+    .update(serializePlanDocument(intent.plan))
     .digest("hex");
   if (actual !== intent.planHash || intent.planVersion !== actual) {
     throw new DyadError(

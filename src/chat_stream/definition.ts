@@ -247,7 +247,30 @@ function createCommandRunner(
       case "cancel-active": {
         try {
           const endpoint = chatExecutionEndpoint(context.key.chatId);
-          await cancelActiveStreamsForChat(context.key.chatId, endpoint);
+          const cancelled = await cancelActiveStreamsForChat(
+            context.key.chatId,
+            endpoint,
+          );
+          if (cancelled) {
+            const active = context.getSnapshot().active;
+            if (!active) return;
+            const targetAppId =
+              active.targetAppId ??
+              active.intent.appId ??
+              (await requireExistingChat(context.key.chatId));
+            emit({
+              type: "STREAM_ENDED",
+              intentId: active.intent.intentId,
+              invocationRef: command.invocationRef,
+              response: {
+                chatId: context.key.chatId,
+                invocationRef: command.invocationRef,
+                updatedFiles: false,
+                wasCancelled: true,
+              },
+              targetAppId,
+            });
+          }
         } catch (error) {
           const active = context.getSnapshot().active;
           if (!active) return;
@@ -299,6 +322,8 @@ function createCommandRunner(
             db,
             active.intent,
             command.response?.pausePromptQueue === true,
+            command.error !== undefined ||
+              command.response?.wasCancelled === true,
           );
           publishChatInvalidations(context.key.chatId);
           emit({

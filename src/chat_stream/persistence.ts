@@ -771,6 +771,7 @@ export function markIntentTerminal(
   database: ChatDatabase,
   intent: Pick<SerializableChatTurnIntent, "chatId" | "intentId" | "owner">,
   pauseQueue: boolean,
+  rejectBeforeAcceptance = false,
 ): ReturnType<typeof loadChatQueue> {
   const persistedIntent = database
     .select()
@@ -783,7 +784,36 @@ export function markIntentTerminal(
     }
     throw new DyadError("Chat turn intent not found", DyadErrorKind.NotFound);
   }
+  let removedQueuedIntent = false;
   database.transaction((tx) => {
+    if (
+      rejectBeforeAcceptance &&
+      persistedIntent.acceptance === "queued" &&
+      persistedIntent.acceptedMessageId === null
+    ) {
+      const queuedRow = tx
+        .select({ itemId: chatQueueEntries.itemId })
+        .from(chatQueueEntries)
+        .where(eq(chatQueueEntries.intentId, intent.intentId))
+        .get();
+      if (queuedRow) {
+        tx.delete(chatQueueEntries)
+          .where(eq(chatQueueEntries.itemId, queuedRow.itemId))
+          .run();
+        const remaining = tx
+          .select()
+          .from(chatQueueEntries)
+          .where(eq(chatQueueEntries.chatId, persistedIntent.chatId))
+          .orderBy(asc(chatQueueEntries.position))
+          .all();
+        rewriteQueuePositions(tx, persistedIntent.chatId, remaining);
+        removedQueuedIntent = true;
+      }
+      tx.update(chatTurnIntents)
+        .set({ acceptance: "rejected", updatedAt: new Date() })
+        .where(eq(chatTurnIntents.intentId, intent.intentId))
+        .run();
+    }
     tx.update(chatTurnIntents)
       .set({ recovery: "terminal", updatedAt: new Date() })
       .where(eq(chatTurnIntents.intentId, intent.intentId))
@@ -800,12 +830,22 @@ export function markIntentTerminal(
     tx.insert(chatQueueState).values(state).onConflictDoNothing().run();
     tx.update(chatQueueState)
       .set({
-        revision: state.revision + (pauseQueue && !state.paused ? 1 : 0),
+        revision:
+          state.revision +
+          (removedQueuedIntent || (pauseQueue && !state.paused) ? 1 : 0),
         paused: state.paused || pauseQueue,
       })
       .where(eq(chatQueueState.chatId, persistedIntent.chatId))
       .run();
   });
+  if (removedQueuedIntent) {
+    queueOrderByChat.set(
+      persistedIntent.chatId,
+      queueOrder(database, persistedIntent.chatId).filter(
+        (intentId) => intentId !== intent.intentId,
+      ),
+    );
+  }
   return loadChatQueue(database, persistedIntent.chatId);
 }
 

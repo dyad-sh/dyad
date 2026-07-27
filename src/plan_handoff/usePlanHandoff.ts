@@ -11,6 +11,7 @@ import type { PlanHandoffRemoteSnapshot } from "./transport";
 import { useSyncExternalStore } from "react";
 import { readPlanDocument } from "@/hooks/usePlanDocument";
 import { sha256Hex } from "@/lib/browser_hash";
+import { serializePlanDocument } from "./transport";
 
 const NO_CHAT_ID = -1;
 
@@ -74,7 +75,7 @@ export function usePlanHandoff(): {
           console.error("Failed to accept plan: missing immutable plan data");
           return;
         }
-        void sha256Hex(JSON.stringify(plan))
+        void sha256Hex(serializePlanDocument(plan))
           .then((planHash) =>
             remoteManager.accept({
               sourceChatId: payload.chatId,

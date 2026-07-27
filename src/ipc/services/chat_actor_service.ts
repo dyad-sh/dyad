@@ -29,20 +29,35 @@ export async function waitForChatActorIdle(
       invocationRef: current.active.invocationRef,
     });
   }
-  if (current.phase === "idle" || current.phase === "errored") return;
   await new Promise<void>((resolve, reject) => {
-    const abort = () => {
-      unsubscribe();
-      reject(options.signal?.reason);
-    };
-    const unsubscribe = actor.subscribe(() => {
-      const phase = actor.getSnapshot().phase;
-      if (phase !== "idle" && phase !== "errored") return;
+    let settled = false;
+    let unsubscribe: () => void = () => undefined;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
       unsubscribe();
       options.signal?.removeEventListener("abort", abort);
       resolve();
-    });
+    };
+    const abort = () => {
+      if (settled) return;
+      settled = true;
+      unsubscribe();
+      options.signal?.removeEventListener("abort", abort);
+      reject(options.signal?.reason);
+    };
+    const inspect = () => {
+      const phase = actor.getSnapshot().phase;
+      if (phase !== "idle" && phase !== "errored") return;
+      finish();
+    };
+    unsubscribe = actor.subscribe(inspect);
     options.signal?.addEventListener("abort", abort, { once: true });
+    if (options.signal?.aborted) {
+      abort();
+      return;
+    }
+    inspect();
   });
 }
 

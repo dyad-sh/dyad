@@ -5,7 +5,11 @@ import {
   planHandoffDefinition,
   transitionPlanHandoffHost,
 } from "./definition";
-import type { PlanHandoffIntent } from "./transport";
+import {
+  PlanHandoffIntentSchema,
+  serializePlanDocument,
+  type PlanHandoffIntent,
+} from "./transport";
 import {
   type HandlerTestHarness,
   setupHandlerTestHarness,
@@ -14,7 +18,9 @@ import { apps, chats, planHandoffs } from "@/db/schema";
 
 function intent(handoffId = "handoff-1"): PlanHandoffIntent {
   const plan = { title: "Ship it", content: "Implementation steps" };
-  const hash = createHash("sha256").update(JSON.stringify(plan)).digest("hex");
+  const hash = createHash("sha256")
+    .update(serializePlanDocument(plan))
+    .digest("hex");
   return {
     schemaVersion: 1,
     handoffId,
@@ -107,6 +113,20 @@ describe("main plan handoff transition", () => {
         { ...original, acceptInNewChat: false },
       ),
     ).toBe(false);
+  });
+
+  it("keeps the plan hash stable across schema key reordering", () => {
+    const plan = {
+      content: "Implementation steps",
+      title: "Ship it",
+      summary: "Canonical",
+    };
+    const before = serializePlanDocument(plan);
+    const after = serializePlanDocument(
+      PlanHandoffIntentSchema.shape.plan.parse(plan),
+    );
+
+    expect(after).toBe(before);
   });
 
   it("hydrates tied handoffs deterministically", () => {

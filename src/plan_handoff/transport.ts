@@ -19,6 +19,25 @@ export function planHandoffKey(sourceChatId: number): PlanHandoffKey {
   return key;
 }
 
+export const PlanDocumentSchema = z
+  .object({
+    title: z.string(),
+    summary: z.string().optional(),
+    content: z.string(),
+  })
+  .strict();
+
+export function serializePlanDocument(
+  input: z.input<typeof PlanDocumentSchema>,
+): string {
+  const plan = PlanDocumentSchema.parse(input);
+  return JSON.stringify({
+    title: plan.title,
+    ...(plan.summary === undefined ? {} : { summary: plan.summary }),
+    content: plan.content,
+  });
+}
+
 export const PlanHandoffIntentSchema = z
   .object({
     schemaVersion: z.literal(1),
@@ -29,13 +48,7 @@ export const PlanHandoffIntentSchema = z
     planId: z.string().min(1),
     planVersion: z.string().min(1),
     planHash: z.string().min(1),
-    plan: z
-      .object({
-        title: z.string(),
-        summary: z.string().optional(),
-        content: z.string(),
-      })
-      .strict(),
+    plan: PlanDocumentSchema,
     originWindowSessionId: z.string().min(1).optional(),
   })
   .strict();

@@ -381,4 +381,52 @@ describe("main-hosted chat stream actor", () => {
     await transport.dispose();
     await host.dispose();
   });
+
+  it("routes cancellation completion back into the main actor", async () => {
+    const clock = createFakeClock();
+    const host = new ActorHost({
+      placement: "main",
+      clock,
+      ids: createSequentialIdSource(),
+    });
+    const manifest = createRemoteMachineManifest([chatStreamDefinition]);
+    const windows = new TwoWindowHarness();
+    const transport = new RemoteMachineTransport({
+      host,
+      manifest,
+      windows: windows.registry,
+      clock,
+    });
+    const duplex = new FakeDuplexRemoteTransport(transport, manifest, windows);
+    const client = new RemoteMachineClient(
+      duplex.connect(),
+      createSequentialIdSource(),
+    );
+    client.start();
+    const actor = client.actor(chatStreamClientDefinition, chatStreamKey(7));
+    const release = actor.subscribe(() => undefined);
+    await actor.resync();
+    await actor.dispatch({ type: "SUBMIT", intent: turn("cancel-me") });
+    await vi.waitFor(() => expect(actor.getSnapshot().phase).toBe("streaming"));
+
+    await actor.dispatch({
+      type: "CANCEL",
+      invocationRef: turn("cancel-me").invocationRef!,
+    });
+
+    await vi.waitFor(() =>
+      expect(actor.getSnapshot()).toMatchObject({
+        phase: "idle",
+        lastCompletion: {
+          intentId: "cancel-me",
+          outcome: "cancelled",
+        },
+      }),
+    );
+
+    release();
+    client.dispose();
+    await transport.dispose();
+    await host.dispose();
+  });
 });

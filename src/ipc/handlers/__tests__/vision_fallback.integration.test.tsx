@@ -108,6 +108,56 @@ describe("vision fallback for a non-vision model (integration)", () => {
   }, 60_000);
 });
 
+describe("vision fallback disabled by setting (integration)", () => {
+  let harness: HybridChatHarness;
+
+  beforeAll(async () => {
+    harness = await setupHybridChatHarness({
+      electronMock: h,
+      engine: true,
+      selectedModel: { provider: "openai", name: "gpt-5.2-no-vision" },
+      settings: { ...PRO_SETTINGS, enableVisionFallback: false },
+    });
+  }, 60_000);
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  afterAll(async () => {
+    await harness?.dispose();
+  });
+
+  it("omits the image without telling the user to switch models", async () => {
+    const chatId = await harness.createChat();
+    harness.mount({ chatId });
+
+    harness.setChatAttachments([
+      {
+        name: "mockup.png",
+        content: pngBytes(),
+        mimeType: "image/png",
+        type: "chat-context",
+      },
+    ]);
+    await screen.findByText("mockup.png");
+
+    const streamEnd = harness.waitForNextStreamEnd(chatId);
+    const { send } = await harness.typeInChat("[dump]", { chatId });
+    send();
+    await streamEnd;
+
+    const req = harness.getServerDump({ type: "request" });
+
+    // Opting out must not send the image anywhere.
+    expect(imagePartCount(req.parsed.body)).toBe(0);
+    // The model is told the images were dropped by choice...
+    expect(req.text).toContain("turned off in Settings");
+    // ...and must not be told to nag the user about a missing capability.
+    expect(req.text).not.toContain("no vision-capable model is available");
+  }, 60_000);
+});
+
 describe("vision-capable model still receives images (integration)", () => {
   let harness: HybridChatHarness;
 

@@ -48,6 +48,10 @@ const VISION_DESCRIBE_TIMEOUT_MS = 60_000;
 
 const IMAGE_DESCRIPTION_CLOSING_TAG = "</dyad-image-description>";
 
+/** Case- and whitespace-insensitive */
+const IMAGE_DESCRIPTION_CLOSING_TAG_PATTERN =
+  /<\s*\/\s*dyad-image-description\s*>/gi;
+
 /**
  * Inline images the user attached for the model to look at.
  */
@@ -114,6 +118,14 @@ export async function describeImageAttachments({
   settings: UserSettings;
   abortSignal?: AbortSignal;
 }): Promise<string | null> {
+  // The describer can be a model from a provider the user did not select for
+  // this chat, so their images reach an additional third party. On by default
+  // (the alternative is a hard provider error), but opt-out.
+  if (settings.enableVisionFallback === false) {
+    logger.info("Vision fallback is disabled in settings");
+    return null;
+  }
+
   const images = selectDescribableImages(attachments);
   if (images.length === 0) {
     return null;
@@ -124,6 +136,10 @@ export async function describeImageAttachments({
     logger.warn("No vision-capable fallback model could be resolved");
     return null;
   }
+
+  logger.info(
+    `Describing ${images.length} image(s) with ${fallbackModel.providerId}/${fallbackModel.apiName}`,
+  );
 
   try {
     const { modelClient } = await getModelClient(
@@ -187,10 +203,10 @@ export async function describeImageAttachments({
     // instructions. Drop the delimiter rather than the description.
     const safeDescription = description
       .trim()
-      .replaceAll(IMAGE_DESCRIPTION_CLOSING_TAG, "");
+      .replace(IMAGE_DESCRIPTION_CLOSING_TAG_PATTERN, "");
 
     return `\n\n<dyad-image-description>
-The selected model cannot read images, so the attached image(s) were described by a vision-capable model:
+The selected model cannot read images, so the attached image(s) were described by a vision-capable model (${fallbackModel.providerId}):
 
 ${safeDescription}${truncatedNote}
 ${IMAGE_DESCRIPTION_CLOSING_TAG}\n`;
@@ -200,7 +216,7 @@ ${IMAGE_DESCRIPTION_CLOSING_TAG}\n`;
   }
 }
 
-const IMAGE_OMITTED_NOTE =
+export const IMAGE_OMITTED_NOTE =
   "[image omitted: the selected model cannot read images]";
 
 /**
@@ -231,6 +247,19 @@ export function stripImageParts(messages: ModelMessage[]): ModelMessage[] {
     } as ModelMessage;
   });
 }
+
+/**
+ * Injected when the user turned the fallback off. Distinct from
+ * VISION_UNAVAILABLE_NOTE: this is a choice, not a missing capability, so the
+ * model must not push them toward another model over it.
+ */
+export const VISION_DISABLED_NOTE = `\n\n<dyad-image-description>
+The user attached one or more images. The selected model cannot read images, and describing
+images with a vision-capable model is turned off in Settings, so the images were omitted.
+Answer using the text of the request. Do not ask the user to switch models; if you genuinely
+cannot proceed without seeing the image, say so and mention they can re-enable
+"Describe images for text-only models" in Settings.
+</dyad-image-description>\n`;
 
 /** Injected when images are attached but no description could be produced. */
 export const VISION_UNAVAILABLE_NOTE = `\n\n<dyad-image-description>

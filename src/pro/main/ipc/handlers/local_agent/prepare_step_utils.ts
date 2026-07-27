@@ -14,6 +14,27 @@ import {
   sanitizeToolCallTranscript,
 } from "@/ipc/utils/ai_messages_utils";
 import { validateImageDimensions } from "./tools/image_utils";
+import { IMAGE_OMITTED_NOTE } from "@/ipc/utils/vision_fallback";
+
+/**
+ * Drop image parts from tool-injected message content.
+ *
+ * Mid-turn injections (web_crawl screenshots) bypass the history-level strip in
+ * handleLocalAgentStream, so a text-only model would still receive an image on
+ * the next step.
+ */
+export function stripImageContentParts(
+  content: UserMessageContentPart[],
+): UserMessageContentPart[] {
+  if (!content.some((part) => part.type === "image-url")) {
+    return content;
+  }
+  return content.map((part) =>
+    part.type === "image-url"
+      ? ({ type: "text", text: IMAGE_OMITTED_NOTE } as const)
+      : part,
+  );
+}
 
 /**
  * Check if a single todo is incomplete (pending or in_progress).

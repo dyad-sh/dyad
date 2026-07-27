@@ -167,6 +167,7 @@ import { inspectBase64DataUrl } from "../../shared/chatAttachmentLimits";
 import { toRendererMessage } from "../utils/renderer_chat_message";
 import {
   describeImageAttachments,
+  VISION_DISABLED_NOTE,
   VISION_UNAVAILABLE_NOTE,
 } from "../utils/vision_fallback";
 
@@ -2014,12 +2015,17 @@ This conversation includes one or more image attachments. When the user uploads 
                   "Last user message content is not a string - shouldn't happen, skipping vision fallback injection",
                 );
               } else {
+                // "The user turned this off" and "no describer exists" need
+                // different copy: the opt-out note must not tell the user to go
+                // switch models over a limitation they chose.
                 const description =
-                  (await describeImageAttachments({
-                    attachments: storedAttachments,
-                    settings,
-                    abortSignal: abortController.signal,
-                  })) ?? VISION_UNAVAILABLE_NOTE;
+                  settings.enableVisionFallback === false
+                    ? VISION_DISABLED_NOTE
+                    : ((await describeImageAttachments({
+                        attachments: storedAttachments,
+                        settings,
+                        abortSignal: abortController.signal,
+                      })) ?? VISION_UNAVAILABLE_NOTE);
                 lastUserMessage = {
                   ...lastUserMessage,
                   content: lastUserMessage.content + description,

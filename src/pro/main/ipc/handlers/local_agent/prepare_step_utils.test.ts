@@ -8,6 +8,7 @@ import {
   buildTodoReminderMessage,
   ensureToolResultOrdering,
   sanitizeStepMessages,
+  stripImageContentParts,
   type InjectedMessage,
 } from "@/pro/main/ipc/handlers/local_agent/prepare_step_utils";
 import type {
@@ -21,6 +22,29 @@ function textToolResult(value: string) {
 }
 
 describe("prepare_step_utils", () => {
+  describe("stripImageContentParts", () => {
+    it("replaces image-url parts with an omitted note", () => {
+      const content: UserMessageContentPart[] = [
+        { type: "text", text: "Clone this page" },
+        { type: "image-url", url: "data:image/png;base64,abc" },
+      ];
+
+      expect(stripImageContentParts(content)).toEqual([
+        { type: "text", text: "Clone this page" },
+        {
+          type: "text",
+          text: "[image omitted: the selected model cannot read images]",
+        },
+      ]);
+    });
+
+    it("returns image-free content untouched", () => {
+      const content: UserMessageContentPart[] = [{ type: "text", text: "hi" }];
+
+      expect(stripImageContentParts(content)).toBe(content);
+    });
+  });
+
   describe("transformContentPart", () => {
     it("transforms text parts correctly", () => {
       const part: UserMessageContentPart = {

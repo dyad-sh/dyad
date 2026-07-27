@@ -5,6 +5,7 @@ import ConfirmationDialog from "@/components/ConfirmationDialog";
 import { ipc } from "@/ipc/types";
 import { showSuccess, showError } from "@/lib/toast";
 import { AutoApproveSwitch } from "@/components/AutoApproveSwitch";
+import { VisionFallbackSwitch } from "@/components/VisionFallbackSwitch";
 import { TelemetrySwitch } from "@/components/TelemetrySwitch";
 import { MaxChatTurnsSelector } from "@/components/MaxChatTurnsSelector";
 import { MaxToolCallStepsSelector } from "@/components/MaxToolCallStepsSelector";
@@ -480,6 +481,16 @@ export function WorkflowSettings() {
         <AutoApproveSwitch showToast={false} />
         <p className={hint}>
           This will automatically approve code changes and run them.
+        </p>
+      </div>
+
+      <div id={SETTING_IDS.visionFallback} className="space-y-1.5">
+        <VisionFallbackSwitch />
+        <p className={hint}>
+          When the selected model cannot read images, have a vision-capable
+          model describe your attachments in text. The describer may belong to a
+          different provider than the model you selected, and your images are
+          sent to that provider. Turn this off to omit images instead.
         </p>
       </div>
 

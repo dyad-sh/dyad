@@ -246,6 +246,19 @@ describe("describeImageAttachments", () => {
     expect(mockGetModelClient).not.toHaveBeenCalled();
   });
 
+  it("returns null without sending anything when the setting is off", async () => {
+    await expect(
+      describeImageAttachments({
+        attachments: [attachment()],
+        settings: settingsWith({
+          ...proSettings,
+          enableVisionFallback: false,
+        }),
+      }),
+    ).resolves.toBeNull();
+    expect(mockGetModelClient).not.toHaveBeenCalled();
+  });
+
   it("returns null when no vision-capable model can be resolved", async () => {
     mockResolveAlias.mockResolvedValue(null);
 

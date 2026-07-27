@@ -1520,6 +1520,10 @@ describe("isImageInputUnsupportedError", () => {
     "Unsupported image format",
     "Invalid content type: image/tiff",
     "Unsupported content type: image/heic",
+    "Invalid image_url: could not decode the image data",
+    "Error while downloading image_url: failed to fetch the image",
+    "invalid base64 payload for image_url",
+    "corrupted image attachment",
   ];
 
   const unrelatedErrors = [

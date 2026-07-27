@@ -487,10 +487,11 @@ export function WorkflowSettings() {
       <div id={SETTING_IDS.visionFallback} className="space-y-1.5">
         <VisionFallbackSwitch />
         <p className={hint}>
-          When the selected model cannot read images, have a vision-capable
-          model describe your attachments in text. The describer may belong to a
-          different provider than the model you selected, and your images are
-          sent to that provider. Turn this off to omit images instead.
+          When enabled, Dyad will describe images for text-only models, allowing
+          them to understand and respond to image content without needing a
+          vision-capable model. Your attached images are sent to another
+          configured model provider to be described, which may not be the
+          provider of the model you selected for this chat.
         </p>
       </div>
 

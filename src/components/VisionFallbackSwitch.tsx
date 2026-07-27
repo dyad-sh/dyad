@@ -4,7 +4,7 @@ import { Switch } from "@/components/ui/switch";
 
 export function VisionFallbackSwitch() {
   const { settings, updateSettings } = useSettings();
-  const enabled = settings?.enableVisionFallback ?? true;
+  const enabled = settings?.enableVisionFallback ?? false;
 
   return (
     <div className="flex items-center space-x-2">

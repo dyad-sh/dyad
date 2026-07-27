@@ -396,15 +396,19 @@ const IMAGE_INPUT_UNSUPPORTED_MESSAGE =
   "(for example Gemini, Claude or GPT-5), or remove the image attachment.";
 
 /**
- * Provider errors that mean the attachment's FORMAT is wrong, not that the
- * model has no vision.
+ * Provider errors about the attachment ITSELF - wrong format, or bytes the
+ * provider could not decode or fetch - rather than a missing model capability.
+ 
  */
 const IMAGE_FORMAT_ERROR_PATTERN =
-  /image[\s_/-]*(media\s*type|mime|format|file\s*type)|(content\s*type|media\s*type|mime)\s*[:.]?\s*image\//;
+  /image[\s_/-]*(media\s*type|mime|format|file\s*type)|(content\s*type|media\s*type|mime)\s*[:.]?\s*image\/|(could\s*not|couldn't|unable\s*to|failed\s*to)\s*(be\s*)?(decode|process|read|download|fetch|load|open)|(invalid|malformed|corrupt(ed)?|truncated|empty)\s*(image|base64|data\s*url|attachment)/;
 
 /**
- * BEST-EFFORT LIST — expected to need follow-up.
-
+ * BEST-EFFORT LIST - expected to need follow-up.
+ *
+ * This is the backstop, not the fix. Models tagged `supportsVision: false`
+ * never send image parts in the first place, so this only ever sees models the
+ * catalog has not tagged yet.
  */
 const IMAGE_INPUT_ERROR_PATTERNS = [
   "image_url",
@@ -2015,17 +2019,16 @@ This conversation includes one or more image attachments. When the user uploads 
                   "Last user message content is not a string - shouldn't happen, skipping vision fallback injection",
                 );
               } else {
-                // "The user turned this off" and "no describer exists" need
-                // different copy: the opt-out note must not tell the user to go
-                // switch models over a limitation they chose.
-                const description =
-                  settings.enableVisionFallback === false
-                    ? VISION_DISABLED_NOTE
-                    : ((await describeImageAttachments({
-                        attachments: storedAttachments,
-                        settings,
-                        abortSignal: abortController.signal,
-                      })) ?? VISION_UNAVAILABLE_NOTE);
+                // "The setting is off" and "no describer exists" need different
+                // copy: the disabled note must not tell the user to go switch
+                // models over a setting they can just turn on.
+                const description = !settings.enableVisionFallback
+                  ? VISION_DISABLED_NOTE
+                  : ((await describeImageAttachments({
+                      attachments: storedAttachments,
+                      settings,
+                      abortSignal: abortController.signal,
+                    })) ?? VISION_UNAVAILABLE_NOTE);
                 lastUserMessage = {
                   ...lastUserMessage,
                   content: lastUserMessage.content + description,

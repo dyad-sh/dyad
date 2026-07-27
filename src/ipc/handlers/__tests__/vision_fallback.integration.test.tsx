@@ -58,7 +58,8 @@ describe("vision fallback for a non-vision model (integration)", () => {
       engine: true,
       // Marked `supportsVision: false` in the fake catalog fixture.
       selectedModel: { provider: "openai", name: "gpt-5.2-no-vision" },
-      settings: PRO_SETTINGS,
+
+      settings: { ...PRO_SETTINGS, enableVisionFallback: true },
     });
   }, 60_000);
 
@@ -108,7 +109,7 @@ describe("vision fallback for a non-vision model (integration)", () => {
   }, 60_000);
 });
 
-describe("vision fallback disabled by setting (integration)", () => {
+describe("vision fallback off (the default) (integration)", () => {
   let harness: HybridChatHarness;
 
   beforeAll(async () => {
@@ -116,6 +117,7 @@ describe("vision fallback disabled by setting (integration)", () => {
       electronMock: h,
       engine: true,
       selectedModel: { provider: "openai", name: "gpt-5.2-no-vision" },
+      // Explicit, though this is also what an untouched install does.
       settings: { ...PRO_SETTINGS, enableVisionFallback: false },
     });
   }, 60_000);
@@ -151,8 +153,8 @@ describe("vision fallback disabled by setting (integration)", () => {
 
     // Opting out must not send the image anywhere.
     expect(imagePartCount(req.parsed.body)).toBe(0);
-    // The model is told the images were dropped by choice...
-    expect(req.text).toContain("turned off in Settings");
+    // The model is told the images were dropped by configuration...
+    expect(req.text).toContain("off in Settings");
     // ...and must not be told to nag the user about a missing capability.
     expect(req.text).not.toContain("no vision-capable model is available");
   }, 60_000);

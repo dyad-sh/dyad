@@ -150,7 +150,7 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     id: SETTING_IDS.visionFallback,
     label: "Describe images for text-only models",
     description:
-      "Let a vision-capable model describe image attachments when the selected model cannot read images",
+      "Off by default. Let a vision-capable model describe image attachments when the selected model cannot read images - your images are sent to that model's provider",
     keywords: [
       "vision",
       "image",

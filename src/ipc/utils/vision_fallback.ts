@@ -1,5 +1,4 @@
 import { readFile } from "node:fs/promises";
-import path from "node:path";
 
 import { streamText, TextPart, ImagePart, ModelMessage } from "ai";
 import log from "electron-log";
@@ -104,10 +103,25 @@ export async function resolveVisionFallbackModel(
 }
 
 /**
+ * Injected when a describer was available but the call failed or timed out.
+ * Distinct from VISION_UNAVAILABLE_NOTE: retrying is the right advice here,
+ * switching models is not.
+ */
+export const VISION_DESCRIBE_FAILED_NOTE = `\n\n<dyad-image-description>
+The user attached one or more images. The selected model cannot read images, and the attempt
+to describe them with a vision-capable model failed. This is usually temporary: tell the user
+they can send the message again, or switch to a vision-capable model if it keeps failing.
+</dyad-image-description>\n`;
+
+/**
  * Describe inline image attachments using a vision-capable model.
  *
- * Returns a text block to append to the user message, or null when no
- * description could be produced.
+ * Returns the text block to append to the user message. Three-way contract:
+ *  - a description block when the describer ran,
+ *  - VISION_DESCRIBE_FAILED_NOTE when a describer existed but the call failed
+ *    or timed out (transient - the caller must not tell the user to switch
+ *    models over it),
+ *  - null when nothing was attempted at all (off, no images, no model).
  */
 export async function describeImageAttachments({
   attachments,
@@ -119,9 +133,10 @@ export async function describeImageAttachments({
   abortSignal?: AbortSignal;
 }): Promise<string | null> {
   // The describer can be a model from a provider the user did not select for
-  // this chat, so their images reach an additional third party. On by default
-  // (the alternative is a hard provider error), but opt-out.
-  if (settings.enableVisionFallback === false) {
+  // this chat, so their images reach an additional third party. Opt-in, and
+  // unset counts as off so a settings file written before this key existed
+  // never starts sending images on upgrade.
+  if (!settings.enableVisionFallback) {
     logger.info("Vision fallback is disabled in settings");
     return null;
   }
@@ -161,7 +176,8 @@ export async function describeImageAttachments({
       const imageBuffer = await readFile(attachment.filePath);
       contentParts.push({
         type: "text",
-        text: path.basename(attachment.filePath),
+
+        text: attachment.logicalName,
       });
       contentParts.push({
         type: "image",
@@ -190,7 +206,7 @@ export async function describeImageAttachments({
 
     if (!description.trim()) {
       logger.warn("Vision fallback returned an empty description");
-      return null;
+      return VISION_DESCRIBE_FAILED_NOTE;
     }
 
     const truncatedNote =
@@ -212,7 +228,7 @@ ${safeDescription}${truncatedNote}
 ${IMAGE_DESCRIPTION_CLOSING_TAG}\n`;
   } catch (error) {
     logger.error("Vision fallback description failed", error);
-    return null;
+    return VISION_DESCRIBE_FAILED_NOTE;
   }
 }
 
@@ -249,15 +265,15 @@ export function stripImageParts(messages: ModelMessage[]): ModelMessage[] {
 }
 
 /**
- * Injected when the user turned the fallback off. Distinct from
- * VISION_UNAVAILABLE_NOTE: this is a choice, not a missing capability, so the
- * model must not push them toward another model over it.
+ * Injected when the fallback is off. Distinct from VISION_UNAVAILABLE_NOTE:
+ * this is a setting, not a missing capability, so the model must not push the
+ * user toward another model over it.
  */
 export const VISION_DISABLED_NOTE = `\n\n<dyad-image-description>
 The user attached one or more images. The selected model cannot read images, and describing
-images with a vision-capable model is turned off in Settings, so the images were omitted.
+images with a vision-capable model is off in Settings, so the images were omitted.
 Answer using the text of the request. Do not ask the user to switch models; if you genuinely
-cannot proceed without seeing the image, say so and mention they can re-enable
+cannot proceed without seeing the image, say so and mention they can enable
 "Describe images for text-only models" in Settings.
 </dyad-image-description>\n`;
 

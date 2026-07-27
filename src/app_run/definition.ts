@@ -198,6 +198,7 @@ interface AppRunActorState {
     readonly operationId: string;
     readonly kind: "run" | "stop";
     readonly outcome: "succeeded" | "failed";
+    readonly error?: RunErrorInfo;
   } | null;
 }
 
@@ -217,6 +218,7 @@ function settlementFor(
         operationId: event.operationId,
         kind: "run",
         outcome: "failed",
+        error: event.error,
       };
     case "PROCESS_STOPPED":
       return {
@@ -229,6 +231,7 @@ function settlementFor(
         operationId: event.operationId,
         kind: "stop",
         outcome: "failed",
+        error: event.error,
       };
     default:
       return null;

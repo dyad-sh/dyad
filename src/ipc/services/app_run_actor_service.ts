@@ -265,14 +265,11 @@ export class AppRunActorService {
         },
       ));
     if (settlement.outcome === "failed") {
-      const runState = actor.getSnapshot().runState;
-      if (runState.type === "errored" && runState.error.kind) {
-        throw new DyadError(runState.error.message, runState.error.kind);
+      if (settlement.error?.kind) {
+        throw new DyadError(settlement.error.message, settlement.error.kind);
       }
       throw new Error(
-        runState.type === "errored"
-          ? runState.error.message
-          : "App runtime operation failed",
+        settlement.error?.message ?? "App runtime operation failed",
       );
     }
   }

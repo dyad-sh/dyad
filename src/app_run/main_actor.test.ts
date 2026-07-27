@@ -9,7 +9,7 @@ import {
   createSequentialIdSource,
 } from "@/state_machines/testing";
 import { TwoWindowHarness } from "@/testing/two_window_harness";
-import { DyadErrorKind } from "@/errors/dyad_error";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { AppRunActorService } from "@/ipc/services/app_run_actor_service";
 import { appRunClientDefinition } from "./client_definition";
 import { appRunDefinition } from "./definition";
@@ -287,7 +287,9 @@ describe("main-hosted app-run actor", () => {
   });
 
   it("rejects renderer dispatch when the runtime settlement fails", async () => {
-    runtime.start.mockRejectedValue(new Error("spawn failed"));
+    runtime.start.mockRejectedValue(
+      new DyadError("spawn failed", DyadErrorKind.External),
+    );
     const { duplex } = createHarness();
     const manager = new AppRunRemoteManager(
       createSequentialIdSource(),
@@ -297,7 +299,10 @@ describe("main-hosted app-run actor", () => {
 
     await expect(
       manager.dispatch(7, { type: "START", startedAt: 10 }),
-    ).rejects.toThrow("spawn failed");
+    ).rejects.toMatchObject({
+      message: "spawn failed",
+      kind: DyadErrorKind.External,
+    });
     manager.dispose();
   });
 
@@ -580,6 +585,7 @@ describe("main-hosted app-run actor", () => {
         lastSettlement: {
           operationId: "request-b",
           outcome: "failed",
+          error: { message: "request B failed" },
         },
       },
     });

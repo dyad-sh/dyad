@@ -337,6 +337,7 @@ export const AppRunRemoteSnapshotSchema = z
         operationId: operationIdSchema,
         kind: z.enum(["run", "stop"]),
         outcome: z.enum(["succeeded", "failed"]),
+        error: runErrorSchema.optional(),
       })
       .strict()
       .nullable(),

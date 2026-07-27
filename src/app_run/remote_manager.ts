@@ -3,6 +3,7 @@ import { RemoteMachineClient } from "@/distributed_machines/remote_client";
 import type { RemoteMachineClientConnection } from "@/distributed_machines/remote_client";
 import { IpcRemoteMachineConnection } from "@/distributed_machines/ipc_connection";
 import { PreviewConsoleStore } from "@/preview_console/store";
+import { DyadError } from "@/errors/dyad_error";
 import type { AppExit } from "./selectors";
 import {
   appRunKey,
@@ -223,7 +224,15 @@ export class AppRunRemoteManager {
       }
       const result = await settlement.promise;
       if (!result.settlement || result.settlement.outcome === "failed") {
-        throw new Error(result.errorMessage ?? "App runtime operation failed");
+        const error = result.settlement?.error;
+        if (error?.kind) {
+          throw new DyadError(error.message, error.kind);
+        }
+        throw new Error(
+          error?.message ??
+            result.errorMessage ??
+            "App runtime operation failed",
+        );
       }
     } finally {
       releaseManagerSubscription();
@@ -333,7 +342,6 @@ export class AppRunRemoteManager {
     if (settlement) {
       this.settlementWaiters.get(settlement.operationId)?.resolve({
         settlement,
-        errorMessage: snapshot.operationError?.message,
       });
       this.settlementWaiters.delete(settlement.operationId);
     } else if (snapshot.revision === 0 && actor.getStatus() !== "connecting") {

@@ -74,7 +74,9 @@ async function listQueueFiles(): Promise<QueueFileRef[]> {
  * Files belonging to chats that no longer exist are cleaned up. Never throws —
  * a corrupt or unreadable file is skipped so it can't crash startup.
  */
-export async function readPersistedQueue(): Promise<PersistedQueue> {
+export async function readPersistedQueue(options?: {
+  preserveLegacyFiles?: boolean;
+}): Promise<PersistedQueue> {
   const result: PersistedQueue = {};
   const existingChatIds = new Set(
     getDb()
@@ -87,7 +89,7 @@ export async function readPersistedQueue(): Promise<PersistedQueue> {
   for (const ref of await listQueueFiles()) {
     if (!existingChatIds.has(ref.chatId)) {
       // The chat was deleted while its app remained — drop the orphan file.
-      await tryUnlink(ref.filePath);
+      if (!options?.preserveLegacyFiles) await tryUnlink(ref.filePath);
       continue;
     }
     let raw: string;
@@ -105,7 +107,7 @@ export async function readPersistedQueue(): Promise<PersistedQueue> {
           `Invalid queue file ${ref.filePath}, removing:`,
           parsed.error,
         );
-        await tryUnlink(ref.filePath);
+        if (!options?.preserveLegacyFiles) await tryUnlink(ref.filePath);
         continue;
       }
       if (parsed.data.length > 0) {
@@ -115,7 +117,7 @@ export async function readPersistedQueue(): Promise<PersistedQueue> {
       // The content is provably corrupt — remove it so it doesn't log an
       // error on every startup forever.
       logger.error(`Corrupt queue file ${ref.filePath}, removing:`, error);
-      await tryUnlink(ref.filePath);
+      if (!options?.preserveLegacyFiles) await tryUnlink(ref.filePath);
     }
   }
   return result;

@@ -1,0 +1,633 @@
+import type { createStore } from "jotai";
+import {
+  chatMessagesByIdAtom,
+  queuePausedByIdAtom,
+  queuedMessagesByIdAtom,
+  type QueuedMessageItem,
+} from "@/atoms/chatAtoms";
+import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
+import { RemoteMachineClient } from "@/distributed_machines/remote_client";
+import type { RemoteMachineClientConnection } from "@/distributed_machines/remote_client";
+import { IpcRemoteMachineConnection } from "@/distributed_machines/ipc_connection";
+import { convertFileAttachmentsToChatAttachments } from "@/lib/chatAttachmentConversion";
+import { chatAttachmentToFileAttachment } from "@/lib/attachment_conversion";
+import { uuidIdSource, type IdSource } from "@/state_machines/clock";
+import type { ChatStreamRuntimeDeps } from "./commands";
+import { ChatStreamPreviewStore } from "./preview_store";
+import { CHAT_STREAM_INVOCATION_KIND } from "./state";
+import type { StreamEvent, StreamRequest, StreamSettledResult } from "./state";
+import {
+  chatStreamClientDefinition,
+  chatStreamKey,
+  type ChatStreamIntentEvent,
+  type ChatStreamRemoteSnapshot,
+  type SerializableChatTurnIntent,
+  unavailableChatStreamSnapshot,
+} from "./transport";
+import { sha256Hex } from "@/lib/browser_hash";
+import { serializeImmutableChatTurnPayload } from "./intent_payload";
+import { queryKeys } from "@/lib/queryKeys";
+import { isFreeProModel } from "@/lib/freeProModel";
+import { ipc } from "@/ipc/types";
+
+type JotaiStore = ReturnType<typeof createStore>;
+
+export type ChatStreamRemoteConnection = RemoteMachineClientConnection & {
+  start?: () => () => void;
+};
+
+export interface StreamFinishedEvent {
+  chatId: number;
+  invocationRef: NonNullable<ChatStreamRemoteSnapshot["invocationRef"]>;
+  outcome: "completed" | "cancelled" | "errored";
+  chatSummary?: string;
+}
+
+interface PendingSubmission {
+  request: StreamRequest;
+  invocationRef: NonNullable<ChatStreamRemoteSnapshot["invocationRef"]>;
+  acceptanceDelivered: boolean;
+}
+
+interface RemoteChatRef {
+  getSnapshot(): ChatStreamRemoteSnapshot;
+  subscribe(listener: () => void): () => void;
+  send(event: StreamEvent): void;
+}
+
+const IDLE_UNSUBSCRIBE: () => void = () => undefined;
+
+export type QueueMutationWithoutRevision =
+  | Omit<
+      Extract<ChatStreamIntentEvent, { type: "PAUSE_QUEUE" }>,
+      "expectedQueueRevision" | "mutationId"
+    >
+  | Omit<
+      Extract<ChatStreamIntentEvent, { type: "RESUME_QUEUE" }>,
+      "expectedQueueRevision" | "mutationId"
+    >
+  | Omit<
+      Extract<ChatStreamIntentEvent, { type: "EDIT_QUEUE_ENTRY" }>,
+      "expectedQueueRevision" | "mutationId"
+    >
+  | Omit<
+      Extract<ChatStreamIntentEvent, { type: "REORDER_QUEUE_ENTRY" }>,
+      "expectedQueueRevision" | "mutationId"
+    >
+  | Omit<
+      Extract<ChatStreamIntentEvent, { type: "REMOVE_QUEUE_ENTRY" }>,
+      "expectedQueueRevision" | "mutationId"
+    >
+  | Omit<
+      Extract<ChatStreamIntentEvent, { type: "CLEAR_QUEUE" }>,
+      "expectedQueueRevision" | "mutationId"
+    >;
+
+/**
+ * Per-window adapter for the main-owned chat protocol.
+ *
+ * This manager owns no lifecycle or queue authority. It only materializes
+ * revisioned remote snapshots, transient streaming previews, and local
+ * optimistic receipts for the window that initiated a submission.
+ */
+export class ChatStreamRemoteManager {
+  private readonly client: RemoteMachineClient;
+  private readonly subscriptions = new Map<
+    number,
+    { consumers: number; unsubscribe: () => void }
+  >();
+  private readonly streamFinishedListeners = new Set<
+    (event: StreamFinishedEvent) => void
+  >();
+  private readonly pendingSubmissions = new Map<string, PendingSubmission>();
+  private readonly snapshotListeners = new Map<number, Set<() => void>>();
+  private readonly optimisticSnapshots = new Map<
+    number,
+    {
+      base: ChatStreamRemoteSnapshot;
+      intentId: string;
+      projected: ChatStreamRemoteSnapshot;
+    }
+  >();
+  private readonly lastAcceptanceByChat = new Map<number, string>();
+  private readonly lastCompletionByChat = new Map<number, string>();
+  private readonly refs = new Map<number, RemoteChatRef>();
+  private readonly previews = new ChatStreamPreviewStore();
+  private runtimeDeps: Omit<ChatStreamRuntimeDeps, "getIsStreaming"> | null =
+    null;
+  private stopConnection?: () => void;
+  private disposed = false;
+
+  constructor(
+    private readonly store: JotaiStore,
+    private readonly ids: IdSource = uuidIdSource,
+    private readonly connection: ChatStreamRemoteConnection = new IpcRemoteMachineConnection(),
+  ) {
+    this.client = new RemoteMachineClient(connection, ids);
+  }
+
+  start(): void {
+    if (this.disposed || this.stopConnection) return;
+    this.stopConnection = this.connection.start?.() ?? IDLE_UNSUBSCRIBE;
+    this.client.start();
+  }
+
+  stop(): void {
+    this.client.stop();
+    this.stopConnection?.();
+    this.stopConnection = undefined;
+  }
+
+  registerRuntimeDeps(
+    deps: Omit<ChatStreamRuntimeDeps, "getIsStreaming">,
+  ): void {
+    this.runtimeDeps = deps;
+  }
+
+  ensure(chatId: number): RemoteChatRef {
+    let ref = this.refs.get(chatId);
+    if (ref) return ref;
+    const actor = this.actor(chatId);
+    ref = {
+      getSnapshot: () =>
+        this.projectOptimisticAdmission(chatId, actor.getSnapshot()),
+      subscribe: (listener) => {
+        const release = this.retainSubscription(chatId, actor);
+        const listeners = this.snapshotListeners.get(chatId) ?? new Set();
+        listeners.add(listener);
+        this.snapshotListeners.set(chatId, listeners);
+        const unsubscribe = actor.subscribe(listener);
+        return () => {
+          unsubscribe();
+          listeners.delete(listener);
+          if (listeners.size === 0) this.snapshotListeners.delete(chatId);
+          release();
+        };
+      },
+      send: (event) => this.sendCompatibilityEvent(chatId, event),
+    };
+    this.refs.set(chatId, ref);
+    return ref;
+  }
+
+  peek(chatId: number): RemoteChatRef | undefined {
+    return this.refs.get(chatId);
+  }
+
+  getSnapshot(chatId: number): ChatStreamRemoteSnapshot {
+    return this.projectOptimisticAdmission(
+      chatId,
+      this.actor(chatId).getSnapshot(),
+    );
+  }
+
+  getIsStreaming(chatId: number): boolean {
+    const phase = this.getSnapshot(chatId).phase;
+    return (
+      phase === "admitting" ||
+      phase === "streaming" ||
+      phase === "cancelling" ||
+      phase === "finalizing"
+    );
+  }
+
+  isIdle(chatId: number): boolean {
+    const phase = this.getSnapshot(chatId).phase;
+    return phase === "idle" || phase === "errored";
+  }
+
+  watchIdle(chatId: number, callback: () => void): () => void {
+    let cancelled = false;
+    let unsubscribe = IDLE_UNSUBSCRIBE;
+    const deliver = () => {
+      if (cancelled || !this.isIdle(chatId)) return;
+      cancelled = true;
+      unsubscribe();
+      queueMicrotask(callback);
+    };
+    unsubscribe = this.ensure(chatId).subscribe(deliver);
+    deliver();
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }
+
+  subscribeStreamFinished(
+    listener: (event: StreamFinishedEvent) => void,
+  ): () => void {
+    this.streamFinishedListeners.add(listener);
+    return () => this.streamFinishedListeners.delete(listener);
+  }
+
+  notifyStreamRegistered(
+    _chatId?: number,
+    _invocationRef?: ChatStreamRemoteSnapshot["invocationRef"],
+  ): void {
+    // Registration is represented by the main actor's admitting→streaming
+    // snapshot. The legacy start event remains harmless during the cutover.
+  }
+
+  getPreviewSnapshot = this.previews.getSnapshot;
+  subscribePreview = this.previews.subscribeKey;
+  setPreview = (chatId: number, content: string): boolean =>
+    this.previews.set(chatId, content);
+
+  async dispatchQueueEvent(
+    chatId: number,
+    event: QueueMutationWithoutRevision,
+  ): Promise<void> {
+    const actor = this.actor(chatId);
+    await actor.resync();
+    const mutationId = this.ids.next("chat-queue");
+    let releaseSettlement = IDLE_UNSUBSCRIBE;
+    const settlement = new Promise<
+      NonNullable<ChatStreamRemoteSnapshot["lastQueueMutation"]>
+    >((resolve) => {
+      const inspect = () => {
+        const result = actor.getSnapshot().lastQueueMutation;
+        if (result?.mutationId !== mutationId) return;
+        releaseSettlement();
+        resolve(result);
+      };
+      releaseSettlement = actor.subscribe(inspect);
+      inspect();
+    });
+    const receipt = await actor.dispatch({
+      ...event,
+      mutationId,
+      expectedQueueRevision: actor.getSnapshot().queueRevision,
+    } as ChatStreamIntentEvent);
+    if (receipt.kind === "rejected") {
+      releaseSettlement();
+      throw new Error(`Chat queue request rejected: ${receipt.reason}`);
+    }
+    if (receipt.kind === "ignored") {
+      releaseSettlement();
+      await actor.resync();
+      throw new Error("Chat queue changed in another window");
+    }
+    const result = await settlement;
+    if (result.outcome === "rejected") {
+      throw new Error(result.error ?? "Chat queue mutation was rejected");
+    }
+  }
+
+  disposeKey = (chatId: number): void => {
+    this.subscriptions.get(chatId)?.unsubscribe();
+    this.subscriptions.delete(chatId);
+    this.refs.delete(chatId);
+    this.previews.disposeKey(chatId);
+  };
+
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.stop();
+    for (const subscription of this.subscriptions.values()) {
+      subscription.unsubscribe();
+    }
+    this.subscriptions.clear();
+    this.refs.clear();
+    this.snapshotListeners.clear();
+    this.optimisticSnapshots.clear();
+    this.pendingSubmissions.clear();
+    this.streamFinishedListeners.clear();
+    this.previews.dispose();
+    this.client.dispose();
+  }
+
+  private actor(chatId: number) {
+    return this.client.actor(chatStreamClientDefinition, chatStreamKey(chatId));
+  }
+
+  private sendCompatibilityEvent(chatId: number, event: StreamEvent): void {
+    switch (event.type) {
+      case "submit":
+        void this.submit(event.request);
+        return;
+      case "cancel": {
+        const invocationRef = this.getSnapshot(chatId).invocationRef;
+        if (!invocationRef) return;
+        void this.actor(chatId).dispatch({ type: "CANCEL", invocationRef });
+        return;
+      }
+      case "queue-poked":
+        if (this.getSnapshot(chatId).queuePaused) {
+          void this.dispatchQueueEvent(chatId, { type: "RESUME_QUEUE" });
+        }
+        return;
+      case "registered":
+      case "stream-context":
+      case "chunk-received":
+      case "stream-ended":
+      case "stream-errored":
+      case "finalize-complete":
+        return;
+      case "external-error":
+        void this.actor(chatId).dispatch({
+          type: "REPORT_ERROR",
+          error: event.error,
+        });
+        return;
+    }
+  }
+
+  private async submit(request: StreamRequest): Promise<void> {
+    this.start();
+    const actor = this.actor(request.chatId);
+    const release = this.retainSubscription(request.chatId, actor);
+    const intentId =
+      request.owner?.kind === "user-input-follow-up"
+        ? request.owner.requestId
+        : this.ids.next("chat-turn");
+    const invocationRef = {
+      kind: CHAT_STREAM_INVOCATION_KIND,
+      entityKey: request.chatId,
+      operationId: this.ids.next("chat-stream"),
+    } as const;
+    this.pendingSubmissions.set(intentId, {
+      request,
+      invocationRef,
+      acceptanceDelivered: false,
+    });
+    this.notifySnapshotListeners(request.chatId);
+    try {
+      const attachments =
+        request.attachments && request.attachments.length > 0
+          ? await convertFileAttachmentsToChatAttachments(request.attachments)
+          : undefined;
+      const withoutHash = {
+        schemaVersion: 1 as const,
+        intentId,
+        chatId: request.chatId,
+        invocationRef,
+        prompt: request.prompt,
+        redo: request.redo,
+        attachments,
+        selectedComponents: request.selectedComponents ?? [],
+        requestedChatMode: request.requestedChatMode,
+        userInputRequestId: request.owner?.requestId,
+        owner: request.owner,
+      };
+      const intent: SerializableChatTurnIntent = {
+        ...withoutHash,
+        payloadHash: await sha256Hex(
+          serializeImmutableChatTurnPayload(withoutHash),
+        ),
+      };
+      const receipt = await actor.dispatch({ type: "SUBMIT", intent });
+      if (receipt.kind === "rejected") {
+        throw new Error(`Chat submission rejected: ${receipt.reason}`);
+      }
+    } catch (error) {
+      this.pendingSubmissions.delete(intentId);
+      this.notifySnapshotListeners(request.chatId);
+      request.onAcceptanceError?.(
+        error instanceof Error ? error : new Error(String(error)),
+      );
+      request.onSettled?.({ success: false });
+    } finally {
+      release();
+    }
+  }
+
+  private retainSubscription(
+    chatId: number,
+    actor: ReturnType<ChatStreamRemoteManager["actor"]>,
+  ): () => void {
+    const existing = this.subscriptions.get(chatId);
+    if (existing) {
+      existing.consumers += 1;
+      return this.releaseSubscription(chatId, existing);
+    }
+    const subscription = {
+      consumers: 1,
+      unsubscribe: actor.subscribe(() =>
+        this.handleSnapshot(chatId, actor.getSnapshot()),
+      ),
+    };
+    this.subscriptions.set(chatId, subscription);
+    void actor.resync().catch((error) => {
+      console.error("[chat-stream] Remote bootstrap failed", error);
+    });
+    return this.releaseSubscription(chatId, subscription);
+  }
+
+  private releaseSubscription(
+    chatId: number,
+    subscription: { consumers: number; unsubscribe: () => void },
+  ): () => void {
+    let active = true;
+    return () => {
+      if (!active) return;
+      active = false;
+      if (this.subscriptions.get(chatId) !== subscription) return;
+      subscription.consumers -= 1;
+      if (subscription.consumers > 0) return;
+      subscription.unsubscribe();
+      this.subscriptions.delete(chatId);
+    };
+  }
+
+  private handleSnapshot(
+    chatId: number,
+    snapshot: ChatStreamRemoteSnapshot,
+  ): void {
+    this.projectQueue(chatId, snapshot);
+    const acceptance = snapshot.lastAcceptance;
+    if (
+      acceptance &&
+      this.lastAcceptanceByChat.get(chatId) !== acceptance.intentId
+    ) {
+      this.lastAcceptanceByChat.set(chatId, acceptance.intentId);
+      const pending = this.pendingSubmissions.get(acceptance.intentId);
+      if (pending) {
+        pending.acceptanceDelivered = true;
+        if (
+          acceptance.acceptance === "message-accepted" ||
+          acceptance.acceptance === "replayed"
+        ) {
+          pending.request.onAccepted?.();
+        } else if (acceptance.acceptance === "queued") {
+          pending.request.onSettled?.({ success: false, queued: true });
+          this.pendingSubmissions.delete(acceptance.intentId);
+        } else {
+          pending.request.onAcceptanceRejected?.(
+            acceptance.error ?? "Chat submission rejected",
+          );
+          pending.request.onSettled?.({ success: false });
+          this.pendingSubmissions.delete(acceptance.intentId);
+        }
+      }
+    }
+    const completion = snapshot.lastCompletion;
+    if (
+      !completion ||
+      this.lastCompletionByChat.get(chatId) === completion.intentId
+    ) {
+      return;
+    }
+    this.lastCompletionByChat.set(chatId, completion.intentId);
+    this.previews.disposeKey(chatId);
+    const pending = this.pendingSubmissions.get(completion.intentId);
+    const targetAppId = pending?.request.appId ?? null;
+    if (pending) {
+      const result: StreamSettledResult = {
+        success: completion.outcome === "completed",
+        pausedByStepLimit: completion.pausePromptQueue,
+      };
+      pending.request.onSettled?.(result);
+      this.pendingSubmissions.delete(completion.intentId);
+    }
+    this.runtimeDeps?.queryClient.invalidateQueries({
+      queryKey: queryKeys.chats.all,
+    });
+    this.runtimeDeps?.queryClient.invalidateQueries({
+      queryKey: queryKeys.proposals.detail({ chatId }),
+    });
+    this.runtimeDeps?.queryClient.invalidateQueries({
+      queryKey: queryKeys.tokenCount.all,
+    });
+    this.runtimeDeps?.queryClient.invalidateQueries({
+      queryKey: queryKeys.userBudget.info,
+    });
+    this.runtimeDeps?.queryClient.invalidateQueries({
+      queryKey: queryKeys.freeAgentQuota.status,
+    });
+    const settings = this.runtimeDeps?.getSettings();
+    if (isFreeProModel(settings?.selectedModel)) {
+      this.runtimeDeps?.queryClient.invalidateQueries({
+        queryKey: queryKeys.freeModelQuota.status,
+      });
+    }
+    if (targetAppId !== null) {
+      this.runtimeDeps?.queryClient.invalidateQueries({
+        queryKey: queryKeys.apps.detail({ appId: targetAppId }),
+      });
+      this.runtimeDeps?.queryClient.invalidateQueries({
+        queryKey: queryKeys.versions.list({ appId: targetAppId }),
+      });
+    }
+    if (completion.outcome !== "cancelled" && this.runtimeDeps) {
+      void ipc.chat
+        .getChat(chatId)
+        .then((latestChat) => {
+          this.runtimeDeps?.queryClient.setQueryData(
+            queryKeys.chats.detail({ chatId }),
+            latestChat,
+          );
+          this.store.set(chatMessagesByIdAtom, (previous) => {
+            const next = new Map(previous);
+            next.set(chatId, latestChat.messages);
+            return next;
+          });
+        })
+        .catch((error) => {
+          console.error(
+            "[chat-stream] Failed to refresh completed chat",
+            error,
+          );
+        });
+    }
+    if (completion.updatedFiles && snapshot.chatId > 0) {
+      if (settings?.autoExpandPreviewPanel) {
+        this.store.set(isPreviewOpenAtom, true);
+      }
+      if (targetAppId !== null) {
+        this.runtimeDeps?.requestPreviewReload(targetAppId);
+        this.runtimeDeps?.requestCapture(targetAppId, "stream");
+      }
+    }
+    for (const listener of this.streamFinishedListeners) {
+      listener({
+        chatId,
+        invocationRef: completion.invocationRef,
+        outcome: completion.outcome,
+        chatSummary: completion.chatSummary,
+      });
+    }
+  }
+
+  private projectOptimisticAdmission(
+    chatId: number,
+    snapshot: ChatStreamRemoteSnapshot,
+  ): ChatStreamRemoteSnapshot {
+    if (snapshot.phase !== "idle" && snapshot.phase !== "errored") {
+      return snapshot;
+    }
+    const pendingEntry = [...this.pendingSubmissions.entries()].find(
+      ([, submission]) =>
+        submission.request.chatId === chatId && !submission.acceptanceDelivered,
+    );
+    if (!pendingEntry) {
+      this.optimisticSnapshots.delete(chatId);
+      return snapshot;
+    }
+    const [intentId, pending] = pendingEntry;
+    const cached = this.optimisticSnapshots.get(chatId);
+    if (cached?.base === snapshot && cached.intentId === intentId) {
+      return cached.projected;
+    }
+    const projected: ChatStreamRemoteSnapshot = {
+      ...snapshot,
+      phase: "admitting",
+      invocationRef: pending.invocationRef,
+      error: null,
+      capabilities: {
+        ...snapshot.capabilities,
+        canCancel: false,
+      },
+    };
+    this.optimisticSnapshots.set(chatId, {
+      base: snapshot,
+      intentId,
+      projected,
+    });
+    return projected;
+  }
+
+  private notifySnapshotListeners(chatId: number): void {
+    for (const listener of this.snapshotListeners.get(chatId) ?? []) {
+      listener();
+    }
+  }
+
+  private projectQueue(
+    chatId: number,
+    snapshot: ChatStreamRemoteSnapshot,
+  ): void {
+    this.store.set(queuedMessagesByIdAtom, (previous) => {
+      const next = new Map(previous);
+      if (snapshot.queue.length === 0) {
+        next.delete(chatId);
+      } else {
+        next.set(
+          chatId,
+          snapshot.queue.map(
+            (entry): QueuedMessageItem => ({
+              id: entry.itemId,
+              prompt: entry.prompt,
+              attachments: entry.attachments?.map(
+                chatAttachmentToFileAttachment,
+              ),
+              selectedComponents: entry.selectedComponents,
+              redo: entry.redo,
+              appId: entry.appId,
+              requestedChatMode: entry.requestedChatMode,
+            }),
+          ),
+        );
+      }
+      return next;
+    });
+    this.store.set(queuePausedByIdAtom, (previous) => {
+      const next = new Map(previous);
+      if (snapshot.queuePaused) next.set(chatId, true);
+      else next.delete(chatId);
+      return next;
+    });
+  }
+}
+
+export const NO_CHAT_STREAM_REMOTE_SNAPSHOT = unavailableChatStreamSnapshot(1);

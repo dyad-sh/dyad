@@ -80,6 +80,10 @@ vi.mock("@/ipc/handlers/chat_mode_resolution", () => ({
   getInitialChatModeForNewChat: vi.fn(async () => "build"),
 }));
 
+vi.mock("@/ipc/services/chat_actor_deletion_service", () => ({
+  settleChatActorsForDeletion: vi.fn(async () => {}),
+}));
+
 import { registerAppHandlers } from "./app_handlers";
 import { registerImportHandlers } from "./import_handlers";
 import { firstPromptCreationRegistry } from "../services/first_prompt_creation_service";

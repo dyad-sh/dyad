@@ -1,6 +1,7 @@
 import type { createStore } from "jotai";
 
 import { queuePausedByIdAtom, queuedMessagesByIdAtom } from "@/atoms/chatAtoms";
+import { chatAttachmentToFileAttachment } from "@/lib/attachment_conversion";
 import { KeyedControllerHost } from "@/state_machines/keyed_host";
 import { uuidIdSource, type IdSource } from "@/state_machines/clock";
 import { createTraceObserver } from "@/state_machines/trace";
@@ -28,6 +29,7 @@ import {
   selectCanSubmitImmediately,
   selectStreamError,
 } from "./transition";
+import type { QueueMutationWithoutRevision } from "./remote_manager";
 
 type JotaiStore = ReturnType<typeof createStore>;
 
@@ -174,6 +176,74 @@ export class ChatStreamManager {
       cancelled = true;
       detach();
     };
+  }
+
+  /**
+   * Legacy renderer-hosted queue adapter used only by cutover test harnesses.
+   * Production queue mutations are revisioned commands on the main actor.
+   */
+  async dispatchQueueEvent(
+    chatId: number,
+    event: QueueMutationWithoutRevision,
+  ): Promise<void> {
+    if (event.type === "PAUSE_QUEUE" || event.type === "RESUME_QUEUE") {
+      this.store.set(queuePausedByIdAtom, (previous) => {
+        const next = new Map(previous);
+        if (event.type === "PAUSE_QUEUE") next.set(chatId, true);
+        else next.delete(chatId);
+        return next;
+      });
+      if (event.type === "RESUME_QUEUE") {
+        this.host.get(chatId)?.send({ type: "queue-poked" });
+      }
+      return;
+    }
+
+    this.store.set(queuedMessagesByIdAtom, (previous) => {
+      const current = previous.get(chatId) ?? [];
+      let queue = current;
+      switch (event.type) {
+        case "EDIT_QUEUE_ENTRY":
+          queue = current.map((item) =>
+            item.id === event.itemId
+              ? {
+                  ...item,
+                  prompt: event.prompt,
+                  attachments: event.attachments?.map(
+                    chatAttachmentToFileAttachment,
+                  ),
+                  selectedComponents: event.selectedComponents,
+                }
+              : item,
+          );
+          break;
+        case "REMOVE_QUEUE_ENTRY":
+          queue = current.filter((item) => item.id !== event.itemId);
+          break;
+        case "REORDER_QUEUE_ENTRY": {
+          const fromIndex = current.findIndex(
+            (item) => item.id === event.itemId,
+          );
+          if (fromIndex < 0) break;
+          queue = [...current];
+          const [item] = queue.splice(fromIndex, 1);
+          queue.splice(
+            Math.max(0, Math.min(event.toIndex, queue.length)),
+            0,
+            item,
+          );
+          break;
+        }
+        case "CLEAR_QUEUE":
+          queue = [];
+          break;
+      }
+      if (queue === current) return previous;
+      const next = new Map(previous);
+      if (queue.length === 0) next.delete(chatId);
+      else next.set(chatId, queue);
+      return next;
+    });
   }
 
   notifyStreamRegistered(

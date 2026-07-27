@@ -168,7 +168,10 @@ export async function performCompaction(
     // Load all messages for the chat
     const chatMessages = await db.query.messages.findMany({
       where: eq(messages.chatId, chatId),
-      orderBy: (messages, { asc }) => [asc(messages.createdAt)],
+      orderBy: (messages, { asc }) => [
+        asc(messages.createdAt),
+        asc(messages.id),
+      ],
     });
 
     if (chatMessages.length === 0) {

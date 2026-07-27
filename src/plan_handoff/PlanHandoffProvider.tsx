@@ -11,38 +11,49 @@ import {
   type PlanHandoffDeps,
 } from "./commands";
 import { createPlanHandoffRegistry } from "./registry";
+import { PlanHandoffRemoteManager } from "./remote_manager";
 import { readPlanDocument } from "@/hooks/usePlanDocument";
 
-export type PlanHandoffManager = ReturnType<typeof createPlanHandoffRegistry>;
+export type LegacyPlanHandoffManager = ReturnType<
+  typeof createPlanHandoffRegistry
+>;
+export type PlanHandoffManager =
+  | PlanHandoffRemoteManager
+  | LegacyPlanHandoffManager;
 
 interface PlanHandoffProviderProps {
-  chatStream: PlanHandoffDeps["chatStream"];
+  /** @deprecated Retained only for cutover test harnesses. */
+  chatStream?: PlanHandoffDeps["chatStream"];
 }
 
-function useOwnedPlanHandoffManager({
-  chatStream,
-}: PlanHandoffProviderProps): PlanHandoffManager {
+function useOwnedPlanHandoffManager(
+  props: PlanHandoffProviderProps,
+): PlanHandoffManager {
   const store = useStore();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const dependencies = useRef<PlanHandoffDeps | null>(null);
-  dependencies.current = {
-    store,
-    getPlanData: (chatId) => readPlanDocument(store, chatId),
-    queryClient,
-    navigate: (options) => void navigate(options),
-    chatStream,
-  };
-  const [manager] = useState(() =>
-    createPlanHandoffRegistry(
-      createPlanHandoffCommandRunner(() => {
-        const current = dependencies.current;
-        if (!current) {
-          throw new Error("Plan handoff dependencies are not initialised");
-        }
-        return current;
-      }),
-    ),
+  dependencies.current = props.chatStream
+    ? {
+        store,
+        getPlanData: (chatId) => readPlanDocument(store, chatId),
+        queryClient,
+        navigate: (options) => void navigate(options),
+        chatStream: props.chatStream,
+      }
+    : null;
+  const [manager] = useState<PlanHandoffManager>(() =>
+    props.chatStream
+      ? createPlanHandoffRegistry(
+          createPlanHandoffCommandRunner(() => {
+            const current = dependencies.current;
+            if (!current) {
+              throw new Error("Plan handoff dependencies are not initialised");
+            }
+            return current;
+          }),
+        )
+      : new PlanHandoffRemoteManager(),
   );
   return manager;
 }

@@ -137,6 +137,7 @@ import { githubOpsActorService } from "../services/github_ops_actor_service";
 import { imageGenerationActorService } from "../services/image_generation_actor_service";
 import { imageGenerationService } from "../services/image_generation_service";
 import { githubOpsService } from "../services/github_ops_service";
+import { settleChatActorsForDeletion } from "@/ipc/services/chat_actor_deletion_service";
 
 const logger = log.scope("app_handlers");
 const handle = createLoggedHandler(logger);
@@ -430,6 +431,11 @@ async function deleteAppById(
         await Promise.all(
           appChats.map(({ id: chatId }) =>
             userInputRegistry.settleChat(chatId),
+          ),
+        );
+        await Promise.all(
+          appChats.map(({ id: chatId }) =>
+            settleChatActorsForDeletion(chatId),
           ),
         );
         await db.delete(apps).where(eq(apps.id, appId));

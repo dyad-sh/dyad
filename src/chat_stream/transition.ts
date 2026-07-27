@@ -23,7 +23,20 @@ import {
  */
 
 /** True while a stream is active from the user's point of view (drives the `isStreaming` projection). */
-export function isStreamActive(state: StreamState): boolean {
+export function isStreamActive(
+  state:
+    | StreamState
+    | { readonly phase: string }
+    | { readonly type: string; readonly error?: string },
+): boolean {
+  if ("phase" in state) {
+    return (
+      state.phase === "admitting" ||
+      state.phase === "streaming" ||
+      state.phase === "cancelling" ||
+      state.phase === "finalizing"
+    );
+  }
   return (
     state.type === "starting" ||
     state.type === "streaming" ||
@@ -32,12 +45,22 @@ export function isStreamActive(state: StreamState): boolean {
 }
 
 /** True when a submit starts immediately instead of joining the prompt queue. */
-export function selectCanSubmitImmediately(state: StreamState): boolean {
+export function selectCanSubmitImmediately(
+  state: StreamState | { readonly phase: string },
+): boolean {
+  if ("phase" in state) {
+    return state.phase === "idle" || state.phase === "errored";
+  }
   return state.type === "idle" || state.type === "errored";
 }
 
 /** True while cancel can still affect the active transport. */
-export function selectCanCancel(state: StreamState): boolean {
+export function selectCanCancel(
+  state: StreamState | { readonly phase: string },
+): boolean {
+  if ("phase" in state) {
+    return state.phase === "admitting" || state.phase === "streaming";
+  }
   return state.type === "starting" || state.type === "streaming";
 }
 
@@ -50,8 +73,14 @@ export function selectIsCancellationSettling(state: StreamState): boolean {
 }
 
 /** The terminal stream error rendered by chat surfaces. */
-export function selectStreamError(state: StreamState): string | null {
-  return state.type === "errored" ? state.error : null;
+export function selectStreamError(
+  state:
+    | StreamState
+    | { readonly phase: string; readonly error?: string | null }
+    | { readonly type: string; readonly error?: string },
+): string | null {
+  if ("phase" in state) return state.error ?? null;
+  return state.type === "errored" ? (state.error ?? null) : null;
 }
 
 /** Initial state for a freshly created controller. */
@@ -61,11 +90,20 @@ export function initialStreamState(): StreamState {
 
 /** Active correlation identity, absent in terminal states. */
 export function streamInvocationRef(
-  state: StreamState,
+  state:
+    | StreamState
+    | {
+        readonly invocationRef?:
+          | Extract<StreamState, { invocationRef: unknown }>["invocationRef"]
+          | null;
+      }
+    | { readonly type: string },
 ):
   | Extract<StreamState, { invocationRef: unknown }>["invocationRef"]
   | undefined {
-  return "invocationRef" in state ? state.invocationRef : undefined;
+  return "invocationRef" in state
+    ? (state.invocationRef ?? undefined)
+    : undefined;
 }
 
 /** Explicit marker for deliberately ignored (state, event) pairs. */

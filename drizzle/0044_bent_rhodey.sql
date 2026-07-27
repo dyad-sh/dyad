@@ -1,0 +1,1 @@
+ALTER TABLE `chat_queue_state` ADD `legacy_migrated` integer DEFAULT false NOT NULL;

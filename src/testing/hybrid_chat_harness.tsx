@@ -645,6 +645,9 @@ export async function setupHybridChatHarness(
     // (react-remove-scroll's tslib) and fails at module load.
     const { registerIpcHandlers } = await import("@/ipc/ipc_host");
     registerIpcHandlers();
+    const { registerLegacyChatStreamTestHandler } =
+      await import("@/ipc/handlers/chat_stream_handlers");
+    registerLegacyChatStreamTestHandler();
 
     const silenceActWarnings = options.silenceActWarnings ?? true;
     const bridge = installRendererIpcBridge(options.electronMock, {

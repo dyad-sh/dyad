@@ -1,20 +1,29 @@
-import { act, renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
 import type { PropsWithChildren } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
 import { queuedMessagesByIdAtom } from "@/atoms/chatAtoms";
-
 import { useStreamChat } from "./useStreamChat";
 
 const CHAT_ID = 42;
 
 const mocks = vi.hoisted(() => ({
-  controllerSend: vi.fn(),
+  send: vi.fn(),
+  dispatchQueueEvent: vi.fn(async () => undefined),
   showError: vi.fn(),
   streamState: {
-    current: { type: "idle" },
-  } as { current: { type: string } },
+    current: {
+      phase: "idle",
+      capabilities: { canCancel: false },
+      error: null,
+    },
+  } as {
+    current: {
+      phase: string;
+      capabilities: { canCancel: boolean };
+      error: string | null;
+    };
+  },
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -24,10 +33,11 @@ vi.mock("@tanstack/react-router", () => ({
 vi.mock("@/chat_stream/ChatStreamProvider", () => ({
   useChatStreamManager: () => ({
     ensure: () => ({
-      send: mocks.controllerSend,
+      send: mocks.send,
       getSnapshot: () => mocks.streamState.current,
-      subscribe: () => () => {},
+      subscribe: () => () => undefined,
     }),
+    dispatchQueueEvent: mocks.dispatchQueueEvent,
   }),
 }));
 
@@ -43,249 +53,130 @@ function makeWrapper() {
   return { store, Wrapper };
 }
 
-describe("useStreamChat queueMessage", () => {
+describe("useStreamChat main-owned queue", () => {
   beforeEach(() => {
-    mocks.controllerSend.mockReset();
+    mocks.send.mockReset();
+    mocks.dispatchQueueEvent.mockReset();
+    mocks.dispatchQueueEvent.mockResolvedValue(undefined);
     mocks.showError.mockReset();
   });
 
-  it("pokes the stream machine after manually appending the queued message", () => {
+  it("submits queue requests to the actor without writing renderer state", () => {
     const { store, Wrapper } = makeWrapper();
-    const { result } = renderHook(() => useStreamChat(), {
-      wrapper: Wrapper,
-    });
+    const { result } = renderHook(() => useStreamChat(), { wrapper: Wrapper });
 
-    mocks.controllerSend.mockImplementationOnce(() => {
-      expect(store.get(queuedMessagesByIdAtom).get(CHAT_ID)).toMatchObject([
-        { prompt: "queued during render lag" },
-      ]);
-    });
+    expect(
+      result.current.queueMessage({ prompt: "queued during render lag" }),
+    ).toBe(true);
 
-    let queued = false;
-    act(() => {
-      queued = result.current.queueMessage({
+    expect(store.get(queuedMessagesByIdAtom).has(CHAT_ID)).toBe(false);
+    expect(mocks.send).toHaveBeenCalledExactlyOnceWith({
+      type: "submit",
+      request: {
+        chatId: CHAT_ID,
         prompt: "queued during render lag",
-      });
-    });
-
-    expect(queued).toBe(true);
-    expect(mocks.controllerSend).toHaveBeenCalledExactlyOnceWith({
-      type: "queue-poked",
+      },
     });
   });
 
-  it("does not edit machine follow-ups and explicitly rejects removal", async () => {
+  it("routes edit, remove, reorder, and clear through revisioned actor intents", async () => {
     const { store, Wrapper } = makeWrapper();
-    const machineFollowUp = {
-      id: "machine-follow-up",
-      prompt: "Continue after integration",
-      owner: {
-        kind: "user-input-follow-up" as const,
-        requestId: "integration:1",
-      },
-      onAcceptanceRejected: vi.fn().mockResolvedValue(undefined),
-    };
-    const ordinaryPrompt = {
-      id: "ordinary-prompt",
-      prompt: "Ordinary prompt",
-    };
     store.set(
       queuedMessagesByIdAtom,
-      new Map([[CHAT_ID, [machineFollowUp, ordinaryPrompt]]]),
+      new Map([
+        [
+          CHAT_ID,
+          [
+            { id: "first", prompt: "First" },
+            { id: "second", prompt: "Second" },
+          ],
+        ],
+      ]),
     );
-    const { result } = renderHook(() => useStreamChat(), {
-      wrapper: Wrapper,
-    });
+    const { result } = renderHook(() => useStreamChat(), { wrapper: Wrapper });
 
     act(() => {
-      result.current.updateQueuedMessage(machineFollowUp.id, {
+      result.current.updateQueuedMessage("first", { prompt: "Changed" });
+      result.current.reorderQueuedMessages(0, 1);
+    });
+    await act(async () => {
+      await result.current.removeQueuedMessage("second");
+      await result.current.clearAllQueuedMessages();
+    });
+
+    await waitFor(() => {
+      expect(mocks.dispatchQueueEvent).toHaveBeenCalledWith(CHAT_ID, {
+        type: "EDIT_QUEUE_ENTRY",
+        itemId: "first",
         prompt: "Changed",
+        attachments: [],
+        selectedComponents: undefined,
       });
     });
-    expect(store.get(queuedMessagesByIdAtom).get(CHAT_ID)?.[0].prompt).toBe(
-      machineFollowUp.prompt,
-    );
-
-    await act(async () => {
-      await result.current.removeQueuedMessage(machineFollowUp.id);
+    expect(mocks.dispatchQueueEvent).toHaveBeenCalledWith(CHAT_ID, {
+      type: "REORDER_QUEUE_ENTRY",
+      itemId: "first",
+      toIndex: 1,
     });
-    expect(machineFollowUp.onAcceptanceRejected).toHaveBeenCalledWith(
-      "removed from queue",
-    );
-    expect(store.get(queuedMessagesByIdAtom).get(CHAT_ID)).toEqual([
-      ordinaryPrompt,
-    ]);
+    expect(mocks.dispatchQueueEvent).toHaveBeenCalledWith(CHAT_ID, {
+      type: "REMOVE_QUEUE_ENTRY",
+      itemId: "second",
+    });
+    expect(mocks.dispatchQueueEvent).toHaveBeenCalledWith(CHAT_ID, {
+      type: "CLEAR_QUEUE",
+    });
+  });
+
+  it("surfaces authoritative queue rejection", async () => {
+    const rejection = new Error("queue revision changed");
+    mocks.dispatchQueueEvent.mockRejectedValueOnce(rejection);
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useStreamChat(), { wrapper: Wrapper });
 
     await act(async () => {
       await result.current.clearAllQueuedMessages();
     });
-    expect(store.get(queuedMessagesByIdAtom).has(CHAT_ID)).toBe(false);
+
+    expect(mocks.showError).toHaveBeenCalledWith(rejection);
   });
+});
 
-  it("preserves messages queued while bulk owner rejection is pending", async () => {
-    const { store, Wrapper } = makeWrapper();
-    let finishRejection!: () => void;
-    const onAcceptanceRejected = vi.fn(
-      () =>
-        new Promise<void>((resolve) => {
-          finishRejection = resolve;
-        }),
-    );
-    store.set(
-      queuedMessagesByIdAtom,
-      new Map([
-        [
-          CHAT_ID,
-          [
-            {
-              id: "owned-at-clear",
-              prompt: "Continue after integration",
-              owner: {
-                kind: "user-input-follow-up",
-                requestId: "integration:clear",
-              },
-              onAcceptanceRejected,
-            },
-          ],
-        ],
-      ]),
-    );
-    const { result } = renderHook(() => useStreamChat(), {
-      wrapper: Wrapper,
-    });
-
-    let clear!: Promise<void>;
-    act(() => {
-      clear = result.current.clearAllQueuedMessages();
-    });
-    expect(store.get(queuedMessagesByIdAtom).has(CHAT_ID)).toBe(false);
-    act(() => {
-      store.set(queuedMessagesByIdAtom, (previous) => {
-        const next = new Map(previous);
-        next.set(CHAT_ID, [
-          ...(previous.get(CHAT_ID) ?? []),
-          { id: "queued-during-clear", prompt: "Keep me" },
-        ]);
-        return next;
-      });
-      finishRejection();
-    });
-    await act(async () => clear);
-
-    expect(onAcceptanceRejected).toHaveBeenCalledWith("queue cleared");
-    expect(store.get(queuedMessagesByIdAtom).get(CHAT_ID)).toEqual([
-      { id: "queued-during-clear", prompt: "Keep me" },
-    ]);
-  });
-
-  it("clears successful items and preserves only owners whose rejection failed", async () => {
-    const { store, Wrapper } = makeWrapper();
-    const failedOwner = {
-      kind: "user-input-follow-up" as const,
-      requestId: "integration:failed",
+describe("useStreamChat lifecycle intents", () => {
+  beforeEach(() => {
+    mocks.send.mockReset();
+    mocks.streamState.current = {
+      phase: "streaming",
+      capabilities: { canCancel: true },
+      error: null,
     };
-    const rejectionError = new Error("renderer IPC unavailable");
-    const settledRejection = vi.fn().mockResolvedValue(undefined);
-    const failedRejection = vi.fn().mockRejectedValue(rejectionError);
-    store.set(
-      queuedMessagesByIdAtom,
-      new Map([
-        [
-          CHAT_ID,
-          [
-            { id: "ordinary", prompt: "Ordinary prompt" },
-            {
-              id: "settled-owner",
-              prompt: "Settled follow-up",
-              owner: {
-                kind: "user-input-follow-up",
-                requestId: "integration:settled",
-              },
-              onAcceptanceRejected: settledRejection,
-            },
-            {
-              id: "failed-owner",
-              prompt: "Failed follow-up",
-              owner: failedOwner,
-              onAcceptanceRejected: failedRejection,
-            },
-          ],
-        ],
-      ]),
-    );
-    const { result } = renderHook(() => useStreamChat(), {
-      wrapper: Wrapper,
-    });
-
-    await act(async () => {
-      await result.current.clearAllQueuedMessages();
-    });
-
-    expect(store.get(queuedMessagesByIdAtom).get(CHAT_ID)).toEqual([
-      {
-        id: "failed-owner",
-        prompt: "Failed follow-up",
-        owner: failedOwner,
-        onAcceptanceRejected: failedRejection,
-      },
-    ]);
-    expect(mocks.showError).toHaveBeenCalledWith(rejectionError);
-  });
-});
-
-describe("useStreamChat cancelStream", () => {
-  beforeEach(() => {
-    mocks.controllerSend.mockReset();
-    mocks.streamState.current = { type: "starting" };
   });
 
-  it("routes cancellation through the stream machine", () => {
+  it("cancels only while the remote capability permits it", () => {
     const { Wrapper } = makeWrapper();
-    const { result } = renderHook(() => useStreamChat(), {
+    const { result, rerender } = renderHook(() => useStreamChat(), {
       wrapper: Wrapper,
     });
 
-    act(() => {
-      result.current.cancelStream();
-    });
+    act(() => result.current.cancelStream());
+    expect(mocks.send).toHaveBeenCalledExactlyOnceWith({ type: "cancel" });
 
-    expect(mocks.controllerSend).toHaveBeenCalledExactlyOnceWith({
-      type: "cancel",
-    });
+    mocks.streamState.current = {
+      phase: "cancelling",
+      capabilities: { canCancel: false },
+      error: null,
+    };
+    rerender();
+    act(() => result.current.cancelStream());
+    expect(mocks.send).toHaveBeenCalledTimes(1);
   });
 
-  it("does not send cancel after the transport is already cancelling", () => {
-    mocks.streamState.current = { type: "cancelling" };
+  it("routes external errors through the main actor", () => {
     const { Wrapper } = makeWrapper();
-    const { result } = renderHook(() => useStreamChat(), {
-      wrapper: Wrapper,
-    });
+    const { result } = renderHook(() => useStreamChat(), { wrapper: Wrapper });
 
-    act(() => {
-      result.current.cancelStream();
-    });
+    act(() => result.current.setError("Approval failed"));
 
-    expect(mocks.controllerSend).not.toHaveBeenCalled();
-  });
-});
-
-describe("useStreamChat external errors", () => {
-  beforeEach(() => {
-    mocks.controllerSend.mockReset();
-    mocks.streamState.current = { type: "idle" };
-  });
-
-  it("routes consent failures through the stream machine", () => {
-    const { Wrapper } = makeWrapper();
-    const { result } = renderHook(() => useStreamChat(), {
-      wrapper: Wrapper,
-    });
-
-    act(() => {
-      result.current.setError("Approval failed");
-    });
-
-    expect(mocks.controllerSend).toHaveBeenCalledExactlyOnceWith({
+    expect(mocks.send).toHaveBeenCalledExactlyOnceWith({
       type: "external-error",
       error: "Approval failed",
     });

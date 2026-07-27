@@ -145,15 +145,18 @@ export const ChatStreamInvocationRefSchema: z.ZodType<ChatStreamInvocationRef> =
 export const ChatStreamParamsSchema = z
   .object({
     chatId: z.number(),
+    appId: z.number().int().positive().optional(),
     /** Correlation identity for new renderers. */
     invocationRef: ChatStreamInvocationRefSchema.optional(),
     /** @deprecated Compatibility with renderer generations predating InvocationRef. */
     streamId: z.number().optional(),
     prompt: z.string(),
+    /** Durable idempotency identity owned by the main chat actor. */
+    intentId: z.string().min(1).max(256).optional(),
     redo: z.boolean().optional(),
     attachments: ChatAttachmentsSchema.optional(),
     selectedComponents: z.array(ComponentSelectionSchema).optional(),
-    requestedChatMode: ChatModeSchema.optional(),
+    requestedChatMode: ChatModeSchema.nullable().optional(),
     userInputRequestId: z.string().optional(),
   })
   .superRefine((params, context) => {

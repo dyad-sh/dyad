@@ -7,7 +7,7 @@ import { appRunDefinition, requireExistingApp } from "@/app_run/definition";
 import { MainAppRuntimeOutput } from "./main_app_runtime_output";
 import type { AppRunInvocationRef } from "@/app_run/state";
 import { appRuntimeService } from "./app_runtime_service";
-import { remoteMachineHost } from "./distributed_machine_host";
+import { remoteMachineHost } from "./distributed_machine_actor_host";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 type AppRunActorHost = Pick<

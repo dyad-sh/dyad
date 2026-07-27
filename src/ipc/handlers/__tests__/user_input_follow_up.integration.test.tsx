@@ -1,6 +1,14 @@
 import { cleanup } from "@testing-library/react";
 import { and, eq } from "drizzle-orm";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 import { messages } from "@/db/schema";
 import { ipc } from "@/ipc/types";
@@ -11,7 +19,7 @@ import {
 import { h } from "@/testing/hybrid.setup";
 import { userInputRegistry } from "@/user_input/main";
 
-describe("memory-owned user-input follow-up recovery (integration)", () => {
+describe("main-owned user-input follow-up recovery (integration)", () => {
   let harness: HybridChatHarness;
 
   beforeAll(async () => {
@@ -61,27 +69,29 @@ describe("memory-owned user-input follow-up recovery (integration)", () => {
     const { requestId } = await createDueFollowUp(chatId, "after reload");
 
     harness.mount({ chatId });
-    await harness.waitForStreamEnd(chatId);
     window.dispatchEvent(new Event("focus"));
     await harness.bridge.settleInFlight();
 
-    const acceptedMessages = await harness.db
-      .select()
-      .from(messages)
-      .where(
-        and(
-          eq(messages.chatId, chatId),
-          eq(messages.userInputRequestId, requestId),
-        ),
-      );
+    let acceptedMessages: (typeof messages.$inferSelect)[] = [];
+    await vi.waitFor(async () => {
+      acceptedMessages = await harness.db
+        .select()
+        .from(messages)
+        .where(
+          and(
+            eq(messages.chatId, chatId),
+            eq(messages.userInputRequestId, requestId),
+          ),
+        );
+      expect(acceptedMessages).toHaveLength(1);
+    });
     const starts = harness.bridge.invokeLog.filter(
       (entry) =>
         entry.channel === "chat:stream" &&
         (entry.args[0] as { userInputRequestId?: string } | undefined)
           ?.userInputRequestId === requestId,
     );
-    expect(acceptedMessages).toHaveLength(1);
-    expect(starts).toHaveLength(1);
+    expect(starts).toHaveLength(0);
     expect(
       userInputRegistry
         .getPending()

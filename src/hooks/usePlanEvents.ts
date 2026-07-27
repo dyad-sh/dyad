@@ -1,10 +1,12 @@
 import { useEffect } from "react";
 import { useSetAtom } from "jotai";
+import { useNavigate } from "@tanstack/react-router";
 import {
   planAcceptInNewChatByChatIdAtom,
   planStateAtom,
 } from "@/atoms/planAtoms";
 import { previewModeAtom } from "@/atoms/appAtoms";
+import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import {
   planEventClient,
   type PlanUpdatePayload,
@@ -23,6 +25,8 @@ export function usePlanEvents() {
   const setPlanState = useSetAtom(planStateAtom);
   const setPlanAcceptInNewChat = useSetAtom(planAcceptInNewChatByChatIdAtom);
   const setPreviewMode = useSetAtom(previewModeAtom);
+  const setSelectedChatId = useSetAtom(selectedChatIdAtom);
+  const navigate = useNavigate();
   const { acceptPlan } = usePlanHandoff();
 
   useEffect(() => {
@@ -64,10 +68,28 @@ export function usePlanEvents() {
         acceptPlan(payload);
       },
     );
+    const unsubscribePresentation = planEventClient.onHandoffPresentation(
+      (payload) => {
+        setPreviewMode("preview");
+        setSelectedChatId(payload.targetChatId);
+        void navigate({
+          to: "/chat",
+          search: { id: payload.targetChatId, appId: payload.appId },
+        });
+      },
+    );
 
     return () => {
       unsubscribeUpdate();
       unsubscribeExit();
+      unsubscribePresentation();
     };
-  }, [setPlanState, setPlanAcceptInNewChat, setPreviewMode, acceptPlan]);
+  }, [
+    setPlanState,
+    setPlanAcceptInNewChat,
+    setPreviewMode,
+    setSelectedChatId,
+    navigate,
+    acceptPlan,
+  ]);
 }

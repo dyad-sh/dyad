@@ -19,7 +19,8 @@ import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { usePlan } from "@/hooks/usePlan";
 import { useChatMode } from "@/hooks/useChatMode";
-import { useIsPlanAccepted, usePlanDocument } from "@/hooks/usePlanDocument";
+import { usePlanDocument } from "@/hooks/usePlanDocument";
+import { usePlanHandoffState } from "@/plan_handoff/usePlanHandoff";
 import { SelectionCommentButton } from "./plan/SelectionCommentButton";
 import { CommentsFloatingButton } from "./plan/CommentsFloatingButton";
 import { CommentPopover } from "./plan/CommentPopover";
@@ -31,7 +32,13 @@ import {
 export const PlanPanel: React.FC = () => {
   const chatId = useAtomValue(selectedChatIdAtom);
   const planData = usePlanDocument(chatId);
-  const isAccepted = useIsPlanAccepted(chatId);
+  const handoff = usePlanHandoffState(chatId);
+  const isAccepted =
+    ("phase" in handoff &&
+      handoff.phase !== "idle" &&
+      handoff.phase !== "failed" &&
+      handoff.phase !== "cancelled") ||
+    ("type" in handoff && handoff.type !== "idle" && handoff.type !== "failed");
   const previewMode = useAtomValue(previewModeAtom);
   const setPreviewMode = useSetAtom(previewModeAtom);
   const { streamMessage, isStreaming } = useStreamChat();

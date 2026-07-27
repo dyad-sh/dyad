@@ -1,0 +1,66 @@
+import type { WebContents } from "electron";
+import { queryInvalidationBus } from "@/window_infrastructure/main/query_invalidation_bus";
+import {
+  windowRegistry,
+  type WindowEndpoint,
+} from "@/window_infrastructure/main/window_registry";
+import type { WindowSessionId } from "@/window_infrastructure/types";
+
+const nullEndpoint: WindowEndpoint = {
+  id: -1,
+  isDestroyed: () => true,
+  send: () => undefined,
+  once: () => undefined,
+};
+
+export function chatExecutionEndpoint(
+  chatId: number,
+  preferredWindowSessionId?: string,
+): WebContents {
+  const preferred = preferredWindowSessionId
+    ? windowRegistry.endpointForSession(
+        preferredWindowSessionId as WindowSessionId,
+      )
+    : undefined;
+  const routedSession = windowRegistry.routePresentation({
+    effect: "user-input",
+    initiatorWindowSessionId: preferredWindowSessionId as
+      | WindowSessionId
+      | undefined,
+    entity: { kind: "chat", id: chatId },
+  });
+  const routed = routedSession
+    ? windowRegistry.endpointForSession(routedSession)
+    : undefined;
+  return (preferred ??
+    routed ??
+    windowRegistry.liveEndpoints()[0] ??
+    nullEndpoint) as WebContents;
+}
+
+export function publishChatInvalidations(chatId: number): void {
+  queryInvalidationBus.publish([
+    { family: "chats" },
+    { family: "chat", chatId },
+  ]);
+}
+
+export function routePlanHandoffPresentation(input: {
+  handoffId: string;
+  sourceChatId: number;
+  targetChatId: number;
+  appId: number;
+  originWindowSessionId?: string;
+}): void {
+  const session = windowRegistry.routePresentation({
+    effect: "navigation",
+    initiatorWindowSessionId: input.originWindowSessionId as
+      | WindowSessionId
+      | undefined,
+    entity: { kind: "chat", id: input.sourceChatId },
+  });
+  if (!session) return;
+  windowRegistry
+    .endpointForSession(session)
+    ?.send("plan:handoff-presentation", input);
+}

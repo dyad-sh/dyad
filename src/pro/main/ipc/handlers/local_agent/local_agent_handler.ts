@@ -570,7 +570,10 @@ export async function handleLocalAgentStream(
       where: eq(chats.id, req.chatId),
       with: {
         messages: {
-          orderBy: (messages, { asc }) => [asc(messages.createdAt)],
+          orderBy: (messages, { asc }) => [
+            asc(messages.createdAt),
+            asc(messages.id),
+          ],
         },
         app: true,
       },

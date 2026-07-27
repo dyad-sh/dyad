@@ -32,7 +32,10 @@ import {
   language_models,
   messages,
 } from "@/db/schema";
-import { registerChatStreamHandlers } from "@/ipc/handlers/chat_stream_handlers";
+import {
+  registerChatStreamHandlers,
+  registerLegacyChatStreamTestHandler,
+} from "@/ipc/handlers/chat_stream_handlers";
 import type { ChatStreamParams } from "@/ipc/types";
 import {
   runningApps,
@@ -344,6 +347,7 @@ export async function setupChatFlowHarness(
 
     if (options.registerChatStreamHandlers !== false) {
       registerChatStreamHandlers();
+      registerLegacyChatStreamTestHandler();
     }
 
     const appId = appRow.id;

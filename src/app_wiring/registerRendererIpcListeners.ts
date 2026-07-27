@@ -7,7 +7,7 @@ import {
   selectedChatIdAtom,
 } from "@/atoms/chatAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import type { ChatStreamManager } from "@/chat_stream/manager";
+import type { ChatStreamInvocationRef, StreamEvent } from "@/chat_stream/state";
 import {
   ipc as defaultIpc,
   type ChatResponseChunk,
@@ -26,6 +26,14 @@ import type { EntityDisposalRegistry } from "@/state_machines/entity_disposal";
 
 export type RendererIpcClient = typeof defaultIpc;
 type JotaiStore = ReturnType<typeof createStore>;
+type ChatStreamRendererFacade = {
+  ensure(chatId: number): { send(event: StreamEvent): void };
+  setPreview(chatId: number, content: string): boolean;
+  notifyStreamRegistered(
+    chatId: number,
+    invocationRef?: ChatStreamInvocationRef,
+  ): void;
+};
 
 const lastQueryInvalidationEpochByClient = new WeakMap<QueryClient, number>();
 const lastEntityDisposalEpochByRegistry = new WeakMap<
@@ -37,7 +45,7 @@ export interface RegisterRendererIpcListenersOptions {
   ipcClient: RendererIpcClient;
   store: JotaiStore;
   queryClient: QueryClient;
-  chatStreamManager: ChatStreamManager;
+  chatStreamManager: ChatStreamRendererFacade;
   entityDisposal: EntityDisposalRegistry;
   onTelemetryEvent?: (payload: TelemetryEventPayload) => void;
 }
@@ -115,7 +123,7 @@ export function registerQueryInvalidationListener(
 
 export function createUserInputChatStreamFacade(
   ipcClient: Pick<RendererIpcClient, "userInput">,
-  chatStreamManager: ChatStreamManager,
+  chatStreamManager: ChatStreamRendererFacade,
 ): UserInputChatStreamFacade {
   return {
     submit: ({ requestId, ...request }) =>
@@ -272,16 +280,10 @@ export function registerRendererIpcListeners({
     ),
   );
 
-  const userInputChatStream = createUserInputChatStreamFacade(
-    ipcClient,
-    chatStreamManager,
-  );
-
   unsubscribes.push(
     getUserInputReadModel({
       store,
       ipcClient,
-      chatStream: userInputChatStream,
     }).start(),
   );
 

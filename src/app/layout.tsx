@@ -17,7 +17,6 @@ import { useAppBlueprintEvents } from "@/hooks/useAppBlueprintEvents";
 import { useTestRunEvents } from "@/hooks/useTestRunEvents";
 import { useZoomShortcuts } from "@/hooks/useZoomShortcuts";
 import { useChatStreamRuntime } from "@/hooks/useChatStream";
-import { useQueuePersistence } from "@/hooks/useQueuePersistence";
 import { useReopenClosedTab } from "@/hooks/useReopenClosedTab";
 import { VersionPreviewProvider } from "@/version_preview/VersionPreviewProvider";
 import {
@@ -32,7 +31,6 @@ import { useIsMac } from "@/hooks/useChatModeToggle";
 import { ReleaseNotesDialog } from "@/components/ReleaseNotesDialog";
 import { ForceCloseDialog } from "@/components/ForceCloseDialog";
 import { SubscriptionStatusBanner } from "@/components/SubscriptionStatusBanner";
-import { useChatStreamManager } from "@/chat_stream/ChatStreamProvider";
 import { ImageGenerationProvider } from "@/image_generation/ImageGenerationProvider";
 import {
   FirstPromptProvider,
@@ -52,27 +50,8 @@ import { usePreviewErrorFacade } from "@/app_wiring/preview_error_facade";
 import { PackageManagerWarningProvider } from "@/package_manager_warnings/PackageManagerWarningProvider";
 
 export default function RootLayout({ children }: { children: ReactNode }) {
-  const chatStreamManager = useChatStreamManager();
   const { streamMessage } = useStreamChat({ hasChatId: false });
   const { settings } = useSettings();
-  const planHandoffChatStream = useMemo(
-    () => ({
-      isIdle: (chatId: number) => chatStreamManager.isIdle(chatId),
-      watchIdle: (chatId: number, callback: () => void) =>
-        chatStreamManager.watchIdle(chatId, callback),
-      submit: (request: {
-        chatId: number;
-        prompt: string;
-        selectedComponents: [];
-        requestedChatMode: "local-agent";
-      }) =>
-        chatStreamManager.ensure(request.chatId).send({
-          type: "submit",
-          request,
-        }),
-    }),
-    [chatStreamManager],
-  );
   const firstPromptChatStream = useMemo<FirstPromptChatStream>(
     () => ({
       submit: (request) =>
@@ -96,7 +75,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                   idSource={uuidIdSource}
                   settleDelayMs={settings?.isTestMode ? 0 : 2_000}
                 >
-                  <PlanHandoffProvider chatStream={planHandoffChatStream}>
+                  <PlanHandoffProvider>
                     <RootLayoutContent>{children}</RootLayoutContent>
                   </PlanHandoffProvider>
                 </FirstPromptProvider>
@@ -169,7 +148,6 @@ function RootLayoutContent({ children }: { children: ReactNode }) {
 
   // Persist queued messages to disk and hydrate them on startup, so queued
   // prompts survive app restarts / crashes.
-  useQueuePersistence();
 
   useEffect(() => {
     const zoomLevel = settings?.zoomLevel ?? DEFAULT_ZOOM_LEVEL;

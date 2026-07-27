@@ -10,6 +10,11 @@ import {
   readPersistedQueue,
   writePersistedQueue,
 } from "../../main/queue_store";
+import { db } from "@/db";
+import { chatQueueEntries, chatQueueState } from "@/db/schema";
+import { asc } from "drizzle-orm";
+import { ChatQueueEntrySchema } from "@/chat_stream/transport";
+import type { PersistedQueue } from "../types/queue";
 
 const logger = log.scope("queue_handlers");
 
@@ -21,8 +26,35 @@ let writeChain: Promise<void> = Promise.resolve();
 
 export function registerQueueHandlers() {
   createTypedHandler(queueContracts.getQueuedPrompts, async () => {
-    // readPersistedQueue self-cleans orphan files for deleted chats.
-    return readPersistedQueue();
+    const durable: PersistedQueue = {};
+    for (const row of db
+      .select({
+        chatId: chatQueueEntries.chatId,
+        payloadJson: chatQueueEntries.payloadJson,
+      })
+      .from(chatQueueEntries)
+      .orderBy(asc(chatQueueEntries.chatId), asc(chatQueueEntries.position))
+      .all()) {
+      const entry = ChatQueueEntrySchema.parse(JSON.parse(row.payloadJson));
+      (durable[String(row.chatId)] ??= []).push({
+        id: entry.itemId,
+        prompt: entry.prompt,
+        attachments: entry.attachments,
+        selectedComponents: entry.selectedComponents,
+        redo: entry.redo,
+        appId: entry.appId,
+        requestedChatMode: entry.requestedChatMode,
+      });
+    }
+    if (
+      Object.keys(durable).length > 0 ||
+      db.select({ chatId: chatQueueState.chatId }).from(chatQueueState).get()
+    ) {
+      return durable;
+    }
+    // Before the startup importer has run, retain read compatibility with the
+    // old files. Production queue authority remains the SQLite aggregate.
+    return readPersistedQueue({ preserveLegacyFiles: true });
   });
 
   // One-way (fire-and-forget) write — see queueSendContracts.setQueuedPrompts.

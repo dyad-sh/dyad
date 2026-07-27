@@ -62,7 +62,10 @@ export function registerWindowInfrastructureHandlers(): void {
           with: {
             messages: {
               columns: rendererMessageColumns,
-              orderBy: (messages, { asc }) => [asc(messages.createdAt)],
+              orderBy: (messages, { asc }) => [
+                asc(messages.createdAt),
+                asc(messages.id),
+              ],
             },
           },
         });

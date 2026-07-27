@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
 
 import { useChatStreamManager } from "@/chat_stream/ChatStreamProvider";
+import type { ChatStreamRemoteSnapshot } from "@/chat_stream/transport";
 import type { StreamState } from "@/chat_stream/state";
 
 import { useSettings } from "./useSettings";
@@ -20,7 +21,7 @@ const IDLE_UNSUBSCRIBE = () => {};
  */
 export function useChatStreamState(
   chatId: number | undefined,
-): StreamState | undefined {
+): ChatStreamRemoteSnapshot | StreamState | undefined {
   const manager = useChatStreamManager();
   const subscribe = useCallback(
     (onStoreChange: () => void) => {

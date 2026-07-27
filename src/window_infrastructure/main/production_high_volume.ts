@@ -37,12 +37,15 @@ export function sendChatChunk(
   sender: WebContents,
   payload: ChatResponseChunk,
 ): void {
-  if (!Number.isInteger(sender.id)) {
+  if (!Number.isInteger(sender.id) || sender.isDestroyed()) {
     safeSend(sender, "chat:response:chunk", payload);
-    return;
+  } else {
+    ensureProducerInterest(sender, {
+      kind: "chat-chunk",
+      chatId: payload.chatId,
+    });
   }
   const interest = { kind: "chat-chunk" as const, chatId: payload.chatId };
-  ensureProducerInterest(sender, interest);
   chatChunkInterests.sendImmediate(interest, payload, "chat:response:chunk");
 }
 

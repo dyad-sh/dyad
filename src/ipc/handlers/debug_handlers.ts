@@ -359,7 +359,10 @@ export function registerDebugHandlers() {
         where: eq(chats.id, chatId),
         with: {
           messages: {
-            orderBy: (messages, { asc }) => [asc(messages.createdAt)],
+            orderBy: (messages, { asc }) => [
+              asc(messages.createdAt),
+              asc(messages.id),
+            ],
           },
         },
       });

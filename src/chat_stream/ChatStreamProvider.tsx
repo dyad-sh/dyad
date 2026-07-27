@@ -4,26 +4,39 @@ import {
   createMachineProvider,
   useRegisterEntityDisposer,
 } from "@/state_machines/react";
-import { ChatStreamManager, type StreamFinishedEvent } from "./manager";
+import {
+  ChatStreamRemoteManager,
+  type StreamFinishedEvent,
+} from "./remote_manager";
+import type { ChatStreamManager } from "./manager";
 
-function useOwnedChatStreamManager(): ChatStreamManager {
+export type AcceptedChatStreamManager =
+  | ChatStreamRemoteManager
+  | ChatStreamManager;
+
+function useOwnedChatStreamManager(): AcceptedChatStreamManager {
   const store = useStore();
-  const [manager] = useState(() => new ChatStreamManager(store));
+  const [manager] = useState(() => new ChatStreamRemoteManager(store));
   return manager;
 }
 
-function useChatStreamMount(manager: ChatStreamManager): void {
+function useChatStreamMount(manager: AcceptedChatStreamManager): void {
   useRegisterEntityDisposer("chat", manager.disposeKey);
 }
 
-const chatStreamProvider = createMachineProvider({
+const chatStreamProvider = createMachineProvider<AcceptedChatStreamManager>({
   name: "ChatStream",
   useOwnedManager: useOwnedChatStreamManager,
   useOnMount: useChatStreamMount,
 });
 
 export const ChatStreamProvider = chatStreamProvider.Provider;
-export const useChatStreamManager = chatStreamProvider.useManager;
+export function useChatStreamManager(): AcceptedChatStreamManager {
+  // Production always constructs the main-process adapter. Accepting the
+  // legacy manager at the provider boundary is limited to cutover test
+  // harnesses, which exercise the unchanged compatibility event surface.
+  return chatStreamProvider.useManager();
+}
 
 /** Subscribe to one-shot terminal stream events without mirroring them into state. */
 export function useStreamFinished(

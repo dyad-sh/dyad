@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import type { ComponentSelection, FileAttachment } from "@/ipc/types";
-import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import { useAtomValue } from "jotai";
 import {
   queuedMessagesByIdAtom,
   queuePausedByIdAtom,
@@ -9,30 +9,15 @@ import {
 import type { Chat } from "@/ipc/types";
 import { useChatStreamManager } from "@/chat_stream/ChatStreamProvider";
 import type { StreamSettledResult } from "@/chat_stream/state";
-import {
-  isStreamActive,
-  selectCanCancel,
-  selectIsCancellationSettling,
-  selectStreamError,
-} from "@/chat_stream/transition";
 import { useChatStreamState } from "@/hooks/useChatStream";
+import { isStreamActive } from "@/chat_stream/transition";
 import { showError } from "@/lib/toast";
 import { useSearch } from "@tanstack/react-router";
 import { validateChatAttachmentFiles } from "@/shared/chatAttachmentLimits";
+import { convertFileAttachmentsToChatAttachments } from "@/lib/chatAttachmentConversion";
 
 export function getRandomNumberId() {
   return Math.floor(Math.random() * 1_000_000_000_000_000);
-}
-
-async function rejectQueuedOwner(
-  item: QueuedMessageItem,
-  reason: string,
-): Promise<void> {
-  if (!item.owner) return;
-  if (!item.onAcceptanceRejected) {
-    throw new Error("Machine-owned queue item has no rejection callback");
-  }
-  await item.onAcceptanceRejected(reason);
 }
 
 /**
@@ -46,11 +31,8 @@ async function rejectQueuedOwner(
 export function useStreamChat({
   hasChatId = true,
 }: { hasChatId?: boolean } = {}) {
-  const [queuedMessagesById, setQueuedMessagesById] = useAtom(
-    queuedMessagesByIdAtom,
-  );
+  const queuedMessagesById = useAtomValue(queuedMessagesByIdAtom);
   const queuePausedById = useAtomValue(queuePausedByIdAtom);
-  const setQueuePausedById = useSetAtom(queuePausedByIdAtom);
   const chatStreamManager = useChatStreamManager();
 
   let chatId: number | undefined;
@@ -58,7 +40,7 @@ export function useStreamChat({
     const { id } = useSearch({ from: "/chat" });
     chatId = id;
   }
-  const streamState = useChatStreamState(chatId) ?? { type: "idle" };
+  const streamState = useChatStreamState(chatId);
 
   const streamMessage = useCallback(
     async ({
@@ -118,7 +100,15 @@ export function useStreamChat({
   );
 
   const cancelStream = useCallback(() => {
-    if (chatId === undefined || !selectCanCancel(streamState)) return;
+    if (
+      chatId === undefined ||
+      !streamState ||
+      ("capabilities" in streamState
+        ? !streamState.capabilities.canCancel
+        : !isStreamActive(streamState))
+    ) {
+      return;
+    }
     chatStreamManager.ensure(chatId).send({ type: "cancel" });
   }, [chatId, chatStreamManager, streamState]);
 
@@ -127,25 +117,13 @@ export function useStreamChat({
   const queueMessage = useCallback(
     (message: Omit<QueuedMessageItem, "id">): boolean => {
       if (chatId === undefined) return false;
-      const newItem: QueuedMessageItem = {
-        ...message,
-        id: crypto.randomUUID(),
-      };
-      setQueuedMessagesById((prev) => {
-        const next = new Map(prev);
-        const existing = prev.get(chatId) ?? [];
-        next.set(chatId, [...existing, newItem]);
-        return next;
+      chatStreamManager.ensure(chatId).send({
+        type: "submit",
+        request: { ...message, chatId },
       });
-      // The render that chose this manual queue path may be stale: the
-      // machine can already be idle after running its terminal queue
-      // dispatch. Poke it after the synchronous atom update so the newly
-      // appended item is not left without a driver. Active machines ignore
-      // the poke and drain normally when they finalize.
-      chatStreamManager.ensure(chatId).send({ type: "queue-poked" });
       return true;
     },
-    [chatId, chatStreamManager, setQueuedMessagesById],
+    [chatId, chatStreamManager],
   );
 
   const updateQueuedMessage = useCallback(
@@ -156,151 +134,87 @@ export function useStreamChat({
       >,
     ) => {
       if (chatId === undefined) return;
-      setQueuedMessagesById((prev) => {
-        const next = new Map(prev);
-        const existing = prev.get(chatId) ?? [];
-        const updated = existing.map((msg) =>
-          msg.id === id && !msg.owner && !msg.userInputRequestId
-            ? { ...msg, ...updates }
-            : msg,
-        );
-        next.set(chatId, updated);
-        return next;
-      });
+      const current = queuedMessagesById
+        .get(chatId)
+        ?.find((message) => message.id === id);
+      if (!current) return;
+      void convertFileAttachmentsToChatAttachments(
+        updates.attachments ?? current.attachments ?? [],
+      )
+        .then((serializedAttachments) =>
+          chatStreamManager.dispatchQueueEvent(chatId, {
+            type: "EDIT_QUEUE_ENTRY",
+            itemId: id,
+            prompt: updates.prompt ?? current.prompt,
+            attachments: serializedAttachments,
+            selectedComponents:
+              updates.selectedComponents ?? current.selectedComponents,
+          }),
+        )
+        .catch(showError);
     },
-    [chatId, setQueuedMessagesById],
+    [chatId, chatStreamManager, queuedMessagesById],
   );
 
   const removeQueuedMessage = useCallback(
     async (id: string) => {
       if (chatId === undefined) return;
-      let claimed:
-        | { item: QueuedMessageItem; originalIndex: number }
-        | undefined;
-      setQueuedMessagesById((prev) => {
-        const existing = prev.get(chatId) ?? [];
-        const originalIndex = existing.findIndex(
-          (message) => message.id === id,
-        );
-        if (originalIndex < 0) return prev;
-        claimed = { item: existing[originalIndex], originalIndex };
-        const remaining = existing.filter((message) => message.id !== id);
-        const next = new Map(prev);
-        if (remaining.length > 0) {
-          next.set(chatId, remaining);
-        } else {
-          next.delete(chatId);
-        }
-        return next;
-      });
-
-      const claimedEntry = claimed;
-      if (!claimedEntry) return;
       try {
-        await rejectQueuedOwner(claimedEntry.item, "removed from queue");
+        await chatStreamManager.dispatchQueueEvent(chatId, {
+          type: "REMOVE_QUEUE_ENTRY",
+          itemId: id,
+        });
       } catch (error) {
         showError(error);
-        setQueuedMessagesById((prev) => {
-          const existing = prev.get(chatId) ?? [];
-          if (existing.some((message) => message.id === claimedEntry.item.id)) {
-            return prev;
-          }
-          const restored = [...existing];
-          restored.splice(
-            Math.min(claimedEntry.originalIndex, restored.length),
-            0,
-            claimedEntry.item,
-          );
-          const next = new Map(prev);
-          next.set(chatId, restored);
-          return next;
-        });
       }
     },
-    [chatId, setQueuedMessagesById],
+    [chatId, chatStreamManager],
   );
 
   const reorderQueuedMessages = useCallback(
     (fromIndex: number, toIndex: number) => {
       if (chatId === undefined) return;
-      setQueuedMessagesById((prev) => {
-        const next = new Map(prev);
-        const existing = [...(prev.get(chatId) ?? [])];
-        if (
-          fromIndex < 0 ||
-          fromIndex >= existing.length ||
-          toIndex < 0 ||
-          toIndex >= existing.length
-        ) {
-          return prev;
-        }
-        const [removed] = existing.splice(fromIndex, 1);
-        existing.splice(toIndex, 0, removed);
-        next.set(chatId, existing);
-        return next;
-      });
+      const itemId = queuedMessagesById.get(chatId)?.[fromIndex]?.id;
+      if (!itemId) return;
+      void chatStreamManager
+        .dispatchQueueEvent(chatId, {
+          type: "REORDER_QUEUE_ENTRY",
+          itemId,
+          toIndex,
+        })
+        .catch(showError);
     },
-    [chatId, setQueuedMessagesById],
+    [chatId, chatStreamManager, queuedMessagesById],
   );
 
   const clearAllQueuedMessages = useCallback(async () => {
     if (chatId === undefined) return;
-    let claimed: Array<{ item: QueuedMessageItem; originalIndex: number }> = [];
-    setQueuedMessagesById((prev) => {
-      const existing = prev.get(chatId);
-      if (!existing?.length) return prev;
-      claimed = existing.map((item, originalIndex) => ({
-        item,
-        originalIndex,
-      }));
-      const next = new Map(prev);
-      next.delete(chatId);
-      return next;
-    });
-    if (claimed.length === 0) return;
-
-    const settlements = await Promise.allSettled(
-      claimed.map(({ item }) => rejectQueuedOwner(item, "queue cleared")),
-    );
-    const failed: Array<{ item: QueuedMessageItem; originalIndex: number }> =
-      [];
-    let firstError: unknown;
-    for (const [index, settlement] of settlements.entries()) {
-      if (settlement.status === "rejected") {
-        failed.push(claimed[index]);
-        firstError ??= settlement.reason;
-      }
+    try {
+      await chatStreamManager.dispatchQueueEvent(chatId, {
+        type: "CLEAR_QUEUE",
+      });
+    } catch (error) {
+      showError(error);
     }
-    if (firstError !== undefined) showError(firstError);
-    if (failed.length === 0) return;
-
-    setQueuedMessagesById((prev) => {
-      const restored = [...(prev.get(chatId) ?? [])];
-      for (const entry of failed) {
-        if (restored.some((message) => message.id === entry.item.id)) continue;
-        restored.splice(
-          Math.min(entry.originalIndex, restored.length),
-          0,
-          entry.item,
-        );
-      }
-      const next = new Map(prev);
-      next.set(chatId, restored);
-      return next;
-    });
-  }, [chatId, setQueuedMessagesById]);
+  }, [chatId, chatStreamManager]);
 
   return {
     streamMessage,
     cancelStream,
     isStreaming:
-      hasChatId && chatId !== undefined ? isStreamActive(streamState) : false,
+      hasChatId && chatId !== undefined
+        ? !!streamState && isStreamActive(streamState)
+        : false,
     isCancellationSettling:
       hasChatId && chatId !== undefined
-        ? selectIsCancellationSettling(streamState)
+        ? streamState?.phase === "cancelling" ||
+          (streamState?.phase === "finalizing" &&
+            streamState.lastCompletion?.outcome === "cancelled")
         : false,
     error:
-      hasChatId && chatId !== undefined ? selectStreamError(streamState) : null,
+      hasChatId && chatId !== undefined && streamState && "error" in streamState
+        ? (streamState.error ?? null)
+        : null,
     setError: (value: string | null) => {
       if (chatId === undefined || value === null) return;
       chatStreamManager.ensure(chatId).send({
@@ -324,31 +238,21 @@ export function useStreamChat({
         : false,
     pauseQueue: useCallback(() => {
       if (chatId === undefined) return;
-      setQueuePausedById((prev) => {
-        const next = new Map(prev);
-        next.set(chatId, true);
-        return next;
-      });
-    }, [chatId, setQueuePausedById]),
+      void chatStreamManager
+        .dispatchQueueEvent(chatId, { type: "PAUSE_QUEUE" })
+        .catch(showError);
+    }, [chatId, chatStreamManager]),
     clearPauseOnly: useCallback(() => {
       if (chatId === undefined) return;
-      setQueuePausedById((prev) => {
-        const next = new Map(prev);
-        next.set(chatId, false);
-        return next;
-      });
-    }, [chatId, setQueuePausedById]),
+      void chatStreamManager
+        .dispatchQueueEvent(chatId, { type: "RESUME_QUEUE" })
+        .catch(showError);
+    }, [chatId, chatStreamManager]),
     resumeQueue: useCallback(() => {
       if (chatId === undefined) return;
-      setQueuePausedById((prev) => {
-        const next = new Map(prev);
-        next.set(chatId, false);
-        return next;
-      });
-      // Poke the machine: if it's idle (or errored) it emits a
-      // dispatch-next-queued command; if a stream is active the poke is
-      // ignored and the queue drains on the next finalize.
-      chatStreamManager.ensure(chatId).send({ type: "queue-poked" });
-    }, [chatId, chatStreamManager, setQueuePausedById]),
+      void chatStreamManager
+        .dispatchQueueEvent(chatId, { type: "RESUME_QUEUE" })
+        .catch(showError);
+    }, [chatId, chatStreamManager]),
   };
 }

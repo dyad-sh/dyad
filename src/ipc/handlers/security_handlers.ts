@@ -36,7 +36,7 @@ export function registerSecurityHandlers() {
             like(messages.content, "%<dyad-security-finding%"),
           ),
         )
-        .orderBy(desc(messages.createdAt))
+        .orderBy(desc(messages.createdAt), desc(messages.id))
         .limit(1);
 
       if (result.length === 0) {

@@ -354,6 +354,14 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
 - If retries may replace an input payload, carry operation facts established
   by earlier transitions (such as create-vs-update) explicitly in state. Do not
   re-derive UI or analytics semantics from the replacement payload.
+- A remote renderer adapter must preserve the legacy terminal side-effect
+  contract as well as lifecycle state: query invalidations, authoritative
+  message refresh, preview-open policy, reload/capture requests, and settlement
+  callbacks all belong in the completion projection.
+- `useSyncExternalStore` snapshots must be referentially stable between store
+  changes. If an adapter overlays optimistic admission on a remote snapshot,
+  cache the projected object by base snapshot and operation identity instead of
+  allocating a new object from every `getSnapshot()` call.
 
 ## Persistence and hydration
 

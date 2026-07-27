@@ -110,8 +110,7 @@ Two implementation consequences are mandatory:
                         query invalidation remains required
 ```
 
-\* `chat_stream` pending its feasibility study (below) — its _placement_
-is decided (main), its _design_ is not yet.
+\* `chat_stream` completed its feasibility study and is moving to main in C3.
 
 Placement table (final intent; per-machine moves still gate on their
 pilot/study):
@@ -125,8 +124,8 @@ pilot/study):
 | `github_ops`       | main                               | Git mutation/recovery is per-app, not per-window; mid-rebase must survive window close                                                                               |
 | `version_preview`  | main                               | Checkout/branch recovery is per-app; mid-checkout must survive window close                                                                                          |
 | `image_generation` | main                               | Jobs are per-chat, visible from any window                                                                                                                           |
-| `chat_stream`      | main, pending study                | Stream lifecycle is per-chat; admission already main-owned; design study required                                                                                    |
-| `plan_handoff`     | main, pending study                | Cross-chat workflow; rides the chat_stream decision                                                                                                                  |
+| `chat_stream`      | main, C3 cutover complete          | Stream lifecycle is per-chat; main owns durable intent admission, queue mutation, lifecycle, and completion receipts                                                 |
+| `plan_handoff`     | main, C3 cutover complete          | Durable cross-chat workflow with persisted checkpoints and idempotent implementation-turn admission                                                                  |
 | `preview_iframe`   | renderer, per-window               | Owns a window's DOM/iframe identity                                                                                                                                  |
 | `screenshot`       | renderer, per-window               | Captures a window's iframe                                                                                                                                           |
 | `voice_to_text`    | renderer, per-window               | Owns a window's media resources                                                                                                                                      |
@@ -472,10 +471,9 @@ protective comments** — this removes the only known synchronous
 re-entrancy vector and must not wait on the storage study. No new stores
 are built; readers convert from atom to snapshot source.
 
-**Design gate G1 — Chat-stream/main feasibility study: starts now, in
-parallel with A2–A5; gates A6b only.** Assign an owner when this plan is
-adopted. Its inputs (recorded decision 5, the remote intent policy, the
-appendix reader inventory) all exist. The study decides:
+**Design gate G1 — Chat-stream/main feasibility study: accepted
+2026-07-27 (GO for C3).** Its inputs (recorded decision 5, the remote
+intent policy, the appendix reader inventory) all exist. The study decided:
 
 - authoritative owner of optimistic versus durably accepted messages;
 - lifecycle snapshot versus high-frequency chunk transport;
@@ -492,7 +490,8 @@ It must produce a serializability inventory, target state/read-model schemas,
 acceptance transaction, migration sequence, and deletion budget. Do not build
 temporary “revision-free read-model-shaped” renderer stores in anticipation.
 
-**A6b — Chat storage implementation: blocked on G1.**
+**A6b — Chat storage implementation: folded into the C3 cutover and
+implemented.**
 
 Messages, queue pair, and planState split. Only the study-approved design
 proceeds. The appendix's proposed renderer `MessagesStore`, `QueueStore`,
@@ -758,13 +757,21 @@ for stale cancellation, post-persistence invalidation across reload, OAuth
 configuration mutation/deletion, stale-write fencing, and explicit shutdown
 disposal.
 
-**C3 — Chat-stream and plan-handoff execution.**
+**C3 — Chat-stream and plan-handoff execution: cutover complete
+(`c3-chat-main-authority`); trailing deletion PR pending.**
 
 Implement the G1 design only after the app-run transport proves remote
 hydration and multi-window dispatch. Preserve existing batched chunk channels;
 snapshots carry lifecycle, not stream bytes. This wave owns durable acceptance,
 editable queue semantics, notification routing, window reload, and
 window-close behavior as one reviewed protocol.
+
+The cutover PR moves both actors to the main process, stores immutable chat
+intents and plan-handoff checkpoints in SQLite, makes queue mutations
+revision-conditional, routes plan presentation through `WindowRegistry`, and
+keeps the existing keyed chunk fan-out. Renderer controllers, the legacy queue
+file writer, and superseded projection atoms remain only as compile-time
+adapters for the immediately following deletion PR required by Phase D.
 
 **C4 — Multi-window product surface.**
 

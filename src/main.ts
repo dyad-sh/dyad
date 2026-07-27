@@ -15,6 +15,7 @@ import { randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { registerIpcHandlers } from "./ipc/ipc_host";
+import { migrateLegacyChatQueues } from "./chat_stream/legacy_migration";
 import dotenv from "dotenv";
 // @ts-ignore
 import started from "electron-squirrel-startup";
@@ -496,6 +497,7 @@ export async function onReady() {
   }
 
   await onFirstRunMaybe(settings);
+  await migrateLegacyChatQueues();
   createWindow();
   createApplicationMenu();
 

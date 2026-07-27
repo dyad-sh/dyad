@@ -24,6 +24,15 @@ export const PlanExitSchema = z.object({
 
 export type PlanExitPayload = z.infer<typeof PlanExitSchema>;
 
+export const PlanHandoffPresentationSchema = z
+  .object({
+    handoffId: z.string().min(1),
+    sourceChatId: z.number().int().positive(),
+    targetChatId: z.number().int().positive(),
+    appId: z.number().int().positive(),
+  })
+  .strict();
+
 export const PlanSchema = z.object({
   id: z.string(),
   appId: z.number(),
@@ -72,6 +81,10 @@ export const planEvents = {
   exit: defineEvent({
     channel: "plan:exit",
     payload: PlanExitSchema,
+  }),
+  handoffPresentation: defineEvent({
+    channel: "plan:handoff-presentation",
+    payload: PlanHandoffPresentationSchema,
   }),
 } as const;
 

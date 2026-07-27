@@ -911,3 +911,35 @@ handoff, and plan-handoff checkpoints as one protocol review. If C3 cannot
 atomically couple queue claim with message acceptance, or cannot remove
 callback-bearing renderer authority, the implementation is **no-go** and A6b
 must stop at the host-independent reader/document subset above.
+
+## C3 implementation postmortem
+
+Implementation began on 2026-07-27 after the remote actor pilot and the
+host-independent A6b subset landed. The cutover follows the study's ownership
+decision: `chat_stream` and `plan_handoff` are main-hosted actors, streamed
+bytes continue over the existing keyed high-volume channel, chat intent
+acceptance is transactionally coupled to the user-message insert, and queue
+mutations use an authoritative revision.
+
+The implementation diverged from the proposed shape in four review-visible
+ways:
+
+1. The bounded completion receipt is the actor snapshot's
+   `lastCompletion`, not a separately addressed completion projection. No
+   consumer required history beyond the most recent terminal commit, so a
+   second read model would have introduced another synchronization boundary.
+2. Queue snapshots temporarily include serialized attachment payloads because
+   the existing editable-queue facade needs them to reconstruct
+   `FileAttachment` values. Moving attachment bytes behind durable references
+   is deferred until the attachment store has a stable cross-process identity.
+3. Plan recovery replays the idempotent `savePlanToDisk` step from a persisted
+   phase rather than persisting a separate plan-slug checkpoint. Target-chat
+   identity and implementation intent identity remain durable and idempotent.
+4. Legacy `.dyad/queue` files are imported once and intentionally retained
+   during the cutover. SQLite stores the migration marker; removal of the old
+   reader/writer and files belongs to the separate trailing deletion PR.
+
+The renderer controller, queue persistence hook, and obsolete atom projections
+remain only as adapters for existing callers/tests in the cutover diff. They
+are not production command authorities and are the explicit deletion budget
+for the immediately following Phase D PR.

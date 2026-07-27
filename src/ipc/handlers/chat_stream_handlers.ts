@@ -28,16 +28,17 @@ import {
 } from "../../prompts/system_prompt";
 import { detectFrameworkType } from "../utils/framework_utils";
 import { getThemePromptById } from "../utils/theme_utils";
-import { registerTrustedIpcHandler } from "./trusted_handle";
 import {
   getSupabaseAvailableSystemPrompt,
   SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT,
 } from "../../prompts/supabase_prompt";
+import { registerTrustedIpcHandler } from "./trusted_handle";
 import { buildNeonPromptForApp } from "../../neon_admin/neon_prompt_context";
 import { getDyadAppPath } from "../../paths/paths";
 import { buildDyadMediaUrl } from "../../lib/dyadMediaUrl";
 import type { ChatStreamParams } from "@/ipc/types";
 import type { ChatStreamInvocationRef } from "@/chat_stream/state";
+import type { SerializableChatTurnIntent } from "@/chat_stream/transport";
 import type {
   ChatStreamChunkPayload,
   ChatStreamEndPayload,
@@ -170,6 +171,98 @@ function createEmptyTextStream(): AsyncIterableStream<TextStreamPart<ToolSet>> {
 }
 
 const logger = log.scope("chat_stream_handlers");
+
+export interface ChatStreamExecutionObserver {
+  intent: SerializableChatTurnIntent;
+  sessionQueued: boolean;
+  onAccepted?(acceptedMessageId: number): void;
+  onEnd?(response: ChatStreamEndPayload): void;
+  onError?(error: string): void;
+}
+
+type InternalChatStreamHandler = (
+  event: IpcMainInvokeEvent,
+  request: ChatStreamParams,
+) => Promise<number | "error" | undefined>;
+
+let internalChatStreamHandler: InternalChatStreamHandler | undefined;
+
+/**
+ * Compatibility seam for the in-process Vitest harness. Production renderers
+ * must dispatch through the remote chat actor and never receive this endpoint.
+ */
+export function registerLegacyChatStreamTestHandler(): void {
+  if (!process.env.VITEST) {
+    throw new Error("Legacy chat stream IPC is test-only");
+  }
+  registerTrustedIpcHandler("chat:stream", async (event, request) => {
+    if (!internalChatStreamHandler) {
+      throw new Error("Chat stream handlers have not been registered");
+    }
+    return internalChatStreamHandler(
+      event,
+      ChatStreamParamsSchema.parse(request),
+    );
+  });
+}
+
+export async function executeChatStreamFromActor(
+  sender: WebContents,
+  request: ChatStreamParams,
+  observer: ChatStreamExecutionObserver,
+): Promise<number | "error"> {
+  if (!internalChatStreamHandler) {
+    throw new Error("Chat stream handlers have not been registered");
+  }
+  executionObservers.set(
+    request.intentId ?? request.invocationRef?.operationId ?? "",
+    observer,
+  );
+  let terminalObserved = false;
+  const observedSender = new Proxy(sender, {
+    get(target, property, receiver) {
+      if (property === "send") {
+        return (channel: string, payload: unknown) => {
+          target.send(channel, payload);
+          if (terminalObserved) return;
+          if (channel === "chat:response:end") {
+            terminalObserved = true;
+            observer.onEnd?.(payload as ChatStreamEndPayload);
+          } else if (channel === "chat:response:error") {
+            terminalObserved = true;
+            observer.onError?.(
+              (payload as ChatStreamErrorPayload).error ?? "Chat stream failed",
+            );
+          }
+        };
+      }
+      const value = Reflect.get(target, property, receiver);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+  try {
+    return (
+      (await internalChatStreamHandler(
+        { sender: observedSender } as IpcMainInvokeEvent,
+        request,
+      )) ?? "error"
+    );
+  } finally {
+    executionObservers.delete(
+      request.intentId ?? request.invocationRef?.operationId ?? "",
+    );
+  }
+}
+
+const executionObservers = new Map<string, ChatStreamExecutionObserver>();
+
+function executionObserver(
+  request: ChatStreamParams,
+): ChatStreamExecutionObserver | undefined {
+  return executionObservers.get(
+    request.intentId ?? request.invocationRef?.operationId ?? "",
+  );
+}
 
 // MODEL-GROUNDED REGION: tracking/completion abstraction. Keep in sync with
 // src/chat_stream/main_model.ts and its co-simulation suite.
@@ -651,7 +744,10 @@ export function registerChatStreamHandlers() {
           where: eq(chats.id, req.chatId),
           with: {
             messages: {
-              orderBy: (messages, { asc }) => [asc(messages.createdAt)],
+              orderBy: (messages, { asc }) => [
+                asc(messages.createdAt),
+                asc(messages.id),
+              ],
             },
             app: true, // Include app information
           },
@@ -1105,8 +1201,14 @@ ${componentSnippet}
           displayUserPrompt ??
           defaultAiUserPrompt,
         userInputRequestId: req.userInputRequestId,
+        chatTurnIntentId: req.intentId,
+        chatTurnIntent: executionObserver(req)?.intent,
+        sessionQueued: executionObserver(req)?.sessionQueued,
       });
       mutatedPersistedChat = true;
+      if (acceptedTurn.userMessageId !== null) {
+        executionObserver(req)?.onAccepted?.(acceptedTurn.userMessageId);
+      }
 
       if (acceptedTurn.userMessageId === null) {
         // A renderer replayed a continuation after main had already accepted
@@ -1120,12 +1222,13 @@ ${componentSnippet}
           streamId: req.streamId,
           acceptedUserInputRequestId: req.userInputRequestId,
         } satisfies ChatStreamChunkPayload);
-        safeSend(event.sender, "chat:response:end", {
+        const terminalResponse = {
           chatId: req.chatId,
           invocationRef: req.invocationRef,
           streamId: req.streamId,
           updatedFiles: false,
-        } satisfies ChatStreamEndPayload);
+        } satisfies ChatStreamEndPayload;
+        safeSend(event.sender, "chat:response:end", terminalResponse);
         return req.chatId;
       }
 
@@ -1209,7 +1312,10 @@ ${componentSnippet}
         where: eq(chats.id, req.chatId),
         with: {
           messages: {
-            orderBy: (messages, { asc }) => [asc(messages.createdAt)],
+            orderBy: (messages, { asc }) => [
+              asc(messages.createdAt),
+              asc(messages.id),
+            ],
           },
           app: true, // Include app information
         },
@@ -1685,7 +1791,10 @@ This conversation includes one or more image attachments. When the user uploads 
             where: eq(chats.id, parseInt(req.prompt.split("=")[1])),
             with: {
               messages: {
-                orderBy: (messages, { asc }) => [asc(messages.createdAt)],
+                orderBy: (messages, { asc }) => [
+                  asc(messages.createdAt),
+                  asc(messages.id),
+                ],
               },
             },
           });
@@ -2277,7 +2386,10 @@ This conversation includes one or more image attachments. When the user uploads 
             where: eq(chats.id, req.chatId),
             with: {
               messages: {
-                orderBy: (messages, { asc }) => [asc(messages.createdAt)],
+                orderBy: (messages, { asc }) => [
+                  asc(messages.createdAt),
+                  asc(messages.id),
+                ],
               },
             },
           });
@@ -2300,7 +2412,7 @@ This conversation includes one or more image attachments. When the user uploads 
           }
 
           // Signal that the stream has completed
-          safeSend(event.sender, "chat:response:end", {
+          const terminalResponse = {
             chatId: req.chatId,
             invocationRef: req.invocationRef,
             streamId: req.streamId,
@@ -2309,15 +2421,17 @@ This conversation includes one or more image attachments. When the user uploads 
             extraFilesError: status.extraFilesError,
             warningMessages: status.warningMessages,
             chatSummary,
-          } satisfies ChatStreamEndPayload);
+          } satisfies ChatStreamEndPayload;
+          safeSend(event.sender, "chat:response:end", terminalResponse);
         } else {
-          safeSend(event.sender, "chat:response:end", {
+          const terminalResponse = {
             chatId: req.chatId,
             invocationRef: req.invocationRef,
             streamId: req.streamId,
             updatedFiles: false,
             chatSummary,
-          } satisfies ChatStreamEndPayload);
+          } satisfies ChatStreamEndPayload;
+          safeSend(event.sender, "chat:response:end", terminalResponse);
         }
       }
 
@@ -2327,11 +2441,12 @@ This conversation includes one or more image attachments. When the user uploads 
     } catch (error) {
       logger.error("Error calling LLM:", error);
       const errorMessage = isDyadError(error) ? error.message : String(error);
+      const rendererError = `Sorry, there was an error processing your request: ${errorMessage}`;
       safeSend(event.sender, "chat:response:error", {
         chatId: req.chatId,
         invocationRef: req.invocationRef,
         streamId: req.streamId,
-        error: `Sorry, there was an error processing your request: ${errorMessage}`,
+        error: rendererError,
       } satisfies ChatStreamErrorPayload);
 
       return "error";
@@ -2386,7 +2501,7 @@ This conversation includes one or more image attachments. When the user uploads 
       removeTrackedValue(streamCompletions, req.chatId, completion);
     }
   };
-  registerTrustedIpcHandler("chat:stream", chatStreamHandler);
+  internalChatStreamHandler = chatStreamHandler;
 
   // Handler to cancel an ongoing stream
   createTypedHandler(chatContracts.cancelStream, async (event, chatId) => {

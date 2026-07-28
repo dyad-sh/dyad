@@ -391,6 +391,51 @@ describe("VersionPreviewProvider", () => {
     );
   });
 
+  it("closes local presentation after a restore settles closed", async () => {
+    getDefaultStore().set(selectedAppIdAtom, 1);
+    const queryClient = new QueryClient();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <VersionPreviewProvider>
+          <Probe />
+        </VersionPreviewProvider>
+      </QueryClientProvider>,
+    );
+    fireEvent.click(screen.getByTestId("probe"));
+    await waitFor(() =>
+      expect(screen.getByTestId("probe").getAttribute("data-visible")).toBe(
+        "true",
+      ),
+    );
+
+    act(() => {
+      remoteState = {
+        type: "restoring",
+        fallback: "browsing",
+        session: {
+          appId: 1,
+          originBranch: "main",
+          targetVersionId: "abc123",
+          checkedOutVersionId: null,
+          exitIntent: { type: "none" },
+          selectedDiffFile: null,
+          isDiffVisible: false,
+        },
+      };
+      actorListeners.forEach((listener) => listener());
+    });
+    act(() => {
+      remoteState = CLOSED_STATE;
+      actorListeners.forEach((listener) => listener());
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("probe").getAttribute("data-visible")).toBe(
+        "false",
+      ),
+    );
+  });
+
   it("resyncs a rejected recovery retry and surfaces terminal rejection", async () => {
     getDefaultStore().set(selectedAppIdAtom, 1);
     remoteState = {

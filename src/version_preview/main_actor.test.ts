@@ -367,6 +367,42 @@ describe("version_preview main actor", () => {
     }
   });
 
+  it("publishes an origin-resolution error before releasing its initiator", async () => {
+    service.resolveOriginBranch.mockResolvedValue({ branch: null });
+    const presentationOrder: string[] = [];
+    presentation.publishError.mockImplementationOnce(() => {
+      presentationOrder.push("publish-error");
+    });
+    presentation.forget.mockImplementation((operationId: string) => {
+      if (operationId === "preview-1") presentationOrder.push("forget");
+    });
+    const harness = createHarness();
+    await harness.actorA.resync();
+
+    try {
+      await harness.actorA.dispatch({
+        type: "SELECT_VERSION",
+        versionId: "abc123",
+        operationId: "preview-1",
+      });
+      await flush();
+
+      expect(presentation.publishError).toHaveBeenCalledWith(
+        7,
+        "preview-1",
+        expect.stringMatching(/current Git branch/i),
+      );
+      expect(presentationOrder).toEqual(["publish-error", "forget"]);
+      expect(harness.actorA.getSnapshot().state.type).toBe("browsing");
+    } finally {
+      harness.releaseA();
+      harness.releaseB();
+      harness.clientA.dispose();
+      harness.clientB.dispose();
+      harness.transport.dispose();
+    }
+  });
+
   it("reconciles an interrupted persisted checkout against repository truth", async () => {
     persistence.load.mockReturnValue({
       type: "checking-out",

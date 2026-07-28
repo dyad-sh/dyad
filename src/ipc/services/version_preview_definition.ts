@@ -439,11 +439,15 @@ function createCommandRunner(
       }
       case "notify-error":
         if (invocationRef) {
-          versionPreviewPresentationService.publishError(
-            appId,
-            invocationRef.operationId,
-            command.message,
-          );
+          try {
+            versionPreviewPresentationService.publishError(
+              appId,
+              invocationRef.operationId,
+              command.message,
+            );
+          } finally {
+            versionPreviewPresentationService.forget(invocationRef.operationId);
+          }
         }
         return;
       case "notify-recovery":
@@ -514,7 +518,7 @@ export const versionPreviewDefinition: Definition = {
     return runner;
   },
   createObserver: (context) => ({
-    onTransitionApplied: ({ previous, state, event }) => {
+    onTransitionApplied: ({ previous, state, event, commands }) => {
       versionPreviewPersistence.schedule(context.key.appId, state.state);
       if (state.state.type === "closed") {
         versionPreviewWindowInterestService.clearApp(context.key.appId);
@@ -530,7 +534,12 @@ export const versionPreviewDefinition: Definition = {
       }
       if (
         previousOperationId !== null &&
-        previousOperationId !== activeOperationId
+        previousOperationId !== activeOperationId &&
+        !commands.some(
+          ({ command, invocationRef }) =>
+            command.type === "notify-error" &&
+            invocationRef?.operationId === previousOperationId,
+        )
       ) {
         versionPreviewPresentationService.forget(previousOperationId);
       }

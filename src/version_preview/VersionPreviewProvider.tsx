@@ -229,7 +229,9 @@ export function VersionPreviewProvider({ children }: PropsWithChildren) {
         }
         if (
           state.type === "closed" &&
-          (previousStateType === "switching-branch" || restoredPresentation)
+          (previousStateType === "restoring" ||
+            previousStateType === "switching-branch" ||
+            restoredPresentation)
         ) {
           presentation.send(appId, { type: "CLOSE" });
           restoredPresentation = false;

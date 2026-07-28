@@ -182,7 +182,7 @@ describe("chat stream protocol drift tripwire", () => {
 
   it("pins the sole cancelled-end sender and proves its mutant trips", () => {
     expect(() => assertSoleCancelledSender(HANDLER_SOURCE)).not.toThrow();
-    const mutant = `const unrelated = { wasCancelled: true };\n${replaceOnce(
+    const mutant = `const unrelated = { wasCancelled: true };\n${replaceLast(
       HANDLER_SOURCE,
       "wasCancelled: true,",
       "wasCancelled: false,",

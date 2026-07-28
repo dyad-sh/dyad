@@ -25,7 +25,7 @@ test("opens an app in a second product window and survives closing the initiator
   await po.page.getByRole("menuitem", { name: "Open in New Window" }).click();
 
   const secondWindow = await secondWindowPromise;
-  await secondWindow.waitForLoadState("domcontentloaded");
+  await secondWindow.waitForLoadState("load");
   await expect(secondWindow).toHaveURL(/app-details/, {
     timeout: Timeout.MEDIUM,
   });

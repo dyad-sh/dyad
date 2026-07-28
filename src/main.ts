@@ -857,10 +857,15 @@ const createWindow = ({
       },
     };
   });
-  browserWindow.webContents.on("did-start-loading", () => {
-    deepLinkWindowReadiness.markNotReady(browserWindow);
-    crashRecoveryWindowReadiness.markNotReady(browserWindow);
-  });
+  browserWindow.webContents.on(
+    "did-start-navigation",
+    (_event, _url, isInPlace, isMainFrame) => {
+      if (!isMainFrame || isInPlace) return;
+
+      deepLinkWindowReadiness.markNotReady(browserWindow);
+      crashRecoveryWindowReadiness.markNotReady(browserWindow);
+    },
+  );
 
   // and load the index.html of the app.
   let initialLoad: Promise<void>;

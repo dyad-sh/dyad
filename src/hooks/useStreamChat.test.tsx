@@ -3,6 +3,10 @@ import { Provider } from "jotai";
 import type { PropsWithChildren } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useStreamChat } from "./useStreamChat";
+import {
+  CHAT_PROMPT_LENGTH_LIMIT_MESSAGE,
+  MAX_CHAT_PROMPT_CHARS,
+} from "@/shared/chatAttachmentLimits";
 
 const CHAT_ID = 42;
 
@@ -17,6 +21,7 @@ const mocks = vi.hoisted(() => ({
       error: null,
       queue: [],
       queuePaused: false,
+      queueRevision: 7,
     },
   } as {
     current: {
@@ -30,6 +35,7 @@ const mocks = vi.hoisted(() => ({
         selectedComponents?: [];
       }>;
       queuePaused: boolean;
+      queueRevision: number;
     };
   },
 }));
@@ -103,26 +109,92 @@ describe("useStreamChat main-owned queue", () => {
     });
 
     await waitFor(() => {
-      expect(mocks.dispatchQueueEvent).toHaveBeenCalledWith(CHAT_ID, {
-        type: "EDIT_QUEUE_ENTRY",
+      expect(mocks.dispatchQueueEvent).toHaveBeenCalledWith(
+        CHAT_ID,
+        {
+          type: "EDIT_QUEUE_ENTRY",
+          itemId: "first",
+          prompt: "Changed",
+          attachments: [],
+          selectedComponents: undefined,
+        },
+        7,
+      );
+    });
+    expect(mocks.dispatchQueueEvent).toHaveBeenCalledWith(
+      CHAT_ID,
+      {
+        type: "REORDER_QUEUE_ENTRY",
         itemId: "first",
-        prompt: "Changed",
-        attachments: [],
-        selectedComponents: undefined,
-      });
+        toIndex: 1,
+      },
+      7,
+    );
+    expect(mocks.dispatchQueueEvent).toHaveBeenCalledWith(
+      CHAT_ID,
+      {
+        type: "REMOVE_QUEUE_ENTRY",
+        itemId: "second",
+      },
+      7,
+    );
+    expect(mocks.dispatchQueueEvent).toHaveBeenCalledWith(
+      CHAT_ID,
+      {
+        type: "CLEAR_QUEUE",
+      },
+      7,
+    );
+  });
+
+  it("uses the rendered queue revision for pause and resume mutations", () => {
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useStreamChat(), { wrapper: Wrapper });
+
+    act(() => {
+      result.current.pauseQueue();
+      result.current.clearPauseOnly();
+      result.current.resumeQueue();
     });
-    expect(mocks.dispatchQueueEvent).toHaveBeenCalledWith(CHAT_ID, {
-      type: "REORDER_QUEUE_ENTRY",
-      itemId: "first",
-      toIndex: 1,
-    });
-    expect(mocks.dispatchQueueEvent).toHaveBeenCalledWith(CHAT_ID, {
-      type: "REMOVE_QUEUE_ENTRY",
-      itemId: "second",
-    });
-    expect(mocks.dispatchQueueEvent).toHaveBeenCalledWith(CHAT_ID, {
-      type: "CLEAR_QUEUE",
-    });
+
+    expect(mocks.dispatchQueueEvent).toHaveBeenNthCalledWith(
+      1,
+      CHAT_ID,
+      { type: "PAUSE_QUEUE" },
+      7,
+    );
+    expect(mocks.dispatchQueueEvent).toHaveBeenNthCalledWith(
+      2,
+      CHAT_ID,
+      { type: "RESUME_QUEUE" },
+      7,
+    );
+    expect(mocks.dispatchQueueEvent).toHaveBeenNthCalledWith(
+      3,
+      CHAT_ID,
+      { type: "RESUME_QUEUE" },
+      7,
+    );
+  });
+
+  it("rejects oversized prompts before submitting them to the actor", async () => {
+    const onSettled = vi.fn();
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useStreamChat(), { wrapper: Wrapper });
+
+    await act(() =>
+      result.current.streamMessage({
+        chatId: CHAT_ID,
+        prompt: "a".repeat(MAX_CHAT_PROMPT_CHARS + 1),
+        onSettled,
+      }),
+    );
+
+    expect(mocks.send).not.toHaveBeenCalled();
+    expect(mocks.showError).toHaveBeenCalledExactlyOnceWith(
+      CHAT_PROMPT_LENGTH_LIMIT_MESSAGE,
+    );
+    expect(onSettled).toHaveBeenCalledExactlyOnceWith({ success: false });
   });
 
   it("surfaces authoritative queue rejection", async () => {
@@ -163,6 +235,7 @@ describe("useStreamChat lifecycle intents", () => {
       error: null,
       queue: [],
       queuePaused: false,
+      queueRevision: 7,
     };
   });
 
@@ -181,6 +254,7 @@ describe("useStreamChat lifecycle intents", () => {
       error: null,
       queue: [],
       queuePaused: false,
+      queueRevision: 7,
     };
     rerender();
     act(() => result.current.cancelStream());

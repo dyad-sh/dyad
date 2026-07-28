@@ -366,6 +366,7 @@ export interface HybridChatHarness extends ChatFlowHarness {
    * scenario expects Send to stay disabled, e.g. while a proposal is pending.
    */
   setChatInputValue: (text: string, opts?: MountOptions) => void;
+  getChatInputValue: (chatId: number) => string;
 
   /**
    * Seed the real ChatInput attachment atom with browser File objects, matching
@@ -1202,6 +1203,8 @@ export async function setupHybridChatHarness(
         store.set(chatInputValuesByIdAtom, next);
       });
     };
+    const getChatInputValue = (chatId: number) =>
+      getActiveStore().get(chatInputValuesByIdAtom).get(chatId) ?? "";
 
     const typeInChat = async (
       text: string,
@@ -1675,6 +1678,7 @@ export async function setupHybridChatHarness(
       confirmDialog,
       setSwitch,
       setChatInputValue: seedChatInput,
+      getChatInputValue,
       setChatAttachments,
       setSelectedComponents,
       typeInChat,

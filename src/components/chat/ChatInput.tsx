@@ -113,6 +113,10 @@ import { getUserInputReadModel } from "@/user_input/read_model";
 import { usePendingToolConsents } from "@/user_input/hooks";
 import type { PendingToolConsent } from "@/user_input/selectors";
 import { useSendPreviewIframeEvent } from "@/preview_iframe/usePreviewIframe";
+import {
+  CHAT_PROMPT_LENGTH_LIMIT_MESSAGE,
+  MAX_CHAT_PROMPT_CHARS,
+} from "@/shared/chatAttachmentLimits";
 
 const showTokenBarAtom = atom(false);
 
@@ -550,6 +554,11 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         ? `${inputValue} ${imageMentions}`
         : inputValue
       : imageMentions;
+
+    if (promptWithImages.length > MAX_CHAT_PROMPT_CHARS) {
+      showErrorToast(CHAT_PROMPT_LENGTH_LIMIT_MESSAGE);
+      return;
+    }
 
     // Dismiss image jobs that were auto-added
     if (visibleSuccessfulImageJobs.length > 0) {

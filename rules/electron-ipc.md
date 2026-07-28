@@ -74,7 +74,14 @@ ipc.chatStream.start(params, { onChunk, onEnd, onError });
   idempotency insert, implicit-mode latch, and renderer acceptance event.
   Otherwise a rejected request leaves durable state and replays as accepted
   even though no model turn ran.
-- Queue mutations must go through the main actor's revisioned events. Do not add renderer-owned queue atoms or full-snapshot queue persistence.
+- Queue mutations must go through the main actor's revisioned events. Pass the
+  revision from the exact snapshot that rendered the action; falling back to a
+  newer client snapshot can accept stale clear/edit/reorder intent against
+  prompts the user never saw. Do not add renderer-owned queue atoms or
+  full-snapshot queue persistence.
+- Mirror bounded chat-prompt validation in the renderer before clearing the
+  composer. A main-only schema rejection otherwise discards the user's draft
+  before they can shorten it.
 - Terminal observation and cleanup belong to the main actor and must not depend on renderer liveness. Renderer callbacks are window-local receipts only.
 - The remote-machine transport rejects dispatch envelopes above 256 KiB before
   running the event codec and reports `invalid-event`. If a bounded domain

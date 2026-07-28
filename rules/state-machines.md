@@ -484,6 +484,8 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
 - Boundary allowlist tests must derive the actual production call sites and
   exact-compare them with the declared inventory. Checking only that declared
   markers still exist does not prevent an undeclared boundary crossing.
+  Classify calls through the owning API (for example, Jotai stores and hooks),
+  not an expected import directory; domain values may be local or re-exported.
 - Keep host-only distributed-machine definitions outside shared machine
   directories (for example, under `src/ipc/services/` for a main-owned actor).
   Shared machine directories are scanned as renderer-reachable code and may

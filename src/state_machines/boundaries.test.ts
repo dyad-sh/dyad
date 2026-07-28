@@ -429,8 +429,7 @@ function importedJotaiCallName(
   return undefined;
 }
 
-function importedAtomArgumentName(
-  filePath: string,
+function atomArgumentName(
   call: ts.CallExpression,
   index: number,
   bindings: Map<string, { imported: string; source: string }>,
@@ -438,10 +437,9 @@ function importedAtomArgumentName(
   const argument = call.arguments[index];
   if (argument && ts.isIdentifier(argument)) {
     const binding = bindings.get(argument.text);
-    return binding &&
-      resolvesWithin(filePath, binding.source, path.join(SOURCE_ROOT, "atoms"))
+    return binding && binding.imported !== "*"
       ? binding.imported
-      : undefined;
+      : argument.text;
   }
   if (
     argument &&
@@ -458,17 +456,130 @@ function importedAtomArgumentName(
           ? argument.name.text
           : undefined
         : argument.argumentExpression.text;
-    return binding?.imported === "*" &&
-      atom &&
-      resolvesWithin(filePath, binding.source, path.join(SOURCE_ROOT, "atoms"))
-      ? atom
-      : undefined;
+    return binding?.imported === "*" ? atom : undefined;
   }
   return undefined;
 }
 
+function jotaiStoreTypeAliases(
+  sourceFile: ts.SourceFile,
+  bindings: Map<string, { imported: string; source: string }>,
+): Set<string> {
+  const aliases = new Set<string>();
+  for (const statement of sourceFile.statements) {
+    if (
+      !ts.isTypeAliasDeclaration(statement) ||
+      !ts.isTypeReferenceNode(statement.type) ||
+      !ts.isIdentifier(statement.type.typeName) ||
+      statement.type.typeName.text !== "ReturnType"
+    ) {
+      continue;
+    }
+    const argument = statement.type.typeArguments?.[0];
+    if (
+      argument &&
+      ts.isTypeQueryNode(argument) &&
+      ts.isIdentifier(argument.exprName)
+    ) {
+      const binding = bindings.get(argument.exprName.text);
+      if (
+        binding?.imported === "createStore" &&
+        isJotaiModule(binding.source)
+      ) {
+        aliases.add(statement.name.text);
+      }
+    }
+  }
+  return aliases;
+}
+
+function isJotaiStoreType(
+  type: ts.TypeNode | undefined,
+  aliases: Set<string>,
+  bindings: Map<string, { imported: string; source: string }>,
+): boolean {
+  if (
+    !type ||
+    !ts.isTypeReferenceNode(type) ||
+    !ts.isIdentifier(type.typeName)
+  ) {
+    return false;
+  }
+  if (aliases.has(type.typeName.text)) return true;
+  const binding = bindings.get(type.typeName.text);
+  return binding?.imported === "Store" && isJotaiModule(binding.source);
+}
+
+interface JotaiStoreBindings {
+  identifiers: Set<string>;
+  properties: Set<string>;
+}
+
+function jotaiStoreBindings(
+  sourceFile: ts.SourceFile,
+  bindings: Map<string, { imported: string; source: string }>,
+): JotaiStoreBindings {
+  const stores: JotaiStoreBindings = {
+    identifiers: new Set<string>(),
+    properties: new Set<string>(),
+  };
+  const aliases = jotaiStoreTypeAliases(sourceFile, bindings);
+  const visit = (node: ts.Node) => {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
+      if (
+        (node.initializer &&
+          ts.isCallExpression(node.initializer) &&
+          ["createStore", "useStore"].includes(
+            importedJotaiCallName(node.initializer, bindings) ?? "",
+          )) ||
+        isJotaiStoreType(node.type, aliases, bindings)
+      ) {
+        stores.identifiers.add(node.name.text);
+      }
+    } else if (
+      (ts.isParameter(node) || ts.isPropertyDeclaration(node)) &&
+      ts.isIdentifier(node.name) &&
+      isJotaiStoreType(node.type, aliases, bindings)
+    ) {
+      stores.identifiers.add(node.name.text);
+      stores.properties.add(node.name.text);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return stores;
+}
+
+function isJotaiStoreSetCall(
+  call: ts.CallExpression,
+  stores: JotaiStoreBindings,
+): boolean {
+  let receiver: ts.Expression | undefined;
+  if (
+    ts.isPropertyAccessExpression(call.expression) &&
+    call.expression.name.text === "set"
+  ) {
+    receiver = call.expression.expression;
+  } else if (
+    ts.isElementAccessExpression(call.expression) &&
+    call.expression.argumentExpression &&
+    ts.isStringLiteralLike(call.expression.argumentExpression) &&
+    call.expression.argumentExpression.text === "set"
+  ) {
+    receiver = call.expression.expression;
+  }
+  if (!receiver) return false;
+  if (ts.isIdentifier(receiver)) {
+    return stores.identifiers.has(receiver.text);
+  }
+  return (
+    ts.isPropertyAccessExpression(receiver) &&
+    receiver.expression.kind === ts.SyntaxKind.ThisKeyword &&
+    stores.properties.has(receiver.name.text)
+  );
+}
+
 function atomSetterBindings(
-  filePath: string,
   sourceFile: ts.SourceFile,
   bindings: Map<string, { imported: string; source: string }>,
 ): Map<string, string> {
@@ -480,12 +591,7 @@ function atomSetterBindings(
       ts.isCallExpression(node.initializer)
     ) {
       const hook = importedJotaiCallName(node.initializer, bindings);
-      const atom = importedAtomArgumentName(
-        filePath,
-        node.initializer,
-        0,
-        bindings,
-      );
+      const atom = atomArgumentName(node.initializer, 0, bindings);
       if (atom && hook === "useSetAtom" && ts.isIdentifier(node.name)) {
         setterAtoms.set(node.name.text, atom);
       } else if (
@@ -515,20 +621,14 @@ function collectAtomWritesIn(
   root: ts.Node,
   bindings: Map<string, { imported: string; source: string }>,
   setterAtoms: Map<string, string>,
+  stores: JotaiStoreBindings,
 ): ObservedAtomWrite[] {
   const writes: ObservedAtomWrite[] = [];
   const visit = (node: ts.Node) => {
     if (ts.isCallExpression(node)) {
       let atom: string | undefined;
-      if (
-        (ts.isPropertyAccessExpression(node.expression) &&
-          node.expression.name.text === "set") ||
-        (ts.isElementAccessExpression(node.expression) &&
-          node.expression.argumentExpression &&
-          ts.isStringLiteralLike(node.expression.argumentExpression) &&
-          node.expression.argumentExpression.text === "set")
-      ) {
-        atom = importedAtomArgumentName(filePath, node, 0, bindings);
+      if (isJotaiStoreSetCall(node, stores)) {
+        atom = atomArgumentName(node, 0, bindings);
       } else if (ts.isIdentifier(node.expression)) {
         atom = setterAtoms.get(node.expression.text);
       }
@@ -557,7 +657,8 @@ function collectMachineAtomWrites(): ObservedAtomWrite[] {
         sourceFile,
         sourceFile,
         bindings,
-        atomSetterBindings(filePath, sourceFile, bindings),
+        atomSetterBindings(sourceFile, bindings),
+        jotaiStoreBindings(sourceFile, bindings),
       );
     }),
   );
@@ -567,7 +668,7 @@ function collectPlanHandoffPresentationWrites(): ObservedAtomWrite[] {
   const filePath = path.join(SOURCE_ROOT, "hooks/usePlanEvents.ts");
   const sourceFile = sourceFileFor(filePath);
   const bindings = importedBindings(sourceFile);
-  const setterAtoms = atomSetterBindings(filePath, sourceFile, bindings);
+  const setterAtoms = atomSetterBindings(sourceFile, bindings);
 
   const writes: ObservedAtomWrite[] = [];
   const findPresentationCallback = (node: ts.Node) => {
@@ -585,6 +686,7 @@ function collectPlanHandoffPresentationWrites(): ObservedAtomWrite[] {
             callback,
             bindings,
             setterAtoms,
+            jotaiStoreBindings(sourceFile, bindings),
           ),
         );
       }
@@ -766,13 +868,20 @@ describe("state-machine boundaries", () => {
     const sourceFile = ts.createSourceFile(
       filePath,
       `
-        import { useSetAtom } from "jotai";
+        import { atom, useSetAtom, useStore } from "jotai";
         import { useAtom } from "jotai/react";
         import { lifecycleAtom } from "@/atoms/lifecycleAtoms";
         import * as atoms from "@/atoms/lifecycleAtoms";
+        import { externalLifecycle } from "../compatibility/lifecycle";
+        const store = useStore();
+        const localLifecycle = atom(false);
+        const ordinaryMap = new Map();
         const setLifecycle = useSetAtom(lifecycleAtom);
         const [, setLifecycleFromTuple] = useAtom(lifecycleAtom);
         store.set(lifecycleAtom, direct);
+        store.set(localLifecycle, local);
+        store.set(externalLifecycle, external);
+        ordinaryMap.set(externalLifecycle, notAJotaiWrite);
         setLifecycle(hook);
         setLifecycleFromTuple(tupleHook);
         store.set(atoms.lifecycleAtom, namespace);
@@ -790,10 +899,13 @@ describe("state-machine boundaries", () => {
         sourceFile,
         sourceFile,
         bindings,
-        atomSetterBindings(filePath, sourceFile, bindings),
+        atomSetterBindings(sourceFile, bindings),
+        jotaiStoreBindings(sourceFile, bindings),
       ).map((write) => write.call.getText(sourceFile)),
     ).toEqual([
       "store.set(lifecycleAtom, direct)",
+      "store.set(localLifecycle, local)",
+      "store.set(externalLifecycle, external)",
       "setLifecycle(hook)",
       "setLifecycleFromTuple(tupleHook)",
       "store.set(atoms.lifecycleAtom, namespace)",

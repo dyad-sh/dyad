@@ -139,7 +139,10 @@ import {
 import { pathToFileURL } from "node:url";
 import { windowRegistry } from "./window_infrastructure/main/window_registry";
 import type { WindowSessionId } from "./window_infrastructure/types";
-import { configureWindowProductController } from "./window_infrastructure/main/window_product_controller";
+import {
+  awaitProductWindowRenderer,
+  configureWindowProductController,
+} from "./window_infrastructure/main/window_product_controller";
 import {
   getWindowSessionFilePath,
   MAX_PRODUCT_WINDOWS,
@@ -714,7 +717,11 @@ const createWindow = ({
   persistenceFailurePolicy = "throw",
 }: Partial<WindowSessionDescriptor> & {
   persistenceFailurePolicy?: WindowSessionPersistenceFailurePolicy;
-} = {}): WindowSessionId => {
+} = {}): {
+  windowSessionId: WindowSessionId;
+  browserWindow: BrowserWindow;
+  rendererLoad: Promise<void>;
+} => {
   const persistence = getWindowSessionPersistence();
   const { wasAlreadyPersisted, wasPersisted } = prepareWindowSessionForCreation(
     {
@@ -839,39 +846,29 @@ const createWindow = ({
       },
     };
   });
-  // In development, wait for DevTools to open, then reload the page once so React DevTools initializes correctly
-  if (process.env.NODE_ENV === "development") {
-    browserWindow.webContents.once("devtools-opened", () => {
-      setTimeout(() => {
-        if (!browserWindow.isDestroyed()) {
-          browserWindow.webContents.reloadIgnoringCache();
-        }
-      }, 300);
-    });
-    browserWindow.webContents.openDevTools();
-  }
-
   browserWindow.webContents.on("did-start-loading", () => {
     deepLinkWindowReadiness.markNotReady(browserWindow);
     crashRecoveryWindowReadiness.markNotReady(browserWindow);
   });
 
   // and load the index.html of the app.
+  let initialLoad: Promise<void>;
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    browserWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+    initialLoad = browserWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
   } else {
-    browserWindow.loadFile(
+    initialLoad = browserWindow.loadFile(
       path.join(__dirname, "../renderer/main_window/index.html"),
     );
   }
+  void initialLoad.catch((error) => {
+    logger.error("Product window renderer failed to load:", error);
+  });
 
   // Handle force-close message and development reload coordination
   let devToolsReloadedCount = 0;
-
   browserWindow.webContents.on("did-finish-load", () => {
-    // Mark every completed load ready before development-only coordination.
-    // A slow initial navigation can be aborted by the DevTools reload, making
-    // that reload the only did-finish-load event for this window.
+    // Mark every completed load ready before development-only coordination so
+    // transport readiness does not depend on the DevTools reload heuristic.
     deepLinkWindowReadiness.markReady(browserWindow);
 
     if (process.env.NODE_ENV === "development") {
@@ -916,6 +913,25 @@ const createWindow = ({
 
     scheduleSafeStorageKeychainUnlockRetryAfterRendererLoad();
   });
+  // Start the development-only DevTools reload after the initial renderer load
+  // succeeds. Explicit new-window creation can safely await `initialLoad`
+  // without that intentional reload aborting its promise.
+  if (process.env.NODE_ENV === "development") {
+    void initialLoad.then(
+      () => {
+        if (browserWindow.isDestroyed()) return;
+        browserWindow.webContents.once("devtools-opened", () => {
+          setTimeout(() => {
+            if (!browserWindow.isDestroyed()) {
+              browserWindow.webContents.reloadIgnoringCache();
+            }
+          }, 300);
+        });
+        browserWindow.webContents.openDevTools();
+      },
+      () => undefined,
+    );
+  }
 
   // Persist any non-clean renderer-process termination so we can report it on
   // the next successful renderer load. We deliberately do nothing here besides
@@ -1004,7 +1020,7 @@ const createWindow = ({
     const menu = Menu.buildFromTemplate(template);
     menu.popup({ window: browserWindow });
   });
-  return windowSessionId;
+  return { windowSessionId, browserWindow, rendererLoad: initialLoad };
 };
 
 function restoreWindowSessions(): void {
@@ -1019,7 +1035,7 @@ function restoreWindowSessions(): void {
 }
 
 configureWindowProductController({
-  openEntityInNewWindow: (entity) => {
+  openEntityInNewWindow: async (entity) => {
     if (productWindows.size >= MAX_PRODUCT_WINDOWS) {
       throw new DyadError(
         `Dyad supports up to ${MAX_PRODUCT_WINDOWS} open windows`,
@@ -1027,9 +1043,31 @@ configureWindowProductController({
       );
     }
     try {
-      return createWindow({
+      const created = createWindow({
         windowSessionId: randomUUID() as WindowSessionId,
         visibleEntity: entity,
+      });
+      return await awaitProductWindowRenderer({
+        rendererLoad: created.rendererLoad,
+        result: created.windowSessionId,
+        rollback: () => {
+          const {
+            windowSessionId: failedSessionId,
+            browserWindow: failedWindow,
+          } = created;
+          const failedWebContentsId = failedWindow.webContents.id;
+          if (!failedWindow.isDestroyed()) failedWindow.destroy();
+          windowRegistry.unregister(failedWebContentsId);
+          productWindows.delete(failedSessionId);
+          try {
+            getWindowSessionPersistence().forget(failedSessionId);
+          } catch (rollbackError) {
+            logger.error(
+              "Failed to remove a window session after renderer load failure:",
+              rollbackError,
+            );
+          }
+        },
       });
     } catch (error) {
       if (isDyadError(error)) throw error;

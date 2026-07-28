@@ -5,7 +5,7 @@ import type {
 } from "@/window_infrastructure/types";
 
 export interface WindowProductController {
-  openEntityInNewWindow(entity: AppVisibleEntity): WindowSessionId;
+  openEntityInNewWindow(entity: AppVisibleEntity): Promise<WindowSessionId>;
   initialEntityForSession(
     windowSessionId: WindowSessionId,
   ): VisibleEntity | undefined;
@@ -15,6 +15,24 @@ export interface WindowProductController {
   ): void;
   mayMigrateLegacyChatTabSession(windowSessionId: WindowSessionId): boolean;
   restorableWindowSessionIds(): readonly WindowSessionId[];
+}
+
+export async function awaitProductWindowRenderer<T>({
+  rendererLoad,
+  result,
+  rollback,
+}: {
+  rendererLoad: Promise<void>;
+  result: T;
+  rollback: () => void;
+}): Promise<T> {
+  try {
+    await rendererLoad;
+    return result;
+  } catch (error) {
+    rollback();
+    throw error;
+  }
 }
 
 let controller: WindowProductController | undefined;

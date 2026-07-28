@@ -70,7 +70,7 @@ export function registerWindowInfrastructureHandlers(): void {
         throw new DyadError("App not found", DyadErrorKind.NotFound);
       }
       return {
-        windowSessionId: controller.openEntityInNewWindow(entity),
+        windowSessionId: await controller.openEntityInNewWindow(entity),
       };
     },
   );

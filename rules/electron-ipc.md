@@ -111,6 +111,10 @@ writeSettings({
 **Electron readiness:** `readSettings()` and `writeSettings()` may decrypt/encrypt secrets through Electron `safeStorage`, which throws `safeStorage cannot be used before app is ready` before `app.whenReady()`. Queue pre-ready entry points like deep links (`open-url`, `second-instance`) until the app/window is ready before calling OAuth/settings handlers. In a multi-window flow, tie renderer readiness to the current delivery target: mark delivery not-ready when the target changes to a loading window, and drain only after that target finishes loading. A global first-window-ready flag can flush payloads to a different renderer before its listeners exist.
 `did-finish-load` can still precede React effect subscriptions, so fire-and-forget startup events must register a renderer-module-level listener before bootstrap and replay buffered payloads when their UI consumer mounts.
 Mark transport readiness before development-only completed-load filters: a DevTools reload can abort the initial navigation, making the filtered completion the window's only `did-finish-load` event.
+When explicit window creation awaits `loadURL()` / `loadFile()`, start any
+development-only DevTools reload only after that initial load promise resolves.
+Scheduling the reload first can reject the awaited promise with
+`ERR_ABORTED (-3)` and incorrectly roll back a healthy window.
 
 **Custom-protocol debugging:** Before using `git bisect` on a `dyad://` flow, quit every dev and packaged Dyad instance and verify which build owns the protocol registration. macOS may route the link to a different running/registered build, producing a convincing but false good/bad result.
 

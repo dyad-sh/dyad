@@ -76,10 +76,15 @@ function nextEncryptedValue(
           return sameMap(decryptSecretMap(encrypted!)!, plaintext!)
             ? undefined
             : encryptSecretMap(plaintext!);
-        case "plainTagged":
-          return isSecretEncryptionAvailable()
-            ? encryptSecretMap(plaintext!)
-            : undefined;
+        // Rewrite for either reason: a keyring can now encrypt it, or
+        // the value itself has changed. Without a keyring the rewrite
+        // is another base64 blob, but it carries the current value.
+        case "plainTagged": {
+          const current = decryptSecretMap(encrypted!);
+          const inSync = !!current && sameMap(current, plaintext!);
+          if (inSync && !isSecretEncryptionAvailable()) return undefined;
+          return encryptSecretMap(plaintext!);
+        }
         // Never encrypted, or encrypted under a key we no longer have.
         // Either way the plaintext column can rebuild it.
         case "absent":

@@ -203,6 +203,26 @@ describe("encryptStoredMcpSecrets", () => {
     expect(await encryptStoredMcpSecrets()).toBe(0);
   });
 
+  it("rewrites a plain: blob an older build changed, even with no keyring", async () => {
+    isEncryptionAvailable.mockReturnValue(false);
+    await db.insert(mcpServers).values({
+      id: 1,
+      name: "http",
+      transport: "http",
+      url: "https://example.com/mcp",
+      headersJson: { A: "rotated" },
+      headersEncrypted: `plain:${Buffer.from(`{"A":"stale"}`, "utf8").toString("base64")}`,
+    });
+
+    expect(await encryptStoredMcpSecrets()).toBe(1);
+    const stored = (await readRow(1)).headersEncrypted!;
+    expect(stored.startsWith("plain:")).toBe(true);
+    expect(
+      Buffer.from(stored.slice("plain:".length), "base64").toString("utf8"),
+    ).toBe(`{"A":"rotated"}`);
+    expect(await encryptStoredMcpSecrets()).toBe(0);
+  });
+
   it("leaves a plain: blob alone while no keyring exists", async () => {
     isEncryptionAvailable.mockReturnValue(false);
     await db.insert(mcpServers).values({

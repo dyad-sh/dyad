@@ -208,6 +208,7 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
                   appId={app.id ?? null}
                   filePath={selectedFile.path}
                   initialLine={selectedFile.line ?? null}
+                  persistCursor
                 />
               ) : (
                 <div className="text-center py-4 text-gray-500">

@@ -151,6 +151,126 @@ describe("ChatTabTransferCoordinator", () => {
     coordinator.reject(session(2), transferId);
   });
 
+  it("accepts a correlated source confirmation after the receipt wait times out", async () => {
+    vi.useFakeTimers();
+    try {
+      let now = 0;
+      const windows = new WindowRegistry();
+      windows.register(endpoint(1), session(1));
+      windows.register(endpoint(2), session(2));
+      const coordinator = new ChatTabTransferCoordinator(
+        windows,
+        () => now,
+        100,
+        10,
+        5,
+      );
+      const transferId = "20000000-0000-4000-8000-000000000005";
+
+      coordinator.begin(transferId, session(1), payload());
+      await coordinator.adopt(session(2), transferId);
+      const acknowledgement = coordinator.acknowledge(session(2), transferId);
+      const timedOut = expect(acknowledgement).rejects.toMatchObject({
+        kind: "precondition",
+      });
+      now = 6;
+      await vi.advanceTimersByTimeAsync(5);
+      await timedOut;
+
+      expect(() =>
+        coordinator.confirmSourceRemoval(session(1), {
+          transferId,
+          chatId: 7,
+          tabInstanceId: tab(1),
+        }),
+      ).not.toThrow();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("rejects a late source confirmation after the destination aborts", async () => {
+    vi.useFakeTimers();
+    try {
+      const windows = new WindowRegistry();
+      windows.register(endpoint(1), session(1));
+      windows.register(endpoint(2), session(2));
+      const coordinator = new ChatTabTransferCoordinator(
+        windows,
+        Date.now,
+        100,
+        10,
+        5,
+      );
+      const transferId = "20000000-0000-4000-8000-000000000006";
+
+      coordinator.begin(transferId, session(1), payload());
+      await coordinator.adopt(session(2), transferId);
+      const acknowledgement = coordinator.acknowledge(session(2), transferId);
+      const timedOut = expect(acknowledgement).rejects.toMatchObject({
+        kind: "precondition",
+      });
+      await vi.advanceTimersByTimeAsync(5);
+      await timedOut;
+      coordinator.reject(session(2), transferId);
+
+      expect(() =>
+        coordinator.confirmSourceRemoval(session(1), {
+          transferId,
+          chatId: 7,
+          tabInstanceId: tab(1),
+        }),
+      ).toThrowError(expect.objectContaining({ kind: "conflict" }));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("bounds unknown-transfer adoption waiters and releases their slots", async () => {
+    vi.useFakeTimers();
+    try {
+      const windows = new WindowRegistry();
+      windows.register(endpoint(1), session(1));
+      windows.register(endpoint(2), session(2));
+      const coordinator = new ChatTabTransferCoordinator(
+        windows,
+        Date.now,
+        100,
+        10,
+        5,
+        100,
+        1,
+      );
+      const waitingId = "20000000-0000-4000-8000-000000000007";
+      const firstAdoption = coordinator.adopt(session(2), waitingId);
+      const firstRejection = expect(firstAdoption).rejects.toMatchObject({
+        kind: "not_found",
+      });
+
+      await expect(
+        coordinator.adopt(session(2), waitingId),
+      ).rejects.toMatchObject({
+        kind: "precondition",
+      });
+      await expect(
+        coordinator.adopt(session(2), "20000000-0000-4000-8000-000000000008"),
+      ).rejects.toMatchObject({
+        kind: "precondition",
+      });
+
+      await vi.advanceTimersByTimeAsync(10);
+      await firstRejection;
+
+      const admittedId = "20000000-0000-4000-8000-000000000009";
+      const admitted = coordinator.adopt(session(2), admittedId);
+      coordinator.begin(admittedId, session(1), payload());
+      await expect(admitted).resolves.toEqual(payload());
+      coordinator.reject(session(2), admittedId);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("actively expires a cancelled drag without another protocol call", async () => {
     vi.useFakeTimers();
     try {
@@ -164,7 +284,7 @@ describe("ChatTabTransferCoordinator", () => {
         100,
         10,
       );
-      const transferId = "20000000-0000-4000-8000-000000000005";
+      const transferId = "20000000-0000-4000-8000-000000000010";
       coordinator.begin(transferId, session(1), payload());
 
       now = 101;

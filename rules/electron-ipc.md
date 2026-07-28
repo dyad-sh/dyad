@@ -138,6 +138,9 @@ If the source durably removes transferred state before the destination observes
 its acknowledgement, persist a correlated removal marker until the destination
 observes that acknowledgement. On a lost receipt, the destination can use the
 marker to keep its durable adoption instead of rolling back both copies.
+The receipt timeout must retain that correlated settlement long enough for a
+late confirmation; the destination's explicit rollback/rejection is the abort
+decision that makes later source confirmation invalid.
 
 When a replayed renderer event mutates persisted session state, do not consume
 it until the session's derived atoms have hydrated. Persisting from empty

@@ -10,6 +10,7 @@ interface SourceRemovalReceipt {
   resolve: () => void;
   reject: (error: Error) => void;
   timeout: ReturnType<typeof setTimeout>;
+  timedOut: boolean;
 }
 
 interface PendingTransfer {
@@ -28,6 +29,7 @@ function unrefTimer(timer: ReturnType<typeof setTimeout>): void {
 export class ChatTabTransferCoordinator {
   private readonly pending = new Map<string, PendingTransfer>();
   private readonly beginWaiters = new Map<string, Set<() => void>>();
+  private beginWaiterCount = 0;
 
   constructor(
     private readonly windows: WindowRegistry,
@@ -36,6 +38,7 @@ export class ChatTabTransferCoordinator {
     private readonly beginWaitMs = 1_000,
     private readonly sourceReceiptWaitMs = 5_000,
     private readonly maxPendingTransfers = 100,
+    private readonly maxBeginWaiters = maxPendingTransfers,
   ) {}
 
   begin(
@@ -161,10 +164,9 @@ export class ChatTabTransferCoordinator {
     });
     const timeout = setTimeout(() => {
       if (transfer.sourceRemoval?.promise !== promise) return;
-      this.clearSourceRemoval(transfer);
-      transfer.destinationWindowSessionId = undefined;
+      transfer.sourceRemoval.timedOut = true;
       transfer.expiresAt = this.now() + this.lifetimeMs;
-      this.scheduleExpiry(transferId, transfer);
+      this.scheduleTimedOutReceiptExpiry(transferId, transfer);
       rejectReceipt(
         new DyadError(
           "The source window did not confirm tab removal",
@@ -178,6 +180,7 @@ export class ChatTabTransferCoordinator {
       resolve: resolveReceipt,
       reject: rejectReceipt,
       timeout,
+      timedOut: false,
     };
 
     try {
@@ -226,17 +229,25 @@ export class ChatTabTransferCoordinator {
   }
 
   private waitForBegin(transferId: string): Promise<void> {
+    if (this.beginWaiterCount >= this.maxBeginWaiters) {
+      throw new DyadError(
+        "Too many tab transfer adoptions are waiting",
+        DyadErrorKind.Precondition,
+      );
+    }
     return new Promise((resolve) => {
       const waiters = this.beginWaiters.get(transferId) ?? new Set();
       let settled = false;
       const finish = () => {
         if (settled) return;
         settled = true;
+        this.beginWaiterCount -= 1;
         clearTimeout(timeout);
         waiters.delete(finish);
         if (waiters.size === 0) this.beginWaiters.delete(transferId);
         resolve();
       };
+      this.beginWaiterCount += 1;
       waiters.add(finish);
       this.beginWaiters.set(transferId, waiters);
       const timeout = setTimeout(finish, this.beginWaitMs);
@@ -273,6 +284,26 @@ export class ChatTabTransferCoordinator {
     const delay = Math.max(0, transfer.expiresAt - this.now());
     transfer.expiryTimer = setTimeout(() => {
       if (transfer.sourceRemoval) return;
+      this.deleteTransfer(transferId, transfer);
+    }, delay);
+    unrefTimer(transfer.expiryTimer);
+  }
+
+  private scheduleTimedOutReceiptExpiry(
+    transferId: string,
+    transfer: PendingTransfer,
+  ): void {
+    this.clearExpiry(transfer);
+    const receipt = transfer.sourceRemoval;
+    const delay = Math.max(0, transfer.expiresAt - this.now());
+    transfer.expiryTimer = setTimeout(() => {
+      if (
+        this.pending.get(transferId) !== transfer ||
+        transfer.sourceRemoval !== receipt ||
+        !receipt?.timedOut
+      ) {
+        return;
+      }
       this.deleteTransfer(transferId, transfer);
     }, delay);
     unrefTimer(transfer.expiryTimer);

@@ -27,6 +27,7 @@ import {
   partitionChatsByVisibleCount,
   reorderVisibleChatIds,
   shouldPrepareCrossWindowTransfer,
+  shouldCapturePresentationBeforeNavigation,
   shouldSkipChatSelection,
 } from "@/components/chat/ChatTabs";
 import type { ChatSummary } from "@/lib/schemas";
@@ -58,6 +59,33 @@ describe("ChatTabs helpers", () => {
     expect(shouldSkipChatSelection(7, 7, "/chat")).toBe(true);
     expect(shouldSkipChatSelection(7, 7, "/settings")).toBe(false);
     expect(shouldSkipChatSelection(7, 8, "/chat")).toBe(false);
+  });
+
+  it("captures the outgoing chat before route-driven presentation changes", () => {
+    expect(
+      shouldCapturePresentationBeforeNavigation(7, "/chat", 7, "/chat", 8),
+    ).toBe(true);
+    expect(
+      shouldCapturePresentationBeforeNavigation(
+        7,
+        "/chat",
+        7,
+        "/settings",
+        null,
+      ),
+    ).toBe(true);
+    expect(
+      shouldCapturePresentationBeforeNavigation(7, "/chat", 7, "/chat", 7),
+    ).toBe(false);
+    expect(
+      shouldCapturePresentationBeforeNavigation(
+        7,
+        "/settings",
+        null,
+        "/chat",
+        8,
+      ),
+    ).toBe(false);
   });
 
   it("notifies only for a finished background chat", () => {

@@ -10,7 +10,7 @@ import { useAtomValue, useSetAtom, useStore } from "jotai";
 import { Loader2, MoreHorizontal, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { ChatSummary } from "@/lib/schemas";
-import { useNavigate, useRouterState } from "@tanstack/react-router";
+import { useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
 import { useChats } from "@/hooks/useChats";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { useSelectChat } from "@/hooks/useSelectChat";
@@ -289,6 +289,21 @@ export function shouldSkipChatSelection(
   return selectedChatId === nextChatId && pathname === "/chat";
 }
 
+export function shouldCapturePresentationBeforeNavigation(
+  presentedChatId: number | null,
+  fromPathname: string | undefined,
+  fromChatId: number | null,
+  toPathname: string,
+  toChatId: number | null,
+): boolean {
+  return (
+    presentedChatId !== null &&
+    fromPathname === "/chat" &&
+    fromChatId === presentedChatId &&
+    (toPathname !== "/chat" || toChatId !== presentedChatId)
+  );
+}
+
 export function partitionChatsByVisibleCount(
   orderedChats: ChatSummary[],
   visibleTabCount: number,
@@ -398,6 +413,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
     useReopenClosedTab();
   const { selectChat } = useSelectChat();
   const navigate = useNavigate();
+  const router = useRouter();
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   });
@@ -418,6 +434,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
     new Map<number, ChatTabPresentationState>(),
   );
   const presentedChatIdRef = useRef(selectedChatId);
+  const preNavigationCapturedChatIdRef = useRef<number | null>(null);
   useEffect(
     () => () => {
       scrollRestoreGenerationRef.current += 1;
@@ -516,11 +533,48 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
     [store],
   );
 
+  useEffect(
+    () =>
+      router.subscribe("onBeforeNavigate", (navigation) => {
+        const presentedChatId = presentedChatIdRef.current;
+        if (presentedChatId === null) return;
+        const fromSearch = navigation.fromLocation?.search as
+          | { id?: unknown }
+          | undefined;
+        const toSearch = navigation.toLocation.search as { id?: unknown };
+        const fromChatId =
+          typeof fromSearch?.id === "number" ? fromSearch.id : null;
+        const toChatId = typeof toSearch.id === "number" ? toSearch.id : null;
+        if (
+          !shouldCapturePresentationBeforeNavigation(
+            presentedChatId,
+            navigation.fromLocation?.pathname,
+            fromChatId,
+            navigation.toLocation.pathname,
+            toChatId,
+          )
+        ) {
+          return;
+        }
+        const presentedChat = chatsById.get(presentedChatId);
+        if (!presentedChat) return;
+        presentationByChatIdRef.current.set(
+          presentedChatId,
+          capturePresentation(presentedChatId, presentedChat.appId),
+        );
+        preNavigationCapturedChatIdRef.current = presentedChatId;
+      }),
+    [capturePresentation, chatsById, router],
+  );
+
   useLayoutEffect(() => {
     const previousChatId = presentedChatIdRef.current;
     if (previousChatId === selectedChatId) return;
 
-    if (previousChatId !== null) {
+    const capturedBeforeNavigation =
+      preNavigationCapturedChatIdRef.current === previousChatId;
+    preNavigationCapturedChatIdRef.current = null;
+    if (previousChatId !== null && !capturedBeforeNavigation) {
       const previousChat = chatsById.get(previousChatId);
       if (previousChat) {
         presentationByChatIdRef.current.set(
@@ -642,9 +696,6 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
           hasSourceChatTabRemoval(transferId, adoptedTabInstanceId)
         ) {
           clearSourceChatTabRemoval(transferId);
-          await ipc.windowInfrastructure
-            .rejectChatTabTransfer({ transferId })
-            .catch(() => undefined);
           return;
         }
         if (adoptedLocally) {
@@ -1040,11 +1091,13 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
 
       if (selectedChatId !== null) {
         const selectedChat = chatsById.get(selectedChatId);
-        if (selectedChat) {
+        if (selectedChat && pathname === "/chat") {
           presentationByChatIdRef.current.set(
             selectedChat.id,
             capturePresentation(selectedChat.id, selectedChat.appId),
           );
+        } else {
+          preNavigationCapturedChatIdRef.current = selectedChatId;
         }
       }
       store.set(ensureRecentViewedChatIdAtom, chatId);

@@ -25,6 +25,7 @@ interface FileEditorProps {
   appId: number | null;
   filePath: string;
   initialLine?: number | null;
+  persistCursor?: boolean;
 }
 
 interface BreadcrumbProps {
@@ -138,6 +139,7 @@ export const FileEditor = ({
   appId,
   filePath,
   initialLine = null,
+  persistCursor = false,
 }: FileEditorProps) => {
   const { t } = useTranslation("home");
   const { content, loading, error } = useLoadAppFile(appId, filePath);
@@ -223,7 +225,11 @@ export const FileEditor = ({
       releaseModelRef.current = retainMonacoModel(modelPath, model);
     }
 
-    if (editorCursor?.appId === appId && editorCursor.path === filePath) {
+    if (
+      persistCursor &&
+      editorCursor?.appId === appId &&
+      editorCursor.path === filePath
+    ) {
       editor.setPosition({
         lineNumber: editorCursor.lineNumber,
         column: editorCursor.column,
@@ -237,16 +243,18 @@ export const FileEditor = ({
       navigateToLine(initialLine);
     }
 
-    cursorSubscriptionRef.current = editor.onDidChangeCursorPosition(
-      ({ position }) => {
-        setEditorCursor({
-          appId,
-          path: filePath,
-          lineNumber: position.lineNumber,
-          column: position.column,
-        });
-      },
-    );
+    if (persistCursor) {
+      cursorSubscriptionRef.current = editor.onDidChangeCursorPosition(
+        ({ position }) => {
+          setEditorCursor({
+            appId,
+            path: filePath,
+            lineNumber: position.lineNumber,
+            column: position.column,
+          });
+        },
+      );
+    }
 
     // Save when the editor loses focus and the current model is dirty.
     editor.onDidBlurEditorText(() => {
@@ -259,6 +267,7 @@ export const FileEditor = ({
   useEffect(() => {
     const editor = editorRef.current;
     if (
+      !persistCursor ||
       !editor ||
       editorCursor?.appId !== appId ||
       editorCursor.path !== filePath
@@ -280,7 +289,7 @@ export const FileEditor = ({
       lineNumber: editorCursor.lineNumber,
       column: editorCursor.column,
     });
-  }, [appId, editorCursor, filePath]);
+  }, [appId, editorCursor, filePath, persistCursor]);
 
   // Handle content change
   const handleEditorChange = (newValue: string | undefined) => {

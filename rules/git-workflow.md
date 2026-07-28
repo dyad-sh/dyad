@@ -245,6 +245,11 @@ The stashed changes will be automatically merged back after the rebase completes
 - When rebasing documentation/table conflicts (e.g., workflow README tables), prefer keeping **both** additions from HEAD and upstream - merge new rows/content from both branches rather than choosing one side
 - **Complementary additions**: When both sides added new sections at the end of a file (e.g., both added different documentation tips), keep both sections rather than choosing one — they're not truly conflicting, just different additions
 - **Preserve variable declarations used in common code**: When one side of a conflict declares a variable (e.g., `const iframe = po.previewPanel.getPreviewIframeElement()`) that is referenced in non-conflicting code between or after conflict markers, keep the declaration even when adopting the other side's verification approach — the variable is needed regardless of which style you choose
+- When a feature extracts or wraps an existing handler behind a new main-owned
+  service, do not resolve a rebase conflict by taking that feature file whole.
+  Reapply newer upstream admission, cancellation, and deletion fences inside
+  the extracted core; otherwise the branch can silently reverse a newer
+  authority migration while its feature-specific tests still pass.
 - **React component wrapper conflicts**: When rebasing UI changes that conflict on wrapper div classes (e.g., `flex items-start space-x-2` vs `flex items-end gap-1`), keep the newer styling from the incoming commit but preserve any functional components (like dialogs or modals) that exist in HEAD but not in the incoming change
 - **Atom refactor fallout after rebase**: If `npm run ts` reports `TS2305: Module '"@/atoms/appAtoms"' has no exported member 'currentAppAtom'`, the app-list state moved out of `appAtoms`; derive the selected app with `useLoadApps()` plus `selectedAppIdAtom` instead of reintroducing `currentAppAtom`.
 - **Refactoring conflicts**: When incoming commits refactor code (e.g., extracting inline logic into helper functions), and HEAD has new features in the same area, integrate HEAD's features into the new structure. Example: if incoming code moves streaming logic to `runSingleStreamPass()` and HEAD adds mid-turn compaction to the inline code, add compaction support to the new function rather than keeping the old inline version

@@ -14,6 +14,7 @@ import {
   mutateChatQueue,
   persistQueuedIntent,
   restoreClaimedQueueHead,
+  stageActiveIntent,
 } from "./persistence";
 import { computeChatTurnPayloadHash } from "@/ipc/utils/chat_turn_intent_hash";
 import type { SerializableChatTurnIntent } from "./transport";
@@ -187,9 +188,14 @@ describe("chat stream persistence", () => {
     expect(loadChatQueue(database, chatId).queue[0]?.prompt).toBe(
       "Build the edited version",
     );
-    await expect(claimQueueHead(database, chatId)).resolves.toMatchObject({
+    const claimed = await claimQueueHead(database, chatId);
+    expect(claimed).toMatchObject({
       intent: { prompt: "Build the edited version" },
       queue: { queueRevision: 3, queue: [] },
+    });
+    expect(stageActiveIntent(database, claimed!.intent)).toEqual({
+      kind: "replayed",
+      acceptance: "queued",
     });
   });
 

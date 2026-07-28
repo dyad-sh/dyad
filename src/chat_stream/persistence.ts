@@ -412,6 +412,7 @@ export async function mutateChatQueue(
           ),
         );
         selectedRecord.intent = updatedIntent;
+        selectedRecord.payloadHash = updatedIntent.payloadHash;
         break;
       }
       case "reorder": {

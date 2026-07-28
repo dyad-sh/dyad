@@ -420,9 +420,7 @@ export function transitionChatStreamHost(
             pendingQueueMutationId === null &&
             !event.paused &&
             event.entries.length > 0 &&
-            (state.phase === "idle" ||
-              (state.phase === "finalizing" &&
-                state.lastCompletion?.outcome === "completed"))
+            (state.phase === "idle" || state.phase === "finalizing")
               ? [{ type: "dispatch-next" }]
               : [],
         };

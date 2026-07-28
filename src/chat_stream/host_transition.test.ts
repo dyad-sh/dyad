@@ -182,6 +182,55 @@ describe("transitionChatStreamHost", () => {
     expect(finalized.commands).toEqual([]);
   });
 
+  it("continues draining the queue after an active intent errors", () => {
+    const remainingEntry = {
+      itemId: "remaining",
+      intentId: "remaining",
+      prompt: "Try this next",
+      persistence: "main-session" as const,
+      editable: true,
+      removable: true,
+    };
+    const activeIntent = intent("rejected");
+    const state = {
+      ...initialChatStreamHostState({
+        queueRevision: 1,
+        queuePaused: false,
+        queue: [remainingEntry],
+      }),
+      phase: "finalizing" as const,
+      active: {
+        intent: activeIntent,
+        invocationRef: activeIntent.invocationRef!,
+        targetAppId: 3,
+      },
+      error: "Admission failed",
+      lastCompletion: {
+        intentId: activeIntent.intentId,
+        invocationRef: activeIntent.invocationRef!,
+        outcome: "errored" as const,
+        error: "Admission failed",
+        targetAppId: 3,
+      },
+    };
+
+    const finalized = transitionChatStreamHost(state, {
+      type: "QUEUE_MUTATED",
+      queueRevision: 2,
+      paused: false,
+      entries: [remainingEntry],
+    });
+
+    expect(finalized.kind).toBe("applied");
+    if (finalized.kind !== "applied") return;
+    expect(finalized.state).toMatchObject({
+      phase: "errored",
+      active: null,
+      queue: [{ intentId: "remaining" }],
+    });
+    expect(finalized.commands).toEqual([{ type: "dispatch-next" }]);
+  });
+
   it("rejects a queue edit made against a stale revision", () => {
     const state = initialChatStreamHostState({
       queueRevision: 4,

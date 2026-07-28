@@ -72,6 +72,7 @@ export interface AgentContext {
    */
   referencedApps: Map<string, string>;
   chatId: number;
+  planAcceptInNewChat?: boolean;
   supabaseProjectId: string | null;
   supabaseOrganizationSlug: string | null;
   neonProjectId: string | null;

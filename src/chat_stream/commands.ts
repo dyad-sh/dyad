@@ -271,6 +271,7 @@ export function createProductionChatStreamCommands(
                 cachedChat?.chatMode ??
                 undefined),
           userInputRequestId,
+          planAcceptInNewChat: request.planAcceptInNewChat,
         },
         {
           onChunk: (chunk) => {
@@ -400,6 +401,7 @@ export function createProductionChatStreamCommands(
         redo: request.redo,
         appId: request.appId,
         requestedChatMode: request.requestedChatMode,
+        planAcceptInNewChat: request.planAcceptInNewChat,
         owner: request.owner,
         onAccepted: request.onAccepted,
         onAcceptanceError: request.onAcceptanceError,
@@ -680,6 +682,7 @@ export function createProductionChatStreamCommands(
             messageToSend.requestedChatMode !== undefined
               ? messageToSend.requestedChatMode
               : chatMode,
+          planAcceptInNewChat: messageToSend.planAcceptInNewChat,
           owner: messageToSend.owner,
           onAccepted: messageToSend.onAccepted,
           onAcceptanceError: messageToSend.onAcceptanceError,

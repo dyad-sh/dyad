@@ -51,6 +51,7 @@ export function useStreamChat({
       attachments,
       selectedComponents,
       requestedChatMode,
+      planAcceptInNewChat,
       onSettled,
     }: {
       prompt: string;
@@ -60,6 +61,7 @@ export function useStreamChat({
       attachments?: FileAttachment[];
       selectedComponents?: ComponentSelection[];
       requestedChatMode?: Chat["chatMode"] | null;
+      planAcceptInNewChat?: boolean;
       onSettled?: (result: StreamSettledResult) => void;
     }) => {
       if (
@@ -92,6 +94,7 @@ export function useStreamChat({
           attachments,
           selectedComponents,
           requestedChatMode,
+          planAcceptInNewChat,
           onSettled,
         },
       });

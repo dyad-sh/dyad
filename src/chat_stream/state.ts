@@ -55,6 +55,8 @@ export interface StreamRequest {
    * `streamMessage` contract.
    */
   requestedChatMode?: Chat["chatMode"] | null;
+  /** Plan-panel choice carried to the main-owned exit_plan handoff. */
+  planAcceptInNewChat?: boolean;
   /** Typed memory owner; its request ID is the receiver idempotency key. */
   owner?: UserInputFollowUpQueueOwner;
   /** Resolves only after main accepts the idempotent user message. */

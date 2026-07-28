@@ -750,6 +750,7 @@ export async function handleLocalAgentStream(
       appPath,
       referencedApps: referencedAppsMap,
       chatId: chat.id,
+      planAcceptInNewChat: req.planAcceptInNewChat,
       supabaseProjectId: chat.app.supabaseProjectId,
       supabaseOrganizationSlug: chat.app.supabaseOrganizationSlug,
       neonProjectId: chat.app.neonProjectId,

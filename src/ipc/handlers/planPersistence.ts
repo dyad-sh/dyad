@@ -29,6 +29,24 @@ export function planSlugForChat(chatId: number): string {
   return slug;
 }
 
+export async function readPlanFromDisk(params: {
+  appPath: string;
+  chatId: number;
+}): Promise<{ title: string; summary?: string; content: string }> {
+  const filePath = path.join(
+    planDirForAppPath(params.appPath),
+    `${planSlugForChat(params.chatId)}.md`,
+  );
+  const { meta, content } = parsePlanFile(
+    await fs.promises.readFile(filePath, "utf-8"),
+  );
+  return {
+    title: meta.title ?? "",
+    ...(meta.summary ? { summary: meta.summary } : {}),
+    content,
+  };
+}
+
 /**
  * Upserts the plan file for a chat under `.dyad/plans/`. Returns the plan slug.
  *

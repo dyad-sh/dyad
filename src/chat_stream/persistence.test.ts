@@ -94,6 +94,26 @@ describe("chat stream persistence", () => {
     ).toThrowError(expect.objectContaining({ kind: DyadErrorKind.Conflict }));
   });
 
+  it("rejects replay under a different invocation identity", () => {
+    const original = intent("turn-1");
+    persistQueuedIntent(database, original);
+    const replacement = {
+      ...original,
+      invocationRef: {
+        kind: "chat-stream" as const,
+        entityKey: chatId,
+        operationId: "replacement-operation",
+      },
+    };
+
+    expect(() =>
+      persistQueuedIntent(database, {
+        ...replacement,
+        payloadHash: computeChatTurnPayloadHash(replacement),
+      }),
+    ).toThrowError(expect.objectContaining({ kind: DyadErrorKind.Conflict }));
+  });
+
   it("updates both the queue projection and the intent dispatched later", async () => {
     persistQueuedIntent(database, intent("turn-1"));
 

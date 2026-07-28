@@ -137,7 +137,10 @@ import { githubOpsActorService } from "../services/github_ops_actor_service";
 import { imageGenerationActorService } from "../services/image_generation_actor_service";
 import { imageGenerationService } from "../services/image_generation_service";
 import { githubOpsService } from "../services/github_ops_service";
-import { settleChatActorsForDeletion } from "@/ipc/services/chat_actor_deletion_service";
+import {
+  beginChatActorDeletion,
+  settleChatActorsForDeletion,
+} from "@/ipc/services/chat_actor_deletion_service";
 import { blockNewStreamsForApp } from "./chat_stream_handlers";
 
 const logger = log.scope("app_handlers");
@@ -389,6 +392,7 @@ async function deleteAppById(
   const releaseStreamAdmissionBlock = blockNewStreamsForApp(appId);
   githubOpsService.beginAppDeletion(appId);
   imageGenerationService.beginAppDeletion(appId);
+  const releaseChatActorAdmission: (() => void)[] = [];
   try {
     // Actor cancellation can wait for an in-flight stream to finish writes
     // under this app's lock. Drain before taking the lock, while the admission
@@ -397,6 +401,9 @@ async function deleteAppById(
       .select({ id: chats.id })
       .from(chats)
       .where(eq(chats.appId, appId));
+    releaseChatActorAdmission.push(
+      ...appChats.map(({ id: chatId }) => beginChatActorDeletion(chatId)),
+    );
     await Promise.all(
       appChats.map(({ id: chatId }) => userInputRegistry.settleChat(chatId)),
     );
@@ -470,6 +477,7 @@ async function deleteAppById(
       }
     });
   } finally {
+    for (const release of releaseChatActorAdmission) release();
     imageGenerationService.endAppDeletion(appId);
     githubOpsService.endAppDeletion(appId);
     releaseStreamAdmissionBlock();

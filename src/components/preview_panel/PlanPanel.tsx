@@ -220,6 +220,7 @@ export const PlanPanel: React.FC = () => {
       chatId,
       prompt:
         "I accept this plan. Call the exit_plan tool now with confirmation: true to begin implementation.",
+      planAcceptInNewChat: useNewChat,
     });
   };
 

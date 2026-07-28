@@ -3,6 +3,7 @@ import log from "electron-log";
 import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
 import { broadcastToRegisteredWindows } from "@/ipc/utils/window_broadcast";
 import { savePlanToDisk } from "@/ipc/handlers/planPersistence";
+import { rememberPlanDraft } from "@/ipc/services/plan_handoff_service";
 
 const logger = log.scope("write_plan");
 
@@ -64,6 +65,11 @@ export const writePlanTool: ToolDefinition<z.infer<typeof writePlanSchema>> = {
 
   execute: async (args, ctx: AgentContext) => {
     logger.log(`Writing plan: ${args.title}`);
+    rememberPlanDraft(ctx.chatId, {
+      title: args.title,
+      summary: args.summary,
+      content: args.plan,
+    });
 
     broadcastToRegisteredWindows(ctx.event.sender, "plan:update", {
       chatId: ctx.chatId,

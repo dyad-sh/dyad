@@ -17,6 +17,7 @@ import {
   dispatchPlanImplementationTurn,
   waitForChatActorIdle,
 } from "@/ipc/services/chat_actor_service";
+import { assertChatActorAdmissionOpen } from "@/ipc/services/chat_actor_deletion_fence";
 import {
   PLAN_HANDOFF_MACHINE_ID,
   PlanHandoffIntentEventSchema,
@@ -204,6 +205,7 @@ function createCommandRunner(
 }
 
 function requireSourceChat(sourceChatId: number, appId?: number): void {
+  assertChatActorAdmissionOpen(sourceChatId);
   const chat = db
     .select({ appId: chats.appId })
     .from(chats)

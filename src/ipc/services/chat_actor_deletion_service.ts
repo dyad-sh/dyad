@@ -4,6 +4,7 @@ import { planHandoffKey } from "@/plan_handoff/transport";
 import { chatStreamDefinition } from "@/chat_stream/definition";
 import { chatStreamKey } from "@/chat_stream/transport";
 import { waitForChatActorIdle } from "./chat_actor_service";
+export { beginChatActorDeletion } from "./chat_actor_deletion_fence";
 
 export async function settleChatActorsForDeletion(
   chatId: number,

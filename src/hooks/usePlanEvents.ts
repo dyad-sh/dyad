@@ -7,12 +7,7 @@ import {
 } from "@/atoms/planAtoms";
 import { previewModeAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
-import {
-  planEventClient,
-  type PlanUpdatePayload,
-  type PlanExitPayload,
-} from "@/ipc/types/plan";
-import { usePlanHandoff } from "@/plan_handoff/usePlanHandoff";
+import { planEventClient, type PlanUpdatePayload } from "@/ipc/types/plan";
 
 /**
  * Hook to handle plan mode IPC events.
@@ -27,7 +22,6 @@ export function usePlanEvents() {
   const setPreviewMode = useSetAtom(previewModeAtom);
   const setSelectedChatId = useSetAtom(selectedChatIdAtom);
   const navigate = useNavigate();
-  const { acceptPlan } = usePlanHandoff();
 
   useEffect(() => {
     // Handle plan updates
@@ -62,12 +56,16 @@ export function usePlanEvents() {
       },
     );
 
-    // Handle plan exit (transition to implementation): feed the state machine.
-    const unsubscribeExit = planEventClient.onExit(
-      (payload: PlanExitPayload) => {
-        acceptPlan(payload);
-      },
-    );
+    const unsubscribeExit = planEventClient.onExit((payload) => {
+      // Main has already admitted the handoff. This compatibility event only
+      // clears the renderer-local button choice used to form that intent.
+      setPlanAcceptInNewChat((prev) => {
+        if (!prev.has(payload.chatId)) return prev;
+        const next = new Map(prev);
+        next.delete(payload.chatId);
+        return next;
+      });
+    });
     const unsubscribePresentation = planEventClient.onHandoffPresentation(
       (payload) => {
         setPreviewMode("preview");
@@ -90,6 +88,5 @@ export function usePlanEvents() {
     setPreviewMode,
     setSelectedChatId,
     navigate,
-    acceptPlan,
   ]);
 }

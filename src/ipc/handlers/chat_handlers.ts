@@ -22,7 +22,10 @@ import {
 import { createChatForApp } from "../utils/chat_creation_utils";
 import { firstPromptCreationRegistry } from "../services/first_prompt_creation_service";
 import { userInputRegistry } from "@/user_input/main";
-import { settleChatActorsForDeletion } from "@/ipc/services/chat_actor_deletion_service";
+import {
+  beginChatActorDeletion,
+  settleChatActorsForDeletion,
+} from "@/ipc/services/chat_actor_deletion_service";
 
 const logger = log.scope("chat_handlers");
 
@@ -193,18 +196,23 @@ export function registerChatHandlers() {
   });
 
   createTypedHandler(chatContracts.deleteChat, async (event, chatId) => {
-    await mutateChatAfterDrainingStreams({
-      chatId,
-      sender: event.sender,
-      beforeLock: async () => {
-        await userInputRegistry.settleChat(chatId);
-        await settleChatActorsForDeletion(chatId);
-      },
-      mutation: async () => {
-        await db.delete(chats).where(eq(chats.id, chatId));
-        entityDisposalBus.publish({ kind: "chat", id: chatId });
-      },
-    });
+    const releaseActorAdmission = beginChatActorDeletion(chatId);
+    try {
+      await mutateChatAfterDrainingStreams({
+        chatId,
+        sender: event.sender,
+        beforeLock: async () => {
+          await userInputRegistry.settleChat(chatId);
+          await settleChatActorsForDeletion(chatId);
+        },
+        mutation: async () => {
+          await db.delete(chats).where(eq(chats.id, chatId));
+          entityDisposalBus.publish({ kind: "chat", id: chatId });
+        },
+      });
+    } finally {
+      releaseActorAdmission();
+    }
   });
 
   createTypedHandler(chatContracts.updateChat, async (_, params) => {

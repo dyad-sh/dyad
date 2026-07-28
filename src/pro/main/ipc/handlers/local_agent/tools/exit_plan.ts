@@ -6,6 +6,7 @@ import { safeSend } from "@/ipc/utils/safe_sender";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { db } from "@/db";
 import { apps } from "@/db/schema";
+import { startPlanHandoffFromMain } from "@/ipc/services/plan_handoff_service";
 
 const logger = log.scope("exit_plan");
 
@@ -78,6 +79,16 @@ export const exitPlanTool: ToolDefinition<z.infer<typeof exitPlanSchema>> = {
       );
     }
 
+    await startPlanHandoffFromMain({
+      sourceChatId: ctx.chatId,
+      appId: ctx.appId,
+      appPath: ctx.appPath,
+      acceptInNewChat: ctx.planAcceptInNewChat ?? false,
+      senderWebContentsId: ctx.event.sender.id,
+    });
+
+    // Compatibility notification only. Main has already admitted the handoff;
+    // renderer loss cannot prevent implementation from starting.
     safeSend(ctx.event.sender, "plan:exit", {
       chatId: ctx.chatId,
       appId: ctx.appId,

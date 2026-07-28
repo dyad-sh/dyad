@@ -540,6 +540,7 @@ export interface QueuedMessageItem {
   redo?: boolean;
   appId?: number;
   requestedChatMode?: Chat["chatMode"] | null;
+  planAcceptInNewChat?: boolean;
   owner?: import("@/state_machines/handoff_types").UserInputFollowUpQueueOwner;
   /** Legacy persisted marker; never written by current queue code. */
   userInputRequestId?: string;

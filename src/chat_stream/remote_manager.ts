@@ -10,6 +10,7 @@ import { RemoteMachineClient } from "@/distributed_machines/remote_client";
 import type { RemoteMachineClientConnection } from "@/distributed_machines/remote_client";
 import { IpcRemoteMachineConnection } from "@/distributed_machines/ipc_connection";
 import { convertFileAttachmentsToChatAttachments } from "@/lib/chatAttachmentConversion";
+import { planAcceptInNewChatByChatIdAtom } from "@/atoms/planAtoms";
 import { chatAttachmentToFileAttachment } from "@/lib/attachment_conversion";
 import { uuidIdSource, type IdSource } from "@/state_machines/clock";
 import type { ChatStreamRuntimeDeps } from "./commands";
@@ -437,6 +438,9 @@ export class ChatStreamRemoteManager {
         selectedComponents: request.selectedComponents ?? [],
         requestedChatMode: request.requestedChatMode,
         userInputRequestId: request.owner?.requestId,
+        planAcceptInNewChat:
+          request.planAcceptInNewChat ??
+          this.store.get(planAcceptInNewChatByChatIdAtom).get(request.chatId),
         owner: request.owner,
       };
       const intent: SerializableChatTurnIntent = {

@@ -158,6 +158,7 @@ export const ChatStreamParamsSchema = z
     selectedComponents: z.array(ComponentSelectionSchema).optional(),
     requestedChatMode: ChatModeSchema.nullable().optional(),
     userInputRequestId: z.string().optional(),
+    planAcceptInNewChat: z.boolean().optional(),
   })
   .superRefine((params, context) => {
     const validation = validateSerializedChatAttachments(

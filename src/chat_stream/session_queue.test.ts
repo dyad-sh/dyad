@@ -270,6 +270,18 @@ describe("main-session follow-up queue", () => {
     expect(getIntentAcceptance(intent.intentId)).toBe("queued");
   });
 
+  it("replays a retained follow-up receipt after its live owner settles", () => {
+    const intent = followUpIntent();
+    makeFollowUpDue();
+    expect(stageActiveIntent(database, intent)).toBeNull();
+    liveOwner.pending = [];
+
+    expect(stageActiveIntent(database, intent)).toEqual({
+      kind: "replayed",
+      acceptance: "queued",
+    });
+  });
+
   it("finalizes a failed pre-acceptance follow-up without a durable shell", () => {
     const intent = followUpIntent();
 

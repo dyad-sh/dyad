@@ -268,13 +268,13 @@ export function stageActiveIntent(
   intent: SerializableChatTurnIntent,
 ): PersistAdmissionResult | null {
   assertChatTurnPayloadHash(intent);
-  if (intent.owner?.kind === "user-input-follow-up") {
-    assertMatchingDueFollowUp(intent);
-  }
   const existing = recordFor(intent.intentId);
   if (existing) {
     assertMatchingIntent(existing, intent);
     return replay(existing);
+  }
+  if (intent.owner?.kind === "user-input-follow-up") {
+    assertMatchingDueFollowUp(intent);
   }
   intentRecords.set(intent.intentId, {
     intent,

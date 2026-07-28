@@ -380,10 +380,10 @@ export const mcpServers = sqliteTable(
     command: text("command"),
     // Store typed JSON for args and environment variables
     args: text("args", { mode: "json" }).$type<string[] | null>(),
-    // Plaintext env vars and headers. Superseded by the encrypted
-    // columns below, which are what the MCP manager reads. Still
-    // written on every update so a build without the encrypted
-    // columns keeps working against the same database.
+    // Legacy plaintext env vars and headers. These remain for unedited
+    // rows so older builds can still use their existing configuration;
+    // new writes and secret edits clear them in favor of the encrypted
+    // columns below, which are what this build reads.
     envJson: text("env_json", { mode: "json" }).$type<Record<
       string,
       string

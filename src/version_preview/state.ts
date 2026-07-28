@@ -17,12 +17,17 @@ export interface PreviewError {
 
 export type RestoreRecovery =
   | {
+      readonly nextStep: "repository-unchanged";
+    }
+  | {
       readonly preRestoreHead: string;
+      readonly preRestoreBranch: string | null;
       readonly targetHead: string | null;
       readonly nextStep: "preparing" | "hard-reset" | "soft-reset" | "commit";
     }
   | {
       readonly preRestoreHead: string;
+      readonly preRestoreBranch: string | null;
       readonly targetHead: string;
       readonly nextStep: "completed";
       readonly completedHead: string;
@@ -77,6 +82,7 @@ export type PreviewState =
       type: "restore-recovery-required";
       session: PreviewSession;
       error: PreviewError;
+      restoreRecovery?: RestoreRecovery;
     }
   | {
       type: "switching-branch";
@@ -139,7 +145,11 @@ export type PreviewEvent =
       repositoryOutcome: "target-applied" | "unchanged";
     }
   | { type: "RESTORE_FAILED"; error: PreviewError }
-  | { type: "RESTORE_RECOVERY_REQUIRED"; error: PreviewError }
+  | {
+      type: "RESTORE_RECOVERY_REQUIRED";
+      error: PreviewError;
+      restoreRecovery: RestoreRecovery;
+    }
   | { type: "RETURN_SUCCEEDED" }
   | { type: "RETURN_FAILED"; error: PreviewError }
   | { type: "SWITCH_BRANCH_SUCCEEDED" }

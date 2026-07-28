@@ -10,8 +10,12 @@ import { REMOTE_MACHINE_PROTOCOL_VERSION } from "@/distributed_machines/remote_p
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { queryInvalidationBus } from "@/window_infrastructure/main/query_invalidation_bus";
 import { ignore } from "@/state_machines/types";
-import { CLOSED_STATE, type PreviewCommand } from "@/version_preview/state";
-import type { RestoreRecovery } from "@/version_preview/state";
+import {
+  CLOSED_STATE,
+  type PreviewCommand,
+  type PreviewState,
+  type RestoreRecovery,
+} from "@/version_preview/state";
 import { transition } from "@/version_preview/transition";
 import {
   VERSION_PREVIEW_INVOCATION_KIND,
@@ -99,6 +103,57 @@ function producerError(
   return "error" in event ? event.error : undefined;
 }
 
+function reconcileRestore(
+  current: Extract<
+    PreviewState,
+    { type: "restoring" | "restore-recovery-required" }
+  >,
+  event: Extract<VersionPreviewWireEvent, { type: "RECONCILED" }>,
+): PreviewState {
+  const recovery = current.restoreRecovery;
+  if (recovery?.nextStep === "repository-unchanged") {
+    if (current.session.originBranch === null) return CLOSED_STATE;
+    return event.branch === current.session.originBranch
+      ? CLOSED_STATE
+      : {
+          type: "recovery-required",
+          session: current.session,
+          error: {
+            message:
+              "Dyad restarted while restoring a chat from a historical checkout. Return to the original branch before continuing.",
+          },
+        };
+  }
+
+  if (recovery) {
+    const branchMatches =
+      recovery.preRestoreBranch !== null &&
+      event.branch === recovery.preRestoreBranch;
+    const preRestoreStateMatches =
+      branchMatches &&
+      event.headOid === recovery.preRestoreHead &&
+      event.isClean;
+    const completedStateMatches =
+      recovery.nextStep === "completed" &&
+      branchMatches &&
+      event.headOid === recovery.completedHead &&
+      event.isClean;
+    if (preRestoreStateMatches || completedStateMatches) {
+      return CLOSED_STATE;
+    }
+  }
+
+  return {
+    type: "restore-recovery-required",
+    session: current.session,
+    error: {
+      message:
+        "Dyad restarted during an interrupted version restore. Inspect and repair the repository before continuing.",
+    },
+    restoreRecovery: recovery,
+  };
+}
+
 function transitionActor(
   key: VersionPreviewKey,
   actorState: VersionPreviewActorState,
@@ -122,8 +177,7 @@ function transitionActor(
       current.type === "closed" ||
       current.type === "viewing-diff" ||
       current.type === "browsing" ||
-      current.type === "resolving-origin" ||
-      current.type === "restore-recovery-required"
+      current.type === "resolving-origin"
     ) {
       return ignore(actorState, "no-change");
     }
@@ -147,28 +201,10 @@ function transitionActor(
               },
             };
     } else if (
-      current.type === "restoring" &&
-      current.session.originBranch === null
+      current.type === "restoring" ||
+      current.type === "restore-recovery-required"
     ) {
-      const recovery = current.restoreRecovery;
-      const restoreNeverStarted =
-        (recovery?.nextStep === "preparing" ||
-          recovery?.nextStep === "hard-reset") &&
-        event.headOid === recovery.preRestoreHead;
-      const restoreCompleted =
-        recovery?.nextStep === "completed" &&
-        event.headOid === recovery.completedHead;
-      state =
-        restoreNeverStarted || restoreCompleted
-          ? CLOSED_STATE
-          : {
-              type: "restore-recovery-required",
-              session: current.session,
-              error: {
-                message:
-                  "Dyad restarted during an interrupted version restore. Inspect the repository before continuing.",
-              },
-            };
+      state = reconcileRestore(current, event);
     } else {
       state =
         event.branch === current.session.originBranch
@@ -278,13 +314,14 @@ function createCommandRunner(
         void versionPreviewService
           .reconcile(appId)
           .then(
-            ({ branch, headOid }) =>
-              context.send({ type: "RECONCILED", branch, headOid }),
+            ({ branch, headOid, isClean }) =>
+              context.send({ type: "RECONCILED", branch, headOid, isClean }),
             () =>
               context.send({
                 type: "RECONCILED",
                 branch: null,
                 headOid: null,
+                isClean: false,
               }),
           )
           .finally(() => versionPreviewService.endReconciliation(appId));
@@ -459,10 +496,14 @@ function createCommandRunner(
                 case "restore":
                 case "restore-to-message":
                   emit(
-                    restoreProgress && restoreProgress.nextStep !== "completed"
+                    restoreProgress &&
+                      restoreProgress.nextStep !== "preparing" &&
+                      restoreProgress.nextStep !== "repository-unchanged" &&
+                      restoreProgress.nextStep !== "completed"
                       ? {
                           type: "RESTORE_RECOVERY_REQUIRED",
                           error: info,
+                          restoreRecovery: restoreProgress,
                           invocationRef,
                         }
                       : {

@@ -53,9 +53,11 @@ const persistedFallbackSchema = z.discriminatedUnion("type", [
 ]);
 
 const restoreRecoverySchema = z.discriminatedUnion("nextStep", [
+  z.object({ nextStep: z.literal("repository-unchanged") }).strict(),
   z
     .object({
       preRestoreHead: z.string().min(1),
+      preRestoreBranch: z.string().min(1).nullable(),
       targetHead: z.string().min(1).nullable(),
       nextStep: z.enum(["preparing", "hard-reset", "soft-reset", "commit"]),
     })
@@ -63,6 +65,7 @@ const restoreRecoverySchema = z.discriminatedUnion("nextStep", [
   z
     .object({
       preRestoreHead: z.string().min(1),
+      preRestoreBranch: z.string().min(1).nullable(),
       targetHead: z.string().min(1),
       nextStep: z.literal("completed"),
       completedHead: z.string().min(1),
@@ -111,6 +114,7 @@ const persistedStateSchema = z.discriminatedUnion("type", [
       type: z.literal("restore-recovery-required"),
       session: persistedSessionSchema,
       error: z.object({ message: z.string() }).strict(),
+      restoreRecovery: restoreRecoverySchema.optional(),
     })
     .strict(),
 ]);

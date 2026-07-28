@@ -66,6 +66,7 @@ describe("version preview persistence", () => {
     } as const;
     versionPreviewPersistence.checkpointRestore(7, restoring, {
       preRestoreHead: "live-head",
+      preRestoreBranch: "main",
       targetHead: "abc123",
       nextStep: "soft-reset",
     });
@@ -76,6 +77,7 @@ describe("version preview persistence", () => {
       session: { originBranch: null, checkedOutVersionId: null },
       restoreRecovery: {
         preRestoreHead: "live-head",
+        preRestoreBranch: "main",
         targetHead: "abc123",
         nextStep: "soft-reset",
       },

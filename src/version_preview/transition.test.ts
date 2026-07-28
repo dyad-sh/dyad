@@ -75,6 +75,12 @@ const EVENT_SAMPLES: PreviewEvent[] = [
   {
     type: "RESTORE_RECOVERY_REQUIRED",
     error: { message: "restore was interrupted" },
+    restoreRecovery: {
+      preRestoreHead: "live-head",
+      preRestoreBranch: "main",
+      targetHead: "v1",
+      nextStep: "soft-reset",
+    },
   },
   { type: "RETURN_SUCCEEDED" },
   { type: "RETURN_FAILED", error: { message: "return failed" } },

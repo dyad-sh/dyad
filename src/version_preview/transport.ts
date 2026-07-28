@@ -188,6 +188,7 @@ export type VersionPreviewProducerEvent =
       type: "RECONCILED";
       branch: string | null;
       headOid: string | null;
+      isClean: boolean;
     }
   | {
       type: "ORIGIN_RESOLVED";
@@ -220,6 +221,7 @@ export type VersionPreviewProducerEvent =
   | {
       type: "RESTORE_RECOVERY_REQUIRED";
       error: PreviewError;
+      restoreRecovery: import("./state").RestoreRecovery;
       invocationRef: VersionPreviewInvocationRef;
     }
   | {
@@ -417,6 +419,13 @@ function stripWindowPresentation(state: PreviewState): SafeRemotePreviewState {
         session: stripSessionPresentation(state.session),
       };
     }
+    case "restore-recovery-required": {
+      const { restoreRecovery: _restoreRecovery, ...safeState } = state;
+      return {
+        ...safeState,
+        session: stripSessionPresentation(state.session),
+      };
+    }
     default:
       return {
         ...state,
@@ -467,10 +476,15 @@ export function toPreviewDomainEvent(
       return { type: event.type };
     case "CHECKOUT_FAILED":
     case "RESTORE_FAILED":
-    case "RESTORE_RECOVERY_REQUIRED":
     case "RETURN_FAILED":
     case "SWITCH_BRANCH_FAILED":
       return { type: event.type, error: event.error };
+    case "RESTORE_RECOVERY_REQUIRED":
+      return {
+        type: event.type,
+        error: event.error,
+        restoreRecovery: event.restoreRecovery,
+      };
     case "RESTORE_SUCCEEDED":
       return {
         type: event.type,

@@ -630,6 +630,7 @@ export function transition(
             type: "restore-recovery-required",
             session: state.session,
             error: event.error,
+            restoreRecovery: event.restoreRecovery,
           },
           commands: [
             {

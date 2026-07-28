@@ -7,7 +7,11 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import type { VersionCommandResult } from "@/ipc/types";
 import { getDyadAppPath } from "@/paths/paths";
 import type { PreviewCommand, RestoreRecovery } from "@/version_preview/state";
-import { getCurrentCommitHash, gitCurrentBranch } from "../utils/git_utils";
+import {
+  getCurrentCommitHash,
+  getGitUncommittedFilesWithStatus,
+  gitCurrentBranch,
+} from "../utils/git_utils";
 import { versionPreviewHandlerService } from "../handlers/version_handlers";
 import { versionPreviewPresentationService } from "./version_preview_presentation_service";
 
@@ -119,9 +123,11 @@ export class VersionPreviewService {
     );
   }
 
-  reconcile(
-    appId: number,
-  ): Promise<{ branch: string | null; headOid: string | null }> {
+  reconcile(appId: number): Promise<{
+    branch: string | null;
+    headOid: string | null;
+    isClean: boolean;
+  }> {
     return this.track(
       appId,
       (async () => {
@@ -136,13 +142,15 @@ export class VersionPreviewService {
         if (!fs.existsSync(path.join(appPath, ".git"))) {
           throw new DyadError("Not a git repository", DyadErrorKind.External);
         }
-        const [branch, headOid] = await Promise.all([
+        const [branch, headOid, uncommittedFiles] = await Promise.all([
           gitCurrentBranch({ path: appPath }),
           getCurrentCommitHash({ path: appPath }),
+          getGitUncommittedFilesWithStatus({ path: appPath }),
         ]);
         return {
           branch: branch && branch !== NO_BRANCH ? branch : null,
           headOid: headOid || null,
+          isClean: uncommittedFiles.length === 0,
         };
       })(),
     );
@@ -206,10 +214,11 @@ export class VersionPreviewService {
     >,
     onRestoreProgress?: (progress: RestoreRecovery) => void,
   ): Promise<void> {
-    if (
-      !onRestoreProgress ||
-      (command.type === "restore-to-message" && !command.restoreCodebase)
-    ) {
+    if (!onRestoreProgress) {
+      return;
+    }
+    if (command.type === "restore-to-message" && !command.restoreCodebase) {
+      onRestoreProgress({ nextStep: "repository-unchanged" });
       return;
     }
     const app = await db.query.apps.findFirst({
@@ -220,12 +229,19 @@ export class VersionPreviewService {
       throw new DyadError("App not found", DyadErrorKind.NotFound);
     }
     const appPath = getDyadAppPath(app.path);
-    const preRestoreHead = await getCurrentCommitHash({
-      path: appPath,
-      ref: command.targetBranch ?? "HEAD",
-    });
+    const [preRestoreHead, currentBranch] = await Promise.all([
+      getCurrentCommitHash({
+        path: appPath,
+        ref: command.targetBranch ?? "HEAD",
+      }),
+      command.targetBranch
+        ? Promise.resolve(command.targetBranch)
+        : gitCurrentBranch({ path: appPath }),
+    ]);
     onRestoreProgress({
       preRestoreHead,
+      preRestoreBranch:
+        currentBranch && currentBranch !== NO_BRANCH ? currentBranch : null,
       targetHead: command.type === "restore" ? command.versionId : null,
       nextStep: "preparing",
     });

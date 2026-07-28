@@ -521,11 +521,16 @@ async function revertCodebaseToVersion({
   const hasStagedRevertChanges = await gitStageToRevert({
     path: appPath,
     targetOid: previousVersionId,
-    onBeforeReset: onRestoreProgress,
+    onBeforeReset: (progress) =>
+      onRestoreProgress?.({
+        ...progress,
+        preRestoreBranch: targetBranchName ?? currentBranch,
+      }),
   });
   if (hasStagedRevertChanges) {
     onRestoreProgress?.({
       preRestoreHead: currentCommitHash,
+      preRestoreBranch: targetBranchName ?? currentBranch,
       targetHead: previousVersionId,
       nextStep: "commit",
     });
@@ -536,6 +541,7 @@ async function revertCodebaseToVersion({
   }
   onRestoreProgress?.({
     preRestoreHead: currentCommitHash,
+    preRestoreBranch: targetBranchName ?? currentBranch,
     targetHead: previousVersionId,
     nextStep: "completed",
     completedHead: await getCurrentCommitHash({ path: appPath }),

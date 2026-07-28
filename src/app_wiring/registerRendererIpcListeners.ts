@@ -8,11 +8,7 @@ import {
 } from "@/atoms/chatAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import type { StreamEvent } from "@/chat_stream/state";
-import {
-  ipc as defaultIpc,
-  type ChatResponseChunk,
-  type TelemetryEventPayload,
-} from "@/ipc/types";
+import { ipc as defaultIpc, type ChatResponseChunk } from "@/ipc/types";
 import { applyStreamingPatch } from "@/lib/applyStreamingPatch";
 import { queryKeys } from "@/lib/queryKeys";
 import { showError } from "@/lib/toast";
@@ -43,7 +39,6 @@ export interface RegisterRendererIpcListenersOptions {
   queryClient: QueryClient;
   chatStreamManager: ChatStreamRendererFacade;
   entityDisposal: EntityDisposalRegistry;
-  onTelemetryEvent?: (payload: TelemetryEventPayload) => void;
   getCurrentPathname?: () => string;
   subscribeToNavigation?: (listener: () => void) => () => void;
 }
@@ -144,7 +139,6 @@ export function registerRendererIpcListeners({
   queryClient,
   chatStreamManager,
   entityDisposal,
-  onTelemetryEvent,
   getCurrentPathname = () => "/",
   subscribeToNavigation,
 }: RegisterRendererIpcListenersOptions): () => void {
@@ -330,12 +324,6 @@ export function registerRendererIpcListeners({
         next.delete(chatId);
         return next;
       });
-    }),
-  );
-
-  unsubscribes.push(
-    ipcClient.events.system.onTelemetryEvent((payload) => {
-      onTelemetryEvent?.(payload);
     }),
   );
 

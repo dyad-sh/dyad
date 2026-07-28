@@ -46,7 +46,10 @@ import {
   pruneChatTabWindowSessions,
 } from "./window_infrastructure/chat_tab_session_storage";
 import type { VisibleEntity } from "./window_infrastructure/types";
-import { registerEarlyRendererEvents } from "./app_wiring/early_renderer_events";
+import {
+  earlyTelemetryEvents,
+  registerEarlyRendererEvents,
+} from "./app_wiring/early_renderer_events";
 
 // @ts-ignore
 console.log("Running in mode:", import.meta.env.MODE);
@@ -195,6 +198,22 @@ function RendererServices() {
     };
   }, []);
 
+  useEffect(
+    () =>
+      earlyTelemetryEvents.subscribe(({ eventName, properties }) => {
+        if (eventName === "$exception") {
+          posthog.captureException(
+            createExceptionFromTelemetry(properties),
+            getExceptionTelemetryContext(properties),
+          );
+          return;
+        }
+
+        posthog.capture(eventName, properties);
+      }),
+    [],
+  );
+
   useEffect(() => {
     let disposed = false;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -254,17 +273,6 @@ function RendererServices() {
       queryClient,
       chatStreamManager,
       entityDisposal,
-      onTelemetryEvent: ({ eventName, properties }) => {
-        if (eventName === "$exception") {
-          posthog.captureException(
-            createExceptionFromTelemetry(properties),
-            getExceptionTelemetryContext(properties),
-          );
-          return;
-        }
-
-        posthog.capture(eventName, properties);
-      },
       getCurrentPathname: () => router.state.location.pathname,
       subscribeToNavigation: (listener) =>
         router.subscribe("onResolved", listener),

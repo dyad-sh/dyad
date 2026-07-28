@@ -6,6 +6,9 @@ type DeepLinkPayload = Parameters<
 type ForceClosePayload = Parameters<
   Parameters<typeof ipc.events.system.onForceCloseDetected>[0]
 >[0];
+type TelemetryPayload = Parameters<
+  Parameters<typeof ipc.events.system.onTelemetryEvent>[0]
+>[0];
 
 export class ReplayEvent<T> {
   private readonly pending: T[] = [];
@@ -29,6 +32,7 @@ export class ReplayEvent<T> {
 
 export const earlyDeepLinkEvents = new ReplayEvent<DeepLinkPayload>();
 export const earlyForceCloseEvents = new ReplayEvent<ForceClosePayload>();
+export const earlyTelemetryEvents = new ReplayEvent<TelemetryPayload>();
 
 let registered = false;
 
@@ -40,5 +44,8 @@ export function registerEarlyRendererEvents(): void {
   });
   ipc.events.system.onForceCloseDetected((payload) => {
     earlyForceCloseEvents.emit(payload);
+  });
+  ipc.events.system.onTelemetryEvent((payload) => {
+    earlyTelemetryEvents.emit(payload);
   });
 }

@@ -33,6 +33,8 @@ if (!process.env.DYAD_PRO_API_KEY && process.env.DYAD_PRO_KEY) {
 import { GPT_5_4, getEvalModel, hasDyadProKey } from "./helpers/get_eval_model";
 import {
   loadFixtures,
+  loadSpecs,
+  validateSpec,
   validateFixture,
   fixtureTranscript,
   runCompaction,
@@ -137,11 +139,29 @@ function completedJobKeys(): Set<string> {
   return done;
 }
 
-// ── Fixture validation (always runs, no API key needed) ────────
+// ── Spec validation (always runs, no API key needed) ───────────
+// The generated transcripts are gitignored, so on a clean checkout the
+// fixture-validation block below has nothing to check. The committed
+// authoring specs are what CI can and must validate — and their absence is
+// a failure, not a skip.
+
+describe("compaction specs validate", () => {
+  it("committed specs are present", () => {
+    expect(loadSpecs().length).toBeGreaterThan(0);
+  });
+  for (const { file, spec } of loadSpecs()) {
+    it(`${file} is internally consistent`, () => {
+      const errors = validateSpec(file, spec);
+      expect(errors, errors.join("\n")).toEqual([]);
+    });
+  }
+});
+
+// ── Fixture validation (requires locally generated fixtures) ───
 
 describe("compaction fixtures validate", () => {
   if (fixtures.length === 0) {
-    it.skip("no fixture files present yet", () => {});
+    it.skip("no generated fixtures present (see AUTHORING.md)", () => {});
   }
   for (const fixture of fixtures) {
     it(`${fixture.name} is internally consistent`, () => {

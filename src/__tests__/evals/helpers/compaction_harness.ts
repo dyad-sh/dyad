@@ -54,6 +54,127 @@ export interface CompactionFixture {
 }
 
 const FIXTURES_DIR = resolve(__dirname, "../fixtures/compaction");
+const SPECS_DIR = resolve(FIXTURES_DIR, "specs");
+
+/**
+ * Authoring spec for generate.mjs (see AUTHORING.md). Loosely typed on
+ * purpose — validateSpec() reports shape problems as readable errors instead
+ * of letting a parse-level type mismatch throw.
+ */
+export interface CompactionSpec {
+  name?: string;
+  domain?: string;
+  phases?: {
+    id?: string;
+    goal?: string;
+    turns?: number;
+    factIds?: string[];
+    bulk?: { asset?: string; path?: string; count?: number }[];
+  }[];
+  facts?: Partial<FixtureFact>[];
+  traps?: Partial<FixtureTrap>[];
+  probes?: Partial<FixtureProbe>[];
+}
+
+export function loadSpecs(): { file: string; spec: CompactionSpec }[] {
+  const files = readdirSync(SPECS_DIR).filter((f) => f.endsWith(".spec.json"));
+  return files
+    .map((file) => ({
+      file,
+      spec: JSON.parse(
+        readFileSync(resolve(SPECS_DIR, file), "utf-8"),
+      ) as CompactionSpec,
+    }))
+    .sort((a, b) => a.file.localeCompare(b.file));
+}
+
+/**
+ * Keyless validation of a committed authoring spec — the checks generate.mjs
+ * enforces at generation time, plus the AUTHORING.md contract, so CI catches
+ * broken specs even though the generated transcripts themselves are
+ * gitignored.
+ */
+export function validateSpec(file: string, spec: CompactionSpec): string[] {
+  const errors: string[] = [];
+  const err = (m: string) => errors.push(m);
+
+  if (spec.name !== file.replace(/\.spec\.json$/, ""))
+    err(`name "${spec.name}" does not match filename ${file}`);
+  if (!spec.domain?.trim()) err("missing domain");
+
+  const phases = spec.phases ?? [];
+  const facts = spec.facts ?? [];
+  const traps = spec.traps ?? [];
+  const probes = spec.probes ?? [];
+  if (phases.length === 0) err("no phases");
+  if (facts.length < 8) err(`expected >=8 facts, got ${facts.length}`);
+  if (probes.length !== 3)
+    err(`expected exactly 3 probes, got ${probes.length}`);
+  if (traps.length < 1) err("expected at least 1 trap");
+
+  const phaseIds = new Set(phases.map((p) => p.id));
+  const factIds = new Set<string>();
+  for (const f of facts) {
+    if (!f.id) {
+      err("fact missing id");
+      continue;
+    }
+    if (factIds.has(f.id)) err(`duplicate fact id ${f.id}`);
+    factIds.add(f.id);
+    if (![1, 2, 3].includes(f.tier as number))
+      err(`${f.id}: bad tier ${f.tier}`);
+    if (!f.statement?.trim()) err(`${f.id}: missing statement`);
+    // Evidence is matched verbatim by the generator and by fixture
+    // validation, so it must be printable ASCII (AUTHORING.md).
+    if (!f.evidence?.trim()) err(`${f.id}: missing evidence`);
+    else if (!/^[\x20-\x7E]+$/.test(f.evidence))
+      err(`${f.id}: evidence contains non-ASCII/control characters`);
+  }
+
+  const plantedFactIds = new Set(phases.flatMap((p) => p.factIds ?? []));
+  for (const id of plantedFactIds) {
+    if (!factIds.has(id)) err(`phase references unknown fact ${id}`);
+  }
+  for (const id of factIds) {
+    if (!plantedFactIds.has(id)) err(`fact ${id} not assigned to any phase`);
+  }
+
+  for (const t of traps) {
+    if (!t.id) {
+      err("trap missing id");
+      continue;
+    }
+    if (!t.statement?.trim()) err(`${t.id}: missing statement`);
+    for (const [key, phase] of [
+      ["oldPhase", t.oldPhase],
+      ["newPhase", t.newPhase],
+    ] as const) {
+      if (!phase || !phaseIds.has(phase))
+        err(`${t.id}: ${key} "${phase}" is not a phase id`);
+    }
+    for (const [key, ev] of [
+      ["supersededEvidence", t.supersededEvidence],
+      ["currentEvidence", t.currentEvidence],
+    ] as const) {
+      if (!ev?.trim()) err(`${t.id}: missing ${key}`);
+      else if (!/^[\x20-\x7E]+$/.test(ev))
+        err(`${t.id}: ${key} contains non-ASCII/control characters`);
+    }
+  }
+
+  for (const p of probes) {
+    if (!p.id) err("probe missing id");
+    if (!p.question?.trim()) err(`${p.id}: missing question`);
+    if (!p.expected?.trim()) err(`${p.id}: missing expected`);
+  }
+
+  // The size amplifier (fillerCycle in generate.mjs) needs bulk assets to
+  // reach the token band.
+  const bulks = phases.flatMap((p) => p.bulk ?? []);
+  if (bulks.length < 1) err("no bulk assets — amplification cannot run");
+
+  return errors;
+}
 
 export function loadFixtures(): CompactionFixture[] {
   const files = readdirSync(FIXTURES_DIR).filter(

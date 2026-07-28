@@ -182,14 +182,19 @@ export const createResponsesHandler =
       }
     }
 
-    // Check if the message contains "[dump]" to generate a dump
-    if (lastUserText.includes("[dump]")) {
+    // Check if the message contains "[dump]" to generate a dump. Skipped for
+    // compaction requests: the summarized transcript can embed "[dump]" from
+    // earlier turns, which must not overwrite the canned summary.
+    if (!isCompactionRequest && lastUserText.includes("[dump]")) {
       messageContent = generateDump(req);
     }
 
     // See consentClassifier.ts: fake decisions for the MCP auto-consent
-    // classifier, shared with the chat-completions fake route.
-    const consentMatch = matchConsentClassifierPayload(lastUserText);
+    // classifier, shared with the chat-completions fake route. Also gated off
+    // for compaction requests, whose transcript can quote classifier payloads.
+    const consentMatch = isCompactionRequest
+      ? null
+      : matchConsentClassifierPayload(lastUserText);
     if (consentMatch) {
       messageContent = consentMatch.content;
       // Answer slowly for print_envs so e2e can observe the "AI reviewing"

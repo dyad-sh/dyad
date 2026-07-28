@@ -138,11 +138,14 @@ import { windowRegistry } from "./window_infrastructure/main/window_registry";
 import type { WindowSessionId } from "./window_infrastructure/types";
 import { configureWindowProductController } from "./window_infrastructure/main/window_product_controller";
 import {
+  getWindowSessionFilePath,
   MAX_PRODUCT_WINDOWS,
+  prepareWindowSessionForCreation,
   WindowSessionPersistence,
+  type WindowSessionPersistenceFailurePolicy,
   type WindowSessionDescriptor,
 } from "./window_infrastructure/main/window_session_persistence";
-import { DyadError, DyadErrorKind } from "./errors/dyad_error";
+import { DyadError, DyadErrorKind, isDyadError } from "./errors/dyad_error";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();
@@ -623,7 +626,7 @@ let safeStorageKeychainUnlockRetryScheduled = false;
 
 function getWindowSessionPersistence(): WindowSessionPersistence {
   windowSessionPersistence ??= new WindowSessionPersistence(
-    path.join(app.getPath("userData"), "window-sessions.json"),
+    getWindowSessionFilePath(app.getPath("userData")),
   );
   return windowSessionPersistence;
 }
@@ -631,12 +634,24 @@ function getWindowSessionPersistence(): WindowSessionPersistence {
 const createWindow = ({
   windowSessionId = randomUUID() as WindowSessionId,
   visibleEntity,
-}: Partial<WindowSessionDescriptor> = {}): WindowSessionId => {
+  persistenceFailurePolicy = "throw",
+}: Partial<WindowSessionDescriptor> & {
+  persistenceFailurePolicy?: WindowSessionPersistenceFailurePolicy;
+} = {}): WindowSessionId => {
   const persistence = getWindowSessionPersistence();
-  const wasAlreadyPersisted = persistence
-    .read()
-    .some((session) => session.windowSessionId === windowSessionId);
-  persistence.remember(windowSessionId, visibleEntity);
+  const { wasAlreadyPersisted, wasPersisted } = prepareWindowSessionForCreation(
+    {
+      persistence,
+      descriptor: { windowSessionId, visibleEntity },
+      failurePolicy: persistenceFailurePolicy,
+      onFailure: (error) => {
+        logger.error(
+          "Failed to persist startup window session; continuing with an unpersisted window:",
+          error,
+        );
+      },
+    },
+  );
 
   // Create the browser window.
   let browserWindow: BrowserWindow;
@@ -663,7 +678,9 @@ const createWindow = ({
       // frame: false,
     });
   } catch (error) {
-    if (!wasAlreadyPersisted) persistence.forget(windowSessionId);
+    if (!wasAlreadyPersisted && wasPersisted) {
+      persistence.forget(windowSessionId);
+    }
     throw error;
   }
   mainWindow = browserWindow;
@@ -976,11 +993,11 @@ const createWindow = ({
 function restoreWindowSessions(): void {
   const sessions = getWindowSessionPersistence().read();
   if (sessions.length === 0) {
-    createWindow();
+    createWindow({ persistenceFailurePolicy: "continue" });
     return;
   }
   for (const session of sessions) {
-    createWindow(session);
+    createWindow({ ...session, persistenceFailurePolicy: "continue" });
   }
 }
 
@@ -992,10 +1009,20 @@ configureWindowProductController({
         DyadErrorKind.Precondition,
       );
     }
-    return createWindow({
-      windowSessionId: randomUUID() as WindowSessionId,
-      visibleEntity: entity,
-    });
+    try {
+      return createWindow({
+        windowSessionId: randomUUID() as WindowSessionId,
+        visibleEntity: entity,
+      });
+    } catch (error) {
+      if (isDyadError(error)) throw error;
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new DyadError(
+        `Failed to open a new window: ${detail}`,
+        DyadErrorKind.External,
+        { cause: error },
+      );
+    }
   },
   initialEntityForSession: (windowSessionId) =>
     getWindowSessionPersistence()
@@ -1418,7 +1445,10 @@ app.on("activate", () => {
   // On OS X it's common to re-create a window in the app when the
   // dock icon is clicked and there are no other windows open.
   if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow(lastClosedWindowSession);
+    createWindow({
+      ...lastClosedWindowSession,
+      persistenceFailurePolicy: "continue",
+    });
   }
 });
 

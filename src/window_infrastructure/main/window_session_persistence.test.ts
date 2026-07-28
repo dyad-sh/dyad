@@ -1,10 +1,13 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowSessionId } from "../types";
 import {
+  clearWindowSessionPersistence,
+  getWindowSessionFilePath,
   MAX_PRODUCT_WINDOWS,
+  prepareWindowSessionForCreation,
   WindowSessionPersistence,
 } from "./window_session_persistence";
 
@@ -79,5 +82,55 @@ describe("WindowSessionPersistence", () => {
       }),
     ).toThrow("Window session capacity exceeded");
     expect(persistence.read()).toHaveLength(MAX_PRODUCT_WINDOWS);
+  });
+
+  it("continues with an unpersisted startup window when persistence fails", () => {
+    const persistence = {
+      read: () => [],
+      remember: () => {
+        throw new Error("read-only user data");
+      },
+    } as unknown as WindowSessionPersistence;
+    const onFailure = vi.fn();
+
+    expect(
+      prepareWindowSessionForCreation({
+        persistence,
+        descriptor: { windowSessionId: session(1) },
+        failurePolicy: "continue",
+        onFailure,
+      }),
+    ).toEqual({ wasAlreadyPersisted: false, wasPersisted: false });
+    expect(onFailure).toHaveBeenCalledWith(new Error("read-only user data"));
+  });
+
+  it("rejects an explicit new window when persistence fails", () => {
+    const persistence = {
+      read: () => [],
+      remember: () => {
+        throw new Error("read-only user data");
+      },
+    } as unknown as WindowSessionPersistence;
+
+    expect(() =>
+      prepareWindowSessionForCreation({
+        persistence,
+        descriptor: { windowSessionId: session(1) },
+        failurePolicy: "throw",
+      }),
+    ).toThrow("read-only user data");
+  });
+
+  it("clears durable and temporary window session files during reset", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-windows-"));
+    temporaryDirectories.push(directory);
+    const filePath = getWindowSessionFilePath(directory);
+    fs.writeFileSync(filePath, "durable", "utf8");
+    fs.writeFileSync(`${filePath}.tmp`, "temporary", "utf8");
+
+    await clearWindowSessionPersistence(directory);
+
+    expect(fs.existsSync(filePath)).toBe(false);
+    expect(fs.existsSync(`${filePath}.tmp`)).toBe(false);
   });
 });

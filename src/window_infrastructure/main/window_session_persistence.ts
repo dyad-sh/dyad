@@ -9,6 +9,7 @@ import {
 } from "@/window_infrastructure/types";
 
 export const MAX_PRODUCT_WINDOWS = 8;
+export const WINDOW_SESSION_FILE_NAME = "window-sessions.json";
 
 const WindowSessionDescriptorSchema = z.object({
   windowSessionId: WindowSessionIdSchema,
@@ -23,6 +24,52 @@ const WindowSessionFileSchema = z.object({
 export type WindowSessionDescriptor = z.infer<
   typeof WindowSessionDescriptorSchema
 >;
+
+export type WindowSessionPersistenceFailurePolicy = "continue" | "throw";
+
+export function prepareWindowSessionForCreation({
+  persistence,
+  descriptor,
+  failurePolicy,
+  onFailure,
+}: {
+  persistence: WindowSessionPersistence;
+  descriptor: WindowSessionDescriptor;
+  failurePolicy: WindowSessionPersistenceFailurePolicy;
+  onFailure?: (error: unknown) => void;
+}): { wasAlreadyPersisted: boolean; wasPersisted: boolean } {
+  const wasAlreadyPersisted = persistence
+    .read()
+    .some((session) => session.windowSessionId === descriptor.windowSessionId);
+  if (wasAlreadyPersisted) {
+    return { wasAlreadyPersisted: true, wasPersisted: true };
+  }
+
+  try {
+    persistence.remember(descriptor.windowSessionId, descriptor.visibleEntity);
+    return { wasAlreadyPersisted: false, wasPersisted: true };
+  } catch (error) {
+    if (failurePolicy === "throw") {
+      throw error;
+    }
+    onFailure?.(error);
+    return { wasAlreadyPersisted: false, wasPersisted: false };
+  }
+}
+
+export function getWindowSessionFilePath(userDataPath: string): string {
+  return path.join(userDataPath, WINDOW_SESSION_FILE_NAME);
+}
+
+export async function clearWindowSessionPersistence(
+  userDataPath: string,
+): Promise<void> {
+  const filePath = getWindowSessionFilePath(userDataPath);
+  await Promise.all([
+    fs.promises.rm(filePath, { force: true }),
+    fs.promises.rm(`${filePath}.tmp`, { force: true }),
+  ]);
+}
 
 export class WindowSessionPersistence {
   constructor(private readonly filePath: string) {}

@@ -58,6 +58,7 @@ import { getIpcAppRuntimeOutput } from "../services/app_runtime_transport";
 import { getPtySessionManager } from "../utils/pty_session_manager";
 import { sameInvocationRef } from "@/state_machines/invocation_ref";
 import { userInputRegistry } from "@/user_input/main";
+import { clearWindowSessionPersistence } from "@/window_infrastructure/main/window_session_persistence";
 
 /**
  * Read screenshot entries for a single app directory, filtered by filename
@@ -1483,6 +1484,8 @@ export function registerAppHandlers() {
         await fsPromises.unlink(settingsPath);
         logger.log(`Settings file deleted: ${settingsPath}`);
       }
+      await clearWindowSessionPersistence(userDataPath);
+      logger.log("Window session persistence deleted.");
       // Reset base directory cache to default, because settings are gone anyway
       invalidateDyadAppsBaseDirectoryCache();
       logger.log("settings deleted.");

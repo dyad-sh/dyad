@@ -39,14 +39,22 @@ type SafeRemotePreviewState =
   | {
       [Kind in Exclude<
         PreviewState["type"],
-        "closed" | "restoring" | "switching-branch" | "recovery-required"
+        | "closed"
+        | "restoring"
+        | "switching-branch"
+        | "recovery-required"
+        | "restore-recovery-required"
       >]: {
         readonly type: Kind;
         readonly session: SafeRemoteSession;
       };
     }[Exclude<
       PreviewState["type"],
-      "closed" | "restoring" | "switching-branch" | "recovery-required"
+      | "closed"
+      | "restoring"
+      | "switching-branch"
+      | "recovery-required"
+      | "restore-recovery-required"
     >]
   | {
       readonly type: "restoring";
@@ -61,6 +69,11 @@ type SafeRemotePreviewState =
     }
   | {
       readonly type: "recovery-required";
+      readonly session: SafeRemoteSession;
+      readonly error: PreviewError;
+    }
+  | {
+      readonly type: "restore-recovery-required";
       readonly session: SafeRemoteSession;
       readonly error: PreviewError;
     };
@@ -174,6 +187,7 @@ export type VersionPreviewProducerEvent =
   | {
       type: "RECONCILED";
       branch: string | null;
+      headOid: string | null;
     }
   | {
       type: "ORIGIN_RESOLVED";
@@ -200,6 +214,11 @@ export type VersionPreviewProducerEvent =
     }
   | {
       type: "RESTORE_FAILED";
+      error: PreviewError;
+      invocationRef: VersionPreviewInvocationRef;
+    }
+  | {
+      type: "RESTORE_RECOVERY_REQUIRED";
       error: PreviewError;
       invocationRef: VersionPreviewInvocationRef;
     }
@@ -311,6 +330,13 @@ export const PreviewStateSchema = z.discriminatedUnion("type", [
       error: previewErrorSchema,
     })
     .strict(),
+  z
+    .object({
+      type: z.literal("restore-recovery-required"),
+      session: sessionSchema,
+      error: previewErrorSchema,
+    })
+    .strict(),
 ]);
 type _PreviewStateSchemaMatchesSafeRemoteState = AssertTrue<
   MutuallyAssignable<z.infer<typeof PreviewStateSchema>, SafeRemotePreviewState>
@@ -384,6 +410,13 @@ function stripWindowPresentation(state: PreviewState): SafeRemotePreviewState {
                   session: stripSessionPresentation(state.fallback.session),
                 },
       };
+    case "restoring": {
+      const { restoreRecovery: _restoreRecovery, ...safeState } = state;
+      return {
+        ...safeState,
+        session: stripSessionPresentation(state.session),
+      };
+    }
     default:
       return {
         ...state,
@@ -434,6 +467,7 @@ export function toPreviewDomainEvent(
       return { type: event.type };
     case "CHECKOUT_FAILED":
     case "RESTORE_FAILED":
+    case "RESTORE_RECOVERY_REQUIRED":
     case "RETURN_FAILED":
     case "SWITCH_BRANCH_FAILED":
       return { type: event.type, error: event.error };

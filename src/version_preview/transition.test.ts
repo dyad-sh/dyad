@@ -72,6 +72,10 @@ const EVENT_SAMPLES: PreviewEvent[] = [
   { type: "CHECKOUT_FAILED", error: { message: "checkout failed" } },
   { type: "RESTORE_SUCCEEDED", repositoryOutcome: "target-applied" },
   { type: "RESTORE_FAILED", error: { message: "restore failed" } },
+  {
+    type: "RESTORE_RECOVERY_REQUIRED",
+    error: { message: "restore was interrupted" },
+  },
   { type: "RETURN_SUCCEEDED" },
   { type: "RETURN_FAILED", error: { message: "return failed" } },
   { type: "SWITCH_BRANCH_SUCCEEDED" },
@@ -88,6 +92,7 @@ const STATE_KINDS = [
   "returning",
   "switching-branch",
   "recovery-required",
+  "restore-recovery-required",
 ] as const satisfies readonly PreviewState["type"][];
 const COMMAND_KINDS = [
   "resolve-origin",
@@ -168,6 +173,15 @@ const STATE_SAMPLES: PreviewState[] = [
       exitIntent: { type: "close" },
     }),
     error: { message: "return failed" },
+  },
+  {
+    type: "restore-recovery-required",
+    session: session({
+      targetVersionId: "v1",
+      originBranch: null,
+      checkedOutVersionId: null,
+    }),
+    error: { message: "restore interrupted" },
   },
   {
     type: "switching-branch",

@@ -7,6 +7,7 @@ import {
   type BranchSwitchFallback,
   type PreviewSession,
   type PreviewState,
+  type RestoreRecovery,
 } from "@/version_preview/state";
 
 const persistedSessionSchema = z
@@ -51,6 +52,24 @@ const persistedFallbackSchema = z.discriminatedUnion("type", [
     .strict(),
 ]);
 
+const restoreRecoverySchema = z.discriminatedUnion("nextStep", [
+  z
+    .object({
+      preRestoreHead: z.string().min(1),
+      targetHead: z.string().min(1).nullable(),
+      nextStep: z.enum(["preparing", "hard-reset", "soft-reset", "commit"]),
+    })
+    .strict(),
+  z
+    .object({
+      preRestoreHead: z.string().min(1),
+      targetHead: z.string().min(1),
+      nextStep: z.literal("completed"),
+      completedHead: z.string().min(1),
+    })
+    .strict(),
+]);
+
 const persistedStateSchema = z.discriminatedUnion("type", [
   z
     .object({
@@ -66,6 +85,7 @@ const persistedStateSchema = z.discriminatedUnion("type", [
       type: z.literal("restoring"),
       session: persistedSessionSchema,
       fallback: z.enum(["closed", "browsing", "previewing"]),
+      restoreRecovery: restoreRecoverySchema.optional(),
     })
     .strict(),
   z
@@ -86,11 +106,18 @@ const persistedStateSchema = z.discriminatedUnion("type", [
       error: z.object({ message: z.string() }).strict(),
     })
     .strict(),
+  z
+    .object({
+      type: z.literal("restore-recovery-required"),
+      session: persistedSessionSchema,
+      error: z.object({ message: z.string() }).strict(),
+    })
+    .strict(),
 ]);
 
 const persistedSchema = z
   .object({
-    version: z.literal(2),
+    version: z.union([z.literal(2), z.literal(3)]),
     state: persistedStateSchema,
   })
   .strict();
@@ -233,6 +260,17 @@ class VersionPreviewPersistence {
     }
   }
 
+  checkpointRestore(
+    appId: number,
+    state: PreviewState,
+    restoreRecovery: RestoreRecovery,
+  ): void {
+    if (state.type !== "restoring") {
+      throw new Error("Restore recovery checkpoint requires restoring state");
+    }
+    this.checkpoint(appId, { ...state, restoreRecovery });
+  }
+
   flush(appId: number): void {
     const state = this.pending.get(appId);
     if (!state) return;
@@ -286,7 +324,7 @@ class VersionPreviewPersistence {
     const temp = `${target}.tmp`;
     fs.writeFileSync(
       temp,
-      JSON.stringify({ version: 2, state: persistedState }),
+      JSON.stringify({ version: 3, state: persistedState }),
       "utf8",
     );
     fs.renameSync(temp, target);

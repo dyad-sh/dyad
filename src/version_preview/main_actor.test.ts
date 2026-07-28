@@ -44,6 +44,7 @@ const persistence = vi.hoisted(() => ({
   load: vi.fn((): any => ({ type: "closed" })),
   schedule: vi.fn(),
   checkpoint: vi.fn(),
+  checkpointRestore: vi.fn(),
   flush: vi.fn(),
   remove: vi.fn(),
   removeAll: vi.fn(),
@@ -439,7 +440,7 @@ describe("version_preview main actor", () => {
     harness.transport.dispose();
   });
 
-  it("closes an interrupted live-branch restore without inventing a return branch", async () => {
+  it("closes a live-branch restore that never moved HEAD", async () => {
     persistence.load.mockReturnValue({
       type: "restoring",
       fallback: "closed",
@@ -452,8 +453,16 @@ describe("version_preview main actor", () => {
         selectedDiffFile: null,
         isDiffVisible: false,
       },
+      restoreRecovery: {
+        preRestoreHead: "pre-restore-head",
+        targetHead: "abc123",
+        nextStep: "hard-reset",
+      },
     });
-    service.reconcile.mockResolvedValue({ branch: "main" });
+    service.reconcile.mockResolvedValue({
+      branch: "main",
+      headOid: "pre-restore-head",
+    });
     const harness = createHarness();
     await harness.actorA.resync();
     await flush();
@@ -470,6 +479,112 @@ describe("version_preview main actor", () => {
     harness.clientB.dispose();
     harness.transport.dispose();
   });
+
+  it("does not close a live-branch restore interrupted after hard reset", async () => {
+    persistence.load.mockReturnValue({
+      type: "restoring",
+      fallback: "closed",
+      session: {
+        appId: 7,
+        originBranch: null,
+        targetVersionId: "abc123",
+        checkedOutVersionId: null,
+        exitIntent: { type: "none" },
+        selectedDiffFile: null,
+        isDiffVisible: false,
+      },
+      restoreRecovery: {
+        preRestoreHead: "pre-restore-head",
+        targetHead: "abc123",
+        nextStep: "soft-reset",
+      },
+    });
+    service.reconcile.mockResolvedValue({
+      branch: "main",
+      headOid: "abc123",
+    });
+    const harness = createHarness();
+    await harness.actorA.resync();
+    await flush();
+
+    expect(harness.actorA.getSnapshot().state).toMatchObject({
+      type: "restore-recovery-required",
+      error: {
+        message: expect.stringMatching(/interrupted.*restore/i),
+      },
+    });
+
+    harness.releaseA();
+    harness.releaseB();
+    harness.clientA.dispose();
+    harness.clientB.dispose();
+    harness.transport.dispose();
+  });
+
+  it.each([
+    {
+      name: "soft reset completed but commit not started",
+      restoreRecovery: {
+        preRestoreHead: "pre-restore-head",
+        targetHead: "abc123",
+        nextStep: "commit" as const,
+      },
+      headOid: "pre-restore-head",
+      expectedType: "restore-recovery-required",
+    },
+    {
+      name: "completed restore still matches its recorded HEAD",
+      restoreRecovery: {
+        preRestoreHead: "pre-restore-head",
+        targetHead: "abc123",
+        nextStep: "completed" as const,
+        completedHead: "restore-commit",
+      },
+      headOid: "restore-commit",
+      expectedType: "closed",
+    },
+    {
+      name: "repository diverged after a completed restore",
+      restoreRecovery: {
+        preRestoreHead: "pre-restore-head",
+        targetHead: "abc123",
+        nextStep: "completed" as const,
+        completedHead: "restore-commit",
+      },
+      headOid: "external-commit",
+      expectedType: "restore-recovery-required",
+    },
+  ])(
+    "reconciles $name from durable progress and actual HEAD",
+    async ({ restoreRecovery, headOid, expectedType }) => {
+      persistence.load.mockReturnValue({
+        type: "restoring",
+        fallback: "closed",
+        session: {
+          appId: 7,
+          originBranch: null,
+          targetVersionId: "abc123",
+          checkedOutVersionId: null,
+          exitIntent: { type: "none" },
+          selectedDiffFile: null,
+          isDiffVisible: false,
+        },
+        restoreRecovery,
+      });
+      service.reconcile.mockResolvedValue({ branch: "main", headOid });
+      const harness = createHarness();
+      await harness.actorA.resync();
+      await flush();
+
+      expect(harness.actorA.getSnapshot().state.type).toBe(expectedType);
+
+      harness.releaseA();
+      harness.releaseB();
+      harness.clientA.dispose();
+      harness.clientB.dispose();
+      harness.transport.dispose();
+    },
+  );
 
   it("keeps recovery when an interrupted branch switch lands elsewhere", async () => {
     persistence.load.mockReturnValue({
@@ -530,6 +645,97 @@ describe("version_preview main actor", () => {
       "preview-checkpoint-failure",
       expect.stringContaining("disk full"),
     );
+
+    harness.releaseA();
+    harness.releaseB();
+    harness.clientA.dispose();
+    harness.clientB.dispose();
+    harness.transport.dispose();
+  });
+
+  it("does not cross the hard-reset boundary when its progress checkpoint fails", async () => {
+    const destructiveEffect = vi.fn();
+    persistence.checkpointRestore.mockImplementationOnce(() => {
+      throw new Error("progress checkpoint failed");
+    });
+    service.run.mockImplementationOnce(
+      async (
+        _command: unknown,
+        _operationId: string,
+        onRestoreProgress: (progress: {
+          preRestoreHead: string;
+          targetHead: string;
+          nextStep: "hard-reset";
+        }) => void,
+      ) => {
+        onRestoreProgress({
+          preRestoreHead: "pre-restore-head",
+          targetHead: "abc123",
+          nextStep: "hard-reset",
+        });
+        destructiveEffect();
+        return {
+          repositoryOutcome: "target-applied",
+          notification: null,
+          runtimeAction: "none",
+          affectedChatId: null,
+          createdChatId: null,
+        };
+      },
+    );
+    const harness = createHarness();
+    await harness.actorA.resync();
+
+    await harness.actorA.dispatch({
+      type: "RESTORE",
+      versionId: "abc123",
+      operationId: "restore-progress-checkpoint-failure",
+    });
+    await flush();
+
+    expect(destructiveEffect).not.toHaveBeenCalled();
+    expect(harness.actorA.getSnapshot().state.type).toBe("closed");
+
+    harness.releaseA();
+    harness.releaseB();
+    harness.clientA.dispose();
+    harness.clientB.dispose();
+    harness.transport.dispose();
+  });
+
+  it("keeps recovery visible when Git fails after hard reset starts", async () => {
+    service.run.mockImplementationOnce(
+      async (
+        _command: unknown,
+        _operationId: string,
+        onRestoreProgress: (progress: {
+          preRestoreHead: string;
+          targetHead: string;
+          nextStep: "soft-reset";
+        }) => void,
+      ) => {
+        onRestoreProgress({
+          preRestoreHead: "pre-restore-head",
+          targetHead: "abc123",
+          nextStep: "soft-reset",
+        });
+        throw new Error("soft reset failed");
+      },
+    );
+    const harness = createHarness();
+    await harness.actorA.resync();
+
+    await harness.actorA.dispatch({
+      type: "RESTORE",
+      versionId: "abc123",
+      operationId: "restore-partial-failure",
+    });
+    await flush();
+
+    expect(harness.actorA.getSnapshot().state).toMatchObject({
+      type: "restore-recovery-required",
+      error: { message: "soft reset failed" },
+    });
 
     harness.releaseA();
     harness.releaseB();

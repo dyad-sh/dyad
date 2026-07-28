@@ -281,6 +281,12 @@ export function VersionPreviewProvider({ children }: PropsWithChildren) {
               },
             },
           );
+        } else if (state.type === "restore-recovery-required") {
+          toast.error("Version restore needs attention.", {
+            id: toastId,
+            description: state.error.message,
+            duration: Infinity,
+          });
         } else {
           toast.dismiss(toastId);
         }

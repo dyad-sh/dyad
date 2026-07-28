@@ -42,6 +42,11 @@ const states: PreviewState[] = [
     session: session(),
     error: { message: "return failed" },
   },
+  {
+    type: "restore-recovery-required",
+    session: { ...session(), originBranch: null, checkedOutVersionId: null },
+    error: { message: "restore interrupted" },
+  },
 ];
 
 describe("version_preview capabilities", () => {

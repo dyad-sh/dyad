@@ -69,6 +69,7 @@ function ignoreEvent(
     case "CHECKOUT_FAILED":
     case "RESTORE_SUCCEEDED":
     case "RESTORE_FAILED":
+    case "RESTORE_RECOVERY_REQUIRED":
     case "RETURN_SUCCEEDED":
     case "RETURN_FAILED":
     case "SWITCH_BRANCH_SUCCEEDED":
@@ -622,6 +623,23 @@ export function transition(
           return { type: "previewing", session: s };
         });
       }
+      if (event.type === "RESTORE_RECOVERY_REQUIRED") {
+        return {
+          kind: "applied",
+          state: {
+            type: "restore-recovery-required",
+            session: state.session,
+            error: event.error,
+          },
+          commands: [
+            {
+              type: "notify-recovery",
+              appId: state.session.appId,
+              error: event.error,
+            },
+          ],
+        };
+      }
       const intent = exitIntentFor(event);
       if (intent) {
         if (sameExitIntent(state.session.exitIntent, intent)) {
@@ -736,6 +754,23 @@ export function transition(
         ]);
       }
       // SELECT_VERSION and completion events are deliberately ignored.
+      return ignoreEvent(state, event);
+    }
+
+    case "restore-recovery-required": {
+      if (event.type === "OPEN") {
+        return {
+          kind: "applied",
+          state,
+          commands: [
+            {
+              type: "notify-recovery",
+              appId: state.session.appId,
+              error: state.error,
+            },
+          ],
+        };
+      }
       return ignoreEvent(state, event);
     }
   }

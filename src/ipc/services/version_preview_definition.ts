@@ -11,6 +11,7 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { queryInvalidationBus } from "@/window_infrastructure/main/query_invalidation_bus";
 import { ignore } from "@/state_machines/types";
 import { CLOSED_STATE, type PreviewCommand } from "@/version_preview/state";
+import type { RestoreRecovery } from "@/version_preview/state";
 import { transition } from "@/version_preview/transition";
 import {
   VERSION_PREVIEW_INVOCATION_KIND,
@@ -86,6 +87,7 @@ function isFailureEvent(event: VersionPreviewWireEvent): boolean {
     event.type === "ORIGIN_RESOLUTION_FAILED" ||
     event.type === "CHECKOUT_FAILED" ||
     event.type === "RESTORE_FAILED" ||
+    event.type === "RESTORE_RECOVERY_REQUIRED" ||
     event.type === "RETURN_FAILED" ||
     event.type === "SWITCH_BRANCH_FAILED"
   );
@@ -120,7 +122,8 @@ function transitionActor(
       current.type === "closed" ||
       current.type === "viewing-diff" ||
       current.type === "browsing" ||
-      current.type === "resolving-origin"
+      current.type === "resolving-origin" ||
+      current.type === "restore-recovery-required"
     ) {
       return ignore(actorState, "no-change");
     }
@@ -143,10 +146,29 @@ function transitionActor(
                   "Dyad restarted while switching branches. Return to the original branch before continuing.",
               },
             };
-    } else if (current.session.originBranch === null) {
-      // A restore started from the live branch does not own a historical
-      // checkout, so there is no branch to return to after restart.
-      state = CLOSED_STATE;
+    } else if (
+      current.type === "restoring" &&
+      current.session.originBranch === null
+    ) {
+      const recovery = current.restoreRecovery;
+      const restoreNeverStarted =
+        (recovery?.nextStep === "preparing" ||
+          recovery?.nextStep === "hard-reset") &&
+        event.headOid === recovery.preRestoreHead;
+      const restoreCompleted =
+        recovery?.nextStep === "completed" &&
+        event.headOid === recovery.completedHead;
+      state =
+        restoreNeverStarted || restoreCompleted
+          ? CLOSED_STATE
+          : {
+              type: "restore-recovery-required",
+              session: current.session,
+              error: {
+                message:
+                  "Dyad restarted during an interrupted version restore. Inspect the repository before continuing.",
+              },
+            };
     } else {
       state =
         event.branch === current.session.originBranch
@@ -256,8 +278,14 @@ function createCommandRunner(
         void versionPreviewService
           .reconcile(appId)
           .then(
-            ({ branch }) => context.send({ type: "RECONCILED", branch }),
-            () => context.send({ type: "RECONCILED", branch: null }),
+            ({ branch, headOid }) =>
+              context.send({ type: "RECONCILED", branch, headOid }),
+            () =>
+              context.send({
+                type: "RECONCILED",
+                branch: null,
+                headOid: null,
+              }),
           )
           .finally(() => versionPreviewService.endReconciliation(appId));
         return;
@@ -287,6 +315,7 @@ function createCommandRunner(
       case "restore":
       case "restore-to-message": {
         if (!invocationRef) return;
+        let restoreProgress: RestoreRecovery | null = null;
         try {
           versionPreviewPersistence.checkpoint(
             appId,
@@ -320,112 +349,133 @@ function createCommandRunner(
           }
           return;
         }
-        const lifecycle = versionPreviewService
-          .run(command, invocationRef.operationId)
-          .then(
-            async (result) => {
-              try {
-                const scopes = [
-                  { family: "branches", appId },
-                  { family: "versions", appId },
-                  { family: "app", appId },
-                  { family: "problems", appId },
-                  ...(result.affectedChatId
-                    ? ([
-                        { family: "chat", chatId: result.affectedChatId },
-                      ] as const)
-                    : []),
-                  ...(result.createdChatId
-                    ? ([{ family: "chats" }] as const)
-                    : []),
-                ] as const;
-                queryInvalidationBus.publish(scopes, {
-                  originEndpoint:
-                    versionPreviewPresentationService.originEndpointFor(
-                      invocationRef.operationId,
-                    ),
-                  originHandledScopes: scopes,
-                });
-                versionPreviewPresentationService.publishResult(
-                  appId,
-                  invocationRef.operationId,
-                  result,
-                );
-                if (result.runtimeAction === "restart") {
-                  try {
-                    await appRunActorService.executeExternalLifecycle({
-                      appId,
-                      operation: "restart",
-                    });
-                  } catch (error) {
-                    versionPreviewPresentationService.publishError(
-                      appId,
-                      invocationRef.operationId,
-                      `The version changed, but the app could not restart: ${errorInfo(error).message}`,
-                    );
-                  }
-                }
-              } finally {
-                switch (command.type) {
-                  case "checkout":
-                    emit({ type: "CHECKOUT_SUCCEEDED", invocationRef });
-                    break;
-                  case "return":
-                    emit({ type: "RETURN_SUCCEEDED", invocationRef });
-                    break;
-                  case "switch-branch":
-                    emit({ type: "SWITCH_BRANCH_SUCCEEDED", invocationRef });
-                    break;
-                  case "restore":
-                  case "restore-to-message":
-                    emit({
-                      type: "RESTORE_SUCCEEDED",
-                      repositoryOutcome: result.repositoryOutcome,
-                      invocationRef,
-                    });
-                    break;
+        const operation =
+          command.type === "restore" || command.type === "restore-to-message"
+            ? versionPreviewService.run(
+                command,
+                invocationRef.operationId,
+                (progress) => {
+                  versionPreviewPersistence.checkpointRestore(
+                    appId,
+                    context.getSnapshot().state,
+                    progress,
+                  );
+                  restoreProgress = progress;
+                },
+              )
+            : versionPreviewService.run(command, invocationRef.operationId);
+        const lifecycle = operation.then(
+          async (result) => {
+            try {
+              const scopes = [
+                { family: "branches", appId },
+                { family: "versions", appId },
+                { family: "app", appId },
+                { family: "problems", appId },
+                ...(result.affectedChatId
+                  ? ([
+                      { family: "chat", chatId: result.affectedChatId },
+                    ] as const)
+                  : []),
+                ...(result.createdChatId
+                  ? ([{ family: "chats" }] as const)
+                  : []),
+              ] as const;
+              queryInvalidationBus.publish(scopes, {
+                originEndpoint:
+                  versionPreviewPresentationService.originEndpointFor(
+                    invocationRef.operationId,
+                  ),
+                originHandledScopes: scopes,
+              });
+              versionPreviewPresentationService.publishResult(
+                appId,
+                invocationRef.operationId,
+                result,
+              );
+              if (result.runtimeAction === "restart") {
+                try {
+                  await appRunActorService.executeExternalLifecycle({
+                    appId,
+                    operation: "restart",
+                  });
+                } catch (error) {
+                  versionPreviewPresentationService.publishError(
+                    appId,
+                    invocationRef.operationId,
+                    `The version changed, but the app could not restart: ${errorInfo(error).message}`,
+                  );
                 }
               }
-            },
-            (error) => {
-              const info = errorInfo(error);
-              try {
-                versionPreviewPresentationService.publishError(
-                  appId,
-                  invocationRef.operationId,
-                  info.message,
-                );
-              } finally {
-                switch (command.type) {
-                  case "checkout":
-                    emit({
-                      type: "CHECKOUT_FAILED",
-                      error: info,
-                      invocationRef,
-                    });
-                    break;
-                  case "return":
-                    emit({ type: "RETURN_FAILED", error: info, invocationRef });
-                    break;
-                  case "switch-branch":
-                    emit({
-                      type: "SWITCH_BRANCH_FAILED",
-                      error: info,
-                      invocationRef,
-                    });
-                    break;
-                  case "restore":
-                  case "restore-to-message":
-                    emit({
-                      type: "RESTORE_FAILED",
-                      error: info,
-                      invocationRef,
-                    });
-                    break;
-                }
+            } finally {
+              switch (command.type) {
+                case "checkout":
+                  emit({ type: "CHECKOUT_SUCCEEDED", invocationRef });
+                  break;
+                case "return":
+                  emit({ type: "RETURN_SUCCEEDED", invocationRef });
+                  break;
+                case "switch-branch":
+                  emit({ type: "SWITCH_BRANCH_SUCCEEDED", invocationRef });
+                  break;
+                case "restore":
+                case "restore-to-message":
+                  emit({
+                    type: "RESTORE_SUCCEEDED",
+                    repositoryOutcome: result.repositoryOutcome,
+                    invocationRef,
+                  });
+                  break;
               }
-            },
-          );
+            }
+          },
+          (error) => {
+            const info = errorInfo(error);
+            try {
+              versionPreviewPresentationService.publishError(
+                appId,
+                invocationRef.operationId,
+                info.message,
+              );
+            } finally {
+              switch (command.type) {
+                case "checkout":
+                  emit({
+                    type: "CHECKOUT_FAILED",
+                    error: info,
+                    invocationRef,
+                  });
+                  break;
+                case "return":
+                  emit({ type: "RETURN_FAILED", error: info, invocationRef });
+                  break;
+                case "switch-branch":
+                  emit({
+                    type: "SWITCH_BRANCH_FAILED",
+                    error: info,
+                    invocationRef,
+                  });
+                  break;
+                case "restore":
+                case "restore-to-message":
+                  emit(
+                    restoreProgress && restoreProgress.nextStep !== "completed"
+                      ? {
+                          type: "RESTORE_RECOVERY_REQUIRED",
+                          error: info,
+                          invocationRef,
+                        }
+                      : {
+                          type: "RESTORE_FAILED",
+                          error: info,
+                          invocationRef,
+                        },
+                  );
+                  break;
+              }
+            }
+          },
+        );
         void versionPreviewService
           .trackLifecycle(appId, lifecycle)
           .catch((error) => {

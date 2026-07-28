@@ -64,6 +64,7 @@ import {
   beginAppChatActorMutation,
   waitForAppChatActorsIdle,
 } from "@/ipc/services/chat_actor_service";
+import type { RestoreRecovery } from "@/version_preview/state";
 
 const logger = log.scope("version_handlers");
 
@@ -74,10 +75,12 @@ type RestoreToMessageParams = z.infer<typeof RestoreToMessageParamsSchema>;
 interface VersionPreviewHandlerBridge {
   revertVersion?: (
     params: RevertVersionParams,
+    onRestoreProgress?: (progress: RestoreRecovery) => void,
   ) => Promise<VersionCommandResult>;
   restoreToMessage?: (
     params: RestoreToMessageParams,
     sender?: SafeSender,
+    onRestoreProgress?: (progress: RestoreRecovery) => void,
   ) => Promise<VersionCommandResult>;
   checkoutVersion?: (
     params: CheckoutVersionParams,
@@ -92,17 +95,28 @@ const versionPreviewHandlerBridge: VersionPreviewHandlerBridge = {};
  * tests execute exactly the same mutation cores during the atomic migration.
  */
 export const versionPreviewHandlerService = {
-  revertVersion(params: RevertVersionParams) {
+  revertVersion(
+    params: RevertVersionParams,
+    onRestoreProgress?: (progress: RestoreRecovery) => void,
+  ) {
     if (!versionPreviewHandlerBridge.revertVersion) {
       throw new Error("Version handlers are not registered");
     }
-    return versionPreviewHandlerBridge.revertVersion(params);
+    return versionPreviewHandlerBridge.revertVersion(params, onRestoreProgress);
   },
-  restoreToMessage(params: RestoreToMessageParams, sender?: SafeSender) {
+  restoreToMessage(
+    params: RestoreToMessageParams,
+    sender?: SafeSender,
+    onRestoreProgress?: (progress: RestoreRecovery) => void,
+  ) {
     if (!versionPreviewHandlerBridge.restoreToMessage) {
       throw new Error("Version handlers are not registered");
     }
-    return versionPreviewHandlerBridge.restoreToMessage(params, sender);
+    return versionPreviewHandlerBridge.restoreToMessage(
+      params,
+      sender,
+      onRestoreProgress,
+    );
   },
   checkoutVersion(params: CheckoutVersionParams) {
     if (!versionPreviewHandlerBridge.checkoutVersion) {
@@ -406,6 +420,7 @@ async function revertCodebaseToVersion({
   previousVersionId,
   targetBranchName,
   preserveDirtyTree = false,
+  onRestoreProgress,
 }: {
   appId: number;
   app: typeof apps.$inferSelect;
@@ -413,6 +428,7 @@ async function revertCodebaseToVersion({
   previousVersionId: string;
   targetBranchName?: string;
   preserveDirtyTree?: boolean;
+  onRestoreProgress?: (progress: RestoreRecovery) => void;
 }): Promise<{ successMessage: string; warningMessage: string }> {
   let successMessage = "Restored version";
   let warningMessage = "";
@@ -505,13 +521,25 @@ async function revertCodebaseToVersion({
   const hasStagedRevertChanges = await gitStageToRevert({
     path: appPath,
     targetOid: previousVersionId,
+    onBeforeReset: onRestoreProgress,
   });
   if (hasStagedRevertChanges) {
+    onRestoreProgress?.({
+      preRestoreHead: currentCommitHash,
+      targetHead: previousVersionId,
+      nextStep: "commit",
+    });
     await gitCommit({
       path: appPath,
       message: `Reverted all changes back to version ${previousVersionId}`,
     });
   }
+  onRestoreProgress?.({
+    preRestoreHead: currentCommitHash,
+    targetHead: previousVersionId,
+    nextStep: "completed",
+    completedHead: await getCurrentCommitHash({ path: appPath }),
+  });
 
   if (app.neonProjectId && app.neonDevelopmentBranchId) {
     const version = await db.query.versions.findFirst({
@@ -840,6 +868,7 @@ export function registerVersionHandlers() {
   const revertVersionHandler = async (
     _: Electron.IpcMainInvokeEvent,
     params: RevertVersionParams,
+    onRestoreProgress?: (progress: RestoreRecovery) => void,
   ) => {
     const {
       appId,
@@ -878,6 +907,7 @@ export function registerVersionHandlers() {
         appPath,
         previousVersionId,
         targetBranchName,
+        onRestoreProgress,
       });
 
       let affectedChatId: number | null = null;
@@ -954,15 +984,17 @@ export function registerVersionHandlers() {
       });
     });
   };
-  versionPreviewHandlerBridge.revertVersion = (params) =>
+  versionPreviewHandlerBridge.revertVersion = (params, onRestoreProgress) =>
     revertVersionHandler(
       undefined as unknown as Electron.IpcMainInvokeEvent,
       params,
+      onRestoreProgress,
     );
 
   const restoreToMessageHandler = async (
     event: Electron.IpcMainInvokeEvent,
     params: RestoreToMessageParams,
+    onRestoreProgress?: (progress: RestoreRecovery) => void,
   ) => {
     const {
       appId,
@@ -1250,6 +1282,7 @@ export function registerVersionHandlers() {
             previousVersionId: latestTargetCommitHash,
             targetBranchName,
             preserveDirtyTree,
+            onRestoreProgress,
           });
           successMessage = result.successMessage;
           warningMessage = result.warningMessage;
@@ -1407,10 +1440,15 @@ export function registerVersionHandlers() {
       releaseActorAdmissionBlock?.();
     }
   };
-  versionPreviewHandlerBridge.restoreToMessage = (params, sender) =>
+  versionPreviewHandlerBridge.restoreToMessage = (
+    params,
+    sender,
+    onRestoreProgress,
+  ) =>
     restoreToMessageHandler(
       { sender } as unknown as Electron.IpcMainInvokeEvent,
       params,
+      onRestoreProgress,
     );
 
   const checkoutVersionHandler = async (

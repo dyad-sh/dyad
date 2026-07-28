@@ -486,6 +486,41 @@ describe("VersionPreviewProvider", () => {
     );
   });
 
+  it("surfaces interrupted restore recovery without offering an unsafe retry", async () => {
+    getDefaultStore().set(selectedAppIdAtom, 1);
+    remoteState = {
+      type: "restore-recovery-required",
+      session: {
+        appId: 1,
+        originBranch: null,
+        targetVersionId: "abc123",
+        checkedOutVersionId: null,
+        exitIntent: { type: "none" },
+        selectedDiffFile: null,
+        isDiffVisible: false,
+      },
+      error: { message: "Inspect the repository before continuing." },
+    };
+    const queryClient = new QueryClient();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <VersionPreviewProvider>
+          <div>content</div>
+        </VersionPreviewProvider>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith(
+        "Version restore needs attention.",
+        expect.objectContaining({
+          description: "Inspect the repository before continuing.",
+        }),
+      ),
+    );
+    expect(toastError.mock.calls.at(-1)?.[1]).not.toHaveProperty("action");
+  });
+
   it("serializes rapid selections so an accepted version stays visible", async () => {
     const first = deferred<{ kind: "applied" }>();
     actor.dispatch.mockReturnValueOnce(first.promise).mockResolvedValueOnce({

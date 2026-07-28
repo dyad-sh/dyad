@@ -69,6 +69,7 @@ function toIntent(
     case "CHECKOUT_FAILED":
     case "RESTORE_SUCCEEDED":
     case "RESTORE_FAILED":
+    case "RESTORE_RECOVERY_REQUIRED":
     case "RETURN_SUCCEEDED":
     case "RETURN_FAILED":
     case "SWITCH_BRANCH_SUCCEEDED":

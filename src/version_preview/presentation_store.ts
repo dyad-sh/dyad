@@ -126,7 +126,8 @@ export function combineVersionPreviewState(
   if (
     remote.type === "returning" ||
     remote.type === "switching-branch" ||
-    remote.type === "recovery-required"
+    remote.type === "recovery-required" ||
+    remote.type === "restore-recovery-required"
   ) {
     return remote;
   }

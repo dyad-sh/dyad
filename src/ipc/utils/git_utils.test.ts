@@ -464,6 +464,73 @@ describe("gitStageToRevert", () => {
     });
   });
 
+  it("does not hard reset when the pre-reset checkpoint fails", async () => {
+    const repo = await createTwoVersionRepo();
+    const preRestoreHead = await runGitOutput(repo.repoDir, [
+      "rev-parse",
+      "HEAD",
+    ]);
+
+    await expect(
+      gitStageToRevert({
+        path: repo.repoDir,
+        targetOid: repo.targetOid,
+        onBeforeReset: ({ nextStep }) => {
+          if (nextStep === "hard-reset") throw new Error("checkpoint failed");
+        },
+      }),
+    ).rejects.toThrow("checkpoint failed");
+
+    await expect(
+      runGitOutput(repo.repoDir, ["rev-parse", "HEAD"]),
+    ).resolves.toBe(preRestoreHead);
+  });
+
+  it("exposes the exact interruption boundary after hard reset", async () => {
+    const repo = await createTwoVersionRepo();
+
+    await expect(
+      gitStageToRevert({
+        path: repo.repoDir,
+        targetOid: repo.targetOid,
+        onBeforeReset: ({ nextStep }) => {
+          if (nextStep === "soft-reset") {
+            throw new Error("simulated process interruption");
+          }
+        },
+      }),
+    ).rejects.toThrow("simulated process interruption");
+
+    await expect(
+      runGitOutput(repo.repoDir, ["rev-parse", "HEAD"]),
+    ).resolves.toBe(repo.targetOid);
+  });
+
+  it("reports both reset boundaries without changing successful restore behavior", async () => {
+    const repo = await createTwoVersionRepo();
+    const preRestoreHead = await runGitOutput(repo.repoDir, [
+      "rev-parse",
+      "HEAD",
+    ]);
+    const boundaries: string[] = [];
+
+    await expect(
+      gitStageToRevert({
+        path: repo.repoDir,
+        targetOid: repo.targetOid,
+        onBeforeReset: ({ nextStep }) => boundaries.push(nextStep),
+      }),
+    ).resolves.toBe(true);
+
+    expect(boundaries).toEqual(["hard-reset", "soft-reset"]);
+    await expect(
+      runGitOutput(repo.repoDir, ["rev-parse", "HEAD"]),
+    ).resolves.toBe(preRestoreHead);
+    await expect(
+      runGitOutput(repo.repoDir, ["diff", "--cached", "--name-only"]),
+    ).resolves.toBe("app.ts");
+  });
+
   it("treats current-HEAD restores with only managed runtime files as no-ops", async () => {
     const repo = await createTwoVersionRepo();
     const currentOid = await runGitOutput(repo.repoDir, ["rev-parse", "HEAD"]);

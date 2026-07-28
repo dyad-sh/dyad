@@ -171,6 +171,10 @@ Background and before/after examples of why this pattern exists:
   transition that leaves the watched state, plus disposal cleanup.
 - In a cancelling state, finalize on every non-stale terminal event. Reject
   staleness by identity; never infer event provenance from arrival order.
+- When destructive cleanup sends a cancellation terminal through an IPC sender
+  other than the actor's observer, also settle the authoritative actor with the
+  same correlated cancelled terminal; a silent handler return must not be
+  synthesized as successful completion.
 - Compensation on abort rolls back only what the aborted operation touched.
 - When a multi-step side effect can fail partway through, retain the exact
   completed/next step in the failure state. Retrying from the start can repeat

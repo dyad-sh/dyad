@@ -49,6 +49,37 @@ describe("settleUnobservedChatStreamResult", () => {
     });
     expect(target.onEnd).not.toHaveBeenCalled();
   });
+
+  it("preserves cancellation when an aborted handler returns silently", () => {
+    const target = observer();
+
+    settleUnobservedChatStreamResult(
+      {
+        chatId: 7,
+        invocationRef: {
+          kind: "chat-stream",
+          entityKey: 7,
+          operationId: "operation-1",
+        },
+        prompt: "hello",
+      },
+      7,
+      target,
+      true,
+    );
+
+    expect(target.onEnd).toHaveBeenCalledWith({
+      chatId: 7,
+      invocationRef: {
+        kind: "chat-stream",
+        entityKey: 7,
+        operationId: "operation-1",
+      },
+      updatedFiles: false,
+      wasCancelled: true,
+    });
+    expect(target.onError).not.toHaveBeenCalled();
+  });
 });
 
 describe("createObservedChatStreamSender", () => {

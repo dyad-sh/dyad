@@ -192,7 +192,18 @@ export function settleUnobservedChatStreamResult(
   request: ChatStreamParams,
   result: number | "error",
   observer: ChatStreamExecutionObserver,
+  wasCancelled = false,
 ): void {
+  if (wasCancelled) {
+    observer.onEnd?.({
+      chatId: request.chatId,
+      invocationRef: request.invocationRef,
+      streamId: request.streamId,
+      updatedFiles: false,
+      wasCancelled: true,
+    });
+    return;
+  }
   if (result === "error") {
     observer.onError?.({
       chatId: request.chatId,
@@ -318,10 +329,16 @@ export async function executeChatStreamFromActor(
     if (deferredCancellation) {
       observer.onEnd?.(deferredCancellation);
     } else if (!terminalObserved) {
-      settleUnobservedChatStreamResult(request, result, observer);
+      const wasCancelled = request.invocationRef
+        ? cancelledActorInvocations.delete(request.invocationRef.operationId)
+        : false;
+      settleUnobservedChatStreamResult(request, result, observer, wasCancelled);
     }
     return result;
   } finally {
+    if (request.invocationRef) {
+      cancelledActorInvocations.delete(request.invocationRef.operationId);
+    }
     executionObservers.delete(
       request.intentId ?? request.invocationRef?.operationId ?? "",
     );
@@ -329,6 +346,7 @@ export async function executeChatStreamFromActor(
 }
 
 const executionObservers = new Map<string, ChatStreamExecutionObserver>();
+const cancelledActorInvocations = new Set<string>();
 
 function executionObserver(
   request: ChatStreamParams,
@@ -561,6 +579,9 @@ async function cancelTrackedStreams(
           }))
         : [{ invocationRef: undefined, streamId: undefined }];
     for (const { invocationRef, streamId } of correlations) {
+      if (invocationRef) {
+        cancelledActorInvocations.add(invocationRef.operationId);
+      }
       safeSend(sender, "chat:response:end", {
         chatId,
         invocationRef,

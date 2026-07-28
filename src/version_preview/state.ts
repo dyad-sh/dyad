@@ -63,6 +63,16 @@ export type PreviewState =
     }
   | { type: "recovery-required"; session: PreviewSession; error: PreviewError };
 
+export function ownsHistoricalCheckout(state: PreviewState): boolean {
+  if (state.type === "switching-branch") {
+    return (
+      state.fallback.type === "previewing" ||
+      state.fallback.type === "recovery-required"
+    );
+  }
+  return state.type !== "closed" && state.session.checkedOutVersionId !== null;
+}
+
 export type PreviewEvent =
   // UI intents
   | { type: "OPEN"; appId: number }

@@ -23,8 +23,12 @@ export class VersionPreviewActorService {
     private readonly presentation = versionPreviewPresentationService,
   ) {}
 
-  acquireWindowInterest(appId: number, webContentsId: number): void {
-    this.windowInterests.acquire(appId, webContentsId);
+  acquireWindowInterest(appId: number, webContentsId: number): boolean {
+    return this.windowInterests.acquire(appId, webContentsId);
+  }
+
+  restoreWindowInterest(appId: number, webContentsId: number): boolean {
+    return this.windowInterests.acquireIfUnowned(appId, webContentsId);
   }
 
   releaseWindowInterest({

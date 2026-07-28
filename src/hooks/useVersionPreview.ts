@@ -117,17 +117,33 @@ export function useVersionPreview(appId: number | null): {
     ): Promise<void> => {
       if (appId === null) return;
       const isCleanup = event.type === "CLOSE";
+      const releaseSelectionInterest = async (id: string) => {
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          try {
+            await windowInterest.release(appId, id, { type: "close" });
+            return;
+          } catch (error) {
+            if (attempt === 2) throw error;
+          }
+        }
+      };
       if (event.type === "OPEN") {
         await windowInterest.acquire(appId);
         presentationStore.send(appId, event);
         return;
       }
+      let acquiredSelectionInterest = false;
+      let selectionAccepted = false;
       if (event.type === "SELECT_VERSION") {
-        await windowInterest.acquire(appId);
+        acquiredSelectionInterest = (await windowInterest.acquire(appId))
+          .acquired;
         if (
           selectionEpoch !== undefined &&
           !windowInterest.isSelectionEpochCurrent(appId, selectionEpoch)
         ) {
+          if (acquiredSelectionInterest) {
+            await releaseSelectionInterest(operationId());
+          }
           return;
         }
       }
@@ -179,6 +195,7 @@ export function useVersionPreview(appId: number | null): {
         const receipt = await actor.dispatch(intent);
         if (receipt.kind === "applied") {
           if (event.type === "SELECT_VERSION") {
+            selectionAccepted = true;
             presentationStore.send(appId, event);
           }
           await settlement;
@@ -187,6 +204,13 @@ export function useVersionPreview(appId: number | null): {
         throw new Error("The version operation was not accepted");
       } catch (error) {
         unsubscribe();
+        if (
+          event.type === "SELECT_VERSION" &&
+          acquiredSelectionInterest &&
+          !selectionAccepted
+        ) {
+          await releaseSelectionInterest(operationId());
+        }
         throw error;
       }
     },

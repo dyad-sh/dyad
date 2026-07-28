@@ -11,6 +11,7 @@ const windows = vi.hoisted(() => ({
 }));
 const actors = vi.hoisted(() => ({
   acquireWindowInterest: vi.fn(),
+  restoreWindowInterest: vi.fn(),
   releaseWindowInterest: vi.fn(),
 }));
 
@@ -72,6 +73,23 @@ describe("version preview window interest handlers", () => {
     lookup.resolve({ id: 7 });
     await result;
 
+    expect(actors.acquireWindowInterest).not.toHaveBeenCalled();
+  });
+
+  it("atomically restores interest only through the orphan recovery handler", async () => {
+    database.findFirst.mockResolvedValue({ id: 7 });
+    actors.restoreWindowInterest.mockReturnValue(true);
+    const sender = {
+      id: 42,
+      isDestroyed: () => false,
+    };
+
+    await expect(
+      registeredHandlers[1]({ sender }, { appId: 7 }),
+    ).resolves.toEqual({ acquired: true });
+
+    expect(windows.ensureRegistered).toHaveBeenCalledWith(sender);
+    expect(actors.restoreWindowInterest).toHaveBeenCalledWith(7, 42);
     expect(actors.acquireWindowInterest).not.toHaveBeenCalled();
   });
 });

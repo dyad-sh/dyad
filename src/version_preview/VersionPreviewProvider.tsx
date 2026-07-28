@@ -17,6 +17,7 @@ import { useRemoteMachineClient } from "@/distributed_machines/react";
 import { useRegisterEntityDisposer } from "@/state_machines/react";
 import { versionPreviewClientDefinition } from "./client_definition";
 import { VersionPreviewPresentationStore } from "./presentation_store";
+import { ownsHistoricalCheckout } from "./state";
 import { versionPreviewKey } from "./transport";
 import { VersionPreviewWindowInterestClient } from "./window_interest_client";
 
@@ -169,13 +170,51 @@ export function VersionPreviewProvider({ children }: PropsWithChildren) {
         versionPreviewKey(appId),
       );
       let previousStateType = actor.getView().state.state.type;
+      let restorationStarted = false;
+      let restoredPresentation = false;
       const inspect = () => {
         const state = actor.getView().state.state;
         if (
-          previousStateType === "switching-branch" &&
-          state.type === "closed"
+          ownsHistoricalCheckout(state) &&
+          !presentation.isPaneVisible(appId) &&
+          !restorationStarted
+        ) {
+          restorationStarted = true;
+          void (async () => {
+            for (let attempt = 0; attempt < 3; attempt += 1) {
+              try {
+                const result = await windowInterest.restoreIfOrphaned(appId);
+                if (
+                  result.acquired &&
+                  jotaiStore.get(selectedAppIdAtom) === appId &&
+                  ownsHistoricalCheckout(actor.getView().state.state)
+                ) {
+                  restoredPresentation = true;
+                  presentation.send(appId, { type: "OPEN", appId });
+                } else if (result.acquired) {
+                  await windowInterest.release(
+                    appId,
+                    `version-preview:${globalThis.crypto.randomUUID()}`,
+                    { type: "close" },
+                  );
+                }
+                return;
+              } catch (error) {
+                if (attempt === 2) throw error;
+              }
+            }
+          })().catch(() => {
+            toast.error(
+              "Version preview could not be restored after the window reloaded. Reopen the app and try again.",
+            );
+          });
+        }
+        if (
+          state.type === "closed" &&
+          (previousStateType === "switching-branch" || restoredPresentation)
         ) {
           presentation.send(appId, { type: "CLOSE" });
+          restoredPresentation = false;
         }
         previousStateType = state.type;
         const toastId = `version-preview-recovery-${appId}`;
@@ -238,7 +277,7 @@ export function VersionPreviewProvider({ children }: PropsWithChildren) {
       unsubscribeSelection();
       unsubscribeActor();
     };
-  }, [client, jotaiStore, presentation]);
+  }, [client, jotaiStore, presentation, windowInterest]);
 
   useEffect(() => () => presentation.dispose(), [presentation]);
 

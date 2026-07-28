@@ -71,4 +71,19 @@ describe("VersionPreviewWindowInterestService", () => {
     expect(interests.inspect(8)).toEqual([1]);
     interests.dispose();
   });
+
+  it("restores ownership only when no other window owns the preview", () => {
+    const interests = new VersionPreviewWindowInterestService(
+      new WindowRegistry(),
+    );
+
+    expect(interests.acquireIfUnowned(7, 1)).toBe(true);
+    expect(interests.acquireIfUnowned(7, 2)).toBe(false);
+    expect(interests.inspect(7)).toEqual([1]);
+
+    interests.release(7, 1);
+    expect(interests.acquireIfUnowned(7, 2)).toBe(true);
+    expect(interests.inspect(7)).toEqual([2]);
+    interests.dispose();
+  });
 });

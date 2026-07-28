@@ -37,7 +37,8 @@ const actor = {
 
 const toastError = vi.hoisted(() => vi.fn());
 const windowInterest = vi.hoisted(() => ({
-  acquire: vi.fn(async () => undefined),
+  acquire: vi.fn(async () => ({ acquired: true })),
+  restoreIfOrphaned: vi.fn(async () => ({ acquired: false })),
   release: vi.fn(
     async (
       _appId: number,
@@ -62,6 +63,7 @@ vi.mock("sonner", () => ({
 vi.mock("./window_interest_client", () => ({
   VersionPreviewWindowInterestClient: class {
     acquire = windowInterest.acquire;
+    restoreIfOrphaned = windowInterest.restoreIfOrphaned;
     release = windowInterest.release;
     selectionEpoch = windowInterest.selectionEpoch;
     isSelectionEpochCurrent = windowInterest.isSelectionEpochCurrent;
@@ -84,11 +86,12 @@ vi.mock("@/hooks/useSelectChat", () => ({
 }));
 
 function Probe() {
-  const { state, send } = useVersionPreview(1);
+  const { state, send, isPaneVisible } = useVersionPreview(1);
   return (
     <button
       data-testid="probe"
       data-state={state.type}
+      data-visible={isPaneVisible}
       onClick={() => send({ type: "OPEN", appId: 1 })}
     >
       Open
@@ -112,7 +115,10 @@ describe("VersionPreviewProvider", () => {
     actorListeners.clear();
     remoteState = CLOSED_STATE;
     toastError.mockClear();
-    windowInterest.acquire.mockReset().mockResolvedValue(undefined);
+    windowInterest.acquire.mockReset().mockResolvedValue({ acquired: true });
+    windowInterest.restoreIfOrphaned
+      .mockReset()
+      .mockResolvedValue({ acquired: false });
     windowInterest.release
       .mockReset()
       .mockResolvedValue({ cleanupStarted: false });
@@ -174,6 +180,13 @@ describe("VersionPreviewProvider", () => {
 
     fireEvent.click(screen.getByTestId("selection-probe"));
     await waitFor(() => expect(actor.dispatch).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(windowInterest.release).toHaveBeenCalledWith(
+        1,
+        expect.stringMatching(/^version-preview:/),
+        { type: "close" },
+      ),
+    );
     expect(
       screen.getByTestId("selection-probe").getAttribute("data-state"),
     ).toBe("closed");
@@ -272,6 +285,73 @@ describe("VersionPreviewProvider", () => {
 
     await waitFor(() => expect(windowInterest.release).toHaveBeenCalled());
     expect(actor.dispatch).not.toHaveBeenCalled();
+  });
+
+  it("restores a reloaded pane when its historical checkout is orphaned", async () => {
+    getDefaultStore().set(selectedAppIdAtom, 1);
+    remoteState = {
+      type: "previewing",
+      session: {
+        appId: 1,
+        originBranch: "main",
+        targetVersionId: "abc123",
+        checkedOutVersionId: "abc123",
+        exitIntent: { type: "none" },
+        selectedDiffFile: null,
+        isDiffVisible: false,
+      },
+    };
+    windowInterest.restoreIfOrphaned.mockResolvedValueOnce({ acquired: true });
+    const queryClient = new QueryClient();
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <VersionPreviewProvider>
+          <Probe />
+        </VersionPreviewProvider>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() =>
+      expect(windowInterest.restoreIfOrphaned).toHaveBeenCalledWith(1),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("probe").getAttribute("data-visible")).toBe(
+        "true",
+      ),
+    );
+  });
+
+  it("keeps a reloaded pane hidden when another window owns the checkout", async () => {
+    getDefaultStore().set(selectedAppIdAtom, 1);
+    remoteState = {
+      type: "previewing",
+      session: {
+        appId: 1,
+        originBranch: "main",
+        targetVersionId: "abc123",
+        checkedOutVersionId: "abc123",
+        exitIntent: { type: "none" },
+        selectedDiffFile: null,
+        isDiffVisible: false,
+      },
+    };
+    const queryClient = new QueryClient();
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <VersionPreviewProvider>
+          <Probe />
+        </VersionPreviewProvider>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() =>
+      expect(windowInterest.restoreIfOrphaned).toHaveBeenCalledWith(1),
+    );
+    expect(screen.getByTestId("probe").getAttribute("data-visible")).toBe(
+      "false",
+    );
   });
 
   it("resyncs a rejected recovery retry and surfaces terminal rejection", async () => {

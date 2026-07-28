@@ -2,7 +2,9 @@ import { ipc } from "@/ipc/types";
 
 type VersionInterestIpc = Pick<
   typeof ipc.version,
-  "acquirePreviewWindowInterest" | "releasePreviewWindowInterest"
+  | "acquirePreviewWindowInterest"
+  | "restorePreviewWindowInterest"
+  | "releasePreviewWindowInterest"
 >;
 
 /**
@@ -16,9 +18,15 @@ export class VersionPreviewWindowInterestClient {
 
   constructor(private readonly client: VersionInterestIpc = ipc.version) {}
 
-  acquire(appId: number): Promise<void> {
+  acquire(appId: number): Promise<{ acquired: boolean }> {
     return this.enqueue(appId, () =>
       this.client.acquirePreviewWindowInterest({ appId }),
+    );
+  }
+
+  restoreIfOrphaned(appId: number): Promise<{ acquired: boolean }> {
+    return this.enqueue(appId, () =>
+      this.client.restorePreviewWindowInterest({ appId }),
     );
   }
 

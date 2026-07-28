@@ -181,7 +181,13 @@ export const versionContracts = {
   acquirePreviewWindowInterest: defineContract({
     channel: "version-preview:acquire-window-interest",
     input: z.object({ appId: z.number().int().positive() }).strict(),
-    output: z.void(),
+    output: z.object({ acquired: z.boolean() }).strict(),
+  }),
+
+  restorePreviewWindowInterest: defineContract({
+    channel: "version-preview:restore-window-interest",
+    input: z.object({ appId: z.number().int().positive() }).strict(),
+    output: z.object({ acquired: z.boolean() }).strict(),
   }),
 
   releasePreviewWindowInterest: defineContract({

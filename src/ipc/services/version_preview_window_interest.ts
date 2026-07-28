@@ -27,10 +27,18 @@ export class VersionPreviewWindowInterestService {
     });
   }
 
-  acquire(appId: number, webContentsId: number): void {
+  acquire(appId: number, webContentsId: number): boolean {
     const owners = this.windowIdsByAppId.get(appId) ?? new Set<number>();
+    const acquired = !owners.has(webContentsId);
     owners.add(webContentsId);
     this.windowIdsByAppId.set(appId, owners);
+    return acquired;
+  }
+
+  acquireIfUnowned(appId: number, webContentsId: number): boolean {
+    if ((this.windowIdsByAppId.get(appId)?.size ?? 0) > 0) return false;
+    this.windowIdsByAppId.set(appId, new Set([webContentsId]));
+    return true;
   }
 
   isLastOwner(appId: number, webContentsId: number): boolean {

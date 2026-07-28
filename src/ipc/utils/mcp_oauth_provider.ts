@@ -1,4 +1,4 @@
-import { shell, safeStorage } from "electron";
+import { shell } from "electron";
 import log from "electron-log";
 import { eq } from "drizzle-orm";
 import type {
@@ -10,6 +10,9 @@ import type {
 import { db } from "../../db";
 import { mcpServers } from "../../db/schema";
 import { DEFAULT_OAUTH_CALLBACK_PORT } from "../types/mcp";
+import { encryptToString, decryptFromString } from "./secret_storage";
+
+export { encryptToString, decryptFromString } from "./secret_storage";
 
 const logger = log.scope("mcp_oauth_provider");
 
@@ -35,54 +38,6 @@ function formUrlEncode(s: string): string {
       (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
     )
     .replace(/%20/g, "+");
-}
-
-// Tags plaintext-fallback blobs so they stay readable if the OS
-// keyring becomes available later.
-const PLAINTEXT_PREFIX = "plain:";
-
-export function encryptToString(plaintext: string): string {
-  if (!safeStorage.isEncryptionAvailable()) {
-    // No keyring (e.g. Linux without libsecret): store plaintext
-    // rather than blocking OAuth on those hosts.
-    logger.warn(
-      "safeStorage encryption unavailable; OAuth state written as plaintext",
-    );
-    return PLAINTEXT_PREFIX + Buffer.from(plaintext, "utf8").toString("base64");
-  }
-  return safeStorage.encryptString(plaintext).toString("base64");
-}
-
-export function decryptFromString(stored: string): string {
-  if (stored.startsWith(PLAINTEXT_PREFIX)) {
-    return Buffer.from(
-      stored.slice(PLAINTEXT_PREFIX.length),
-      "base64",
-    ).toString("utf8");
-  }
-  const buf = Buffer.from(stored, "base64");
-  if (!safeStorage.isEncryptionAvailable()) {
-    // Untagged blob without a keyring: best-effort UTF-8. Garbage
-    // bytes fall through JSON.parse upstream as empty state. Log so a
-    // keyring that disappeared after an encrypted write is diagnosable.
-    logger.warn(
-      "safeStorage encryption unavailable while reading OAuth state; treating stored blob as plaintext",
-    );
-    return buf.toString("utf8");
-  }
-  try {
-    return safeStorage.decryptString(buf);
-  } catch (err) {
-    // Either untagged plaintext from a no-keyring write
-    // (recoverable) or undecryptable ciphertext (yields garbage that
-    // JSON.parse upstream drops as empty state). Return bytes either
-    // way and let the caller decide.
-    logger.warn(
-      "safeStorage.decryptString rejected OAuth state; treating as plaintext",
-      err,
-    );
-    return buf.toString("utf8");
-  }
 }
 
 // True only if the stored OAuth state has an access token. A

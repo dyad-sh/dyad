@@ -23,6 +23,8 @@ type Row = {
   args: unknown;
   envJson: unknown;
   headersJson: unknown;
+  envEncrypted: string | null;
+  headersEncrypted: string | null;
   url: string | null;
   enabled: boolean;
   oauthEnabled: boolean;
@@ -34,6 +36,7 @@ type Row = {
 const dbStore = new Map<number, Row>();
 let lastUpdateTargetId = 0;
 let lastInsertPayload: Record<string, unknown> | null = null;
+let lastUpdatePayload: Record<string, unknown> | null = null;
 
 vi.mock("electron", () => ({
   ipcMain: {
@@ -44,11 +47,17 @@ vi.mock("electron", () => ({
       handlers.set(channel, fn);
     },
   },
-  // The createServer client-secret tests call `encryptToString` (in
-  // mcp_oauth_provider), which needs safeStorage.
+  // Client secrets, headers and env vars all go through
+  // `secret_storage`, which needs safeStorage. `decryptString` is the
+  // exact inverse of `encryptString` so round-trips are checkable.
   safeStorage: {
     isEncryptionAvailable: vi.fn(() => true),
     encryptString: vi.fn((s: string) => Buffer.from(`enc:${s}`, "utf8")),
+    decryptString: vi.fn((b: Buffer) => {
+      const s = b.toString("utf8");
+      if (!s.startsWith("enc:")) throw new Error("not encrypted by this mock");
+      return s.slice("enc:".length);
+    }),
   },
 }));
 
@@ -69,6 +78,7 @@ vi.mock("@/db", () => ({
       set: (values: Record<string, unknown>) => ({
         where: () => ({
           returning: () => {
+            lastUpdatePayload = values;
             const existing = dbStore.get(lastUpdateTargetId);
             const merged = { ...existing, ...values } as Row;
             if (existing) dbStore.set(existing.id, merged);
@@ -113,6 +123,9 @@ vi.mock("@/db", () => ({
               args: values.args ?? null,
               envJson: values.envJson ?? null,
               headersJson: values.headersJson ?? null,
+              envEncrypted: (values.envEncrypted as string | null) ?? null,
+              headersEncrypted:
+                (values.headersEncrypted as string | null) ?? null,
               url: (values.url as string | null) ?? null,
               enabled: Boolean(values.enabled),
               oauthEnabled: Boolean(values.oauthEnabled),
@@ -202,6 +215,8 @@ function seedRow(row: Partial<Row> & { id: number }): void {
     args: row.args ?? null,
     envJson: row.envJson ?? null,
     headersJson: row.headersJson ?? null,
+    envEncrypted: row.envEncrypted ?? null,
+    headersEncrypted: row.headersEncrypted ?? null,
     url: row.url ?? "https://example.com/mcp",
     enabled: row.enabled ?? true,
     oauthEnabled: row.oauthEnabled ?? true,
@@ -307,6 +322,111 @@ describe("mcp createServer handler (client_secret handling)", () => {
 
     expect(lastInsertPayload).not.toBeNull();
     expect(lastInsertPayload!.oauthClientSecret).toBeNull();
+  });
+});
+
+describe("mcp header/env encryption", () => {
+  beforeEach(() => {
+    dbStore.clear();
+    lastInsertPayload = null;
+    lastUpdatePayload = null;
+    vi.clearAllMocks();
+  });
+
+  it("encrypts headers on create and leaves the plaintext column NULL", async () => {
+    await invoke("mcp:create-server", {
+      name: "http-server",
+      transport: "http",
+      url: "https://example.com/mcp",
+      headersJson: { Authorization: "Bearer sk-secret" },
+    });
+
+    const stored = lastInsertPayload!.headersEncrypted as string;
+    expect(Buffer.from(stored, "base64").toString("utf8")).toBe(
+      `enc:{"Authorization":"Bearer sk-secret"}`,
+    );
+    expect(lastInsertPayload!.headersJson).toBeNull();
+  });
+
+  it("encrypts stdio env vars on create", async () => {
+    await invoke("mcp:create-server", {
+      name: "stdio-server",
+      transport: "stdio",
+      command: "npx",
+      envJson: { API_KEY: "sk-secret" },
+    });
+
+    const stored = lastInsertPayload!.envEncrypted as string;
+    expect(Buffer.from(stored, "base64").toString("utf8")).toBe(
+      `enc:{"API_KEY":"sk-secret"}`,
+    );
+    expect(lastInsertPayload!.envJson).toBeNull();
+  });
+
+  it("stores NULL in the encrypted column when there are no headers", async () => {
+    await invoke("mcp:create-server", {
+      name: "bare-server",
+      transport: "http",
+      url: "https://example.com/mcp",
+    });
+
+    expect(lastInsertPayload!.headersEncrypted).toBeNull();
+    expect(lastInsertPayload!.envEncrypted).toBeNull();
+  });
+
+  it("clears the plaintext column when headers change so no stale secret is left", async () => {
+    seedRow({
+      id: 3,
+      transport: "http",
+      headersJson: { "X-Api-Key": "leaked" },
+    });
+    await invoke("mcp:update-server", {
+      id: 3,
+      headersJson: { "X-Api-Key": "rotated" },
+    });
+
+    expect(lastUpdatePayload!.headersJson).toBeNull();
+    const stored = lastUpdatePayload!.headersEncrypted as string;
+    expect(Buffer.from(stored, "base64").toString("utf8")).toBe(
+      `enc:{"X-Api-Key":"rotated"}`,
+    );
+  });
+
+  it("reads headers back from the encrypted column", async () => {
+    seedRow({
+      id: 4,
+      transport: "http",
+      headersJson: { Authorization: "stale" },
+      headersEncrypted: Buffer.from(
+        `enc:{"Authorization":"current"}`,
+        "utf8",
+      ).toString("base64"),
+    });
+
+    const servers = await invoke<{ id: number; headersJson: unknown }[]>(
+      "mcp:list-servers",
+      undefined,
+    );
+    expect(servers.find((s) => s.id === 4)!.headersJson).toEqual({
+      Authorization: "current",
+    });
+  });
+
+  it("falls back to the plaintext column when the encrypted one is unreadable", async () => {
+    seedRow({
+      id: 5,
+      transport: "http",
+      headersJson: { Authorization: "fallback" },
+      headersEncrypted: Buffer.from("undecryptable", "utf8").toString("base64"),
+    });
+
+    const servers = await invoke<{ id: number; headersJson: unknown }[]>(
+      "mcp:list-servers",
+      undefined,
+    );
+    expect(servers.find((s) => s.id === 5)!.headersJson).toEqual({
+      Authorization: "fallback",
+    });
   });
 });
 
@@ -426,8 +546,12 @@ describe("mcp catalog handlers", () => {
     await invoke("mcp:add-from-catalog", { slug: "context7" });
     expect(lastInsertPayload).toMatchObject({
       oauthEnabled: false,
-      headersJson: { "X-Test": "1" },
+      headersJson: null,
     });
+    const stored = lastInsertPayload!.headersEncrypted as string;
+    expect(Buffer.from(stored, "base64").toString("utf8")).toBe(
+      `enc:{"X-Test":"1"}`,
+    );
   });
 
   it("returns the existing server when the slug was already added", async () => {

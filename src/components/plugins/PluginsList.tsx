@@ -46,11 +46,20 @@ export function PluginsList({
     return map;
   }, [catalogQuery.data]);
 
-  const hasOauthServer = useMemo(
-    () => (servers || []).some((s) => s.transport === "http" && s.oauthEnabled),
+  // Any server holding a credential we'd store without encryption:
+  // OAuth tokens and client secrets, request headers, or env vars.
+  const hasStoredSecret = useMemo(
+    () =>
+      (servers || []).some(
+        (s) =>
+          (s.transport === "http" && s.oauthEnabled) ||
+          Object.keys(s.headersJson ?? {}).length > 0 ||
+          Object.keys(s.envJson ?? {}).length > 0,
+      ),
     [servers],
   );
-  const showPlaintextBanner = oauthStorageEncrypted === false && hasOauthServer;
+  const showPlaintextBanner =
+    oauthStorageEncrypted === false && hasStoredSecret;
 
   // Still-loading, unreachable, or unauthorized servers have no tool
   // list; the card shows a placeholder instead of a misleading zero.

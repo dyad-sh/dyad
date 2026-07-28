@@ -8,8 +8,8 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
   captureMcpOAuthWriteAuthority,
   DyadOAuthClientProvider,
-  decryptFromString,
 } from "./mcp_oauth_provider";
+import { decryptFromString, readServerSecretMap } from "./secret_storage";
 import { settleWithinTimeout } from "./promise_utils";
 
 type ClientInitialization = {
@@ -89,7 +89,7 @@ export class McpManager {
     let client: MCPClient;
     if (s.transport === "stdio") {
       const args = s.args ?? [];
-      const env = s.envJson ?? undefined;
+      const env = readServerSecretMap(s.envEncrypted, s.envJson) ?? undefined;
       if (!s.command) throw new Error("MCP server command is required");
       const stdio = new StdioClientTransport({
         command: s.command,
@@ -115,7 +115,8 @@ export class McpManager {
         transport: {
           type: s.transport,
           url: s.url,
-          headers: s.headersJson ?? undefined,
+          headers:
+            readServerSecretMap(s.headersEncrypted, s.headersJson) ?? undefined,
           authProvider,
         },
       });

@@ -380,6 +380,10 @@ export const mcpServers = sqliteTable(
     command: text("command"),
     // Store typed JSON for args and environment variables
     args: text("args", { mode: "json" }).$type<string[] | null>(),
+    // Plaintext env vars and headers. Superseded by the encrypted
+    // columns below, which are what the MCP manager reads. Still
+    // written on every update so a build without the encrypted
+    // columns keeps working against the same database.
     envJson: text("env_json", { mode: "json" }).$type<Record<
       string,
       string
@@ -388,6 +392,11 @@ export const mcpServers = sqliteTable(
       string,
       string
     > | null>(),
+    // Env vars and headers encrypted via Electron `safeStorage`, or
+    // base64 plaintext where no keyring is available (see
+    // encryptSecretMap). Both hold a JSON object of strings.
+    envEncrypted: text("env_encrypted"),
+    headersEncrypted: text("headers_encrypted"),
     url: text("url"),
     enabled: integer("enabled", { mode: "boolean" })
       .notNull()

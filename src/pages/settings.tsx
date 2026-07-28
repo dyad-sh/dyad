@@ -37,6 +37,7 @@ import { DefaultChatModeSelector } from "@/components/DefaultChatModeSelector";
 import { ContextCompactionSwitch } from "@/components/ContextCompactionSwitch";
 import { BlockUnsafeNpmPackagesSwitch } from "@/components/BlockUnsafeNpmPackagesSwitch";
 import { CloudSandboxExperimentSwitch } from "@/components/CloudSandboxExperimentSwitch";
+import { MultiWindowExperimentSwitch } from "@/components/MultiWindowExperimentSwitch";
 import { AutoApproveSqlSwitch } from "@/components/AutoApproveSqlSwitch";
 import { AutoApproveMcpSwitch } from "@/components/AutoApproveMcpSwitch";
 import { useSetAtom } from "jotai";
@@ -235,6 +236,10 @@ export default function SettingsPage() {
           >
             <div id={SETTING_IDS.enableCloudSandbox}>
               <CloudSandboxExperimentSwitch />
+            </div>
+
+            <div id={SETTING_IDS.enableMultiWindow}>
+              <MultiWindowExperimentSwitch />
             </div>
 
             <div id={SETTING_IDS.autoApproveSafeMcpTools}>

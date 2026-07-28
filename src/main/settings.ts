@@ -67,6 +67,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   enableSandboxScriptExecution: true,
   enableMcpToolSearch: true,
   enableCodeExplorer: true,
+  enableMultiWindow: false,
   autoApproveNonSchemaSql: true,
   autoExpandPreviewPanel: true,
   enableContextCompaction: true,

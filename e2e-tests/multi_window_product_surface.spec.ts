@@ -7,6 +7,13 @@ test("opens an app in a second product window and survives closing the initiator
   po,
 }) => {
   await po.setUp({ autoApprove: true });
+  await po.navigation.goToSettingsTab();
+  const multiWindowSwitch = po.page.getByRole("switch", {
+    name: "Enable multiple windows",
+  });
+  await multiWindowSwitch.click();
+  await expect(multiWindowSwitch).toBeChecked();
+  await po.navigation.goToAppsTab();
   await po.importApp("minimal");
   const appName = await po.appManagement.getCurrentAppName();
   if (!appName) throw new Error("Imported app name was not available");

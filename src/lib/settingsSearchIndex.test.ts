@@ -30,6 +30,29 @@ describe("SETTINGS_SEARCH_INDEX", () => {
     });
   });
 
+  it("includes the multi-window experiment", () => {
+    expect(
+      SETTINGS_SEARCH_INDEX.find(
+        (item) => item.id === SETTING_IDS.enableMultiWindow,
+      ),
+    ).toEqual({
+      id: SETTING_IDS.enableMultiWindow,
+      label: "Enable multiple windows",
+      description:
+        'Show the experimental "Open in New Window" action in app context menus',
+      keywords: [
+        "window",
+        "multiple",
+        "multi-window",
+        "app",
+        "context menu",
+        "experiment",
+      ],
+      sectionId: SECTION_IDS.experiments,
+      sectionLabel: "Experiments",
+    });
+  });
+
   it("includes the block unsafe npm packages experiment", () => {
     expect(
       SETTINGS_SEARCH_INDEX.find(

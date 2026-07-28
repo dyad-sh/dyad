@@ -17,6 +17,7 @@ import {
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { useOpenApp } from "@/hooks/useOpenApp";
 import { useAppCollections } from "@/hooks/useAppCollections";
+import { useSettings } from "@/hooks/useSettings";
 import { useMemo, useState } from "react";
 import { AppSearchDialog } from "./AppSearchDialog";
 import { AppItem } from "./appItem";
@@ -26,6 +27,8 @@ export function AppList({ show }: { show?: boolean }) {
   const openApp = useOpenApp();
   const { apps, loading, error } = useLoadApps();
   const { collections } = useAppCollections();
+  const { settings } = useSettings();
+  const enableMultiWindow = !!settings?.enableMultiWindow;
   // search dialog state
   const [isSearchDialogOpen, setIsSearchDialogOpen] = useState(false);
 
@@ -146,6 +149,7 @@ export function AppList({ show }: { show?: boolean }) {
                       app={app}
                       handleAppClick={handleAppClick}
                       selectedAppId={selectedAppId}
+                      enableMultiWindow={enableMultiWindow}
                     />
                   ))
                 )}
@@ -194,6 +198,7 @@ export function AppList({ show }: { show?: boolean }) {
                                     app={app}
                                     handleAppClick={handleAppClick}
                                     selectedAppId={selectedAppId}
+                                    enableMultiWindow={enableMultiWindow}
                                   />
                                 ))
                               )}
@@ -213,6 +218,7 @@ export function AppList({ show }: { show?: boolean }) {
                     app={app}
                     handleAppClick={handleAppClick}
                     selectedAppId={selectedAppId}
+                    enableMultiWindow={enableMultiWindow}
                   />
                 ))}
               </SidebarMenu>

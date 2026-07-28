@@ -29,7 +29,7 @@ describe("AppItem", () => {
     mocks.openEntityInNewWindow.mockClear();
   });
 
-  it("explicitly duplicates an app surface into a new window", async () => {
+  function renderAppItem(enableMultiWindow: boolean) {
     render(
       <AppItem
         app={
@@ -45,8 +45,21 @@ describe("AppItem", () => {
         }
         handleAppClick={vi.fn()}
         selectedAppId={null}
+        enableMultiWindow={enableMultiWindow}
       />,
     );
+  }
+
+  it("hides the new-window entry point by default", () => {
+    renderAppItem(false);
+
+    fireEvent.contextMenu(screen.getByTestId("app-list-item-Product app"));
+
+    expect(screen.queryByText("Open in New Window")).toBeNull();
+  });
+
+  it("explicitly duplicates an app surface when the experiment is enabled", async () => {
+    renderAppItem(true);
 
     fireEvent.contextMenu(screen.getByTestId("app-list-item-Product app"));
     fireEvent.click(await screen.findByText("Open in New Window"));

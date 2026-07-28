@@ -33,7 +33,12 @@ test("falls back to one usable restorable window when session state is corrupt",
   const appName = await po.appManagement.getCurrentAppName();
   if (!appName) throw new Error("Imported app name was not available");
   await po.navigation.goToAppsTab();
-  await po.page.getByTestId(`app-list-item-${appName}`).click();
+  const appItem = po.page.getByTestId(`app-list-item-${appName}`);
+  await appItem.click({ button: "right" });
+  await expect(
+    po.page.getByRole("menuitem", { name: "Open in New Window" }),
+  ).not.toBeVisible();
+  await appItem.click();
   await expect(po.page).toHaveURL(/app-details/, {
     timeout: Timeout.MEDIUM,
   });

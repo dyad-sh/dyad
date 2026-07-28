@@ -4,6 +4,7 @@ import { VersionPreviewActorService } from "./version_preview_actor_service";
 const service = vi.hoisted(() => ({
   beginAppDeletion: vi.fn(),
   endAppDeletion: vi.fn(),
+  assertAcceptingOperations: vi.fn(),
   settle: vi.fn(async () => undefined),
 }));
 const persistence = vi.hoisted(() => ({
@@ -19,6 +20,25 @@ vi.mock("./version_preview_persistence", () => ({
 }));
 
 describe("VersionPreviewActorService", () => {
+  it("checks deletion and reset admission before acquiring window interest", () => {
+    const interests = {
+      acquire: vi.fn(() => true),
+      acquireIfUnowned: vi.fn(() => true),
+    };
+    const actors = new VersionPreviewActorService(
+      {} as never,
+      interests as never,
+    );
+
+    actors.acquireWindowInterest(7, 1);
+    actors.restoreWindowInterest(7, 2);
+
+    expect(service.assertAcceptingOperations).toHaveBeenNthCalledWith(1, 7);
+    expect(service.assertAcceptingOperations).toHaveBeenNthCalledWith(2, 7);
+    expect(interests.acquire).toHaveBeenCalledWith(7, 1);
+    expect(interests.acquireIfUnowned).toHaveBeenCalledWith(7, 2);
+  });
+
   it("records close compensation and settles it before entity disposal", async () => {
     const send = vi.fn();
     const host = {

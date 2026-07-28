@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ActorHost } from "@/distributed_machines/actor_host";
+import { DyadErrorKind } from "@/errors/dyad_error";
 import {
   createFakeClock,
   createSequentialIdSource,
@@ -169,5 +170,31 @@ describe("version preview deletion lifecycle", () => {
       undefined,
     );
     actors.endAppDeletion(7);
+  });
+
+  it("rejects subscription actor creation after deletion begins", () => {
+    const host = new ActorHost({
+      placement: "main",
+      clock: createFakeClock(),
+      ids: createSequentialIdSource(),
+    });
+    host.register(versionPreviewDefinition);
+    const actors = new VersionPreviewActorService(host as never);
+
+    actors.beginAppDeletion(7);
+    try {
+      expect(() =>
+        versionPreviewDefinition.remote.canonicalizeKeyAfterAuthorization?.(
+          versionPreviewKey(7),
+        ),
+      ).toThrowError(
+        expect.objectContaining({ kind: DyadErrorKind.Precondition }),
+      );
+      expect(host.peek(versionPreviewDefinition.id, versionPreviewKey(7))).toBe(
+        undefined,
+      );
+    } finally {
+      actors.endAppDeletion(7);
+    }
   });
 });

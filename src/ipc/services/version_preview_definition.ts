@@ -568,7 +568,12 @@ export const versionPreviewDefinition: Definition = {
     protocolVersion: REMOTE_MACHINE_PROTOCOL_VERSION,
     keyCodec: VersionPreviewKeySchema,
     encodeKey: (key) => key,
-    canonicalizeKeyAfterAuthorization: (key) => versionPreviewKey(key.appId),
+    canonicalizeKeyAfterAuthorization: (key) => {
+      // Authorization awaits the database, so deletion/reset may begin before
+      // the host reaches its final synchronous actor-creation boundary.
+      versionPreviewService.assertAcceptingOperations(key.appId);
+      return versionPreviewKey(key.appId);
+    },
     eventCodec:
       VersionPreviewIntentEventSchema as z.ZodType<VersionPreviewWireEvent>,
     snapshotCodec: VersionPreviewRemoteSnapshotSchema,

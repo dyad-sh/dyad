@@ -58,6 +58,34 @@ describe("VersionPreviewPresentationService", () => {
     expect(service.originEndpointFor("shared-operation")).toBe(original);
   });
 
+  it("drops a one-shot result when its initiating window has closed", () => {
+    const survivor = { send: vi.fn() };
+    const endpoints = new Map<string, typeof survivor>();
+    const windows = {
+      endpointForSession: vi.fn((sessionId: string) =>
+        endpoints.get(sessionId),
+      ),
+      routePresentation: vi.fn(() => "survivor"),
+    };
+    const service = new VersionPreviewPresentationService(windows as never);
+
+    endpoints.set("initiator", { send: vi.fn() });
+    endpoints.set("survivor", survivor);
+    service.recordInitiator("operation", "initiator");
+    endpoints.delete("initiator");
+
+    service.publishResult(7, "operation", {
+      repositoryOutcome: "target-applied",
+      notification: { kind: "success", message: "Restored" },
+      runtimeAction: "none",
+      affectedChatId: null,
+      createdChatId: 42,
+    });
+
+    expect(survivor.send).not.toHaveBeenCalled();
+    expect(windows.routePresentation).not.toHaveBeenCalled();
+  });
+
   it("expires unadmitted ownership but retains confirmed operations", () => {
     vi.useFakeTimers();
     try {

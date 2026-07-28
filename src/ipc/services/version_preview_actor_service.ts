@@ -24,10 +24,12 @@ export class VersionPreviewActorService {
   ) {}
 
   acquireWindowInterest(appId: number, webContentsId: number): boolean {
+    versionPreviewService.assertAcceptingOperations(appId);
     return this.windowInterests.acquire(appId, webContentsId);
   }
 
   restoreWindowInterest(appId: number, webContentsId: number): boolean {
+    versionPreviewService.assertAcceptingOperations(appId);
     return this.windowInterests.acquireIfUnowned(appId, webContentsId);
   }
 

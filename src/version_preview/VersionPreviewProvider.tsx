@@ -172,6 +172,7 @@ export function VersionPreviewProvider({ children }: PropsWithChildren) {
       let previousStateType = actor.getView().state.state.type;
       let restorationStarted = false;
       let restoredPresentation = false;
+      let orphanRestoreTimer: ReturnType<typeof setTimeout> | null = null;
       const inspect = () => {
         const state = actor.getView().state.state;
         if (
@@ -179,19 +180,36 @@ export function VersionPreviewProvider({ children }: PropsWithChildren) {
           !presentation.isPaneVisible(appId) &&
           !restorationStarted
         ) {
+          if (orphanRestoreTimer !== null) {
+            clearTimeout(orphanRestoreTimer);
+            orphanRestoreTimer = null;
+          }
           restorationStarted = true;
           void (async () => {
             for (let attempt = 0; attempt < 3; attempt += 1) {
               try {
                 const result = await windowInterest.restoreIfOrphaned(appId);
+                if (!result.acquired) {
+                  restorationStarted = false;
+                  if (
+                    jotaiStore.get(selectedAppIdAtom) === appId &&
+                    ownsHistoricalCheckout(actor.getView().state.state) &&
+                    !presentation.isPaneVisible(appId)
+                  ) {
+                    orphanRestoreTimer = setTimeout(() => {
+                      orphanRestoreTimer = null;
+                      inspect();
+                    }, 250);
+                  }
+                  return;
+                }
                 if (
-                  result.acquired &&
                   jotaiStore.get(selectedAppIdAtom) === appId &&
                   ownsHistoricalCheckout(actor.getView().state.state)
                 ) {
                   restoredPresentation = true;
                   presentation.send(appId, { type: "OPEN", appId });
-                } else if (result.acquired) {
+                } else {
                   await windowInterest.release(
                     appId,
                     `version-preview:${globalThis.crypto.randomUUID()}`,
@@ -265,7 +283,14 @@ export function VersionPreviewProvider({ children }: PropsWithChildren) {
           toast.dismiss(toastId);
         }
       };
-      unsubscribeActor = actor.subscribe(inspect);
+      const unsubscribeSelectedActor = actor.subscribe(inspect);
+      unsubscribeActor = () => {
+        unsubscribeSelectedActor();
+        if (orphanRestoreTimer !== null) {
+          clearTimeout(orphanRestoreTimer);
+          orphanRestoreTimer = null;
+        }
+      };
       inspect();
     };
     subscribeSelected();

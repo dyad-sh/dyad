@@ -104,15 +104,10 @@ export class VersionPreviewPresentationService {
       createdChatId: number | null;
     },
   ): void {
-    const initiator =
-      this.initiatorByOperationId.get(operationId)?.windowSessionId;
-    const target = this.windows.routePresentation({
-      effect: payload.createdChatId !== null ? "navigation" : "operation-toast",
-      ...(initiator ? { initiatorWindowSessionId: initiator } : {}),
-      entity: { kind: "app", id: appId },
-    });
-    if (!target) return;
-    this.windows.endpointForSession(target)?.send("version-preview:result", {
+    // One-shot results belong to the window that initiated the operation.
+    // If it has closed, dropping the result is safer than navigating or
+    // notifying an unrelated surviving window.
+    this.originEndpointFor(operationId)?.send("version-preview:result", {
       operationId,
       appId,
       ...payload,

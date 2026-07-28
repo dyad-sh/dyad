@@ -26,6 +26,7 @@ export interface StreamRequest {
   attachments?: FileAttachment[];
   selectedComponents?: ComponentSelection[];
   requestedChatMode?: Chat["chatMode"] | null;
+  planAcceptInNewChat?: boolean;
   owner?: UserInputFollowUpQueueOwner;
   onAccepted?: () => void;
   onAcceptanceError?: (error: Error) => void;

@@ -204,6 +204,10 @@ export function disposeSessionChatQueue(chatId: number): void {
   }
 }
 
+export function hasSessionChatQueue(chatId: number): boolean {
+  return queues.has(chatId);
+}
+
 export type PersistAdmissionResult =
   | {
       kind: "queued";

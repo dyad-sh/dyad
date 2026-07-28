@@ -437,6 +437,7 @@ export class ChatStreamRemoteManager {
         selectedComponents: request.selectedComponents ?? [],
         requestedChatMode: request.requestedChatMode,
         userInputRequestId: request.owner?.requestId,
+        planAcceptInNewChat: request.planAcceptInNewChat,
         owner: request.owner,
       };
       const intent: SerializableChatTurnIntent = {
@@ -772,7 +773,6 @@ export class ChatStreamRemoteManager {
       listener();
     }
   }
-
 }
 
 export const NO_CHAT_STREAM_REMOTE_SNAPSHOT = unavailableChatStreamSnapshot(1);

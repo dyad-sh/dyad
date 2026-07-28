@@ -55,7 +55,6 @@ import React, { Suspense, lazy, useCallback, useEffect } from "react";
 import { Toaster } from "sonner";
 import { fetch as undiciFetch } from "undici";
 import { expect } from "vitest";
-import { eq } from "drizzle-orm";
 
 // IMPORTANT: `./chat_flow_harness` must be imported BEFORE `@/components/ChatPanel`.
 // Loading it first pulls an app module that initializes `tslib`'s CJS interop
@@ -113,6 +112,7 @@ import {
 import { TestAppRunRemoteConnection } from "@/app_run/testing";
 import { PlanHandoffProvider } from "@/plan_handoff/PlanHandoffProvider";
 import { ChatStreamRemoteManager } from "@/chat_stream/remote_manager";
+import { hasSessionChatQueue } from "@/chat_stream/persistence";
 import { ChatStreamProvider } from "@/chat_stream/ChatStreamProvider";
 import {
   EntityDisposalProvider,
@@ -134,7 +134,7 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import { TitleBar } from "@/app/TitleBar";
 import { DeepLinkProvider } from "@/contexts/DeepLinkContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
-import { chatQueueState, chats } from "@/db/schema";
+import { chats } from "@/db/schema";
 import { ipc } from "@/ipc/types";
 import type {
   ComponentSelection,
@@ -1081,15 +1081,8 @@ export async function setupHybridChatHarness(
       await manager.dispatchQueueEvent(chatId, { type: "PAUSE_QUEUE" });
     };
 
-    const hasChatStreamResidue = (chatId: number) => {
-      return (
-        nodeHarness.db
-          .select({ chatId: chatQueueState.chatId })
-          .from(chatQueueState)
-          .where(eq(chatQueueState.chatId, chatId))
-          .get() !== undefined
-      );
-    };
+    const hasChatStreamResidue = (chatId: number) =>
+      hasSessionChatQueue(chatId);
 
     const seedAppRuntimeResidue = (appId: number) => {
       const store = getActiveStore();

@@ -115,6 +115,10 @@ When explicit window creation awaits `loadURL()` / `loadFile()`, start any
 development-only DevTools reload only after that initial load promise resolves.
 Scheduling the reload first can reject the awaited promise with
 `ERR_ABORTED (-3)` and incorrectly roll back a healthy window.
+When a loaded window consumes and clears a persisted one-shot event, send the
+event through that known-ready window rather than `BrowserWindow.getAllWindows()[0]`.
+In multi-window startup the first global window may still be loading, which
+would drop the only replay before its early listener exists.
 
 **Custom-protocol debugging:** Before using `git bisect` on a `dyad://` flow, quit every dev and packaged Dyad instance and verify which build owns the protocol registration. macOS may route the link to a different running/registered build, producing a convincing but false good/bad result.
 

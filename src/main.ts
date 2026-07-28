@@ -905,7 +905,7 @@ const createWindow = ({
     const rendererCrash = readRendererCrashRecord();
     if (rendererCrash) {
       const perf = rendererCrash.performance;
-      sendTelemetryEvent("renderer:crash_detected", {
+      sendTelemetryEventToWindow(browserWindow, "renderer:crash_detected", {
         // Mark as error so renderer PostHog before_send sampling does not
         // drop 90% of events for non-Pro users (see src/renderer.tsx).
         error: true,

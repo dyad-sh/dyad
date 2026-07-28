@@ -160,13 +160,15 @@ function createCommandRunner(
         phase: "awaiting-stream-idle",
         targetChatId,
       });
-      routePlanHandoffPresentation({
-        handoffId: intent.handoffId,
-        sourceChatId: intent.sourceChatId,
-        targetChatId,
-        appId: intent.appId,
-        originWindowSessionId: intent.originWindowSessionId,
-      });
+      if (!intent.acceptInNewChat) {
+        routePlanHandoffPresentation({
+          handoffId: intent.handoffId,
+          sourceChatId: intent.sourceChatId,
+          targetChatId,
+          appId: intent.appId,
+          originWindowSessionId: intent.originWindowSessionId,
+        });
+      }
       await waitForChatActorIdle(targetChatId, {
         cancelActive: targetChatId === intent.sourceChatId,
         signal,
@@ -189,6 +191,15 @@ function createCommandRunner(
       // The new chat becomes user-owned only once its implementation turn has
       // been accepted. Until then every exit path must compensate it.
       ownedTargetChatId = null;
+      if (intent.acceptInNewChat) {
+        routePlanHandoffPresentation({
+          handoffId: intent.handoffId,
+          sourceChatId: intent.sourceChatId,
+          targetChatId,
+          appId: intent.appId,
+          originWindowSessionId: intent.originWindowSessionId,
+        });
+      }
       emit({
         type: "CHECKPOINT",
         handoffId: intent.handoffId,

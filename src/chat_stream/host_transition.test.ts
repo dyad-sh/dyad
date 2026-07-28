@@ -68,6 +68,39 @@ describe("transitionChatStreamHost", () => {
     });
   });
 
+  it("keeps a running turn active when the same accepted intent is replayed", () => {
+    const activeIntent = intent("accepted");
+    const state = {
+      ...initialChatStreamHostState(),
+      phase: "streaming" as const,
+      active: {
+        intent: activeIntent,
+        invocationRef: activeIntent.invocationRef!,
+        targetAppId: 3,
+      },
+    };
+
+    const replayed = transitionChatStreamHost(state, {
+      type: "ADMISSION_REPLAYED",
+      intentId: "accepted",
+      acceptance: "message-accepted",
+      acceptedMessageId: 42,
+    });
+
+    expect(replayed.kind).toBe("applied");
+    if (replayed.kind !== "applied") return;
+    expect(replayed.state).toMatchObject({
+      phase: "streaming",
+      active: { intent: { intentId: "accepted" } },
+      lastAcceptance: {
+        intentId: "accepted",
+        acceptance: "message-accepted",
+        acceptedMessageId: 42,
+      },
+    });
+    expect(replayed.commands).toEqual([]);
+  });
+
   it("preserves queued acceptance when replaying a durable queued turn", () => {
     const admitted = transitionChatStreamHost(initialChatStreamHostState(), {
       type: "SUBMIT",

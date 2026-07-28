@@ -114,6 +114,7 @@ describe("plan handoff command ownership", () => {
     await runner({ type: "run-handoff", intent: intent() }, emit);
 
     expect(mocks.deleteOwnedChatAfterSettlingActors).toHaveBeenCalledWith(99);
+    expect(mocks.routePlanHandoffPresentation).not.toHaveBeenCalled();
     expect(emit).toHaveBeenCalledWith({
       type: "FAILED",
       handoffId: "handoff-1",
@@ -129,6 +130,18 @@ describe("plan handoff command ownership", () => {
     await runner({ type: "run-handoff", intent: intent() }, emit);
 
     expect(mocks.deleteOwnedChatAfterSettlingActors).not.toHaveBeenCalled();
+    expect(mocks.routePlanHandoffPresentation).toHaveBeenCalledWith({
+      handoffId: "handoff-1",
+      sourceChatId: 7,
+      targetChatId: 99,
+      appId: 3,
+      originWindowSessionId: "window-session",
+    });
+    expect(
+      mocks.dispatchPlanImplementationTurn.mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      mocks.routePlanHandoffPresentation.mock.invocationCallOrder[0],
+    );
     expect(emit).toHaveBeenCalledWith({
       type: "CHECKPOINT",
       handoffId: "handoff-1",

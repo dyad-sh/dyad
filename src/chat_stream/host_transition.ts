@@ -219,6 +219,26 @@ export function transitionChatStreamHost(
     case "ADMISSION_REPLAYED":
       if (
         state.active?.intent.intentId === event.intentId &&
+        state.phase !== "admitting" &&
+        event.acceptance === "message-accepted"
+      ) {
+        return {
+          kind: "applied",
+          state: {
+            ...state,
+            lastAcceptance: {
+              intentId: event.intentId,
+              acceptance: event.acceptance,
+              ...(event.acceptedMessageId === undefined
+                ? {}
+                : { acceptedMessageId: event.acceptedMessageId }),
+            },
+          },
+          commands: [],
+        };
+      }
+      if (
+        state.active?.intent.intentId === event.intentId &&
         event.acceptance !== "queued"
       ) {
         return {

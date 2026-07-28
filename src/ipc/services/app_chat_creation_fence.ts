@@ -1,23 +1,28 @@
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
-const deletionCounts = new Map<number, number>();
+const creationBlockCounts = new Map<number, number>();
 
-export function beginAppChatDeletion(appId: number): () => void {
-  deletionCounts.set(appId, (deletionCounts.get(appId) ?? 0) + 1);
+export function beginAppChatMutation(appId: number): () => void {
+  creationBlockCounts.set(appId, (creationBlockCounts.get(appId) ?? 0) + 1);
   let released = false;
   return () => {
     if (released) return;
     released = true;
-    const next = (deletionCounts.get(appId) ?? 1) - 1;
+    const next = (creationBlockCounts.get(appId) ?? 1) - 1;
     if (next === 0) {
-      deletionCounts.delete(appId);
+      creationBlockCounts.delete(appId);
     } else {
-      deletionCounts.set(appId, next);
+      creationBlockCounts.set(appId, next);
     }
   };
 }
 
+export const beginAppChatDeletion = beginAppChatMutation;
+
 export function assertAppChatCreationOpen(appId: number): void {
-  if (!deletionCounts.has(appId)) return;
-  throw new DyadError("App is being deleted", DyadErrorKind.Precondition);
+  if (!creationBlockCounts.has(appId)) return;
+  throw new DyadError(
+    "App is temporarily unavailable",
+    DyadErrorKind.Precondition,
+  );
 }

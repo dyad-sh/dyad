@@ -52,6 +52,10 @@ import {
   blockNewStreamsForChat,
   cancelActiveStreamsForApp,
 } from "./chat_stream_handlers";
+import {
+  beginAppChatActorMutation,
+  waitForAppChatActorsIdle,
+} from "@/ipc/services/chat_actor_service";
 
 const logger = log.scope("version_handlers");
 
@@ -1040,9 +1044,10 @@ export function registerVersionHandlers() {
       // new chat via an atomic DB transaction; blocking every chat in the app
       // would be unnecessarily aggressive, so scope its block to the source
       // chat.
-      const releaseStreamAdmissionBlock = restoreCodebase
-        ? blockNewStreamsForApp(appId)
-        : blockNewStreamsForChat(chatId);
+      const releaseActorAdmissionBlock = restoreCodebase
+        ? await beginAppChatActorMutation(appId)
+        : undefined;
+      let releaseStreamAdmissionBlock: (() => void) | undefined;
 
       // Wrap phases 2 and 3 in a single try/finally so the admission block is
       // always released, even if `withLock` were to throw synchronously before
@@ -1050,16 +1055,23 @@ export function registerVersionHandlers() {
       // promise). Leaking the block would permanently stall new streams for the
       // app/chat until the process restarts.
       try {
+        releaseStreamAdmissionBlock = restoreCodebase
+          ? blockNewStreamsForApp(appId)
+          : blockNewStreamsForChat(chatId);
         // Phase 2: cancel in-flight streams for this app OUTSIDE the lock. The
-        // cancellation helper aborts each stream and then awaits its handler
-        // unwinding, and those handlers can take the same app lock for their own
-        // writes (e.g. the copy_file tool). Awaiting stream completion while
-        // holding the app lock would deadlock, so cancellation must run before
-        // we re-acquire it — this matches the lock ordering documented on
-        // `cancelActiveStreamsForApp`.
-        const preserveDirtyTree = restoreCodebase
+        // actor drain first closes the pre-transport `admitting` window, then
+        // the transport cancellation helper aborts legacy/renderer-owned
+        // streams and awaits their handler unwinding. Those handlers can take
+        // the same app lock for their own writes (e.g. the copy_file tool).
+        // Awaiting completion while holding the app lock would deadlock, so
+        // cancellation must run before we re-acquire it.
+        const didCancelActor =
+          restoreCodebase &&
+          (await waitForAppChatActorsIdle(appId, { cancelActive: true }));
+        const didCancelTransport = restoreCodebase
           ? await cancelActiveStreamsForApp(appId, event.sender)
           : false;
+        const preserveDirtyTree = didCancelActor || didCancelTransport;
 
         // Phase 3: perform the codebase revert and create the forked chat under
         // the lock. Holding it across the whole mutation serializes the revert
@@ -1325,6 +1337,7 @@ export function registerVersionHandlers() {
         });
       } finally {
         releaseStreamAdmissionBlock?.();
+        releaseActorAdmissionBlock?.();
       }
     },
   );

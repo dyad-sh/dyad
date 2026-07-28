@@ -19,12 +19,25 @@ const actor = vi.hoisted(() => {
         listener?.();
       });
     },
-    getSnapshot: vi.fn(() => ({
-      phase,
-      active: null,
-      lastAcceptance: null,
-      lastCompletion,
-    })),
+    getSnapshot: vi.fn(
+      (): {
+        phase: string;
+        active: {
+          invocationRef: {
+            kind: "chat-stream";
+            entityKey: number;
+            operationId: string;
+          };
+        } | null;
+        lastAcceptance: null;
+        lastCompletion: { intentId: string; outcome: string } | null;
+      } => ({
+        phase,
+        active: null,
+        lastAcceptance: null,
+        lastCompletion,
+      }),
+    ),
     subscribe: vi.fn((nextListener: () => void) => {
       listener = nextListener;
       // Reproduce settlement in the read-to-subscribe gap without delivering
@@ -46,6 +59,7 @@ const cleanup = vi.hoisted(() => ({
   settleChat: vi.fn(async () => undefined),
   deleteWhere: vi.fn(async () => undefined),
   publish: vi.fn(),
+  findChats: vi.fn(async () => [] as Array<{ id: number }>),
 }));
 
 vi.mock("@/ipc/services/distributed_machine_actor_host", () => ({
@@ -61,6 +75,11 @@ vi.mock("@/user_input/main", () => ({
 vi.mock("@/db", () => ({
   db: {
     delete: () => ({ where: cleanup.deleteWhere }),
+    query: {
+      chats: {
+        findMany: cleanup.findChats,
+      },
+    },
   },
 }));
 vi.mock("@/db/schema", () => ({
@@ -75,10 +94,14 @@ vi.mock("@/window_infrastructure/main/entity_disposal_bus", () => ({
 }));
 
 import {
+  beginAppChatActorMutation,
   deleteOwnedChatAfterSettlingActors,
   dispatchChatIntentAndWait,
+  waitForAppChatActorsIdle,
   waitForChatActorIdle,
 } from "./chat_actor_service";
+import { assertChatActorAdmissionOpen } from "./chat_actor_deletion_fence";
+import { assertAppChatCreationOpen } from "./app_chat_creation_fence";
 
 describe("waitForChatActorIdle", () => {
   beforeEach(() => {
@@ -94,21 +117,89 @@ describe("waitForChatActorIdle", () => {
     cleanup.settleChat.mockClear();
     cleanup.deleteWhere.mockClear();
     cleanup.publish.mockClear();
+    cleanup.findChats.mockClear();
+    cleanup.findChats.mockResolvedValue([]);
   });
 
   it("treats an absent actor as already idle without creating it", async () => {
     host.peek.mockReturnValueOnce(undefined);
 
-    await expect(waitForChatActorIdle(7)).resolves.toBeUndefined();
+    await expect(waitForChatActorIdle(7)).resolves.toBe(false);
 
     expect(host.peek).toHaveBeenCalledOnce();
     expect(host.localRef).not.toHaveBeenCalled();
   });
 
   it("rechecks the terminal phase after subscribing", async () => {
-    await expect(waitForChatActorIdle(7)).resolves.toBeUndefined();
+    await expect(waitForChatActorIdle(7)).resolves.toBe(false);
     expect(actor.subscribe).toHaveBeenCalledOnce();
     expect(actor.getSnapshot).toHaveBeenCalledTimes(2);
+  });
+
+  it("cancels an actor that is still admitting before waiting for idle", async () => {
+    actor.getSnapshot.mockReturnValueOnce({
+      phase: "admitting",
+      active: {
+        invocationRef: {
+          kind: "chat-stream",
+          entityKey: 7,
+          operationId: "stream-7",
+        },
+      },
+      lastAcceptance: null,
+      lastCompletion: null,
+    });
+
+    await expect(waitForChatActorIdle(7, { cancelActive: true })).resolves.toBe(
+      true,
+    );
+
+    expect(actor.send).toHaveBeenCalledWith({
+      type: "CANCEL",
+      invocationRef: {
+        kind: "chat-stream",
+        entityKey: 7,
+        operationId: "stream-7",
+      },
+    });
+  });
+
+  it("cancels and drains every existing actor for an app restore", async () => {
+    cleanup.findChats.mockResolvedValue([{ id: 7 }, { id: 8 }]);
+
+    await expect(
+      waitForAppChatActorsIdle(3, { cancelActive: true }),
+    ).resolves.toBe(false);
+
+    expect(cleanup.findChats).toHaveBeenCalledOnce();
+    expect(host.peek).toHaveBeenCalledTimes(2);
+    expect(host.peek).toHaveBeenNthCalledWith(
+      1,
+      "chat_stream",
+      expect.objectContaining({ chatId: 7 }),
+    );
+    expect(host.peek).toHaveBeenNthCalledWith(
+      2,
+      "chat_stream",
+      expect.objectContaining({ chatId: 8 }),
+    );
+  });
+
+  it("holds app creation and existing actor admission fences for a mutation", async () => {
+    cleanup.findChats.mockResolvedValue([{ id: 7 }, { id: 8 }]);
+
+    const release = await beginAppChatActorMutation(3);
+    try {
+      expect(() => assertAppChatCreationOpen(3)).toThrow();
+      expect(() => assertChatActorAdmissionOpen(7)).toThrow();
+      expect(() => assertChatActorAdmissionOpen(8)).toThrow();
+    } finally {
+      release();
+    }
+
+    expect(() => assertAppChatCreationOpen(3)).not.toThrow();
+    expect(() => assertChatActorAdmissionOpen(7)).not.toThrow();
+    expect(() => assertChatActorAdmissionOpen(8)).not.toThrow();
   });
 
   it("rejects a pre-acceptance intent when its terminal completion arrives", async () => {

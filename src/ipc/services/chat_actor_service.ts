@@ -9,7 +9,11 @@ import {
 } from "@/chat_stream/transport";
 import type { ChatStreamHostState } from "@/chat_stream/host_state";
 import type { ChatStreamHostIgnoreReason } from "@/chat_stream/host_transition";
-import { beginChatActorDeletion } from "./chat_actor_deletion_fence";
+import {
+  beginChatActorDeletion,
+  beginChatActorMutation,
+} from "./chat_actor_deletion_fence";
+import { beginAppChatMutation } from "./app_chat_creation_fence";
 import { userInputRegistry } from "@/user_input/main";
 import { db } from "@/db";
 import { chats } from "@/db/schema";
@@ -51,20 +55,21 @@ export async function deleteOwnedChatAfterSettlingActors(
 export async function waitForChatActorIdle(
   chatId: number,
   options: { cancelActive?: boolean; signal?: AbortSignal } = {},
-): Promise<void> {
+): Promise<boolean> {
   options.signal?.throwIfAborted();
   const actor = remoteMachineHost.peek<
     ChatStreamHostState,
     ChatStreamWireEvent,
     ChatStreamHostIgnoreReason
   >(chatStreamDefinition.id, chatStreamKey(chatId));
-  if (!actor) return;
+  if (!actor) return false;
   const current = actor.getSnapshot();
-  if (
+  const didRequestCancellation = Boolean(
     options.cancelActive &&
     current.active &&
-    (current.phase === "admitting" || current.phase === "streaming")
-  ) {
+    (current.phase === "admitting" || current.phase === "streaming"),
+  );
+  if (didRequestCancellation && current.active) {
     actor.send({
       type: "CANCEL",
       invocationRef: current.active.invocationRef,
@@ -100,6 +105,51 @@ export async function waitForChatActorIdle(
     }
     inspect();
   });
+  return didRequestCancellation;
+}
+
+export async function waitForAppChatActorsIdle(
+  appId: number,
+  options: { cancelActive?: boolean; signal?: AbortSignal } = {},
+): Promise<boolean> {
+  options.signal?.throwIfAborted();
+  const appChats = await db.query.chats.findMany({
+    columns: { id: true },
+    where: eq(chats.appId, appId),
+  });
+  const cancellationResults = await Promise.all(
+    appChats.map(({ id }) => waitForChatActorIdle(id, options)),
+  );
+  return cancellationResults.some(Boolean);
+}
+
+export async function beginAppChatActorMutation(
+  appId: number,
+): Promise<() => void> {
+  const releaseChatCreation = beginAppChatMutation(appId);
+  const releaseActorAdmissions: Array<() => void> = [];
+  try {
+    const appChats = await db.query.chats.findMany({
+      columns: { id: true },
+      where: eq(chats.appId, appId),
+    });
+    releaseActorAdmissions.push(
+      ...appChats.map(({ id }) => beginChatActorMutation(id)),
+    );
+  } catch (error) {
+    releaseChatCreation();
+    throw error;
+  }
+
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    for (const release of releaseActorAdmissions.reverse()) {
+      release();
+    }
+    releaseChatCreation();
+  };
 }
 
 export async function dispatchChatIntentAndWait(

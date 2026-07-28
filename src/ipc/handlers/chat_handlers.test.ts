@@ -26,9 +26,18 @@ vi.mock("./chat_stream_handlers", async (importOriginal) => {
 });
 
 vi.mock("@/ipc/services/chat_actor_deletion_service", () => ({
-  beginChatActorDeletion: vi.fn(() => () => undefined),
+  beginChatActorMutation: vi.fn(() => {
+    deletionOrder.push("actor-barrier");
+    return () => deletionOrder.push("actor-release");
+  }),
   settleChatActorsForDeletion: vi.fn(async () => {
     deletionOrder.push("settle-actors");
+  }),
+}));
+
+vi.mock("@/ipc/services/chat_actor_service", () => ({
+  waitForChatActorIdle: vi.fn(async () => {
+    deletionOrder.push("drain-actor");
   }),
 }));
 
@@ -192,12 +201,47 @@ describe("registerChatHandlers", () => {
     );
 
     expect(deletionOrder).toEqual([
+      "actor-barrier",
       "barrier",
       "settle-input",
       "settle-actors",
+      "drain-actor",
       "drain",
       "release",
+      "actor-release",
       "row-deleted",
     ]);
+  });
+
+  it("drains an admitting actor before deleting chat messages", async () => {
+    const appId = Number(
+      harness.db
+        .insert(apps)
+        .values({ name: "clear-app", path: "clear-app" })
+        .run().lastInsertRowid,
+    );
+    const chatId = Number(
+      harness.db.insert(chats).values({ appId }).run().lastInsertRowid,
+    );
+    harness.db
+      .insert(messages)
+      .values({ chatId, role: "user", content: "delete me" })
+      .run();
+
+    await harness.invokeHandler("delete-messages", chatId);
+
+    expect(deletionOrder).toEqual([
+      "actor-barrier",
+      "barrier",
+      "drain-actor",
+      "drain",
+      "release",
+      "actor-release",
+    ]);
+    await expect(
+      harness.db.query.messages.findMany({
+        where: (row, { eq }) => eq(row.chatId, chatId),
+      }),
+    ).resolves.toEqual([]);
   });
 });

@@ -281,6 +281,14 @@ export function shouldPrepareCrossWindowTransfer(
   return enableMultiWindow && isActive;
 }
 
+export function shouldSkipChatSelection(
+  selectedChatId: number | null,
+  nextChatId: number,
+  pathname: string,
+): boolean {
+  return selectedChatId === nextChatId && pathname === "/chat";
+}
+
 export function partitionChatsByVisibleCount(
   orderedChats: ChatSummary[],
   visibleTabCount: number,
@@ -1028,7 +1036,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
   const selectChatWithPresentation = useCallback(
     (chatId: number, appId: number) => {
       clearNotification(chatId);
-      if (selectedChatId === chatId) return;
+      if (shouldSkipChatSelection(selectedChatId, chatId, pathname)) return;
 
       if (selectedChatId !== null) {
         const selectedChat = chatsById.get(selectedChatId);
@@ -1057,6 +1065,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
       chatsById,
       clearNotification,
       neutralPresentation,
+      pathname,
       restorePresentation,
       selectChat,
       selectedChatId,

@@ -27,6 +27,7 @@ import {
   partitionChatsByVisibleCount,
   reorderVisibleChatIds,
   shouldPrepareCrossWindowTransfer,
+  shouldSkipChatSelection,
 } from "@/components/chat/ChatTabs";
 import type { ChatSummary } from "@/lib/schemas";
 
@@ -51,6 +52,12 @@ describe("ChatTabs helpers", () => {
     expect(shouldPrepareCrossWindowTransfer(false, false)).toBe(false);
     expect(shouldPrepareCrossWindowTransfer(true, false)).toBe(false);
     expect(shouldPrepareCrossWindowTransfer(true, true)).toBe(true);
+  });
+
+  it("reselects the active chat when navigation must return to the chat route", () => {
+    expect(shouldSkipChatSelection(7, 7, "/chat")).toBe(true);
+    expect(shouldSkipChatSelection(7, 7, "/settings")).toBe(false);
+    expect(shouldSkipChatSelection(7, 8, "/chat")).toBe(false);
   });
 
   it("notifies only for a finished background chat", () => {

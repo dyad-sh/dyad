@@ -242,6 +242,13 @@ export function reorderVisibleChatIds(
   return [...nextVisible, ...orderedChatIds.slice(visibleTabCount)];
 }
 
+export function shouldPrepareCrossWindowTransfer(
+  enableMultiWindow: boolean,
+  isActive: boolean,
+): boolean {
+  return enableMultiWindow && isActive;
+}
+
 export function partitionChatsByVisibleCount(
   orderedChats: ChatSummary[],
   visibleTabCount: number,
@@ -1039,7 +1046,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                     <TooltipTrigger
                       render={
                         <div
-                          draggable={enableMultiWindow && isActive}
+                          draggable
                           data-testid={`chat-tab-${chat.id}`}
                           onAuxClick={(event) => {
                             // Middle-click (button 1) to close tab
@@ -1049,12 +1056,23 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                             }
                           }}
                           onDragStart={(event) => {
-                            if (!isActive) {
-                              event.preventDefault();
+                            event.dataTransfer.effectAllowed = "move";
+                            event.dataTransfer.setData(
+                              "text/plain",
+                              String(chat.id),
+                            );
+                            setDraggingChatId(chat.id);
+                            if (
+                              !shouldPrepareCrossWindowTransfer(
+                                enableMultiWindow,
+                                isActive,
+                              )
+                            ) {
                               return;
                             }
                             if (store.get(attachmentsAtom).length > 0) {
                               event.preventDefault();
+                              setDraggingChatId(null);
                               showError(
                                 new Error(t("moveTabAttachmentsBlocked")),
                               );
@@ -1063,6 +1081,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                             const storedTab = getActiveStoredChatTab(chat.id);
                             if (!storedTab) {
                               event.preventDefault();
+                              setDraggingChatId(null);
                               return;
                             }
                             const transferId = crypto.randomUUID();
@@ -1073,11 +1092,6 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                             presentationByChatIdRef.current.set(
                               chat.id,
                               presentation,
-                            );
-                            event.dataTransfer.effectAllowed = "move";
-                            event.dataTransfer.setData(
-                              "text/plain",
-                              String(chat.id),
                             );
                             event.dataTransfer.setData(
                               CHAT_TAB_TRANSFER_MIME,
@@ -1098,7 +1112,6 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                                 },
                               })
                               .catch(showError);
-                            setDraggingChatId(chat.id);
                           }}
                           onDragEnd={() => setDraggingChatId(null)}
                           onDragOver={(event) => {

@@ -26,6 +26,7 @@ import {
   groupChatIdsByApp,
   partitionChatsByVisibleCount,
   reorderVisibleChatIds,
+  shouldPrepareCrossWindowTransfer,
 } from "@/components/chat/ChatTabs";
 import type { ChatSummary } from "@/lib/schemas";
 
@@ -45,6 +46,13 @@ afterEach(() => {
 });
 
 describe("ChatTabs helpers", () => {
+  it("keeps local reorder available without preparing a cross-window move", () => {
+    expect(shouldPrepareCrossWindowTransfer(false, true)).toBe(false);
+    expect(shouldPrepareCrossWindowTransfer(false, false)).toBe(false);
+    expect(shouldPrepareCrossWindowTransfer(true, false)).toBe(false);
+    expect(shouldPrepareCrossWindowTransfer(true, true)).toBe(true);
+  });
+
   it("notifies only for a finished background chat", () => {
     const current = new Set([2]);
 

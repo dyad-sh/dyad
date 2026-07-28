@@ -717,7 +717,7 @@ export class ChatStreamRemoteManager {
     }
     if (completion.updatedFiles && snapshot.chatId > 0) {
       if (settings?.autoExpandPreviewPanel) {
-        // Permanent UI-side-effect keep: plans/claude-cleanup-machines.md.
+        // Open the window-local preview after generated files change.
         this.store.set(isPreviewOpenAtom, true);
       }
       if (targetAppId !== null) {

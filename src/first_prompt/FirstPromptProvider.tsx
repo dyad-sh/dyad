@@ -155,7 +155,7 @@ export function FirstPromptProvider({
     async openPreviewIfSetupRequired(appId) {
       const opened = await openPreviewIfSetupRequired(appId);
       if (!opened) {
-        // Permanent UI-side-effect keep: plans/claude-cleanup-machines.md.
+        // Keep preview closed when setup has no preview to open.
         store.set(isPreviewOpenAtom, false);
       }
       return opened;
@@ -193,11 +193,11 @@ export function FirstPromptProvider({
       setIsSetupDialogOpen(true);
     },
     clearEditingBuffer() {
-      // Permanent post-submit UI clear: plans/claude-cleanup-machines.md.
+      // Clear submitted prompt text from the home composer.
       store.set(homeChatInputValueAtom, "");
-      // Permanent post-submit UI clear: plans/claude-cleanup-machines.md.
+      // Clear submitted attachments from the home composer.
       store.set(attachmentsAtom, []);
-      // Permanent post-submit UI clear: plans/claude-cleanup-machines.md.
+      // Clear the submitted app selection from the home composer.
       store.set(homeSelectedAppAtom, null);
     },
     showError(message, failure) {

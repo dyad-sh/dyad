@@ -35,9 +35,8 @@ interface AllowlistEntry {
 }
 
 /**
- * Permanent machine-to-UI side-effect keeps from
- * plans/claude-cleanup-machines.md. These are one-way presentation writes,
- * never lifecycle projections or machine inputs.
+ * Permanent machine-to-UI side effects. These are one-way presentation
+ * writes, never lifecycle projections or machine inputs.
  *
  * Plan-handoff navigation now crosses the presentation-routing boundary and
  * lands in hooks/usePlanEvents.ts; first-prompt clears its submitted editing
@@ -48,36 +47,43 @@ const PERMANENT_UI_WRITE_ALLOWLIST = [
     atom: "previewModeAtom",
     file: "hooks/usePlanEvents.ts",
     marker: 'setPreviewMode("preview")',
+    rationale: "Show implementation preview after the handoff is accepted.",
   },
   {
     atom: "selectedChatIdAtom",
     file: "hooks/usePlanEvents.ts",
     marker: "setSelectedChatId(payload.targetChatId)",
+    rationale: "Select the chat that will implement the accepted plan.",
   },
   {
     atom: "isPreviewOpenAtom",
     file: "first_prompt/FirstPromptProvider.tsx",
     marker: "store.set(isPreviewOpenAtom, false)",
+    rationale: "Keep preview closed when setup has no preview to open.",
   },
   {
     atom: "homeChatInputValueAtom",
     file: "first_prompt/FirstPromptProvider.tsx",
     marker: 'store.set(homeChatInputValueAtom, "")',
+    rationale: "Clear submitted prompt text from the home composer.",
   },
   {
     atom: "attachmentsAtom",
     file: "first_prompt/FirstPromptProvider.tsx",
     marker: "store.set(attachmentsAtom, [])",
+    rationale: "Clear submitted attachments from the home composer.",
   },
   {
     atom: "homeSelectedAppAtom",
     file: "first_prompt/FirstPromptProvider.tsx",
     marker: "store.set(homeSelectedAppAtom, null)",
+    rationale: "Clear the submitted app selection from the home composer.",
   },
   {
     atom: "isPreviewOpenAtom",
     file: "chat_stream/remote_manager.ts",
     marker: "this.store.set(isPreviewOpenAtom, true)",
+    rationale: "Open the window-local preview after generated files change.",
   },
 ] as const;
 
@@ -859,7 +865,7 @@ describe("state-machine boundaries", () => {
       expect(
         precedingLine(write!.sourceFile, write!.call),
         `${entry.file} documents the ${entry.atom} permanent keep`,
-      ).toContain("plans/claude-cleanup-machines.md");
+      ).toContain(entry.rationale);
     }
   });
 

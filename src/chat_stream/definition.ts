@@ -471,9 +471,9 @@ export const chatStreamDefinition = {
             DyadErrorKind.Auth,
           );
         }
-        if (event.intent.owner) {
+        if (event.intent.owner || event.intent.userInputRequestId) {
           throw new DyadError(
-            "Main-owned chat intents cannot be submitted by a renderer",
+            "Main-owned follow-up identity cannot be submitted by a renderer",
             DyadErrorKind.Auth,
           );
         }

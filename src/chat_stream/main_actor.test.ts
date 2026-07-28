@@ -515,6 +515,26 @@ describe("main-hosted chat stream actor", () => {
     ).rejects.toMatchObject({ kind: "auth" });
   });
 
+  it("rejects renderer attempts to claim a follow-up request identity", async () => {
+    await expect(
+      chatStreamDefinition.remote.authorizeDispatch({
+        sender: {
+          webContentsId: 1,
+          windowSessionId: "renderer-window",
+        },
+        key: chatStreamKey(7),
+        event: {
+          type: "SUBMIT",
+          intent: {
+            ...turn("forged-follow-up"),
+            userInputRequestId: "main-owned-request",
+          },
+        },
+        currentState: undefined,
+      }),
+    ).rejects.toMatchObject({ kind: "auth" });
+  });
+
   it("rejects renderer submissions for an app that does not own the chat", async () => {
     await expect(
       chatStreamDefinition.remote.authorizeDispatch({

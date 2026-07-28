@@ -27,6 +27,7 @@ import {
 
 const execution = vi.hoisted(() => ({
   observers: new Map<string, ChatStreamExecutionObserver>(),
+  pendingCancellations: new Set<string>(),
   admissions: [] as string[],
   convertAttachments: vi.fn(async () => []),
 }));
@@ -64,14 +65,44 @@ vi.mock("drizzle-orm", async (importOriginal) => ({
 }));
 
 vi.mock("@/ipc/handlers/chat_stream_handlers", () => ({
-  cancelActiveStreamsForChat: vi.fn(async () => true),
-  clearPendingActorStreamCancellation: vi.fn(),
+  cancelActiveStreamsForChat: vi.fn(
+    async (
+      _chatId: number,
+      _sender: unknown,
+      invocationRef?: { operationId: string },
+    ) => {
+      const registered = [...execution.observers.values()].some(
+        (observer) =>
+          observer.intent.invocationRef?.operationId ===
+          invocationRef?.operationId,
+      );
+      if (invocationRef && !registered) {
+        execution.pendingCancellations.add(invocationRef.operationId);
+      }
+      return true;
+    },
+  ),
+  clearPendingActorStreamCancellation: vi.fn(
+    (invocationRef: { operationId: string }) => {
+      execution.pendingCancellations.delete(invocationRef.operationId);
+    },
+  ),
   executeChatStreamFromActor: vi.fn(
     async (
       _sender: unknown,
-      _request: { intentId?: string },
+      request: {
+        chatId: number;
+        intentId?: string;
+        invocationRef?: { operationId: string };
+      },
       observer: ChatStreamExecutionObserver,
     ) => {
+      if (
+        request.invocationRef &&
+        execution.pendingCancellations.delete(request.invocationRef.operationId)
+      ) {
+        return request.chatId;
+      }
       const intentId = observer.intent.intentId;
       execution.observers.set(intentId, observer);
       observer.onAccepted?.(11);
@@ -190,6 +221,7 @@ async function flush(): Promise<void> {
 describe("main-hosted chat stream actor", () => {
   beforeEach(() => {
     execution.observers.clear();
+    execution.pendingCancellations.clear();
     execution.admissions = [];
     execution.convertAttachments.mockReset();
     execution.convertAttachments.mockResolvedValue([]);

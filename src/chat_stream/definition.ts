@@ -266,6 +266,10 @@ function createCommandRunner(
             intentId: command.intent.intentId,
             error: error instanceof Error ? error.message : String(error),
           });
+        } finally {
+          if (command.intent.invocationRef) {
+            clearPendingActorStreamCancellation(command.intent.invocationRef);
+          }
         }
         return;
       }
@@ -342,7 +346,6 @@ function createCommandRunner(
         if (!active || active.intent.intentId !== command.intentId) {
           throw new Error("Finalization does not match the active chat intent");
         }
-        clearPendingActorStreamCancellation(active.invocationRef);
         try {
           const queue = markIntentTerminal(
             db,

@@ -219,7 +219,7 @@ describe("main-session follow-up queue", () => {
     });
   });
 
-  it("validates a blocked clear before settling session owners", async () => {
+  it("settles removable session owners while retaining a plan handoff", async () => {
     const followUp = followUpIntent();
     makeFollowUpDue();
     persistSessionQueuedIntent(database, followUp);
@@ -248,15 +248,14 @@ describe("main-session follow-up queue", () => {
         type: "mutate-queue",
         mutation: { type: "clear" },
         expectedQueueRevision: 2,
-        mutationId: "blocked-clear",
+        mutationId: "clear-removable",
       }),
-    ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
+    ).resolves.toMatchObject({
+      queueRevision: 3,
+      queue: [{ intentId: "plan-turn", removable: false }],
+    });
 
-    expect(liveOwner.followUpRejected).not.toHaveBeenCalled();
-    expect(loadChatQueue(database, chatId).queue).toMatchObject([
-      { intentId: followUp.intentId },
-      { intentId: "plan-turn" },
-    ]);
+    expect(liveOwner.followUpRejected).toHaveBeenCalledWith("follow-up-race");
   });
 
   it("validates a live due owner before starting an active follow-up", () => {

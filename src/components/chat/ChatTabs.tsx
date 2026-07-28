@@ -109,15 +109,17 @@ function getMessagesScrollViewport(): HTMLElement | null {
   );
 }
 
-function restoreLocalStorageSnapshot(key: string, value: string | null): void {
-  try {
-    if (value === null) {
-      window.localStorage.removeItem(key);
-    } else {
-      window.localStorage.setItem(key, value);
-    }
-  } catch (error) {
-    console.error("Failed to restore chat tab session storage", error);
+export function restoreLocalStorageSnapshot(
+  key: string,
+  value: string | null,
+): void {
+  if (value === null) {
+    window.localStorage.removeItem(key);
+  } else {
+    window.localStorage.setItem(key, value);
+  }
+  if (window.localStorage.getItem(key) !== value) {
+    throw new Error("Failed to durably restore chat tab session storage");
   }
 }
 
@@ -276,9 +278,8 @@ export function reorderVisibleChatIds(
 
 export function shouldPrepareCrossWindowTransfer(
   enableMultiWindow: boolean,
-  isActive: boolean,
 ): boolean {
-  return enableMultiWindow && isActive;
+  return enableMultiWindow;
 }
 
 export function shouldSkipChatSelection(
@@ -446,13 +447,41 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
     [chats],
   );
 
+  const neutralPresentation = useCallback(
+    (chatId: number): ChatTabPresentationState => ({
+      draftInput: store.get(chatInputValuesByIdAtom).get(chatId) ?? "",
+      scrollTop: 0,
+      selectedFile: null,
+      editorCursor: null,
+      stagedDiffFile: null,
+      previewHistory: [],
+      previewHistoryPosition: 0,
+      previewMode: "preview",
+      isPreviewOpen: true,
+      isChatPanelHidden: false,
+      terminalOpen: store.get(terminalOpenByChatIdAtom).get(chatId) ?? false,
+      selectedComponents: [],
+    }),
+    [store],
+  );
+
   const capturePresentation = useCallback(
     (chatId: number, appId: number) => {
-      const iframe = previewIframeManager.getSnapshot(appId);
       const messages = getMessagesScrollViewport();
+      if (
+        pathname !== "/chat" ||
+        presentedChatIdRef.current !== chatId ||
+        !messages
+      ) {
+        return (
+          presentationByChatIdRef.current.get(chatId) ??
+          neutralPresentation(chatId)
+        );
+      }
+      const iframe = previewIframeManager.getSnapshot(appId);
       return {
         draftInput: store.get(chatInputValuesByIdAtom).get(chatId) ?? "",
-        scrollTop: messages?.scrollTop ?? 0,
+        scrollTop: messages.scrollTop,
         selectedFile: store.get(selectedFileAtom),
         editorCursor: store.get(editorCursorAtom),
         stagedDiffFile: store.get(stagedDiffFileAtom),
@@ -465,7 +494,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
         selectedComponents: store.get(selectedComponentsPreviewAtom),
       };
     },
-    [previewIframeManager, store],
+    [neutralPresentation, pathname, previewIframeManager, store],
   );
 
   const restorePresentation = useCallback(
@@ -513,24 +542,6 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
       }
     },
     [previewIframeManager, store],
-  );
-
-  const neutralPresentation = useCallback(
-    (chatId: number): ChatTabPresentationState => ({
-      draftInput: store.get(chatInputValuesByIdAtom).get(chatId) ?? "",
-      scrollTop: 0,
-      selectedFile: null,
-      editorCursor: null,
-      stagedDiffFile: null,
-      previewHistory: [],
-      previewHistoryPosition: 0,
-      previewMode: "preview",
-      isPreviewOpen: true,
-      isChatPanelHidden: false,
-      terminalOpen: false,
-      selectedComponents: [],
-    }),
-    [store],
   );
 
   useEffect(
@@ -703,7 +714,12 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
             presentationByChatIdRef.current.delete(adoptedChatId);
           }
           if (previousStorage !== undefined) {
-            restoreLocalStorageSnapshot(storageKey, previousStorage);
+            try {
+              restoreLocalStorageSnapshot(storageKey, previousStorage);
+            } catch (rollbackError) {
+              showError(rollbackError);
+              return;
+            }
           }
           store.set(recentViewedChatIdsAtom, previousRecent);
           store.set(closedChatIdsAtom, previousClosed);
@@ -927,8 +943,8 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
               });
               presentationByChatIdRef.current.delete(chatId);
             } catch (error) {
-              clearSourceChatTabRemoval(transferId);
               restoreLocalStorageSnapshot(storageKey, previousStorage);
+              clearSourceChatTabRemoval(transferId);
               store.set(recentViewedChatIdsAtom, previousRecent);
               store.set(closedChatIdsAtom, previousClosed);
               store.set(sessionOpenedChatIdsAtom, previousSession);
@@ -1324,17 +1340,14 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                             if (
                               !shouldPrepareCrossWindowTransfer(
                                 enableMultiWindow,
-                                isActive,
                               )
                             ) {
                               return;
                             }
-                            if (store.get(attachmentsAtom).length > 0) {
-                              event.preventDefault();
-                              setDraggingChatId(null);
-                              showError(
-                                new Error(t("moveTabAttachmentsBlocked")),
-                              );
+                            if (
+                              isActive &&
+                              store.get(attachmentsAtom).length > 0
+                            ) {
                               return;
                             }
                             const storedTab = getActiveStoredChatTab(chat.id);
@@ -1344,10 +1357,10 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                               return;
                             }
                             const transferId = crypto.randomUUID();
-                            const presentation = capturePresentation(
-                              chat.id,
-                              chat.appId,
-                            );
+                            const presentation = isActive
+                              ? capturePresentation(chat.id, chat.appId)
+                              : (presentationByChatIdRef.current.get(chat.id) ??
+                                neutralPresentation(chat.id));
                             presentationByChatIdRef.current.set(
                               chat.id,
                               presentation,

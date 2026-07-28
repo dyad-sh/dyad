@@ -26,6 +26,7 @@ import {
   groupChatIdsByApp,
   partitionChatsByVisibleCount,
   reorderVisibleChatIds,
+  restoreLocalStorageSnapshot,
   shouldPrepareCrossWindowTransfer,
   shouldCapturePresentationBeforeNavigation,
   shouldSkipChatSelection,
@@ -45,14 +46,24 @@ function chat(id: number, appId = 1): ChatSummary {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 describe("ChatTabs helpers", () => {
   it("keeps local reorder available without preparing a cross-window move", () => {
-    expect(shouldPrepareCrossWindowTransfer(false, true)).toBe(false);
-    expect(shouldPrepareCrossWindowTransfer(false, false)).toBe(false);
-    expect(shouldPrepareCrossWindowTransfer(true, false)).toBe(false);
-    expect(shouldPrepareCrossWindowTransfer(true, true)).toBe(true);
+    expect(shouldPrepareCrossWindowTransfer(false)).toBe(false);
+    expect(shouldPrepareCrossWindowTransfer(true)).toBe(true);
+  });
+
+  it("verifies durable session rollback before transfer rejection", () => {
+    localStorage.setItem("rollback-test", "current");
+    restoreLocalStorageSnapshot("rollback-test", "previous");
+    expect(localStorage.getItem("rollback-test")).toBe("previous");
+
+    vi.spyOn(window.localStorage, "setItem").mockImplementationOnce(() => {});
+    expect(() =>
+      restoreLocalStorageSnapshot("rollback-test", "unwritten"),
+    ).toThrow("Failed to durably restore chat tab session storage");
   });
 
   it("reselects the active chat when navigation must return to the chat route", () => {

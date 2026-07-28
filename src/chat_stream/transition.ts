@@ -41,6 +41,14 @@ export function selectCanCancel(state: StreamState): boolean {
   return state.type === "starting" || state.type === "streaming";
 }
 
+/** True while a requested cancellation still needs to preserve parked queue work. */
+export function selectIsCancellationSettling(state: StreamState): boolean {
+  return (
+    state.type === "cancelling" ||
+    (state.type === "finalizing" && state.wasCancelled)
+  );
+}
+
 /** The terminal stream error rendered by chat surfaces. */
 export function selectStreamError(state: StreamState): string | null {
   return state.type === "errored" ? state.error : null;

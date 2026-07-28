@@ -12,6 +12,7 @@ import type { StreamSettledResult } from "@/chat_stream/state";
 import {
   isStreamActive,
   selectCanCancel,
+  selectIsCancellationSettling,
   selectStreamError,
 } from "@/chat_stream/transition";
 import { useChatStreamState } from "@/hooks/useChatStream";
@@ -294,6 +295,10 @@ export function useStreamChat({
     cancelStream,
     isStreaming:
       hasChatId && chatId !== undefined ? isStreamActive(streamState) : false,
+    isCancellationSettling:
+      hasChatId && chatId !== undefined
+        ? selectIsCancellationSettling(streamState)
+        : false,
     error:
       hasChatId && chatId !== undefined ? selectStreamError(streamState) : null,
     setError: (value: string | null) => {

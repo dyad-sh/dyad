@@ -150,6 +150,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     streamMessage,
     cancelStream,
     isStreaming,
+    isCancellationSettling,
     error,
     setError,
     queuedMessages,
@@ -429,13 +430,27 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Auto-clear pause state when queue becomes empty (Users expect that deleting all queued messages returns them to normal send mode)
+  // Auto-clear pause state when queue becomes empty (Users expect that deleting
+  // all queued messages returns them to normal send mode). Keep the Stop latch
+  // until cancellation settles so a late submission admitted by the stream
+  // machine cannot land in an unpaused queue.
 
   useEffect(() => {
-    if (chatId && isPaused && queuedMessages.length === 0) {
+    if (
+      chatId &&
+      isPaused &&
+      queuedMessages.length === 0 &&
+      !isCancellationSettling
+    ) {
       clearPauseOnly();
     }
-  }, [chatId, isPaused, queuedMessages.length, clearPauseOnly]);
+  }, [
+    chatId,
+    isPaused,
+    queuedMessages.length,
+    isCancellationSettling,
+    clearPauseOnly,
+  ]);
 
   // Queue management handlers
   const handleEditQueuedMessage = useCallback(
@@ -641,19 +656,22 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     // queue after it. Skipping the latch on a stale empty snapshot would let
     // finalization dispatch that item, so Stop would start a new generation.
     // A latch with a genuinely empty queue is harmless — the empty-queue effect
-    // above clears it.
-    if (!isPaused) {
-      pauseQueue();
-    }
+    // above clears it after cancellation settles.
     // Always reset editing state when cancelling, regardless of pause state
     if (editingQueuedMessageId) {
       resetEditingState();
     }
-    // Do NOT reset pause state here; queued messages should remain paused after stopping
+    // Enter the authoritative cancelling state before publishing the pause
+    // latch. This prevents the empty-queue effect from observing the latch
+    // without also observing that cancellation is settling.
     if (chatId) {
       // The stream machine reconciles the cancel with the real terminal
       // event (including cancels fired before main registered the stream).
       cancelStream();
+    }
+    // Do NOT reset pause state here; queued messages should remain paused after stopping
+    if (!isPaused) {
+      pauseQueue();
     }
   };
 

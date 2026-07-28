@@ -1,4 +1,12 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 import {
   cleanup,
@@ -13,6 +21,7 @@ import {
   type HybridChatHarness,
 } from "@/testing/hybrid_chat_harness";
 import { h } from "@/testing/hybrid.setup";
+import { ipc } from "@/ipc/types";
 
 function queuedCountText(count: number) {
   return new RegExp(`^${count}\\s+Queued`, "i");
@@ -162,6 +171,39 @@ describe("pause queue (integration)", () => {
     for (const message of ["unpaused 1", "unpaused 2", "unpaused 3"]) {
       expect(within(queueHeader).getByText(message)).toBeTruthy();
     }
+  }, 60_000);
+
+  it("parks a submission admitted while an empty queue is cancelling", async () => {
+    const chatId = await harness.createChat();
+    harness.mount({ chatId });
+
+    await startMediumStream(harness, chatId);
+
+    // Hold the cancel IPC open so the renderer remains deterministically in
+    // `cancelling` while the follow-up is submitted.
+    const cancelSpy = vi
+      .spyOn(ipc.chat, "cancelStream")
+      .mockReturnValue(new Promise(() => {}));
+
+    fireEvent.click(screen.getByRole("button", { name: /cancel generation/i }));
+    await harness.pressEnterInChat("late while cancelling", { chatId });
+
+    const queueHeader = screen.getByTestId("queue-header");
+    expect(queueHeader.textContent).toMatch(queuedCountText(1));
+    expect(screen.getByText("Paused")).toBeTruthy();
+
+    // Let the real main-process cancellation settle. The late prompt must
+    // remain parked rather than dispatching after the next normal stream.
+    cancelSpy.mockRestore();
+    await ipc.chat.cancelStream(chatId);
+    await waitForStreamTermination();
+
+    await harness.pressEnterInChat("next explicit stream", { chatId });
+    await harness.waitForStreamEnd(chatId);
+
+    expect(queueHeader.textContent).toMatch(queuedCountText(1));
+    expect(within(queueHeader).getByText("late while cancelling")).toBeTruthy();
+    expect(screen.getByText("Paused")).toBeTruthy();
   }, 60_000);
 
   it("keeps the rest of the queue when stopped right after resuming", async () => {

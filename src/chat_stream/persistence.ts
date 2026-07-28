@@ -162,6 +162,7 @@ export function completeSessionQueueAcceptance(intentId: string): void {
   const index = queue.intentIds.indexOf(intentId);
   if (index >= 0) {
     queue.intentIds.splice(index, 1);
+    queue.revision += 1;
   }
 }
 

@@ -166,6 +166,36 @@ describe("main-session follow-up queue", () => {
     ]);
   });
 
+  it("rejects stale mutations after accepting a session follow-up", async () => {
+    const intent = followUpIntent();
+    makeFollowUpDue();
+    persistSessionQueuedIntent(database, intent);
+
+    acceptChatTurn(database, {
+      chatId,
+      storedChatMode: null,
+      selectedChatMode: "local-agent",
+      content: intent.prompt,
+      userInputRequestId: intent.userInputRequestId,
+      chatTurnIntentId: intent.intentId,
+      chatTurnIntent: intent,
+    });
+    completeSessionQueueAcceptance(intent.intentId);
+
+    expect(loadChatQueue(database, chatId)).toMatchObject({
+      queueRevision: 2,
+      queue: [],
+    });
+    await expect(
+      mutateChatQueue(database, chatId, {
+        type: "mutate-queue",
+        mutation: { type: "clear" },
+        expectedQueueRevision: 1,
+        mutationId: "stale-clear-after-acceptance",
+      }),
+    ).rejects.toMatchObject({ kind: DyadErrorKind.Conflict });
+  });
+
   it("restores a claimed session entry when owner settlement fails", async () => {
     const intent = followUpIntent();
     makeFollowUpDue();

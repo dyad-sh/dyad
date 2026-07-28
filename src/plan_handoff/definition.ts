@@ -62,6 +62,22 @@ function assertPlanHash(intent: PlanHandoffIntent): void {
   }
 }
 
+async function runPostAdmissionStep(
+  label: string,
+  step: () => unknown | Promise<unknown>,
+): Promise<void> {
+  try {
+    await step();
+  } catch (error) {
+    console.error(
+      `[plan-handoff] ${label} failed after implementation admission`,
+      {
+        error,
+      },
+    );
+  }
+}
+
 function createCommandRunner(
   context: Parameters<
     NonNullable<
@@ -187,36 +203,44 @@ function createCommandRunner(
       // Once admission succeeds, a new target is user-owned even if a later
       // metadata write fails; its accepted implementation turn must survive.
       ownedTargetChatId = null;
-      await savePlanToDisk({
-        appPath: getDyadAppPath(app.path),
-        chatId: intent.sourceChatId,
-        title: intent.plan.title,
-        summary: intent.plan.summary,
-        content: intent.plan.content,
-        status: "accepted",
-      });
-      if (!intent.acceptInNewChat) {
-        db.update(chats)
-          .set({ chatMode: "local-agent" })
-          .where(eq(chats.id, targetChatId))
-          .run();
-      }
-      if (intent.acceptInNewChat) {
-        routePlanHandoffPresentation({
-          handoffId: intent.handoffId,
-          sourceChatId: intent.sourceChatId,
-          targetChatId,
-          appId: intent.appId,
-          originWindowSessionId: intent.originWindowSessionId,
-        });
-      }
       emit({
         type: "CHECKPOINT",
         handoffId: intent.handoffId,
         phase: "started",
         targetChatId,
       });
-      publishChatInvalidations(targetChatId);
+      await runPostAdmissionStep("Plan status update", () =>
+        savePlanToDisk({
+          appPath: getDyadAppPath(app.path),
+          chatId: intent.sourceChatId,
+          title: intent.plan.title,
+          summary: intent.plan.summary,
+          content: intent.plan.content,
+          status: "accepted",
+        }),
+      );
+      if (!intent.acceptInNewChat) {
+        await runPostAdmissionStep("Chat mode update", () => {
+          db.update(chats)
+            .set({ chatMode: "local-agent" })
+            .where(eq(chats.id, targetChatId))
+            .run();
+        });
+      }
+      if (intent.acceptInNewChat) {
+        await runPostAdmissionStep("Presentation routing", () =>
+          routePlanHandoffPresentation({
+            handoffId: intent.handoffId,
+            sourceChatId: intent.sourceChatId,
+            targetChatId,
+            appId: intent.appId,
+            originWindowSessionId: intent.originWindowSessionId,
+          }),
+        );
+      }
+      await runPostAdmissionStep("Query invalidation", () =>
+        publishChatInvalidations(targetChatId),
+      );
     } catch (error) {
       if (signal.aborted) return;
       const message = error instanceof Error ? error.message : String(error);

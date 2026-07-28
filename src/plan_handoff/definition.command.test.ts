@@ -173,6 +173,38 @@ describe("plan handoff command ownership", () => {
     });
   });
 
+  it("does not offer a retry when metadata fails after admission", async () => {
+    const metadataFailure = new Error("accepted plan write failed");
+    mocks.savePlanToDisk
+      .mockResolvedValueOnce("draft-plan")
+      .mockRejectedValueOnce(metadataFailure);
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    const { runner } = commandRunner();
+    const emit = vi.fn<(event: PlanHandoffHostEvent) => void>();
+
+    await runner({ type: "run-handoff", intent: intent() }, emit);
+
+    expect(emit).toHaveBeenCalledWith({
+      type: "CHECKPOINT",
+      handoffId: "handoff-1",
+      phase: "started",
+      targetChatId: 99,
+    });
+    expect(emit).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "FAILED" }),
+    );
+    expect(mocks.deleteOwnedChatAfterSettlingActors).not.toHaveBeenCalled();
+    expect(mocks.routePlanHandoffPresentation).toHaveBeenCalled();
+    expect(consoleError).toHaveBeenCalledWith(
+      "[plan-handoff] Plan status update failed after implementation admission",
+      { error: metadataFailure },
+    );
+
+    consoleError.mockRestore();
+  });
+
   it("changes the current chat mode only after implementation admission", async () => {
     const currentChatIntent = {
       ...intent(),

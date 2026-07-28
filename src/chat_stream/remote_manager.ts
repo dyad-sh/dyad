@@ -355,7 +355,11 @@ export class ChatStreamRemoteManager {
       case "cancel": {
         const invocationRef = this.getSnapshot(chatId).invocationRef;
         if (!invocationRef) return;
-        void this.actor(chatId).dispatch({ type: "CANCEL", invocationRef });
+        this.dispatchCompatibilityCommand(
+          chatId,
+          { type: "CANCEL", invocationRef },
+          "cancel the chat",
+        );
         return;
       }
       case "queue-poked":
@@ -364,6 +368,11 @@ export class ChatStreamRemoteManager {
             chatId,
             { type: "RESUME_QUEUE" },
             this.getSnapshot(chatId).queueRevision,
+          ).catch((error) =>
+            this.reportCompatibilityDispatchFailure(
+              "resume the prompt queue",
+              error,
+            ),
           );
         }
         return;
@@ -375,12 +384,37 @@ export class ChatStreamRemoteManager {
       case "finalize-complete":
         return;
       case "external-error":
-        void this.actor(chatId).dispatch({
-          type: "REPORT_ERROR",
-          error: event.error,
-        });
+        this.dispatchCompatibilityCommand(
+          chatId,
+          { type: "REPORT_ERROR", error: event.error },
+          "report the chat error",
+        );
         return;
     }
+  }
+
+  private dispatchCompatibilityCommand(
+    chatId: number,
+    event: ChatStreamIntentEvent,
+    action: string,
+  ): void {
+    void this.actor(chatId)
+      .dispatch(event)
+      .then((receipt) => {
+        if (receipt.kind !== "applied") {
+          throw new Error(`Remote command was ${receipt.kind}`);
+        }
+      })
+      .catch((error) => this.reportCompatibilityDispatchFailure(action, error));
+  }
+
+  private reportCompatibilityDispatchFailure(
+    action: string,
+    error: unknown,
+  ): void {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[chat-stream] Failed to ${action}`, error);
+    showWarning(`Failed to ${action}: ${message}`);
   }
 
   private submit(request: StreamRequest): void {

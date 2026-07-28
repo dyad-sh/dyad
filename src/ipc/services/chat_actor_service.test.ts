@@ -251,6 +251,21 @@ describe("waitForChatActorIdle", () => {
     await expect(settled).resolves.toBe("rejected");
   });
 
+  it("treats a retained accepted completion as an accepted replay", async () => {
+    actor.completeOnSend("completed-turn");
+    persistence.getIntentAcceptance.mockReturnValue("message-accepted");
+
+    await expect(
+      dispatchChatIntentAndWait({
+        schemaVersion: 1,
+        intentId: "completed-turn",
+        payloadHash: "hash",
+        chatId: 7,
+        prompt: "continue",
+      }),
+    ).resolves.toBe("accepted");
+  });
+
   it("settles and disposes an owned chat before compensating its row", async () => {
     await deleteOwnedChatAfterSettlingActors(7);
 

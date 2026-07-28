@@ -257,6 +257,29 @@ describe("chat stream persistence", () => {
     ]);
   });
 
+  it("clears removable entries while retaining a live plan handoff", async () => {
+    persistQueuedIntent(database, intent("ordinary-turn"));
+    persistQueuedIntent(
+      database,
+      intent("plan-turn", "Implement it", {
+        kind: "plan-handoff",
+        handoffId: "handoff-1",
+      }),
+    );
+
+    await expect(
+      mutateChatQueue(database, chatId, {
+        type: "mutate-queue",
+        mutation: { type: "clear" },
+        expectedQueueRevision: 2,
+        mutationId: "clear-removable",
+      }),
+    ).resolves.toMatchObject({
+      queueRevision: 3,
+      queue: [{ intentId: "plan-turn", removable: false }],
+    });
+  });
+
   it("removes a queued turn that fails before message acceptance", () => {
     const turn = intent("failed-turn");
     persistQueuedIntent(database, turn);

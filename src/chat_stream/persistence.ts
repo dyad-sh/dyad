@@ -353,12 +353,12 @@ export async function mutateChatQueue(
     });
     const selected =
       mutation.type === "clear"
-        ? entries
+        ? entries.filter(({ entry }) => entry.removable)
         : "itemId" in mutation
           ? entries.filter(({ entry }) => entry.itemId === mutation.itemId)
           : [];
     if (
-      (mutation.type === "remove" || mutation.type === "clear") &&
+      mutation.type === "remove" &&
       selected.some(
         ({ record }) => record.intent.owner?.kind === "plan-handoff",
       )

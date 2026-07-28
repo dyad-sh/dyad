@@ -73,7 +73,7 @@ export const PlanPanel: React.FC = () => {
   // keep hiding the accept buttons for the new draft.
   const isAcceptedPlan =
     savedPlan != null &&
-    savedPlan.status === "accepted" &&
+    savedPlan.status !== "draft" &&
     savedPlan.content === currentPlan &&
     savedPlan.title === currentTitle &&
     (savedPlan.summary ?? null) === (currentSummary ?? null);

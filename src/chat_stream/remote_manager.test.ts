@@ -10,6 +10,11 @@ import { ChatStreamRemoteManager } from "./remote_manager";
 import type { ChatStreamRemoteConnection } from "./remote_manager";
 import { unavailableChatStreamSnapshot } from "./transport";
 
+vi.mock("@/lib/toast", () => ({
+  showExtraFilesToast: vi.fn(),
+  showWarning: vi.fn(),
+}));
+
 describe("ChatStreamRemoteManager", () => {
   it("starts a subscription-only renderer and follows later snapshots", async () => {
     let deliverSnapshot: (payload: unknown) => void = () => undefined;
@@ -340,6 +345,64 @@ describe("ChatStreamRemoteManager", () => {
 
     secondRelease();
     await vi.waitFor(() => expect(unsubscribe).toHaveBeenCalledTimes(1));
+    manager.dispose();
+  });
+
+  it("consumes rejected compatibility cancellation dispatches", async () => {
+    const dispatch = vi.fn(
+      async (envelope: MachineDispatchEnvelope) =>
+        ({
+          kind: "rejected",
+          messageId: envelope.messageId,
+          reason: "revision-conflict",
+        }) as const,
+    );
+    const connection: ChatStreamRemoteConnection = {
+      getStatus: () => "connected",
+      onStatusChange: () => () => undefined,
+      onSnapshot: () => () => undefined,
+      onDisposed: () => () => undefined,
+      subscribe: async (address) => ({
+        ...address,
+        actorInstanceId: "actor",
+        revision: 1,
+        encodedState: {
+          ...unavailableChatStreamSnapshot(7),
+          revision: 1,
+          phase: "streaming",
+          invocationRef: {
+            kind: "chat-stream",
+            entityKey: 7,
+            operationId: "active-stream",
+          },
+        },
+      }),
+      unsubscribe: () => Promise.resolve(),
+      dispatch,
+    };
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    const manager = new ChatStreamRemoteManager(
+      createStore(),
+      createSequentialIdSource(),
+      connection,
+    );
+    const ref = manager.ensure(7);
+    const release = ref.subscribe(() => undefined);
+    await vi.waitFor(() => expect(ref.getSnapshot().phase).toBe("streaming"));
+
+    ref.send({ type: "cancel" });
+
+    await vi.waitFor(() =>
+      expect(consoleError).toHaveBeenCalledWith(
+        "[chat-stream] Failed to cancel the chat",
+        expect.any(Error),
+      ),
+    );
+
+    consoleError.mockRestore();
+    release();
     manager.dispose();
   });
 });

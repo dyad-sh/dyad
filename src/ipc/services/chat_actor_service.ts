@@ -169,11 +169,13 @@ export async function dispatchChatIntentAndWait(
     const inspect = () => {
       const snapshot = actor.getSnapshot();
       const acceptance = snapshot.lastAcceptance;
+      const persistedAcceptance = getIntentAcceptance(intent.intentId);
       if (
         (acceptance?.intentId === intent.intentId &&
           acceptance.acceptance === "message-accepted") ||
         (acceptance?.intentId === intent.intentId &&
-          acceptance.acceptance === "replayed")
+          acceptance.acceptance === "replayed") ||
+        persistedAcceptance === "message-accepted"
       ) {
         unsubscribe();
         signal?.removeEventListener("abort", abort);
@@ -181,7 +183,7 @@ export async function dispatchChatIntentAndWait(
       } else if (
         (acceptance?.intentId === intent.intentId &&
           acceptance.acceptance === "rejected") ||
-        getIntentAcceptance(intent.intentId) === "rejected" ||
+        persistedAcceptance === "rejected" ||
         snapshot.lastCompletion?.intentId === intent.intentId
       ) {
         unsubscribe();

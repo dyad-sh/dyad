@@ -102,8 +102,8 @@ function toMcpServer(dbServer: typeof mcpServers.$inferSelect): McpServer {
     args: dbServer.args,
     envJson: env.status === "ok" ? env.value : null,
     headersJson: headers.status === "ok" ? headers.value : null,
-    secretsUnreadable:
-      env.status === "unreadable" || headers.status === "unreadable",
+    envUnreadable: env.status === "unreadable",
+    headersUnreadable: headers.status === "unreadable",
     url: dbServer.url,
     enabled: dbServer.enabled,
     oauthEnabled: dbServer.oauthEnabled,

@@ -428,6 +428,37 @@ describe("mcp header/env encryption", () => {
       Authorization: "fallback",
     });
   });
+
+  it("flags only the field that can't be read", async () => {
+    seedRow({
+      id: 6,
+      transport: "http",
+      headersEncrypted: Buffer.from("undecryptable", "utf8").toString("base64"),
+      envEncrypted: Buffer.from(`enc:{"OK":"1"}`, "utf8").toString("base64"),
+    });
+
+    const servers = await invoke<
+      { id: number; envUnreadable: boolean; headersUnreadable: boolean }[]
+    >("mcp:list-servers", undefined);
+    const server = servers.find((s) => s.id === 6)!;
+    expect(server.headersUnreadable).toBe(true);
+    expect(server.envUnreadable).toBe(false);
+  });
+
+  it("reports readable secrets as readable", async () => {
+    seedRow({
+      id: 7,
+      transport: "http",
+      headersEncrypted: Buffer.from(`enc:{"A":"1"}`, "utf8").toString("base64"),
+    });
+
+    const servers = await invoke<
+      { id: number; envUnreadable: boolean; headersUnreadable: boolean }[]
+    >("mcp:list-servers", undefined);
+    const server = servers.find((s) => s.id === 7)!;
+    expect(server.headersUnreadable).toBe(false);
+    expect(server.envUnreadable).toBe(false);
+  });
 });
 
 describe("mcp createServer (toMcpServer secret-redaction)", () => {

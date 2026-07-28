@@ -123,6 +123,9 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
   // catalog can't strand an already-configured server.
   const setupPending = !!s.catalogSlug && catalogQuery.isLoading && !s.enabled;
   const setupIncomplete = needsSetup || setupPending;
+  // Guided setup writes both maps at once, so either being unreadable
+  // makes it unsafe to run.
+  const secretsUnreadable = s.envUnreadable || s.headersUnreadable;
 
   const onSetToolConsent = async (
     toolName: string,
@@ -249,7 +252,13 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
             </div>
           )}
 
-          {needsSetup && (
+          {/* Setup builds its update from the stored maps, which read
+              as empty while a secret can't be decrypted. Saving would
+              drop every value the entry doesn't declare, so show the
+              notice instead of the form. */}
+          {needsSetup && secretsUnreadable && <UnreadableSecretsNotice />}
+
+          {needsSetup && !secretsUnreadable && (
             // Keyed by server so switching between two setup-needing
             // servers starts each from its own blank fields, never
             // carrying one server's typed credentials into another.
@@ -279,11 +288,11 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
               <div className="text-sm font-medium mb-2">
                 Environment Variables
               </div>
-              {s.secretsUnreadable && <UnreadableSecretsNotice />}
+              {s.envUnreadable && <UnreadableSecretsNotice />}
               <KeyValueEditor
                 id={s.id}
                 json={s.envJson}
-                disabled={!s.enabled || s.secretsUnreadable}
+                disabled={!s.enabled || s.envUnreadable}
                 isSaving={isUpdatingServer}
                 onSave={async (pairs) => {
                   await updateServer({
@@ -297,11 +306,11 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
           {!setupIncomplete && s.transport === "http" && (
             <div className="mt-6">
               <div className="text-sm font-medium mb-2">Headers</div>
-              {s.secretsUnreadable && <UnreadableSecretsNotice />}
+              {s.headersUnreadable && <UnreadableSecretsNotice />}
               <KeyValueEditor
                 id={s.id}
                 json={s.headersJson}
-                disabled={!s.enabled || s.secretsUnreadable}
+                disabled={!s.enabled || s.headersUnreadable}
                 isSaving={isUpdatingServer}
                 itemLabel="Header"
                 onSave={async (pairs) => {

@@ -499,8 +499,7 @@ proceeds. The appendix's proposed renderer `MessagesStore`, `QueueStore`,
 and accepted-plan projection are recipes to evaluate—not preapproved
 destination architecture.
 
-**A7 — Compatibility infrastructure removal: after A2–A6 and relevant C
-waves.**
+**A7 — Compatibility infrastructure removal: in flight (this PR).**
 
 - delete or narrow `registerAtomWriter`/`projectToAtom`;
 - remove boundary allowlist entries only when their owner is gone;

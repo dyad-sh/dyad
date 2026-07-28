@@ -17,7 +17,6 @@ import {
 } from "./react";
 import { SnapshotStore } from "./snapshot_store";
 import { EntityDisposalRegistry } from "./entity_disposal";
-import { registerAtomWriter, type AtomProjectionWriter } from "./projection";
 
 class Source implements KeyedSnapshotSource<number, number> {
   private values = new Map<number, number>();
@@ -89,17 +88,18 @@ describe("useManagerLifecycle", () => {
   });
 
   it("releases a replaced manager before starting its replacement", async () => {
-    const store = { set: vi.fn() };
-    const atom = {};
+    let claimed = false;
     const createManager = () => {
-      let writer: AtomProjectionWriter<number> | undefined;
+      let ownsClaim = false;
       return {
         start: vi.fn(() => {
-          writer = registerAtomWriter(store, atom);
+          if (claimed) throw new Error("resource already claimed");
+          claimed = true;
+          ownsClaim = true;
         }),
         stop: vi.fn(() => {
-          writer?.dispose();
-          writer = undefined;
+          if (ownsClaim) claimed = false;
+          ownsClaim = false;
         }),
         dispose: vi.fn(),
       };

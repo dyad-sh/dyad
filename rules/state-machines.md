@@ -240,7 +240,6 @@ Background and before/after examples of why this pattern exists:
   acquire the resource before the StrictMode-safe disposal microtask runs.
 - When disposal can race an async command that registers external state after
   an `await`, clean up both immediately and again after the command settles.
-  Disposal must also clear any machine-owned legacy projection synchronously.
 - When a cross-owner facade defers keyed delivery to a microtask, entity
   disposal must invalidate both queued and future deliveries for that key.
   Otherwise the deferred callback can recreate a controller after deletion.
@@ -303,14 +302,21 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   and keep it acyclic. Construct concrete facade adapters at an application
   composition root, outside both machines.
 
-## Projections
+## Read models and intents
 
-- A machine projection has one writer: its controller or manager. Jotai atoms
-  exposed to legacy UI are read-only views and are updated from snapshots in
-  one subscription through `projectToAtom` or a claim from
-  `registerAtomWriter`, not opportunistically by individual commands. A
-  projection is safe only once the machine is its single writer; interim
-  dual-writer periods are where races live.
+- The former same-process Jotai projection compatibility layer was retired by
+  `plans/cleanup-state-machines.md`. Do not reintroduce `projectToAtom`,
+  `registerAtomWriter`, or another lifecycle-mirroring helper. Renderer
+  consumers read the owner snapshot through domain hooks and pure selectors.
+- Cross-process actors expose a named, serializable read model. Each renderer
+  window owns its subscription/bootstrap adapter and treats unavailable or
+  pre-bootstrap data as non-authoritative. The adapter may cache the remote
+  snapshot for `useSyncExternalStore`; it must not create a second writable
+  lifecycle authority in Jotai.
+- Renderer actions cross the owner boundary as typed facade intents. Intent
+  admission, transition commit, command completion, and durable acceptance are
+  distinct outcomes; expose the narrow receipt or settlement signal the caller
+  actually needs.
 - Manager admission and transition application are separate facts. Before
   deleting an admission-gated side channel, characterize admitted events that
   the transition deliberately ignores (including startup, shutdown, and

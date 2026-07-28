@@ -8,8 +8,12 @@ import { convertFileAttachmentsToChatAttachments } from "@/lib/chatAttachmentCon
 import { uuidIdSource, type IdSource } from "@/state_machines/clock";
 import type { ChatStreamRuntimeDeps } from "./runtime_deps";
 import { ChatStreamPreviewStore } from "./preview_store";
-import { CHAT_STREAM_INVOCATION_KIND } from "./state";
-import type { StreamEvent, StreamRequest, StreamSettledResult } from "./state";
+import { CHAT_STREAM_INVOCATION_KIND } from "./invocation";
+import type {
+  StreamEvent,
+  StreamRequest,
+  StreamSettledResult,
+} from "./renderer_facade";
 import {
   chatStreamClientDefinition,
   chatStreamKey,
@@ -713,6 +717,7 @@ export class ChatStreamRemoteManager {
     }
     if (completion.updatedFiles && snapshot.chatId > 0) {
       if (settings?.autoExpandPreviewPanel) {
+        // Permanent UI-side-effect keep: plans/claude-cleanup-machines.md.
         this.store.set(isPreviewOpenAtom, true);
       }
       if (targetAppId !== null) {

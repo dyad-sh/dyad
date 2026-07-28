@@ -21,7 +21,6 @@ const MACHINE_DIRECTORIES = [
   "user_input",
 ] as const;
 type MachineDirectory = (typeof MACHINE_DIRECTORIES)[number];
-type DeletionPr = "A2" | "A3" | "A4" | "A5" | "A6";
 type BoundaryRule =
   | "pure-machine-module"
   | "writable-projection-export"
@@ -33,41 +32,56 @@ interface AllowlistEntry {
   atom: string;
   file: string;
   detail: string;
-  deletionPr: DeletionPr;
-  note?: string;
 }
 
 /**
- * Temporary ownership violations verified against the population-2 and
- * population-3 inventory in plans/claude-cleanup-machines.md.
+ * Permanent machine-to-UI side-effect keeps from
+ * plans/claude-cleanup-machines.md. These are one-way presentation writes,
+ * never lifecycle projections or machine inputs.
  *
- * Exact matching is intentional: deleting a violation makes this list stale,
- * while adding one fails until it is classified and assigned to A2-A6.
+ * Plan-handoff navigation now crosses the presentation-routing boundary and
+ * lands in hooks/usePlanEvents.ts; first-prompt clears its submitted editing
+ * buffer; chat-stream and first-prompt may open/close the window-local preview.
  */
-const ALLOWLIST: readonly AllowlistEntry[] = [
+const PERMANENT_UI_WRITE_ALLOWLIST = [
   {
-    rule: "pure-machine-module",
-    atom: "chatMessagesByIdAtom",
-    file: "chat_stream/state.ts",
-    detail: "@/ipc/types",
-    deletionPr: "A6",
-    note: "Inventory gap: lifecycle request types still come from IPC.",
+    atom: "previewModeAtom",
+    file: "hooks/usePlanEvents.ts",
+    marker: 'setPreviewMode("preview")',
   },
   {
-    rule: "writable-projection-export",
-    atom: "chatMessagesByIdAtom",
-    file: "atoms/chatAtoms.ts",
-    detail: "exported writable atom",
-    deletionPr: "A6",
+    atom: "selectedChatIdAtom",
+    file: "hooks/usePlanEvents.ts",
+    marker: "setSelectedChatId(payload.targetChatId)",
   },
   {
-    rule: "writable-projection-export",
-    atom: "planStateAtom",
-    file: "atoms/planAtoms.ts",
-    detail: "exported writable atom",
-    deletionPr: "A6",
+    atom: "isPreviewOpenAtom",
+    file: "first_prompt/FirstPromptProvider.tsx",
+    marker: "store.set(isPreviewOpenAtom, false)",
+  },
+  {
+    atom: "homeChatInputValueAtom",
+    file: "first_prompt/FirstPromptProvider.tsx",
+    marker: 'store.set(homeChatInputValueAtom, "")',
+  },
+  {
+    atom: "attachmentsAtom",
+    file: "first_prompt/FirstPromptProvider.tsx",
+    marker: "store.set(attachmentsAtom, [])",
+  },
+  {
+    atom: "homeSelectedAppAtom",
+    file: "first_prompt/FirstPromptProvider.tsx",
+    marker: "store.set(homeSelectedAppAtom, null)",
+  },
+  {
+    atom: "isPreviewOpenAtom",
+    file: "chat_stream/remote_manager.ts",
+    marker: "this.store.set(isPreviewOpenAtom, true)",
   },
 ] as const;
+
+const ALLOWLIST: readonly AllowlistEntry[] = [];
 
 interface BoundaryViolation {
   rule: BoundaryRule;
@@ -486,6 +500,25 @@ describe("state-machine boundaries", () => {
     expect(toPortablePath("first_prompt\\FirstPromptProvider.tsx")).toBe(
       "first_prompt/FirstPromptProvider.tsx",
     );
+  });
+
+  it("keeps only the permanent machine-to-UI presentation writes", () => {
+    for (const entry of PERMANENT_UI_WRITE_ALLOWLIST) {
+      const source = fs.readFileSync(
+        path.join(SOURCE_ROOT, entry.file),
+        "utf8",
+      );
+      expect(source, `${entry.file} imports ${entry.atom}`).toContain(
+        entry.atom,
+      );
+      expect(source, `${entry.file} retains ${entry.atom} write`).toContain(
+        entry.marker,
+      );
+      expect(
+        source,
+        `${entry.file} documents the ${entry.atom} compatibility keep`,
+      ).toContain("plans/claude-cleanup-machines.md");
+    }
   });
 
   it("recognizes runtime default-store access through supported import forms", () => {
@@ -1017,6 +1050,53 @@ describe("state-machine boundaries", () => {
       "createUserInputChatStreamFacade",
     ]) {
       expect(productionSource).not.toContain(obsoleteAuthority);
+    }
+  });
+
+  it("keeps retired lifecycle atoms and mailboxes from returning", () => {
+    for (const relativePath of [
+      "atoms/previewRuntimeAtoms.ts",
+      "store/appAtoms.ts",
+    ]) {
+      expect(fs.existsSync(path.join(SOURCE_ROOT, relativePath))).toBe(false);
+    }
+
+    const productionSource = productionFiles(SOURCE_ROOT)
+      .map((filePath) => fs.readFileSync(filePath, "utf8"))
+      .join("\n");
+    for (const retiredName of [
+      "isStreamingByIdAtom",
+      "chatErrorByIdAtom",
+      "firstPromptSagaProjectionWriteAtom",
+      "firstPromptSagaAtom",
+      "previewRunStateByAppIdAtom",
+      "previewErrorByAppIdAtom",
+      "appUrlByAppIdAtom",
+      "previewReloadTokenByAppIdAtom",
+      "previewAppExitByAppIdAtom",
+      "consoleEntriesByAppIdAtom",
+      "packageManagerWarningByAppIdAtom",
+      "dismissedPackageManagerWarningAppIdsAtom",
+      "currentPreviewErrorAtom",
+      "currentAppUrlAtom",
+      "currentPreviewReloadTokenAtom",
+      "currentConsoleEntriesAtom",
+      "currentPackageManagerWarningAtom",
+      "setPreviewRunStateForAppAtom",
+      "setPreviewErrorForAppAtom",
+      "setAppUrlForAppAtom",
+      "bumpPreviewReloadTokenForAppAtom",
+      "setConsoleEntriesForAppAtom",
+      "appendConsoleEntriesForAppAtom",
+      "setPackageManagerWarningForAppAtom",
+      "dismissPackageManagerWarningsAtom",
+      "clearPackageManagerWarningForAppAtom",
+      "clearPreviewRuntimeForAppAtom",
+      "activeCheckoutCounterAtom",
+      "isAnyCheckoutVersionInProgressAtom",
+      "pendingScreenshotAppIdsAtom",
+    ]) {
+      expect(productionSource).not.toContain(retiredName);
     }
   });
 });

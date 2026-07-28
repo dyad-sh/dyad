@@ -68,6 +68,7 @@ export function usePlanEvents() {
     });
     const unsubscribePresentation = planEventClient.onHandoffPresentation(
       (payload) => {
+        // Permanent UI-side-effect keep: plans/claude-cleanup-machines.md.
         setPreviewMode("preview");
         setSelectedChatId(payload.targetChatId);
         void navigate({

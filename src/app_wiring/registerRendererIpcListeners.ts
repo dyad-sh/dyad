@@ -7,7 +7,7 @@ import {
   selectedChatIdAtom,
 } from "@/atoms/chatAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import type { StreamEvent } from "@/chat_stream/state";
+import type { StreamEvent } from "@/chat_stream/renderer_facade";
 import { ipc as defaultIpc, type ChatResponseChunk } from "@/ipc/types";
 import { applyStreamingPatch } from "@/lib/applyStreamingPatch";
 import { queryKeys } from "@/lib/queryKeys";

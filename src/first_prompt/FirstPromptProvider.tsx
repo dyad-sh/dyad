@@ -154,6 +154,7 @@ export function FirstPromptProvider({
     },
     async openPreviewIfSetupRequired(appId) {
       const opened = await openPreviewIfSetupRequired(appId);
+      // Permanent UI-side-effect keep: plans/claude-cleanup-machines.md.
       if (!opened) store.set(isPreviewOpenAtom, false);
       return opened;
     },
@@ -190,6 +191,7 @@ export function FirstPromptProvider({
       setIsSetupDialogOpen(true);
     },
     clearEditingBuffer() {
+      // Permanent post-submit UI clear: plans/claude-cleanup-machines.md.
       store.set(homeChatInputValueAtom, "");
       store.set(attachmentsAtom, []);
       store.set(homeSelectedAppAtom, null);

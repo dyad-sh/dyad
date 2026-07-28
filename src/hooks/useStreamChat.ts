@@ -3,7 +3,7 @@ import type { ComponentSelection, FileAttachment } from "@/ipc/types";
 import type { QueuedMessageItem } from "@/atoms/chatAtoms";
 import type { Chat } from "@/ipc/types";
 import { useChatStreamManager } from "@/chat_stream/ChatStreamProvider";
-import type { StreamSettledResult } from "@/chat_stream/state";
+import type { StreamSettledResult } from "@/chat_stream/renderer_facade";
 import { useChatStreamState } from "@/hooks/useChatStream";
 import { isStreamActive } from "@/chat_stream/transition";
 import { showError } from "@/lib/toast";

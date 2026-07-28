@@ -37,7 +37,7 @@ import { buildNeonPromptForApp } from "../../neon_admin/neon_prompt_context";
 import { getDyadAppPath } from "../../paths/paths";
 import { buildDyadMediaUrl } from "../../lib/dyadMediaUrl";
 import type { ChatStreamParams } from "@/ipc/types";
-import type { ChatStreamInvocationRef } from "@/chat_stream/state";
+import type { ChatStreamInvocationRef } from "@/chat_stream/invocation";
 import type { SerializableChatTurnIntent } from "@/chat_stream/transport";
 import type {
   ChatStreamChunkPayload,

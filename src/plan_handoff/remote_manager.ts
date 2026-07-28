@@ -63,6 +63,7 @@ export class PlanHandoffRemoteManager {
   };
 
   subscribeKey = (sourceChatId: number, listener: () => void): (() => void) => {
+    this.start();
     const actor = this.actor(sourceChatId);
     const listeners = this.listeners.get(sourceChatId) ?? new Set();
     listeners.add(listener);

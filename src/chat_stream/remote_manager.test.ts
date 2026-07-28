@@ -11,6 +11,81 @@ import type { ChatStreamRemoteConnection } from "./remote_manager";
 import { unavailableChatStreamSnapshot } from "./transport";
 
 describe("ChatStreamRemoteManager", () => {
+  it("starts a subscription-only renderer and follows later snapshots", async () => {
+    let deliverSnapshot: (payload: unknown) => void = () => undefined;
+    const start = vi.fn(() => () => undefined);
+    const connection: ChatStreamRemoteConnection = {
+      getStatus: () => "connected",
+      onStatusChange: () => () => undefined,
+      onSnapshot: (listener) => {
+        deliverSnapshot = listener;
+        return () => undefined;
+      },
+      onDisposed: () => () => undefined,
+      subscribe: async (address) => ({
+        ...address,
+        actorInstanceId: "actor",
+        revision: 1,
+        encodedState: {
+          ...unavailableChatStreamSnapshot(7),
+          revision: 1,
+          phase: "streaming",
+          invocationRef: {
+            kind: "chat-stream",
+            entityKey: 7,
+            operationId: "active-stream",
+          },
+        },
+      }),
+      unsubscribe: () => Promise.resolve(),
+      dispatch: vi.fn(),
+      start,
+    };
+    const manager = new ChatStreamRemoteManager(
+      createStore(),
+      createSequentialIdSource(),
+      connection,
+    );
+    const listener = vi.fn();
+
+    const release = manager.ensure(7).subscribe(listener);
+    await vi.waitFor(() =>
+      expect(manager.getSnapshot(7).phase).toBe("streaming"),
+    );
+    deliverSnapshot({
+      protocolVersion: 1,
+      machineId: "chat_stream",
+      encodedKey: { chatId: 7 },
+      actorInstanceId: "actor",
+      revision: 2,
+      encodedState: {
+        ...unavailableChatStreamSnapshot(7),
+        revision: 2,
+        lastCompletion: {
+          intentId: "observed-turn",
+          invocationRef: {
+            kind: "chat-stream",
+            entityKey: 7,
+            operationId: "active-stream",
+          },
+          outcome: "completed",
+          targetAppId: null,
+        },
+      },
+    });
+
+    await vi.waitFor(() =>
+      expect(manager.getSnapshot(7).lastCompletion?.intentId).toBe(
+        "observed-turn",
+      ),
+    );
+    expect(start).toHaveBeenCalledOnce();
+    expect(listener).toHaveBeenCalled();
+
+    release();
+    manager.dispose();
+  });
+
   it("handles a pending completion in the first bootstrap snapshot", async () => {
     let resolveBootstrap!: (snapshot: MachineSnapshotEnvelope) => void;
     const dispatch = vi.fn(

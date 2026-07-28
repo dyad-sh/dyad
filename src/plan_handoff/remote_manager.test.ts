@@ -79,6 +79,70 @@ async function waitFor(check: () => boolean): Promise<void> {
 }
 
 describe("PlanHandoffRemoteManager", () => {
+  it("starts a subscription-only renderer and follows later snapshots", async () => {
+    let deliverSnapshot: (payload: unknown) => void = () => undefined;
+    const start = vi.fn(() => () => undefined);
+    const connection: PlanHandoffRemoteConnection = {
+      getStatus: () => "connected",
+      onStatusChange: () => () => undefined,
+      onSnapshot: (listener) => {
+        deliverSnapshot = listener;
+        return () => undefined;
+      },
+      onDisposed: () => () => undefined,
+      subscribe: async (address) => ({
+        ...address,
+        actorInstanceId: "plan-actor",
+        revision: 1,
+        encodedState: {
+          schemaVersion: 1,
+          sourceChatId: 42,
+          revision: 1,
+          handoffId: "handoff",
+          targetChatId: null,
+          planId: "chat-42",
+          phase: "persisting",
+          failure: null,
+        },
+      }),
+      unsubscribe: () => Promise.resolve(),
+      dispatch: vi.fn(),
+      start,
+    };
+    const manager = new PlanHandoffRemoteManager(
+      createSequentialIdSource(),
+      connection,
+    );
+    const listener = vi.fn();
+
+    const release = manager.subscribeKey(42, listener);
+    await waitFor(() => manager.getSnapshot(42).phase === "persisting");
+    deliverSnapshot({
+      protocolVersion: 1,
+      machineId: "plan_handoff",
+      encodedKey: { sourceChatId: 42 },
+      actorInstanceId: "plan-actor",
+      revision: 2,
+      encodedState: {
+        schemaVersion: 1,
+        sourceChatId: 42,
+        revision: 2,
+        handoffId: "handoff",
+        targetChatId: 77,
+        planId: "chat-42",
+        phase: "started",
+        failure: null,
+      },
+    });
+
+    await waitFor(() => manager.getSnapshot(42).phase === "started");
+    expect(start).toHaveBeenCalledOnce();
+    expect(listener).toHaveBeenCalled();
+
+    release();
+    manager.dispose();
+  });
+
   it("publishes bootstrap failures through the plan handoff snapshot", async () => {
     const manager = new PlanHandoffRemoteManager(
       createSequentialIdSource(),

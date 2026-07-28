@@ -488,6 +488,7 @@ export class ChatStreamRemoteManager {
     chatId: number,
     actor: ReturnType<ChatStreamRemoteManager["actor"]>,
   ): () => void {
+    this.start();
     const existing = this.subscriptions.get(chatId);
     if (existing) {
       existing.consumers += 1;

@@ -157,7 +157,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     updateQueuedMessage,
     removeQueuedMessage,
     reorderQueuedMessages,
-    clearAllQueuedMessages,
     isPaused,
     pauseQueue,
     clearPauseOnly,
@@ -631,9 +630,13 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   };
 
   const handleCancel = () => {
-    // Only clear the queue if NOT paused
-    if (!isPaused) {
-      clearAllQueuedMessages();
+    // Stopping is non-destructive: queued prompts are parked, never deleted.
+    // `isPaused` is a transient latch (resuming, an emptied queue, or a
+    // step-limit continue all clear it), so it can be false while the user
+    // still has prompts they care about queued — deleting them here silently
+    // lost work, including the queue restored (paused) after a restart.
+    if (!isPaused && queuedMessages.length > 0) {
+      pauseQueue();
     }
     // Always reset editing state when cancelling, regardless of pause state
     if (editingQueuedMessageId) {

@@ -41,6 +41,7 @@ export interface RegisterRendererIpcListenersOptions {
   entityDisposal: EntityDisposalRegistry;
   getCurrentPathname?: () => string;
   subscribeToNavigation?: (listener: () => void) => () => void;
+  navigateToChat?: (chatId: number, appId: number) => void;
 }
 
 export function visibleEntitiesForRoute(
@@ -141,8 +142,17 @@ export function registerRendererIpcListeners({
   entityDisposal,
   getCurrentPathname = () => "/",
   subscribeToNavigation,
+  navigateToChat,
 }: RegisterRendererIpcListenersOptions): () => void {
+  const options = { navigateToChat };
   const unsubscribes: Array<() => void> = [];
+  unsubscribes.push(
+    ipcClient.events.windowInfrastructure.onNavigateToChat(
+      ({ chatId, appId }) => {
+        options.navigateToChat?.(chatId, appId);
+      },
+    ),
+  );
   unsubscribes.push(registerQueryInvalidationListener(ipcClient, queryClient));
   unsubscribes.push(
     ipcClient.chatStream.subscribeUnclaimedChunks(

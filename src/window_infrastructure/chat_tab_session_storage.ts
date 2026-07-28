@@ -43,6 +43,55 @@ export function chatTabSessionStorageKey(
   return `${CHAT_TAB_SESSION_STORAGE_PREFIX}${windowSessionId}`;
 }
 
+export function getActiveWindowSessionId(): WindowSessionId {
+  return activeWindowSessionId;
+}
+
+export function getActiveStoredChatTab(
+  chatId: number,
+): StoredChatTab | undefined {
+  try {
+    const raw = window.localStorage.getItem(
+      chatTabSessionStorageKey(activeWindowSessionId),
+    );
+    return parseStoredSession(raw, activeWindowSessionId)?.tabs.find(
+      (tab) => tab.chatId === chatId,
+    );
+  } catch {
+    return undefined;
+  }
+}
+
+export function adoptStoredChatTab(tab: StoredChatTab): void {
+  const storage = window.localStorage;
+  const key = chatTabSessionStorageKey(activeWindowSessionId);
+  const current = parseStoredSession(
+    storage.getItem(key),
+    activeWindowSessionId,
+  );
+  const tabs = [
+    tab,
+    ...(current?.tabs ?? []).filter(
+      (candidate) =>
+        candidate.tabInstanceId !== tab.tabInstanceId &&
+        candidate.chatId !== tab.chatId,
+    ),
+  ];
+  storage.setItem(
+    key,
+    JSON.stringify({
+      version: 2,
+      windowSessionId: activeWindowSessionId,
+      tabs,
+      selectedTabInstanceId: tab.tabInstanceId,
+      closedChatIds: (current?.closedChatIds ?? []).filter(
+        (chatId) => chatId !== tab.chatId,
+      ),
+      updatedAt: Date.now(),
+    } satisfies StoredWindowChatTabSession),
+  );
+}
+
 function isNumberArray(value: unknown): value is number[] {
   return (
     Array.isArray(value) && value.every((item) => typeof item === "number")

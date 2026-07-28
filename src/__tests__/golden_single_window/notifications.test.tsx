@@ -17,11 +17,9 @@ const mocks = vi.hoisted(() => ({
   settledListener: undefined as
     | ((event: { requestId: string }) => void)
     | undefined,
-  focusWindow: vi.fn(),
+  focusChat: vi.fn(),
   resolveAppNameForAppId: vi.fn(),
-  resolveAppIdForChat: vi.fn(),
   resolveChatSummary: vi.fn(),
-  selectChat: vi.fn(),
   showWarning: vi.fn(),
 }));
 
@@ -43,10 +41,6 @@ vi.mock("@tanstack/react-query", () => ({
 
 vi.mock("@tanstack/react-router", () => ({
   useRouterState: () => ({ location: { pathname: "/", search: {} } }),
-}));
-
-vi.mock("@/hooks/useSelectChat", () => ({
-  useSelectChat: () => ({ selectChat: mocks.selectChat }),
 }));
 
 vi.mock("@/hooks/useSettings", () => ({
@@ -73,12 +67,11 @@ vi.mock("@/ipc/types", () => ({
         },
       },
     },
-    system: { focusWindow: mocks.focusWindow },
+    windowInfrastructure: { focusChat: mocks.focusChat },
   },
 }));
 
 vi.mock("@/lib/chatUtils", () => ({
-  resolveAppIdForChat: mocks.resolveAppIdForChat,
   resolveAppNameForAppId: mocks.resolveAppNameForAppId,
   resolveChatSummary: mocks.resolveChatSummary,
 }));
@@ -115,8 +108,9 @@ describe("golden single-window: notification routing", () => {
       appId: 7,
       title: "Golden chat",
     });
-    mocks.focusWindow.mockResolvedValue(undefined);
-    mocks.resolveAppIdForChat.mockResolvedValue(7);
+    mocks.focusChat.mockResolvedValue({
+      windowSessionId: "10000000-0000-4000-8000-000000000001",
+    });
     mocks.resolveAppNameForAppId.mockResolvedValue("Golden app");
     FakeNotification.instances = [];
     Object.defineProperty(window, "Notification", {
@@ -147,11 +141,7 @@ describe("golden single-window: notification routing", () => {
       },
     });
     await act(async () => FakeNotification.instances[0].onclick?.());
-    expect(mocks.focusWindow).toHaveBeenCalledOnce();
-    expect(mocks.selectChat).toHaveBeenCalledExactlyOnceWith({
-      chatId: 42,
-      appId: 7,
-    });
+    expect(mocks.focusChat).toHaveBeenCalledExactlyOnceWith({ chatId: 42 });
     expect(FakeNotification.instances[0].close).toHaveBeenCalledOnce();
     expect(mocks.showWarning).not.toHaveBeenCalled();
     hook.unmount();
@@ -191,11 +181,7 @@ describe("golden single-window: notification routing", () => {
         requireInteraction: true,
       });
       await act(async () => FakeNotification.instances[0].onclick?.());
-      expect(mocks.focusWindow).toHaveBeenCalledOnce();
-      expect(mocks.selectChat).toHaveBeenCalledExactlyOnceWith({
-        chatId: 42,
-        appId: 7,
-      });
+      expect(mocks.focusChat).toHaveBeenCalledExactlyOnceWith({ chatId: 42 });
       expect(FakeNotification.instances[0].close).toHaveBeenCalledOnce();
       expect(mocks.showWarning).not.toHaveBeenCalled();
       hook.unmount();

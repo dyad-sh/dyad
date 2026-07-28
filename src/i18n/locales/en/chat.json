@@ -17,6 +17,7 @@
   "chatActions": "Chat actions for {{title}}",
   "closeChatTab": "Close tab: {{title}}",
   "closeTab": "Close",
+  "openChatInNewWindow": "Open in New Window",
   "closeOtherTabs": "Close other tabs",
   "closeTabsToRight": "Close tabs to the right",
   "groupTabsByApp": "Group tabs by app",

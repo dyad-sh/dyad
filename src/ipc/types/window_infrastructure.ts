@@ -9,8 +9,9 @@ import {
   QueryInvalidationBatchSchema,
   QueryInvalidationEventSchema,
   QueryInvalidationScopeSchema,
-  AppVisibleEntitySchema,
+  ChatTabTransferPayloadSchema,
   EntityDisposalEventSchema,
+  TabInstanceIdSchema,
   VisibleEntitySchema,
   WindowInterestSchema,
   WindowSessionIdSchema,
@@ -35,10 +36,38 @@ export const windowInfrastructureContracts = {
   }),
   openEntityInNewWindow: defineContract({
     channel: "window-infrastructure:open-entity-in-new-window",
-    input: AppVisibleEntitySchema,
+    input: VisibleEntitySchema,
     output: z.object({
       windowSessionId: WindowSessionIdSchema,
     }),
+  }),
+  beginChatTabTransfer: defineContract({
+    channel: "window-infrastructure:begin-chat-tab-transfer",
+    input: z.object({
+      transferId: z.string().uuid(),
+      payload: ChatTabTransferPayloadSchema,
+    }),
+    output: z.object({ transferId: z.string().uuid() }),
+  }),
+  adoptChatTabTransfer: defineContract({
+    channel: "window-infrastructure:adopt-chat-tab-transfer",
+    input: z.object({ transferId: z.string().uuid() }),
+    output: ChatTabTransferPayloadSchema,
+  }),
+  rejectChatTabTransfer: defineContract({
+    channel: "window-infrastructure:reject-chat-tab-transfer",
+    input: z.object({ transferId: z.string().uuid() }),
+    output: z.void(),
+  }),
+  acknowledgeChatTabTransfer: defineContract({
+    channel: "window-infrastructure:acknowledge-chat-tab-transfer",
+    input: z.object({ transferId: z.string().uuid() }),
+    output: z.void(),
+  }),
+  focusChat: defineContract({
+    channel: "window-infrastructure:focus-chat",
+    input: z.object({ chatId: z.number().int().positive() }),
+    output: z.object({ windowSessionId: WindowSessionIdSchema }),
   }),
   setFocused: defineContract({
     channel: "window-infrastructure:set-focused",
@@ -70,6 +99,21 @@ export const windowInfrastructureEvents = {
   entityDisposed: defineEvent({
     channel: "window:entity-disposed",
     payload: EntityDisposalEventSchema,
+  }),
+  removeTransferredChatTab: defineEvent({
+    channel: "window:chat-tab-transfer-remove-source",
+    payload: z.object({
+      transferId: z.string().uuid(),
+      tabInstanceId: TabInstanceIdSchema,
+      chatId: z.number().int().positive(),
+    }),
+  }),
+  navigateToChat: defineEvent({
+    channel: "window:navigate-to-chat",
+    payload: z.object({
+      chatId: z.number().int().positive(),
+      appId: z.number().int().positive(),
+    }),
   }),
 } as const;
 

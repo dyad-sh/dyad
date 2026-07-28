@@ -17,6 +17,7 @@
   "chatActions": "{{title}} 채팅 작업",
   "closeChatTab": "탭 닫기: {{title}}",
   "closeTab": "닫기",
+  "openChatInNewWindow": "새 창에서 열기",
   "closeOtherTabs": "다른 탭 닫기",
   "closeTabsToRight": "오른쪽 탭 모두 닫기",
   "groupTabsByApp": "앱별로 탭 그룹화",

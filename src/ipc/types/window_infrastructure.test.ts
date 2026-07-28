@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { windowInfrastructureContracts } from "./window_infrastructure";
 
 describe("window infrastructure contracts", () => {
-  it("limits C4a product-window creation to app surfaces", () => {
+  it("allows C4 product-window creation for app and chat surfaces", () => {
     expect(
       windowInfrastructureContracts.openEntityInNewWindow.input.safeParse({
         kind: "app",
@@ -14,7 +14,7 @@ describe("window infrastructure contracts", () => {
         kind: "chat",
         id: 11,
       }).success,
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("carries the owning app for restored chat navigation", () => {

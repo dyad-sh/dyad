@@ -38,10 +38,6 @@ vi.mock("@tanstack/react-router", () => ({
   }),
 }));
 
-vi.mock("./useSelectChat", () => ({
-  useSelectChat: () => ({ selectChat: vi.fn() }),
-}));
-
 vi.mock("./useSettings", () => ({
   useSettings: () => ({
     settings: { enableChatEventNotifications: true },
@@ -57,14 +53,16 @@ vi.mock("../ipc/types", () => ({
         onSettled: () => vi.fn(),
       },
     },
-    system: {
-      focusWindow: () => Promise.resolve(),
+    windowInfrastructure: {
+      focusChat: () =>
+        Promise.resolve({
+          windowSessionId: "10000000-0000-4000-8000-000000000001",
+        }),
     },
   },
 }));
 
 vi.mock("../lib/chatUtils", () => ({
-  resolveAppIdForChat: vi.fn(),
   resolveAppNameForAppId: mocks.resolveAppNameForAppId,
   resolveChatSummary: mocks.resolveChatSummary,
 }));

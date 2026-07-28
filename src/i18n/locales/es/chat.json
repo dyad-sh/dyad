@@ -17,6 +17,7 @@
   "chatActions": "Acciones del chat {{title}}",
   "closeChatTab": "Cerrar pestaña: {{title}}",
   "closeTab": "Cerrar",
+  "openChatInNewWindow": "Abrir en una ventana nueva",
   "closeOtherTabs": "Cerrar otras pestañas",
   "closeTabsToRight": "Cerrar pestañas a la derecha",
   "groupTabsByApp": "Agrupar pestañas por aplicación",

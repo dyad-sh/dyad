@@ -38,6 +38,11 @@ export const INITIAL_PREVIEW_IFRAME_STATE: PreviewIframeState = {
 };
 
 export type PreviewIframeEvent =
+  | {
+      type: "RESTORE_PRESENTATION";
+      history: readonly string[];
+      position: number;
+    }
   | { type: "APP_URL_CHANGED"; url: string }
   | { type: "NAVIGATE"; path: string }
   | {

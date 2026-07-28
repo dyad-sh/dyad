@@ -19,6 +19,58 @@ export const TabInstanceIdSchema = z
   .uuid()
   .transform((value) => value as TabInstanceId);
 
+export const ChatTabPresentationStateSchema = z.object({
+  draftInput: z.string().max(1_000_000),
+  scrollTop: z.number().finite().nonnegative(),
+  selectedFile: z
+    .object({
+      path: z.string().max(10_000),
+      line: z.number().int().positive().nullable().optional(),
+    })
+    .nullable(),
+  stagedDiffFile: z.string().max(10_000).nullable(),
+  previewHistory: z.array(z.string().max(20_000)).max(100),
+  previewHistoryPosition: z.number().int().nonnegative(),
+  previewMode: z.enum([
+    "preview",
+    "code",
+    "problems",
+    "configure",
+    "publish",
+    "security",
+    "tests",
+    "plan",
+  ]),
+  isPreviewOpen: z.boolean(),
+  isChatPanelHidden: z.boolean(),
+  terminalOpen: z.boolean(),
+  selectedComponents: z
+    .array(
+      z.object({
+        id: z.string().max(10_000),
+        name: z.string().max(10_000),
+        runtimeId: z.string().max(10_000).optional(),
+        relativePath: z.string().max(10_000),
+        lineNumber: z.number(),
+        columnNumber: z.number(),
+      }),
+    )
+    .max(100),
+});
+export type ChatTabPresentationState = z.infer<
+  typeof ChatTabPresentationStateSchema
+>;
+
+export const ChatTabTransferPayloadSchema = z.object({
+  tabInstanceId: TabInstanceIdSchema,
+  chatId: z.number().int().positive(),
+  appId: z.number().int().positive(),
+  presentation: ChatTabPresentationStateSchema,
+});
+export type ChatTabTransferPayload = z.infer<
+  typeof ChatTabTransferPayloadSchema
+>;
+
 export const AppVisibleEntitySchema = z.object({
   kind: z.literal("app"),
   id: z.number().int().positive(),

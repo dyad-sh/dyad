@@ -3,15 +3,10 @@ import { useCallback, useEffect, useRef } from "react";
 import { useRouterState } from "@tanstack/react-router";
 import { useStreamFinished } from "@/chat_stream/ChatStreamProvider";
 import { useUserInputRequests } from "@/user_input/hooks";
-import { useSelectChat } from "./useSelectChat";
 import { ipc } from "../ipc/types";
 import { showWarning } from "../lib/toast";
 
-import {
-  resolveAppIdForChat,
-  resolveAppNameForAppId,
-  resolveChatSummary,
-} from "../lib/chatUtils";
+import { resolveAppNameForAppId, resolveChatSummary } from "../lib/chatUtils";
 
 import { useSettings } from "./useSettings";
 import type { UserInputDescriptorPayload } from "../ipc/types/user_input";
@@ -31,11 +26,9 @@ function truncate(text: string, limit: number): string {
  * Listens for browser events for completions and IPC events for consent and questionnaire.
  */
 export function useNotificationHandler() {
-  const { selectChat } = useSelectChat();
   const queryClient = useQueryClient();
   const { settings } = useSettings();
 
-  const selectChatRef = useRef(selectChat);
   const notificationsEnabled = settings?.enableChatEventNotifications === true;
   const notificationsEnabledRef = useRef(notificationsEnabled);
   const consentPermissionPromptedRef = useRef(false);
@@ -80,10 +73,6 @@ export function useNotificationHandler() {
   );
   const pendingClassifiedNotificationRequestIdsRef = useRef(new Set<string>());
   const projectedUserInputRequests = useUserInputRequests();
-
-  useEffect(() => {
-    selectChatRef.current = selectChat;
-  }, [selectChat]);
 
   const requestNotificationPermission = useCallback(async () => {
     if (typeof window.Notification === "undefined") return "denied" as const;
@@ -152,13 +141,9 @@ export function useNotificationHandler() {
       notification.onclose = cleanup;
 
       notification.onclick = async () => {
-        ipc.system.focusWindow().catch(console.error);
-
-        // Navigate to chat that triggered the notification
-        const appId = await resolveAppIdForChat(chatId, queryClient);
-        if (appId) {
-          selectChatRef.current({ chatId, appId });
-        } else {
+        try {
+          await ipc.windowInfrastructure.focusChat({ chatId });
+        } catch {
           showWarning("Could not open this chat. It may have been deleted.");
         }
         notification.close();

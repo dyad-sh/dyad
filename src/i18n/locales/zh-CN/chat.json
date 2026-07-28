@@ -17,6 +17,7 @@
   "chatActions": "{{title}} 的聊天操作",
   "closeChatTab": "关闭标签页：{{title}}",
   "closeTab": "关闭",
+  "openChatInNewWindow": "在新窗口中打开",
   "closeOtherTabs": "关闭其他标签页",
   "closeTabsToRight": "关闭右侧标签页",
   "groupTabsByApp": "按应用分组标签页",

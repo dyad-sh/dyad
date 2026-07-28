@@ -147,7 +147,7 @@ Every item is a real review comment or fix iteration from this wave.
 #4108, #4119 (5+ findings), #4123:
 
 - Observer-only windows never called `start()` on the client — one
-  bootstrap snapshot, then silence (HIGH, found in chat*stream \_and*
+  bootstrap snapshot, then silence (HIGH, found in `chat_stream` _and_
   plan_handoff managers).
 - Dispatch overtaking subscribe on first submit → `stale-actor` (P1);
   fixed by awaiting bootstrap before dispatch, per machine.

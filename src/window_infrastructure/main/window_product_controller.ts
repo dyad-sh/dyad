@@ -1,11 +1,10 @@
 import type {
-  AppVisibleEntity,
   VisibleEntity,
   WindowSessionId,
 } from "@/window_infrastructure/types";
 
 export interface WindowProductController {
-  openEntityInNewWindow(entity: AppVisibleEntity): Promise<WindowSessionId>;
+  openEntityInNewWindow(entity: VisibleEntity): Promise<WindowSessionId>;
   initialEntityForSession(
     windowSessionId: WindowSessionId,
   ): VisibleEntity | undefined;

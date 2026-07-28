@@ -53,6 +53,8 @@ npm run init-precommit
 
 When you create a new git worktree for this repository, run `npm install` inside the new worktree before starting development. Each worktree has its own working directory and needs its dependencies installed there.
 
+After installation, verify that `node_modules/.bin/oxfmt` exists before running formatting. If `npm install` reports success without materializing `node_modules`, run `npm ci`; otherwise `npx` may download an unpinned formatter and rewrite unrelated files.
+
 Also run `npm install` in `testing/fake-llm-server/` before `npm run ts` in a fresh worktree. Otherwise the root type-check reports missing declarations for that package's local `express` and `cors` dependencies.
 
 ## Pre-commit checks

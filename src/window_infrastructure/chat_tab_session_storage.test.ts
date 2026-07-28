@@ -9,13 +9,14 @@ import {
 import {
   LEGACY_CHAT_TAB_SESSION_STORAGE_KEY,
   LEGACY_CHAT_TAB_SESSION_MIGRATION_KEY,
+  adoptStoredChatTab,
   chatTabSessionStorageKey,
   configureChatTabWindowSession,
   createChatTabSessionStorage,
   pruneChatTabWindowSessions,
   type StoredWindowChatTabSession,
 } from "./chat_tab_session_storage";
-import type { WindowSessionId } from "./types";
+import type { TabInstanceId, WindowSessionId } from "./types";
 
 const firstWindow = "10000000-0000-4000-8000-000000000001" as WindowSessionId;
 const secondWindow = "20000000-0000-4000-8000-000000000002" as WindowSessionId;
@@ -108,6 +109,31 @@ describe("per-window chat tab session storage", () => {
       localStorage.getItem(chatTabSessionStorageKey(secondWindow))!,
     ) as StoredWindowChatTabSession;
     expect(secondEnvelope.tabs).toHaveLength(1);
+  });
+
+  it("adopts a transferred tab identity and replaces a duplicate chat tab", () => {
+    const storage = createChatTabSessionStorage(localStorage);
+    storage.setItem(LEGACY_CHAT_TAB_SESSION_STORAGE_KEY, {
+      openChatIds: [10, 20],
+      selectedChatId: 20,
+      closedChatIds: [30],
+      updatedAt: 1,
+    });
+    const transferredTabInstanceId =
+      "60000000-0000-4000-8000-000000000006" as TabInstanceId;
+
+    adoptStoredChatTab({
+      chatId: 20,
+      tabInstanceId: transferredTabInstanceId,
+    });
+
+    const adopted = JSON.parse(
+      localStorage.getItem(chatTabSessionStorageKey(firstWindow))!,
+    ) as StoredWindowChatTabSession;
+    expect(adopted.tabs.map((tab) => tab.chatId)).toEqual([20, 10]);
+    expect(adopted.tabs[0].tabInstanceId).toBe(transferredTabInstanceId);
+    expect(adopted.selectedTabInstanceId).toBe(transferredTabInstanceId);
+    expect(adopted.closedChatIds).toEqual([30]);
   });
 
   it("does not replay the retained legacy blob into a second window", () => {

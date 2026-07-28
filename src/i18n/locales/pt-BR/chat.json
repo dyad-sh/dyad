@@ -17,6 +17,7 @@
   "chatActions": "Ações do chat {{title}}",
   "closeChatTab": "Fechar aba: {{title}}",
   "closeTab": "Fechar",
+  "openChatInNewWindow": "Abrir em uma nova janela",
   "closeOtherTabs": "Fechar outras abas",
   "closeTabsToRight": "Fechar abas à direita",
   "groupTabsByApp": "Agrupar abas por app",

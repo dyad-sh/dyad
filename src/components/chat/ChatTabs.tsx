@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useAtomValue, useSetAtom } from "jotai";
+import { useAtomValue, useSetAtom, useStore } from "jotai";
 import { Loader2, MoreHorizontal, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { ChatSummary } from "@/lib/schemas";
@@ -21,7 +21,28 @@ import {
   persistChatTabSessionAtom,
   groupTabsByAppAtom,
   type ClosedTabRecord,
+  chatInputValuesByIdAtom,
+  ensureRecentViewedChatIdAtom,
+  removeTransferredChatTabAtom,
 } from "@/atoms/chatAtoms";
+import {
+  isChatPanelHiddenAtom,
+  isPreviewOpenAtom,
+  selectedFileAtom,
+  stagedDiffFileAtom,
+} from "@/atoms/viewAtoms";
+import { previewModeAtom } from "@/atoms/appAtoms";
+import { selectedComponentsPreviewAtom } from "@/atoms/previewAtoms";
+import { terminalOpenByChatIdAtom } from "@/atoms/terminalAtoms";
+import {
+  adoptStoredChatTab,
+  getActiveStoredChatTab,
+  getActiveWindowSessionId,
+} from "@/window_infrastructure/chat_tab_session_storage";
+import { ipc } from "@/ipc/types";
+import { usePreviewIframeManager } from "@/preview_iframe/PreviewIframeProvider";
+import { showError } from "@/lib/toast";
+import { useSettings } from "@/hooks/useSettings";
 import { useReopenClosedTab } from "@/hooks/useReopenClosedTab";
 import { useStreamFinished } from "@/chat_stream/ChatStreamProvider";
 import { cn } from "@/lib/utils";
@@ -55,6 +76,7 @@ const TAB_GAP_PX = 4;
 const OVERFLOW_TRIGGER_WIDTH_PX = 36;
 const DEFAULT_UNMEASURED_VISIBLE_TABS = 3;
 const MAX_OVERFLOW_MENU_ITEMS = 8;
+const CHAT_TAB_TRANSFER_MIME = "application/x-dyad-chat-tab-transfer";
 
 /**
  * Returns an ordered list of chat IDs to display as tabs.
@@ -275,6 +297,10 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
   const { t } = useTranslation("chat");
   const { chats, loading } = useChats(null);
   const { apps } = useLoadApps();
+  const { settings } = useSettings();
+  const enableMultiWindow = !!settings?.enableMultiWindow;
+  const store = useStore();
+  const previewIframeManager = usePreviewIframeManager();
   const recentViewedChatIds = useAtomValue(recentViewedChatIdsAtom);
   const closedChatIds = useAtomValue(closedChatIdsAtom);
   const sessionOpenedChatIds = useAtomValue(sessionOpenedChatIdsAtom);
@@ -303,6 +329,94 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
   );
   const hasHydratedTabSessionRef = useRef(false);
   const [hasHydratedTabSession, setHasHydratedTabSession] = useState(false);
+
+  const capturePresentation = useCallback(
+    (chatId: number, appId: number) => {
+      const iframe = previewIframeManager.getSnapshot(appId);
+      const messages = document.querySelector<HTMLElement>(
+        '[data-testid="messages-list"]',
+      );
+      return {
+        draftInput: store.get(chatInputValuesByIdAtom).get(chatId) ?? "",
+        scrollTop: messages?.scrollTop ?? 0,
+        selectedFile: store.get(selectedFileAtom),
+        stagedDiffFile: store.get(stagedDiffFileAtom),
+        previewHistory: [...iframe.history],
+        previewHistoryPosition: iframe.position,
+        previewMode: store.get(previewModeAtom),
+        isPreviewOpen: store.get(isPreviewOpenAtom),
+        isChatPanelHidden: store.get(isChatPanelHiddenAtom),
+        terminalOpen: store.get(terminalOpenByChatIdAtom).get(chatId) ?? false,
+        selectedComponents: store.get(selectedComponentsPreviewAtom),
+      };
+    },
+    [previewIframeManager, store],
+  );
+
+  const adoptCrossWindowTab = useCallback(
+    async (transferId: string) => {
+      try {
+        const payload = await ipc.windowInfrastructure.adoptChatTabTransfer({
+          transferId,
+        });
+        adoptStoredChatTab({
+          tabInstanceId: payload.tabInstanceId,
+          chatId: payload.chatId,
+        });
+        store.set(ensureRecentViewedChatIdAtom, payload.chatId);
+        store.set(chatInputValuesByIdAtom, (previous) => {
+          const next = new Map(previous);
+          next.set(payload.chatId, payload.presentation.draftInput);
+          return next;
+        });
+        store.set(selectedFileAtom, payload.presentation.selectedFile);
+        store.set(stagedDiffFileAtom, payload.presentation.stagedDiffFile);
+        store.set(previewModeAtom, payload.presentation.previewMode);
+        store.set(isPreviewOpenAtom, payload.presentation.isPreviewOpen);
+        store.set(
+          isChatPanelHiddenAtom,
+          payload.presentation.isChatPanelHidden,
+        );
+        store.set(
+          selectedComponentsPreviewAtom,
+          payload.presentation.selectedComponents,
+        );
+        store.set(terminalOpenByChatIdAtom, (previous) => {
+          const next = new Map(previous);
+          next.set(payload.chatId, payload.presentation.terminalOpen);
+          return next;
+        });
+        previewIframeManager.send(payload.appId, {
+          type: "RESTORE_PRESENTATION",
+          history: payload.presentation.previewHistory,
+          position: payload.presentation.previewHistoryPosition,
+        });
+        selectChat({
+          chatId: payload.chatId,
+          appId: payload.appId,
+          preserveTabOrder: true,
+        });
+        store.set(persistChatTabSessionAtom);
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            const messages = document.querySelector<HTMLElement>(
+              '[data-testid="messages-list"]',
+            );
+            if (messages) messages.scrollTop = payload.presentation.scrollTop;
+          });
+        });
+        await ipc.windowInfrastructure.acknowledgeChatTabTransfer({
+          transferId,
+        });
+      } catch (error) {
+        await ipc.windowInfrastructure
+          .rejectChatTabTransfer({ transferId })
+          .catch(() => undefined);
+        showError(error);
+      }
+    },
+    [previewIframeManager, selectChat, store],
+  );
 
   const chatsById = useMemo(
     () => new Map(chats.map((chat) => [chat.id, chat])),
@@ -396,6 +510,42 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
         .map((chatId) => chatsById.get(chatId))
         .filter((chat): chat is ChatSummary => chat !== undefined),
     [orderedChatIds, chatsById],
+  );
+
+  useEffect(
+    () =>
+      ipc.events.windowInfrastructure.onRemoveTransferredChatTab(
+        ({ tabInstanceId, chatId }) => {
+          if (getActiveStoredChatTab(chatId)?.tabInstanceId !== tabInstanceId) {
+            return;
+          }
+          const remaining = orderedChatIds.filter((id) => id !== chatId);
+          store.set(removeTransferredChatTabAtom, chatId);
+          store.set(persistChatTabSessionAtom);
+          if (selectedChatId !== chatId) return;
+          const fallback = remaining[0];
+          const fallbackChat = fallback ? chatsById.get(fallback) : undefined;
+          if (fallbackChat) {
+            selectChat({
+              chatId: fallbackChat.id,
+              appId: fallbackChat.appId,
+              preserveTabOrder: true,
+            });
+          } else {
+            setSelectedChatId(null);
+            void navigate({ to: "/" });
+          }
+        },
+      ),
+    [
+      chatsById,
+      navigate,
+      orderedChatIds,
+      selectChat,
+      selectedChatId,
+      setSelectedChatId,
+      store,
+    ],
   );
 
   const visibleTabCapacity = useMemo(
@@ -623,11 +773,37 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
     return false;
   }, [orderedChatIds, chatsById]);
 
-  if (orderedChats.length === 0) return null;
-
   return (
     <TooltipProvider delay={500}>
-      <div ref={containerRef} className="flex min-w-0 items-end gap-1 px-2">
+      <div
+        ref={containerRef}
+        data-testid="chat-tab-drop-zone"
+        className="flex min-h-8 min-w-0 items-end gap-1 px-2"
+        onDragOver={(event) => {
+          if (
+            enableMultiWindow &&
+            event.dataTransfer.types.includes(CHAT_TAB_TRANSFER_MIME)
+          ) {
+            event.preventDefault();
+          }
+        }}
+        onDrop={(event) => {
+          const raw = event.dataTransfer.getData(CHAT_TAB_TRANSFER_MIME);
+          if (!enableMultiWindow || !raw) return;
+          event.preventDefault();
+          try {
+            const transfer = JSON.parse(raw) as {
+              transferId: string;
+              sourceWindowSessionId: string;
+            };
+            if (transfer.sourceWindowSessionId !== getActiveWindowSessionId()) {
+              void adoptCrossWindowTab(transfer.transferId);
+            }
+          } catch {
+            // Ignore foreign or malformed drag payloads.
+          }
+        }}
+      >
         <div className="flex min-w-0 flex-1 items-center overflow-hidden">
           {visibleTabs.map((chat) => {
             const isActive = selectedChatId === chat.id;
@@ -649,7 +825,8 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                     <TooltipTrigger
                       render={
                         <div
-                          draggable
+                          draggable={enableMultiWindow}
+                          data-testid={`chat-tab-${chat.id}`}
                           onAuxClick={(event) => {
                             // Middle-click (button 1) to close tab
                             if (event.button === 1) {
@@ -658,11 +835,39 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                             }
                           }}
                           onDragStart={(event) => {
+                            const storedTab = getActiveStoredChatTab(chat.id);
+                            if (!storedTab) {
+                              event.preventDefault();
+                              return;
+                            }
+                            const transferId = crypto.randomUUID();
                             event.dataTransfer.effectAllowed = "move";
                             event.dataTransfer.setData(
                               "text/plain",
                               String(chat.id),
                             );
+                            event.dataTransfer.setData(
+                              CHAT_TAB_TRANSFER_MIME,
+                              JSON.stringify({
+                                transferId,
+                                sourceWindowSessionId:
+                                  getActiveWindowSessionId(),
+                              }),
+                            );
+                            void ipc.windowInfrastructure
+                              .beginChatTabTransfer({
+                                transferId,
+                                payload: {
+                                  tabInstanceId: storedTab.tabInstanceId,
+                                  chatId: chat.id,
+                                  appId: chat.appId,
+                                  presentation: capturePresentation(
+                                    chat.id,
+                                    chat.appId,
+                                  ),
+                                },
+                              })
+                              .catch(showError);
                             setDraggingChatId(chat.id);
                           }}
                           onDragEnd={() => setDraggingChatId(null)}
@@ -788,6 +993,23 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                   </Tooltip>
                 </ContextMenuTrigger>
                 <ContextMenuContent>
+                  {enableMultiWindow && (
+                    <>
+                      <ContextMenuItem
+                        onClick={() => {
+                          void ipc.windowInfrastructure
+                            .openEntityInNewWindow({
+                              kind: "chat",
+                              id: chat.id,
+                            })
+                            .catch(showError);
+                        }}
+                      >
+                        {t("openChatInNewWindow")}
+                      </ContextMenuItem>
+                      <ContextMenuSeparator />
+                    </>
+                  )}
                   <ContextMenuItem onClick={() => handleCloseTab(chat.id)}>
                     {t("closeTab")}
                   </ContextMenuItem>

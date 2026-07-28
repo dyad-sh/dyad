@@ -30,6 +30,26 @@ export function transition(
   event: PreviewIframeEvent,
 ): PreviewIframeTransitionResult {
   switch (event.type) {
+    case "RESTORE_PRESENTATION": {
+      const history = event.history.slice(0, 100);
+      const position =
+        history.length === 0
+          ? 0
+          : Math.min(Math.max(event.position, 0), history.length - 1);
+      const currentUrl = history[position] ?? null;
+      return applied(
+        {
+          ...state,
+          history,
+          position,
+          currentUrl,
+          preservedUrl: currentUrl,
+          selectorReady: false,
+          picking: false,
+        },
+        currentUrl ? [navigateCommand(currentUrl)] : [],
+      );
+    }
     case "APP_URL_CHANGED": {
       if (!event.url) return ignore(state, "empty-url");
       if (

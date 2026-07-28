@@ -416,6 +416,22 @@ export const removeRecentViewedChatIdAtom = atom(
     pushClosedTabHistory(get, set, [record]);
   },
 );
+export const removeTransferredChatTabAtom = atom(
+  null,
+  (get, set, chatId: number) => {
+    set(
+      recentViewedChatIdsAtom,
+      get(recentViewedChatIdsAtom).filter((id) => id !== chatId),
+    );
+    removeFromSessionSet(get, set, [chatId]);
+    const inputs = get(chatInputValuesByIdAtom);
+    if (inputs.has(chatId)) {
+      const next = new Map(inputs);
+      next.delete(chatId);
+      set(chatInputValuesByIdAtom, next);
+    }
+  },
+);
 // Prune closed chat IDs that no longer exist in the chats list
 export const pruneClosedChatIdsAtom = atom(
   null,

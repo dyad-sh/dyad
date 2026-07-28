@@ -65,6 +65,19 @@ vi.mock("@/hooks/useChatStream", () => ({
   useChatStreamState: () => undefined,
 }));
 
+vi.mock("@/hooks/useSettings", () => ({
+  useSettings: () => ({
+    settings: { enableMultiWindow: false },
+  }),
+}));
+
+vi.mock("@/preview_iframe/PreviewIframeProvider", () => ({
+  usePreviewIframeManager: () => ({
+    getSnapshot: vi.fn(),
+    send: vi.fn(),
+  }),
+}));
+
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => vi.fn(),
   useRouterState: ({ select }: { select: (state: any) => unknown }) =>

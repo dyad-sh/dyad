@@ -86,6 +86,27 @@ function boundedEvents(state: PreviewIframeState): PreviewIframeEvent[] {
 }
 
 describe("preview iframe transition", () => {
+  it("restores transferable browser history and navigates the recreated iframe", () => {
+    const result = transition(INITIAL_PREVIEW_IFRAME_STATE, {
+      type: "RESTORE_PRESENTATION",
+      history: [URL, `${URL}/settings`],
+      position: 1,
+    });
+
+    expect(result.kind).toBe("applied");
+    if (result.kind !== "applied") return;
+    expect(result.state.history).toEqual([URL, `${URL}/settings`]);
+    expect(result.state.currentUrl).toBe(`${URL}/settings`);
+    expect(result.commands).toEqual([
+      {
+        type: "post-to-iframe",
+        message: {
+          type: "navigate",
+          payload: { url: `${URL}/settings`, direction: undefined },
+        },
+      },
+    ]);
+  });
   it("reaches every state aspect and produces every command kind", () => {
     const options = {
       initialState: INITIAL_PREVIEW_IFRAME_STATE,

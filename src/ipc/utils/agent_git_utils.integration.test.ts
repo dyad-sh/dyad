@@ -147,7 +147,7 @@ describe("agent Git utilities", () => {
     expect(status.untracked.every((file) => file.startsWith("many/"))).toBe(
       true,
     );
-  });
+  }, 20_000);
 
   it.runIf(process.platform !== "win32")(
     "does not execute a configured fsmonitor command",

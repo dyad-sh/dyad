@@ -86,6 +86,32 @@ function parseJsonField<T>(
   }
 }
 
+// Parse a secret map that arrived as a JSON string. The schema allows
+// a raw string for these fields, so the values have to be checked
+// here: a map holding anything but strings encrypts fine and then
+// fails to read back, leaving the secret stuck as unreadable.
+function parseSecretMapField(
+  value: Record<string, string> | string | null | undefined,
+  field: string,
+): Record<string, string> | null {
+  const parsed =
+    typeof value === "string"
+      ? parseJsonField<unknown>(value, field)
+      : (value ?? null);
+  if (parsed === null) return null;
+  if (
+    typeof parsed !== "object" ||
+    Array.isArray(parsed) ||
+    !Object.values(parsed).every((v) => typeof v === "string")
+  ) {
+    throw new DyadError(
+      `"${field}" must be an object of string values.`,
+      DyadErrorKind.Validation,
+    );
+  }
+  return parsed as Record<string, string>;
+}
+
 // Convert a DB row into the shape sent to the UI. Drops the encrypted
 // `oauthState` / `oauthClientSecret`; sends `oauthConnected` instead.
 function toMcpServer(dbServer: typeof mcpServers.$inferSelect): McpServer {
@@ -266,16 +292,8 @@ export function registerMcpHandlers() {
       typeof args === "string"
         ? parseJsonField<string[]>(args, "args")
         : (args ?? null);
-    // Handle envJson: can be string (JSON), object, or null/undefined
-    const parsedEnvJson =
-      typeof envJson === "string"
-        ? parseJsonField<Record<string, string>>(envJson, "envJson")
-        : (envJson ?? null);
-    // Handle headersJson: can be string (JSON), object, or null/undefined
-    const parsedHeadersJson =
-      typeof headersJson === "string"
-        ? parseJsonField<Record<string, string>>(headersJson, "headersJson")
-        : (headersJson ?? null);
+    const parsedEnvJson = parseSecretMapField(envJson, "envJson");
+    const parsedHeadersJson = parseSecretMapField(headersJson, "headersJson");
     const result = await db
       .insert(mcpServers)
       .values({
@@ -322,20 +340,13 @@ export function registerMcpHandlers() {
     // a build reading the plaintext column would still use.
     if (params.envJson !== undefined) {
       update.envEncrypted = encryptSecretMap(
-        typeof params.envJson === "string"
-          ? parseJsonField<Record<string, string>>(params.envJson, "envJson")
-          : (params.envJson ?? null),
+        parseSecretMapField(params.envJson, "envJson"),
       );
       update.envJson = null;
     }
     if (params.headersJson !== undefined) {
       update.headersEncrypted = encryptSecretMap(
-        typeof params.headersJson === "string"
-          ? parseJsonField<Record<string, string>>(
-              params.headersJson,
-              "headersJson",
-            )
-          : (params.headersJson ?? null),
+        parseSecretMapField(params.headersJson, "headersJson"),
       );
       update.headersJson = null;
     }

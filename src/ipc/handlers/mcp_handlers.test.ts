@@ -429,6 +429,41 @@ describe("mcp header/env encryption", () => {
     });
   });
 
+  it("rejects a secret map whose values aren't strings", async () => {
+    await expect(
+      invoke("mcp:create-server", {
+        name: "bad-values",
+        transport: "http",
+        url: "https://example.com/mcp",
+        headersJson: `{"API_KEY":1}`,
+      }),
+    ).rejects.toThrow(/must be an object of string values/);
+    expect(lastInsertPayload).toBeNull();
+  });
+
+  it("rejects a secret map that isn't an object", async () => {
+    await expect(
+      invoke("mcp:create-server", {
+        name: "bad-shape",
+        transport: "stdio",
+        command: "npx",
+        envJson: `["not","a","map"]`,
+      }),
+    ).rejects.toThrow(/must be an object of string values/);
+    expect(lastInsertPayload).toBeNull();
+  });
+
+  it("rejects non-string values on update before anything is written", async () => {
+    seedRow({ id: 8, transport: "http" });
+    await expect(
+      invoke("mcp:update-server", {
+        id: 8,
+        headersJson: `{"API_KEY":{"nested":"object"}}`,
+      }),
+    ).rejects.toThrow(/must be an object of string values/);
+    expect(lastUpdatePayload).toBeNull();
+  });
+
   it("flags only the field that can't be read", async () => {
     seedRow({
       id: 6,

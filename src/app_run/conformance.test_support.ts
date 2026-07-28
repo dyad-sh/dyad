@@ -1,31 +1,40 @@
-import { defineMachineConformance } from "@/distributed_machines/testing/machine_conformance";
+import {
+  defineMachineConformance,
+  defineVariantInventory,
+} from "@/distributed_machines/testing/machine_conformance";
+import type { AppRunWireEvent } from "./transport";
+import type { RunState } from "./state";
+
+const appRunStateVariants = defineVariantInventory<RunState["type"]>()([
+  "idle",
+  "starting",
+  "ready",
+  "reloading",
+  "stopping",
+  "stopped",
+  "errored",
+]);
+
+const appRunEventVariants = defineVariantInventory<AppRunWireEvent["type"]>()([
+  "START",
+  "RESTART",
+  "STOP_REQUESTED",
+  "MANUAL_RELOAD",
+  "EXTERNAL_RESTART_STARTED",
+  "PROCESS_SPAWNED",
+  "PROCESS_FAILED",
+  "PROCESS_STOPPED",
+  "PROCESS_STOP_FAILED",
+  "PROXY_READY",
+  "HMR_DETECTED",
+  "RELOAD_COMPLETED",
+  "PROCESS_EXITED",
+]);
 
 export const appRunConformance = defineMachineConformance({
   machineId: "app_run",
-  stateVariants: [
-    "idle",
-    "starting",
-    "ready",
-    "reloading",
-    "stopping",
-    "stopped",
-    "errored",
-  ],
-  eventVariants: [
-    "START",
-    "RESTART",
-    "STOP_REQUESTED",
-    "MANUAL_RELOAD",
-    "EXTERNAL_RESTART_STARTED",
-    "PROCESS_SPAWNED",
-    "PROCESS_FAILED",
-    "PROCESS_STOPPED",
-    "PROCESS_STOP_FAILED",
-    "PROXY_READY",
-    "HMR_DETECTED",
-    "RELOAD_COMPLETED",
-    "PROCESS_EXITED",
-  ],
+  stateVariants: appRunStateVariants,
+  eventVariants: appRunEventVariants,
   tiers: ["T0", "T1", "T2"],
   exclusions: [
     {
@@ -56,38 +65,58 @@ export const appRunConformance = defineMachineConformance({
   representativeCapabilities: {
     canStart: ["START"],
     canRestart: ["RESTART"],
+    canRebuild: ["RESTART"],
     canStop: ["STOP_REQUESTED"],
     canReload: ["MANUAL_RELOAD"],
   },
   representativeIntents: {
-    START: () => ({
-      type: "START",
-      operationId: "request-start",
-      startedAt: 1,
-      expectedRevision: 0,
-    }),
-    RESTART: () => ({
-      type: "RESTART",
-      operation: "rebuild",
-      operationId: "request-rebuild",
-      startedAt: 1,
-      expectedRevision: 0,
-    }),
-    STOP_REQUESTED: () => ({
-      type: "STOP_REQUESTED",
-      operationId: "request-stop",
-      startedAt: 1,
-      activeInvocationRef: {
-        kind: "app-run",
-        entityKey: 1,
-        operationId: "runtime",
-      },
-    }),
-    MANUAL_RELOAD: () => ({
-      type: "MANUAL_RELOAD",
-      operationId: "request-reload",
-      startedAt: 1,
-    }),
+    START: [
+      () => ({
+        type: "START",
+        operationId: "request-start",
+        startedAt: 1,
+        expectedRevision: 0,
+      }),
+    ],
+    RESTART: [
+      () => ({
+        type: "RESTART",
+        operation: "restart",
+        options: {
+          removeNodeModules: false,
+          recreateSandbox: false,
+        },
+        operationId: "request-restart",
+        startedAt: 1,
+        expectedRevision: 0,
+      }),
+      () => ({
+        type: "RESTART",
+        operation: "rebuild",
+        operationId: "request-rebuild",
+        startedAt: 1,
+        expectedRevision: 0,
+      }),
+    ],
+    STOP_REQUESTED: [
+      () => ({
+        type: "STOP_REQUESTED",
+        operationId: "request-stop",
+        startedAt: 1,
+        activeInvocationRef: {
+          kind: "app-run",
+          entityKey: 1,
+          operationId: "runtime",
+        },
+      }),
+    ],
+    MANUAL_RELOAD: [
+      () => ({
+        type: "MANUAL_RELOAD",
+        operationId: "request-reload",
+        startedAt: 1,
+      }),
+    ],
   },
   historicalFailureShapes: [
     "construction-disposal-recreation",

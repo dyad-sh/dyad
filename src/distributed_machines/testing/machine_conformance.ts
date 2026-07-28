@@ -5,7 +5,8 @@ import type {
   RemoteIntentPolicy,
 } from "../remote_intent_contract";
 
-export type ConformanceTier = "T0" | "T1" | "T2" | "T3" | "T4";
+export const CONFORMANCE_TIERS = ["T0", "T1", "T2", "T3", "T4"] as const;
+export type ConformanceTier = (typeof CONFORMANCE_TIERS)[number];
 
 export type HistoricalFailureShape =
   | "construction-disposal-recreation"
@@ -60,9 +61,20 @@ export interface MachineConformance<
     Record<string, readonly EventVariant[]>
   >;
   readonly representativeIntents: Readonly<
-    Partial<Record<EventVariant, () => unknown>>
+    Partial<Record<EventVariant, readonly (() => unknown)[]>>
   >;
   readonly historicalFailureShapes: readonly HistoricalFailureShape[];
+}
+
+export function defineVariantInventory<Variant extends string>() {
+  return <const Inventory extends readonly Variant[]>(
+    inventory: Inventory &
+      ([Exclude<Variant, Inventory[number]>] extends [never]
+        ? unknown
+        : {
+            readonly __missingVariants: Exclude<Variant, Inventory[number]>;
+          }),
+  ): Inventory => inventory;
 }
 
 function unique(values: readonly string[], label: string): void {
@@ -139,6 +151,18 @@ export function defineMachineConformance<
         `${conformance.machineId}: tier ${exclusion.tier} cannot be both applicable and excluded`,
       );
     }
+  }
+  const classifiedTiers = new Set<ConformanceTier>([
+    ...conformance.tiers,
+    ...conformance.exclusions.map(({ tier }) => tier),
+  ]);
+  const omittedTiers = CONFORMANCE_TIERS.filter(
+    (tier) => !classifiedTiers.has(tier),
+  );
+  if (omittedTiers.length > 0) {
+    throw new Error(
+      `${conformance.machineId}: conformance tiers are unclassified: ${omittedTiers.join(",")}`,
+    );
   }
   return Object.freeze(conformance);
 }

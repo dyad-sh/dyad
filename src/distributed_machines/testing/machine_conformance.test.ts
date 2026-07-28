@@ -144,7 +144,7 @@ describe("remote intent contract registration", () => {
       exclusions: [],
       invariants: [],
       representativeCapabilities: { canStop: ["TYPO"] },
-      representativeIntents: { TYPO: () => ({}) },
+      representativeIntents: { TYPO: [() => ({})] },
       historicalFailureShapes: [],
     } as MachineConformance;
     expect(() => defineMachineConformance(invalidCapability)).toThrow(
@@ -191,6 +191,22 @@ describe("remote intent contract registration", () => {
         exclusions: [{ tier: "T0", reason: "not applicable" }],
       }),
     ).toThrow("tier T0 cannot be both applicable and excluded");
+  });
+
+  it("requires every conformance tier to be applicable or excluded", () => {
+    expect(() =>
+      defineMachineConformance({
+        machineId: "invalid",
+        stateVariants: ["idle"],
+        eventVariants: ["START"],
+        tiers: ["T0"],
+        exclusions: [],
+        invariants: [],
+        representativeCapabilities: {},
+        representativeIntents: {},
+        historicalFailureShapes: [],
+      }),
+    ).toThrow("conformance tiers are unclassified: T1,T2,T3,T4");
   });
 
   it("derives trusted image provenance without mutating renderer intent", () => {
@@ -272,6 +288,10 @@ describe("remote intent contract registration", () => {
     ).toEqual(["app_run", "image_generation"]);
     expect(appRunConformance.tiers).toEqual(["T0", "T1", "T2"]);
     expect(imageGenerationConformance.tiers).toEqual(["T0", "T1", "T2"]);
+    expect(appRunConformance.representativeCapabilities.canRebuild).toEqual([
+      "RESTART",
+    ]);
+    expect(appRunConformance.representativeIntents.RESTART).toHaveLength(2);
     const names = new Set([
       ...appRunConformance.historicalFailureShapes,
       ...imageGenerationConformance.historicalFailureShapes,

@@ -1,24 +1,29 @@
-import { defineMachineConformance } from "@/distributed_machines/testing/machine_conformance";
+import {
+  defineMachineConformance,
+  defineVariantInventory,
+} from "@/distributed_machines/testing/machine_conformance";
+import type { ImageGenerationEvent, ImageGenerationStatus } from "./state";
+
+const imageGenerationStateVariants = defineVariantInventory<
+  ImageGenerationStatus | "empty"
+>()(["empty", "pending", "cancelling", "success", "error", "cancelled"]);
+
+const imageGenerationEventVariants = defineVariantInventory<
+  ImageGenerationEvent["type"]
+>()([
+  "SUBMIT",
+  "CANCEL_REQUESTED",
+  "JOB_SUCCEEDED",
+  "JOB_FAILED",
+  "CANCEL_CONFIRMED",
+  "PRUNE_JOB",
+  "APP_DELETED",
+]);
 
 export const imageGenerationConformance = defineMachineConformance({
   machineId: "image_generation",
-  stateVariants: [
-    "empty",
-    "pending",
-    "cancelling",
-    "success",
-    "error",
-    "cancelled",
-  ],
-  eventVariants: [
-    "SUBMIT",
-    "CANCEL_REQUESTED",
-    "JOB_SUCCEEDED",
-    "JOB_FAILED",
-    "CANCEL_CONFIRMED",
-    "PRUNE_JOB",
-    "APP_DELETED",
-  ],
+  stateVariants: imageGenerationStateVariants,
+  eventVariants: imageGenerationEventVariants,
   tiers: ["T0", "T1", "T2"],
   exclusions: [
     {
@@ -55,27 +60,31 @@ export const imageGenerationConformance = defineMachineConformance({
     canCancel: ["CANCEL_REQUESTED"],
   },
   representativeIntents: {
-    SUBMIT: () => ({
-      type: "SUBMIT",
-      operationId: "generate-request",
-      job: {
-        id: "job",
-        prompt: "representative prompt",
-        themeMode: "plain",
-        targetAppId: 1,
-        targetAppName: "App",
-        startedAt: 1,
-      },
-    }),
-    CANCEL_REQUESTED: () => ({
-      type: "CANCEL_REQUESTED",
-      jobId: "job",
-      activeInvocationRef: {
-        kind: "image-generation",
-        entityKey: "job",
+    SUBMIT: [
+      () => ({
+        type: "SUBMIT",
         operationId: "generate-request",
-      },
-    }),
+        job: {
+          id: "job",
+          prompt: "representative prompt",
+          themeMode: "plain",
+          targetAppId: 1,
+          targetAppName: "App",
+          startedAt: 1,
+        },
+      }),
+    ],
+    CANCEL_REQUESTED: [
+      () => ({
+        type: "CANCEL_REQUESTED",
+        jobId: "job",
+        activeInvocationRef: {
+          kind: "image-generation",
+          entityKey: "job",
+          operationId: "generate-request",
+        },
+      }),
+    ],
   },
   historicalFailureShapes: [
     "post-authorization-actor-window-change",

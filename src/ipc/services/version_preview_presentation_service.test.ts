@@ -86,6 +86,38 @@ describe("VersionPreviewPresentationService", () => {
     expect(windows.routePresentation).not.toHaveBeenCalled();
   });
 
+  it("isolates endpoint send failures from post-mutation lifecycle work", () => {
+    const endpoint = {
+      isDestroyed: vi.fn(() => false),
+      send: vi.fn(() => {
+        throw new Error("WebContents was destroyed");
+      }),
+    };
+    const windows = {
+      endpointForSession: vi.fn(() => endpoint),
+      routePresentation: vi.fn(),
+    };
+    const service = new VersionPreviewPresentationService(windows as never);
+    service.recordInitiator("operation", "initiator");
+
+    expect(() =>
+      service.publishResult(7, "operation", {
+        repositoryOutcome: "target-applied",
+        notification: { kind: "success", message: "Restored" },
+        runtimeAction: "restart",
+        affectedChatId: null,
+        createdChatId: null,
+      }),
+    ).not.toThrow();
+    expect(endpoint.send).toHaveBeenCalledWith("version-preview:result", {
+      operationId: "operation",
+      appId: 7,
+      notification: { kind: "success", message: "Restored" },
+      affectedChatId: null,
+      createdChatId: null,
+    });
+  });
+
   it("expires unadmitted ownership but retains confirmed operations", () => {
     vi.useFakeTimers();
     try {

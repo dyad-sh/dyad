@@ -5,6 +5,7 @@ import {
 import type { WindowSessionId } from "@/window_infrastructure/types";
 import type { VersionCommandResult } from "@/ipc/types";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { safeSend } from "../utils/safe_sender";
 
 export class VersionPreviewPresentationService {
   private readonly initiatorByOperationId = new Map<
@@ -107,7 +108,7 @@ export class VersionPreviewPresentationService {
     // One-shot results belong to the window that initiated the operation.
     // If it has closed, dropping the result is safer than navigating or
     // notifying an unrelated surviving window.
-    this.originEndpointFor(operationId)?.send("version-preview:result", {
+    safeSend(this.originEndpointFor(operationId), "version-preview:result", {
       operationId,
       appId,
       ...payload,

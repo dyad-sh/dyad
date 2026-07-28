@@ -1,3 +1,4 @@
+import * as React from "react";
 import { useEffect, useRef, useState } from "react";
 import {
   acknowledgeConnectionFlow,
@@ -59,7 +60,15 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
-export function NeonConnector({ appId }: { appId: number }) {
+export function NeonConnector({
+  appId,
+  embedded = false,
+}: {
+  appId: number;
+  /** Drops the surrounding card so this can sit inside one. */
+  embedded?: boolean;
+}) {
+  const Shell: React.ElementType = embedded ? "div" : Card;
   const { t } = useTranslation("home");
   const { settings, refreshSettings, updateSettings } = useSettings();
   const { app, loading: isLoadingApp, refreshApp } = useLoadApp(appId);
@@ -387,7 +396,7 @@ export function NeonConnector({ appId }: { appId: number }) {
   // get a Nitro server layer added on connect).
   if (isLoadingApp) {
     return (
-      <Card className="mt-1">
+      <Shell className={embedded ? "" : "mt-1"}>
         <CardHeader>
           <Skeleton className="h-6 w-32" />
           <Skeleton className="h-4 w-48" />
@@ -395,7 +404,7 @@ export function NeonConnector({ appId }: { appId: number }) {
         <CardContent>
           <Skeleton className="h-10 w-full" />
         </CardContent>
-      </Card>
+      </Shell>
     );
   }
   if (
@@ -405,21 +414,21 @@ export function NeonConnector({ appId }: { appId: number }) {
     })
   ) {
     return (
-      <Card className="mt-1">
+      <Shell className={embedded ? "" : "mt-1"}>
         <CardHeader>
           <CardTitle>{t("integrations.neon.database")}</CardTitle>
           <CardDescription>
             {t("integrations.neon.unsupportedFramework")}
           </CardDescription>
         </CardHeader>
-      </Card>
+      </Shell>
     );
   }
 
   // State 1: Connected and has project set
   if (isConnected && app?.neonProjectId) {
     return (
-      <Card className="mt-1">
+      <Shell className={embedded ? "" : "mt-1"}>
         <CardHeader>
           <div className="flex items-start justify-between gap-3">
             <div className="space-y-2">
@@ -649,14 +658,14 @@ export function NeonConnector({ appId }: { appId: number }) {
             </AlertDialog>
           </div>
         </CardContent>
-      </Card>
+      </Shell>
     );
   }
 
   // State 2: Connected, no project set — show project selector
   if (isConnected) {
     return (
-      <Card className="mt-1">
+      <Shell className={embedded ? "" : "mt-1"}>
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>{t("integrations.neon.projects")}</CardTitle>
@@ -856,13 +865,13 @@ export function NeonConnector({ appId }: { appId: number }) {
             </div>
           )}
         </CardContent>
-      </Card>
+      </Shell>
     );
   }
 
   // State 3: Not connected — show connect button
   return (
-    <Card className="mt-1">
+    <Shell className={embedded ? "" : "mt-1"}>
       <CardHeader>
         <CardTitle>{t("integrations.neon.database")}</CardTitle>
         <CardDescription>{t("integrations.neon.freeTier")}</CardDescription>
@@ -903,7 +912,7 @@ export function NeonConnector({ appId }: { appId: number }) {
           )}
         </div>
       </CardContent>
-    </Card>
+    </Shell>
   );
 }
 

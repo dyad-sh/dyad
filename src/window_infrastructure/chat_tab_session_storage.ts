@@ -8,6 +8,8 @@ export const CHAT_TAB_SESSION_STORAGE_PREFIX = "chat-tab-session-v2:";
 export const LEGACY_CHAT_TAB_SESSION_STORAGE_KEY = "chat-tab-session";
 export const LEGACY_CHAT_TAB_SESSION_MIGRATION_KEY =
   "chat-tab-session-legacy-migrated-v2";
+const CHAT_TAB_TRANSFER_REMOVAL_PREFIX = "chat-tab-transfer-removal-v1:";
+const CHAT_TAB_TRANSFER_REMOVAL_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 export interface StoredChatTab {
   tabInstanceId: TabInstanceId;
@@ -88,6 +90,48 @@ export function assertActiveStoredChatTabInstance(
         ? "The adopted chat tab was not persisted"
         : "The transferred chat tab was not removed from storage",
     );
+  }
+}
+
+export function markSourceChatTabRemoval(
+  transferId: string,
+  tabInstanceId: TabInstanceId,
+): void {
+  window.localStorage.setItem(
+    `${CHAT_TAB_TRANSFER_REMOVAL_PREFIX}${transferId}`,
+    JSON.stringify({ tabInstanceId, removedAt: Date.now() }),
+  );
+}
+
+export function hasSourceChatTabRemoval(
+  transferId: string,
+  tabInstanceId: TabInstanceId,
+): boolean {
+  const raw = window.localStorage.getItem(
+    `${CHAT_TAB_TRANSFER_REMOVAL_PREFIX}${transferId}`,
+  );
+  if (!raw) return false;
+  try {
+    const parsed = JSON.parse(raw) as {
+      tabInstanceId?: unknown;
+      removedAt?: unknown;
+    };
+    return (
+      parsed.tabInstanceId === tabInstanceId &&
+      typeof parsed.removedAt === "number"
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function clearSourceChatTabRemoval(transferId: string): void {
+  try {
+    window.localStorage.removeItem(
+      `${CHAT_TAB_TRANSFER_REMOVAL_PREFIX}${transferId}`,
+    );
+  } catch (error) {
+    console.error("Failed to clear chat tab transfer receipt", error);
   }
 }
 
@@ -297,6 +341,26 @@ export function pruneChatTabWindowSessions(
         } satisfies StoredWindowChatTabSession),
       );
     }
+    const staleTransferKeys: string[] = [];
+    const staleBefore = Date.now() - CHAT_TAB_TRANSFER_REMOVAL_MAX_AGE_MS;
+    for (let index = 0; index < storage.length; index += 1) {
+      const key = storage.key(index);
+      if (!key?.startsWith(CHAT_TAB_TRANSFER_REMOVAL_PREFIX)) continue;
+      try {
+        const parsed = JSON.parse(storage.getItem(key) ?? "") as {
+          removedAt?: unknown;
+        };
+        if (
+          typeof parsed.removedAt !== "number" ||
+          parsed.removedAt < staleBefore
+        ) {
+          staleTransferKeys.push(key);
+        }
+      } catch {
+        staleTransferKeys.push(key);
+      }
+    }
+    for (const key of staleTransferKeys) storage.removeItem(key);
   } catch (error) {
     console.error("Failed to prune chat tab window sessions", error);
   }

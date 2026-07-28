@@ -11,9 +11,12 @@ import {
   LEGACY_CHAT_TAB_SESSION_STORAGE_KEY,
   LEGACY_CHAT_TAB_SESSION_MIGRATION_KEY,
   adoptStoredChatTab,
+  clearSourceChatTabRemoval,
   chatTabSessionStorageKey,
   configureChatTabWindowSession,
   createChatTabSessionStorage,
+  hasSourceChatTabRemoval,
+  markSourceChatTabRemoval,
   pruneChatTabWindowSessions,
   type StoredWindowChatTabSession,
 } from "./chat_tab_session_storage";
@@ -174,6 +177,39 @@ describe("per-window chat tab session storage", () => {
     expect(() => activeStoredChatTabInstanceState(missing)).toThrow(
       "could not be read",
     );
+  });
+
+  it("persists a correlated durable source-removal receipt", () => {
+    const transferredTabInstanceId =
+      "60000000-0000-4000-8000-000000000006" as TabInstanceId;
+
+    markSourceChatTabRemoval("transfer-1", transferredTabInstanceId);
+
+    expect(
+      hasSourceChatTabRemoval("transfer-1", transferredTabInstanceId),
+    ).toBe(true);
+    expect(
+      hasSourceChatTabRemoval(
+        "transfer-1",
+        "70000000-0000-4000-8000-000000000007" as TabInstanceId,
+      ),
+    ).toBe(false);
+    clearSourceChatTabRemoval("transfer-1");
+    expect(
+      hasSourceChatTabRemoval("transfer-1", transferredTabInstanceId),
+    ).toBe(false);
+  });
+
+  it("preserves active source-removal receipts during session pruning", () => {
+    const transferredTabInstanceId =
+      "60000000-0000-4000-8000-000000000006" as TabInstanceId;
+    markSourceChatTabRemoval("transfer-1", transferredTabInstanceId);
+
+    pruneChatTabWindowSessions(localStorage, []);
+
+    expect(
+      hasSourceChatTabRemoval("transfer-1", transferredTabInstanceId),
+    ).toBe(true);
   });
 
   it("does not replay the retained legacy blob into a second window", () => {

@@ -48,9 +48,13 @@ import {
   assertActiveStoredChatTabInstance,
   adoptStoredChatTab,
   chatTabSessionStorageKey,
+  clearSourceChatTabRemoval,
   getActiveStoredChatTab,
   getActiveWindowSessionId,
+  hasSourceChatTabRemoval,
+  markSourceChatTabRemoval,
 } from "@/window_infrastructure/chat_tab_session_storage";
+import type { TabInstanceId } from "@/window_infrastructure/types";
 import { ipc } from "@/ipc/types";
 import { usePreviewIframeManager } from "@/preview_iframe/PreviewIframeProvider";
 import { showError } from "@/lib/toast";
@@ -574,6 +578,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
         : null;
       let adoptedLocally = false;
       let adoptedChatId: number | null = null;
+      let adoptedTabInstanceId: TabInstanceId | null = null;
       try {
         previousStorage = window.localStorage.getItem(storageKey);
         const payload = await ipc.windowInfrastructure.adoptChatTabTransfer({
@@ -591,6 +596,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
         });
         adoptedLocally = true;
         adoptedChatId = payload.chatId;
+        adoptedTabInstanceId = payload.tabInstanceId;
         store.set(ensureRecentViewedChatIdAtom, payload.chatId);
         store.set(chatInputValuesByIdAtom, (previous) => {
           const next = new Map(previous);
@@ -620,7 +626,19 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
         await ipc.windowInfrastructure.acknowledgeChatTabTransfer({
           transferId,
         });
+        clearSourceChatTabRemoval(transferId);
       } catch (error) {
+        if (
+          adoptedLocally &&
+          adoptedTabInstanceId !== null &&
+          hasSourceChatTabRemoval(transferId, adoptedTabInstanceId)
+        ) {
+          clearSourceChatTabRemoval(transferId);
+          await ipc.windowInfrastructure
+            .rejectChatTabTransfer({ transferId })
+            .catch(() => undefined);
+          return;
+        }
         if (adoptedLocally) {
           if (adoptedChatId !== null) {
             presentationByChatIdRef.current.delete(adoptedChatId);
@@ -842,6 +860,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
               }
               store.set(persistChatTabSessionAtom);
               assertActiveStoredChatTabInstance(tabInstanceId, "absent");
+              markSourceChatTabRemoval(transferId, tabInstanceId);
               await ipc.windowInfrastructure.confirmSourceChatTabRemoval({
                 transferId,
                 tabInstanceId,
@@ -849,6 +868,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
               });
               presentationByChatIdRef.current.delete(chatId);
             } catch (error) {
+              clearSourceChatTabRemoval(transferId);
               restoreLocalStorageSnapshot(storageKey, previousStorage);
               store.set(recentViewedChatIdsAtom, previousRecent);
               store.set(closedChatIdsAtom, previousClosed);

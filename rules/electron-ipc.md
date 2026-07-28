@@ -134,6 +134,10 @@ If either side writes ownership to durable renderer storage before the receipt,
 also reconcile duplicate stable identities across restorable sessions during
 bootstrap. An in-memory coordinator cannot resolve the crash/restart window by
 itself.
+If the source durably removes transferred state before the destination observes
+its acknowledgement, persist a correlated removal marker until the destination
+observes that acknowledgement. On a lost receipt, the destination can use the
+marker to keep its durable adoption instead of rolling back both copies.
 
 When a replayed renderer event mutates persisted session state, do not consume
 it until the session's derived atoms have hydrated. Persisting from empty

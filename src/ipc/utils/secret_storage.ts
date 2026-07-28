@@ -96,6 +96,17 @@ export function decryptSecretMap(
 }
 
 /**
+ * Outcome of reading a stored secret. `unreadable` means the server
+ * has a secret we could not decrypt, which is different from having
+ * none: callers must not treat it as an empty map, or a server would
+ * silently connect without its credentials and the UI would offer an
+ * empty editor whose next save wipes the real values.
+ */
+export type ServerSecretRead =
+  | { status: "ok"; value: Record<string, string> | null }
+  | { status: "unreadable" };
+
+/**
  * Reads an MCP server's env vars or headers, preferring the encrypted
  * column and falling back to the plaintext one when it can't be read.
  *
@@ -106,16 +117,22 @@ export function decryptSecretMap(
 export function readServerSecretMap(
   encrypted: string | null | undefined,
   plaintext: Record<string, string> | null | undefined,
-): Record<string, string> | null {
+): ServerSecretRead {
   if (!encrypted) {
-    return plaintext ?? null;
+    return { status: "ok", value: plaintext ?? null };
   }
   const decrypted = decryptSecretMap(encrypted);
   if (decrypted) {
-    return decrypted;
+    return { status: "ok", value: decrypted };
   }
-  logger.warn(
-    "Could not read an encrypted MCP secret; falling back to the plaintext column",
+  if (plaintext) {
+    logger.warn(
+      "Could not read an encrypted MCP secret; falling back to the plaintext column",
+    );
+    return { status: "ok", value: plaintext };
+  }
+  logger.error(
+    "Could not read an encrypted MCP secret and no plaintext fallback exists",
   );
-  return plaintext ?? null;
+  return { status: "unreadable" };
 }

@@ -9,8 +9,28 @@ import {
   captureMcpOAuthWriteAuthority,
   DyadOAuthClientProvider,
 } from "./mcp_oauth_provider";
-import { decryptFromString, readServerSecretMap } from "./secret_storage";
+import {
+  decryptFromString,
+  readServerSecretMap,
+  type ServerSecretRead,
+} from "./secret_storage";
 import { settleWithinTimeout } from "./promise_utils";
+
+// Connecting without a secret we know exists would talk to the server
+// unauthenticated, so refuse and point at the likely cause.
+function requireReadableSecret(
+  read: ServerSecretRead,
+  serverName: string,
+  label: string,
+): Record<string, string> | null {
+  if (read.status === "unreadable") {
+    throw new DyadError(
+      `Could not decrypt the ${label} for "${serverName}". This usually means the OS keyring is unavailable. Fix the keyring and try again, or re-enter the values.`,
+      DyadErrorKind.Precondition,
+    );
+  }
+  return read.value;
+}
 
 type ClientInitialization = {
   cancelled: boolean;
@@ -89,7 +109,12 @@ export class McpManager {
     let client: MCPClient;
     if (s.transport === "stdio") {
       const args = s.args ?? [];
-      const env = readServerSecretMap(s.envEncrypted, s.envJson) ?? undefined;
+      const env =
+        requireReadableSecret(
+          readServerSecretMap(s.envEncrypted, s.envJson),
+          s.name,
+          "environment variables",
+        ) ?? undefined;
       if (!s.command) throw new Error("MCP server command is required");
       const stdio = new StdioClientTransport({
         command: s.command,
@@ -116,7 +141,11 @@ export class McpManager {
           type: s.transport,
           url: s.url,
           headers:
-            readServerSecretMap(s.headersEncrypted, s.headersJson) ?? undefined,
+            requireReadableSecret(
+              readServerSecretMap(s.headersEncrypted, s.headersJson),
+              s.name,
+              "headers",
+            ) ?? undefined,
           authProvider,
         },
       });

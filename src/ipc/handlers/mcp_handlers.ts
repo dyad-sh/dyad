@@ -89,17 +89,21 @@ function parseJsonField<T>(
 // Convert a DB row into the shape sent to the UI. Drops the encrypted
 // `oauthState` / `oauthClientSecret`; sends `oauthConnected` instead.
 function toMcpServer(dbServer: typeof mcpServers.$inferSelect): McpServer {
+  const env = readServerSecretMap(dbServer.envEncrypted, dbServer.envJson);
+  const headers = readServerSecretMap(
+    dbServer.headersEncrypted,
+    dbServer.headersJson,
+  );
   return {
     id: dbServer.id,
     name: dbServer.name,
     transport: dbServer.transport as McpTransport,
     command: dbServer.command,
     args: dbServer.args,
-    envJson: readServerSecretMap(dbServer.envEncrypted, dbServer.envJson),
-    headersJson: readServerSecretMap(
-      dbServer.headersEncrypted,
-      dbServer.headersJson,
-    ),
+    envJson: env.status === "ok" ? env.value : null,
+    headersJson: headers.status === "ok" ? headers.value : null,
+    secretsUnreadable:
+      env.status === "unreadable" || headers.status === "unreadable",
     url: dbServer.url,
     enabled: dbServer.enabled,
     oauthEnabled: dbServer.oauthEnabled,

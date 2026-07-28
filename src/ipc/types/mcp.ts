@@ -39,6 +39,10 @@ export const McpServerSchema = z.object({
   // whether a pre-registered client has been configured; the secret is
   // never sent to the renderer.
   oauthClientId: z.string().nullable(),
+  // True when this server has stored env vars or headers that could
+  // not be decrypted. The UI locks their editors so a save can't
+  // replace real values with the empty list it would otherwise show.
+  secretsUnreadable: z.boolean(),
   // Set when the server was added from the curated catalog.
   catalogSlug: z.string().nullable(),
   createdAt: z.date(),

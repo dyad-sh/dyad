@@ -30,6 +30,23 @@ const FEEDBACK_TITLES: Record<ConnectFeedback["kind"], string> = {
   credentials: "Authentication failed",
 };
 
+// Shown in place of an editable list when the stored values can't be
+// decrypted. Editing is locked because the list would render empty and
+// saving it would overwrite the real values.
+function UnreadableSecretsNotice() {
+  return (
+    <Alert variant="destructive" className="mb-3">
+      <AlertTitle>Saved values can't be read</AlertTitle>
+      <AlertDescription>
+        These values are stored encrypted and could not be decrypted, usually
+        because the OS keyring is unavailable. Editing is disabled so the saved
+        values aren't overwritten. Restore the keyring and reopen this page, or
+        delete and re-add the plugin to enter them again.
+      </AlertDescription>
+    </Alert>
+  );
+}
+
 export function PluginDetailPage({ serverId }: { serverId: number }) {
   const navigate = useNavigate();
   const {
@@ -262,10 +279,11 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
               <div className="text-sm font-medium mb-2">
                 Environment Variables
               </div>
+              {s.secretsUnreadable && <UnreadableSecretsNotice />}
               <KeyValueEditor
                 id={s.id}
                 json={s.envJson}
-                disabled={!s.enabled}
+                disabled={!s.enabled || s.secretsUnreadable}
                 isSaving={isUpdatingServer}
                 onSave={async (pairs) => {
                   await updateServer({
@@ -279,10 +297,11 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
           {!setupIncomplete && s.transport === "http" && (
             <div className="mt-6">
               <div className="text-sm font-medium mb-2">Headers</div>
+              {s.secretsUnreadable && <UnreadableSecretsNotice />}
               <KeyValueEditor
                 id={s.id}
                 json={s.headersJson}
-                disabled={!s.enabled}
+                disabled={!s.enabled || s.secretsUnreadable}
                 isSaving={isUpdatingServer}
                 itemLabel="Header"
                 onSave={async (pairs) => {

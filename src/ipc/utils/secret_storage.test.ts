@@ -99,22 +99,37 @@ describe("readServerSecretMap", () => {
   it("prefers the encrypted column over the plaintext one", () => {
     const stored = encryptSecretMap({ A: "current" });
     expect(readServerSecretMap(stored, { A: "stale" })).toEqual({
-      A: "current",
+      status: "ok",
+      value: { A: "current" },
     });
   });
 
   it("uses the plaintext column when nothing is encrypted yet", () => {
-    expect(readServerSecretMap(null, { A: "1" })).toEqual({ A: "1" });
+    expect(readServerSecretMap(null, { A: "1" })).toEqual({
+      status: "ok",
+      value: { A: "1" },
+    });
   });
 
   it("falls back to plaintext when the encrypted column is unreadable", () => {
     const unreadable = Buffer.from("garbage", "utf8").toString("base64");
-    expect(readServerSecretMap(unreadable, { A: "1" })).toEqual({ A: "1" });
+    expect(readServerSecretMap(unreadable, { A: "1" })).toEqual({
+      status: "ok",
+      value: { A: "1" },
+    });
   });
 
-  it("returns null when neither column holds a readable value", () => {
+  it("reports unreadable when a stored secret can't be decrypted", () => {
     const unreadable = Buffer.from("garbage", "utf8").toString("base64");
-    expect(readServerSecretMap(unreadable, null)).toBeNull();
-    expect(readServerSecretMap(null, null)).toBeNull();
+    expect(readServerSecretMap(unreadable, null)).toEqual({
+      status: "unreadable",
+    });
+  });
+
+  it("reports an empty ok result when no secret is stored at all", () => {
+    expect(readServerSecretMap(null, null)).toEqual({
+      status: "ok",
+      value: null,
+    });
   });
 });

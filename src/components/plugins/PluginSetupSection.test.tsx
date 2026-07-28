@@ -23,6 +23,7 @@ function makeServer(overrides: Partial<McpServer> = {}): McpServer {
     oauthConnected: false,
     oauthCallbackPort: null,
     oauthClientId: null,
+    secretsUnreadable: false,
     catalogSlug: "test",
     createdAt: new Date(0),
     updatedAt: new Date(0),

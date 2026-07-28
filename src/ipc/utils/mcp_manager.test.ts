@@ -39,7 +39,32 @@ vi.mock("@modelcontextprotocol/sdk/client/stdio.js", () => ({
 
 vi.mock("./mcp_oauth_provider", () => ({
   DyadOAuthClientProvider: class {},
-  decryptFromString: vi.fn((value: string) => value),
+  captureMcpOAuthWriteAuthority: vi.fn(() => undefined),
+}));
+
+// `secret_storage` reaches for safeStorage as soon as a row has an
+// encrypted column, so the encrypted-secret tests need it present.
+vi.mock("electron", () => ({
+  safeStorage: {
+    isEncryptionAvailable: () => true,
+    encryptString: (s: string) => Buffer.from(`enc:${s}`, "utf8"),
+    decryptString: (b: Buffer) => {
+      const s = b.toString("utf8");
+      if (!s.startsWith("enc:")) throw new Error("not encrypted by this mock");
+      return s.slice("enc:".length);
+    },
+  },
+}));
+
+vi.mock("electron-log", () => ({
+  default: {
+    scope: () => ({
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+    }),
+  },
 }));
 
 const { McpManager } = await import("./mcp_manager");
@@ -259,5 +284,72 @@ describe("McpManager lifecycle", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("McpManager unreadable secrets", () => {
+  beforeEach(() => {
+    mocks.rows.clear();
+    mocks.createMCPClient.mockReset();
+    mocks.stdioOptions.length = 0;
+    mocks.select.mockReset();
+    mocks.select.mockImplementation(() => ({
+      from: () => ({
+        where: async () => [...mocks.rows.values()],
+      }),
+    }));
+  });
+
+  const undecryptable = Buffer.from("garbage", "utf8").toString("base64");
+
+  it("refuses to launch a stdio server whose env vars can't be decrypted", async () => {
+    mocks.rows.set(1, {
+      id: 1,
+      name: "broken",
+      transport: "stdio",
+      command: "test-mcp-server",
+      args: [],
+      envJson: null,
+      envEncrypted: undecryptable,
+    });
+
+    await expect(new McpManager().getClient(1)).rejects.toThrow(
+      /Could not decrypt the environment variables for "broken"/,
+    );
+    expect(mocks.createMCPClient).not.toHaveBeenCalled();
+  });
+
+  it("refuses to connect an http server whose headers can't be decrypted", async () => {
+    mocks.rows.set(2, {
+      id: 2,
+      name: "broken-http",
+      transport: "http",
+      url: "https://example.com/mcp",
+      headersJson: null,
+      headersEncrypted: undecryptable,
+    });
+
+    await expect(new McpManager().getClient(2)).rejects.toThrow(
+      /Could not decrypt the headers for "broken-http"/,
+    );
+    expect(mocks.createMCPClient).not.toHaveBeenCalled();
+  });
+
+  it("still launches when the plaintext column can cover an unreadable blob", async () => {
+    mocks.rows.set(3, {
+      id: 3,
+      name: "recoverable",
+      transport: "stdio",
+      command: "test-mcp-server",
+      args: [],
+      envJson: { TEST_MCP: "true" },
+      envEncrypted: undecryptable,
+    });
+    mocks.createMCPClient.mockResolvedValue(createClient());
+
+    await expect(new McpManager().getClient(3)).resolves.toBeDefined();
+    expect(mocks.stdioOptions[0]).toMatchObject({
+      env: { TEST_MCP: "true" },
+    });
   });
 });

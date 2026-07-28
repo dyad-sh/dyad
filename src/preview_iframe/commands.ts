@@ -11,6 +11,7 @@ export interface PreviewIframeTarget {
 
 export interface PreviewIframeCommandAdapter extends PreviewIframeCommandRunner {
   attach(appId: number, target: () => PreviewIframeTarget | null): () => void;
+  hasTarget(appId: number): boolean;
   post(
     appId: number,
     message:
@@ -37,6 +38,9 @@ export function createPreviewIframeCommandAdapter(
       return () => {
         if (targets.get(appId) === target) targets.delete(appId);
       };
+    },
+    hasTarget(appId) {
+      return targets.get(appId)?.() != null;
     },
     execute(appId, command, emit) {
       if (command.message.type !== "restore-overlays") {

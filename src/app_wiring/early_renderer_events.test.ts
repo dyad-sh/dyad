@@ -5,6 +5,7 @@ const eventHandlers = vi.hoisted(() => ({
   forceClose: vi.fn(),
   telemetry: vi.fn(),
   chatTabRemoval: vi.fn(),
+  chatNavigation: vi.fn(),
 }));
 
 vi.mock("@/ipc/types", () => ({
@@ -31,6 +32,10 @@ vi.mock("@/ipc/types", () => ({
           eventHandlers.chatTabRemoval = handler;
           return vi.fn();
         }),
+        onNavigateToChat: vi.fn((handler) => {
+          eventHandlers.chatNavigation = handler;
+          return vi.fn();
+        }),
       },
     },
   },
@@ -39,6 +44,7 @@ vi.mock("@/ipc/types", () => ({
 import {
   earlyTelemetryEvents,
   earlyChatTabRemovalEvents,
+  chatNavigationEvents,
   registerEarlyRendererEvents,
   ReplayEvent,
 } from "@/app_wiring/early_renderer_events";
@@ -94,6 +100,17 @@ describe("ReplayEvent", () => {
 
     eventHandlers.chatTabRemoval(payload);
     earlyChatTabRemovalEvents.subscribe(listener);
+
+    expect(listener).toHaveBeenCalledWith(payload);
+  });
+
+  it("buffers notification navigation until the tab UI subscribes", () => {
+    const listener = vi.fn();
+    const payload = { chatId: 7, appId: 3 };
+    registerEarlyRendererEvents();
+
+    eventHandlers.chatNavigation(payload);
+    chatNavigationEvents.subscribe(listener);
 
     expect(listener).toHaveBeenCalledWith(payload);
   });

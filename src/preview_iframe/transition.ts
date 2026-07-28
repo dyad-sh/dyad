@@ -48,6 +48,8 @@ export function transition(
             currentUrl === null ? state.iframeEpoch + 1 : state.iframeEpoch,
           selectorReady: false,
           picking: false,
+          preserveHistoryOnNextReplacement:
+            event.preserveHistoryOnNextReplacement === true,
         },
         currentUrl ? [navigateCommand(currentUrl)] : [],
       );
@@ -168,6 +170,14 @@ export function transition(
         error: undefined,
       });
     case "IFRAME_REPLACED": {
+      if (state.preserveHistoryOnNextReplacement) {
+        return applied({
+          ...state,
+          preserveHistoryOnNextReplacement: false,
+          selectorReady: false,
+          picking: false,
+        });
+      }
       const history = state.currentUrl ? [state.currentUrl] : [];
       if (
         state.history.length === history.length &&

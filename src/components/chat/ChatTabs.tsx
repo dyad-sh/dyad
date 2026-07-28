@@ -521,6 +521,8 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
         type: "RESTORE_PRESENTATION",
         history: presentation.previewHistory,
         position: presentation.previewHistoryPosition,
+        preserveHistoryOnNextReplacement:
+          !previewIframeManager.hasTarget(appId),
       });
       const scrollRestoreGeneration = ++scrollRestoreGenerationRef.current;
       restoreMessagesScrollTop(
@@ -533,6 +535,13 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
       if (options.restoreComponents !== false) {
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
+            if (
+              scrollRestoreGeneration !== scrollRestoreGenerationRef.current ||
+              (options.chatId !== undefined &&
+                store.get(selectedChatIdAtom) !== options.chatId)
+            ) {
+              return;
+            }
             store.set(
               selectedComponentsPreviewAtom,
               presentation.selectedComponents,

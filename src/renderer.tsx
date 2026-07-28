@@ -41,7 +41,6 @@ import {
 } from "./state_machines/react";
 import { clearTestRuntimeForAppAtom } from "./atoms/testRuntimeAtoms";
 import { initializeChatTabSessionStorageAtom } from "./atoms/chatAtoms";
-import { chatNavigationEvents } from "./app_wiring/early_renderer_events";
 import {
   configureChatTabWindowSession,
   pruneChatTabWindowSessions,
@@ -278,9 +277,6 @@ function RendererServices() {
       getCurrentPathname: () => router.state.location.pathname,
       subscribeToNavigation: (listener) =>
         router.subscribe("onResolved", listener),
-      navigateToChat: (chatId, appId) => {
-        chatNavigationEvents.emit({ chatId, appId });
-      },
     });
   }, [chatStreamManager, entityDisposal, queryClient, store, windowReady]);
 

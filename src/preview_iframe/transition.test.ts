@@ -313,6 +313,27 @@ describe("preview iframe transition", () => {
     expect(ignoreReasonOf(replayed)).toBe("already-replaced");
   });
 
+  it("preserves restored history through a deferred iframe attachment", () => {
+    const restored = transition(INITIAL_PREVIEW_IFRAME_STATE, {
+      type: "RESTORE_PRESENTATION",
+      history: [URL, `${URL}/settings`],
+      position: 1,
+      preserveHistoryOnNextReplacement: true,
+    });
+
+    const replaced = transition(restored.state, {
+      type: "IFRAME_REPLACED",
+      reason: "external",
+    });
+
+    expect(replaced.state).toMatchObject({
+      history: [URL, `${URL}/settings`],
+      position: 1,
+      currentUrl: `${URL}/settings`,
+      preserveHistoryOnNextReplacement: false,
+    });
+  });
+
   it("uses the trusted app URL when preserved navigation is cross-origin", () => {
     const state: PreviewIframeState = {
       ...INITIAL_PREVIEW_IFRAME_STATE,

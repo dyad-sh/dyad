@@ -32,6 +32,10 @@ export class PreviewIframeManager {
     this.host.ensure(appId).send(event);
   }
 
+  hasTarget(appId: number): boolean {
+    return this.commands.hasTarget(appId);
+  }
+
   disposeKey(appId: number): void {
     this.host.disposeKey(appId);
   }

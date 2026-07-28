@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { showError, showSuccess } from "@/lib/toast";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { useLoadApp } from "@/hooks/useLoadApp";
 import { ipc } from "@/ipc/types";
 import { useNavigate } from "@tanstack/react-router";
 import { NeonConfigure } from "./NeonConfigure";
@@ -307,6 +308,7 @@ const EnvironmentVariablesTitle = () => (
 const IntegrationSection = () => {
   const { t } = useTranslation("home");
   const selectedAppId = useAtomValue(selectedAppIdAtom);
+  const { app } = useLoadApp(selectedAppId);
   const {
     pendingIntegration,
     provider: pendingProvider,
@@ -336,8 +338,11 @@ const IntegrationSection = () => {
 
   if (selectedAppId == null || !displayProvider) return null;
 
-  const providerName =
-    displayProvider === "supabase"
+  // An app on portable Postgres is Neon-backed, but calling it Neon here is
+  // misleading: the user chose Postgres and the generated code is standard.
+  const providerName = app?.portableCodegen
+    ? "Postgres"
+    : displayProvider === "supabase"
       ? t("integrations.databaseSetup.providers.supabase.name")
       : t("integrations.databaseSetup.providers.neon.name");
 

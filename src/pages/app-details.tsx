@@ -45,6 +45,10 @@ import {
 import { GitHubConnector } from "@/components/GitHubConnector";
 import { SupabaseConnector } from "@/components/SupabaseConnector";
 import { NeonConnector } from "@/components/NeonConnector";
+import { PostgresConnector } from "@/components/PostgresConnector";
+import * as React from "react";
+import { useConnectionFlow } from "@/hooks/useConnectionFlow";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { showError, showSuccess } from "@/lib/toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Label } from "@/components/ui/label";
@@ -68,6 +72,80 @@ import { AssignAppsToCollectionDialog } from "@/components/AssignAppsToCollectio
 import { useTranslation } from "react-i18next";
 import { queryKeys } from "@/lib/queryKeys";
 
+/**
+ * One database, two ways of using it. The tabs choose what the model generates
+ * against the same Neon project, so once one is connected the choice is fixed
+ * until it is disconnected.
+ */
+function DatabaseModeCard({
+  appId,
+  isPortable,
+  hasDatabase,
+}: {
+  appId: number;
+  isPortable: boolean;
+  hasDatabase: boolean;
+}) {
+  const { isFlowActive } = useConnectionFlow("neon");
+  const active = isPortable ? "portable" : "neon";
+  // Controlled, so the selection cannot be moved by anything but the user.
+  // Leaving it to the tabs' own state meant a trigger briefly disabling itself
+  // mid-setup, when the choice had been recorded but the app had not caught
+  // up, which bounced the user into the other tab.
+  const [tab, setTab] = React.useState<string>(active);
+  React.useEffect(() => {
+    // Follow the app once its database settles the question, but never pull
+    // the user out of the tab they are working in.
+    if (hasDatabase) setTab(active);
+  }, [hasDatabase, active]);
+
+  // Setting up is the worst moment to switch: the choice has been recorded but
+  // the database does not exist yet, so a switch leaves the recorded mode and
+  // the work in progress disagreeing.
+  const isSettingUp = isFlowActive || (isPortable && !hasDatabase);
+  const isLocked = hasDatabase || isSettingUp;
+  const lockedTo = tab === "portable" ? "portable Postgres" : "Neon";
+  return (
+    <Card className="mt-1">
+      <Tabs value={tab} onValueChange={setTab}>
+        <div className="px-6 pt-6">
+          <TabsList>
+            <TabsTrigger value="neon" disabled={isLocked && tab !== "neon"}>
+              Neon
+            </TabsTrigger>
+            <TabsTrigger
+              value="portable"
+              disabled={isLocked && tab !== "portable"}
+            >
+              Portable Postgres
+            </TabsTrigger>
+          </TabsList>
+        </div>
+        <TabsContent value="neon" className="mt-0">
+          <p className="px-6 pt-4 text-xs text-muted-foreground">
+            Neon's own client and built-in authentication. Fastest to build
+            with.
+          </p>
+          <NeonConnector appId={appId} embedded />
+        </TabsContent>
+        <TabsContent value="portable" className="mt-0">
+          <p className="px-6 pt-4 text-xs text-muted-foreground">
+            Standard code with no vendor features. Works against any Postgres,
+            including one on a server you own.
+          </p>
+          <PostgresConnector appId={appId} embedded />
+        </TabsContent>
+      </Tabs>
+      {isLocked && (
+        <p className="px-6 pb-4 text-xs text-muted-foreground">
+          {isSettingUp && !hasDatabase
+            ? `Setting up ${lockedTo}. Finish or cancel it to choose differently.`
+            : `This app is set up for ${lockedTo}. Disconnect the database to choose differently.`}
+        </p>
+      )}
+    </Card>
+  );
+}
 function UnavailableIntegrationCard({
   provider,
 }: {
@@ -660,11 +738,21 @@ export default function AppDetailsPage() {
               {appId && selectedApp?.neonProjectId && (
                 <UnavailableIntegrationCard provider="supabase" />
               )}
-              {appId && !selectedApp?.supabaseProjectId && (
-                <NeonConnector appId={appId} />
-              )}
               {appId && selectedApp?.supabaseProjectId && (
                 <UnavailableIntegrationCard provider="neon" />
+              )}
+              {/* One connection, two ways to use it: the database is a Neon
+                  project either way, and the tabs choose what the model
+                  generates against it. */}
+              {appId && !selectedApp?.supabaseProjectId && (
+                <DatabaseModeCard
+                  appId={appId}
+                  isPortable={Boolean(selectedApp?.portableCodegen)}
+                  // Once a database exists the choice is settled: the code
+                  // written against it depends on it, so switching silently
+                  // would leave the app in a state matching neither.
+                  hasDatabase={Boolean(selectedApp?.neonProjectId)}
+                />
               )}
             </>
           )}

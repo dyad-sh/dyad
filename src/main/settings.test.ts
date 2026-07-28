@@ -237,6 +237,47 @@ describe("readSettings", () => {
       });
     });
 
+    it("should decrypt the encrypted Coolify admin password", () => {
+      const mockFileContent = {
+        coolifyAdminPassword: {
+          value: "encrypted-admin-password",
+          encryptionType: "electron-safe-storage",
+        },
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
+      mockSafeStorage.decryptString.mockReturnValue("decrypted-admin-password");
+
+      expect(readSettings().coolifyAdminPassword).toEqual({
+        value: "decrypted-admin-password",
+        encryptionType: "electron-safe-storage",
+      });
+    });
+
+    it("should decrypt the encrypted Coolify access token", () => {
+      // Encrypting on write without decrypting on read hands the caller
+      // ciphertext, which then goes out as an enormous bearer header and is
+      // rejected by any proxy in front of the instance.
+      const mockFileContent = {
+        coolifyAccessToken: {
+          value: "encrypted-coolify-token",
+          encryptionType: "electron-safe-storage",
+        },
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
+      mockSafeStorage.decryptString.mockReturnValue("decrypted-coolify-token");
+
+      const result = readSettings();
+
+      expect(result.coolifyAccessToken).toEqual({
+        value: "decrypted-coolify-token",
+        encryptionType: "electron-safe-storage",
+      });
+    });
+
     it("should decrypt encrypted Supabase tokens", () => {
       const mockFileContent = {
         supabase: {

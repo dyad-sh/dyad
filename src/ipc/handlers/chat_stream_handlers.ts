@@ -34,6 +34,7 @@ import {
   SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT,
 } from "../../prompts/supabase_prompt";
 import { buildNeonPromptForApp } from "../../neon_admin/neon_prompt_context";
+import { buildPortablePostgresPromptForApp } from "../../postgres_admin/portable_postgres_prompt_context";
 import { getDyadAppPath } from "../../paths/paths";
 import { buildDyadMediaUrl } from "../../lib/dyadMediaUrl";
 import type { ChatStreamParams } from "@/ipc/types";
@@ -1534,6 +1535,20 @@ ${componentSnippet}
                   organizationSlug:
                     updatedChat.app.supabaseOrganizationSlug ?? null,
                 }));
+        } else if (updatedChat.app?.portableCodegen) {
+          // Portable Postgres: the development database is still Neon, but the
+          // model must write standard Postgres code so the same app runs
+          // against a self-hosted production database.
+          systemPrompt +=
+            "\n\n" +
+            (await buildPortablePostgresPromptForApp({
+              appPath: updatedChat.app.path,
+              neonProjectId: updatedChat.app.neonProjectId,
+              neonActiveBranchId: updatedChat.app.neonActiveBranchId,
+              neonDevelopmentBranchId: updatedChat.app.neonDevelopmentBranchId,
+              selectedChatMode,
+            })) +
+            "\n\n";
         } else if (updatedChat.app?.neonProjectId) {
           // Neon is connected — inject Neon prompt instead of Supabase
           systemPrompt +=

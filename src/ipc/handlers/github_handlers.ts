@@ -87,7 +87,7 @@ function getGitHubAccessTokenUrl() {
     : "https://github.com/login/oauth/access_token";
 }
 
-function getGitHubApiBase() {
+export function getGitHubApiBase() {
   return isGitHubTestBuild()
     ? `${getGitHubTestServerBase()}/github/api`
     : "https://api.github.com";

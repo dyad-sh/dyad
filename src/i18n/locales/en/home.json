@@ -587,7 +587,7 @@
     },
     "neon": {
       "title": "Neon Integration",
-      "connected": "Your account is connected to Neon.",
+      "connected": "Your account is connected to Neon. Apps configured for Postgres use it for their development database.",
       "database": "Neon Database",
       "connectedToNeon": "You are connected to Neon Database",
       "freeTier": "Neon Database has a good free tier with backups and up to 10 projects.",

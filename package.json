@@ -107,6 +107,7 @@
     "date-fns": "^4.1.0",
     "dotenv": "^16.4.7",
     "drizzle-orm": "^0.41.0",
+    "pg": "^8.22.0",
     "dugite": "^3.0.0",
     "electron-log": "^5.4.3",
     "electron-playwright-helpers": "^2.1.0",

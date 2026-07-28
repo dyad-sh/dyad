@@ -38,7 +38,9 @@ export function useNeon(appId: number | null) {
   } = useQuery({
     queryKey: queryKeys.neon.project({ appId }),
     queryFn: () => ipc.neon.getProject({ appId: appId! }),
-    enabled: !!appId && !!app?.neonProjectId,
+    // Without a token this fails with "access token not found", which surfaces
+    // as a confusing error on an app that simply isn't signed in yet.
+    enabled: !!appId && !!app?.neonProjectId && isConnected,
   });
 
   const branches: NeonBranch[] = projectInfo?.branches ?? [];

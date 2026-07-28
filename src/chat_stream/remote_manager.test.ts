@@ -154,6 +154,99 @@ describe("ChatStreamRemoteManager", () => {
     manager.dispose();
   });
 
+  it("settles an accepted replay whose completion was already observed", async () => {
+    let deliverSnapshot: (payload: unknown) => void = () => undefined;
+    const completedSnapshot = {
+      ...unavailableChatStreamSnapshot(7),
+      revision: 1,
+      lastCompletion: {
+        intentId: "request-1",
+        invocationRef: {
+          kind: "chat-stream" as const,
+          entityKey: 7,
+          operationId: "original-operation",
+        },
+        outcome: "completed" as const,
+        targetAppId: null,
+      },
+    };
+    const connection: ChatStreamRemoteConnection = {
+      getStatus: () => "connected",
+      onStatusChange: () => () => undefined,
+      onSnapshot: (listener) => {
+        deliverSnapshot = listener;
+        return () => undefined;
+      },
+      onDisposed: () => () => undefined,
+      subscribe: async (address) => ({
+        ...address,
+        actorInstanceId: "actor",
+        revision: 1,
+        encodedState: completedSnapshot,
+      }),
+      unsubscribe: () => Promise.resolve(),
+      dispatch: vi.fn(async (envelope: MachineDispatchEnvelope) => {
+        queueMicrotask(() =>
+          deliverSnapshot({
+            protocolVersion: 1,
+            machineId: "chat_stream",
+            encodedKey: { chatId: 7 },
+            actorInstanceId: "actor",
+            revision: 2,
+            encodedState: {
+              ...completedSnapshot,
+              revision: 2,
+              lastAcceptance: {
+                intentId: "request-1",
+                acceptance: "message-accepted",
+                acceptedMessageId: 42,
+              },
+            },
+          }),
+        );
+        return {
+          kind: "applied",
+          actorInstanceId: "actor",
+          revision: 2,
+          transactionSequence: 1,
+          messageId: envelope.messageId,
+        } as const;
+      }),
+    };
+    const manager = new ChatStreamRemoteManager(
+      createStore(),
+      createSequentialIdSource(),
+      connection,
+    );
+    const ref = manager.ensure(7);
+    const release = ref.subscribe(() => undefined);
+    await vi.waitFor(() =>
+      expect(manager.getSnapshot(7).lastCompletion?.intentId).toBe("request-1"),
+    );
+    const onAccepted = vi.fn();
+    const onSettled = vi.fn();
+
+    ref.send({
+      type: "submit",
+      request: {
+        chatId: 7,
+        prompt: "follow up",
+        owner: { kind: "user-input-follow-up", requestId: "request-1" },
+        onAccepted,
+        onSettled,
+      },
+    });
+
+    await vi.waitFor(() => expect(onAccepted).toHaveBeenCalledOnce());
+    expect(onSettled).toHaveBeenCalledWith({
+      success: true,
+      pausedByStepLimit: undefined,
+    });
+
+    release();
+    manager.dispose();
+  });
+
   it("does not rebase a stale queue mutation during resync", async () => {
     const subscribe = vi.fn(async () => ({
       protocolVersion: 1,

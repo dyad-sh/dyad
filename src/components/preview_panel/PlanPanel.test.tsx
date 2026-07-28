@@ -2,6 +2,11 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  acceptPlan: vi.fn(),
+  handoffState: {
+    phase: "idle",
+    failure: null,
+  } as { phase: string; failure: string | null },
   streamMessage: vi.fn(),
   setAcceptInNewChat: vi.fn(),
 }));
@@ -56,11 +61,8 @@ vi.mock("@/hooks/usePlanDocument", () => ({
   }),
 }));
 vi.mock("@/plan_handoff/usePlanHandoff", () => ({
-  usePlanHandoff: () => ({ acceptPlan: vi.fn() }),
-  usePlanHandoffState: () => ({
-    phase: "idle",
-    failure: null,
-  }),
+  usePlanHandoff: () => ({ acceptPlan: mocks.acceptPlan }),
+  usePlanHandoffState: () => mocks.handoffState,
 }));
 vi.mock("@/components/chat/DyadMarkdownParser", () => ({
   VanillaMarkdownParser: ({ content }: { content: string }) => (
@@ -85,6 +87,9 @@ import { PlanPanel } from "./PlanPanel";
 
 describe("PlanPanel", () => {
   beforeEach(() => {
+    mocks.acceptPlan.mockReset();
+    mocks.handoffState.phase = "idle";
+    mocks.handoffState.failure = null;
     mocks.streamMessage.mockReset();
     mocks.setAcceptInNewChat.mockReset();
   });
@@ -109,5 +114,28 @@ describe("PlanPanel", () => {
 
     act(() => settle?.({ success }));
     expect(button.disabled).toBe(false);
+  });
+
+  it("re-enables acceptance when a handoff retry rejects", async () => {
+    mocks.handoffState.phase = "failed";
+    mocks.handoffState.failure = "Previous attempt failed";
+    mocks.acceptPlan.mockRejectedValue(new Error("Dispatch failed"));
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+
+    render(<PlanPanel />);
+    const button = screen.getByTestId(
+      "accept-plan-new-chat",
+    ) as HTMLButtonElement;
+
+    fireEvent.click(button);
+    expect(button.disabled).toBe(true);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(button.disabled).toBe(false);
+
+    consoleError.mockRestore();
   });
 });

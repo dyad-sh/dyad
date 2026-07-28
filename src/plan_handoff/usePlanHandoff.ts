@@ -73,7 +73,7 @@ function useRemotePlanHandoffState(
  * PLAN_ACCEPTED event. Mounted once, from `usePlanEvents` at the app root.
  */
 export function usePlanHandoff(): {
-  acceptPlan: (payload: PlanExitPayload) => void;
+  acceptPlan: (payload: PlanExitPayload) => Promise<void>;
 } {
   const store = useStore();
   const manager = usePlanHandoffManager();
@@ -81,7 +81,7 @@ export function usePlanHandoff(): {
     manager instanceof PlanHandoffRemoteManager ? manager : null;
 
   const acceptPlan = useCallback(
-    (payload: PlanExitPayload) => {
+    async (payload: PlanExitPayload) => {
       // The user records this choice at accept-click time (PlanPanel), before
       // the plan:exit event ever fires. When unknown (typed acceptance like
       // "implement the plan", or after a reload), default to continuing here
@@ -91,22 +91,16 @@ export function usePlanHandoff(): {
       if (remoteManager) {
         const plan = readPlanDocument(store, payload.chatId);
         if (!plan) {
-          console.error("Failed to accept plan: missing immutable plan data");
-          return;
+          throw new Error("Failed to accept plan: missing immutable plan data");
         }
-        void sha256Hex(serializePlanDocument(plan))
-          .then((planHash) =>
-            remoteManager.accept({
-              sourceChatId: payload.chatId,
-              appId: payload.appId,
-              acceptInNewChat,
-              plan,
-              planHash,
-            }),
-          )
-          .catch((error) =>
-            console.error("Failed to start plan handoff", error),
-          );
+        const planHash = await sha256Hex(serializePlanDocument(plan));
+        await remoteManager.accept({
+          sourceChatId: payload.chatId,
+          appId: payload.appId,
+          acceptInNewChat,
+          plan,
+          planHash,
+        });
         return;
       }
       if (!("getOrCreate" in manager)) return;

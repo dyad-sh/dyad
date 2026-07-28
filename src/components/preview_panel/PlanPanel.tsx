@@ -213,7 +213,13 @@ export const PlanPanel: React.FC = () => {
     });
 
     if (handoffFailure) {
-      acceptPlan({ chatId, appId });
+      void acceptPlan({ chatId, appId })
+        .catch((error) => {
+          console.error("Failed to retry plan handoff", error);
+        })
+        .finally(() => {
+          setIsSubmitting(false);
+        });
       return;
     }
     streamMessage({

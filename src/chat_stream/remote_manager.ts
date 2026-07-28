@@ -557,6 +557,18 @@ export class ChatStreamRemoteManager {
           acceptance.acceptance === "replayed"
         ) {
           pending.request.onAccepted?.();
+          const replayedCompletion = snapshot.lastCompletion;
+          if (
+            acceptance.acceptance === "message-accepted" &&
+            replayedCompletion?.intentId === acceptance.intentId &&
+            this.lastCompletionByChat.get(chatId) === acceptance.intentId
+          ) {
+            pending.request.onSettled?.({
+              success: replayedCompletion.outcome === "completed",
+              pausedByStepLimit: replayedCompletion.pausePromptQueue,
+            });
+            this.takePendingSubmission(acceptance.intentId);
+          }
         } else if (acceptance.acceptance === "queued") {
           pending.request.onSettled?.({ success: false, queued: true });
           this.takePendingSubmission(acceptance.intentId);

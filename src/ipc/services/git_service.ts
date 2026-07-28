@@ -1,11 +1,16 @@
+import log from "electron-log";
+
 import {
   ensureGitLineEndingPolicy,
   gitAdd,
   gitAddAll,
   gitCommit,
   gitInit,
+  gitRemove,
   hasStagedChanges,
 } from "../utils/git_utils";
+
+const logger = log.scope("git_service");
 
 /**
  * Intent-level facade over the low-level primitives in `git_utils.ts`.
@@ -114,6 +119,49 @@ export class GitService {
       return null;
     }
     return gitCommit({ path, message });
+  }
+
+  /**
+   * Removes a file from git and commits only that deletion, leaving any other
+   * staged or unstaged changes alone. Returns the commit hash, or null when the
+   * deletion couldn't be recorded in history.
+   *
+   * Callers use this for deletions the user shouldn't have to review as an
+   * uncommitted change. It is best-effort by design: the caller has typically
+   * already removed the file from disk, so an untracked file (nothing for
+   * `git rm` to do), a non-repo folder, or a state that forbids partial commits
+   * (mid-merge) must not turn into a failed delete.
+   */
+  async removeFileAndCommit({
+    path,
+    filepath,
+    message,
+  }: {
+    path: string;
+    filepath: string;
+    message: string;
+  }): Promise<string | null> {
+    try {
+      await gitRemove({ path, filepath });
+    } catch (error) {
+      logger.warn(
+        `Couldn't git-remove '${filepath}' (likely untracked):`,
+        error,
+      );
+      return null;
+    }
+    try {
+      // Path-scoped so this commit contains the deletion and nothing else.
+      return await gitCommit({ path, message, paths: [filepath] });
+    } catch (error) {
+      // The removal is still staged, so the user can review or restore it
+      // through the normal uncommitted-changes flow.
+      logger.warn(
+        `Staged deletion of '${filepath}' but couldn't commit it:`,
+        error,
+      );
+      return null;
+    }
   }
 }
 

@@ -26,7 +26,7 @@ import {
   EyeOff,
   Zap,
   ShieldCheck,
-  ExternalLink,
+  Code,
   Trash2,
 } from "lucide-react";
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
@@ -277,7 +277,9 @@ function OpenInEditorButton({
       label={label}
       title="Open in the code editor"
     >
-      <ExternalLink size={13} />
+      {/* Same icon as the toolbar's code-view button, so the row action reads
+          as "switch to code" rather than "open elsewhere". */}
+      <Code size={13} />
     </IconRowButton>
   );
 }
@@ -1413,9 +1415,9 @@ export function TestsPanel() {
 
 /**
  * Confirmation for deleting a spec file. Deleting removes the file from disk
- * (staged in git, so it's recoverable through the usual uncommitted-changes
- * flow), which is worth a confirm — especially since the row also carries the
- * count of tests that go with it.
+ * and commits that deletion (so it's recoverable from version history), which
+ * is worth a confirm — especially since the row also carries the count of
+ * tests that go with it.
  */
 function DeleteTestFileDialog({
   file,
@@ -1440,8 +1442,8 @@ function DeleteTestFileDialog({
                   testCount === 1 ? "test" : "tests"
                 } in it. `
               : "This deletes the test file. "}
-            If it's tracked in git, the deletion is staged so you can restore it
-            from your uncommitted changes.
+            If it's tracked in git, the deletion is committed on its own so you
+            can restore it from version history.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

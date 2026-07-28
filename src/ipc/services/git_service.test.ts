@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   gitAdd: vi.fn(),
   gitAddAll: vi.fn(),
   gitCommit: vi.fn(async () => "commit-hash"),
+  gitRemove: vi.fn(),
   hasStagedChanges: vi.fn(async () => true),
 }));
 
@@ -144,5 +145,54 @@ describe("GitService", () => {
     expect(callOrder).toEqual(["gitAdd", "hasStagedChanges"]);
     expect(hash).toBeNull();
     expect(mocks.gitCommit).not.toHaveBeenCalled();
+  });
+
+  it("removeFileAndCommit commits only the removed path", async () => {
+    const hash = await service.removeFileAndCommit({
+      path: "/repo",
+      filepath: "e2e-tests/a.spec.ts",
+      message: "msg",
+    });
+
+    expect(callOrder).toEqual(["gitRemove", "gitCommit"]);
+    expect(mocks.gitRemove).toHaveBeenCalledWith({
+      path: "/repo",
+      filepath: "e2e-tests/a.spec.ts",
+    });
+    // Scoped to the one path, so unrelated staged changes stay uncommitted.
+    expect(mocks.gitCommit).toHaveBeenCalledWith({
+      path: "/repo",
+      message: "msg",
+      paths: ["e2e-tests/a.spec.ts"],
+    });
+    expect(hash).toBe("commit-hash");
+  });
+
+  it("removeFileAndCommit returns null without committing when the file wasn't tracked", async () => {
+    mocks.gitRemove.mockRejectedValueOnce(new Error("did not match any files"));
+
+    const hash = await service.removeFileAndCommit({
+      path: "/repo",
+      filepath: "e2e-tests/untracked.spec.ts",
+      message: "msg",
+    });
+
+    expect(hash).toBeNull();
+    expect(mocks.gitCommit).not.toHaveBeenCalled();
+  });
+
+  it("removeFileAndCommit returns null when the commit fails, leaving it staged", async () => {
+    mocks.gitCommit.mockRejectedValueOnce(
+      new Error("cannot do a partial commit during a merge"),
+    );
+
+    const hash = await service.removeFileAndCommit({
+      path: "/repo",
+      filepath: "e2e-tests/a.spec.ts",
+      message: "msg",
+    });
+
+    expect(hash).toBeNull();
+    expect(mocks.gitRemove).toHaveBeenCalled();
   });
 });

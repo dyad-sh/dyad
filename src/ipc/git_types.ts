@@ -14,6 +14,12 @@ export interface GitBaseParams {
 export interface GitCommitParams extends GitBaseParams {
   message: string;
   amend?: boolean;
+  /**
+   * Paths (relative to the repo root) to commit. When set, git makes a partial
+   * commit: it records the working-tree state of exactly these paths and leaves
+   * everything else staged in the index. Omit to commit the whole index.
+   */
+  paths?: string[];
 }
 export interface GitFileParams extends GitBaseParams {
   filepath: string;

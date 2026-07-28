@@ -36,10 +36,18 @@ vi.mock("@/paths/paths", async (importOriginal) => {
   };
 });
 
-const gitRemoveMock = vi.hoisted(() => vi.fn(async () => {}));
 vi.mock("../utils/git_utils", () => ({
   gitAdd: vi.fn(async () => {}),
-  gitRemove: gitRemoveMock,
+  gitRemove: vi.fn(async () => {}),
+}));
+
+// Returns a commit hash when the deletion made it into history, null when it
+// couldn't be committed (e.g. the file was untracked).
+const removeFileAndCommitMock = vi.hoisted(() =>
+  vi.fn(async (): Promise<string | null> => "commit-hash"),
+);
+vi.mock("../services/git_service", () => ({
+  gitService: { removeFileAndCommit: removeFileAndCommitMock },
 }));
 
 const queueCloudSandboxSnapshotSyncMock = vi.hoisted(() => vi.fn());
@@ -56,7 +64,7 @@ describe("tests:delete", () => {
   beforeEach(() => {
     fs.rmSync(TEMP_BASE, { recursive: true, force: true });
     fs.mkdirSync(TEMP_BASE, { recursive: true });
-    gitRemoveMock.mockClear();
+    removeFileAndCommitMock.mockClear();
     queueCloudSandboxSnapshotSyncMock.mockClear();
     harness = setupHandlerTestHarness();
     registerTestsHandlers();
@@ -81,20 +89,24 @@ describe("tests:delete", () => {
     return full;
   }
 
-  it("deletes the spec file and stages the removal in git", async () => {
+  it("deletes the spec file and commits the removal on its own", async () => {
     const appId = seedApp("app");
     const specPath = writeSpec("app", "e2e-tests/signup.spec.ts");
 
     const result = await harness.invokeHandler<{
       file: string;
-      staged: boolean;
+      committed: boolean;
     }>("tests:delete", { appId, testFile: "e2e-tests/signup.spec.ts" });
 
-    expect(result).toEqual({ file: "e2e-tests/signup.spec.ts", staged: true });
+    expect(result).toEqual({
+      file: "e2e-tests/signup.spec.ts",
+      committed: true,
+    });
     expect(fs.existsSync(specPath)).toBe(false);
-    expect(gitRemoveMock).toHaveBeenCalledWith({
+    expect(removeFileAndCommitMock).toHaveBeenCalledWith({
       path: path.join(TEMP_BASE, "app"),
       filepath: "e2e-tests/signup.spec.ts",
+      message: "[dyad] delete test e2e-tests/signup.spec.ts",
     });
     expect(queueCloudSandboxSnapshotSyncMock).toHaveBeenCalledWith({
       appId,
@@ -105,21 +117,21 @@ describe("tests:delete", () => {
   it("still reports success when the file isn't tracked by git", async () => {
     const appId = seedApp("app");
     const specPath = writeSpec("app", "e2e-tests/nested/checkout.spec.ts");
-    gitRemoveMock.mockRejectedValueOnce(new Error("not tracked"));
+    removeFileAndCommitMock.mockResolvedValueOnce(null);
 
     const result = await harness.invokeHandler<{
       file: string;
-      staged: boolean;
+      committed: boolean;
     }>("tests:delete", {
       appId,
       testFile: "e2e-tests/nested/checkout.spec.ts",
     });
 
-    // gitRemove failed, so the deletion isn't staged — the UI relies on this to
-    // avoid promising a recovery path that doesn't exist for untracked files.
+    // Nothing was committed, so the UI knows not to promise a recovery path
+    // that doesn't exist for untracked files.
     expect(result).toEqual({
       file: "e2e-tests/nested/checkout.spec.ts",
-      staged: false,
+      committed: false,
     });
     expect(fs.existsSync(specPath)).toBe(false);
   });
@@ -141,7 +153,7 @@ describe("tests:delete", () => {
 
     expect(fs.existsSync(outside)).toBe(true);
     expect(fs.existsSync(helper)).toBe(true);
-    expect(gitRemoveMock).not.toHaveBeenCalled();
+    expect(removeFileAndCommitMock).not.toHaveBeenCalled();
   });
 
   it("reports a missing spec as not found", async () => {
@@ -154,7 +166,7 @@ describe("tests:delete", () => {
       }),
     ).rejects.toMatchObject({ kind: DyadErrorKind.NotFound });
 
-    expect(gitRemoveMock).not.toHaveBeenCalled();
+    expect(removeFileAndCommitMock).not.toHaveBeenCalled();
   });
 
   it("doesn't delete another app's spec", async () => {

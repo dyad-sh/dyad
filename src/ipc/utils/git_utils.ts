@@ -489,11 +489,17 @@ export async function gitCommit({
   path,
   message,
   amend,
+  paths,
 }: GitCommitParams): Promise<string> {
   // Perform the commit using dugite with -c user.name/email config
   const commitArgs = ["commit", "-m", message];
   if (amend) {
     commitArgs.push("--amend");
+  }
+  if (paths?.length) {
+    // `--` scopes the commit to these paths, so unrelated staged changes stay
+    // in the index instead of being swept into this commit.
+    commitArgs.push("--", ...paths);
   }
   const args = await withGitAuthor(commitArgs);
   await execOrThrow(args, path, "Failed to create commit");

@@ -30,6 +30,7 @@ import {
 } from "../utils/legacy_test_migration";
 import { assertMutationPathAllowed, safeJoin } from "../utils/path_utils";
 import { gitAdd, gitRemove } from "../utils/git_utils";
+import { gitService } from "../services/git_service";
 import { runningApps } from "../utils/process_manager";
 import { isLockHeld, withLock } from "../utils/lock_utils";
 import { broadcastToRegisteredWindows } from "@/ipc/utils/window_broadcast";
@@ -842,26 +843,22 @@ export function registerTestsHandlers() {
         }
         throw error;
       }
-      // Stage the deletion without committing, so the user reviews it through
-      // the normal uncommitted-changes flow. Best-effort: the file is already
-      // gone from disk, so a git failure (untracked file, non-repo app, lock
-      // contention) must not report the delete itself as failed. We surface
-      // whether staging succeeded so the UI doesn't promise a recovery path
-      // that doesn't exist for untracked files.
-      let staged = false;
-      try {
-        await gitRemove({ path: appPath, filepath: testFile });
-        staged = true;
-      } catch (error) {
-        logger.warn(
-          `Deleted ${testFile} but couldn't git-remove it (likely untracked): ${error}`,
-        );
-      }
+      // Commit just this deletion, so deleting a test doesn't leave the user
+      // with an uncommitted change to review (and the deletion lands in version
+      // history, where it can be restored from). Best-effort: the file is
+      // already gone from disk, so a git failure (untracked file, non-repo app)
+      // must not report the delete itself as failed. We surface whether it was
+      // committed so the UI doesn't promise a recovery path that may not exist.
+      const commitHash = await gitService.removeFileAndCommit({
+        path: appPath,
+        filepath: testFile,
+        message: `[dyad] delete test ${testFile}`,
+      });
       queueCloudSandboxSnapshotSync({
         appId: params.appId,
         deletedPaths: [testFile],
       });
-      return { file: testFile, staged };
+      return { file: testFile, committed: commitHash !== null };
     });
   });
 

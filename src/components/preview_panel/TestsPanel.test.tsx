@@ -117,7 +117,7 @@ describe("TestsPanel", () => {
         },
       ],
     });
-    mocks.deleteAppTest.mockResolvedValue({ file: SPEC_FILE, staged: true });
+    mocks.deleteAppTest.mockResolvedValue({ file: SPEC_FILE, committed: true });
   });
 
   it("opens a spec file in the code editor", async () => {

@@ -4,16 +4,16 @@ import { showError, showSuccess } from "@/lib/toast";
 import { queryKeys } from "@/lib/queryKeys";
 
 /**
- * Deletes an app's E2E spec file from disk (staged in git, not committed). On
- * success it invalidates the test list so the Tests panel drops the row, and
- * the uncommitted-files query so the staged deletion shows up in the Changes
- * diff immediately.
+ * Deletes an app's E2E spec file from disk and commits that deletion on its
+ * own. On success it invalidates the test list so the Tests panel drops the
+ * row, the version list so the new commit shows up, and the uncommitted-files
+ * query since the app's pending-changes count just changed.
  */
 export function useDeleteAppTest() {
   const queryClient = useQueryClient();
 
   const mutation = useMutation<
-    { file: string; staged: boolean },
+    { file: string; committed: boolean },
     Error,
     { appId: number; testFile: string }
   >({
@@ -24,13 +24,16 @@ export function useDeleteAppTest() {
         queryKey: queryKeys.tests.list({ appId }),
       });
       void queryClient.invalidateQueries({
+        queryKey: queryKeys.versions.list({ appId }),
+      });
+      void queryClient.invalidateQueries({
         queryKey: queryKeys.uncommittedFiles.byApp({ appId }),
       });
       const fileName = result.file.split("/").pop() ?? result.file;
-      // Only a tracked file leaves a staged deletion behind to restore from; an
+      // Only a tracked file leaves a commit behind to restore from; an
       // untracked file is gone for good, so don't promise recovery we can't keep.
       showSuccess(
-        result.staged
+        result.committed
           ? `Deleted ${fileName}`
           : `Deleted ${fileName} (was untracked, not recoverable)`,
       );

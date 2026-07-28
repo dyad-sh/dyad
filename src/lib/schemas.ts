@@ -6,6 +6,9 @@ export const SecretSchema = z.object({
 });
 export type Secret = z.infer<typeof SecretSchema>;
 
+export const WEB_SEARCH_EXA_PROVIDER_ID = "dyad-web-exa";
+export const WEB_SEARCH_BRAVE_PROVIDER_ID = "dyad-web-brave";
+
 /**
  * Zod schema for chat summary objects returned by the get-chats IPC
  */
@@ -345,6 +348,8 @@ const BaseUserSettingsFields = {
   ////////////////////////////////
   selectedModel: LargeLanguageModelSchema,
   providerSettings: z.record(z.string(), ProviderSettingSchema),
+  enableWebAccess: z.boolean().optional(),
+  webSearchProvider: z.enum(["auto", "exa", "brave"]).optional(),
   agentToolConsents: z.record(z.string(), AgentToolConsentSchema).optional(),
   githubUser: GithubUserSchema.optional(),
   githubAccessToken: SecretSchema.optional(),

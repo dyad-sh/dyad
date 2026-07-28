@@ -1,4 +1,6 @@
 import {
+  WEB_SEARCH_BRAVE_PROVIDER_ID,
+  WEB_SEARCH_EXA_PROVIDER_ID,
   type UserSettings,
   type VertexProviderSetting,
   type AzureProviderSetting,
@@ -92,7 +94,12 @@ export function isNonGoogleProviderSetup(
   const options: ProviderCheckOptions = { settings, envVars };
   // Google/Gemini API keys are often free-tier keys with low rate limits, which
   // makes users likely to hit errors in agent mode. Vertex is still eligible.
-  const excludedProviders = new Set(["auto", "google"]);
+  const excludedProviders = new Set([
+    "auto",
+    "google",
+    WEB_SEARCH_EXA_PROVIDER_ID,
+    WEB_SEARCH_BRAVE_PROVIDER_ID,
+  ]);
   const configuredProviders = new Set([
     ...Object.keys(settings.providerSettings ?? {}),
     ...Object.keys(PROVIDER_TO_ENV_VAR),

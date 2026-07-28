@@ -46,6 +46,7 @@ import { registerFirstPromptHandlers } from "./handlers/first_prompt_handlers";
 import { registerWindowInfrastructureHandlers } from "./handlers/window_infrastructure_handlers";
 import { registerDistributedMachineHandlers } from "./handlers/distributed_machine_handlers";
 import { registerImageGenerationHandlers } from "./handlers/image_generation_handlers";
+import { registerVisualEditingHandlers } from "./handlers/visual_editing_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -97,4 +98,5 @@ export function registerIpcHandlers() {
   registerWindowInfrastructureHandlers();
   registerDistributedMachineHandlers();
   registerImageGenerationHandlers();
+  registerVisualEditingHandlers();
 }

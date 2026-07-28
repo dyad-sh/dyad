@@ -121,6 +121,29 @@ describe("DyadMarkdownParser dyad-command", () => {
   });
 });
 
+describe("DyadMarkdownParser web access", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("renders search and fetch tool activity cards", () => {
+    const { rerender } = render(
+      <DyadMarkdownParser
+        content={'<dyad-web-search query="Dyad docs">results</dyad-web-search>'}
+      />,
+    );
+    expect(screen.getByText("Web Search")).toBeTruthy();
+    expect(screen.getByText("Dyad docs")).toBeTruthy();
+
+    rerender(
+      <DyadMarkdownParser
+        content={"<dyad-web-fetch>https://example.com/docs</dyad-web-fetch>"}
+      />,
+    );
+    expect(screen.getByText("Web Fetch")).toBeTruthy();
+  });
+});
+
 describe("DyadMarkdownParser dyad-git", () => {
   afterEach(() => {
     cleanup();

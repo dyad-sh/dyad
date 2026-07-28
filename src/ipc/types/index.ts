@@ -53,6 +53,7 @@ export { importContracts } from "./import";
 export { capacitorContracts } from "./capacitor";
 export { contextContracts } from "./context";
 export { upgradeContracts } from "./upgrade";
+export { visualEditingContracts } from "./visual-editing";
 export { securityContracts } from "./security";
 export { miscContracts, miscEvents } from "./misc";
 export { mediaContracts } from "./media";
@@ -101,6 +102,7 @@ export { importClient } from "./import";
 export { capacitorClient } from "./capacitor";
 export { contextClient } from "./context";
 export { upgradeClient } from "./upgrade";
+export { visualEditingClient } from "./visual-editing";
 export { securityClient } from "./security";
 export { miscClient, miscEventClient } from "./misc";
 export { mediaClient } from "./media";
@@ -168,6 +170,13 @@ export type {
   TokenCountResult,
   StreamingPatch,
 } from "./chat";
+
+export type {
+  ComponentSelection,
+  VisualEditingChange,
+  ApplyVisualEditingChangesParams,
+  AnalyseComponentParams,
+} from "./visual-editing";
 
 export type {
   TerminalOpenParams,
@@ -413,6 +422,7 @@ import { importClient } from "./import";
 import { capacitorClient } from "./capacitor";
 import { contextClient } from "./context";
 import { upgradeClient } from "./upgrade";
+import { visualEditingClient } from "./visual-editing";
 import { securityClient } from "./security";
 import { miscClient, miscEventClient } from "./misc";
 import { mediaClient } from "./media";
@@ -483,6 +493,7 @@ export const ipc = {
   capacitor: capacitorClient,
   context: contextClient,
   upgrade: upgradeClient,
+  visualEditing: visualEditingClient,
   security: securityClient,
   misc: miscClient,
   media: mediaClient,

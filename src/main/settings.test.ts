@@ -113,6 +113,7 @@ describe("readSettings", () => {
           "enableMultiWindow": false,
           "enablePnpmMinimumReleaseAgeWarning": true,
           "enableTestingForNewApps": false,
+          "enableWebAccess": false,
           "experiments": {},
           "hasRunBefore": false,
           "isRunning": false,
@@ -130,6 +131,7 @@ describe("readSettings", () => {
           "selectedThemeId": "default",
           "telemetryConsent": "unset",
           "telemetryUserId": "[scrubbed]",
+          "webSearchProvider": "auto",
         }
       `);
     });
@@ -540,6 +542,7 @@ describe("readSettings", () => {
           "enableMultiWindow": false,
           "enablePnpmMinimumReleaseAgeWarning": true,
           "enableTestingForNewApps": false,
+          "enableWebAccess": false,
           "experiments": {},
           "hasRunBefore": false,
           "isRunning": false,
@@ -557,6 +560,7 @@ describe("readSettings", () => {
           "selectedThemeId": "default",
           "telemetryConsent": "unset",
           "telemetryUserId": "[scrubbed]",
+          "webSearchProvider": "auto",
         }
       `);
     });

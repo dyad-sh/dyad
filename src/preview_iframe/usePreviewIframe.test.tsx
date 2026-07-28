@@ -63,7 +63,7 @@ describe("useSendPreviewIframeEvent", () => {
     );
     const initialRenderCount = renderCount;
 
-    act(() => result.current({ type: "IFRAME_LOADED" }));
+    act(() => result.current({ type: "SELECTOR_READY" }));
 
     expect(renderCount).toBe(initialRenderCount);
   });

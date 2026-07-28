@@ -103,6 +103,34 @@ describe("buildPiToolSet", () => {
     expect(names).toContain("read_file");
   });
 
+  it("only exposes web tools when web access is enabled and configured", () => {
+    const disabled = buildPiToolSet({
+      chatMode: "ask",
+      gatingContext: gatingContext(),
+      contextFactory: noopFactory,
+    }).map((tool) => tool.name);
+    const fetchOnly = buildPiToolSet({
+      chatMode: "ask",
+      gatingContext: gatingContext({ webAccessEnabled: true }),
+      contextFactory: noopFactory,
+    }).map((tool) => tool.name);
+    const configured = buildPiToolSet({
+      chatMode: "ask",
+      gatingContext: gatingContext({
+        webAccessEnabled: true,
+        webSearchConfig: { provider: "auto", exaApiKey: "test-key" },
+      }),
+      contextFactory: noopFactory,
+    }).map((tool) => tool.name);
+
+    expect(disabled).not.toContain("fetch_content");
+    expect(disabled).not.toContain("web_search");
+    expect(fetchOnly).toContain("fetch_content");
+    expect(fetchOnly).not.toContain("web_search");
+    expect(configured).toContain("fetch_content");
+    expect(configured).toContain("web_search");
+  });
+
   it("plan mode includes planning tools and excludes plain write tools", () => {
     const names = toolNames("plan");
     expect(names).toContain("write_plan");

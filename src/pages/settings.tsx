@@ -35,6 +35,7 @@ import { ZoomSelector } from "@/components/ZoomSelector";
 import { LanguageSelector } from "@/components/LanguageSelector";
 import { DefaultChatModeSelector } from "@/components/DefaultChatModeSelector";
 import { ContextCompactionSwitch } from "@/components/ContextCompactionSwitch";
+import { WebAccessSettings } from "@/components/settings/WebAccessSettings";
 import { BlockUnsafeNpmPackagesSwitch } from "@/components/BlockUnsafeNpmPackagesSwitch";
 import { MultiWindowExperimentSwitch } from "@/components/MultiWindowExperimentSwitch";
 import { AutoApproveSqlSwitch } from "@/components/AutoApproveSqlSwitch";
@@ -461,6 +462,10 @@ export function AISettings() {
           Automatically compact long conversations to stay within context
           limits. Original messages are preserved in the app data directory.
         </p>
+      </div>
+
+      <div id={SETTING_IDS.webAccess}>
+        <WebAccessSettings />
       </div>
     </SettingsSection>
   );

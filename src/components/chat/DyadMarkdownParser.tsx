@@ -46,6 +46,9 @@ import { DyadStepLimit } from "./DyadStepLimit";
 import { DyadAppBlueprintCard } from "./DyadAppBlueprintCard";
 import { DyadReadGuide } from "./DyadReadGuide";
 import { DyadGit } from "./DyadGit";
+import { DyadWebFetch } from "./DyadWebFetch";
+import { DyadWebSearch } from "./DyadWebSearch";
+import { DyadWebSearchResult } from "./DyadWebSearchResult";
 import { mapActionToButton } from "./ChatInput";
 import { SuggestedAction } from "@/lib/schemas";
 import { FixAllErrorsButton } from "./FixAllErrorsButton";
@@ -362,6 +365,43 @@ function renderCustomTag(
   const { tag, attributes, content, inProgress } = block;
 
   switch (tag) {
+    case "dyad-web-search":
+      return (
+        <DyadWebSearch
+          node={{
+            properties: {
+              query: attributes.query || "",
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        >
+          {content}
+        </DyadWebSearch>
+      );
+    case "dyad-web-search-result":
+      return (
+        <DyadWebSearchResult
+          node={{
+            properties: {
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        >
+          {content}
+        </DyadWebSearchResult>
+      );
+    case "dyad-web-fetch":
+      return (
+        <DyadWebFetch
+          node={{
+            properties: {
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        >
+          {content}
+        </DyadWebFetch>
+      );
     case "dyad-read":
       return (
         <DyadRead

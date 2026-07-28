@@ -28,6 +28,14 @@ export {
 // Tool-local alias used by the migrated Dyad tools.
 export type Todo = AgentTodo;
 
+export type WebSearchProvider = "auto" | "exa" | "brave";
+
+export interface WebSearchConfig {
+  provider: WebSearchProvider;
+  exaApiKey?: string;
+  braveApiKey?: string;
+}
+
 /** Tracks which file-editing tools were used on each file path */
 export const FILE_EDIT_TOOL_NAMES = ["write_file"] as const;
 export type FileEditToolName = (typeof FILE_EDIT_TOOL_NAMES)[number];
@@ -145,6 +153,9 @@ export interface AgentContext {
    * this signal so they don't keep the stream alive after a cancel.
    */
   abortSignal?: AbortSignal;
+  /** Turn-scoped web access settings and decrypted search credentials. */
+  webAccessEnabled?: boolean;
+  webSearchConfig?: WebSearchConfig;
   /**
    * Whether the app-blueprint approval flow gates state-modifying work this
    * turn (settings.enableAppBlueprint && app.needsAppBlueprint), mirroring

@@ -15,7 +15,12 @@ import { storeDbTimestampAtCurrentVersion } from "@/ipc/utils/neon_timestamp_uti
 import { safeSend } from "@/ipc/utils/safe_sender";
 import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
 import { detectFrameworkType } from "@/ipc/utils/framework_utils";
-import type { ChatMode, UserSettings } from "@/lib/schemas";
+import {
+  WEB_SEARCH_BRAVE_PROVIDER_ID,
+  WEB_SEARCH_EXA_PROVIDER_ID,
+  type ChatMode,
+  type UserSettings,
+} from "@/lib/schemas";
 import { appendCancelledResponseNotice } from "@/shared/chatCancellation";
 import type { SqlConsentMetadata } from "@/shared/sqlConsentMetadata";
 import type { ChatResponseChunk } from "@/ipc/types";
@@ -229,6 +234,19 @@ export async function executePiChatTurn(
     dyadRequestId: input.dyadRequestId,
     toolConsents,
     autoApproveNonSchemaSql: input.settings.autoApproveNonSchemaSql === true,
+    webAccessEnabled: input.settings.enableWebAccess === true,
+    webSearchConfig:
+      input.settings.enableWebAccess === true
+        ? {
+            provider: input.settings.webSearchProvider ?? "auto",
+            exaApiKey:
+              input.settings.providerSettings[WEB_SEARCH_EXA_PROVIDER_ID]
+                ?.apiKey?.value,
+            braveApiKey:
+              input.settings.providerSettings[WEB_SEARCH_BRAVE_PROVIDER_ID]
+                ?.apiKey?.value,
+          }
+        : undefined,
     fileEditTracker,
     testingEnabled: input.app.testingEnabled,
     testRunAttempts: new Map(),

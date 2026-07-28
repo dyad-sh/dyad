@@ -4,6 +4,8 @@
   // Track text editing state globally
   let textEditingState = new Map(); // componentId -> { originalText, currentText, cleanup }
 
+  const getEditingKey = (componentId, runtimeId) => runtimeId || componentId;
+
   function findElementByDyadId(dyadId, runtimeId) {
     // If runtimeId is provided, try to find element by runtime ID first
     if (runtimeId) {
@@ -110,6 +112,8 @@
       window.parent.postMessage(
         {
           type: "dyad-component-styles",
+          elementId,
+          runtimeId,
           data: styles,
         },
         "*",
@@ -143,10 +147,11 @@
 
   function handleEnableTextEditing(data) {
     const { componentId, runtimeId } = data;
+    const editingKey = getEditingKey(componentId, runtimeId);
 
     // Clean up any existing text editing states first
     textEditingState.forEach((state, existingId) => {
-      if (existingId !== componentId) {
+      if (existingId !== editingKey) {
         state.cleanup();
       }
     });
@@ -170,7 +175,7 @@
         const currentText = element.innerText;
 
         // Update tracked state
-        const state = textEditingState.get(componentId);
+        const state = textEditingState.get(editingKey);
         if (state) {
           state.currentText = currentText;
         }
@@ -179,6 +184,7 @@
           {
             type: "dyad-text-updated",
             componentId,
+            runtimeId,
             text: currentText,
           },
           "*",
@@ -203,16 +209,17 @@
           {
             type: "dyad-text-finalized",
             componentId,
+            runtimeId,
             text: finalText,
           },
           "*",
         );
 
-        textEditingState.delete(componentId);
+        textEditingState.delete(editingKey);
       };
 
       // Store state
-      textEditingState.set(componentId, {
+      textEditingState.set(editingKey, {
         originalText,
         currentText: originalText,
         cleanup,
@@ -221,8 +228,8 @@
   }
 
   function handleDisableTextEditing(data) {
-    const { componentId } = data;
-    const state = textEditingState.get(componentId);
+    const { componentId, runtimeId } = data;
+    const state = textEditingState.get(getEditingKey(componentId, runtimeId));
     if (state) {
       state.cleanup();
     }
@@ -231,12 +238,13 @@
   function handleGetTextContent(data) {
     const { componentId, runtimeId } = data;
     const element = findElementByDyadId(componentId, runtimeId);
-    const state = textEditingState.get(componentId);
+    const state = textEditingState.get(getEditingKey(componentId, runtimeId));
 
     window.parent.postMessage(
       {
         type: "dyad-text-content-response",
         componentId,
+        runtimeId,
         text: state ? state.currentText : element ? element.innerText : null,
         isEditing: !!state,
       },

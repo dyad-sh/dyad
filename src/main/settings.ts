@@ -49,6 +49,8 @@ export const DEFAULT_SETTINGS: UserSettings = {
     provider: "anthropic",
   },
   providerSettings: {},
+  enableWebAccess: false,
+  webSearchProvider: "auto",
   telemetryConsent: "unset",
   telemetryUserId: uuidv4(),
   hasRunBefore: false,

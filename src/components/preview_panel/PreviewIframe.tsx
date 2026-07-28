@@ -79,10 +79,8 @@ import {
   formatPreviewNetworkStatus,
 } from "@/lib/preview_console_buffer";
 import { queryKeys } from "@/lib/queryKeys";
-import { AnnotatorOnlyForPro } from "./AnnotatorOnlyForPro";
 import { useAttachments } from "@/hooks/useAttachments";
-import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
-import { Annotator } from "@/pro/ui/components/Annotator/Annotator";
+import { Annotator } from "./annotator/Annotator";
 import { VisualEditingToolbar } from "./VisualEditingToolbar";
 import { resolvePreviewBrowserUrl } from "./previewBrowserUrl";
 import { PreviewLoadingScreen } from "./PreviewLoadingScreen";
@@ -226,8 +224,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   } = useParseRouter(selectedAppId);
   const { restartApp, refreshAppIframe } = useRunApp();
   const { settings, updateSettings } = useSettings();
-  const { userBudget } = useUserBudgetInfo();
-  const isProMode = !!userBudget;
   const queryClient = useQueryClient();
   const setSelectedComponentsPreview = useSetAtom(
     selectedComponentsPreviewAtom,
@@ -282,7 +278,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const [addressBarValue, setAddressBarValue] = useState(currentAddressPath);
   const [isEditingAddressBar, setIsEditingAddressBar] = useState(false);
   const isEditingAddressBarRef = useRef(false);
-
   const { addAttachments } = useAttachments();
   const setPendingChanges = useSetAtom(pendingVisualChangesAtom);
   const pendingAnnotatorScreenshotRequestIdRef = useRef<string | null>(null);
@@ -559,15 +554,15 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     setPreviewIframeRef(iframeRef.current);
   }, [iframeRef.current, setPreviewIframeRef]);
 
-  // Send pro mode status to iframe
+  // Visual editing is available to all users.
   useEffect(() => {
     if (iframeRef.current?.contentWindow && isComponentSelectorInitialized) {
       iframeRef.current.contentWindow.postMessage(
-        { type: "dyad-pro-mode", enabled: isProMode },
+        { type: "dyad-pro-mode", enabled: true },
         "*",
       );
     }
-  }, [isProMode, isComponentSelectorInitialized]);
+  }, [isComponentSelectorInitialized]);
 
   // Component-side postMessage routes. The preview-iframe hook owns the one
   // window listener and claims navigation/selector lifecycle messages before
@@ -700,7 +695,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
       if (event.data?.type === "dyad-component-selector-initialized") {
         iframeRef.current?.contentWindow?.postMessage(
-          { type: "dyad-pro-mode", enabled: isProMode },
+          { type: "dyad-pro-mode", enabled: true },
           "*",
         );
         return;
@@ -724,7 +719,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         if (!component) return;
 
         // Store the coordinates
-        if (event.data.coordinates && isProMode) {
+        if (event.data.coordinates) {
           setCurrentComponentCoordinates(event.data.coordinates);
         }
 
@@ -744,12 +739,8 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           return [...prev, component];
         });
 
-        if (isProMode) {
-          // Set as the highlighted component for visual editing
-          setVisualEditingSelectedComponent(component);
-          // Trigger AST analysis
-          analyzeComponent(component.id);
-        }
+        setVisualEditingSelectedComponent(component);
+        analyzeComponent(component.id);
 
         return;
       }
@@ -1528,15 +1519,11 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                     : { width: `${deviceWidthConfig[deviceMode]}px` }
                 }
               >
-                {userBudget ? (
-                  <Annotator
-                    screenshotUrl={screenshotDataUrl}
-                    onSubmit={addAttachments}
-                    handleAnnotatorClick={handleAnnotatorClick}
-                  />
-                ) : (
-                  <AnnotatorOnlyForPro onGoBack={handleAnnotatorClick} />
-                )}
+                <Annotator
+                  screenshotUrl={screenshotDataUrl}
+                  onSubmit={addAttachments}
+                  handleAnnotatorClick={handleAnnotatorClick}
+                />
               </div>
             ) : (
               <>
@@ -1559,19 +1546,17 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                   allow="clipboard-read; clipboard-write; fullscreen; microphone; camera; display-capture; geolocation; autoplay; picture-in-picture"
                 />
                 {/* Visual Editing Toolbar */}
-                {isProMode &&
-                  visualEditingSelectedComponent &&
-                  selectedAppId && (
-                    <VisualEditingToolbar
-                      selectedComponent={visualEditingSelectedComponent}
-                      iframeRef={iframeRef}
-                      isDynamic={isDynamicComponent}
-                      hasStaticText={hasStaticText}
-                      hasImage={hasImage}
-                      isDynamicImage={isDynamicImage}
-                      currentImageSrc={currentImageSrc}
-                    />
-                  )}
+                {visualEditingSelectedComponent && selectedAppId && (
+                  <VisualEditingToolbar
+                    selectedComponent={visualEditingSelectedComponent}
+                    iframeRef={iframeRef}
+                    isDynamic={isDynamicComponent}
+                    hasStaticText={hasStaticText}
+                    hasImage={hasImage}
+                    isDynamicImage={isDynamicImage}
+                    currentImageSrc={currentImageSrc}
+                  />
+                )}
               </>
             )}
           </div>

@@ -45,6 +45,7 @@ import { updateTodosTool } from "./update_todos";
 import { writeAppBlueprintTool } from "./write_app_blueprint";
 import { writeFileTool } from "./write_file";
 import { writePlanTool } from "./write_plan";
+import { fetchContentTool, webSearchTool } from "./web_access";
 
 /** Tool definitions available through the pi pipeline. */
 export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
@@ -64,6 +65,8 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   gitShowFileTool,
   gitRestoreFileTool,
   grepTool,
+  webSearchTool,
+  fetchContentTool,
   searchChatsTool,
   readChatTool,
   getSupabaseProjectInfoTool,

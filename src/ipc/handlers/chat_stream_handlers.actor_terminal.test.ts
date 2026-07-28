@@ -2,8 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import type { WebContents } from "electron";
 import type { ChatStreamExecutionObserver } from "./chat_stream_handlers";
 import {
+  clearPendingActorStreamCancellation,
   createObservedChatStreamSender,
+  markPendingActorStreamCancellation,
   settleUnobservedChatStreamResult,
+  takePendingActorStreamCancellation,
 } from "./chat_stream_handlers";
 
 function observer(): ChatStreamExecutionObserver {
@@ -104,5 +107,21 @@ describe("createObservedChatStreamSender", () => {
       chatId: 7,
     });
     expect(send).not.toHaveBeenCalled();
+  });
+});
+
+describe("pending actor stream cancellation", () => {
+  const invocationRef = {
+    kind: "chat-stream" as const,
+    entityKey: 7,
+    operationId: "pending-operation",
+  };
+
+  it("is consumed exactly once when stream registration follows cancellation", () => {
+    clearPendingActorStreamCancellation(invocationRef);
+    markPendingActorStreamCancellation(invocationRef);
+
+    expect(takePendingActorStreamCancellation(invocationRef)).toBe(true);
+    expect(takePendingActorStreamCancellation(invocationRef)).toBe(false);
   });
 });

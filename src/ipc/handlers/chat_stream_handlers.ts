@@ -291,6 +291,12 @@ export async function executeChatStreamFromActor(
   if (!internalChatStreamHandler) {
     throw new Error("Chat stream handlers have not been registered");
   }
+  if (
+    request.invocationRef &&
+    takePendingActorStreamCancellation(request.invocationRef)
+  ) {
+    return request.chatId;
+  }
   executionObservers.set(
     request.intentId ?? request.invocationRef?.operationId ?? "",
     observer,
@@ -347,6 +353,25 @@ export async function executeChatStreamFromActor(
 
 const executionObservers = new Map<string, ChatStreamExecutionObserver>();
 const cancelledActorInvocations = new Set<string>();
+const pendingActorStreamCancellations = new Set<string>();
+
+export function markPendingActorStreamCancellation(
+  invocationRef: ChatStreamInvocationRef,
+): void {
+  pendingActorStreamCancellations.add(invocationRef.operationId);
+}
+
+export function takePendingActorStreamCancellation(
+  invocationRef: ChatStreamInvocationRef,
+): boolean {
+  return pendingActorStreamCancellations.delete(invocationRef.operationId);
+}
+
+export function clearPendingActorStreamCancellation(
+  invocationRef: ChatStreamInvocationRef,
+): void {
+  pendingActorStreamCancellations.delete(invocationRef.operationId);
+}
 
 function executionObserver(
   request: ChatStreamParams,
@@ -616,7 +641,16 @@ async function cancelTrackedStreams(
 export async function cancelActiveStreamsForChat(
   chatId: number,
   sender: WebContents,
+  pendingInvocationRef?: ChatStreamInvocationRef,
 ): Promise<boolean> {
+  if (
+    pendingInvocationRef &&
+    (activeStreams.get(chatId)?.size ?? 0) === 0 &&
+    (streamCompletions.get(chatId)?.size ?? 0) === 0
+  ) {
+    markPendingActorStreamCancellation(pendingInvocationRef);
+    return true;
+  }
   return cancelTrackedStreams([chatId], sender);
 }
 
@@ -785,6 +819,7 @@ export function registerChatStreamHandlers() {
     streamAdmissionBlockCounts.clear();
     chatStreamAdmissionBlockCounts.clear();
     admissionPendingStreams.clear();
+    pendingActorStreamCancellations.clear();
     resolveAllAdmissionWaiters(streamAdmissionWaiters);
     resolveAllAdmissionWaiters(chatStreamAdmissionWaiters);
   });

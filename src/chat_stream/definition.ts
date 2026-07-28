@@ -7,6 +7,7 @@ import { REMOTE_MACHINE_PROTOCOL_VERSION } from "@/distributed_machines/remote_p
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
   cancelActiveStreamsForChat,
+  clearPendingActorStreamCancellation,
   executeChatStreamFromActor,
 } from "@/ipc/handlers/chat_stream_handlers";
 import {
@@ -273,6 +274,7 @@ function createCommandRunner(
           const cancelled = await cancelActiveStreamsForChat(
             context.key.chatId,
             endpoint,
+            command.invocationRef,
           );
           if (cancelled) {
             const active = context.getSnapshot().active;
@@ -339,6 +341,7 @@ function createCommandRunner(
         if (!active || active.intent.intentId !== command.intentId) {
           throw new Error("Finalization does not match the active chat intent");
         }
+        clearPendingActorStreamCancellation(active.invocationRef);
         try {
           const queue = markIntentTerminal(
             db,
@@ -413,7 +416,10 @@ export const chatStreamDefinition = {
     survivesRendererReload: true,
     restartPersistence: "ephemeral",
     flushOnShutdown: false,
-    onDisposed: ({ key }) => {
+    onDisposed: ({ key, snapshot }) => {
+      if (snapshot.active) {
+        clearPendingActorStreamCancellation(snapshot.active.invocationRef);
+      }
       disposeSessionChatQueue(key.chatId);
     },
   },

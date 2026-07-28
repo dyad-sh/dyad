@@ -64,6 +64,7 @@ vi.mock("drizzle-orm", async (importOriginal) => ({
 
 vi.mock("@/ipc/handlers/chat_stream_handlers", () => ({
   cancelActiveStreamsForChat: vi.fn(async () => true),
+  clearPendingActorStreamCancellation: vi.fn(),
   executeChatStreamFromActor: vi.fn(
     async (
       _sender: unknown,

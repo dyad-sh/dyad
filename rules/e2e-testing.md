@@ -252,6 +252,7 @@ If a targeted E2E fails before launch with `ENOENT: no such file or directory, s
 
 - In the merged `html-report` artifact's `results.json`, failure screenshots are embedded as base64 in `attachments[].body` (the `path` field is empty or CI-side); decode the body to view them. Trace zips live in the artifact's `data/` directory, keyed by the hash in the CI-side path.
 - Before root-causing a failure on a PR branch, download the `html-report` from a recent main-branch CI run and check whether the same spec fails there — pre-existing main failures are out of scope for the PR's deflake.
+- When a feature intentionally changes from restart-durable to process-lifetime state, replace restart/legacy-store E2E assertions with a renderer-reload contract. A test polling the removed persistence IPC can fail before it ever exercises relaunch and look like a recovery regression.
 
 ## Real Socket Firewall E2E tests
 

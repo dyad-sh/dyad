@@ -77,11 +77,17 @@ function unique(values: readonly string[], label: string): void {
 }
 
 export function defineMachineConformance<
-  const StateVariant extends string,
-  const EventVariant extends string,
+  const StateVariants extends readonly string[],
+  const EventVariants extends readonly string[],
 >(
-  conformance: MachineConformance<StateVariant, EventVariant>,
-): MachineConformance<StateVariant, EventVariant> {
+  conformance: Omit<
+    MachineConformance<StateVariants[number], NoInfer<EventVariants[number]>>,
+    "stateVariants" | "eventVariants"
+  > & {
+    readonly stateVariants: StateVariants;
+    readonly eventVariants: EventVariants;
+  },
+): MachineConformance<StateVariants[number], EventVariants[number]> {
   if (conformance.stateVariants.length === 0) {
     throw new Error(`${conformance.machineId}: state inventory is empty`);
   }
@@ -98,6 +104,42 @@ export function defineMachineConformance<
     conformance.historicalFailureShapes,
     `${conformance.machineId} failure shapes`,
   );
+  const eventVariants = new Set<string>(conformance.eventVariants);
+  for (const [capability, events] of Object.entries(
+    conformance.representativeCapabilities,
+  )) {
+    for (const event of events) {
+      if (!eventVariants.has(event)) {
+        throw new Error(
+          `${conformance.machineId}: capability ${capability} references unknown event ${event}`,
+        );
+      }
+    }
+  }
+  for (const event of Object.keys(conformance.representativeIntents)) {
+    if (!eventVariants.has(event)) {
+      throw new Error(
+        `${conformance.machineId}: representative intent references unknown event ${event}`,
+      );
+    }
+  }
+  unique(
+    conformance.exclusions.map(({ tier }) => tier),
+    `${conformance.machineId} excluded tiers`,
+  );
+  const activeTiers = new Set<ConformanceTier>(conformance.tiers);
+  for (const exclusion of conformance.exclusions) {
+    if (exclusion.reason.trim().length === 0) {
+      throw new Error(
+        `${conformance.machineId}: exclusion ${exclusion.tier} requires a reason`,
+      );
+    }
+    if (activeTiers.has(exclusion.tier)) {
+      throw new Error(
+        `${conformance.machineId}: tier ${exclusion.tier} cannot be both applicable and excluded`,
+      );
+    }
+  }
   return Object.freeze(conformance);
 }
 
@@ -113,9 +155,10 @@ export function assertEnvelopeBudget<Value>(options: {
   readonly codec: z.ZodType<Value>;
   readonly declaredLimit: number;
   readonly worstCase: () => unknown;
+  readonly toEnvelope: (value: Value) => unknown;
 }): EnvelopeBudgetResult {
   const parsed = options.codec.parse(options.worstCase());
-  const measuredSize = serialize(parsed).byteLength;
+  const measuredSize = serialize(options.toEnvelope(parsed)).byteLength;
   const result = {
     label: options.label,
     declaredLimit: options.declaredLimit,
@@ -236,6 +279,26 @@ export function formatContractReport(
   }[],
   unsafeEscapeHatches: Readonly<Record<string, readonly string[]>>,
 ): string {
+  const formatRevision = (
+    revision: RemoteIntentPolicy["observedRevision"],
+  ): string => {
+    switch (revision.kind) {
+      case "none":
+        return "none";
+      case "actor":
+        return `actor(required=${revision.required})`;
+      case "domain":
+        return `domain(name=${revision.name},required=${revision.required})`;
+    }
+  };
+  const formatRetry = (retry: RemoteIntentPolicy["retry"]): string => {
+    switch (retry.kind) {
+      case "none":
+        return "none";
+      case "stable-id":
+        return `stable-id(identity=${retry.identity},dedup=${retry.receiverDeduplication},lifetime=${retry.lifetime})`;
+    }
+  };
   const sections = [...registrations]
     .sort((left, right) =>
       left.conformance.machineId.localeCompare(right.conformance.machineId),
@@ -245,7 +308,7 @@ export function formatContractReport(
         .sort(([left], [right]) => left.localeCompare(right))
         .map(
           ([type, policy]) =>
-            `  ${type}: completion=${policy.completion} revision=${policy.observedRevision.kind} retry=${policy.retry.kind} acceptance=${policy.acceptance} input=${policy.inputDisposition}`,
+            `  ${type}: completion=${policy.completion} revision=${formatRevision(policy.observedRevision)} retry=${formatRetry(policy.retry)} acceptance=${policy.acceptance} input=${policy.inputDisposition}`,
         );
       const exclusions =
         conformance.exclusions.length === 0

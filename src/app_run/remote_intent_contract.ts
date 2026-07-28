@@ -32,7 +32,7 @@ export const appRunRemoteIntentContract = defineRemoteIntentContract<
   encodeKey: (key) => key,
   rendererIntentCodec: AppRunIntentEventSchema,
   snapshotCodec: AppRunRemoteSnapshotSchema,
-  toTrustedEvent: (intent) => intent,
+  toTrustedEvent: ({ intent }) => Object.freeze(structuredClone(intent)),
   authorization: {
     subscribe: "required",
     dispatch: "required",
@@ -42,7 +42,6 @@ export const appRunRemoteIntentContract = defineRemoteIntentContract<
     validate: (key, intent) =>
       intent.type !== "STOP_REQUESTED" ||
       intent.activeInvocationRef.entityKey === key.appId,
-    mismatchRefusal: "invalid-intent",
   },
   intents: {
     START: {
@@ -68,7 +67,10 @@ export const appRunRemoteIntentContract = defineRemoteIntentContract<
       inputDisposition: "preserve",
     },
   },
-  refusalMap: PROTOCOL_V1_REFUSAL_MAP,
+  refusalMap: {
+    ...PROTOCOL_V1_REFUSAL_MAP,
+    keyIntentMismatch: "unauthorized",
+  },
   budgets: {
     intentBytes: DEFAULT_REMOTE_INTENT_ENVELOPE_BYTES,
     snapshotBytes: DEFAULT_REMOTE_SNAPSHOT_ENVELOPE_BYTES,

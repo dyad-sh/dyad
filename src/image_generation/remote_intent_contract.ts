@@ -1,3 +1,4 @@
+import type { z } from "zod";
 import {
   DEFAULT_REMOTE_INTENT_ENVELOPE_BYTES,
   DEFAULT_REMOTE_SNAPSHOT_ENVELOPE_BYTES,
@@ -14,9 +15,13 @@ import {
 } from "./transport";
 import type { ImageGenerationIntentEvent } from "./state";
 
+type ImageGenerationRendererIntent = z.infer<
+  typeof ImageGenerationIntentEventSchema
+>;
+
 export const imageGenerationRemoteIntentContract = defineRemoteIntentContract<
   ImageGenerationKey,
-  ImageGenerationIntentEvent,
+  ImageGenerationRendererIntent,
   ImageGenerationEvent,
   ImageGenerationRemoteSnapshot
 >({
@@ -24,7 +29,21 @@ export const imageGenerationRemoteIntentContract = defineRemoteIntentContract<
   encodeKey: (key) => key,
   rendererIntentCodec: ImageGenerationIntentEventSchema,
   snapshotCodec: ImageGenerationRemoteSnapshotSchema,
-  toTrustedEvent: (intent) => intent,
+  toTrustedEvent: ({ intent, sender }) => {
+    if (intent.type === "SUBMIT") {
+      return Object.freeze({
+        ...intent,
+        job: Object.freeze({ ...intent.job }),
+        initiatorWindowSessionId: sender.windowSessionId,
+      }) satisfies ImageGenerationIntentEvent;
+    }
+    return Object.freeze({
+      ...intent,
+      activeInvocationRef: Object.freeze({
+        ...intent.activeInvocationRef,
+      }),
+    }) satisfies ImageGenerationIntentEvent;
+  },
   authorization: {
     subscribe: "public",
     dispatch: "required",
@@ -34,7 +53,6 @@ export const imageGenerationRemoteIntentContract = defineRemoteIntentContract<
     validate: (_key, intent) =>
       intent.type !== "CANCEL_REQUESTED" ||
       intent.activeInvocationRef.entityKey === intent.jobId,
-    mismatchRefusal: "invalid-intent",
   },
   intents: {
     SUBMIT: {
@@ -57,7 +75,10 @@ export const imageGenerationRemoteIntentContract = defineRemoteIntentContract<
       inputDisposition: "preserve",
     },
   },
-  refusalMap: PROTOCOL_V1_REFUSAL_MAP,
+  refusalMap: {
+    ...PROTOCOL_V1_REFUSAL_MAP,
+    keyIntentMismatch: "unauthorized",
+  },
   budgets: {
     intentBytes: DEFAULT_REMOTE_INTENT_ENVELOPE_BYTES,
     snapshotBytes: DEFAULT_REMOTE_SNAPSHOT_ENVELOPE_BYTES,

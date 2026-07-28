@@ -1,7 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { unsafeEscapeHatchInventory } from "./boundary_inventory.test_support";
+import {
+  nonRemoteDispatchOrEnqueueInventory,
+  unsafeEscapeHatchInventory,
+} from "./boundary_inventory.test_support";
 
 const SOURCE_ROOT = path.resolve(process.cwd(), "src");
 
@@ -78,22 +81,19 @@ describe("progressive distributed-machine inventories", () => {
   });
 
   it("pins renderer-schema-to-internal-event widening casts", () => {
-    expect(locationsMatching(/IntentEventSchema\s+as\s+z\.ZodType/)).toEqual(
+    expect(locationsMatching(/\bas\s+z\.ZodType\s*</)).toEqual(
       unsafeEscapeHatchInventory.wideningCasts,
     );
   });
 
   it("pins raw remote dispatch and enqueue call sites", () => {
-    expect(
-      locationsMatching(
-        /\.(?:dispatch|enqueue)\s*\(/,
-        (source, file) =>
-          file.includes(`${path.sep}distributed_machines${path.sep}`) ||
-          source.includes("@/distributed_machines") ||
-          source.includes("remoteMachineHost") ||
-          source.includes("useImageGenerationActor"),
-      ),
-    ).toEqual(unsafeEscapeHatchInventory.rawDispatchOrEnqueue);
+    const allLocations = locationsMatching(/\.(?:dispatch|enqueue)\s*\(/);
+    expect(allLocations).toEqual(
+      [
+        ...unsafeEscapeHatchInventory.rawDispatchOrEnqueue,
+        ...nonRemoteDispatchOrEnqueueInventory,
+      ].sort(),
+    );
   });
 
   it("pins bespoke waiter registries", () => {

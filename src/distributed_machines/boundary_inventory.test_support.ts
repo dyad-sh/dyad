@@ -51,3 +51,21 @@ export const unsafeEscapeHatchInventory = {
     "ipc/services/version_preview_window_interest.ts#13",
   ],
 } as const;
+
+/**
+ * Exact negative classification used to make raw dispatch discovery
+ * re-export-safe. These calls are unrelated queues or domain facades, so they
+ * stay out of the unsafe escape-hatch report while remaining pinned.
+ */
+export const nonRemoteDispatchOrEnqueueInventory = [
+  "hooks/useRunApp.ts#4",
+  "ipc/services/app_runtime_service.ts#2",
+  "ipc/services/app_runtime_transport.ts#1",
+  "ipc/services/main_app_runtime_output.ts#1",
+  "ipc/utils/debug_fetch.ts#1",
+  "ipc/utils/fallback_ai_model.ts#1",
+  "state_machines/dispatcher.ts#1",
+  "supabase_admin/supabase_deploy_queue.ts#1",
+  "version_preview/window_interest_client.ts#3",
+  "window_infrastructure/main/high_volume_interests.ts#1",
+] as const;

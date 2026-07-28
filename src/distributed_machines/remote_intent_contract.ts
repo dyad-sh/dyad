@@ -11,11 +11,15 @@ export type KeyIntentRelationship<Key, Intent> =
   | {
       readonly kind: "validate";
       readonly validate: (key: Key, intent: Intent) => boolean;
-      readonly mismatchRefusal:
-        | "invalid-key"
-        | "invalid-intent"
-        | "unauthorized";
     };
+
+export interface AdmittedIntentContext<Key, Intent> {
+  readonly key: Key;
+  readonly intent: Intent;
+  readonly sender: {
+    readonly windowSessionId: string;
+  };
+}
 
 export type ObservedRevisionPolicy =
   | { readonly kind: "none" }
@@ -88,7 +92,9 @@ export interface RemoteIntentContract<
   readonly encodeKey: (key: Key) => unknown;
   readonly rendererIntentCodec: z.ZodType<RendererIntent>;
   readonly snapshotCodec: z.ZodType<Snapshot>;
-  readonly toTrustedEvent: (intent: RendererIntent) => TrustedEvent;
+  readonly toTrustedEvent: (
+    context: AdmittedIntentContext<Key, RendererIntent>,
+  ) => TrustedEvent;
   readonly authorization: {
     readonly subscribe: RemoteAuthorizationPolicy;
     readonly dispatch: RemoteAuthorizationPolicy;

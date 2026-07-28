@@ -7,14 +7,55 @@ import { imageGenerationConformance } from "@/image_generation/conformance.test_
 import { imageGenerationRemoteIntentContract } from "@/image_generation/remote_intent_contract";
 import { declareRemoteIntentContractForProtocolV1 } from "../remote_intent_contract";
 import {
+  REMOTE_MACHINE_PROTOCOL_VERSION,
+  type MachineDispatchEnvelope,
+  type MachineSnapshotEnvelope,
+} from "../remote_protocol";
+import {
   REQUIRED_HISTORICAL_FAILURE_SHAPES,
   assertEnvelopeBudget,
   createConformanceDiagnostic,
   defineMachineConformance,
   formatConformanceDiagnostic,
   formatContractReport,
+  type MachineConformance,
 } from "./machine_conformance";
 import { PILOT_CONFORMANCE_REGISTRATIONS } from "./pilot_conformance";
+
+const maximumIdentity = "i".repeat(256);
+
+function dispatchEnvelope(
+  machineId: string,
+  encodedKey: unknown,
+  encodedEvent: unknown,
+): MachineDispatchEnvelope {
+  return {
+    protocolVersion: REMOTE_MACHINE_PROTOCOL_VERSION,
+    machineId,
+    encodedKey,
+    expectedActorInstanceId: maximumIdentity,
+    messageId: maximumIdentity,
+    causationId: maximumIdentity,
+    correlationId: maximumIdentity,
+    expectedRevision: Number.MAX_SAFE_INTEGER,
+    encodedEvent,
+  };
+}
+
+function snapshotEnvelope(
+  machineId: string,
+  encodedKey: unknown,
+  encodedState: unknown,
+): MachineSnapshotEnvelope {
+  return {
+    protocolVersion: REMOTE_MACHINE_PROTOCOL_VERSION,
+    machineId,
+    encodedKey,
+    actorInstanceId: maximumIdentity,
+    revision: Number.MAX_SAFE_INTEGER,
+    encodedState,
+  };
+}
 
 describe("remote intent contract registration", () => {
   it("keeps renderer intents distinct from trusted producer events", () => {
@@ -58,7 +99,7 @@ describe("remote intent contract registration", () => {
       },
       {
         rendererIntentCodec: z.object({ type: z.literal("PING") }),
-        toTrustedEvent: (intent) => intent,
+        toTrustedEvent: ({ intent }) => ({ ...intent }),
         authorization: { subscribe: "public", dispatch: "public" },
         keyIntentRelationship: { kind: "entity-relative" },
         intents: {
@@ -92,6 +133,135 @@ describe("remote intent contract registration", () => {
         historicalFailureShapes: [],
       }),
     ).toThrow("invalid states contains duplicates");
+  });
+
+  it("rejects conformance references outside the declared inventory", () => {
+    const invalidCapability = {
+      machineId: "invalid",
+      stateVariants: ["idle"],
+      eventVariants: ["START"],
+      tiers: ["T0"],
+      exclusions: [],
+      invariants: [],
+      representativeCapabilities: { canStop: ["TYPO"] },
+      representativeIntents: { TYPO: () => ({}) },
+      historicalFailureShapes: [],
+    } as MachineConformance;
+    expect(() => defineMachineConformance(invalidCapability)).toThrow(
+      "capability canStop references unknown event TYPO",
+    );
+    const invalidIntent = {
+      ...invalidCapability,
+      representativeCapabilities: {},
+    };
+    expect(() => defineMachineConformance(invalidIntent)).toThrow(
+      "representative intent references unknown event TYPO",
+    );
+  });
+
+  it("rejects blank, duplicate, and overlapping exclusions", () => {
+    const registration = {
+      machineId: "invalid",
+      stateVariants: ["idle"],
+      eventVariants: ["START"],
+      tiers: ["T0"],
+      invariants: [],
+      representativeCapabilities: {},
+      representativeIntents: {},
+      historicalFailureShapes: [],
+    } as const;
+    expect(() =>
+      defineMachineConformance({
+        ...registration,
+        exclusions: [{ tier: "T1", reason: " " }],
+      }),
+    ).toThrow("exclusion T1 requires a reason");
+    expect(() =>
+      defineMachineConformance({
+        ...registration,
+        exclusions: [
+          { tier: "T1", reason: "first" },
+          { tier: "T1", reason: "second" },
+        ],
+      }),
+    ).toThrow("excluded tiers contains duplicates");
+    expect(() =>
+      defineMachineConformance({
+        ...registration,
+        exclusions: [{ tier: "T0", reason: "not applicable" }],
+      }),
+    ).toThrow("tier T0 cannot be both applicable and excluded");
+  });
+
+  it("derives trusted image provenance without mutating renderer intent", () => {
+    const intent =
+      imageGenerationRemoteIntentContract.rendererIntentCodec.parse({
+        type: "SUBMIT",
+        operationId: "operation",
+        job: {
+          id: "job",
+          prompt: "prompt",
+          themeMode: "plain",
+          targetAppId: 1,
+          targetAppName: "App",
+          startedAt: 1,
+        },
+      });
+    const trusted = imageGenerationRemoteIntentContract.toTrustedEvent({
+      key: imageGenerationRemoteIntentContract.keyCodec.parse({
+        scope: "jobs",
+      }),
+      intent,
+      sender: { windowSessionId: "main-owned-session" },
+    });
+    expect(trusted).not.toBe(intent);
+    expect(intent).not.toHaveProperty("initiatorWindowSessionId");
+    expect(trusted).toMatchObject({
+      type: "SUBMIT",
+      initiatorWindowSessionId: "main-owned-session",
+    });
+    expect(Object.isFrozen(trusted)).toBe(true);
+  });
+
+  it("aligns relationship refusals with preserved protocol-v1 behavior", () => {
+    expect(
+      appRunRemoteIntentContract.keyIntentRelationship.kind === "validate" &&
+        appRunRemoteIntentContract.keyIntentRelationship.validate(
+          { appId: 1 },
+          {
+            type: "STOP_REQUESTED",
+            operationId: "stop",
+            startedAt: 1,
+            activeInvocationRef: {
+              kind: "app-run",
+              entityKey: 2,
+              operationId: "run",
+            },
+          },
+        ),
+    ).toBe(false);
+    expect(appRunRemoteIntentContract.refusalMap.keyIntentMismatch).toBe(
+      "unauthorized",
+    );
+    expect(
+      imageGenerationRemoteIntentContract.keyIntentRelationship.kind ===
+        "validate" &&
+        imageGenerationRemoteIntentContract.keyIntentRelationship.validate(
+          { scope: "jobs" },
+          {
+            type: "CANCEL_REQUESTED",
+            jobId: "job",
+            activeInvocationRef: {
+              kind: "image-generation",
+              entityKey: "other-job",
+              operationId: "operation",
+            },
+          },
+        ),
+    ).toBe(false);
+    expect(
+      imageGenerationRemoteIntentContract.refusalMap.keyIntentMismatch,
+    ).toBe("unauthorized");
   });
 
   it("registers both pilots and all required historical scenario names", () => {
@@ -171,6 +341,12 @@ describe("pilot envelope budgets", () => {
         expectedRevision: Number.MAX_SAFE_INTEGER,
         options: { removeNodeModules: true, recreateSandbox: true },
       }),
+      toEnvelope: (event) =>
+        dispatchEnvelope(
+          "app_run",
+          appRunRemoteIntentContract.encodeKey({ appId: 1 }),
+          event,
+        ),
     });
     const snapshot = assertEnvelopeBudget({
       label: "app_run snapshot",
@@ -212,6 +388,12 @@ describe("pilot envelope budgets", () => {
           error: { message: "f".repeat(4096) },
         },
       }),
+      toEnvelope: (state) =>
+        snapshotEnvelope(
+          "app_run",
+          appRunRemoteIntentContract.encodeKey({ appId: 1 }),
+          state,
+        ),
     });
     expect(intent.measuredSize).toBeGreaterThan(0);
     expect(snapshot.headroom).toBeGreaterThan(0);
@@ -236,6 +418,12 @@ describe("pilot envelope budgets", () => {
         operationId: "o".repeat(256),
         job,
       }),
+      toEnvelope: (event) =>
+        dispatchEnvelope(
+          "image_generation",
+          imageGenerationRemoteIntentContract.encodeKey({ scope: "jobs" }),
+          event,
+        ),
     });
     const snapshot = assertEnvelopeBudget({
       label: "image_generation snapshot",
@@ -257,6 +445,12 @@ describe("pilot envelope budgets", () => {
           activeInvocationRef: null,
         })),
       }),
+      toEnvelope: (state) =>
+        snapshotEnvelope(
+          "image_generation",
+          imageGenerationRemoteIntentContract.encodeKey({ scope: "jobs" }),
+          state,
+        ),
     });
     expect(intent.headroom).toBeGreaterThan(0);
     expect(snapshot.headroom).toBeGreaterThan(0);
@@ -269,8 +463,31 @@ describe("pilot envelope budgets", () => {
         codec: z.object({ value: z.string() }),
         declaredLimit: 1,
         worstCase: () => ({ value: "too large" }),
+        toEnvelope: (value) => ({ encodedState: value }),
       }),
     ).toThrow(/declared=1B measured=\d+B headroom=-\d+B/);
+  });
+
+  it("includes transport metadata in the measured envelope", () => {
+    const codec = z.object({ value: z.string() });
+    const worstCase = () => ({ value: "payload" });
+    const payloadSize = assertEnvelopeBudget({
+      label: "payload-only control",
+      codec,
+      declaredLimit: Number.MAX_SAFE_INTEGER,
+      worstCase,
+      toEnvelope: (value) => value,
+    }).measuredSize;
+    expect(() =>
+      assertEnvelopeBudget({
+        label: "full envelope",
+        codec,
+        declaredLimit: payloadSize + 1,
+        worstCase,
+        toEnvelope: (value) =>
+          dispatchEnvelope("machine", { key: "entity" }, value),
+      }),
+    ).toThrow(/full envelope envelope budget exceeded/);
   });
 });
 
@@ -284,10 +501,45 @@ describe("diff-first contract report", () => {
       report.indexOf("image_generation"),
     );
     expect(report).toContain(
-      "START: completion=tracked-completion revision=actor retry=stable-id acceptance=admission input=preserve-until-accepted",
+      "START: completion=tracked-completion revision=actor(required=true) retry=stable-id(identity=request,dedup=required,lifetime=window-session) acceptance=admission input=preserve-until-accepted",
     );
     expect(report).toContain("tiers: T0,T1,T2");
     expect(report).toContain("wideningCasts:\n  app_run/definition.ts#1");
     expect(report.split("\n").length).toBeLessThan(100);
+  });
+
+  it("reports named domain revisions without collapsing policy details", () => {
+    const report = formatContractReport(
+      [
+        {
+          contract: {
+            intents: {
+              UPDATE: {
+                completion: "tracked-completion",
+                observedRevision: {
+                  kind: "domain",
+                  name: "document-version",
+                  required: true,
+                },
+                retry: {
+                  kind: "stable-id",
+                  identity: "domain",
+                  receiverDeduplication: "required",
+                  lifetime: "host-session",
+                },
+                acceptance: "completion",
+                inputDisposition: "preserve-until-completed",
+              },
+            },
+            budgets: { intentBytes: 1, snapshotBytes: 2 },
+          },
+          conformance: appRunConformance,
+        },
+      ],
+      {},
+    );
+    expect(report).toContain(
+      "revision=domain(name=document-version,required=true) retry=stable-id(identity=domain,dedup=required,lifetime=host-session)",
+    );
   });
 });

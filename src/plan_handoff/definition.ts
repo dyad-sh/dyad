@@ -14,6 +14,7 @@ import {
   routePlanHandoffPresentation,
 } from "@/ipc/services/chat_actor_platform";
 import {
+  deleteOwnedChatAfterSettlingActors,
   dispatchPlanImplementationTurn,
   waitForChatActorIdle,
 } from "@/ipc/services/chat_actor_service";
@@ -39,7 +40,8 @@ import {
   transitionPlanHandoffHost,
 } from "./host_transition";
 
-function initialState(_key?: PlanHandoffKey): PlanHandoffHostState {
+function initialState(key: PlanHandoffKey): PlanHandoffHostState {
+  assertChatActorAdmissionOpen(key.sourceChatId);
   return {
     intent: null,
     targetChatId: null,
@@ -196,10 +198,13 @@ function createCommandRunner(
       const message = error instanceof Error ? error.message : String(error);
       emit({ type: "FAILED", handoffId: intent.handoffId, error: message });
     } finally {
-      if (signal.aborted && ownedTargetChatId !== null) {
-        db.delete(chats).where(eq(chats.id, ownedTargetChatId)).run();
+      try {
+        if (signal.aborted && ownedTargetChatId !== null) {
+          await deleteOwnedChatAfterSettlingActors(ownedTargetChatId);
+        }
+      } finally {
+        context.tasks.remove(taskKey);
       }
-      context.tasks.remove(taskKey);
     }
   };
 }

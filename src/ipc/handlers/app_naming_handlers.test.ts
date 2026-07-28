@@ -82,6 +82,7 @@ vi.mock("@/ipc/handlers/chat_mode_resolution", () => ({
 }));
 
 vi.mock("@/ipc/services/chat_actor_deletion_service", () => ({
+  beginChatActorDeletion: vi.fn(() => () => undefined),
   settleChatActorsForDeletion: vi.fn(async () => {
     deletionOrder.push("settle-actors");
   }),

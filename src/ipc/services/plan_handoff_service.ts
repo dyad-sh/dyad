@@ -33,6 +33,7 @@ export async function startPlanHandoffFromMain(input: {
       appPath: input.appPath,
       chatId: input.sourceChatId,
     }));
+  assertChatActorAdmissionOpen(input.sourceChatId);
   const planHash = createHash("sha256")
     .update(serializePlanDocument(plan))
     .digest("hex");

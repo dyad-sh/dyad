@@ -117,6 +117,9 @@ Background and before/after examples of why this pattern exists:
 - Settle memory-owned requests on every destructive entity path, including
   parent-row cascade deletion, bulk deletion, and full reset—not only direct
   deletion of the child entity the request references.
+- Before parent deletion snapshots child entities for settlement, fence new
+  child creation and serialize the snapshot with each child's final insertion.
+  Otherwise a late child can evade cleanup and disappear through the cascade.
 - Register an in-memory request's disposal rejector before its first
   asynchronous admission await, and remove it in `finally`. Registering only
   before the terminal subscription leaves an admission-to-subscription race

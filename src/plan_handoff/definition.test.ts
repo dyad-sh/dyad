@@ -7,6 +7,7 @@ import {
   serializePlanDocument,
   type PlanHandoffIntent,
 } from "./transport";
+import { beginChatActorDeletion } from "@/ipc/services/chat_actor_deletion_fence";
 
 function intent(handoffId = "handoff-1"): PlanHandoffIntent {
   const plan = { title: "Ship it", content: "Implementation steps" };
@@ -131,5 +132,16 @@ describe("main plan handoff transition", () => {
       phase: "idle",
       failure: null,
     });
+  });
+
+  it("refuses actor construction while the source chat is being deleted", () => {
+    const releaseDeletion = beginChatActorDeletion(4);
+    try {
+      expect(() =>
+        planHandoffDefinition.initialState({ sourceChatId: 4 }),
+      ).toThrowError(expect.objectContaining({ kind: "precondition" }));
+    } finally {
+      releaseDeletion();
+    }
   });
 });

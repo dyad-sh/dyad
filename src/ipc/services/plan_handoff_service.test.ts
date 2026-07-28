@@ -5,11 +5,12 @@ const mocks = vi.hoisted(() => ({
     settled: Promise.resolve({ kind: "applied", state: {} }),
   })),
   readPlanFromDisk: vi.fn(),
+  localRef: vi.fn(),
 }));
 
 vi.mock("@/ipc/services/distributed_machine_actor_host", () => ({
   remoteMachineHost: {
-    localRef: () => ({ enqueue: mocks.enqueue }),
+    localRef: mocks.localRef,
   },
 }));
 vi.mock("@/plan_handoff/definition", () => ({
@@ -31,11 +32,14 @@ import {
   rememberPlanDraft,
   startPlanHandoffFromMain,
 } from "./plan_handoff_service";
+import { beginChatActorDeletion } from "./chat_actor_deletion_fence";
 
 describe("main plan handoff service", () => {
   beforeEach(() => {
     mocks.enqueue.mockClear();
     mocks.readPlanFromDisk.mockReset();
+    mocks.localRef.mockReset();
+    mocks.localRef.mockReturnValue({ enqueue: mocks.enqueue });
   });
 
   it("admits the remembered plan without a renderer callback", async () => {
@@ -71,5 +75,28 @@ describe("main plan handoff service", () => {
         },
       }),
     });
+  });
+
+  it("rechecks deletion admission after an awaited plan read", async () => {
+    let finishRead!: (plan: { title: string; content: string }) => void;
+    mocks.readPlanFromDisk.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishRead = resolve;
+      }),
+    );
+    const handoff = startPlanHandoffFromMain({
+      sourceChatId: 8,
+      appId: 3,
+      appPath: "/tmp/app",
+      acceptInNewChat: false,
+      senderWebContentsId: 12,
+    });
+    await Promise.resolve();
+    const releaseDeletion = beginChatActorDeletion(8);
+    finishRead({ title: "Late plan", content: "Do not admit" });
+
+    await expect(handoff).rejects.toMatchObject({ kind: "precondition" });
+    expect(mocks.localRef).not.toHaveBeenCalled();
+    releaseDeletion();
   });
 });

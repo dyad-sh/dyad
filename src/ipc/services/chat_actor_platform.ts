@@ -41,11 +41,21 @@ export function chatExecutionEndpoint(
     nullEndpoint) as WebContents;
 }
 
-export function publishChatInvalidations(chatId: number): void {
-  queryInvalidationBus.publish([
-    { family: "chats" },
-    { family: "chat", chatId },
-  ]);
+export function publishChatInvalidations(
+  chatId: number,
+  targetAppId?: number | null,
+): void {
+  const scopes = [{ family: "chats" }, { family: "chat", chatId }] as const;
+  queryInvalidationBus.publish(
+    targetAppId === undefined || targetAppId === null
+      ? scopes
+      : [
+          ...scopes,
+          { family: "app", appId: targetAppId },
+          { family: "versions", appId: targetAppId },
+          { family: "uncommitted-files", appId: targetAppId },
+        ],
+  );
 }
 
 export function routePlanHandoffPresentation(input: {

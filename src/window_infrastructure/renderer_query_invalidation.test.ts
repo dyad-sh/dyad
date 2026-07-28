@@ -107,4 +107,26 @@ describe("RendererQueryInvalidationConsumer", () => {
       queryKeys.mcp.toolsByServer.all,
     ]);
   });
+
+  it("maps app-scoped uncommitted-file invalidations", () => {
+    const invalidateQueries = vi.fn(() => Promise.resolve());
+    const consumer = new RendererQueryInvalidationConsumer(
+      { invalidateQueries },
+      randomUUID() as WindowSessionId,
+    );
+
+    consumer.consume({
+      invalidations: [
+        {
+          epoch: 1,
+          scopes: [{ family: "uncommitted-files", appId: 7 }],
+        },
+      ],
+      recoveryScopes: [],
+    });
+
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.uncommittedFiles.byApp({ appId: 7 }),
+    });
+  });
 });

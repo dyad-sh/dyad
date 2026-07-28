@@ -69,6 +69,7 @@ describe("QueryInvalidationBus", () => {
     bus.publish([{ family: "versions", appId: 2 }]);
     bus.publish([{ family: "branches", appId: 1 }]);
     bus.publish([{ family: "problems", appId: 1 }]);
+    bus.publish([{ family: "uncommitted-files", appId: 1 }]);
 
     expect(bus.synchronize(0).recoveryScopes).toEqual([
       { family: "apps" },
@@ -76,6 +77,7 @@ describe("QueryInvalidationBus", () => {
       { family: "versions" },
       { family: "branches" },
       { family: "problems" },
+      { family: "uncommitted-files" },
     ]);
   });
 });

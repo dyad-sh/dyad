@@ -26,6 +26,7 @@ vi.mock("./chat_stream_handlers", async (importOriginal) => {
 });
 
 vi.mock("@/ipc/services/chat_actor_deletion_service", () => ({
+  beginChatActorDeletion: vi.fn(() => () => undefined),
   settleChatActorsForDeletion: vi.fn(async () => {
     deletionOrder.push("settle-actors");
   }),

@@ -345,7 +345,7 @@ function createCommandRunner(
             command.error !== undefined ||
               command.response?.wasCancelled === true,
           );
-          publishChatInvalidations(context.key.chatId);
+          publishChatInvalidations(context.key.chatId, active.targetAppId);
           emit({
             type: "QUEUE_MUTATED",
             queueRevision: queue.queueRevision,

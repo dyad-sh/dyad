@@ -142,6 +142,7 @@ import {
   settleChatActorsForDeletion,
 } from "@/ipc/services/chat_actor_deletion_service";
 import { blockNewStreamsForApp } from "./chat_stream_handlers";
+import { beginAppChatDeletion } from "@/ipc/services/app_chat_creation_fence";
 
 const logger = log.scope("app_handlers");
 const handle = createLoggedHandler(logger);
@@ -392,15 +393,15 @@ async function deleteAppById(
   const releaseStreamAdmissionBlock = blockNewStreamsForApp(appId);
   githubOpsService.beginAppDeletion(appId);
   imageGenerationService.beginAppDeletion(appId);
+  const releaseChatCreation = beginAppChatDeletion(appId);
   const releaseChatActorAdmission: (() => void)[] = [];
   try {
     // Actor cancellation can wait for an in-flight stream to finish writes
     // under this app's lock. Drain before taking the lock, while the admission
     // barrier prevents another turn from entering behind us.
-    const appChats = await db
-      .select({ id: chats.id })
-      .from(chats)
-      .where(eq(chats.appId, appId));
+    const appChats = await withLock(appId, () =>
+      db.select({ id: chats.id }).from(chats).where(eq(chats.appId, appId)),
+    );
     releaseChatActorAdmission.push(
       ...appChats.map(({ id: chatId }) => beginChatActorDeletion(chatId)),
     );
@@ -478,6 +479,7 @@ async function deleteAppById(
     });
   } finally {
     for (const release of releaseChatActorAdmission) release();
+    releaseChatCreation();
     imageGenerationService.endAppDeletion(appId);
     githubOpsService.endAppDeletion(appId);
     releaseStreamAdmissionBlock();

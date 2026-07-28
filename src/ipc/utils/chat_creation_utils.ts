@@ -7,6 +7,8 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { getDyadAppPath } from "../../paths/paths";
 import { getCurrentCommitHash } from "./git_utils";
 import { getInitialChatModeForNewChat } from "../handlers/chat_mode_resolution";
+import { withLock } from "./lock_utils";
+import { assertAppChatCreationOpen } from "../services/app_chat_creation_fence";
 
 const logger = log.scope("chat_creation_utils");
 
@@ -19,6 +21,7 @@ export async function createChatForApp({
   title?: string;
   initialChatMode?: ChatMode;
 }): Promise<number> {
+  assertAppChatCreationOpen(appId);
   // Get the app's path first
   const app = await db.query.apps.findFirst({
     where: eq(apps.id, appId),
@@ -44,15 +47,22 @@ export async function createChatForApp({
 
   const chatMode = await getInitialChatModeForNewChat(initialChatMode);
 
-  const [chat] = await db
-    .insert(chats)
-    .values({
-      appId,
-      title,
-      initialCommitHash,
-      chatMode,
-    })
-    .returning();
+  const chat = await withLock(appId, async () => {
+    // App deletion installs the fence before taking this same lock. A creator
+    // that started earlier either commits before deletion snapshots children,
+    // or observes the fence here and cannot add a late child.
+    assertAppChatCreationOpen(appId);
+    const [created] = await db
+      .insert(chats)
+      .values({
+        appId,
+        title,
+        initialCommitHash,
+        chatMode,
+      })
+      .returning();
+    return created;
+  });
   logger.info(
     "Created chat:",
     chat.id,

@@ -34,6 +34,12 @@ export function queryKeysForInvalidationScope(
           ? queryKeys.problems.all
           : queryKeys.problems.byApp({ appId: scope.appId }),
       ];
+    case "uncommitted-files":
+      return [
+        scope.appId === undefined
+          ? queryKeys.uncommittedFiles.all
+          : queryKeys.uncommittedFiles.byApp({ appId: scope.appId }),
+      ];
     case "chat":
       return [queryKeys.chats.detail({ chatId: scope.chatId })];
     case "provider-status":

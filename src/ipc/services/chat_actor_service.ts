@@ -4,18 +4,61 @@ import { chatStreamDefinition } from "@/chat_stream/definition";
 import { getIntentAcceptance } from "@/chat_stream/persistence";
 import {
   chatStreamKey,
+  type ChatStreamWireEvent,
   type SerializableChatTurnIntent,
 } from "@/chat_stream/transport";
+import type { ChatStreamHostState } from "@/chat_stream/host_state";
+import type { ChatStreamHostIgnoreReason } from "@/chat_stream/host_transition";
+import { beginChatActorDeletion } from "./chat_actor_deletion_fence";
+import { userInputRegistry } from "@/user_input/main";
+import { db } from "@/db";
+import { chats } from "@/db/schema";
+import { eq } from "drizzle-orm";
+import {
+  PLAN_HANDOFF_MACHINE_ID,
+  planHandoffKey,
+} from "@/plan_handoff/transport";
+import { entityDisposalBus } from "@/window_infrastructure/main/entity_disposal_bus";
+
+export async function settleChatActorsForDeletion(
+  chatId: number,
+): Promise<void> {
+  await remoteMachineHost.entityDeleted(
+    PLAN_HANDOFF_MACHINE_ID,
+    planHandoffKey(chatId),
+  );
+  await waitForChatActorIdle(chatId, { cancelActive: true });
+  await remoteMachineHost.entityDeleted(
+    chatStreamDefinition.id,
+    chatStreamKey(chatId),
+  );
+}
+
+export async function deleteOwnedChatAfterSettlingActors(
+  chatId: number,
+): Promise<void> {
+  const releaseAdmission = beginChatActorDeletion(chatId);
+  try {
+    await userInputRegistry.settleChat(chatId);
+    await settleChatActorsForDeletion(chatId);
+    await db.delete(chats).where(eq(chats.id, chatId));
+    entityDisposalBus.publish({ kind: "chat", id: chatId });
+  } finally {
+    releaseAdmission();
+  }
+}
 
 export async function waitForChatActorIdle(
   chatId: number,
   options: { cancelActive?: boolean; signal?: AbortSignal } = {},
 ): Promise<void> {
   options.signal?.throwIfAborted();
-  const actor = remoteMachineHost.localRef(
-    chatStreamDefinition,
-    chatStreamKey(chatId),
-  );
+  const actor = remoteMachineHost.peek<
+    ChatStreamHostState,
+    ChatStreamWireEvent,
+    ChatStreamHostIgnoreReason
+  >(chatStreamDefinition.id, chatStreamKey(chatId));
+  if (!actor) return;
   const current = actor.getSnapshot();
   if (
     options.cancelActive &&

@@ -5,6 +5,7 @@ const routing = vi.hoisted(() => ({
   routePresentation: vi.fn<() => string | null>(() => "window-session"),
   endpointForSession: vi.fn(),
   liveEndpoints: vi.fn(() => []),
+  publishInvalidations: vi.fn(),
 }));
 
 vi.mock("@/window_infrastructure/main/window_registry", () => ({
@@ -16,11 +17,12 @@ vi.mock("@/window_infrastructure/main/window_registry", () => ({
 }));
 
 vi.mock("@/window_infrastructure/main/query_invalidation_bus", () => ({
-  queryInvalidationBus: { publish: vi.fn() },
+  queryInvalidationBus: { publish: routing.publishInvalidations },
 }));
 
 import {
   chatExecutionEndpoint,
+  publishChatInvalidations,
   routePlanHandoffPresentation,
 } from "./chat_actor_platform";
 
@@ -30,6 +32,7 @@ describe("routePlanHandoffPresentation", () => {
     routing.routePresentation.mockReturnValue("window-session");
     routing.endpointForSession.mockReturnValue({ send: routing.send });
     routing.liveEndpoints.mockReturnValue([]);
+    routing.publishInvalidations.mockClear();
   });
 
   it("keeps routing metadata out of the strict renderer payload", () => {
@@ -57,5 +60,17 @@ describe("routePlanHandoffPresentation", () => {
 
     expect(Number.isInteger(endpoint.id)).toBe(false);
     expect(endpoint.isDestroyed()).toBe(true);
+  });
+
+  it("publishes chat and target-app completion invalidations from main", () => {
+    publishChatInvalidations(1, 7);
+
+    expect(routing.publishInvalidations).toHaveBeenCalledWith([
+      { family: "chats" },
+      { family: "chat", chatId: 1 },
+      { family: "app", appId: 7 },
+      { family: "versions", appId: 7 },
+      { family: "uncommitted-files", appId: 7 },
+    ]);
   });
 });

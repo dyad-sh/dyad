@@ -126,6 +126,13 @@ export interface RemoteMachineContract<
   RemoteState = unknown,
 > {
   readonly protocolVersion: number;
+  /**
+   * Optional per-machine ceilings for validated wire envelopes. Machines with
+   * intentionally large payloads may raise the defaults without weakening the
+   * bound for every other remote machine.
+   */
+  readonly maxDispatchEnvelopeBytes?: number;
+  readonly maxSnapshotEnvelopeBytes?: number;
   readonly keyCodec: z.ZodType<Key>;
   readonly encodeKey: (key: Key) => unknown;
   /**

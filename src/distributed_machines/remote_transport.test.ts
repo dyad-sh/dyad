@@ -483,6 +483,43 @@ describe("remote machine transport", () => {
     expect(snapshotHarness.transport.inspectSubscriptions()).toEqual([]);
   });
 
+  it("allows a machine to raise its bounded dispatch and snapshot ceilings", async () => {
+    const base = createRemoteTestMachine();
+    const machine = {
+      ...base,
+      remote: {
+        ...base.remote,
+        maxDispatchEnvelopeBytes: 2_048,
+        maxSnapshotEnvelopeBytes: 2_048,
+      },
+    } as AnyRemoteMachineDefinition;
+    const { duplex, host } = createHarness({
+      machine,
+      maxDispatchEnvelopeBytes: 128,
+      maxSnapshotEnvelopeBytes: 32,
+    });
+    const renderer = duplex.connect();
+
+    await expect(renderer.subscribe(address())).resolves.toBeDefined();
+    await expect(
+      renderer.dispatch(
+        dispatch({
+          type: "START",
+          invocationRef: {
+            kind: "remote-test",
+            entityKey: "actor",
+            operationId: "x".repeat(512),
+          },
+        }),
+      ),
+    ).resolves.toMatchObject({ kind: "applied" });
+    expect(host.peek(machine.id, "actor")?.getSnapshot()).toMatchObject({
+      activeInvocationRef: {
+        operationId: "x".repeat(512),
+      },
+    });
+  });
+
   it("retains pending deduplication entries and bounds unrelated in-flight work", async () => {
     let authorize!: () => void;
     let authorizationStarted!: () => void;

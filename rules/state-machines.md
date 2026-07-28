@@ -98,7 +98,9 @@ Background and before/after examples of why this pattern exists:
   envelope before its codec runs, including subscribe/unsubscribe addresses,
   and bound snapshot envelopes before delivery. Use a
   structured-clone-compatible byte measurement; JSON sizing is not
-  wire-compatible with values such as `bigint`.
+  wire-compatible with values such as `bigint`. When an existing domain payload
+  legitimately exceeds the shared default, declare a bounded per-machine
+  ceiling and enforce aggregate projected state below its snapshot ceiling.
 - When a remote machine uses an object key, canonicalize it through the same
   interner used by main-process producers only after subscription authorization
   succeeds, then pass that canonical key to `ActorHost`. Its actor map is

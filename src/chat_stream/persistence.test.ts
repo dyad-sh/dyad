@@ -3,6 +3,7 @@ import { apps, chats } from "@/db/schema";
 import { DyadErrorKind } from "@/errors/dyad_error";
 import { createInMemoryTestDb, type TestDb } from "@/testing/test_db";
 import {
+  assertQueueSnapshotWithinLimit,
   disposeSessionChatQueue,
   hydrateChatStreamPersistence,
   loadChatQueue,
@@ -73,6 +74,26 @@ describe("chat stream persistence", () => {
       queuePaused: false,
       queue: [{ intentId: "turn-1" }],
     });
+  });
+
+  it("bounds the aggregate queue projection before transport", () => {
+    expect(() =>
+      assertQueueSnapshotWithinLimit(
+        [
+          {
+            itemId: "large",
+            intentId: "large",
+            prompt: "x".repeat(256),
+            persistence: "main-session",
+            editable: true,
+            removable: true,
+          },
+        ],
+        64,
+      ),
+    ).toThrowError(
+      expect.objectContaining({ kind: DyadErrorKind.RateLimited }),
+    );
   });
 
   it("replays the original result for the same immutable intent", () => {

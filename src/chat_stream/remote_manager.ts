@@ -524,8 +524,16 @@ export class ChatStreamRemoteManager {
       if (this.subscriptions.get(chatId) !== subscription) return;
       subscription.consumers -= 1;
       if (subscription.consumers > 0) return;
-      subscription.unsubscribe();
-      this.subscriptions.delete(chatId);
+      queueMicrotask(() => {
+        if (
+          this.subscriptions.get(chatId) !== subscription ||
+          subscription.consumers > 0
+        ) {
+          return;
+        }
+        subscription.unsubscribe();
+        this.subscriptions.delete(chatId);
+      });
     };
   }
 

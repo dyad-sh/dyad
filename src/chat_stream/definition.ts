@@ -34,6 +34,8 @@ import {
   stageActiveIntent,
 } from "./persistence";
 import {
+  CHAT_STREAM_MAX_DISPATCH_ENVELOPE_BYTES,
+  CHAT_STREAM_MAX_SNAPSHOT_ENVELOPE_BYTES,
   CHAT_STREAM_MACHINE_ID,
   ChatStreamIntentEventSchema,
   ChatStreamKeySchema,
@@ -417,6 +419,8 @@ export const chatStreamDefinition = {
   },
   remote: {
     protocolVersion: REMOTE_MACHINE_PROTOCOL_VERSION,
+    maxDispatchEnvelopeBytes: CHAT_STREAM_MAX_DISPATCH_ENVELOPE_BYTES,
+    maxSnapshotEnvelopeBytes: CHAT_STREAM_MAX_SNAPSHOT_ENVELOPE_BYTES,
     keyCodec: ChatStreamKeySchema,
     encodeKey: (key) => key,
     canonicalizeKeyAfterAuthorization: (key) => chatStreamKey(key.chatId),

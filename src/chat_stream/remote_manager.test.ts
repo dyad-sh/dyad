@@ -135,4 +135,43 @@ describe("ChatStreamRemoteManager", () => {
     release();
     manager.dispose();
   });
+
+  it("does not unsubscribe across an immediate renderer remount", async () => {
+    const subscribe = vi.fn(async () => ({
+      protocolVersion: 1,
+      machineId: "chat_stream",
+      encodedKey: { chatId: 7 },
+      actorInstanceId: "actor",
+      revision: 1,
+      encodedState: unavailableChatStreamSnapshot(7),
+    }));
+    const unsubscribe = vi.fn(async () => undefined);
+    const connection: ChatStreamRemoteConnection = {
+      getStatus: () => "connected",
+      onStatusChange: () => () => undefined,
+      onSnapshot: () => () => undefined,
+      onDisposed: () => () => undefined,
+      subscribe,
+      unsubscribe,
+      dispatch: vi.fn(),
+    };
+    const manager = new ChatStreamRemoteManager(
+      createStore(),
+      createSequentialIdSource(),
+      connection,
+    );
+    manager.start();
+    const ref = manager.ensure(7);
+
+    const firstRelease = ref.subscribe(() => undefined);
+    await vi.waitFor(() => expect(subscribe).toHaveBeenCalled());
+    firstRelease();
+    const secondRelease = ref.subscribe(() => undefined);
+    await Promise.resolve();
+    expect(unsubscribe).not.toHaveBeenCalled();
+
+    secondRelease();
+    await vi.waitFor(() => expect(unsubscribe).toHaveBeenCalledTimes(1));
+    manager.dispose();
+  });
 });

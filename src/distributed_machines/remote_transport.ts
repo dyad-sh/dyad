@@ -307,9 +307,10 @@ export class RemoteMachineTransport {
   ): Promise<MachineDispatchReceipt> {
     this.assertOpen();
     const windowSessionId = this.options.windows.ensureRegistered(sender);
-    if (
-      !this.isWithinSerializedLimit(envelope, this.maxDispatchEnvelopeBytes)
-    ) {
+    const dispatchLimit =
+      this.options.manifest.get(envelope.machineId)?.remote
+        .maxDispatchEnvelopeBytes ?? this.maxDispatchEnvelopeBytes;
+    if (!this.isWithinSerializedLimit(envelope, dispatchLimit)) {
       return Promise.resolve(
         this.rejected(envelope.messageId, "invalid-event"),
       );
@@ -561,7 +562,11 @@ export class RemoteMachineTransport {
       encodedState: parsed.data,
     };
     if (
-      !this.isWithinSerializedLimit(envelope, this.maxSnapshotEnvelopeBytes)
+      !this.isWithinSerializedLimit(
+        envelope,
+        entry.definition.remote.maxSnapshotEnvelopeBytes ??
+          this.maxSnapshotEnvelopeBytes,
+      )
     ) {
       throw new DyadError(
         `Remote snapshot exceeds the transport limit for ${entry.definition.id}`,

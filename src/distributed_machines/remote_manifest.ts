@@ -48,6 +48,16 @@ export function createRemoteMachineManifest(
     if (definition.host !== "main") {
       throw new Error(`Remote machine ${definition.id} must be main-hosted`);
     }
+    for (const [name, limit] of [
+      ["maxDispatchEnvelopeBytes", definition.remote.maxDispatchEnvelopeBytes],
+      ["maxSnapshotEnvelopeBytes", definition.remote.maxSnapshotEnvelopeBytes],
+    ] as const) {
+      if (limit !== undefined && (!Number.isSafeInteger(limit) || limit <= 0)) {
+        throw new Error(
+          `Remote machine ${definition.id} has an invalid ${name}`,
+        );
+      }
+    }
     byId.set(definition.id, definition);
   }
   const frozenDefinitions = Object.freeze([...definitions]);

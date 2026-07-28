@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { MAX_CHAT_ATTACHMENTS_TOTAL_BYTES } from "@/shared/chatAttachmentLimits";
 import {
+  CHAT_STREAM_MAX_DISPATCH_ENVELOPE_BYTES,
+  CHAT_STREAM_MAX_QUEUE_BYTES,
+  CHAT_STREAM_MAX_SNAPSHOT_ENVELOPE_BYTES,
   ChatStreamIntentEventSchema,
   SerializableChatTurnIntentSchema,
 } from "./transport";
@@ -48,5 +52,17 @@ describe("chat stream remote transport", () => {
         mutationId: "pause",
       }),
     ).toThrow();
+  });
+
+  it("preserves the supported aggregate attachment size within bounded envelopes", () => {
+    const maximumBase64Payload =
+      4 * Math.ceil(MAX_CHAT_ATTACHMENTS_TOTAL_BYTES / 3);
+    expect(CHAT_STREAM_MAX_DISPATCH_ENVELOPE_BYTES).toBeGreaterThan(
+      maximumBase64Payload,
+    );
+    expect(CHAT_STREAM_MAX_QUEUE_BYTES).toBeGreaterThan(maximumBase64Payload);
+    expect(CHAT_STREAM_MAX_SNAPSHOT_ENVELOPE_BYTES).toBeGreaterThan(
+      CHAT_STREAM_MAX_QUEUE_BYTES,
+    );
   });
 });

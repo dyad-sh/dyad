@@ -1,3 +1,4 @@
+import { serialize } from "node:v8";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import type * as schema from "@/db/schema";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
@@ -6,7 +7,11 @@ import {
   rejectDueFollowUp,
 } from "@/ipc/services/user_input_followup_service";
 import { computeChatTurnPayloadHash } from "@/ipc/utils/chat_turn_intent_hash";
-import type { ChatQueueEntry, SerializableChatTurnIntent } from "./transport";
+import {
+  CHAT_STREAM_MAX_QUEUE_BYTES,
+  type ChatQueueEntry,
+  type SerializableChatTurnIntent,
+} from "./transport";
 import type { ChatStreamHostCommand } from "./host_state";
 import { withChatQueueLock } from "./queue_lock";
 
@@ -94,6 +99,17 @@ export function toQueueEntry(
     editable: intent.owner === undefined,
     removable: intent.owner?.kind !== "plan-handoff",
   };
+}
+
+export function assertQueueSnapshotWithinLimit(
+  entries: readonly ChatQueueEntry[],
+  maxBytes = CHAT_STREAM_MAX_QUEUE_BYTES,
+): void {
+  if (serialize(entries).byteLength <= maxBytes) return;
+  throw new DyadError(
+    "The queued messages are too large to synchronize between windows",
+    DyadErrorKind.RateLimited,
+  );
 }
 
 export function loadChatQueue(
@@ -195,12 +211,19 @@ function persistIntentInQueue(
     assertMatchingIntent(existing, intent);
     return replay(existing);
   }
+  const aggregate = queueFor(intent.chatId);
+  assertQueueSnapshotWithinLimit([
+    ...aggregate.intentIds.flatMap((intentId) => {
+      const record = recordFor(intentId);
+      return record ? [toQueueEntry(record.intent)] : [];
+    }),
+    toQueueEntry(intent),
+  ]);
   intentRecords.set(intent.intentId, {
     intent,
     acceptance: "queued",
     recovery: "not-started",
   });
-  const aggregate = queueFor(intent.chatId);
   aggregate.intentIds.push(intent.intentId);
   aggregate.revision += 1;
   return {
@@ -355,10 +378,18 @@ export async function mutateChatQueue(
           attachments: mutation.attachments,
           selectedComponents: mutation.selectedComponents,
         };
-        selectedRecord.intent = {
+        const updatedIntent = {
           ...withoutHash,
           payloadHash: computeChatTurnPayloadHash(withoutHash),
         };
+        assertQueueSnapshotWithinLimit(
+          entries.map(({ record }) =>
+            record === selectedRecord
+              ? toQueueEntry(updatedIntent)
+              : toQueueEntry(record.intent),
+          ),
+        );
+        selectedRecord.intent = updatedIntent;
         break;
       }
       case "reorder": {

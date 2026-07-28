@@ -8,6 +8,13 @@ import { REMOTE_MACHINE_PROTOCOL_VERSION } from "@/distributed_machines/remote_p
 import type { RemoteClientDefinition } from "@/distributed_machines/remote_client";
 
 export const CHAT_STREAM_MACHINE_ID = "chat_stream" as const;
+const MEBIBYTE = 1_024 * 1_024;
+
+// A valid 25 MiB attachment set expands to roughly 34 MiB as base64. Keep the
+// remote path bounded while preserving that existing chat contract.
+export const CHAT_STREAM_MAX_DISPATCH_ENVELOPE_BYTES = 48 * MEBIBYTE;
+export const CHAT_STREAM_MAX_QUEUE_BYTES = 48 * MEBIBYTE;
+export const CHAT_STREAM_MAX_SNAPSHOT_ENVELOPE_BYTES = 64 * MEBIBYTE;
 
 const chatKeys = new Map<number, Readonly<{ chatId: number }>>();
 

@@ -56,12 +56,13 @@ export const imageGenerationConformance = defineMachineConformance({
     },
   ],
   representativeCapabilities: {
-    canSubmit: ["SUBMIT"],
-    canCancel: ["CANCEL_REQUESTED"],
+    canSubmit: ["submit"],
+    canCancel: ["cancel"],
   },
   representativeIntents: {
-    SUBMIT: [
-      () => ({
+    submit: {
+      event: "SUBMIT",
+      create: () => ({
         type: "SUBMIT",
         operationId: "generate-request",
         job: {
@@ -73,9 +74,10 @@ export const imageGenerationConformance = defineMachineConformance({
           startedAt: 1,
         },
       }),
-    ],
-    CANCEL_REQUESTED: [
-      () => ({
+    },
+    cancel: {
+      event: "CANCEL_REQUESTED",
+      create: () => ({
         type: "CANCEL_REQUESTED",
         jobId: "job",
         activeInvocationRef: {
@@ -84,7 +86,7 @@ export const imageGenerationConformance = defineMachineConformance({
           operationId: "generate-request",
         },
       }),
-    ],
+    },
   },
   historicalFailureShapes: [
     "post-authorization-actor-window-change",

@@ -37,13 +37,14 @@ function relative(file: string): string {
   return path.relative(SOURCE_ROOT, file).replaceAll("\\", "/");
 }
 
-function pathsMatching(
-  predicate: (source: string, file: string) => boolean,
-): string[] {
-  return productionFiles()
-    .filter((file) => predicate(fs.readFileSync(file, "utf8"), file))
-    .map(relative)
-    .sort();
+function sourceFileFor(file: string): ts.SourceFile {
+  return ts.createSourceFile(
+    file,
+    fs.readFileSync(file, "utf8"),
+    ts.ScriptTarget.Latest,
+    true,
+    file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+  );
 }
 
 function syntaxLocationsMatching(
@@ -51,14 +52,7 @@ function syntaxLocationsMatching(
 ): string[] {
   return productionFiles()
     .flatMap((file) => {
-      const source = fs.readFileSync(file, "utf8");
-      const sourceFile = ts.createSourceFile(
-        file,
-        source,
-        ts.ScriptTarget.Latest,
-        true,
-        file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
-      );
+      const sourceFile = sourceFileFor(file);
       return syntaxLocationsInSource(sourceFile, relative(file), predicate);
     })
     .sort();
@@ -157,22 +151,102 @@ function isDispatchOrEnqueueAccess(node: ts.Node): boolean {
     return node.name.text === "dispatch" || node.name.text === "enqueue";
   }
   return (
-    ts.isElementAccessExpression(node) &&
-    ts.isStringLiteral(node.argumentExpression) &&
-    (node.argumentExpression.text === "dispatch" ||
-      node.argumentExpression.text === "enqueue")
+    (ts.isElementAccessExpression(node) &&
+      ts.isStringLiteral(node.argumentExpression) &&
+      (node.argumentExpression.text === "dispatch" ||
+        node.argumentExpression.text === "enqueue")) ||
+    (ts.isBindingElement(node) &&
+      ts.isObjectBindingPattern(node.parent) &&
+      ((node.propertyName !== undefined &&
+        (ts.isIdentifier(node.propertyName) ||
+          ts.isStringLiteral(node.propertyName)) &&
+        (node.propertyName.text === "dispatch" ||
+          node.propertyName.text === "enqueue")) ||
+        (node.propertyName === undefined &&
+          ts.isIdentifier(node.name) &&
+          (node.name.text === "dispatch" || node.name.text === "enqueue"))))
   );
+}
+
+function propertyNameText(name: ts.PropertyName | undefined): string | null {
+  if (!name) return null;
+  if (
+    ts.isIdentifier(name) ||
+    ts.isStringLiteral(name) ||
+    ts.isNumericLiteral(name)
+  ) {
+    return name.text;
+  }
+  return null;
+}
+
+function unwrapExpression(expression: ts.Expression): ts.Expression {
+  let current = expression;
+  while (
+    ts.isSatisfiesExpression(current) ||
+    ts.isAsExpression(current) ||
+    ts.isParenthesizedExpression(current)
+  ) {
+    current = current.expression;
+  }
+  return current;
+}
+
+function objectProperty(
+  object: ts.ObjectLiteralExpression,
+  name: string,
+): ts.ObjectLiteralElementLike | undefined {
+  return object.properties.find((property) => {
+    if (
+      ts.isPropertyAssignment(property) ||
+      ts.isShorthandPropertyAssignment(property) ||
+      ts.isMethodDeclaration(property)
+    ) {
+      return propertyNameText(property.name) === name;
+    }
+    return false;
+  });
+}
+
+function isMainRemoteDefinitionObject(node: ts.Node): boolean {
+  if (!ts.isVariableDeclaration(node) || !node.initializer) return false;
+  const initializer = unwrapExpression(node.initializer);
+  if (!ts.isObjectLiteralExpression(initializer)) return false;
+
+  const host = objectProperty(initializer, "host");
+  return (
+    !!objectProperty(initializer, "id") &&
+    !!objectProperty(initializer, "transition") &&
+    !!objectProperty(initializer, "createCommandRunner") &&
+    !!objectProperty(initializer, "lifecycle") &&
+    !!objectProperty(initializer, "remote") &&
+    !!host &&
+    ts.isPropertyAssignment(host) &&
+    ts.isStringLiteral(host.initializer) &&
+    host.initializer.text === "main"
+  );
+}
+
+function containsMainRemoteDefinition(sourceFile: ts.SourceFile): boolean {
+  let found = false;
+  const visit = (node: ts.Node): void => {
+    if (isMainRemoteDefinitionObject(node)) {
+      found = true;
+      return;
+    }
+    if (!found) ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return found;
 }
 
 describe("progressive distributed-machine inventories", () => {
   it("inventories all six production distributed definitions", () => {
     expect(
-      pathsMatching(
-        (source) =>
-          source.includes("createCommandRunner") &&
-          source.includes("remote: {") &&
-          source.includes('host: "main"'),
-      ),
+      productionFiles()
+        .filter((file) => containsMainRemoteDefinition(sourceFileFor(file)))
+        .map(relative)
+        .sort(),
     ).toEqual([
       "app_run/definition.ts",
       "chat_stream/definition.ts",
@@ -181,6 +255,27 @@ describe("progressive distributed-machine inventories", () => {
       "ipc/services/version_preview_definition.ts",
       "plan_handoff/definition.ts",
     ]);
+  });
+
+  it("discovers quoted properties and extracted remote configuration", () => {
+    const sourceFile = ts.createSourceFile(
+      "fixture.ts",
+      [
+        "const remoteConfig = {};",
+        "const definition = {",
+        '  "id": "fixture",',
+        '  "host": "main",',
+        "  transition,",
+        "  createCommandRunner,",
+        "  lifecycle,",
+        "  remote: remoteConfig,",
+        "};",
+      ].join("\n"),
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TS,
+    );
+    expect(containsMainRemoteDefinition(sourceFile)).toBe(true);
   });
 
   it("pins renderer-schema-to-internal-event widening casts", () => {
@@ -226,6 +321,8 @@ describe("progressive distributed-machine inventories", () => {
         'const text = "actor.enqueue()";',
         'actor.dispatch({ type: "REAL" });',
         'queue["enqueue"]({ type: "COMPUTED" });',
+        "const { dispatch: send } = actor;",
+        "const { enqueue } = queue;",
       ].join("\n"),
       ts.ScriptTarget.Latest,
       true,
@@ -237,7 +334,12 @@ describe("progressive distributed-machine inventories", () => {
         "fixture.ts",
         isDispatchOrEnqueueAccess,
       ),
-    ).toEqual(["fixture.ts:3:1", "fixture.ts:4:1"]);
+    ).toEqual([
+      "fixture.ts:3:1",
+      "fixture.ts:4:1",
+      "fixture.ts:5:9",
+      "fixture.ts:6:9",
+    ]);
   });
 
   it("pins bespoke waiter registries", () => {

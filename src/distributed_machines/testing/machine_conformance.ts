@@ -58,10 +58,16 @@ export interface MachineConformance<
     readonly description: string;
   }[];
   readonly representativeCapabilities: Readonly<
-    Record<string, readonly EventVariant[]>
+    Record<string, readonly string[]>
   >;
   readonly representativeIntents: Readonly<
-    Partial<Record<EventVariant, readonly (() => unknown)[]>>
+    Record<
+      string,
+      {
+        readonly event: EventVariant;
+        readonly create: () => unknown;
+      }
+    >
   >;
   readonly historicalFailureShapes: readonly HistoricalFailureShape[];
 }
@@ -117,27 +123,40 @@ export function defineMachineConformance<
     `${conformance.machineId} failure shapes`,
   );
   const eventVariants = new Set<string>(conformance.eventVariants);
-  for (const [capability, events] of Object.entries(
+  const representativeOwners = new Map<string, string>();
+  for (const [capability, representativeIds] of Object.entries(
     conformance.representativeCapabilities,
   )) {
-    for (const event of events) {
-      if (!eventVariants.has(event)) {
+    if (representativeIds.length === 0) {
+      throw new Error(
+        `${conformance.machineId}: capability ${capability} has no representative intents`,
+      );
+    }
+    unique(
+      representativeIds,
+      `${conformance.machineId} capability ${capability} representatives`,
+    );
+    for (const representativeId of representativeIds) {
+      const previousOwner = representativeOwners.get(representativeId);
+      if (previousOwner) {
         throw new Error(
-          `${conformance.machineId}: capability ${capability} references unknown event ${event}`,
+          `${conformance.machineId}: representative intent ${representativeId} is shared by capabilities ${previousOwner} and ${capability}`,
         );
       }
-      const representatives = conformance.representativeIntents[event];
-      if (!representatives || representatives.length === 0) {
+      representativeOwners.set(representativeId, capability);
+      if (!conformance.representativeIntents[representativeId]) {
         throw new Error(
-          `${conformance.machineId}: capability ${capability} requires a representative intent for ${event}`,
+          `${conformance.machineId}: capability ${capability} references unknown representative intent ${representativeId}`,
         );
       }
     }
   }
-  for (const event of Object.keys(conformance.representativeIntents)) {
-    if (!eventVariants.has(event)) {
+  for (const [representativeId, representative] of Object.entries(
+    conformance.representativeIntents,
+  )) {
+    if (!eventVariants.has(representative.event)) {
       throw new Error(
-        `${conformance.machineId}: representative intent references unknown event ${event}`,
+        `${conformance.machineId}: representative intent ${representativeId} references unknown event ${representative.event}`,
       );
     }
   }

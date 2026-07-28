@@ -63,23 +63,25 @@ export const appRunConformance = defineMachineConformance({
     },
   ],
   representativeCapabilities: {
-    canStart: ["START"],
-    canRestart: ["RESTART"],
-    canRebuild: ["RESTART"],
-    canStop: ["STOP_REQUESTED"],
-    canReload: ["MANUAL_RELOAD"],
+    canStart: ["start"],
+    canRestart: ["restart"],
+    canRebuild: ["rebuild"],
+    canStop: ["stop"],
+    canReload: ["manual-reload"],
   },
   representativeIntents: {
-    START: [
-      () => ({
+    start: {
+      event: "START",
+      create: () => ({
         type: "START",
         operationId: "request-start",
         startedAt: 1,
         expectedRevision: 0,
       }),
-    ],
-    RESTART: [
-      () => ({
+    },
+    restart: {
+      event: "RESTART",
+      create: () => ({
         type: "RESTART",
         operation: "restart",
         options: {
@@ -90,16 +92,20 @@ export const appRunConformance = defineMachineConformance({
         startedAt: 1,
         expectedRevision: 0,
       }),
-      () => ({
+    },
+    rebuild: {
+      event: "RESTART",
+      create: () => ({
         type: "RESTART",
         operation: "rebuild",
         operationId: "request-rebuild",
         startedAt: 1,
         expectedRevision: 0,
       }),
-    ],
-    STOP_REQUESTED: [
-      () => ({
+    },
+    stop: {
+      event: "STOP_REQUESTED",
+      create: () => ({
         type: "STOP_REQUESTED",
         operationId: "request-stop",
         startedAt: 1,
@@ -109,14 +115,15 @@ export const appRunConformance = defineMachineConformance({
           operationId: "runtime",
         },
       }),
-    ],
-    MANUAL_RELOAD: [
-      () => ({
+    },
+    "manual-reload": {
+      event: "MANUAL_RELOAD",
+      create: () => ({
         type: "MANUAL_RELOAD",
         operationId: "request-reload",
         startedAt: 1,
       }),
-    ],
+    },
   },
   historicalFailureShapes: [
     "construction-disposal-recreation",

@@ -136,26 +136,21 @@ describe("remote intent contract registration", () => {
   });
 
   it("rejects conformance references outside the declared inventory", () => {
-    const invalidCapability = {
+    const invalidIntent = {
       machineId: "invalid",
       stateVariants: ["idle"],
       eventVariants: ["START"],
       tiers: ["T0"],
       exclusions: [],
       invariants: [],
-      representativeCapabilities: { canStop: ["TYPO"] },
-      representativeIntents: { TYPO: [() => ({})] },
+      representativeCapabilities: {},
+      representativeIntents: {
+        typo: { event: "TYPO", create: () => ({}) },
+      },
       historicalFailureShapes: [],
     } as MachineConformance;
-    expect(() => defineMachineConformance(invalidCapability)).toThrow(
-      "capability canStop references unknown event TYPO",
-    );
-    const invalidIntent = {
-      ...invalidCapability,
-      representativeCapabilities: {},
-    };
     expect(() => defineMachineConformance(invalidIntent)).toThrow(
-      "representative intent references unknown event TYPO",
+      "representative intent typo references unknown event TYPO",
     );
   });
 
@@ -173,11 +168,41 @@ describe("remote intent contract registration", () => {
           { tier: "T4", reason: "not applicable" },
         ],
         invariants: [],
-        representativeCapabilities: { canStart: ["START"] },
+        representativeCapabilities: { canStart: ["start"] },
         representativeIntents: {},
         historicalFailureShapes: [],
       }),
-    ).toThrow("capability canStart requires a representative intent for START");
+    ).toThrow(
+      "capability canStart references unknown representative intent start",
+    );
+  });
+
+  it("rejects representative payloads shared across capabilities", () => {
+    expect(() =>
+      defineMachineConformance({
+        machineId: "invalid",
+        stateVariants: ["idle"],
+        eventVariants: ["RESTART"],
+        tiers: ["T0"],
+        exclusions: [
+          { tier: "T1", reason: "not applicable" },
+          { tier: "T2", reason: "not applicable" },
+          { tier: "T3", reason: "not applicable" },
+          { tier: "T4", reason: "not applicable" },
+        ],
+        invariants: [],
+        representativeCapabilities: {
+          canRestart: ["restart"],
+          canRebuild: ["restart"],
+        },
+        representativeIntents: {
+          restart: { event: "RESTART", create: () => ({}) },
+        },
+        historicalFailureShapes: [],
+      }),
+    ).toThrow(
+      "representative intent restart is shared by capabilities canRestart and canRebuild",
+    );
   });
 
   it("rejects blank, duplicate, and overlapping exclusions", () => {
@@ -310,9 +335,14 @@ describe("remote intent contract registration", () => {
     expect(appRunConformance.tiers).toEqual(["T0", "T1", "T2"]);
     expect(imageGenerationConformance.tiers).toEqual(["T0", "T1", "T2"]);
     expect(appRunConformance.representativeCapabilities.canRebuild).toEqual([
-      "RESTART",
+      "rebuild",
     ]);
-    expect(appRunConformance.representativeIntents.RESTART).toHaveLength(2);
+    expect(appRunConformance.representativeIntents.restart.event).toBe(
+      "RESTART",
+    );
+    expect(appRunConformance.representativeIntents.rebuild.event).toBe(
+      "RESTART",
+    );
     const names = new Set([
       ...appRunConformance.historicalFailureShapes,
       ...imageGenerationConformance.historicalFailureShapes,

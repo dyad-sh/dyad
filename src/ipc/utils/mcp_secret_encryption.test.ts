@@ -183,6 +183,26 @@ describe("encryptStoredMcpSecrets", () => {
     expect(decode((await readRow(1)).headersEncrypted)).toBe(`enc:{"A":"1"}`);
   });
 
+  it("upgrades a plain: blob even when the plaintext column still matches", async () => {
+    isEncryptionAvailable.mockReturnValue(false);
+    await db.insert(mcpServers).values({
+      id: 1,
+      name: "http",
+      transport: "http",
+      url: "https://example.com/mcp",
+      headersJson: { A: "1" },
+    });
+    await encryptStoredMcpSecrets();
+    expect((await readRow(1)).headersEncrypted).toMatch(/^plain:/);
+
+    isEncryptionAvailable.mockReturnValue(true);
+    expect(await encryptStoredMcpSecrets()).toBe(1);
+    expect(decode((await readRow(1)).headersEncrypted)).toBe(`enc:{"A":"1"}`);
+    // The plaintext column is still there, so a repeat pass must not
+    // treat the row as needing work again.
+    expect(await encryptStoredMcpSecrets()).toBe(0);
+  });
+
   it("leaves a plain: blob alone while no keyring exists", async () => {
     isEncryptionAvailable.mockReturnValue(false);
     await db.insert(mcpServers).values({

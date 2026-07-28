@@ -26,40 +26,93 @@ function sameMap(
   );
 }
 
+// What the plaintext column says. `empty` is distinct from `absent`:
+// only a build predating the encrypted columns writes here, so an
+// empty map is that build deleting the last entry, while absent means
+// it never touched the row.
+type PlaintextState = "absent" | "empty" | "values";
+
+// What the encrypted column holds. `plainTagged` is a base64 blob
+// written when no keyring was available, so it is readable but not
+// actually encrypted.
+type EncryptedState = "absent" | "plainTagged" | "readable" | "unreadable";
+
+function plaintextStateOf(
+  plaintext: Record<string, string> | null,
+): PlaintextState {
+  if (!plaintext) return "absent";
+  return Object.keys(plaintext).length === 0 ? "empty" : "values";
+}
+
+function encryptedStateOf(encrypted: string | null): EncryptedState {
+  if (!encrypted) return "absent";
+  if (encrypted.startsWith(PLAINTEXT_PREFIX)) return "plainTagged";
+  return decryptSecretMap(encrypted) ? "readable" : "unreadable";
+}
+
 /**
  * Works out what a secret's encrypted column should hold, or undefined
- * when it's already correct and should be left alone.
+ * when it's already correct and should be left alone. Every
+ * combination of the two column states is handled explicitly.
  *
- * Plaintext wins whenever the two disagree, including when it is an
- * empty map: this build clears the plaintext column every time it
- * writes a secret, so any value there was written afterwards by a
- * build that predates the encrypted columns. An empty map means that
- * build deleted the last entry, so the encrypted column is cleared too
- * rather than leaving a secret the user removed.
+ * Plaintext wins whenever the two disagree. This build clears the
+ * plaintext column every time it writes a secret, so any value there
+ * was written afterwards by a build that predates the encrypted
+ * columns.
  */
 function nextEncryptedValue(
   plaintext: Record<string, string> | null,
   encrypted: string | null,
 ): string | null | undefined {
-  if (plaintext) {
-    const desired = encryptSecretMap(plaintext);
-    if (desired === null) {
-      return encrypted === null ? undefined : null;
-    }
-    const current = encrypted ? decryptSecretMap(encrypted) : null;
-    if (current && sameMap(current, plaintext)) {
-      return undefined;
-    }
-    return desired;
-  }
-  // A `plain:` blob is only base64, so upgrade it once a keyring shows
-  // up. Without one, re-encrypting would just rewrite the same tag.
-  if (
-    encrypted?.startsWith(PLAINTEXT_PREFIX) &&
-    isSecretEncryptionAvailable()
-  ) {
-    const decoded = decryptSecretMap(encrypted);
-    return decoded ? (encryptSecretMap(decoded) ?? undefined) : undefined;
+  const from = plaintextStateOf(plaintext);
+  const to = encryptedStateOf(encrypted);
+
+  switch (from) {
+    case "values":
+      switch (to) {
+        // Already encrypted from this same value, unless it is only
+        // base64, which a keyring can now upgrade.
+        case "readable":
+          return sameMap(decryptSecretMap(encrypted!)!, plaintext!)
+            ? undefined
+            : encryptSecretMap(plaintext!);
+        case "plainTagged":
+          return isSecretEncryptionAvailable()
+            ? encryptSecretMap(plaintext!)
+            : undefined;
+        // Never encrypted, or encrypted under a key we no longer have.
+        // Either way the plaintext column can rebuild it.
+        case "absent":
+        case "unreadable":
+          return encryptSecretMap(plaintext!);
+      }
+      break;
+    case "empty":
+      // An older build removed the last entry, so drop whatever the
+      // encrypted column still holds.
+      switch (to) {
+        case "readable":
+        case "plainTagged":
+        case "unreadable":
+          return null;
+        case "absent":
+          return undefined;
+      }
+      break;
+    case "absent":
+      switch (to) {
+        // Only base64 at rest, so upgrade it once a keyring shows up.
+        // Without one, re-encrypting would rewrite the same tag.
+        case "plainTagged":
+          if (!isSecretEncryptionAvailable()) return undefined;
+          return encryptSecretMap(decryptSecretMap(encrypted!)) ?? undefined;
+        // Nothing to reconcile against: the encrypted column is the
+        // only copy, and an unreadable one can't be rebuilt here.
+        case "absent":
+        case "readable":
+        case "unreadable":
+          return undefined;
+      }
   }
   return undefined;
 }

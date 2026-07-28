@@ -218,7 +218,6 @@ export class VersionPreviewService {
       return;
     }
     if (command.type === "restore-to-message" && !command.restoreCodebase) {
-      onRestoreProgress({ nextStep: "repository-unchanged" });
       return;
     }
     const app = await db.query.apps.findFirst({

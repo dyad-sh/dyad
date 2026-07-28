@@ -84,6 +84,25 @@ describe("version preview persistence", () => {
     });
   });
 
+  it("keeps the previous safe snapshot until restore facts are checkpointed", () => {
+    versionPreviewPersistence.checkpoint(7, {
+      type: "previewing",
+      session,
+    });
+
+    versionPreviewPersistence.schedule(7, {
+      type: "restoring",
+      session,
+      fallback: "previewing",
+    });
+    versionPreviewPersistence.flush(7);
+
+    expect(versionPreviewPersistence.load(7)).toMatchObject({
+      type: "previewing",
+      session: { checkedOutVersionId: "abc123" },
+    });
+  });
+
   it("fails closed on corrupt checkpoints instead of treating them as idle", () => {
     const directory = path.join(paths.userData, "state-machines");
     fs.mkdirSync(directory, { recursive: true });

@@ -17,20 +17,28 @@ export interface PreviewError {
 
 export type RestoreRecovery =
   | {
-      readonly nextStep: "repository-unchanged";
-    }
-  | {
       readonly preRestoreHead: string;
       readonly preRestoreBranch: string | null;
       readonly targetHead: string | null;
-      readonly nextStep: "preparing" | "hard-reset" | "soft-reset" | "commit";
+      readonly nextStep:
+        | "preparing"
+        | "preserve-dirty-tree"
+        | "checkout-branch"
+        | "hard-reset"
+        | "soft-reset"
+        | "commit";
     }
   | {
       readonly preRestoreHead: string;
       readonly preRestoreBranch: string | null;
       readonly targetHead: string;
-      readonly nextStep: "completed";
       readonly completedHead: string;
+      readonly repositoryOutcome: "target-applied";
+      readonly nextStep: "chat-mutation" | "completed";
+    }
+  | {
+      readonly repositoryOutcome: "unchanged";
+      readonly nextStep: "chat-mutation" | "completed";
     };
 
 export interface PreviewSession {

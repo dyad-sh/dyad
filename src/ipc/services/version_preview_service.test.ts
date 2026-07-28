@@ -83,7 +83,7 @@ describe("VersionPreviewService reconciliation admission", () => {
     expect(handlers.revertVersion).toHaveBeenCalledOnce();
   });
 
-  it("checkpoints chat-only restores as repository-unchanged", async () => {
+  it("does not persist a fact-free checkpoint before a chat-only restore", async () => {
     handlers.restoreToMessage.mockResolvedValue({
       repositoryOutcome: "unchanged",
       notification: null,
@@ -107,7 +107,7 @@ describe("VersionPreviewService reconciliation admission", () => {
       (checkpoint) => progress.push(checkpoint),
     );
 
-    expect(progress).toEqual([{ nextStep: "repository-unchanged" }]);
+    expect(progress).toEqual([]);
     expect(git.getCurrentCommitHash).not.toHaveBeenCalled();
     expect(handlers.restoreToMessage).toHaveBeenCalledOnce();
   });

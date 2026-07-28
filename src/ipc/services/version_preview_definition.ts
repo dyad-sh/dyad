@@ -111,21 +111,23 @@ function reconcileRestore(
   event: Extract<VersionPreviewWireEvent, { type: "RECONCILED" }>,
 ): PreviewState {
   const recovery = current.restoreRecovery;
-  if (recovery?.nextStep === "repository-unchanged") {
-    if (current.session.originBranch === null) return CLOSED_STATE;
-    return event.branch === current.session.originBranch
-      ? CLOSED_STATE
-      : {
-          type: "recovery-required",
-          session: current.session,
-          error: {
-            message:
-              "Dyad restarted while restoring a chat from a historical checkout. Return to the original branch before continuing.",
-          },
-        };
+
+  if (
+    current.type === "restoring" &&
+    recovery?.nextStep === "completed" &&
+    recovery.repositoryOutcome === "unchanged"
+  ) {
+    const session = {
+      ...current.session,
+      targetVersionId: current.session.checkedOutVersionId,
+      selectedDiffFile: null,
+      isDiffVisible: false,
+    };
+    if (current.fallback === "closed") return CLOSED_STATE;
+    return { type: current.fallback, session };
   }
 
-  if (recovery) {
+  if (recovery && "preRestoreHead" in recovery) {
     const branchMatches =
       recovery.preRestoreBranch !== null &&
       event.branch === recovery.preRestoreBranch;
@@ -133,12 +135,19 @@ function reconcileRestore(
       branchMatches &&
       event.headOid === recovery.preRestoreHead &&
       event.isClean;
+    const maySettleAtPreRestoreState =
+      recovery.nextStep !== "chat-mutation" &&
+      recovery.nextStep !== "completed";
     const completedStateMatches =
       recovery.nextStep === "completed" &&
+      recovery.repositoryOutcome === "target-applied" &&
       branchMatches &&
       event.headOid === recovery.completedHead &&
       event.isClean;
-    if (preRestoreStateMatches || completedStateMatches) {
+    if (
+      (maySettleAtPreRestoreState && preRestoreStateMatches) ||
+      completedStateMatches
+    ) {
       return CLOSED_STATE;
     }
   }
@@ -353,11 +362,15 @@ function createCommandRunner(
       case "restore-to-message": {
         if (!invocationRef) return;
         let restoreProgress: RestoreRecovery | null = null;
+        const isRestore =
+          command.type === "restore" || command.type === "restore-to-message";
         try {
-          versionPreviewPersistence.checkpoint(
-            appId,
-            context.getSnapshot().state,
-          );
+          if (!isRestore) {
+            versionPreviewPersistence.checkpoint(
+              appId,
+              context.getSnapshot().state,
+            );
+          }
         } catch (error) {
           const info = errorInfo(error);
           versionPreviewPresentationService.publishError(
@@ -498,7 +511,6 @@ function createCommandRunner(
                   emit(
                     restoreProgress &&
                       restoreProgress.nextStep !== "preparing" &&
-                      restoreProgress.nextStep !== "repository-unchanged" &&
                       restoreProgress.nextStep !== "completed"
                       ? {
                           type: "RESTORE_RECOVERY_REQUIRED",

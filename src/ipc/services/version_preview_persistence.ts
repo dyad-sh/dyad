@@ -52,14 +52,20 @@ const persistedFallbackSchema = z.discriminatedUnion("type", [
     .strict(),
 ]);
 
-const restoreRecoverySchema = z.discriminatedUnion("nextStep", [
-  z.object({ nextStep: z.literal("repository-unchanged") }).strict(),
+const restoreRecoverySchema = z.union([
   z
     .object({
       preRestoreHead: z.string().min(1),
       preRestoreBranch: z.string().min(1).nullable(),
       targetHead: z.string().min(1).nullable(),
-      nextStep: z.enum(["preparing", "hard-reset", "soft-reset", "commit"]),
+      nextStep: z.enum([
+        "preparing",
+        "preserve-dirty-tree",
+        "checkout-branch",
+        "hard-reset",
+        "soft-reset",
+        "commit",
+      ]),
     })
     .strict(),
   z
@@ -67,8 +73,15 @@ const restoreRecoverySchema = z.discriminatedUnion("nextStep", [
       preRestoreHead: z.string().min(1),
       preRestoreBranch: z.string().min(1).nullable(),
       targetHead: z.string().min(1),
-      nextStep: z.literal("completed"),
       completedHead: z.string().min(1),
+      repositoryOutcome: z.literal("target-applied"),
+      nextStep: z.enum(["chat-mutation", "completed"]),
+    })
+    .strict(),
+  z
+    .object({
+      repositoryOutcome: z.literal("unchanged"),
+      nextStep: z.enum(["chat-mutation", "completed"]),
     })
     .strict(),
 ]);
@@ -238,6 +251,12 @@ class VersionPreviewPersistence {
   }
 
   schedule(appId: number, state: PreviewState): void {
+    // A restore is not durable until its first operation-specific checkpoint
+    // records the repository facts needed for restart reconciliation. Keep the
+    // previous safe snapshot during this short preparation window.
+    if (state.type === "restoring" && !state.restoreRecovery) {
+      return;
+    }
     this.pending.set(appId, state);
     if (this.flushScheduled) return;
     this.flushScheduled = true;

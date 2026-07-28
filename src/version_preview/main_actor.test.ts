@@ -555,6 +555,7 @@ describe("version_preview main actor", () => {
         targetHead: "abc123",
         nextStep: "completed" as const,
         completedHead: "restore-commit",
+        repositoryOutcome: "target-applied" as const,
       },
       branch: "main",
       headOid: "restore-commit",
@@ -569,9 +570,25 @@ describe("version_preview main actor", () => {
         targetHead: "abc123",
         nextStep: "completed" as const,
         completedHead: "restore-commit",
+        repositoryOutcome: "target-applied" as const,
       },
       branch: "main",
       headOid: "external-commit",
+      isClean: true,
+      expectedType: "restore-recovery-required",
+    },
+    {
+      name: "codebase completed but chat mutation may not have run",
+      restoreRecovery: {
+        preRestoreHead: "pre-restore-head",
+        preRestoreBranch: "main",
+        targetHead: "abc123",
+        nextStep: "chat-mutation" as const,
+        completedHead: "restore-commit",
+        repositoryOutcome: "target-applied" as const,
+      },
+      branch: "main",
+      headOid: "restore-commit",
       isClean: true,
       expectedType: "restore-recovery-required",
     },
@@ -596,6 +613,7 @@ describe("version_preview main actor", () => {
         targetHead: "abc123",
         nextStep: "completed" as const,
         completedHead: "restore-commit",
+        repositoryOutcome: "target-applied" as const,
       },
       branch: null,
       headOid: "restore-commit",
@@ -678,7 +696,7 @@ describe("version_preview main actor", () => {
     harness.transport.dispose();
   });
 
-  it("closes an interrupted chat-only restore without Git recovery", async () => {
+  it("settles an interrupted completed chat-only restore without Git recovery", async () => {
     persistence.load.mockReturnValue({
       type: "restoring",
       fallback: "closed",
@@ -691,7 +709,10 @@ describe("version_preview main actor", () => {
         selectedDiffFile: null,
         isDiffVisible: false,
       },
-      restoreRecovery: { nextStep: "repository-unchanged" },
+      restoreRecovery: {
+        repositoryOutcome: "unchanged",
+        nextStep: "completed",
+      },
     });
     service.reconcile.mockResolvedValue({
       branch: "main",
@@ -703,6 +724,44 @@ describe("version_preview main actor", () => {
     await flush();
 
     expect(harness.actorA.getSnapshot().state.type).toBe("closed");
+
+    harness.releaseA();
+    harness.releaseB();
+    harness.clientA.dispose();
+    harness.clientB.dispose();
+    harness.transport.dispose();
+  });
+
+  it("keeps recovery visible when a chat-only restore may have mutated the database", async () => {
+    persistence.load.mockReturnValue({
+      type: "restoring",
+      fallback: "closed",
+      session: {
+        appId: 7,
+        originBranch: null,
+        targetVersionId: null,
+        checkedOutVersionId: null,
+        exitIntent: { type: "none" },
+        selectedDiffFile: null,
+        isDiffVisible: false,
+      },
+      restoreRecovery: {
+        repositoryOutcome: "unchanged",
+        nextStep: "chat-mutation",
+      },
+    });
+    service.reconcile.mockResolvedValue({
+      branch: "main",
+      headOid: "live-head",
+      isClean: true,
+    });
+    const harness = createHarness();
+    await harness.actorA.resync();
+    await flush();
+
+    expect(harness.actorA.getSnapshot().state.type).toBe(
+      "restore-recovery-required",
+    );
 
     harness.releaseA();
     harness.releaseB();
@@ -919,6 +978,57 @@ describe("version_preview main actor", () => {
         targetHead: "abc123",
         nextStep: "soft-reset",
       },
+    });
+
+    harness.releaseA();
+    harness.releaseB();
+    harness.clientA.dispose();
+    harness.clientB.dispose();
+    harness.transport.dispose();
+  });
+
+  it("keeps recovery visible when Git fails after the branch checkout starts", async () => {
+    service.run.mockImplementationOnce(
+      async (
+        _command: unknown,
+        _operationId: string,
+        onRestoreProgress: (progress: RestoreRecovery) => void,
+      ) => {
+        onRestoreProgress({
+          preRestoreHead: "pre-restore-head",
+          preRestoreBranch: "main",
+          targetHead: "abc123",
+          nextStep: "preparing",
+        });
+        onRestoreProgress({
+          preRestoreHead: "pre-restore-head",
+          preRestoreBranch: "main",
+          targetHead: "abc123",
+          nextStep: "checkout-branch",
+        });
+        throw new Error("checkout failed");
+      },
+    );
+    const harness = createHarness();
+    await harness.actorA.resync();
+
+    await harness.actorA.dispatch({
+      type: "RESTORE",
+      versionId: "abc123",
+      operationId: "restore-checkout-failure",
+    });
+    await flush();
+
+    expect(
+      (
+        harness.host.peek(
+          versionPreviewDefinition.id,
+          versionPreviewKey(7),
+        ) as any
+      ).getSnapshot().state,
+    ).toMatchObject({
+      type: "restore-recovery-required",
+      restoreRecovery: { nextStep: "checkout-branch" },
     });
 
     harness.releaseA();

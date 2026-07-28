@@ -429,7 +429,14 @@ async function revertCodebaseToVersion({
   targetBranchName?: string;
   preserveDirtyTree?: boolean;
   onRestoreProgress?: (progress: RestoreRecovery) => void;
-}): Promise<{ successMessage: string; warningMessage: string }> {
+}): Promise<{
+  successMessage: string;
+  warningMessage: string;
+  restoreCompletion: Extract<
+    RestoreRecovery,
+    { repositoryOutcome: "target-applied" }
+  > & { nextStep: "chat-mutation" };
+}> {
   let successMessage = "Restored version";
   let warningMessage = "";
 
@@ -438,6 +445,20 @@ async function revertCodebaseToVersion({
       appPath,
       targetBranchName,
     });
+  const restoreFacts = {
+    preRestoreHead: currentCommitHash,
+    preRestoreBranch: targetBranchName ?? currentBranch,
+    targetHead: previousVersionId,
+  } as const;
+  const checkpointGitStep = (
+    nextStep:
+      | "preparing"
+      | "preserve-dirty-tree"
+      | "checkout-branch"
+      | "hard-reset"
+      | "soft-reset"
+      | "commit",
+  ) => onRestoreProgress?.({ ...restoreFacts, nextStep });
   // Detached HEAD (e.g. the Version pane has a historical version checked out)
   // has no branch to anchor the revert commit to. Callers that legitimately
   // operate while detached (the Version-pane restore) pass an explicit
@@ -476,6 +497,7 @@ async function revertCodebaseToVersion({
         (preservedUserVisibleFiles ? ` (${preservedUserVisibleFiles})` : "") +
         ". Dyad-managed runtime files may also be included in the checkpoint.",
     );
+    checkpointGitStep("preserve-dirty-tree");
     await gitAddAll({ path: appPath });
     const checkpointCommit = await gitCommit({
       path: appPath,
@@ -487,6 +509,7 @@ async function revertCodebaseToVersion({
     }
   }
 
+  checkpointGitStep("checkout-branch");
   await gitCheckout({
     path: appPath,
     ref: revertRef,
@@ -500,8 +523,10 @@ async function revertCodebaseToVersion({
     const hasStagedCheckpointChanges = await gitStageToRevert({
       path: appPath,
       targetOid: detachedCheckpointCommit,
+      onBeforeReset: ({ nextStep }) => checkpointGitStep(nextStep),
     });
     if (hasStagedCheckpointChanges) {
+      checkpointGitStep("commit");
       await gitCommit({
         path: appPath,
         message:
@@ -521,31 +546,15 @@ async function revertCodebaseToVersion({
   const hasStagedRevertChanges = await gitStageToRevert({
     path: appPath,
     targetOid: previousVersionId,
-    onBeforeReset: (progress) =>
-      onRestoreProgress?.({
-        ...progress,
-        preRestoreBranch: targetBranchName ?? currentBranch,
-      }),
+    onBeforeReset: ({ nextStep }) => checkpointGitStep(nextStep),
   });
   if (hasStagedRevertChanges) {
-    onRestoreProgress?.({
-      preRestoreHead: currentCommitHash,
-      preRestoreBranch: targetBranchName ?? currentBranch,
-      targetHead: previousVersionId,
-      nextStep: "commit",
-    });
+    checkpointGitStep("commit");
     await gitCommit({
       path: appPath,
       message: `Reverted all changes back to version ${previousVersionId}`,
     });
   }
-  onRestoreProgress?.({
-    preRestoreHead: currentCommitHash,
-    preRestoreBranch: targetBranchName ?? currentBranch,
-    targetHead: previousVersionId,
-    nextStep: "completed",
-    completedHead: await getCurrentCommitHash({ path: appPath }),
-  });
 
   if (app.neonProjectId && app.neonDevelopmentBranchId) {
     const version = await db.query.versions.findFirst({
@@ -692,7 +701,15 @@ async function revertCodebaseToVersion({
   }
   await syncCloudSandboxSnapshotBestEffort(appId);
 
-  return { successMessage, warningMessage };
+  const restoreCompletion = {
+    ...restoreFacts,
+    completedHead: await getCurrentCommitHash({ path: appPath }),
+    repositoryOutcome: "target-applied",
+    nextStep: "chat-mutation",
+  } as const;
+  onRestoreProgress?.(restoreCompletion);
+
+  return { successMessage, warningMessage, restoreCompletion };
 }
 
 export function registerVersionHandlers() {
@@ -907,14 +924,15 @@ export function registerVersionHandlers() {
         }
       }
 
-      const { successMessage, warningMessage } = await revertCodebaseToVersion({
-        appId,
-        app,
-        appPath,
-        previousVersionId,
-        targetBranchName,
-        onRestoreProgress,
-      });
+      const { successMessage, warningMessage, restoreCompletion } =
+        await revertCodebaseToVersion({
+          appId,
+          app,
+          appPath,
+          previousVersionId,
+          targetBranchName,
+          onRestoreProgress,
+        });
 
       let affectedChatId: number | null = null;
 
@@ -981,6 +999,10 @@ export function registerVersionHandlers() {
         }
       }
 
+      onRestoreProgress?.({
+        ...restoreCompletion,
+        nextStep: "completed",
+      });
       return versionCommandResult({
         notification: warningMessage
           ? { kind: "warning", message: warningMessage }
@@ -1280,6 +1302,12 @@ export function registerVersionHandlers() {
         let successMessage = "Forked the chat into a new chat.";
         let warningMessage = "";
 
+        let restoreCompletion:
+          | (Extract<
+              RestoreRecovery,
+              { repositoryOutcome: "target-applied" }
+            > & { nextStep: "chat-mutation" })
+          | undefined;
         if (restoreCodebase && latestTargetCommitHash) {
           const result = await revertCodebaseToVersion({
             appId,
@@ -1292,6 +1320,7 @@ export function registerVersionHandlers() {
           });
           successMessage = result.successMessage;
           warningMessage = result.warningMessage;
+          restoreCompletion = result.restoreCompletion;
         }
 
         // Carry over the original chat's title so the forked chat is tied to
@@ -1374,6 +1403,12 @@ export function registerVersionHandlers() {
         // the chat insert. better-sqlite3 transactions are synchronous, so the
         // callback uses the sync query API (`.get()`/`.run()`) rather than
         // `await`.
+        if (!restoreCodebase) {
+          onRestoreProgress?.({
+            repositoryOutcome: "unchanged",
+            nextStep: "chat-mutation",
+          });
+        }
         const newChat = db.transaction((tx) => {
           const createdChat = tx
             .insert(chats)
@@ -1427,6 +1462,14 @@ export function registerVersionHandlers() {
           return createdChat;
         });
 
+        onRestoreProgress?.(
+          restoreCompletion
+            ? { ...restoreCompletion, nextStep: "completed" }
+            : {
+                repositoryOutcome: "unchanged",
+                nextStep: "completed",
+              },
+        );
         return versionCommandResult({
           repositoryOutcome: restoreCodebase ? "target-applied" : "unchanged",
           notification: warningMessage

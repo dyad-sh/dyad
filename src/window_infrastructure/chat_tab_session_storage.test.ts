@@ -183,4 +183,50 @@ describe("per-window chat tab session storage", () => {
       "{}",
     );
   });
+
+  it("falls back without blocking startup when browser storage is unavailable", () => {
+    const storageError = new DOMException("Storage denied", "SecurityError");
+    const unavailableStorage = {
+      get length(): number {
+        throw storageError;
+      },
+      clear: vi.fn(() => {
+        throw storageError;
+      }),
+      getItem: vi.fn(() => {
+        throw storageError;
+      }),
+      key: vi.fn(() => {
+        throw storageError;
+      }),
+      removeItem: vi.fn(() => {
+        throw storageError;
+      }),
+      setItem: vi.fn(() => {
+        throw storageError;
+      }),
+    } satisfies Storage;
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    const storage = createChatTabSessionStorage(unavailableStorage);
+    const fallback: ChatTabSession = {
+      openChatIds: [],
+      selectedChatId: null,
+      closedChatIds: [],
+      updatedAt: 0,
+    };
+
+    expect(
+      storage.getItem(LEGACY_CHAT_TAB_SESSION_STORAGE_KEY, fallback),
+    ).toEqual(fallback);
+    expect(() =>
+      storage.setItem(LEGACY_CHAT_TAB_SESSION_STORAGE_KEY, fallback),
+    ).not.toThrow();
+    expect(() => storage.removeItem()).not.toThrow();
+    expect(() =>
+      pruneChatTabWindowSessions(unavailableStorage, [firstWindow]),
+    ).not.toThrow();
+    expect(consoleError).toHaveBeenCalledTimes(4);
+  });
 });

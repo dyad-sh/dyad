@@ -12,8 +12,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { AlertTriangle, Upload } from "lucide-react";
-import { ipc } from "@/ipc/types";
 import { helpDialogAtom } from "@/atoms/helpDialogAtom";
+import { earlyForceCloseEvents } from "@/app_wiring/early_renderer_events";
 
 interface ForceClosePerformanceData {
   timestamp: number;
@@ -41,7 +41,7 @@ export function ForceCloseDialog() {
   );
 
   useEffect(() => {
-    const unsubscribe = ipc.events.system.onForceCloseDetected((data) => {
+    const unsubscribe = earlyForceCloseEvents.subscribe((data) => {
       setPerformanceData(data.performanceData);
       setActiveChatId(data.activeChatId);
       setIsOpen(true);

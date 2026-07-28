@@ -152,20 +152,24 @@ export function pruneChatTabWindowSessions(
   storage: Storage,
   restorableWindowSessionIds: readonly WindowSessionId[],
 ): void {
-  const restorable = new Set(
-    restorableWindowSessionIds.map(chatTabSessionStorageKey),
-  );
-  const staleKeys: string[] = [];
-  for (let index = 0; index < storage.length; index += 1) {
-    const key = storage.key(index);
-    if (
-      key?.startsWith(CHAT_TAB_SESSION_STORAGE_PREFIX) &&
-      !restorable.has(key)
-    ) {
-      staleKeys.push(key);
+  try {
+    const restorable = new Set(
+      restorableWindowSessionIds.map(chatTabSessionStorageKey),
+    );
+    const staleKeys: string[] = [];
+    for (let index = 0; index < storage.length; index += 1) {
+      const key = storage.key(index);
+      if (
+        key?.startsWith(CHAT_TAB_SESSION_STORAGE_PREFIX) &&
+        !restorable.has(key)
+      ) {
+        staleKeys.push(key);
+      }
     }
+    for (const key of staleKeys) storage.removeItem(key);
+  } catch (error) {
+    console.error("Failed to prune chat tab window sessions", error);
   }
-  for (const key of staleKeys) storage.removeItem(key);
 }
 
 export function createChatTabSessionStorage(
@@ -177,46 +181,63 @@ export function createChatTabSessionStorage(
       : storageOrFactory;
   return {
     getItem(_key: string, initialValue: ChatTabSession): ChatTabSession {
-      const storage = getStorage();
-      if (!storage) return initialValue;
-      const sessionKey = chatTabSessionStorageKey(activeWindowSessionId);
-      const current = parseStoredSession(
-        storage.getItem(sessionKey),
-        activeWindowSessionId,
-      );
-      if (current) return fromStoredSession(current);
-
-      if (!mayMigrateLegacySession) return initialValue;
-      const legacy = parseLegacySession(
-        storage.getItem(LEGACY_CHAT_TAB_SESSION_STORAGE_KEY),
-      );
-      if (!legacy) return initialValue;
-
-      // The main process designates exactly one stable session as the legacy
-      // migration owner. Persist immediately so later reads never replay the
-      // retained compatibility blob into another product window.
-      storage.setItem(
-        sessionKey,
-        JSON.stringify(toStoredSession(legacy, activeWindowSessionId)),
-      );
-      return legacy;
-    },
-    setItem(_key: string, value: ChatTabSession): void {
-      const storage = getStorage();
-      if (!storage || !isLegacySession(value)) return;
-      const sessionKey = chatTabSessionStorageKey(activeWindowSessionId);
-      const previous =
-        parseStoredSession(
+      try {
+        const storage = getStorage();
+        if (!storage) return initialValue;
+        const sessionKey = chatTabSessionStorageKey(activeWindowSessionId);
+        const current = parseStoredSession(
           storage.getItem(sessionKey),
           activeWindowSessionId,
-        ) ?? undefined;
-      storage.setItem(
-        sessionKey,
-        JSON.stringify(toStoredSession(value, activeWindowSessionId, previous)),
-      );
+        );
+        if (current) return fromStoredSession(current);
+
+        if (!mayMigrateLegacySession) return initialValue;
+        const legacy = parseLegacySession(
+          storage.getItem(LEGACY_CHAT_TAB_SESSION_STORAGE_KEY),
+        );
+        if (!legacy) return initialValue;
+
+        // The main process designates exactly one stable session as the legacy
+        // migration owner. Persist immediately so later reads never replay the
+        // retained compatibility blob into another product window.
+        storage.setItem(
+          sessionKey,
+          JSON.stringify(toStoredSession(legacy, activeWindowSessionId)),
+        );
+        return legacy;
+      } catch (error) {
+        console.error("Failed to read chat tab window session", error);
+        return initialValue;
+      }
+    },
+    setItem(_key: string, value: ChatTabSession): void {
+      try {
+        const storage = getStorage();
+        if (!storage || !isLegacySession(value)) return;
+        const sessionKey = chatTabSessionStorageKey(activeWindowSessionId);
+        const previous =
+          parseStoredSession(
+            storage.getItem(sessionKey),
+            activeWindowSessionId,
+          ) ?? undefined;
+        storage.setItem(
+          sessionKey,
+          JSON.stringify(
+            toStoredSession(value, activeWindowSessionId, previous),
+          ),
+        );
+      } catch (error) {
+        console.error("Failed to persist chat tab window session", error);
+      }
     },
     removeItem(): void {
-      getStorage()?.removeItem(chatTabSessionStorageKey(activeWindowSessionId));
+      try {
+        getStorage()?.removeItem(
+          chatTabSessionStorageKey(activeWindowSessionId),
+        );
+      } catch (error) {
+        console.error("Failed to remove chat tab window session", error);
+      }
     },
   };
 }

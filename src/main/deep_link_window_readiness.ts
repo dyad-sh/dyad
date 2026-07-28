@@ -19,6 +19,11 @@ export class DeepLinkWindowReadiness<TWindow extends object> {
     if (window === this.target) this.queue.markReady();
   }
 
+  markNotReady(window: TWindow): void {
+    this.readyWindows.delete(window);
+    if (window === this.target) this.queue.markNotReady();
+  }
+
   private syncQueueReadiness(): void {
     if (this.target && this.readyWindows.has(this.target)) {
       this.queue.markReady();

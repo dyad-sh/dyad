@@ -46,9 +46,11 @@ import {
   pruneChatTabWindowSessions,
 } from "./window_infrastructure/chat_tab_session_storage";
 import type { VisibleEntity } from "./window_infrastructure/types";
+import { registerEarlyRendererEvents } from "./app_wiring/early_renderer_events";
 
 // @ts-ignore
 console.log("Running in mode:", import.meta.env.MODE);
+registerEarlyRendererEvents();
 
 interface MyMeta extends Record<string, unknown> {
   showErrorToast: boolean;
@@ -205,11 +207,21 @@ function RendererServices() {
           configureChatTabWindowSession(bootstrap.windowSessionId, {
             mayMigrateLegacySession: bootstrap.mayMigrateLegacyChatTabSession,
           });
-          pruneChatTabWindowSessions(
-            window.localStorage,
-            bootstrap.restorableWindowSessionIds,
-          );
-          store.set(initializeChatTabSessionStorageAtom);
+          try {
+            pruneChatTabWindowSessions(
+              window.localStorage,
+              bootstrap.restorableWindowSessionIds,
+            );
+            store.set(initializeChatTabSessionStorageAtom);
+          } catch (error) {
+            // Browser storage is optional presentation state. A denied or full
+            // localStorage must not turn a successful main-process bootstrap
+            // into a permanently blank product window.
+            console.error(
+              "Failed to initialize chat tab session storage",
+              error,
+            );
+          }
           const entity: VisibleEntity | undefined = bootstrap.initialEntity;
           if (entity?.kind === "app") {
             void router.navigate({

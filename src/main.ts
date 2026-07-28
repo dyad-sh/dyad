@@ -754,6 +754,11 @@ const createWindow = ({
     browserWindow.webContents.openDevTools();
   }
 
+  let forceCloseMessageSent = false;
+  browserWindow.webContents.on("did-start-loading", () => {
+    deepLinkWindowReadiness.markNotReady(browserWindow);
+  });
+
   // and load the index.html of the app.
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     browserWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
@@ -764,7 +769,6 @@ const createWindow = ({
   }
 
   // Handle force-close message and development reload coordination
-  let forceCloseMessageSent = false;
   let devToolsReloadedCount = 0;
 
   browserWindow.webContents.on("did-finish-load", () => {
@@ -783,10 +787,10 @@ const createWindow = ({
     // reported in app:crash_detected.
     processNativeCrashDumps();
 
-    // Send force-close once after the correct load
+    // The renderer installs a replaying listener before React/bootstrap, so
+    // this event is retained until ForceCloseDialog mounts.
     if (pendingCrashDetected && !forceCloseMessageSent) {
       forceCloseMessageSent = true;
-
       if (!browserWindow.isDestroyed()) {
         browserWindow.webContents.send("force-close-detected", {
           ...(pendingForceCloseData && {
@@ -1099,6 +1103,14 @@ protocol.registerSchemesAsPrivileged([
   },
 ]);
 
+// A cold-start protocol URL arrives in argv before any renderer is ready.
+// Queue it in both production and E2E builds; the latter skips only the
+// singleton lock so parallel test processes can coexist.
+const initialDeepLink = process.argv.find((arg) => arg.startsWith("dyad://"));
+if (initialDeepLink) {
+  deepLinkQueue.handle(initialDeepLink);
+}
+
 // Skip singleton lock for E2E test builds to allow parallel test execution.
 // Deep link handling still works via the 'open-url' event registered below.
 // The 'second-instance' handler is intentionally omitted since it requires the singleton lock.
@@ -1122,18 +1134,6 @@ if (IS_TEST_BUILD) {
         deepLinkQueue.handle(url);
       }
     });
-
-    // On a cold start the deep link arrives in this instance's argv (the
-    // .desktop Exec %u), and second-instance only fires for later launches, so
-    // drain the initial argv here. The queue holds it until the app is ready.
-    // This runs on every launch, so match by dyad:// prefix to ignore the
-    // normal (no-deep-link) startup args.
-    const initialDeepLink = process.argv.find((arg) =>
-      arg.startsWith("dyad://"),
-    );
-    if (initialDeepLink) {
-      deepLinkQueue.handle(initialDeepLink);
-    }
 
     startAppWhenReady();
   }

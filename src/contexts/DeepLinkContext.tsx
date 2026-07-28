@@ -6,7 +6,8 @@ import React, {
   useState,
 } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { ipc, DeepLinkData } from "../ipc/types";
+import { DeepLinkData } from "../ipc/types";
+import { earlyDeepLinkEvents } from "@/app_wiring/early_renderer_events";
 
 type DeepLinkContextType = {
   lastDeepLink: (DeepLinkData & { timestamp: number }) | null;
@@ -24,7 +25,7 @@ export function DeepLinkProvider({ children }: { children: React.ReactNode }) {
   >(null);
   const navigate = useNavigate();
   useEffect(() => {
-    const unsubscribe = ipc.events.misc.onDeepLinkReceived((data) => {
+    const unsubscribe = earlyDeepLinkEvents.subscribe((data) => {
       // Update with timestamp to ensure state change even if same type comes twice
       setLastDeepLink({ ...data, timestamp: Date.now() });
       if (data.type === "add-mcp-server") {

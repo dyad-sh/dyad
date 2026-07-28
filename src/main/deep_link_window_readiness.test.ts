@@ -41,4 +41,20 @@ describe("DeepLinkWindowReadiness", () => {
     readiness.setTarget(readyWindow);
     expect(handler).toHaveBeenCalledWith("dyad://while-loading");
   });
+
+  it("marks a reloading target unavailable until its next completed load", () => {
+    const handler = vi.fn();
+    const queue = createDeepLinkQueue(handler);
+    const readiness = new DeepLinkWindowReadiness<object>(queue);
+    const window = {};
+    readiness.setTarget(window);
+    readiness.markReady(window);
+
+    readiness.markNotReady(window);
+    queue.handle("dyad://during-reload");
+    expect(handler).not.toHaveBeenCalled();
+
+    readiness.markReady(window);
+    expect(handler).toHaveBeenCalledWith("dyad://during-reload");
+  });
 });

@@ -1,5 +1,4 @@
 import { act, render, renderHook } from "@testing-library/react";
-import { QueryClient } from "@tanstack/react-query";
 import { createStore, Provider } from "jotai";
 import type { PropsWithChildren } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";

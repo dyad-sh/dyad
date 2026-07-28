@@ -57,6 +57,7 @@ describe("distributed machine boundaries", () => {
       "github_ops/GithubOpsProvider.tsx",
       "github_ops/client_definition.ts",
       "github_ops/useGithubOps.ts",
+      "hooks/useVersionPreview.ts",
       "image_generation/hooks.ts",
       "image_generation/transport.ts",
       "ipc/handlers/distributed_machine_handlers.ts",

@@ -28,6 +28,13 @@ export const ChatTabPresentationStateSchema = z.object({
       line: z.number().int().positive().nullable().optional(),
     })
     .nullable(),
+  editorCursor: z
+    .object({
+      path: z.string().max(10_000),
+      lineNumber: z.number().int().positive(),
+      column: z.number().int().positive(),
+    })
+    .nullable(),
   stagedDiffFile: z.string().max(10_000).nullable(),
   previewHistory: z.array(z.string().max(20_000)).max(100),
   previewHistoryPosition: z.number().int().nonnegative(),

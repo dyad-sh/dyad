@@ -18,6 +18,8 @@ import {
 } from "@/components/ui/tooltip";
 import { useTranslation } from "react-i18next";
 import { enqueueFileSave, getFileSaveQueueKey } from "./fileSaveQueue";
+import { editorCursorAtom } from "@/atoms/viewAtoms";
+import { useAtomValue, useSetAtom } from "jotai";
 
 interface FileEditorProps {
   appId: number | null;
@@ -152,6 +154,9 @@ export const FileEditor = ({
   const hasInitializedContentRef = useRef(false);
   const isMountedRef = useRef(false);
   const releaseModelRef = useRef<(() => void) | null>(null);
+  const cursorSubscriptionRef = useRef<{ dispose(): void } | null>(null);
+  const editorCursor = useAtomValue(editorCursorAtom);
+  const setEditorCursor = useSetAtom(editorCursorAtom);
 
   const queryClient = useQueryClient();
 
@@ -159,6 +164,8 @@ export const FileEditor = ({
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
+      cursorSubscriptionRef.current?.dispose();
+      cursorSubscriptionRef.current = null;
       releaseModelRef.current?.();
       releaseModelRef.current = null;
     };
@@ -216,10 +223,29 @@ export const FileEditor = ({
       releaseModelRef.current = retainMonacoModel(modelPath, model);
     }
 
-    // Navigate to initialLine if provided (handles case when editor mounts after initialLine is set)
-    if (initialLine != null) {
+    if (editorCursor?.path === filePath) {
+      editor.setPosition({
+        lineNumber: editorCursor.lineNumber,
+        column: editorCursor.column,
+      });
+      editor.revealPositionInCenter({
+        lineNumber: editorCursor.lineNumber,
+        column: editorCursor.column,
+      });
+    } else if (initialLine != null) {
+      // Navigate to initialLine if provided (handles case when editor mounts after initialLine is set)
       navigateToLine(initialLine);
     }
+
+    cursorSubscriptionRef.current = editor.onDidChangeCursorPosition(
+      ({ position }) => {
+        setEditorCursor({
+          path: filePath,
+          lineNumber: position.lineNumber,
+          column: position.column,
+        });
+      },
+    );
 
     // Save when the editor loses focus and the current model is dirty.
     editor.onDidBlurEditorText(() => {

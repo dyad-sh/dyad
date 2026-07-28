@@ -89,16 +89,24 @@ test("moves a chat tab to another window only after destination adoption", async
   await expect(po.page).toHaveURL(/chat/, { timeout: Timeout.MEDIUM });
 
   const chatId = Number(new URL(po.page.url()).searchParams.get("id"));
+  const appName = await po.appManagement.getCurrentAppName();
+  if (!appName) throw new Error("Imported app name was not available");
   expect(chatId).toBeGreaterThan(0);
-  const sourceTab = po.page.getByTestId(`chat-tab-${chatId}`);
-  await expect(sourceTab).toBeVisible({ timeout: Timeout.MEDIUM });
 
+  await po.navigation.goToAppsTab();
   const secondWindowPromise = electronApp.waitForEvent("window");
-  await sourceTab.click({ button: "right" });
+  const appItem = po.page.getByTestId(`app-list-item-${appName}`);
+  await appItem.click({ button: "right" });
   await po.page.getByRole("menuitem", { name: "Open in New Window" }).click();
   const destination = await secondWindowPromise;
   await destination.waitForLoadState("domcontentloaded");
-  await expect(destination).toHaveURL(/chat/, { timeout: Timeout.MEDIUM });
+  await expect(destination).toHaveURL(/app-details/, {
+    timeout: Timeout.MEDIUM,
+  });
+
+  await po.navigation.goToChatTab();
+  const sourceTab = po.page.getByTestId(`chat-tab-${chatId}`);
+  await expect(sourceTab).toBeVisible({ timeout: Timeout.MEDIUM });
 
   const sourceInput = po.chatActions.getChatInput();
   await sourceInput.click();
@@ -117,7 +125,6 @@ test("moves a chat tab to another window only after destination adoption", async
     return dataTransfer.getData("application/x-dyad-chat-tab-transfer");
   });
   expect(dragPayload).not.toBe("");
-  await po.page.waitForTimeout(100);
 
   await destination
     .getByTestId("chat-tab-drop-zone")

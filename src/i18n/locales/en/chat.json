@@ -18,6 +18,7 @@
   "closeChatTab": "Close tab: {{title}}",
   "closeTab": "Close",
   "openChatInNewWindow": "Open in New Window",
+  "moveTabAttachmentsBlocked": "Send or remove draft attachments before moving this tab",
   "closeOtherTabs": "Close other tabs",
   "closeTabsToRight": "Close tabs to the right",
   "groupTabsByApp": "Group tabs by app",

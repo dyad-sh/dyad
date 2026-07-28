@@ -18,6 +18,11 @@ import { getWindowProductController } from "../../window_infrastructure/main/win
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { BrowserWindow, type WebContents } from "electron";
 import { ChatTabTransferCoordinator } from "@/window_infrastructure/main/chat_tab_transfer_coordinator";
+import { readSettings } from "@/main/settings";
+import {
+  chatNotificationTarget,
+  revealWindow,
+} from "@/window_infrastructure/main/chat_notification_routing";
 
 const chatTabTransfers = new ChatTabTransferCoordinator(windowRegistry);
 
@@ -64,6 +69,16 @@ export function registerWindowInfrastructureHandlers(): void {
           controller?.restorableWindowSessionIds() ?? [windowSessionId],
         ),
       };
+    },
+  );
+
+  createTypedHandler(
+    windowInfrastructureContracts.confirmSourceChatTabRemoval,
+    async (event, input) => {
+      chatTabTransfers.confirmSourceRemoval(
+        windowRegistry.ensureRegistered(event.sender),
+        input,
+      );
     },
   );
 
@@ -148,16 +163,23 @@ export function registerWindowInfrastructureHandlers(): void {
         throw new DyadError("Chat not found", DyadErrorKind.NotFound);
       }
       const entity = { kind: "chat" as const, id: chatId };
-      const existingSession = windowRegistry.findWindowsShowing(entity)[0];
-      if (existingSession) {
-        const endpoint = windowRegistry.endpointForSession(existingSession);
+      const targetSession = chatNotificationTarget(
+        windowRegistry,
+        entity,
+        !!readSettings().enableMultiWindow,
+      );
+      if (targetSession) {
+        const endpoint = windowRegistry.endpointForSession(targetSession);
         if (endpoint) {
-          BrowserWindow.fromWebContents(endpoint as WebContents)?.focus();
+          const targetWindow = BrowserWindow.fromWebContents(
+            endpoint as WebContents,
+          );
+          if (targetWindow) revealWindow(targetWindow);
           endpoint.send("window:navigate-to-chat", {
             chatId,
             appId: chat.appId,
           });
-          return { windowSessionId: existingSession };
+          return { windowSessionId: targetSession };
         }
       }
       const controller = getWindowProductController();

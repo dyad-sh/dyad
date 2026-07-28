@@ -120,6 +120,11 @@ When a loaded window consumes and clears a persisted one-shot event, send the
 event through that known-ready window rather than `BrowserWindow.getAllWindows()[0]`.
 In multi-window startup the first global window may still be loading, which
 would drop the only replay before its early listener exists.
+For cross-window ownership transfer, a successful `webContents.send()` is not
+an acknowledgement. Buffer the request before React mounts, require a
+correlated renderer receipt after local persistence, retain the main-process
+transfer until that receipt arrives, and roll back source or destination state
+on timeout/failure so the same stable identity cannot remain in both windows.
 
 **Custom-protocol debugging:** Before using `git bisect` on a `dyad://` flow, quit every dev and packaged Dyad instance and verify which build owns the protocol registration. macOS may route the link to a different running/registered build, producing a convincing but false good/bad result.
 

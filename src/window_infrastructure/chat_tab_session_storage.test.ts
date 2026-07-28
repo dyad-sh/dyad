@@ -111,12 +111,38 @@ describe("per-window chat tab session storage", () => {
     expect(secondEnvelope.tabs).toHaveLength(1);
   });
 
-  it("adopts a transferred tab identity and replaces a duplicate chat tab", () => {
+  it("rejects adoption when the destination already has that chat", () => {
     const storage = createChatTabSessionStorage(localStorage);
     storage.setItem(LEGACY_CHAT_TAB_SESSION_STORAGE_KEY, {
       openChatIds: [10, 20],
       selectedChatId: 20,
       closedChatIds: [30],
+      updatedAt: 1,
+    });
+    const transferredTabInstanceId =
+      "60000000-0000-4000-8000-000000000006" as TabInstanceId;
+
+    expect(() =>
+      adoptStoredChatTab({
+        chatId: 20,
+        tabInstanceId: transferredTabInstanceId,
+      }),
+    ).toThrow("already has a tab");
+
+    const adopted = JSON.parse(
+      localStorage.getItem(chatTabSessionStorageKey(firstWindow))!,
+    ) as StoredWindowChatTabSession;
+    expect(adopted.tabs.map((tab) => tab.chatId)).toEqual([10, 20]);
+    expect(adopted.tabs[0].tabInstanceId).not.toBe(transferredTabInstanceId);
+    expect(adopted.closedChatIds).toEqual([30]);
+  });
+
+  it("adopts a transferred identity when the chat is not open", () => {
+    const storage = createChatTabSessionStorage(localStorage);
+    storage.setItem(LEGACY_CHAT_TAB_SESSION_STORAGE_KEY, {
+      openChatIds: [10],
+      selectedChatId: 10,
+      closedChatIds: [20],
       updatedAt: 1,
     });
     const transferredTabInstanceId =
@@ -133,7 +159,7 @@ describe("per-window chat tab session storage", () => {
     expect(adopted.tabs.map((tab) => tab.chatId)).toEqual([20, 10]);
     expect(adopted.tabs[0].tabInstanceId).toBe(transferredTabInstanceId);
     expect(adopted.selectedTabInstanceId).toBe(transferredTabInstanceId);
-    expect(adopted.closedChatIds).toEqual([30]);
+    expect(adopted.closedChatIds).toEqual([]);
   });
 
   it("does not replay the retained legacy blob into a second window", () => {

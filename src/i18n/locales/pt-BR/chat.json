@@ -18,6 +18,7 @@
   "closeChatTab": "Fechar aba: {{title}}",
   "closeTab": "Fechar",
   "openChatInNewWindow": "Abrir em uma nova janela",
+  "moveTabAttachmentsBlocked": "Envie ou remova os anexos do rascunho antes de mover esta aba",
   "closeOtherTabs": "Fechar outras abas",
   "closeTabsToRight": "Fechar abas à direita",
   "groupTabsByApp": "Agrupar abas por app",

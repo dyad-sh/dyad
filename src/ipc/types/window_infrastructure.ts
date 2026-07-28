@@ -64,6 +64,15 @@ export const windowInfrastructureContracts = {
     input: z.object({ transferId: z.string().uuid() }),
     output: z.void(),
   }),
+  confirmSourceChatTabRemoval: defineContract({
+    channel: "window-infrastructure:confirm-source-chat-tab-removal",
+    input: z.object({
+      transferId: z.string().uuid(),
+      tabInstanceId: TabInstanceIdSchema,
+      chatId: z.number().int().positive(),
+    }),
+    output: z.void(),
+  }),
   focusChat: defineContract({
     channel: "window-infrastructure:focus-chat",
     input: z.object({ chatId: z.number().int().positive() }),

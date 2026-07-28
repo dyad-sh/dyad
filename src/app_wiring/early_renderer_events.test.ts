@@ -4,6 +4,7 @@ const eventHandlers = vi.hoisted(() => ({
   deepLink: vi.fn(),
   forceClose: vi.fn(),
   telemetry: vi.fn(),
+  chatTabRemoval: vi.fn(),
 }));
 
 vi.mock("@/ipc/types", () => ({
@@ -25,12 +26,19 @@ vi.mock("@/ipc/types", () => ({
           return vi.fn();
         }),
       },
+      windowInfrastructure: {
+        onRemoveTransferredChatTab: vi.fn((handler) => {
+          eventHandlers.chatTabRemoval = handler;
+          return vi.fn();
+        }),
+      },
     },
   },
 }));
 
 import {
   earlyTelemetryEvents,
+  earlyChatTabRemovalEvents,
   registerEarlyRendererEvents,
   ReplayEvent,
 } from "@/app_wiring/early_renderer_events";
@@ -71,6 +79,21 @@ describe("ReplayEvent", () => {
 
     eventHandlers.telemetry(payload);
     earlyTelemetryEvents.subscribe(listener);
+
+    expect(listener).toHaveBeenCalledWith(payload);
+  });
+
+  it("buffers transferred-tab removal until the tab UI subscribes", () => {
+    const listener = vi.fn();
+    const payload = {
+      transferId: "20000000-0000-4000-8000-000000000001",
+      tabInstanceId: "30000000-0000-4000-8000-000000000001",
+      chatId: 7,
+    };
+    registerEarlyRendererEvents();
+
+    eventHandlers.chatTabRemoval(payload);
+    earlyChatTabRemovalEvents.subscribe(listener);
 
     expect(listener).toHaveBeenCalledWith(payload);
   });

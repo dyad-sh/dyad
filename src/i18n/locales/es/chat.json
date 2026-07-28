@@ -18,6 +18,7 @@
   "closeChatTab": "Cerrar pestaña: {{title}}",
   "closeTab": "Cerrar",
   "openChatInNewWindow": "Abrir en una ventana nueva",
+  "moveTabAttachmentsBlocked": "Envía o elimina los archivos adjuntos del borrador antes de mover esta pestaña",
   "closeOtherTabs": "Cerrar otras pestañas",
   "closeTabsToRight": "Cerrar pestañas a la derecha",
   "groupTabsByApp": "Agrupar pestañas por aplicación",

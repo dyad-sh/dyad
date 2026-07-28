@@ -18,6 +18,7 @@
   "closeChatTab": "关闭标签页：{{title}}",
   "closeTab": "关闭",
   "openChatInNewWindow": "在新窗口中打开",
+  "moveTabAttachmentsBlocked": "移动此标签页前，请先发送或移除草稿附件",
   "closeOtherTabs": "关闭其他标签页",
   "closeTabsToRight": "关闭右侧标签页",
   "groupTabsByApp": "按应用分组标签页",

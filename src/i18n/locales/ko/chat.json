@@ -18,6 +18,7 @@
   "closeChatTab": "탭 닫기: {{title}}",
   "closeTab": "닫기",
   "openChatInNewWindow": "새 창에서 열기",
+  "moveTabAttachmentsBlocked": "이 탭을 이동하기 전에 초안 첨부 파일을 보내거나 제거하세요",
   "closeOtherTabs": "다른 탭 닫기",
   "closeTabsToRight": "오른쪽 탭 모두 닫기",
   "groupTabsByApp": "앱별로 탭 그룹화",

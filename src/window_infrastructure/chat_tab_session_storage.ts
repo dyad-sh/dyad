@@ -69,12 +69,19 @@ export function adoptStoredChatTab(tab: StoredChatTab): void {
     storage.getItem(key),
     activeWindowSessionId,
   );
+  if (
+    current?.tabs.some(
+      (candidate) =>
+        candidate.chatId === tab.chatId &&
+        candidate.tabInstanceId !== tab.tabInstanceId,
+    )
+  ) {
+    throw new Error("The destination already has a tab for this chat");
+  }
   const tabs = [
     tab,
     ...(current?.tabs ?? []).filter(
-      (candidate) =>
-        candidate.tabInstanceId !== tab.tabInstanceId &&
-        candidate.chatId !== tab.chatId,
+      (candidate) => candidate.tabInstanceId !== tab.tabInstanceId,
     ),
   ];
   storage.setItem(

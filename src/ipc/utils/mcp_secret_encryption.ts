@@ -30,21 +30,27 @@ function sameMap(
  * Works out what a secret's encrypted column should hold, or undefined
  * when it's already correct and should be left alone.
  *
- * Plaintext wins when the two disagree. This build clears the plaintext
- * column whenever it writes a secret, so a plaintext value that differs
- * from the encrypted one can only have been written afterwards by a
- * build that predates the encrypted columns.
+ * Plaintext wins whenever the two disagree, including when it is an
+ * empty map: this build clears the plaintext column every time it
+ * writes a secret, so any value there was written afterwards by a
+ * build that predates the encrypted columns. An empty map means that
+ * build deleted the last entry, so the encrypted column is cleared too
+ * rather than leaving a secret the user removed.
  */
 function nextEncryptedValue(
   plaintext: Record<string, string> | null,
   encrypted: string | null,
-): string | undefined {
-  if (plaintext && Object.keys(plaintext).length > 0) {
+): string | null | undefined {
+  if (plaintext) {
+    const desired = encryptSecretMap(plaintext);
+    if (desired === null) {
+      return encrypted === null ? undefined : null;
+    }
     const current = encrypted ? decryptSecretMap(encrypted) : null;
     if (current && sameMap(current, plaintext)) {
       return undefined;
     }
-    return encryptSecretMap(plaintext) ?? undefined;
+    return desired;
   }
   // A `plain:` blob is only base64, so upgrade it once a keyring shows
   // up. Without one, re-encrypting would just rewrite the same tag.

@@ -196,6 +196,24 @@ describe("encryptStoredMcpSecrets", () => {
     expect(await encryptStoredMcpSecrets()).toBe(0);
   });
 
+  it("clears the encrypted column when an older build removed the last secret", async () => {
+    await db.insert(mcpServers).values({
+      id: 1,
+      name: "http",
+      transport: "http",
+      url: "https://example.com/mcp",
+      headersJson: {},
+      headersEncrypted: Buffer.from(`enc:{"A":"deleted"}`, "utf8").toString(
+        "base64",
+      ),
+    });
+
+    expect(await encryptStoredMcpSecrets()).toBe(1);
+    expect((await readRow(1)).headersEncrypted).toBeNull();
+    // A second pass has nothing left to do.
+    expect(await encryptStoredMcpSecrets()).toBe(0);
+  });
+
   it("does not rewrite a server whose last secret was removed", async () => {
     await db.insert(mcpServers).values({
       id: 1,

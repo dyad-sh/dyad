@@ -3,9 +3,12 @@ import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { GitHubConnector } from "@/components/GitHubConnector";
 import { VercelConnector } from "@/components/VercelConnector";
+import { CoolifyConnector } from "@/components/CoolifyConnector";
+import { Rocket } from "lucide-react";
 import { PortalMigrate } from "@/components/PortalMigrate";
 import { ipc } from "@/ipc/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { GithubCollaboratorManager } from "@/components/GithubCollaboratorManager";
 import { DatabaseSection } from "@/components/preview_panel/DatabaseSection";
 
@@ -123,49 +126,37 @@ export const PublishPanel = () => {
           </CardContent>
         </Card>
 
-        {/* Vercel Section */}
+        {/* Deployment */}
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2">
-              <button
-                onClick={() => {
-                  ipc.system.openExternalUrl("https://vercel.com/dashboard");
-                }}
-                className="flex items-center gap-2 hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer bg-transparent border-none p-0"
-              >
-                <svg
-                  className="w-5 h-5"
-                  fill="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path d="M24 22.525H0l12-21.05 12 21.05z" />
-                </svg>
-                Vercel
-              </button>
+              <Rocket className="w-5 h-5" />
+              Deployment
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              Publish your app by deploying it to Vercel.
-            </p>
+          <CardContent>
+            <Tabs defaultValue="vercel">
+              <TabsList className="mb-4">
+                <TabsTrigger value="vercel">Vercel</TabsTrigger>
+                <TabsTrigger value="coolify">Your own server</TabsTrigger>
+              </TabsList>
 
-            {!app?.githubOrg || !app?.githubRepo ? (
-              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
-                <div className="flex items-start gap-3">
-                  <svg
-                    className="w-5 h-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
+              <TabsContent value="vercel" className="space-y-4">
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Publish your app by deploying it to Vercel.{" "}
+                  <button
+                    onClick={() => {
+                      ipc.system.openExternalUrl(
+                        "https://vercel.com/dashboard",
+                      );
+                    }}
+                    className="underline hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer bg-transparent border-none p-0"
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
-                    />
-                  </svg>
-                  <div>
+                    Open the Vercel dashboard
+                  </button>
+                </p>
+                {!app?.githubOrg || !app?.githubRepo ? (
+                  <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
                     <h3 className="text-sm font-medium text-amber-800 dark:text-amber-200">
                       GitHub Required for Vercel Deployment
                     </h3>
@@ -174,11 +165,27 @@ export const PublishPanel = () => {
                       Please set up your GitHub repository above.
                     </p>
                   </div>
-                </div>
-              </div>
-            ) : (
-              <VercelConnector appId={selectedAppId} folderName={app.name} />
-            )}
+                ) : (
+                  <VercelConnector
+                    appId={selectedAppId}
+                    folderName={app.name}
+                  />
+                )}
+              </TabsContent>
+
+              <TabsContent value="coolify" className="space-y-4">
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Deploy to a server you own, running Coolify. It can also host
+                  a Postgres database for this app, so your data stays on your
+                  server. Apps using Supabase or Neon can deploy here too and
+                  keep their existing cloud database.
+                </p>
+                <CoolifyConnector
+                  appId={selectedAppId}
+                  hasGithubRepo={Boolean(app?.githubOrg && app?.githubRepo)}
+                />
+              </TabsContent>
+            </Tabs>
           </CardContent>
         </Card>
       </div>

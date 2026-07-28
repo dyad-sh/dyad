@@ -214,7 +214,9 @@ function transitionActor(
   const activeInvocationRef = hasFollowup
     ? currentRef
     : isIntent(event)
-      ? actorState.activeInvocationRef
+      ? result.state.type === "closed"
+        ? null
+        : actorState.activeInvocationRef
       : null;
 
   return {
@@ -512,22 +514,25 @@ export const versionPreviewDefinition: Definition = {
     return runner;
   },
   createObserver: (context) => ({
-    onTransitionApplied: ({ state, event }) => {
+    onTransitionApplied: ({ previous, state, event }) => {
       versionPreviewPersistence.schedule(context.key.appId, state.state);
       if (state.state.type === "closed") {
         versionPreviewWindowInterestService.clearApp(context.key.appId);
       }
+      const previousOperationId =
+        previous.activeInvocationRef?.operationId ?? null;
+      const activeOperationId = state.activeInvocationRef?.operationId ?? null;
       if ("operationId" in event) {
         versionPreviewPresentationService.confirm(event.operationId);
+        if (event.operationId !== activeOperationId) {
+          versionPreviewPresentationService.forget(event.operationId);
+        }
       }
-      if (state.activeInvocationRef === null) {
-        const operationId =
-          "operationId" in event
-            ? event.operationId
-            : "invocationRef" in event
-              ? event.invocationRef.operationId
-              : state.lastSettlement?.operationId;
-        if (operationId) versionPreviewPresentationService.forget(operationId);
+      if (
+        previousOperationId !== null &&
+        previousOperationId !== activeOperationId
+      ) {
+        versionPreviewPresentationService.forget(previousOperationId);
       }
     },
     onEventIgnored: ({ event }) => {

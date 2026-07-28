@@ -62,25 +62,44 @@ export function VersionPreviewProvider({ children }: PropsWithChildren) {
     return jotaiStore.sub(selectedAppIdAtom, () => {
       const nextAppId = jotaiStore.get(selectedAppIdAtom);
       if (previousAppId !== null && previousAppId !== nextAppId) {
-        presentation.send(previousAppId, {
-          type: "APP_CHANGED",
-          nextAppId,
+        const releasedAppId = previousAppId;
+        const operationId = `version-preview:${globalThis.crypto.randomUUID()}`;
+        void (async () => {
+          for (let attempt = 0; attempt < 3; attempt += 1) {
+            try {
+              await windowInterest.release(releasedAppId, operationId, {
+                type: "switch-app",
+                nextAppId,
+              });
+              presentation.send(releasedAppId, {
+                type: "APP_CHANGED",
+                nextAppId,
+              });
+              return;
+            } catch (error) {
+              if (attempt === 2) throw error;
+              try {
+                await client
+                  .actor(
+                    versionPreviewClientDefinition,
+                    versionPreviewKey(releasedAppId),
+                  )
+                  .resync();
+              } catch {
+                // The stable release operation remains safe to retry even when
+                // the actor transport cannot resync yet.
+              }
+            }
+          }
+        })().catch(() => {
+          toast.error(
+            "Version preview could not finish switching apps. Reopen the app and try again.",
+          );
         });
-        void windowInterest
-          .release(
-            previousAppId,
-            `version-preview:${globalThis.crypto.randomUUID()}`,
-            { type: "switch-app", nextAppId },
-          )
-          .catch(() => {
-            toast.error(
-              "Version preview could not finish switching apps. Reopen the app and try again.",
-            );
-          });
       }
       previousAppId = nextAppId;
     });
-  }, [jotaiStore, presentation, windowInterest]);
+  }, [client, jotaiStore, presentation, windowInterest]);
 
   useEffect(
     () =>

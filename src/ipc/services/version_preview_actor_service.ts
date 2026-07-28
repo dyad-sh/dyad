@@ -13,7 +13,7 @@ import { versionPreviewWindowInterestService } from "./version_preview_window_in
 
 type Host = Pick<
   typeof remoteMachineHost,
-  "peek" | "disposeKey" | "disposeMachine"
+  "ensure" | "peek" | "disposeKey" | "disposeMachine"
 >;
 
 export class VersionPreviewActorService {
@@ -40,7 +40,15 @@ export class VersionPreviewActorService {
     operationId: string;
     exit: { type: "close" } | { type: "switch-app"; nextAppId: number | null };
   }): boolean {
+    let actor = this.actor(appId);
     if (this.windowInterests.isLastOwner(appId, webContentsId)) {
+      // Create/hydrate the actor before relinquishing the final interest.
+      // Subscription admission can otherwise create persisted preview state
+      // immediately after a release that observed no actor.
+      actor = this.host.ensure(
+        versionPreviewDefinition,
+        versionPreviewKey(appId),
+      );
       // Reserve routing before relinquishing the final interest. A capacity
       // rejection must leave the pane's ownership intact so the user can retry.
       this.presentation.recordInitiator(operationId, windowSessionId);
@@ -51,7 +59,6 @@ export class VersionPreviewActorService {
     ) {
       return false;
     }
-    const actor = this.actor(appId);
     const state = actor?.getSnapshot().state;
     if (
       !actor ||

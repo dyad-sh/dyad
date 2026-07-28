@@ -111,24 +111,26 @@ describe("VersionPreviewActorService", () => {
 
   it("returns the repository only after the last window releases interest", () => {
     const send = vi.fn();
-    const host = {
-      peek: vi.fn(() => ({
-        getSnapshot: () => ({
-          state: {
-            type: "previewing",
-            session: {
-              appId: 7,
-              originBranch: "main",
-              targetVersionId: "abc123",
-              checkedOutVersionId: "abc123",
-              exitIntent: { type: "none" },
-              selectedDiffFile: null,
-              isDiffVisible: false,
-            },
+    const actor = {
+      getSnapshot: () => ({
+        state: {
+          type: "previewing",
+          session: {
+            appId: 7,
+            originBranch: "main",
+            targetVersionId: "abc123",
+            checkedOutVersionId: "abc123",
+            exitIntent: { type: "none" },
+            selectedDiffFile: null,
+            isDiffVisible: false,
           },
-        }),
-        send,
-      })),
+        },
+      }),
+      send,
+    };
+    const host = {
+      ensure: vi.fn(() => actor),
+      peek: vi.fn(() => actor),
       disposeKey: vi.fn(async () => undefined),
       disposeMachine: vi.fn(async () => undefined),
     };
@@ -186,6 +188,10 @@ describe("VersionPreviewActorService", () => {
       "leave-2",
       "window-2",
     );
+    expect(host.ensure).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "version_preview" }),
+      { appId: 7 },
+    );
     expect(send).toHaveBeenCalledWith({
       type: "APP_CHANGED",
       nextAppId: 8,
@@ -195,24 +201,26 @@ describe("VersionPreviewActorService", () => {
 
   it("retains the last window interest when initiator admission is full", () => {
     const send = vi.fn();
-    const host = {
-      peek: vi.fn(() => ({
-        getSnapshot: () => ({
-          state: {
-            type: "previewing",
-            session: {
-              appId: 7,
-              originBranch: "main",
-              targetVersionId: "abc123",
-              checkedOutVersionId: "abc123",
-              exitIntent: { type: "none" },
-              selectedDiffFile: null,
-              isDiffVisible: false,
-            },
+    const actor = {
+      getSnapshot: () => ({
+        state: {
+          type: "previewing",
+          session: {
+            appId: 7,
+            originBranch: "main",
+            targetVersionId: "abc123",
+            checkedOutVersionId: "abc123",
+            exitIntent: { type: "none" },
+            selectedDiffFile: null,
+            isDiffVisible: false,
           },
-        }),
-        send,
-      })),
+        },
+      }),
+      send,
+    };
+    const host = {
+      ensure: vi.fn(() => actor),
+      peek: vi.fn(() => actor),
       disposeKey: vi.fn(async () => undefined),
       disposeMachine: vi.fn(async () => undefined),
     };

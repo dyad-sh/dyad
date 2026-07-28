@@ -38,7 +38,15 @@ const actor = {
 const toastError = vi.hoisted(() => vi.fn());
 const windowInterest = vi.hoisted(() => ({
   acquire: vi.fn(async () => undefined),
-  release: vi.fn(async () => ({ cleanupStarted: false })),
+  release: vi.fn(
+    async (
+      _appId: number,
+      _operationId: string,
+      _exit:
+        | { type: "close" }
+        | { type: "switch-app"; nextAppId: number | null },
+    ) => ({ cleanupStarted: false }),
+  ),
   selectionEpoch: vi.fn(() => 0),
   isSelectionEpochCurrent: vi.fn(() => true),
 }));
@@ -194,6 +202,47 @@ describe("VersionPreviewProvider", () => {
       ),
     );
     expect(actor.dispatch).not.toHaveBeenCalled();
+  });
+
+  it("keeps the old presentation visible until an app-switch release retry is accepted", async () => {
+    getDefaultStore().set(selectedAppIdAtom, 1);
+    const accepted = deferred<{ cleanupStarted: false }>();
+    windowInterest.release
+      .mockRejectedValueOnce(new Error("transport unavailable"))
+      .mockReturnValueOnce(accepted.promise);
+    const queryClient = new QueryClient();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <VersionPreviewProvider>
+          <Probe />
+        </VersionPreviewProvider>
+      </QueryClientProvider>,
+    );
+    fireEvent.click(screen.getByTestId("probe"));
+    await waitFor(() =>
+      expect(screen.getByTestId("probe").getAttribute("data-state")).toBe(
+        "browsing",
+      ),
+    );
+
+    act(() => getDefaultStore().set(selectedAppIdAtom, 2));
+    await waitFor(() =>
+      expect(windowInterest.release).toHaveBeenCalledTimes(2),
+    );
+    expect(actor.resync).toHaveBeenCalled();
+    expect(windowInterest.release.mock.calls[0]?.[1]).toBe(
+      windowInterest.release.mock.calls[1]?.[1],
+    );
+    expect(screen.getByTestId("probe").getAttribute("data-state")).toBe(
+      "browsing",
+    );
+
+    accepted.resolve({ cleanupStarted: false });
+    await waitFor(() =>
+      expect(screen.getByTestId("probe").getAttribute("data-state")).toBe(
+        "closed",
+      ),
+    );
   });
 
   it("releases retained interest when navigating with local presentation hidden", async () => {

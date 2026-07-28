@@ -253,6 +253,8 @@ describe("version_preview main actor", () => {
       operationId: "close-1",
     });
     expect(closeReceipt.kind).toBe("applied");
+    expect(presentation.forget).toHaveBeenCalledWith("close-1");
+    expect(presentation.forget).not.toHaveBeenCalledWith("preview-1");
     await flush();
     checkout.resolve({
       repositoryOutcome: "target-applied",
@@ -280,12 +282,89 @@ describe("version_preview main actor", () => {
     });
     await flush();
     expect(harness.actorA.getSnapshot().state.type).toBe("closed");
+    expect(presentation.forget).toHaveBeenCalledWith("preview-1");
 
     harness.releaseA();
     harness.releaseB();
     harness.clientA.dispose();
     harness.clientB.dispose();
     harness.transport.dispose();
+  });
+
+  it("retires select and exit routing when close wins during origin resolution", async () => {
+    const origin = deferred<{ branch: string | null }>();
+    service.resolveOriginBranch.mockReturnValue(origin.promise);
+    const harness = createHarness();
+    await harness.actorA.resync();
+
+    await harness.actorA.dispatch({
+      type: "SELECT_VERSION",
+      versionId: "abc123",
+      operationId: "preview-1",
+    });
+    expect(harness.actorA.getSnapshot().state.type).toBe("resolving-origin");
+
+    await harness.actorA.dispatch({
+      type: "CLOSE",
+      operationId: "close-1",
+    });
+    expect(harness.actorA.getSnapshot()).toMatchObject({
+      state: { type: "closed" },
+      activeInvocationRef: null,
+    });
+    expect(presentation.forget).toHaveBeenCalledWith("preview-1");
+    expect(presentation.forget).toHaveBeenCalledWith("close-1");
+
+    origin.resolve({ branch: "feature/origin" });
+    await flush();
+    expect(harness.actorA.getSnapshot().state.type).toBe("closed");
+    expect(service.run).not.toHaveBeenCalled();
+
+    harness.releaseA();
+    harness.releaseB();
+    harness.clientA.dispose();
+    harness.clientB.dispose();
+    harness.transport.dispose();
+  });
+
+  it("does not exhaust routing capacity across repeated early exits", async () => {
+    service.resolveOriginBranch.mockImplementation(
+      () => new Promise(() => undefined),
+    );
+    const routes = new Set<string>();
+    presentation.recordInitiator.mockImplementation((operationId: string) => {
+      if (routes.size >= 256) throw new Error("routing capacity exhausted");
+      routes.add(operationId);
+    });
+    presentation.forget.mockImplementation((operationId: string) => {
+      routes.delete(operationId);
+    });
+    const harness = createHarness();
+    await harness.actorA.resync();
+
+    try {
+      for (let index = 0; index < 300; index += 1) {
+        await harness.actorA.dispatch({
+          type: "SELECT_VERSION",
+          versionId: `version-${index}`,
+          operationId: `preview-${index}`,
+        });
+        await harness.actorA.dispatch({
+          type: "CLOSE",
+          operationId: `close-${index}`,
+        });
+      }
+      expect(routes).toEqual(new Set());
+      expect(harness.actorA.getSnapshot().state.type).toBe("closed");
+    } finally {
+      presentation.recordInitiator.mockImplementation(() => undefined);
+      presentation.forget.mockImplementation(() => undefined);
+      harness.releaseA();
+      harness.releaseB();
+      harness.clientA.dispose();
+      harness.clientB.dispose();
+      harness.transport.dispose();
+    }
   });
 
   it("reconciles an interrupted persisted checkout against repository truth", async () => {

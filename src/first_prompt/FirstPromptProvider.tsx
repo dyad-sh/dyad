@@ -154,8 +154,10 @@ export function FirstPromptProvider({
     },
     async openPreviewIfSetupRequired(appId) {
       const opened = await openPreviewIfSetupRequired(appId);
-      // Permanent UI-side-effect keep: plans/claude-cleanup-machines.md.
-      if (!opened) store.set(isPreviewOpenAtom, false);
+      if (!opened) {
+        // Permanent UI-side-effect keep: plans/claude-cleanup-machines.md.
+        store.set(isPreviewOpenAtom, false);
+      }
       return opened;
     },
     submitPrompt({ appId, chatId, payload }) {
@@ -193,7 +195,9 @@ export function FirstPromptProvider({
     clearEditingBuffer() {
       // Permanent post-submit UI clear: plans/claude-cleanup-machines.md.
       store.set(homeChatInputValueAtom, "");
+      // Permanent post-submit UI clear: plans/claude-cleanup-machines.md.
       store.set(attachmentsAtom, []);
+      // Permanent post-submit UI clear: plans/claude-cleanup-machines.md.
       store.set(homeSelectedAppAtom, null);
     },
     showError(message, failure) {

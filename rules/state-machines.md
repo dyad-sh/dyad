@@ -481,6 +481,9 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   expected ignore reason.
 - `boundaries.test.ts` enforces kernel purity and machine-to-machine isolation;
   add new machine directories to its inventory when they are introduced.
+- Boundary allowlist tests must derive the actual production call sites and
+  exact-compare them with the declared inventory. Checking only that declared
+  markers still exist does not prevent an undeclared boundary crossing.
 - Keep host-only distributed-machine definitions outside shared machine
   directories (for example, under `src/ipc/services/` for a main-owned actor).
   Shared machine directories are scanned as renderer-reachable code and may

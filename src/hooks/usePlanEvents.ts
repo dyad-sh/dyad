@@ -70,6 +70,7 @@ export function usePlanEvents() {
       (payload) => {
         // Permanent UI-side-effect keep: plans/claude-cleanup-machines.md.
         setPreviewMode("preview");
+        // Permanent UI-side-effect keep: plans/claude-cleanup-machines.md.
         setSelectedChatId(payload.targetChatId);
         void navigate({
           to: "/chat",

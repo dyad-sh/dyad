@@ -81,6 +81,21 @@ const PERMANENT_UI_WRITE_ALLOWLIST = [
   },
 ] as const;
 
+/**
+ * The chat stream's message collection is a renderer read-model cache, not a
+ * lifecycle projection or UI-presentation side effect.
+ */
+const PERMANENT_READ_MODEL_WRITE_ALLOWLIST = [
+  {
+    atom: "chatMessagesByIdAtom",
+    file: "chat_stream/remote_manager.ts",
+  },
+  {
+    atom: "chatMessagesByIdAtom",
+    file: "version_preview/VersionPreviewProvider.tsx",
+  },
+] as const;
+
 const ALLOWLIST: readonly AllowlistEntry[] = [];
 
 interface BoundaryViolation {
@@ -88,6 +103,13 @@ interface BoundaryViolation {
   file: string;
   detail: string;
   atom: string;
+}
+
+interface ObservedAtomWrite {
+  atom: string;
+  file: string;
+  call: ts.CallExpression;
+  sourceFile: ts.SourceFile;
 }
 
 function productionFiles(directory: string): string[] {
@@ -385,6 +407,204 @@ function importedCallName(
   return undefined;
 }
 
+function importedJotaiCallName(
+  call: ts.CallExpression,
+  bindings: Map<string, { imported: string; source: string }>,
+): string | undefined {
+  if (ts.isIdentifier(call.expression)) {
+    const binding = bindings.get(call.expression.text);
+    return binding && isJotaiModule(binding.source)
+      ? binding.imported
+      : undefined;
+  }
+  if (
+    ts.isPropertyAccessExpression(call.expression) &&
+    ts.isIdentifier(call.expression.expression)
+  ) {
+    const binding = bindings.get(call.expression.expression.text);
+    if (binding?.imported === "*" && isJotaiModule(binding.source)) {
+      return call.expression.name.text;
+    }
+  }
+  return undefined;
+}
+
+function importedAtomArgumentName(
+  filePath: string,
+  call: ts.CallExpression,
+  index: number,
+  bindings: Map<string, { imported: string; source: string }>,
+): string | undefined {
+  const argument = call.arguments[index];
+  if (argument && ts.isIdentifier(argument)) {
+    const binding = bindings.get(argument.text);
+    return binding &&
+      resolvesWithin(filePath, binding.source, path.join(SOURCE_ROOT, "atoms"))
+      ? binding.imported
+      : undefined;
+  }
+  if (
+    argument &&
+    (ts.isPropertyAccessExpression(argument) ||
+      ts.isElementAccessExpression(argument)) &&
+    ts.isIdentifier(argument.expression)
+  ) {
+    const binding = bindings.get(argument.expression.text);
+    const atom =
+      ts.isPropertyAccessExpression(argument) ||
+      !argument.argumentExpression ||
+      !ts.isStringLiteralLike(argument.argumentExpression)
+        ? ts.isPropertyAccessExpression(argument)
+          ? argument.name.text
+          : undefined
+        : argument.argumentExpression.text;
+    return binding?.imported === "*" &&
+      atom &&
+      resolvesWithin(filePath, binding.source, path.join(SOURCE_ROOT, "atoms"))
+      ? atom
+      : undefined;
+  }
+  return undefined;
+}
+
+function atomSetterBindings(
+  filePath: string,
+  sourceFile: ts.SourceFile,
+  bindings: Map<string, { imported: string; source: string }>,
+): Map<string, string> {
+  const setterAtoms = new Map<string, string>();
+  const visit = (node: ts.Node) => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      node.initializer &&
+      ts.isCallExpression(node.initializer)
+    ) {
+      const hook = importedJotaiCallName(node.initializer, bindings);
+      const atom = importedAtomArgumentName(
+        filePath,
+        node.initializer,
+        0,
+        bindings,
+      );
+      if (atom && hook === "useSetAtom" && ts.isIdentifier(node.name)) {
+        setterAtoms.set(node.name.text, atom);
+      } else if (
+        atom &&
+        hook === "useAtom" &&
+        ts.isArrayBindingPattern(node.name)
+      ) {
+        const setter = node.name.elements[1];
+        if (
+          setter &&
+          ts.isBindingElement(setter) &&
+          ts.isIdentifier(setter.name)
+        ) {
+          setterAtoms.set(setter.name.text, atom);
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return setterAtoms;
+}
+
+function collectAtomWritesIn(
+  filePath: string,
+  sourceFile: ts.SourceFile,
+  root: ts.Node,
+  bindings: Map<string, { imported: string; source: string }>,
+  setterAtoms: Map<string, string>,
+): ObservedAtomWrite[] {
+  const writes: ObservedAtomWrite[] = [];
+  const visit = (node: ts.Node) => {
+    if (ts.isCallExpression(node)) {
+      let atom: string | undefined;
+      if (
+        (ts.isPropertyAccessExpression(node.expression) &&
+          node.expression.name.text === "set") ||
+        (ts.isElementAccessExpression(node.expression) &&
+          node.expression.argumentExpression &&
+          ts.isStringLiteralLike(node.expression.argumentExpression) &&
+          node.expression.argumentExpression.text === "set")
+      ) {
+        atom = importedAtomArgumentName(filePath, node, 0, bindings);
+      } else if (ts.isIdentifier(node.expression)) {
+        atom = setterAtoms.get(node.expression.text);
+      }
+      if (atom) {
+        writes.push({
+          atom,
+          file: relativeSourcePath(filePath),
+          call: node,
+          sourceFile,
+        });
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(root);
+  return writes;
+}
+
+function collectMachineAtomWrites(): ObservedAtomWrite[] {
+  return MACHINE_DIRECTORIES.flatMap((machine) =>
+    productionFiles(path.join(SOURCE_ROOT, machine)).flatMap((filePath) => {
+      const sourceFile = sourceFileFor(filePath);
+      const bindings = importedBindings(sourceFile);
+      return collectAtomWritesIn(
+        filePath,
+        sourceFile,
+        sourceFile,
+        bindings,
+        atomSetterBindings(filePath, sourceFile, bindings),
+      );
+    }),
+  );
+}
+
+function collectPlanHandoffPresentationWrites(): ObservedAtomWrite[] {
+  const filePath = path.join(SOURCE_ROOT, "hooks/usePlanEvents.ts");
+  const sourceFile = sourceFileFor(filePath);
+  const bindings = importedBindings(sourceFile);
+  const setterAtoms = atomSetterBindings(filePath, sourceFile, bindings);
+
+  const writes: ObservedAtomWrite[] = [];
+  const findPresentationCallback = (node: ts.Node) => {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      node.expression.name.text === "onHandoffPresentation"
+    ) {
+      const callback = node.arguments[0];
+      if (callback) {
+        writes.push(
+          ...collectAtomWritesIn(
+            filePath,
+            sourceFile,
+            callback,
+            bindings,
+            setterAtoms,
+          ),
+        );
+      }
+      return;
+    }
+    ts.forEachChild(node, findPresentationCallback);
+  };
+  findPresentationCallback(sourceFile);
+  return writes;
+}
+
+function precedingLine(sourceFile: ts.SourceFile, node: ts.Node): string {
+  const { line } = sourceFile.getLineAndCharacterOfPosition(
+    node.getStart(sourceFile),
+  );
+  if (line === 0) return "";
+  const lineStarts = sourceFile.getLineStarts();
+  return sourceFile.text.slice(lineStarts[line - 1], lineStarts[line]).trim();
+}
+
 function usesRuntimeGetDefaultStore(sourceFile: ts.SourceFile): boolean {
   const jotaiNamespaces = new Set<string>();
   for (const statement of sourceFile.statements) {
@@ -503,22 +723,82 @@ describe("state-machine boundaries", () => {
   });
 
   it("keeps only the permanent machine-to-UI presentation writes", () => {
+    const writes = [
+      ...collectMachineAtomWrites(),
+      ...collectPlanHandoffPresentationWrites(),
+    ];
+    const comparable = (entry: { atom: string; file: string }) => ({
+      atom: entry.atom,
+      file: entry.file,
+    });
+    const sort = <T extends ReturnType<typeof comparable>>(entries: T[]) =>
+      entries.sort((left, right) =>
+        `${left.file}:${left.atom}`.localeCompare(
+          `${right.file}:${right.atom}`,
+        ),
+      );
+
+    expect(sort(writes.map(comparable))).toEqual(
+      sort(
+        [
+          ...PERMANENT_UI_WRITE_ALLOWLIST,
+          ...PERMANENT_READ_MODEL_WRITE_ALLOWLIST,
+        ].map(comparable),
+      ),
+    );
+
     for (const entry of PERMANENT_UI_WRITE_ALLOWLIST) {
-      const source = fs.readFileSync(
-        path.join(SOURCE_ROOT, entry.file),
-        "utf8",
+      const write = writes.find(
+        (candidate) =>
+          candidate.atom === entry.atom && candidate.file === entry.file,
       );
-      expect(source, `${entry.file} imports ${entry.atom}`).toContain(
-        entry.atom,
-      );
-      expect(source, `${entry.file} retains ${entry.atom} write`).toContain(
-        entry.marker,
-      );
+      expect(write, `${entry.file} retains ${entry.atom} write`).toBeDefined();
+      expect(write!.call.getText(write!.sourceFile)).toBe(entry.marker);
       expect(
-        source,
-        `${entry.file} documents the ${entry.atom} compatibility keep`,
+        precedingLine(write!.sourceFile, write!.call),
+        `${entry.file} documents the ${entry.atom} permanent keep`,
       ).toContain("plans/claude-cleanup-machines.md");
     }
+  });
+
+  it("detects direct, hook, and namespace machine-to-Jotai writes", () => {
+    const filePath = path.join(SOURCE_ROOT, "first_prompt/fixture.tsx");
+    const sourceFile = ts.createSourceFile(
+      filePath,
+      `
+        import { useSetAtom } from "jotai";
+        import { useAtom } from "jotai/react";
+        import { lifecycleAtom } from "@/atoms/lifecycleAtoms";
+        import * as atoms from "@/atoms/lifecycleAtoms";
+        const setLifecycle = useSetAtom(lifecycleAtom);
+        const [, setLifecycleFromTuple] = useAtom(lifecycleAtom);
+        store.set(lifecycleAtom, direct);
+        setLifecycle(hook);
+        setLifecycleFromTuple(tupleHook);
+        store.set(atoms.lifecycleAtom, namespace);
+        store["set"](atoms["lifecycleAtom"], elementAccess);
+      `,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TSX,
+    );
+    const bindings = importedBindings(sourceFile);
+
+    expect(
+      collectAtomWritesIn(
+        filePath,
+        sourceFile,
+        sourceFile,
+        bindings,
+        atomSetterBindings(filePath, sourceFile, bindings),
+      ).map((write) => write.call.getText(sourceFile)),
+    ).toEqual([
+      "store.set(lifecycleAtom, direct)",
+      "setLifecycle(hook)",
+      "setLifecycleFromTuple(tupleHook)",
+      "store.set(atoms.lifecycleAtom, namespace)",
+      'store["set"](atoms["lifecycleAtom"], elementAccess)',
+    ]);
   });
 
   it("recognizes runtime default-store access through supported import forms", () => {

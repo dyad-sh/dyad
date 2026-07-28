@@ -78,6 +78,12 @@ const ignore = (file: string) => {
   if (file.startsWith("/node_modules/html-to-image")) {
     return false;
   }
+  if (file === "/node_modules/@mixmark-io") {
+    return false;
+  }
+  if (file.startsWith("/node_modules/@mixmark-io/domino")) {
+    return false;
+  }
   if (file.startsWith("/node_modules/better-sqlite3")) {
     return false;
   }

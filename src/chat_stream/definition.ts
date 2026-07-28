@@ -13,6 +13,7 @@ import {
   chatExecutionEndpoint,
   publishChatInvalidations,
 } from "@/ipc/services/chat_actor_platform";
+import { assertChatActorAdmissionOpen } from "@/ipc/services/chat_actor_deletion_fence";
 import type { ChatStreamHostCommand, ChatStreamHostState } from "./host_state";
 import {
   initialChatStreamHostState,
@@ -378,8 +379,14 @@ function createCommandRunner(
 export const chatStreamDefinition = {
   id: CHAT_STREAM_MACHINE_ID,
   host: "main",
-  initialState: (key) =>
-    initialChatStreamHostState(hydrateChatStreamPersistence(db, key.chatId)),
+  initialState: (key) => {
+    // Authorization can finish just before deletion installs its fence. Keep
+    // the creation boundary fenced too so that race cannot recreate the actor.
+    assertChatActorAdmissionOpen(key.chatId);
+    return initialChatStreamHostState(
+      hydrateChatStreamPersistence(db, key.chatId),
+    );
+  },
   transition: (state, event) => transitionChatStreamHost(state, event),
   createScheduler: () => ({
     schedule(batch, execute) {
@@ -424,10 +431,14 @@ export const chatStreamDefinition = {
         ? "allow-stale"
         : "reject-stale",
     authorizeSubscribe: async ({ key }) => {
+      assertChatActorAdmissionOpen(key.chatId, DyadErrorKind.Auth);
       await requireExistingChat(key.chatId);
+      assertChatActorAdmissionOpen(key.chatId, DyadErrorKind.Auth);
     },
     authorizeDispatch: async ({ sender, key, event, currentState }) => {
+      assertChatActorAdmissionOpen(key.chatId, DyadErrorKind.Auth);
       const appId = await requireExistingChat(key.chatId);
+      assertChatActorAdmissionOpen(key.chatId, DyadErrorKind.Auth);
       if (event.type === "SUBMIT") {
         if (event.intent.chatId !== key.chatId) {
           throw new DyadError(

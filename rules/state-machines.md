@@ -260,6 +260,9 @@ Background and before/after examples of why this pattern exists:
 - Correlation identity and durable idempotency identity are separate contracts.
   Name which property each boundary relies on even when a protocol deliberately
   uses the same value for both.
+- Do not include main-injected sender metadata in a renderer-computed immutable
+  payload hash. Bind and validate that metadata separately during authorization,
+  or compute the authoritative hash only after main supplies it.
 - When a machine becomes the sole scheduler for a queue, every legacy enqueue
   path must poke the machine or enqueue through it.
 

@@ -9,7 +9,6 @@ export function serializeImmutableChatTurnPayload(
     chatId: intent.chatId,
     appId: intent.appId,
     invocationRef: intent.invocationRef,
-    originWindowSessionId: intent.originWindowSessionId,
     prompt: intent.prompt,
     redo: intent.redo,
     attachments: intent.attachments,

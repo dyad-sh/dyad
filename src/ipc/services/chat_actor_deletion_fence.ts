@@ -17,7 +17,10 @@ export function beginChatActorDeletion(chatId: number): () => void {
   };
 }
 
-export function assertChatActorAdmissionOpen(chatId: number): void {
+export function assertChatActorAdmissionOpen(
+  chatId: number,
+  errorKind: DyadErrorKind = DyadErrorKind.Precondition,
+): void {
   if (!deletionCounts.has(chatId)) return;
-  throw new DyadError("Chat is being deleted", DyadErrorKind.Precondition);
+  throw new DyadError("Chat is being deleted", errorKind);
 }

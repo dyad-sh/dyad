@@ -11,6 +11,11 @@ import {
 } from "@/state_machines/testing";
 import { TwoWindowHarness } from "@/testing/two_window_harness";
 import type { ChatStreamExecutionObserver } from "@/ipc/handlers/chat_stream_handlers";
+import {
+  beginChatActorDeletion,
+  assertChatActorAdmissionOpen,
+} from "@/ipc/services/chat_actor_deletion_fence";
+import { computeChatTurnPayloadHash } from "@/ipc/utils/chat_turn_intent_hash";
 import { chatStreamDefinition } from "./definition";
 import { ChatStreamRemoteManager } from "./remote_manager";
 import {
@@ -527,6 +532,62 @@ describe("main-hosted chat stream actor", () => {
         currentState: undefined,
       }),
     ).rejects.toMatchObject({ kind: "auth" });
+  });
+
+  it("keeps the renderer payload hash valid when main binds its window identity", async () => {
+    const { payloadHash: _oldHash, ...withoutHash } = turn("bound-window");
+    const event = {
+      type: "SUBMIT" as const,
+      intent: {
+        ...withoutHash,
+        payloadHash: computeChatTurnPayloadHash(withoutHash),
+      },
+    };
+
+    await chatStreamDefinition.remote.authorizeDispatch({
+      sender: {
+        webContentsId: 1,
+        windowSessionId: "renderer-window",
+      },
+      key: chatStreamKey(7),
+      event,
+      currentState: undefined,
+    });
+
+    const { payloadHash, ...authorizedPayload } = event.intent;
+    expect(authorizedPayload.originWindowSessionId).toBe("renderer-window");
+    expect(computeChatTurnPayloadHash(authorizedPayload)).toBe(payloadHash);
+  });
+
+  it("rejects subscriptions and dispatches while chat deletion is fenced", async () => {
+    const releaseDeletion = beginChatActorDeletion(7);
+    try {
+      expect(() => assertChatActorAdmissionOpen(7)).toThrowError(
+        expect.objectContaining({ kind: "precondition" }),
+      );
+      await expect(
+        chatStreamDefinition.remote.authorizeSubscribe({
+          sender: {
+            webContentsId: 1,
+            windowSessionId: "renderer-window",
+          },
+          key: chatStreamKey(7),
+        }),
+      ).rejects.toMatchObject({ kind: "auth" });
+      await expect(
+        chatStreamDefinition.remote.authorizeDispatch({
+          sender: {
+            webContentsId: 1,
+            windowSessionId: "renderer-window",
+          },
+          key: chatStreamKey(7),
+          event: { type: "SUBMIT", intent: turn("during-deletion") },
+          currentState: undefined,
+        }),
+      ).rejects.toMatchObject({ kind: "auth" });
+    } finally {
+      releaseDeletion();
+    }
   });
 
   it("retains a submission subscription until terminal settlement", async () => {

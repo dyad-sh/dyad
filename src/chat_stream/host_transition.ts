@@ -298,16 +298,24 @@ export function transitionChatStreamHost(
         kind: "applied",
         state: {
           ...state,
-          phase: "errored",
-          active: null,
+          phase: "finalizing",
           error: event.error,
           lastAcceptance: {
             intentId: event.intentId,
             acceptance: "rejected",
             error: event.error,
           },
+          lastCompletion: {
+            intentId: event.intentId,
+            invocationRef: state.active.invocationRef,
+            outcome: "errored",
+            error: event.error,
+            targetAppId: state.active.targetAppId,
+          },
         },
-        commands: state.queuePaused ? [] : [{ type: "dispatch-next" }],
+        commands: [
+          { type: "finalize", intentId: event.intentId, error: event.error },
+        ],
       };
     case "STREAM_ENDED":
       if (

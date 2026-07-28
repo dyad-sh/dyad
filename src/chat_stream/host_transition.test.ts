@@ -123,6 +123,65 @@ describe("transitionChatStreamHost", () => {
     });
   });
 
+  it("finalizes a rejected queued intent before draining the queue", () => {
+    const queuedEntry = {
+      itemId: "queued",
+      intentId: "queued",
+      prompt: "Queued",
+      persistence: "main-session" as const,
+      editable: true,
+      removable: true,
+    };
+    const submitted = transitionChatStreamHost(
+      initialChatStreamHostState({
+        queueRevision: 1,
+        queuePaused: false,
+        queue: [queuedEntry],
+      }),
+      { type: "SUBMIT", intent: intent("queued") },
+    );
+    expect(submitted.kind).toBe("applied");
+    if (submitted.kind !== "applied") return;
+
+    const rejected = transitionChatStreamHost(submitted.state, {
+      type: "ADMISSION_REJECTED",
+      intentId: "queued",
+      error: "Follow-up is no longer due",
+    });
+    expect(rejected.kind).toBe("applied");
+    if (rejected.kind !== "applied") return;
+    expect(rejected.state).toMatchObject({
+      phase: "finalizing",
+      active: { intent: { intentId: "queued" } },
+      lastCompletion: {
+        intentId: "queued",
+        outcome: "errored",
+      },
+    });
+    expect(rejected.commands).toEqual([
+      {
+        type: "finalize",
+        intentId: "queued",
+        error: "Follow-up is no longer due",
+      },
+    ]);
+
+    const finalized = transitionChatStreamHost(rejected.state, {
+      type: "QUEUE_MUTATED",
+      queueRevision: 2,
+      paused: false,
+      entries: [],
+    });
+    expect(finalized.kind).toBe("applied");
+    if (finalized.kind !== "applied") return;
+    expect(finalized.state).toMatchObject({
+      phase: "errored",
+      active: null,
+      queue: [],
+    });
+    expect(finalized.commands).toEqual([]);
+  });
+
   it("rejects a queue edit made against a stale revision", () => {
     const state = initialChatStreamHostState({
       queueRevision: 4,

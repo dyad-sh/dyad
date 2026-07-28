@@ -109,7 +109,7 @@ describe("main-hosted chat stream terminal projection", () => {
     });
   });
 
-  it("keeps queued turns parked after a failed stream finalizes", () => {
+  it("continues queued turns after a failed stream finalizes", () => {
     const errored = appliedState(streamingState(), {
       type: "STREAM_ERRORED",
       intentId: intent.intentId,
@@ -137,6 +137,6 @@ describe("main-hosted chat stream terminal projection", () => {
     expect(finalized.kind).toBe("applied");
     if (finalized.kind !== "applied") return;
     expect(finalized.state.phase).toBe("errored");
-    expect(finalized.commands).toEqual([]);
+    expect(finalized.commands).toEqual([{ type: "dispatch-next" }]);
   });
 });

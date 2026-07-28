@@ -42,6 +42,31 @@ describe("transitionChatStreamHost", () => {
     ]);
   });
 
+  it("parks a submission admitted while cancellation is settling", () => {
+    const activeIntent = intent("active");
+    const cancelling = {
+      ...initialChatStreamHostState(),
+      phase: "cancelling" as const,
+      active: {
+        intent: activeIntent,
+        invocationRef: activeIntent.invocationRef!,
+        targetAppId: 3,
+      },
+    };
+
+    const submitted = transitionChatStreamHost(cancelling, {
+      type: "SUBMIT",
+      intent: intent("late"),
+    });
+
+    expect(submitted.kind).toBe("applied");
+    if (submitted.kind !== "applied") return;
+    expect(submitted.state).toBe(cancelling);
+    expect(submitted.commands).toEqual([
+      { type: "persist-queued", intent: intent("late") },
+    ]);
+  });
+
   it("does not leave a replayed accepted turn stuck in admitting", () => {
     const admitted = transitionChatStreamHost(initialChatStreamHostState(), {
       type: "SUBMIT",

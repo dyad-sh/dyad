@@ -78,6 +78,13 @@ When passing a PR body inline via `gh pr create --body "..."`, unescaped backtic
 
 Publishing helpers must transport an agent-written PR body based on the complete branch diff; a commit subject plus changed filenames is not an acceptable summary. Start with a 1-2 sentence overview, then highlight subjective design decisions, trade-offs, boundaries, and questions reviewers should verify. Do not add a routine testing section, and preserve human or review-tool additions when refreshing an existing PR body.
 
+## Final automated-review audit
+
+An automated review workflow can finish successfully before its GitHub review
+comments become visible. After every review and CI check is terminal, query
+unresolved review threads again before declaring the PR clean; do not treat a
+green review check alone as proof that it posted no findings.
+
 ## Formatter Touching Unrelated Skill Files
 
 `npm run fmt` may rewrite Markdown emphasis in `.claude/skills/*.md`. After

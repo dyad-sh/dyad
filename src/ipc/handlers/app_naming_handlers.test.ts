@@ -28,6 +28,7 @@ const createFromTemplateMock = vi.hoisted(() =>
   }),
 );
 const deletionOrder = vi.hoisted(() => [] as string[]);
+const settleChatActorsForDeletionMock = vi.hoisted(() => vi.fn());
 
 vi.mock("electron", () => ({
   ipcMain: {
@@ -83,10 +84,15 @@ vi.mock("@/ipc/handlers/chat_mode_resolution", () => ({
 
 vi.mock("@/ipc/services/chat_actor_deletion_service", () => ({
   beginChatActorDeletion: vi.fn(() => () => undefined),
-  settleChatActorsForDeletion: vi.fn(async () => {
-    deletionOrder.push("settle-actors");
+  waitForChatActorIdle: vi.fn(async () => {
+    deletionOrder.push("quiesce-actors");
   }),
+  settleChatActorsForDeletion: settleChatActorsForDeletionMock,
 }));
+
+settleChatActorsForDeletionMock.mockImplementation(async () => {
+  deletionOrder.push("settle-actors");
+});
 
 vi.mock("@/ipc/handlers/chat_stream_handlers", async (importOriginal) => {
   const actual =
@@ -144,6 +150,7 @@ describe("app naming handlers", () => {
     fs.mkdirSync(TEMP_BASE, { recursive: true });
     harness = setupHandlerTestHarness();
     deletionOrder.length = 0;
+    settleChatActorsForDeletionMock.mockClear();
     createFromTemplateMock.mockClear();
     registerAppHandlers();
     registerImportHandlers();
@@ -322,14 +329,23 @@ describe("app naming handlers", () => {
   });
 
   describe("delete-app", () => {
-    it("drains chat actors before entering the destructive app mutation", async () => {
+    it("quiesces chat actors before deletion and disposes them after commit", async () => {
       const appId = seedAppWithFolder("Delete Me", "delete-me");
       harness.db.insert(chats).values({ appId }).run();
+      settleChatActorsForDeletionMock.mockImplementationOnce(async () => {
+        expect(getAppRow(appId)).toBeUndefined();
+        deletionOrder.push("settle-actors");
+      });
 
       await harness.invokeHandler("delete-app", { appId });
 
       expect(getAppRow(appId)).toBeUndefined();
-      expect(deletionOrder).toEqual(["barrier", "settle-actors", "release"]);
+      expect(deletionOrder).toEqual([
+        "barrier",
+        "quiesce-actors",
+        "settle-actors",
+        "release",
+      ]);
     });
   });
 

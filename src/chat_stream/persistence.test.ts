@@ -278,6 +278,8 @@ describe("chat stream persistence", () => {
       queueRevision: 3,
       queue: [{ intentId: "plan-turn", removable: false }],
     });
+    expect(getRetainedIntentPayloadBytes("ordinary-turn")).toBe(0);
+    expect(getRetainedIntentPayloadBytes("plan-turn")).toBeGreaterThan(0);
   });
 
   it("removes a queued turn that fails before message acceptance", () => {

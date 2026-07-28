@@ -45,7 +45,14 @@ export function publishChatInvalidations(
   chatId: number,
   targetAppId?: number | null,
 ): void {
-  const scopes = [{ family: "chats" }, { family: "chat", chatId }] as const;
+  const scopes = [
+    { family: "chats" },
+    { family: "chat", chatId },
+    { family: "token-count" },
+    { family: "user-budget" },
+    { family: "free-agent-quota" },
+    { family: "free-model-quota" },
+  ] as const;
   queryInvalidationBus.publish(
     targetAppId === undefined || targetAppId === null
       ? scopes

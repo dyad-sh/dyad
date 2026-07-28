@@ -140,6 +140,7 @@ import { githubOpsService } from "../services/github_ops_service";
 import {
   beginChatActorDeletion,
   settleChatActorsForDeletion,
+  waitForChatActorIdle,
 } from "@/ipc/services/chat_actor_deletion_service";
 import { blockNewStreamsForApp } from "./chat_stream_handlers";
 import { beginAppChatDeletion } from "@/ipc/services/app_chat_creation_fence";
@@ -406,31 +407,23 @@ async function deleteAppById(
       ...appChats.map(({ id: chatId }) => beginChatActorDeletion(chatId)),
     );
     await Promise.all(
-      appChats.map(({ id: chatId }) => userInputRegistry.settleChat(chatId)),
-    );
-    await Promise.all(
-      appChats.map(({ id: chatId }) => settleChatActorsForDeletion(chatId)),
+      appChats.map(({ id: chatId }) =>
+        waitForChatActorIdle(chatId, { cancelActive: true }),
+      ),
     );
 
-    return await withLock(appId, async () => {
+    const appPath = await withLock(appId, async () => {
       const app = await db.query.apps.findFirst({
         where: eq(apps.id, appId),
       });
 
       if (!app) {
         if (options.allowMissing && options.knownAppPath) {
-          await githubOpsActorService.disposeApp(appId);
-          await imageGenerationActorService.disposeApp(appId);
-          await appRunActorService.disposeApp(appId);
-          appRuntimeService.cleanup(appId);
-          await removeAppFiles(appId, options.knownAppPath);
-          return;
+          return options.knownAppPath;
         }
         throw new DyadError("App not found", DyadErrorKind.NotFound);
       }
 
-      await githubOpsActorService.disposeApp(appId);
-      await imageGenerationActorService.disposeApp(appId);
       if (runningApps.has(appId)) {
         const appInfo = runningApps.get(appId)!;
         try {
@@ -441,11 +434,6 @@ async function deleteAppById(
           // Continue with deletion even if stopping fails
         }
       }
-      await appRunActorService.disposeApp(appId);
-
-      // Clear logs for this app to prevent memory leak
-      appRuntimeService.clearRuntimeLogs(appId);
-      getPtySessionManager().killForApp(appId);
 
       try {
         await db.delete(apps).where(eq(apps.id, appId));
@@ -463,20 +451,40 @@ async function deleteAppById(
           DyadErrorKind.External,
         );
       }
+      return getDyadAppPath(app.path);
+    });
 
-      appRuntimeService.cleanup(appId);
-      try {
-        await removeAppFiles(appId, getDyadAppPath(app.path));
-      } catch (error) {
-        // Database deletion is the authoritative state transition. A failed
-        // best-effort filesystem cleanup must not make renderers treat the
-        // already-deleted app as retryable or suppress contract invalidations.
+    const actorCleanup = await Promise.allSettled([
+      githubOpsActorService.disposeApp(appId),
+      imageGenerationActorService.disposeApp(appId),
+      appRunActorService.disposeApp(appId),
+      ...appChats.map(({ id: chatId }) => userInputRegistry.settleChat(chatId)),
+      ...appChats.map(({ id: chatId }) => settleChatActorsForDeletion(chatId)),
+    ]);
+    for (const result of actorCleanup) {
+      if (result.status === "rejected") {
         logger.warn(
-          `App ${appId} was deleted, but its files require manual cleanup`,
-          error,
+          `Post-deletion actor cleanup failed for app ${appId}`,
+          result.reason,
         );
       }
-    });
+    }
+
+    // Clear logs for this app to prevent memory leak
+    appRuntimeService.clearRuntimeLogs(appId);
+    getPtySessionManager().killForApp(appId);
+    appRuntimeService.cleanup(appId);
+    try {
+      await removeAppFiles(appId, appPath);
+    } catch (error) {
+      // Database deletion is the authoritative state transition. A failed
+      // best-effort filesystem cleanup must not make renderers treat the
+      // already-deleted app as retryable or suppress contract invalidations.
+      logger.warn(
+        `App ${appId} was deleted, but its files require manual cleanup`,
+        error,
+      );
+    }
   } finally {
     for (const release of releaseChatActorAdmission) release();
     releaseChatCreation();

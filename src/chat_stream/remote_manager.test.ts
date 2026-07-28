@@ -16,6 +16,69 @@ vi.mock("@/lib/toast", () => ({
 }));
 
 describe("ChatStreamRemoteManager", () => {
+  it("refreshes a retained subscription after its bootstrap fails", async () => {
+    let rejectBootstrap!: (error: Error) => void;
+    const subscribe = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectBootstrap = reject;
+          }),
+      )
+      .mockImplementationOnce(async (address: MachineAddress) => ({
+        ...address,
+        actorInstanceId: "actor",
+        revision: 1,
+        encodedState: unavailableChatStreamSnapshot(7),
+      }));
+    const dispatch = vi.fn(async (envelope: MachineDispatchEnvelope) => ({
+      kind: "applied" as const,
+      actorInstanceId: "actor",
+      revision: 2,
+      transactionSequence: 1,
+      messageId: envelope.messageId,
+    }));
+    const connection: ChatStreamRemoteConnection = {
+      getStatus: () => "connected",
+      onStatusChange: () => () => undefined,
+      onSnapshot: () => () => undefined,
+      onDisposed: () => () => undefined,
+      subscribe,
+      unsubscribe: () => Promise.resolve(),
+      dispatch,
+    };
+    const manager = new ChatStreamRemoteManager(
+      createStore(),
+      createSequentialIdSource(),
+      connection,
+    );
+    const ref = manager.ensure(7);
+    const release = ref.subscribe(() => undefined);
+    const firstAcceptanceError = vi.fn();
+
+    ref.send({
+      type: "submit",
+      request: {
+        chatId: 7,
+        prompt: "first",
+        onAcceptanceError: firstAcceptanceError,
+      },
+    });
+    rejectBootstrap(new Error("temporary bootstrap failure"));
+    await vi.waitFor(() => expect(firstAcceptanceError).toHaveBeenCalledOnce());
+
+    ref.send({
+      type: "submit",
+      request: { chatId: 7, prompt: "retry" },
+    });
+    await vi.waitFor(() => expect(dispatch).toHaveBeenCalledOnce());
+    expect(subscribe).toHaveBeenCalledTimes(2);
+
+    release();
+    manager.dispose();
+  });
+
   it("starts a subscription-only renderer and follows later snapshots", async () => {
     let deliverSnapshot: (payload: unknown) => void = () => undefined;
     const start = vi.fn(() => () => undefined);

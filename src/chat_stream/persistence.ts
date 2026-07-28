@@ -48,6 +48,10 @@ function recordFor(intentId: string): IntentRecord | undefined {
   return intentRecords.get(intentId);
 }
 
+function releaseIntentPayload(record: IntentRecord): void {
+  record.intent = null;
+}
+
 type LiveIntentRecord = IntentRecord & {
   intent: SerializableChatTurnIntent;
 };
@@ -494,6 +498,9 @@ export async function mutateChatQueue(
         ),
         "Failed to settle one or more queued message owners",
       );
+    }
+    if (mutation.type === "remove" || mutation.type === "clear") {
+      for (const { record } of selected) releaseIntentPayload(record);
     }
     return loadChatQueue(database, chatId);
   });

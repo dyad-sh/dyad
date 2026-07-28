@@ -68,6 +68,10 @@ describe("routePlanHandoffPresentation", () => {
     expect(routing.publishInvalidations).toHaveBeenCalledWith([
       { family: "chats" },
       { family: "chat", chatId: 1 },
+      { family: "token-count" },
+      { family: "user-budget" },
+      { family: "free-agent-quota" },
+      { family: "free-model-quota" },
       { family: "app", appId: 7 },
       { family: "versions", appId: 7 },
       { family: "uncommitted-files", appId: 7 },

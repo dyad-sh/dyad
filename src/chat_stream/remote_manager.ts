@@ -55,6 +55,13 @@ interface PendingSubmission {
   releaseSubscription: () => void;
 }
 
+interface RetainedSubscription {
+  consumers: number;
+  unsubscribe: () => void;
+  bootstrap: Promise<void>;
+  bootstrapFailed: boolean;
+}
+
 interface RemoteChatRef {
   getSnapshot(): ChatStreamRemoteSnapshot;
   subscribe(listener: () => void): () => void;
@@ -98,14 +105,7 @@ export type QueueMutationWithoutRevision =
  */
 export class ChatStreamRemoteManager {
   private readonly client: RemoteMachineClient;
-  private readonly subscriptions = new Map<
-    number,
-    {
-      consumers: number;
-      unsubscribe: () => void;
-      bootstrap: Promise<void>;
-    }
-  >();
+  private readonly subscriptions = new Map<number, RetainedSubscription>();
   private readonly streamFinishedListeners = new Set<
     (event: StreamFinishedEvent) => void
   >();
@@ -526,31 +526,43 @@ export class ChatStreamRemoteManager {
     const existing = this.subscriptions.get(chatId);
     if (existing) {
       existing.consumers += 1;
+      if (existing.bootstrapFailed) {
+        this.refreshBootstrap(existing, actor);
+      }
       return this.releaseSubscription(chatId, existing);
     }
     const unsubscribe = actor.subscribe(() =>
       this.handleSnapshot(chatId, actor.getSnapshot()),
     );
-    const bootstrap = actor.resync();
-    void bootstrap.catch((error) => {
-      console.error("[chat-stream] Remote bootstrap failed", error);
-    });
-    const subscription = {
+    const subscription: RetainedSubscription = {
       consumers: 1,
       unsubscribe,
-      bootstrap,
+      bootstrap: Promise.resolve(),
+      bootstrapFailed: false,
     };
+    this.refreshBootstrap(subscription, actor);
     this.subscriptions.set(chatId, subscription);
     return this.releaseSubscription(chatId, subscription);
   }
 
+  private refreshBootstrap(
+    subscription: RetainedSubscription,
+    actor: ReturnType<ChatStreamRemoteManager["actor"]>,
+  ): void {
+    const bootstrap = actor.resync();
+    subscription.bootstrap = bootstrap;
+    subscription.bootstrapFailed = false;
+    void bootstrap.catch((error) => {
+      if (subscription.bootstrap === bootstrap) {
+        subscription.bootstrapFailed = true;
+      }
+      console.error("[chat-stream] Remote bootstrap failed", error);
+    });
+  }
+
   private releaseSubscription(
     chatId: number,
-    subscription: {
-      consumers: number;
-      unsubscribe: () => void;
-      bootstrap: Promise<void>;
-    },
+    subscription: RetainedSubscription,
   ): () => void {
     let active = true;
     return () => {

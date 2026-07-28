@@ -16,7 +16,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useMcp } from "@/hooks/useMcp";
 import { useMcpCatalog } from "@/hooks/useMcpCatalog";
 import type { McpToolConsent } from "@/ipc/types";
+import { useOauthStorageEncrypted } from "./AddPluginDialog";
 import { CatalogBadge } from "./CatalogBadge";
+import { OauthPlaintextStorageAlert } from "./OauthPlaintextStorageAlert";
 import { KeyValueEditor, arrayToJsonObject } from "./KeyValueEditor";
 import { PluginSetupSection } from "./PluginSetupSection";
 import { serverNeedsSetup } from "./pluginSetup";
@@ -75,6 +77,11 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
   // cached read that returns nothing for manually-added servers.
   const catalogQuery = useMcpCatalog();
 
+  // The plugins list only warns once a server already holds a secret,
+  // so the warning has to appear here too: this is where the first one
+  // gets entered.
+  const oauthStorageEncrypted = useOauthStorageEncrypted();
+
   const s = servers.find((srv) => srv.id === serverId);
 
   // Unknown id (deleted elsewhere, bad deep link) lands back on the
@@ -123,9 +130,12 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
   // catalog can't strand an already-configured server.
   const setupPending = !!s.catalogSlug && catalogQuery.isLoading && !s.enabled;
   const setupIncomplete = needsSetup || setupPending;
-  // Guided setup writes both maps at once, so either being unreadable
-  // makes it unsafe to run.
-  const secretsUnreadable = s.envUnreadable || s.headersUnreadable;
+  // Setup rebuilds a map from the stored values before writing it, so
+  // it is only unsafe for a map it will actually touch. An entry with
+  // OAuth-only inputs writes neither.
+  const setupBlockedByUnreadable =
+    (s.headersUnreadable && setupInputs.some((i) => i.kind === "header")) ||
+    (s.envUnreadable && setupInputs.some((i) => i.kind === "env"));
 
   const onSetToolConsent = async (
     toolName: string,
@@ -256,9 +266,11 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
               as empty while a secret can't be decrypted. Saving would
               drop every value the entry doesn't declare, so show the
               notice instead of the form. */}
-          {needsSetup && secretsUnreadable && <UnreadableSecretsNotice />}
+          {needsSetup && setupBlockedByUnreadable && (
+            <UnreadableSecretsNotice />
+          )}
 
-          {needsSetup && !secretsUnreadable && (
+          {needsSetup && !setupBlockedByUnreadable && (
             // Keyed by server so switching between two setup-needing
             // servers starts each from its own blank fields, never
             // carrying one server's typed credentials into another.
@@ -288,6 +300,9 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
               <div className="text-sm font-medium mb-2">
                 Environment Variables
               </div>
+              {oauthStorageEncrypted === false && (
+                <OauthPlaintextStorageAlert />
+              )}
               {s.envUnreadable && <UnreadableSecretsNotice />}
               <KeyValueEditor
                 id={s.id}
@@ -306,6 +321,9 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
           {!setupIncomplete && s.transport === "http" && (
             <div className="mt-6">
               <div className="text-sm font-medium mb-2">Headers</div>
+              {oauthStorageEncrypted === false && (
+                <OauthPlaintextStorageAlert />
+              )}
               {s.headersUnreadable && <UnreadableSecretsNotice />}
               <KeyValueEditor
                 id={s.id}

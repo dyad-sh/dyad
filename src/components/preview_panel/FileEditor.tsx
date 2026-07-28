@@ -223,7 +223,7 @@ export const FileEditor = ({
       releaseModelRef.current = retainMonacoModel(modelPath, model);
     }
 
-    if (editorCursor?.path === filePath) {
+    if (editorCursor?.appId === appId && editorCursor.path === filePath) {
       editor.setPosition({
         lineNumber: editorCursor.lineNumber,
         column: editorCursor.column,
@@ -240,6 +240,7 @@ export const FileEditor = ({
     cursorSubscriptionRef.current = editor.onDidChangeCursorPosition(
       ({ position }) => {
         setEditorCursor({
+          appId,
           path: filePath,
           lineNumber: position.lineNumber,
           column: position.column,
@@ -254,6 +255,32 @@ export const FileEditor = ({
       }
     });
   };
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (
+      !editor ||
+      editorCursor?.appId !== appId ||
+      editorCursor.path !== filePath
+    ) {
+      return;
+    }
+    const current = editor.getPosition();
+    if (
+      current?.lineNumber === editorCursor.lineNumber &&
+      current.column === editorCursor.column
+    ) {
+      return;
+    }
+    editor.setPosition({
+      lineNumber: editorCursor.lineNumber,
+      column: editorCursor.column,
+    });
+    editor.revealPositionInCenter({
+      lineNumber: editorCursor.lineNumber,
+      column: editorCursor.column,
+    });
+  }, [appId, editorCursor, filePath]);
 
   // Handle content change
   const handleEditorChange = (newValue: string | undefined) => {

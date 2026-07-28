@@ -33,6 +33,7 @@ function payload(): ChatTabTransferPayload {
       scrollTop: 420,
       selectedFile: { path: "src/App.tsx", line: 12 },
       editorCursor: {
+        appId: 11,
         path: "src/App.tsx",
         lineNumber: 18,
         column: 7,

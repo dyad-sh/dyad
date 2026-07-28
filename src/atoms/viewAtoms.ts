@@ -8,6 +8,7 @@ export const selectedFileAtom = atom<{
   line?: number | null;
 } | null>(null);
 export const editorCursorAtom = atom<{
+  appId: number | null;
   path: string;
   lineNumber: number;
   column: number;

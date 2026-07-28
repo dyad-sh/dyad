@@ -145,12 +145,11 @@ export function registerWindowInfrastructureHandlers(): void {
 
   createTypedHandler(
     windowInfrastructureContracts.acknowledgeChatTabTransfer,
-    async (event, { transferId }) => {
+    async (event, { transferId }) =>
       chatTabTransfers.acknowledge(
         windowRegistry.ensureRegistered(event.sender),
         transferId,
-      );
-    },
+      ),
   );
 
   createTypedHandler(

@@ -30,6 +30,7 @@ export const ChatTabPresentationStateSchema = z.object({
     .nullable(),
   editorCursor: z
     .object({
+      appId: z.number().int().nullable(),
       path: z.string().max(10_000),
       lineNumber: z.number().int().positive(),
       column: z.number().int().positive(),

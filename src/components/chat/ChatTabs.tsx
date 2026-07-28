@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useAtomValue, useSetAtom, useStore } from "jotai";
 import { Loader2, MoreHorizontal, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -33,10 +40,12 @@ import {
   selectedFileAtom,
   stagedDiffFileAtom,
 } from "@/atoms/viewAtoms";
-import { previewModeAtom } from "@/atoms/appAtoms";
+import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedComponentsPreviewAtom } from "@/atoms/previewAtoms";
 import { terminalOpenByChatIdAtom } from "@/atoms/terminalAtoms";
 import {
+  activeStoredChatTabInstanceState,
+  assertActiveStoredChatTabInstance,
   adoptStoredChatTab,
   chatTabSessionStorageKey,
   getActiveStoredChatTab,
@@ -73,7 +82,10 @@ import {
 } from "@/components/ui/tooltip";
 import { useChatStreamState } from "@/hooks/useChatStream";
 import { isStreamActive } from "@/chat_stream/transition";
-import { earlyChatTabRemovalEvents } from "@/app_wiring/early_renderer_events";
+import {
+  chatNavigationEvents,
+  earlyChatTabRemovalEvents,
+} from "@/app_wiring/early_renderer_events";
 import type { ChatTabPresentationState } from "@/window_infrastructure/types";
 
 const MIN_VISIBLE_TAB_WIDTH_PX = 160;
@@ -93,9 +105,25 @@ function getMessagesScrollViewport(): HTMLElement | null {
   );
 }
 
-function restoreMessagesScrollTop(scrollTop: number): void {
+function restoreLocalStorageSnapshot(key: string, value: string | null): void {
+  try {
+    if (value === null) {
+      window.localStorage.removeItem(key);
+    } else {
+      window.localStorage.setItem(key, value);
+    }
+  } catch (error) {
+    console.error("Failed to restore chat tab session storage", error);
+  }
+}
+
+function restoreMessagesScrollTop(
+  scrollTop: number,
+  shouldContinue: () => boolean,
+): void {
   let remainingFrames = SCROLL_RESTORE_MAX_FRAMES;
   const apply = () => {
+    if (!shouldContinue()) return;
     const viewport = getMessagesScrollViewport();
     if (viewport) {
       viewport.scrollTop = scrollTop;
@@ -361,6 +389,9 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   });
+  const locationHref = useRouterState({
+    select: (state) => state.location.href,
+  });
   const isMac = useIsMac();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -370,8 +401,16 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
   );
   const hasHydratedTabSessionRef = useRef(false);
   const [hasHydratedTabSession, setHasHydratedTabSession] = useState(false);
+  const scrollRestoreGenerationRef = useRef(0);
   const presentationByChatIdRef = useRef(
     new Map<number, ChatTabPresentationState>(),
+  );
+  const presentedChatIdRef = useRef(selectedChatId);
+  useEffect(
+    () => () => {
+      scrollRestoreGenerationRef.current += 1;
+    },
+    [],
   );
   const chatsById = useMemo(
     () => new Map(chats.map((chat) => [chat.id, chat])),
@@ -425,7 +464,14 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
         history: presentation.previewHistory,
         position: presentation.previewHistoryPosition,
       });
-      restoreMessagesScrollTop(presentation.scrollTop);
+      const scrollRestoreGeneration = ++scrollRestoreGenerationRef.current;
+      restoreMessagesScrollTop(
+        presentation.scrollTop,
+        () =>
+          scrollRestoreGeneration === scrollRestoreGenerationRef.current &&
+          (options.chatId === undefined ||
+            store.get(selectedChatIdAtom) === options.chatId),
+      );
       if (options.restoreComponents !== false) {
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
@@ -458,15 +504,67 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
     [store],
   );
 
+  useLayoutEffect(() => {
+    const previousChatId = presentedChatIdRef.current;
+    if (previousChatId === selectedChatId) return;
+
+    if (previousChatId !== null) {
+      const previousChat = chatsById.get(previousChatId);
+      if (previousChat) {
+        presentationByChatIdRef.current.set(
+          previousChat.id,
+          capturePresentation(previousChat.id, previousChat.appId),
+        );
+      }
+    }
+
+    if (selectedChatId === null) {
+      scrollRestoreGenerationRef.current += 1;
+    } else {
+      const selectedChat = chatsById.get(selectedChatId);
+      if (selectedChat) {
+        const presentation =
+          presentationByChatIdRef.current.get(selectedChat.id) ??
+          neutralPresentation(selectedChat.id);
+        restorePresentation(presentation, selectedChat.appId, {
+          chatId: selectedChat.id,
+        });
+      }
+    }
+    presentedChatIdRef.current = selectedChatId;
+  }, [
+    capturePresentation,
+    chatsById,
+    neutralPresentation,
+    restorePresentation,
+    selectedChatId,
+  ]);
+
   const adoptCrossWindowTab = useCallback(
     async (transferId: string) => {
       const storageKey = chatTabSessionStorageKey(getActiveWindowSessionId());
-      const previousStorage = window.localStorage.getItem(storageKey);
+      let previousStorage: string | null | undefined;
       const previousRecent = [...store.get(recentViewedChatIdsAtom)];
       const previousClosed = new Set(store.get(closedChatIdsAtom));
       const previousSession = new Set(store.get(sessionOpenedChatIdsAtom));
       const previousDrafts = new Map(store.get(chatInputValuesByIdAtom));
+      const previousTerminals = new Map(store.get(terminalOpenByChatIdAtom));
       const previousSelectedChatId = store.get(selectedChatIdAtom);
+      const previousSelectedAppId = store.get(selectedAppIdAtom);
+      const previousLocationHref = locationHref;
+      const previousSelectedFile = store.get(selectedFileAtom);
+      const previousEditorCursor = store.get(editorCursorAtom);
+      const previousStagedDiffFile = store.get(stagedDiffFileAtom);
+      const previousPreviewMode = store.get(previewModeAtom);
+      const previousIsPreviewOpen = store.get(isPreviewOpenAtom);
+      const previousIsChatPanelHidden = store.get(isChatPanelHiddenAtom);
+      const previousSelectedComponents = store.get(
+        selectedComponentsPreviewAtom,
+      );
+      const previousIframe =
+        previousSelectedAppId === null
+          ? null
+          : previewIframeManager.getSnapshot(previousSelectedAppId);
       const previousSelectedChat = chatsById.get(previousSelectedChatId ?? -1);
       const previousPresentation = previousSelectedChat
         ? capturePresentation(
@@ -477,6 +575,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
       let adoptedLocally = false;
       let adoptedChatId: number | null = null;
       try {
+        previousStorage = window.localStorage.getItem(storageKey);
         const payload = await ipc.windowInfrastructure.adoptChatTabTransfer({
           transferId,
         });
@@ -515,7 +614,9 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
         restorePresentation(payload.presentation, payload.appId, {
           chatId: payload.chatId,
         });
+        presentedChatIdRef.current = payload.chatId;
         store.set(persistChatTabSessionAtom);
+        assertActiveStoredChatTabInstance(payload.tabInstanceId, "present");
         await ipc.windowInfrastructure.acknowledgeChatTabTransfer({
           transferId,
         });
@@ -524,15 +625,14 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
           if (adoptedChatId !== null) {
             presentationByChatIdRef.current.delete(adoptedChatId);
           }
-          if (previousStorage === null) {
-            window.localStorage.removeItem(storageKey);
-          } else {
-            window.localStorage.setItem(storageKey, previousStorage);
+          if (previousStorage !== undefined) {
+            restoreLocalStorageSnapshot(storageKey, previousStorage);
           }
           store.set(recentViewedChatIdsAtom, previousRecent);
           store.set(closedChatIdsAtom, previousClosed);
           store.set(sessionOpenedChatIdsAtom, previousSession);
           store.set(chatInputValuesByIdAtom, previousDrafts);
+          store.set(terminalOpenByChatIdAtom, previousTerminals);
           if (previousSelectedChat && previousPresentation) {
             selectChat({
               chatId: previousSelectedChat.id,
@@ -544,9 +644,30 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
               previousSelectedChat.appId,
               { chatId: previousSelectedChat.id },
             );
+            presentedChatIdRef.current = previousSelectedChat.id;
           } else {
+            scrollRestoreGenerationRef.current += 1;
             store.set(selectedChatIdAtom, null);
-            void navigate({ to: "/" });
+            presentedChatIdRef.current = null;
+            store.set(selectedAppIdAtom, previousSelectedAppId);
+            store.set(selectedFileAtom, previousSelectedFile);
+            store.set(editorCursorAtom, previousEditorCursor);
+            store.set(stagedDiffFileAtom, previousStagedDiffFile);
+            store.set(previewModeAtom, previousPreviewMode);
+            store.set(isPreviewOpenAtom, previousIsPreviewOpen);
+            store.set(isChatPanelHiddenAtom, previousIsChatPanelHidden);
+            store.set(
+              selectedComponentsPreviewAtom,
+              previousSelectedComponents,
+            );
+            if (previousSelectedAppId !== null && previousIframe) {
+              previewIframeManager.send(previousSelectedAppId, {
+                type: "RESTORE_PRESENTATION",
+                history: previousIframe.history,
+                position: previousIframe.position,
+              });
+            }
+            void navigate({ to: previousLocationHref });
           }
         }
         await ipc.windowInfrastructure
@@ -558,7 +679,9 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
     [
       capturePresentation,
       chatsById,
+      locationHref,
       navigate,
+      previewIframeManager,
       restorePresentation,
       selectChat,
       store,
@@ -654,14 +777,19 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
     [orderedChatIds, chatsById],
   );
 
-  useEffect(
-    () =>
-      earlyChatTabRemovalEvents.subscribe(
-        ({ transferId, tabInstanceId, chatId }) => {
-          void (async () => {
-            if (
-              getActiveStoredChatTab(chatId)?.tabInstanceId !== tabInstanceId
-            ) {
+  useEffect(() => {
+    if (!hasHydratedTabSession) return;
+    return earlyChatTabRemovalEvents.subscribe(
+      ({ transferId, tabInstanceId, chatId }) => {
+        void (async () => {
+          try {
+            const storedState = activeStoredChatTabInstanceState(tabInstanceId);
+            if (storedState === "absent") {
+              await ipc.windowInfrastructure.confirmSourceChatTabRemoval({
+                transferId,
+                tabInstanceId,
+                chatId,
+              });
               return;
             }
             const storageKey = chatTabSessionStorageKey(
@@ -674,6 +802,9 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
               store.get(sessionOpenedChatIdsAtom),
             );
             const previousDrafts = new Map(store.get(chatInputValuesByIdAtom));
+            const previousTerminals = new Map(
+              store.get(terminalOpenByChatIdAtom),
+            );
             const previousSelectedChatId = store.get(selectedChatIdAtom);
             const movedChat = chatsById.get(chatId);
             const movedPresentation = movedChat
@@ -682,7 +813,6 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
             try {
               const remaining = orderedChatIds.filter((id) => id !== chatId);
               store.set(removeTransferredChatTabAtom, chatId);
-              store.set(persistChatTabSessionAtom);
               if (selectedChatId === chatId) {
                 const fallback = remaining[0];
                 const fallbackChat = fallback
@@ -702,11 +832,16 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                     fallbackChat.appId,
                     { chatId: fallbackChat.id },
                   );
+                  presentedChatIdRef.current = fallbackChat.id;
                 } else {
-                  setSelectedChatId(null);
+                  scrollRestoreGenerationRef.current += 1;
+                  store.set(selectedChatIdAtom, null);
+                  presentedChatIdRef.current = null;
                   void navigate({ to: "/" });
                 }
               }
+              store.set(persistChatTabSessionAtom);
+              assertActiveStoredChatTabInstance(tabInstanceId, "absent");
               await ipc.windowInfrastructure.confirmSourceChatTabRemoval({
                 transferId,
                 tabInstanceId,
@@ -714,15 +849,12 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
               });
               presentationByChatIdRef.current.delete(chatId);
             } catch (error) {
-              if (previousStorage === null) {
-                window.localStorage.removeItem(storageKey);
-              } else {
-                window.localStorage.setItem(storageKey, previousStorage);
-              }
+              restoreLocalStorageSnapshot(storageKey, previousStorage);
               store.set(recentViewedChatIdsAtom, previousRecent);
               store.set(closedChatIdsAtom, previousClosed);
               store.set(sessionOpenedChatIdsAtom, previousSession);
               store.set(chatInputValuesByIdAtom, previousDrafts);
+              store.set(terminalOpenByChatIdAtom, previousTerminals);
               if (
                 previousSelectedChatId === chatId &&
                 movedChat &&
@@ -736,25 +868,28 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                 restorePresentation(movedPresentation, movedChat.appId, {
                   chatId,
                 });
+                presentedChatIdRef.current = chatId;
               }
               showError(error);
             }
-          })();
-        },
-      ),
-    [
-      capturePresentation,
-      chatsById,
-      navigate,
-      neutralPresentation,
-      orderedChatIds,
-      restorePresentation,
-      selectChat,
-      selectedChatId,
-      setSelectedChatId,
-      store,
-    ],
-  );
+          } catch (error) {
+            showError(error);
+          }
+        })();
+      },
+    );
+  }, [
+    capturePresentation,
+    chatsById,
+    hasHydratedTabSession,
+    navigate,
+    neutralPresentation,
+    orderedChatIds,
+    restorePresentation,
+    selectChat,
+    selectedChatId,
+    store,
+  ]);
 
   const visibleTabCapacity = useMemo(
     () => getVisibleTabCapacity(containerWidth, orderedChats.length),
@@ -870,6 +1005,45 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
     visibleTabCount,
   ]);
 
+  const selectChatWithPresentation = useCallback(
+    (chatId: number, appId: number) => {
+      clearNotification(chatId);
+      if (selectedChatId === chatId) return;
+
+      if (selectedChatId !== null) {
+        const selectedChat = chatsById.get(selectedChatId);
+        if (selectedChat) {
+          presentationByChatIdRef.current.set(
+            selectedChat.id,
+            capturePresentation(selectedChat.id, selectedChat.appId),
+          );
+        }
+      }
+      store.set(ensureRecentViewedChatIdAtom, chatId);
+      selectChat({
+        chatId,
+        appId,
+        preserveTabOrder: true,
+      });
+      const presentation =
+        presentationByChatIdRef.current.get(chatId) ??
+        neutralPresentation(chatId);
+      restorePresentation(presentation, appId, { chatId });
+      presentedChatIdRef.current = chatId;
+      store.set(persistChatTabSessionAtom);
+    },
+    [
+      capturePresentation,
+      chatsById,
+      clearNotification,
+      neutralPresentation,
+      restorePresentation,
+      selectChat,
+      selectedChatId,
+      store,
+    ],
+  );
+
   const handleTabClick = (chat: ChatSummary, fromOverflow = false) => {
     if (fromOverflow) {
       const nextIds = applySelectionToOrderedChatIds(
@@ -882,34 +1056,24 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
       }
     }
 
-    clearNotification(chat.id);
-
-    if (selectedChatId !== null && selectedChatId !== chat.id) {
-      const selectedChat = chatsById.get(selectedChatId);
-      if (selectedChat) {
-        presentationByChatIdRef.current.set(
-          selectedChat.id,
-          capturePresentation(selectedChat.id, selectedChat.appId),
-        );
-      }
-    }
-    selectChat({
-      chatId: chat.id,
-      appId: chat.appId,
-      preserveTabOrder: true,
-    });
-    const presentation =
-      presentationByChatIdRef.current.get(chat.id) ??
-      neutralPresentation(chat.id);
-    restorePresentation(presentation, chat.appId, { chatId: chat.id });
+    selectChatWithPresentation(chat.id, chat.appId);
   };
+
+  useEffect(() => {
+    if (!hasHydratedTabSession) return;
+    return chatNavigationEvents.subscribe(({ chatId, appId }) => {
+      selectChatWithPresentation(chatId, appId);
+    });
+  }, [hasHydratedTabSession, selectChatWithPresentation]);
 
   const handleCloseTab = (chatId: number) => {
     const fallbackChatId = getFallbackChatIdAfterClose(orderedChats, chatId);
     closeTabsAndClearNotifications([chatId], fallbackChatId ?? undefined);
 
     if (fallbackChatId === null && selectedChatId === chatId) {
+      scrollRestoreGenerationRef.current += 1;
       setSelectedChatId(null);
+      presentedChatIdRef.current = null;
       navigate({ to: "/" });
     }
   };
@@ -947,7 +1111,17 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
             appId: fallbackTab.appId,
             preserveTabOrder: true,
           });
+          const fallbackPresentation =
+            presentationByChatIdRef.current.get(fallbackTab.id) ??
+            neutralPresentation(fallbackTab.id);
+          restorePresentation(fallbackPresentation, fallbackTab.appId, {
+            chatId: fallbackTab.id,
+          });
+          presentedChatIdRef.current = fallbackTab.id;
         }
+      }
+      for (const id of idsToClose) {
+        presentationByChatIdRef.current.delete(id);
       }
     },
     [
@@ -955,6 +1129,8 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
       closeMultipleTabs,
       selectedChatId,
       chatsById,
+      neutralPresentation,
+      restorePresentation,
       selectChat,
     ],
   );
@@ -1003,6 +1179,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
         onDragOver={(event) => {
           if (
             enableMultiWindow &&
+            hasHydratedTabSession &&
             event.dataTransfer.types.includes(CHAT_TAB_TRANSFER_MIME)
           ) {
             event.preventDefault();
@@ -1010,7 +1187,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
         }}
         onDrop={(event) => {
           const raw = event.dataTransfer.getData(CHAT_TAB_TRANSFER_MIME);
-          if (!enableMultiWindow || !raw) return;
+          if (!enableMultiWindow || !hasHydratedTabSession || !raw) return;
           event.preventDefault();
           try {
             const transfer = JSON.parse(raw) as {

@@ -40,6 +40,10 @@ export const earlyForceCloseEvents = new ReplayEvent<ForceClosePayload>();
 export const earlyTelemetryEvents = new ReplayEvent<TelemetryPayload>();
 export const earlyChatTabRemovalEvents =
   new ReplayEvent<ChatTabRemovalPayload>();
+export const chatNavigationEvents = new ReplayEvent<{
+  chatId: number;
+  appId: number;
+}>();
 
 let registered = false;
 

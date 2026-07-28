@@ -40,11 +40,8 @@ import {
   useRegisterEntityDisposer,
 } from "./state_machines/react";
 import { clearTestRuntimeForAppAtom } from "./atoms/testRuntimeAtoms";
-import {
-  initializeChatTabSessionStorageAtom,
-  selectedChatIdAtom,
-} from "./atoms/chatAtoms";
-import { selectedAppIdAtom } from "./atoms/appAtoms";
+import { initializeChatTabSessionStorageAtom } from "./atoms/chatAtoms";
+import { chatNavigationEvents } from "./app_wiring/early_renderer_events";
 import {
   configureChatTabWindowSession,
   pruneChatTabWindowSessions,
@@ -282,12 +279,7 @@ function RendererServices() {
       subscribeToNavigation: (listener) =>
         router.subscribe("onResolved", listener),
       navigateToChat: (chatId, appId) => {
-        store.set(selectedChatIdAtom, chatId);
-        store.set(selectedAppIdAtom, appId);
-        void router.navigate({
-          to: "/chat",
-          search: { id: chatId, appId },
-        });
+        chatNavigationEvents.emit({ chatId, appId });
       },
     });
   }, [chatStreamManager, entityDisposal, queryClient, store, windowReady]);

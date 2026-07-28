@@ -7,6 +7,7 @@ import {
   type ChatTabSession,
 } from "@/atoms/chatAtoms";
 import {
+  activeStoredChatTabInstanceState,
   LEGACY_CHAT_TAB_SESSION_STORAGE_KEY,
   LEGACY_CHAT_TAB_SESSION_MIGRATION_KEY,
   adoptStoredChatTab,
@@ -160,6 +161,19 @@ describe("per-window chat tab session storage", () => {
     expect(adopted.tabs[0].tabInstanceId).toBe(transferredTabInstanceId);
     expect(adopted.selectedTabInstanceId).toBe(transferredTabInstanceId);
     expect(adopted.closedChatIds).toEqual([]);
+    expect(activeStoredChatTabInstanceState(transferredTabInstanceId)).toBe(
+      "present",
+    );
+  });
+
+  it("distinguishes an absent instance from unavailable session storage", () => {
+    const missing = "60000000-0000-4000-8000-000000000006" as TabInstanceId;
+    expect(activeStoredChatTabInstanceState(missing)).toBe("absent");
+
+    localStorage.setItem(chatTabSessionStorageKey(firstWindow), "{bad json");
+    expect(() => activeStoredChatTabInstanceState(missing)).toThrow(
+      "could not be read",
+    );
   });
 
   it("does not replay the retained legacy blob into a second window", () => {

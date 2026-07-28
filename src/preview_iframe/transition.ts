@@ -44,6 +44,8 @@ export function transition(
           position,
           currentUrl,
           preservedUrl: currentUrl,
+          iframeEpoch:
+            currentUrl === null ? state.iframeEpoch + 1 : state.iframeEpoch,
           selectorReady: false,
           picking: false,
         },

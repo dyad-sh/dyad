@@ -48,6 +48,12 @@ through subscriptions/invalidation. One-way machine outcomes may update
 window-local presentation atoms only at the permanent, commented write sites
 inventoried by `src/state_machines/boundaries.test.ts`.
 
+When selected-entity presentation is captured/restored, observe every
+authoritative selection change rather than only one UI entry point; sidebar,
+notification, reopen, and tab actions must not bypass the transition. Scope
+delayed DOM restoration (for example scroll retries) to the selected entity and
+a generation token so stale callbacks cannot overwrite a later selection.
+
 ## Entity Scoping
 
 When state belongs to an entity, key it by that entity id instead of using a

@@ -125,6 +125,15 @@ an acknowledgement. Buffer the request before React mounts, require a
 correlated renderer receipt after local persistence, retain the main-process
 transfer until that receipt arrives, and roll back source or destination state
 on timeout/failure so the same stable identity cannot remain in both windows.
+The typed IPC handler must return/await the receipt promise; dropping it reports
+success early and turns later rejection into an unhandled main-process promise.
+The persistence path used for the receipt must propagate or verify write
+failure—best-effort storage adapters that log and swallow errors do not prove
+durability.
+
+When a replayed renderer event mutates persisted session state, do not consume
+it until the session's derived atoms have hydrated. Persisting from empty
+pre-hydration atoms can erase unrelated restored entities.
 
 **Custom-protocol debugging:** Before using `git bisect` on a `dyad://` flow, quit every dev and packaged Dyad instance and verify which build owns the protocol registration. macOS may route the link to a different running/registered build, producing a convincing but false good/bad result.
 

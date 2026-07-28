@@ -107,6 +107,26 @@ describe("preview iframe transition", () => {
       },
     ]);
   });
+
+  it("replaces the iframe when restoring an empty presentation", () => {
+    const nested = transition(INITIAL_PREVIEW_IFRAME_STATE, {
+      type: "APP_URL_CHANGED",
+      url: `${URL}/settings`,
+    });
+    expect(nested.kind).toBe("applied");
+    if (nested.kind !== "applied") return;
+
+    const result = transition(nested.state, {
+      type: "RESTORE_PRESENTATION",
+      history: [],
+      position: 0,
+    });
+
+    expect(result.kind).toBe("applied");
+    if (result.kind !== "applied") return;
+    expect(result.state.currentUrl).toBeNull();
+    expect(result.state.iframeEpoch).toBe(nested.state.iframeEpoch + 1);
+  });
   it("reaches every state aspect and produces every command kind", () => {
     const options = {
       initialState: INITIAL_PREVIEW_IFRAME_STATE,

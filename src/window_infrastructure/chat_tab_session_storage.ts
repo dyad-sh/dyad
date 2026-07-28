@@ -62,6 +62,35 @@ export function getActiveStoredChatTab(
   }
 }
 
+export function activeStoredChatTabInstanceState(
+  tabInstanceId: TabInstanceId,
+): "present" | "absent" {
+  const raw = window.localStorage.getItem(
+    chatTabSessionStorageKey(activeWindowSessionId),
+  );
+  if (raw === null) return "absent";
+  const session = parseStoredSession(raw, activeWindowSessionId);
+  if (!session) {
+    throw new Error("The chat tab session could not be read");
+  }
+  return session.tabs.some((tab) => tab.tabInstanceId === tabInstanceId)
+    ? "present"
+    : "absent";
+}
+
+export function assertActiveStoredChatTabInstance(
+  tabInstanceId: TabInstanceId,
+  expected: "present" | "absent",
+): void {
+  if (activeStoredChatTabInstanceState(tabInstanceId) !== expected) {
+    throw new Error(
+      expected === "present"
+        ? "The adopted chat tab was not persisted"
+        : "The transferred chat tab was not removed from storage",
+    );
+  }
+}
+
 export function adoptStoredChatTab(tab: StoredChatTab): void {
   const storage = window.localStorage;
   const key = chatTabSessionStorageKey(activeWindowSessionId);

@@ -16,6 +16,9 @@ const capturedSession = capturedSessionFixture as ChatTabSession;
 
 const mocks = vi.hoisted(() => ({
   selectChat: vi.fn(),
+  router: {
+    subscribe: vi.fn(() => vi.fn()),
+  },
 }));
 
 vi.mock("@/hooks/useChats", () => ({
@@ -80,8 +83,9 @@ vi.mock("@/preview_iframe/PreviewIframeProvider", () => ({
 
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => vi.fn(),
+  useRouter: () => mocks.router,
   useRouterState: ({ select }: { select: (state: any) => unknown }) =>
-    select({ location: { pathname: "/" } }),
+    select({ location: { pathname: "/", href: "/" } }),
 }));
 
 describe("golden single-window: tab-session schema", () => {

@@ -5,7 +5,11 @@ const logger = log.scope("secret_storage");
 
 // Tags plaintext-fallback blobs so they stay readable if the OS
 // keyring becomes available later.
-const PLAINTEXT_PREFIX = "plain:";
+export const PLAINTEXT_PREFIX = "plain:";
+
+export function isSecretEncryptionAvailable(): boolean {
+  return safeStorage.isEncryptionAvailable();
+}
 
 export function encryptToString(plaintext: string): string {
   if (!safeStorage.isEncryptionAvailable()) {

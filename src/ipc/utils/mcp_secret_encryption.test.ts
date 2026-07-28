@@ -111,19 +111,103 @@ describe("encryptStoredMcpSecrets", () => {
     expect(await encryptStoredMcpSecrets()).toBe(0);
   });
 
-  it("does not overwrite an already-encrypted column", async () => {
-    const existing = Buffer.from(`enc:{"A":"kept"}`, "utf8").toString("base64");
+  it("leaves a row alone when both columns already agree", async () => {
+    const existing = Buffer.from(`enc:{"A":"same"}`, "utf8").toString("base64");
     await db.insert(mcpServers).values({
       id: 1,
       name: "http",
       transport: "http",
       url: "https://example.com/mcp",
-      headersJson: { A: "ignored" },
+      headersJson: { A: "same" },
       headersEncrypted: existing,
     });
 
     expect(await encryptStoredMcpSecrets()).toBe(0);
     expect((await readRow(1)).headersEncrypted).toBe(existing);
+  });
+
+  it("re-encrypts when an older build edited the plaintext column", async () => {
+    await db.insert(mcpServers).values({
+      id: 1,
+      name: "http",
+      transport: "http",
+      url: "https://example.com/mcp",
+      headersJson: { A: "rotated" },
+      headersEncrypted: Buffer.from(`enc:{"A":"stale"}`, "utf8").toString(
+        "base64",
+      ),
+    });
+
+    expect(await encryptStoredMcpSecrets()).toBe(1);
+    expect(decode((await readRow(1)).headersEncrypted)).toBe(
+      `enc:{"A":"rotated"}`,
+    );
+  });
+
+  it("re-encrypts when the stored blob can't be decrypted at all", async () => {
+    await db.insert(mcpServers).values({
+      id: 1,
+      name: "http",
+      transport: "http",
+      url: "https://example.com/mcp",
+      headersJson: { A: "recoverable" },
+      headersEncrypted: Buffer.from("garbage", "utf8").toString("base64"),
+    });
+
+    expect(await encryptStoredMcpSecrets()).toBe(1);
+    expect(decode((await readRow(1)).headersEncrypted)).toBe(
+      `enc:{"A":"recoverable"}`,
+    );
+  });
+
+  it("upgrades a plain: blob once a keyring is available", async () => {
+    isEncryptionAvailable.mockReturnValue(false);
+    await db.insert(mcpServers).values({
+      id: 1,
+      name: "http",
+      transport: "http",
+      url: "https://example.com/mcp",
+      headersJson: { A: "1" },
+    });
+    await encryptStoredMcpSecrets();
+    // The plaintext column is what a build predating the encrypted
+    // columns reads; clear it so only the plain: blob is left.
+    await db
+      .update(mcpServers)
+      .set({ headersJson: null })
+      .where(eq(mcpServers.id, 1));
+    expect((await readRow(1)).headersEncrypted).toMatch(/^plain:/);
+
+    isEncryptionAvailable.mockReturnValue(true);
+    expect(await encryptStoredMcpSecrets()).toBe(1);
+    expect(decode((await readRow(1)).headersEncrypted)).toBe(`enc:{"A":"1"}`);
+  });
+
+  it("leaves a plain: blob alone while no keyring exists", async () => {
+    isEncryptionAvailable.mockReturnValue(false);
+    await db.insert(mcpServers).values({
+      id: 1,
+      name: "http",
+      transport: "http",
+      url: "https://example.com/mcp",
+      headersEncrypted: `plain:${Buffer.from(`{"A":"1"}`, "utf8").toString("base64")}`,
+    });
+
+    expect(await encryptStoredMcpSecrets()).toBe(0);
+  });
+
+  it("does not rewrite a server whose last secret was removed", async () => {
+    await db.insert(mcpServers).values({
+      id: 1,
+      name: "stdio",
+      transport: "stdio",
+      command: "npx",
+      envJson: {},
+    });
+
+    expect(await encryptStoredMcpSecrets()).toBe(0);
+    expect(await encryptStoredMcpSecrets()).toBe(0);
+    expect((await readRow(1)).envEncrypted).toBeNull();
   });
 
   it("picks up a row whose encrypted column was cleared by an older build", async () => {

@@ -125,6 +125,32 @@ describe("ChatTabTransferCoordinator", () => {
     coordinator.reject(session(2), transferId);
   });
 
+  it("rejects a reused transfer identifier without replacing its owner", async () => {
+    const windows = new WindowRegistry();
+    windows.register(endpoint(1), session(1));
+    windows.register(endpoint(2), session(2));
+    const coordinator = new ChatTabTransferCoordinator(windows);
+    const transferId = "20000000-0000-4000-8000-000000000004";
+    const originalPayload = payload();
+
+    coordinator.begin(transferId, session(1), originalPayload);
+    expect(() =>
+      coordinator.begin(transferId, session(2), {
+        ...payload(),
+        tabInstanceId: tab(2),
+      }),
+    ).toThrowError(
+      expect.objectContaining({
+        kind: "conflict",
+      }),
+    );
+
+    expect(await coordinator.adopt(session(2), transferId)).toEqual(
+      originalPayload,
+    );
+    coordinator.reject(session(2), transferId);
+  });
+
   it("actively expires a cancelled drag without another protocol call", async () => {
     vi.useFakeTimers();
     try {
@@ -138,7 +164,7 @@ describe("ChatTabTransferCoordinator", () => {
         100,
         10,
       );
-      const transferId = "20000000-0000-4000-8000-000000000004";
+      const transferId = "20000000-0000-4000-8000-000000000005";
       coordinator.begin(transferId, session(1), payload());
 
       now = 101;

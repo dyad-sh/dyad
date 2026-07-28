@@ -44,6 +44,12 @@ export class ChatTabTransferCoordinator {
     payload: ChatTabTransferPayload,
   ): string {
     this.sweep();
+    if (this.pending.has(transferId)) {
+      throw new DyadError(
+        "This tab transfer identifier is already in use",
+        DyadErrorKind.Conflict,
+      );
+    }
     for (const [existingId, transfer] of this.pending) {
       if (
         transfer.sourceWindowSessionId === sourceWindowSessionId &&

@@ -147,6 +147,7 @@ import {
   getWindowSessionFilePath,
   MAX_PRODUCT_WINDOWS,
   prepareWindowSessionForCreation,
+  rememberWindowSessionBestEffort,
   restorableVisibleEntity,
   WindowSessionPersistence,
   type WindowSessionPersistenceFailurePolicy,
@@ -1086,7 +1087,17 @@ configureWindowProductController({
       ?.visibleEntity,
   setVisibleEntities: (windowSessionId, entities) => {
     const visibleEntity = restorableVisibleEntity(entities);
-    getWindowSessionPersistence().remember(windowSessionId, visibleEntity);
+    rememberWindowSessionBestEffort({
+      persistence: getWindowSessionPersistence(),
+      windowSessionId,
+      visibleEntity,
+      onFailure: (error) => {
+        logger.error(
+          "Failed to persist visible window route; continuing without updating restoration state:",
+          error,
+        );
+      },
+    });
   },
   mayMigrateLegacyChatTabSession: (windowSessionId) =>
     getWindowSessionPersistence().read()[0]?.windowSessionId ===

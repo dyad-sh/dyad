@@ -8,6 +8,7 @@ import {
   getWindowSessionFilePath,
   MAX_PRODUCT_WINDOWS,
   prepareWindowSessionForCreation,
+  rememberWindowSessionBestEffort,
   restorableVisibleEntity,
   WindowSessionPersistence,
 } from "./window_session_persistence";
@@ -133,6 +134,25 @@ describe("WindowSessionPersistence", () => {
         failurePolicy: "throw",
       }),
     ).toThrow("read-only user data");
+  });
+
+  it("treats visible-route persistence as best-effort", () => {
+    const persistence = {
+      remember: () => {
+        throw new Error("disk full");
+      },
+    } as unknown as WindowSessionPersistence;
+    const onFailure = vi.fn();
+
+    expect(
+      rememberWindowSessionBestEffort({
+        persistence,
+        windowSessionId: session(1),
+        visibleEntity: { kind: "chat", id: 11 },
+        onFailure,
+      }),
+    ).toBe(false);
+    expect(onFailure).toHaveBeenCalledWith(new Error("disk full"));
   });
 
   it("clears durable and temporary window session files during reset", async () => {

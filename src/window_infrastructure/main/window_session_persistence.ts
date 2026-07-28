@@ -36,6 +36,26 @@ export function restorableVisibleEntity(
   );
 }
 
+export function rememberWindowSessionBestEffort({
+  persistence,
+  windowSessionId,
+  visibleEntity,
+  onFailure,
+}: {
+  persistence: WindowSessionPersistence;
+  windowSessionId: WindowSessionId;
+  visibleEntity?: VisibleEntity;
+  onFailure?: (error: unknown) => void;
+}): boolean {
+  try {
+    persistence.remember(windowSessionId, visibleEntity);
+    return true;
+  } catch (error) {
+    onFailure?.(error);
+    return false;
+  }
+}
+
 export function prepareWindowSessionForCreation({
   persistence,
   descriptor,

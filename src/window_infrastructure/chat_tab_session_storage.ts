@@ -254,6 +254,49 @@ export function pruneChatTabWindowSessions(
       }
     }
     for (const key of staleKeys) storage.removeItem(key);
+
+    const sessions = restorableWindowSessionIds.flatMap((windowSessionId) => {
+      const key = chatTabSessionStorageKey(windowSessionId);
+      const session = parseStoredSession(storage.getItem(key), windowSessionId);
+      return session ? [{ key, session }] : [];
+    });
+    const ownerByTabInstanceId = new Map<
+      TabInstanceId,
+      { key: string; updatedAt: number }
+    >();
+    for (const { key, session } of sessions) {
+      for (const tab of session.tabs) {
+        const owner = ownerByTabInstanceId.get(tab.tabInstanceId);
+        if (
+          !owner ||
+          session.updatedAt > owner.updatedAt ||
+          (session.updatedAt === owner.updatedAt && key > owner.key)
+        ) {
+          ownerByTabInstanceId.set(tab.tabInstanceId, {
+            key,
+            updatedAt: session.updatedAt,
+          });
+        }
+      }
+    }
+    for (const { key, session } of sessions) {
+      const tabs = session.tabs.filter(
+        (tab) => ownerByTabInstanceId.get(tab.tabInstanceId)?.key === key,
+      );
+      if (tabs.length === session.tabs.length) continue;
+      storage.setItem(
+        key,
+        JSON.stringify({
+          ...session,
+          tabs,
+          selectedTabInstanceId: tabs.some(
+            (tab) => tab.tabInstanceId === session.selectedTabInstanceId,
+          )
+            ? session.selectedTabInstanceId
+            : null,
+        } satisfies StoredWindowChatTabSession),
+      );
+    }
   } catch (error) {
     console.error("Failed to prune chat tab window sessions", error);
   }

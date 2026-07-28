@@ -287,6 +287,53 @@ describe("per-window chat tab session storage", () => {
     );
   });
 
+  it("reconciles a crash-window duplicate identity into the newest session", () => {
+    const duplicate = "60000000-0000-4000-8000-000000000006" as TabInstanceId;
+    const first: StoredWindowChatTabSession = {
+      version: 2,
+      windowSessionId: firstWindow,
+      tabs: [{ chatId: 10, tabInstanceId: duplicate }],
+      selectedTabInstanceId: duplicate,
+      closedChatIds: [],
+      updatedAt: 1,
+    };
+    const second: StoredWindowChatTabSession = {
+      version: 2,
+      windowSessionId: secondWindow,
+      tabs: [
+        { chatId: 10, tabInstanceId: duplicate },
+        {
+          chatId: 20,
+          tabInstanceId:
+            "70000000-0000-4000-8000-000000000007" as TabInstanceId,
+        },
+      ],
+      selectedTabInstanceId: duplicate,
+      closedChatIds: [],
+      updatedAt: 2,
+    };
+    localStorage.setItem(
+      chatTabSessionStorageKey(firstWindow),
+      JSON.stringify(first),
+    );
+    localStorage.setItem(
+      chatTabSessionStorageKey(secondWindow),
+      JSON.stringify(second),
+    );
+
+    pruneChatTabWindowSessions(localStorage, [firstWindow, secondWindow]);
+
+    const reconciledFirst = JSON.parse(
+      localStorage.getItem(chatTabSessionStorageKey(firstWindow))!,
+    ) as StoredWindowChatTabSession;
+    const reconciledSecond = JSON.parse(
+      localStorage.getItem(chatTabSessionStorageKey(secondWindow))!,
+    ) as StoredWindowChatTabSession;
+    expect(reconciledFirst.tabs).toEqual([]);
+    expect(reconciledFirst.selectedTabInstanceId).toBeNull();
+    expect(reconciledSecond).toEqual(second);
+  });
+
   it("falls back without blocking startup when browser storage is unavailable", () => {
     const storageError = new DOMException("Storage denied", "SecurityError");
     const unavailableStorage = {

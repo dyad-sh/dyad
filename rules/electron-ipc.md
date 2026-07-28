@@ -130,6 +130,10 @@ success early and turns later rejection into an unhandled main-process promise.
 The persistence path used for the receipt must propagate or verify write
 failure—best-effort storage adapters that log and swallow errors do not prove
 durability.
+If either side writes ownership to durable renderer storage before the receipt,
+also reconcile duplicate stable identities across restorable sessions during
+bootstrap. An in-memory coordinator cannot resolve the crash/restart window by
+itself.
 
 When a replayed renderer event mutates persisted session state, do not consume
 it until the session's derived atoms have hydrated. Persisting from empty

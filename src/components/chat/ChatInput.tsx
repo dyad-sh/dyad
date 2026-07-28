@@ -635,7 +635,14 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     // step-limit continue all clear it), so it can be false while the user
     // still has prompts they care about queued — deleting them here silently
     // lost work, including the queue restored (paused) after a restart.
-    if (!isPaused && queuedMessages.length > 0) {
+    //
+    // Latch unconditionally rather than gating on `queuedMessages`: that is a
+    // render-time snapshot, and the machine can admit a follow-up into the live
+    // queue after it. Skipping the latch on a stale empty snapshot would let
+    // finalization dispatch that item, so Stop would start a new generation.
+    // A latch with a genuinely empty queue is harmless — the empty-queue effect
+    // above clears it.
+    if (!isPaused) {
       pauseQueue();
     }
     // Always reset editing state when cancelling, regardless of pause state

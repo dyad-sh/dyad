@@ -44,6 +44,23 @@ async function queueMessages(
 describe("pause queue (integration)", () => {
   let harness: HybridChatHarness;
 
+  /**
+   * Cancellation is only observable once the stop button is gone (the machine
+   * reached a terminal state) and the cancel IPC round-trip has settled.
+   * Asserting before that can pass on a mid-flight queue and leaves the
+   * cancellation running into test cleanup.
+   */
+  async function waitForStreamTermination() {
+    await waitFor(
+      () =>
+        expect(
+          screen.queryByRole("button", { name: /cancel generation/i }),
+        ).toBeNull(),
+      { timeout: 20_000 },
+    );
+    await harness.bridge.settleInFlight();
+  }
+
   beforeAll(async () => {
     harness = await setupHybridChatHarness({
       electronMock: h,
@@ -135,10 +152,12 @@ describe("pause queue (integration)", () => {
     // No pause click: stopping used to delete the whole queue here.
     fireEvent.click(screen.getByRole("button", { name: /cancel generation/i }));
 
+    // The "Paused" label lands synchronously, so gate the queue assertions on
+    // cancellation actually completing: stream terminated, IPC settled.
     await screen.findByText("Paused");
-    await waitFor(() =>
-      expect(queueHeader.textContent).toMatch(queuedCountText(3)),
-    );
+    await waitForStreamTermination();
+
+    expect(queueHeader.textContent).toMatch(queuedCountText(3));
     // Scoped to the queue: the last prompt typed also lingers in the composer.
     for (const message of ["unpaused 1", "unpaused 2", "unpaused 3"]) {
       expect(within(queueHeader).getByText(message)).toBeTruthy();
@@ -164,13 +183,7 @@ describe("pause queue (integration)", () => {
     await screen.findByText("Paused");
 
     fireEvent.click(screen.getByRole("button", { name: /cancel generation/i }));
-    await waitFor(
-      () =>
-        expect(
-          screen.queryByRole("button", { name: /cancel generation/i }),
-        ).toBeNull(),
-      { timeout: 20_000 },
-    );
+    await waitForStreamTermination();
     expect(queueHeader.textContent).toMatch(queuedCountText(3));
 
     // Resuming clears the pause latch but dispatches only the first item, so
@@ -185,9 +198,9 @@ describe("pause queue (integration)", () => {
       await screen.findByRole("button", { name: /cancel generation/i }),
     );
     await screen.findByText("Paused");
-    await waitFor(() =>
-      expect(queueHeader.textContent).toMatch(queuedCountText(2)),
-    );
+    await waitForStreamTermination();
+
+    expect(queueHeader.textContent).toMatch(queuedCountText(2));
     for (const message of ["resumed 2", "resumed 3"]) {
       expect(within(queueHeader).getByText(message)).toBeTruthy();
     }

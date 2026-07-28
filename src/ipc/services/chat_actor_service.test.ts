@@ -110,7 +110,10 @@ import {
   waitForAppChatActorsIdle,
   waitForChatActorIdle,
 } from "./chat_actor_service";
-import { assertChatActorAdmissionOpen } from "./chat_actor_deletion_fence";
+import {
+  assertChatActorAdmissionOpen,
+  beginChatActorMutation,
+} from "./chat_actor_deletion_fence";
 import { assertAppChatCreationOpen } from "./app_chat_creation_fence";
 
 describe("waitForChatActorIdle", () => {
@@ -230,6 +233,30 @@ describe("waitForChatActorIdle", () => {
         },
       }),
     ).resolves.toBe("rejected");
+  });
+
+  it("rejects main-owned dispatch while chat actor admission is fenced", async () => {
+    const release = beginChatActorMutation(7);
+    try {
+      await expect(
+        dispatchChatIntentAndWait({
+          schemaVersion: 1,
+          intentId: "blocked-follow-up",
+          payloadHash: "hash",
+          chatId: 7,
+          prompt: "continue",
+          owner: {
+            kind: "user-input-follow-up",
+            requestId: "blocked-follow-up",
+          },
+        }),
+      ).rejects.toMatchObject({ kind: "precondition" });
+    } finally {
+      release();
+    }
+
+    expect(host.localRef).not.toHaveBeenCalled();
+    expect(actor.send).not.toHaveBeenCalled();
   });
 
   it("settles a removed queued follow-up from authoritative rejection", async () => {

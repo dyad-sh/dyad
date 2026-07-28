@@ -10,6 +10,7 @@ import {
 import type { ChatStreamHostState } from "@/chat_stream/host_state";
 import type { ChatStreamHostIgnoreReason } from "@/chat_stream/host_transition";
 import {
+  assertChatActorAdmissionOpen,
   beginChatActorDeletion,
   beginChatActorMutation,
 } from "./chat_actor_deletion_fence";
@@ -157,6 +158,10 @@ export async function dispatchChatIntentAndWait(
   signal?: AbortSignal,
 ): Promise<"accepted" | "rejected"> {
   signal?.throwIfAborted();
+  // Main-owned follow-ups and plan turns bypass remote authorization, so they
+  // must honor the same destructive-operation admission fence before reusing
+  // a retained local actor.
+  assertChatActorAdmissionOpen(intent.chatId);
   const actor = remoteMachineHost.localRef(
     chatStreamDefinition,
     chatStreamKey(intent.chatId),

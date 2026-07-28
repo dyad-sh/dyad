@@ -221,6 +221,11 @@ export const PlanPanel: React.FC = () => {
       prompt:
         "I accept this plan. Call the exit_plan tool now with confirmation: true to begin implementation.",
       planAcceptInNewChat: useNewChat,
+      onSettled: () => {
+        // A successful handoff replaces the buttons with its own lifecycle UI.
+        // If the turn fails or completes without exit_plan, restore the buttons.
+        setIsSubmitting(false);
+      },
     });
   };
 

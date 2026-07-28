@@ -508,12 +508,48 @@ export function markIntentTerminal(
   return loadChatQueue(database, record.intent.chatId);
 }
 
-export function peekQueueHead(
-  _database: ChatDatabase,
+export async function claimQueueHead(
+  database: ChatDatabase,
   chatId: number,
-): SerializableChatTurnIntent | null {
-  const aggregate = queueFor(chatId);
-  if (aggregate.paused) return null;
-  const intentId = aggregate.intentIds[0];
-  return intentId ? (recordFor(intentId)?.intent ?? null) : null;
+): Promise<{
+  intent: SerializableChatTurnIntent;
+  queue: ReturnType<typeof loadChatQueue>;
+} | null> {
+  return withChatQueueLock(chatId, async () => {
+    const aggregate = queueFor(chatId);
+    if (aggregate.paused) return null;
+    const intentId = aggregate.intentIds[0];
+    if (!intentId) return null;
+    const record = recordFor(intentId);
+    if (!record) {
+      aggregate.intentIds.shift();
+      aggregate.revision += 1;
+      return null;
+    }
+    aggregate.intentIds.shift();
+    aggregate.revision += 1;
+    return {
+      intent: record.intent,
+      queue: loadChatQueue(database, chatId),
+    };
+  });
+}
+
+export async function restoreClaimedQueueHead(
+  database: ChatDatabase,
+  chatId: number,
+  intentId: string,
+): Promise<ReturnType<typeof loadChatQueue>> {
+  return withChatQueueLock(chatId, async () => {
+    const aggregate = queueFor(chatId);
+    const record = recordFor(intentId);
+    if (
+      record?.acceptance === "queued" &&
+      !aggregate.intentIds.includes(intentId)
+    ) {
+      aggregate.intentIds.unshift(intentId);
+      aggregate.revision += 1;
+    }
+    return loadChatQueue(database, chatId);
+  });
 }

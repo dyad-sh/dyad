@@ -181,6 +181,7 @@ export async function dispatchChatIntentAndWait(
       } else if (
         (acceptance?.intentId === intent.intentId &&
           acceptance.acceptance === "rejected") ||
+        getIntentAcceptance(intent.intentId) === "rejected" ||
         snapshot.lastCompletion?.intentId === intent.intentId
       ) {
         unsubscribe();

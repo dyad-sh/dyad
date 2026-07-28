@@ -39,6 +39,7 @@ const persisted = vi.hoisted(() => ({
   revision: 0,
   paused: false,
   entries: [] as ChatQueueEntry[],
+  intents: new Map<string, SerializableChatTurnIntent>(),
 }));
 
 vi.mock("@/db", () => ({
@@ -93,6 +94,7 @@ vi.mock("./persistence", () => ({
   stageActiveIntent: vi.fn(
     (_database: unknown, intent: SerializableChatTurnIntent) => {
       execution.admissions.push(intent.prompt);
+      persisted.intents.set(intent.intentId, intent);
       return null;
     },
   ),
@@ -140,7 +142,27 @@ vi.mock("./persistence", () => ({
     queuePaused: persisted.paused,
     queue: [...persisted.entries],
   })),
-  peekQueueHead: vi.fn(() => null),
+  claimQueueHead: vi.fn(async () => {
+    if (persisted.paused) return null;
+    const entry = persisted.entries.shift();
+    if (!entry) return null;
+    const intent = persisted.intents.get(entry.intentId);
+    if (!intent) return null;
+    persisted.revision += 1;
+    return {
+      intent,
+      queue: {
+        queueRevision: persisted.revision,
+        queuePaused: persisted.paused,
+        queue: [...persisted.entries],
+      },
+    };
+  }),
+  restoreClaimedQueueHead: vi.fn(async () => ({
+    queueRevision: persisted.revision,
+    queuePaused: persisted.paused,
+    queue: [...persisted.entries],
+  })),
 }));
 
 function turn(intentId: string): SerializableChatTurnIntent {
@@ -174,6 +196,7 @@ describe("main-hosted chat stream actor", () => {
     persisted.revision = 0;
     persisted.paused = false;
     persisted.entries = [];
+    persisted.intents.clear();
   });
 
   it("shares lifecycle and queue authority across reload and two windows", async () => {

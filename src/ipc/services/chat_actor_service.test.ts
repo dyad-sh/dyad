@@ -62,6 +62,12 @@ const cleanup = vi.hoisted(() => ({
   findChats: vi.fn(async () => [] as Array<{ id: number }>),
 }));
 
+const persistence = vi.hoisted(() => ({
+  getIntentAcceptance: vi.fn<
+    () => "queued" | "message-accepted" | "rejected" | undefined
+  >(() => undefined),
+}));
+
 vi.mock("@/ipc/services/distributed_machine_actor_host", () => ({
   remoteMachineHost: host,
 }));
@@ -92,6 +98,10 @@ vi.mock("drizzle-orm", async (importOriginal) => ({
 vi.mock("@/window_infrastructure/main/entity_disposal_bus", () => ({
   entityDisposalBus: { publish: cleanup.publish },
 }));
+vi.mock("@/chat_stream/persistence", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat_stream/persistence")>()),
+  getIntentAcceptance: persistence.getIntentAcceptance,
+}));
 
 import {
   beginAppChatActorMutation,
@@ -119,6 +129,8 @@ describe("waitForChatActorIdle", () => {
     cleanup.publish.mockClear();
     cleanup.findChats.mockClear();
     cleanup.findChats.mockResolvedValue([]);
+    persistence.getIntentAcceptance.mockReset();
+    persistence.getIntentAcceptance.mockReturnValue(undefined);
   });
 
   it("treats an absent actor as already idle without creating it", async () => {
@@ -218,6 +230,25 @@ describe("waitForChatActorIdle", () => {
         },
       }),
     ).resolves.toBe("rejected");
+  });
+
+  it("settles a removed queued follow-up from authoritative rejection", async () => {
+    const settled = dispatchChatIntentAndWait({
+      schemaVersion: 1,
+      intentId: "removed-follow-up",
+      payloadHash: "hash",
+      chatId: 7,
+      prompt: "continue",
+      owner: {
+        kind: "user-input-follow-up",
+        requestId: "removed-follow-up",
+      },
+    });
+
+    persistence.getIntentAcceptance.mockReturnValue("rejected");
+    actor.subscribe.mock.calls[0]?.[0]();
+
+    await expect(settled).resolves.toBe("rejected");
   });
 
   it("settles and disposes an owned chat before compensating its row", async () => {

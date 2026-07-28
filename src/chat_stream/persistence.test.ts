@@ -4,13 +4,14 @@ import { DyadErrorKind } from "@/errors/dyad_error";
 import { createInMemoryTestDb, type TestDb } from "@/testing/test_db";
 import {
   assertQueueSnapshotWithinLimit,
+  claimQueueHead,
   disposeSessionChatQueue,
   hydrateChatStreamPersistence,
   loadChatQueue,
   markIntentTerminal,
   mutateChatQueue,
-  peekQueueHead,
   persistQueuedIntent,
+  restoreClaimedQueueHead,
 } from "./persistence";
 import { computeChatTurnPayloadHash } from "@/ipc/utils/chat_turn_intent_hash";
 import type { SerializableChatTurnIntent } from "./transport";
@@ -152,9 +153,46 @@ describe("chat stream persistence", () => {
     expect(loadChatQueue(database, chatId).queue[0]?.prompt).toBe(
       "Build the edited version",
     );
-    expect(peekQueueHead(database, chatId)?.prompt).toBe(
-      "Build the edited version",
-    );
+    await expect(claimQueueHead(database, chatId)).resolves.toMatchObject({
+      intent: { prompt: "Build the edited version" },
+      queue: { queueRevision: 3, queue: [] },
+    });
+  });
+
+  it("makes a claimed queue head immutable before asynchronous admission", async () => {
+    persistQueuedIntent(database, intent("turn-1", "Original prompt"));
+
+    const claimed = await claimQueueHead(database, chatId);
+
+    expect(claimed?.intent.prompt).toBe("Original prompt");
+    expect(loadChatQueue(database, chatId)).toMatchObject({
+      queueRevision: 2,
+      queue: [],
+    });
+    await expect(
+      mutateChatQueue(database, chatId, {
+        type: "mutate-queue",
+        mutation: {
+          type: "edit",
+          itemId: "turn-1",
+          prompt: "Stale edit",
+        },
+        expectedQueueRevision: 2,
+        mutationId: "edit-claimed",
+      }),
+    ).rejects.toMatchObject({ kind: DyadErrorKind.NotFound });
+  });
+
+  it("restores a claimed head if the actor becomes busy before dispatch", async () => {
+    persistQueuedIntent(database, intent("turn-1"));
+    await claimQueueHead(database, chatId);
+
+    await expect(
+      restoreClaimedQueueHead(database, chatId, "turn-1"),
+    ).resolves.toMatchObject({
+      queueRevision: 3,
+      queue: [{ intentId: "turn-1" }],
+    });
   });
 
   it("does not remove a queued plan implementation from its live handoff", async () => {

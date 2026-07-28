@@ -29,9 +29,10 @@ import {
   isSessionQueuedIntent,
   markIntentTerminal,
   mutateChatQueue,
-  peekQueueHead,
+  claimQueueHead,
   persistQueuedIntent,
   persistSessionQueuedIntent,
+  restoreClaimedQueueHead,
   stageActiveIntent,
 } from "./persistence";
 import {
@@ -373,8 +374,36 @@ function createCommandRunner(
         return;
       }
       case "dispatch-next": {
-        const intent = peekQueueHead(db, context.key.chatId);
-        if (intent) emit({ type: "SUBMIT", intent });
+        const claimed = await claimQueueHead(db, context.key.chatId);
+        if (claimed) {
+          const phaseBeforeDispatch = context.getSnapshot().phase;
+          if (
+            phaseBeforeDispatch !== "idle" &&
+            phaseBeforeDispatch !== "errored"
+          ) {
+            const queue = await restoreClaimedQueueHead(
+              db,
+              context.key.chatId,
+              claimed.intent.intentId,
+            );
+            emit({
+              type: "QUEUE_MUTATED",
+              queueRevision: queue.queueRevision,
+              paused: queue.queuePaused,
+              entries: queue.queue,
+            });
+            return;
+          }
+          // Move the actor out of idle before publishing the shorter queue so
+          // that projection refresh cannot schedule a second head concurrently.
+          emit({ type: "SUBMIT", intent: claimed.intent });
+          emit({
+            type: "QUEUE_MUTATED",
+            queueRevision: claimed.queue.queueRevision,
+            paused: claimed.queue.queuePaused,
+            entries: claimed.queue.queue,
+          });
+        }
         return;
       }
     }

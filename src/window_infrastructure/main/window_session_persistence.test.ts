@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WindowSessionId } from "../types";
 import {
   clearWindowSessionPersistence,
+  forgetWindowSessionBestEffort,
   getWindowSessionFilePath,
   MAX_PRODUCT_WINDOWS,
   prepareWindowSessionForCreation,
@@ -153,6 +154,24 @@ describe("WindowSessionPersistence", () => {
       }),
     ).toBe(false);
     expect(onFailure).toHaveBeenCalledWith(new Error("disk full"));
+  });
+
+  it("treats closed-window persistence cleanup as best-effort", () => {
+    const persistence = {
+      forget: () => {
+        throw new Error("read-only user data");
+      },
+    } as unknown as WindowSessionPersistence;
+    const onFailure = vi.fn();
+
+    expect(
+      forgetWindowSessionBestEffort({
+        persistence,
+        windowSessionId: session(1),
+        onFailure,
+      }),
+    ).toBe(false);
+    expect(onFailure).toHaveBeenCalledWith(new Error("read-only user data"));
   });
 
   it("clears durable and temporary window session files during reset", async () => {

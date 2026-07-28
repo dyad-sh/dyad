@@ -10,9 +10,9 @@ describe("initialWindowNavigation", () => {
   });
 
   it("restores the selected chat route instead of downgrading to app details", () => {
-    expect(initialWindowNavigation({ kind: "chat", id: 11 })).toEqual({
+    expect(initialWindowNavigation({ kind: "chat", id: 11 }, 7)).toEqual({
       to: "/chat",
-      search: { id: 11 },
+      search: { id: 11, appId: 7 },
     });
   });
 });

@@ -56,6 +56,24 @@ export function rememberWindowSessionBestEffort({
   }
 }
 
+export function forgetWindowSessionBestEffort({
+  persistence,
+  windowSessionId,
+  onFailure,
+}: {
+  persistence: WindowSessionPersistence;
+  windowSessionId: WindowSessionId;
+  onFailure?: (error: unknown) => void;
+}): boolean {
+  try {
+    persistence.forget(windowSessionId);
+    return true;
+  } catch (error) {
+    onFailure?.(error);
+    return false;
+  }
+}
+
 export function prepareWindowSessionForCreation({
   persistence,
   descriptor,

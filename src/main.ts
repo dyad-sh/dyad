@@ -144,6 +144,7 @@ import {
   configureWindowProductController,
 } from "./window_infrastructure/main/window_product_controller";
 import {
+  forgetWindowSessionBestEffort,
   getWindowSessionFilePath,
   MAX_PRODUCT_WINDOWS,
   prepareWindowSessionForCreation,
@@ -789,7 +790,16 @@ const createWindow = ({
     });
     productWindows.delete(windowSessionId);
     if (sessionDisposition === "forget") {
-      getWindowSessionPersistence().forget(windowSessionId);
+      forgetWindowSessionBestEffort({
+        persistence: getWindowSessionPersistence(),
+        windowSessionId,
+        onFailure: (error) => {
+          logger.error(
+            "Failed to remove closed window restoration state; continuing in-memory cleanup:",
+            error,
+          );
+        },
+      });
     } else if (descriptor) {
       lastClosedWindowSession = descriptor;
     }

@@ -28,6 +28,7 @@ export const windowInfrastructureContracts = {
       missedInvalidations: z.array(QueryInvalidationEventSchema),
       recoveryScopes: z.array(QueryInvalidationScopeSchema),
       initialEntity: VisibleEntitySchema.optional(),
+      initialChatAppId: z.number().int().positive().optional(),
       mayMigrateLegacyChatTabSession: z.boolean(),
       restorableWindowSessionIds: z.array(WindowSessionIdSchema),
     }),

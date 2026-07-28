@@ -243,7 +243,10 @@ function RendererServices() {
             );
           }
           const entity: VisibleEntity | undefined = bootstrap.initialEntity;
-          const navigation = initialWindowNavigation(entity);
+          const navigation = initialWindowNavigation(
+            entity,
+            bootstrap.initialChatAppId,
+          );
           if (navigation) {
             void router.navigate({ ...navigation, replace: true });
           }

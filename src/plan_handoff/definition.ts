@@ -186,6 +186,9 @@ function createCommandRunner(
         originWindowSessionId: intent.originWindowSessionId,
         signal,
       });
+      // The new chat becomes user-owned only once its implementation turn has
+      // been accepted. Until then every exit path must compensate it.
+      ownedTargetChatId = null;
       emit({
         type: "CHECKPOINT",
         handoffId: intent.handoffId,
@@ -199,7 +202,7 @@ function createCommandRunner(
       emit({ type: "FAILED", handoffId: intent.handoffId, error: message });
     } finally {
       try {
-        if (signal.aborted && ownedTargetChatId !== null) {
+        if (ownedTargetChatId !== null) {
           await deleteOwnedChatAfterSettlingActors(ownedTargetChatId);
         }
       } finally {

@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => ({
       phase: string;
       capabilities: { canCancel: boolean };
       error: string | null;
+      queueRevision?: number;
     };
   },
 }));
@@ -55,6 +56,12 @@ function makeWrapper() {
 
 describe("useStreamChat main-owned queue", () => {
   beforeEach(() => {
+    mocks.streamState.current = {
+      phase: "idle",
+      capabilities: { canCancel: false },
+      error: null,
+      queueRevision: 7,
+    };
     mocks.send.mockReset();
     mocks.dispatchQueueEvent.mockReset();
     mocks.dispatchQueueEvent.mockResolvedValue(undefined);
@@ -105,26 +112,42 @@ describe("useStreamChat main-owned queue", () => {
     });
 
     await waitFor(() => {
-      expect(mocks.dispatchQueueEvent).toHaveBeenCalledWith(CHAT_ID, {
-        type: "EDIT_QUEUE_ENTRY",
+      expect(mocks.dispatchQueueEvent).toHaveBeenCalledWith(
+        CHAT_ID,
+        {
+          type: "EDIT_QUEUE_ENTRY",
+          itemId: "first",
+          prompt: "Changed",
+          attachments: [],
+          selectedComponents: undefined,
+        },
+        7,
+      );
+    });
+    expect(mocks.dispatchQueueEvent).toHaveBeenCalledWith(
+      CHAT_ID,
+      {
+        type: "REORDER_QUEUE_ENTRY",
         itemId: "first",
-        prompt: "Changed",
-        attachments: [],
-        selectedComponents: undefined,
-      });
-    });
-    expect(mocks.dispatchQueueEvent).toHaveBeenCalledWith(CHAT_ID, {
-      type: "REORDER_QUEUE_ENTRY",
-      itemId: "first",
-      toIndex: 1,
-    });
-    expect(mocks.dispatchQueueEvent).toHaveBeenCalledWith(CHAT_ID, {
-      type: "REMOVE_QUEUE_ENTRY",
-      itemId: "second",
-    });
-    expect(mocks.dispatchQueueEvent).toHaveBeenCalledWith(CHAT_ID, {
-      type: "CLEAR_QUEUE",
-    });
+        toIndex: 1,
+      },
+      7,
+    );
+    expect(mocks.dispatchQueueEvent).toHaveBeenCalledWith(
+      CHAT_ID,
+      {
+        type: "REMOVE_QUEUE_ENTRY",
+        itemId: "second",
+      },
+      7,
+    );
+    expect(mocks.dispatchQueueEvent).toHaveBeenCalledWith(
+      CHAT_ID,
+      {
+        type: "CLEAR_QUEUE",
+      },
+      7,
+    );
   });
 
   it("surfaces authoritative queue rejection", async () => {

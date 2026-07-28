@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  enqueue: vi.fn(() => ({
+  enqueue: vi.fn<() => { settled: Promise<unknown> }>(() => ({
     settled: Promise.resolve({ kind: "applied", state: {} }),
   })),
   readPlanFromDisk: vi.fn(),
@@ -98,5 +98,65 @@ describe("main plan handoff service", () => {
     await expect(handoff).rejects.toMatchObject({ kind: "precondition" });
     expect(mocks.localRef).not.toHaveBeenCalled();
     releaseDeletion();
+  });
+
+  it("preserves the original actor admission failure", async () => {
+    const failure = new Error("transition exploded");
+    rememberPlanDraft(20, { title: "Plan", content: "Implement it" });
+    mocks.enqueue.mockReturnValueOnce({
+      settled: Promise.resolve({
+        kind: "failed",
+        stage: "transition",
+        error: failure,
+      }),
+    });
+
+    await expect(
+      startPlanHandoffFromMain({
+        sourceChatId: 20,
+        appId: 3,
+        appPath: "/tmp/app",
+        acceptInNewChat: true,
+        senderWebContentsId: 12,
+      }),
+    ).rejects.toBe(failure);
+  });
+
+  it("classifies disposed admission as a precondition failure", async () => {
+    rememberPlanDraft(21, { title: "Plan", content: "Implement it" });
+    mocks.enqueue.mockReturnValueOnce({
+      settled: Promise.resolve({ kind: "disposed" }),
+    });
+
+    await expect(
+      startPlanHandoffFromMain({
+        sourceChatId: 21,
+        appId: 3,
+        appPath: "/tmp/app",
+        acceptInNewChat: true,
+        senderWebContentsId: 12,
+      }),
+    ).rejects.toMatchObject({ kind: "precondition" });
+  });
+
+  it("classifies an already-running handoff as a conflict", async () => {
+    rememberPlanDraft(22, { title: "Plan", content: "Implement it" });
+    mocks.enqueue.mockReturnValueOnce({
+      settled: Promise.resolve({
+        kind: "ignored",
+        state: {},
+        reason: "already-running",
+      }),
+    });
+
+    await expect(
+      startPlanHandoffFromMain({
+        sourceChatId: 22,
+        appId: 3,
+        appPath: "/tmp/app",
+        acceptInNewChat: true,
+        senderWebContentsId: 12,
+      }),
+    ).rejects.toMatchObject({ kind: "conflict" });
   });
 });

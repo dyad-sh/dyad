@@ -78,4 +78,61 @@ describe("ChatStreamRemoteManager", () => {
 
     manager.dispose();
   });
+
+  it("does not rebase a stale queue mutation during resync", async () => {
+    const subscribe = vi.fn(async () => ({
+      protocolVersion: 1,
+      machineId: "chat_stream",
+      encodedKey: { chatId: 7 },
+      actorInstanceId: "actor",
+      revision: 5,
+      encodedState: {
+        ...unavailableChatStreamSnapshot(7),
+        revision: 5,
+        queueRevision: 9,
+      },
+    }));
+    const dispatch = vi.fn(async (envelope: MachineDispatchEnvelope) => ({
+      kind: "rejected" as const,
+      messageId: envelope.messageId,
+      reason: "revision-conflict" as const,
+    }));
+    const connection: ChatStreamRemoteConnection = {
+      getStatus: () => "connected",
+      onStatusChange: () => () => undefined,
+      onSnapshot: () => () => undefined,
+      onDisposed: () => () => undefined,
+      subscribe,
+      unsubscribe: () => Promise.resolve(),
+      dispatch,
+    };
+    const manager = new ChatStreamRemoteManager(
+      createStore(),
+      createSequentialIdSource(),
+      connection,
+    );
+    manager.start();
+    const release = manager.ensure(7).subscribe(() => undefined);
+    await vi.waitFor(() => expect(subscribe).toHaveBeenCalled());
+
+    await expect(
+      manager.dispatchQueueEvent(
+        7,
+        { type: "REMOVE_QUEUE_ENTRY", itemId: "queued" },
+        4,
+      ),
+    ).rejects.toThrow("Chat queue request rejected: revision-conflict");
+
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        encodedEvent: expect.objectContaining({
+          type: "REMOVE_QUEUE_ENTRY",
+          expectedQueueRevision: 4,
+        }),
+      }),
+    );
+
+    release();
+    manager.dispose();
+  });
 });

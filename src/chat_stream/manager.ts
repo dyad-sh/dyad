@@ -185,6 +185,7 @@ export class ChatStreamManager {
   async dispatchQueueEvent(
     chatId: number,
     event: QueueMutationWithoutRevision,
+    _expectedQueueRevision?: number,
   ): Promise<void> {
     if (event.type === "PAUSE_QUEUE" || event.type === "RESUME_QUEUE") {
       this.store.set(queuePausedByIdAtom, (previous) => {

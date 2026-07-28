@@ -41,6 +41,10 @@ export function useStreamChat({
     chatId = id;
   }
   const streamState = useChatStreamState(chatId);
+  const queueRevision =
+    streamState && "queueRevision" in streamState
+      ? streamState.queueRevision
+      : undefined;
 
   const streamMessage = useCallback(
     async ({
@@ -145,33 +149,41 @@ export function useStreamChat({
         updates.attachments ?? current.attachments ?? [],
       )
         .then((serializedAttachments) =>
-          chatStreamManager.dispatchQueueEvent(chatId, {
-            type: "EDIT_QUEUE_ENTRY",
-            itemId: id,
-            prompt: updates.prompt ?? current.prompt,
-            attachments: serializedAttachments,
-            selectedComponents:
-              updates.selectedComponents ?? current.selectedComponents,
-          }),
+          chatStreamManager.dispatchQueueEvent(
+            chatId,
+            {
+              type: "EDIT_QUEUE_ENTRY",
+              itemId: id,
+              prompt: updates.prompt ?? current.prompt,
+              attachments: serializedAttachments,
+              selectedComponents:
+                updates.selectedComponents ?? current.selectedComponents,
+            },
+            queueRevision,
+          ),
         )
         .catch(showError);
     },
-    [chatId, chatStreamManager, queuedMessagesById],
+    [chatId, chatStreamManager, queueRevision, queuedMessagesById],
   );
 
   const removeQueuedMessage = useCallback(
     async (id: string) => {
       if (chatId === undefined) return;
       try {
-        await chatStreamManager.dispatchQueueEvent(chatId, {
-          type: "REMOVE_QUEUE_ENTRY",
-          itemId: id,
-        });
+        await chatStreamManager.dispatchQueueEvent(
+          chatId,
+          {
+            type: "REMOVE_QUEUE_ENTRY",
+            itemId: id,
+          },
+          queueRevision,
+        );
       } catch (error) {
         showError(error);
       }
     },
-    [chatId, chatStreamManager],
+    [chatId, chatStreamManager, queueRevision],
   );
 
   const reorderQueuedMessages = useCallback(
@@ -180,26 +192,34 @@ export function useStreamChat({
       const itemId = queuedMessagesById.get(chatId)?.[fromIndex]?.id;
       if (!itemId) return;
       void chatStreamManager
-        .dispatchQueueEvent(chatId, {
-          type: "REORDER_QUEUE_ENTRY",
-          itemId,
-          toIndex,
-        })
+        .dispatchQueueEvent(
+          chatId,
+          {
+            type: "REORDER_QUEUE_ENTRY",
+            itemId,
+            toIndex,
+          },
+          queueRevision,
+        )
         .catch(showError);
     },
-    [chatId, chatStreamManager, queuedMessagesById],
+    [chatId, chatStreamManager, queueRevision, queuedMessagesById],
   );
 
   const clearAllQueuedMessages = useCallback(async () => {
     if (chatId === undefined) return;
     try {
-      await chatStreamManager.dispatchQueueEvent(chatId, {
-        type: "CLEAR_QUEUE",
-      });
+      await chatStreamManager.dispatchQueueEvent(
+        chatId,
+        {
+          type: "CLEAR_QUEUE",
+        },
+        queueRevision,
+      );
     } catch (error) {
       showError(error);
     }
-  }, [chatId, chatStreamManager]);
+  }, [chatId, chatStreamManager, queueRevision]);
 
   return {
     streamMessage,
@@ -242,20 +262,20 @@ export function useStreamChat({
     pauseQueue: useCallback(() => {
       if (chatId === undefined) return;
       void chatStreamManager
-        .dispatchQueueEvent(chatId, { type: "PAUSE_QUEUE" })
+        .dispatchQueueEvent(chatId, { type: "PAUSE_QUEUE" }, queueRevision)
         .catch(showError);
-    }, [chatId, chatStreamManager]),
+    }, [chatId, chatStreamManager, queueRevision]),
     clearPauseOnly: useCallback(() => {
       if (chatId === undefined) return;
       void chatStreamManager
-        .dispatchQueueEvent(chatId, { type: "RESUME_QUEUE" })
+        .dispatchQueueEvent(chatId, { type: "RESUME_QUEUE" }, queueRevision)
         .catch(showError);
-    }, [chatId, chatStreamManager]),
+    }, [chatId, chatStreamManager, queueRevision]),
     resumeQueue: useCallback(() => {
       if (chatId === undefined) return;
       void chatStreamManager
-        .dispatchQueueEvent(chatId, { type: "RESUME_QUEUE" })
+        .dispatchQueueEvent(chatId, { type: "RESUME_QUEUE" }, queueRevision)
         .catch(showError);
-    }, [chatId, chatStreamManager]),
+    }, [chatId, chatStreamManager, queueRevision]),
   };
 }

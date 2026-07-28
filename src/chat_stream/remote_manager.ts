@@ -248,8 +248,13 @@ export class ChatStreamRemoteManager {
   async dispatchQueueEvent(
     chatId: number,
     event: QueueMutationWithoutRevision,
+    expectedQueueRevision?: number,
   ): Promise<void> {
     const actor = this.actor(chatId);
+    // Preserve the revision that produced the mutation. Resync is only for
+    // transport freshness; it must not silently rebase stale renderer intent.
+    const mutationQueueRevision =
+      expectedQueueRevision ?? actor.getSnapshot().queueRevision;
     await actor.resync();
     const mutationId = this.ids.next("chat-queue");
     let releaseSettlement = IDLE_UNSUBSCRIBE;
@@ -269,7 +274,7 @@ export class ChatStreamRemoteManager {
       const receipt = await actor.dispatch({
         ...event,
         mutationId,
-        expectedQueueRevision: actor.getSnapshot().queueRevision,
+        expectedQueueRevision: mutationQueueRevision,
       } as ChatStreamIntentEvent);
       if (receipt.kind === "rejected") {
         throw new Error(`Chat queue request rejected: ${receipt.reason}`);
@@ -355,7 +360,11 @@ export class ChatStreamRemoteManager {
       }
       case "queue-poked":
         if (this.getSnapshot(chatId).queuePaused) {
-          void this.dispatchQueueEvent(chatId, { type: "RESUME_QUEUE" });
+          void this.dispatchQueueEvent(
+            chatId,
+            { type: "RESUME_QUEUE" },
+            this.getSnapshot(chatId).queueRevision,
+          );
         }
         return;
       case "registered":

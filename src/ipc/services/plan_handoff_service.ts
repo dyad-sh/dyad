@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { remoteMachineHost } from "@/ipc/services/distributed_machine_actor_host";
 import { planHandoffDefinition } from "@/plan_handoff/definition";
 import {
@@ -57,11 +58,22 @@ export async function startPlanHandoffFromMain(input: {
     planHandoffKey(input.sourceChatId),
   );
   const outcome = await actor.enqueue({ type: "ACCEPT", intent }).settled;
-  if (outcome.kind === "failed" || outcome.kind === "disposed") {
-    throw new Error("Plan handoff admission failed");
+  if (outcome.kind === "failed") {
+    throw outcome.error;
+  }
+  if (outcome.kind === "disposed") {
+    throw new DyadError(
+      "Plan handoff admission was disposed",
+      DyadErrorKind.Precondition,
+    );
   }
   if (outcome.kind === "ignored") {
-    throw new Error(`Plan handoff was ignored: ${outcome.reason}`);
+    throw new DyadError(
+      `Plan handoff was ignored: ${outcome.reason}`,
+      outcome.reason === "already-running"
+        ? DyadErrorKind.Conflict
+        : DyadErrorKind.Precondition,
+    );
   }
   planDrafts.delete(input.sourceChatId);
   return handoffId;

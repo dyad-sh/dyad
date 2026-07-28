@@ -18,7 +18,9 @@ import { withChatQueueLock } from "./queue_lock";
 type ChatDatabase = BetterSQLite3Database<typeof schema>;
 
 interface IntentRecord {
-  intent: SerializableChatTurnIntent;
+  intent: SerializableChatTurnIntent | null;
+  chatId: number;
+  payloadHash: string;
   acceptance: "queued" | "message-accepted" | "rejected";
   recovery: "not-started" | "started" | "terminal";
   acceptedMessageId?: number;
@@ -46,13 +48,22 @@ function recordFor(intentId: string): IntentRecord | undefined {
   return intentRecords.get(intentId);
 }
 
+type LiveIntentRecord = IntentRecord & {
+  intent: SerializableChatTurnIntent;
+};
+
+function liveRecordFor(intentId: string): LiveIntentRecord | undefined {
+  const record = recordFor(intentId);
+  return record?.intent ? (record as LiveIntentRecord) : undefined;
+}
+
 function assertMatchingIntent(
   existing: IntentRecord,
   intent: SerializableChatTurnIntent,
 ): void {
   if (
-    existing.intent.chatId !== intent.chatId ||
-    existing.intent.payloadHash !== intent.payloadHash
+    existing.chatId !== intent.chatId ||
+    existing.payloadHash !== intent.payloadHash
   ) {
     throw new DyadError(
       "Intent id was already used with a different immutable payload",
@@ -125,7 +136,7 @@ export function loadChatQueue(
     queueRevision: aggregate.revision,
     queuePaused: aggregate.paused,
     queue: aggregate.intentIds.flatMap((intentId) => {
-      const record = recordFor(intentId);
+      const record = liveRecordFor(intentId);
       return record ? [toQueueEntry(record.intent)] : [];
     }),
   };
@@ -168,11 +179,11 @@ export function persistSessionQueuedIntent(
 }
 
 export function isSessionQueuedIntent(intentId: string): boolean {
-  return recordFor(intentId)?.intent.owner?.kind === "user-input-follow-up";
+  return liveRecordFor(intentId)?.intent.owner?.kind === "user-input-follow-up";
 }
 
 export function completeSessionQueueAcceptance(intentId: string): void {
-  const record = recordFor(intentId);
+  const record = liveRecordFor(intentId);
   if (!record || record.intent.owner?.kind !== "user-input-follow-up") return;
   const queue = queueFor(record.intent.chatId);
   const index = queue.intentIds.indexOf(intentId);
@@ -185,7 +196,7 @@ export function completeSessionQueueAcceptance(intentId: string): void {
 export function disposeSessionChatQueue(chatId: number): void {
   queues.delete(chatId);
   for (const [intentId, record] of intentRecords) {
-    if (record.intent.chatId === chatId) intentRecords.delete(intentId);
+    if (record.chatId === chatId) intentRecords.delete(intentId);
   }
 }
 
@@ -214,13 +225,15 @@ function persistIntentInQueue(
   const aggregate = queueFor(intent.chatId);
   assertQueueSnapshotWithinLimit([
     ...aggregate.intentIds.flatMap((intentId) => {
-      const record = recordFor(intentId);
+      const record = liveRecordFor(intentId);
       return record ? [toQueueEntry(record.intent)] : [];
     }),
     toQueueEntry(intent),
   ]);
   intentRecords.set(intent.intentId, {
     intent,
+    chatId: intent.chatId,
+    payloadHash: intent.payloadHash,
     acceptance: "queued",
     recovery: "not-started",
   });
@@ -261,6 +274,8 @@ export function stageActiveIntent(
   }
   intentRecords.set(intent.intentId, {
     intent,
+    chatId: intent.chatId,
+    payloadHash: intent.payloadHash,
     acceptance: "queued",
     recovery: "not-started",
   });
@@ -276,6 +291,8 @@ export function ensureIntentRecord(intent: SerializableChatTurnIntent): void {
   }
   intentRecords.set(intent.intentId, {
     intent,
+    chatId: intent.chatId,
+    payloadHash: intent.payloadHash,
     acceptance: "queued",
     recovery: "not-started",
   });
@@ -291,6 +308,11 @@ export function getAcceptedMessageId(intentId: string): number | undefined {
   return recordFor(intentId)?.acceptedMessageId;
 }
 
+export function getRetainedIntentPayloadBytes(intentId: string): number {
+  const intent = recordFor(intentId)?.intent;
+  return intent ? serialize(intent).byteLength : 0;
+}
+
 export function markIntentAccepted(
   intentId: string | undefined,
   acceptedMessageId: number,
@@ -303,7 +325,7 @@ export function markIntentAccepted(
   record.acceptance = "message-accepted";
   record.recovery = "started";
   record.acceptedMessageId = acceptedMessageId;
-  const aggregate = queueFor(record.intent.chatId);
+  const aggregate = queueFor(record.chatId);
   const index = aggregate.intentIds.indexOf(intentId);
   if (index >= 0) {
     aggregate.intentIds.splice(index, 1);
@@ -326,7 +348,7 @@ export async function mutateChatQueue(
     }
     const mutation = command.mutation;
     const entries = aggregate.intentIds.flatMap((intentId) => {
-      const record = recordFor(intentId);
+      const record = liveRecordFor(intentId);
       return record ? [{ record, entry: toQueueEntry(record.intent) }] : [];
     });
     const selected =
@@ -489,7 +511,7 @@ export function markIntentTerminal(
     }
     throw new DyadError("Chat turn intent not found", DyadErrorKind.NotFound);
   }
-  const aggregate = queueFor(record.intent.chatId);
+  const aggregate = queueFor(record.chatId);
   let changed = false;
   if (rejectBeforeAcceptance && record.acceptance === "queued") {
     const index = aggregate.intentIds.indexOf(intent.intentId);
@@ -505,7 +527,12 @@ export function markIntentTerminal(
     changed = true;
   }
   if (changed) aggregate.revision += 1;
-  return loadChatQueue(database, record.intent.chatId);
+  const queue = loadChatQueue(database, record.chatId);
+  // Terminal replay only needs the immutable identity/hash and acceptance
+  // receipt retained above. Release prompts and base64 attachments immediately
+  // so repeated large turns cannot grow main-process memory without bound.
+  record.intent = null;
+  return queue;
 }
 
 export async function claimQueueHead(
@@ -520,7 +547,7 @@ export async function claimQueueHead(
     if (aggregate.paused) return null;
     const intentId = aggregate.intentIds[0];
     if (!intentId) return null;
-    const record = recordFor(intentId);
+    const record = liveRecordFor(intentId);
     if (!record) {
       aggregate.intentIds.shift();
       aggregate.revision += 1;
@@ -542,7 +569,7 @@ export async function restoreClaimedQueueHead(
 ): Promise<ReturnType<typeof loadChatQueue>> {
   return withChatQueueLock(chatId, async () => {
     const aggregate = queueFor(chatId);
-    const record = recordFor(intentId);
+    const record = liveRecordFor(intentId);
     if (
       record?.acceptance === "queued" &&
       !aggregate.intentIds.includes(intentId)

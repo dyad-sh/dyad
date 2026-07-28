@@ -6,8 +6,10 @@ import {
   assertQueueSnapshotWithinLimit,
   claimQueueHead,
   disposeSessionChatQueue,
+  getRetainedIntentPayloadBytes,
   hydrateChatStreamPersistence,
   loadChatQueue,
+  markIntentAccepted,
   markIntentTerminal,
   mutateChatQueue,
   persistQueuedIntent,
@@ -106,6 +108,38 @@ describe("chat stream persistence", () => {
       acceptance: "queued",
     });
     expect(loadChatQueue(database, chatId).queue).toHaveLength(1);
+  });
+
+  it("releases terminal attachment payloads while retaining replay metadata", () => {
+    const turn = {
+      ...intent("large-turn"),
+      attachments: [
+        {
+          name: "large.txt",
+          type: "text/plain",
+          data: "a".repeat(1024 * 1024),
+          attachmentType: "chat-context" as const,
+        },
+      ],
+    };
+    turn.payloadHash = computeChatTurnPayloadHash(turn);
+    persistQueuedIntent(database, turn);
+    expect(getRetainedIntentPayloadBytes(turn.intentId)).toBeGreaterThan(
+      1024 * 1024,
+    );
+
+    markIntentAccepted(turn.intentId, 42);
+    markIntentTerminal(database, turn, false);
+
+    expect(getRetainedIntentPayloadBytes(turn.intentId)).toBe(0);
+    expect(persistQueuedIntent(database, turn)).toEqual({
+      kind: "replayed",
+      acceptance: "message-accepted",
+      acceptedMessageId: 42,
+    });
+    expect(() =>
+      persistQueuedIntent(database, intent("large-turn", "different")),
+    ).toThrowError(expect.objectContaining({ kind: DyadErrorKind.Conflict }));
   });
 
   it("rejects reuse of an intent id with a different payload", () => {

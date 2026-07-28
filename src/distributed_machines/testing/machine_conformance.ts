@@ -126,6 +126,12 @@ export function defineMachineConformance<
           `${conformance.machineId}: capability ${capability} references unknown event ${event}`,
         );
       }
+      const representatives = conformance.representativeIntents[event];
+      if (!representatives || representatives.length === 0) {
+        throw new Error(
+          `${conformance.machineId}: capability ${capability} requires a representative intent for ${event}`,
+        );
+      }
     }
   }
   for (const event of Object.keys(conformance.representativeIntents)) {

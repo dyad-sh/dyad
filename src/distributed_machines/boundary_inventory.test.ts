@@ -47,7 +47,7 @@ function pathsMatching(
 }
 
 function syntaxLocationsMatching(
-  predicate: (node: ts.Node) => boolean,
+  predicate: (node: ts.Node, sourceFile: ts.SourceFile) => boolean,
 ): string[] {
   return productionFiles()
     .flatMap((file) => {
@@ -67,11 +67,11 @@ function syntaxLocationsMatching(
 function syntaxLocationsInSource(
   sourceFile: ts.SourceFile,
   sourcePath: string,
-  predicate: (node: ts.Node) => boolean,
+  predicate: (node: ts.Node, sourceFile: ts.SourceFile) => boolean,
 ): string[] {
   const locations: string[] = [];
   const visit = (node: ts.Node): void => {
-    if (predicate(node)) {
+    if (predicate(node, sourceFile)) {
       const { line, character } = sourceFile.getLineAndCharacterOfPosition(
         node.getStart(sourceFile),
       );
@@ -86,6 +86,69 @@ function syntaxLocationsInSource(
 function identifierLocationsMatching(pattern: RegExp): string[] {
   return syntaxLocationsMatching(
     (node) => ts.isIdentifier(node) && pattern.test(node.text),
+  );
+}
+
+const zodTypeNamesBySourceFile = new WeakMap<
+  ts.SourceFile,
+  ReadonlySet<string>
+>();
+
+function zodTypeNames(sourceFile: ts.SourceFile): ReadonlySet<string> {
+  const cached = zodTypeNamesBySourceFile.get(sourceFile);
+  if (cached) return cached;
+
+  const names = new Set<string>();
+  for (const statement of sourceFile.statements) {
+    if (
+      !ts.isImportDeclaration(statement) ||
+      !ts.isStringLiteral(statement.moduleSpecifier) ||
+      statement.moduleSpecifier.text !== "zod"
+    ) {
+      continue;
+    }
+    const bindings = statement.importClause?.namedBindings;
+    if (bindings && ts.isNamespaceImport(bindings)) {
+      names.add(`${bindings.name.text}.ZodType`);
+    }
+    if (bindings && ts.isNamedImports(bindings)) {
+      for (const element of bindings.elements) {
+        const importedName = element.propertyName?.text ?? element.name.text;
+        if (importedName === "ZodType") names.add(element.name.text);
+        if (importedName === "z") names.add(`${element.name.text}.ZodType`);
+      }
+    }
+  }
+
+  let addedAlias = true;
+  while (addedAlias) {
+    addedAlias = false;
+    for (const statement of sourceFile.statements) {
+      if (
+        !ts.isTypeAliasDeclaration(statement) ||
+        !ts.isTypeReferenceNode(statement.type) ||
+        !names.has(statement.type.typeName.getText(sourceFile)) ||
+        names.has(statement.name.text)
+      ) {
+        continue;
+      }
+      names.add(statement.name.text);
+      addedAlias = true;
+    }
+  }
+
+  zodTypeNamesBySourceFile.set(sourceFile, names);
+  return names;
+}
+
+function isZodTypeWideningCast(
+  node: ts.Node,
+  sourceFile: ts.SourceFile,
+): boolean {
+  return (
+    ts.isAsExpression(node) &&
+    ts.isTypeReferenceNode(node.type) &&
+    zodTypeNames(sourceFile).has(node.type.typeName.getText(sourceFile))
   );
 }
 
@@ -121,16 +184,28 @@ describe("progressive distributed-machine inventories", () => {
   });
 
   it("pins renderer-schema-to-internal-event widening casts", () => {
+    expect(syntaxLocationsMatching(isZodTypeWideningCast)).toEqual(
+      unsafeEscapeHatchInventory.wideningCasts,
+    );
+  });
+
+  it("discovers imported and locally aliased ZodType casts", () => {
+    const sourceFile = ts.createSourceFile(
+      "fixture.ts",
+      [
+        'import { z as schema, type ZodType as Codec } from "zod";',
+        "type LocalCodec<T> = Codec<T>;",
+        "first as schema.ZodType<First>;",
+        "second as Codec<Second>;",
+        "third as LocalCodec<Third>;",
+      ].join("\n"),
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TS,
+    );
     expect(
-      syntaxLocationsMatching(
-        (node) =>
-          ts.isAsExpression(node) &&
-          ts.isTypeReferenceNode(node.type) &&
-          ts.isQualifiedName(node.type.typeName) &&
-          node.type.typeName.left.getText() === "z" &&
-          node.type.typeName.right.text === "ZodType",
-      ),
-    ).toEqual(unsafeEscapeHatchInventory.wideningCasts);
+      syntaxLocationsInSource(sourceFile, "fixture.ts", isZodTypeWideningCast),
+    ).toEqual(["fixture.ts:3:1", "fixture.ts:4:1", "fixture.ts:5:1"]);
   });
 
   it("pins raw remote dispatch and enqueue access sites", () => {

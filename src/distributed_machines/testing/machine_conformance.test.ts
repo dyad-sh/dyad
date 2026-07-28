@@ -159,6 +159,27 @@ describe("remote intent contract registration", () => {
     );
   });
 
+  it("rejects capabilities without a representative intent factory", () => {
+    expect(() =>
+      defineMachineConformance({
+        machineId: "invalid",
+        stateVariants: ["idle"],
+        eventVariants: ["START"],
+        tiers: ["T0"],
+        exclusions: [
+          { tier: "T1", reason: "not applicable" },
+          { tier: "T2", reason: "not applicable" },
+          { tier: "T3", reason: "not applicable" },
+          { tier: "T4", reason: "not applicable" },
+        ],
+        invariants: [],
+        representativeCapabilities: { canStart: ["START"] },
+        representativeIntents: {},
+        historicalFailureShapes: [],
+      }),
+    ).toThrow("capability canStart requires a representative intent for START");
+  });
+
   it("rejects blank, duplicate, and overlapping exclusions", () => {
     const registration = {
       machineId: "invalid",

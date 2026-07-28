@@ -10,7 +10,10 @@ import type { Chat } from "@/ipc/types";
 import { useChatStreamManager } from "@/chat_stream/ChatStreamProvider";
 import type { StreamSettledResult } from "@/chat_stream/state";
 import { useChatStreamState } from "@/hooks/useChatStream";
-import { isStreamActive } from "@/chat_stream/transition";
+import {
+  isStreamActive,
+  selectIsCancellationSettling,
+} from "@/chat_stream/transition";
 import { showError } from "@/lib/toast";
 import { useSearch } from "@tanstack/react-router";
 import { validateChatAttachmentFiles } from "@/shared/chatAttachmentLimits";
@@ -230,9 +233,12 @@ export function useStreamChat({
         : false,
     isCancellationSettling:
       hasChatId && chatId !== undefined
-        ? streamState?.phase === "cancelling" ||
-          (streamState?.phase === "finalizing" &&
-            streamState.lastCompletion?.outcome === "cancelled")
+        ? !!streamState &&
+          ("phase" in streamState
+            ? streamState.phase === "cancelling" ||
+              (streamState.phase === "finalizing" &&
+                streamState.lastCompletion?.outcome === "cancelled")
+            : selectIsCancellationSettling(streamState))
         : false,
     error:
       hasChatId && chatId !== undefined && streamState && "error" in streamState

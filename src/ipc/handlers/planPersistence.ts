@@ -3,7 +3,7 @@ import path from "node:path";
 import { buildFrontmatter, parsePlanFile, validatePlanId } from "./planUtils";
 import { ensureDyadGitignored } from "./gitignoreUtils";
 
-export type PlanStatus = "draft" | "admitting" | "accepted";
+export type PlanStatus = "draft" | "accepted";
 
 /**
  * A plan file is a `draft` while the user is still reviewing it and only
@@ -12,7 +12,9 @@ export type PlanStatus = "draft" | "admitting" | "accepted";
  * treated as `accepted`, since they were only ever written on acceptance.
  */
 export function normalizePlanStatus(raw: string | undefined): PlanStatus {
-  return raw === "draft" || raw === "admitting" ? raw : "accepted";
+  // `admitting` was briefly written by pre-release builds. It was not durable
+  // proof of chat-turn acceptance, so recover it as a retryable draft.
+  return raw === "draft" || raw === "admitting" ? "draft" : "accepted";
 }
 
 export function planDirForAppPath(appPath: string): string {
@@ -50,9 +52,8 @@ export async function readPlanFromDisk(params: {
 /**
  * Upserts the plan file for a chat under `.dyad/plans/`. Returns the plan slug.
  *
- * Used when a plan is drafted, enters durable admission, and is accepted.
- * Preserves the original `createdAt` when a file already exists so status
- * promotion doesn't reset it.
+ * Used when a plan is drafted and accepted. Preserves the original `createdAt`
+ * when a file already exists so status promotion doesn't reset it.
  */
 export async function savePlanToDisk(params: {
   appPath: string;

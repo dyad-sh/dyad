@@ -192,34 +192,14 @@ function createCommandRunner(
         phase: "submitting",
         targetChatId,
       });
-      await savePlanToDisk({
-        appPath: getDyadAppPath(app.path),
-        chatId: intent.sourceChatId,
-        title: intent.plan.title,
-        summary: intent.plan.summary,
-        content: intent.plan.content,
-        status: "admitting",
+      await dispatchPlanImplementationTurn({
+        handoffId: intent.handoffId,
+        targetChatId,
+        appId: intent.appId,
+        planSlug,
+        originWindowSessionId: intent.originWindowSessionId,
+        signal,
       });
-      try {
-        await dispatchPlanImplementationTurn({
-          handoffId: intent.handoffId,
-          targetChatId,
-          appId: intent.appId,
-          planSlug,
-          originWindowSessionId: intent.originWindowSessionId,
-          signal,
-        });
-      } catch (error) {
-        await savePlanToDisk({
-          appPath: getDyadAppPath(app.path),
-          chatId: intent.sourceChatId,
-          title: intent.plan.title,
-          summary: intent.plan.summary,
-          content: intent.plan.content,
-          status: "draft",
-        });
-        throw error;
-      }
       // Once admission succeeds, a new target is user-owned even if a later
       // metadata write fails; its accepted implementation turn must survive.
       ownedTargetChatId = null;

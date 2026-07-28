@@ -9,7 +9,10 @@ function productionTypeScriptFiles(directory: string): string[] {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const file = path.join(directory, entry.name);
     if (entry.isDirectory()) return productionTypeScriptFiles(file);
-    if (!/\.tsx?$/.test(entry.name) || /\.test\.tsx?$/.test(entry.name)) {
+    if (
+      !/\.tsx?$/.test(entry.name) ||
+      /\.(?:test|test_support)\.tsx?$/.test(entry.name)
+    ) {
       return [];
     }
     return [file];
@@ -50,6 +53,7 @@ describe("distributed machine boundaries", () => {
     expect(offenders).toEqual([
       "app_run/client_definition.ts",
       "app_run/definition.ts",
+      "app_run/remote_intent_contract.ts",
       "app_run/remote_manager.ts",
       "chat_stream/definition.ts",
       "chat_stream/remote_manager.ts",
@@ -59,6 +63,7 @@ describe("distributed machine boundaries", () => {
       "github_ops/useGithubOps.ts",
       "hooks/useVersionPreview.ts",
       "image_generation/hooks.ts",
+      "image_generation/remote_intent_contract.ts",
       "image_generation/transport.ts",
       "ipc/handlers/distributed_machine_handlers.ts",
       "ipc/services/distributed_machine_actor_host.ts",

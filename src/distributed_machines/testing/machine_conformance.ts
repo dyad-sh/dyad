@@ -378,7 +378,9 @@ export function formatContractReport(
   const summarizeLocations = (locations: readonly string[]): string[] => {
     const counts = new Map<string, number>();
     for (const location of locations) {
-      const sourcePath = location.replace(/:\d+:\d+$/, "");
+      const sourcePath = location.includes("::")
+        ? location.slice(0, location.indexOf("::"))
+        : location.replace(/:\d+:\d+$/, "");
       counts.set(sourcePath, (counts.get(sourcePath) ?? 0) + 1);
     }
     return [...counts.entries()]

@@ -8,6 +8,7 @@ import {
 } from "@/atoms/chatAtoms";
 import {
   LEGACY_CHAT_TAB_SESSION_STORAGE_KEY,
+  LEGACY_CHAT_TAB_SESSION_MIGRATION_KEY,
   chatTabSessionStorageKey,
   configureChatTabWindowSession,
   createChatTabSessionStorage,
@@ -48,6 +49,9 @@ describe("per-window chat tab session storage", () => {
     expect(
       localStorage.getItem(LEGACY_CHAT_TAB_SESSION_STORAGE_KEY),
     ).toBeTruthy();
+    expect(localStorage.getItem(LEGACY_CHAT_TAB_SESSION_MIGRATION_KEY)).toBe(
+      firstWindow,
+    );
     const migrated = JSON.parse(
       localStorage.getItem(chatTabSessionStorageKey(firstWindow))!,
     ) as StoredWindowChatTabSession;
@@ -132,6 +136,39 @@ describe("per-window chat tab session storage", () => {
     expect(
       localStorage.getItem(LEGACY_CHAT_TAB_SESSION_STORAGE_KEY),
     ).toBeTruthy();
+  });
+
+  it("does not replay legacy tabs after the original migration owner closes", () => {
+    localStorage.setItem(
+      LEGACY_CHAT_TAB_SESSION_STORAGE_KEY,
+      JSON.stringify(capturedSessionFixture),
+    );
+    const storage = createChatTabSessionStorage(localStorage);
+    storage.getItem(
+      LEGACY_CHAT_TAB_SESSION_STORAGE_KEY,
+      capturedSessionFixture as ChatTabSession,
+    );
+
+    pruneChatTabWindowSessions(localStorage, [secondWindow]);
+    configureChatTabWindowSession(secondWindow, {
+      mayMigrateLegacySession: true,
+    });
+    const empty: ChatTabSession = {
+      openChatIds: [],
+      selectedChatId: null,
+      closedChatIds: [],
+      updatedAt: 0,
+    };
+
+    expect(storage.getItem(LEGACY_CHAT_TAB_SESSION_STORAGE_KEY, empty)).toEqual(
+      empty,
+    );
+    expect(
+      localStorage.getItem(chatTabSessionStorageKey(firstWindow)),
+    ).toBeNull();
+    expect(localStorage.getItem(LEGACY_CHAT_TAB_SESSION_MIGRATION_KEY)).toBe(
+      firstWindow,
+    );
   });
 
   it("refreshes the storage atom after bootstrap configures the session", () => {

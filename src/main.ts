@@ -40,7 +40,10 @@ import {
   retryRecoveryWithKeychainUnlock,
 } from "./main/safe_storage_legacy";
 import { recordUpdaterError } from "./main/updater_state";
-import { sendTelemetryEvent } from "./ipc/utils/telemetry";
+import {
+  sendTelemetryEvent,
+  sendTelemetryEventToWindow,
+} from "./ipc/utils/telemetry";
 import { handleSupabaseOAuthReturn } from "./supabase_admin/supabase_return_handler";
 import { handleDyadProReturn } from "./main/pro";
 import { IS_TEST_BUILD } from "./ipc/utils/test_utils";
@@ -141,6 +144,7 @@ import {
   getWindowSessionFilePath,
   MAX_PRODUCT_WINDOWS,
   prepareWindowSessionForCreation,
+  restorableVisibleEntity,
   WindowSessionPersistence,
   type WindowSessionPersistenceFailurePolicy,
   type WindowSessionDescriptor,
@@ -320,6 +324,14 @@ const deepLinkQueue = createDeepLinkQueue(handleDeepLinkReturn);
 const deepLinkWindowReadiness = new DeepLinkWindowReadiness<BrowserWindow>(
   deepLinkQueue,
 );
+let crashRecoveryWindowReadiness: DeepLinkWindowReadiness<BrowserWindow>;
+crashRecoveryWindowReadiness = new DeepLinkWindowReadiness<BrowserWindow>({
+  markReady: () => {
+    const target = crashRecoveryWindowReadiness.getTarget();
+    if (target) deliverPendingCrashRecovery(target);
+  },
+  markNotReady: () => undefined,
+});
 
 // Load environment variables from .env file
 dotenv.config();
@@ -624,6 +636,71 @@ let pendingCrashDetected = false;
 let isAppQuitting = false;
 let safeStorageKeychainUnlockRetryScheduled = false;
 
+function deliverPendingCrashRecovery(target: BrowserWindow): void {
+  if (!pendingCrashDetected || target !== mainWindow || target.isDestroyed()) {
+    return;
+  }
+
+  target.webContents.send("force-close-detected", {
+    ...(pendingForceCloseData && {
+      performanceData: pendingForceCloseData,
+    }),
+    ...(pendingActiveChatId != null && {
+      activeChatId: pendingActiveChatId,
+    }),
+  });
+
+  const nativeCrash = pendingNativeBrowserCrash?.summary ?? null;
+  const nativeCrashAttribution = pendingNativeBrowserCrash?.attribution ?? null;
+  pendingNativeBrowserCrash = null;
+
+  const oom = classifyOom({
+    nativeCrash,
+    performance: pendingForceCloseData,
+  });
+
+  sendTelemetryEventToWindow(target, "app:crash_detected", {
+    // Mark as error so renderer PostHog before_send sampling does not
+    // drop 90% of events for non-Pro users (see src/renderer.tsx).
+    error: true,
+    has_performance_data: !!pendingForceCloseData,
+    ...(pendingForceCloseData &&
+      crashPerformanceEventFields(pendingForceCloseData)),
+    // "native" when a minidump was attributed to this crash, else
+    // "unknown" (no dump: force-kill / OOM-kill / power loss / missed).
+    crash_cause: nativeCrash ? "native" : "unknown",
+    ...(nativeCrash && {
+      // "ptype" when the dump named the browser process itself; "sentinel"
+      // when an annotation-stripped dump was correlated with the crash
+      // sentinel instead (see browserCrashAttribution). Sentinel
+      // attribution is weaker: the dump could belong to a child process
+      // that also lost its labels.
+      crash_attribution: nativeCrashAttribution,
+      crash_reason: nativeCrash.crashReason,
+      exception_code: nativeCrash.exceptionCode,
+      fault_address: nativeCrash.faultAddress,
+      access_type: nativeCrash.accessType,
+      in_page_error_status: nativeCrash.inPageErrorStatus,
+      oom_allocation_size_bytes: nativeCrash.oomAllocationSizeBytes,
+      fast_fail_code: nativeCrash.fastFailCode,
+      faulting_module: nativeCrash.faultingModule,
+      faulting_offset: nativeCrash.faultingOffset,
+      faulting_debug_file: nativeCrash.faultingDebugFile,
+      faulting_debug_id: nativeCrash.faultingDebugId,
+    }),
+    ...(nativeCrash?.annotations &&
+      crashAnnotationEventFields(nativeCrash.annotations)),
+    // The OOM verdict and the signals behind it (see classifyOom).
+    // Comma-joined: crash event properties stay scalar for PostHog.
+    oom_verdict: oom.verdict,
+    ...(oom.signals.length > 0 && { oom_signals: oom.signals.join(",") }),
+  });
+
+  pendingForceCloseData = null;
+  pendingActiveChatId = null;
+  pendingCrashDetected = false;
+}
+
 function getWindowSessionPersistence(): WindowSessionPersistence {
   windowSessionPersistence ??= new WindowSessionPersistence(
     getWindowSessionFilePath(app.getPath("userData")),
@@ -685,11 +762,13 @@ const createWindow = ({
   }
   mainWindow = browserWindow;
   deepLinkWindowReadiness.setTarget(browserWindow);
+  crashRecoveryWindowReadiness.setTarget(browserWindow);
   productWindows.set(windowSessionId, browserWindow);
   windowRegistry.register(browserWindow.webContents, windowSessionId);
   browserWindow.on("focus", () => {
     mainWindow = browserWindow;
     deepLinkWindowReadiness.setTarget(browserWindow);
+    crashRecoveryWindowReadiness.setTarget(browserWindow);
     windowRegistry.setFocused(windowSessionId);
   });
   browserWindow.once("closed", () => {
@@ -712,6 +791,7 @@ const createWindow = ({
         [...productWindows.values()].at(-1) ??
         null;
       deepLinkWindowReadiness.setTarget(mainWindow);
+      crashRecoveryWindowReadiness.setTarget(mainWindow);
     }
   });
   const packagedRendererUrl = pathToFileURL(
@@ -771,9 +851,9 @@ const createWindow = ({
     browserWindow.webContents.openDevTools();
   }
 
-  let forceCloseMessageSent = false;
   browserWindow.webContents.on("did-start-loading", () => {
     deepLinkWindowReadiness.markNotReady(browserWindow);
+    crashRecoveryWindowReadiness.markNotReady(browserWindow);
   });
 
   // and load the index.html of the app.
@@ -806,73 +886,10 @@ const createWindow = ({
     // the main process crashed natively, that summary becomes the crash cause
     // reported in app:crash_detected.
     processNativeCrashDumps();
-
-    // The renderer installs a replaying listener before React/bootstrap, so
-    // this event is retained until ForceCloseDialog mounts.
-    if (pendingCrashDetected && !forceCloseMessageSent) {
-      forceCloseMessageSent = true;
-      if (!browserWindow.isDestroyed()) {
-        browserWindow.webContents.send("force-close-detected", {
-          ...(pendingForceCloseData && {
-            performanceData: pendingForceCloseData,
-          }),
-          ...(pendingActiveChatId != null && {
-            activeChatId: pendingActiveChatId,
-          }),
-        });
-      }
-
-      const nativeCrash = pendingNativeBrowserCrash?.summary ?? null;
-      const nativeCrashAttribution =
-        pendingNativeBrowserCrash?.attribution ?? null;
-      pendingNativeBrowserCrash = null;
-
-      const oom = classifyOom({
-        nativeCrash,
-        performance: pendingForceCloseData,
-      });
-
-      sendTelemetryEvent("app:crash_detected", {
-        // Mark as error so renderer PostHog before_send sampling does not
-        // drop 90% of events for non-Pro users (see src/renderer.tsx).
-        error: true,
-        has_performance_data: !!pendingForceCloseData,
-        ...(pendingForceCloseData &&
-          crashPerformanceEventFields(pendingForceCloseData)),
-        // "native" when a minidump was attributed to this crash, else
-        // "unknown" (no dump: force-kill / OOM-kill / power loss / missed).
-        crash_cause: nativeCrash ? "native" : "unknown",
-        ...(nativeCrash && {
-          // "ptype" when the dump named the browser process itself; "sentinel"
-          // when an annotation-stripped dump was correlated with the crash
-          // sentinel instead (see browserCrashAttribution). Sentinel
-          // attribution is weaker: the dump could belong to a child process
-          // that also lost its labels.
-          crash_attribution: nativeCrashAttribution,
-          crash_reason: nativeCrash.crashReason,
-          exception_code: nativeCrash.exceptionCode,
-          fault_address: nativeCrash.faultAddress,
-          access_type: nativeCrash.accessType,
-          in_page_error_status: nativeCrash.inPageErrorStatus,
-          oom_allocation_size_bytes: nativeCrash.oomAllocationSizeBytes,
-          fast_fail_code: nativeCrash.fastFailCode,
-          faulting_module: nativeCrash.faultingModule,
-          faulting_offset: nativeCrash.faultingOffset,
-          faulting_debug_file: nativeCrash.faultingDebugFile,
-          faulting_debug_id: nativeCrash.faultingDebugId,
-        }),
-        ...(nativeCrash?.annotations &&
-          crashAnnotationEventFields(nativeCrash.annotations)),
-        // The OOM verdict and the signals behind it (see classifyOom).
-        // Comma-joined: crash event properties stay scalar for PostHog.
-        oom_verdict: oom.verdict,
-        ...(oom.signals.length > 0 && { oom_signals: oom.signals.join(",") }),
-      });
-
-      pendingForceCloseData = null;
-      pendingActiveChatId = null;
-      pendingCrashDetected = false;
-    }
+    // Crash recovery follows the focused/current product window and waits for
+    // its post-DevTools-reload renderer. Background restored windows cannot
+    // consume the one-shot dialog or telemetry event.
+    crashRecoveryWindowReadiness.markReady(browserWindow);
 
     // Forward any pending renderer crash recorded on a previous load. We send
     // this from `did-finish-load` rather than `render-process-gone` because the
@@ -1030,7 +1047,7 @@ configureWindowProductController({
       .find((window) => window.windowSessionId === windowSessionId)
       ?.visibleEntity,
   setVisibleEntities: (windowSessionId, entities) => {
-    const visibleEntity = entities.find((entity) => entity.kind === "app");
+    const visibleEntity = restorableVisibleEntity(entities);
     getWindowSessionPersistence().remember(windowSessionId, visibleEntity);
   },
   mayMigrateLegacyChatTabSession: (windowSessionId) =>

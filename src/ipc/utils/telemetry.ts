@@ -23,11 +23,23 @@ export function sendTelemetryEvent(
   try {
     const windows = BrowserWindow.getAllWindows();
     if (windows.length > 0) {
-      windows[0].webContents.send("telemetry:event", {
-        eventName,
-        properties,
-      } satisfies TelemetryEventPayload);
+      sendTelemetryEventToWindow(windows[0], eventName, properties);
     }
+  } catch (error) {
+    logger.warn("Error sending telemetry event:", error);
+  }
+}
+
+export function sendTelemetryEventToWindow(
+  target: BrowserWindow,
+  eventName: string,
+  properties?: Record<string, unknown>,
+): void {
+  try {
+    target.webContents.send("telemetry:event", {
+      eventName,
+      properties,
+    } satisfies TelemetryEventPayload);
   } catch (error) {
     logger.warn("Error sending telemetry event:", error);
   }

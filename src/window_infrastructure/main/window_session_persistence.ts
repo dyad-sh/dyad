@@ -27,6 +27,15 @@ export type WindowSessionDescriptor = z.infer<
 
 export type WindowSessionPersistenceFailurePolicy = "continue" | "throw";
 
+export function restorableVisibleEntity(
+  entities: readonly VisibleEntity[],
+): VisibleEntity | undefined {
+  return (
+    entities.find((entity) => entity.kind === "chat") ??
+    entities.find((entity) => entity.kind === "app")
+  );
+}
+
 export function prepareWindowSessionForCreation({
   persistence,
   descriptor,

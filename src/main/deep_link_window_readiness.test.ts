@@ -57,4 +57,25 @@ describe("DeepLinkWindowReadiness", () => {
     readiness.markReady(window);
     expect(handler).toHaveBeenCalledWith("dyad://during-reload");
   });
+
+  it("delivers one-shot recovery only when the current target is ready", () => {
+    const delivered: object[] = [];
+    let readiness!: DeepLinkWindowReadiness<object>;
+    readiness = new DeepLinkWindowReadiness<object>({
+      markReady: () => {
+        const target = readiness.getTarget();
+        if (target && delivered.length === 0) delivered.push(target);
+      },
+      markNotReady: vi.fn(),
+    });
+    const backgroundWindow = {};
+    const foregroundWindow = {};
+
+    readiness.setTarget(foregroundWindow);
+    readiness.markReady(backgroundWindow);
+    expect(delivered).toEqual([]);
+
+    readiness.markReady(foregroundWindow);
+    expect(delivered).toEqual([foregroundWindow]);
+  });
 });

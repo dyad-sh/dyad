@@ -8,6 +8,7 @@ import {
   getWindowSessionFilePath,
   MAX_PRODUCT_WINDOWS,
   prepareWindowSessionForCreation,
+  restorableVisibleEntity,
   WindowSessionPersistence,
 } from "./window_session_persistence";
 
@@ -43,6 +44,19 @@ describe("WindowSessionPersistence", () => {
         visibleEntity: { kind: "app", id: 9 },
       },
     ]);
+  });
+
+  it("prefers the selected chat when persisting a visible chat route", () => {
+    expect(
+      restorableVisibleEntity([
+        { kind: "app", id: 7 },
+        { kind: "chat", id: 11 },
+      ]),
+    ).toEqual({ kind: "chat", id: 11 });
+    expect(restorableVisibleEntity([{ kind: "app", id: 7 }])).toEqual({
+      kind: "app",
+      id: 7,
+    });
   });
 
   it("updates and removes one window without replacing the other sessions", () => {

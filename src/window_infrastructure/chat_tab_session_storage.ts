@@ -6,6 +6,8 @@ import type {
 
 export const CHAT_TAB_SESSION_STORAGE_PREFIX = "chat-tab-session-v2:";
 export const LEGACY_CHAT_TAB_SESSION_STORAGE_KEY = "chat-tab-session";
+export const LEGACY_CHAT_TAB_SESSION_MIGRATION_KEY =
+  "chat-tab-session-legacy-migrated-v2";
 
 export interface StoredChatTab {
   tabInstanceId: TabInstanceId;
@@ -192,6 +194,9 @@ export function createChatTabSessionStorage(
         if (current) return fromStoredSession(current);
 
         if (!mayMigrateLegacySession) return initialValue;
+        if (storage.getItem(LEGACY_CHAT_TAB_SESSION_MIGRATION_KEY) !== null) {
+          return initialValue;
+        }
         const legacy = parseLegacySession(
           storage.getItem(LEGACY_CHAT_TAB_SESSION_STORAGE_KEY),
         );
@@ -203,6 +208,10 @@ export function createChatTabSessionStorage(
         storage.setItem(
           sessionKey,
           JSON.stringify(toStoredSession(legacy, activeWindowSessionId)),
+        );
+        storage.setItem(
+          LEGACY_CHAT_TAB_SESSION_MIGRATION_KEY,
+          activeWindowSessionId,
         );
         return legacy;
       } catch (error) {

@@ -46,6 +46,7 @@ import {
   pruneChatTabWindowSessions,
 } from "./window_infrastructure/chat_tab_session_storage";
 import type { VisibleEntity } from "./window_infrastructure/types";
+import { initialWindowNavigation } from "./window_infrastructure/initial_window_navigation";
 import {
   earlyTelemetryEvents,
   registerEarlyRendererEvents,
@@ -242,12 +243,9 @@ function RendererServices() {
             );
           }
           const entity: VisibleEntity | undefined = bootstrap.initialEntity;
-          if (entity?.kind === "app") {
-            void router.navigate({
-              to: "/app-details",
-              search: { appId: entity.id },
-              replace: true,
-            });
+          const navigation = initialWindowNavigation(entity);
+          if (navigation) {
+            void router.navigate({ ...navigation, replace: true });
           }
           setWindowReady(true);
         })

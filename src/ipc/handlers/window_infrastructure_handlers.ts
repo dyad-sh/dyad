@@ -27,11 +27,16 @@ export function registerWindowInfrastructureHandlers(): void {
       );
       const controller = getWindowProductController();
       let initialEntity = controller?.initialEntityForSession(windowSessionId);
-      if (initialEntity?.kind === "app") {
-        const existingApp = await db.query.apps.findFirst({
-          where: eq(apps.id, initialEntity.id),
-        });
-        if (!existingApp) {
+      if (initialEntity) {
+        const entityExists =
+          initialEntity.kind === "app"
+            ? await db.query.apps.findFirst({
+                where: eq(apps.id, initialEntity.id),
+              })
+            : await db.query.chats.findFirst({
+                where: eq(chats.id, initialEntity.id),
+              });
+        if (!entityExists) {
           controller?.setVisibleEntities(windowSessionId, []);
           initialEntity = undefined;
         }

@@ -1,0 +1,14 @@
+{
+  "name": "preferences-and-constraints",
+  "model": "gpt-5.6-sol",
+  "estTokens": 205348,
+  "chars": 821391,
+  "messageCount": 78,
+  "fillerMessages": 20,
+  "authoringUsage": {
+    "prompt_tokens": 11731,
+    "completion_tokens": 36105
+  },
+  "missingEvidence": [],
+  "withinBand": true
+}

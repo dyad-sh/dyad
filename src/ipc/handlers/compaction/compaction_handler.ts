@@ -35,8 +35,20 @@ import {
   DYAD_INTERNAL_REQUEST_ID_HEADER,
 } from "@/ipc/utils/provider_options";
 import { escapeXmlContent } from "../../../../shared/xmlEscape";
+import { isDyadProEnabled } from "@/lib/schemas";
 
 const logger = log.scope("compaction_handler");
+
+// Pinned compaction model for Pro users. Benchmarked against gpt-5.6-sol on
+// ~200k-token transcripts (plans/benchmark-compaction.md): equal summary
+// quality at ~2x lower latency, which matters because compaction blocks the
+// turn mid-stream. Matches SUBAGENT_MODEL in explore_code_subagent.ts.
+// Non-Pro users keep their selected chat model — the pinned model is only
+// reachable through the Dyad Engine gateway.
+const PRO_COMPACTION_MODEL = {
+  provider: "openai",
+  name: "gpt-5.6-luna",
+} as const;
 
 export interface CompactionResult {
   success: boolean;
@@ -200,7 +212,9 @@ export async function performCompaction(
 
     // Get model client
     const { modelClient } = await getModelClient(
-      settings.selectedModel,
+      isDyadProEnabled(settings)
+        ? PRO_COMPACTION_MODEL
+        : settings.selectedModel,
       settings,
     );
 

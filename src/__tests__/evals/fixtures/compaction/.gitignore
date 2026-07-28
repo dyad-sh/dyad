@@ -1,0 +1,5 @@
+# Generated ~200k-token transcripts (~800KB each) are not committed; they are
+# regenerable from specs/ via generate.mjs (see AUTHORING.md). Stats files are
+# kept as a record of the generated fixtures' shape.
+/*.json
+!/*.stats.json

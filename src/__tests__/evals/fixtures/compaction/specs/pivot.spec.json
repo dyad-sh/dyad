@@ -1,0 +1,222 @@
+{
+  "name": "pivot",
+  "domain": "A Next.js 14 recipe-sharing site (app router, TypeScript, Tailwind) is adding realtime collaborative shopping lists: every recipe page gets a shared shopping list that several visitors can edit together and see each other on. The session first builds a hand-rolled WebSocket server with custom presence, then pivots mid-way to Supabase Realtime channels after hitting serverless deploy constraints.",
+  "phases": [
+    {
+      "id": "p1",
+      "goal": "Kickoff. The user asks for realtime collaborative shopping lists on recipe pages. Assistant and user agree the scope: each recipe page owns exactly one shared shopping list keyed by its slug (plant F1). They choose approach A: a dedicated hand-rolled WebSocket server using the ws package, run as a separate Node process on port 3001 next to Next.js (plant the T1 supersededEvidence in assistant prose recommending this). They also agree item toggles are optimistic with server echo reconciliation (plant F2). Assistant writes server/realtime-server.js (ws server with a room per list slug) and src/lib/listProtocol.ts (message types). The user also asks to scaffold a big seed catalog of recipes for testing, which lands as the bulk asset src/data/recipes.ts.",
+      "turns": 6,
+      "activeFiles": [
+        "server/realtime-server.js",
+        "src/lib/listProtocol.ts",
+        "src/data/recipes.ts"
+      ],
+      "factIds": ["F1", "F2"],
+      "bulk": [
+        {
+          "asset": "seed-data",
+          "path": "src/data/recipes.ts",
+          "kind": "products",
+          "count": 220
+        }
+      ]
+    },
+    {
+      "id": "p2",
+      "goal": "Build out approach A. Assistant writes the client hook src/hooks/useListSocket.ts that connects to ws://localhost:3001 (plant the T3 supersededEvidence when describing how components consume it), and adds custom presence to the server: track peers ourselves with an in memory Map of socket ids (plant the T2 supersededEvidence in assistant prose), with a heartbeat that pings every 15 seconds and evicts peers after two missed beats (plant F3). A bug appears while testing: React strict mode double mounts the effect and duplicates every socket subscription (plant F13); assistant fixes it with a cleanup + ref guard in useListSocket. The user also asks for sample collaborator accounts for local testing, landing as the bulk asset src/data/sampleUsers.ts.",
+      "turns": 6,
+      "activeFiles": [
+        "src/hooks/useListSocket.ts",
+        "server/realtime-server.js",
+        "src/components/ShoppingList.tsx",
+        "src/data/sampleUsers.ts"
+      ],
+      "factIds": ["F3", "F13"],
+      "bulk": [
+        {
+          "asset": "seed-data",
+          "path": "src/data/sampleUsers.ts",
+          "kind": "users",
+          "count": 180
+        }
+      ]
+    },
+    {
+      "id": "p3",
+      "goal": "The pivot. The user tries to plan deployment and reports the blocker: the site deploys to Vercel serverless, and Vercel serverless gives us no sticky sessions and kills long lived sockets (plant F4 in the user or assistant turn discussing the blocker). After weighing options (separate Fly.io box rejected as extra ops burden), the user decides: we will move the whole realtime layer onto Supabase Realtime channels (plant F5). Assistant confirms the consequence explicitly: the hand rolled socket server is dead, Supabase Realtime replaces it entirely (plant T1 currentEvidence). They sketch the migration plan: create a shopping_items table, swap the hook, port presence to channel presence.",
+      "turns": 5,
+      "activeFiles": [
+        "server/realtime-server.js",
+        "src/hooks/useListSocket.ts",
+        "package.json"
+      ],
+      "factIds": ["F4", "F5"]
+    },
+    {
+      "id": "p4",
+      "goal": "Rip out A, build B. Assistant deletes the approach A files and says plainly that it deleted server/realtime-server.js and src/hooks/useListSocket.ts in the cleanup (plant F6), and notes useListSocket is deleted; components import useShoppingList instead (plant T3 currentEvidence). New code: src/lib/supabaseClient.ts and src/hooks/useShoppingList.ts, where useShoppingList subscribes to postgres_changes on the shopping_items table (plant F7). SQL migration discussed in chat: enable row level security on shopping_items with an anon read policy (plant F8). Presence is ported too: Supabase channel presence now tracks peers so the heartbeat Map is gone (plant T2 currentEvidence). The user also asks for a polish pass of shared utility styles for the list UI, landing as the bulk asset src/styles/list-utilities.css.",
+      "turns": 6,
+      "activeFiles": [
+        "src/lib/supabaseClient.ts",
+        "src/hooks/useShoppingList.ts",
+        "src/components/ShoppingList.tsx",
+        "src/styles/list-utilities.css"
+      ],
+      "factIds": ["F6", "F7", "F8"],
+      "bulk": [
+        {
+          "asset": "long-css",
+          "path": "src/styles/list-utilities.css",
+          "count": 240
+        }
+      ]
+    },
+    {
+      "id": "p5",
+      "goal": "Mid-task wiring of B's presence indicator. Assistant creates src/components/PresenceAvatars.tsx where PresenceAvatars renders one colored dot per peer from presenceState (plant F9), and wires it into ShoppingList. They decide the presence key is the anon session id we stash in localStorage (plant F12). Testing in two browser tabs shows the bug the session ends on: join events render fine but leave events still never remove the avatar (plant F10) - the assistant is mid-investigation, suspecting the presence leave callback is not re-rendering because the handler mutates state in place; a fix is proposed but NOT yet applied. The user restates the remaining roadmap: after presence lands we still owe the typing broadcast and a deploy preview (plant F11). The phase ends with the fix still pending.",
+      "turns": 5,
+      "activeFiles": [
+        "src/components/PresenceAvatars.tsx",
+        "src/components/ShoppingList.tsx",
+        "src/hooks/useShoppingList.ts"
+      ],
+      "factIds": ["F9", "F10", "F11", "F12"]
+    }
+  ],
+  "facts": [
+    {
+      "id": "F1",
+      "tier": 2,
+      "category": "constraint",
+      "statement": "Shopping lists are scoped per recipe: each recipe page has exactly one shared list keyed by the recipe slug.",
+      "evidence": "each recipe page owns exactly one shared shopping list keyed by its slug"
+    },
+    {
+      "id": "F2",
+      "tier": 3,
+      "category": "decision",
+      "statement": "Item check-offs are applied optimistically on the client and reconciled when the server echo arrives.",
+      "evidence": "toggle items optimistically and reconcile when the server echo arrives"
+    },
+    {
+      "id": "F3",
+      "tier": 3,
+      "category": "code-change",
+      "statement": "The abandoned custom presence used a heartbeat that pinged every 15 seconds and evicted peers after two missed beats.",
+      "evidence": "heartbeat pings every 15 seconds and evicts peers after two missed beats"
+    },
+    {
+      "id": "F4",
+      "tier": 1,
+      "category": "constraint",
+      "statement": "The deploy target is Vercel serverless, which has no sticky sessions and cannot host long-lived WebSocket connections; this is why approach A was abandoned.",
+      "evidence": "Vercel serverless gives us no sticky sessions and kills long lived sockets"
+    },
+    {
+      "id": "F5",
+      "tier": 1,
+      "category": "decision",
+      "statement": "The user decided to move the entire realtime layer onto Supabase Realtime channels, replacing the hand-rolled WebSocket approach.",
+      "evidence": "we will move the whole realtime layer onto Supabase Realtime channels"
+    },
+    {
+      "id": "F6",
+      "tier": 2,
+      "category": "code-change",
+      "statement": "server/realtime-server.js and src/hooks/useListSocket.ts were deleted during the pivot cleanup and no longer exist.",
+      "evidence": "deleted server/realtime-server.js and src/hooks/useListSocket.ts in the cleanup"
+    },
+    {
+      "id": "F7",
+      "tier": 2,
+      "category": "code-change",
+      "statement": "The current data sync path is src/hooks/useShoppingList.ts subscribing to postgres_changes on the shopping_items table.",
+      "evidence": "useShoppingList subscribes to postgres_changes on the shopping_items table"
+    },
+    {
+      "id": "F8",
+      "tier": 2,
+      "category": "constraint",
+      "statement": "The shopping_items table has row level security enabled with an anon read policy.",
+      "evidence": "enable row level security on shopping_items with an anon read policy"
+    },
+    {
+      "id": "F9",
+      "tier": 1,
+      "category": "task-state",
+      "statement": "The in-flight work is src/components/PresenceAvatars.tsx, which renders one colored dot per peer from the Supabase channel presenceState.",
+      "evidence": "PresenceAvatars renders one colored dot per peer from presenceState"
+    },
+    {
+      "id": "F10",
+      "tier": 1,
+      "category": "task-state",
+      "statement": "Current open bug: presence join events render correctly but leave events never remove the avatar; the fix is proposed but not yet applied.",
+      "evidence": "join events render fine but leave events still never remove the avatar"
+    },
+    {
+      "id": "F11",
+      "tier": 1,
+      "category": "plan",
+      "statement": "Remaining roadmap after the presence indicator: the typing broadcast feature and a deploy preview.",
+      "evidence": "after presence lands we still owe the typing broadcast and a deploy preview"
+    },
+    {
+      "id": "F12",
+      "tier": 2,
+      "category": "decision",
+      "statement": "The presence key for each peer is an anonymous session id stored in localStorage.",
+      "evidence": "presence key is the anon session id we stash in localStorage"
+    },
+    {
+      "id": "F13",
+      "tier": 3,
+      "category": "error",
+      "statement": "An early bug: React strict mode double-mounted the effect and duplicated socket subscriptions; fixed with a cleanup and ref guard.",
+      "evidence": "React strict mode double mounts the effect and duplicates every socket subscription"
+    }
+  ],
+  "traps": [
+    {
+      "id": "T1",
+      "statement": "The summary must present the hand-rolled WebSocket server on port 3001 as abandoned (because Vercel serverless cannot host it) and Supabase Realtime channels as the current architecture. Presenting the custom ws server as the current or planned realtime layer = contradicted.",
+      "supersededEvidence": "run a dedicated ws server on port 3001 alongside the Next.js app",
+      "oldPhase": "p1",
+      "currentEvidence": "the hand rolled socket server is dead, Supabase Realtime replaces it entirely",
+      "newPhase": "p3"
+    },
+    {
+      "id": "T2",
+      "statement": "The summary must present the custom in-memory presence tracking (socket id Map plus heartbeat) as removed, with Supabase channel presence as the current mechanism. Describing the heartbeat/Map presence as how presence currently works = contradicted.",
+      "supersededEvidence": "track peers ourselves with an in memory Map of socket ids",
+      "oldPhase": "p2",
+      "currentEvidence": "Supabase channel presence now tracks peers so the heartbeat Map is gone",
+      "newPhase": "p4"
+    },
+    {
+      "id": "T3",
+      "statement": "The summary must not list src/hooks/useListSocket.ts or server/realtime-server.js as current code; they were deleted in the pivot and components now import useShoppingList. Listing either deleted file as live/current = contradicted.",
+      "supersededEvidence": "components talk to the socket server through the useListSocket hook",
+      "oldPhase": "p2",
+      "currentEvidence": "useListSocket is deleted; components import useShoppingList instead",
+      "newPhase": "p4"
+    }
+  ],
+  "probes": [
+    {
+      "id": "P1",
+      "question": "What is the immediate next step in this session, and why?",
+      "expected": "Fix the presence leave handling: join events show avatars but leave events never remove them in PresenceAvatars/useShoppingList (suspected in-place state mutation in the leave callback); the proposed fix has not been applied yet. After that, the typing broadcast and a deploy preview remain."
+    },
+    {
+      "id": "P2",
+      "question": "Which realtime approach is the codebase using right now, and what happened to the other approach that was considered?",
+      "expected": "Supabase Realtime channels (postgres_changes for list sync, channel presence for peers). The hand-rolled WebSocket server with custom heartbeat presence was built first but abandoned and deleted because the Vercel serverless deploy target has no sticky sessions and kills long-lived sockets."
+    },
+    {
+      "id": "P3",
+      "question": "Which files implement the realtime shopping list feature today? List them.",
+      "expected": "src/lib/supabaseClient.ts, src/hooks/useShoppingList.ts, src/components/ShoppingList.tsx, and src/components/PresenceAvatars.tsx. Must NOT include server/realtime-server.js or src/hooks/useListSocket.ts, which were deleted in the pivot."
+    }
+  ]
+}

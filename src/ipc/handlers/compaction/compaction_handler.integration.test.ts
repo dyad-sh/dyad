@@ -5,14 +5,30 @@ import { setDatabaseForTesting } from "@/db";
 import { apps, chats, messages } from "@/db/schema";
 import { createInMemoryTestDb, type TestDb } from "@/testing/test_db";
 
-const { mockSafeSend, mockStorePreCompactionMessages, mockStreamText } =
-  vi.hoisted(() => ({
-    mockSafeSend: vi.fn(),
-    mockStorePreCompactionMessages: vi.fn(
-      async () => ".dyad/chats/1/compaction-test.md",
-    ),
-    mockStreamText: vi.fn(),
-  }));
+const {
+  mockSafeSend,
+  mockStorePreCompactionMessages,
+  mockStreamText,
+  mockGetModelClient,
+  settingsState,
+} = vi.hoisted(() => ({
+  mockSafeSend: vi.fn(),
+  mockStorePreCompactionMessages: vi.fn(
+    async () => ".dyad/chats/1/compaction-test.md",
+  ),
+  mockStreamText: vi.fn(),
+  mockGetModelClient: vi.fn(async () => ({
+    modelClient: {
+      model: {},
+      builtinProviderId: "test-provider",
+    },
+  })),
+  settingsState: {
+    current: {
+      selectedModel: { provider: "anthropic", name: "test-model" },
+    } as Record<string, unknown>,
+  },
+}));
 
 vi.mock("ai", async (importOriginal) => {
   const actual = await importOriginal<typeof import("ai")>();
@@ -20,18 +36,11 @@ vi.mock("ai", async (importOriginal) => {
 });
 
 vi.mock("@/main/settings", () => ({
-  readSettings: () => ({
-    selectedModel: { provider: "anthropic", name: "test-model" },
-  }),
+  readSettings: () => settingsState.current,
 }));
 
 vi.mock("@/ipc/utils/get_model_client", () => ({
-  getModelClient: async () => ({
-    modelClient: {
-      model: {},
-      builtinProviderId: "test-provider",
-    },
-  }),
+  getModelClient: mockGetModelClient,
 }));
 
 vi.mock("@/ipc/utils/provider_options", () => ({
@@ -96,6 +105,10 @@ describe("performCompaction", () => {
     mockStreamText.mockReset();
     mockSafeSend.mockClear();
     mockStorePreCompactionMessages.mockClear();
+    mockGetModelClient.mockClear();
+    settingsState.current = {
+      selectedModel: { provider: "anthropic", name: "test-model" },
+    };
   });
 
   afterEach(() => {
@@ -206,6 +219,49 @@ describe("performCompaction", () => {
         chatId,
         backupPath: ".dyad/chats/1/compaction-test.md",
       },
+    );
+  });
+
+  it("summarizes with the user's selected model for non-Pro users", async () => {
+    mockStreamText.mockReturnValue({
+      textStream: textStream(["Complete summary"]),
+    });
+
+    const result = await performCompaction(
+      { sender: {} } as never,
+      chatId,
+      "/tmp/test-app",
+      "request-id",
+    );
+
+    expect(result).toMatchObject({ success: true });
+    expect(mockGetModelClient).toHaveBeenCalledWith(
+      { provider: "anthropic", name: "test-model" },
+      settingsState.current,
+    );
+  });
+
+  it("pins the benchmarked compaction model for Dyad Pro users", async () => {
+    settingsState.current = {
+      selectedModel: { provider: "anthropic", name: "test-model" },
+      enableDyadPro: true,
+      providerSettings: { auto: { apiKey: { value: "dyad-pro-key" } } },
+    };
+    mockStreamText.mockReturnValue({
+      textStream: textStream(["Complete summary"]),
+    });
+
+    const result = await performCompaction(
+      { sender: {} } as never,
+      chatId,
+      "/tmp/test-app",
+      "request-id",
+    );
+
+    expect(result).toMatchObject({ success: true });
+    expect(mockGetModelClient).toHaveBeenCalledWith(
+      { provider: "openai", name: "gpt-5.6-luna" },
+      settingsState.current,
     );
   });
 

@@ -1,0 +1,214 @@
+{
+  "name": "error-recovery",
+  "domain": "Hirewire is a job-board web app built with SvelteKit 2 and Prisma 5 on Postgres 15: employers post jobs, candidates browse and apply. The frontend uses SvelteKit server load functions and form actions; Prisma access is centralized in src/lib/server/prisma.ts. CI runs on GitHub Actions where the integration test suite executes inside a container job with a postgres service container. The session is a running battle with build and test failures: a flaky CI-only database connection error, then a Vite SSR import error, and finally a failing integration suite that is still mid-diagnosis when the session ends.",
+  "phases": [
+    {
+      "id": "p1",
+      "goal": "The user reports the CI integration job fails intermittently, roughly one run in three, while everything passes locally. The assistant pulls the CI log and quotes the exact failure: PrismaClientInitializationError: Can't reach database server at localhost:5432 (plant F1, quoted verbatim from the log). The assistant's first read is wrong, saying this looks like a Docker networking issue on the CI runner (plant trap T1 superseded evidence) and proposes as a stopgap that adding a pg_isready retry loop before the test step should stabilize CI (plant trap T2 superseded evidence). The assistant edits .github/workflows/ci.yml to add a 30-attempt pg_isready wait loop (plant F2). Meanwhile normal feature work continues: the assistant writes a large candidate seed file for local testing.",
+      "turns": 5,
+      "activeFiles": [
+        ".github/workflows/ci.yml",
+        "src/lib/server/seed/candidates.ts",
+        "src/lib/server/prisma.ts"
+      ],
+      "factIds": ["F1", "F2"],
+      "bulk": [
+        {
+          "asset": "seed-data",
+          "path": "src/lib/server/seed/candidates.ts",
+          "kind": "users",
+          "count": 210
+        }
+      ]
+    },
+    {
+      "id": "p2",
+      "goal": "Next CI runs show the stopgap failed: the assistant reports the pg_isready retry loop made no difference, CI still fails one run in three (plant F3, which is trap T2 current evidence). Digging into the workflow file, the assistant finds the real cause and explicitly retracts the earlier theory: it is not Docker networking at all, because the tests run inside a container job, localhost points at the test container itself, not the postgres service (plant F4, which is trap T1 current evidence). The fix: in .github/workflows/ci.yml the assistant sets DATABASE_URL to postgresql://ci:ci@db:5432/hirewire so Prisma connects to the db service by hostname (plant F5). Three consecutive CI runs come back green and the user confirms the flake is gone.",
+      "turns": 5,
+      "activeFiles": [".github/workflows/ci.yml", "src/lib/server/prisma.ts"],
+      "factIds": ["F3", "F4", "F5"],
+      "bulk": []
+    },
+    {
+      "id": "p3",
+      "goal": "The user asks for a salary-range filter on the job listings page. The assistant adds salaryMin and salaryMax Int columns to the Job model and creates migration 20260721143002_add_salary_range (plant F6), then wires the filter UI into the listings route. On npm run dev the server crashes at startup with a Vite SSR error, quoted exactly from the terminal: SyntaxError: Named export 'PrismaClient' not found. The requested module '@prisma/client' is a CommonJS module (plant F7). The assistant tries a config-level fix first, saying adding @prisma/client to ssr.noExternal in vite.config.ts should fix the SSR import (plant trap T3 superseded evidence, plant F8). Dev server boots once, so it looks fixed. The assistant also lands a large utilities stylesheet for the new filter panel while waiting on user feedback.",
+      "turns": 6,
+      "activeFiles": [
+        "prisma/schema.prisma",
+        "src/routes/jobs/+page.server.ts",
+        "vite.config.ts",
+        "src/styles/utilities.css"
+      ],
+      "factIds": ["F6", "F7", "F8"],
+      "bulk": [
+        {
+          "asset": "long-css",
+          "path": "src/styles/utilities.css",
+          "count": 250
+        }
+      ]
+    },
+    {
+      "id": "p4",
+      "goal": "The noExternal workaround collapses: the same PrismaClient SSR error returns on the production build, and the assistant concludes the ssr.noExternal entry only papered over it in dev and reverts that vite.config.ts change. The durable fix lands in src/lib/server/prisma.ts: switched to a default import of @prisma/client and destructured PrismaClient from it (plant F9, which is trap T3 current evidence). Both dev and npm run build now pass and the salary filter works locally. The user states a standing rule for this repo: never edit or squash a migration that has already been applied in production (plant F10). Separately the assistant generates a large German locale file for job category labels as part of ongoing i18n work.",
+      "turns": 5,
+      "activeFiles": [
+        "src/lib/server/prisma.ts",
+        "vite.config.ts",
+        "src/locales/de.json"
+      ],
+      "factIds": ["F9", "F10"],
+      "bulk": [
+        { "asset": "locale-json", "path": "src/locales/de.json", "count": 380 }
+      ]
+    },
+    {
+      "id": "p5",
+      "goal": "The salary filter branch is pushed and CI breaks again, this time deterministically in the integration suite. The assistant quotes the current blocking error exactly from the CI log, spread over two lines: first PrismaClientKnownRequestError: The column Job.salaryMin does not exist in the current database (plant F11), and right above it in the log the migrate step output, which is the smoking gun: prisma migrate deploy prints No pending migrations to apply even though add_salary_range is brand new (plant F12). The assistant forms a concrete suspicion: a stray migrations line in .gitignore may be excluding the new migration folder from the commit (plant F13), since the repo root .gitignore was recently copied from another project. The session ends mid-diagnosis: the assistant is about to run git ls-files prisma/migrations to confirm whether 20260721143002_add_salary_range was ever committed, and says the fix will be committing the folder, not editing applied migrations, per the user's rule. Nothing has been changed yet to address this error.",
+      "turns": 6,
+      "activeFiles": [
+        ".gitignore",
+        "prisma/migrations/20260721143002_add_salary_range/migration.sql",
+        ".github/workflows/ci.yml"
+      ],
+      "factIds": ["F11", "F12", "F13"],
+      "bulk": []
+    }
+  ],
+  "facts": [
+    {
+      "id": "F1",
+      "tier": 2,
+      "category": "error",
+      "statement": "The first CI failure was intermittent (about one run in three, CI only) with the exact error: PrismaClientInitializationError: Can't reach database server at localhost:5432.",
+      "evidence": "PrismaClientInitializationError: Can't reach database server at localhost:5432"
+    },
+    {
+      "id": "F2",
+      "tier": 3,
+      "category": "code-change",
+      "statement": "As a stopgap, a 30-attempt pg_isready wait loop was added to .github/workflows/ci.yml before the test step.",
+      "evidence": "add a 30-attempt pg_isready wait loop before the test step"
+    },
+    {
+      "id": "F3",
+      "tier": 2,
+      "category": "error",
+      "statement": "The pg_isready retry loop did not fix the flake; CI kept failing about one run in three after it was added.",
+      "evidence": "the pg_isready retry loop made no difference, CI still fails one run in three"
+    },
+    {
+      "id": "F4",
+      "tier": 2,
+      "category": "decision",
+      "statement": "The real cause of the CI connection flake: the tests run inside a container job, so localhost resolves to the test container itself rather than the postgres service; Docker networking on the runner was explicitly ruled out.",
+      "evidence": "the tests run inside a container job, localhost points at the test container itself"
+    },
+    {
+      "id": "F5",
+      "tier": 2,
+      "category": "code-change",
+      "statement": "The working fix for the CI connection flake: DATABASE_URL in .github/workflows/ci.yml was set to postgresql://ci:ci@db:5432/hirewire, addressing the db service by hostname; CI then went green three runs in a row.",
+      "evidence": "sets DATABASE_URL to postgresql://ci:ci@db:5432/hirewire"
+    },
+    {
+      "id": "F6",
+      "tier": 2,
+      "category": "code-change",
+      "statement": "For the salary-range filter, salaryMin and salaryMax Int columns were added to the Job model in prisma/schema.prisma via migration 20260721143002_add_salary_range.",
+      "evidence": "creates migration 20260721143002_add_salary_range for the new salary columns"
+    },
+    {
+      "id": "F7",
+      "tier": 2,
+      "category": "error",
+      "statement": "The second recurring error, verbatim: SyntaxError: Named export 'PrismaClient' not found. The requested module '@prisma/client' is a CommonJS module, hit during Vite SSR startup.",
+      "evidence": "SyntaxError: Named export 'PrismaClient' not found. The requested module '@prisma/client' is a CommonJS module"
+    },
+    {
+      "id": "F8",
+      "tier": 3,
+      "category": "code-change",
+      "statement": "The first attempted fix for the SSR error added @prisma/client to ssr.noExternal in vite.config.ts; it appeared to work in dev but failed again on the production build and was reverted.",
+      "evidence": "the ssr.noExternal entry only papered over it in dev"
+    },
+    {
+      "id": "F9",
+      "tier": 2,
+      "category": "code-change",
+      "statement": "The fix that actually resolved the SSR error: src/lib/server/prisma.ts was switched to a default import of @prisma/client with PrismaClient destructured from it; both dev and build pass afterwards.",
+      "evidence": "switched to a default import of @prisma/client and destructured PrismaClient"
+    },
+    {
+      "id": "F10",
+      "tier": 2,
+      "category": "constraint",
+      "statement": "Standing user rule for this repo: never edit or squash a migration that has already been applied in production.",
+      "evidence": "never edit or squash a migration that has already been applied in production"
+    },
+    {
+      "id": "F11",
+      "tier": 1,
+      "category": "error",
+      "statement": "The current blocking error in CI, verbatim: PrismaClientKnownRequestError: The column Job.salaryMin does not exist in the current database; it fails deterministically in the integration suite on the salary filter branch.",
+      "evidence": "PrismaClientKnownRequestError: The column Job.salaryMin does not exist in the current database"
+    },
+    {
+      "id": "F12",
+      "tier": 1,
+      "category": "error",
+      "statement": "The second line of the current CI failure and key clue: prisma migrate deploy prints No pending migrations to apply even though the add_salary_range migration is brand new, meaning CI never sees the migration.",
+      "evidence": "prisma migrate deploy prints No pending migrations to apply even though add_salary_range is brand new"
+    },
+    {
+      "id": "F13",
+      "tier": 1,
+      "category": "task-state",
+      "statement": "Current task state: the suspected cause of the blocking error is that a stray migrations line in .gitignore is excluding the new migration folder from the commit; the immediate next step is running git ls-files prisma/migrations to confirm, and no fix has been applied yet.",
+      "evidence": "a stray migrations line in .gitignore may be excluding the new migration folder"
+    }
+  ],
+  "traps": [
+    {
+      "id": "T1",
+      "statement": "The early theory that the CI connection failure was a Docker networking issue on the runner was explicitly ruled out; the real cause is that inside the container job localhost points at the test container itself, fixed by using the db service hostname. Presenting Docker networking as the cause, or as still under suspicion, counts as contradicted.",
+      "supersededEvidence": "this looks like a Docker networking issue on the CI runner",
+      "oldPhase": "p1",
+      "currentEvidence": "the tests run inside a container job, localhost points at the test container itself",
+      "newPhase": "p2"
+    },
+    {
+      "id": "T2",
+      "statement": "The pg_isready retry loop was tried and did not fix the CI flake; the flake was only resolved by the DATABASE_URL hostname change. Presenting the retry loop as the fix that stabilized CI, or as still pending evaluation, counts as contradicted.",
+      "supersededEvidence": "adding a pg_isready retry loop before the test step should stabilize CI",
+      "oldPhase": "p1",
+      "currentEvidence": "the pg_isready retry loop made no difference, CI still fails one run in three",
+      "newPhase": "p2"
+    },
+    {
+      "id": "T3",
+      "statement": "The ssr.noExternal workaround for the PrismaClient SSR error was reverted after it failed on the production build; the current fix is the default import with destructuring in src/lib/server/prisma.ts. Presenting the vite.config.ts noExternal entry as the current fix counts as contradicted.",
+      "supersededEvidence": "adding @prisma/client to ssr.noExternal in vite.config.ts should fix the SSR import",
+      "oldPhase": "p3",
+      "currentEvidence": "switched to a default import of @prisma/client and destructured PrismaClient",
+      "newPhase": "p4"
+    }
+  ],
+  "probes": [
+    {
+      "id": "P1",
+      "question": "What exact error is currently blocking CI, what is the suspected cause, and what is the very next step?",
+      "expected": "CI fails with PrismaClientKnownRequestError: The column Job.salaryMin does not exist in the current database, and prisma migrate deploy prints No pending migrations to apply despite the new add_salary_range migration. Suspected cause: a stray migrations line in .gitignore is excluding the new migration folder from the commit. Next step: run git ls-files prisma/migrations to confirm the 20260721143002_add_salary_range folder was never committed, then commit it (not edit applied migrations)."
+    },
+    {
+      "id": "P2",
+      "question": "Earlier CI runs failed intermittently with a database connection error. Was that a Docker networking problem, did the retry loop fix it, and what actually resolved it?",
+      "expected": "Not Docker networking; that theory was ruled out. The pg_isready retry loop made no difference. Real cause: tests run in a container job so localhost pointed at the test container itself; resolved by setting DATABASE_URL to postgresql://ci:ci@db:5432/hirewire (db service hostname) in .github/workflows/ci.yml, after which CI went green."
+    },
+    {
+      "id": "P3",
+      "question": "If the PrismaClient SSR import error reappears, what fix is currently in place and what should we avoid retrying because it already failed?",
+      "expected": "Current fix: src/lib/server/prisma.ts uses a default import of @prisma/client and destructures PrismaClient, which fixed both dev and production build. Avoid re-adding @prisma/client to ssr.noExternal in vite.config.ts; that only worked in dev, failed on the production build, and was reverted."
+    }
+  ]
+}

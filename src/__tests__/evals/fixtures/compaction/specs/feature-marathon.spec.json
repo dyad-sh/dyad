@@ -1,0 +1,208 @@
+{
+  "name": "feature-marathon",
+  "domain": "HabitLoop is a habit-tracking web app built with React 18, Vite, TypeScript, and Supabase (Postgres + Auth + Storage). The user is building a full account system over one long session: email/password auth pages, session handling, and a user profile page with avatar upload. Requirements shift twice mid-session: magic-link login is added alongside passwords, and the profile bio field is dropped in favor of display-name only.",
+  "phases": [
+    {
+      "id": "p1",
+      "goal": "User asks for email/password auth for HabitLoop. Assistant recommends using supabase-js auth directly instead of adding Clerk, since habit data already lives in Supabase (plant F1). Scaffolds src/pages/Login.tsx and src/pages/Signup.tsx with a shared AuthLayout (plant F2), plus src/lib/supabaseClient.ts. User explicitly says signup should stay open to everyone with no invite gate for launch (trap T1 old direction). While testing signup, Supabase returns a 422 duplicate email error and the assistant adds a friendly inline message (plant F13). Also seeds a demo users file for local testing.",
+      "turns": 5,
+      "activeFiles": [
+        "src/pages/Login.tsx",
+        "src/pages/Signup.tsx",
+        "src/components/AuthLayout.tsx",
+        "src/lib/supabaseClient.ts"
+      ],
+      "factIds": ["F1", "F2", "F13"],
+      "bulk": [
+        {
+          "asset": "seed-data",
+          "path": "src/data/demoUsers.ts",
+          "kind": "users",
+          "count": 220
+        }
+      ]
+    },
+    {
+      "id": "p2",
+      "goal": "Session handling. Assistant builds src/contexts/AuthContext.tsx which subscribes to supabase.auth.onAuthStateChange and exposes the session object (plant F3). Adds src/components/ProtectedRoute.tsx and the user states the rule that every route under /app must sit behind the ProtectedRoute wrapper (plant F4). Wires the router in src/App.tsx, fixes a redirect loop when the session is still loading by adding a loading gate.",
+      "turns": 5,
+      "activeFiles": [
+        "src/contexts/AuthContext.tsx",
+        "src/components/ProtectedRoute.tsx",
+        "src/App.tsx"
+      ],
+      "factIds": ["F3", "F4"]
+    },
+    {
+      "id": "p3",
+      "goal": "First requirement change: the user asks to add magic link login as a second option while keeping the password form too (plant F5). Assistant implements signInWithOtp inside src/lib/auth.ts (plant F6) and adds a tabbed Login UI. The user warns that emailRedirectTo must point at the /auth/callback route in production, not localhost (plant F7), so a new src/pages/AuthCallback.tsx page is added. German localization strings for the auth screens are generated as a bulk locale file.",
+      "turns": 5,
+      "activeFiles": [
+        "src/lib/auth.ts",
+        "src/pages/Login.tsx",
+        "src/pages/AuthCallback.tsx"
+      ],
+      "factIds": ["F5", "F6", "F7"],
+      "bulk": [
+        { "asset": "locale-json", "path": "src/locales/de.json", "count": 400 }
+      ]
+    },
+    {
+      "id": "p4",
+      "goal": "Profile page. Assistant creates src/pages/Profile.tsx which loads its row from the profiles table by user id (plant F8), with fields for display name and a short bio textarea under the display name field (trap T2 old direction). Mid-phase the user changes signup policy: signup now requires a valid invite code checked against the invite_codes table (trap T1 new direction), so Signup.tsx gains an invite code input and a lookup query. A utility CSS file is generated as bulk for the new form styling.",
+      "turns": 5,
+      "activeFiles": [
+        "src/pages/Profile.tsx",
+        "src/pages/Signup.tsx",
+        "src/lib/profile.ts"
+      ],
+      "factIds": ["F8"],
+      "bulk": [
+        {
+          "asset": "long-css",
+          "path": "src/styles/utilities.css",
+          "count": 260
+        }
+      ]
+    },
+    {
+      "id": "p5",
+      "goal": "Second requirement change and in-flight avatar work. The user decides to drop the bio column entirely and keep only display_name on profiles (trap T2 new direction, plant F9); assistant removes the textarea and writes a migration note. Then avatar upload begins: an avatars storage bucket is created and uploadAvatar is written in src/lib/storage.ts, but Profile.tsx does not call it yet (plant F10). The phase ends mid-task: the avatars bucket still needs an insert policy scoped to the user id folder (plant F11), and the user notes that after avatars we still owe the password reset page at /auth/reset (plant F12). The session cuts off with the assistant about to write the storage policy SQL.",
+      "turns": 6,
+      "activeFiles": [
+        "src/pages/Profile.tsx",
+        "src/lib/storage.ts",
+        "src/lib/profile.ts"
+      ],
+      "factIds": ["F9", "F10", "F11", "F12"]
+    }
+  ],
+  "facts": [
+    {
+      "id": "F1",
+      "tier": 1,
+      "category": "decision",
+      "statement": "The team chose supabase-js auth directly instead of Clerk because the habit data already lives in Supabase.",
+      "evidence": "we will use supabase-js auth directly since the habit data already lives in Supabase"
+    },
+    {
+      "id": "F2",
+      "tier": 3,
+      "category": "code-change",
+      "statement": "Auth pages were scaffolded at src/pages/Login.tsx and src/pages/Signup.tsx sharing an AuthLayout wrapper component.",
+      "evidence": "created src/pages/Login.tsx and src/pages/Signup.tsx with the shared AuthLayout wrapper"
+    },
+    {
+      "id": "F3",
+      "tier": 2,
+      "category": "code-change",
+      "statement": "Session state lives in src/contexts/AuthContext.tsx, which subscribes to supabase.auth.onAuthStateChange and exposes the session.",
+      "evidence": "AuthContext subscribes to supabase.auth.onAuthStateChange and exposes the session object"
+    },
+    {
+      "id": "F4",
+      "tier": 2,
+      "category": "constraint",
+      "statement": "Every route under /app must be wrapped in the ProtectedRoute component.",
+      "evidence": "every route under /app must sit behind the ProtectedRoute wrapper"
+    },
+    {
+      "id": "F5",
+      "tier": 3,
+      "category": "decision",
+      "statement": "Magic-link login was added as a second login option; the password form was kept, not replaced.",
+      "evidence": "add magic link login as a second option while keeping the password form too"
+    },
+    {
+      "id": "F6",
+      "tier": 2,
+      "category": "code-change",
+      "statement": "The magic-link flow is implemented with signInWithOtp inside src/lib/auth.ts.",
+      "evidence": "signInWithOtp handles the magic link flow inside src/lib/auth.ts"
+    },
+    {
+      "id": "F7",
+      "tier": 2,
+      "category": "constraint",
+      "statement": "Magic-link emails must set emailRedirectTo to the /auth/callback route in production, not localhost.",
+      "evidence": "emailRedirectTo must point at the /auth/callback route in production"
+    },
+    {
+      "id": "F8",
+      "tier": 3,
+      "category": "code-change",
+      "statement": "The profile page at src/pages/Profile.tsx loads its row from the profiles table by user id.",
+      "evidence": "src/pages/Profile.tsx loads its row from the profiles table by user id"
+    },
+    {
+      "id": "F9",
+      "tier": 1,
+      "category": "decision",
+      "statement": "The profiles table keeps only display_name; the bio column was dropped entirely by user request.",
+      "evidence": "drop the bio column entirely and keep only display_name on profiles"
+    },
+    {
+      "id": "F10",
+      "tier": 1,
+      "category": "task-state",
+      "statement": "Avatar upload is half-wired: uploadAvatar exists in src/lib/storage.ts but Profile.tsx does not call it yet.",
+      "evidence": "uploadAvatar in src/lib/storage.ts works but Profile.tsx does not call it yet"
+    },
+    {
+      "id": "F11",
+      "tier": 1,
+      "category": "task-state",
+      "statement": "The immediate next step is adding a storage insert policy on the avatars bucket scoped to each user's id folder.",
+      "evidence": "the avatars bucket still needs an insert policy scoped to the user id folder"
+    },
+    {
+      "id": "F12",
+      "tier": 2,
+      "category": "plan",
+      "statement": "After avatar upload is finished, the remaining planned work is the password reset page at /auth/reset.",
+      "evidence": "after avatars we still owe the password reset page at /auth/reset"
+    },
+    {
+      "id": "F13",
+      "tier": 3,
+      "category": "error",
+      "statement": "Signup with an existing email produced a Supabase 422 duplicate email error, fixed with a friendly inline message.",
+      "evidence": "Supabase returned a 422 duplicate email error until we added the friendly message"
+    }
+  ],
+  "traps": [
+    {
+      "id": "T1",
+      "statement": "The summary must present open-to-everyone signup as superseded and invite-code-required signup as current. Presenting signup as open to everyone with no invite gate = contradicted.",
+      "supersededEvidence": "keep signup open to everyone, no invite gate for launch",
+      "oldPhase": "p1",
+      "currentEvidence": "signup now requires a valid invite code checked against the invite_codes table",
+      "newPhase": "p4"
+    },
+    {
+      "id": "T2",
+      "statement": "The summary must present the profile bio field as dropped and display-name-only as current. Presenting the bio textarea or bio column as part of the current profile page = contradicted.",
+      "supersededEvidence": "add a short bio textarea under the display name field",
+      "oldPhase": "p4",
+      "currentEvidence": "drop the bio column entirely and keep only display_name on profiles",
+      "newPhase": "p5"
+    }
+  ],
+  "probes": [
+    {
+      "id": "P1",
+      "question": "What is the immediate next step to finish the avatar upload feature, and which file still needs wiring?",
+      "expected": "Add the storage insert policy on the avatars bucket scoped to the user's id folder, then wire the existing uploadAvatar from src/lib/storage.ts into src/pages/Profile.tsx, which does not call it yet."
+    },
+    {
+      "id": "P2",
+      "question": "A new visitor wants to create an account. Can they sign up with just an email and password, and what fields does their profile store?",
+      "expected": "No; signup now requires a valid invite code checked against the invite_codes table (the earlier open-signup policy was superseded), and the profile stores only display_name because the bio column was dropped."
+    },
+    {
+      "id": "P3",
+      "question": "Which files implement authentication, and which login methods does the app currently support?",
+      "expected": "src/pages/Login.tsx and src/pages/Signup.tsx (with AuthLayout), src/lib/auth.ts (signInWithOtp magic link), src/contexts/AuthContext.tsx for session state, src/pages/AuthCallback.tsx for the redirect; both email/password and magic-link login are supported, using supabase-js auth directly rather than Clerk."
+    }
+  ]
+}

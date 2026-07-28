@@ -1,0 +1,14 @@
+{
+  "name": "feature-marathon",
+  "model": "gpt-5.6-sol",
+  "estTokens": 182121,
+  "chars": 728483,
+  "messageCount": 68,
+  "fillerMessages": 16,
+  "authoringUsage": {
+    "prompt_tokens": 9375,
+    "completion_tokens": 32393
+  },
+  "missingEvidence": [],
+  "withinBand": true
+}

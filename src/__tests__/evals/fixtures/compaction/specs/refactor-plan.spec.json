@@ -1,0 +1,210 @@
+{
+  "name": "refactor-plan",
+  "domain": "A Vue 3 + Pinia inventory manager for a small warehouse business. The app has fat components (InventoryList.vue, SupplierPanel.vue, DashboardView.vue) that mix axios data access, business rules, and rendering. The session is an explicit multi-step refactor to extract a service layer, driven by a written plan the assistant lays out early as plain text.",
+  "phases": [
+    {
+      "id": "p1",
+      "goal": "The user complains that InventoryList.vue, SupplierPanel.vue and DashboardView.vue each mix axios calls, business rules and templates, and asks for a structured refactor. The assistant reads the three components and the Pinia stores, then writes out an explicit plan as plain assistant text starting with 'Plan: Service Layer Extraction' followed by four numbered steps: 1) extract inventoryService, 2) extract supplierService, 3) extract reportService for the dashboard, 4) add a Vitest suite for the services. The assistant also states the initial scoping decision that the Pinia stores will be migrated one-by-one starting with the inventory store (this decision gets reversed later, so state it confidently here). The user agrees but adds one hard constraint about component contracts (F11 evidence must appear in the user's or assistant's words). F1 evidence must appear inside the plan text.",
+      "turns": 5,
+      "activeFiles": [
+        "src/components/InventoryList.vue",
+        "src/components/SupplierPanel.vue",
+        "src/views/DashboardView.vue",
+        "src/stores/inventoryStore.ts",
+        "src/stores/supplierStore.ts"
+      ],
+      "factIds": ["F1", "F11"]
+    },
+    {
+      "id": "p2",
+      "goal": "Step 1 of the plan is executed. The assistant creates src/services/inventoryService.ts and moves all fetch/axios logic for products out of InventoryList.vue into it, then notices ProductDetail.vue also imports axios directly and strips that too. The user also asks for a realistic demo dataset so the inventory screens are not empty, and the assistant generates src/data/seedProducts.ts with 240 demo products (F12 evidence should land when this is discussed). Phase ends with step 1 declared done (F2 and F3 evidence in the assistant's wrap-up).",
+      "turns": 6,
+      "activeFiles": [
+        "src/services/inventoryService.ts",
+        "src/components/InventoryList.vue",
+        "src/components/ProductDetail.vue",
+        "src/data/seedProducts.ts"
+      ],
+      "factIds": ["F2", "F3", "F12"],
+      "bulk": [
+        {
+          "asset": "seed-data",
+          "path": "src/data/seedProducts.ts",
+          "kind": "products",
+          "count": 240
+        }
+      ]
+    },
+    {
+      "id": "p3",
+      "goal": "Step 2: the assistant creates src/services/supplierService.ts and moves supplier CRUD out of SupplierPanel.vue (F4). Testing in the dev server, every supplier request now fails with 401 Unauthorized. The assistant first guesses that Pinia state resets on hot reload are wiping the auth token (this hypothesis is wrong and must be voiced clearly, T2 superseded evidence). Digging further, the real cause is found: the shared auth interceptor was registered only on the old per-store axios instance, so migrated calls never got the auth header (F5). Because of this coupling, the assistant and user agree to revise the original scoping: instead of migrating stores one-by-one, they will do a big-bang swap of the api module through a single apiClient.ts (F6, T1 current evidence). Separately mid-phase the user asks to drop in a generated utility stylesheet for the admin screens, which the assistant writes to src/styles/utilities.css.",
+      "turns": 6,
+      "activeFiles": [
+        "src/services/supplierService.ts",
+        "src/components/SupplierPanel.vue",
+        "src/stores/supplierStore.ts",
+        "src/styles/utilities.css"
+      ],
+      "factIds": ["F4", "F5", "F6"],
+      "bulk": [
+        {
+          "asset": "long-css",
+          "path": "src/styles/utilities.css",
+          "count": 260
+        }
+      ]
+    },
+    {
+      "id": "p4",
+      "goal": "The big-bang swap is executed: the assistant creates src/services/apiClient.ts that centralizes the baseURL and attaches the auth token in one interceptor (F7), rewires inventoryService.ts, supplierService.ts, and every Pinia store to import it, and deletes the old per-store axios setup. Retesting confirms the 401s are gone and that hot reload was never the problem (T2 current evidence must be said explicitly). The assistant explicitly restates that one-by-one migration is dead and marks steps 1 and 2 of the extraction plan complete (F10). The user also asks for the German locale file for the admin UI, which the assistant generates at src/locales/de.json.",
+      "turns": 5,
+      "activeFiles": [
+        "src/services/apiClient.ts",
+        "src/services/inventoryService.ts",
+        "src/services/supplierService.ts",
+        "src/stores/inventoryStore.ts",
+        "src/locales/de.json"
+      ],
+      "factIds": ["F7", "F10"],
+      "bulk": [
+        {
+          "asset": "locale-json",
+          "path": "src/locales/de.json",
+          "count": 400
+        }
+      ]
+    },
+    {
+      "id": "p5",
+      "goal": "Step 3 of the plan is in flight and the session ends mid-task. The assistant creates src/services/reportService.ts and starts migrating DashboardView.vue: the low-stock query has been moved into reportService.ts, but the inventory valuation summary computation is still inline in DashboardView.vue and the assistant is in the middle of extracting it when the session ends (F8 evidence in a status update). The assistant also notes that step 4, the Vitest suite for the three services, has not been started (F9). The final turn must end with the assistant actively working on the valuation summary extraction, not with a wrap-up.",
+      "turns": 5,
+      "activeFiles": [
+        "src/services/reportService.ts",
+        "src/views/DashboardView.vue",
+        "src/stores/inventoryStore.ts"
+      ],
+      "factIds": ["F8", "F9"]
+    }
+  ],
+  "facts": [
+    {
+      "id": "F1",
+      "tier": 1,
+      "category": "plan",
+      "statement": "The active plan is titled 'Service Layer Extraction' and has four numbered steps: inventoryService, supplierService, reportService, then a Vitest suite for the services.",
+      "evidence": "Plan: Service Layer Extraction, four numbered steps to pull data access out of the components"
+    },
+    {
+      "id": "F2",
+      "tier": 2,
+      "category": "code-change",
+      "statement": "Step 1 created src/services/inventoryService.ts, which now owns all product fetch logic previously in InventoryList.vue.",
+      "evidence": "inventoryService.ts now owns every product fetch that InventoryList.vue used to make itself"
+    },
+    {
+      "id": "F3",
+      "tier": 3,
+      "category": "code-change",
+      "statement": "During step 1 the direct axios import was also removed from ProductDetail.vue.",
+      "evidence": "also stripped the direct axios import out of ProductDetail.vue while I was in there"
+    },
+    {
+      "id": "F4",
+      "tier": 2,
+      "category": "code-change",
+      "statement": "Step 2 created src/services/supplierService.ts and moved supplier CRUD out of SupplierPanel.vue.",
+      "evidence": "supplier CRUD moved out of SupplierPanel.vue into the new supplierService.ts module"
+    },
+    {
+      "id": "F5",
+      "tier": 2,
+      "category": "error",
+      "statement": "The step 2 blocker: the shared auth interceptor was only registered on the old per-store axios instance, so migrated supplier calls all returned 401 Unauthorized.",
+      "evidence": "the shared auth interceptor never ran for migrated calls, so every supplier request came back 401"
+    },
+    {
+      "id": "F6",
+      "tier": 1,
+      "category": "decision",
+      "statement": "The current migration approach is a big-bang swap of the api module through a single apiClient.ts, replacing the original one-store-at-a-time scoping.",
+      "evidence": "we will do a big-bang swap of the api module through a single apiClient.ts"
+    },
+    {
+      "id": "F7",
+      "tier": 3,
+      "category": "code-change",
+      "statement": "src/services/apiClient.ts centralizes the baseURL and attaches the auth token in one interceptor.",
+      "evidence": "apiClient.ts centralizes the baseURL and attaches the auth token in one interceptor"
+    },
+    {
+      "id": "F8",
+      "tier": 1,
+      "category": "task-state",
+      "statement": "Step 3 is in flight: the low-stock query has been moved into reportService.ts, but the inventory valuation summary is still inline in DashboardView.vue and is being extracted right now.",
+      "evidence": "low-stock query now lives in reportService.ts but the valuation summary is still inline in DashboardView.vue"
+    },
+    {
+      "id": "F9",
+      "tier": 1,
+      "category": "task-state",
+      "statement": "Step 4 of the plan, the Vitest suite covering the three services, has not been started.",
+      "evidence": "step 4, the Vitest suite for the three services, has not been started"
+    },
+    {
+      "id": "F10",
+      "tier": 2,
+      "category": "plan",
+      "statement": "Steps 1 and 2 of the Service Layer Extraction plan are complete.",
+      "evidence": "steps 1 and 2 of the extraction plan are now complete"
+    },
+    {
+      "id": "F11",
+      "tier": 2,
+      "category": "constraint",
+      "statement": "Binding constraint from the user: every component's props and emits contracts must stay exactly as they are; the refactor may not change any component's public interface.",
+      "evidence": "keep every component's props and emits contracts exactly as they are today"
+    },
+    {
+      "id": "F12",
+      "tier": 3,
+      "category": "code-change",
+      "statement": "src/data/seedProducts.ts was added with 240 demo products so the inventory screens have realistic data.",
+      "evidence": "seedProducts.ts ships 240 demo products so the inventory screens have realistic data"
+    }
+  ],
+  "traps": [
+    {
+      "id": "T1",
+      "statement": "The summary must present the one-store-at-a-time migration as superseded and the big-bang swap of the api module via apiClient.ts as the current approach. Presenting one-by-one store migration as the current or planned approach counts as contradicted.",
+      "supersededEvidence": "we will migrate the Pinia stores one-by-one, starting with the inventory store",
+      "oldPhase": "p1",
+      "currentEvidence": "one-by-one migration is dead; the api module gets swapped in a single big-bang change",
+      "newPhase": "p3"
+    },
+    {
+      "id": "T2",
+      "statement": "The summary must treat the hot-reload hypothesis for the 401 errors as disproven; the confirmed cause is the auth interceptor missing from migrated calls. Presenting hot reload or Pinia state resets as the cause, or as still under investigation, counts as contradicted.",
+      "supersededEvidence": "my first guess is that Pinia state resets on hot reload are wiping the auth token",
+      "oldPhase": "p3",
+      "currentEvidence": "hot reload was innocent; the missing interceptor on migrated calls fully explains the 401s",
+      "newPhase": "p4"
+    }
+  ],
+  "probes": [
+    {
+      "id": "P1",
+      "question": "Give a status readout of the Service Layer Extraction plan: for each numbered step, say whether it is done, in progress, or not started, and what the immediate next action is.",
+      "expected": "Steps 1 (inventoryService) and 2 (supplierService) are complete; step 3 (reportService for the dashboard) is in progress with the low-stock query moved but the valuation summary still inline in DashboardView.vue, and the immediate next action is finishing that extraction; step 4 (Vitest suite for the services) is not started."
+    },
+    {
+      "id": "P2",
+      "question": "We are about to touch the remaining Pinia stores. Should we keep migrating them to the new services one store at a time, and how should their HTTP calls be made?",
+      "expected": "No; the one-by-one migration was abandoned after the 401 interceptor blocker. The big-bang swap already happened: everything goes through the shared apiClient.ts, which owns the baseURL and auth interceptor, so stores must call the services backed by apiClient, never a per-store axios instance."
+    },
+    {
+      "id": "P3",
+      "question": "Which files make up the new service layer so far, and what logic still remains inside DashboardView.vue?",
+      "expected": "The service layer is src/services/inventoryService.ts, src/services/supplierService.ts, src/services/reportService.ts, plus the shared src/services/apiClient.ts. DashboardView.vue still contains the inline inventory valuation summary computation, which is mid-extraction into reportService.ts."
+    }
+  ]
+}

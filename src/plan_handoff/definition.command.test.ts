@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   waitForChatActorIdle: vi.fn(async () => undefined),
   dispatchPlanImplementationTurn: vi.fn(async () => undefined),
   deleteOwnedChatAfterSettlingActors: vi.fn(async () => undefined),
+  setChatMode: vi.fn(),
 }));
 
 vi.mock("@/db", () => ({
@@ -17,6 +18,13 @@ vi.mock("@/db", () => ({
       from: () => ({
         where: () => ({
           get: () => ({ path: "/tmp/app" }),
+        }),
+      }),
+    }),
+    update: () => ({
+      set: (values: unknown) => ({
+        where: () => ({
+          run: () => mocks.setChatMode(values),
         }),
       }),
     }),
@@ -148,5 +156,30 @@ describe("plan handoff command ownership", () => {
       phase: "started",
       targetChatId: 99,
     });
+  });
+
+  it("changes the current chat mode only after implementation admission", async () => {
+    const currentChatIntent = {
+      ...intent(),
+      acceptInNewChat: false,
+    };
+    const failure = new Error("implementation admission failed");
+    mocks.dispatchPlanImplementationTurn.mockRejectedValueOnce(failure);
+    const { runner } = commandRunner();
+    const emit = vi.fn<(event: PlanHandoffHostEvent) => void>();
+
+    await runner({ type: "run-handoff", intent: currentChatIntent }, emit);
+
+    expect(mocks.setChatMode).not.toHaveBeenCalled();
+
+    mocks.dispatchPlanImplementationTurn.mockResolvedValueOnce(undefined);
+    await runner({ type: "run-handoff", intent: currentChatIntent }, emit);
+
+    expect(mocks.setChatMode).toHaveBeenCalledWith({
+      chatMode: "local-agent",
+    });
+    expect(
+      mocks.dispatchPlanImplementationTurn.mock.invocationCallOrder[1],
+    ).toBeLessThan(mocks.setChatMode.mock.invocationCallOrder[0]);
   });
 });

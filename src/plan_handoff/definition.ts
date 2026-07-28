@@ -148,10 +148,6 @@ function createCommandRunner(
           signal.throwIfAborted();
         } else {
           targetChatId = intent.sourceChatId;
-          db.update(chats)
-            .set({ chatMode: "local-agent" })
-            .where(eq(chats.id, targetChatId))
-            .run();
         }
       }
       emit({
@@ -188,6 +184,12 @@ function createCommandRunner(
         originWindowSessionId: intent.originWindowSessionId,
         signal,
       });
+      if (!intent.acceptInNewChat) {
+        db.update(chats)
+          .set({ chatMode: "local-agent" })
+          .where(eq(chats.id, targetChatId))
+          .run();
+      }
       // The new chat becomes user-owned only once its implementation turn has
       // been accepted. Until then every exit path must compensate it.
       ownedTargetChatId = null;

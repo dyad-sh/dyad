@@ -15,6 +15,19 @@ vi.hoisted(() => {
   process.env.E2E_TEST_BUILD = "true";
 });
 
+vi.mock("sonner", () => ({
+  Toaster: () => null,
+  toast: Object.assign(vi.fn(), {
+    custom: vi.fn(),
+    dismiss: vi.fn(),
+    error: vi.fn(),
+    info: vi.fn(),
+    loading: vi.fn(),
+    success: vi.fn(),
+    warning: vi.fn(),
+  }),
+}));
+
 import { cleanup, screen, waitFor } from "@testing-library/react";
 import { eq } from "drizzle-orm";
 

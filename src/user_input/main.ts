@@ -9,6 +9,7 @@ import { systemClock, uuidIdSource } from "../state_machines/clock";
 import { safeSend } from "../ipc/utils/safe_sender";
 import { createUserInputRegistry } from "./registry";
 import type { UserInputCommand } from "./commands";
+import { dispatchDueFollowUp } from "./follow_up_dispatch";
 
 const subscribers = new Set<WebContents>();
 const logger = log.scope("user_input");
@@ -41,34 +42,15 @@ async function dispatchDueFollowUpInMain(
           pending.status === "due" &&
           pending.descriptor.requestId === command.requestId,
       );
-  while (isStillDue()) {
-    await waitForChatActorIdle(command.chatId);
-    // App/chat deletion can settle the owner while this dispatcher waits for
-    // the previous turn to drain. Do not create a new actor after that sweep;
-    // it could otherwise wait forever behind the deletion admission barrier.
-    if (!isStillDue()) return;
-    const result = await dispatchUserInputFollowUp({
-      requestId: command.requestId,
-      chatId: command.chatId,
-      prompt: command.prompt,
-    });
-    if (result === "accepted") {
-      if (
-        userInputRegistry
-          .getPending()
-          .some(
-            (pending) =>
-              pending.status === "due" &&
-              pending.descriptor.requestId === command.requestId,
-          )
-      ) {
-        await userInputRegistry.followUpDispatched(command.requestId);
-      }
-      return;
-    }
-    await userInputRegistry.followUpRejected(command.requestId);
-    return;
-  }
+  await dispatchDueFollowUp(command, {
+    isStillDue,
+    waitForChatActorIdle,
+    dispatchUserInputFollowUp,
+    followUpDispatched: (requestId) =>
+      userInputRegistry.followUpDispatched(requestId),
+    followUpRejected: (requestId) =>
+      userInputRegistry.followUpRejected(requestId),
+  });
 }
 
 export const userInputRegistry = createUserInputRegistry({

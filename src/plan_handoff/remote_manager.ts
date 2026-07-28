@@ -81,10 +81,16 @@ export class PlanHandoffRemoteManager {
         console.error("[plan-handoff] Remote bootstrap failed", error);
         this.setLocalFailure(sourceChatId, error, "bootstrap");
       });
+    let active = true;
     return () => {
-      unsubscribe();
+      if (!active) return;
+      active = false;
       listeners.delete(listener);
       if (listeners.size === 0) this.listeners.delete(sourceChatId);
+      // Give StrictMode effect replay and immediate remounts a chance to
+      // retain the actor before releasing the old local reference. The remote
+      // client then keeps its single main-side subscription alive.
+      queueMicrotask(unsubscribe);
     };
   };
 

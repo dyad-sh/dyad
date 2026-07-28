@@ -128,7 +128,7 @@ function createCommandRunner(
         title: intent.plan.title,
         summary: intent.plan.summary,
         content: intent.plan.content,
-        status: "accepted",
+        status: "draft",
       });
       signal.throwIfAborted();
       emit({
@@ -184,15 +184,23 @@ function createCommandRunner(
         originWindowSessionId: intent.originWindowSessionId,
         signal,
       });
+      // Once admission succeeds, a new target is user-owned even if a later
+      // metadata write fails; its accepted implementation turn must survive.
+      ownedTargetChatId = null;
+      await savePlanToDisk({
+        appPath: getDyadAppPath(app.path),
+        chatId: intent.sourceChatId,
+        title: intent.plan.title,
+        summary: intent.plan.summary,
+        content: intent.plan.content,
+        status: "accepted",
+      });
       if (!intent.acceptInNewChat) {
         db.update(chats)
           .set({ chatMode: "local-agent" })
           .where(eq(chats.id, targetChatId))
           .run();
       }
-      // The new chat becomes user-owned only once its implementation turn has
-      // been accepted. Until then every exit path must compensate it.
-      ownedTargetChatId = null;
       if (intent.acceptInNewChat) {
         routePlanHandoffPresentation({
           handoffId: intent.handoffId,

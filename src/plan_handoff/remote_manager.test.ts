@@ -221,4 +221,49 @@ describe("PlanHandoffRemoteManager", () => {
     second();
     manager.dispose();
   });
+
+  it("keeps the remote subscription across an immediate remount", async () => {
+    const unsubscribe = vi.fn(async () => undefined);
+    const connection: PlanHandoffRemoteConnection = {
+      getStatus: () => "connected",
+      onStatusChange: () => () => undefined,
+      onSnapshot: () => () => undefined,
+      onDisposed: () => () => undefined,
+      subscribe: async (address) => ({
+        ...address,
+        actorInstanceId: "plan-actor",
+        revision: 0,
+        encodedState: {
+          schemaVersion: 1,
+          sourceChatId: 42,
+          revision: 0,
+          handoffId: null,
+          targetChatId: null,
+          planId: null,
+          phase: "idle",
+          failure: null,
+        },
+      }),
+      unsubscribe,
+      dispatch: () => Promise.reject(new Error("not used")),
+      start: () => () => undefined,
+    };
+    const manager = new PlanHandoffRemoteManager(
+      createSequentialIdSource(),
+      connection,
+    );
+
+    const first = manager.subscribeKey(42, () => undefined);
+    await waitFor(() => manager.getSnapshot(42).phase === "idle");
+    first();
+    const second = manager.subscribeKey(42, () => undefined);
+    await flush();
+
+    expect(unsubscribe).not.toHaveBeenCalled();
+
+    second();
+    await flush();
+    expect(unsubscribe).toHaveBeenCalledOnce();
+    manager.dispose();
+  });
 });

@@ -121,6 +121,10 @@ describe("plan handoff command ownership", () => {
 
     await runner({ type: "run-handoff", intent: intent() }, emit);
 
+    expect(mocks.savePlanToDisk).toHaveBeenCalledOnce();
+    expect(mocks.savePlanToDisk).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "draft" }),
+    );
     expect(mocks.deleteOwnedChatAfterSettlingActors).toHaveBeenCalledWith(99);
     expect(mocks.routePlanHandoffPresentation).not.toHaveBeenCalled();
     expect(emit).toHaveBeenCalledWith({
@@ -137,6 +141,17 @@ describe("plan handoff command ownership", () => {
 
     await runner({ type: "run-handoff", intent: intent() }, emit);
 
+    expect(mocks.savePlanToDisk).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ status: "draft" }),
+    );
+    expect(mocks.savePlanToDisk).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ status: "accepted" }),
+    );
+    expect(
+      mocks.dispatchPlanImplementationTurn.mock.invocationCallOrder[0],
+    ).toBeLessThan(mocks.savePlanToDisk.mock.invocationCallOrder[1]);
     expect(mocks.deleteOwnedChatAfterSettlingActors).not.toHaveBeenCalled();
     expect(mocks.routePlanHandoffPresentation).toHaveBeenCalledWith({
       handoffId: "handoff-1",

@@ -771,6 +771,53 @@ describe("main-hosted chat stream actor", () => {
     await host.dispose();
   });
 
+  it("does not drain queued work after destructive cancellation", async () => {
+    const clock = createFakeClock();
+    const host = new ActorHost({
+      placement: "main",
+      clock,
+      ids: createSequentialIdSource(),
+    });
+    host.register(chatStreamDefinition);
+    const actor = host.ensure(chatStreamDefinition, chatStreamKey(7));
+    const queued = turn("queued-after-cancel");
+
+    actor.enqueue({ type: "SUBMIT", intent: turn("cancel-before-mutation") });
+    await vi.waitFor(() =>
+      expect(execution.observers.has("cancel-before-mutation")).toBe(true),
+    );
+    persisted.entries = [
+      {
+        itemId: queued.intentId,
+        intentId: queued.intentId,
+        prompt: queued.prompt,
+        persistence: "main-session",
+        editable: true,
+        removable: true,
+      },
+    ];
+    persisted.intents.set(queued.intentId, queued);
+
+    const releaseDeletion = beginChatActorDeletion(7);
+    try {
+      actor.enqueue({
+        type: "CANCEL",
+        invocationRef: turn("cancel-before-mutation").invocationRef!,
+      });
+      await vi.waitFor(() => expect(actor.getSnapshot().phase).toBe("idle"));
+      await flush();
+
+      expect(persisted.entries).toMatchObject([
+        { intentId: "queued-after-cancel" },
+      ]);
+      expect(actor.getSnapshot().active).toBeNull();
+    } finally {
+      releaseDeletion();
+    }
+
+    await host.dispose();
+  });
+
   it("settles cancellation that arrives before stream registration", async () => {
     const clock = createFakeClock();
     const host = new ActorHost({

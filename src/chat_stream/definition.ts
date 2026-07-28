@@ -377,8 +377,29 @@ function createCommandRunner(
         return;
       }
       case "dispatch-next": {
+        try {
+          assertChatActorAdmissionOpen(context.key.chatId);
+        } catch {
+          return;
+        }
         const claimed = await claimQueueHead(db, context.key.chatId);
         if (claimed) {
+          try {
+            assertChatActorAdmissionOpen(context.key.chatId);
+          } catch {
+            const queue = await restoreClaimedQueueHead(
+              db,
+              context.key.chatId,
+              claimed.intent.intentId,
+            );
+            emit({
+              type: "QUEUE_MUTATED",
+              queueRevision: queue.queueRevision,
+              paused: queue.queuePaused,
+              entries: queue.queue,
+            });
+            return;
+          }
           const phaseBeforeDispatch = context.getSnapshot().phase;
           if (
             phaseBeforeDispatch !== "idle" &&

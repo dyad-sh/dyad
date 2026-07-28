@@ -396,7 +396,7 @@ Because the isolated session starts effectively empty (a fresh copy, or a brand-
 
 ### Improving a recorded test
 
-When asked to add assertions to (or otherwise improve) a test Dyad's recorder generated, PRESERVE its recorded interactions, locators, and its \`signIn\` fixture usage — your job is to ADD meaningful \`expect(...)\` assertions after the key steps so the flow's outcomes are verified, not to rewrite the flow or re-pick the selectors.
+When asked to improve a test Dyad's recorder generated, PRESERVE its recorded interactions, locators, and its \`signIn\` fixture usage — your job is to make the flow's outcomes verified, not to rewrite the flow or re-pick the selectors.
 
 ### Authenticated tests (signing in a test user)
 
@@ -462,14 +462,18 @@ After writing or updating a spec, VERIFY it with \`run_tests\` and fix any failu
 If you're genuinely unsure whether a change warrants a test, lean toward covering real user-facing behavior; skip it (and say so) for trivial changes.`;
 
 /**
- * Guidance for annotating a recorded spec, which goes through the
- * `generate_test_assertions` tool's review card instead of a file edit.
+ * Guidance for the recorder's assertion pass, which goes through the
+ * `generate_test_assertions` tool's review card instead of a file write.
  */
-const AGENT_RECORDED_TEST_GUIDANCE = `## Adding assertions to a recorded test
+const AGENT_RECORDED_TEST_GUIDANCE = `## Assertions for a just-recorded test
 
-Dyad's recorder produces specs that are a flat list of the interactions it captured, with no assertions. When the user asks you to add assertions to (or "enhance") one of those, do NOT edit the file: \`read_file\` the spec, then call \`generate_test_assertions\` with one step description per statement plus the assertions you'd propose. It shows the user a card where they can reword, delete, add, and reorder assertions, and Dyad writes the approved ones into the spec itself. Stop after the call — don't edit the spec or run the test.
+Dyad's recorder captures a flat list of interactions and does NOT write a file. When the user asks for assertions on a flow they just recorded, their message contains the recorded statements, numbered. There is nothing to \`read_file\` — the spec does not exist yet.
 
-This applies only to recorded specs. Write and edit hand-written specs normally with \`write_file\` / \`search_replace\`.`;
+Call \`generate_test_assertions\` with one plain-English step description per statement plus the assertions you'd propose, then STOP. It shows the user a card where they can reword, delete, add, and reorder assertions. Approving that card is what generates the spec file, so there is nothing to edit and nothing to run at this point — do not call \`run_tests\`.
+
+The user will come back afterwards asking you to run the generated spec. That's when you verify it with \`run_tests\` and fix any failures as usual.
+
+This applies only to a recording that hasn't been saved yet. Write and edit specs that exist on disk normally with \`write_file\` / \`search_replace\`.`;
 
 /**
  * Local-agent test-writing guidance: proactively keep tests in sync, write the

@@ -1,7 +1,33 @@
 import { describe, expect, it } from "vitest";
 
-import { generateSpecSource, locatorToCode } from "./codegen";
+import {
+  generateDraftSpecSource,
+  generateSpecSource,
+  locatorToCode,
+  recordedBodyStatements,
+  recordedSpecFileName,
+} from "./codegen";
+import {
+  RECORDED_TEST_DRAFT_VERSION,
+  type RecordedTestAuthMode,
+  type RecordedTestDraft,
+} from "./draft";
 import type { RecordedAction } from "./types";
+
+function draft(
+  actions: RecordedAction[],
+  {
+    testName = "my flow",
+    authMode = "none",
+  }: { testName?: string; authMode?: RecordedTestAuthMode } = {},
+): RecordedTestDraft {
+  return {
+    version: RECORDED_TEST_DRAFT_VERSION,
+    testName,
+    authMode,
+    actions,
+  };
+}
 
 describe("locatorToCode", () => {
   it("maps each locator kind to the matching Playwright builder", () => {
@@ -38,6 +64,51 @@ describe("locatorToCode", () => {
   });
 });
 
+describe("recordedSpecFileName", () => {
+  it("slugifies the test name", () => {
+    expect(recordedSpecFileName("Add an item!")).toBe(
+      "recorded-add-an-item.spec.ts",
+    );
+  });
+
+  it("falls back to a usable name when nothing survives slugification", () => {
+    expect(recordedSpecFileName("  ***  ")).toBe("recorded-test.spec.ts");
+  });
+
+  it("suffixes only from the second candidate on", () => {
+    expect(recordedSpecFileName("add", 1)).toBe("recorded-add.spec.ts");
+    expect(recordedSpecFileName("add", 2)).toBe("recorded-add-2.spec.ts");
+  });
+});
+
+describe("recordedBodyStatements", () => {
+  it("numbers the preamble and the recorded actions as one list", () => {
+    expect(
+      recordedBodyStatements(
+        draft(
+          [
+            {
+              kind: "click",
+              locator: { kind: "role", value: "button", name: "Add" },
+            },
+          ],
+          { authMode: "neon-better-auth" },
+        ),
+      ),
+    ).toEqual([
+      `await signIn(page);`,
+      `await page.goto("/");`,
+      `await page.getByRole("button", { name: "Add" }).click();`,
+    ]);
+  });
+
+  it("drops the sign-in statement for an unauthenticated recording", () => {
+    expect(recordedBodyStatements(draft([]))).toEqual([
+      `await page.goto("/");`,
+    ]);
+  });
+});
+
 describe("generateSpecSource", () => {
   const actions: RecordedAction[] = [
     {
@@ -69,7 +140,7 @@ describe("generateSpecSource", () => {
 
   it("generates a signed-in spec", () => {
     expect(
-      generateSpecSource(actions, { testName: "my flow", includeSignIn: true }),
+      generateDraftSpecSource(draft(actions, { authMode: "neon-better-auth" })),
     ).toBe(`import { test, expect } from "@playwright/test";
 import { signIn } from "./fixtures/test-user";
 
@@ -87,42 +158,60 @@ test("my flow", async ({ page }) => {
 `);
   });
 
-  it("omits the sign-in fixture when includeSignIn is false", () => {
-    const source = generateSpecSource(actions, {
-      testName: "anon",
-      includeSignIn: false,
-    });
+  it("omits the sign-in fixture for an unauthenticated recording", () => {
+    const source = generateDraftSpecSource(draft(actions));
     expect(source).not.toContain("signIn");
     expect(source).not.toContain("./fixtures/test-user");
     expect(source).toContain(`await page.goto("/");`);
   });
 
   it("emits an array argument for multi-value selects", () => {
-    const source = generateSpecSource(
-      [
+    const source = generateDraftSpecSource(
+      draft([
         {
           kind: "select",
           locator: { kind: "testid", value: "tags" },
           values: ["a", "b"],
         },
-      ],
-      { testName: "multi", includeSignIn: false },
+      ]),
     );
     expect(source).toContain(`.selectOption(["a", "b"]);`);
   });
 
   it("escapes special characters in recorded values", () => {
-    const source = generateSpecSource(
-      [
-        {
-          kind: "fill",
-          locator: { kind: "placeholder", value: "Bio" },
-          value: 'he said "hi"\nbye',
-        },
-      ],
-      { testName: 'weird "name"', includeSignIn: false },
+    const source = generateDraftSpecSource(
+      draft(
+        [
+          {
+            kind: "fill",
+            locator: { kind: "placeholder", value: "Bio" },
+            value: 'he said "hi"\nbye',
+          },
+        ],
+        { testName: 'weird "name"' },
+      ),
     );
     expect(source).toContain(`.fill("he said \\"hi\\"\\nbye");`);
     expect(source).toContain(`test("weird \\"name\\"",`);
+  });
+
+  it("writes assertions exactly where the approved plan put them", () => {
+    const source = generateSpecSource({
+      testName: "checked",
+      includeSignIn: false,
+      bodyStatements: [
+        `await page.goto("/");`,
+        `await page.getByRole("button", { name: "Add" }).click();`,
+        `await expect(page.getByTestId("row")).toBeVisible();`,
+      ],
+    });
+    expect(source).toBe(`import { test, expect } from "@playwright/test";
+
+test("checked", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Add" }).click();
+  await expect(page.getByTestId("row")).toBeVisible();
+});
+`);
   });
 });

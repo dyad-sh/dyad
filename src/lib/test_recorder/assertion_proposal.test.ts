@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ASSERTION_PROPOSAL_VERSION,
   AssertionProposalPayloadSchema,
   buildPlanItems,
   countAssertions,
   moveAssertion,
   type AssertionPlanItem,
 } from "./assertion_proposal";
+import { RECORDED_TEST_DRAFT_VERSION } from "./draft";
 
 const STATEMENTS = [
   `await page.goto("/");`,
@@ -179,13 +181,27 @@ describe("moveAssertion", () => {
 });
 
 describe("AssertionProposalPayloadSchema", () => {
+  const draft = {
+    version: RECORDED_TEST_DRAFT_VERSION,
+    testName: "add an item",
+    authMode: "none" as const,
+    actions: [
+      {
+        kind: "click" as const,
+        locator: { kind: "role" as const, value: "button", name: "Add" },
+      },
+    ],
+  };
+
   it("round-trips a payload through JSON", () => {
+    // The payload lives in a chat message, so this round-trip is the storage
+    // format — including the recording it must still be able to generate.
     const payload = {
-      version: 1 as const,
+      version: ASSERTION_PROPOSAL_VERSION,
       appId: 7,
-      specPath: "e2e-tests/recorded-add.spec.ts",
+      draft,
       testTitle: "add an item",
-      specHash: "abc123",
+      specPath: null,
       items: [
         { kind: "step" as const, stepIndex: 0, text: "Open /" },
         {
@@ -203,15 +219,39 @@ describe("AssertionProposalPayloadSchema", () => {
     ).toEqual(payload);
   });
 
+  it("accepts the spec path an approval fills in", () => {
+    const parsed = AssertionProposalPayloadSchema.parse({
+      version: ASSERTION_PROPOSAL_VERSION,
+      appId: 7,
+      draft,
+      testTitle: "add an item",
+      specPath: "e2e-tests/recorded-add-an-item.spec.ts",
+      items: [],
+    });
+    expect(parsed.specPath).toBe("e2e-tests/recorded-add-an-item.spec.ts");
+  });
+
   it("rejects an unknown item kind", () => {
     expect(
       AssertionProposalPayloadSchema.safeParse({
-        version: 1,
+        version: ASSERTION_PROPOSAL_VERSION,
         appId: 1,
-        specPath: "p",
+        draft,
         testTitle: "t",
-        specHash: "h",
+        specPath: null,
         items: [{ kind: "note", text: "x" }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects a payload with no recording to generate from", () => {
+    expect(
+      AssertionProposalPayloadSchema.safeParse({
+        version: ASSERTION_PROPOSAL_VERSION,
+        appId: 1,
+        testTitle: "t",
+        specPath: null,
+        items: [],
       }).success,
     ).toBe(false);
   });

@@ -19,6 +19,7 @@ import {
 import { selectedAppIdAtom, previewModeAtom } from "@/atoms/appAtoms";
 import { chatMessagesByIdAtom, selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { selectedFileAtom } from "@/atoms/viewAtoms";
+import { useStreamChat } from "@/hooks/useStreamChat";
 import { ipc } from "@/ipc/types";
 import { cn } from "@/lib/utils";
 import { queryKeys } from "@/lib/queryKeys";
@@ -36,10 +37,12 @@ import type { CustomTagState } from "./stateTypes";
  * The `<dyad-test-assertions>` card: a reviewable plan of a recorded test's
  * steps with the AI's proposed assertions interleaved.
  *
- * Assertions are editable, removable, and drag-reorderable; nothing touches the
- * spec file until the user approves. The card is part of a persisted assistant
- * message, so its payload (and, after approval, its latched status) round-trips
- * through the message content.
+ * Assertions are editable, removable, and drag-reorderable. The test file does
+ * not exist while the card is being reviewed — approving is what generates it,
+ * from this exact plan — and the approval then asks the agent to run it. The
+ * card is part of a persisted assistant message, so its payload (and, after
+ * approval, its latched status and the path it produced) round-trips through
+ * the message content.
  *
  * Layout is a timeline: one rail, a neutral node per recorded step, a filled
  * node per proposed assertion. The rail is what makes "this check runs after
@@ -137,6 +140,7 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
   const setSelectedFile = useSetAtom(selectedFileAtom);
   const setPreviewMode = useSetAtom(previewModeAtom);
   const queryClient = useQueryClient();
+  const { streamMessage } = useStreamChat();
 
   const [items, setItems] = useState<AssertionPlanItem[]>(
     () => payload?.items ?? [],
@@ -250,6 +254,25 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
     setPreviewMode("code");
   };
 
+  /**
+   * Ask the agent to run the spec the approval just generated. Sent as a normal
+   * chat turn (in Agent mode, which is where run_tests lives) so the run, its
+   * result, and any fix are visible in the conversation rather than hidden
+   * behind the card.
+   */
+  const requestVerificationRun = (generatedSpecPath: string) => {
+    if (chatId == null || !generatedSpecPath) return;
+    streamMessage({
+      prompt: [
+        `I approved the assertions. Dyad generated ${generatedSpecPath} from my recording.`,
+        "",
+        `Run it with run_tests to make sure it actually works. If it fails, read the failure, decide whether the test or the app is wrong, fix it, and run it again until it passes — or tell me what's blocking it.`,
+      ].join("\n"),
+      chatId,
+      requestedChatMode: "local-agent",
+    });
+  };
+
   const handleApprove = async () => {
     if (approvingRef.current || isApproved) return;
     if (!proposalId || chatId == null || appId == null) return;
@@ -276,18 +299,20 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
       if (result.warning) {
         showError(result.warning);
       } else {
-        showSuccess(
-          `Added ${result.appliedCount} assertion${
-            result.appliedCount === 1 ? "" : "s"
-          } to ${result.specPath}`,
-        );
+        showSuccess(`Generated ${result.specPath}`);
       }
+      // A recorded test nobody has run is a guess: the flow replayed by
+      // Playwright can behave differently from the flow performed by hand
+      // (timing, a step that only worked because the page was already warm).
+      // Hand the fresh spec back to the agent so it verifies — and can fix —
+      // what the user just approved.
+      requestVerificationRun(result.specPath);
     } catch (error) {
       setOptimisticApproved(false);
       showError(
         error instanceof Error
           ? error.message
-          : "Couldn't apply the assertions.",
+          : "Couldn't generate the test file.",
       );
     } finally {
       approvingRef.current = false;
@@ -311,7 +336,13 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
     );
   }
 
-  const fileName = payload.specPath.split("/").pop() ?? payload.specPath;
+  // Filename only: every recorded spec lives in e2e-tests/, and in a narrow
+  // chat panel the directory is what eats the truncation. Before approval there
+  // is no file at all, so the test's own title stands in.
+  const generatedPath = payload.specPath;
+  const subtitle = generatedPath
+    ? (generatedPath.split("/").pop() ?? generatedPath)
+    : payload.testTitle;
 
   return (
     <div
@@ -321,7 +352,7 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
       <div className="px-3.5 pt-2.5 pb-2">
         <div className="flex items-baseline gap-2">
           <h3 className="text-sm font-medium text-foreground">
-            Test assertions
+            {isApproved ? "Recorded test" : "Review recorded test"}
           </h3>
           <span
             className="ml-auto inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground"
@@ -330,16 +361,17 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
             }
           >
             {isApproved && <Check size={12} strokeWidth={2.5} />}
-            {isApproved ? "Applied" : checkCountLabel}
+            {isApproved ? "Generated" : checkCountLabel}
           </span>
         </div>
-        {/* Filename only: every recorded spec lives in e2e-tests/, and in a
-            narrow chat panel the directory is what eats the truncation. */}
         <span
-          className="mt-0.5 block truncate font-mono text-[11px] text-muted-foreground"
-          title={payload.specPath}
+          className={cn(
+            "mt-0.5 block truncate text-[11px] text-muted-foreground",
+            generatedPath && "font-mono",
+          )}
+          title={generatedPath ?? payload.testTitle}
         >
-          {fileName}
+          {subtitle}
         </span>
       </div>
 
@@ -571,7 +603,7 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
       {assertions.length === 0 && (
         <p className="px-3.5 pb-2.5 text-xs text-muted-foreground">
           {isApproved
-            ? "No checks were added, so the test file is unchanged."
+            ? "No checks were added — the test replays the recorded steps only."
             : "No checks proposed. Point at a step to add your own."}
         </p>
       )}
@@ -580,13 +612,14 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
         {isApproved ? (
           <>
             <span className="text-xs text-muted-foreground">
-              {checkCountLabel} written into the test.
+              Test generated with {checkCountLabel}.
             </span>
             <button
               type="button"
               onClick={openSpecFile}
+              disabled={!specPath}
               data-testid="dyad-test-assertions-open-file-button"
-              className="ml-auto rounded-md px-2 py-1 text-xs font-medium text-foreground transition-colors duration-150 hover:bg-(--background-darker) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="ml-auto rounded-md px-2 py-1 text-xs font-medium text-foreground transition-colors duration-150 hover:bg-(--background-darker) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:opacity-50"
             >
               Open test file
             </button>
@@ -596,7 +629,7 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
             <span className="text-xs text-muted-foreground">
               {hasBlankAssertion
                 ? "Describe every check before approving."
-                : "Nothing is written until you approve."}
+                : "Approving generates the test file and runs it."}
             </span>
             <button
               type="button"
@@ -611,7 +644,7 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
                   className="animate-spin motion-reduce:hidden"
                 />
               )}
-              {isApproving ? "Applying…" : "Approve"}
+              {isApproving ? "Generating…" : "Approve & generate"}
             </button>
           </>
         )}

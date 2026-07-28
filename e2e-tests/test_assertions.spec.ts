@@ -1,14 +1,15 @@
 import { expect } from "@playwright/test";
 import { testSkipIfWindows, Timeout } from "./helpers/test_helper";
 
-// End-to-end coverage for the reviewable "Add assertions with AI" flow. The
-// fake LLM server answers the agent turn with a read_file then a
-// generate_test_assertions tool call, and answers the approve-time code prompt
-// (see testing/fake-llm-server/testAssertionsFixtures.ts), so this drives the
-// real agent tool, the real spec splice, and the real chat card — it does NOT
-// spawn a Playwright run of the generated spec.
+// End-to-end coverage for the recorder's "Generate assertions" flow. The fake
+// LLM server answers the agent turn with a generate_test_assertions tool call
+// and answers the approve-time code prompt (see
+// testing/fake-llm-server/testAssertionsFixtures.ts), so this drives the real
+// agent tool, the real deterministic codegen, and the real chat card. The
+// post-approval "run it" hand-off is answered as plain text — it does NOT spawn
+// a Playwright run of the generated spec.
 testSkipIfWindows(
-  "proposes assertions in a chat card and writes the approved ones into the spec",
+  "reviews a recording as steps, then generates the test file on approval",
   async ({ po }) => {
     await po.setUp({ autoApprove: true });
     await po.importApp("recorder");
@@ -20,7 +21,7 @@ testSkipIfWindows(
     await po.clickRestart();
     await po.previewPanel.expectPreviewIframeIsVisible();
 
-    // Record a short flow so there is a generated spec to annotate.
+    // Record a short flow.
     await po.page.getByTestId("preview-record-button").click();
     await expect(po.page.getByTestId("preview-recording-bar")).toBeVisible({
       timeout: Timeout.LONG,
@@ -37,21 +38,26 @@ testSkipIfWindows(
     await po.page
       .getByTestId("preview-recording-name-input")
       .fill("assert item");
-    await po.page.getByTestId("preview-recording-save-button").click();
+    await po.page.getByTestId("preview-recording-stop-button").click();
 
-    // The saved banner offers the assertion pass, which runs in Agent mode.
-    const enhanceButton = po.page.getByTestId(
-      "preview-recording-enhance-button",
+    // Stopping lists the steps and offers the assertion pass — no file yet.
+    const steps = po.page.getByTestId("preview-recorded-steps");
+    await expect(steps).toBeVisible({ timeout: Timeout.LONG });
+    await expect(steps).toContainText(`await page.goto("/")`);
+    await expect(steps).toContainText("Increment");
+
+    const generateButton = po.page.getByTestId(
+      "preview-recording-generate-assertions-button",
     );
-    await expect(enhanceButton).toBeVisible({ timeout: Timeout.LONG });
-    await enhanceButton.click();
+    await expect(generateButton).toBeVisible();
+    await generateButton.click();
     await po.page.getByTestId("agent-mode-continue").click();
 
-    // The agent reads the spec and calls generate_test_assertions, whose card
-    // lands in the chat, steps first.
+    // The agent describes the steps and proposes checks; both land in the card.
     const card = po.page.getByTestId("dyad-test-assertions-card");
     await expect(card).toBeVisible({ timeout: Timeout.LONG });
-    await expect(card).toContainText("recorded-assert-item.spec.ts");
+    // Named by the test, not a path — nothing has been written yet.
+    await expect(card).toContainText("assert item");
     await expect(
       card.locator('[data-testid^="dyad-test-assertions-step-"]').first(),
     ).toBeVisible();
@@ -71,14 +77,14 @@ testSkipIfWindows(
     await editor.press("Enter");
     await expect(assertions.first()).toContainText("Code written on approve");
 
-    // Approve and confirm the latch.
+    // Approve: this is what creates the spec.
     await po.page.getByTestId("dyad-test-assertions-approve-button").click();
     await expect(
       po.page.getByTestId("dyad-test-assertions-approved-badge"),
     ).toBeVisible({ timeout: Timeout.LONG });
 
-    // The card's own link opens the rewritten spec in the Code tab, which now
-    // has an assertion alongside the recorded steps.
+    // The card's own link opens the generated spec in the Code tab, which has
+    // the recorded steps and an assertion.
     await po.page.getByTestId("dyad-test-assertions-open-file-button").click();
     // The spec shows up twice in the Code tab (file tree + editor breadcrumb),
     // so pin to the first rather than tripping strict mode.
@@ -90,6 +96,12 @@ testSkipIfWindows(
     ).toBeVisible({ timeout: Timeout.LONG });
     await expect(po.page.locator("#preview-panel")).toContainText(
       "await expect(",
+      { timeout: Timeout.LONG },
+    );
+
+    // Approving also hands the fresh spec back to the agent to run.
+    await expect(po.page.getByTestId("messages-list")).toContainText(
+      "Running e2e-tests/recorded-assert-item.spec.ts",
       { timeout: Timeout.LONG },
     );
 

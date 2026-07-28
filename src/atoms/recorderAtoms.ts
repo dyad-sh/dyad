@@ -1,6 +1,7 @@
 import { atom } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import type { RecordingAuth, TestIsolation } from "@/ipc/types";
+import type { RecordedTestDraft } from "@/lib/test_recorder/draft";
 import type { RecordedEntry } from "@/lib/test_recorder/types";
 
 /**
@@ -9,7 +10,11 @@ import type { RecordedEntry } from "@/lib/test_recorder/types";
  * - "starting": recording:start in flight (isolation setup).
  * - "authenticating": establishing the pre-recording session in the iframe.
  * - "recording": capturing interactions.
- * - "saving": generating + writing the spec.
+ * - "finishing": closing the session; waiting on isolation teardown.
+ * - "reviewing": recording captured as a draft — the steps are listed and the
+ *   assertion pass is offered. NOTHING has been written to disk yet.
+ * - "saving": generating the spec from the draft (the no-assertions path).
+ * - "saved": spec written; offering to open it until dismissed.
  * - "stopping": discarding the session; waiting on isolation teardown.
  */
 export type RecordingPhase =
@@ -17,10 +22,11 @@ export type RecordingPhase =
   | "starting"
   | "authenticating"
   | "recording"
+  | "finishing"
+  | "reviewing"
   | "saving"
-  | "stopping"
-  // Spec written; offering the optional AI-assertion pass until dismissed.
-  | "saved";
+  | "saved"
+  | "stopping";
 
 export interface RecordingState {
   phase: RecordingPhase;
@@ -34,7 +40,9 @@ export interface RecordingState {
   progress?: string;
   /** Fatal setup error (recording didn't start). */
   error?: string;
-  /** Path of the just-saved spec, while phase is "saved". */
+  /** The captured recording, while phase is "reviewing" (or being saved). */
+  draft?: RecordedTestDraft;
+  /** Path of the just-written spec, while phase is "saved". */
   savedSpecPath?: string;
   startedAt?: number;
 }

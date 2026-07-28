@@ -11,9 +11,18 @@ import {
 } from "@/atoms/recorderAtoms";
 import { useTestRecorder } from "@/hooks/useTestRecorder";
 
-const { startRecordingMock, stopRecordingMock } = vi.hoisted(() => ({
+const {
+  startRecordingMock,
+  stopRecordingMock,
+  saveDraftMock,
+  discardDraftMock,
+  createRecordedSpecMock,
+} = vi.hoisted(() => ({
   startRecordingMock: vi.fn(),
   stopRecordingMock: vi.fn(),
+  saveDraftMock: vi.fn(),
+  discardDraftMock: vi.fn(),
+  createRecordedSpecMock: vi.fn(),
 }));
 
 vi.mock("@/ipc/types", () => ({
@@ -21,10 +30,11 @@ vi.mock("@/ipc/types", () => ({
     recording: {
       startRecording: startRecordingMock,
       stopRecording: stopRecordingMock,
+      saveRecordedTestDraft: saveDraftMock,
+      discardRecordedTestDraft: discardDraftMock,
     },
-    app: {
-      readAppFile: vi.fn(),
-      editAppFile: vi.fn(),
+    tests: {
+      createRecordedSpec: createRecordedSpecMock,
     },
     events: {
       recording: {
@@ -61,12 +71,20 @@ describe("useTestRecorder", () => {
   beforeEach(() => {
     startRecordingMock.mockReset();
     stopRecordingMock.mockReset();
+    saveDraftMock.mockReset();
+    discardDraftMock.mockReset();
+    createRecordedSpecMock.mockReset();
     startRecordingMock.mockResolvedValue({
       appId: 1,
       isolation: { mode: "none" },
       auth: { mode: "none" },
     });
     stopRecordingMock.mockResolvedValue({ ok: true });
+    saveDraftMock.mockResolvedValue({ ok: true });
+    discardDraftMock.mockResolvedValue({ ok: true });
+    createRecordedSpecMock.mockResolvedValue({
+      specPath: "e2e-tests/recorded-my-flow.spec.ts",
+    });
   });
 
   it("starts a session for a record request made outside the preview", async () => {
@@ -156,6 +174,113 @@ describe("useTestRecorder", () => {
       finishTeardown();
       await cancelled;
     });
+    expect(result.current.phase).toBe("idle");
+  });
+
+  it("stops into a review phase without writing anything", async () => {
+    const { store, Wrapper } = makeWrapper();
+    store.set(selectedAppIdAtom, 1);
+
+    const { result } = renderHook(
+      () => useTestRecorder({ reloadPreview: () => {} }),
+      { wrapper: Wrapper },
+    );
+    await act(async () => {
+      await result.current.startRecording();
+    });
+
+    await act(async () => {
+      await result.current.stopAndReview("  My Flow  ");
+    });
+
+    // The draft is parked in the main process for the assertion pass...
+    expect(saveDraftMock).toHaveBeenCalledWith({
+      appId: 1,
+      draft: expect.objectContaining({ testName: "My Flow", authMode: "none" }),
+    });
+    // ...and NOTHING was written: the spec only exists once the user approves
+    // a plan (or asks to save without assertions).
+    expect(createRecordedSpecMock).not.toHaveBeenCalled();
+    expect(result.current.phase).toBe("reviewing");
+    expect(result.current.draft?.testName).toBe("My Flow");
+    // The review list is the spec body, numbered as the assertion pass sees it.
+    expect(result.current.draftSteps).toEqual([`await page.goto("/");`]);
+  });
+
+  it("generates the spec from the draft when saving without assertions", async () => {
+    const { store, Wrapper } = makeWrapper();
+    store.set(selectedAppIdAtom, 1);
+
+    const { result } = renderHook(
+      () => useTestRecorder({ reloadPreview: () => {} }),
+      { wrapper: Wrapper },
+    );
+    await act(async () => {
+      await result.current.startRecording();
+    });
+    await act(async () => {
+      await result.current.stopAndReview("my flow");
+    });
+
+    await act(async () => {
+      await result.current.saveWithoutAssertions();
+    });
+
+    expect(createRecordedSpecMock).toHaveBeenCalledWith({
+      appId: 1,
+      draft: expect.objectContaining({ testName: "my flow" }),
+    });
+    expect(result.current.phase).toBe("saved");
+    expect(result.current.savedSpecPath).toBe(
+      "e2e-tests/recorded-my-flow.spec.ts",
+    );
+  });
+
+  it("keeps the recording reviewable when generating the spec fails", async () => {
+    const { store, Wrapper } = makeWrapper();
+    store.set(selectedAppIdAtom, 1);
+    createRecordedSpecMock.mockRejectedValue(new Error("disk full"));
+
+    const { result } = renderHook(
+      () => useTestRecorder({ reloadPreview: () => {} }),
+      { wrapper: Wrapper },
+    );
+    await act(async () => {
+      await result.current.startRecording();
+    });
+    await act(async () => {
+      await result.current.stopAndReview("my flow");
+    });
+
+    await act(async () => {
+      await result.current.saveWithoutAssertions();
+    });
+
+    // A failed write must not throw the session away.
+    expect(result.current.phase).toBe("reviewing");
+    expect(result.current.draft?.testName).toBe("my flow");
+  });
+
+  it("drops the parked draft when the recording is discarded", async () => {
+    const { store, Wrapper } = makeWrapper();
+    store.set(selectedAppIdAtom, 1);
+
+    const { result } = renderHook(
+      () => useTestRecorder({ reloadPreview: () => {} }),
+      { wrapper: Wrapper },
+    );
+    await act(async () => {
+      await result.current.startRecording();
+    });
+    await act(async () => {
+      await result.current.stopAndReview("my flow");
+    });
+
+    await act(async () => {
+      await result.current.discardDraft();
+    });
+
+    expect(discardDraftMock).toHaveBeenCalledWith({ appId: 1 });
     expect(result.current.phase).toBe("idle");
   });
 });

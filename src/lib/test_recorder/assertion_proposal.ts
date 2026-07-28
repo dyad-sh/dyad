@@ -1,12 +1,18 @@
 import { z } from "zod";
+import { RecordedTestDraftSchema } from "./draft";
 
 /**
- * Data model for the reviewable "Add assertions with AI" flow.
+ * Data model for the reviewable "Generate assertions" flow.
  *
- * A proposal is a flat, ordered list of plan items — the test's steps and the
- * proposed assertions interleaved. The user edits/removes/reorders that list in
- * the chat card, and on approval it is spliced back into the spec file by
- * `spec_edit.ts`.
+ * A proposal is a flat, ordered list of plan items — the recorded test's steps
+ * and the proposed assertions interleaved. The user edits/removes/reorders that
+ * list in the chat card, and approving it is what generates the spec file:
+ * `codegen.ts` emits the draft's statements with the approved assertions in
+ * place.
+ *
+ * The proposal therefore carries the whole recording, not a pointer to a file.
+ * The chat message is its durable home, so a card can still be approved after a
+ * restart, and there is no on-disk spec to drift out from under it.
  *
  * NOTE: this module is reachable from `src/ipc/types/tests.ts`, which the
  * preload bundle imports. Keep it dependency-free (zod only) and import it with
@@ -36,7 +42,7 @@ export type ProposedAssertion = z.infer<typeof ProposedAssertionSchema>;
 export const AssertionPlanItemSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("step"),
-    /** Index into `ParsedSpec.bodyStatements` — the statement this row renders. */
+    /** Index into `recordedBodyStatements(draft)` — the statement this row renders. */
     stepIndex: z.number().int().nonnegative(),
     /** The step in one plain-English sentence. */
     text: z.string(),
@@ -45,22 +51,26 @@ export const AssertionPlanItemSchema = z.discriminatedUnion("kind", [
 ]);
 export type AssertionPlanItem = z.infer<typeof AssertionPlanItemSchema>;
 
+export const ASSERTION_PROPOSAL_VERSION = 2 as const;
+
 export const AssertionProposalPayloadSchema = z.object({
-  version: z.literal(1),
+  version: z.literal(ASSERTION_PROPOSAL_VERSION),
   appId: z.number().int(),
-  /** App-relative spec path, e.g. "e2e-tests/recorded-add-item.spec.ts". */
-  specPath: z.string(),
+  /** The recording the plan describes; the spec is generated from it on approve. */
+  draft: RecordedTestDraftSchema,
   testTitle: z.string(),
-  /** sha256 of the spec source this proposal was computed from. */
-  specHash: z.string(),
+  /**
+   * App-relative path of the generated spec, e.g.
+   * "e2e-tests/recorded-add-item.spec.ts". Null until the user approves — no
+   * file exists before then, and the name is only claimed at write time.
+   */
+  specPath: z.string().nullable(),
   /** Steps and assertions interleaved, in the order they will be written. */
   items: z.array(AssertionPlanItemSchema),
 });
 export type AssertionProposalPayload = z.infer<
   typeof AssertionProposalPayloadSchema
 >;
-
-export const ASSERTION_PROPOSAL_VERSION = 1 as const;
 
 /** Narrowing helper — `kind` discriminates, but this reads better at call sites. */
 export function isAssertionItem(
@@ -94,7 +104,7 @@ export interface RawProposedAssertion {
  * Normalize one raw model response into the flat plan the card renders.
  *
  * Every statement becomes exactly one `step` item, in order — that invariant is
- * what lets `renderSpec` rebuild the file. Assertions whose `afterStep` is out
+ * what lets the approval rebuild the spec. Assertions whose `afterStep` is out
  * of range are DROPPED (and counted), never clamped: a hallucinated index means
  * the model wasn't looking at the statement we think it was, and clamping would
  * silently attach the assertion to the wrong step.

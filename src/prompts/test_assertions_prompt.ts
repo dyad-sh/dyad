@@ -2,10 +2,10 @@
  * Prompt for the assertion code-synthesis pass.
  *
  * The proposal itself comes from the agent's `generate_test_assertions` tool —
- * the model reads the spec and hands us the steps and assertions as tool
- * arguments. This pass runs only on approve, and only for assertions the user
- * edited or authored themselves, so their plain-English sentence still becomes
- * working Playwright code.
+ * the model is given the recorded statements and hands us the steps and
+ * assertions as tool arguments. This pass runs only on approve, and only for
+ * assertions the user edited or authored themselves, so their plain-English
+ * sentence still becomes working Playwright code before the spec is generated.
  *
  * The user payload uses line-anchored labels ("Playwright test:", "Statements:")
  * so the E2E fake-LLM server can match it precisely without hijacking ordinary
@@ -40,18 +40,15 @@ function formatStatements(bodyStatements: string[]): string {
 
 export function buildAssertionCodePayload({
   testTitle,
-  specPath,
   bodyStatements,
   requests,
 }: {
   testTitle: string;
-  specPath: string;
   bodyStatements: string[];
   requests: { id: string; afterStep: number; text: string }[];
 }): string {
   return [
     `Playwright test: ${testTitle}`,
-    `File: ${specPath}`,
     `Statements:`,
     formatStatements(bodyStatements),
     ``,

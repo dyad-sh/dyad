@@ -6,6 +6,9 @@ import {
   defineEvent,
 } from "../contracts/core";
 import { TestIsolationSchema } from "./tests";
+// Relative import: this module is pulled into the preload bundle, which cannot
+// resolve the "@/" alias.
+import { RecordedTestDraftSchema } from "../../lib/test_recorder/draft";
 
 // =============================================================================
 // Recording Schemas
@@ -57,6 +60,21 @@ export const StopRecordingParamsSchema = z.object({
   appId: z.number(),
 });
 
+/**
+ * Hand the finished recording to the main process. Stopping does NOT write a
+ * spec: the draft is parked here so the agent's `generate_test_assertions` tool
+ * has the real statements to propose against, and the file is generated only
+ * once the user approves a plan.
+ */
+export const SaveRecordedTestDraftParamsSchema = z.object({
+  appId: z.number(),
+  draft: RecordedTestDraftSchema,
+});
+
+export const DiscardRecordedTestDraftParamsSchema = z.object({
+  appId: z.number(),
+});
+
 // =============================================================================
 // Recording Contracts
 // =============================================================================
@@ -70,6 +88,16 @@ export const recordingContracts = {
   stopRecording: defineContract({
     channel: "recording:stop",
     input: StopRecordingParamsSchema,
+    output: z.object({ ok: z.literal(true) }),
+  }),
+  saveRecordedTestDraft: defineContract({
+    channel: "recording:save-draft",
+    input: SaveRecordedTestDraftParamsSchema,
+    output: z.object({ ok: z.literal(true) }),
+  }),
+  discardRecordedTestDraft: defineContract({
+    channel: "recording:discard-draft",
+    input: DiscardRecordedTestDraftParamsSchema,
     output: z.object({ ok: z.literal(true) }),
   }),
 } as const;

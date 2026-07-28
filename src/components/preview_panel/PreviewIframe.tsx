@@ -94,6 +94,7 @@ import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { Annotator } from "@/pro/ui/components/Annotator/Annotator";
 import { VisualEditingToolbar } from "./VisualEditingToolbar";
 import { RecordingCodePreview } from "./RecordingCodePreview";
+import { RecordedStepsList } from "./RecordedStepsList";
 import { resolvePreviewBrowserUrl } from "./previewBrowserUrl";
 import { PreviewLoadingScreen } from "./PreviewLoadingScreen";
 import { useTranslation } from "react-i18next";
@@ -231,8 +232,10 @@ const RECORDING_SECONDARY_BUTTON_CLASSES =
 /** Status line for the recorder's non-interactive (spinner) phases. */
 function recordingStatusMessage(recorder: TestRecorderController): string {
   switch (recorder.phase) {
+    case "finishing":
+      return "Wrapping up the recording…";
     case "saving":
-      return "Saving the recorded test…";
+      return "Generating the test file…";
     case "stopping":
       return "Cleaning up the test environment…";
     case "authenticating":
@@ -240,6 +243,23 @@ function recordingStatusMessage(recorder: TestRecorderController): string {
     default:
       return recorder.progress ?? "Setting up the test environment…";
   }
+}
+
+/**
+ * The prompt that starts the assertion pass. The recording isn't a file yet, so
+ * the statements travel in the message — the agent describes them and proposes
+ * checks, and its `generate_test_assertions` tool validates what it sends back
+ * against the draft Dyad parked when recording stopped.
+ */
+function buildAssertionsPrompt(testName: string, steps: string[]): string {
+  return [
+    `Add assertions to the test I just recorded: "${testName}"`,
+    "",
+    "It isn't a file yet — here are its statements, numbered the way your generate_test_assertions tool counts them:",
+    ...steps.map((step, index) => `${index}: ${step}`),
+    "",
+    "Call generate_test_assertions with one plain-English step description per statement plus the assertions you'd propose. There's nothing to read and nothing to run — I'll review the plan, and Dyad generates the test file when I approve it.",
+  ].join("\n");
 }
 
 // Preview iframe component
@@ -255,9 +275,8 @@ export const PreviewIframe = ({
   const { appUrl, originalUrl, mode } = useCurrentAppUrl(selectedAppId);
   const appRunManager = useAppRunRemoteManager();
   const selectedChatId = useAtomValue(selectedChatIdAtom);
-  // Spec awaiting the Agent-mode confirmation, or null when no dialog is open.
-  const [assertionsAgentModeSpecPath, setAssertionsAgentModeSpecPath] =
-    useState<string | null>(null);
+  // True while the Agent-mode confirmation for the assertion pass is open.
+  const [assertionsNeedAgentMode, setAssertionsNeedAgentMode] = useState(false);
   const { streamMessage } = useStreamChat();
   const { effectiveMode } = useChatMode(selectedChatId);
   const isAgentMode = effectiveMode === "local-agent";
@@ -333,44 +352,42 @@ export const PreviewIframe = ({
     void recorder.startRecording();
   };
 
-  // Jump straight to the generated spec in the Code tab — recording ends with a
-  // file the user usually wants to read, and hunting for it in the file tree is
+  // Jump straight to the generated spec in the Code tab — the file is what the
+  // user wants to read once it exists, and hunting for it in the file tree is
   // the slowest part of the flow.
   const handleOpenSavedSpec = (specPath: string) => {
     setSelectedFile({ path: specPath });
     setPreviewMode("code");
-    recorder.dismissSaved();
+    recorder.dismissReview();
   };
 
-  // Ask the agent for assertions rather than letting it rewrite the file: its
+  // Hand the recorded steps to the agent for the assertion pass. Its
   // `generate_test_assertions` tool posts a reviewable card into the chat, and
-  // the user approves the assertions (and their order) before anything touches
-  // the spec.
-  const doEnhanceWithAI = (specPath: string) => {
+  // approving that card is what generates the spec — so nothing is written
+  // until the user has seen both the steps and the checks.
+  const doGenerateAssertions = () => {
+    const draft = recorder.draft;
+    if (!draft) return;
     if (!selectedChatId) {
-      showInfo("Open a chat to enhance the recorded test with AI.");
+      showInfo("Open a chat to generate assertions for the recorded test.");
       return;
     }
     streamMessage({
-      prompt: [
-        `Add assertions to the test I just recorded: ${specPath}`,
-        "",
-        "Read the spec, then call your generate_test_assertions tool with one step description per statement plus the assertions you'd propose. Don't edit the file or run the test — I'll review the assertions and approve them myself.",
-      ].join("\n"),
+      prompt: buildAssertionsPrompt(draft.testName, recorder.draftSteps),
       chatId: selectedChatId,
       requestedChatMode: "local-agent",
     });
     showInfo("Sent to chat — asking the AI for assertions…");
-    recorder.dismissSaved();
+    recorder.dismissReview();
   };
 
   // Confirm the switch to Agent mode first when the chat is in another mode,
   // matching the Tests panel's "Generate test" / "Fix with AI" entry points.
-  const handleEnhanceWithAI = (specPath: string) => {
+  const handleGenerateAssertions = () => {
     if (isAgentMode) {
-      doEnhanceWithAI(specPath);
+      doGenerateAssertions();
     } else {
-      setAssertionsAgentModeSpecPath(specPath);
+      setAssertionsNeedAgentMode(true);
     }
   };
   const previewToolbarRef = useRef<HTMLDivElement>(null);
@@ -1679,11 +1696,11 @@ export const PreviewIframe = ({
                   className="ml-auto min-w-0 max-w-48 flex-1 rounded-sm border border-border bg-(--background-lighter) px-2 py-1 text-xs outline-none"
                 />
                 <button
-                  onClick={() => void recorder.stopAndSave(recordName)}
-                  data-testid="preview-recording-save-button"
+                  onClick={() => void recorder.stopAndReview(recordName)}
+                  data-testid="preview-recording-stop-button"
                   className="flex items-center gap-1 rounded-md bg-purple-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-purple-700"
                 >
-                  <Square size={12} /> Stop &amp; Save
+                  <Square size={12} /> Stop
                 </button>
                 <button
                   onClick={() => void recorder.cancelRecording()}
@@ -1691,6 +1708,41 @@ export const PreviewIframe = ({
                   className={RECORDING_SECONDARY_BUTTON_CLASSES}
                 >
                   Cancel
+                </button>
+              </>
+            ) : recorder.phase === "reviewing" ? (
+              <>
+                <span className="min-w-0 truncate font-medium text-foreground">
+                  {recorder.draft?.testName}
+                </span>
+                <span className="text-muted-foreground">
+                  {recorder.draftSteps.length} step
+                  {recorder.draftSteps.length === 1 ? "" : "s"} recorded — not
+                  saved yet
+                </span>
+                <button
+                  onClick={handleGenerateAssertions}
+                  data-testid="preview-recording-generate-assertions-button"
+                  className="ml-auto flex items-center gap-1 rounded-md bg-purple-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-purple-700 disabled:opacity-60"
+                >
+                  <Sparkles size={12} /> Generate assertions
+                </button>
+                <button
+                  onClick={() => void recorder.saveWithoutAssertions()}
+                  data-testid="preview-recording-save-plain-button"
+                  className={cn(
+                    RECORDING_SECONDARY_BUTTON_CLASSES,
+                    "flex items-center gap-1",
+                  )}
+                >
+                  <FileCode2 size={12} /> Save without assertions
+                </button>
+                <button
+                  onClick={() => void recorder.discardDraft()}
+                  data-testid="preview-recording-discard-button"
+                  className={RECORDING_SECONDARY_BUTTON_CLASSES}
+                >
+                  Discard
                 </button>
               </>
             ) : recorder.phase === "saved" ? (
@@ -1701,28 +1753,18 @@ export const PreviewIframe = ({
                 <button
                   onClick={() =>
                     recorder.savedSpecPath &&
-                    handleEnhanceWithAI(recorder.savedSpecPath)
-                  }
-                  data-testid="preview-recording-enhance-button"
-                  className="ml-auto flex items-center gap-1 rounded-md bg-purple-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-purple-700 disabled:opacity-60"
-                >
-                  <Sparkles size={12} /> Add assertions with AI
-                </button>
-                <button
-                  onClick={() =>
-                    recorder.savedSpecPath &&
                     handleOpenSavedSpec(recorder.savedSpecPath)
                   }
                   data-testid="preview-recording-open-file-button"
                   className={cn(
                     RECORDING_SECONDARY_BUTTON_CLASSES,
-                    "flex items-center gap-1",
+                    "ml-auto flex items-center gap-1",
                   )}
                 >
                   <FileCode2 size={12} /> Open test file
                 </button>
                 <button
-                  onClick={() => recorder.dismissSaved()}
+                  onClick={() => recorder.dismissReview()}
                   data-testid="preview-recording-done-button"
                   className={RECORDING_SECONDARY_BUTTON_CLASSES}
                 >
@@ -1745,20 +1787,20 @@ export const PreviewIframe = ({
           {recorder.isRecording && (
             <RecordingCodePreview steps={recorder.steps} />
           )}
+
+          {recorder.phase === "reviewing" && (
+            <RecordedStepsList steps={recorder.draftSteps} />
+          )}
         </div>
       )}
 
       <AgentModeRequiredDialog
-        open={assertionsAgentModeSpecPath !== null}
-        onOpenChange={(open) => {
-          if (!open) setAssertionsAgentModeSpecPath(null);
-        }}
+        open={assertionsNeedAgentMode}
+        onOpenChange={setAssertionsNeedAgentMode}
         action="assertions"
         onContinue={() => {
-          if (assertionsAgentModeSpecPath) {
-            doEnhanceWithAI(assertionsAgentModeSpecPath);
-          }
-          setAssertionsAgentModeSpecPath(null);
+          doGenerateAssertions();
+          setAssertionsNeedAgentMode(false);
         }}
       />
 

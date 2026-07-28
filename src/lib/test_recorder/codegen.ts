@@ -1,11 +1,5 @@
+import { draftIncludesSignIn, type RecordedTestDraft } from "./draft";
 import type { LocatorDescriptor, RecordedAction } from "./types";
-
-export interface CodegenOptions {
-  /** The Playwright test title. */
-  testName: string;
-  /** Emit `await signIn(page)` and import the auth fixture. */
-  includeSignIn: boolean;
-}
 
 /** JS/JSON string literal — safe against quotes, backslashes, newlines. */
 function q(value: string): string {
@@ -52,7 +46,7 @@ export function locatorToCode(locator: LocatorDescriptor): string {
 
 /**
  * Render a single recorded action as its Playwright statement WITHOUT leading
- * indentation or trailing newline — the line the live recording banner shows for
+ * indentation or trailing newline — the line the recorder's step list shows for
  * that step, and the exact statement `generateSpecSource` indents into the spec.
  */
 export function actionToCodeLine(action: RecordedAction): string {
@@ -84,36 +78,79 @@ export function actionToCodeLine(action: RecordedAction): string {
   }
 }
 
-function actionToCode(action: RecordedAction): string {
-  return `  ${actionToCodeLine(action)}`;
+/**
+ * The spec body a draft replays, as one trimmed statement per line: the
+ * preamble (`signIn`, then `goto("/")`) followed by the recorded interactions.
+ *
+ * This is the numbering everything downstream agrees on — what the recorder
+ * lists for the user, what the model describes and attaches assertions to, and
+ * what `generateSpecSource` writes. Derived from the draft rather than stored,
+ * so a proposal and the file it eventually produces can never disagree.
+ */
+export function recordedBodyStatements(draft: RecordedTestDraft): string[] {
+  const statements: string[] = [];
+  if (draftIncludesSignIn(draft)) statements.push(`await signIn(page);`);
+  // The base URL is configured by Dyad's Playwright bootstrap.
+  statements.push(`await page.goto("/");`);
+  for (const action of draft.actions) {
+    statements.push(actionToCodeLine(action));
+  }
+  return statements;
 }
 
 /**
- * Generate a complete Playwright spec from a collapsed action list. The spec
- * navigates to `/` (the base URL is configured by Dyad's Playwright bootstrap)
- * and replays each action. When `includeSignIn` is set it first establishes an
- * authenticated session through the generated `e2e-tests/fixtures/test-user.ts`
- * helper. Assertions are added later by the optional AI pass.
+ * Generate a complete Playwright spec from the final body statements — the
+ * recorded steps with any approved assertions already interleaved, in the order
+ * they should run.
+ *
+ * This is the ONLY place a recorded spec is written: no model ever produces the
+ * file, so approving a plan and re-approving the same plan give the same bytes.
  */
-export function generateSpecSource(
-  actions: RecordedAction[],
-  options: CodegenOptions,
-): string {
+export function generateSpecSource({
+  testName,
+  includeSignIn,
+  bodyStatements,
+}: {
+  /** The Playwright test title. */
+  testName: string;
+  /** Emit `await signIn(page)` and import the auth fixture. */
+  includeSignIn: boolean;
+  bodyStatements: string[];
+}): string {
   const lines: string[] = [];
   lines.push(`import { test, expect } from "@playwright/test";`);
-  if (options.includeSignIn) {
+  if (includeSignIn) {
     lines.push(`import { signIn } from "./fixtures/test-user";`);
   }
   lines.push("");
-  lines.push(`test(${q(options.testName)}, async ({ page }) => {`);
-  if (options.includeSignIn) {
-    lines.push(`  await signIn(page);`);
-  }
-  lines.push(`  await page.goto("/");`);
-  for (const action of actions) {
-    lines.push(actionToCode(action));
+  lines.push(`test(${q(testName)}, async ({ page }) => {`);
+  for (const statement of bodyStatements) {
+    lines.push(`  ${statement}`);
   }
   lines.push(`});`);
   lines.push("");
   return lines.join("\n");
+}
+
+/** Generate the spec exactly as recorded, with no assertions. */
+export function generateDraftSpecSource(draft: RecordedTestDraft): string {
+  return generateSpecSource({
+    testName: draft.testName,
+    includeSignIn: draftIncludesSignIn(draft),
+    bodyStatements: recordedBodyStatements(draft),
+  });
+}
+
+/**
+ * Filename for a recorded test, e.g. `recorded-add-item.spec.ts`. `index` (2+)
+ * disambiguates when that name is already taken — a re-recording, or two flows
+ * whose names slugify the same, must never clobber an existing spec.
+ */
+export function recordedSpecFileName(testName: string, index?: number): string {
+  const slug =
+    testName
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "test";
+  return `recorded-${slug}${index && index > 1 ? `-${index}` : ""}.spec.ts`;
 }

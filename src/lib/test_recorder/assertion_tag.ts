@@ -9,8 +9,9 @@ import {
  *
  * The card is emitted by the agent's `generate_test_assertions` tool into its
  * assistant message, so the tag is the durable store for a proposal: attributes
- * carry the identity and approval status, the JSON body carries the plan.
- * Approving rewrites the tag in place with `status="approved"`, which is what
+ * carry the identity and approval status, the JSON body carries the plan and
+ * the recording it was computed from. Approving rewrites the tag in place with
+ * `status="approved"` and the path of the spec it just generated, which is what
  * makes the latch survive a reload. The tag sits inside a larger message
  * (the agent's own prose and other tool cards surround it), so every rewrite
  * goes through `replaceAssertionsTagInMessage` — never by replacing the whole
@@ -33,7 +34,9 @@ export function buildAssertionsTagContent({
   const attrs = [
     `proposal-id="${escapeXmlAttr(proposalId)}"`,
     `status="${status}"`,
-    `spec-path="${escapeXmlAttr(payload.specPath)}"`,
+    // Empty until the spec is generated on approve — the card falls back to the
+    // test title, which is all there is to show before a file exists.
+    `spec-path="${escapeXmlAttr(payload.specPath ?? "")}"`,
     `state="finished"`,
   ].join(" ");
   const body = escapeXmlContent(JSON.stringify(payload, null, 2));

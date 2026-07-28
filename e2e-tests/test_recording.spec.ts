@@ -6,6 +6,9 @@ import { testSkipIfWindows, Timeout } from "./helpers/test_helper";
 // auth) — the fast, network-free path. Like ai_e2e_testing, this drives the UI
 // orchestration and asserts the generated spec is written and discovered; it
 // does NOT spawn a real Playwright run (that would be Playwright-in-Playwright).
+//
+// This covers the no-AI path: stop, review the steps, save them as they are.
+// The assertion pass is covered by test_assertions.spec.ts.
 testSkipIfWindows(
   "records interactions in the preview and saves a runnable spec",
   async ({ po }) => {
@@ -39,9 +42,18 @@ testSkipIfWindows(
       po.page.getByTestId("preview-recording-step-count"),
     ).not.toHaveText("0 steps");
 
-    // Name and save the recording.
+    // Name the recording and stop.
     await po.page.getByTestId("preview-recording-name-input").fill("add item");
-    await po.page.getByTestId("preview-recording-save-button").click();
+    await po.page.getByTestId("preview-recording-stop-button").click();
+
+    // Stopping reviews the recording rather than writing it: the steps are
+    // listed, and the file only appears once the user chooses to generate it.
+    const steps = po.page.getByTestId("preview-recorded-steps");
+    await expect(steps).toBeVisible({ timeout: Timeout.LONG });
+    await expect(steps).toContainText("Increment");
+    await expect(steps).toContainText("Subscribe");
+
+    await po.page.getByTestId("preview-recording-save-plain-button").click();
 
     // The saved banner links straight to the generated spec in the Code tab.
     await po.page.getByTestId("preview-recording-open-file-button").click({

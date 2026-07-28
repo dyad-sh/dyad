@@ -1,35 +1,33 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
-  hashSpecSource,
-  loadSpecForAssertions,
-} from "@/ipc/handlers/test_assertion_handlers";
-import { parseGeneratedSpec } from "@/lib/test_recorder/spec_edit";
+  clearRecordedTestDraft,
+  setRecordedTestDraft,
+} from "@/ipc/services/recorded_test_drafts";
+import {
+  RECORDED_TEST_DRAFT_VERSION,
+  type RecordedTestDraft,
+} from "@/lib/test_recorder/draft";
 import { parseAssertionsPayloadFromMessage } from "@/lib/test_recorder/assertion_tag";
 import { generateTestAssertionsTool } from "./generate_test_assertions";
 import type { AgentContext } from "./types";
 
-vi.mock("@/ipc/handlers/test_assertion_handlers", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/ipc/handlers/test_assertion_handlers")
-    >();
-  return { ...actual, loadSpecForAssertions: vi.fn() };
-});
+const APP_ID = 7;
 
-const SPEC_PATH = "e2e-tests/recorded-add-item.spec.ts";
-
-const SPEC_SOURCE = `import { test } from "@playwright/test";
-
-test("add an item", async ({ page }) => {
-  await page.goto("/");
-  await page.getByRole("button", { name: "Add" }).click();
-});
-`;
+/**
+ * Recorded so its statements are `goto("/")` then the click — the numbering the
+ * tool validates against, and the numbering the model is given in its prompt.
+ */
+const DRAFT: RecordedTestDraft = {
+  version: RECORDED_TEST_DRAFT_VERSION,
+  testName: "add an item",
+  authMode: "none",
+  actions: [
+    { kind: "click", locator: { kind: "role", value: "button", name: "Add" } },
+  ],
+};
 
 const VALID_ARGS = {
-  specPath: SPEC_PATH,
   steps: [
     { index: 0, text: "Open the home page" },
     { index: 1, text: "Click the Add button" },
@@ -45,7 +43,7 @@ const VALID_ARGS = {
 
 function makeCtx(overrides: Partial<AgentContext> = {}): AgentContext {
   return {
-    appId: 7,
+    appId: APP_ID,
     chatId: 3,
     testingEnabled: true,
     onXmlStream: vi.fn(),
@@ -63,12 +61,7 @@ function committedXml(ctx: AgentContext): string {
 
 describe("generate_test_assertions", () => {
   beforeEach(() => {
-    vi.mocked(loadSpecForAssertions).mockReset();
-    vi.mocked(loadSpecForAssertions).mockResolvedValue({
-      appPath: "/apps/test-app",
-      source: SPEC_SOURCE,
-      parsed: parseGeneratedSpec(SPEC_SOURCE)!,
-    });
+    setRecordedTestDraft(APP_ID, DRAFT);
   });
 
   it("is gated on the app's testing opt-in and excluded from read-only modes", () => {
@@ -87,13 +80,14 @@ describe("generate_test_assertions", () => {
 
     const xml = committedXml(ctx);
     expect(xml).toContain(`status="proposed"`);
-    expect(xml).toContain(`spec-path="${SPEC_PATH}"`);
+    // No file exists yet, so the card has no path to point at.
+    expect(xml).toContain(`spec-path=""`);
 
     const payload = parseAssertionsPayloadFromMessage(xml)!;
-    expect(payload.specPath).toBe(SPEC_PATH);
+    expect(payload.specPath).toBeNull();
     expect(payload.testTitle).toBe("add an item");
-    // Pinned to the source we read, so a later edit invalidates the proposal.
-    expect(payload.specHash).toBe(hashSpecSource(SPEC_SOURCE));
+    // The whole recording rides along, so approving never needs the registry.
+    expect(payload.draft).toEqual(DRAFT);
     expect(
       payload.items.map((item) =>
         item.kind === "step" ? `step:${item.text}` : `assert:${item.text}`,
@@ -111,10 +105,10 @@ describe("generate_test_assertions", () => {
 
     // The model is told the card is the end of the request.
     expect(result).toContain("1 proposed assertion(s)");
-    expect(result).toContain("Do NOT edit");
+    expect(result).toContain("do NOT call run_tests");
   });
 
-  it("rejects a plan whose indices don't match the spec, and shows the real statements", async () => {
+  it("rejects a plan whose indices don't match the recording, and shows the real statements", async () => {
     const ctx = makeCtx();
     const result = await generateTestAssertionsTool.execute(
       {
@@ -158,15 +152,13 @@ describe("generate_test_assertions", () => {
     expect(committedXml(ctx)).not.toContain("dyad-test-assertions");
   });
 
-  it("reports a hand-edited spec back to the model instead of throwing", async () => {
-    vi.mocked(loadSpecForAssertions).mockRejectedValue(
-      new DyadError("hand-edited", DyadErrorKind.Precondition),
-    );
+  it("tells the model there is nothing to annotate when no recording is waiting", async () => {
+    clearRecordedTestDraft(APP_ID);
     const ctx = makeCtx();
 
     const result = await generateTestAssertionsTool.execute(VALID_ARGS, ctx);
 
-    expect(result).toContain("hand-edited");
+    expect(result).toContain("no finished recording");
     expect(result).toContain("search_replace");
     expect(committedXml(ctx)).toContain("dyad-output");
   });

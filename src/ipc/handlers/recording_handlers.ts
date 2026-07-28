@@ -23,6 +23,10 @@ import {
   isRecordingActive,
   type RecordingEndReason,
 } from "../services/recording_registry";
+import {
+  clearRecordedTestDraft,
+  setRecordedTestDraft,
+} from "../services/recorded_test_drafts";
 import { isTestRunActive } from "./tests_handlers";
 import { readSettings } from "@/main/settings";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
@@ -242,6 +246,25 @@ export function registerRecordingHandlers() {
         recording.stop("stopped");
         await recording.done.catch(() => {});
       }
+      return { ok: true as const };
+    },
+  );
+
+  createTypedHandler(
+    recordingContracts.saveRecordedTestDraft,
+    async (_event, params) => {
+      setRecordedTestDraft(params.appId, params.draft);
+      logger.info(
+        `Parked a recorded test draft for app ${params.appId} with ${params.draft.actions.length} action(s)`,
+      );
+      return { ok: true as const };
+    },
+  );
+
+  createTypedHandler(
+    recordingContracts.discardRecordedTestDraft,
+    async (_event, params) => {
+      clearRecordedTestDraft(params.appId);
       return { ok: true as const };
     },
   );

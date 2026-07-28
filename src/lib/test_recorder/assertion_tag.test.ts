@@ -9,16 +9,30 @@ import {
   readAssertionsTagAttribute,
   replaceAssertionsTagInMessage,
 } from "./assertion_tag";
-import type { AssertionProposalPayload } from "./assertion_proposal";
+import {
+  ASSERTION_PROPOSAL_VERSION,
+  type AssertionProposalPayload,
+} from "./assertion_proposal";
+import { RECORDED_TEST_DRAFT_VERSION } from "./draft";
 
 // Deliberately hostile text: XML-significant characters plus a literal closing
 // tag, which is exactly what would break the card if escaping regressed.
 const PAYLOAD: AssertionProposalPayload = {
-  version: 1,
+  version: ASSERTION_PROPOSAL_VERSION,
   appId: 3,
+  draft: {
+    version: RECORDED_TEST_DRAFT_VERSION,
+    testName: "add <an> item",
+    authMode: "none",
+    actions: [
+      {
+        kind: "click",
+        locator: { kind: "role", value: "button", name: "Add" },
+      },
+    ],
+  },
   specPath: "e2e-tests/recorded-add & edit.spec.ts",
   testTitle: "add <an> item",
-  specHash: "deadbeef",
   items: [
     { kind: "step", stepIndex: 0, text: "Open /" },
     {
@@ -66,6 +80,16 @@ describe("assertion tag round-trip", () => {
       payload: PAYLOAD,
     });
     expect(readAssertionsTagAttribute(approved, "status")).toBe("approved");
+  });
+
+  it("carries an empty spec-path while no file has been generated", () => {
+    const pending = buildAssertionsTagContent({
+      proposalId: "prop-1",
+      status: "proposed",
+      payload: { ...PAYLOAD, specPath: null },
+    });
+    expect(readAssertionsTagAttribute(pending, "spec-path")).toBe("");
+    expect(parseAssertionsPayloadFromMessage(pending)?.specPath).toBeNull();
   });
 });
 

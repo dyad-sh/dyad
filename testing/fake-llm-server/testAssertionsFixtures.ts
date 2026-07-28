@@ -1,14 +1,14 @@
 /**
- * Fake responses for the "Add assertions with AI" flow.
+ * Fake responses for the recorder's "Generate assertions" flow.
  *
- * Two different things are faked here, because two different prompts are
+ * Three different things are faked here, because three different prompts are
  * involved:
  *
- * 1. The AGENT turn. The recorder's "Add assertions with AI" button sends a
- *    chat prompt; the agent is expected to read the spec and then call its
- *    `generate_test_assertions` tool. We answer with `read_file` first, then —
- *    once the spec content is in a tool result — with the tool call, deriving
- *    the steps/assertions from the statements we were shown.
+ * 1. The AGENT turn. The recorder's "Generate assertions" button sends a chat
+ *    prompt containing the recorded statements — the test is NOT a file yet, so
+ *    there is nothing to read_file. We answer with a single
+ *    `generate_test_assertions` tool call, deriving the steps/assertions from
+ *    the statements in the prompt.
  *
  * 2. The approve-time CODE SYNTHESIS pass
  *    (src/prompts/test_assertions_prompt.ts buildAssertionCodePayload), a plain
@@ -16,14 +16,22 @@
  *    chat-completions and responses fake routes so it works regardless of which
  *    protocol the selected fake model uses.
  *
- * Both matchers key off exact line-anchored labels, not bare substrings — an
+ * 3. The VERIFICATION turn the card sends after approval, asking the agent to
+ *    run the generated spec. Answered with plain text so E2E exercises the
+ *    hand-off without spawning a real Playwright run.
+ *
+ * The matchers key off exact line-anchored labels, not bare substrings — an
  * ordinary chat prompt that happens to mention "Statements:" must not be
  * hijacked into a JSON assertion plan.
  */
 
-/** Matches the prompt the recorder's "Add assertions with AI" button sends. */
+/** Matches the prompt the recorder's "Generate assertions" button sends. */
 const ASSERTIONS_REQUEST_RE =
-  /^Add assertions to the test I just recorded: (\S+)\s*$/m;
+  /^Add assertions to the test I just recorded: "(.+)"\s*$/m;
+
+/** Matches the run request the assertions card sends after approval. */
+const VERIFY_REQUEST_RE =
+  /^I approved the assertions\. Dyad generated (\S+) from my recording\.\s*$/m;
 
 /**
  * Marker from the `generate_test_assertions` tool result (see
@@ -65,9 +73,8 @@ function reusableLocator(statements: string[]): string | null {
 
 /**
  * Unwrap a tool result. The AI SDK sends them as a JSON-encoded
- * `{"type":"text","value":"…"}` envelope, so the file content a `read_file`
- * returned is only recognizable after parsing (its newlines are escaped inside
- * the envelope). Anything else is returned unchanged.
+ * `{"type":"text","value":"…"}` envelope, so the tool's reply is only
+ * recognizable after parsing. Anything else is returned unchanged.
  */
 function toPlainText(text: string): string {
   const trimmed = text.trim();
@@ -82,20 +89,18 @@ function toPlainText(text: string): string {
 }
 
 /**
- * Pull the body statements out of a recorder-generated spec, numbered the way
- * `generate_test_assertions` counts them: non-blank lines between the `test(`
- * line and the closing `});`.
+ * Pull the numbered statements out of the request. This is the same numbering
+ * `generate_test_assertions` validates against, so a plan built from these
+ * indices is accepted.
  */
-function parseSpecStatements(source: string): string[] {
-  const lines = source.split(/\r?\n/);
-  const start = lines.findIndex((line) => line.trim().startsWith("test("));
-  if (start === -1) return [];
+function parseNumberedStatements(text: string): string[] {
   const statements: string[] = [];
-  for (let i = start + 1; i < lines.length; i++) {
-    const trimmed = lines[i].trim();
-    if (trimmed === "});") break;
-    if (trimmed === "") continue;
-    statements.push(trimmed);
+  for (const line of text.split("\n")) {
+    const match = /^(\d+): (.+)$/.exec(line);
+    if (!match) continue;
+    // Indices are contiguous from 0; anything else is a different list.
+    if (Number(match[1]) !== statements.length) continue;
+    statements.push(match[2]);
   }
   return statements;
 }
@@ -106,47 +111,34 @@ export interface AssertionsToolCall {
 }
 
 /**
- * Answer the agent turn for an "Add assertions" request, or null when this
+ * Answer the agent turn for a "Generate assertions" request, or null when this
  * conversation isn't one.
  *
- * `messageTexts` is every message's text in order, so the spec source can be
- * recovered from the `read_file` tool result of the previous turn.
+ * `messageTexts` is every message's text in order, so a turn that already
+ * produced the card can be recognized and ended.
  */
 export function matchAssertionsAgentTurn(
   lastUserText: string,
   messageTexts: string[],
 ): AssertionsToolCall | null {
-  const request = ASSERTIONS_REQUEST_RE.exec(lastUserText);
-  if (!request) return null;
-  const specPath = request[1];
-
-  const plainTexts = messageTexts.map(toPlainText);
+  if (!ASSERTIONS_REQUEST_RE.test(lastUserText)) return null;
 
   // The card is already up (the tool said so), so the turn is over. Falling
   // through to the canned text response is what ends it — answering with the
   // tool call again would loop, since the triggering user message never
   // changes.
+  const plainTexts = messageTexts.map(toPlainText);
   if (plainTexts.some((text) => text.includes(ASSERTIONS_TOOL_DONE_MARKER))) {
     return null;
   }
 
-  // Turn 2: the spec came back from read_file, so propose the plan. read_file
-  // returns bare file content, so recognize it by shape rather than by path.
-  const specSource = plainTexts.find(
-    (text) =>
-      /^import .*@playwright\/test/m.test(text) && /^test\(/m.test(text),
-  );
-  const statements = specSource ? parseSpecStatements(specSource) : [];
-  if (statements.length === 0) {
-    // Turn 1: read the spec first, exactly as the tool's description demands.
-    return { name: "read_file", args: { path: specPath } };
-  }
+  const statements = parseNumberedStatements(lastUserText);
+  if (statements.length === 0) return null;
 
   const locator = reusableLocator(statements);
   return {
     name: "generate_test_assertions",
     args: {
-      specPath,
       steps: statements.map((statement, index) => ({
         index,
         text: describeStatement(statement),
@@ -162,6 +154,16 @@ export function matchAssertionsAgentTurn(
         : [],
     },
   };
+}
+
+/**
+ * The post-approval turn: the card asks the agent to run the spec it just
+ * generated. Answered as plain text so E2E can assert the hand-off happened
+ * without paying for a real Playwright run.
+ */
+export function matchAssertionsVerifyTurn(text: string): string | null {
+  const match = VERIFY_REQUEST_RE.exec(text);
+  return match ? `Running ${match[1]} to check the recorded flow.` : null;
 }
 
 /**

@@ -21,14 +21,14 @@ const DESCRIPTIONS: Record<AgentModeRequiredDialogProps["action"], string> = {
     "Generating an end-to-end test runs in Agent mode, which can explore your app, write the test, run it, and fix failures. Continue will send this request in Agent mode.",
   fix: "Fixing a failing test runs in Agent mode, which can edit files and run your tests to verify the fix. Continue will send this request in Agent mode.",
   assertions:
-    "Adding assertions runs in Agent mode, which reads your recorded test and proposes assertions you can review before they're saved. Continue will send this request in Agent mode.",
+    "Generating assertions runs in Agent mode, which describes your recorded steps and proposes checks you review before the test file is created. Continue will send this request in Agent mode.",
 };
 
 /**
  * Confirmation shown when the user triggers "Generate test" / "Fix with AI" /
- * "Add assertions with AI" while the current chat isn't in Agent mode. All
- * three run in Agent mode (they read the app and edit files), so Continue sends
- * the request in Agent mode regardless of the chat's current mode.
+ * "Generate assertions" while the current chat isn't in Agent mode. All three
+ * run in Agent mode (they read the app and write files), so Continue sends the
+ * request in Agent mode regardless of the chat's current mode.
  */
 export function AgentModeRequiredDialog({
   open,

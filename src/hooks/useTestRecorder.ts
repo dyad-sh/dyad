@@ -21,23 +21,16 @@ import {
 import { collapseActions } from "@/lib/test_recorder/merge";
 import {
   actionToCodeLine,
-  generateSpecSource,
+  recordedBodyStatements,
 } from "@/lib/test_recorder/codegen";
-import { generateTestUserFixtureSource } from "@/lib/test_recorder/fixture_templates";
+import {
+  RECORDED_TEST_DRAFT_VERSION,
+  type RecordedTestDraft,
+} from "@/lib/test_recorder/draft";
 import { parseRecorderAction } from "@/lib/test_recorder/types";
 import type { RecordingAuth } from "@/ipc/types";
-import { E2E_TEST_DIR } from "@/ipc/types/tests";
 
 const AUTH_READY_TIMEOUT_MS = 30_000;
-const FIXTURE_PATH = `${E2E_TEST_DIR}/fixtures/test-user.ts`;
-
-function slugify(name: string): string {
-  const slug = name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return slug || "test";
-}
 
 /** Convert a preview URL/path to an app-relative path (`/foo?x`). */
 function toAppPath(raw: unknown): string | null {
@@ -52,8 +45,12 @@ function toAppPath(raw: unknown): string | null {
 
 /**
  * Drives a preview recording session: starts isolation + auto sign-in, arms the
- * injected recorder, buffers observed actions, and on save generates a
- * Playwright spec (plus the shared `signIn` fixture) into the app's `e2e-tests/`.
+ * injected recorder, and buffers observed actions.
+ *
+ * Stopping does NOT write a file. It hands the collapsed actions to the main
+ * process as a draft and moves to the review phase, where the user sees the
+ * steps and can ask for assertions. The spec is generated later — from that
+ * same draft — either by approving the assertion card or by saving as-is.
  *
  * Incoming iframe messages (recorder actions, auth readiness, SPA navigations)
  * are handled here so the Record UI stays thin. Meant to be mounted once inside
@@ -364,118 +361,114 @@ export function useTestRecorder({
     }));
   }, [appId, authenticate, clearEntries, patchState, postToIframe]);
 
-  const appFileExists = useCallback(
-    async (targetAppId: number, filePath: string) => {
-      try {
-        await ipc.app.readAppFile({ appId: targetAppId, filePath });
-        return true;
-      } catch {
-        return false;
-      }
-    },
-    [],
-  );
-
-  const ensureFixture = useCallback(
-    async (
-      targetAppId: number,
-      mode: "neon-better-auth" | "supabase-password",
-    ) => {
-      // Already exists — never overwrite the user's edits.
-      if (await appFileExists(targetAppId, FIXTURE_PATH)) return;
-      await ipc.app.editAppFile({
-        appId: targetAppId,
-        filePath: FIXTURE_PATH,
-        content: generateTestUserFixtureSource(mode),
-      });
-    },
-    [appFileExists],
-  );
-
-  const stopAndSave = useCallback(
-    async (testName: string): Promise<string | null> => {
+  /**
+   * End the session and capture what was recorded as a draft — no file is
+   * written. The draft is parked in the main process so the agent's
+   * `generate_test_assertions` tool can propose against the real statements,
+   * and kept here so the review UI can list the steps.
+   */
+  const stopAndReview = useCallback(
+    async (testName: string): Promise<RecordedTestDraft | null> => {
       const targetAppId = appId;
       if (targetAppId == null) return null;
 
-      patchState(targetAppId, (prev) => ({ ...prev, phase: "saving" }));
+      patchState(targetAppId, (prev) => ({ ...prev, phase: "finishing" }));
       postToIframe({ type: "deactivate-dyad-recorder" });
 
       const auth = stateRef.current.auth ?? { mode: "none" };
-      const includeSignIn = auth.mode !== "none";
-      const actions = collapseActions(entriesRef.current);
-      const name = testName.trim() || "recorded test";
-      const specSource = generateSpecSource(actions, {
-        testName: name,
-        includeSignIn,
-      });
-      // The runner only discovers specs under `E2E_TEST_DIR`; `slugify` already
-      // reduces the name to `[a-z0-9-]`, so the path can't traverse out of it.
-      // Don't clobber an existing recorded spec (a re-recording, or a different
-      // flow that slugifies to the same name, or repeated blank-name saves that
-      // all default to "recorded test") — disambiguate with a numeric suffix,
-      // mirroring ensureFixture's non-destructive behavior.
-      const baseSlug = slugify(name);
-      let specPath = `${E2E_TEST_DIR}/recorded-${baseSlug}.spec.ts`;
-      for (let n = 2; await appFileExists(targetAppId, specPath); n++) {
-        specPath = `${E2E_TEST_DIR}/recorded-${baseSlug}-${n}.spec.ts`;
-      }
+      const draft: RecordedTestDraft = {
+        version: RECORDED_TEST_DRAFT_VERSION,
+        testName: testName.trim() || "recorded test",
+        authMode: auth.mode,
+        actions: collapseActions(entriesRef.current),
+      };
 
-      let saved = false;
       try {
-        if (includeSignIn) {
-          await ensureFixture(targetAppId, auth.mode);
-        }
-        await ipc.app.editAppFile({
+        await ipc.recording.saveRecordedTestDraft({
           appId: targetAppId,
-          filePath: specPath,
-          content: specSource,
+          draft,
         });
-        saved = true;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        showError(`Couldn't save the recorded test: ${message}`);
-      } finally {
+        showError(`Couldn't keep the recording: ${message}`);
         await ipc.recording
           .stopRecording({ appId: targetAppId })
           .catch(() => {});
+        clearEntries(targetAppId);
+        patchState(targetAppId, { phase: "idle" });
+        return null;
       }
 
+      // Teardown (dropping the Neon branch / removing the Supabase test user)
+      // takes seconds; hold the "finishing" spinner until it's done so the
+      // review UI doesn't appear over a half-torn-down session.
+      await ipc.recording.stopRecording({ appId: targetAppId }).catch(() => {});
+
+      // The draft owns the actions from here on.
+      clearEntries(targetAppId);
+      patchState(targetAppId, { phase: "reviewing", draft });
+      return draft;
+    },
+    [appId, clearEntries, patchState, postToIframe],
+  );
+
+  /**
+   * Generate the spec from the draft as recorded, skipping the assertion pass.
+   * The escape hatch for "I just want the steps" — same deterministic codegen
+   * the approval path uses.
+   */
+  const saveWithoutAssertions = useCallback(async (): Promise<
+    string | null
+  > => {
+    const targetAppId = appId;
+    const draft = stateRef.current.draft;
+    if (targetAppId == null || !draft) return null;
+
+    patchState(targetAppId, (prev) => ({ ...prev, phase: "saving" }));
+    try {
+      const { specPath } = await ipc.tests.createRecordedSpec({
+        appId: targetAppId,
+        draft,
+      });
       queryClient.invalidateQueries({
         queryKey: queryKeys.tests.list({ appId: targetAppId }),
       });
       queryClient.invalidateQueries({ queryKey: queryKeys.appFiles.all });
-
-      clearEntries(targetAppId);
-
-      if (saved) {
-        // Stay in a "saved" state so the UI can offer the AI-assertion pass.
-        patchState(targetAppId, { phase: "saved", savedSpecPath: specPath });
-        showSuccess(`Saved ${specPath}`);
-        return specPath;
-      }
-      patchState(targetAppId, { phase: "idle" });
+      patchState(targetAppId, { phase: "saved", savedSpecPath: specPath });
+      showSuccess(`Saved ${specPath}`);
+      return specPath;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      showError(`Couldn't save the recorded test: ${message}`);
+      // Back to review so the recording isn't lost to a failed write.
+      patchState(targetAppId, (prev) => ({ ...prev, phase: "reviewing" }));
       return null;
-    },
-    [
-      appId,
-      appFileExists,
-      clearEntries,
-      ensureFixture,
-      patchState,
-      postToIframe,
-      queryClient,
-    ],
-  );
+    }
+  }, [appId, patchState, queryClient]);
 
-  const dismissSaved = useCallback(() => {
+  /** Close the bar, keeping the parked draft (the chat card still needs it). */
+  const dismissReview = useCallback(() => {
     if (appId == null) return;
     patchState(appId, { phase: "idle" });
+  }, [appId, patchState]);
+
+  /** Throw the recording away without generating anything. */
+  const discardDraft = useCallback(async () => {
+    const targetAppId = appId;
+    if (targetAppId == null) return;
+    patchState(targetAppId, { phase: "idle" });
+    await ipc.recording
+      .discardRecordedTestDraft({ appId: targetAppId })
+      .catch(() => {});
   }, [appId, patchState]);
 
   const cancelRecording = useCallback(async () => {
     const targetAppId = appId;
     if (targetAppId == null) return;
     postToIframe({ type: "deactivate-dyad-recorder" });
+    void ipc.recording
+      .discardRecordedTestDraft({ appId: targetAppId })
+      .catch(() => {});
     // stopRecording resolves only once isolation teardown finishes (dropping a
     // Neon branch / removing the Supabase test user takes seconds), so hold a
     // visible "stopping" phase instead of leaving the bar up with no feedback.
@@ -503,6 +496,15 @@ export function useTestRecorder({
     void startRecording();
   }, [appId, setStartRequest, startRecording, startRequest]);
 
+  // The statements the draft will replay, numbered exactly as the assertion
+  // tool numbers them — so what the review list shows is what the model is
+  // asked about and what ends up in the file.
+  const draft = recordingState.draft;
+  const draftSteps = useMemo(
+    () => (draft ? recordedBodyStatements(draft) : []),
+    [draft],
+  );
+
   return {
     phase: recordingState.phase,
     isolation: recordingState.isolation,
@@ -510,6 +512,8 @@ export function useTestRecorder({
     warning: recordingState.warning,
     progress: recordingState.progress,
     error: recordingState.error,
+    draft,
+    draftSteps,
     savedSpecPath: recordingState.savedSpecPath,
     entryCount,
     steps,
@@ -517,12 +521,15 @@ export function useTestRecorder({
     isBusy:
       recordingState.phase === "starting" ||
       recordingState.phase === "authenticating" ||
+      recordingState.phase === "finishing" ||
       recordingState.phase === "saving" ||
       recordingState.phase === "stopping",
     startRecording,
-    stopAndSave,
+    stopAndReview,
+    saveWithoutAssertions,
     cancelRecording,
-    dismissSaved,
+    dismissReview,
+    discardDraft,
   };
 }
 

@@ -20,6 +20,7 @@ import {
 import {
   matchAssertionCodePayload,
   matchAssertionsAgentTurn,
+  matchAssertionsVerifyTurn,
 } from "./testAssertionsFixtures";
 
 let globalCounter = 0;
@@ -302,8 +303,8 @@ export const createChatCompletionHandler =
       messageContent =
         "## Key Decisions Made\n- Completed initial task as requested\n\n## Current Task State\nConversation was compacted to save context space.";
     }
-    // See testAssertionsFixtures.ts: read the recorded spec, then propose the
-    // plan through the agent's generate_test_assertions tool.
+    // See testAssertionsFixtures.ts: propose the plan for the just-finished
+    // recording through the agent's generate_test_assertions tool.
     const assertionsToolCall = matchAssertionsAgentTurn(
       userTextContent,
       messages.map(getTextContent),
@@ -581,6 +582,13 @@ export default Index;
     const assertionsMatch = matchAssertionCodePayload(lastMessageText);
     if (assertionsMatch) {
       messageContent = assertionsMatch;
+    }
+    // ...and the post-approval "run the spec you just generated" hand-off,
+    // answered without spawning a real Playwright run. Keyed off the last USER
+    // message: this one arrives as an agent turn, not a one-off model call.
+    const assertionsVerifyMatch = matchAssertionsVerifyTurn(userTextContent);
+    if (assertionsVerifyMatch) {
+      messageContent = assertionsVerifyMatch;
     }
     // See consentClassifier.ts: fake decisions for the MCP auto-consent
     // classifier, shared with the responses fake route.

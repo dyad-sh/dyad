@@ -195,6 +195,7 @@ export interface DistributedMachineDefinition<
   Command,
   Reason extends IgnoreReason,
   RemoteIntent = Event,
+  Outcome = never,
 > {
   readonly id: Id;
   readonly host: "main" | "renderer";
@@ -203,7 +204,7 @@ export interface DistributedMachineDefinition<
     state: State,
     event: Event,
     key: Key,
-  ) => TransitionResult<State, Command, Reason>;
+  ) => TransitionResult<State, Command, Reason, Outcome>;
   readonly createScheduler: (key: Key) => CommandScheduler<Command>;
   readonly createCommandRunner: (
     context: MachineHostContext<Key, State, Event>,
@@ -218,6 +219,13 @@ export interface DistributedMachineDefinition<
   readonly createObserver?: (
     context: MachineHostContext<Key, State, Event>,
   ) => TransitionObserver<State, Event, Command, Reason>;
+  /**
+   * Optional authoritative post-commit outcome sink. ActorHost invokes it only
+   * after the new snapshot is committed; failures are isolated by dispatcher.
+   */
+  readonly createOutcomePublisher?: (
+    context: MachineHostContext<Key, State, Event>,
+  ) => (outcome: Outcome) => void;
   readonly lifecycle: ActorLifecyclePolicy<Key, State>;
   readonly persistence?: MachinePersistencePolicy<Key, State>;
   readonly remote?: RemoteMachineContract<Key, State, Event>;

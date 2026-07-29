@@ -39,7 +39,9 @@ type AnyDefinition = DistributedMachineDefinition<
   unknown,
   unknown,
   unknown,
-  IgnoreReason
+  IgnoreReason,
+  unknown,
+  any
 >;
 
 export interface ActorHostError {
@@ -210,6 +212,7 @@ class HostedActor<
   Event,
   Command,
   Reason extends IgnoreReason,
+  Outcome = any,
 > implements HostedActorRef<State, Event, Reason> {
   readonly kind = "local" as const;
   readonly actorInstanceId: ActorInstanceId;
@@ -219,7 +222,8 @@ class HostedActor<
     State,
     Event,
     Command,
-    Reason
+    Reason,
+    Outcome
   >;
   private revision = 0;
   private transactionSequence = 0;
@@ -246,14 +250,16 @@ class HostedActor<
       State,
       Event,
       Command,
-      Reason
+      Reason,
+      any,
+      Outcome
     >,
     readonly key: Key,
     private readonly options: ActorHostOptions,
     private readonly admission: HostedActorAdmission<Event>,
     private readonly isAdmissionClosed: () => boolean,
     private readonly removeFromHost: (
-      actor: HostedActor<Key, State, Event, Command, Reason>,
+      actor: HostedActor<Key, State, Event, Command, Reason, Outcome>,
     ) => void,
     private readonly notifyDisposed: (event: ActorDisposedEvent) => void,
   ) {
@@ -263,7 +269,7 @@ class HostedActor<
     this.timers = new TimerLeaseScope(options.clock);
 
     let dispatcher:
-      | TransactionalDispatcher<State, Event, Command, Reason>
+      | TransactionalDispatcher<State, Event, Command, Reason, Outcome>
       | undefined;
     const context: MachineHostContext<Key, State, Event> = {
       key,
@@ -285,6 +291,7 @@ class HostedActor<
     try {
       const domainObserver = definition.createObserver?.(context);
       const beforeCommit = definition.createBeforeCommit?.(context);
+      const publishOutcome = definition.createOutcomePublisher?.(context);
       const runCommand = definition.createCommandRunner(context);
       const scheduler = definition.createScheduler(key);
       const traceObserver = createTraceObserver<State, Event, Command, Reason>(
@@ -325,6 +332,7 @@ class HostedActor<
           }
         },
         observer: composeObservers([traceObserver, domainObserver]),
+        publishOutcome,
         reportError: (failure) => this.reportFailure(failure),
       });
       this.dispatcher = dispatcher;
@@ -930,6 +938,8 @@ export class ActorHost {
     Event,
     Command,
     Reason extends IgnoreReason,
+    RemoteIntent,
+    Outcome,
   >(
     definition: DistributedMachineDefinition<
       Id,
@@ -937,7 +947,9 @@ export class ActorHost {
       State,
       Event,
       Command,
-      Reason
+      Reason,
+      RemoteIntent,
+      Outcome
     >,
   ): void {
     if (this.disposed) {
@@ -1015,6 +1027,7 @@ export class ActorHost {
     Command,
     Reason extends IgnoreReason,
     RemoteIntent,
+    Outcome,
   >(
     definition: DistributedMachineDefinition<
       Id,
@@ -1023,7 +1036,8 @@ export class ActorHost {
       Event,
       Command,
       Reason,
-      RemoteIntent
+      RemoteIntent,
+      Outcome
     >,
     options: {
       readonly key: Key;
@@ -1081,6 +1095,8 @@ export class ActorHost {
     Event,
     Command,
     Reason extends IgnoreReason,
+    RemoteIntent,
+    Outcome,
   >(
     definition: DistributedMachineDefinition<
       Id,
@@ -1088,7 +1104,9 @@ export class ActorHost {
       State,
       Event,
       Command,
-      Reason
+      Reason,
+      RemoteIntent,
+      Outcome
     >,
     key: Key,
   ): HostedActorRef<State, Event, Reason> {
@@ -1111,6 +1129,8 @@ export class ActorHost {
     Event,
     Command,
     Reason extends IgnoreReason,
+    RemoteIntent,
+    Outcome,
   >(
     definition: DistributedMachineDefinition<
       Id,
@@ -1118,7 +1138,9 @@ export class ActorHost {
       State,
       Event,
       Command,
-      Reason
+      Reason,
+      RemoteIntent,
+      Outcome
     >,
     key: Key,
   ): HostedActorRef<State, Event, Reason> {
@@ -1138,6 +1160,8 @@ export class ActorHost {
     Event,
     Command,
     Reason extends IgnoreReason,
+    RemoteIntent,
+    Outcome,
   >(
     definition: DistributedMachineDefinition<
       Id,
@@ -1145,7 +1169,9 @@ export class ActorHost {
       State,
       Event,
       Command,
-      Reason
+      Reason,
+      RemoteIntent,
+      Outcome
     >,
     key: Key,
     generation: ActorHostAdmissionGeneration,
@@ -1169,7 +1195,7 @@ export class ActorHost {
       this.throwActorDisposing(definition.id);
     }
     const existing = this.actors.get(definition.id)?.get(key) as
-      | HostedActor<Key, State, Event, Command, Reason>
+      | HostedActor<Key, State, Event, Command, Reason, Outcome>
       | undefined;
     if (existing) {
       if (existing.isDisposing()) this.throwActorDisposing(definition.id);
@@ -1191,6 +1217,8 @@ export class ActorHost {
     Event,
     Command,
     Reason extends IgnoreReason,
+    RemoteIntent,
+    Outcome,
   >(
     definition: DistributedMachineDefinition<
       Id,
@@ -1198,7 +1226,9 @@ export class ActorHost {
       State,
       Event,
       Command,
-      Reason
+      Reason,
+      RemoteIntent,
+      Outcome
     >,
     key: Key,
     event: Event,
@@ -1237,7 +1267,7 @@ export class ActorHost {
       });
     }
     let actor = this.actors.get(definition.id)?.get(key) as
-      | HostedActor<Key, State, Event, Command, Reason>
+      | HostedActor<Key, State, Event, Command, Reason, Outcome>
       | undefined;
     if (actor?.isDisposing()) {
       return settledTicket({
@@ -1311,6 +1341,8 @@ export class ActorHost {
     Event,
     Command,
     Reason extends IgnoreReason,
+    RemoteIntent,
+    Outcome,
   >(
     definition: DistributedMachineDefinition<
       Id,
@@ -1318,7 +1350,9 @@ export class ActorHost {
       State,
       Event,
       Command,
-      Reason
+      Reason,
+      RemoteIntent,
+      Outcome
     >,
     key: Key,
     event: Event,
@@ -1338,7 +1372,7 @@ export class ActorHost {
       });
     }
     const actor = this.actors.get(definition.id)?.get(key) as
-      | HostedActor<Key, State, Event, Command, Reason>
+      | HostedActor<Key, State, Event, Command, Reason, Outcome>
       | undefined;
     if (!actor || actor.isDisposing()) {
       return settledTicket({
@@ -1451,6 +1485,8 @@ export class ActorHost {
     Event,
     Command,
     Reason extends IgnoreReason,
+    RemoteIntent,
+    Outcome,
   >(
     definition: DistributedMachineDefinition<
       Id,
@@ -1458,10 +1494,12 @@ export class ActorHost {
       State,
       Event,
       Command,
-      Reason
+      Reason,
+      RemoteIntent,
+      Outcome
     >,
     key: Key,
-  ): HostedActor<Key, State, Event, Command, Reason> {
+  ): HostedActor<Key, State, Event, Command, Reason, Outcome> {
     if (this.disposed) {
       throw new ActorAdmissionError("host-disposed", "ActorHost is disposed");
     }
@@ -1477,7 +1515,7 @@ export class ActorHost {
       this.actors.set(definition.id, keyed);
     }
     const existing = keyed.get(key) as
-      | HostedActor<Key, State, Event, Command, Reason>
+      | HostedActor<Key, State, Event, Command, Reason, Outcome>
       | undefined;
     if (existing) {
       if (existing.isDisposing()) this.throwActorDisposing(definition.id);
@@ -1515,7 +1553,7 @@ export class ActorHost {
       this.constructing.set(definition.id, constructing);
     }
     constructing.add(key);
-    let actor: HostedActor<Key, State, Event, Command, Reason>;
+    let actor: HostedActor<Key, State, Event, Command, Reason, Outcome>;
     try {
       actor = new HostedActor(
         definition,

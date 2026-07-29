@@ -505,6 +505,9 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   markers still exist does not prevent an undeclared boundary crossing.
   Classify calls through the owning API (for example, Jotai stores and hooks),
   not an expected import directory; domain values may be local or re-exported.
+- When adding an intentional completion-aware `dispatch` or `enqueue` framework
+  path, classify it in the boundary inventory separately from raw compatibility
+  escape hatches; do not widen the raw allowlist to make the inventory pass.
 - Keep host-only distributed-machine definitions outside shared machine
   directories (for example, under `src/ipc/services/` for a main-owned actor).
   Shared machine directories are scanned as renderer-reachable code and may

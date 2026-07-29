@@ -3,6 +3,7 @@ import path from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import {
+  completionAwareDispatchOrEnqueueInventory,
   distributedDefinitionInventory,
   nonRemoteDispatchOrEnqueueInventory,
   unsafeEscapeHatchInventory,
@@ -894,13 +895,14 @@ describe("progressive distributed-machine inventories", () => {
     );
   });
 
-  it("pins raw and unrelated dispatch/enqueue access separately", () => {
+  it("pins raw, completion-aware, and unrelated dispatch/enqueue access separately", () => {
     const actual = collectProduction(dispatchBoundaries);
     assertInventory(
       "dispatch/enqueue access",
       actual,
       [
         ...unsafeEscapeHatchInventory.rawDispatchOrEnqueue,
+        ...completionAwareDispatchOrEnqueueInventory,
         ...nonRemoteDispatchOrEnqueueInventory,
       ].sort(),
     );

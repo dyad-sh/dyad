@@ -14,6 +14,7 @@ export type DispatcherErrorStage =
   | "projection"
   | "subscriber"
   | "observer"
+  | "outcome"
   | "scheduler"
   | "command"
   | "command-error-mapper";
@@ -82,12 +83,13 @@ export interface TransactionalDispatcherOptions<
   Event,
   Command,
   Reason extends IgnoreReason = IgnoreReason,
+  Outcome = never,
 > {
   initialState: State;
   transition(
     state: State,
     event: Event,
-  ): TransitionResult<State, Command, Reason>;
+  ): TransitionResult<State, Command, Reason, Outcome>;
   runCommand(
     command: Command,
     emit: (event: Event) => void,
@@ -106,6 +108,11 @@ export interface TransactionalDispatcherOptions<
   beforeCommit?(previous: State, next: State): void;
   project?(snapshot: State): void;
   observer?: TransitionObserver<State, Event, Command, Reason>;
+  /**
+   * Publishes explicit transition outcomes after the authoritative snapshot
+   * commit. Failures are isolated and cannot roll back the transition.
+   */
+  publishOutcome?(outcome: Outcome): void;
   mapUnexpectedCommandError?(
     command: Command,
     error: unknown,
@@ -126,6 +133,7 @@ export class TransactionalDispatcher<
   Event,
   Command,
   Reason extends IgnoreReason = IgnoreReason,
+  Outcome = never,
 > {
   private readonly pendingEvents: PendingDispatch<State, Event>[] = [];
   private readonly store: SnapshotStore<State>;
@@ -139,7 +147,8 @@ export class TransactionalDispatcher<
       State,
       Event,
       Command,
-      Reason
+      Reason,
+      Outcome
     >,
   ) {
     this.store = new SnapshotStore(options.initialState);
@@ -255,7 +264,7 @@ export class TransactionalDispatcher<
       settle(outcome);
     };
     const previous = this.store.getSnapshot();
-    let result: TransitionResult<State, Command, Reason>;
+    let result: TransitionResult<State, Command, Reason, Outcome>;
     try {
       result = this.options.transition(previous, event);
     } catch (error) {
@@ -302,6 +311,7 @@ export class TransactionalDispatcher<
     }
 
     this.notifyObserver(previous, event, result, dispatchContext);
+    this.publishOutcomes(result.outcomes ?? []);
     this.startBatch(batch);
     settleCurrent({ kind: "applied", state: this.store.getSnapshot() });
   }
@@ -364,7 +374,7 @@ export class TransactionalDispatcher<
   private notifyObserver(
     previous: State,
     event: Event,
-    result: TransitionResult<State, Command, Reason>,
+    result: TransitionResult<State, Command, Reason, Outcome>,
     dispatchContext?: DispatchContext,
   ): void {
     try {
@@ -386,6 +396,17 @@ export class TransactionalDispatcher<
       }
     } catch (error) {
       this.report({ stage: "observer", error });
+    }
+  }
+
+  private publishOutcomes(outcomes: readonly Outcome[]): void {
+    if (!this.options.publishOutcome) return;
+    for (const outcome of outcomes) {
+      try {
+        this.options.publishOutcome(outcome);
+      } catch (error) {
+        this.report({ stage: "outcome", error });
+      }
     }
   }
 

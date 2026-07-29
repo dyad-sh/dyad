@@ -70,10 +70,11 @@ export function validateTransitionResult<
   Event,
   Command,
   Reason extends IgnoreReason,
+  Outcome,
 >(
   previous: State,
   event: Event,
-  result: TransitionResult<State, Command, Reason>,
+  result: TransitionResult<State, Command, Reason, Outcome>,
   path: readonly Event[] = [],
 ): void {
   const context = { state: previous, event, result, path };
@@ -93,13 +94,19 @@ export function validateTransitionResult<
     if (!("reason" in result) || typeof result.reason !== "string") {
       validationFailure("Ignored transitions must include a reason", context);
     }
-    if ("commands" in result) {
-      validationFailure("Ignored transitions must not emit commands", context);
+    if ("commands" in result || "outcomes" in result) {
+      validationFailure(
+        "Ignored transitions must not emit commands or outcomes",
+        context,
+      );
     }
     return;
   }
   if (result.kind !== "applied" || !Array.isArray(result.commands)) {
     validationFailure("Transition did not return a valid result", context);
+  }
+  if (result.outcomes !== undefined && !Array.isArray(result.outcomes)) {
+    validationFailure("Transition outcomes must be an array", context);
   }
   if (
     transitionValuesAreEqual(previous, result.state) &&

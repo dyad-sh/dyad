@@ -95,6 +95,47 @@ function host(
 }
 
 describe("ActorHost", () => {
+  it("publishes typed transition outcomes after the actor snapshot commits", async () => {
+    const observed: { readonly outcome: string; readonly value: number }[] = [];
+    const base = machine("post-commit-outcomes");
+    const definition: DistributedMachineDefinition<
+      string,
+      string,
+      State,
+      Event,
+      Command,
+      Reason,
+      Event,
+      string
+    > = {
+      ...base,
+      transition(state, event) {
+        return event.type === "SET"
+          ? change(
+              { value: event.value },
+              [],
+              [`request-completed:${event.value}`],
+            )
+          : base.transition(state, event, "entity");
+      },
+      createOutcomePublisher(context) {
+        return (outcome) =>
+          observed.push({
+            outcome,
+            value: context.getSnapshot().value,
+          });
+      },
+    };
+    const actorHost = host();
+    actorHost.register(definition);
+    const actor = actorHost.ensure(definition, "entity");
+
+    const ticket = actor.enqueue({ type: "SET", value: 7 });
+
+    await expect(ticket.settled).resolves.toMatchObject({ kind: "applied" });
+    expect(observed).toEqual([{ outcome: "request-completed:7", value: 7 }]);
+  });
+
   it("passes dispatch context through host dispatch to observers", async () => {
     const observed = vi.fn();
     const definition = {

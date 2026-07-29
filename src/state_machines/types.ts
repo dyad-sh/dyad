@@ -23,9 +23,15 @@ export type TransitionResult<
   State,
   Command,
   Reason extends IgnoreReason = IgnoreReason,
+  Outcome = never,
 > =
   | { kind: "ignored"; state: State; reason: Reason }
-  | { kind: "applied"; state: State; commands: readonly Command[] };
+  | {
+      kind: "applied";
+      state: State;
+      commands: readonly Command[];
+      outcomes?: readonly Outcome[];
+    };
 
 /** Explicitly marks a deliberate no-op in a total transition matrix. */
 export function ignore<
@@ -39,17 +45,41 @@ export function ignore<
 /** Apply a transition to a next state, optionally emitting commands. */
 export function change<State, Command = never>(
   nextState: State,
+  commands?: readonly Command[],
+): TransitionResult<State, Command, never, never>;
+export function change<State, Command, Outcome>(
+  nextState: State,
+  commands: readonly Command[],
+  outcomes: readonly Outcome[],
+): TransitionResult<State, Command, never, Outcome>;
+export function change<State, Command = never, Outcome = never>(
+  nextState: State,
   commands: readonly Command[] = [],
-): TransitionResult<State, Command, never> {
-  return { kind: "applied", state: nextState, commands };
+  outcomes: readonly Outcome[] = [],
+): TransitionResult<State, Command, never, Outcome> {
+  return outcomes.length === 0
+    ? { kind: "applied", state: nextState, commands }
+    : { kind: "applied", state: nextState, commands, outcomes };
 }
 
 /** Apply commands while deliberately retaining the current state reference. */
 export function stay<State, Command>(
   state: State,
   commands: readonly Command[],
-): TransitionResult<State, Command, never> {
-  return { kind: "applied", state, commands };
+): TransitionResult<State, Command, never, never>;
+export function stay<State, Command, Outcome>(
+  state: State,
+  commands: readonly Command[],
+  outcomes: readonly Outcome[],
+): TransitionResult<State, Command, never, Outcome>;
+export function stay<State, Command, Outcome = never>(
+  state: State,
+  commands: readonly Command[],
+  outcomes: readonly Outcome[] = [],
+): TransitionResult<State, Command, never, Outcome> {
+  return outcomes.length === 0
+    ? { kind: "applied", state, commands }
+    : { kind: "applied", state, commands, outcomes };
 }
 
 export interface AppliedTransition<State, Event, Command> {

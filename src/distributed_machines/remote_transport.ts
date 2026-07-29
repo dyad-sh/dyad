@@ -77,6 +77,7 @@ interface PreparedDispatchIdentity {
   readonly definition: AnyRemoteMachineDefinition;
   readonly key: unknown;
   readonly intent: { readonly type: string };
+  readonly encodedKey: unknown;
   readonly address: string;
   readonly admittedEntry: SubscriptionEntry;
   readonly actor: HostedActorRef<unknown, unknown, string>;
@@ -452,6 +453,30 @@ export class RemoteMachineTransport {
       envelope,
     );
     if ("receipt" in prepared) {
+      if (
+        prepared.fingerprint !== undefined &&
+        this.receiptLedger.hasReceipt(windowSessionId, envelope.messageId)
+      ) {
+        const replay = this.receiptLedger.claim({
+          scope: windowSessionId,
+          messageId: envelope.messageId,
+          fingerprint: prepared.fingerprint,
+          start: () => prepared.receipt,
+          retention: () => "remove",
+        });
+        if (replay.kind === "duplicate") return replay.receipt;
+        if (replay.kind === "conflict") {
+          return Promise.resolve(
+            this.rejected(envelope.messageId, "invalid-event"),
+          );
+        }
+        if (replay.kind === "fresh") return replay.receipt;
+        if (replay.kind === "disposed") {
+          return Promise.resolve(
+            this.rejected(envelope.messageId, "host-disposing"),
+          );
+        }
+      }
       return Promise.resolve(
         this.receiptLedger.hasReceipt(windowSessionId, envelope.messageId)
           ? this.rejected(envelope.messageId, "invalid-event")
@@ -545,7 +570,12 @@ export class RemoteMachineTransport {
     sender: RemoteTransportEndpoint,
     windowSessionId: WindowSessionId,
     envelope: MachineDispatchEnvelope,
-  ): PreparedDispatchIdentity | { readonly receipt: MachineDispatchReceipt } {
+  ):
+    | PreparedDispatchIdentity
+    | {
+        readonly receipt: MachineDispatchReceipt;
+        readonly fingerprint?: string;
+      } {
     const definition = this.options.manifest.get(envelope.machineId);
     if (!definition) {
       return { receipt: this.rejected(envelope.messageId, "unknown-machine") };
@@ -571,9 +601,18 @@ export class RemoteMachineTransport {
     ) as { readonly type: string };
     const encodedKey = this.encodeKey(definition, keyResult.data);
     const address = this.wireAddress(definition, encodedKey);
+    const fingerprint = this.dispatchFingerprint(
+      definition,
+      encodedKey,
+      intent,
+      envelope,
+    );
     const admittedEntry = this.subscriptions.get(address);
     if (!admittedEntry || !admittedEntry.windows.has(sender.id)) {
-      return { receipt: this.rejected(envelope.messageId, "stale-actor") };
+      return {
+        receipt: this.rejected(envelope.messageId, "stale-actor"),
+        fingerprint,
+      };
     }
     if (
       definition.remoteIntent?.keyIntentRelationship.kind === "validate" &&
@@ -594,14 +633,20 @@ export class RemoteMachineTransport {
       admittedEntry.key,
     );
     if (!actor || actor !== admittedEntry.actor) {
-      return { receipt: this.rejected(envelope.messageId, "stale-actor") };
+      return {
+        receipt: this.rejected(envelope.messageId, "stale-actor"),
+        fingerprint,
+      };
     }
     const actorMetadata = actor.getMetadata();
     if (
       envelope.expectedActorInstanceId !== undefined &&
       envelope.expectedActorInstanceId !== actorMetadata.actorInstanceId
     ) {
-      return { receipt: this.rejected(envelope.messageId, "stale-actor") };
+      return {
+        receipt: this.rejected(envelope.messageId, "stale-actor"),
+        fingerprint,
+      };
     }
     const revisionPolicy =
       definition.remoteIntent?.intents[intent.type]?.observedRevision;
@@ -622,16 +667,11 @@ export class RemoteMachineTransport {
         receipt: this.rejected(envelope.messageId, "revision-conflict"),
       };
     }
-    const fingerprint = this.dispatchFingerprint(
-      definition,
-      admittedEntry,
-      intent,
-      envelope,
-    );
     return {
       definition,
       key: admittedEntry.key,
       intent,
+      encodedKey,
       address,
       admittedEntry,
       actor,
@@ -799,7 +839,7 @@ export class RemoteMachineTransport {
 
   private dispatchFingerprint(
     definition: AnyRemoteMachineDefinition,
-    entry: SubscriptionEntry,
+    encodedKey: unknown,
     intent: { readonly type: string },
     envelope: MachineDispatchEnvelope,
   ): string {
@@ -808,7 +848,7 @@ export class RemoteMachineTransport {
         serialize([
           envelope.protocolVersion,
           definition.id,
-          entry.encodedKey,
+          encodedKey,
           intent,
           envelope.expectedActorInstanceId,
           envelope.expectedRevision,
@@ -826,7 +866,7 @@ export class RemoteMachineTransport {
     if (
       this.dispatchFingerprint(
         prepared.definition,
-        prepared.admittedEntry,
+        prepared.encodedKey,
         prepared.intent,
         envelope,
       ) !== prepared.fingerprint

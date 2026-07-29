@@ -77,6 +77,9 @@ Background and before/after examples of why this pattern exists:
   transient pre-admission transport-lifetime rejections after settlement, with
   an identity check against the cached entry, so reconnect can retry work that
   was never admitted while concurrent in-flight duplicates still coalesce.
+  Compute the complete retry fingerprint before fresh actor admission: a
+  matching retained receipt must replay after its subscription is released,
+  while a fresh dispatch still requires an admitted subscription.
 - Make remote subscribe/bootstrap idempotent per window, machine, and key.
   Resync and reconnect retries must refresh the bootstrap without incrementing
   ownership; projection/encoding failure rolls back only ownership acquired by

@@ -169,6 +169,10 @@ export interface RemoteIntentContract<
   readonly encodeKey: (key: Key) => unknown;
   readonly rendererIntentCodec: z.ZodType<RendererIntent>;
   readonly snapshotCodec: z.ZodType<Snapshot>;
+  readonly operationOutcome?: {
+    readonly invocationRefCodec: z.ZodType;
+    readonly outcomeCodec: z.ZodType;
+  };
   readonly toTrustedEvent: (
     context: AdmittedIntentContext<Key, RendererIntent>,
   ) => TrustedEvent;

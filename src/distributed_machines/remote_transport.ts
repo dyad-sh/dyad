@@ -936,25 +936,39 @@ export class RemoteMachineTransport {
             readonly invocationRef: unknown;
             readonly outcome: unknown;
           }) => {
-            if (
-              this.options.windows.sessionForWebContents(sender.id) !==
-              senderContext.windowSessionId
-            ) {
-              return;
+            try {
+              if (
+                this.options.windows.sessionForWebContents(sender.id) !==
+                senderContext.windowSessionId
+              ) {
+                return;
+              }
+              const codecs = definition.remoteIntent?.operationOutcome;
+              if (!codecs) {
+                throw new Error(
+                  `Remote machine ${definition.id} does not declare operation outcome codecs`,
+                );
+              }
+              const invocationRef = codecs.invocationRefCodec.parse(
+                settlement.invocationRef,
+              );
+              const outcome = codecs.outcomeCodec.parse(settlement.outcome);
+              const outcomeEnvelope: MachineOperationOutcomeEnvelope = {
+                protocolVersion: definition.remote.protocolVersion,
+                machineId: definition.id,
+                encodedKey: prepared.encodedKey,
+                requestId: requestIdentity.requestId,
+                invocationRef,
+                outcome,
+              };
+              this.send(
+                sender.id,
+                "distributed-machine:operation-outcome",
+                outcomeEnvelope,
+              );
+            } catch (error) {
+              this.options.onError?.(error);
             }
-            const outcomeEnvelope: MachineOperationOutcomeEnvelope = {
-              protocolVersion: definition.remote.protocolVersion,
-              machineId: definition.id,
-              encodedKey: prepared.encodedKey,
-              requestId: requestIdentity.requestId,
-              invocationRef: settlement.invocationRef,
-              outcome: settlement.outcome,
-            };
-            this.send(
-              sender.id,
-              "distributed-machine:operation-outcome",
-              outcomeEnvelope,
-            );
           },
           (error: unknown) => this.options.onError?.(error),
         );

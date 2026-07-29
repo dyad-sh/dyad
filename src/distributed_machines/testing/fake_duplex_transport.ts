@@ -151,6 +151,10 @@ export class FakeRemoteRenderer implements RemoteMachineClientConnection {
     return () => this.operationOutcomeListeners.delete(listener);
   }
 
+  emitOperationOutcomeForTesting(payload: unknown): void {
+    for (const listener of this.operationOutcomeListeners) listener(payload);
+  }
+
   reportIncompatible(): void {
     this.status = "incompatible";
     for (const listener of this.statusListeners) listener("incompatible");

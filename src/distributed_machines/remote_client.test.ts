@@ -51,6 +51,61 @@ function createHarness(machine = createRemoteTestMachine()) {
 }
 
 describe("RemoteMachineClient", () => {
+  it("validates correlated invocation and outcome payloads before delivery", async () => {
+    const base = createRemoteTestMachine();
+    const machine = {
+      ...base,
+      remoteIntent: {
+        ...base.remoteIntent,
+        operationOutcome: {
+          invocationRefCodec: z.object({ operationId: z.string() }),
+          outcomeCodec: z.object({
+            kind: z.literal("succeeded"),
+          }),
+        },
+      },
+    } as ReturnType<typeof createRemoteTestMachine>;
+    const { duplex } = createHarness(machine);
+    const renderer = duplex.connect();
+    const client = new RemoteMachineClient(
+      renderer,
+      createSequentialIdSource(),
+    );
+    client.start();
+    const actor = client.actor(machine, "actor");
+    const lease = actor.retain();
+    await lease.ready;
+    const listener = vi.fn();
+    actor.subscribeOperationOutcome("request-1", listener);
+    const address = {
+      protocolVersion: machine.remote.protocolVersion,
+      machineId: machine.id,
+      encodedKey: machine.remote.encodeKey("actor"),
+      requestId: "request-1",
+    };
+
+    renderer.emitOperationOutcomeForTesting({
+      ...address,
+      invocationRef: { operationId: 42 },
+      outcome: { kind: "succeeded" },
+    });
+    renderer.emitOperationOutcomeForTesting({
+      ...address,
+      invocationRef: { operationId: "invocation-1" },
+      outcome: { kind: "not-a-real-outcome" },
+    });
+    expect(listener).not.toHaveBeenCalled();
+
+    renderer.emitOperationOutcomeForTesting({
+      ...address,
+      invocationRef: { operationId: "invocation-1" },
+      outcome: { kind: "succeeded" },
+    });
+    expect(listener).toHaveBeenCalledOnce();
+    expect(listener).toHaveBeenCalledWith({ kind: "succeeded" });
+    lease.release();
+  });
+
   it("reference-counts one bootstrap per key and blocks dispatch before bootstrap", async () => {
     const { duplex, machine, transport } = createHarness();
     const renderer = duplex.connect();

@@ -31,6 +31,7 @@ export const appRunClientDefinition = {
     keyToString: (key: AppRunKey) => String(key.appId),
     rendererIntentCodec: AppRunIntentEventSchema,
     snapshotCodec: AppRunRemoteSnapshotSchema,
+    operationOutcome: appRunRemoteIntentContract.operationOutcome,
     intents: appRunRemoteIntentContract.intents,
   },
 } satisfies RemoteClientDefinition<

@@ -13,6 +13,10 @@ import {
   type AppRunKey,
   type AppRunRemoteSnapshot,
 } from "./transport";
+import {
+  AppRunInvocationRefSchema,
+  AppRunOperationOutcomeSchema,
+} from "./operations";
 
 const trackedAtAdmission = {
   completion: "tracked-completion",
@@ -32,6 +36,10 @@ export const appRunRemoteIntentContract = defineRemoteIntentContract<
   encodeKey: (key) => key,
   rendererIntentCodec: AppRunIntentEventSchema,
   snapshotCodec: AppRunRemoteSnapshotSchema,
+  operationOutcome: {
+    invocationRefCodec: AppRunInvocationRefSchema,
+    outcomeCodec: AppRunOperationOutcomeSchema,
+  },
   toTrustedEvent: ({ intent }) => Object.freeze(structuredClone(intent)),
   authorization: {
     subscribe: "required",

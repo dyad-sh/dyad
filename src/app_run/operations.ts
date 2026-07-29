@@ -3,6 +3,8 @@ import {
   type OperationDisposalCause,
 } from "@/distributed_machines/operation_registry";
 import type { AppRunInvocationRef, RunErrorInfo } from "./state";
+import { z } from "zod";
+import { DyadErrorKind } from "@/errors/dyad_error";
 
 export type AppRunOperationKind = "run" | "stop";
 
@@ -23,6 +25,40 @@ export type AppRunOperationOutcome =
         | "host-disposed"
         | "window-disposed";
     };
+
+export const AppRunInvocationRefSchema = z.object({
+  kind: z.literal("app-run"),
+  entityKey: z.number().int(),
+  operationId: z.string().min(1).max(256),
+});
+
+const AppRunOperationKindSchema = z.enum(["run", "stop"]);
+
+export const AppRunOperationOutcomeSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("succeeded"),
+    operation: AppRunOperationKindSchema,
+  }),
+  z.object({
+    kind: z.literal("failed"),
+    operation: AppRunOperationKindSchema,
+    error: z.object({
+      message: z.string(),
+      kind: z.enum(DyadErrorKind).optional(),
+    }),
+  }),
+  z.object({
+    kind: z.literal("cancelled"),
+    reason: z.enum([
+      "superseded",
+      "actor-disposed",
+      "app-disposed",
+      "machine-disposed",
+      "host-disposed",
+      "window-disposed",
+    ]),
+  }),
+]);
 
 function disposalReason(
   cause: OperationDisposalCause,

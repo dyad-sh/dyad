@@ -167,6 +167,10 @@ export type RemoteClientDefinition<
           readonly keyToString: (key: Key) => string;
           readonly rendererIntentCodec: z.ZodType<Event>;
           readonly snapshotCodec: z.ZodType<State>;
+          readonly operationOutcome?: {
+            readonly invocationRefCodec: z.ZodType;
+            readonly outcomeCodec: z.ZodType;
+          };
           readonly intents: Event extends { readonly type: infer Type }
             ? Readonly<Record<Extract<Type, string>, RemoteIntentPolicy>>
             : never;
@@ -531,11 +535,18 @@ class RemoteSnapshotStore<
   receiveOperationOutcome(envelope: MachineOperationOutcomeEnvelope): void {
     if (envelope.protocolVersion !== this.address.protocolVersion) return;
     if (this.client.addressKey(envelope) !== this.addressKey) return;
+    const codecs = this.definition.remoteIntent?.operationOutcome;
+    if (!codecs) return;
+    const invocationRef = codecs.invocationRefCodec.safeParse(
+      envelope.invocationRef,
+    );
+    const outcome = codecs.outcomeCodec.safeParse(envelope.outcome);
+    if (!invocationRef.success || !outcome.success) return;
     for (const listener of Array.from(
       this.operationOutcomeListeners.get(envelope.requestId) ?? [],
     )) {
       try {
-        listener(envelope.outcome);
+        listener(outcome.data);
       } catch (error) {
         this.client.reportSubscriberError(error);
       }

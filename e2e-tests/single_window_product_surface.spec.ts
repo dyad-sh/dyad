@@ -38,7 +38,7 @@ test("falls back to one usable restorable window when session state is corrupt",
   await expect(
     po.page.getByRole("menuitem", { name: "Open in New Window" }),
   ).not.toBeVisible();
-  await appItem.click();
+  await po.appManagement.clickAppListItem({ appName });
   await expect(po.page).toHaveURL(/app-details/, {
     timeout: Timeout.MEDIUM,
   });

@@ -8,6 +8,7 @@ import * as eph from "electron-playwright-helpers";
 import { ElectronApplication } from "playwright";
 import path from "path";
 import { execSync, execFileSync } from "child_process";
+import { existsSync, readFileSync } from "node:fs";
 import { Timeout } from "../../constants";
 
 export class AppManagement {
@@ -258,31 +259,26 @@ export class AppManagement {
     const retryIntervalMs = 15_000;
     const startTime = Date.now();
     let lastOutput = "";
-
-    const checkScript = [
-      'const pkg = require("./package.json");',
-      'const { execSync } = require("child_process");',
-      "try {",
-      'const prodResult = JSON.parse(execSync("pnpm list --json --depth=0", { encoding: "utf8" }));',
-      'const devResult = JSON.parse(execSync("pnpm list --json --depth=0 --dev", { encoding: "utf8" }));',
-      "const installed = { ...(prodResult[0] || {}).dependencies, ...(devResult[0] || {}).devDependencies };",
-      "const expected = Object.keys({ ...pkg.dependencies, ...pkg.devDependencies });",
-      "const missing = expected.filter((dependency) => !installed[dependency]);",
-      'console.log(missing.length ? `MISSING: ${missing.join(", ")}` : "All dependencies installed");',
-      "} catch (error) {",
-      'console.log("Error:", error instanceof Error ? error.message : String(error));',
-      "}",
-    ].join("");
+    const packageJson = JSON.parse(
+      readFileSync(path.join(appPath, "package.json"), "utf8"),
+    );
+    const expectedDependencies = Object.keys({
+      ...packageJson.dependencies,
+      ...packageJson.devDependencies,
+    });
 
     while (Date.now() - startTime < maxDurationMs) {
       try {
         console.log(`Checking installed dependencies in ${appPath}...`);
-        const stdout = execFileSync(process.execPath, ["-e", checkScript], {
-          cwd: appPath,
-          stdio: "pipe",
-          encoding: "utf8",
-        });
-        lastOutput = (stdout || "").toString().trim();
+        const missingDependencies = expectedDependencies.filter(
+          (dependency) =>
+            !existsSync(
+              path.join(appPath, "node_modules", dependency, "package.json"),
+            ),
+        );
+        lastOutput = missingDependencies.length
+          ? `MISSING: ${missingDependencies.join(", ")}`
+          : "All dependencies installed";
         console.log(`Dependency check output: ${lastOutput}`);
         if (lastOutput.includes("All dependencies installed")) {
           return;

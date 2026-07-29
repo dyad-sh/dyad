@@ -412,6 +412,8 @@ async function deleteAppByIdExclusive(
   let releaseChatCreation: (() => void) | undefined;
   const releaseChatActorAdmission: (() => void)[] = [];
   let deletionCommitted = false;
+  let imageGenerationCleanupFailed = false;
+  let imageGenerationCleanupError: unknown;
   try {
     versionPreviewActorService.beginAppDeletion(appId);
     versionPreviewDeletionStarted = true;
@@ -521,10 +523,22 @@ async function deleteAppByIdExclusive(
     releaseChatCreation?.();
     try {
       if (imageGenerationDeletion) {
-        await imageGenerationActorService.finishAppDeletion(
-          imageGenerationDeletion,
-          deletionCommitted,
-        );
+        try {
+          await imageGenerationActorService.finishAppDeletion(
+            imageGenerationDeletion,
+            deletionCommitted,
+          );
+        } catch (error) {
+          if (deletionCommitted) {
+            logger.warn(
+              `Post-deletion image-generation cleanup failed for app ${appId}`,
+              error,
+            );
+          } else {
+            imageGenerationCleanupFailed = true;
+            imageGenerationCleanupError = error;
+          }
+        }
       }
     } finally {
       try {
@@ -540,6 +554,7 @@ async function deleteAppByIdExclusive(
       }
     }
   }
+  if (imageGenerationCleanupFailed) throw imageGenerationCleanupError;
 }
 
 export function registerAppHandlers() {

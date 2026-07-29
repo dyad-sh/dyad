@@ -436,4 +436,37 @@ describe("OperationRouteRegistry", () => {
       ],
     });
   });
+
+  it("rejects thenable snapshot and equality adapter results", () => {
+    const asyncSnapshot = new OperationRouteRegistry<Route>({
+      maxUnresolved: 1,
+      maxTerminalRetained: 1,
+      snapshotRoute: (() =>
+        Promise.resolve({
+          channel: "async",
+        })) as unknown as (route: Route) => Route,
+      sameRoute: (left, right) => left.channel === right.channel,
+    });
+    expect(() => asyncSnapshot.admit(claim("async-snapshot"))).toThrow(
+      "must be synchronous and non-thenable",
+    );
+    expect(asyncSnapshot.inspect().total).toBe(0);
+
+    const asyncEquality = new OperationRouteRegistry<Route>({
+      maxUnresolved: 1,
+      maxTerminalRetained: 1,
+      snapshotRoute: (route) => ({ ...route }),
+      sameRoute: (() => Promise.resolve(false)) as unknown as (
+        left: Route,
+        right: Route,
+      ) => boolean,
+    });
+    const original = asyncEquality.admit(claim("async-equality"));
+    expect(() => asyncEquality.admit(claim("async-equality"))).toThrow(
+      "must be synchronous and non-thenable",
+    );
+    expect(asyncEquality.inspect().routes[0].generation).toBe(
+      original.handle.generation,
+    );
+  });
 });

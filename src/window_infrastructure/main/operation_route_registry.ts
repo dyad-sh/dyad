@@ -367,6 +367,18 @@ export class OperationRouteRegistry<Route> {
     if (this.mutationVersion !== version) {
       throw new Error("Operation route adapter mutated registry ownership");
     }
+    if (
+      ((typeof value === "object" && value !== null) ||
+        typeof value === "function") &&
+      "then" in value
+    ) {
+      void Promise.resolve(value as PromiseLike<unknown>).catch(
+        () => undefined,
+      );
+      throw new Error(
+        "Operation route adapters must be synchronous and non-thenable",
+      );
+    }
     return value;
   }
 

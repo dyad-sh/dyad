@@ -269,7 +269,8 @@ class RemoteSnapshotStore<
     return (
       this.subscribers > 0 ||
       this.activeSubscriberOwnershipGeneration > 0 ||
-      this.explicitOwnershipGenerations.size > 0
+      this.explicitOwnershipGenerations.size > 0 ||
+      this.completionRetains > 0
     );
   }
 
@@ -668,6 +669,10 @@ export class RemoteMachineClient {
   private removeStatusListener?: () => void;
   private removeSnapshotListener?: () => void;
   private removeDisposedListener?: () => void;
+  private readonly startWaiters = new Set<{
+    readonly resolve: () => void;
+    readonly reject: (error: RemoteMachineTransportError) => void;
+  }>();
   private started = false;
   private disposed = false;
   private generation = 0;
@@ -685,6 +690,8 @@ export class RemoteMachineClient {
   start(): void {
     if (this.disposed || this.started) return;
     this.started = true;
+    for (const waiter of this.startWaiters) waiter.resolve();
+    this.startWaiters.clear();
     this.attachConnection();
   }
 
@@ -769,7 +776,10 @@ export class RemoteMachineClient {
           ),
         );
       }
-      if (!this.started || this.status !== "connected") {
+      if (!this.started) {
+        return this.waitUntilStarted().then(refresh);
+      }
+      if (this.status !== "connected") {
         store.setTransportStatus(this.status);
         return Promise.reject(this.transportError());
       }
@@ -935,6 +945,12 @@ export class RemoteMachineClient {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    const disposedError = new RemoteMachineTransportError(
+      "renderer-destroyed",
+      "Renderer was destroyed",
+    );
+    for (const waiter of this.startWaiters) waiter.reject(disposedError);
+    this.startWaiters.clear();
     this.stop();
     this.rejectPending("renderer-destroyed", "Renderer was destroyed");
     for (const store of this.stores.values()) {
@@ -945,6 +961,22 @@ export class RemoteMachineClient {
     }
     this.stores.clear();
     this.status = "disconnected";
+  }
+
+  private waitUntilStarted(): Promise<void> {
+    if (this.started) return Promise.resolve();
+    if (this.disposed) {
+      return Promise.reject(
+        new RemoteMachineTransportError(
+          "renderer-destroyed",
+          "Renderer was destroyed",
+        ),
+      );
+    }
+    return new Promise<void>((resolve, reject) => {
+      const waiter = { resolve, reject };
+      this.startWaiters.add(waiter);
+    });
   }
 
   private attachConnection(): void {

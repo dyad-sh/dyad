@@ -1,4 +1,9 @@
-import { StrictMode, createElement, type PropsWithChildren } from "react";
+import {
+  StrictMode,
+  createElement,
+  useEffect,
+  type PropsWithChildren,
+} from "react";
 import { act, render, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import {
@@ -9,7 +14,11 @@ import { TwoWindowHarness } from "@/testing/two_window_harness";
 import { ActorHost } from "./actor_host";
 import { RemoteMachineClient } from "./remote_client";
 import { createRemoteMachineManifest } from "./remote_manifest";
-import { RemoteMachineProvider, useDistributedMachine } from "./react";
+import {
+  RemoteMachineProvider,
+  useDistributedMachine,
+  useRemoteMachineClient,
+} from "./react";
 import { RemoteMachineTransport } from "./remote_transport";
 import { createRemoteTestMachine, FakeDuplexRemoteTransport } from "./testing";
 
@@ -40,6 +49,39 @@ function clientFor(
 }
 
 describe("useDistributedMachine", () => {
+  it("lets a child retain before the provider start effect", async () => {
+    const { duplex, machine, transport } = createHarness();
+    const client = clientFor(duplex.connect());
+    let ready: "pending" | "resolved" | "rejected" = "pending";
+
+    function Consumer() {
+      const manager = useRemoteMachineClient();
+      useEffect(() => {
+        const lease = manager.actor(machine, "actor").retain();
+        void lease.ready.then(
+          () => {
+            ready = "resolved";
+          },
+          () => {
+            ready = "rejected";
+          },
+        );
+        return lease.release;
+      }, [manager]);
+      return null;
+    }
+
+    const rendered = render(
+      createElement(RemoteMachineProvider, { client }, createElement(Consumer)),
+    );
+    await waitFor(() => expect(ready).toBe("resolved"));
+    expect(transport.inspectSubscriptions()).toHaveLength(1);
+
+    rendered.unmount();
+    await act(async () => Promise.resolve());
+    expect(transport.inspectSubscriptions()).toHaveLength(0);
+  });
+
   it("survives StrictMode subscription replay with one window reference", async () => {
     const { duplex, machine, transport } = createHarness();
     const client = clientFor(duplex.connect());

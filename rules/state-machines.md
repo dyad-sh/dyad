@@ -529,7 +529,10 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
 - Model StrictMode subscriber replay and explicit subscription leases as
   different ownership classes. A shared subscriber lease may use a
   replacement generation, while every explicit `retain()` needs its own live
-  token so releasing one owner cannot retire or leak another.
+  token so releasing one owner cannot retire or leak another. A lease created
+  before the owning client/provider starts must let `ready` adopt that startup
+  bootstrap, and an in-flight completion retain must count as transport
+  interest during connection replacement and disposal teardown.
 - In `runCosim` suites, `maxSchedules` bounds visited configurations, not only
   quiescent leaves. If one orthogonal action (for example quit at every phase)
   causes a bound hit, split it into a focused exhaustive alphabet instead of

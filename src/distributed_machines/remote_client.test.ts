@@ -330,6 +330,56 @@ describe("RemoteMachineClient", () => {
     expect(transport.inspectSubscriptions()).toHaveLength(0);
   });
 
+  it("unsubscribes the previous transport when completion is the only retain", async () => {
+    let releaseAuthorization!: () => void;
+    let authorizationStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      authorizationStarted = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      releaseAuthorization = resolve;
+    });
+    const base = createRemoteTestMachine();
+    const machine = {
+      ...base,
+      remoteIntent: {
+        ...base.remoteIntent,
+        async authorizeDispatch(
+          context: Parameters<typeof base.remoteIntent.authorizeDispatch>[0],
+        ) {
+          authorizationStarted();
+          await gate;
+          return base.remoteIntent.authorizeDispatch(context);
+        },
+      },
+    };
+    const { duplex, transport } = createHarness(machine);
+    const renderer = duplex.connect();
+    const unsubscribe = vi.spyOn(renderer, "unsubscribe");
+    const client = new RemoteMachineClient(
+      renderer,
+      createSequentialIdSource(),
+    );
+    client.start();
+    const actor = client.actor(machine, "actor");
+    const releaseListener = actor.subscribe(() => undefined);
+    await waitFor(() => actor.getStatus() === "ready");
+    const pending = actor.dispatch({ type: "INCREMENT" });
+    await started;
+
+    releaseListener();
+    await flush();
+    expect(transport.inspectSubscriptions()).toHaveLength(1);
+    client.replaceConnection(duplex.connect());
+    await expect(pending).rejects.toMatchObject({
+      code: "renderer-destroyed",
+    } satisfies Partial<RemoteMachineTransportError>);
+    expect(unsubscribe).toHaveBeenCalledWith(
+      expect.objectContaining({ machineId: machine.id }),
+    );
+    releaseAuthorization();
+  });
+
   it("resyncs revision gaps and rejects stale or disposed actor lifetimes", async () => {
     const { duplex, host, machine, transport } = createHarness();
     const renderer = duplex.connect();

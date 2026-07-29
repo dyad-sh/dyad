@@ -22,6 +22,7 @@ import {
 } from "@/app_run/operations";
 import type { FenceHandle } from "@/distributed_machines/keyed_admission_gate";
 import type { ActorMachineFenceHandle } from "@/distributed_machines/actor_host";
+import { uuidIdSource, type IdSource } from "@/state_machines/clock";
 
 type AppRunActorHost = Pick<
   typeof remoteMachineHost,
@@ -46,7 +47,10 @@ function isAppRunDrainEvent(event: AppRunActorEvent): boolean {
 }
 
 export class AppRunActorService {
-  constructor(private readonly host: AppRunActorHost = remoteMachineHost) {}
+  constructor(
+    private readonly host: AppRunActorHost = remoteMachineHost,
+    private readonly ids: IdSource = uuidIdSource,
+  ) {}
 
   actor(appId: number) {
     return this.host.ensure(appRunDefinition, appRunKey(appId));
@@ -261,7 +265,7 @@ export class AppRunActorService {
     event: AppRunIntentEvent,
   ): Promise<void> {
     const actor = this.actor(appId);
-    const requestId = operationId as RequestId;
+    const requestId = this.ids.next("app-run-ipc-request") as RequestId;
     const admittedEvent = {
       ...event,
       requestId,

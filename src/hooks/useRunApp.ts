@@ -12,12 +12,23 @@ import { usePackageManagerWarningStore } from "@/package_manager_warnings/Packag
 import { useMachineMutation } from "@/distributed_machines/use_machine_mutation";
 import type {
   AppRunAdmission,
+  AppRunRemoteManager,
   AppRunOperationInput,
   AppRunRefusal,
 } from "@/app_run/remote_manager";
 import type { AppRunOperationOutcome } from "@/app_run/operations";
 
 const CLOUD_SYNC_ERROR_TOAST_WINDOW_MS = 30_000;
+
+function classifyAppRunOutcome(outcome: AppRunOperationOutcome) {
+  if (outcome.kind === "succeeded") return { kind: "succeeded" } as const;
+  if (outcome.kind === "failed") {
+    return { kind: "failed", error: outcome.error } as const;
+  }
+  return outcome.reason === "superseded"
+    ? ({ kind: "superseded" } as const)
+    : ({ kind: "cancelled" } as const);
+}
 
 export function runAppLifecycleInBackground(
   operation: "start" | "restart" | "rebuild",
@@ -209,6 +220,21 @@ export function useRunApp() {
   const appId = useAtomValue(selectedAppIdAtom);
   const runState = useAppRunState(appId);
   const view = appId === null ? undefined : manager.getView(appId);
+  const prepareMutationRequest = useCallback(
+    (
+      input: {
+        readonly appId: number;
+        readonly operation: AppRunOperationInput;
+      },
+      observedRevision: Parameters<AppRunRemoteManager["prepareRequest"]>[2],
+    ) =>
+      manager.prepareRequest(
+        input.appId,
+        input.operation,
+        input.appId === appId ? observedRevision : undefined,
+      ),
+    [appId, manager],
+  );
   const mutation = useMachineMutation<
     { readonly appId: number; readonly operation: AppRunOperationInput },
     AppRunAdmission,
@@ -217,40 +243,24 @@ export function useRunApp() {
   >({
     connection: view?.connection ?? "disconnected",
     snapshot: view?.snapshot ?? { kind: "unavailable" },
-    request: (input, observedRevision) => {
-      const request = manager.prepareRequest(
-        input.appId,
-        input.operation,
-        input.appId === appId ? observedRevision : undefined,
-      );
-      if (!request) {
-        throw new Error("App run request does not target an active runtime");
-      }
-      return request;
-    },
-    classifyOutcome: (outcome) => {
-      if (outcome.kind === "succeeded") return { kind: "succeeded" };
-      if (outcome.kind === "failed") {
-        return { kind: "failed", error: outcome.error };
-      }
-      return outcome.reason === "superseded"
-        ? { kind: "superseded" }
-        : { kind: "cancelled" };
-    },
+    request: prepareMutationRequest,
+    classifyOutcome: classifyAppRunOutcome,
+    requestOwnership: "parallel",
   });
-  const mutateAppRun = mutation.mutate;
+  const mutateAppRunRef = useRef(mutation.mutate);
+  mutateAppRunRef.current = mutation.mutate;
   const loading =
     runState.phase === "starting" || runState.phase === "stopping";
 
   const dispatchMutation = useCallback(
     async (targetAppId: number, operation: AppRunOperationInput) => {
-      const settlement = await mutateAppRun({
+      const settlement = await mutateAppRunRef.current({
         appId: targetAppId,
         operation,
       });
       await manager.applyPublicSettlement(targetAppId, operation, settlement);
     },
-    [manager, mutateAppRun],
+    [manager],
   );
 
   const runApp = useCallback(
@@ -269,13 +279,12 @@ export function useRunApp() {
       if (appId === null) {
         return;
       }
-      if (!manager.getSnapshot(appId).invocationRef) return;
       await dispatchMutation(appId, {
         type: "STOP",
         startedAt: Date.now(),
       });
     },
-    [dispatchMutation, manager],
+    [dispatchMutation],
   );
 
   const restartApp = useCallback(

@@ -374,6 +374,50 @@ describe("main-hosted app-run actor", () => {
     manager.dispose();
   });
 
+  it("settles a run when process exit wins the race with command failure", async () => {
+    const pending = deferred<void>();
+    runtime.start.mockReturnValue(pending.promise);
+    const { duplex, host } = createHarness();
+    const manager = new AppRunRemoteManager(
+      createSequentialIdSource(),
+      duplex.connect(),
+    );
+    manager.start();
+
+    const request = manager.dispatch(7, { type: "START", startedAt: 10 });
+    await vi.waitFor(() => expect(runtime.start).toHaveBeenCalledOnce());
+    const actor = host.ensure(appRunDefinition, appRunKey(7));
+    const runState = actor.getSnapshot().runState;
+    if (runState.type === "idle") throw new Error("Expected an active run");
+    const [[startOptions]] = runtime.start.mock.calls as unknown as [
+      [
+        {
+          output: {
+            send(event: {
+              type: "app-exit";
+              appId: number;
+              message: string;
+              exitCode: number;
+              timestamp: number;
+            }): void;
+          };
+        },
+      ],
+    ];
+    startOptions.output.send({
+      type: "app-exit",
+      appId: 7,
+      message: "process exited",
+      exitCode: 1,
+      timestamp: 20,
+    });
+    pending.reject(new Error("process exited before readiness"));
+
+    await expect(request).rejects.toThrow("process exited before readiness");
+    expect(appRunOperationRegistry.inspect().total).toBe(0);
+    manager.dispose();
+  });
+
   it("releases transport subscriptions when an app is no longer observed", async () => {
     const { duplex, transport } = createHarness();
     const connection = duplex.connect();
@@ -835,7 +879,37 @@ describe("main-hosted app-run actor", () => {
     manager.dispose();
   });
 
-  it("removes the settlement waiter when remote dispatch throws", async () => {
+  it("settles from the protocol-v1 runtime correlation fallback", async () => {
+    const { duplex, host } = createHarness();
+    const connection = duplex.connect();
+    connection.dispatch = vi.fn(async (envelope) => {
+      const actor = host.ensure(appRunDefinition, appRunKey(7));
+      actor.send(envelope.encodedEvent as never);
+      await flush();
+      const metadata = actor.getMetadata();
+      return {
+        kind: "applied" as const,
+        messageId: envelope.messageId,
+        actorInstanceId: metadata.actorInstanceId,
+        revision: metadata.snapshotRevision,
+        transactionSequence: metadata.transactionSequence,
+      };
+    });
+    const manager = new AppRunRemoteManager(
+      createSequentialIdSource(),
+      connection,
+    );
+    manager.start();
+
+    await expect(
+      manager.dispatch(7, { type: "START", startedAt: 10 }),
+    ).resolves.toBeUndefined();
+
+    expect(runtime.start).toHaveBeenCalledOnce();
+    manager.dispose();
+  });
+
+  it("rejects a disconnected dispatch without stranding client ownership", async () => {
     const { duplex } = createHarness();
     const connection = duplex.connect();
     connection.dispatch = vi.fn(async () => {
@@ -1104,6 +1178,41 @@ describe("main-hosted app-run actor", () => {
         expectedRevision: actorA.getSnapshot().revision,
       }),
     ).resolves.toMatchObject({ kind: "applied" });
+  });
+
+  it("can fence a normally completed run without untracked command work", async () => {
+    const { duplex, host } = createHarness();
+    const manager = new AppRunRemoteManager(
+      createSequentialIdSource(),
+      duplex.connect(),
+    );
+    manager.start();
+    await manager.dispatch(7, { type: "START", startedAt: 10 });
+
+    const deletion = new AppRunActorService(host).beginAppDeletion(7);
+    expect(deletion.abort()).toBe(true);
+    manager.dispose();
+  });
+
+  it("stops a running app from a fresh unbootstrapped renderer actor", async () => {
+    const { actorA, duplex } = createHarness();
+    await actorA.resync();
+    await actorA.dispatch({
+      type: "START",
+      operationId: "existing-run",
+      startedAt: 10,
+      expectedRevision: actorA.getSnapshot().revision,
+    });
+    await flush();
+    const manager = new AppRunRemoteManager(
+      createSequentialIdSource(),
+      duplex.connect(),
+    );
+
+    await manager.dispatch(7, { type: "STOP", startedAt: 20 });
+
+    expect(runtime.stop).toHaveBeenCalledOnce();
+    manager.dispose();
   });
 
   it("keeps successful deletion fenced through final actor cleanup", async () => {

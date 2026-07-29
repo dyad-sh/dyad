@@ -47,12 +47,6 @@ export const appRunRemoteIntentContract = defineRemoteIntentContract<
     START: {
       ...trackedAtAdmission,
       observedRevision: { kind: "actor", required: true },
-      retry: {
-        kind: "stable-id",
-        identity: "request",
-        receiverDeduplication: "required",
-        lifetime: "window-session",
-      },
     },
     RESTART: {
       ...trackedAtAdmission,

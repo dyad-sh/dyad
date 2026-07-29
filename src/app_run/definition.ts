@@ -330,6 +330,31 @@ function transitionActor(
       : null;
   const result = transition(state.runState, toDomainEvent(key, state, event));
   const settlement = settlementFor(event);
+  const outcomes = settlement
+    ? ([
+        {
+          requestId: settlement.operationId as RequestId,
+          invocationRef: (
+            event as AppRunCorrelatedProducerEvent & {
+              readonly invocationRef: AppRunInvocationRef;
+            }
+          ).invocationRef,
+          outcome:
+            settlement.outcome === "succeeded"
+              ? {
+                  kind: "succeeded" as const,
+                  operation: settlement.kind,
+                }
+              : {
+                  kind: "failed" as const,
+                  operation: settlement.kind,
+                  error: settlement.error ?? {
+                    message: "App runtime operation failed",
+                  },
+                },
+        },
+      ] satisfies AppRunCorrelatedOutcome[])
+    : undefined;
   const observedExit =
     event.type === "START" ||
     event.type === "RESTART" ||
@@ -363,6 +388,7 @@ function transitionActor(
             lastSettlement: settlement ?? state.lastSettlement,
           },
           commands: [],
+          ...(outcomes ? { outcomes } : {}),
         }
       : { ...result, state };
   }
@@ -393,33 +419,7 @@ function transitionActor(
             lastSettlement: settlement ?? state.lastSettlement,
           },
     commands,
-    ...(settlement
-      ? {
-          outcomes: [
-            {
-              requestId: settlement.operationId as RequestId,
-              invocationRef: (
-                event as AppRunCorrelatedProducerEvent & {
-                  readonly invocationRef: AppRunInvocationRef;
-                }
-              ).invocationRef,
-              outcome:
-                settlement.outcome === "succeeded"
-                  ? {
-                      kind: "succeeded" as const,
-                      operation: settlement.kind,
-                    }
-                  : {
-                      kind: "failed" as const,
-                      operation: settlement.kind,
-                      error: settlement.error ?? {
-                        message: "App runtime operation failed",
-                      },
-                    },
-            },
-          ] satisfies AppRunCorrelatedOutcome[],
-        }
-      : {}),
+    ...(outcomes ? { outcomes } : {}),
   };
 }
 
@@ -454,7 +454,7 @@ function createCommandRunner() {
   return (
     command: CorrelatedRunCommand,
     emitActorEvent: (event: AppRunActorEvent) => void,
-  ): void | Promise<void> => {
+  ): Promise<void> => {
     const emit = (event: AppRunCorrelatedProducerEvent) =>
       emitActorEvent(event);
     switch (command.type) {
@@ -545,13 +545,13 @@ function createCommandRunner() {
           type: "RELOAD_COMPLETED",
           invocationRef: command.invocationRef,
         });
-        return;
+        return Promise.resolve();
       case "prepareExternalStart":
       case "applyUrl":
       case "bumpReloadToken":
       case "clearError":
       case "setError":
-        return;
+        return Promise.resolve();
     }
   };
 }

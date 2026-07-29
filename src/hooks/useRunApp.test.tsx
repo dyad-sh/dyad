@@ -268,6 +268,18 @@ describe("useRunApp remote intents", () => {
       operation: "rebuild",
     });
   });
+
+  it("keeps the run callback stable across mutation state renders", async () => {
+    const { Wrapper } = makeWrapper(1);
+    const hook = renderHook(() => useRunApp(), { wrapper: Wrapper });
+    const initialRunApp = hook.result.current.runApp;
+
+    await act(async () => {
+      await hook.result.current.runApp(1);
+    });
+
+    expect(hook.result.current.runApp).toBe(initialRunApp);
+  });
 });
 
 describe("runAppLifecycleInBackground", () => {

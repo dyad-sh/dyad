@@ -279,6 +279,72 @@ describe("useMachineMutation", () => {
     expect(firstDetach).toHaveBeenCalledOnce();
   });
 
+  it("keeps parallel caller promises owned until their own settlements", async () => {
+    const firstAdmission = controlled<PreparedAdmission<string, string>>();
+    const firstSettlement =
+      controlled<PreparedRequestSettlement<Outcome, string>>();
+    const firstDetach = vi.fn();
+    const secondAdmission = controlled<PreparedAdmission<string, string>>();
+    const secondSettlement =
+      controlled<PreparedRequestSettlement<Outcome, string>>();
+    const secondDetach = vi.fn();
+    const requests = [
+      fakeRequest(firstAdmission, firstSettlement, firstDetach),
+      fakeRequest(secondAdmission, secondSettlement, secondDetach),
+    ];
+    const { result } = renderHook(() =>
+      useMachineMutation({
+        connection: "ready",
+        snapshot: unavailable,
+        request: () => requests.shift()!,
+        classifyOutcome: classify,
+        requestOwnership: "parallel",
+      }),
+    );
+
+    let first!: Promise<PreparedRequestSettlement<Outcome, string>>;
+    let second!: Promise<PreparedRequestSettlement<Outcome, string>>;
+    act(() => {
+      first = result.current.mutate("first");
+      second = result.current.mutate("second");
+      firstAdmission.resolve({
+        kind: "admitted",
+        admission: "accepted",
+        disposition: "fresh",
+      });
+      secondAdmission.resolve({
+        kind: "admitted",
+        admission: "accepted",
+        disposition: "fresh",
+      });
+    });
+    expect(firstDetach).not.toHaveBeenCalled();
+
+    act(() => {
+      secondSettlement.resolve({
+        kind: "completed",
+        outcome: { kind: "succeeded" },
+      });
+    });
+    await second;
+    let firstResolved = false;
+    void first.then(() => {
+      firstResolved = true;
+    });
+    await act(async () => Promise.resolve());
+    expect(firstResolved).toBe(false);
+
+    act(() => {
+      firstSettlement.resolve({
+        kind: "completed",
+        outcome: { kind: "succeeded" },
+      });
+    });
+    await first;
+    expect(firstDetach).not.toHaveBeenCalled();
+    expect(secondDetach).not.toHaveBeenCalled();
+  });
+
   it("retries only through the prepared stable request handle", async () => {
     const admission = controlled<PreparedAdmission<string, string>>();
     const settled = controlled<PreparedRequestSettlement<Outcome, string>>();

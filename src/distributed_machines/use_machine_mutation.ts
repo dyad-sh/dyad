@@ -58,6 +58,11 @@ export interface UseMachineMutationOptions<
     outcome: Outcome,
   ) => MachineMutationTerminalExecution<Failure>;
   readonly onUnexpectedError?: (error: unknown) => void;
+  /**
+   * Parallel ownership preserves every caller's authoritative promise while
+   * projecting only the newest request into presentation state.
+   */
+  readonly requestOwnership?: "supersede" | "parallel";
 }
 
 export interface MachineMutation<Input, Admission, Outcome, Refusal, Failure> {
@@ -188,6 +193,9 @@ export function useMachineMutation<
       if (!mounted.current) {
         return { kind: "not-admitted", reason: "disposed" };
       }
+      if (options.requestOwnership === "supersede") {
+        active.current?.request.detach();
+      }
       active.current = undefined;
       const generation = ++nextGeneration.current;
       setAdmission({ kind: "preparing" });
@@ -241,6 +249,7 @@ export function useMachineMutation<
       observedRevision,
       reportUnexpected,
       request,
+      options.requestOwnership,
     ],
   );
 

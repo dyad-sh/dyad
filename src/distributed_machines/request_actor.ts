@@ -121,7 +121,7 @@ export interface CreateRemoteRequestActorOptions<
   readonly prepareIntent: (
     input: Input,
     identity: RequestIdentity,
-  ) => RemoteRequestIntent<Intent>;
+  ) => RemoteRequestIntent<Intent> | AdmissionRefusal<Refusal>;
   readonly fingerprint: (identity: RequestIdentity, input: Input) => string;
   readonly selectOutcome: (
     view: RemoteActorView<State>,
@@ -179,7 +179,7 @@ export function createRemoteRequestActor<
     request(input) {
       const preparedIntent = new WeakMap<
         RequestIdentity,
-        RemoteRequestIntent<Intent>
+        RemoteRequestIntent<Intent> | AdmissionRefusal<Refusal>
       >();
       return createCompletionAwareActor<
         Input,
@@ -243,6 +243,10 @@ export function createRemoteRequestActor<
               preparedIntent.get(identity) ??
               options.prepareIntent(input, identity);
             preparedIntent.set(identity, request);
+            if (!("intent" in request)) {
+              cleanup();
+              return request;
+            }
             const receipt = await options.actor.dispatch(request.intent, {
               expected: request.expected,
               requestIdentity: identity,

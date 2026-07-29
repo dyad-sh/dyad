@@ -129,7 +129,9 @@ describe("AppRunActorService lifecycle settlement", () => {
       disposeMachine: vi.fn().mockResolvedValue(undefined),
       dispose: vi.fn(),
     };
-    service = new AppRunActorService(host as never);
+    service = new AppRunActorService(host as never, {
+      next: vi.fn(() => "logical-ipc-request"),
+    });
 
     await expect(
       service.dispatchStart(7, {
@@ -141,5 +143,11 @@ describe("AppRunActorService lifecycle settlement", () => {
       message: "App run actor was disposed",
     });
     expect(actor.subscribe).not.toHaveBeenCalled();
+    expect(actor.enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operationId: "start-before-reset",
+        requestId: "logical-ipc-request",
+      }),
+    );
   });
 });

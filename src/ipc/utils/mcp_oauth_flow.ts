@@ -24,36 +24,30 @@ import {
   type McpOAuthListenerRequest,
 } from "@/mcp_oauth/registry";
 import { systemClock, uuidIdSource } from "@/state_machines/clock";
+import { PendingReceiptLedger } from "@/state_machines/pending_receipt_ledger";
 import { publishQueryInvalidations } from "./query_invalidation_delivery";
 
 const logger = log.scope("mcp_oauth_flow");
 const LOOPBACK_BIND_HOSTS = ["127.0.0.1", "::1"] as const;
 const mutatingServers = new Set<number>();
 const serverMutationBarriers = new Map<number, Promise<unknown>>();
-const oauthRequestReceipts = new Map<
-  string,
-  {
-    serverId: number;
-    promise: Promise<{ success: boolean; error: string | null }>;
-    pending: boolean;
-  }
->();
 const latestOAuthRequestGeneration = new Map<number, number>();
 const OAUTH_REQUEST_RECEIPT_LIMIT = 128;
+const OAUTH_REQUEST_RECEIPT_RETENTION_MS = 5 * 60_000;
 let oauthShuttingDown = false;
-
-function compactOAuthRequestReceipts(): void {
-  let settledCount = [...oauthRequestReceipts.values()].filter(
-    (receipt) => !receipt.pending,
-  ).length;
-  if (settledCount <= OAUTH_REQUEST_RECEIPT_LIMIT) return;
-  for (const [messageId, receipt] of oauthRequestReceipts) {
-    if (receipt.pending) continue;
-    oauthRequestReceipts.delete(messageId);
-    settledCount -= 1;
-    if (settledCount <= OAUTH_REQUEST_RECEIPT_LIMIT) break;
-  }
-}
+const oauthReceiptLedger = new PendingReceiptLedger<{
+  success: boolean;
+  error: string | null;
+}>({
+  clock: systemClock,
+  maxPendingEntries: OAUTH_REQUEST_RECEIPT_LIMIT,
+  maxSettledEntries: OAUTH_REQUEST_RECEIPT_LIMIT,
+  settledRetentionMs: OAUTH_REQUEST_RECEIPT_RETENTION_MS,
+  disposal: {
+    kind: "resolve",
+    value: () => ({ success: false, error: "OAuth is shutting down." }),
+  },
+});
 
 function escapeHtml(value: string): string {
   return value.replace(
@@ -330,74 +324,53 @@ export function runOAuthFlow(
 ): Promise<{ success: boolean; error: string | null }> {
   const rendererMessageId =
     params.rendererMessageId ?? `main:${globalThis.crypto.randomUUID()}`;
-  const existingReceipt = oauthRequestReceipts.get(rendererMessageId);
-  if (existingReceipt) {
-    return existingReceipt.serverId === params.serverId
-      ? existingReceipt.promise
-      : Promise.resolve({
-          success: false,
-          error: "OAuth retry message ID was reused for a different server.",
-        });
-  }
   if (oauthShuttingDown) {
     return Promise.resolve({
       success: false,
       error: "OAuth is shutting down.",
     });
   }
-  const pendingReceiptCount = [...oauthRequestReceipts.values()].filter(
-    (receipt) => receipt.pending,
-  ).length;
-  if (pendingReceiptCount >= OAUTH_REQUEST_RECEIPT_LIMIT) {
-    const promise = Promise.resolve({
-      success: false,
-      error:
-        "Too many OAuth requests are already pending; finish or cancel one and retry.",
-    });
-    oauthRequestReceipts.set(rendererMessageId, {
-      serverId: params.serverId,
-      promise,
-      pending: false,
-    });
-    compactOAuthRequestReceipts();
-    return promise;
+  let admitted = false;
+  const claim = oauthReceiptLedger.claim({
+    scope: "mcp-oauth-flow",
+    messageId: rendererMessageId,
+    fingerprint: String(params.serverId),
+    start: () => {
+      const generation =
+        (latestOAuthRequestGeneration.get(params.serverId) ?? 0) + 1;
+      latestOAuthRequestGeneration.set(params.serverId, generation);
+      return prepareAndRunOAuthFlow(
+        { ...params, rendererMessageId },
+        generation,
+        () => {
+          admitted = true;
+        },
+      );
+    },
+    retention: () => (admitted ? "retain" : "remove"),
+  });
+  if (claim.kind === "fresh" || claim.kind === "duplicate") {
+    return claim.receipt;
   }
-  const generation =
-    (latestOAuthRequestGeneration.get(params.serverId) ?? 0) + 1;
-  latestOAuthRequestGeneration.set(params.serverId, generation);
-  const promise = prepareAndRunOAuthFlow(
-    { ...params, rendererMessageId },
-    generation,
-  );
-  oauthRequestReceipts.set(rendererMessageId, {
-    serverId: params.serverId,
-    promise,
-    pending: true,
+  if (claim.kind === "conflict") {
+    return Promise.resolve({
+      success: false,
+      error: "OAuth retry message ID was reused for a different server.",
+    });
+  }
+  return Promise.resolve({
+    success: false,
+    error:
+      claim.kind === "capacity-rejected"
+        ? "Too many OAuth requests are already pending; finish or cancel one and retry."
+        : "OAuth is shutting down.",
   });
-  void promise.then(
-    () => settleOAuthRequestReceipt(rendererMessageId, promise),
-    () => settleOAuthRequestReceipt(rendererMessageId, promise),
-  );
-  return promise;
-}
-
-function settleOAuthRequestReceipt(
-  rendererMessageId: string,
-  promise: Promise<{ success: boolean; error: string | null }>,
-): void {
-  const receipt = oauthRequestReceipts.get(rendererMessageId);
-  if (receipt?.promise !== promise || !receipt.pending) return;
-  oauthRequestReceipts.delete(rendererMessageId);
-  oauthRequestReceipts.set(rendererMessageId, {
-    ...receipt,
-    pending: false,
-  });
-  compactOAuthRequestReceipts();
 }
 
 async function prepareAndRunOAuthFlow(
   params: RunOAuthFlowParams & { rendererMessageId: string },
   generation: number,
+  onAdmitted: () => void,
 ): Promise<{ success: boolean; error: string | null }> {
   if (oauthShuttingDown || mutatingServers.has(params.serverId)) {
     return {
@@ -468,6 +441,7 @@ async function prepareAndRunOAuthFlow(
   });
 
   let silentlyAuthorized = false;
+  onAdmitted();
   const result = await mcpOAuthRegistry.connect({
     port: callbackPort,
     serverId: server.id,
@@ -572,11 +546,6 @@ export function withMcpOAuthServerMutation<T>(
 
 export async function disposeMcpOAuthForShutdown(): Promise<void> {
   oauthShuttingDown = true;
-  const pendingPreparations = [...oauthRequestReceipts.values()]
-    .filter((receipt) => receipt.pending)
-    .map((receipt) => receipt.promise);
-  await Promise.all([
-    mcpOAuthRegistry.dispose(),
-    Promise.allSettled(pendingPreparations),
-  ]);
+  oauthReceiptLedger.dispose();
+  await mcpOAuthRegistry.dispose();
 }

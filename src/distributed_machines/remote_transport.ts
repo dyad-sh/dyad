@@ -1,6 +1,8 @@
+import { createHash } from "node:crypto";
 import { serialize } from "node:v8";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import type { Clock } from "@/state_machines/clock";
+import { PendingReceiptLedger } from "@/state_machines/pending_receipt_ledger";
 import type { WindowSessionId } from "@/window_infrastructure/types";
 import { ActorAdmissionError, type ActorHost } from "./actor_host";
 import type { HostedActorRef, RemoteMachineSender } from "./definition";
@@ -40,6 +42,8 @@ export interface RemoteMachineTransportOptions {
   readonly clock: Clock;
   readonly deduplicationRetentionMs?: number;
   readonly maxDeduplicationEntries?: number;
+  readonly maxPendingDeduplicationEntries?: number;
+  readonly maxSettledDeduplicationEntries?: number;
   readonly maxSubscriptionsPerWindow?: number;
   readonly maxAddressEnvelopeBytes?: number;
   readonly maxDispatchEnvelopeBytes?: number;
@@ -64,9 +68,13 @@ interface SubscriptionEntry {
   unsubscribeActor: () => void;
 }
 
-interface DeduplicationEntry {
-  readonly receipt: Promise<MachineDispatchReceipt>;
-  settledAt?: number;
+interface PreparedDispatchIdentity {
+  readonly definition: AnyRemoteMachineDefinition;
+  readonly key: unknown;
+  readonly event: unknown;
+  readonly address: string;
+  readonly admittedEntry: SubscriptionEntry;
+  readonly fingerprint: string;
 }
 
 interface PendingSubscription {
@@ -95,11 +103,9 @@ export class RemoteMachineTransport {
     PendingSubscription
   >();
   private readonly pendingReferencesPerWindow = new Map<number, number>();
-  private readonly deduplication = new Map<string, DeduplicationEntry>();
+  private readonly receiptLedger: PendingReceiptLedger<MachineDispatchReceipt>;
   private readonly removeWindowListener: () => void;
   private readonly removeDisposalListener: () => void;
-  private readonly deduplicationRetentionMs: number;
-  private readonly maxDeduplicationEntries: number;
   private readonly maxSubscriptionsPerWindow: number;
   private readonly maxAddressEnvelopeBytes: number;
   private readonly maxDispatchEnvelopeBytes: number;
@@ -108,10 +114,21 @@ export class RemoteMachineTransport {
   private disposed = false;
 
   constructor(private readonly options: RemoteMachineTransportOptions) {
-    this.deduplicationRetentionMs =
-      options.deduplicationRetentionMs ?? DEFAULT_DEDUPLICATION_RETENTION_MS;
-    this.maxDeduplicationEntries =
+    const legacyDeduplicationLimit =
       options.maxDeduplicationEntries ?? DEFAULT_MAX_DEDUPLICATION_ENTRIES;
+    this.receiptLedger = new PendingReceiptLedger({
+      clock: options.clock,
+      maxPendingEntries:
+        options.maxPendingDeduplicationEntries ?? legacyDeduplicationLimit,
+      maxSettledEntries:
+        options.maxSettledDeduplicationEntries ?? legacyDeduplicationLimit,
+      settledRetentionMs:
+        options.deduplicationRetentionMs ?? DEFAULT_DEDUPLICATION_RETENTION_MS,
+      disposal: {
+        kind: "resolve",
+        value: ({ messageId }) => this.rejected(messageId, "host-disposing"),
+      },
+    });
     this.maxSubscriptionsPerWindow =
       options.maxSubscriptionsPerWindow ?? DEFAULT_MAX_SUBSCRIPTIONS_PER_WINDOW;
     this.maxAddressEnvelopeBytes =
@@ -315,41 +332,45 @@ export class RemoteMachineTransport {
         this.rejected(envelope.messageId, "invalid-event"),
       );
     }
-    this.pruneDeduplication();
-    const deduplicationKey = `${windowSessionId}\0${envelope.messageId}`;
-    const previous = this.deduplication.get(deduplicationKey);
-    if (previous) return previous.receipt;
-    if (!this.reserveDeduplicationCapacity()) {
-      return Promise.reject(
-        new DyadError(
-          "Remote machine in-flight dispatch limit exceeded",
-          DyadErrorKind.RateLimited,
-        ),
-      );
+    const prepared = this.prepareDispatchIdentity(sender, envelope);
+    if ("receipt" in prepared) return Promise.resolve(prepared.receipt);
+    const claim = this.receiptLedger.claim({
+      scope: windowSessionId,
+      messageId: envelope.messageId,
+      fingerprint: prepared.fingerprint,
+      start: () =>
+        this.dispatchOnce(sender, windowSessionId, envelope, prepared),
+      retention: (settlement) =>
+        settlement.status === "fulfilled" &&
+        settlement.value.kind === "rejected" &&
+        settlement.value.reason === "host-disposing"
+          ? "remove"
+          : "retain",
+    });
+    switch (claim.kind) {
+      case "fresh":
+      case "duplicate":
+        return claim.receipt;
+      case "conflict":
+        return Promise.resolve(
+          this.rejected(envelope.messageId, "invalid-event"),
+        );
+      case "capacity-rejected":
+        return Promise.reject(
+          new DyadError(
+            "Remote machine in-flight dispatch limit exceeded",
+            DyadErrorKind.RateLimited,
+          ),
+        );
+      case "disposed":
+        return Promise.resolve(
+          this.rejected(envelope.messageId, "host-disposing"),
+        );
+      default: {
+        const exhaustive: never = claim;
+        return exhaustive;
+      }
     }
-    const receipt = this.dispatchOnce(sender, windowSessionId, envelope);
-    const entry: DeduplicationEntry = {
-      receipt,
-    };
-    this.deduplication.set(deduplicationKey, entry);
-    void receipt.then(
-      (settledReceipt) => {
-        if (
-          settledReceipt.kind === "rejected" &&
-          settledReceipt.reason === "host-disposing"
-        ) {
-          if (this.deduplication.get(deduplicationKey) === entry) {
-            this.deduplication.delete(deduplicationKey);
-          }
-          return;
-        }
-        entry.settledAt = this.options.clock.now();
-      },
-      () => {
-        entry.settledAt = this.options.clock.now();
-      },
-    );
-    return receipt;
   }
 
   inspectSubscriptions(): readonly {
@@ -393,39 +414,67 @@ export class RemoteMachineTransport {
     this.subscriptions.clear();
     this.actorKeys.clear();
     this.referencesPerWindow.clear();
-    this.deduplication.clear();
+    this.receiptLedger.dispose();
+  }
+
+  private prepareDispatchIdentity(
+    sender: RemoteTransportEndpoint,
+    envelope: MachineDispatchEnvelope,
+  ): PreparedDispatchIdentity | { readonly receipt: MachineDispatchReceipt } {
+    const definition = this.options.manifest.get(envelope.machineId);
+    if (!definition) {
+      return { receipt: this.rejected(envelope.messageId, "unknown-machine") };
+    }
+    if (envelope.protocolVersion !== definition.remote.protocolVersion) {
+      this.noteProtocolMismatch(sender, definition, envelope.protocolVersion);
+      return { receipt: this.rejected(envelope.messageId, "protocol-version") };
+    }
+    const keyResult = definition.remote.keyCodec.safeParse(envelope.encodedKey);
+    if (!keyResult.success) {
+      return { receipt: this.rejected(envelope.messageId, "invalid-key") };
+    }
+    const eventResult = definition.remote.eventCodec.safeParse(
+      envelope.encodedEvent,
+    );
+    if (!eventResult.success) {
+      return { receipt: this.rejected(envelope.messageId, "invalid-event") };
+    }
+    const address = this.address(definition, keyResult.data);
+    const admittedEntry = this.subscriptions.get(address);
+    if (!admittedEntry) {
+      return { receipt: this.rejected(envelope.messageId, "stale-actor") };
+    }
+    const fingerprint = createHash("sha256")
+      .update(
+        serialize([
+          envelope.protocolVersion,
+          definition.id,
+          admittedEntry.encodedKey,
+          eventResult.data,
+          envelope.expectedRevision,
+          envelope.correlationId,
+          envelope.causationId,
+        ]),
+      )
+      .digest("hex");
+    return {
+      definition,
+      key: admittedEntry.key,
+      event: eventResult.data,
+      address,
+      admittedEntry,
+      fingerprint,
+    };
   }
 
   private async dispatchOnce(
     sender: RemoteTransportEndpoint,
     windowSessionId: WindowSessionId,
     envelope: MachineDispatchEnvelope,
+    prepared: PreparedDispatchIdentity,
   ): Promise<MachineDispatchReceipt> {
-    const definition = this.options.manifest.get(envelope.machineId);
-    if (!definition) {
-      return this.rejected(envelope.messageId, "unknown-machine");
-    }
-    if (envelope.protocolVersion !== definition.remote.protocolVersion) {
-      this.noteProtocolMismatch(sender, definition, envelope.protocolVersion);
-      return this.rejected(envelope.messageId, "protocol-version");
-    }
-    const keyResult = definition.remote.keyCodec.safeParse(envelope.encodedKey);
-    if (!keyResult.success) {
-      return this.rejected(envelope.messageId, "invalid-key");
-    }
-    const eventResult = definition.remote.eventCodec.safeParse(
-      envelope.encodedEvent,
-    );
-    if (!eventResult.success) {
-      return this.rejected(envelope.messageId, "invalid-event");
-    }
-    const address = this.address(definition, keyResult.data);
-    const admittedEntry = this.subscriptions.get(address);
-    if (!admittedEntry) {
-      return this.rejected(envelope.messageId, "stale-actor");
-    }
+    const { definition, key, event, address, admittedEntry } = prepared;
     const senderContext = this.senderContext(sender);
-    const key = admittedEntry.key;
     let current: HostedActorRef<unknown, unknown, string> | undefined =
       admittedEntry.actor;
     for (
@@ -439,7 +488,7 @@ export class RemoteMachineTransport {
         await definition.remote.authorizeDispatch({
           sender: senderContext,
           key,
-          event: eventResult.data,
+          event,
           currentState: current?.getSnapshot(),
         });
       } catch (error) {
@@ -477,7 +526,7 @@ export class RemoteMachineTransport {
     if (!current) {
       return this.rejected(envelope.messageId, "stale-actor");
     }
-    const revisionPolicy = definition.remote.revisionPolicy(eventResult.data);
+    const revisionPolicy = definition.remote.revisionPolicy(event);
     const currentMetadata = current.getMetadata();
     const currentRevision = currentMetadata.snapshotRevision;
     if (
@@ -491,7 +540,7 @@ export class RemoteMachineTransport {
     const ticket = this.options.host.dispatch(
       definition,
       key,
-      eventResult.data,
+      event,
       envelope.expectedActorInstanceId ?? currentMetadata.actorInstanceId,
       {
         messageId: envelope.messageId,
@@ -876,26 +925,5 @@ export class RemoteMachineTransport {
       "Remote machine address exceeds the transport limit",
       DyadErrorKind.Validation,
     );
-  }
-
-  private pruneDeduplication(): void {
-    const oldestAllowed =
-      this.options.clock.now() - this.deduplicationRetentionMs;
-    for (const [key, entry] of this.deduplication) {
-      if (entry.settledAt !== undefined && entry.settledAt < oldestAllowed) {
-        this.deduplication.delete(key);
-      }
-    }
-  }
-
-  private reserveDeduplicationCapacity(): boolean {
-    while (this.deduplication.size >= this.maxDeduplicationEntries) {
-      const oldestSettled = [...this.deduplication].find(
-        ([, entry]) => entry.settledAt !== undefined,
-      );
-      if (!oldestSettled) return false;
-      this.deduplication.delete(oldestSettled[0]);
-    }
-    return true;
   }
 }

@@ -10,6 +10,7 @@
 
 import type { Clock, IdSource } from "@/state_machines/clock";
 import { systemClock, uuidIdSource } from "@/state_machines/clock";
+import { PendingReceiptLedger } from "@/state_machines/pending_receipt_ledger";
 import {
   createInvocationRef,
   InvocationRegistry,
@@ -117,16 +118,20 @@ export function createMcpOAuthRegistry(options: McpOAuthRegistryOptions) {
   const listeners = new Map<string, McpOAuthListenerHandle>();
   const timeoutHandles = new Map<string, ReturnType<Clock["schedule"]>>();
   const closeBarriers = new Map<number, Promise<void>>();
-  const messagePromises = new Map<
-    string,
-    {
-      serverId: number;
-      promise: Promise<McpOAuthConnectResult>;
-      pending: boolean;
-    }
-  >();
+  const receiptLedger = new PendingReceiptLedger<McpOAuthConnectResult>({
+    clock,
+    maxPendingEntries: MESSAGE_DEDUPE_LIMIT,
+    maxSettledEntries: MESSAGE_DEDUPE_LIMIT,
+    settledRetentionMs: timeoutMs,
+    disposal: {
+      kind: "resolve",
+      value: () => ({
+        success: false,
+        error: "OAuth flow registry disposed.",
+      }),
+    },
+  });
   const activeEffects = new Set<Promise<void>>();
-  let pendingMessageCount = 0;
   let disposed = false;
 
   const keyOf = (ref: McpOAuthInvocationRef) => invocationRegistryKey(ref);
@@ -138,19 +143,6 @@ export function createMcpOAuthRegistry(options: McpOAuthRegistryOptions) {
     );
     activeEffects.add(tracked);
     void tracked.finally(() => activeEffects.delete(tracked));
-  }
-
-  function compactSettledMessages(): void {
-    let settledCount = [...messagePromises.values()].filter(
-      (entry) => !entry.pending,
-    ).length;
-    if (settledCount <= MESSAGE_DEDUPE_LIMIT) return;
-    for (const [messageId, entry] of messagePromises) {
-      if (entry.pending) continue;
-      messagePromises.delete(messageId);
-      settledCount -= 1;
-      if (settledCount <= MESSAGE_DEDUPE_LIMIT) break;
-    }
   }
 
   function getState(port: number): McpOAuthState {
@@ -188,16 +180,6 @@ export function createMcpOAuthRegistry(options: McpOAuthRegistryOptions) {
     cancelTimeout(invocationRef);
     if (abortProvider) runtime.onAbort();
     runtime.resolve(result);
-    const receipt = messagePromises.get(runtime.rendererMessageId);
-    if (receipt?.promise === runtime.promise && receipt.pending) {
-      messagePromises.delete(runtime.rendererMessageId);
-      messagePromises.set(runtime.rendererMessageId, {
-        ...receipt,
-        pending: false,
-      });
-      pendingMessageCount -= 1;
-      compactSettledMessages();
-    }
     options.onSettled?.(runtime.serverId, invocationRef, result);
   }
 
@@ -455,29 +437,9 @@ export function createMcpOAuthRegistry(options: McpOAuthRegistryOptions) {
     return true;
   }
 
-  function rememberMessage(
-    rendererMessageId: string,
-    serverId: number,
-    promise: Promise<McpOAuthConnectResult>,
-    pending: boolean,
-  ): void {
-    messagePromises.set(rendererMessageId, { serverId, promise, pending });
-    if (pending) pendingMessageCount += 1;
-    compactSettledMessages();
-  }
-
   function connect(
     request: McpOAuthConnectRequest,
   ): Promise<McpOAuthConnectResult> {
-    const duplicate = messagePromises.get(request.rendererMessageId);
-    if (duplicate) {
-      if (duplicate.serverId === request.serverId) return duplicate.promise;
-      request.onAbort();
-      return Promise.resolve({
-        success: false,
-        error: "OAuth retry message ID was reused for a different server.",
-      });
-    }
     if (disposed) {
       request.onAbort();
       return Promise.resolve({
@@ -485,76 +447,69 @@ export function createMcpOAuthRegistry(options: McpOAuthRegistryOptions) {
         error: "OAuth flow registry disposed.",
       });
     }
-    if (pendingMessageCount >= MESSAGE_DEDUPE_LIMIT) {
-      request.onAbort();
-      const promise = Promise.resolve({
-        success: false,
-        error:
-          "Too many OAuth requests are already pending; finish or cancel one and retry.",
-      });
-      rememberMessage(
-        request.rendererMessageId,
-        request.serverId,
-        promise,
-        false,
-      );
-      return promise;
-    }
+    const claim = receiptLedger.claim({
+      scope: "mcp-oauth-registry",
+      messageId: request.rendererMessageId,
+      fingerprint: String(request.serverId),
+      start: () => {
+        const previousForServer = activeByServer.get(request.serverId);
+        if (previousForServer) {
+          void cancelInvocation(
+            previousForServer,
+            "OAuth flow superseded by a new Connect attempt.",
+          );
+        }
 
-    const previousForServer = activeByServer.get(request.serverId);
-    if (previousForServer) {
-      void cancelInvocation(
-        previousForServer,
-        "OAuth flow superseded by a new Connect attempt.",
-      );
-    }
-
-    const invocationRef = createInvocationRef(
-      MCP_OAUTH_INVOCATION_KIND,
-      request.serverId,
-      ids,
-    );
-    let resolvePromise!: (result: McpOAuthConnectResult) => void;
-    const promise = new Promise<McpOAuthConnectResult>((resolve) => {
-      resolvePromise = resolve;
-    });
-    const runtime: FlowRuntime = {
-      invocationRef,
-      serverId: request.serverId,
-      rendererMessageId: request.rendererMessageId,
-      authorize: request.authorize,
-      onAbort: request.onAbort,
-      promise,
-      resolve: resolvePromise,
-      settled: false,
-    };
-    runtimes.set(keyOf(invocationRef), runtime);
-    activeInvocations.register(invocationRef, runtime);
-    activeByServer.set(request.serverId, invocationRef);
-    flowPorts.set(keyOf(invocationRef), request.port);
-    rememberMessage(request.rendererMessageId, request.serverId, promise, true);
-    dispatch(request.port, {
-      type: "CONNECT",
-      invocationRef,
-      rendererMessageId: request.rendererMessageId,
-      expectedState: request.expectedState,
-      serverId: request.serverId,
-    });
-    return promise;
-  }
-
-  function retryResult(
-    rendererMessageId: string,
-    serverId: number,
-  ): Promise<McpOAuthConnectResult> | undefined {
-    const duplicate = messagePromises.get(rendererMessageId);
-    if (!duplicate) return undefined;
-    return duplicate.serverId === serverId
-      ? duplicate.promise
-      : Promise.resolve({
-          success: false,
-          error: "OAuth retry message ID was reused for a different server.",
+        const invocationRef = createInvocationRef(
+          MCP_OAUTH_INVOCATION_KIND,
+          request.serverId,
+          ids,
+        );
+        let resolvePromise!: (result: McpOAuthConnectResult) => void;
+        const promise = new Promise<McpOAuthConnectResult>((resolve) => {
+          resolvePromise = resolve;
         });
+        const runtime: FlowRuntime = {
+          invocationRef,
+          serverId: request.serverId,
+          rendererMessageId: request.rendererMessageId,
+          authorize: request.authorize,
+          onAbort: request.onAbort,
+          promise,
+          resolve: resolvePromise,
+          settled: false,
+        };
+        runtimes.set(keyOf(invocationRef), runtime);
+        activeInvocations.register(invocationRef, runtime);
+        activeByServer.set(request.serverId, invocationRef);
+        flowPorts.set(keyOf(invocationRef), request.port);
+        dispatch(request.port, {
+          type: "CONNECT",
+          invocationRef,
+          rendererMessageId: request.rendererMessageId,
+          expectedState: request.expectedState,
+          serverId: request.serverId,
+        });
+        return promise;
+      },
+    });
+    if (claim.kind === "fresh" || claim.kind === "duplicate") {
+      return claim.receipt;
+    }
+    request.onAbort();
+    if (claim.kind === "conflict") {
+      return Promise.resolve({
+        success: false,
+        error: "OAuth retry message ID was reused for a different server.",
+      });
+    }
+    return Promise.resolve({
+      success: false,
+      error:
+        claim.kind === "capacity-rejected"
+          ? "Too many OAuth requests are already pending; finish or cancel one and retry."
+          : "OAuth flow registry disposed.",
+    });
   }
 
   function claimCallback(
@@ -637,13 +592,13 @@ export function createMcpOAuthRegistry(options: McpOAuthRegistryOptions) {
         closes.push(closeListener(port, runtime.invocationRef));
       }
     }
+    receiptLedger.dispose();
     states.clear();
     await Promise.all([...closes, ...closeBarriers.values(), ...activeEffects]);
   }
 
   return {
     getState,
-    retryResult,
     connect,
     claimCallback,
     cancelServer,

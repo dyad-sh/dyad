@@ -256,6 +256,16 @@ describe("runOAuthFlow happy path (auth resolves AUTHORIZED first call)", () => 
       error: expect.stringMatching(/superseded/i),
     });
     expect(authMock).not.toHaveBeenCalled();
+
+    authMock.mockResolvedValueOnce("AUTHORIZED");
+    await expect(
+      runOAuthFlow({
+        serverId: 8,
+        rendererMessageId: "before-mutation",
+        callbackPort: 53_693,
+      }),
+    ).resolves.toMatchObject({ success: true });
+    expect(authMock).toHaveBeenCalledOnce();
   });
 });
 

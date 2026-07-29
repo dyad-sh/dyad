@@ -503,6 +503,11 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
 - Keep remote transport test doubles behind an existing domain test-support
   facade. Renderer and hybrid harnesses may consume that facade, but must not
   widen the allowlist of production modules that import transport internals.
+- When a test definition uses the native `remoteIntent` contract, inject
+  authorization races through `remoteIntent.authorizeSubscribe` or
+  `remoteIntent.authorizeDispatch`. Replacing the legacy `remote.authorize*`
+  hooks exercises only compatibility definitions and can leave a native test
+  gate waiting forever.
 - In `runCosim` suites, `maxSchedules` bounds visited configurations, not only
   quiescent leaves. If one orthogonal action (for example quit at every phase)
   causes a bound hit, split it into a focused exhaustive alphabet instead of

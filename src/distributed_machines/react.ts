@@ -10,7 +10,10 @@ import {
   RemoteMachineClient,
   type RemoteConnectionStatus,
   type RemoteClientDefinition,
+  type RemoteDispatchOptions,
   type RemoteMachineClientConnection,
+  type ObservedRevisionToken,
+  type RemoteActorView,
 } from "./remote_client";
 import type { MachineDispatchReceipt } from "./remote_protocol";
 
@@ -80,7 +83,12 @@ export function useDistributedMachine<
   readonly state: State;
   readonly projection: Projection;
   readonly connection: RemoteConnectionStatus;
-  readonly dispatch: (event: Event) => Promise<MachineDispatchReceipt<Reason>>;
+  readonly snapshot: RemoteActorView<State>["snapshot"];
+  readonly observedRevision?: ObservedRevisionToken;
+  readonly dispatch: (
+    event: Event,
+    options?: RemoteDispatchOptions,
+  ) => Promise<MachineDispatchReceipt<Reason>>;
 } {
   const client = useRemoteMachineClient();
   const actor = client.actor(definition, key);
@@ -109,6 +117,11 @@ export function useDistributedMachine<
     state: selected.view.state,
     projection: selected.projection,
     connection: selected.view.connection,
+    snapshot: selected.view.snapshot,
+    observedRevision:
+      selected.view.snapshot.kind === "available"
+        ? selected.view.snapshot.observedRevision
+        : undefined,
     dispatch: actor.dispatch,
   };
 }

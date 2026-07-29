@@ -27,7 +27,7 @@ async function waitFor(check: () => boolean): Promise<void> {
   throw new Error("Timed out waiting for remote client state");
 }
 
-function createHarness() {
+function createHarness(machine = createRemoteTestMachine()) {
   const clock = createFakeClock();
   const errors: ActorHostError[] = [];
   const host = new ActorHost({
@@ -36,7 +36,6 @@ function createHarness() {
     ids: createSequentialIdSource(),
     reportError: (error) => errors.push(error),
   });
-  const machine = createRemoteTestMachine();
   const manifest = createRemoteMachineManifest([machine]);
   const windows = new TwoWindowHarness();
   const transport = new RemoteMachineTransport({
@@ -50,7 +49,7 @@ function createHarness() {
 }
 
 describe("RemoteMachineClient", () => {
-  it("reference-counts one bootstrap per key and applies pre-bootstrap snapshots", async () => {
+  it("reference-counts one bootstrap per key and blocks dispatch before bootstrap", async () => {
     const { duplex, machine, transport } = createHarness();
     const renderer = duplex.connect();
     renderer.holdBootstrapResponses();
@@ -69,9 +68,12 @@ describe("RemoteMachineClient", () => {
         transport.inspectSubscriptions().length === 1,
     );
 
-    await actor.dispatch({ type: "INCREMENT" });
+    await expect(actor.dispatch({ type: "INCREMENT" })).rejects.toThrow(
+      "requires a completed subscription bootstrap",
+    );
     renderer.releaseBootstrapResponses();
     await waitFor(() => actor.getStatus() === "ready");
+    await actor.dispatch({ type: "INCREMENT" });
 
     expect(actor.getSnapshot()).toEqual({ value: 1 });
     expect(subscribe).toHaveBeenCalledTimes(1);
@@ -121,6 +123,101 @@ describe("RemoteMachineClient", () => {
     expect(transport.inspectSubscriptions()).toHaveLength(1);
     await actor.dispatch({ type: "INCREMENT" });
     expect(actor.getSnapshot()).toEqual({ value: 1 });
+  });
+
+  it("retries a failed bootstrap through the same subscription lease", async () => {
+    const { duplex, machine, transport } = createHarness();
+    const renderer = duplex.connect();
+    vi.spyOn(renderer, "subscribe").mockRejectedValueOnce(
+      new Error("synthetic bootstrap failure"),
+    );
+    const client = new RemoteMachineClient(
+      renderer,
+      createSequentialIdSource(),
+    );
+    client.start();
+    const actor = client.actor(machine, "actor");
+    const lease = actor.retain();
+
+    await expect(lease.ready).rejects.toThrow("synthetic bootstrap failure");
+    await expect(lease.refresh()).resolves.toBeUndefined();
+    expect(actor.getStatus()).toBe("ready");
+    expect(transport.inspectSubscriptions()).toHaveLength(1);
+
+    lease.release();
+    await flush();
+    expect(transport.inspectSubscriptions()).toHaveLength(0);
+  });
+
+  it("refreshes without changing ownership and ignores a stale release", async () => {
+    const { duplex, machine, transport } = createHarness();
+    const renderer = duplex.connect();
+    const client = new RemoteMachineClient(
+      renderer,
+      createSequentialIdSource(),
+    );
+    client.start();
+    const actor = client.actor(machine, "actor");
+    const first = actor.retain();
+    await first.ready;
+    await first.refresh();
+    expect(transport.inspectSubscriptions()[0]?.totalReferences).toBe(1);
+
+    first.release();
+    const replacement = actor.retain();
+    await replacement.ready;
+    await flush();
+    expect(transport.inspectSubscriptions()[0]?.totalReferences).toBe(1);
+
+    replacement.release();
+    replacement.release();
+    await flush();
+    expect(transport.inspectSubscriptions()).toHaveLength(0);
+  });
+
+  it("retains ownership through an in-flight terminal delivery", async () => {
+    let releaseAuthorization!: () => void;
+    let authorizationStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      authorizationStarted = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      releaseAuthorization = resolve;
+    });
+    const base = createRemoteTestMachine();
+    const machine = {
+      ...base,
+      remoteIntent: {
+        ...base.remoteIntent,
+        async authorizeDispatch(
+          context: Parameters<typeof base.remoteIntent.authorizeDispatch>[0],
+        ) {
+          authorizationStarted();
+          await gate;
+          return base.remoteIntent.authorizeDispatch(context);
+        },
+      },
+    };
+    const { duplex, transport } = createHarness(machine);
+    const renderer = duplex.connect();
+    const client = new RemoteMachineClient(
+      renderer,
+      createSequentialIdSource(),
+    );
+    client.start();
+    const actor = client.actor(machine, "actor");
+    const lease = actor.retain();
+    await lease.ready;
+    const pending = actor.dispatch({ type: "INCREMENT" });
+    await started;
+
+    lease.release();
+    await flush();
+    expect(transport.inspectSubscriptions()).toHaveLength(1);
+    releaseAuthorization();
+    await expect(pending).resolves.toMatchObject({ kind: "applied" });
+    await flush();
+    expect(transport.inspectSubscriptions()).toHaveLength(0);
   });
 
   it("resyncs revision gaps and rejects stale or disposed actor lifetimes", async () => {
@@ -178,16 +275,21 @@ describe("RemoteMachineClient", () => {
     const gate = new Promise<void>((resolve) => {
       authorize = resolve;
     });
-    const harness = createHarness();
-    const baseAuthorize = harness.machine.remote.authorizeDispatch;
-    const mutableRemote = harness.machine.remote as {
-      authorizeDispatch: typeof harness.machine.remote.authorizeDispatch;
+    const base = createRemoteTestMachine();
+    const machine = {
+      ...base,
+      remoteIntent: {
+        ...base.remoteIntent,
+        async authorizeDispatch(
+          context: Parameters<typeof base.remoteIntent.authorizeDispatch>[0],
+        ) {
+          started();
+          await gate;
+          return base.remoteIntent.authorizeDispatch(context);
+        },
+      },
     };
-    mutableRemote.authorizeDispatch = async (context) => {
-      started();
-      await gate;
-      return baseAuthorize(context);
-    };
+    const harness = createHarness(machine);
     const renderer = harness.duplex.connect();
     const client = new RemoteMachineClient(
       renderer,

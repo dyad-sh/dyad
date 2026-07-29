@@ -62,6 +62,27 @@ describe("useDistributedMachine", () => {
     );
 
     expect(rendered.result.current.projection).toEqual({ doubled: 0 });
+    expect(rendered.result.current.snapshot.kind).toBe("available");
+    const observedRevision = rendered.result.current.observedRevision;
+    expect(observedRevision).toBeDefined();
+    await act(() =>
+      rendered.result.current.dispatch(
+        { type: "SET", value: 2 },
+        { expected: observedRevision },
+      ),
+    );
+    await waitFor(() =>
+      expect(rendered.result.current.projection).toEqual({ doubled: 4 }),
+    );
+    await expect(
+      rendered.result.current.dispatch(
+        { type: "SET", value: 3 },
+        { expected: observedRevision },
+      ),
+    ).resolves.toMatchObject({
+      kind: "rejected",
+      reason: "revision-conflict",
+    });
     expect(transport.inspectSubscriptions()).toEqual([
       expect.objectContaining({ totalReferences: 1 }),
     ]);

@@ -2,13 +2,27 @@ import type { IgnoreReason } from "@/state_machines/types";
 import type { DistributedMachineDefinition } from "./definition";
 import { MachineIdentitySchema } from "./remote_protocol";
 
+/**
+ * Production definitions intentionally left on the protocol-v1 event
+ * compatibility adapter in PR4. Remove IDs only in their domain migration PR.
+ */
+export const REMOTE_PROTOCOL_V1_COMPATIBILITY_INVENTORY = Object.freeze([
+  "app_run",
+  "chat_stream",
+  "github_ops",
+  "image_generation",
+  "plan_handoff",
+  "version_preview",
+]);
+
 export type AnyRemoteMachineDefinition = DistributedMachineDefinition<
   string,
   any,
   any,
   any,
   any,
-  IgnoreReason
+  IgnoreReason,
+  any
 > & {
   readonly host: "main";
   readonly remote: NonNullable<
@@ -18,7 +32,8 @@ export type AnyRemoteMachineDefinition = DistributedMachineDefinition<
       any,
       any,
       any,
-      IgnoreReason
+      IgnoreReason,
+      any
     >["remote"]
   >;
 };

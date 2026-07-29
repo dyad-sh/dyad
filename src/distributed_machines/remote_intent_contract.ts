@@ -1,5 +1,7 @@
 import type { z } from "zod";
+import type { DyadError } from "@/errors/dyad_error";
 import type { RemoteMachineContract } from "./definition";
+import type { ActorRuntimeMetadata, RemoteMachineSender } from "./definition";
 
 export const DEFAULT_REMOTE_INTENT_ENVELOPE_BYTES = 256 * 1_024;
 export const DEFAULT_REMOTE_SNAPSHOT_ENVELOPE_BYTES = 1_024 * 1_024;
@@ -19,6 +21,41 @@ export interface AdmittedIntentContext<Key, Intent> {
   readonly sender: {
     readonly windowSessionId: string;
   };
+}
+
+export type RemoteAuthorizationDecision =
+  | { readonly kind: "allow" }
+  | { readonly kind: "deny"; readonly error: DyadError };
+
+export const allowRemoteAuthorization = (): RemoteAuthorizationDecision => ({
+  kind: "allow",
+});
+
+export const denyRemoteAuthorization = (
+  error: DyadError,
+): RemoteAuthorizationDecision => ({ kind: "deny", error });
+
+export interface SubscribeAuthorizationContext<Key> {
+  readonly sender: RemoteMachineSender & {
+    readonly windowSessionId: string;
+  };
+  /**
+   * Decoded but deliberately not interned/canonicalized. Authorization must
+   * not retain this value beyond the decision.
+   */
+  readonly key: Key;
+  readonly encodedKey: unknown;
+}
+
+export interface DispatchAuthorizationContext<Key, Intent, State> {
+  readonly sender: RemoteMachineSender & {
+    readonly windowSessionId: string;
+  };
+  readonly key: Key;
+  readonly intent: Intent;
+  readonly currentState: State;
+  readonly actor: ActorRuntimeMetadata;
+  readonly expectedObservedRevision?: number;
 }
 
 export type ObservedRevisionPolicy =
@@ -105,6 +142,55 @@ export interface RemoteIntentContract<
   };
   readonly refusalMap: RemoteIntentRefusalMap;
   readonly budgets: RemoteIntentEnvelopeBudgets;
+}
+
+/**
+ * Runtime-native remote boundary. Production definitions remain on the
+ * protocol-v1 compatibility adapter until their domain-specific migrations.
+ */
+export interface RuntimeRemoteIntentContract<
+  Key,
+  State,
+  RemoteIntent extends { readonly type: string },
+  InternalEvent,
+  Snapshot,
+> extends Omit<
+  RemoteIntentContract<Key, RemoteIntent, InternalEvent, Snapshot>,
+  "toTrustedEvent" | "authorization"
+> {
+  readonly toInternalEvent: (
+    context: AdmittedIntentContext<Key, RemoteIntent>,
+  ) => InternalEvent;
+  readonly authorizeSubscribe: (
+    context: SubscribeAuthorizationContext<Key>,
+  ) => RemoteAuthorizationDecision | Promise<RemoteAuthorizationDecision>;
+  readonly authorizeDispatch: (
+    context: DispatchAuthorizationContext<Key, RemoteIntent, State>,
+  ) => RemoteAuthorizationDecision | Promise<RemoteAuthorizationDecision>;
+}
+
+export function defineRuntimeRemoteIntentContract<
+  Key,
+  State,
+  RemoteIntent extends { readonly type: string },
+  InternalEvent,
+  Snapshot,
+>(
+  contract: RuntimeRemoteIntentContract<
+    Key,
+    State,
+    RemoteIntent,
+    InternalEvent,
+    Snapshot
+  >,
+): RuntimeRemoteIntentContract<
+  Key,
+  State,
+  RemoteIntent,
+  InternalEvent,
+  Snapshot
+> {
+  return Object.freeze(contract);
 }
 
 export function defineRemoteIntentContract<

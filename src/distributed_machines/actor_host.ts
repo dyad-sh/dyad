@@ -556,6 +556,8 @@ export class ActorHost {
     Promise<void>[]
   >();
   private readonly hostConstructionDisposals: Promise<void>[] = [];
+  private readonly machineLifecycleGenerations = new Map<string, number>();
+  private hostLifecycleGeneration = 0;
   private disposed = false;
   private disposal: Promise<void> | undefined;
   private readonly disposalListeners = new Set<
@@ -605,8 +607,42 @@ export class ActorHost {
     if (this.definitions.has(definition.id)) {
       throw new Error(`Machine ${definition.id} is already registered`);
     }
-    this.definitions.set(definition.id, definition as AnyDefinition);
+    this.definitions.set(definition.id, definition as unknown as AnyDefinition);
+    this.machineLifecycleGenerations.set(definition.id, 0);
     this.registeredDefinitions.add(definition);
+  }
+
+  captureAdmissionGeneration(machineId: string): {
+    readonly host: number;
+    readonly machine: number;
+  } {
+    if (this.disposed) {
+      throw new ActorAdmissionError("host-disposed", "ActorHost is disposed");
+    }
+    if (this.machineDisposals.has(machineId)) {
+      this.throwMachineDisposing(machineId);
+    }
+    if (!this.definitions.has(machineId)) {
+      throw new Error(`Machine ${machineId} is not registered`);
+    }
+    return {
+      host: this.hostLifecycleGeneration,
+      machine: this.machineLifecycleGenerations.get(machineId) ?? 0,
+    };
+  }
+
+  isAdmissionGenerationCurrent(
+    machineId: string,
+    generation: { readonly host: number; readonly machine: number },
+  ): boolean {
+    return (
+      !this.disposed &&
+      !this.machineDisposals.has(machineId) &&
+      this.definitions.has(machineId) &&
+      generation.host === this.hostLifecycleGeneration &&
+      generation.machine ===
+        (this.machineLifecycleGenerations.get(machineId) ?? 0)
+    );
   }
 
   ensure<
@@ -826,6 +862,10 @@ export class ActorHost {
   disposeMachine(machineId: string): Promise<void> {
     const existing = this.machineDisposals.get(machineId);
     if (existing) return existing;
+    this.machineLifecycleGenerations.set(
+      machineId,
+      (this.machineLifecycleGenerations.get(machineId) ?? 0) + 1,
+    );
     let actors!: readonly HostedActor<any, any, any, any, any>[];
     const constructionDisposals: Promise<void>[] = [];
     let disposal!: Promise<void>;
@@ -850,6 +890,7 @@ export class ActorHost {
   dispose(): Promise<void> {
     if (this.disposal) return this.disposal;
     this.disposed = true;
+    this.hostLifecycleGeneration += 1;
     let actors!: readonly HostedActor<any, any, any, any, any>[];
     this.disposal = Promise.resolve().then(() =>
       this.finishHostDisposal(actors),
@@ -871,6 +912,7 @@ export class ActorHost {
       );
     } finally {
       this.definitions.clear();
+      this.machineLifecycleGenerations.clear();
     }
   }
 

@@ -8,6 +8,15 @@ import type {
   DistributedMachineDefinition,
   RemoteMachineContract,
 } from "../definition";
+import {
+  DEFAULT_REMOTE_INTENT_ENVELOPE_BYTES,
+  DEFAULT_REMOTE_SNAPSHOT_ENVELOPE_BYTES,
+  PROTOCOL_V1_REFUSAL_MAP,
+  allowRemoteAuthorization,
+  defineRuntimeRemoteIntentContract,
+  denyRemoteAuthorization,
+  type RuntimeRemoteIntentContract,
+} from "../remote_intent_contract";
 import { REMOTE_MACHINE_PROTOCOL_VERSION } from "../remote_protocol";
 
 const InvocationRefSchema = z
@@ -18,7 +27,7 @@ const InvocationRefSchema = z
   })
   .strict();
 
-export const RemoteTestEventSchema = z.discriminatedUnion("type", [
+export const RemoteTestIntentSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("INCREMENT") }).strict(),
   z
     .object({
@@ -49,6 +58,11 @@ export const RemoteTestEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("CHAIN_INCREMENT") }).strict(),
 ]);
 
+export const RemoteTestEventSchema = z.discriminatedUnion("type", [
+  ...RemoteTestIntentSchema.options,
+  z.object({ type: z.literal("PRODUCER_INCREMENT") }).strict(),
+]);
+
 export const RemoteTestSnapshotSchema = z
   .object({
     value: z.number().int(),
@@ -63,6 +77,7 @@ export interface RemoteTestState {
 }
 
 export type RemoteTestEvent = z.infer<typeof RemoteTestEventSchema>;
+export type RemoteTestIntent = z.infer<typeof RemoteTestIntentSchema>;
 export type RemoteTestSnapshot = z.infer<typeof RemoteTestSnapshotSchema>;
 type RemoteTestCommand =
   | { readonly type: "FAIL" }
@@ -95,12 +110,20 @@ export function createRemoteTestMachine(
   RemoteTestState,
   RemoteTestEvent,
   RemoteTestCommand,
-  RemoteTestReason
+  RemoteTestReason,
+  RemoteTestIntent
 > & {
   readonly host: "main";
   readonly remote: RemoteMachineContract<
     string,
     RemoteTestState,
+    RemoteTestEvent,
+    RemoteTestSnapshot
+  >;
+  readonly remoteIntent: RuntimeRemoteIntentContract<
+    string,
+    RemoteTestState,
+    RemoteTestIntent,
     RemoteTestEvent,
     RemoteTestSnapshot
   >;
@@ -112,6 +135,7 @@ export function createRemoteTestMachine(
     transition(state, event) {
       switch (event.type) {
         case "INCREMENT":
+        case "PRODUCER_INCREMENT":
           return change({ ...state, value: state.value + 1 });
         case "SET":
           return change({ ...state, value: event.value });
@@ -145,12 +169,117 @@ export function createRemoteTestMachine(
     }),
     createCommandRunner: () => (command, emit) => {
       if (command.type === "EMIT_INCREMENT") {
-        emit({ type: "INCREMENT" });
+        emit({ type: "PRODUCER_INCREMENT" });
         return;
       }
       throw new Error("synthetic command failure");
     },
     lifecycle,
+    remoteIntent: defineRuntimeRemoteIntentContract<
+      string,
+      RemoteTestState,
+      RemoteTestIntent,
+      RemoteTestEvent,
+      RemoteTestSnapshot
+    >({
+      keyCodec: z.string().min(1).max(128),
+      encodeKey: (key) => key,
+      rendererIntentCodec: RemoteTestIntentSchema,
+      snapshotCodec: RemoteTestSnapshotSchema,
+      toInternalEvent: ({ intent }) => {
+        const cloned = structuredClone(intent);
+        if (cloned.type === "START" || cloned.type === "CANCEL") {
+          return Object.freeze({
+            ...cloned,
+            invocationRef: Object.freeze({ ...cloned.invocationRef }),
+          });
+        }
+        return Object.freeze({ ...cloned });
+      },
+      authorizeSubscribe({ key }) {
+        return key === "forbidden"
+          ? denyRemoteAuthorization(
+              new DyadError("forbidden key", DyadErrorKind.Auth),
+            )
+          : allowRemoteAuthorization();
+      },
+      authorizeDispatch({ key }) {
+        return key === "forbidden"
+          ? denyRemoteAuthorization(
+              new DyadError("forbidden key", DyadErrorKind.Auth),
+            )
+          : allowRemoteAuthorization();
+      },
+      keyIntentRelationship: {
+        kind: "validate",
+        validate: (key, intent) =>
+          (intent.type !== "START" && intent.type !== "CANCEL") ||
+          intent.invocationRef.entityKey === key,
+      },
+      intents: {
+        INCREMENT: {
+          completion: "admission-only",
+          observedRevision: { kind: "none" },
+          retry: { kind: "none" },
+          acceptance: "admission",
+          inputDisposition: "preserve",
+        },
+        SET: {
+          completion: "admission-only",
+          observedRevision: { kind: "actor", required: true },
+          retry: { kind: "none" },
+          acceptance: "admission",
+          inputDisposition: "preserve",
+        },
+        ADD_BIGINT: {
+          completion: "admission-only",
+          observedRevision: { kind: "none" },
+          retry: { kind: "none" },
+          acceptance: "admission",
+          inputDisposition: "preserve",
+        },
+        IGNORE: {
+          completion: "admission-only",
+          observedRevision: { kind: "none" },
+          retry: { kind: "none" },
+          acceptance: "admission",
+          inputDisposition: "preserve",
+        },
+        START: {
+          completion: "tracked-completion",
+          observedRevision: { kind: "none" },
+          retry: { kind: "none" },
+          acceptance: "admission",
+          inputDisposition: "preserve-until-accepted",
+        },
+        CANCEL: {
+          completion: "tracked-completion",
+          observedRevision: { kind: "none" },
+          retry: { kind: "none" },
+          acceptance: "admission",
+          inputDisposition: "preserve",
+        },
+        FAIL_COMMAND: {
+          completion: "admission-only",
+          observedRevision: { kind: "none" },
+          retry: { kind: "none" },
+          acceptance: "admission",
+          inputDisposition: "preserve",
+        },
+        CHAIN_INCREMENT: {
+          completion: "admission-only",
+          observedRevision: { kind: "none" },
+          retry: { kind: "none" },
+          acceptance: "admission",
+          inputDisposition: "preserve",
+        },
+      },
+      refusalMap: PROTOCOL_V1_REFUSAL_MAP,
+      budgets: {
+        intentBytes: DEFAULT_REMOTE_INTENT_ENVELOPE_BYTES,
+        snapshotBytes: DEFAULT_REMOTE_SNAPSHOT_ENVELOPE_BYTES,
+      },
+    }),
     remote: {
       protocolVersion: REMOTE_MACHINE_PROTOCOL_VERSION,
       keyCodec: z.string().min(1).max(128),

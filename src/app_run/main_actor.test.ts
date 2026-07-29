@@ -905,6 +905,7 @@ describe("main-hosted app-run actor", () => {
     });
 
     releaseA();
+    await flush();
     expect(transport.inspectSubscriptions()[0]?.totalReferences).toBe(1);
     pending.resolve();
     await flush();

@@ -13,6 +13,7 @@ import type {
   TransitionObserver,
   TransitionResult,
 } from "@/state_machines/types";
+import type { RuntimeRemoteIntentContract } from "./remote_intent_contract";
 
 export type ActorInstanceId = string;
 
@@ -176,6 +177,7 @@ export interface DistributedMachineDefinition<
   Event,
   Command,
   Reason extends IgnoreReason,
+  RemoteIntent = Event,
 > {
   readonly id: Id;
   readonly host: "main" | "renderer";
@@ -202,6 +204,17 @@ export interface DistributedMachineDefinition<
   readonly lifecycle: ActorLifecyclePolicy<Key, State>;
   readonly persistence?: MachinePersistencePolicy<Key, State>;
   readonly remote?: RemoteMachineContract<Key, State, Event>;
+  /**
+   * Native renderer-intent boundary. Definitions without this field use the
+   * explicit protocol-v1 compatibility adapter in the remote transport.
+   */
+  readonly remoteIntent?: RuntimeRemoteIntentContract<
+    Key,
+    State,
+    Extract<RemoteIntent, { readonly type: string }>,
+    Event,
+    unknown
+  >;
 }
 
 export interface LocalActorRef<State, Event> {

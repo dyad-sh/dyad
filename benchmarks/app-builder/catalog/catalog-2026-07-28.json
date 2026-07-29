@@ -1,0 +1,300 @@
+{
+  "version": "2026-07-29T00:47:04.634Z",
+  "expiresAt": "2026-07-29T01:47:04.634Z",
+  "providers": [
+    {
+      "id": "openai",
+      "displayName": "OpenAI",
+      "type": "cloud",
+      "websiteUrl": "https://platform.openai.com/api-keys",
+      "supportsThinking": true
+    },
+    {
+      "id": "anthropic",
+      "displayName": "Anthropic",
+      "type": "cloud",
+      "websiteUrl": "https://platform.claude.com/settings/keys",
+      "supportsThinking": true,
+      "gatewayPrefix": "anthropic/"
+    },
+    {
+      "id": "google",
+      "displayName": "Google",
+      "type": "cloud",
+      "hasFreeTier": true,
+      "websiteUrl": "https://aistudio.google.com/api-keys",
+      "supportsThinking": true,
+      "gatewayPrefix": "gemini/"
+    },
+    {
+      "id": "vertex",
+      "displayName": "Google Vertex AI",
+      "type": "cloud",
+      "websiteUrl": "https://console.cloud.google.com/vertex-ai",
+      "secondary": true,
+      "supportsThinking": true,
+      "gatewayPrefix": "gemini/"
+    },
+    {
+      "id": "openrouter",
+      "displayName": "OpenRouter",
+      "type": "cloud",
+      "hasFreeTier": true,
+      "websiteUrl": "https://openrouter.ai/workspaces/default/keys"
+    },
+    {
+      "id": "xai",
+      "displayName": "xAI",
+      "type": "cloud",
+      "websiteUrl": "https://console.x.ai",
+      "secondary": true
+    }
+  ],
+  "modelsByProvider": {
+    "openai": [
+      {
+        "apiName": "gpt-5.6-sol",
+        "displayName": "GPT 5.6 Sol",
+        "description": "OpenAI's frontier model for complex professional work",
+        "dollarSigns": 6,
+        "temperature": 1,
+        "maxOutputTokens": 128000,
+        "contextWindow": 1050000,
+        "lifecycle": { "stage": "preview" }
+      },
+      {
+        "apiName": "gpt-5.6-terra",
+        "displayName": "GPT 5.6 Terra",
+        "description": "Balances intelligence and cost for everyday work",
+        "dollarSigns": 3,
+        "temperature": 1,
+        "maxOutputTokens": 128000,
+        "contextWindow": 1050000,
+        "lifecycle": { "stage": "preview" }
+      },
+      {
+        "apiName": "gpt-5.6-luna",
+        "displayName": "GPT 5.6 Luna",
+        "description": "Fast and affordable, optimized for cost-sensitive workloads",
+        "dollarSigns": 2,
+        "temperature": 1,
+        "maxOutputTokens": 128000,
+        "contextWindow": 1050000,
+        "lifecycle": { "stage": "preview" }
+      }
+    ],
+    "anthropic": [
+      {
+        "apiName": "claude-opus-5",
+        "displayName": "Claude Opus 5",
+        "description": "Anthropic's most advanced Opus model for agentic coding",
+        "dollarSigns": 6,
+        "temperature": 1,
+        "maxOutputTokens": 128000,
+        "contextWindow": 1000000
+      },
+      {
+        "apiName": "claude-fable-5",
+        "displayName": "Claude Fable 5",
+        "description": "Anthropic's frontier model (extremely expensive)",
+        "dollarSigns": 10,
+        "temperature": 1,
+        "maxOutputTokens": 64000,
+        "contextWindow": 1000000
+      },
+      {
+        "apiName": "claude-opus-4-8",
+        "displayName": "Claude Opus 4.8",
+        "description": "Strong coding model",
+        "dollarSigns": 6,
+        "temperature": 1,
+        "maxOutputTokens": 64000,
+        "contextWindow": 1000000
+      },
+      {
+        "apiName": "claude-sonnet-5",
+        "displayName": "Claude Sonnet 5",
+        "description": "Anthropic's best balance of speed and intelligence",
+        "dollarSigns": 5,
+        "temperature": 1,
+        "maxOutputTokens": 64000,
+        "contextWindow": 1000000
+      }
+    ],
+    "google": [
+      {
+        "apiName": "gemini-3.6-flash",
+        "displayName": "Gemini 3.6 Flash",
+        "description": "Google's most intelligent model built for speed",
+        "dollarSigns": 3,
+        "maxOutputTokens": 65536,
+        "contextWindow": 1048576
+      },
+      {
+        "apiName": "gemini-3-flash-preview",
+        "displayName": "Gemini 3 Flash (Preview)",
+        "description": "Google fast and affordable Gemini model",
+        "dollarSigns": 2,
+        "temperature": 1,
+        "maxOutputTokens": 65535,
+        "contextWindow": 1048576,
+        "lifecycle": { "stage": "preview" }
+      }
+    ],
+    "vertex": [
+      {
+        "apiName": "gemini-3.6-flash",
+        "displayName": "Gemini 3.6 Flash",
+        "description": "Vertex Gemini 3.6 Flash model",
+        "dollarSigns": 3,
+        "maxOutputTokens": 65536,
+        "contextWindow": 1048576
+      },
+      {
+        "apiName": "gemini-3-flash-preview",
+        "displayName": "Gemini 3 Flash (Preview)",
+        "description": "Vertex Gemini 3 Flash preview model",
+        "dollarSigns": 2,
+        "temperature": 1,
+        "maxOutputTokens": 65535,
+        "contextWindow": 1048576,
+        "lifecycle": { "stage": "preview" }
+      }
+    ],
+    "openrouter": [
+      {
+        "apiName": "openrouter/free",
+        "displayName": "Free (OpenRouter)",
+        "description": "A rotating free-tier OpenRouter model",
+        "dollarSigns": 0,
+        "temperature": 0,
+        "maxOutputTokens": 32000,
+        "contextWindow": 200000
+      },
+      {
+        "apiName": "nvidia/nemotron-3-super-120b-a12b:free",
+        "displayName": "Nemotron 3 Super (Free)",
+        "description": "NVIDIA's open 120B MoE model with a 1M context window",
+        "dollarSigns": 0,
+        "temperature": 0,
+        "maxOutputTokens": 32000,
+        "contextWindow": 1000000
+      },
+      {
+        "apiName": "moonshotai/kimi-k3",
+        "displayName": "Kimi K3",
+        "description": "Moonshot AI's frontier model for long-horizon coding and reasoning",
+        "dollarSigns": 5,
+        "temperature": 1,
+        "contextWindow": 1040000
+      },
+      {
+        "apiName": "z-ai/glm-5.2",
+        "displayName": "GLM 5.2",
+        "description": "Z-AI's best coding model",
+        "dollarSigns": 2,
+        "temperature": 1,
+        "maxOutputTokens": 32000,
+        "contextWindow": 1000000
+      },
+      {
+        "apiName": "minimax/minimax-m3",
+        "displayName": "MiniMax M3",
+        "description": "MiniMax's multimodal model for long-horizon agentic work and coding",
+        "dollarSigns": 1,
+        "temperature": 0,
+        "contextWindow": 524288
+      },
+      {
+        "apiName": "x-ai/grok-4.5",
+        "displayName": "Grok 4.5",
+        "description": "xAI's frontier model for coding, knowledge work, and STEM",
+        "dollarSigns": 3,
+        "temperature": 1,
+        "contextWindow": 500000
+      }
+    ],
+    "xai": [
+      {
+        "apiName": "grok-4",
+        "displayName": "Grok 4",
+        "description": "xAI flagship model",
+        "dollarSigns": 3,
+        "temperature": 0,
+        "contextWindow": 256000
+      }
+    ]
+  },
+  "aliases": [
+    {
+      "id": "dyad/theme-generator/google",
+      "resolvedModel": {
+        "providerId": "google",
+        "apiName": "gemini-3.1-pro-preview"
+      },
+      "displayName": "Google",
+      "purpose": "theme-generation"
+    },
+    {
+      "id": "dyad/theme-generator/anthropic",
+      "resolvedModel": {
+        "providerId": "anthropic",
+        "apiName": "claude-opus-4-6"
+      },
+      "displayName": "Anthropic",
+      "purpose": "theme-generation"
+    },
+    {
+      "id": "dyad/theme-generator/openai",
+      "resolvedModel": { "providerId": "openai", "apiName": "gpt-5.4" },
+      "displayName": "OpenAI",
+      "purpose": "theme-generation"
+    },
+    {
+      "id": "dyad/auto/openai",
+      "resolvedModel": { "providerId": "openai", "apiName": "gpt-5.6-sol" },
+      "displayName": "Auto OpenAI",
+      "purpose": "auto-mode"
+    },
+    {
+      "id": "dyad/auto/anthropic",
+      "resolvedModel": {
+        "providerId": "anthropic",
+        "apiName": "claude-opus-4-8"
+      },
+      "displayName": "Auto Anthropic",
+      "purpose": "auto-mode"
+    },
+    {
+      "id": "dyad/auto/google",
+      "resolvedModel": {
+        "providerId": "google",
+        "apiName": "gemini-3.6-flash"
+      },
+      "displayName": "Auto Google",
+      "purpose": "auto-mode"
+    },
+    {
+      "id": "dyad/auto/openrouter",
+      "resolvedModel": {
+        "providerId": "openrouter",
+        "apiName": "nvidia/nemotron-3-super-120b-a12b:free"
+      },
+      "displayName": "Auto OpenRouter",
+      "purpose": "auto-mode"
+    },
+    {
+      "id": "dyad/help-bot/default",
+      "resolvedModel": { "providerId": "openai", "apiName": "gpt-5-nano" },
+      "displayName": "Help Bot",
+      "purpose": "help-bot"
+    }
+  ],
+  "curatedSelections": {
+    "themeGenerationOptions": [
+      { "id": "dyad/theme-generator/google", "label": "Google" },
+      { "id": "dyad/theme-generator/anthropic", "label": "Anthropic" },
+      { "id": "dyad/theme-generator/openai", "label": "OpenAI" }
+    ]
+  }
+}

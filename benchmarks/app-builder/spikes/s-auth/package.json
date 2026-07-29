@@ -1,0 +1,21 @@
+{
+  "name": "s-auth",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@neondatabase/auth": "^0.4.2-beta",
+    "better-auth": "^1.4.18",
+    "next": "^16.2.12",
+    "pg": "^8.22.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  }
+}

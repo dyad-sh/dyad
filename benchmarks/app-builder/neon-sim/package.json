@@ -1,0 +1,14 @@
+{
+  "name": "neon-sim",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "dependencies": {
+    "better-auth": "^1.4.18",
+    "pg": "^8.22.0"
+  },
+  "devDependencies": {
+    "@neondatabase/api-client": "^2.7.1",
+    "@neondatabase/serverless": "^1.1.0"
+  }
+}

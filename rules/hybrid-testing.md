@@ -163,3 +163,24 @@ observable DOM or database update, call `await harness.bridge.settleInFlight()`
 before ending the test. Otherwise provider teardown can dispose the owning state
 machine while its command is still settling and produce misleading disposal
 errors after an otherwise successful assertion.
+
+## Headless real-engine runs (benchmarks, evals through the chat-flow harness)
+
+- Any code path through `runPtyCommand` (e.g. `add_dependency` → npm) fails under
+  plain node/vitest with `posix_spawnp failed` — node-pty is built for Electron's
+  ABI. Set `DYAD_DISABLE_PTY=1` to use the child_process fallback.
+- Local-agent consent-gated tools default to "ask"; headless there is no UI, so
+  each prompt hangs to the 300s consent deadline and then throws
+  `User denied permission for <tool>`. Pre-seed `settings.agentToolConsents`
+  using EXACT tool names (`restart_app`, `rebuild_app`, `execute_sql`,
+  `add_dependency`, `web_search`, `web_crawl`) — not file names like
+  `app_lifecycle`.
+- `getElectron()` (src/paths/paths.ts) gates on `process.versions.electron`, so
+  `vi.mock("electron")` never reaches it — helpers that dereference
+  `electron.app` need explicit non-Electron fallbacks. Symptom:
+  `Cannot read properties of undefined (reading 'app')`.
+- The Dyad engine does not cancel server-side work when a client disconnects.
+  Killing a mid-stream run leaves zombies that degrade the engine until even
+  tiny requests time out (undici's 300s headersTimeout + silent AI-SDK retries
+  look like exactly-300s stall loops). Probe with a small request before starting
+  a new run; never kill-and-relaunch without letting the engine drain.

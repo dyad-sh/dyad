@@ -131,6 +131,13 @@ export interface ChatFlowHarnessOptions {
   electronMock: ElectronMockShared;
   /** Import-app fixture to check out. Default "minimal". */
   fixtureApp?: string;
+  /**
+   * Absolute path to a directory to check out as the app instead of a named
+   * `e2e-tests/fixtures/import-app` fixture. Takes precedence over
+   * `fixtureApp`. Used by benchmarks that start from an arbitrary template
+   * snapshot.
+   */
+  fixtureAppPath?: string;
   /** Provider row + model row overrides (defaults mirror the e2e test provider). */
   provider?: { id?: string; name?: string; apiBaseUrl?: string };
   model?: {
@@ -255,8 +262,11 @@ export async function setupChatFlowHarness(
       packagedRendererUrl: "file:///app/renderer/main_window/index.html",
     });
 
-    const fixtureApp = options.fixtureApp ?? "minimal";
-    const fixtureAppDir = path.join(IMPORT_APP_FIXTURES, fixtureApp);
+    const fixtureApp = options.fixtureAppPath
+      ? path.basename(options.fixtureAppPath)
+      : (options.fixtureApp ?? "minimal");
+    const fixtureAppDir =
+      options.fixtureAppPath ?? path.join(IMPORT_APP_FIXTURES, fixtureApp);
     if (!fs.existsSync(fixtureAppDir)) {
       throw new Error(`Unknown fixture app: ${fixtureApp} (${fixtureAppDir})`);
     }

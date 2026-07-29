@@ -1,0 +1,14 @@
+{
+  "name": "app-builder-cuj-tests",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Harness-agnostic Playwright CUJ suites for the app-builder benchmark. Self-contained: install here and run against any built app via APP_URL.",
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "list": "playwright test --list"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2"
+  }
+}

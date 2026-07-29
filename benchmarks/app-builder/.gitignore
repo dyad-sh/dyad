@@ -1,0 +1,20 @@
+# Run artifacts (regenerated per run)
+results/
+proxy/logs/
+neon-sim/server*.log
+neon-sim/ledger/
+eval-results/
+
+# Local installs
+node_modules/
+spikes/*/node_modules/
+spikes/s-auth/.next/
+spikes/s-auth/next-dev.log
+spikes/s-auth/server/*.log
+cuj-tests/results/
+
+# Generated TLS material (private keys — regenerate via neon-sim/README)
+neon-sim/certs/
+spikes/s-sql/certs/
+
+*.log

@@ -342,6 +342,88 @@ export async function runPtyCommand(
   options: PtyCommandExecutionOptions = {},
   ptySpawner: PtySpawner = spawnPty,
 ): Promise<PtyCommandExecutionResult> {
+  // node-pty is a native module built for Electron's ABI; under a plain node
+  // runtime (vitest harnesses, benchmarks) it fails with posix_spawnp errors.
+  // DYAD_DISABLE_PTY=1 opts into a plain child_process execution with the
+  // same result contract (merged output, cwd/env/timeout honored).
+  if (process.env.DYAD_DISABLE_PTY === "1") {
+    return runCommandWithoutPty(command, args, options);
+  }
+  return runPtyCommandWithPty(command, args, options, ptySpawner);
+}
+
+function runCommandWithoutPty(
+  command: string,
+  args: string[],
+  options: PtyCommandExecutionOptions = {},
+): Promise<PtyCommandExecutionResult> {
+  return new Promise((resolve, reject) => {
+    const displayedCommand =
+      options.displayCommand ?? buildDisplayedCommand(command, args);
+    const timeoutMs = options.timeoutMs ?? DEFAULT_PTY_COMMAND_TIMEOUT_MS;
+    const outputBuffer = new BoundedOutputBuffer(
+      options.maxOutputBytes ?? DEFAULT_MAX_BUFFERED_OUTPUT_BYTES,
+    );
+    let didSettle = false;
+    const child = spawnProcess(command, args, {
+      cwd: options.cwd,
+      env: options.env ?? process.env,
+      // shell resolves the command via PATH the same way a terminal would,
+      // matching what the PTY path effectively provides.
+      shell: true,
+      windowsHide: true,
+    });
+    const timeoutId = setTimeout(() => {
+      if (didSettle) return;
+      didSettle = true;
+      child.kill("SIGKILL");
+      reject(
+        new PtyCommandExecutionError({
+          message: `Command '${displayedCommand}' timed out after ${timeoutMs}ms`,
+          output: outputBuffer.toString(),
+          exitCode: null,
+        }),
+      );
+    }, timeoutMs);
+    child.stdout?.on("data", (d: Buffer) => outputBuffer.append(d.toString()));
+    child.stderr?.on("data", (d: Buffer) => outputBuffer.append(d.toString()));
+    child.on("error", (error) => {
+      if (didSettle) return;
+      didSettle = true;
+      clearTimeout(timeoutId);
+      reject(
+        new PtyCommandExecutionError({
+          message: `Command '${displayedCommand}' failed: ${error.message}`,
+          output: outputBuffer.toString(),
+          exitCode: null,
+        }),
+      );
+    });
+    child.on("exit", (code) => {
+      if (didSettle) return;
+      didSettle = true;
+      clearTimeout(timeoutId);
+      if (code === 0) {
+        resolve({ output: outputBuffer.toString() });
+      } else {
+        reject(
+          new PtyCommandExecutionError({
+            message: buildExitMessage(displayedCommand, code ?? -1, undefined),
+            output: outputBuffer.toString(),
+            exitCode: code ?? null,
+          }),
+        );
+      }
+    });
+  });
+}
+
+function runPtyCommandWithPty(
+  command: string,
+  args: string[],
+  options: PtyCommandExecutionOptions = {},
+  ptySpawner: PtySpawner = spawnPty,
+): Promise<PtyCommandExecutionResult> {
   return new Promise((resolve, reject) => {
     const displayedCommand =
       options.displayCommand ?? buildDisplayedCommand(command, args);

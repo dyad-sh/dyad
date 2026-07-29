@@ -107,6 +107,7 @@ export class OperationRouteRegistry<Route> {
   private disposed = false;
   private mutationVersion = 0;
   private invokingAdapter = false;
+  private adapterReentryAttempted = false;
   private readonly maxUnresolved: number;
   private readonly maxTerminalRetained: number;
   private readonly snapshotRoute: (route: Route) => Route;
@@ -132,6 +133,7 @@ export class OperationRouteRegistry<Route> {
   admit(claim: OperationRouteClaim<Route>): OperationRouteAdmission<Route> {
     this.assertOpen();
     if (this.invokingAdapter) {
+      this.adapterReentryAttempted = true;
       throw new Error(
         "Operation route adapters cannot reenter registry admission",
       );
@@ -345,15 +347,21 @@ export class OperationRouteRegistry<Route> {
 
   private callAdapter<Value>(call: () => Value): Value {
     if (this.invokingAdapter) {
+      this.adapterReentryAttempted = true;
       throw new Error("Operation route adapters cannot reenter one another");
     }
     const version = this.mutationVersion;
+    this.adapterReentryAttempted = false;
     this.invokingAdapter = true;
     let value: Value;
     try {
       value = call();
     } finally {
       this.invokingAdapter = false;
+    }
+    if (this.adapterReentryAttempted) {
+      this.adapterReentryAttempted = false;
+      throw new Error("Operation route adapter attempted forbidden reentry");
     }
     this.assertOpen();
     if (this.mutationVersion !== version) {
@@ -372,6 +380,7 @@ export class OperationRouteRegistry<Route> {
 
   private assertMutationAllowed(): void {
     if (!this.invokingAdapter) return;
+    this.adapterReentryAttempted = true;
     throw new Error(
       "Operation route adapters cannot mutate registry ownership",
     );

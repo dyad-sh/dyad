@@ -475,7 +475,7 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   `sameRoute` must explicitly define equality for that opaque value. Both
   adapters are trusted synchronous code; the registry fails closed if either
   attempts to reenter ownership mutation, rejecting before stored ownership
-  changes.
+  changes even when the adapter catches the inner rejection.
 - `OperationRouteRegistry` pins unresolved routes behind a separately bounded
   admission limit and evicts only terminal routes, in settlement order, behind
   a declared finite retention count. Its constructor snapshots validated

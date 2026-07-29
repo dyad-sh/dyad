@@ -382,14 +382,20 @@ describe("OperationRouteRegistry", () => {
       maxUnresolved: 1,
       maxTerminalRetained: 1,
       snapshotRoute: (route) => {
-        if (disposeDuringSnapshot) registry.dispose();
+        if (disposeDuringSnapshot) {
+          try {
+            registry.dispose();
+          } catch {
+            // A swallowed forbidden mutation still poisons the outer call.
+          }
+        }
         return { ...route };
       },
       sameRoute: (left, right) => left.channel === right.channel,
     });
 
     expect(() => registry.admit(claim("disposed"))).toThrow(
-      "adapters cannot mutate registry ownership",
+      "adapter attempted forbidden reentry",
     );
     expect(registry.inspect().total).toBe(0);
 
@@ -404,14 +410,20 @@ describe("OperationRouteRegistry", () => {
       maxTerminalRetained: 1,
       snapshotRoute: (route) => ({ ...route }),
       sameRoute: (left, right) => {
-        if (admittedHandle) releasingRegistry.release(admittedHandle);
+        if (admittedHandle) {
+          try {
+            releasingRegistry.release(admittedHandle);
+          } catch {
+            // A swallowed forbidden mutation still poisons the outer call.
+          }
+        }
         return left.channel === right.channel;
       },
     });
     admittedHandle = releasingRegistry.admit(claim("released")).handle;
 
     expect(() => releasingRegistry.admit(claim("released"))).toThrow(
-      "adapters cannot mutate registry ownership",
+      "adapter attempted forbidden reentry",
     );
     expect(releasingRegistry.inspect()).toMatchObject({
       unresolved: 1,

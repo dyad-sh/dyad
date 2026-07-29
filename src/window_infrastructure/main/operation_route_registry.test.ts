@@ -335,6 +335,7 @@ describe("OperationRouteRegistry", () => {
           new OperationRouteRegistry<Route>({
             ...options,
             snapshotRoute: (route) => route,
+            sameRoute: (left, right) => left.channel === right.channel,
           }),
       ).toThrow("finite bounded integers");
     }
@@ -345,6 +346,7 @@ describe("OperationRouteRegistry", () => {
       maxUnresolved: 1,
       maxTerminalRetained: 1,
       snapshotRoute: (route: Route) => ({ ...route }),
+      sameRoute: (left: Route, right: Route) => left.channel === right.channel,
     };
     const registry = new OperationRouteRegistry<Route>(options);
     const first = registry.admit(claim("first"));
@@ -363,5 +365,52 @@ describe("OperationRouteRegistry", () => {
     expect(registry.inspect().routes.map((route) => route.operationId)).toEqual(
       ["second-terminal"],
     );
+  });
+
+  it("requires explicit object-route equality after taking owned snapshots", () => {
+    const registry = createRegistry();
+    const stable = claim("operation-1");
+
+    expect(registry.admit(stable).kind).toBe("fresh");
+    expect(registry.admit(stable).kind).toBe("coalesced");
+  });
+
+  it("fails closed when route adapters reenter ownership mutation", () => {
+    let registry!: OperationRouteRegistry<Route>;
+    let disposeDuringSnapshot = true;
+    registry = new OperationRouteRegistry<Route>({
+      maxUnresolved: 1,
+      maxTerminalRetained: 1,
+      snapshotRoute: (route) => {
+        if (disposeDuringSnapshot) registry.dispose();
+        return { ...route };
+      },
+      sameRoute: (left, right) => left.channel === right.channel,
+    });
+
+    expect(() => registry.admit(claim("disposed"))).toThrow(
+      "Operation route registry is disposed",
+    );
+    expect(registry.inspect().total).toBe(0);
+
+    disposeDuringSnapshot = false;
+    let admittedHandle:
+      | ReturnType<OperationRouteRegistry<Route>["admit"]>["handle"]
+      | undefined;
+    const releasingRegistry = new OperationRouteRegistry<Route>({
+      maxUnresolved: 1,
+      maxTerminalRetained: 1,
+      snapshotRoute: (route) => ({ ...route }),
+      sameRoute: (left, right) => {
+        if (admittedHandle) releasingRegistry.release(admittedHandle);
+        return left.channel === right.channel;
+      },
+    });
+    admittedHandle = releasingRegistry.admit(claim("released")).handle;
+
+    expect(() => releasingRegistry.admit(claim("released"))).toThrow(
+      "adapter mutated registry ownership",
+    );
+    expect(releasingRegistry.inspect().total).toBe(0);
   });
 });

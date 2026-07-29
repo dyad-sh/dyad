@@ -471,7 +471,10 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   optional window session, and an opaque route. Identical duplicates coalesce
   (or replay while terminal retention remains); conflicts never replace the
   first owner. The required `snapshotRoute` adapter must return an owned route
-  value so caller or inspector mutation cannot rewrite stored ownership.
+  value so caller or inspector mutation cannot rewrite stored ownership, and
+  `sameRoute` must explicitly define equality for that opaque value. Both
+  adapters are trusted synchronous code; the registry fails closed if either
+  reenters ownership mutation.
 - `OperationRouteRegistry` pins unresolved routes behind a separately bounded
   admission limit and evicts only terminal routes, in settlement order, behind
   a declared finite retention count. Its constructor snapshots validated

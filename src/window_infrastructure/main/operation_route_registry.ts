@@ -61,7 +61,7 @@ export interface OperationRouteRegistryOptions<Route> {
    * Defines identity for the opaque route value. Metadata on the owner is
    * always compared separately.
    */
-  readonly sameRoute?: (left: Route, right: Route) => boolean;
+  readonly sameRoute: (left: Route, right: Route) => boolean;
 }
 
 export class OperationRouteIdentityConflictError extends DyadError {
@@ -105,6 +105,8 @@ export class OperationRouteRegistry<Route> {
   private unresolved = 0;
   private nextGeneration = 1;
   private disposed = false;
+  private mutationVersion = 0;
+  private invokingAdapter = false;
   private readonly maxUnresolved: number;
   private readonly maxTerminalRetained: number;
   private readonly snapshotRoute: (route: Route) => Route;
@@ -124,15 +126,25 @@ export class OperationRouteRegistry<Route> {
     this.maxUnresolved = options.maxUnresolved;
     this.maxTerminalRetained = options.maxTerminalRetained;
     this.snapshotRoute = options.snapshotRoute;
-    this.sameRoute = options.sameRoute ?? Object.is;
+    this.sameRoute = options.sameRoute;
   }
 
   admit(claim: OperationRouteClaim<Route>): OperationRouteAdmission<Route> {
     this.assertOpen();
+    if (this.invokingAdapter) {
+      throw new Error(
+        "Operation route adapters cannot reenter registry admission",
+      );
+    }
     const existing = this.entries.get(claim.operationId);
     if (existing) {
       if (!this.sameOwner(existing.snapshot.owner, claim.owner)) {
         throw new OperationRouteIdentityConflictError(claim.operationId);
+      }
+      if (this.entries.get(claim.operationId) !== existing) {
+        throw new Error(
+          "Operation route ownership changed during identity comparison",
+        );
       }
       return {
         kind: existing.snapshot.state === "terminal" ? "replayed" : "coalesced",
@@ -144,13 +156,16 @@ export class OperationRouteRegistry<Route> {
       throw new OperationRouteCapacityError();
     }
 
+    const storedRoute = this.callAdapter(() =>
+      this.snapshotRoute(claim.owner.route),
+    );
     const generation = Object.freeze({
       ordinal: this.nextGeneration++,
       identity: Object.freeze({}),
     });
     const owner = Object.freeze({
       ...claim.owner,
-      route: this.snapshotRoute(claim.owner.route),
+      route: storedRoute,
     });
     const snapshot = {
       operationId: claim.operationId,
@@ -165,12 +180,17 @@ export class OperationRouteRegistry<Route> {
         generation,
       }),
     };
+    const route = this.readSnapshot(entry);
+    if (this.unresolved >= this.maxUnresolved) {
+      throw new OperationRouteCapacityError();
+    }
     this.entries.set(claim.operationId, entry);
     this.unresolved += 1;
+    this.mutationVersion += 1;
     return {
       kind: "fresh",
       handle: entry.handle,
-      route: this.readSnapshot(entry),
+      route,
     };
   }
 
@@ -186,6 +206,7 @@ export class OperationRouteRegistry<Route> {
     this.entries.delete(handle.operationId);
     this.entries.set(handle.operationId, entry);
     this.trimTerminal();
+    this.mutationVersion += 1;
     return true;
   }
 
@@ -195,6 +216,7 @@ export class OperationRouteRegistry<Route> {
     if (!entry) return false;
     this.entries.delete(handle.operationId);
     if (entry.snapshot.state === "unresolved") this.unresolved -= 1;
+    this.mutationVersion += 1;
     return true;
   }
 
@@ -242,6 +264,7 @@ export class OperationRouteRegistry<Route> {
     this.disposed = true;
     this.entries.clear();
     this.unresolved = 0;
+    this.mutationVersion += 1;
   }
 
   private currentEntry(
@@ -261,6 +284,7 @@ export class OperationRouteRegistry<Route> {
       if (entry.snapshot.state === "unresolved") this.unresolved -= 1;
       released += 1;
     }
+    if (released > 0) this.mutationVersion += 1;
     return released;
   }
 
@@ -281,7 +305,9 @@ export class OperationRouteRegistry<Route> {
       operationId: entry.snapshot.operationId,
       owner: Object.freeze({
         ...entry.snapshot.owner,
-        route: this.snapshotRoute(entry.snapshot.owner.route),
+        route: this.callAdapter(() =>
+          this.snapshotRoute(entry.snapshot.owner.route),
+        ),
       }),
       state: entry.snapshot.state,
       generation: entry.snapshot.generation,
@@ -307,8 +333,27 @@ export class OperationRouteRegistry<Route> {
       left.ownerId === right.ownerId &&
       left.machineId === right.machineId &&
       left.windowSessionId === right.windowSessionId &&
-      this.sameRoute(left.route, right.route)
+      this.callAdapter(() => this.sameRoute(left.route, right.route))
     );
+  }
+
+  private callAdapter<Value>(call: () => Value): Value {
+    if (this.invokingAdapter) {
+      throw new Error("Operation route adapters cannot reenter one another");
+    }
+    const version = this.mutationVersion;
+    this.invokingAdapter = true;
+    let value: Value;
+    try {
+      value = call();
+    } finally {
+      this.invokingAdapter = false;
+    }
+    this.assertOpen();
+    if (this.mutationVersion !== version) {
+      throw new Error("Operation route adapter mutated registry ownership");
+    }
+    return value;
   }
 
   private assertOpen(): void {

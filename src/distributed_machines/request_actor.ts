@@ -29,6 +29,11 @@ export interface CompletionAwareActorOptions<
   EnqueueResult,
 > {
   readonly scope: PreparedRequestScope;
+  /**
+   * Captures immutable request data synchronously. The same snapshot is used
+   * for identity/fingerprinting and the later transport microtask.
+   */
+  readonly snapshotIntent: (intent: Intent) => Intent;
   readonly prepareIdentity: (intent: Intent) => RequestIdentity;
   readonly fingerprint: (identity: RequestIdentity, intent: Intent) => string;
   readonly retry: PrepareRequestOptions<Admission, Outcome, Refusal>["retry"];
@@ -65,16 +70,17 @@ export function createCompletionAwareActor<
   return {
     enqueue: options.enqueue,
     request(intent) {
-      const identity = options.prepareIdentity(intent);
+      const requestIntent = options.snapshotIntent(intent);
+      const identity = options.prepareIdentity(requestIntent);
       return prepareRequest({
         identity,
-        fingerprint: options.fingerprint(identity, intent),
+        fingerprint: options.fingerprint(identity, requestIntent),
         scope: options.scope,
         retry: options.retry,
         classifyFailure: options.classifyFailure,
         reportError: options.reportError,
         dispatch: (stableIdentity) =>
-          options.dispatchRequest(stableIdentity, intent),
+          options.dispatchRequest(stableIdentity, requestIntent),
       });
     },
   };

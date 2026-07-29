@@ -33,9 +33,11 @@ Background and before/after examples of why this pattern exists:
   enqueue FIFO; run the pure transition exactly once; validate; reserve the
   command batch and any explicit post-commit outcome batch without running
   domain code; cancel exiting state-owned leases; commit the snapshot (the
-  linearization point); update the authoritative projection; notify snapshot
-  subscribers; notify transition observers; then publish the reserved outcomes
-  and hand the reserved commands to the injected domain scheduler. Re-entrant
+  linearization point); update the authoritative projection; publish reserved
+  correlated outcomes; notify snapshot subscribers and transition observers;
+  then hand the reserved commands to the injected domain scheduler. Publishing
+  authoritative outcomes before teardown-capable observers prevents disposal
+  from winning after the operation's state has already committed. Re-entrant
   callbacks may mutate transition-owned arrays, so both batches must be
   shallow-copied before callbacks. Re-entrant sends append to the FIFO and run
   after the current transaction. Ignored events skip commit, projection,

@@ -320,6 +320,55 @@ describe("useMachineMutation", () => {
     });
   });
 
+  it("restores admission when a current retry rejects", async () => {
+    const admission = controlled<PreparedAdmission<string, string>>();
+    const settled = controlled<PreparedRequestSettlement<Outcome, string>>();
+    const retryFailure = new Error("retry transport failed");
+    const onUnexpectedError = vi.fn();
+    const { result } = renderHook(() =>
+      useMachineMutation({
+        connection: "ready",
+        snapshot: unavailable,
+        request: () =>
+          fakeRequest(admission, settled, vi.fn(), async () => {
+            throw retryFailure;
+          }),
+        classifyOutcome: classify,
+        onUnexpectedError,
+      }),
+    );
+    act(() => {
+      void result.current.mutate("input");
+      admission.resolve({
+        kind: "disconnected",
+        retryable: true,
+        error: new Error("offline"),
+      });
+    });
+    await waitFor(() =>
+      expect(result.current.admission).toMatchObject({
+        kind: "refused",
+        reason: "disconnected",
+        retryable: true,
+      }),
+    );
+
+    await act(async () => {
+      await expect(result.current.retry()).rejects.toBe(retryFailure);
+    });
+
+    expect(result.current.admission).toMatchObject({
+      kind: "refused",
+      reason: "disconnected",
+      retryable: true,
+    });
+    expect(result.current.execution).toEqual({
+      kind: "failed",
+      error: retryFailure,
+    });
+    expect(onUnexpectedError).toHaveBeenCalledWith(retryFailure);
+  });
+
   it("remains active after StrictMode effect replay", async () => {
     const admission = controlled<PreparedAdmission<string, string>>();
     const settled = controlled<PreparedRequestSettlement<Outcome, string>>();

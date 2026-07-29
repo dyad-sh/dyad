@@ -232,6 +232,7 @@ export function useMachineMutation<
   const retry = useCallback(async () => {
     const current = active.current;
     if (!current || current.request.retry.kind === "disabled") return undefined;
+    const previousAdmission = admission;
     setAdmission({ kind: "preparing" });
     try {
       const result = await current.request.retry.dispatch();
@@ -241,12 +242,13 @@ export function useMachineMutation<
       const isCurrent =
         mounted.current && active.current?.generation === current.generation;
       if (isCurrent) {
+        setAdmission(previousAdmission);
         setExecution({ kind: "failed", error: error as Failure });
         reportUnexpected(error);
       }
       throw error;
     }
-  }, [applyAdmission, reportUnexpected]);
+  }, [admission, applyAdmission, reportUnexpected]);
 
   return {
     connection: options.connection,

@@ -915,6 +915,47 @@ describe("OperationRegistry", () => {
     });
   });
 
+  it("settles the committed outcome before subscriber disposal reentry", async () => {
+    const operations = registry();
+    const stable = identity();
+    const admitted = operations.admit(stable);
+    const dispatcher = new TransactionalDispatcher<
+      number,
+      "TERMINAL",
+      never,
+      never,
+      CorrelatedOperationOutcome<Outcome, Ref>
+    >({
+      initialState: 0,
+      transition: (state) =>
+        change(
+          state + 1,
+          [],
+          [
+            {
+              requestId: stable.requestId,
+              invocationRef: stable.invocationRef,
+              outcome: { kind: "succeeded" },
+            },
+          ],
+        ),
+      runCommand: () => undefined,
+      scheduler: { schedule: () => undefined },
+      publishOutcome: createOperationOutcomePublisher(operations, () =>
+        receipt(),
+      ),
+    });
+    dispatcher.subscribe(() => {
+      operations.settleWindowSession(stable.owner.windowSessionId);
+    });
+
+    dispatcher.send("TERMINAL");
+
+    await expect(admitted.ticket.settled).resolves.toMatchObject({
+      outcome: { kind: "succeeded" },
+    });
+  });
+
   it("rejects and replays a terminal receipt-capture failure", async () => {
     const operations = registry();
     const stable = identity();

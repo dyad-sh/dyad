@@ -136,14 +136,18 @@ describe("completion-aware actor request bridge", () => {
         windowSessionId: identity.windowSessionId,
       },
     };
+    let dispatchedIntent: { readonly type: string } | undefined;
     const actor = createCompletionAwareActor({
       scope,
+      snapshotIntent: (intent: { readonly type: string }) =>
+        Object.freeze({ ...intent }),
       prepareIdentity: () => identity,
       fingerprint: () => operationIdentity.fingerprint,
       retry: { kind: "none" },
       classifyFailure: () => ({ kind: "unexpected" }),
       enqueue: () => undefined,
-      dispatchRequest: async () => {
+      dispatchRequest: async (_stableIdentity, intent) => {
+        dispatchedIntent = intent;
         events.push("ipc-started");
         await authorization.promise;
         events.push("authorization-finished");
@@ -202,12 +206,15 @@ describe("completion-aware actor request bridge", () => {
       },
     });
 
-    const prepared = actor.request({ type: "START" });
+    const mutableIntent = { type: "START" };
+    const prepared = actor.request(mutableIntent);
+    mutableIntent.type = "MUTATED";
 
     expect(events).toEqual(["client-registered"]);
     expect(registry.inspect().total).toBe(0);
     await Promise.resolve();
     expect(events).toEqual(["client-registered", "ipc-started"]);
+    expect(dispatchedIntent).toEqual({ type: "START" });
     expect(registry.inspect().total).toBe(0);
 
     authorization.resolve();

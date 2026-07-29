@@ -307,12 +307,18 @@ export class TransactionalDispatcher<
     // Linearization point. Every callback below reads this committed snapshot.
     if (result.state === previous) {
       this.project(result.state);
+      this.publishOutcomes(outcomes);
     } else {
-      this.store.setState(result.state, () => this.project(result.state));
+      this.store.setState(result.state, () => {
+        this.project(result.state);
+        // SetState has committed before this callback and has not notified
+        // subscribers yet. Authoritative settlement therefore wins over
+        // teardown reentered by snapshot/observer callbacks.
+        this.publishOutcomes(outcomes);
+      });
     }
 
     this.notifyObserver(previous, event, result, dispatchContext);
-    this.publishOutcomes(outcomes);
     this.startBatch(batch);
     settleCurrent({ kind: "applied", state: this.store.getSnapshot() });
   }

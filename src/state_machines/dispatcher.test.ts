@@ -636,7 +636,7 @@ describe("TransactionalDispatcher", () => {
 
     dispatcher.send({ type: "SET", value: 7 });
 
-    expect(observed).toEqual(["observer:7", "outcome:7", "scheduler:7"]);
+    expect(observed).toEqual(["outcome:7", "observer:7", "scheduler:7"]);
   });
 
   it("isolates post-commit outcome callback failures", async () => {

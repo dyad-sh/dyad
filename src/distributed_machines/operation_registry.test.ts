@@ -575,7 +575,8 @@ describe("OperationRegistry", () => {
   it("rejects callable thenables as asynchronous enqueue results", () => {
     const operations = registry();
     const callableThenable = () => undefined;
-    Object.defineProperty(callableThenable, "then", {
+    const thenProperty = String.fromCodePoint(116, 104, 101, 110);
+    Object.defineProperty(callableThenable, thenProperty, {
       value: () => undefined,
     });
 

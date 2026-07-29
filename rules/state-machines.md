@@ -605,6 +605,11 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   Preserve delivery/admission ambiguity across retry and disposal; only a
   failure classified at a definitely-pre-delivery boundary may settle as
   `not-admitted`.
+- When a correlated outcome is delivered before its committed snapshot, carry
+  the committed actor metadata and retain request-owned snapshot observation
+  until that revision (or disposal) is visible. A compatibility owner that
+  emits no correlated outcome must still settle admitted ownership from an
+  unavailable snapshot; otherwise disposal strands the renderer request.
 - If terminal outcome or receipt construction throws, reject or explicitly
   fail the exact correlated registry entry and continue bulk disposal. Never
   leave callback-construction failures pinned as unresolved work.

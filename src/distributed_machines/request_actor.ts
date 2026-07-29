@@ -16,6 +16,7 @@ import type {
 import type { IgnoreReason } from "@/state_machines/types";
 import type { IdSource } from "@/state_machines/clock";
 import { createRequestIdentity, type RequestId } from "./request_identity";
+import type { ActorRuntimeMetadata } from "./definition";
 
 export interface CompletionAwareActor<
   Intent,
@@ -128,6 +129,17 @@ export interface CreateRemoteRequestActorOptions<
     view: RemoteActorView<State>,
     requestId: RequestId,
   ) => Outcome | undefined;
+  /**
+   * Observes request-owned snapshot changes without adding a second
+   * domain-specific subscription. Used for legacy side effects that must span
+   * the complete request lifetime.
+   */
+  readonly observeView?: (view: RemoteActorView<State>) => void;
+  /**
+   * Compatibility fallback for a remote owner that disposes after admission
+   * without publishing a correlated outcome.
+   */
+  readonly outcomeOnUnavailable?: () => Outcome;
   readonly admissionFromReceipt: (
     receipt: Awaited<
       ReturnType<RemoteActorRef<State, Intent, Reason>["dispatch"]>
@@ -208,6 +220,14 @@ export function createRemoteRequestActor<
           const settled = new Promise<Outcome>((resolve) => {
             resolveOutcome = resolve;
           });
+          let pendingOutcome:
+            | {
+                readonly outcome: Outcome;
+                readonly actor: ActorRuntimeMetadata;
+              }
+            | undefined;
+          let lastObservedView = options.actor.getView();
+          let admitted = false;
           let done = false;
           const cleanup = () => {
             if (done) return;
@@ -217,14 +237,48 @@ export function createRemoteRequestActor<
             lease.release();
             signal.removeEventListener("abort", detach);
           };
-          const inspect = () => {
-            const outcome = options.selectOutcome(
-              options.actor.getView(),
-              identity.requestId,
-            );
-            if (outcome === undefined) return;
+          const complete = (outcome: Outcome) => {
             cleanup();
             resolveOutcome(outcome);
+          };
+          const observesCommittedActor = (
+            view: RemoteActorView<State>,
+            actor: ActorRuntimeMetadata,
+          ) =>
+            view.snapshot.kind === "available" &&
+            view.snapshot.observedRevision.kind === "actor" &&
+            view.snapshot.observedRevision.actorInstanceId ===
+              actor.actorInstanceId &&
+            view.snapshot.observedRevision.revision >= actor.snapshotRevision;
+          const observe = (view: RemoteActorView<State>) => {
+            if (lastObservedView === view) return;
+            lastObservedView = view;
+            options.observeView?.(view);
+          };
+          const inspect = (notify = false) => {
+            const view = options.actor.getView();
+            if (notify) observe(view);
+            const outcome = options.selectOutcome(view, identity.requestId);
+            if (outcome !== undefined) {
+              complete(outcome);
+              return;
+            }
+            if (
+              pendingOutcome &&
+              (view.snapshot.kind === "unavailable" ||
+                observesCommittedActor(view, pendingOutcome.actor))
+            ) {
+              complete(pendingOutcome.outcome);
+              return;
+            }
+            if (
+              admitted &&
+              view.snapshot.kind === "unavailable" &&
+              view.connection === "ready" &&
+              options.outcomeOnUnavailable
+            ) {
+              complete(options.outcomeOnUnavailable());
+            }
           };
           const detach = () => {
             cleanup();
@@ -232,12 +286,20 @@ export function createRemoteRequestActor<
           signal.addEventListener("abort", detach, { once: true });
           unsubscribeOutcome = options.actor.subscribeOperationOutcome(
             identity.requestId,
-            (outcome) => {
-              cleanup();
-              resolveOutcome(outcome as Outcome);
+            (outcome, actor) => {
+              const view = options.actor.getView();
+              if (
+                view.snapshot.kind === "unavailable" ||
+                observesCommittedActor(view, actor)
+              ) {
+                observe(view);
+                complete(outcome as Outcome);
+                return;
+              }
+              pendingOutcome = { outcome: outcome as Outcome, actor };
             },
           );
-          unsubscribe = options.actor.subscribe(inspect);
+          unsubscribe = options.actor.subscribe(() => inspect(true));
           inspect();
           try {
             await lease.ready;
@@ -259,6 +321,7 @@ export function createRemoteRequestActor<
               cleanup();
               return admission;
             }
+            admitted = true;
             inspect();
             return {
               kind: "admitted",

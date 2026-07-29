@@ -112,6 +112,11 @@ const machineIdSchema = z.string().min(1).max(128);
 const messageIdSchema = z.string().min(1).max(256);
 const actorInstanceIdSchema = z.string().min(1).max(256);
 const revisionSchema = z.number().int().nonnegative();
+const actorRuntimeMetadataSchema = z.object({
+  actorInstanceId: actorInstanceIdSchema,
+  snapshotRevision: revisionSchema,
+  transactionSequence: revisionSchema,
+});
 
 export const MachineIdentitySchema = z.object({
   protocolVersion: protocolVersionSchema,
@@ -147,6 +152,7 @@ export const MachineOperationOutcomeEnvelopeSchema =
     requestId: z.string().min(1).max(256),
     invocationRef: z.unknown(),
     outcome: z.unknown(),
+    actor: actorRuntimeMetadataSchema,
   });
 
 export const MachineProtocolMismatchSchema = z.object({

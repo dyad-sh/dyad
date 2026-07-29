@@ -58,7 +58,7 @@ describe("RemoteMachineClient", () => {
       remoteIntent: {
         ...base.remoteIntent,
         operationOutcome: {
-          maxEnvelopeBytes: 256,
+          maxEnvelopeBytes: 512,
           invocationRefCodec: z.object({ operationId: z.string() }),
           outcomeCodec: z.object({
             kind: z.literal("succeeded"),
@@ -83,6 +83,11 @@ describe("RemoteMachineClient", () => {
       machineId: machine.id,
       encodedKey: machine.remote.encodeKey("actor"),
       requestId: "request-1",
+      actor: {
+        actorInstanceId: "actor-instance",
+        snapshotRevision: 1,
+        transactionSequence: 1,
+      },
     };
 
     renderer.emitOperationOutcomeForTesting({
@@ -111,7 +116,7 @@ describe("RemoteMachineClient", () => {
       outcome: { kind: "succeeded" },
     });
     expect(listener).toHaveBeenCalledOnce();
-    expect(listener).toHaveBeenCalledWith({ kind: "succeeded" });
+    expect(listener).toHaveBeenCalledWith({ kind: "succeeded" }, address.actor);
     lease.release();
   });
 

@@ -934,6 +934,9 @@ export class RemoteMachineTransport {
           (settlement: {
             readonly invocationRef: unknown;
             readonly outcome: unknown;
+            readonly receipt: {
+              readonly actor: ActorRuntimeMetadata;
+            };
           }) => {
             try {
               if (
@@ -959,6 +962,7 @@ export class RemoteMachineTransport {
                 requestId: requestIdentity.requestId,
                 invocationRef,
                 outcome,
+                actor: settlement.receipt.actor,
               };
               if (
                 !this.isWithinSerializedLimit(

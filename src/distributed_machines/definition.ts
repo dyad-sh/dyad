@@ -261,6 +261,12 @@ export interface DistributedMachineDefinition<
     context: MachineHostContext<Key, State, Event>,
   ) => CommandRunner<Command, Event>;
   /**
+   * Long-lived command producers may advance across unrelated committed
+   * revisions only when their events carry domain correlation that rejects
+   * stale invocations.
+   */
+  readonly commandSinkRevisionPolicy?: "captured" | "allow-advance";
+  /**
    * Narrow hook for cancelling leases owned by the state being exited.
    * It runs after validation/reservation and before the snapshot commit.
    */
@@ -322,7 +328,9 @@ export interface HostedActorRef<
    * Captures a non-creating producer sink bound to this actor instance and
    * admission generation.
    */
-  captureSink(): ActorEventSink<Event>;
+  captureSink(options?: {
+    readonly revisionPolicy?: "captured" | "allow-advance";
+  }): ActorEventSink<Event>;
   /**
    * Enrolls external work under a captured actor/gate lifetime so destructive
    * fences wait for the full continuation.

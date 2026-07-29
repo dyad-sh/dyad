@@ -91,6 +91,9 @@ interface RemoteOperationTicket {
   readonly settled: Promise<{
     readonly invocationRef: unknown;
     readonly outcome: unknown;
+    readonly receipt: {
+      readonly actor: ActorRuntimeMetadata;
+    };
   }>;
 }
 

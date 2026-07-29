@@ -4,6 +4,7 @@ import type { IgnoreReason } from "@/state_machines/types";
 import type { z } from "zod";
 import type { RemoteIntentPolicy } from "./remote_intent_contract";
 import type { RequestIdentity } from "./request_identity";
+import type { ActorRuntimeMetadata } from "./definition";
 import {
   MachineDispatchReceiptSchema,
   MachineDisposedEnvelopeSchema,
@@ -127,7 +128,7 @@ export interface RemoteActorRef<State, Event, Reason extends IgnoreReason> {
   subscribe(listener: () => void): () => void;
   subscribeOperationOutcome(
     requestId: string,
-    listener: (outcome: unknown) => void,
+    listener: (outcome: unknown, actor: ActorRuntimeMetadata) => void,
   ): () => void;
   dispatch(
     event: Event,
@@ -209,7 +210,7 @@ class RemoteSnapshotStore<
   private readonly disposedActorIds = new Set<string>();
   private readonly operationOutcomeListeners = new Map<
     string,
-    Set<(outcome: unknown) => void>
+    Set<(outcome: unknown, actor: ActorRuntimeMetadata) => void>
   >();
   private metadata?: StoreMetadata;
   private bootstrapped = false;
@@ -276,7 +277,7 @@ class RemoteSnapshotStore<
 
   subscribeOperationOutcome = (
     requestId: string,
-    listener: (outcome: unknown) => void,
+    listener: (outcome: unknown, actor: ActorRuntimeMetadata) => void,
   ): (() => void) => {
     if (this.disposed) return () => undefined;
     let listeners = this.operationOutcomeListeners.get(requestId);
@@ -551,7 +552,7 @@ class RemoteSnapshotStore<
       this.operationOutcomeListeners.get(envelope.requestId) ?? [],
     )) {
       try {
-        listener(outcome.data);
+        listener(outcome.data, envelope.actor);
       } catch (error) {
         this.client.reportSubscriberError(error);
       }

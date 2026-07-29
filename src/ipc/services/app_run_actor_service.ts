@@ -73,7 +73,7 @@ export class AppRunActorService {
         DyadErrorKind.Precondition,
       );
     }
-    const sink = actor.captureSink();
+    const sink = actor.captureSink({ revisionPolicy: "allow-advance" });
     return new MainAppRuntimeOutput(appId, invocationRef, {
       send: sink.send,
     });
@@ -162,7 +162,7 @@ export class AppRunActorService {
   }): Promise<void> {
     await requireExistingApp(options.appId);
     const actor = this.actor(options.appId);
-    const sink = actor.captureSink();
+    const sink = actor.captureSink({ revisionPolicy: "allow-advance" });
     const invocationRef = appRuntimeService.createExternalLifecycleRef(
       options.appId,
     );
@@ -193,7 +193,7 @@ export class AppRunActorService {
   ): Promise<T> {
     await requireExistingApp(appId);
     const actor = this.actor(appId);
-    const sink = actor.captureSink();
+    const sink = actor.captureSink({ revisionPolicy: "allow-advance" });
     const invocationRef = appRuntimeService.createExternalLifecycleRef(appId);
     const output = new MainAppRuntimeOutput(appId, invocationRef, sink);
     return actor.trackCaptured(sink, async () => {

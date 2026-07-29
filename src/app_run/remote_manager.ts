@@ -1,6 +1,7 @@
 import { uuidIdSource, type IdSource } from "@/state_machines/clock";
 import {
   RemoteMachineClient,
+  RemoteMachineTransportError,
   type ObservedRevisionToken,
   type RemoteMachineClientConnection,
 } from "@/distributed_machines/remote_client";
@@ -228,13 +229,26 @@ export class AppRunRemoteManager {
               },
             };
       },
+      observeView: (current) => this.handleActorSnapshot(appId, current.state),
+      outcomeOnUnavailable: () => ({
+        kind: "cancelled",
+        reason: "actor-disposed",
+      }),
       admissionFromReceipt: (receipt) =>
         receipt.kind === "rejected" || receipt.kind === "ignored"
           ? { kind: "refused", reason: String(receipt.reason) }
           : { kind: "accepted" },
       isRefusal: (value): value is { kind: "refused"; reason: AppRunRefusal } =>
         value.kind === "refused",
-      classifyFailure: () => ({ kind: "unexpected" }),
+      classifyFailure: (error) =>
+        error instanceof RemoteMachineTransportError &&
+        (error.code === "disconnected" || error.code === "renderer-destroyed")
+          ? {
+              kind: "disconnect",
+              retryable: false,
+              admission: "unknown",
+            }
+          : { kind: "unexpected" },
       retry: { kind: "none" },
     });
     return requestActor.request({

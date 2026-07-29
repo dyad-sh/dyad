@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ActorHost } from "@/distributed_machines/actor_host";
-import { RemoteMachineClient } from "@/distributed_machines/remote_client";
+import {
+  RemoteMachineClient,
+  RemoteMachineTransportError,
+} from "@/distributed_machines/remote_client";
 import { createRemoteMachineManifest } from "@/distributed_machines/remote_manifest";
 import { RemoteMachineTransport } from "@/distributed_machines/remote_transport";
 import { FakeDuplexRemoteTransport } from "@/distributed_machines/testing";
@@ -284,6 +287,63 @@ describe("main-hosted app-run actor", () => {
     pending.resolve();
     await dispatch;
     expect(settled).toBe(true);
+    manager.dispose();
+  });
+
+  it("settles a pending run after an unrelated manual reload revision", async () => {
+    const pending = deferred<void>();
+    runtime.start.mockReturnValue(pending.promise);
+    const { duplex, host } = createHarness();
+    const manager = new AppRunRemoteManager(
+      createSequentialIdSource(),
+      duplex.connect(),
+    );
+    manager.start();
+
+    const request = manager.dispatch(7, { type: "START", startedAt: 10 });
+    await vi.waitFor(() => expect(runtime.start).toHaveBeenCalledOnce());
+    await host.ensure(appRunDefinition, appRunKey(7)).enqueue({
+      type: "MANUAL_RELOAD",
+      operationId: "reload-during-start",
+      startedAt: 20,
+    }).settled;
+
+    pending.resolve();
+
+    await expect(request).resolves.toBeUndefined();
+    expect(
+      host.ensure(appRunDefinition, appRunKey(7)).getSnapshot(),
+    ).toMatchObject({
+      runState: { type: "ready" },
+      lastSettlement: {
+        kind: "run",
+        outcome: "succeeded",
+      },
+    });
+    manager.dispose();
+  });
+
+  it("forwards request-owned snapshots without a keyed UI subscriber", async () => {
+    const { duplex } = createHarness();
+    const manager = new AppRunRemoteManager(
+      createSequentialIdSource(),
+      duplex.connect(),
+    );
+    const listener = vi.fn();
+    manager.subscribeRunStateChanged(listener);
+
+    await manager.dispatch(7, { type: "START", startedAt: 10 });
+
+    expect(listener).toHaveBeenCalledWith(
+      7,
+      expect.objectContaining({
+        phase: "ready",
+        lastSettlement: expect.objectContaining({
+          kind: "run",
+          outcome: "succeeded",
+        }),
+      }),
+    );
     manager.dispose();
   });
 
@@ -916,11 +976,67 @@ describe("main-hosted app-run actor", () => {
     manager.dispose();
   });
 
-  it("rejects a disconnected dispatch without stranding client ownership", async () => {
+  it("settles protocol-v1 fallback ownership when the actor is disposed", async () => {
+    const pending = deferred<void>();
+    runtime.start.mockReturnValue(pending.promise);
+    const { duplex, host, transport } = createHarness();
+    const connection = duplex.connect();
+    connection.dispatch = vi.fn(async (envelope) => {
+      const actor = host.ensure(appRunDefinition, appRunKey(7));
+      actor.send(envelope.encodedEvent as never);
+      await flush();
+      const metadata = actor.getMetadata();
+      return {
+        kind: "applied" as const,
+        messageId: envelope.messageId,
+        actorInstanceId: metadata.actorInstanceId,
+        revision: metadata.snapshotRevision,
+        transactionSequence: metadata.transactionSequence,
+      };
+    });
+    const manager = new AppRunRemoteManager(
+      createSequentialIdSource(),
+      connection,
+    );
+    manager.start();
+
+    const request = manager.dispatch(7, { type: "START", startedAt: 10 });
+    await vi.waitFor(() => expect(runtime.start).toHaveBeenCalledOnce());
+    const disposal = host.disposeKey(
+      appRunDefinition.id,
+      appRunKey(7),
+      "entity-deletion",
+    );
+
+    await expect(request).resolves.toBeUndefined();
+    expect(
+      (
+        manager as unknown as {
+          requestScope: { inspectActiveCount(): number };
+        }
+      ).requestScope.inspectActiveCount(),
+    ).toBe(0);
+
+    pending.resolve();
+    await disposal;
+    await vi.waitFor(() => {
+      expect(transport.inspectSubscriptions()).toHaveLength(0);
+    });
+    manager.dispose();
+  });
+
+  it("detaches after post-send disconnect without stranding either owner", async () => {
+    const pending = deferred<void>();
+    runtime.start.mockReturnValue(pending.promise);
     const { duplex } = createHarness();
     const connection = duplex.connect();
-    connection.dispatch = vi.fn(async () => {
-      throw new Error("transport disconnected");
+    const dispatch = connection.dispatch.bind(connection);
+    connection.dispatch = vi.fn(async (envelope) => {
+      await dispatch(envelope);
+      throw new RemoteMachineTransportError(
+        "disconnected",
+        "transport disconnected after send",
+      );
     });
     const manager = new AppRunRemoteManager(
       createSequentialIdSource(),
@@ -930,7 +1046,7 @@ describe("main-hosted app-run actor", () => {
 
     await expect(
       manager.dispatch(7, { type: "START", startedAt: 10 }),
-    ).rejects.toThrow("transport disconnected");
+    ).resolves.toBeUndefined();
     expect(
       (
         manager as unknown as {
@@ -938,7 +1054,47 @@ describe("main-hosted app-run actor", () => {
         }
       ).requestScope.inspectActiveCount(),
     ).toBe(0);
+    expect(appRunOperationRegistry.inspect().unresolved).toBe(1);
+
+    pending.resolve();
+    await vi.waitFor(() => {
+      expect(appRunOperationRegistry.inspect().total).toBe(0);
+    });
     manager.dispose();
+  });
+
+  it("does not mistake post-admission transport loss for actor disposal", async () => {
+    const pending = deferred<void>();
+    runtime.start.mockReturnValue(pending.promise);
+    const { duplex } = createHarness();
+    const connection = duplex.connect();
+    const manager = new AppRunRemoteManager(
+      createSequentialIdSource(),
+      connection,
+    );
+    manager.start();
+    const prepared = manager.prepareRequest(7, {
+      type: "START",
+      startedAt: 10,
+    });
+
+    await expect(prepared.admission).resolves.toMatchObject({
+      kind: "admitted",
+    });
+    connection.disconnect();
+    let settled = false;
+    void prepared.settled.then(() => {
+      settled = true;
+    });
+    await flush();
+    expect(settled).toBe(false);
+
+    manager.dispose();
+    await expect(prepared.settled).resolves.toEqual({
+      kind: "detached",
+      authoritativeOperationMayContinue: true,
+    });
+    pending.resolve();
   });
 
   it("rejects a stale restart and requires stop to target the active invocation", async () => {
@@ -1292,5 +1448,38 @@ describe("main-hosted app-run actor", () => {
 
     expect(host.peek(appRunDefinition.id, appRunKey(7))).toBe(replacement);
     expect(replacement.getSnapshot().runState).toEqual({ type: "idle" });
+  });
+
+  it("accepts current-process output after an unrelated actor revision", async () => {
+    const { host } = createHarness();
+    const service = new AppRunActorService(host);
+    await service.dispatchStart(7, {
+      operationId: "current-runtime",
+      startedAt: 10,
+    });
+    const actor = service.actor(7);
+    const output = service.outputFor(7, {
+      kind: "app-run",
+      entityKey: 7,
+      operationId: "current-runtime",
+    });
+    await actor.enqueue({
+      type: "MANUAL_RELOAD",
+      operationId: "reload-current-runtime",
+      startedAt: 20,
+    }).settled;
+
+    output.send({
+      type: "app-exit",
+      appId: 7,
+      message: "current process exited",
+      exitCode: 1,
+      timestamp: 30,
+    });
+    await flush();
+
+    expect(actor.getSnapshot()).toMatchObject({
+      runState: { type: "stopped", timestamp: 30 },
+    });
   });
 });

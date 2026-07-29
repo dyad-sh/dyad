@@ -294,7 +294,7 @@ class HostedActor<
         }
       },
       captureSink: (options) =>
-        this.captureSink(undefined, options?.revisionPolicy),
+        this.captureSinkForGeneration(undefined, options?.revisionPolicy),
     };
     try {
       const domainObserver = definition.createObserver?.(context);
@@ -318,7 +318,10 @@ class HostedActor<
         runCommand: (command) => {
           const generation =
             this.startingCommandGeneration ?? this.admission.capture();
-          const sink = this.captureSink(generation);
+          const sink = this.captureSinkForGeneration(
+            generation,
+            definition.commandSinkRevisionPolicy,
+          );
           const execution = runCommand(command, sink.send);
           if (
             execution === undefined ||
@@ -492,7 +495,13 @@ class HostedActor<
     };
   }
 
-  captureSink(
+  captureSink(options?: {
+    readonly revisionPolicy?: "captured" | "allow-advance";
+  }): ActorEventSink<Event> {
+    return this.captureSinkForGeneration(undefined, options?.revisionPolicy);
+  }
+
+  private captureSinkForGeneration(
     generation: KeyedAdmissionGeneration = this.admission.capture(),
     revisionPolicy: "captured" | "allow-advance" = "captured",
   ): ActorEventSink<Event> {

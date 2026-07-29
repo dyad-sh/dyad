@@ -329,7 +329,11 @@ function transitionActor(
         }
       : null;
   const result = transition(state.runState, toDomainEvent(key, state, event));
-  const settlement = settlementFor(event);
+  const settlement =
+    "invocationRef" in event &&
+    !isCurrentInvocation(state.runState, event.invocationRef)
+      ? null
+      : settlementFor(event);
   const outcomes = settlement
     ? ([
         {
@@ -573,6 +577,7 @@ export const appRunDefinition = {
     },
   }),
   createCommandRunner,
+  commandSinkRevisionPolicy: "allow-advance",
   createObserver: () => ({
     onTransitionApplied: ({ previous, state }) => {
       const previousRun = previous.runState;

@@ -87,16 +87,28 @@ export interface RemoteOperationAdmissionContext<
   readonly fingerprint: string;
 }
 
-export interface RemoteOperationAdmissionResult<EnqueueResult> {
-  readonly disposition: "fresh" | "coalesced" | "replayed";
-  readonly enqueueResult?: EnqueueResult;
-  readonly operation: {
-    readonly settled: Promise<{
-      readonly invocationRef: unknown;
-      readonly outcome: unknown;
-    }>;
-  };
+interface RemoteOperationTicket {
+  readonly settled: Promise<{
+    readonly invocationRef: unknown;
+    readonly outcome: unknown;
+  }>;
 }
+
+export type RemoteOperationAdmissionResult<EnqueueResult> =
+  | {
+      readonly disposition: "fresh";
+      readonly enqueueResult: EnqueueResult;
+      readonly operation: RemoteOperationTicket;
+      /**
+       * Rejects the operation admission when the actor dispatcher cannot
+       * authoritatively apply the correlated intent.
+       */
+      readonly rollbackAdmission: (error: unknown) => void;
+    }
+  | {
+      readonly disposition: "coalesced" | "replayed";
+      readonly operation: RemoteOperationTicket;
+    };
 
 export type ObservedRevisionPolicy =
   | { readonly kind: "none" }

@@ -997,6 +997,7 @@ export class RemoteMachineTransport {
           address,
           envelope.messageId,
           admitted.enqueueResult,
+          admitted.rollbackAdmission,
         );
       }
     }
@@ -1178,6 +1179,7 @@ export class RemoteMachineTransport {
     address: string,
     messageId: string,
     value: unknown,
+    rollbackAdmission: (error: unknown) => void,
   ): Promise<MachineDispatchReceipt> {
     const ticket = value as {
       readonly settled: Promise<
@@ -1199,6 +1201,7 @@ export class RemoteMachineTransport {
     );
     const outcome = await ticket.settled;
     if (outcome.kind === "failed") {
+      rollbackAdmission(outcome.error);
       if (outcome.error instanceof ActorAdmissionError) {
         if (outcome.error.code === "stale-actor-instance") {
           return this.rejected(messageId, "stale-actor");
@@ -1215,11 +1218,33 @@ export class RemoteMachineTransport {
       throw outcome.error;
     }
     if (outcome.kind === "disposed" || !dispatchedActor) {
+      rollbackAdmission(
+        new ActorAdmissionError(
+          "actor-disposing",
+          "Actor disposed before authoritative operation admission completed",
+        ),
+      );
       this.actorKeys.delete(address);
       return this.rejected(messageId, "host-disposing");
     }
     const metadata = ticket.getSettledMetadata();
-    if (!metadata) return this.rejected(messageId, "host-disposing");
+    if (!metadata) {
+      rollbackAdmission(
+        new ActorAdmissionError(
+          "actor-disposing",
+          "Actor admission completed without settled metadata",
+        ),
+      );
+      return this.rejected(messageId, "host-disposing");
+    }
+    if (outcome.kind === "ignored") {
+      rollbackAdmission(
+        new ActorAdmissionError(
+          "stale-actor-revision",
+          `Actor ignored the correlated operation: ${outcome.reason}`,
+        ),
+      );
+    }
     return outcome.kind === "ignored"
       ? {
           kind: "ignored",

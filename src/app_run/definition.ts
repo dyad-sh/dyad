@@ -739,6 +739,13 @@ export const appRunDefinition = {
             disposition: "fresh" as const,
             enqueueResult: admission.enqueueResult,
             operation: admission.operation,
+            rollbackAdmission: (error: unknown) => {
+              appRunOperationRegistry.rollbackAdmission(
+                context.requestIdentity.requestId,
+                admission.operation.invocationRef,
+                error,
+              );
+            },
           }
         : {
             disposition: admission.kind,

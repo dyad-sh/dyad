@@ -6,7 +6,7 @@ import {
   createSequentialIdSource,
 } from "@/state_machines/testing";
 import { getTraceLog } from "@/state_machines/trace";
-import { change } from "@/state_machines/types";
+import { change, ignore } from "@/state_machines/types";
 import type { InvocationRef } from "@/state_machines/invocation_ref";
 import { ActorHost, type ActorHostError } from "./actor_host";
 import {
@@ -22,7 +22,10 @@ import {
   type MachineSnapshotEnvelope,
 } from "./remote_protocol";
 import { RemoteMachineTransport } from "./remote_transport";
-import { OperationRegistry } from "./operation_registry";
+import {
+  finalizeOperationAdmission,
+  OperationRegistry,
+} from "./operation_registry";
 import type { RequestId } from "./request_identity";
 import {
   createRemoteTestMachine,
@@ -2385,6 +2388,114 @@ describe("remote machine transport", () => {
     expect(host.peek(machine.id, "actor")?.getSnapshot()).toMatchObject({
       value: 0,
     });
+    expect(operations.inspect()).toEqual({
+      unresolved: 0,
+      settled: 0,
+      total: 0,
+    });
+  });
+
+  it("rolls back a native operation when actor dispatch is ignored", async () => {
+    type Outcome =
+      | { readonly kind: "disposed" }
+      | { readonly kind: "superseded" }
+      | { readonly kind: "failed" };
+    const operations = new OperationRegistry<Outcome, InvocationRef>({
+      maxUnresolved: 1,
+      maxSettledReplay: 0,
+      now: () => 0,
+      disposalOutcome: () => ({ kind: "disposed" }),
+      supersededOutcome: () => ({ kind: "superseded" }),
+      enqueueFailureOutcome: () => ({ kind: "failed" }),
+    });
+    const base = createRemoteTestMachine();
+    const machine = {
+      ...base,
+      transition: (
+        state: Parameters<typeof base.transition>[0],
+        event: Parameters<typeof base.transition>[1],
+        key: Parameters<typeof base.transition>[2],
+      ) =>
+        event.type === "START"
+          ? ignore(state, "ignored")
+          : base.transition(state, event, key),
+      remoteIntent: {
+        ...base.remoteIntent,
+        operationOutcome: {
+          maxEnvelopeBytes: 1_024,
+          invocationRefCodec: z.any(),
+          outcomeCodec: z.any(),
+        },
+        finalizeOperation: (context, controls) => {
+          const admitted = finalizeOperationAdmission({
+            registry: operations,
+            identity: {
+              requestId: context.requestIdentity.requestId,
+              fingerprint: context.fingerprint,
+              owner: {
+                hostId: "main",
+                machineId: base.id,
+                keyId: context.key,
+                actorInstanceId: context.actor.actorInstanceId,
+                actorRevision: context.actor.snapshotRevision,
+                windowSessionId: context.sender.windowSessionId,
+              },
+            },
+            createInvocationRef: () => ({
+              kind: "remote-test",
+              entityKey: context.key,
+              operationId: "ignored-invocation",
+            }),
+            assertFinalAdmission: controls.assertFinalAdmission,
+            enqueue: controls.enqueue,
+            receiptOnEnqueueFailure: () => ({
+              actor: context.actor,
+              acknowledgedAt: 0,
+            }),
+          });
+          return admitted.kind === "enqueued"
+            ? {
+                disposition: "fresh" as const,
+                enqueueResult: admitted.enqueueResult,
+                operation: admitted.operation,
+                rollbackAdmission: (error: unknown) => {
+                  operations.rollbackAdmission(
+                    context.requestIdentity.requestId,
+                    admitted.operation.invocationRef,
+                    error,
+                  );
+                },
+              }
+            : {
+                disposition: admitted.kind,
+                operation: admitted.operation,
+              };
+        },
+      },
+    } satisfies typeof base;
+    const { duplex } = createHarness({ machine });
+    const renderer = duplex.connect();
+    await renderer.subscribe(address());
+
+    await expect(
+      renderer.dispatch(
+        dispatch(
+          {
+            type: "START",
+            invocationRef: {
+              kind: "remote-test",
+              entityKey: "actor",
+              operationId: "wire-invocation",
+            },
+          },
+          { correlationId: "ignored-request" },
+        ),
+      ),
+    ).resolves.toMatchObject({
+      kind: "ignored",
+      reason: "ignored",
+    });
+
     expect(operations.inspect()).toEqual({
       unresolved: 0,
       settled: 0,

@@ -140,6 +140,11 @@ Background and before/after examples of why this pattern exists:
 - Capture receipt metadata synchronously when that dispatch ticket settles.
   Reading mutable actor metadata after awaiting the ticket can observe a
   re-entrant follow-up transaction instead of the acknowledged event.
+- A completion-aware operation registered before actor dispatch must roll back
+  its admission when that dispatch later fails, is disposed, is ignored, or
+  lacks settled metadata. None of those paths will publish a correlated
+  post-commit outcome, so leaving the admission unresolved leaks registry
+  capacity.
 - Machine-generated queued work must not be editable or removable (including
   through bulk-clear paths) unless removal explicitly settles or rejects the
   owning machine request; otherwise reload can resurrect abandoned work.

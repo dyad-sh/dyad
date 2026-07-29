@@ -161,15 +161,18 @@ export class AppRunActorService {
     timeoutMs?: number;
   }): Promise<void> {
     await requireExistingApp(options.appId);
-    this.actor(options.appId);
+    const actor = this.actor(options.appId);
+    const sink = actor.captureSink();
     const invocationRef = appRuntimeService.createExternalLifecycleRef(
       options.appId,
     );
-    await appRuntimeService.executeExternalLifecycle({
-      ...options,
-      invocationRef,
-      output: this.outputFor(options.appId, invocationRef),
-    });
+    await actor.trackCaptured(sink, () =>
+      appRuntimeService.executeExternalLifecycle({
+        ...options,
+        invocationRef,
+        output: new MainAppRuntimeOutput(options.appId, invocationRef, sink),
+      }),
+    );
   }
 
   /**
@@ -316,7 +319,15 @@ export class AppRunActorService {
       admission.operation;
     if (admission.kind === "enqueued") {
       const dispatch = await admission.enqueueResult.settled;
-      if (dispatch.kind === "failed") throw dispatch.error;
+      if (dispatch.kind === "failed") {
+        void ticket.settled.catch(() => undefined);
+        appRunOperationRegistry.rollbackAdmission(
+          requestId,
+          invocationRef,
+          dispatch.error,
+        );
+        throw dispatch.error;
+      }
       if (dispatch.kind === "disposed" || dispatch.kind === "ignored") {
         appRunOperationRegistry.settle(
           requestId,

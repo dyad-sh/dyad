@@ -16,7 +16,7 @@ import type {
 import type { RuntimeRemoteIntentContract } from "./remote_intent_contract";
 import type { KeyedAdmissionGeneration } from "./keyed_admission_gate";
 import type {
-  OperationAdmissionIdentity,
+  OperationLookupIdentity,
   OperationReceiptMetadata,
   OperationRegistry,
 } from "./operation_registry";
@@ -213,7 +213,7 @@ export interface RemoteOperationContract<
   RemoteIntent,
   Event,
   DomainOutcome,
-  OperationInvocationRef,
+  OperationInvocationRef extends InvocationRef,
 > {
   prepare(context: {
     readonly key: Key;
@@ -229,7 +229,8 @@ export interface RemoteOperationContract<
           DomainOutcome,
           OperationInvocationRef
         >;
-        readonly identity: OperationAdmissionIdentity<OperationInvocationRef>;
+        readonly identity: OperationLookupIdentity;
+        readonly createInvocationRef: () => OperationInvocationRef;
       }
     | undefined;
   ignoredOutcome(reason: string): DomainOutcome;

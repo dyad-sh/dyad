@@ -85,7 +85,7 @@ describe("ImageGenerationOperationService", () => {
     });
   });
 
-  it("reattaches a stable retry after actor revision advances", () => {
+  it("reattaches a stable retry by logical ownership after actor replacement", () => {
     const service = new ImageGenerationOperationService(createFakeClock());
     const ref = invocation("job:retry");
     service.registry.admit(identity("request:retry", ref));
@@ -96,7 +96,7 @@ describe("ImageGenerationOperationService", () => {
       )?.kind,
     ).toBe("coalesced");
 
-    expect(() =>
+    expect(
       service.registry.reattach({
         ...identity("request:retry", ref, "window:a", "jobs", 5),
         owner: {
@@ -104,8 +104,8 @@ describe("ImageGenerationOperationService", () => {
           actorInstanceId: "actor:replacement",
           actorRevision: 5,
         },
-      }),
-    ).toThrow("conflicting identity");
+      })?.kind,
+    ).toBe("coalesced");
   });
 
   it("ignores stale and duplicate terminal output by runtime identity", async () => {

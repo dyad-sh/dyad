@@ -92,6 +92,7 @@ export function useImageGenerationRequestActor(): ImageGenerationRequestActor {
       Promise<ImageGenerationAdmission>
     >({
       scope,
+      snapshotIntent: (input) => structuredClone(input),
       prepareIdentity: ({ intent }) => ({
         requestId: intent.requestId,
         messageId:
@@ -107,7 +108,11 @@ export function useImageGenerationRequestActor(): ImageGenerationRequestActor {
       },
       classifyFailure: (error) =>
         error instanceof RemoteMachineTransportError
-          ? { kind: "disconnect", retryable: true }
+          ? {
+              kind: "disconnect",
+              retryable: true,
+              admission: "unknown",
+            }
           : { kind: "unexpected" },
       enqueue: () => {
         throw new Error(
@@ -164,6 +169,7 @@ export function useImageGenerationRequestActor(): ImageGenerationRequestActor {
       Promise<ImageGenerationAdmission>
     >({
       scope,
+      snapshotIntent: (input) => structuredClone(input),
       prepareIdentity: () => ({
         requestId:
           `image-generation-cancel:${globalThis.crypto.randomUUID()}` as RequestId,
@@ -177,7 +183,11 @@ export function useImageGenerationRequestActor(): ImageGenerationRequestActor {
       retry: { kind: "none" },
       classifyFailure: (error) =>
         error instanceof RemoteMachineTransportError
-          ? { kind: "disconnect", retryable: false }
+          ? {
+              kind: "disconnect",
+              retryable: false,
+              admission: "unknown",
+            }
           : { kind: "unexpected" },
       enqueue: () => {
         throw new Error("Image generation cancellation exposes request() only");

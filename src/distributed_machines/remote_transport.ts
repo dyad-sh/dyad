@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { serialize } from "node:v8";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import type { Clock } from "@/state_machines/clock";
+import type { InvocationRef } from "@/state_machines/invocation_ref";
 import { PendingReceiptLedger } from "@/state_machines/pending_receipt_ledger";
 import type { WindowSessionId } from "@/window_infrastructure/types";
 import {
@@ -589,7 +590,13 @@ export class RemoteMachineTransport {
     this.removeDisposalListener();
     for (const definition of this.options.manifest.definitions) {
       const operation = definition.remoteOperation as
-        | RemoteOperationContract<unknown, unknown, unknown, unknown, unknown>
+        | RemoteOperationContract<
+            unknown,
+            unknown,
+            unknown,
+            unknown,
+            InvocationRef
+          >
         | undefined;
       operation?.releaseManager?.();
     }
@@ -860,7 +867,13 @@ export class RemoteMachineTransport {
         },
       );
     const remoteOperation = definition.remoteOperation as
-      | RemoteOperationContract<unknown, unknown, unknown, unknown, unknown>
+      | RemoteOperationContract<
+          unknown,
+          unknown,
+          unknown,
+          unknown,
+          InvocationRef
+        >
       | undefined;
     const operationPreparation = remoteOperation?.prepare({
       key,
@@ -872,13 +885,15 @@ export class RemoteMachineTransport {
       fingerprint: prepared.fingerprint,
     });
     let ticket;
+    let operationInvocationRef: InvocationRef | undefined;
     if (operationPreparation) {
       const operationAdmission = finalizeOperationAdmission({
         registry: operationPreparation.registry as OperationRegistry<
           unknown,
-          unknown
+          InvocationRef
         >,
         identity: operationPreparation.identity,
+        createInvocationRef: operationPreparation.createInvocationRef,
         assertFinalAdmission: () => {
           const refusal = definition.remoteIntent
             ? this.revalidatePreparedDispatch(sender, envelope, prepared)
@@ -902,6 +917,7 @@ export class RemoteMachineTransport {
         receiptOnEnqueueFailure: () =>
           remoteOperation!.receipt(dispatchActorMetadata),
       });
+      operationInvocationRef = operationAdmission.operation.invocationRef;
       if (operationAdmission.kind !== "enqueued") {
         prepared.consumed = true;
         return {
@@ -950,7 +966,7 @@ export class RemoteMachineTransport {
       if (operationPreparation) {
         operationPreparation.registry.settle(
           operationPreparation.identity.requestId,
-          operationPreparation.identity.invocationRef,
+          operationInvocationRef!,
           remoteOperation!.ignoredOutcome(outcome.reason),
           remoteOperation!.receipt(metadata),
         );

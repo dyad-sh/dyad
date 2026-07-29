@@ -58,7 +58,6 @@ export function useGenerateImage() {
   const startMutation = useMachineMutation({
     connection: remote.connection,
     snapshot: remote.snapshot,
-    observedRevision: remote.observedRevision,
     request: (input: StartMutationInput, observedRevision) => {
       const prepared = requestActor.request(
         {
@@ -82,7 +81,6 @@ export function useGenerateImage() {
   const cancelMutation = useMachineMutation({
     connection: remote.connection,
     snapshot: remote.snapshot,
-    observedRevision: remote.observedRevision,
     request: (job: ImageGenerationJobView, observedRevision) => {
       if (!job.activeInvocationRef) {
         throw new Error("Image generation is no longer cancellable");

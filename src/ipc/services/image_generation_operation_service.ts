@@ -1,7 +1,7 @@
 import {
   OperationRegistry,
   createOperationOutcomePublisher,
-  type OperationAdmissionIdentity,
+  type OperationLookupIdentity,
   type OperationDisposalCause,
   type OperationOwner,
 } from "@/distributed_machines/operation_registry";
@@ -24,17 +24,6 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 export const IMAGE_GENERATION_MAX_PENDING_OPERATIONS = 64;
 export const IMAGE_GENERATION_MAX_RETAINED_OPERATIONS = 128;
 
-function sameInvocation(
-  left: ImageGenerationInvocationRef,
-  right: ImageGenerationInvocationRef,
-): boolean {
-  return (
-    left.kind === right.kind &&
-    left.entityKey === right.entityKey &&
-    left.operationId === right.operationId
-  );
-}
-
 export class ImageGenerationOperationService {
   readonly registry: OperationRegistry<
     ImageGenerationOperationOutcome,
@@ -49,17 +38,6 @@ export class ImageGenerationOperationService {
       maxUnresolved: IMAGE_GENERATION_MAX_PENDING_OPERATIONS,
       maxSettledReplay: IMAGE_GENERATION_MAX_RETAINED_OPERATIONS,
       now: () => this.clock.now(),
-      sameInvocationRef: sameInvocation,
-      // A stable-id retry can outlive the receipt ledger and arrive after the
-      // actor has advanced. Reattachment remains bound to the same actor
-      // instance and initiator, while the original admission revision is not
-      // treated as operation identity.
-      sameOwnerForReattachment: (left, right) =>
-        left.hostId === right.hostId &&
-        left.machineId === right.machineId &&
-        left.keyId === right.keyId &&
-        left.actorInstanceId === right.actorInstanceId &&
-        left.windowSessionId === right.windowSessionId,
       disposalOutcome: (cause) => ({
         kind: "disposed",
         jobId: "",
@@ -89,11 +67,6 @@ export class ImageGenerationOperationService {
     return {
       prepare: ({ intent, sender, actor, hostId, fingerprint }) => {
         if (intent.type !== "SUBMIT") return undefined;
-        const invocationRef: ImageGenerationInvocationRef = {
-          kind: "image-generation",
-          entityKey: intent.job.id,
-          operationId: intent.operationId,
-        };
         const owner: OperationOwner = {
           hostId,
           machineId: "image_generation",
@@ -102,14 +75,20 @@ export class ImageGenerationOperationService {
           actorRevision: actor.snapshotRevision,
           windowSessionId: sender.windowSessionId,
         };
-        const identity: OperationAdmissionIdentity<ImageGenerationInvocationRef> =
-          {
-            requestId: intent.requestId,
-            invocationRef,
-            fingerprint,
-            owner,
-          };
-        return { registry: this.registry, identity };
+        const identity: OperationLookupIdentity = {
+          requestId: intent.requestId,
+          fingerprint,
+          owner,
+        };
+        return {
+          registry: this.registry,
+          identity,
+          createInvocationRef: () => ({
+            kind: "image-generation",
+            entityKey: intent.job.id,
+            operationId: intent.operationId,
+          }),
+        };
       },
       ignoredOutcome: (reason) => ({
         kind: "rejected",

@@ -239,6 +239,11 @@
   "messageHistory": "Historial de Mensajes",
   "codebase": "Código Fuente",
   "mentionedApps": "Aplicaciones Mencionadas",
+  "referencedApps": {
+    "label": "Aplicaciones referenciadas",
+    "description": "Estas aplicaciones permanecen legibles durante el resto de este chat. El agente puede leer sus archivos, pero no editarlos.",
+    "remove": "Dejar de referenciar {{appName}}"
+  },
   "systemPrompt": "Prompt del Sistema",
   "currentInput": "Entrada Actual",
   "total": "Total",

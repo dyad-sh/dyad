@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { eq } from "drizzle-orm";
 import { apps, chats, messages } from "@/db/schema";
 import { DyadErrorKind } from "@/errors/dyad_error";
 import {
@@ -8,6 +9,11 @@ import {
 import { registerChatHandlers } from "./chat_handlers";
 
 const deletionOrder = vi.hoisted(() => [] as string[]);
+// Lets a test observe database state at the moment streams are drained, which
+// is where the revoke-vs-stream-union ordering matters.
+const drainHooks = vi.hoisted(
+  () => ({ onDrain: undefined }) as { onDrain?: () => void },
+);
 
 vi.mock("./chat_stream_handlers", async (importOriginal) => {
   const actual =
@@ -20,6 +26,7 @@ vi.mock("./chat_stream_handlers", async (importOriginal) => {
     }),
     cancelActiveStreamsForChat: vi.fn(async () => {
       deletionOrder.push("drain");
+      drainHooks.onDrain?.();
       return true;
     }),
   };
@@ -54,6 +61,7 @@ describe("registerChatHandlers", () => {
 
   beforeEach(() => {
     deletionOrder.length = 0;
+    drainHooks.onDrain = undefined;
     harness = setupHandlerTestHarness();
     registerChatHandlers();
   });
@@ -244,4 +252,112 @@ describe("registerChatHandlers", () => {
       }),
     ).resolves.toEqual([]);
   });
+
+  it("clears sticky referenced apps in the same transaction as the messages", async () => {
+    const appId = Number(
+      harness.db
+        .insert(apps)
+        .values({ name: "sticky-app", path: "sticky-app" })
+        .run().lastInsertRowid,
+    );
+    const referencedAppId = Number(
+      harness.db
+        .insert(apps)
+        .values({ name: "other-app", path: "other-app" })
+        .run().lastInsertRowid,
+    );
+    const chatId = Number(
+      harness.db
+        .insert(chats)
+        .values({ appId, referencedAppIds: [referencedAppId] })
+        .run().lastInsertRowid,
+    );
+    harness.db
+      .insert(messages)
+      .values({ chatId, role: "user", content: "@app:other-app what is this?" })
+      .run();
+
+    await harness.invokeHandler("delete-messages", chatId);
+
+    // Read access must not outlive the history that granted it: an empty chat
+    // that still carries referenced ids would keep cross-app reads alive with
+    // nothing on screen explaining why.
+    expect(readStoredIds(chatId)).toEqual([]);
+    await expect(
+      harness.db.query.messages.findMany({
+        where: (row, { eq }) => eq(row.chatId, chatId),
+      }),
+    ).resolves.toEqual([]);
+  });
+
+  it("revokes a referenced app only after the in-flight turn has drained", async () => {
+    const appId = Number(
+      harness.db
+        .insert(apps)
+        .values({ name: "revoke-app", path: "revoke-app" })
+        .run().lastInsertRowid,
+    );
+    const detachedAppId = Number(
+      harness.db
+        .insert(apps)
+        .values({ name: "detached-app", path: "detached-app" })
+        .run().lastInsertRowid,
+    );
+    const keptAppId = Number(
+      harness.db
+        .insert(apps)
+        .values({ name: "kept-app", path: "kept-app" })
+        .run().lastInsertRowid,
+    );
+    const chatId = Number(
+      harness.db
+        .insert(chats)
+        .values({ appId, referencedAppIds: [detachedAppId, keptAppId] })
+        .run().lastInsertRowid,
+    );
+
+    drainHooks.onDrain = () => {
+      deletionOrder.push(`ids-at-drain:${readStoredIds(chatId).join(",")}`);
+    };
+
+    await harness.invokeHandler("remove-chat-referenced-app", {
+      chatId,
+      appId: detachedAppId,
+    });
+
+    // The revoking write lands after the drain, so a stream that resolved the
+    // whole reference set before the removal cannot persist it back.
+    expect(deletionOrder).toEqual([
+      "actor-barrier",
+      "barrier",
+      "drain-actor",
+      "drain",
+      `ids-at-drain:${detachedAppId},${keptAppId}`,
+      "release",
+      "actor-release",
+    ]);
+    expect(readStoredIds(chatId)).toEqual([keptAppId]);
+  });
+
+  it("throws NotFound when detaching a referenced app from a missing chat", async () => {
+    await expect(
+      harness.invokeHandler("remove-chat-referenced-app", {
+        chatId: 4242,
+        appId: 1,
+      }),
+    ).rejects.toMatchObject({
+      kind: DyadErrorKind.NotFound,
+      message: "Chat not found",
+    });
+  });
+
+  function readStoredIds(chatId: number): number[] {
+    return (
+      harness.db
+        .select({ referencedAppIds: chats.referencedAppIds })
+        .from(chats)
+        .where(eq(chats.id, chatId))
+        .get()?.referencedAppIds ?? []
+    );
+  }
 });

@@ -1,5 +1,6 @@
 import { configDefaults, defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
+import { availableParallelism } from "node:os";
 import { resolve } from "path";
 
 const noisyConsolePatterns = [
@@ -27,11 +28,17 @@ const noisyConsolePatterns = [
 // naming rule in rules/hybrid-testing.md — a rule-following test anywhere in
 // the tree gets the right environment, not a confusing unit-project failure.
 const hybridIntegrationTests = ["src/**/*.integration.test.{ts,tsx}"];
+// Git/sqlite/server-backed integration files become slower, not faster, when
+// Vitest forks one worker per logical CPU on large or shared runners. Keep
+// enough parallelism for throughput while reserving capacity for subprocesses
+// and the fake services each worker launches.
+const maxTestWorkers = Math.max(1, Math.min(4, availableParallelism() - 1));
 
 export default defineConfig({
   plugins: [react()],
   test: {
     globals: true,
+    maxWorkers: maxTestWorkers,
     onConsoleLog(log, _type) {
       // Suppress known noisy logs while allowing useful debugging output
       for (const pattern of noisyConsolePatterns) {

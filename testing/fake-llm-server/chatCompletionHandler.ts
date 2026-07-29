@@ -25,6 +25,26 @@ function hasInvalidApiKey(req: Request): boolean {
   return typeof authorization === "string" && /invalid/i.test(authorization);
 }
 
+async function waitForDelayOrDisconnect(
+  res: Response,
+  delayMs: number,
+): Promise<boolean> {
+  let disconnected = false;
+  await new Promise<void>((resolve) => {
+    const onClose = () => {
+      disconnected = true;
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      res.removeListener("close", onClose);
+      resolve();
+    }, delayMs);
+    res.once("close", onClose);
+  });
+  return disconnected;
+}
+
 function hasExploreCodeToolResult(
   messages: any[],
   getTextContent: (msg: any) => string,
@@ -278,11 +298,16 @@ export const createChatCompletionHandler =
       messageContent += "\n\n" + generateDump(req);
     }
 
-    if (userTextContent.includes("[sleep=medium]")) {
-      await new Promise((resolve) => setTimeout(resolve, 10_000));
-    }
-    if (userTextContent.includes("[sleep=long]")) {
-      await new Promise((resolve) => setTimeout(resolve, 30_000));
+    const responseDelayMs = userTextContent.includes("[sleep=long]")
+      ? 30_000
+      : userTextContent.includes("[sleep=medium]")
+        ? 10_000
+        : 0;
+    if (
+      responseDelayMs > 0 &&
+      (await waitForDelayOrDisconnect(res, responseDelayMs))
+    ) {
+      return;
     }
 
     // Handle merge conflict resolution prompts (both old and new formats)

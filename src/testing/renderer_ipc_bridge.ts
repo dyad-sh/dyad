@@ -416,22 +416,31 @@ export function installRendererIpcBridge(
   const settleInFlight = async (timeoutMs = 5_000): Promise<void> => {
     const deadline = Date.now() + timeoutMs;
     // A settling invoke can schedule follow-up invokes (a query's onSuccess,
-    // a dependent query), so drain repeatedly until the set stays empty.
+    // a dependent query), so drain repeatedly until the set stays empty for a
+    // complete event-loop turn. Waiting only for the currently tracked
+    // promises is insufficient: their renderer-side `.then()` continuations
+    // run after the raw invoke leaves `inFlight` and can enqueue more work.
     // On timeout this THROWS (listing the stuck channels) instead of
     // returning: a silent success here made a deadlocked handler
     // indistinguishable from a clean teardown.
-    while (inFlight.size > 0) {
+    while (true) {
       const remainingMs = deadline - Date.now();
       if (remainingMs <= 0) {
         throw settleTimeoutError(timeoutMs);
       }
-      const didSettle = await waitForBatchOrTimeout(
-        Array.from(inFlight.keys()),
-        remainingMs,
-      );
-      if (!didSettle && inFlight.size > 0) {
-        throw settleTimeoutError(timeoutMs);
+      if (inFlight.size > 0) {
+        const didSettle = await waitForBatchOrTimeout(
+          Array.from(inFlight.keys()),
+          remainingMs,
+        );
+        if (!didSettle && inFlight.size > 0) {
+          throw settleTimeoutError(timeoutMs);
+        }
+        continue;
       }
+
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      if (inFlight.size === 0) return;
     }
   };
 

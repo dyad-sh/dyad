@@ -546,6 +546,7 @@ export class ChatStreamRemoteManager {
     chatId: number,
     snapshot: ChatStreamRemoteSnapshot,
   ): void {
+    if (this.disposed) return;
     const acceptance = snapshot.lastAcceptance;
     if (
       acceptance &&
@@ -675,6 +676,10 @@ export class ChatStreamRemoteManager {
       void ipc.chat
         .getChat(chatId)
         .then((latestChat) => {
+          // Completion refreshes are intentionally fire-and-forget. The IPC
+          // result can settle after provider teardown, so never re-enter the
+          // disposed remote client or mutate a store whose owner is gone.
+          if (this.disposed) return;
           const currentSnapshot = this.getSnapshot(chatId);
           if (
             (currentSnapshot.invocationRef?.operationId !== undefined &&

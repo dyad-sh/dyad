@@ -645,6 +645,20 @@ async function cancelTrackedStreams(
 }
 
 /**
+ * Abort and drain every tracked stream, including streams still waiting for
+ * admission. Process/test teardown cannot safely close shared databases,
+ * servers, or temp roots while either class of handler is alive.
+ */
+export async function cancelAllActiveStreams(
+  sender?: SafeSender,
+): Promise<boolean> {
+  return cancelTrackedStreams(
+    [...new Set([...activeStreams.keys(), ...streamCompletions.keys()])],
+    sender,
+  );
+}
+
+/**
  * Abort an in-flight stream for a single chat and wait until its handler has
  * stopped writing. Deletion handlers call this before taking the app lock (and
  * before deleting rows) so an in-flight generation can't re-insert messages

@@ -171,3 +171,23 @@ listing just the used exports collects fine today but breaks the moment an
 unrelated export is added upstream, failing with `[vitest] No
 "restartCloudSandbox" export is defined on the "../utils/cloud_sandbox_provider"
 mock` from a file the branch never touched.
+
+`settleInFlight()` must observe an empty invoke set for a complete event-loop
+turn. A raw invoke can leave the tracked set before its renderer-side `.then()`
+continuation schedules a dependent invoke, so returning on the first empty
+observation recreates teardown races.
+
+A distributed-machine dispatch receipt confirms admission, not completion of
+the main-owned command. Hybrid harness disposal must fence new actor work,
+cancel and dispose every harness-owned actor, drain legacy stream handlers, and
+await harness wrapper post-processing before closing SQLite, fake services, or
+the temp root.
+
+Fake-server delays used for cancellation tests must clear their timers when the
+HTTP response closes. Do not treat the request's `close` event as client
+disconnect: it can fire after the request body is consumed while the response
+is still active, prematurely abandoning the stream.
+
+Cap Vitest worker concurrency for Git/sqlite/server-backed integration suites
+relative to `availableParallelism()`. Unbounded fork bursts on large or shared
+runners cause rotating DOM/event timeouts while increasing total runtime.

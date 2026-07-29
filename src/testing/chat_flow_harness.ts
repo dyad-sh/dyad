@@ -33,9 +33,15 @@ import {
   messages,
 } from "@/db/schema";
 import {
+  blockNewStreamsForApp,
+  cancelAllActiveStreams,
   registerChatStreamHandlers,
   registerLegacyChatStreamTestHandler,
 } from "@/ipc/handlers/chat_stream_handlers";
+import {
+  beginAppChatActorMutation,
+  settleChatActorsForDeletion,
+} from "@/ipc/services/chat_actor_service";
 import type { ChatStreamParams } from "@/ipc/types";
 import {
   runningApps,
@@ -376,7 +382,9 @@ export async function setupChatFlowHarness(
     const getServerDump = (opts?: ServerDumpOptions): ServerDumpResult =>
       readServerDump(listDumpPaths(), opts);
 
-    const streamChat = async (
+    const inFlightHarnessOperations = new Set<Promise<unknown>>();
+
+    const streamChatOnce = async (
       prompt: string,
       streamOptions: Partial<Omit<ChatStreamParams, "chatId" | "prompt">> & {
         chatId?: number;
@@ -407,6 +415,18 @@ export async function setupChatFlowHarness(
         getServerDump,
       };
     };
+    const streamChat: ChatFlowHarness["streamChat"] = (
+      prompt,
+      streamOptions,
+    ) => {
+      const operation = streamChatOnce(prompt, streamOptions);
+      inFlightHarnessOperations.add(operation);
+      void operation.then(
+        () => inFlightHarnessOperations.delete(operation),
+        () => inFlightHarnessOperations.delete(operation),
+      );
+      return operation;
+    };
 
     const getAppFiles = () => {
       const data = generateAppFilesSnapshotData(appDir, appDir);
@@ -429,8 +449,31 @@ export async function setupChatFlowHarness(
     const gitLog = (): string[] =>
       git(appDir, "log", "--oneline").trim().split("\n").filter(Boolean);
 
-    const dispose = async (): Promise<void> => {
+    const disposeOnce = async (): Promise<void> => {
+      // Renderer dispatch receipts acknowledge actor admission, not completion
+      // of the main-owned command. Fence new stream work and drain both actor
+      // and legacy handler lifetimes before closing resources they still use.
+      const releaseStreamAdmission = blockNewStreamsForApp(appId);
+      let releaseActorAdmission: () => void = () => undefined;
       try {
+        // The hybrid harness registers the main-owned machine graph; the
+        // node-only harness invokes the legacy handler directly and therefore
+        // has no remote definitions to dispose.
+        if (options.registerChatStreamHandlers === false) {
+          releaseActorAdmission = await beginAppChatActorMutation(appId);
+          const ownedChats = await db.query.chats.findMany({
+            columns: { id: true },
+            where: eq(chats.appId, appId),
+          });
+          await Promise.all(
+            ownedChats.map(({ id }) => settleChatActorsForDeletion(id)),
+          );
+        }
+        await cancelAllActiveStreams();
+        // The handler can be fully unwound while the harness wrapper is still
+        // loading final messages for its result. Keep SQLite alive through
+        // that post-processing too.
+        await Promise.allSettled(Array.from(inFlightHarnessOperations));
         await stopRunningAppsForHarness();
         try {
           await fakeLlmHandle.close();
@@ -453,7 +496,14 @@ export async function setupChatFlowHarness(
         electronMock.ipcListeners?.clear();
         restoreHarnessEnv(envSnapshot);
         activeChatFlowHarness = false;
+        releaseActorAdmission();
+        releaseStreamAdmission();
       }
+    };
+    let disposePromise: Promise<void> | undefined;
+    const dispose = (): Promise<void> => {
+      disposePromise ??= disposeOnce();
+      return disposePromise;
     };
 
     return {

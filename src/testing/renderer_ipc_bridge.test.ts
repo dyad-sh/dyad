@@ -232,4 +232,24 @@ describe("installRendererIpcBridge", () => {
 
     unsubscribe();
   });
+
+  it("keeps draining when a renderer continuation schedules another invoke", async () => {
+    const setup = createBridge();
+    bridge = setup.bridge;
+    const { shared, ipcRenderer } = setup;
+
+    shared.ipcHandlers.set("first", () => "first-result");
+    shared.ipcHandlers.set("second", () => "second-result");
+
+    void ipcRenderer
+      .invokeEnvelope("first")
+      .then(() => ipcRenderer.invokeEnvelope("second"));
+    await bridge.settleInFlight();
+
+    expect(bridge.lastInvoke("second")).toMatchObject({
+      status: "fulfilled",
+      result: "second-result",
+    });
+    expect(bridge.pendingCount).toBe(0);
+  });
 });

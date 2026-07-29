@@ -62,6 +62,7 @@ export interface DispatchAuthorizationContext<Key, Intent, State> {
   readonly currentState: State;
   readonly actor: ActorRuntimeMetadata;
   readonly expectedObservedRevision?: number;
+  readonly requestIdentity?: RequestIdentity;
 }
 
 export interface DomainRevisionContext<Key, Intent, State> {

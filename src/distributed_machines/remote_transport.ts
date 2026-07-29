@@ -30,6 +30,7 @@ import {
   type MachineSnapshotEnvelope,
 } from "./remote_protocol";
 import type {
+  RequestIdentity,
   RequestId,
   RequestIdempotencyKey,
   RequestMessageId,
@@ -757,6 +758,12 @@ export class RemoteMachineTransport {
       | undefined;
     let event: unknown;
     let dispatchActorMetadata = actorMetadata;
+    const requestIdentity = this.requestIdentityFor(
+      definition,
+      intent,
+      envelope,
+      senderContext.windowSessionId,
+    );
     if (!definition.remoteIntent) {
       let stabilized = false;
       for (
@@ -772,6 +779,7 @@ export class RemoteMachineTransport {
           currentState: actor.getSnapshot(),
           actor: authorizedMetadata,
           expectedObservedRevision: envelope.expectedRevision,
+          requestIdentity,
         });
         if (decision.kind === "deny") {
           return this.rejected(envelope.messageId, "unauthorized");
@@ -813,12 +821,6 @@ export class RemoteMachineTransport {
       if (!stabilized) {
         return this.rejected(envelope.messageId, "revision-conflict");
       }
-      const requestIdentity = this.requestIdentityFor(
-        definition,
-        intent,
-        envelope,
-        senderContext.windowSessionId,
-      );
       event = this.toInternalEvent(
         definition,
         key,
@@ -892,6 +894,7 @@ export class RemoteMachineTransport {
         currentState: actor.getSnapshot(),
         actor: actorMetadata,
         expectedObservedRevision: envelope.expectedRevision,
+        requestIdentity,
       });
       if (decision.kind === "deny") {
         if (decision.error.kind !== DyadErrorKind.Auth) {
@@ -911,12 +914,6 @@ export class RemoteMachineTransport {
       if (preConversionRefusal) {
         return this.rejected(envelope.messageId, preConversionRefusal);
       }
-      const requestIdentity = this.requestIdentityFor(
-        definition,
-        intent,
-        envelope,
-        senderContext.windowSessionId,
-      );
       event = this.toInternalEvent(
         definition,
         key,
@@ -1841,6 +1838,7 @@ export class RemoteMachineTransport {
       readonly currentState: unknown;
       readonly actor: ActorRuntimeMetadata;
       readonly expectedObservedRevision?: number;
+      readonly requestIdentity?: RequestIdentity;
     },
   ): Promise<RemoteAuthorizationDecision> {
     if (definition.remoteIntent) {
@@ -1852,6 +1850,7 @@ export class RemoteMachineTransport {
         key: context.key,
         event: context.intent,
         currentState: context.currentState,
+        requestIdentity: context.requestIdentity,
       });
       return { kind: "allow" };
     } catch (error) {

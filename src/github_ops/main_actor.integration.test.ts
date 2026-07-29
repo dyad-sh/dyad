@@ -27,6 +27,7 @@ import { githubOpsOperationService } from "@/ipc/services/github_ops_operation_s
 import { githubOpsClientDefinition } from "./client_definition";
 import type { GithubOpsIgnoreReason } from "./state";
 import {
+  GITHUB_OPS_INVOCATION_KIND,
   githubOpsKey,
   type GithubOpsIntentEvent,
   type GithubOpsRemoteSnapshot,
@@ -277,6 +278,62 @@ describe("main-hosted github_ops actor integration", () => {
       expect(actorA.getSnapshot().state.type).toBe("idle"),
     );
     await expect(dispatch("message-3")).resolves.toMatchObject({
+      kind: "applied",
+    });
+    expect(service.run).toHaveBeenCalledOnce();
+  });
+
+  it("replays a completed abort before rechecking its cleared active invocation", async () => {
+    const pending = deferred();
+    service.run.mockReturnValue(pending.promise);
+    const { actorA, host } = createHarness();
+    await actorA.resync();
+    const local: GithubOpsHostedActor = host.ensure(
+      githubOpsDefinition,
+      githubOpsKey(7),
+    );
+    const activeInvocationRef = {
+      kind: GITHUB_OPS_INVOCATION_KIND,
+      entityKey: 7,
+      operationId: "recovered-rebase",
+    } as const;
+    local.send({
+      type: "GIT_STATE",
+      mergeInProgress: false,
+      rebaseInProgress: true,
+      recoveryInvocationRef: activeInvocationRef,
+    });
+    await flush();
+    const snapshot = actorA.getView().snapshot;
+    if (snapshot.kind !== "available") throw new Error("actor unavailable");
+    const intent = {
+      type: "OP_REQUESTED" as const,
+      operationId: "renderer-abort",
+      op: { type: "rebase-abort" as const },
+      activeInvocationRef,
+    };
+    const requestId = "abort-request" as RequestId;
+    const idempotencyKey = "abort-idempotency" as RequestIdempotencyKey;
+    const dispatch = (messageId: string) =>
+      actorA.dispatch(intent, {
+        expected: snapshot.observedRevision,
+        requestIdentity: {
+          requestId,
+          messageId: messageId as RequestMessageId,
+          idempotencyKey,
+          windowSessionId: "renderer-session",
+        },
+      });
+
+    await expect(dispatch("abort-message-1")).resolves.toMatchObject({
+      kind: "applied",
+    });
+    pending.resolve();
+    await vi.waitFor(() =>
+      expect(actorA.getSnapshot().state.type).toBe("idle"),
+    );
+
+    await expect(dispatch("abort-message-2")).resolves.toMatchObject({
       kind: "applied",
     });
     expect(service.run).toHaveBeenCalledOnce();

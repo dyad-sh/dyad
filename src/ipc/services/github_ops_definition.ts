@@ -509,7 +509,12 @@ export const githubOpsDefinition = defineFrameworkCoveredRemoteMachine({
         ? "reject-stale"
         : "allow-stale",
     authorizeSubscribe: ({ key }) => authorizeApp(key.appId),
-    authorizeDispatch: async ({ key, event, currentState }) => {
+    authorizeDispatch: async ({
+      key,
+      event,
+      currentState,
+      requestIdentity,
+    }) => {
       if (key.appId === 0) {
         throw new DyadError(
           "A real app is required for GitHub operations",
@@ -517,6 +522,15 @@ export const githubOpsDefinition = defineFrameworkCoveredRemoteMachine({
         );
       }
       await authorizeApp(key.appId);
+      if (
+        requestIdentity &&
+        githubOpsOperationService.ticketFor(
+          requestIdentity.requestId,
+          requestIdentity.windowSessionId,
+        )
+      ) {
+        return;
+      }
       if (
         event.type === "OP_REQUESTED" &&
         (event.op.type === "rebase-abort" || event.op.type === "merge-abort") &&

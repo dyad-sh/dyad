@@ -732,6 +732,11 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   actor revision; rejecting that exact retry before registry reattachment makes
   coalescing and terminal replay unreachable. Fresh requests must still pass
   normal revision admission, and adapter callbacks require final revalidation.
+- Split immutable authorization from mutable domain preconditions for stable
+  tracked retries. After access authorization, an already-owned RequestId may
+  bypass preconditions invalidated by its own completed first attempt; registry
+  fingerprint and logical-owner checks must still reject conflicting reuse
+  before any new side effect can enqueue.
 - Long-lived command runners must emit asynchronous producer outcomes through
   the per-command sink supplied by ActorHost. An actor-construction-time sink
   keeps the pre-fence admission generation and becomes permanently stale when

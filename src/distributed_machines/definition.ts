@@ -210,6 +210,7 @@ export interface RemoteMachineContract<
     readonly key: Key;
     readonly event: Event;
     readonly currentState: State | undefined;
+    readonly requestIdentity?: RequestIdentity;
   }) => void | Promise<void>;
 }
 

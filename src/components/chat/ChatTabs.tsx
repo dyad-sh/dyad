@@ -359,6 +359,22 @@ export function shouldCapturePresentationBeforeNavigation(
   );
 }
 
+interface PreNavigationPresentationCapture {
+  fromChatId: number;
+  toChatId: number | null;
+}
+
+export function matchesPreNavigationPresentationCapture(
+  capture: PreNavigationPresentationCapture | null,
+  previousChatId: number | null,
+  selectedChatId: number | null,
+): boolean {
+  return (
+    capture?.fromChatId === previousChatId &&
+    capture.toChatId === selectedChatId
+  );
+}
+
 export function partitionChatsByVisibleCount(
   orderedChats: ChatSummary[],
   visibleTabCount: number,
@@ -489,7 +505,8 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
     new Map<number, ChatTabPresentationState>(),
   );
   const presentedChatIdRef = useRef(selectedChatId);
-  const preNavigationCapturedChatIdRef = useRef<number | null>(null);
+  const preNavigationPresentationCaptureRef =
+    useRef<PreNavigationPresentationCapture | null>(null);
   useEffect(
     () => () => {
       scrollRestoreGenerationRef.current += 1;
@@ -644,7 +661,10 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
           presentedChatId,
           capturePresentation(presentedChatId, presentedChat.appId),
         );
-        preNavigationCapturedChatIdRef.current = presentedChatId;
+        preNavigationPresentationCaptureRef.current = {
+          fromChatId: presentedChatId,
+          toChatId,
+        };
       }),
     [capturePresentation, chatsById, router],
   );
@@ -653,9 +673,12 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
     const previousChatId = presentedChatIdRef.current;
     if (previousChatId === selectedChatId) return;
 
-    const capturedBeforeNavigation =
-      preNavigationCapturedChatIdRef.current === previousChatId;
-    preNavigationCapturedChatIdRef.current = null;
+    const capturedBeforeNavigation = matchesPreNavigationPresentationCapture(
+      preNavigationPresentationCaptureRef.current,
+      previousChatId,
+      selectedChatId,
+    );
+    preNavigationPresentationCaptureRef.current = null;
     if (previousChatId !== null && !capturedBeforeNavigation) {
       const previousChat = chatsById.get(previousChatId);
       if (previousChat) {
@@ -1256,7 +1279,10 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
             capturePresentation(selectedChat.id, selectedChat.appId),
           );
         } else {
-          preNavigationCapturedChatIdRef.current = selectedChatId;
+          preNavigationPresentationCaptureRef.current = {
+            fromChatId: selectedChatId,
+            toChatId: chatId,
+          };
         }
       }
       store.set(ensureRecentViewedChatIdAtom, chatId);

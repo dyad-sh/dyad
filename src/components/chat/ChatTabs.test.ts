@@ -22,6 +22,7 @@ import {
   addFinishedChatNotification,
   getOrderedRecentChatIds,
   getVisibleTabCapacity,
+  matchesPreNavigationPresentationCapture,
   getFallbackChatIdAfterClose,
   groupChatIdsByApp,
   partitionChatsByVisibleCount,
@@ -177,6 +178,21 @@ describe("ChatTabs helpers", () => {
         8,
       ),
     ).toBe(false);
+  });
+
+  it("does not reuse a stale capture marker for a later destination", () => {
+    const settingsCapture = { fromChatId: 7, toChatId: null };
+
+    expect(matchesPreNavigationPresentationCapture(settingsCapture, 7, 8)).toBe(
+      false,
+    );
+    expect(
+      matchesPreNavigationPresentationCapture(
+        { fromChatId: 7, toChatId: 8 },
+        7,
+        8,
+      ),
+    ).toBe(true);
   });
 
   it("notifies only for a finished background chat", () => {

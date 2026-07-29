@@ -43,7 +43,11 @@ import {
   cancelOrphanedBaseStream,
   fastTextOutput,
 } from "@/ipc/utils/stream_text_utils";
-import { getMaxTokens, getTemperature } from "@/ipc/utils/token_utils";
+import {
+  estimateToolResultTokens,
+  getMaxTokens,
+  getTemperature,
+} from "@/ipc/utils/token_utils";
 import {
   getProviderOptions,
   getAiHeaders,
@@ -1255,10 +1259,21 @@ export async function handleLocalAgentStream(
                 return;
               }
 
+              const toolResultTokens = estimateToolResultTokens(
+                step.toolResults ?? [],
+              );
+              const projectedNextRequestTokens =
+                step.usage.totalTokens + toolResultTokens;
               const shouldCompact = await checkAndMarkForCompaction(
                 req.chatId,
-                step.usage.totalTokens,
+                projectedNextRequestTokens,
               );
+
+              if (toolResultTokens > 0) {
+                logger.info(
+                  `Projected next request for chat ${req.chatId}: ${projectedNextRequestTokens} tokens (${step.usage.totalTokens} engine-reported + ${toolResultTokens} estimated tool-result tokens)`,
+                );
+              }
 
               // If this step triggered tool calls, compact before the next step
               // in this same user turn instead of waiting for the next message.

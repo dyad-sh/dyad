@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   getCompactionThreshold,
   getTemperature,
+  estimateToolResultTokens,
   shouldTriggerCompaction,
 } from "@/ipc/utils/token_utils";
 import { findLanguageModel } from "@/ipc/utils/findLanguageModel";
@@ -16,6 +17,43 @@ vi.mock("@/ipc/utils/findLanguageModel", () => ({
 }));
 
 const mockFindLanguageModel = vi.mocked(findLanguageModel);
+
+describe("estimateToolResultTokens", () => {
+  it("estimates provider-bound tool result envelopes without recounting input", () => {
+    const toolResults = [
+      {
+        toolCallId: "call-1",
+        toolName: "read_file",
+        input: { path: "x".repeat(100_000) },
+        output: "file contents",
+      },
+    ];
+    const serializedResult = JSON.stringify([
+      {
+        type: "tool-result",
+        toolCallId: "call-1",
+        toolName: "read_file",
+        output: "file contents",
+      },
+    ]);
+
+    expect(estimateToolResultTokens(toolResults)).toBe(
+      Math.ceil(serializedResult.length / 4),
+    );
+  });
+
+  it("handles bigint values in structured tool output", () => {
+    expect(
+      estimateToolResultTokens([
+        {
+          toolCallId: "call-1",
+          toolName: "query",
+          output: { rows: [{ count: 42n }] },
+        },
+      ]),
+    ).toBeGreaterThan(0);
+  });
+});
 
 describe("getTemperature", () => {
   it("does not set a default temperature for models without metadata", async () => {

@@ -254,7 +254,8 @@ vi.mock("@/ipc/utils/get_model_client", () => ({
   })),
 }));
 
-vi.mock("@/ipc/utils/token_utils", () => ({
+vi.mock("@/ipc/utils/token_utils", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/ipc/utils/token_utils")>()),
   getMaxTokens: vi.fn(async () => 4096),
   getTemperature: vi.fn(async () => 0.7),
 }));
@@ -320,7 +321,9 @@ const {
 } = vi.hoisted(() => ({
   mockIsChatPendingCompaction: vi.fn(async () => false),
   mockPerformCompaction: vi.fn(async () => ({ success: true })),
-  mockCheckAndMarkForCompaction: vi.fn(async () => false),
+  mockCheckAndMarkForCompaction: vi.fn(
+    async (_chatId: number, _tokens: number) => false,
+  ),
 }));
 
 vi.mock("@/ipc/handlers/compaction/compaction_handler", () => ({
@@ -1625,6 +1628,79 @@ describe("handleLocalAgentStream", () => {
         return (payload.messages ?? []).map((msg) => msg.id);
       });
       expect(streamedMessageIds).not.toContain(20);
+    });
+
+    it("compacts before the next step when tool results project usage over the threshold", async () => {
+      const { event } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat();
+      mockCheckAndMarkForCompaction.mockImplementation(
+        async (_chatId, tokens) => tokens >= 220_000,
+      );
+
+      let preparedNextStep = false;
+      mockStreamTextImpl = (options) => {
+        const firstStepMessages = [
+          { role: "user", content: "Inspect the repository" },
+        ];
+
+        return {
+          fullStream: (async function* () {
+            await options.prepareStep?.({
+              messages: firstStepMessages,
+              stepNumber: 0,
+              steps: [],
+              model: {},
+              experimental_context: undefined,
+            });
+
+            await options.onStepFinish?.({
+              usage: { totalTokens: 215_000 },
+              toolCalls: [{}],
+              toolResults: [
+                {
+                  toolCallId: "call-1",
+                  toolName: "read_file",
+                  input: { path: "large-file.ts" },
+                  output: "x".repeat(40_000),
+                },
+              ],
+            });
+
+            await options.prepareStep?.({
+              messages: [
+                ...firstStepMessages,
+                { role: "assistant", content: "Reading the file" },
+                { role: "tool", content: "x".repeat(40_000) },
+              ],
+              stepNumber: 1,
+              steps: [],
+              model: {},
+              experimental_context: undefined,
+            });
+            preparedNextStep = true;
+            yield { type: "text-delta", text: "done" };
+          })(),
+          response: Promise.resolve({ messages: [] }),
+          steps: Promise.resolve([]),
+        };
+      };
+
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      const projectedTokens = mockCheckAndMarkForCompaction.mock.calls[0]?.[1];
+      expect(projectedTokens).toBeGreaterThan(220_000);
+      expect(preparedNextStep).toBe(true);
+      expect(mockPerformCompaction).toHaveBeenCalledTimes(1);
     });
 
     it("should persist post-compaction response messages without reshaping", async () => {

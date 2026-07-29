@@ -9,6 +9,37 @@ export const estimateTokens = (text: string): number => {
   return Math.ceil(text.length / 4);
 };
 
+type ToolResultForTokenEstimate = {
+  toolCallId: string;
+  toolName: string;
+  output: unknown;
+};
+
+/**
+ * Estimate the tokens that completed tool results will add to the next model
+ * request. Tool inputs are intentionally excluded because the engine's usage
+ * for the completed step already counted them.
+ */
+export const estimateToolResultTokens = (
+  toolResults: readonly ToolResultForTokenEstimate[],
+): number => {
+  if (toolResults.length === 0) {
+    return 0;
+  }
+
+  const serializedResults = JSON.stringify(
+    toolResults.map(({ toolCallId, toolName, output }) => ({
+      type: "tool-result",
+      toolCallId,
+      toolName,
+      output,
+    })),
+    (_key, value) => (typeof value === "bigint" ? value.toString() : value),
+  );
+
+  return estimateTokens(serializedResults);
+};
+
 export const estimateMessagesTokens = (messages: Message[]): number => {
   return messages.reduce(
     (acc, message) => acc + estimateTokens(message.content),

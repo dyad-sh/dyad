@@ -787,6 +787,21 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
             showError(new Error("The adopted chat tab identity is missing"));
             return;
           }
+          const settlement = await ipc.windowInfrastructure
+            .rejectChatTabTransfer({ transferId })
+            .catch(() => ({ aborted: false }));
+          if (!settlement.aborted) {
+            if (hasSourceChatTabRemoval(transferId, adoptedTabInstanceId)) {
+              clearSourceChatTabRemoval(transferId);
+            } else {
+              showError(
+                new Error(
+                  "The tab transfer could not be safely rolled back; the adopted tab was retained",
+                ),
+              );
+            }
+            return;
+          }
           const rolledBackChatId = adoptedChatId;
           presentationByChatIdRef.current.delete(rolledBackChatId);
           try {
@@ -889,9 +904,11 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
           }
           await publishChatTabOwnership().catch(() => undefined);
         }
-        await ipc.windowInfrastructure
-          .rejectChatTabTransfer({ transferId })
-          .catch(() => undefined);
+        if (!adoptedLocally) {
+          await ipc.windowInfrastructure
+            .rejectChatTabTransfer({ transferId })
+            .catch(() => undefined);
+        }
         showError(error);
       }
     },

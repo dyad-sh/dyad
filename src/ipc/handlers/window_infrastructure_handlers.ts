@@ -157,12 +157,12 @@ export function registerWindowInfrastructureHandlers(): void {
 
   createTypedHandler(
     windowInfrastructureContracts.rejectChatTabTransfer,
-    async (event, { transferId }) => {
-      chatTabTransfers.reject(
+    async (event, { transferId }) => ({
+      aborted: chatTabTransfers.reject(
         windowRegistry.ensureRegistered(event.sender),
         transferId,
-      );
-    },
+      ),
+    }),
   );
 
   createTypedHandler(

@@ -58,7 +58,7 @@ export const windowInfrastructureContracts = {
   rejectChatTabTransfer: defineContract({
     channel: "window-infrastructure:reject-chat-tab-transfer",
     input: z.object({ transferId: z.string().uuid() }),
-    output: z.void(),
+    output: z.object({ aborted: z.boolean() }),
   }),
   acknowledgeChatTabTransfer: defineContract({
     channel: "window-infrastructure:acknowledge-chat-tab-transfer",

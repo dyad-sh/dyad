@@ -116,7 +116,10 @@ export class ChatTabTransferCoordinator {
     return transfer.payload;
   }
 
-  reject(destinationWindowSessionId: WindowSessionId, transferId: string) {
+  reject(
+    destinationWindowSessionId: WindowSessionId,
+    transferId: string,
+  ): boolean {
     const transfer = this.pending.get(transferId);
     if (transfer?.destinationWindowSessionId === destinationWindowSessionId) {
       transfer.sourceRemoval?.reject(
@@ -129,7 +132,9 @@ export class ChatTabTransferCoordinator {
       transfer.destinationWindowSessionId = undefined;
       transfer.expiresAt = this.now() + this.lifetimeMs;
       this.scheduleExpiry(transferId, transfer);
+      return true;
     }
+    return false;
   }
 
   async acknowledge(

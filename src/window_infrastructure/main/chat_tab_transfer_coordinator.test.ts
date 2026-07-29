@@ -98,7 +98,7 @@ describe("ChatTabTransferCoordinator", () => {
 
     coordinator.begin(transferId, session(1), payload());
     await coordinator.adopt(session(2), transferId);
-    coordinator.reject(session(2), transferId);
+    expect(coordinator.reject(session(2), transferId)).toBe(true);
 
     expect(source.send).not.toHaveBeenCalled();
     expect(await coordinator.adopt(session(2), transferId)).toEqual(payload());
@@ -212,7 +212,7 @@ describe("ChatTabTransferCoordinator", () => {
       });
       await vi.advanceTimersByTimeAsync(5);
       await timedOut;
-      coordinator.reject(session(2), transferId);
+      expect(coordinator.reject(session(2), transferId)).toBe(true);
 
       expect(() =>
         coordinator.confirmSourceRemoval(session(1), {
@@ -224,6 +224,26 @@ describe("ChatTabTransferCoordinator", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("reports when source confirmation wins before destination abort", async () => {
+    const windows = new WindowRegistry();
+    windows.register(endpoint(1), session(1));
+    windows.register(endpoint(2), session(2));
+    const coordinator = new ChatTabTransferCoordinator(windows);
+    const transferId = "20000000-0000-4000-8000-000000000009";
+
+    coordinator.begin(transferId, session(1), payload());
+    await coordinator.adopt(session(2), transferId);
+    const acknowledgement = coordinator.acknowledge(session(2), transferId);
+    coordinator.confirmSourceRemoval(session(1), {
+      transferId,
+      chatId: 7,
+      tabInstanceId: tab(1),
+    });
+    await acknowledgement;
+
+    expect(coordinator.reject(session(2), transferId)).toBe(false);
   });
 
   it("bounds unknown-transfer adoption waiters and releases their slots", async () => {

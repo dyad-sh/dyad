@@ -22,6 +22,7 @@ const runtime = vi.hoisted(() => ({
   restart: vi.fn<() => Promise<void>>(),
   stop: vi.fn<() => Promise<void>>(),
   cleanup: vi.fn(),
+  createExternalLifecycleRef: vi.fn(),
 }));
 
 const database = vi.hoisted(() => ({
@@ -111,6 +112,12 @@ describe("main-hosted app-run actor", () => {
     runtime.restart.mockReset();
     runtime.stop.mockReset();
     runtime.cleanup.mockReset();
+    runtime.createExternalLifecycleRef.mockReset();
+    runtime.createExternalLifecycleRef.mockReturnValue({
+      kind: "app-run",
+      entityKey: 7,
+      operationId: "external-restart",
+    });
     database.findFirst.mockReset();
     database.findFirst.mockResolvedValue({ id: 7 });
     runtime.start.mockResolvedValue(undefined);
@@ -1178,6 +1185,32 @@ describe("main-hosted app-run actor", () => {
         expectedRevision: actorA.getSnapshot().revision,
       }),
     ).resolves.toMatchObject({ kind: "applied" });
+  });
+
+  it("drains an already-locked external restart before reset sealing", async () => {
+    const { host } = createHarness();
+    const service = new AppRunActorService(host);
+    const entered = deferred<void>();
+    const pending = deferred<number>();
+    const restart = service.executeAlreadyLockedExternalRestart(7, async () => {
+      entered.resolve();
+      return pending.promise;
+    });
+    await entered.promise;
+
+    const reset = service.beginReset();
+    let sealed = false;
+    const sealing = reset.seal().then(() => {
+      sealed = true;
+    });
+    await flush();
+    expect(sealed).toBe(false);
+
+    pending.resolve(42);
+    await expect(restart).resolves.toBe(42);
+    await sealing;
+    expect(reset.commit()).toBe(true);
+    expect(reset.release()).toBe(true);
   });
 
   it("can fence a normally completed run without untracked command work", async () => {

@@ -323,6 +323,14 @@ export interface HostedActorRef<
    * admission generation.
    */
   captureSink(): ActorEventSink<Event>;
+  /**
+   * Enrolls external work under a captured actor/gate lifetime so destructive
+   * fences wait for the full continuation.
+   */
+  trackCaptured<Result>(
+    sink: ActorEventSink<Event>,
+    start: () => Promise<Result>,
+  ): Promise<Result>;
   enqueue(
     event: Event,
     dispatchContext?: DispatchContext,

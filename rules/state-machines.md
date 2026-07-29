@@ -267,6 +267,10 @@ Background and before/after examples of why this pattern exists:
   acquire the resource before the StrictMode-safe disposal microtask runs.
 - When disposal can race an async command that registers external state after
   an `await`, clean up both immediately and again after the command settles.
+- A captured non-creating sink validates late producer delivery but does not
+  by itself make a destructive fence wait. Externally initiated work, including
+  work that already owns a domain lock, must enroll its full promise under the
+  captured actor/admission generation before it starts.
 - When a cross-owner facade defers keyed delivery to a microtask, entity
   disposal must invalidate both queued and future deliveries for that key.
   Otherwise the deferred callback can recreate a controller after deletion.

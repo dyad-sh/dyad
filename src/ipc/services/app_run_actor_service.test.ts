@@ -35,6 +35,9 @@ describe("AppRunActorService.executeAlreadyLockedExternalRestart", () => {
   const actor = {
     send: vi.fn(),
     captureSink: vi.fn(() => ({ send: actor.send })),
+    trackCaptured: vi.fn((_sink: unknown, start: () => Promise<unknown>) =>
+      start(),
+    ),
   };
   const host = {
     ensure: vi.fn(() => actor),

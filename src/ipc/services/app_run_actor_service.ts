@@ -189,34 +189,37 @@ export class AppRunActorService {
     }) => Promise<T>,
   ): Promise<T> {
     await requireExistingApp(appId);
-    const sink = this.actor(appId).captureSink();
+    const actor = this.actor(appId);
+    const sink = actor.captureSink();
     const invocationRef = appRuntimeService.createExternalLifecycleRef(appId);
     const output = new MainAppRuntimeOutput(appId, invocationRef, sink);
-    sink.send({
-      type: "EXTERNAL_RESTART_STARTED",
-      invocationRef,
-      operation: "restart",
-      startedAt: Date.now(),
+    return actor.trackCaptured(sink, async () => {
+      sink.send({
+        type: "EXTERNAL_RESTART_STARTED",
+        invocationRef,
+        operation: "restart",
+        startedAt: Date.now(),
+      });
+      try {
+        const result = await execute({ invocationRef, output });
+        sink.send({
+          type: "PROCESS_SPAWNED",
+          operationId: invocationRef.operationId,
+          invocationRef,
+        });
+        return result;
+      } catch (error) {
+        sink.send({
+          type: "PROCESS_FAILED",
+          operationId: invocationRef.operationId,
+          invocationRef,
+          error: {
+            message: error instanceof Error ? error.message : String(error),
+          },
+        });
+        throw error;
+      }
     });
-    try {
-      const result = await execute({ invocationRef, output });
-      sink.send({
-        type: "PROCESS_SPAWNED",
-        operationId: invocationRef.operationId,
-        invocationRef,
-      });
-      return result;
-    } catch (error) {
-      sink.send({
-        type: "PROCESS_FAILED",
-        operationId: invocationRef.operationId,
-        invocationRef,
-        error: {
-          message: error instanceof Error ? error.message : String(error),
-        },
-      });
-      throw error;
-    }
   }
 
   beginAppDeletion(appId: number): FenceHandle<ReturnType<typeof appRunKey>> {

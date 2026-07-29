@@ -545,6 +545,27 @@ class HostedActor<
     });
   }
 
+  /**
+   * Enrolls externally initiated work under the exact actor/gate lifetime
+   * captured by a non-creating sink so destructive fences drain it.
+   */
+  trackCaptured<Result>(
+    sink: ActorEventSink<Event>,
+    start: () => Promise<Result>,
+  ): Promise<Result> {
+    const current = this.getMetadata();
+    if (
+      current.actorInstanceId !== sink.actor.actorInstanceId ||
+      current.snapshotRevision !== sink.actor.snapshotRevision
+    ) {
+      throw new ActorAdmissionError(
+        "stale-actor-revision",
+        "Captured external work does not target the current actor revision",
+      );
+    }
+    return this.admission.track(sink.admissionGeneration, start);
+  }
+
   private trackScheduler(
     scheduler: CommandScheduler<Command>,
   ): CommandScheduler<Command> {

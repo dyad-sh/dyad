@@ -19,6 +19,12 @@ export const TabInstanceIdSchema = z
   .uuid()
   .transform((value) => value as TabInstanceId);
 
+export const ChatTabOwnershipSchema = z.object({
+  tabInstanceId: TabInstanceIdSchema,
+  chatId: z.number().int().positive(),
+});
+export type ChatTabOwnership = z.infer<typeof ChatTabOwnershipSchema>;
+
 export const ChatTabPresentationStateSchema = z.object({
   draftInput: z.string().max(1_000_000),
   scrollTop: z.number().finite().nonnegative(),

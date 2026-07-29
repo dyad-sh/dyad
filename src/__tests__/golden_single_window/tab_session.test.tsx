@@ -81,6 +81,20 @@ vi.mock("@/preview_iframe/PreviewIframeProvider", () => ({
   }),
 }));
 
+vi.mock("@/ipc/types", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/ipc/types")>();
+  return {
+    ...actual,
+    ipc: {
+      ...actual.ipc,
+      windowInfrastructure: {
+        ...actual.ipc.windowInfrastructure,
+        setChatTabOwnership: vi.fn().mockResolvedValue(undefined),
+      },
+    },
+  };
+});
+
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => vi.fn(),
   useRouter: () => mocks.router,

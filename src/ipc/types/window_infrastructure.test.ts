@@ -31,4 +31,23 @@ describe("window infrastructure contracts", () => {
       }).success,
     ).toBe(true);
   });
+
+  it("bounds renderer chat tab ownership snapshots", () => {
+    expect(
+      windowInfrastructureContracts.setChatTabOwnership.input.safeParse([
+        {
+          chatId: 11,
+          tabInstanceId: "10000000-0000-4000-8000-000000000011",
+        },
+      ]).success,
+    ).toBe(true);
+    expect(
+      windowInfrastructureContracts.setChatTabOwnership.input.safeParse(
+        Array.from({ length: 101 }, (_, index) => ({
+          chatId: index + 1,
+          tabInstanceId: crypto.randomUUID(),
+        })),
+      ).success,
+    ).toBe(false);
+  });
 });

@@ -27,8 +27,11 @@ import {
   partitionChatsByVisibleCount,
   reorderVisibleChatIds,
   restoreLocalStorageSnapshot,
+  restoreMessagesScrollTop,
+  restoreOrderedIdAfterRollback,
   shouldPrepareCrossWindowTransfer,
   shouldCapturePresentationBeforeNavigation,
+  shouldRestorePriorNavigationAfterAdoption,
   shouldSkipChatSelection,
 } from "@/components/chat/ChatTabs";
 import type { ChatSummary } from "@/lib/schemas";
@@ -64,6 +67,83 @@ describe("ChatTabs helpers", () => {
     expect(() =>
       restoreLocalStorageSnapshot("rollback-test", "unwritten"),
     ).toThrow("Failed to durably restore chat tab session storage");
+  });
+
+  it("rolls back only the adopted id while preserving concurrent ordering", () => {
+    expect(restoreOrderedIdAfterRollback([9, 2, 3, 4], [1, 2, 3], 9)).toEqual([
+      2, 3, 4,
+    ]);
+    expect(restoreOrderedIdAfterRollback([4, 1, 3], [1, 2, 3], 2)).toEqual([
+      4, 1, 2, 3,
+    ]);
+  });
+
+  it("restores the prior route only while adoption still owns navigation", () => {
+    expect(
+      shouldRestorePriorNavigationAfterAdoption(
+        9,
+        9,
+        "/chat",
+        "/chat?id=9",
+        "/settings",
+      ),
+    ).toBe(true);
+    expect(
+      shouldRestorePriorNavigationAfterAdoption(
+        9,
+        9,
+        "/settings",
+        "/settings",
+        "/settings",
+      ),
+    ).toBe(true);
+    expect(
+      shouldRestorePriorNavigationAfterAdoption(
+        12,
+        9,
+        "/chat",
+        "/chat?id=12",
+        "/settings",
+      ),
+    ).toBe(false);
+    expect(
+      shouldRestorePriorNavigationAfterAdoption(
+        9,
+        9,
+        "/library",
+        "/library",
+        "/settings",
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps applying restored scroll after a later chat-switch auto-scroll", () => {
+    const callbacks: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callbacks.push(callback);
+      return callbacks.length;
+    });
+    const wrapper = document.createElement("div");
+    wrapper.dataset.testid = "messages-list";
+    const viewport = document.createElement("div");
+    viewport.dataset.virtuosoScroller = "";
+    Object.defineProperties(viewport, {
+      scrollHeight: { value: 1_000 },
+      clientHeight: { value: 200 },
+    });
+    wrapper.append(viewport);
+    document.body.append(wrapper);
+
+    restoreMessagesScrollTop(300, () => true);
+    callbacks.shift()?.(0);
+    expect(viewport.scrollTop).toBe(300);
+
+    viewport.scrollTop = 800;
+    callbacks.shift()?.(1);
+    callbacks.shift()?.(2);
+    callbacks.shift()?.(3);
+    expect(viewport.scrollTop).toBe(300);
+    wrapper.remove();
   });
 
   it("reselects the active chat when navigation must return to the chat route", () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { BrowserWindow } from "electron";
-import type { WindowSessionId } from "../types";
+import type { TabInstanceId, WindowSessionId } from "../types";
 import { WindowRegistry, type WindowEndpoint } from "./window_registry";
 import {
   chatNotificationTarget,
@@ -36,6 +36,22 @@ describe("chat notification window routing", () => {
     expect(
       chatNotificationTarget(windows, { kind: "chat", id: 7 }, true),
     ).toBeNull();
+  });
+
+  it("routes a background chat notification to its owning window", () => {
+    const windows = new WindowRegistry();
+    windows.register(endpoint(1), session(1));
+    windows.register(endpoint(2), session(2));
+    windows.setChatTabOwnership(session(2), [
+      {
+        chatId: 7,
+        tabInstanceId: "30000000-0000-4000-8000-000000000007" as TabInstanceId,
+      },
+    ]);
+
+    expect(chatNotificationTarget(windows, { kind: "chat", id: 7 }, true)).toBe(
+      session(2),
+    );
   });
 
   it("restores, shows, and focuses a minimized target", () => {

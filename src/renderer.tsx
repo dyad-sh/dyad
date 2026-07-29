@@ -40,7 +40,10 @@ import {
   useRegisterEntityDisposer,
 } from "./state_machines/react";
 import { clearTestRuntimeForAppAtom } from "./atoms/testRuntimeAtoms";
-import { initializeChatTabSessionStorageAtom } from "./atoms/chatAtoms";
+import {
+  ensureRecentViewedChatIdAtom,
+  initializeChatTabSessionStorageAtom,
+} from "./atoms/chatAtoms";
 import {
   configureChatTabWindowSession,
   pruneChatTabWindowSessions,
@@ -243,6 +246,11 @@ function RendererServices() {
             );
           }
           const entity: VisibleEntity | undefined = bootstrap.initialEntity;
+          if (entity?.kind === "chat") {
+            // Seed the tab before route navigation. ChatTabs hydration merges
+            // pre-hydration opens, so this works even with a collapsed sidebar.
+            store.set(ensureRecentViewedChatIdAtom, entity.id);
+          }
           const navigation = initialWindowNavigation(
             entity,
             bootstrap.initialChatAppId,

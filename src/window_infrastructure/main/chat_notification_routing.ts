@@ -9,6 +9,10 @@ export function chatNotificationTarget(
 ): WindowSessionId | null {
   const showing = windows.findWindowsShowing(entity)[0];
   if (showing) return showing;
+  if (entity.kind === "chat") {
+    const owner = windows.findWindowsOwningChat(entity.id)[0];
+    if (owner) return owner;
+  }
 
   const endpoints = windows.liveEndpoints();
   if (enableMultiWindow && endpoints.length !== 1) return null;

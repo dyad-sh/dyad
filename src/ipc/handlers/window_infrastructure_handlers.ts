@@ -75,9 +75,14 @@ export function registerWindowInfrastructureHandlers(): void {
   createTypedHandler(
     windowInfrastructureContracts.confirmSourceChatTabRemoval,
     async (event, input) => {
-      chatTabTransfers.confirmSourceRemoval(
-        windowRegistry.ensureRegistered(event.sender),
-        input,
+      const sourceWindowSessionId = windowRegistry.ensureRegistered(
+        event.sender,
+      );
+      chatTabTransfers.confirmSourceRemoval(sourceWindowSessionId, input);
+      windowRegistry.removeOwnedChatTab(
+        sourceWindowSessionId,
+        input.chatId,
+        input.tabInstanceId,
       );
     },
   );
@@ -108,16 +113,31 @@ export function registerWindowInfrastructureHandlers(): void {
   createTypedHandler(
     windowInfrastructureContracts.beginChatTabTransfer,
     async (event, { transferId, payload }) => {
+      const sourceWindowSessionId = windowRegistry.ensureRegistered(
+        event.sender,
+      );
       const chat = await db.query.chats.findFirst({
         where: eq(chats.id, payload.chatId),
       });
       if (!chat || chat.appId !== payload.appId) {
         throw new DyadError("Chat not found", DyadErrorKind.NotFound);
       }
+      if (
+        !windowRegistry.ownsChatTab(
+          sourceWindowSessionId,
+          payload.chatId,
+          payload.tabInstanceId,
+        )
+      ) {
+        throw new DyadError(
+          "The source window does not own this chat tab",
+          DyadErrorKind.Precondition,
+        );
+      }
       return {
         transferId: chatTabTransfers.begin(
           transferId,
-          windowRegistry.ensureRegistered(event.sender),
+          sourceWindowSessionId,
           payload,
         ),
       };
@@ -204,6 +224,14 @@ export function registerWindowInfrastructureHandlers(): void {
       const sessionId = windowRegistry.ensureRegistered(event.sender);
       windowRegistry.setVisibleEntities(sessionId, entities);
       getWindowProductController()?.setVisibleEntities(sessionId, entities);
+    },
+  );
+
+  createTypedHandler(
+    windowInfrastructureContracts.setChatTabOwnership,
+    async (event, tabs) => {
+      const sessionId = windowRegistry.ensureRegistered(event.sender);
+      windowRegistry.setChatTabOwnership(sessionId, tabs);
     },
   );
 

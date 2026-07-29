@@ -18,6 +18,7 @@ import {
   hasSourceChatTabRemoval,
   markSourceChatTabRemoval,
   pruneChatTabWindowSessions,
+  removeActiveStoredChatTab,
   type StoredWindowChatTabSession,
 } from "./chat_tab_session_storage";
 import type { TabInstanceId, WindowSessionId } from "./types";
@@ -167,6 +168,42 @@ describe("per-window chat tab session storage", () => {
     expect(activeStoredChatTabInstanceState(transferredTabInstanceId)).toBe(
       "present",
     );
+  });
+
+  it("rejects adoption instead of overwriting an unreadable session", () => {
+    const key = chatTabSessionStorageKey(firstWindow);
+    localStorage.setItem(key, "{bad json");
+
+    expect(() =>
+      adoptStoredChatTab({
+        chatId: 20,
+        tabInstanceId: "60000000-0000-4000-8000-000000000006" as TabInstanceId,
+      }),
+    ).toThrow("could not be read");
+    expect(localStorage.getItem(key)).toBe("{bad json");
+  });
+
+  it("removes only the adopted tab from the current stored session", () => {
+    const storage = createChatTabSessionStorage(localStorage);
+    storage.setItem(LEGACY_CHAT_TAB_SESSION_STORAGE_KEY, {
+      openChatIds: [10, 20],
+      selectedChatId: 20,
+      closedChatIds: [30],
+      updatedAt: 1,
+    });
+    const session = JSON.parse(
+      localStorage.getItem(chatTabSessionStorageKey(firstWindow))!,
+    ) as StoredWindowChatTabSession;
+    const removed = session.tabs.find((tab) => tab.chatId === 20)!;
+
+    removeActiveStoredChatTab(removed.tabInstanceId);
+
+    const current = JSON.parse(
+      localStorage.getItem(chatTabSessionStorageKey(firstWindow))!,
+    ) as StoredWindowChatTabSession;
+    expect(current.tabs.map((tab) => tab.chatId)).toEqual([10]);
+    expect(current.selectedTabInstanceId).toBeNull();
+    expect(current.closedChatIds).toEqual([30]);
   });
 
   it("distinguishes an absent instance from unavailable session storage", () => {

@@ -52,16 +52,19 @@ export function getActiveWindowSessionId(): WindowSessionId {
 export function getActiveStoredChatTab(
   chatId: number,
 ): StoredChatTab | undefined {
-  try {
-    const raw = window.localStorage.getItem(
-      chatTabSessionStorageKey(activeWindowSessionId),
-    );
-    return parseStoredSession(raw, activeWindowSessionId)?.tabs.find(
-      (tab) => tab.chatId === chatId,
-    );
-  } catch {
-    return undefined;
+  return getActiveStoredChatTabs().find((tab) => tab.chatId === chatId);
+}
+
+export function getActiveStoredChatTabs(): StoredChatTab[] {
+  const raw = window.localStorage.getItem(
+    chatTabSessionStorageKey(activeWindowSessionId),
+  );
+  if (raw === null) return [];
+  const session = parseStoredSession(raw, activeWindowSessionId);
+  if (!session) {
+    throw new Error("The chat tab session could not be read");
   }
+  return session.tabs;
 }
 
 export function activeStoredChatTabInstanceState(
@@ -138,10 +141,11 @@ export function clearSourceChatTabRemoval(transferId: string): void {
 export function adoptStoredChatTab(tab: StoredChatTab): void {
   const storage = window.localStorage;
   const key = chatTabSessionStorageKey(activeWindowSessionId);
-  const current = parseStoredSession(
-    storage.getItem(key),
-    activeWindowSessionId,
-  );
+  const raw = storage.getItem(key);
+  const current = parseStoredSession(raw, activeWindowSessionId);
+  if (raw !== null && !current) {
+    throw new Error("The chat tab session could not be read");
+  }
   if (
     current?.tabs.some(
       (candidate) =>
@@ -167,6 +171,33 @@ export function adoptStoredChatTab(tab: StoredChatTab): void {
       closedChatIds: (current?.closedChatIds ?? []).filter(
         (chatId) => chatId !== tab.chatId,
       ),
+      updatedAt: Date.now(),
+    } satisfies StoredWindowChatTabSession),
+  );
+}
+
+export function removeActiveStoredChatTab(tabInstanceId: TabInstanceId): void {
+  const storage = window.localStorage;
+  const key = chatTabSessionStorageKey(activeWindowSessionId);
+  const raw = storage.getItem(key);
+  if (raw === null) return;
+  const current = parseStoredSession(raw, activeWindowSessionId);
+  if (!current) {
+    throw new Error("The chat tab session could not be read");
+  }
+  if (!current.tabs.some((tab) => tab.tabInstanceId === tabInstanceId)) return;
+  const tabs = current.tabs.filter(
+    (tab) => tab.tabInstanceId !== tabInstanceId,
+  );
+  storage.setItem(
+    key,
+    JSON.stringify({
+      ...current,
+      tabs,
+      selectedTabInstanceId:
+        current.selectedTabInstanceId === tabInstanceId
+          ? null
+          : current.selectedTabInstanceId,
       updatedAt: Date.now(),
     } satisfies StoredWindowChatTabSession),
   );

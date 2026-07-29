@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
-import type { WindowSessionId } from "../types";
+import type { TabInstanceId, WindowSessionId } from "../types";
 import { WindowRegistry, type WindowEndpoint } from "./window_registry";
 
 function endpoint(id: number): WindowEndpoint & { destroy(): void } {
@@ -100,6 +100,45 @@ describe("WindowRegistry", () => {
 
     registry.setFocused(second);
     expect(registry.routePresentation({ effect: "ordinary" })).toBe(second);
+  });
+
+  it("tracks exact chat tab ownership and removes only matching identities", () => {
+    const registry = new WindowRegistry();
+    const first = session();
+    const second = session();
+    registry.register(endpoint(1), first);
+    registry.register(endpoint(2), second);
+    registry.setChatTabOwnership(first, [
+      {
+        chatId: 7,
+        tabInstanceId: "10000000-0000-4000-8000-000000000007" as TabInstanceId,
+      },
+    ]);
+    registry.setChatTabOwnership(second, [
+      {
+        chatId: 8,
+        tabInstanceId: "20000000-0000-4000-8000-000000000008" as TabInstanceId,
+      },
+    ]);
+
+    expect(
+      registry.ownsChatTab(first, 7, "10000000-0000-4000-8000-000000000007"),
+    ).toBe(true);
+    expect(registry.findWindowsOwningChat(7)).toEqual([first]);
+
+    registry.removeOwnedChatTab(
+      first,
+      7,
+      "20000000-0000-4000-8000-000000000008",
+    );
+    expect(registry.findWindowsOwningChat(7)).toEqual([first]);
+
+    registry.removeOwnedChatTab(
+      first,
+      7,
+      "10000000-0000-4000-8000-000000000007",
+    );
+    expect(registry.findWindowsOwningChat(7)).toEqual([]);
   });
 
   it("revokes screenshot leases on iframe epoch changes and destruction", () => {

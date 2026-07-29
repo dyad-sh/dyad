@@ -9,6 +9,7 @@ import {
   QueryInvalidationBatchSchema,
   QueryInvalidationEventSchema,
   QueryInvalidationScopeSchema,
+  ChatTabOwnershipSchema,
   ChatTabTransferPayloadSchema,
   EntityDisposalEventSchema,
   TabInstanceIdSchema,
@@ -86,6 +87,11 @@ export const windowInfrastructureContracts = {
   setVisibleEntities: defineContract({
     channel: "window-infrastructure:set-visible-entities",
     input: z.array(VisibleEntitySchema),
+    output: z.void(),
+  }),
+  setChatTabOwnership: defineContract({
+    channel: "window-infrastructure:set-chat-tab-ownership",
+    input: z.array(ChatTabOwnershipSchema).max(100),
     output: z.void(),
   }),
   attachInterest: defineContract({

@@ -159,6 +159,8 @@ export const FileEditor = ({
   const cursorSubscriptionRef = useRef<{ dispose(): void } | null>(null);
   const editorCursor = useAtomValue(editorCursorAtom);
   const setEditorCursor = useSetAtom(editorCursorAtom);
+  const cursorTargetRef = useRef({ appId, filePath, persistCursor });
+  cursorTargetRef.current = { appId, filePath, persistCursor };
 
   const queryClient = useQueryClient();
 
@@ -243,18 +245,19 @@ export const FileEditor = ({
       navigateToLine(initialLine);
     }
 
-    if (persistCursor) {
-      cursorSubscriptionRef.current = editor.onDidChangeCursorPosition(
-        ({ position }) => {
-          setEditorCursor({
-            appId,
-            path: filePath,
-            lineNumber: position.lineNumber,
-            column: position.column,
-          });
-        },
-      );
-    }
+    cursorSubscriptionRef.current?.dispose();
+    cursorSubscriptionRef.current = editor.onDidChangeCursorPosition(
+      ({ position }) => {
+        const target = cursorTargetRef.current;
+        if (!target.persistCursor) return;
+        setEditorCursor({
+          appId: target.appId,
+          path: target.filePath,
+          lineNumber: position.lineNumber,
+          column: position.column,
+        });
+      },
+    );
 
     // Save when the editor loses focus and the current model is dirty.
     editor.onDidBlurEditorText(() => {
@@ -371,10 +374,22 @@ export const FileEditor = ({
   // Include content in dependencies to ensure navigation only occurs after file content is loaded
   useEffect(() => {
     // Only navigate if content is loaded (not null) to avoid navigating in old file content
-    if (content !== null) {
+    const hasRestoredCursor =
+      persistCursor &&
+      editorCursor?.appId === appId &&
+      editorCursor.path === filePath;
+    if (content !== null && !hasRestoredCursor) {
       navigateToLine(initialLine ?? null);
     }
-  }, [initialLine, filePath, content, navigateToLine]);
+  }, [
+    appId,
+    content,
+    editorCursor,
+    filePath,
+    initialLine,
+    navigateToLine,
+    persistCursor,
+  ]);
 
   if (loading) {
     return <div className="p-4">{t("preview.loadingFileContent")}</div>;

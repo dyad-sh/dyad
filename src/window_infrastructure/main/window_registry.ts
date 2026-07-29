@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type {
   CapabilityLeaseLossReason,
+  ChatTabOwnership,
   PresentationRouteRequest,
   ScreenshotCapability,
   VisibleEntity,
@@ -32,6 +33,7 @@ interface WindowRecord {
   endpoint: WindowEndpoint;
   sessionId: WindowSessionId;
   visibleEntityKeys: Set<string>;
+  chatTabs: Map<number, string>;
   focusSequence: number;
   screenshotCapabilities: Map<number, number>;
 }
@@ -67,6 +69,7 @@ export class WindowRegistry {
       endpoint,
       sessionId: windowSessionId,
       visibleEntityKeys: new Set(),
+      chatTabs: new Map(),
       focusSequence: 0,
       screenshotCapabilities: new Map(),
     });
@@ -120,6 +123,46 @@ export class WindowRegistry {
     const key = visibleEntityKey(entity);
     return this.liveRecords()
       .filter((record) => record.visibleEntityKeys.has(key))
+      .sort((left, right) => right.focusSequence - left.focusSequence)
+      .map((record) => record.sessionId);
+  }
+
+  setChatTabOwnership(
+    windowSessionId: WindowSessionId,
+    tabs: readonly ChatTabOwnership[],
+  ): void {
+    const record = this.recordForSession(windowSessionId);
+    if (!record) return;
+    record.chatTabs = new Map(
+      tabs.map((tab) => [tab.chatId, tab.tabInstanceId]),
+    );
+  }
+
+  ownsChatTab(
+    windowSessionId: WindowSessionId,
+    chatId: number,
+    tabInstanceId: string,
+  ): boolean {
+    return (
+      this.recordForSession(windowSessionId)?.chatTabs.get(chatId) ===
+      tabInstanceId
+    );
+  }
+
+  removeOwnedChatTab(
+    windowSessionId: WindowSessionId,
+    chatId: number,
+    tabInstanceId: string,
+  ): void {
+    const record = this.recordForSession(windowSessionId);
+    if (record?.chatTabs.get(chatId) === tabInstanceId) {
+      record.chatTabs.delete(chatId);
+    }
+  }
+
+  findWindowsOwningChat(chatId: number): readonly WindowSessionId[] {
+    return this.liveRecords()
+      .filter((record) => record.chatTabs.has(chatId))
       .sort((left, right) => right.focusSequence - left.focusSequence)
       .map((record) => record.sessionId);
   }

@@ -376,6 +376,16 @@ export function matchesPreNavigationPresentationCapture(
   );
 }
 
+export function shouldRemoveTransferredChatFromRenderer(
+  currentTabInstanceId: string | null,
+  transferredTabInstanceId: string,
+): boolean {
+  return (
+    currentTabInstanceId === null ||
+    currentTabInstanceId === transferredTabInstanceId
+  );
+}
+
 export function partitionChatsByVisibleCount(
   orderedChats: ChatSummary[],
   visibleTabCount: number,
@@ -1053,6 +1063,21 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
             // Missing storage is not a removal receipt: cross-window startup
             // deduplication can remove the durable entry while this renderer
             // still owns the live tab. Always reconcile the in-memory state.
+            const currentStoredTab = getActiveStoredChatTab(chatId);
+            if (
+              !shouldRemoveTransferredChatFromRenderer(
+                currentStoredTab?.tabInstanceId ?? null,
+                tabInstanceId,
+              )
+            ) {
+              markSourceChatTabRemoval(transferId, tabInstanceId);
+              await ipc.windowInfrastructure.confirmSourceChatTabRemoval({
+                transferId,
+                tabInstanceId,
+                chatId,
+              });
+              return;
+            }
             const storageKey = chatTabSessionStorageKey(
               getActiveWindowSessionId(),
             );

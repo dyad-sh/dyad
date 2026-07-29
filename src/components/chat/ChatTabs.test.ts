@@ -32,6 +32,7 @@ import {
   restoreOrderedIdAfterRollback,
   shouldPrepareCrossWindowTransfer,
   shouldCapturePresentationBeforeNavigation,
+  shouldRemoveTransferredChatFromRenderer,
   shouldRestorePriorNavigationAfterAdoption,
   shouldSkipChatSelection,
 } from "@/components/chat/ChatTabs";
@@ -194,6 +195,23 @@ describe("ChatTabs helpers", () => {
         8,
       ),
     ).toBe(true);
+  });
+
+  it("preserves a chat reopened under a different tab identity", () => {
+    const transferred = "10000000-0000-4000-8000-000000000007";
+
+    expect(shouldRemoveTransferredChatFromRenderer(null, transferred)).toBe(
+      true,
+    );
+    expect(
+      shouldRemoveTransferredChatFromRenderer(transferred, transferred),
+    ).toBe(true);
+    expect(
+      shouldRemoveTransferredChatFromRenderer(
+        "20000000-0000-4000-8000-000000000007",
+        transferred,
+      ),
+    ).toBe(false);
   });
 
   it("notifies only for a finished background chat", () => {

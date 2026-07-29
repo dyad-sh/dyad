@@ -139,8 +139,23 @@ export class ImageGenerationOperationService {
     );
   }
 
-  async waitFor(requestId: string): Promise<ImageGenerationOperationOutcome> {
-    const ticket = this.registry.ticketFor(requestId as RequestId, () => true);
+  owns(requestId: string, windowSessionId: string): boolean {
+    return (
+      this.registry.ticketFor(
+        requestId as RequestId,
+        (owner) => owner.windowSessionId === windowSessionId,
+      ) !== undefined
+    );
+  }
+
+  async waitFor(
+    requestId: string,
+    windowSessionId: string,
+  ): Promise<ImageGenerationOperationOutcome> {
+    const ticket = this.registry.ticketFor(
+      requestId as RequestId,
+      (owner) => owner.windowSessionId === windowSessionId,
+    );
     if (!ticket) {
       throw new DyadError(
         "Image generation operation not found",

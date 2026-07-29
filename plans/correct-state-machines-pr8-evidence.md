@@ -31,7 +31,7 @@
 | Deletion/cancellation guards   | The actor key uses `KeyedAdmissionGate` through destructive commit; the provider service keeps its app/reset fences as a non-actor resource barrier and aborts provider work             |
 | Form/dialog reset logic        | Existing accepted-close behavior is unchanged, but `start()` returns a job ID only after authoritative admission; refusal/transport failure returns `null`, preserving prompt and dialog |
 | Raw dispatch call sites        | Zero in the public hook/component façade. Two calls remain inside `useImageGenerationRequestActor.dispatchRequest`, the explicit completion-aware protocol-v1 adapter                    |
-| Initiator routing              | Presentation is sent only to the captured initiating window session; no generic route registry or unrelated-window fallback                                                              |
+| Initiator routing              | Presentation, operation waits, and cancellation authority are scoped to the captured initiating window session; no generic route registry or unrelated-window fallback                   |
 | Terminal retention             | Actor projections retain terminal jobs for 30 minutes; authoritative outcomes retain at most 128 settled payloads, independently of the 64 pending-operation capacity                    |
 
 ## Policy and identity notes

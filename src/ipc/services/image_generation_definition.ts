@@ -272,16 +272,29 @@ export const imageGenerationDefinition: ImageGenerationDefinition = {
         intent.initiatorWindowSessionId = sender.windowSessionId;
         return;
       }
+      const job = currentState?.jobs.find(({ job }) => job.id === intent.jobId);
       if (
         intent.activeInvocationRef.entityKey !== intent.jobId ||
         !sameImageGenerationInvocation(
-          currentState?.jobs.find(({ job }) => job.id === intent.jobId)
-            ?.activeInvocationRef ?? null,
+          job?.activeInvocationRef ?? null,
           intent.activeInvocationRef,
         )
       ) {
         throw new DyadError(
           "Cancellation does not target the active image generation",
+          DyadErrorKind.Auth,
+        );
+      }
+      if (
+        !job ||
+        !sender.windowSessionId ||
+        !imageGenerationOperationService.owns(
+          job.requestId,
+          sender.windowSessionId,
+        )
+      ) {
+        throw new DyadError(
+          "Cancellation does not belong to the initiating window",
           DyadErrorKind.Auth,
         );
       }

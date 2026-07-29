@@ -62,7 +62,7 @@ const receipt = {
 };
 
 describe("ImageGenerationOperationService", () => {
-  it("allows a shared window to await an operation without changing presentation ownership", async () => {
+  it("scopes operation settlement to the initiating window", async () => {
     const service = new ImageGenerationOperationService(createFakeClock());
     const ref = invocation("job:1");
     service.registry.admit(identity("request:1", ref));
@@ -73,12 +73,16 @@ describe("ImageGenerationOperationService", () => {
       receipt,
     );
 
-    await expect(service.waitFor("request:1")).resolves.toEqual(
+    await expect(service.waitFor("request:1", "window:a")).resolves.toEqual(
       succeeded("job:1"),
     );
-    await expect(service.waitFor("request:1")).resolves.toEqual(
-      succeeded("job:1"),
-    );
+    expect(service.owns("request:1", "window:a")).toBe(true);
+    expect(service.owns("request:1", "window:b")).toBe(false);
+    await expect(
+      service.waitFor("request:1", "window:b"),
+    ).rejects.toMatchObject({
+      message: "Image generation operation not found",
+    });
   });
 
   it("reattaches a stable retry after actor revision advances", () => {
@@ -139,9 +143,9 @@ describe("ImageGenerationOperationService", () => {
       ),
     ).toBe(false);
 
-    await expect(service.waitFor("request:replacement")).resolves.toEqual(
-      succeeded("job:replacement"),
-    );
+    await expect(
+      service.waitFor("request:replacement", "window:a"),
+    ).resolves.toEqual(succeeded("job:replacement"));
   });
 
   it("bounds terminal retention independently without evicting pending work", () => {

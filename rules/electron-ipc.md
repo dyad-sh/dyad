@@ -260,6 +260,10 @@ Automated `pnpm add` commands that run in an app root with a generated `pnpm-wor
 
 When creating hooks/components that call IPC handlers:
 
+- Treat request/correlation IDs as identifiers, not capabilities. If an ID can
+  appear in a shared snapshot, operation wait and cancellation paths must also
+  verify the invoking window-session ownership before exposing or mutating the
+  correlated outcome.
 - For renderer event streams with a bootstrap/replay epoch, subscribe before
   bootstrapping, pass the last applied epoch (`0` for a fresh cache), and dedupe
   buffered live events against replay. Advancing directly to the bootstrap's

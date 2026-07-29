@@ -280,13 +280,21 @@ describe("main-hosted image generation actor", () => {
 
   it("requires the active invocation for cancellation", async () => {
     service.generate.mockReturnValue(new Promise(() => undefined));
-    const { actorA } = createHarness();
+    const { actorA, actorB } = createHarness();
     await actorA.resync();
+    await actorB.resync();
     await actorA.dispatch(submit);
     const activeInvocationRef =
       actorA.getSnapshot().jobs[0]?.activeInvocationRef;
     if (!activeInvocationRef) throw new Error("missing invocation");
 
+    await expect(
+      actorB.dispatch({
+        type: "CANCEL_REQUESTED",
+        jobId: "job-1",
+        activeInvocationRef,
+      }),
+    ).resolves.toMatchObject({ kind: "rejected", reason: "unauthorized" });
     await expect(
       actorA.dispatch({
         type: "CANCEL_REQUESTED",

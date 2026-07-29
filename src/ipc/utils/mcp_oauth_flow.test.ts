@@ -97,8 +97,12 @@ vi.mock("@/ipc/utils/mcp_manager", () => ({
 }));
 
 const flowImport = await import("@/ipc/utils/mcp_oauth_flow");
-const { disconnectOAuth, runOAuthFlow, withMcpOAuthServerMutation } =
-  flowImport;
+const {
+  disconnectOAuth,
+  disposeMcpOAuthForShutdown,
+  runOAuthFlow,
+  withMcpOAuthServerMutation,
+} = flowImport;
 
 function seedRow(row: Partial<Row> & { id: number }): void {
   dbStore.set(row.id, {
@@ -440,5 +444,36 @@ describe("OAuth loopback listener (state CSRF check)", () => {
     } finally {
       await new Promise<void>((resolve) => blocker.close(() => resolve()));
     }
+  });
+});
+
+describe("MCP OAuth shutdown", () => {
+  it("awaits a preparation that is still reading its server row", async () => {
+    seedRow({ id: 31, transport: "http", url: "https://example.com/mcp" });
+    let releasePreparation!: () => void;
+    delayedSelects.set(
+      31,
+      new Promise<void>((resolve) => {
+        releasePreparation = resolve;
+      }),
+    );
+    const flow = runOAuthFlow({
+      serverId: 31,
+      rendererMessageId: "shutdown-preparation",
+    });
+    let shutdownFinished = false;
+    const shutdown = disposeMcpOAuthForShutdown().then(() => {
+      shutdownFinished = true;
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(shutdownFinished).toBe(false);
+    releasePreparation();
+    await shutdown;
+    await expect(flow).resolves.toEqual({
+      success: false,
+      error: "OAuth is shutting down.",
+    });
   });
 });

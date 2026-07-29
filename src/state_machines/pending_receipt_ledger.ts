@@ -86,6 +86,7 @@ export class PendingReceiptLedger<Value> {
   }): PendingReceiptClaim<Value> {
     if (this.disposed) return { kind: "disposed" };
     this.pruneExpired();
+    if (this.disposed) return { kind: "disposed" };
 
     const entries = this.scopes.get(input.scope);
     const existing = entries?.get(input.messageId);
@@ -146,6 +147,10 @@ export class PendingReceiptLedger<Value> {
         }),
     );
     return { kind: "fresh", receipt };
+  }
+
+  hasReceipt(scope: string, messageId: string): boolean {
+    return this.scopes.get(scope)?.has(messageId) === true;
   }
 
   dispose(): void {

@@ -70,10 +70,8 @@ interface SubscriptionEntry {
 
 interface PreparedDispatchIdentity {
   readonly definition: AnyRemoteMachineDefinition;
-  readonly key: unknown;
   readonly event: unknown;
   readonly address: string;
-  readonly admittedEntry: SubscriptionEntry;
   readonly fingerprint: string;
 }
 
@@ -333,7 +331,13 @@ export class RemoteMachineTransport {
       );
     }
     const prepared = this.prepareDispatchIdentity(sender, envelope);
-    if ("receipt" in prepared) return Promise.resolve(prepared.receipt);
+    if ("receipt" in prepared) {
+      return Promise.resolve(
+        this.receiptLedger.hasReceipt(windowSessionId, envelope.messageId)
+          ? this.rejected(envelope.messageId, "invalid-event")
+          : prepared.receipt,
+      );
+    }
     const claim = this.receiptLedger.claim({
       scope: windowSessionId,
       messageId: envelope.messageId,
@@ -440,17 +444,15 @@ export class RemoteMachineTransport {
       return { receipt: this.rejected(envelope.messageId, "invalid-event") };
     }
     const address = this.address(definition, keyResult.data);
-    const admittedEntry = this.subscriptions.get(address);
-    if (!admittedEntry) {
-      return { receipt: this.rejected(envelope.messageId, "stale-actor") };
-    }
+    const encodedKey = this.encodeKey(definition, keyResult.data);
     const fingerprint = createHash("sha256")
       .update(
         serialize([
           envelope.protocolVersion,
           definition.id,
-          admittedEntry.encodedKey,
+          encodedKey,
           eventResult.data,
+          envelope.expectedActorInstanceId,
           envelope.expectedRevision,
           envelope.correlationId,
           envelope.causationId,
@@ -459,10 +461,8 @@ export class RemoteMachineTransport {
       .digest("hex");
     return {
       definition,
-      key: admittedEntry.key,
       event: eventResult.data,
       address,
-      admittedEntry,
       fingerprint,
     };
   }
@@ -473,7 +473,12 @@ export class RemoteMachineTransport {
     envelope: MachineDispatchEnvelope,
     prepared: PreparedDispatchIdentity,
   ): Promise<MachineDispatchReceipt> {
-    const { definition, key, event, address, admittedEntry } = prepared;
+    const { definition, event, address } = prepared;
+    const admittedEntry = this.subscriptions.get(address);
+    if (!admittedEntry) {
+      return this.rejected(envelope.messageId, "stale-actor");
+    }
+    const key = admittedEntry.key;
     const senderContext = this.senderContext(sender);
     let current: HostedActorRef<unknown, unknown, string> | undefined =
       admittedEntry.actor;

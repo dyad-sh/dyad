@@ -380,8 +380,10 @@ describe("remote machine transport", () => {
 
     const conflicts: MachineDispatchEnvelope[] = [
       { ...envelope, machineId: secondMachine.id },
+      { ...envelope, machineId: "unknown-machine" },
       { ...envelope, encodedKey: "other" },
       { ...envelope, encodedEvent: { type: "SET", value: 2 } },
+      { ...envelope, expectedActorInstanceId: "different-actor-instance" },
       { ...envelope, expectedRevision: 1 },
     ];
     for (const conflict of conflicts) {
@@ -405,6 +407,26 @@ describe("remote machine transport", () => {
     const reconnected = renderer.reconnect();
     await reconnected.subscribe(address());
     await expect(reconnected.dispatch(envelope)).resolves.toMatchObject({
+      kind: "applied",
+      revision: 1,
+    });
+    expect(host.peek(machine.id, "actor")?.getSnapshot()).toMatchObject({
+      value: 1,
+    });
+  });
+
+  it("replays a retained receipt after its subscription is released", async () => {
+    const { duplex, host, machine } = createHarness();
+    const renderer = duplex.connect();
+    await renderer.subscribe(address());
+    const envelope = dispatch({ type: "INCREMENT" });
+
+    duplex.dropNextReceipt();
+    await expect(renderer.dispatch(envelope)).rejects.toBeInstanceOf(
+      FakeTransportDisconnectedError,
+    );
+    await renderer.unsubscribe(address());
+    await expect(renderer.dispatch(envelope)).resolves.toMatchObject({
       kind: "applied",
       revision: 1,
     });

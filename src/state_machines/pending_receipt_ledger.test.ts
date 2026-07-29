@@ -267,7 +267,34 @@ describe("PendingReceiptLedger", () => {
     }
   });
 
-  it("survives a clock that disposes the ledger reentrantly", async () => {
+  it("refuses admission when the pruning clock disposes reentrantly", () => {
+    const start = vi.fn(() => new Promise<string>(() => undefined));
+    let ledger!: PendingReceiptLedger<string>;
+    const now = vi.fn(() => {
+      ledger.dispose();
+      return 0;
+    });
+    ledger = new PendingReceiptLedger({
+      clock: { now },
+      maxPendingEntries: 1,
+      maxSettledEntries: 1,
+      settledRetentionMs: 10,
+      disposal: { kind: "resolve", value: () => "disposed" },
+    });
+
+    expect(
+      ledger.claim({
+        scope: "scope",
+        messageId: "message",
+        fingerprint: "digest",
+        start,
+      }),
+    ).toEqual({ kind: "disposed" });
+    expect(start).not.toHaveBeenCalled();
+    expect(ledger.hasReceipt("scope", "message")).toBe(false);
+  });
+
+  it("survives a settlement clock that disposes reentrantly", async () => {
     let ledger!: PendingReceiptLedger<string>;
     const now = vi.fn(() => {
       if (now.mock.calls.length === 2) ledger.dispose();

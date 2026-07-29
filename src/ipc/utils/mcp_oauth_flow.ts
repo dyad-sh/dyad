@@ -32,6 +32,9 @@ const LOOPBACK_BIND_HOSTS = ["127.0.0.1", "::1"] as const;
 const mutatingServers = new Set<number>();
 const serverMutationBarriers = new Map<number, Promise<unknown>>();
 const latestOAuthRequestGeneration = new Map<number, number>();
+const activeOAuthPreparations = new Set<
+  Promise<{ success: boolean; error: string | null }>
+>();
 const OAUTH_REQUEST_RECEIPT_LIMIT = 128;
 const OAUTH_REQUEST_RECEIPT_RETENTION_MS = 5 * 60_000;
 let oauthShuttingDown = false;
@@ -339,13 +342,17 @@ export function runOAuthFlow(
       const generation =
         (latestOAuthRequestGeneration.get(params.serverId) ?? 0) + 1;
       latestOAuthRequestGeneration.set(params.serverId, generation);
-      return prepareAndRunOAuthFlow(
+      const preparation = prepareAndRunOAuthFlow(
         { ...params, rendererMessageId },
         generation,
         () => {
           admitted = true;
         },
       );
+      activeOAuthPreparations.add(preparation);
+      const release = () => activeOAuthPreparations.delete(preparation);
+      void preparation.then(release, release);
+      return preparation;
     },
     retention: () => (admitted ? "retain" : "remove"),
   });
@@ -546,6 +553,10 @@ export function withMcpOAuthServerMutation<T>(
 
 export async function disposeMcpOAuthForShutdown(): Promise<void> {
   oauthShuttingDown = true;
+  const pendingPreparations = [...activeOAuthPreparations];
   oauthReceiptLedger.dispose();
-  await mcpOAuthRegistry.dispose();
+  await Promise.all([
+    mcpOAuthRegistry.dispose(),
+    Promise.allSettled(pendingPreparations),
+  ]);
 }

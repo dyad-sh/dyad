@@ -575,7 +575,7 @@ describe("diff-first contract report", () => {
       report.indexOf("image_generation"),
     );
     expect(report).toContain(
-      "START: completion=tracked-completion revision=actor(required=true) retry=stable-id(identity=request,dedup=required,lifetime=window-session) acceptance=admission input=preserve-until-accepted",
+      "START: completion=tracked-completion revision=actor(required=true) retry=none acceptance=admission input=preserve-until-accepted",
     );
     expect(report).toContain("tiers: T0,T1,T2");
     expect(report).toContain("wideningCasts:\n  app_run/definition.ts#1");

@@ -236,7 +236,7 @@ describe("useMachineMutation", () => {
     expect(request).toHaveBeenCalledWith("input", first);
   });
 
-  it("detaches on unmount and ignores stale completion from a replaced request", async () => {
+  it("retains concurrent requests until settlement and detaches them on unmount", async () => {
     const firstAdmission = controlled<PreparedAdmission<string, string>>();
     const firstSettlement =
       controlled<PreparedRequestSettlement<Outcome, string>>();
@@ -271,11 +271,12 @@ describe("useMachineMutation", () => {
         outcome: { kind: "succeeded" },
       });
     });
-    expect(firstDetach).toHaveBeenCalledOnce();
+    expect(firstDetach).not.toHaveBeenCalled();
     await waitFor(() => expect(result.current.execution.kind).toBe("running"));
 
     unmount();
     expect(secondDetach).toHaveBeenCalledOnce();
+    expect(firstDetach).toHaveBeenCalledOnce();
   });
 
   it("retries only through the prepared stable request handle", async () => {

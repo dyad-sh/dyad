@@ -29,6 +29,7 @@ import {
   type MachineSnapshotEnvelope,
 } from "./remote_protocol";
 import type { RemoteAuthorizationDecision } from "./remote_intent_contract";
+import type { RequestId } from "./request_identity";
 import {
   finalizeOperationAdmission,
   type OperationRegistry,
@@ -886,6 +887,13 @@ export class RemoteMachineTransport {
     });
     let ticket;
     let operationInvocationRef: InvocationRef | undefined;
+    let freshOperation:
+      | {
+          readonly registry: OperationRegistry<unknown, InvocationRef>;
+          readonly requestId: RequestId;
+          readonly invocationRef: InvocationRef;
+        }
+      | undefined;
     if (operationPreparation) {
       const operationAdmission = finalizeOperationAdmission({
         registry: operationPreparation.registry as OperationRegistry<
@@ -928,6 +936,14 @@ export class RemoteMachineTransport {
           messageId: envelope.messageId,
         };
       }
+      freshOperation = {
+        registry: operationPreparation.registry as OperationRegistry<
+          unknown,
+          InvocationRef
+        >,
+        requestId: operationPreparation.identity.requestId,
+        invocationRef: operationAdmission.operation.invocationRef,
+      };
       ticket = operationAdmission.enqueueResult;
     } else {
       ticket = enqueue();
@@ -939,6 +955,11 @@ export class RemoteMachineTransport {
     );
     const outcome = await ticket.settled;
     if (outcome.kind === "failed") {
+      freshOperation?.registry.rollbackAdmission(
+        freshOperation.requestId,
+        freshOperation.invocationRef,
+        outcome.error,
+      );
       if (outcome.error instanceof ActorAdmissionError) {
         if (outcome.error.code === "stale-actor-instance") {
           return this.rejected(envelope.messageId, "stale-actor");
@@ -955,11 +976,27 @@ export class RemoteMachineTransport {
       throw outcome.error;
     }
     if (outcome.kind === "disposed" || !dispatchedActor) {
+      freshOperation?.registry.rollbackAdmission(
+        freshOperation.requestId,
+        freshOperation.invocationRef,
+        new ActorAdmissionError(
+          "actor-disposing",
+          "Actor disposed before authoritative operation admission completed",
+        ),
+      );
       this.actorKeys.delete(address);
       return this.rejected(envelope.messageId, "host-disposing");
     }
     const metadata = ticket.getSettledMetadata();
     if (!metadata) {
+      freshOperation?.registry.rollbackAdmission(
+        freshOperation.requestId,
+        freshOperation.invocationRef,
+        new ActorAdmissionError(
+          "actor-disposing",
+          "Actor admission completed without settled metadata",
+        ),
+      );
       return this.rejected(envelope.messageId, "host-disposing");
     }
     if (outcome.kind === "ignored") {

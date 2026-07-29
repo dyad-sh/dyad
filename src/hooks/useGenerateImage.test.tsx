@@ -151,6 +151,30 @@ describe("useGenerateImage", () => {
     expect(intent.job.id).toMatch(/^image-generation-job:/);
   });
 
+  it("keeps concurrent starts attached through their own admission", async () => {
+    const firstRequest = prepared({ admitted: true });
+    const secondRequest = prepared({ admitted: true });
+    mocks.request
+      .mockReturnValueOnce(firstRequest)
+      .mockReturnValueOnce(secondRequest);
+    const { result } = renderHook(() => useGenerateImage());
+
+    let first!: Promise<string | null>;
+    let second!: Promise<string | null>;
+    act(() => {
+      first = result.current.start({ ...params, prompt: "First" });
+      second = result.current.start({ ...params, prompt: "Second" });
+    });
+
+    const [firstJobId, secondJobId] = await Promise.all([first, second]);
+    expect(firstJobId).toMatch(/^image-generation-job:/);
+    expect(secondJobId).toMatch(/^image-generation-job:/);
+    expect(firstJobId).not.toBe(secondJobId);
+    expect(firstRequest.detach).not.toHaveBeenCalled();
+    expect(secondRequest.detach).not.toHaveBeenCalled();
+    expect(mocks.showError).not.toHaveBeenCalled();
+  });
+
   it("preserves the public refusal result for unexpected admission failure", async () => {
     const request = prepared({ admitted: true });
     Object.assign(request, {

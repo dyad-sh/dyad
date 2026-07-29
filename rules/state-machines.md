@@ -376,6 +376,11 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   be superseded before its producer settles, but its original waiter must
   still complete. A producer sink captured for one invocation must also ignore
   or overwrite any conflicting invocation identity supplied by its payload.
+- When final admission registers an operation before awaiting the actor ticket,
+  roll back only that fresh entry on every failed, disposed, or metadata-less
+  ticket exit; never mutate a coalesced or replayed operation. Registry release
+  must use the same terminal predicate as settlement accounting, because a
+  rejected entry has already left pending capacity even without a payload.
 - A first-response-wins renderer handoff needs a correlated claim, not a
   boolean. Matching follow-ups may be revision-stale only when the opaque claim
   ID is validated by the host. Unrelated reconciliation must not release the

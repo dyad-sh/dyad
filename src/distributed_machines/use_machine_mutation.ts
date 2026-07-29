@@ -107,6 +107,9 @@ export function useMachineMutation<
       }
     | undefined
   >(undefined);
+  const inFlight = useRef(
+    new Set<PreparedRequest<Admission, Outcome, Refusal>>(),
+  );
   const mounted = useRef(true);
   const nextGeneration = useRef(0);
   const { request, snapshot, classifyOutcome, onUnexpectedError } = options;
@@ -127,7 +130,8 @@ export function useMachineMutation<
     mounted.current = true;
     return () => {
       mounted.current = false;
-      active.current?.request.detach();
+      for (const request of inFlight.current) request.detach();
+      inFlight.current.clear();
       active.current = undefined;
     };
   }, []);
@@ -184,19 +188,20 @@ export function useMachineMutation<
       if (!mounted.current) {
         return { kind: "not-admitted", reason: "disposed" };
       }
-      active.current?.request.detach();
       active.current = undefined;
       const generation = ++nextGeneration.current;
       setAdmission({ kind: "preparing" });
       setExecution({ kind: "idle" });
       let authoritativeAdmissionAccepted = false;
+      let prepared: PreparedRequest<Admission, Outcome, Refusal> | undefined;
       try {
         // request() synchronously creates and registers its client handle.
-        const prepared = request(input, observedRevision);
+        prepared = request(input, observedRevision);
         if (!mounted.current || nextGeneration.current !== generation) {
           prepared.detach();
           return prepared.settled;
         }
+        inFlight.current.add(prepared);
         active.current = { generation, request: prepared };
         const admissionResult = await prepared.admission;
         authoritativeAdmissionAccepted = admissionResult.kind === "admitted";
@@ -224,6 +229,7 @@ export function useMachineMutation<
         }
         throw error;
       } finally {
+        if (prepared) inFlight.current.delete(prepared);
         if (active.current?.generation === generation) {
           active.current = undefined;
         }

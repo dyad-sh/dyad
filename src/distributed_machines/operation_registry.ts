@@ -484,7 +484,7 @@ export class OperationRegistry<Outcome, Ref extends InvocationRef> {
       if (!matches(entry.identity.owner)) continue;
       entry.listeners.clear();
       this.entries.delete(requestId);
-      if (!entry.settlement) this.unresolved -= 1;
+      if (!this.isTerminal(entry)) this.unresolved -= 1;
     }
     return settled;
   }

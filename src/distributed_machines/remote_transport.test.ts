@@ -7,6 +7,7 @@ import {
 } from "@/state_machines/testing";
 import { getTraceLog } from "@/state_machines/trace";
 import { change } from "@/state_machines/types";
+import type { InvocationRef } from "@/state_machines/invocation_ref";
 import { ActorHost, type ActorHostError } from "./actor_host";
 import {
   assertRemoteProtocolV1CompatibilityInventory,
@@ -21,6 +22,8 @@ import {
   type MachineSnapshotEnvelope,
 } from "./remote_protocol";
 import { RemoteMachineTransport } from "./remote_transport";
+import { OperationRegistry } from "./operation_registry";
+import type { RequestId } from "./request_identity";
 import {
   createRemoteTestMachine,
   FakeDuplexRemoteTransport,
@@ -2294,6 +2297,99 @@ describe("remote machine transport", () => {
         failure: expect.objectContaining({ stage: "command" }),
       }),
     ]);
+  });
+
+  it("rolls back a fresh operation when actor dispatch fails", async () => {
+    type Outcome =
+      | { readonly kind: "disposed" }
+      | { readonly kind: "superseded" }
+      | { readonly kind: "failed" }
+      | { readonly kind: "ignored" };
+    const operations = new OperationRegistry<Outcome, InvocationRef>({
+      maxUnresolved: 1,
+      maxSettledReplay: 1,
+      now: () => 0,
+      disposalOutcome: () => ({ kind: "disposed" }),
+      supersededOutcome: () => ({ kind: "superseded" }),
+      enqueueFailureOutcome: () => ({ kind: "failed" }),
+    });
+    const failure = new Error("synthetic transition failure");
+    const base = createRemoteTestMachine();
+    const machine = {
+      ...base,
+      transition: (
+        state: Parameters<typeof base.transition>[0],
+        event: Parameters<typeof base.transition>[1],
+        context: Parameters<typeof base.transition>[2],
+      ) => {
+        if (event.type === "INCREMENT") throw failure;
+        return base.transition(state, event, context);
+      },
+      remoteOperation: {
+        prepare: ({
+          key,
+          intent,
+          sender,
+          actor,
+          hostId,
+          fingerprint,
+        }: {
+          key: string;
+          intent: { readonly type: string };
+          sender: { readonly windowSessionId: string };
+          actor: {
+            readonly actorInstanceId: string;
+            readonly snapshotRevision: number;
+          };
+          hostId: string;
+          fingerprint: string;
+        }) =>
+          intent.type === "INCREMENT"
+            ? {
+                registry: operations,
+                identity: {
+                  requestId: "failed-operation" as RequestId,
+                  fingerprint,
+                  owner: {
+                    hostId,
+                    machineId: base.id,
+                    keyId: key,
+                    actorInstanceId: actor.actorInstanceId,
+                    actorRevision: actor.snapshotRevision,
+                    windowSessionId: sender.windowSessionId,
+                  },
+                },
+                createInvocationRef: () => ({
+                  kind: "remote-test",
+                  entityKey: key,
+                  operationId: "failed-invocation",
+                }),
+              }
+            : undefined,
+        ignoredOutcome: () => ({ kind: "ignored" as const }),
+        receipt: (actor: {
+          readonly actorInstanceId: string;
+          readonly snapshotRevision: number;
+          readonly transactionSequence: number;
+        }) => ({ actor, acknowledgedAt: 0 }),
+      },
+    } as AnyRemoteMachineDefinition;
+    const { duplex, host } = createHarness({ machine });
+    const renderer = duplex.connect();
+    await renderer.subscribe(address());
+
+    await expect(
+      renderer.dispatch(dispatch({ type: "INCREMENT" })),
+    ).rejects.toBe(failure);
+
+    expect(host.peek(machine.id, "actor")?.getSnapshot()).toMatchObject({
+      value: 0,
+    });
+    expect(operations.inspect()).toEqual({
+      unresolved: 0,
+      settled: 0,
+      total: 0,
+    });
   });
 
   it("rejects legacy dispatch when revision policy replaces its captured gate generation", async () => {

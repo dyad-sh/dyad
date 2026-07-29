@@ -373,6 +373,35 @@ describe("OperationRegistry", () => {
     });
   });
 
+  it("does not decrement pending capacity twice when releasing a rejected operation", async () => {
+    const operations = registry(1);
+    const rejectedIdentity = identity();
+    const rejected = operations.admit(rejectedIdentity);
+    const failure = new Error("receipt failed");
+
+    expect(
+      operations.reject(
+        rejectedIdentity.requestId,
+        rejectedIdentity.invocationRef,
+        failure,
+      ),
+    ).toBe(true);
+    await expect(rejected.ticket.settled).rejects.toBe(failure);
+    expect(operations.releaseOwned("window-session", () => true)).toBe(0);
+    expect(operations.inspect()).toEqual({
+      unresolved: 0,
+      settled: 0,
+      total: 0,
+    });
+
+    expect(() =>
+      operations.admit(identity("replacement", "replacement-ref")),
+    ).not.toThrow();
+    expect(() => operations.admit(identity("excess", "excess-ref"))).toThrow(
+      OperationCapacityError,
+    );
+  });
+
   it("compares the complete shared invocation identity", () => {
     const operations = registry();
     const stable = identity();

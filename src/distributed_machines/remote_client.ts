@@ -124,7 +124,10 @@ export type RemoteClientDefinition<
     | {
         readonly remote: RemoteClientWireContract<Key, State, unknown>;
         readonly remoteIntent: {
+          readonly keyCodec: z.ZodType<Key>;
+          readonly encodeKey: (key: Key) => unknown;
           readonly rendererIntentCodec: z.ZodType<Event>;
+          readonly snapshotCodec: z.ZodType<State>;
           readonly intents: Event extends { readonly type: infer Type }
             ? Readonly<Record<Extract<Type, string>, RemoteIntentPolicy>>
             : never;
@@ -140,6 +143,11 @@ interface StoreMetadata {
   readonly actorInstanceId: string;
   readonly revision: number;
   readonly observedRevision: ObservedRevisionToken;
+}
+
+interface OwnershipToken {
+  readonly kind: "subscriber" | "explicit";
+  readonly generation: number;
 }
 
 const MAX_BUFFERED_SNAPSHOTS = 16;
@@ -159,8 +167,11 @@ class RemoteSnapshotStore<
   private subscribers = 0;
   private completionRetains = 0;
   private transportSubscribed = false;
-  private ownershipGeneration = 0;
-  private pendingReleaseGeneration?: number;
+  private nextSubscriberOwnershipGeneration = 0;
+  private activeSubscriberOwnershipGeneration = 0;
+  private pendingSubscriberReleaseGeneration?: number;
+  private nextExplicitOwnershipGeneration = 0;
+  private readonly explicitOwnershipGenerations = new Set<number>();
   private lease?: RemoteSubscriptionLease;
   private bootstrapGeneration = 0;
   private bootstrapAttempt?: {
@@ -201,7 +212,7 @@ class RemoteSnapshotStore<
     });
     this.subscribers += 1;
     if (this.subscribers === 1) {
-      this.lease = this.client.retain(this);
+      this.lease = this.client.retain(this, "subscriber");
       void this.lease.ready.catch(() => undefined);
     }
     let active = true;
@@ -220,7 +231,7 @@ class RemoteSnapshotStore<
   ): Promise<MachineDispatchReceipt<Reason>> =>
     this.client.dispatch(this, event, options);
 
-  retain = (): RemoteSubscriptionLease => this.client.retain(this);
+  retain = (): RemoteSubscriptionLease => this.client.retain(this, "explicit");
 
   resync = (): Promise<void> => {
     if (this.disposed) return Promise.resolve();
@@ -232,21 +243,44 @@ class RemoteSnapshotStore<
   }
 
   hasInterest(): boolean {
-    return this.subscribers > 0 || this.ownershipGeneration > 0;
+    return (
+      this.subscribers > 0 ||
+      this.activeSubscriberOwnershipGeneration > 0 ||
+      this.explicitOwnershipGenerations.size > 0
+    );
   }
 
-  beginOwnership(): number {
-    this.pendingReleaseGeneration = undefined;
-    return ++this.ownershipGeneration;
+  beginOwnership(kind: OwnershipToken["kind"]): OwnershipToken {
+    if (kind === "subscriber") {
+      const generation = ++this.nextSubscriberOwnershipGeneration;
+      this.pendingSubscriberReleaseGeneration = undefined;
+      this.activeSubscriberOwnershipGeneration = generation;
+      return {
+        kind,
+        generation,
+      };
+    }
+    const generation = ++this.nextExplicitOwnershipGeneration;
+    this.explicitOwnershipGenerations.add(generation);
+    return { kind, generation };
   }
 
-  isOwnershipCurrent(generation: number): boolean {
-    return !this.disposed && generation === this.ownershipGeneration;
+  isOwnershipCurrent(token: OwnershipToken): boolean {
+    if (this.disposed) return false;
+    return token.kind === "subscriber"
+      ? token.generation === this.activeSubscriberOwnershipGeneration
+      : this.explicitOwnershipGenerations.has(token.generation);
   }
 
-  requestOwnershipRelease(generation: number): void {
-    if (!this.isOwnershipCurrent(generation)) return;
-    this.pendingReleaseGeneration = generation;
+  requestOwnershipRelease(token: OwnershipToken): void {
+    if (token.kind === "subscriber") {
+      if (token.generation !== this.activeSubscriberOwnershipGeneration) {
+        return;
+      }
+      this.pendingSubscriberReleaseGeneration = token.generation;
+    } else if (!this.explicitOwnershipGenerations.delete(token.generation)) {
+      return;
+    }
     this.tryReleaseOwnership();
   }
 
@@ -436,6 +470,9 @@ class RemoteSnapshotStore<
     this.disposed = true;
     this.invalidateBootstrap();
     this.subscribers = 0;
+    this.activeSubscriberOwnershipGeneration = 0;
+    this.pendingSubscriberReleaseGeneration = undefined;
+    this.explicitOwnershipGenerations.clear();
     this.bootstrapped = false;
     this.metadata = undefined;
     this.transportSubscribed = false;
@@ -523,9 +560,10 @@ class RemoteSnapshotStore<
         "Remote snapshot protocol is incompatible",
       );
     }
-    const state = this.definition.remote.snapshotCodec.safeParse(
-      outer.data.encodedState,
-    );
+    const state = (
+      this.definition.remoteIntent?.snapshotCodec ??
+      this.definition.remote.snapshotCodec
+    ).safeParse(outer.data.encodedState);
     if (!state.success) {
       throw new RemoteMachineTransportError(
         "invalid-payload",
@@ -563,17 +601,23 @@ class RemoteSnapshotStore<
   }
 
   private tryReleaseOwnership(): void {
-    const generation = this.pendingReleaseGeneration;
     if (
-      generation === undefined ||
-      generation !== this.ownershipGeneration ||
+      this.explicitOwnershipGenerations.size > 0 ||
       this.subscribers > 0 ||
       this.completionRetains > 0
     ) {
       return;
     }
-    this.pendingReleaseGeneration = undefined;
-    this.ownershipGeneration = 0;
+    if (this.activeSubscriberOwnershipGeneration > 0) {
+      if (
+        this.pendingSubscriberReleaseGeneration !==
+        this.activeSubscriberOwnershipGeneration
+      ) {
+        return;
+      }
+      this.pendingSubscriberReleaseGeneration = undefined;
+      this.activeSubscriberOwnershipGeneration = 0;
+    }
     this.releaseInterest();
     this.client.releaseTransport(this);
   }
@@ -652,8 +696,9 @@ export class RemoteMachineClient {
     key: Key,
   ): RemoteActorRef<State, Event, Reason> {
     if (this.disposed) throw new Error("RemoteMachineClient is disposed");
-    const encodedKey = definition.remote.encodeKey(key);
-    const parsedKey = definition.remote.keyCodec.safeParse(encodedKey);
+    const keyContract = definition.remoteIntent ?? definition.remote;
+    const encodedKey = keyContract.encodeKey(key);
+    const parsedKey = keyContract.keyCodec.safeParse(encodedKey);
     if (!parsedKey.success) throw new Error(`Invalid key for ${definition.id}`);
     const address: MachineAddress = {
       protocolVersion: definition.remote.protocolVersion,
@@ -687,11 +732,12 @@ export class RemoteMachineClient {
 
   retain(
     store: RemoteSnapshotStore<any, any, any, any>,
+    kind: OwnershipToken["kind"],
   ): RemoteSubscriptionLease {
-    const generation = store.beginOwnership();
+    const token = store.beginOwnership(kind);
     let released = false;
     const refresh = (): Promise<void> => {
-      if (released || !store.isOwnershipCurrent(generation)) {
+      if (released || !store.isOwnershipCurrent(token)) {
         return Promise.reject(
           new RemoteMachineTransportError(
             "renderer-destroyed",
@@ -712,7 +758,7 @@ export class RemoteMachineClient {
       release: () => {
         if (released) return;
         released = true;
-        queueMicrotask(() => store.requestOwnershipRelease(generation));
+        queueMicrotask(() => store.requestOwnershipRelease(token));
       },
     };
   }

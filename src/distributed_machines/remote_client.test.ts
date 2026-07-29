@@ -175,6 +175,38 @@ describe("RemoteMachineClient", () => {
     expect(transport.inspectSubscriptions()).toHaveLength(0);
   });
 
+  it("keeps simultaneous leases independently owned", async () => {
+    const { duplex, machine, transport } = createHarness();
+    const client = new RemoteMachineClient(
+      duplex.connect(),
+      createSequentialIdSource(),
+    );
+    client.start();
+    const actor = client.actor(machine, "actor");
+    const first = actor.retain();
+    const second = actor.retain();
+    await Promise.all([first.ready, second.ready]);
+
+    second.release();
+    await flush();
+    expect(transport.inspectSubscriptions()).toHaveLength(1);
+    await expect(first.refresh()).resolves.toBeUndefined();
+
+    first.release();
+    await flush();
+    expect(transport.inspectSubscriptions()).toHaveLength(0);
+
+    const releaseListener = actor.subscribe(() => undefined);
+    await waitFor(() => transport.inspectSubscriptions().length === 1);
+    const explicit = actor.retain();
+    await explicit.ready;
+    explicit.release();
+    await flush();
+    expect(transport.inspectSubscriptions()).toHaveLength(1);
+    releaseListener();
+    await waitFor(() => transport.inspectSubscriptions().length === 0);
+  });
+
   it("retains ownership through an in-flight terminal delivery", async () => {
     let releaseAuthorization!: () => void;
     let authorizationStarted!: () => void;

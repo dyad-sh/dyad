@@ -508,6 +508,15 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   `remoteIntent.authorizeDispatch`. Replacing the legacy `remote.authorize*`
   hooks exercises only compatibility definitions and can leave a native test
   gate waiting forever.
+- Keep native remote-admission revalidation out of the protocol-v1
+  compatibility adapter until a domain migrates. Moving trusted conversion or
+  adding a second revision fence to legacy dispatch can change terminal
+  delivery even when the wire envelope is unchanged; cover a representative
+  legacy streaming integration when editing the adapter.
+- Model StrictMode subscriber replay and explicit subscription leases as
+  different ownership classes. A shared subscriber lease may use a
+  replacement generation, while every explicit `retain()` needs its own live
+  token so releasing one owner cannot retire or leak another.
 - In `runCosim` suites, `maxSchedules` bounds visited configurations, not only
   quiescent leaves. If one orthogonal action (for example quit at every phase)
   causes a bound hit, split it into a focused exhaustive alphabet instead of

@@ -129,6 +129,32 @@ function createObjectKeyMachine(
   } as AnyRemoteMachineDefinition;
 }
 
+function createNativeObjectKeyMachine(
+  authorizeSubscribe: (context: {
+    readonly key: { readonly id: string };
+  }) => { readonly kind: "allow" } | Promise<{ readonly kind: "allow" }>,
+): AnyRemoteMachineDefinition {
+  const legacy = createObjectKeyMachine();
+  const native = createRemoteTestMachine().remoteIntent;
+  return {
+    ...legacy,
+    remoteIntent: {
+      keyCodec: legacy.remote.keyCodec,
+      encodeKey: legacy.remote.encodeKey,
+      rendererIntentCodec: legacy.remote.eventCodec,
+      snapshotCodec: legacy.remote.snapshotCodec,
+      toInternalEvent: ({ intent }: { readonly intent: { type: string } }) =>
+        Object.freeze({ ...intent }),
+      authorizeSubscribe,
+      authorizeDispatch: () => ({ kind: "allow" }),
+      keyIntentRelationship: { kind: "entity-relative" },
+      intents: { INCREMENT: native.intents.INCREMENT },
+      refusalMap: native.refusalMap,
+      budgets: native.budgets,
+    },
+  } as AnyRemoteMachineDefinition;
+}
+
 const objectAddress = (): MachineAddress => ({
   protocolVersion: REMOTE_MACHINE_PROTOCOL_VERSION,
   machineId: "object-key",
@@ -371,6 +397,92 @@ describe("remote machine transport", () => {
     });
   });
 
+  it("keeps prepared native intents immutable across authorization", async () => {
+    const base = createRemoteTestMachine();
+    const machine = {
+      ...base,
+      remoteIntent: {
+        ...base.remoteIntent,
+        authorizeDispatch(
+          context: Parameters<typeof base.remoteIntent.authorizeDispatch>[0],
+        ) {
+          Object.assign(context.intent as object, {
+            type: "PRODUCER_INCREMENT",
+          });
+          return { kind: "allow" } as const;
+        },
+      },
+    };
+    const { duplex, host } = createHarness({ machine });
+    const renderer = duplex.connect();
+    await renderer.subscribe(address());
+
+    await expect(
+      renderer.dispatch(dispatch({ type: "INCREMENT" })),
+    ).rejects.toBeInstanceOf(TypeError);
+    expect(host.peek(machine.id, "actor")?.getSnapshot()).toMatchObject({
+      value: 0,
+    });
+  });
+
+  it("keeps decoded native keys immutable across subscription authorization", async () => {
+    const machine = createNativeObjectKeyMachine(({ key }) => {
+      Object.assign(key as object, { id: "mutated" });
+      return { kind: "allow" };
+    });
+    const { duplex, transport } = createHarness({ machine });
+
+    await expect(
+      duplex.connect().subscribe(objectAddress()),
+    ).rejects.toBeInstanceOf(TypeError);
+    expect(transport.inspectSubscriptions()).toEqual([]);
+  });
+
+  it("uses native key, snapshot, and budget contracts authoritatively", async () => {
+    const base = createRemoteTestMachine();
+    const keyMachine = {
+      ...base,
+      remoteIntent: {
+        ...base.remoteIntent,
+        keyCodec: z.literal("native-only"),
+      },
+    };
+    const keyHarness = createHarness({ machine: keyMachine });
+    await expect(
+      keyHarness.duplex.connect().subscribe(address("legacy-only")),
+    ).rejects.toMatchObject({ kind: DyadErrorKind.Validation });
+
+    const snapshotMachine = {
+      ...base,
+      remoteIntent: {
+        ...base.remoteIntent,
+        snapshotCodec: z.object({ value: z.literal(999) }).strict(),
+      },
+    };
+    await expect(
+      createHarness({ machine: snapshotMachine })
+        .duplex.connect()
+        .subscribe(address()),
+    ).rejects.toThrow("Remote snapshot projection failed");
+
+    const budgetMachine = {
+      ...base,
+      remoteIntent: {
+        ...base.remoteIntent,
+        budgets: { ...base.remoteIntent.budgets, intentBytes: 1 },
+      },
+    };
+    const budgetHarness = createHarness({ machine: budgetMachine });
+    const budgetRenderer = budgetHarness.duplex.connect();
+    await budgetRenderer.subscribe(address());
+    await expect(
+      budgetRenderer.dispatch(dispatch({ type: "INCREMENT" })),
+    ).resolves.toMatchObject({
+      kind: "rejected",
+      reason: "invalid-event",
+    });
+  });
+
   it("deduplicates duplicate delivery and retry after a dropped receipt", async () => {
     const { clock, duplex } = createHarness({
       deduplicationRetentionMs: 10,
@@ -434,25 +546,37 @@ describe("remote machine transport", () => {
       machines: [firstMachine, secondMachine],
     });
     const renderer = duplex.connect();
-    await renderer.subscribe(address("actor"));
-    await renderer.subscribe(address("other"));
-    await renderer.subscribe({
+    const bootstrap = await renderer.subscribe(address("actor"));
+    const otherBootstrap = await renderer.subscribe(address("other"));
+    const secondBootstrap = await renderer.subscribe({
       protocolVersion: REMOTE_MACHINE_PROTOCOL_VERSION,
       machineId: secondMachine.id,
       encodedKey: "actor",
     });
     const envelope = dispatch(
       { type: "SET", value: 1 },
-      { messageId: "stable-conflict", expectedRevision: 0 },
+      {
+        messageId: "stable-conflict",
+        expectedActorInstanceId: bootstrap.actorInstanceId,
+        expectedRevision: 0,
+      },
     );
     await expect(renderer.dispatch(envelope)).resolves.toMatchObject({
       kind: "applied",
     });
 
     const conflicts: MachineDispatchEnvelope[] = [
-      { ...envelope, machineId: secondMachine.id },
       { ...envelope, machineId: "unknown-machine" },
-      { ...envelope, encodedKey: "other" },
+      {
+        ...envelope,
+        machineId: secondMachine.id,
+        expectedActorInstanceId: secondBootstrap.actorInstanceId,
+      },
+      {
+        ...envelope,
+        encodedKey: "other",
+        expectedActorInstanceId: otherBootstrap.actorInstanceId,
+      },
       { ...envelope, encodedEvent: { type: "SET", value: 2 } },
       { ...envelope, expectedActorInstanceId: "different-actor-instance" },
       { ...envelope, expectedRevision: 1 },
@@ -585,7 +709,15 @@ describe("remote machine transport", () => {
     });
     expect(addressHarness.transport.inspectSubscriptions()).toEqual([]);
 
-    const dispatchHarness = createHarness({ maxDispatchEnvelopeBytes: 128 });
+    const dispatchBase = createRemoteTestMachine();
+    const dispatchMachine = {
+      ...dispatchBase,
+      remoteIntent: {
+        ...dispatchBase.remoteIntent,
+        budgets: { ...dispatchBase.remoteIntent.budgets, intentBytes: 128 },
+      },
+    };
+    const dispatchHarness = createHarness({ machine: dispatchMachine });
     const renderer = dispatchHarness.duplex.connect();
     await renderer.subscribe(address());
     await expect(
@@ -606,7 +738,15 @@ describe("remote machine transport", () => {
         ?.getSnapshot(),
     ).toMatchObject({ value: 0 });
 
-    const snapshotHarness = createHarness({ maxSnapshotEnvelopeBytes: 32 });
+    const snapshotBase = createRemoteTestMachine();
+    const snapshotMachine = {
+      ...snapshotBase,
+      remoteIntent: {
+        ...snapshotBase.remoteIntent,
+        budgets: { ...snapshotBase.remoteIntent.budgets, snapshotBytes: 32 },
+      },
+    };
+    const snapshotHarness = createHarness({ machine: snapshotMachine });
     const snapshotRenderer = snapshotHarness.duplex.connect();
     await expect(snapshotRenderer.subscribe(address())).rejects.toThrow(
       "Remote snapshot exceeds the transport limit",
@@ -622,6 +762,10 @@ describe("remote machine transport", () => {
         ...base.remote,
         maxDispatchEnvelopeBytes: 2_048,
         maxSnapshotEnvelopeBytes: 2_048,
+      },
+      remoteIntent: {
+        ...base.remoteIntent,
+        budgets: { intentBytes: 2_048, snapshotBytes: 2_048 },
       },
     } as AnyRemoteMachineDefinition;
     const { duplex, host } = createHarness({
@@ -714,7 +858,10 @@ describe("remote machine transport", () => {
       renderer.dispatch(
         dispatch(
           { type: "SET", value: 1 },
-          { expectedRevision: bootstrap.revision },
+          {
+            expectedActorInstanceId: bootstrap.actorInstanceId,
+            expectedRevision: bootstrap.revision,
+          },
         ),
       ),
     ).resolves.toMatchObject({ kind: "applied", revision: 1 });
@@ -722,7 +869,10 @@ describe("remote machine transport", () => {
       renderer.dispatch(
         dispatch(
           { type: "SET", value: 2 },
-          { expectedRevision: bootstrap.revision },
+          {
+            expectedActorInstanceId: bootstrap.actorInstanceId,
+            expectedRevision: bootstrap.revision,
+          },
         ),
       ),
     ).resolves.toMatchObject({
@@ -760,6 +910,87 @@ describe("remote machine transport", () => {
         dispatch({ type: "CANCEL", invocationRef }, { expectedRevision: 0 }),
       ),
     ).resolves.toMatchObject({ kind: "applied", revision: 3 });
+  });
+
+  it("requires paired actor revision tokens and ignores legacy revision policy for native intents", async () => {
+    const base = createRemoteTestMachine();
+    const machine = {
+      ...base,
+      remote: {
+        ...base.remote,
+        revisionPolicy: () => "allow-stale" as const,
+      },
+    };
+    const { duplex } = createHarness({ machine });
+    const renderer = duplex.connect();
+    const bootstrap = await renderer.subscribe(address());
+
+    await expect(
+      renderer.dispatch(
+        dispatch(
+          { type: "SET", value: 1 },
+          { expectedRevision: bootstrap.revision },
+        ),
+      ),
+    ).resolves.toMatchObject({
+      kind: "rejected",
+      reason: "revision-conflict",
+    });
+
+    await renderer.dispatch(dispatch({ type: "INCREMENT" }));
+    await expect(
+      renderer.dispatch(
+        dispatch(
+          { type: "SET", value: 2 },
+          {
+            expectedActorInstanceId: bootstrap.actorInstanceId,
+            expectedRevision: bootstrap.revision,
+          },
+        ),
+      ),
+    ).resolves.toMatchObject({
+      kind: "rejected",
+      reason: "revision-conflict",
+    });
+  });
+
+  it("revalidates the exact revision after trusted event conversion", async () => {
+    const base = createRemoteTestMachine();
+    let actor: ReturnType<ActorHost["peek"]>;
+    const machine = {
+      ...base,
+      remoteIntent: {
+        ...base.remoteIntent,
+        toInternalEvent(
+          context: Parameters<typeof base.remoteIntent.toInternalEvent>[0],
+        ) {
+          if (context.intent.type === "SET") {
+            actor?.send({ type: "INCREMENT" });
+          }
+          return base.remoteIntent.toInternalEvent(context);
+        },
+      },
+    };
+    const { duplex, host } = createHarness({ machine });
+    const renderer = duplex.connect();
+    const bootstrap = await renderer.subscribe(address());
+    actor = host.peek(machine.id, "actor");
+
+    await expect(
+      renderer.dispatch(
+        dispatch(
+          { type: "SET", value: 10 },
+          {
+            expectedActorInstanceId: bootstrap.actorInstanceId,
+            expectedRevision: bootstrap.revision,
+          },
+        ),
+      ),
+    ).resolves.toMatchObject({
+      kind: "rejected",
+      reason: "revision-conflict",
+    });
+    expect(actor?.getSnapshot()).toMatchObject({ value: 1 });
   });
 
   it("rejects stale actor identities, malformed payloads, unknown routes, and unauthorized access", async () => {
@@ -1331,10 +1562,16 @@ describe("remote machine transport", () => {
     const { duplex } = createHarness({ machine });
     const first = duplex.connect();
     const second = duplex.connect();
-    await first.subscribe(address());
+    const bootstrap = await first.subscribe(address());
     await second.subscribe(address());
     const pending = first.dispatch(
-      dispatch({ type: "SET", value: 10 }, { expectedRevision: 0 }),
+      dispatch(
+        { type: "SET", value: 10 },
+        {
+          expectedActorInstanceId: bootstrap.actorInstanceId,
+          expectedRevision: 0,
+        },
+      ),
     );
     await started;
     await second.dispatch(dispatch({ type: "INCREMENT" }));

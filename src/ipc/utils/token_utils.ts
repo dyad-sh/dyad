@@ -45,16 +45,17 @@ export async function getTemperature(
  * headroom leaves room for the next user message + tool outputs before we hit
  * the hard context limit.
  *
- * Per-provider caps differ because of input-token pricing tiers: Google bumps
- * input price 2x once a request crosses 200k tokens, while other providers
- * (e.g. OpenAI) only apply a 2x tier above ~272k tokens. We compact earlier
- * for Google so requests stay in the cheaper input tier.
+ * Per-provider caps differ because of input-token pricing tiers and operational
+ * headroom. Google compacts before its 200k pricing boundary, while OpenAI
+ * compacts at 220k to leave more room for tool-heavy agent steps. Other
+ * providers retain the historical 250k cap.
  */
 export function getCompactionThreshold(
   contextWindow: number,
   provider: string,
 ): number {
-  const cap = provider === "google" ? 190_000 : 250_000;
+  const cap =
+    provider === "google" ? 190_000 : provider === "openai" ? 220_000 : 250_000;
   return Math.min(cap, Math.max(0, contextWindow - 25_000));
 }
 

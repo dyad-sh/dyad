@@ -572,6 +572,29 @@ describe("OperationRegistry", () => {
     });
   });
 
+  it("rejects callable thenables as asynchronous enqueue results", () => {
+    const operations = registry();
+    const callableThenable = () => undefined;
+    Object.defineProperty(callableThenable, "then", {
+      value: () => undefined,
+    });
+
+    expect(() =>
+      finalizeOperationAdmission({
+        registry: operations,
+        identity: identity(),
+        assertFinalAdmission: () => undefined,
+        enqueue: () => callableThenable,
+        receiptOnEnqueueFailure: receipt,
+      }),
+    ).toThrow("synchronous and non-thenable");
+    expect(operations.inspect()).toEqual({
+      unresolved: 0,
+      settled: 1,
+      total: 1,
+    });
+  });
+
   it("atomically admits and enqueues an explicit replacement invocation", async () => {
     const operations = registry();
     const oldIdentity = identity();

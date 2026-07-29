@@ -46,6 +46,9 @@ Background and before/after examples of why this pattern exists:
   to typed domain events; unexpected throws/rejections may be mapped by the
   domain and never create a universal failure event. Scheduler injection owns
   concurrency policy.
+- When a linearization boundary requires a synchronous return value, reject
+  thenables whose runtime type is either `object` or `function`; callable
+  functions can also define a `.then` property and be assimilated by `await`.
 - A pre-commit lease-cancellation failure is also isolated and reported, but
   does not veto commit. Unlike pure transition and validation failures, an
   effectful cleanup hook may have partially completed; rejecting at that point

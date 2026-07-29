@@ -571,8 +571,8 @@ export function admitOperationAndEnqueue<Outcome, InvocationRef, EnqueueResult>(
   try {
     const enqueueResult = options.enqueue();
     if (
-      typeof enqueueResult === "object" &&
-      enqueueResult !== null &&
+      ((typeof enqueueResult === "object" && enqueueResult !== null) ||
+        typeof enqueueResult === "function") &&
       "then" in enqueueResult
     ) {
       throw new Error(

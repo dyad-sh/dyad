@@ -137,4 +137,53 @@ describe("FileEditor cursor persistence", () => {
       column: 1,
     });
   });
+
+  it("honors a later line target in the same file", async () => {
+    const store = createStore();
+    store.set(editorCursorAtom, {
+      appId: 1,
+      path: "src/file.ts",
+      lineNumber: 22,
+      column: 7,
+    });
+    const queryClient = new QueryClient();
+    const view = render(
+      <QueryClientProvider client={queryClient}>
+        <Provider store={store}>
+          <FileEditor
+            appId={1}
+            filePath="src/file.ts"
+            initialLine={5}
+            persistCursor
+          />
+        </Provider>
+      </QueryClientProvider>,
+    );
+    await waitFor(() =>
+      expect(mocks.editor.setPosition).toHaveBeenCalledWith({
+        lineNumber: 22,
+        column: 7,
+      }),
+    );
+
+    view.rerender(
+      <QueryClientProvider client={queryClient}>
+        <Provider store={store}>
+          <FileEditor
+            appId={1}
+            filePath="src/file.ts"
+            initialLine={18}
+            persistCursor
+          />
+        </Provider>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() =>
+      expect(mocks.editor.setPosition).toHaveBeenCalledWith({
+        lineNumber: 18,
+        column: 1,
+      }),
+    );
+  });
 });

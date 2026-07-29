@@ -57,6 +57,7 @@ describe("ChatTabs helpers", () => {
   it("keeps local reorder available without preparing a cross-window move", () => {
     expect(shouldPrepareCrossWindowTransfer(false)).toBe(false);
     expect(shouldPrepareCrossWindowTransfer(true)).toBe(true);
+    expect(shouldPrepareCrossWindowTransfer(true, true)).toBe(false);
   });
 
   it("verifies durable session rollback before transfer rejection", () => {

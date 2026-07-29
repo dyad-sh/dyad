@@ -160,6 +160,7 @@ export const FileEditor = ({
   const editorCursor = useAtomValue(editorCursorAtom);
   const setEditorCursor = useSetAtom(editorCursorAtom);
   const cursorTargetRef = useRef({ appId, filePath, persistCursor });
+  const initialLineTargetRef = useRef({ appId, filePath, initialLine });
   cursorTargetRef.current = { appId, filePath, persistCursor };
 
   const queryClient = useQueryClient();
@@ -374,11 +375,17 @@ export const FileEditor = ({
   // Include content in dependencies to ensure navigation only occurs after file content is loaded
   useEffect(() => {
     // Only navigate if content is loaded (not null) to avoid navigating in old file content
+    const previousTarget = initialLineTargetRef.current;
+    const isNewSameFileLineTarget =
+      previousTarget.appId === appId &&
+      previousTarget.filePath === filePath &&
+      previousTarget.initialLine !== initialLine;
+    initialLineTargetRef.current = { appId, filePath, initialLine };
     const hasRestoredCursor =
       persistCursor &&
       editorCursor?.appId === appId &&
       editorCursor.path === filePath;
-    if (content !== null && !hasRestoredCursor) {
+    if (content !== null && (!hasRestoredCursor || isNewSameFileLineTarget)) {
       navigateToLine(initialLine ?? null);
     }
   }, [

@@ -332,8 +332,9 @@ export function reorderVisibleChatIds(
 
 export function shouldPrepareCrossWindowTransfer(
   enableMultiWindow: boolean,
+  hasAttachments = false,
 ): boolean {
-  return enableMultiWindow;
+  return enableMultiWindow && !hasAttachments;
 }
 
 export function shouldSkipChatSelection(
@@ -1506,20 +1507,17 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                               String(chat.id),
                             );
                             setDraggingChatId(chat.id);
+                            const hasAttachments =
+                              isActive && store.get(attachmentsAtom).length > 0;
+                            if (hasAttachments) {
+                              showError(t("moveTabAttachmentsBlocked"));
+                            }
                             if (
                               !shouldPrepareCrossWindowTransfer(
                                 enableMultiWindow,
+                                hasAttachments,
                               )
                             ) {
-                              return;
-                            }
-                            if (
-                              isActive &&
-                              store.get(attachmentsAtom).length > 0
-                            ) {
-                              event.preventDefault();
-                              setDraggingChatId(null);
-                              showError(t("moveTabAttachmentsBlocked"));
                               return;
                             }
                             let storedTabs;

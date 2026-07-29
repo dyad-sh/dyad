@@ -52,6 +52,12 @@ export interface OperationRouteRegistryOptions<Route> {
   /** Finite count of terminal routes retained for deterministic replay. */
   readonly maxTerminalRetained: number;
   /**
+   * Takes an owned snapshot of an opaque route. It is used both when storing a
+   * claim and when returning a route so external mutation cannot rewrite
+   * first-writer ownership.
+   */
+  readonly snapshotRoute: (route: Route) => Route;
+  /**
    * Defines identity for the opaque route value. Metadata on the owner is
    * always compared separately.
    */
@@ -136,7 +142,10 @@ export class OperationRouteRegistry<Route> {
       ordinal: this.nextGeneration++,
       identity: Object.freeze({}),
     });
-    const owner = Object.freeze({ ...claim.owner });
+    const owner = Object.freeze({
+      ...claim.owner,
+      route: this.options.snapshotRoute(claim.owner.route),
+    });
     const snapshot = {
       operationId: claim.operationId,
       owner,
@@ -183,8 +192,10 @@ export class OperationRouteRegistry<Route> {
     return true;
   }
 
-  releaseOwner(ownerId: string): number {
-    return this.releaseMatching((owner) => owner.ownerId === ownerId);
+  releaseOwner(machineId: string, ownerId: string): number {
+    return this.releaseMatching(
+      (owner) => owner.machineId === machineId && owner.ownerId === ownerId,
+    );
   }
 
   releaseWindow(windowSessionId: string): number {
@@ -262,7 +273,10 @@ export class OperationRouteRegistry<Route> {
   ): OperationRouteSnapshot<Route> {
     return Object.freeze({
       operationId: entry.snapshot.operationId,
-      owner: entry.snapshot.owner,
+      owner: Object.freeze({
+        ...entry.snapshot.owner,
+        route: this.options.snapshotRoute(entry.snapshot.owner.route),
+      }),
       state: entry.snapshot.state,
       generation: entry.snapshot.generation,
     });

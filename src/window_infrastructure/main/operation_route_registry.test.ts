@@ -15,6 +15,7 @@ function createRegistry(
   return new OperationRouteRegistry<Route>({
     maxUnresolved: options.maxUnresolved ?? 2,
     maxTerminalRetained: options.maxTerminalRetained ?? 2,
+    snapshotRoute: (route) => ({ ...route }),
     sameRoute: (left, right) => left.channel === right.channel,
   });
 }
@@ -192,14 +193,19 @@ describe("OperationRouteRegistry", () => {
     registry.admit(claim("owner-a-1", { ownerId: "owner-a" }));
     registry.admit(claim("owner-a-2", { ownerId: "owner-a" }));
     registry.admit(
-      claim("owner-b", {
-        ownerId: "owner-b",
+      claim("other-machine", {
+        ownerId: "owner-a",
+        machineId: "machine-2",
         windowSessionId: "window-b",
       }),
     );
 
-    expect(registry.releaseOwner("owner-a")).toBe(2);
-    expect(registry.releaseOwner("owner-a")).toBe(0);
+    expect(registry.releaseOwner("machine-1", "owner-a")).toBe(2);
+    expect(registry.releaseOwner("machine-1", "owner-a")).toBe(0);
+    expect(registry.inspect().routes[0]).toMatchObject({
+      operationId: "other-machine",
+      owner: { ownerId: "owner-a", machineId: "machine-2" },
+    });
     expect(registry.releaseWindow("window-b")).toBe(1);
     expect(registry.inspect()).toMatchObject({
       unresolved: 0,
@@ -287,15 +293,50 @@ describe("OperationRouteRegistry", () => {
     );
   });
 
+  it("owns route snapshots and does not expose mutable stored identity", () => {
+    const registry = createRegistry();
+    const mutableRoute = { channel: "toast:error" };
+    const admitted = registry.admit({
+      operationId: "operation-1",
+      owner: {
+        ownerId: "owner-1",
+        machineId: "machine-1",
+        windowSessionId: "window-1",
+        route: mutableRoute,
+      },
+    });
+
+    mutableRoute.channel = "mutated-input";
+    (
+      admitted.route.owner.route as {
+        channel: string;
+      }
+    ).channel = "mutated-admission";
+    (
+      registry.inspect().routes[0].owner.route as {
+        channel: string;
+      }
+    ).channel = "mutated-inspection";
+
+    expect(registry.admit(claim("operation-1")).kind).toBe("coalesced");
+    expect(registry.inspect().routes[0].owner.route).toEqual({
+      channel: "toast:error",
+    });
+  });
+
   it("rejects unbounded or invalid retention policies", () => {
     for (const options of [
       { maxUnresolved: 0, maxTerminalRetained: 1 },
       { maxUnresolved: 1, maxTerminalRetained: -1 },
       { maxUnresolved: 1, maxTerminalRetained: Number.POSITIVE_INFINITY },
     ]) {
-      expect(() => new OperationRouteRegistry<Route>(options)).toThrow(
-        "finite bounded integers",
-      );
+      expect(
+        () =>
+          new OperationRouteRegistry<Route>({
+            ...options,
+            snapshotRoute: (route) => route,
+          }),
+      ).toThrow("finite bounded integers");
     }
   });
 });

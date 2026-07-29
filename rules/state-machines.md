@@ -470,13 +470,15 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   operation ID and an owner containing stable owner/machine identities, an
   optional window session, and an opaque route. Identical duplicates coalesce
   (or replay while terminal retention remains); conflicts never replace the
-  first owner.
+  first owner. The required `snapshotRoute` adapter must return an owned route
+  value so caller or inspector mutation cannot rewrite stored ownership.
 - `OperationRouteRegistry` pins unresolved routes behind a separately bounded
   admission limit and evicts only terminal routes, in settlement order, behind
   a declared finite retention count. Call `markTerminal(handle)` only at
   authoritative publication/settlement, then release with the opaque
   generation-bearing handle or an explicit owner/window/machine disposal
-  method. Duplicate terminal/release calls and stale handles are no-ops.
+  method. Owner disposal is scoped by both machine and owner identity.
+  Duplicate terminal/release calls and stale handles are no-ops.
 - Window destruction must call the registry's read-only
   `inspectWindowRoutes()` before the domain explicitly chooses drop,
   entity-window, or focused-window fallback. Do not wire window unregister to

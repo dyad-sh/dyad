@@ -63,6 +63,14 @@ export class FakeGitService implements GitService {
   async stageFile(args: { path: string; filepath: string }): Promise<void> {
     this.calls.push({ method: "stageFile", args });
   }
+
+  async removeFileAndCommit(args: {
+    path: string;
+    filepath: string;
+    message: string;
+  }): Promise<string | null> {
+    return this.record("removeFileAndCommit", args);
+  }
 }
 
 export interface HandlerTestHarness {

@@ -5,7 +5,6 @@ import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
-import { appUrlByAppIdAtom } from "@/atoms/previewRuntimeAtoms";
 import { selectedFileAtom } from "@/atoms/viewAtoms";
 import { TestsPanel } from "./TestsPanel";
 
@@ -47,6 +46,17 @@ vi.mock("@/hooks/useRunApp", () => ({
   useRunApp: () => ({ runApp: vi.fn() }),
 }));
 
+// A running dev server, so the run controls aren't gated behind the
+// "Start the app" banner.
+vi.mock("@/hooks/useAppRun", () => ({
+  useCurrentAppUrl: () => ({
+    appUrl: "http://localhost:32100",
+    appId: 1,
+    originalUrl: "http://localhost:32100",
+    mode: "host" as const,
+  }),
+}));
+
 vi.mock("@/hooks/useSetTestingEnabled", () => ({
   useSetTestingEnabled: () => ({
     setTestingEnabled: vi.fn(),
@@ -75,22 +85,6 @@ const SPEC_FILE = "e2e-tests/signup.spec.ts";
 function renderPanel() {
   const store = createStore();
   store.set(selectedAppIdAtom, 1);
-  // A running dev server, so the run controls aren't gated behind the
-  // "Start the app" banner.
-  store.set(
-    appUrlByAppIdAtom,
-    new Map([
-      [
-        1,
-        {
-          appUrl: "http://localhost:32100",
-          appId: 1,
-          originalUrl: "http://localhost:32100",
-          mode: "host" as const,
-        },
-      ],
-    ]),
-  );
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });

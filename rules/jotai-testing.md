@@ -52,3 +52,18 @@ If a `renderHook` test starts failing with `No QueryClient set, use QueryClientP
 ## Partial `jotai` Mocks
 
 When a component test mocks `jotai`, preserve the real module exports with `importOriginal` and override only the needed hooks. A full mock that only returns `useAtomValue` can fail during test collection with `[vitest] No "atom" export is defined on the "jotai" mock` once an indirectly imported atom module calls `atom(...)`.
+
+## Seeding a running app URL
+
+Don't try to make a component see a running dev server by writing preview-runtime atoms on a test store — `@/atoms/previewRuntimeAtoms` was deleted (symptom: `Failed to resolve import "@/atoms/previewRuntimeAtoms"`). Mock the hook instead, as `PreviewPanel.test.tsx` and `TestsPanel.test.tsx` do:
+
+```ts
+vi.mock("@/hooks/useAppRun", () => ({
+  useCurrentAppUrl: () => ({
+    appUrl: "http://localhost:32100",
+    appId: 1,
+    originalUrl: "http://localhost:32100",
+    mode: "host" as const,
+  }),
+}));
+```

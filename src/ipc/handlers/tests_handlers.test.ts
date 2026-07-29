@@ -51,9 +51,17 @@ vi.mock("../services/git_service", () => ({
 }));
 
 const queueCloudSandboxSnapshotSyncMock = vi.hoisted(() => vi.fn());
-vi.mock("../utils/cloud_sandbox_provider", () => ({
-  queueCloudSandboxSnapshotSync: queueCloudSandboxSnapshotSyncMock,
-}));
+// Partially mocked: this module is pulled in transitively by the runtime
+// service, so replacing it wholesale breaks whenever an unrelated export is
+// added. Only the snapshot sync needs to be stubbed out here.
+vi.mock("../utils/cloud_sandbox_provider", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../utils/cloud_sandbox_provider")>();
+  return {
+    ...actual,
+    queueCloudSandboxSnapshotSync: queueCloudSandboxSnapshotSyncMock,
+  };
+});
 
 // Imported after the mocks so the handler module picks them up.
 const { registerTestsHandlers } = await import("./tests_handlers");

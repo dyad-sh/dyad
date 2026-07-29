@@ -103,3 +103,12 @@ Proxy-ready output does not carry an operation generation. Stamping it with the
 current run epoch does not prove it belongs to that run, so never use a buffered
 proxy URL to override a failed destructive restart or reapply a potentially dead
 proxy; require producer-side identity before treating it as current-run evidence.
+
+## Preview runtime state is manager-owned, not Jotai
+
+`src/atoms/previewRuntimeAtoms.ts` no longer exists — `currentAppUrlAtom` and
+`appUrlByAppIdAtom` were replaced by snapshot stores read through
+`@/hooks/useAppRun` (`useCurrentAppUrl`, `useAppRunState`, `useAppExit`,
+`usePreviewReloadToken`), backed by the `AppRunRemoteProvider` manager. Read the
+hook for the current app URL instead of reintroducing a Jotai projection; a
+branch written before this migration will conflict on those imports.

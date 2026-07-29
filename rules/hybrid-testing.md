@@ -163,3 +163,11 @@ observable DOM or database update, call `await harness.bridge.settleInFlight()`
 before ending the test. Otherwise provider teardown can dispose the owning state
 machine while its command is still settling and produce misleading disposal
 errors after an otherwise successful assertion.
+
+Mock main-process utility modules that the runtime service pulls in
+transitively — such as `../utils/cloud_sandbox_provider` — with `importOriginal`
+and spread the actual exports, overriding only what the test needs. A factory
+listing just the used exports collects fine today but breaks the moment an
+unrelated export is added upstream, failing with `[vitest] No
+"restartCloudSandbox" export is defined on the "../utils/cloud_sandbox_provider"
+mock` from a file the branch never touched.

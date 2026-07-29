@@ -132,21 +132,33 @@ export function hasScriptReadableAttachment(
 }
 
 /**
- * Whether the turn carries an image the user attached *for the model to look at*.
+ * Whether the user attached this image *for the model to look at*.
  *
- * Narrower than "has an image attachment": `upload-to-codebase` images are
- * project assets bound for `<dyad-copy>` / `copy_file`, so a model that cannot
- * see them has lost nothing and should not be told to ask the user to switch
- * models. Gate the vision fallback on this, not on the raw image check.
+ * Narrower than "is an image attachment" in two ways:
+ *  - `upload-to-codebase` images are project assets bound for `<dyad-copy>` /
+ *    `copy_file`, so a model that cannot see them has lost nothing and should
+ *    not be told to ask the user to switch models.
+ *  - extension, not mime: an `image/svg+xml` is never inlined as an image part
+ *    for *any* model, so the describer cannot read it either. Counting it here
+ *    would only emit the "switch to a vision-capable model" note over an
+ *    attachment that a vision-capable model would not see either.
+ *
+ * Both the vision-fallback gate and the describer's own selection route through
+ * this, so they cannot disagree about what "describable" means.
  */
+export function isDescribableImageAttachment(
+  attachment: StoredChatAttachment,
+): boolean {
+  return (
+    attachment.attachmentType === "chat-context" &&
+    isInlineImageAttachment(attachment)
+  );
+}
+
 export function hasDescribableImageAttachment(
   attachments: StoredChatAttachment[],
 ): boolean {
-  return attachments.some(
-    (attachment) =>
-      attachment.attachmentType === "chat-context" &&
-      attachment.mimeType.startsWith("image/"),
-  );
+  return attachments.some(isDescribableImageAttachment);
 }
 
 export function resolveAttachmentDeliveryConfig({

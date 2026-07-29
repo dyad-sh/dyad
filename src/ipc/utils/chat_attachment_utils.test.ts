@@ -60,12 +60,24 @@ describe("hasDescribableImageAttachment", () => {
     ).toBe(false);
   });
 
-  it("is true for an image type we cannot inline, since the user still wanted it seen", () => {
-    // .svg has an image/* mime but is not in INLINE_IMAGE_EXTENSIONS, so the
-    // describer will decline it — the note is still the right outcome.
+  it("is false for an image type we cannot inline", () => {
+    // .svg has an image/* mime but is not in INLINE_IMAGE_EXTENSIONS, so it
+    // never reaches any model as an image part and the describer cannot read it
+    // either. Counting it would emit a "switch models" note that would not help.
     expect(
       hasDescribableImageAttachment([
         attachment({ mimeType: "image/svg+xml", filePath: "/media/icon.svg" }),
+      ]),
+    ).toBe(false);
+  });
+
+  it("is true for an inlineable extension carrying a generic mime type", () => {
+    expect(
+      hasDescribableImageAttachment([
+        attachment({
+          mimeType: "application/octet-stream",
+          filePath: "/media/abc123.png",
+        }),
       ]),
     ).toBe(true);
   });

@@ -1526,6 +1526,16 @@ describe("isImageInputUnsupportedError", () => {
     "corrupted image attachment",
   ];
 
+  // `image_url` names the request field, so it shows up in errors that have
+  // nothing to do with vision support. Advising a model switch here hides the
+  // real cause, which the user could actually act on.
+  const imageUrlNonCapabilityErrors = [
+    "Invalid image_url: URL must use http or https",
+    "unsupported URL scheme for image_url",
+    "image_url is not accessible",
+    "timed out retrieving image_url",
+  ];
+
   const unrelatedErrors = [
     "rate limit exceeded",
     "context length exceeded",
@@ -1540,6 +1550,20 @@ describe("isImageInputUnsupportedError", () => {
   it.each(formatErrors)("does not match the format error %j", (message) => {
     expect(isImageInputUnsupportedError(message)).toBe(false);
     expect(isImageFormatError(message)).toBe(true);
+  });
+
+  it.each(imageUrlNonCapabilityErrors)(
+    "does not claim missing vision for the image_url error %j",
+    (message) => {
+      expect(isImageInputUnsupportedError(message)).toBe(false);
+    },
+  );
+
+  it("still matches a capability claim made about image_url itself", () => {
+    const message =
+      "Invalid content type. image_url is only supported by certain models.";
+    expect(isImageInputUnsupportedError(message)).toBe(true);
+    expect(isImageFormatError(message)).toBe(false);
   });
 
   it.each(unrelatedErrors)(

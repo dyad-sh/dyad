@@ -158,6 +158,7 @@ import {
   getInlineImageMimeType,
   hasDescribableImageAttachment,
   hasScriptReadableAttachment,
+  isInlineImageAttachment,
   isTextFile,
   resolveAttachmentDeliveryConfig,
   type PendingStoredChatAttachment,
@@ -411,7 +412,6 @@ const IMAGE_FORMAT_ERROR_PATTERN =
  * catalog has not tagged yet.
  */
 const IMAGE_INPUT_ERROR_PATTERNS = [
-  "image_url",
   "image input",
   "does not support image",
   "doesn't support image",
@@ -436,6 +436,14 @@ export function isImageFormatError(message: string): boolean {
 }
 
 /**
+ * `image_url` is the name of the request field, so providers reuse it for
+ * unreachable URLs and bad schemes as readily as for missing vision support.
+ * Bare presence proves nothing; only a capability claim about the field does.
+ */
+const IMAGE_URL_CAPABILITY_PATTERN =
+  /image_url\s+is\s+(only\s+support|not\s+support)/;
+
+/**
  * Whether the error means the selected model cannot accept image input at all.
  */
 export function isImageInputUnsupportedError(message: string): boolean {
@@ -443,8 +451,9 @@ export function isImageInputUnsupportedError(message: string): boolean {
     return false;
   }
   const lowered = message.toLowerCase();
-  return IMAGE_INPUT_ERROR_PATTERNS.some((pattern) =>
-    lowered.includes(pattern),
+  return (
+    IMAGE_URL_CAPABILITY_PATTERN.test(lowered) ||
+    IMAGE_INPUT_ERROR_PATTERNS.some((pattern) => lowered.includes(pattern))
   );
 }
 
@@ -1511,8 +1520,14 @@ ${componentSnippet}
         selectedChatMode,
       };
       const freeModelMode = isFreeProModel(settings.selectedModel);
-      const hasImageAttachments = storedAttachments.some((attachment) =>
-        attachment.mimeType.startsWith("image/"),
+      // Mime OR extension: `includeImageParts` below inlines whatever
+      // `isInlineImageAttachment` matches, which is extension-based. A `.png`
+      // recorded with a generic mime type would otherwise skip the vision gate
+      // entirely and still reach a text-only model as a raw image part.
+      const hasImageAttachments = storedAttachments.some(
+        (attachment) =>
+          attachment.mimeType.startsWith("image/") ||
+          isInlineImageAttachment(attachment),
       );
       const hasUploadedAttachments = storedAttachments.some(
         (attachment) => attachment.attachmentType === "upload-to-codebase",

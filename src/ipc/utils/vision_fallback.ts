@@ -6,7 +6,7 @@ import log from "electron-log";
 import type { UserSettings } from "@/lib/schemas";
 import {
   getInlineImageMimeType,
-  isInlineImageAttachment,
+  isDescribableImageAttachment,
   type StoredChatAttachment,
 } from "@/ipc/utils/chat_attachment_utils";
 import { getModelClient } from "@/ipc/utils/get_model_client";
@@ -52,16 +52,13 @@ const IMAGE_DESCRIPTION_CLOSING_TAG_PATTERN =
   /<\s*\/\s*dyad-image-description\s*>/gi;
 
 /**
- * Inline images the user attached for the model to look at.
+ * Inline images the user attached for the model to look at. Same predicate the
+ * caller gates on, so the gate can never let through something this drops.
  */
 export function selectDescribableImages(
   attachments: StoredChatAttachment[],
 ): StoredChatAttachment[] {
-  return attachments.filter(
-    (attachment) =>
-      isInlineImageAttachment(attachment) &&
-      attachment.attachmentType === "chat-context",
-  );
+  return attachments.filter(isDescribableImageAttachment);
 }
 
 /**

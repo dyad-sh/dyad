@@ -136,6 +136,13 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
   const setupBlockedByUnreadable =
     (s.headersUnreadable && setupInputs.some((i) => i.kind === "header")) ||
     (s.envUnreadable && setupInputs.some((i) => i.kind === "env"));
+  // Setup is where a catalog plugin's first credential gets typed, so
+  // it needs the same no-keyring warning the editors carry. An entry
+  // asking only for a client id stores nothing secret.
+  const setupPersistsSecret = setupInputs.some(
+    (i) =>
+      i.kind === "header" || i.kind === "env" || i.kind === "oauthClientSecret",
+  );
 
   const onSetToolConsent = async (
     toolName: string,
@@ -269,6 +276,11 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
           {needsSetup && setupBlockedByUnreadable && (
             <UnreadableSecretsNotice />
           )}
+
+          {needsSetup &&
+            !setupBlockedByUnreadable &&
+            setupPersistsSecret &&
+            oauthStorageEncrypted === false && <OauthPlaintextStorageAlert />}
 
           {needsSetup && !setupBlockedByUnreadable && (
             // Keyed by server so switching between two setup-needing

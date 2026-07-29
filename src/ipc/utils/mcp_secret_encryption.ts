@@ -122,11 +122,13 @@ function nextEncryptedValue(
   return undefined;
 }
 
-// Only write if the column still holds what we read, so a secret the
-// user edits while this is running isn't rolled back.
+// Only write if the columns still hold what we read, so a secret the
+// user edits while this is running isn't rolled back. Both are
+// checked: a delete clears the plaintext column and leaves the
+// encrypted one NULL, which on its own still matches what was read.
 function unchanged(
   column: AnySQLiteColumn,
-  value: string | null,
+  value: string | Record<string, string> | null,
 ): SQL | undefined {
   return value === null ? isNull(column) : eq(column, value);
 }
@@ -175,6 +177,7 @@ export async function encryptStoredMcpSecrets(): Promise<number> {
             and(
               eq(mcpServers.id, row.id),
               unchanged(mcpServers.envEncrypted, row.envEncrypted),
+              unchanged(mcpServers.envJson, row.envJson),
             ),
           );
         updated += result.changes;
@@ -192,6 +195,7 @@ export async function encryptStoredMcpSecrets(): Promise<number> {
             and(
               eq(mcpServers.id, row.id),
               unchanged(mcpServers.headersEncrypted, row.headersEncrypted),
+              unchanged(mcpServers.headersJson, row.headersJson),
             ),
           );
         updated += result.changes;

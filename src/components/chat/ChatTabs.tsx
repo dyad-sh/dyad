@@ -360,7 +360,7 @@ export function shouldCapturePresentationBeforeNavigation(
   );
 }
 
-interface PreNavigationPresentationCapture {
+export interface PreNavigationPresentationCapture {
   fromChatId: number;
   toChatId: number | null;
 }
@@ -373,6 +373,23 @@ export function matchesPreNavigationPresentationCapture(
   return (
     capture?.fromChatId === previousChatId &&
     capture.toChatId === selectedChatId
+  );
+}
+
+export function consumePreNavigationPresentationCapture(
+  captureRef: { current: PreNavigationPresentationCapture | null },
+  previousChatId: number | null,
+  selectedChatId: number | null,
+): boolean {
+  const capture = captureRef.current;
+  captureRef.current = null;
+  return (
+    previousChatId !== selectedChatId &&
+    matchesPreNavigationPresentationCapture(
+      capture,
+      previousChatId,
+      selectedChatId,
+    )
   );
 }
 
@@ -682,14 +699,13 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
 
   useLayoutEffect(() => {
     const previousChatId = presentedChatIdRef.current;
-    if (previousChatId === selectedChatId) return;
-
-    const capturedBeforeNavigation = matchesPreNavigationPresentationCapture(
-      preNavigationPresentationCaptureRef.current,
+    const capturedBeforeNavigation = consumePreNavigationPresentationCapture(
+      preNavigationPresentationCaptureRef,
       previousChatId,
       selectedChatId,
     );
-    preNavigationPresentationCaptureRef.current = null;
+    if (previousChatId === selectedChatId) return;
+
     if (previousChatId !== null && !capturedBeforeNavigation) {
       const previousChat = chatsById.get(previousChatId);
       if (previousChat) {

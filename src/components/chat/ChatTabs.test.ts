@@ -20,6 +20,7 @@ import {
 import {
   applySelectionToOrderedChatIds,
   addFinishedChatNotification,
+  consumePreNavigationPresentationCapture,
   getOrderedRecentChatIds,
   getVisibleTabCapacity,
   matchesPreNavigationPresentationCapture,
@@ -195,6 +196,19 @@ describe("ChatTabs helpers", () => {
         8,
       ),
     ).toBe(true);
+  });
+
+  it("consumes a capture marker even when selection is already synchronized", () => {
+    const captureRef: {
+      current: { fromChatId: number; toChatId: number | null } | null;
+    } = {
+      current: { fromChatId: 7, toChatId: 8 },
+    };
+
+    expect(consumePreNavigationPresentationCapture(captureRef, 8, 8)).toBe(
+      false,
+    );
+    expect(captureRef.current).toBeNull();
   });
 
   it("preserves a chat reopened under a different tab identity", () => {

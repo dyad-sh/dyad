@@ -474,11 +474,13 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   value so caller or inspector mutation cannot rewrite stored ownership.
 - `OperationRouteRegistry` pins unresolved routes behind a separately bounded
   admission limit and evicts only terminal routes, in settlement order, behind
-  a declared finite retention count. Call `markTerminal(handle)` only at
-  authoritative publication/settlement, then release with the opaque
-  generation-bearing handle or an explicit owner/window/machine disposal
-  method. Owner disposal is scoped by both machine and owner identity.
-  Duplicate terminal/release calls and stale handles are no-ops.
+  a declared finite retention count. Its constructor snapshots validated
+  policy values and callbacks; later caller mutation cannot change accounting.
+  Call `markTerminal(handle)` only at authoritative publication/settlement,
+  then release with the opaque generation-bearing handle or an explicit
+  owner/window/machine disposal method. Owner disposal is scoped by both
+  machine and owner identity. Duplicate terminal/release calls and stale
+  handles are no-ops.
 - Window destruction must call the registry's read-only
   `inspectWindowRoutes()` before the domain explicitly chooses drop,
   entity-window, or focused-window fallback. Do not wire window unregister to

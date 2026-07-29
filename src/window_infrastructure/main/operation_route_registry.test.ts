@@ -339,4 +339,29 @@ describe("OperationRouteRegistry", () => {
       ).toThrow("finite bounded integers");
     }
   });
+
+  it("owns validated policy values instead of retaining mutable options", () => {
+    const options = {
+      maxUnresolved: 1,
+      maxTerminalRetained: 1,
+      snapshotRoute: (route: Route) => ({ ...route }),
+    };
+    const registry = new OperationRouteRegistry<Route>(options);
+    const first = registry.admit(claim("first"));
+    registry.markTerminal(first.handle);
+
+    options.maxUnresolved = Number.POSITIVE_INFINITY;
+    options.maxTerminalRetained = Number.POSITIVE_INFINITY;
+    const pending = registry.admit(claim("pending"));
+    expect(() => registry.admit(claim("capacity-refused"))).toThrow(
+      OperationRouteCapacityError,
+    );
+
+    registry.release(pending.handle);
+    const second = registry.admit(claim("second-terminal"));
+    registry.markTerminal(second.handle);
+    expect(registry.inspect().routes.map((route) => route.operationId)).toEqual(
+      ["second-terminal"],
+    );
+  });
 });

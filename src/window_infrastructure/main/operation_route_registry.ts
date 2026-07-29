@@ -105,9 +105,12 @@ export class OperationRouteRegistry<Route> {
   private unresolved = 0;
   private nextGeneration = 1;
   private disposed = false;
+  private readonly maxUnresolved: number;
+  private readonly maxTerminalRetained: number;
+  private readonly snapshotRoute: (route: Route) => Route;
   private readonly sameRoute: (left: Route, right: Route) => boolean;
 
-  constructor(private readonly options: OperationRouteRegistryOptions<Route>) {
+  constructor(options: OperationRouteRegistryOptions<Route>) {
     if (
       !Number.isSafeInteger(options.maxUnresolved) ||
       options.maxUnresolved < 1 ||
@@ -118,6 +121,9 @@ export class OperationRouteRegistry<Route> {
         "Operation route capacities must be finite bounded integers",
       );
     }
+    this.maxUnresolved = options.maxUnresolved;
+    this.maxTerminalRetained = options.maxTerminalRetained;
+    this.snapshotRoute = options.snapshotRoute;
     this.sameRoute = options.sameRoute ?? Object.is;
   }
 
@@ -134,7 +140,7 @@ export class OperationRouteRegistry<Route> {
         route: this.readSnapshot(existing),
       };
     }
-    if (this.unresolved >= this.options.maxUnresolved) {
+    if (this.unresolved >= this.maxUnresolved) {
       throw new OperationRouteCapacityError();
     }
 
@@ -144,7 +150,7 @@ export class OperationRouteRegistry<Route> {
     });
     const owner = Object.freeze({
       ...claim.owner,
-      route: this.options.snapshotRoute(claim.owner.route),
+      route: this.snapshotRoute(claim.owner.route),
     });
     const snapshot = {
       operationId: claim.operationId,
@@ -275,7 +281,7 @@ export class OperationRouteRegistry<Route> {
       operationId: entry.snapshot.operationId,
       owner: Object.freeze({
         ...entry.snapshot.owner,
-        route: this.options.snapshotRoute(entry.snapshot.owner.route),
+        route: this.snapshotRoute(entry.snapshot.owner.route),
       }),
       state: entry.snapshot.state,
       generation: entry.snapshot.generation,
@@ -284,12 +290,12 @@ export class OperationRouteRegistry<Route> {
 
   private trimTerminal(): void {
     let terminal = this.entries.size - this.unresolved;
-    if (terminal <= this.options.maxTerminalRetained) return;
+    if (terminal <= this.maxTerminalRetained) return;
     for (const [operationId, entry] of this.entries) {
       if (entry.snapshot.state !== "terminal") continue;
       this.entries.delete(operationId);
       terminal -= 1;
-      if (terminal <= this.options.maxTerminalRetained) return;
+      if (terminal <= this.maxTerminalRetained) return;
     }
   }
 

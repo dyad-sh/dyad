@@ -800,6 +800,57 @@ export function registerTestsHandlers() {
     },
   );
 
+  createTypedHandler(testsContracts.deleteAppTest, async (_event, params) => {
+    const app = await getApp(params.appId);
+    const appPath = getDyadAppPath(app.path);
+    const testFile = normalizeRunTestFile(params.testFile);
+    if (!testFile) {
+      throw new DyadError(
+        `Invalid test file: ${params.testFile}`,
+        DyadErrorKind.Validation,
+      );
+    }
+
+    return withLock(params.appId, async () => {
+      await assertMutationPathAllowed({
+        appPath,
+        relativePath: testFile,
+        followFinalSymlink: false,
+      });
+      const fullPath = safeJoin(appPath, testFile);
+      try {
+        await fs.promises.lstat(fullPath);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+          throw new DyadError(
+            `Test file not found: ${testFile}`,
+            DyadErrorKind.NotFound,
+          );
+        }
+        throw error;
+      }
+
+      const { commitHash, uncommittedReason } =
+        await gitService.removeFileAndCommit({
+          path: appPath,
+          filepath: testFile,
+          message: `[dyad] delete test ${testFile}`,
+        });
+      if (uncommittedReason === "untracked") {
+        try {
+          await fs.promises.unlink(fullPath);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        }
+      }
+      return {
+        file: testFile,
+        committed: commitHash !== null,
+        uncommittedReason,
+      };
+    });
+  });
+
   createTypedHandler(
     testsContracts.runAppTests,
     async (event, params): Promise<RunAppTestsResult> => {

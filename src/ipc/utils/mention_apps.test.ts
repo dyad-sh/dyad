@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const dbMocks = vi.hoisted(() => ({
   findMany: vi.fn(),
+  set: vi.fn(),
+  where: vi.fn(),
 }));
 
 vi.mock("@/db", () => ({
@@ -11,7 +13,26 @@ vi.mock("@/db", () => ({
         findMany: dbMocks.findMany,
       },
     },
+    update: () => ({
+      set: (values: unknown) => {
+        dbMocks.set(values);
+        return {
+          where: (condition: unknown) => {
+            dbMocks.where(condition);
+            return Promise.resolve();
+          },
+        };
+      },
+    }),
   },
+}));
+
+const invalidationMocks = vi.hoisted(() => ({
+  publishQueryInvalidations: vi.fn(),
+}));
+
+vi.mock("@/ipc/utils/query_invalidation_delivery", () => ({
+  publishQueryInvalidations: invalidationMocks.publishQueryInvalidations,
 }));
 
 vi.mock("@/paths/paths", () => ({
@@ -37,6 +58,7 @@ vi.mock("electron-log", () => ({
 }));
 
 import {
+  persistReferencedAppIds,
   readStoredReferencedAppIds,
   resolveStickyReferencedApps,
 } from "@/ipc/utils/mention_apps";
@@ -47,6 +69,9 @@ const BAR_APP = { id: 2, name: "bar", path: "bar-app" };
 describe("mention app utilities", () => {
   beforeEach(() => {
     dbMocks.findMany.mockReset();
+    dbMocks.set.mockReset();
+    dbMocks.where.mockReset();
+    invalidationMocks.publishQueryInvalidations.mockReset();
   });
 
   it("does not query apps when there are no mentions and nothing stored", async () => {
@@ -145,6 +170,17 @@ describe("mention app utilities", () => {
       { appName: "renamed", appPath: "/dyad-apps/moved-app" },
     ]);
     expect(result.changed).toBe(false);
+  });
+
+  it("invalidates the chat when references are persisted mid-turn", async () => {
+    await persistReferencedAppIds(7, [1, 2]);
+
+    expect(dbMocks.set).toHaveBeenCalledWith({ referencedAppIds: [1, 2] });
+    // The turn only invalidates the chat once it terminates, so the write has
+    // to announce itself or the composer's chip row lags a whole turn behind.
+    expect(
+      invalidationMocks.publishQueryInvalidations,
+    ).toHaveBeenCalledExactlyOnceWith([{ family: "chat", chatId: 7 }]);
   });
 
   it("ignores malformed stored values", () => {

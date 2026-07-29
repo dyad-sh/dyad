@@ -6,6 +6,7 @@ import { CodebaseFile, extractCodebase } from "../../utils/codebase";
 import { validateChatContext } from "../utils/context_paths_utils";
 import log from "electron-log";
 import { parseKnownAppMentions } from "@/shared/parse_mention_apps";
+import { publishQueryInvalidations } from "./query_invalidation_delivery";
 
 const logger = log.scope("mention_apps");
 
@@ -219,6 +220,12 @@ export async function persistReferencedAppIds(
     .update(chats)
     .set({ referencedAppIds: appIds })
     .where(eq(chats.id, chatId));
+
+  // Announce the write immediately. This runs mid-turn, and the stream only
+  // invalidates the chat when it terminates, so without this the composer's
+  // chip row would not show the reference until the turn finished — long after
+  // the agent could already read the app.
+  publishQueryInvalidations([{ family: "chat", chatId }]);
 }
 
 /**

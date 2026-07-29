@@ -938,6 +938,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           <ReferencedAppsBar
             chatId={chatId}
             isEnabled={isLocalAgentBackedMode(effectiveMode)}
+            isStreaming={isStreaming}
           />
 
           {/* Use the AttachmentsList component */}

@@ -1592,6 +1592,8 @@ ${componentSnippet}
           });
           referencedAppsForAgent = stickyReferences.references;
           if (stickyReferences.changed) {
+            // This also invalidates the chat in every window, so the composer's
+            // chip row picks the reference up now rather than when the turn ends.
             await persistReferencedAppIds(req.chatId, stickyReferences.appIds);
           }
         } else {

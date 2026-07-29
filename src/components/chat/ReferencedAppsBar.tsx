@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { ipc } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
+import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 
 interface ReferencedAppsBarProps {
@@ -13,6 +14,13 @@ interface ReferencedAppsBarProps {
    * full codebases per turn, so nothing is carried over and nothing is shown.
    */
   isEnabled: boolean;
+  /**
+   * Blocks detaching while a turn is in flight. The running turn resolves its
+   * referenced apps once, before the model call, and its tools read that
+   * snapshot — so a detach here could not revoke access until the turn ended,
+   * while the chip disappearing would claim it already had.
+   */
+  isStreaming: boolean;
 }
 
 /**
@@ -23,6 +31,7 @@ interface ReferencedAppsBarProps {
 export function ReferencedAppsBar({
   chatId,
   isEnabled,
+  isStreaming,
 }: ReferencedAppsBarProps) {
   const { t } = useTranslation("chat");
   const queryClient = useQueryClient();
@@ -49,6 +58,7 @@ export function ReferencedAppsBar({
   });
 
   const referencedApps = chatQuery.data?.referencedApps ?? [];
+  const isDetachDisabled = isStreaming || removeMutation.isPending;
 
   if (!isEnabled || activeChatId === null || referencedApps.length === 0) {
     return null;
@@ -77,15 +87,38 @@ export function ReferencedAppsBar({
           data-testid={`referenced-app-chip-${app.name}`}
         >
           <span className="truncate max-w-[140px]">{app.name}</span>
-          <button
-            type="button"
-            onClick={() => removeMutation.mutate(app.id)}
-            disabled={removeMutation.isPending}
-            className="hover:bg-muted-foreground/20 rounded-full p-0.5 cursor-pointer disabled:cursor-not-allowed"
-            aria-label={t("referencedApps.remove", { appName: app.name })}
-          >
-            <X size={12} />
-          </button>
+          <Tooltip>
+            {/* The trigger is the wrapper, not the button: a disabled button
+                swallows hover, so the "why" would never surface. */}
+            <TooltipTrigger
+              render={
+                <span
+                  className={cn(
+                    "flex items-center",
+                    isDetachDisabled && "cursor-not-allowed",
+                  )}
+                />
+              }
+            >
+              <button
+                type="button"
+                onClick={() => removeMutation.mutate(app.id)}
+                disabled={isDetachDisabled}
+                className={cn(
+                  "hover:bg-muted-foreground/20 rounded-full p-0.5 cursor-pointer",
+                  isDetachDisabled && "pointer-events-none opacity-50",
+                )}
+                aria-label={t("referencedApps.remove", { appName: app.name })}
+              >
+                <X size={12} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {isStreaming
+                ? t("referencedApps.removeDisabledWhileStreaming")
+                : t("referencedApps.remove", { appName: app.name })}
+            </TooltipContent>
+          </Tooltip>
         </div>
       ))}
     </div>

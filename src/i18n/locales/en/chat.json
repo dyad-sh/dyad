@@ -244,7 +244,8 @@
   "referencedApps": {
     "label": "Referenced apps",
     "description": "These apps stay readable for the rest of this chat. The agent can read their files but cannot edit them.",
-    "remove": "Stop referencing {{appName}}"
+    "remove": "Stop referencing {{appName}}",
+    "removeDisabledWhileStreaming": "Wait for the response to finish — the agent keeps this app's files for the rest of this turn."
   },
   "systemPrompt": "System Prompt",
   "currentInput": "Current Input",

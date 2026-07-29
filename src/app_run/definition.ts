@@ -490,8 +490,9 @@ function createCommandRunner() {
           timestamp: command.startedAt,
           invocationRef: command.invocationRef,
         });
-        const operation = Promise.resolve().then(() =>
-          command.operation === "run"
+        let runtimeMayBeLive = false;
+        const operation = Promise.resolve().then(async () => {
+          await (command.operation === "run"
             ? appRuntimeService.start({
                 appId: command.appId,
                 invocationRef: command.invocationRef,
@@ -503,8 +504,10 @@ function createCommandRunner() {
                 removeNodeModules: command.options.removeNodeModules,
                 recreateSandbox: command.options.recreateSandbox,
                 output,
-              }),
-        );
+              }));
+          runtimeMayBeLive = true;
+          await appRuntimeService.waitForReady(command.appId);
+        });
         return operation.then(
           () =>
             emit({
@@ -520,7 +523,7 @@ function createCommandRunner() {
               requestId: command.requestId,
               invocationRef: command.invocationRef,
               error: runErrorInfo(error),
-              runtimeMayBeLive: false,
+              runtimeMayBeLive,
             }),
         );
       }

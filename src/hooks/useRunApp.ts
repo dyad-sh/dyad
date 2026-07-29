@@ -250,7 +250,10 @@ export function useRunApp() {
   const mutateAppRunRef = useRef(mutation.mutate);
   mutateAppRunRef.current = mutation.mutate;
   const loading =
-    runState.phase === "starting" || runState.phase === "stopping";
+    runState.phase === "starting" ||
+    runState.phase === "stopping" ||
+    mutation.admission.kind === "preparing" ||
+    mutation.execution.kind === "running";
 
   const dispatchMutation = useCallback(
     async (targetAppId: number, operation: AppRunOperationInput) => {
@@ -301,12 +304,18 @@ export function useRunApp() {
       if (targetAppId === null) {
         return;
       }
-      packageWarnings.clear(targetAppId);
+      const warningBeforeRestart = packageWarnings.getSnapshot(targetAppId);
       await dispatchMutation(targetAppId, {
         type: "RESTART",
         startedAt: Date.now(),
         options: { removeNodeModules, recreateSandbox },
       });
+      if (
+        warningBeforeRestart !== undefined &&
+        packageWarnings.getSnapshot(targetAppId) === warningBeforeRestart
+      ) {
+        packageWarnings.clear(targetAppId);
+      }
     },
     [appId, dispatchMutation, packageWarnings],
   );

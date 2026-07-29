@@ -373,6 +373,10 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   the user's input while the operation runs and after failure. Close dialogs
   and clear forms only on authoritative settlement; dispatch itself is not
   proof that the mutation succeeded.
+- When a presentation entry mounts the component that owns its mutation hook,
+  do not clear that entry before dispatch. Capture its identity and clear only
+  that same entry after authoritative settlement; an entry emitted during the
+  operation is newer state and must survive.
 - A remote dispatch receipt proves transport admission, not runtime completion.
   When callers sequence work on the outcome, project a bounded,
   operation-correlated settlement acknowledgment. Superseded completions must

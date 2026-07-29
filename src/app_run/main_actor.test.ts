@@ -24,6 +24,7 @@ const runtime = vi.hoisted(() => ({
   start: vi.fn<() => Promise<void>>(),
   restart: vi.fn<() => Promise<void>>(),
   stop: vi.fn<() => Promise<void>>(),
+  waitForReady: vi.fn<() => Promise<void>>(),
   cleanup: vi.fn(),
   createExternalLifecycleRef: vi.fn(),
 }));
@@ -114,6 +115,7 @@ describe("main-hosted app-run actor", () => {
     runtime.start.mockReset();
     runtime.restart.mockReset();
     runtime.stop.mockReset();
+    runtime.waitForReady.mockReset();
     runtime.cleanup.mockReset();
     runtime.createExternalLifecycleRef.mockReset();
     runtime.createExternalLifecycleRef.mockReturnValue({
@@ -126,6 +128,7 @@ describe("main-hosted app-run actor", () => {
     runtime.start.mockResolvedValue(undefined);
     runtime.restart.mockResolvedValue(undefined);
     runtime.stop.mockResolvedValue(undefined);
+    runtime.waitForReady.mockResolvedValue(undefined);
   });
 
   it("authorizes manual reload independently of the current phase", async () => {
@@ -263,9 +266,9 @@ describe("main-hosted app-run actor", () => {
     });
   });
 
-  it("resolves renderer dispatch only after the matching runtime settles", async () => {
-    const pending = deferred<void>();
-    runtime.start.mockReturnValue(pending.promise);
+  it("resolves renderer dispatch only after the matching runtime is ready", async () => {
+    const pendingReady = deferred<void>();
+    runtime.waitForReady.mockReturnValue(pendingReady.promise);
     const { duplex } = createHarness();
     const manager = new AppRunRemoteManager(
       createSequentialIdSource(),
@@ -281,10 +284,11 @@ describe("main-hosted app-run actor", () => {
       });
     await vi.waitFor(() => {
       expect(runtime.start).toHaveBeenCalledTimes(1);
+      expect(runtime.waitForReady).toHaveBeenCalledWith(7);
     });
     expect(settled).toBe(false);
 
-    pending.resolve();
+    pendingReady.resolve();
     await dispatch;
     expect(settled).toBe(true);
     manager.dispose();

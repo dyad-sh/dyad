@@ -9,6 +9,7 @@ import { PackageManagerWarningStore } from "@/package_manager_warnings/store";
 import { PackageManagerWarningProvider } from "@/package_manager_warnings/PackageManagerWarningProvider";
 
 const {
+  appRunState,
   getNodejsStatusMock,
   installPnpmMock,
   openExternalUrlMock,
@@ -18,6 +19,7 @@ const {
   executeAppUpgradeMock,
   updateSettingsMock,
 } = vi.hoisted(() => ({
+  appRunState: { loading: false },
   getNodejsStatusMock: vi.fn(),
   installPnpmMock: vi.fn(),
   openExternalUrlMock: vi.fn(),
@@ -50,6 +52,7 @@ vi.mock("@/hooks/useSettings", () => ({
 vi.mock("@/hooks/useRunApp", () => ({
   useRebuildAppAfterPnpmInstall: () => rebuildAppAfterPnpmInstallMock,
   useRunApp: () => ({
+    loading: appRunState.loading,
     restartApp: restartAppMock,
     stopApp: stopAppMock,
   }),
@@ -58,6 +61,7 @@ vi.mock("@/hooks/useRunApp", () => ({
 describe("PackageManagerWarningBanner", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    appRunState.loading = false;
     getNodejsStatusMock.mockReset();
     installPnpmMock.mockReset();
     openExternalUrlMock.mockReset();
@@ -277,6 +281,20 @@ describe("PackageManagerWarningBanner", () => {
     expect(executeAppUpgradeMock.mock.invocationCallOrder[0]).toBeLessThan(
       restartAppMock.mock.invocationCallOrder[0],
     );
+  });
+
+  it("waits for the active app lifecycle before starting migration", () => {
+    appRunState.loading = true;
+    renderBanner({
+      kind: "pnpm-migration",
+      message:
+        "This app pins an older pnpm that can't read the lockfile Dyad writes.",
+    });
+
+    const migrateButton = screen.getByTestId(
+      "package-manager-warning-run-upgrade",
+    ) as HTMLButtonElement;
+    expect(migrateButton.disabled).toBe(true);
   });
 
   it("keeps release-age warnings ahead of pnpm migration warnings", () => {

@@ -64,7 +64,7 @@ function PackageManagerWarningBannerContent({
 }) {
   const warningStore = usePackageManagerWarningStore();
   const rebuildAppAfterPnpmInstall = useRebuildAppAfterPnpmInstall();
-  const { restartApp, stopApp } = useRunApp();
+  const { loading: appRunLoading, restartApp, stopApp } = useRunApp();
   const { updateSettings } = useSettings();
   const queryClient = useQueryClient();
   const [installStatus, setInstallStatus] = useState<InstallStatus>("idle");
@@ -190,7 +190,7 @@ function PackageManagerWarningBannerContent({
             size="sm"
             variant="ghost"
             onClick={handleMigratePnpm}
-            disabled={isInstalling || isSuccess}
+            disabled={isInstalling || isSuccess || appRunLoading}
             data-testid="package-manager-warning-run-upgrade"
           >
             {isInstalling ? (

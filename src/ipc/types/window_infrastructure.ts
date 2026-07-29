@@ -47,6 +47,7 @@ export const windowInfrastructureContracts = {
     input: z.object({
       transferId: z.string().uuid(),
       payload: ChatTabTransferPayloadSchema,
+      tabs: z.array(ChatTabOwnershipSchema).max(100),
     }),
     output: z.object({ transferId: z.string().uuid() }),
   }),

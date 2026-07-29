@@ -1522,9 +1522,13 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                               showError(t("moveTabAttachmentsBlocked"));
                               return;
                             }
+                            let storedTabs;
                             let storedTab;
                             try {
-                              storedTab = getActiveStoredChatTab(chat.id);
+                              storedTabs = getActiveStoredChatTabs();
+                              storedTab = storedTabs.find(
+                                (tab) => tab.chatId === chat.id,
+                              );
                             } catch (error) {
                               event.preventDefault();
                               setDraggingChatId(null);
@@ -1553,18 +1557,17 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                                   getActiveWindowSessionId(),
                               }),
                             );
-                            void publishChatTabOwnership()
-                              .then(() =>
-                                ipc.windowInfrastructure.beginChatTabTransfer({
-                                  transferId,
-                                  payload: {
-                                    tabInstanceId: storedTab.tabInstanceId,
-                                    chatId: chat.id,
-                                    appId: chat.appId,
-                                    presentation,
-                                  },
-                                }),
-                              )
+                            void ipc.windowInfrastructure
+                              .beginChatTabTransfer({
+                                transferId,
+                                tabs: storedTabs,
+                                payload: {
+                                  tabInstanceId: storedTab.tabInstanceId,
+                                  chatId: chat.id,
+                                  appId: chat.appId,
+                                  presentation,
+                                },
+                              })
                               .catch(showError);
                           }}
                           onDragEnd={() => setDraggingChatId(null)}

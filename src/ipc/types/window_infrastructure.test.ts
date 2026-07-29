@@ -33,21 +33,47 @@ describe("window infrastructure contracts", () => {
   });
 
   it("bounds renderer chat tab ownership snapshots", () => {
+    const tab = {
+      chatId: 11,
+      tabInstanceId: "10000000-0000-4000-8000-000000000011",
+    };
     expect(
-      windowInfrastructureContracts.setChatTabOwnership.input.safeParse([
-        {
-          chatId: 11,
-          tabInstanceId: "10000000-0000-4000-8000-000000000011",
-        },
-      ]).success,
+      windowInfrastructureContracts.setChatTabOwnership.input.safeParse([tab])
+        .success,
     ).toBe(true);
+    const tooManyTabs = Array.from({ length: 101 }, (_, index) => ({
+      chatId: index + 1,
+      tabInstanceId: crypto.randomUUID(),
+    }));
     expect(
       windowInfrastructureContracts.setChatTabOwnership.input.safeParse(
-        Array.from({ length: 101 }, (_, index) => ({
-          chatId: index + 1,
-          tabInstanceId: crypto.randomUUID(),
-        })),
+        tooManyTabs,
       ).success,
+    ).toBe(false);
+    expect(
+      windowInfrastructureContracts.beginChatTabTransfer.input.safeParse({
+        transferId: crypto.randomUUID(),
+        tabs: tooManyTabs,
+        payload: {
+          ...tab,
+          appId: 7,
+          presentation: {
+            draftInput: "",
+            messageScrollTop: 0,
+            file: null,
+            editorCursor: null,
+            preview: {
+              history: [],
+              position: -1,
+              mode: "preview",
+              open: false,
+            },
+            chatPanelHidden: false,
+            terminalOpen: false,
+            selectedComponents: [],
+          },
+        },
+      }).success,
     ).toBe(false);
   });
 });

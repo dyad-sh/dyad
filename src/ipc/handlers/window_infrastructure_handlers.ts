@@ -114,10 +114,11 @@ export function registerWindowInfrastructureHandlers(): void {
 
   createTypedHandler(
     windowInfrastructureContracts.beginChatTabTransfer,
-    async (event, { transferId, payload }) => {
+    async (event, { transferId, payload, tabs }) => {
       const sourceWindowSessionId = windowRegistry.ensureRegistered(
         event.sender,
       );
+      windowRegistry.setChatTabOwnership(sourceWindowSessionId, tabs);
       const chat = await db.query.chats.findFirst({
         where: eq(chats.id, payload.chatId),
       });

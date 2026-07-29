@@ -394,8 +394,11 @@ export async function onReady() {
   // Remove GitHub tokens that older versions embedded in git remote URLs
   scrubGithubTokenFromRemotes();
 
-  // Encrypt MCP headers and env vars that are still stored as plaintext
-  void encryptStoredMcpSecrets();
+  // Encrypt MCP headers and env vars that are still stored as
+  // plaintext. Awaited so no MCP read can see a row the pass is about
+  // to correct. It returns rather than throwing on failure, and does
+  // no work at all once there are no plaintext values left.
+  await encryptStoredMcpSecrets();
 
   const settings = await readEffectiveSettings();
 

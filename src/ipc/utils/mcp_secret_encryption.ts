@@ -44,10 +44,18 @@ function plaintextStateOf(
   return Object.keys(plaintext).length === 0 ? "empty" : "values";
 }
 
-function encryptedStateOf(encrypted: string | null): EncryptedState {
-  if (!encrypted) return "absent";
-  if (encrypted.startsWith(PLAINTEXT_PREFIX)) return "plainTagged";
-  return decryptSecretMap(encrypted) ? "readable" : "unreadable";
+// Carries the decoded map alongside the state so callers that need
+// the value don't decrypt the same blob twice.
+function encryptedStateOf(encrypted: string | null): {
+  state: EncryptedState;
+  decoded: Record<string, string> | null;
+} {
+  if (!encrypted) return { state: "absent", decoded: null };
+  const decoded = decryptSecretMap(encrypted);
+  if (encrypted.startsWith(PLAINTEXT_PREFIX)) {
+    return { state: "plainTagged", decoded };
+  }
+  return { state: decoded ? "readable" : "unreadable", decoded };
 }
 
 /**
@@ -65,7 +73,7 @@ function nextEncryptedValue(
   encrypted: string | null,
 ): string | null | undefined {
   const from = plaintextStateOf(plaintext);
-  const to = encryptedStateOf(encrypted);
+  const { state: to, decoded } = encryptedStateOf(encrypted);
 
   switch (from) {
     case "values":
@@ -73,15 +81,14 @@ function nextEncryptedValue(
         // Already encrypted from this same value, unless it is only
         // base64, which a keyring can now upgrade.
         case "readable":
-          return sameMap(decryptSecretMap(encrypted!)!, plaintext!)
+          return sameMap(decoded!, plaintext!)
             ? undefined
             : encryptSecretMap(plaintext!);
         // Rewrite for either reason: a keyring can now encrypt it, or
         // the value itself has changed. Without a keyring the rewrite
         // is another base64 blob, but it carries the current value.
         case "plainTagged": {
-          const current = decryptSecretMap(encrypted!);
-          const inSync = !!current && sameMap(current, plaintext!);
+          const inSync = !!decoded && sameMap(decoded, plaintext!);
           if (inSync && !isSecretEncryptionAvailable()) return undefined;
           return encryptSecretMap(plaintext!);
         }
@@ -110,7 +117,7 @@ function nextEncryptedValue(
         // Without one, re-encrypting would rewrite the same tag.
         case "plainTagged":
           if (!isSecretEncryptionAvailable()) return undefined;
-          return encryptSecretMap(decryptSecretMap(encrypted!)) ?? undefined;
+          return encryptSecretMap(decoded) ?? undefined;
         // Nothing to reconcile against: the encrypted column is the
         // only copy, and an unreadable one can't be rebuilt here.
         case "absent":

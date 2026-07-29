@@ -137,12 +137,17 @@ export function PluginDetailPage({ serverId }: { serverId: number }) {
     (s.headersUnreadable && setupInputs.some((i) => i.kind === "header")) ||
     (s.envUnreadable && setupInputs.some((i) => i.kind === "env"));
   // Setup is where a catalog plugin's first credential gets typed, so
-  // it needs the same no-keyring warning the editors carry. An entry
-  // asking only for a client id stores nothing secret.
-  const setupPersistsSecret = setupInputs.some(
-    (i) =>
-      i.kind === "header" || i.kind === "env" || i.kind === "oauthClientSecret",
-  );
+  // it needs the same no-keyring warning the editors carry. Saving an
+  // OAuth server also starts its connect flow, which stores tokens, so
+  // that counts even when the form only asks for a public client id.
+  const setupPersistsSecret =
+    s.oauthEnabled ||
+    setupInputs.some(
+      (i) =>
+        i.kind === "header" ||
+        i.kind === "env" ||
+        i.kind === "oauthClientSecret",
+    );
 
   const onSetToolConsent = async (
     toolName: string,

@@ -961,6 +961,17 @@ export class RemoteMachineTransport {
                 invocationRef,
                 outcome,
               };
+              if (
+                !this.isWithinSerializedLimit(
+                  outcomeEnvelope,
+                  codecs.maxEnvelopeBytes,
+                )
+              ) {
+                throw new DyadError(
+                  `Remote operation outcome exceeds the transport limit for ${definition.id}`,
+                  DyadErrorKind.RateLimited,
+                );
+              }
               this.send(
                 sender.id,
                 "distributed-machine:operation-outcome",

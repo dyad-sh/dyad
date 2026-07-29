@@ -1,6 +1,111 @@
 import { z } from "zod";
 
 export const REMOTE_MACHINE_PROTOCOL_VERSION = 1;
+export const DEFAULT_REMOTE_OPERATION_OUTCOME_ENVELOPE_BYTES = 64 * 1_024;
+
+/**
+ * Conservatively bounds an already-cloned IPC value before domain codecs walk
+ * it. Main uses the exact v8 serialized size; this renderer-safe traversal
+ * charges container overhead and stops as soon as the machine budget is spent.
+ */
+export function isWithinStructuredCloneBudget(
+  value: unknown,
+  maxBytes: number,
+): boolean {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) return false;
+  let remaining = maxBytes;
+  const pending: unknown[] = [value];
+  const seen = new WeakSet<object>();
+  const charge = (bytes: number): boolean => {
+    remaining -= bytes;
+    return remaining >= 0;
+  };
+  const chargeString = (text: string, overhead = 0): boolean => {
+    if (!charge(overhead)) return false;
+    for (let index = 0; index < text.length; index += 1) {
+      const codeUnit = text.charCodeAt(index);
+      let bytes = codeUnit <= 0x7f ? 1 : codeUnit <= 0x7ff ? 2 : 3;
+      if (codeUnit >= 0xd800 && codeUnit <= 0xdbff && index + 1 < text.length) {
+        const next = text.charCodeAt(index + 1);
+        if (next >= 0xdc00 && next <= 0xdfff) {
+          bytes = 4;
+          index += 1;
+        }
+      }
+      if (!charge(bytes)) return false;
+    }
+    return true;
+  };
+
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (current === null || current === undefined) {
+      if (!charge(1)) return false;
+      continue;
+    }
+    switch (typeof current) {
+      case "boolean":
+        if (!charge(4)) return false;
+        continue;
+      case "number":
+        if (!charge(8)) return false;
+        continue;
+      case "bigint":
+        return false;
+      case "string":
+        if (!chargeString(current, 4)) return false;
+        continue;
+      case "function":
+      case "symbol":
+        return false;
+      case "object":
+        break;
+    }
+
+    if (seen.has(current)) continue;
+    seen.add(current);
+    if (!charge(16)) return false;
+    if (current instanceof ArrayBuffer) {
+      if (!charge(current.byteLength)) return false;
+      continue;
+    }
+    if (ArrayBuffer.isView(current)) {
+      if (!charge(current.byteLength)) return false;
+      continue;
+    }
+    if (current instanceof Date) {
+      if (!charge(8)) return false;
+      continue;
+    }
+    if (current instanceof Map) {
+      for (const [key, nested] of current) {
+        if (!charge(8)) return false;
+        pending.push(key, nested);
+      }
+      continue;
+    }
+    if (current instanceof Set) {
+      for (const nested of current) {
+        if (!charge(4)) return false;
+        pending.push(nested);
+      }
+      continue;
+    }
+    const prototype = Object.getPrototypeOf(current);
+    if (
+      !Array.isArray(current) &&
+      prototype !== Object.prototype &&
+      prototype !== null
+    ) {
+      return false;
+    }
+    for (const key of Object.keys(current)) {
+      if (!chargeString(key, 4)) return false;
+      pending.push((current as Record<string, unknown>)[key]);
+    }
+  }
+  return true;
+}
 
 const protocolVersionSchema = z.number().int().nonnegative();
 const machineIdSchema = z.string().min(1).max(128);

@@ -58,6 +58,7 @@ describe("RemoteMachineClient", () => {
       remoteIntent: {
         ...base.remoteIntent,
         operationOutcome: {
+          maxEnvelopeBytes: 256,
           invocationRefCodec: z.object({ operationId: z.string() }),
           outcomeCodec: z.object({
             kind: z.literal("succeeded"),
@@ -93,6 +94,14 @@ describe("RemoteMachineClient", () => {
       ...address,
       invocationRef: { operationId: "invocation-1" },
       outcome: { kind: "not-a-real-outcome" },
+    });
+    renderer.emitOperationOutcomeForTesting({
+      ...address,
+      invocationRef: { operationId: "invocation-1" },
+      outcome: {
+        kind: "succeeded",
+        padding: "x".repeat(1_024),
+      },
     });
     expect(listener).not.toHaveBeenCalled();
 

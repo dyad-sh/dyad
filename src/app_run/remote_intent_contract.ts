@@ -1,3 +1,4 @@
+import { DEFAULT_REMOTE_OPERATION_OUTCOME_ENVELOPE_BYTES } from "@/distributed_machines/remote_protocol";
 import {
   DEFAULT_REMOTE_INTENT_ENVELOPE_BYTES,
   DEFAULT_REMOTE_SNAPSHOT_ENVELOPE_BYTES,
@@ -37,6 +38,7 @@ export const appRunRemoteIntentContract = defineRemoteIntentContract<
   rendererIntentCodec: AppRunIntentEventSchema,
   snapshotCodec: AppRunRemoteSnapshotSchema,
   operationOutcome: {
+    maxEnvelopeBytes: DEFAULT_REMOTE_OPERATION_OUTCOME_ENVELOPE_BYTES,
     invocationRefCodec: AppRunInvocationRefSchema,
     outcomeCodec: AppRunOperationOutcomeSchema,
   },

@@ -9,6 +9,7 @@ import {
   MachineDisposedEnvelopeSchema,
   MachineOperationOutcomeEnvelopeSchema,
   MachineSnapshotEnvelopeSchema,
+  isWithinStructuredCloneBudget,
   type MachineAddress,
   type MachineDispatchEnvelope,
   type MachineDispatchReceipt,
@@ -168,6 +169,7 @@ export type RemoteClientDefinition<
           readonly rendererIntentCodec: z.ZodType<Event>;
           readonly snapshotCodec: z.ZodType<State>;
           readonly operationOutcome?: {
+            readonly maxEnvelopeBytes: number;
             readonly invocationRefCodec: z.ZodType;
             readonly outcomeCodec: z.ZodType;
           };
@@ -537,6 +539,9 @@ class RemoteSnapshotStore<
     if (this.client.addressKey(envelope) !== this.addressKey) return;
     const codecs = this.definition.remoteIntent?.operationOutcome;
     if (!codecs) return;
+    if (!isWithinStructuredCloneBudget(envelope, codecs.maxEnvelopeBytes)) {
+      return;
+    }
     const invocationRef = codecs.invocationRefCodec.safeParse(
       envelope.invocationRef,
     );

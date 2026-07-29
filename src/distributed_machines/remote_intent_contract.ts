@@ -170,6 +170,7 @@ export interface RemoteIntentContract<
   readonly rendererIntentCodec: z.ZodType<RendererIntent>;
   readonly snapshotCodec: z.ZodType<Snapshot>;
   readonly operationOutcome?: {
+    readonly maxEnvelopeBytes: number;
     readonly invocationRefCodec: z.ZodType;
     readonly outcomeCodec: z.ZodType;
   };

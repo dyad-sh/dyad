@@ -189,7 +189,7 @@ describe("ChatTabTransferCoordinator", () => {
     }
   });
 
-  it("rejects a late source confirmation after the destination aborts", async () => {
+  it("does not abort after source removal has been dispatched", async () => {
     vi.useFakeTimers();
     try {
       const windows = new WindowRegistry();
@@ -212,7 +212,7 @@ describe("ChatTabTransferCoordinator", () => {
       });
       await vi.advanceTimersByTimeAsync(5);
       await timedOut;
-      expect(coordinator.reject(session(2), transferId)).toBe(true);
+      expect(coordinator.reject(session(2), transferId)).toBe(false);
 
       expect(() =>
         coordinator.confirmSourceRemoval(session(1), {
@@ -220,10 +220,30 @@ describe("ChatTabTransferCoordinator", () => {
           chatId: 7,
           tabInstanceId: tab(1),
         }),
-      ).toThrowError(expect.objectContaining({ kind: "conflict" }));
+      ).not.toThrow();
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("allows rollback when source removal could not be dispatched", async () => {
+    const windows = new WindowRegistry();
+    const source = endpoint(1);
+    source.send.mockImplementation(() => {
+      throw new Error("window closed");
+    });
+    windows.register(source, session(1));
+    windows.register(endpoint(2), session(2));
+    const coordinator = new ChatTabTransferCoordinator(windows);
+    const transferId = "20000000-0000-4000-8000-000000000010";
+
+    coordinator.begin(transferId, session(1), payload());
+    await coordinator.adopt(session(2), transferId);
+    await expect(
+      coordinator.acknowledge(session(2), transferId),
+    ).rejects.toMatchObject({ kind: "precondition" });
+
+    expect(coordinator.reject(session(2), transferId)).toBe(true);
   });
 
   it("reports when source confirmation wins before destination abort", async () => {

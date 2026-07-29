@@ -118,7 +118,6 @@ export function registerWindowInfrastructureHandlers(): void {
       const sourceWindowSessionId = windowRegistry.ensureRegistered(
         event.sender,
       );
-      windowRegistry.setChatTabOwnership(sourceWindowSessionId, tabs);
       const chat = await db.query.chats.findFirst({
         where: eq(chats.id, payload.chatId),
       });
@@ -126,8 +125,9 @@ export function registerWindowInfrastructureHandlers(): void {
         throw new DyadError("Chat not found", DyadErrorKind.NotFound);
       }
       if (
-        !windowRegistry.ownsChatTab(
+        !windowRegistry.refreshChatTabOwnershipForTransfer(
           sourceWindowSessionId,
+          tabs,
           payload.chatId,
           payload.tabInstanceId,
         )

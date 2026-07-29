@@ -141,6 +141,28 @@ describe("WindowRegistry", () => {
     expect(registry.findWindowsOwningChat(7)).toEqual([]);
   });
 
+  it("does not let a transfer snapshot authorize invented ownership", () => {
+    const registry = new WindowRegistry();
+    const windowSession = session();
+    const ownedTab = "10000000-0000-4000-8000-000000000007" as TabInstanceId;
+    const inventedTab = "20000000-0000-4000-8000-000000000008" as TabInstanceId;
+    registry.register(endpoint(1), windowSession);
+    registry.setChatTabOwnership(windowSession, [
+      { chatId: 7, tabInstanceId: ownedTab },
+    ]);
+
+    expect(
+      registry.refreshChatTabOwnershipForTransfer(
+        windowSession,
+        [{ chatId: 8, tabInstanceId: inventedTab }],
+        8,
+        inventedTab,
+      ),
+    ).toBe(false);
+    expect(registry.ownsChatTab(windowSession, 7, ownedTab)).toBe(true);
+    expect(registry.ownsChatTab(windowSession, 8, inventedTab)).toBe(false);
+  });
+
   it("revokes screenshot leases on iframe epoch changes and destruction", () => {
     const registry = new WindowRegistry();
     const windowSession = session();

@@ -149,6 +149,17 @@ export class WindowRegistry {
     );
   }
 
+  refreshChatTabOwnershipForTransfer(
+    windowSessionId: WindowSessionId,
+    tabs: readonly ChatTabOwnership[],
+    chatId: number,
+    tabInstanceId: string,
+  ): boolean {
+    if (!this.ownsChatTab(windowSessionId, chatId, tabInstanceId)) return false;
+    this.setChatTabOwnership(windowSessionId, tabs);
+    return true;
+  }
+
   removeOwnedChatTab(
     windowSessionId: WindowSessionId,
     chatId: number,

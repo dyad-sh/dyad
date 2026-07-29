@@ -122,12 +122,10 @@ export class ChatTabTransferCoordinator {
   ): boolean {
     const transfer = this.pending.get(transferId);
     if (transfer?.destinationWindowSessionId === destinationWindowSessionId) {
-      transfer.sourceRemoval?.reject(
-        new DyadError(
-          "The destination rejected tab adoption",
-          DyadErrorKind.UserCancelled,
-        ),
-      );
+      // Once removal has been dispatched, the source may have persisted it
+      // before crashing. Retain the destination adoption rather than risk
+      // rolling back the only durable copy.
+      if (transfer.sourceRemoval) return false;
       this.clearSourceRemoval(transfer);
       transfer.destinationWindowSessionId = undefined;
       transfer.expiresAt = this.now() + this.lifetimeMs;
@@ -196,9 +194,8 @@ export class ChatTabTransferCoordinator {
       });
     } catch (error) {
       this.clearSourceRemoval(transfer);
-      transfer.destinationWindowSessionId = undefined;
       transfer.expiresAt = this.now() + this.lifetimeMs;
-      this.scheduleExpiry(transferId, transfer);
+      this.scheduleClaimExpiry(transferId, transfer);
       throw new DyadError(
         "The source window could not remove the transferred tab",
         DyadErrorKind.Precondition,

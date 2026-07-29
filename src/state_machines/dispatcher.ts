@@ -112,7 +112,7 @@ export interface TransactionalDispatcherOptions<
    * Publishes explicit transition outcomes after the authoritative snapshot
    * commit. Failures are isolated and cannot roll back the transition.
    */
-  publishOutcome?(outcome: Outcome): void;
+  publishOutcome?(outcome: Outcome): unknown;
   mapUnexpectedCommandError?(
     command: Command,
     error: unknown,
@@ -124,9 +124,9 @@ export interface TransactionalDispatcherOptions<
  * Policy-free event transaction runtime.
  *
  * Each admitted event runs transition and validation once, reserves a command
- * batch without invoking domain code, commits, projects, notifies subscribers,
- * notifies observers, and only then asks the injected scheduler to start the
- * batch. Re-entrant sends append to the same FIFO.
+ * batch without invoking domain code, commits, projects, publishes correlated
+ * outcomes, notifies subscribers and observers, and only then asks the injected
+ * scheduler to start the batch. Re-entrant sends append to the same FIFO.
  */
 export class TransactionalDispatcher<
   State,
@@ -151,6 +151,11 @@ export class TransactionalDispatcher<
       Outcome
     >,
   ) {
+    if (options.publishOutcome?.constructor.name === "AsyncFunction") {
+      throw new Error(
+        "Transition outcome publisher must be synchronous and non-thenable",
+      );
+    }
     this.store = new SnapshotStore(options.initialState);
   }
 
@@ -319,7 +324,7 @@ export class TransactionalDispatcher<
     }
 
     this.notifyObserver(previous, event, result, dispatchContext);
-    this.startBatch(batch);
+    if (this.accepting) this.startBatch(batch);
     settleCurrent({ kind: "applied", state: this.store.getSnapshot() });
   }
 
@@ -410,7 +415,22 @@ export class TransactionalDispatcher<
     if (!this.options.publishOutcome) return;
     for (const outcome of outcomes) {
       try {
-        this.options.publishOutcome(outcome);
+        const published = this.options.publishOutcome(outcome);
+        if (
+          ((typeof published === "object" && published !== null) ||
+            typeof published === "function") &&
+          "then" in published
+        ) {
+          void Promise.resolve(published).catch((error) => {
+            this.report({ stage: "outcome", error });
+          });
+          this.report({
+            stage: "outcome",
+            error: new Error(
+              "Transition outcome publisher must be synchronous and non-thenable",
+            ),
+          });
+        }
       } catch (error) {
         this.report({ stage: "outcome", error });
       }

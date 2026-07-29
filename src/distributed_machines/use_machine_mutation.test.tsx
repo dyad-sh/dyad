@@ -427,8 +427,49 @@ describe("useMachineMutation", () => {
         error: failure,
       }),
     );
+    expect(result.current.admission).toEqual({ kind: "idle" });
     expect(onUnexpectedError).toHaveBeenCalledWith(failure);
     await expect(result.current.retry()).resolves.toBeUndefined();
+  });
+
+  it("detaches an outer request superseded by synchronous request reentry", () => {
+    const outerAdmission = controlled<PreparedAdmission<string, string>>();
+    const outerSettlement =
+      controlled<PreparedRequestSettlement<Outcome, string>>();
+    const innerAdmission = controlled<PreparedAdmission<string, string>>();
+    const innerSettlement =
+      controlled<PreparedRequestSettlement<Outcome, string>>();
+    const outerDetach = vi.fn();
+    const innerDetach = vi.fn();
+    let reenter: ((input: string) => unknown) | undefined;
+    const request = vi.fn((input: string) => {
+      if (input === "outer") {
+        reenter?.("inner");
+        return fakeRequest(outerAdmission, outerSettlement, outerDetach);
+      }
+      return fakeRequest(innerAdmission, innerSettlement, innerDetach);
+    });
+    const { result, unmount } = renderHook(() =>
+      useMachineMutation({
+        connection: "ready",
+        snapshot: unavailable,
+        request,
+        classifyOutcome: classify,
+      }),
+    );
+    reenter = result.current.mutate;
+
+    act(() => {
+      void result.current.mutate("outer");
+    });
+
+    expect(request).toHaveBeenNthCalledWith(1, "outer", undefined);
+    expect(request).toHaveBeenNthCalledWith(2, "inner", undefined);
+    expect(outerDetach).toHaveBeenCalledOnce();
+    expect(innerDetach).not.toHaveBeenCalled();
+
+    unmount();
+    expect(innerDetach).toHaveBeenCalledOnce();
   });
 
   it("does not create request ownership through a retained callback after unmount", async () => {

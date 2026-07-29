@@ -404,6 +404,51 @@ describe("OperationRegistry", () => {
     });
   });
 
+  it.each(["outcome", "clock"] as const)(
+    "rejects the old invocation when supersession %s mapping throws",
+    async (failureStage) => {
+      const failure = new Error(`supersession ${failureStage} failed`);
+      const reported: unknown[] = [];
+      const operations = new OperationRegistry<Outcome, Ref>({
+        maxUnresolved: 2,
+        maxSettledReplay: 2,
+        now:
+          failureStage === "clock"
+            ? () => {
+                throw failure;
+              }
+            : () => 100,
+        disposalOutcome: (cause) => ({ kind: "disposed", cause }),
+        supersededOutcome:
+          failureStage === "outcome"
+            ? () => {
+                throw failure;
+              }
+            : () => ({ kind: "superseded" }),
+        enqueueFailureOutcome: () => ({
+          kind: "failed",
+          error: "enqueue",
+        }),
+        reportError: (error) => reported.push(error),
+      });
+      const old = operations.admit(identity());
+      const rejected = expect(old.ticket.settled).rejects.toBe(failure);
+
+      expect(() =>
+        operations.admit(identity("request-one", "invocation-two"), {
+          retry: "new-invocation",
+        }),
+      ).toThrow(failure);
+      await rejected;
+      expect(operations.inspect()).toEqual({
+        unresolved: 0,
+        settled: 1,
+        total: 1,
+      });
+      expect(reported).toEqual([failure]);
+    },
+  );
+
   it("preserves settled replay when retry capacity is exhausted", () => {
     const operations = registry(1);
     const retained = identity();

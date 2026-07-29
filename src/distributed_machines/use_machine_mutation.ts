@@ -189,11 +189,17 @@ export function useMachineMutation<
       const generation = ++nextGeneration.current;
       setAdmission({ kind: "preparing" });
       setExecution({ kind: "idle" });
+      let authoritativeAdmissionAccepted = false;
       try {
         // request() synchronously creates and registers its client handle.
         const prepared = request(input, observedRevision);
+        if (!mounted.current || nextGeneration.current !== generation) {
+          prepared.detach();
+          return prepared.settled;
+        }
         active.current = { generation, request: prepared };
         const admissionResult = await prepared.admission;
+        authoritativeAdmissionAccepted = admissionResult.kind === "admitted";
         applyAdmission(generation, admissionResult);
         const settlement = await prepared.settled;
         if (!mounted.current || active.current?.generation !== generation) {
@@ -210,6 +216,9 @@ export function useMachineMutation<
           (active.current === undefined ||
             active.current.generation === generation);
         if (isCurrent) {
+          if (!authoritativeAdmissionAccepted) {
+            setAdmission({ kind: "idle" });
+          }
           setExecution({ kind: "failed", error: error as Failure });
           reportUnexpected(error);
         }

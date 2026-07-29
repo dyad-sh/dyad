@@ -222,19 +222,29 @@ export class OperationRegistry<Outcome, Ref extends InvocationRef> {
         throw new OperationCapacityError();
       }
       if (!this.isTerminal(existing)) {
-        this.settle(
-          existing.identity.requestId,
-          existing.identity.invocationRef,
-          this.options.supersededOutcome(),
-          {
-            actor: {
-              actorInstanceId: existing.identity.owner.actorInstanceId,
-              snapshotRevision: existing.identity.owner.actorRevision,
-              transactionSequence: 0,
+        try {
+          this.settle(
+            existing.identity.requestId,
+            existing.identity.invocationRef,
+            this.options.supersededOutcome(),
+            {
+              actor: {
+                actorInstanceId: existing.identity.owner.actorInstanceId,
+                snapshotRevision: existing.identity.owner.actorRevision,
+                transactionSequence: 0,
+              },
+              acknowledgedAt: this.options.now(),
             },
-            acknowledgedAt: this.options.now(),
-          },
-        );
+          );
+        } catch (error) {
+          this.reject(
+            existing.identity.requestId,
+            existing.identity.invocationRef,
+            error,
+          );
+          this.report(error);
+          throw error;
+        }
       }
       if (this.entries.get(identity.requestId) !== existing) {
         return this.admit(identity);

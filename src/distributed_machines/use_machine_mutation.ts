@@ -180,14 +180,18 @@ export function useMachineMutation<
     async (
       input: Input,
     ): Promise<PreparedRequestSettlement<Outcome, Refusal>> => {
+      if (!mounted.current) {
+        return { kind: "not-admitted", reason: "disposed" };
+      }
       active.current?.request.detach();
+      active.current = undefined;
       const generation = ++nextGeneration.current;
       setAdmission({ kind: "preparing" });
       setExecution({ kind: "idle" });
-      // request() synchronously creates and registers its client handle.
-      const prepared = request(input, observedRevision);
-      active.current = { generation, request: prepared };
       try {
+        // request() synchronously creates and registers its client handle.
+        const prepared = request(input, observedRevision);
+        active.current = { generation, request: prepared };
         const admissionResult = await prepared.admission;
         applyAdmission(generation, admissionResult);
         const settlement = await prepared.settled;
@@ -197,15 +201,22 @@ export function useMachineMutation<
         if (settlement.kind === "completed") {
           setExecution(classifyOutcome(settlement.outcome));
         }
-        active.current = undefined;
         return settlement;
       } catch (error) {
-        if (mounted.current && active.current?.generation === generation) {
+        const isCurrent =
+          mounted.current &&
+          nextGeneration.current === generation &&
+          (active.current === undefined ||
+            active.current.generation === generation);
+        if (isCurrent) {
           setExecution({ kind: "failed", error: error as Failure });
+          reportUnexpected(error);
+        }
+        throw error;
+      } finally {
+        if (active.current?.generation === generation) {
           active.current = undefined;
         }
-        reportUnexpected(error);
-        throw error;
       }
     },
     [
@@ -226,13 +237,12 @@ export function useMachineMutation<
       applyAdmission(current.generation, result);
       return result;
     } catch (error) {
-      if (
-        mounted.current &&
-        active.current?.generation === current.generation
-      ) {
+      const isCurrent =
+        mounted.current && active.current?.generation === current.generation;
+      if (isCurrent) {
         setExecution({ kind: "failed", error: error as Failure });
+        reportUnexpected(error);
       }
-      reportUnexpected(error);
       throw error;
     }
   }, [applyAdmission, reportUnexpected]);

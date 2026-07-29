@@ -35,6 +35,7 @@ export interface CompletionAwareActorOptions<
   readonly classifyFailure: (
     error: unknown,
   ) => PreparedRequestFailureClassification;
+  readonly reportError?: (error: unknown) => void;
   readonly enqueue: (intent: Intent) => EnqueueResult;
   readonly dispatchRequest: (
     identity: RequestIdentity,
@@ -71,6 +72,7 @@ export function createCompletionAwareActor<
         scope: options.scope,
         retry: options.retry,
         classifyFailure: options.classifyFailure,
+        reportError: options.reportError,
         dispatch: (stableIdentity) =>
           options.dispatchRequest(stableIdentity, intent),
       });

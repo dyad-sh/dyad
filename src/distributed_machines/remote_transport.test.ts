@@ -165,6 +165,24 @@ const objectAddress = (): MachineAddress => ({
 });
 
 describe("remote machine manifest", () => {
+  it("accepts remote definitions with a typed transition outcome channel", () => {
+    const base = createRemoteTestMachine();
+    const withOutcomes = {
+      ...base,
+      transition: (
+        state: ReturnType<typeof base.initialState>,
+        _event: Parameters<typeof base.transition>[1],
+      ) => change(state, [], [{ requestId: "request-one" }]),
+      createOutcomePublisher:
+        () => (_outcome: { readonly requestId: string }) =>
+          undefined,
+    };
+
+    expect(createRemoteMachineManifest([withOutcomes]).get(base.id)).toBe(
+      withOutcomes,
+    );
+  });
+
   it("rejects duplicate IDs before registering any router target", () => {
     const first = createRemoteTestMachine();
     const second = createRemoteTestMachine();

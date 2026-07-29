@@ -39,27 +39,25 @@ export function assertRemoteProtocolV1CompatibilityInventory(
   );
 }
 
-export type AnyRemoteMachineDefinition = DistributedMachineDefinition<
-  string,
-  any,
-  any,
-  any,
-  any,
-  IgnoreReason,
-  any
+type ErasedRemoteMachineDefinition = Omit<
+  DistributedMachineDefinition<
+    string,
+    any,
+    any,
+    any,
+    any,
+    IgnoreReason,
+    any,
+    any
+  >,
+  "createOutcomePublisher"
 > & {
+  readonly createOutcomePublisher?: any;
+};
+
+export type AnyRemoteMachineDefinition = ErasedRemoteMachineDefinition & {
   readonly host: "main";
-  readonly remote: NonNullable<
-    DistributedMachineDefinition<
-      string,
-      any,
-      any,
-      any,
-      any,
-      IgnoreReason,
-      any
-    >["remote"]
-  >;
+  readonly remote: NonNullable<ErasedRemoteMachineDefinition["remote"]>;
 };
 
 export interface RemoteMachineManifest {

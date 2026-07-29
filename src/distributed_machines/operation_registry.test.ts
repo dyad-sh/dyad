@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
+import { DyadErrorKind } from "@/errors/dyad_error";
 import { TransactionalDispatcher } from "@/state_machines/dispatcher";
 import { change } from "@/state_machines/types";
 import {
+  bindOperationRegistryLifetimes,
   createOperationOutcomePublisher,
   finalizeOperationAdmission,
   OperationCapacityError,
@@ -143,6 +145,34 @@ describe("OperationRegistry", () => {
     });
   });
 
+  it("classifies expected identity and capacity admission failures", () => {
+    const operations = registry(1);
+    operations.admit(identity());
+
+    expect(
+      (() => {
+        try {
+          operations.admit(
+            identity("request-one", "invocation-one", {
+              fingerprint: "conflict",
+            }),
+          );
+        } catch (error) {
+          return error;
+        }
+      })(),
+    ).toMatchObject({ kind: DyadErrorKind.Conflict });
+    expect(
+      (() => {
+        try {
+          operations.admit(identity("request-two", "invocation-two"));
+        } catch (error) {
+          return error;
+        }
+      })(),
+    ).toMatchObject({ kind: DyadErrorKind.RateLimited });
+  });
+
   it("bounds settled replay independently without dropping pending work", () => {
     const operations = registry(2, 1);
     const first = identity("settled-one");
@@ -280,6 +310,74 @@ describe("OperationRegistry", () => {
     ).toBe(true);
     await expect(replacement.ticket.settled).resolves.toMatchObject({
       invocationRef: replacementIdentity.invocationRef,
+    });
+  });
+
+  it("rejects an explicit retry that reuses the runtime InvocationRef", () => {
+    const operations = registry();
+    const stable = identity();
+    operations.admit(stable);
+
+    expect(() =>
+      operations.admit({ ...stable }, { retry: "new-invocation" }),
+    ).toThrow(OperationIdentityConflictError);
+    expect(operations.inspect()).toEqual({
+      unresolved: 1,
+      settled: 0,
+      total: 1,
+    });
+  });
+
+  it("preserves settled replay when retry capacity is exhausted", () => {
+    const operations = registry(1);
+    const retained = identity();
+    operations.admit(retained);
+    operations.settle(
+      retained.requestId,
+      retained.invocationRef,
+      { kind: "succeeded" },
+      receipt(),
+    );
+    operations.admit(identity("other", "other-invocation"));
+
+    expect(() =>
+      operations.admit(identity("request-one", "invocation-two"), {
+        retry: "new-invocation",
+      }),
+    ).toThrow(OperationCapacityError);
+    expect(operations.admit(retained).kind).toBe("replayed");
+  });
+
+  it("reattaches by logical identity without reproducing runtime identity", async () => {
+    const operations = registry();
+    const stable = identity();
+    const original = operations.admit(stable);
+    operations.settle(
+      stable.requestId,
+      stable.invocationRef,
+      { kind: "succeeded" },
+      receipt(),
+    );
+    const assertFinalAdmission = vi.fn();
+    const enqueue = vi.fn();
+
+    const retained = finalizeOperationAdmission({
+      registry: operations,
+      identity: identity("request-one", "unknown-retry-invocation", {
+        actorInstanceId: "replacement-actor",
+        actorRevision: 99,
+      }),
+      assertFinalAdmission,
+      enqueue,
+      receiptOnEnqueueFailure: receipt,
+    });
+
+    expect(retained.kind).toBe("replayed");
+    expect(retained.operation).toBe(original.ticket);
+    expect(assertFinalAdmission).not.toHaveBeenCalled();
+    expect(enqueue).not.toHaveBeenCalled();
+    await expect(retained.operation.settled).resolves.toMatchObject({
+      invocationRef: stable.invocationRef,
     });
   });
 
@@ -472,6 +570,143 @@ describe("OperationRegistry", () => {
     await expect(replay.ticket.settled).resolves.toMatchObject({
       outcome: { kind: "failed", error: "enqueue failed" },
     });
+  });
+
+  it("atomically admits and enqueues an explicit replacement invocation", async () => {
+    const operations = registry();
+    const oldIdentity = identity();
+    const old = operations.admit(oldIdentity);
+    const replacementIdentity = identity("request-one", "invocation-two");
+    const order: string[] = [];
+
+    const replacement = finalizeOperationAdmission({
+      registry: operations,
+      identity: replacementIdentity,
+      retry: "new-invocation",
+      assertFinalAdmission: () => order.push("revalidated"),
+      enqueue: () => {
+        expect(operations.has(replacementIdentity.requestId)).toBe(true);
+        order.push("enqueued");
+      },
+      receiptOnEnqueueFailure: receipt,
+    });
+
+    expect(replacement.kind).toBe("enqueued");
+    expect(order).toEqual(["revalidated", "enqueued"]);
+    await expect(old.ticket.settled).resolves.toMatchObject({
+      outcome: { kind: "superseded" },
+    });
+    expect(
+      operations.settle(
+        oldIdentity.requestId,
+        oldIdentity.invocationRef,
+        { kind: "succeeded" },
+        receipt(),
+      ),
+    ).toBe(false);
+  });
+
+  it.each(["outcome", "receipt"] as const)(
+    "rolls back fresh admission when enqueue failure %s mapping throws",
+    (failureStage) => {
+      const reported: unknown[] = [];
+      const mappingFailure = new Error(`${failureStage} mapping failed`);
+      const operations = new OperationRegistry<Outcome, Ref>({
+        maxUnresolved: 1,
+        maxSettledReplay: 1,
+        now: () => 100,
+        sameInvocationRef: (left, right) => left.id === right.id,
+        disposalOutcome: (cause) => ({ kind: "disposed", cause }),
+        supersededOutcome: () => ({ kind: "superseded" }),
+        enqueueFailureOutcome:
+          failureStage === "outcome"
+            ? () => {
+                throw mappingFailure;
+              }
+            : () => ({ kind: "failed", error: "enqueue" }),
+        reportError: (error) => reported.push(error),
+      });
+
+      expect(() =>
+        finalizeOperationAdmission({
+          registry: operations,
+          identity: identity(),
+          assertFinalAdmission: () => undefined,
+          enqueue: () => {
+            throw new Error("enqueue failed");
+          },
+          receiptOnEnqueueFailure:
+            failureStage === "receipt"
+              ? () => {
+                  throw mappingFailure;
+                }
+              : receipt,
+        }),
+      ).toThrow("enqueue failed");
+      expect(operations.inspect()).toEqual({
+        unresolved: 0,
+        settled: 0,
+        total: 0,
+      });
+      expect(reported).toContain(mappingFailure);
+    },
+  );
+
+  it("binds actor and window-session disposal and unregisters bindings", async () => {
+    const operations = registry();
+    let actorListener:
+      | ((event: {
+          readonly machineId: string;
+          readonly key: unknown;
+          readonly metadata: { readonly actorInstanceId: string };
+          readonly cause: "explicit";
+        }) => void)
+      | undefined;
+    let windowListener: ((windowSessionId: string) => void) | undefined;
+    const removeActor = vi.fn();
+    const removeWindow = vi.fn();
+    const unbind = bindOperationRegistryLifetimes({
+      registry: operations,
+      hostId: "host",
+      keyToId: (_machineId, key) => String(key),
+      actors: {
+        onActorDisposed(listener) {
+          actorListener = listener;
+          return removeActor;
+        },
+      },
+      windowSessions: {
+        onWindowSessionDisposed(listener) {
+          windowListener = listener;
+          return removeWindow;
+        },
+      },
+    });
+    const actorOwned = operations.admit(identity("actor-owned"));
+    actorListener?.({
+      machineId: "machine",
+      key: "key",
+      metadata: { actorInstanceId: "actor" },
+      cause: "explicit",
+    });
+    await expect(actorOwned.ticket.settled).resolves.toMatchObject({
+      outcome: { kind: "disposed", cause: "key" },
+    });
+    const windowOwned = operations.admit(
+      identity("window-owned", "window-invocation", {
+        actorInstanceId: "other-actor",
+      }),
+    );
+    windowListener?.("window");
+    await expect(windowOwned.ticket.settled).resolves.toMatchObject({
+      outcome: { kind: "disposed", cause: "window-session" },
+    });
+
+    operations.dispose();
+    expect(removeActor).toHaveBeenCalledOnce();
+    expect(removeWindow).toHaveBeenCalledOnce();
+    unbind();
+    expect(removeActor).toHaveBeenCalledOnce();
   });
 
   it("settles only correlated post-commit outcomes", async () => {

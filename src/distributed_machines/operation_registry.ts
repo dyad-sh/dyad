@@ -1,4 +1,9 @@
-import type { ActorInstanceId, ActorRuntimeMetadata } from "./definition";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import type {
+  ActorDisposalCause,
+  ActorInstanceId,
+  ActorRuntimeMetadata,
+} from "./definition";
 import type { RequestId } from "./request_identity";
 
 export type OperationDisposalCause =
@@ -63,16 +68,22 @@ export type OperationAdmission<Outcome, InvocationRef> =
       readonly ticket: OperationTicket<Outcome, InvocationRef>;
     };
 
-export class OperationIdentityConflictError extends Error {
+export class OperationIdentityConflictError extends DyadError {
   constructor(readonly requestId: RequestId) {
-    super(`RequestId ${requestId} was reused with conflicting identity`);
+    super(
+      `RequestId ${requestId} was reused with conflicting identity`,
+      DyadErrorKind.Conflict,
+    );
     this.name = "OperationIdentityConflictError";
   }
 }
 
-export class OperationCapacityError extends Error {
+export class OperationCapacityError extends DyadError {
   constructor() {
-    super("Authoritative operation capacity is exhausted");
+    super(
+      "Authoritative operation capacity is exhausted",
+      DyadErrorKind.RateLimited,
+    );
     this.name = "OperationCapacityError";
   }
 }
@@ -80,14 +91,17 @@ export class OperationCapacityError extends Error {
 interface Deferred<Value> {
   readonly promise: Promise<Value>;
   readonly resolve: (value: Value) => void;
+  readonly reject: (error: unknown) => void;
 }
 
 function deferred<Value>(): Deferred<Value> {
   let resolve!: (value: Value) => void;
-  const promise = new Promise<Value>((resolvePromise) => {
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<Value>((resolvePromise, rejectPromise) => {
     resolve = resolvePromise;
+    reject = rejectPromise;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 interface OperationEntry<Outcome, InvocationRef> {
@@ -107,6 +121,18 @@ function sameOwner(left: OperationOwner, right: OperationOwner): boolean {
     left.keyId === right.keyId &&
     left.actorInstanceId === right.actorInstanceId &&
     left.actorRevision === right.actorRevision &&
+    left.windowSessionId === right.windowSessionId
+  );
+}
+
+function sameLogicalOwner(
+  left: OperationOwner,
+  right: OperationOwner,
+): boolean {
+  return (
+    left.hostId === right.hostId &&
+    left.machineId === right.machineId &&
+    left.keyId === right.keyId &&
     left.windowSessionId === right.windowSessionId
   );
 }
@@ -136,6 +162,7 @@ export class OperationRegistry<Outcome, InvocationRef> {
   >();
   private unresolved = 0;
   private disposed = false;
+  private readonly disposeListeners = new Set<() => void>();
 
   constructor(
     private readonly options: OperationRegistryOptions<Outcome, InvocationRef>,
@@ -159,20 +186,38 @@ export class OperationRegistry<Outcome, InvocationRef> {
     if (existing) {
       if (
         existing.identity.fingerprint !== identity.fingerprint ||
-        !sameOwner(existing.identity.owner, identity.owner) ||
-        (options.retry !== "new-invocation" &&
-          !this.options.sameInvocationRef(
-            existing.identity.invocationRef,
-            identity.invocationRef,
-          ))
+        !sameLogicalOwner(existing.identity.owner, identity.owner)
       ) {
         throw new OperationIdentityConflictError(identity.requestId);
       }
       if (options.retry !== "new-invocation") {
+        if (
+          !sameOwner(existing.identity.owner, identity.owner) ||
+          !this.options.sameInvocationRef(
+            existing.identity.invocationRef,
+            identity.invocationRef,
+          )
+        ) {
+          throw new OperationIdentityConflictError(identity.requestId);
+        }
         return {
           kind: existing.settlement ? "replayed" : "coalesced",
           ticket: this.ticket(existing),
         };
+      }
+      if (
+        this.options.sameInvocationRef(
+          existing.identity.invocationRef,
+          identity.invocationRef,
+        )
+      ) {
+        throw new OperationIdentityConflictError(identity.requestId);
+      }
+      if (
+        existing.settlement &&
+        this.unresolved >= this.options.maxUnresolved
+      ) {
+        throw new OperationCapacityError();
       }
       if (!existing.settlement) {
         this.settle(
@@ -191,6 +236,9 @@ export class OperationRegistry<Outcome, InvocationRef> {
       }
       if (this.entries.get(identity.requestId) !== existing) {
         return this.admit(identity);
+      }
+      if (this.unresolved >= this.options.maxUnresolved) {
+        throw new OperationCapacityError();
       }
       this.entries.delete(identity.requestId);
     }
@@ -226,11 +274,7 @@ export class OperationRegistry<Outcome, InvocationRef> {
     if (!existing) return undefined;
     if (
       existing.identity.fingerprint !== identity.fingerprint ||
-      !sameOwner(existing.identity.owner, identity.owner) ||
-      !this.options.sameInvocationRef(
-        existing.identity.invocationRef,
-        identity.invocationRef,
-      )
+      !sameLogicalOwner(existing.identity.owner, identity.owner)
     ) {
       throw new OperationIdentityConflictError(identity.requestId);
     }
@@ -360,6 +404,15 @@ export class OperationRegistry<Outcome, InvocationRef> {
     };
   }
 
+  onDispose(listener: () => void): () => void {
+    if (this.disposed) {
+      listener();
+      return () => undefined;
+    }
+    this.disposeListeners.add(listener);
+    return () => this.disposeListeners.delete(listener);
+  }
+
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
@@ -367,10 +420,48 @@ export class OperationRegistry<Outcome, InvocationRef> {
     for (const entry of this.entries.values()) entry.listeners.clear();
     this.entries.clear();
     this.unresolved = 0;
+    for (const listener of Array.from(this.disposeListeners)) {
+      try {
+        listener();
+      } catch (error) {
+        this.report(error);
+      }
+    }
+    this.disposeListeners.clear();
   }
 
   enqueueFailureOutcome(error: unknown): Outcome {
     return this.options.enqueueFailureOutcome(error);
+  }
+
+  rollbackAdmission(
+    requestId: RequestId,
+    invocationRef: InvocationRef,
+    error: unknown,
+  ): boolean {
+    const entry = this.entries.get(requestId);
+    if (
+      !entry ||
+      entry.settlement ||
+      !this.options.sameInvocationRef(
+        entry.identity.invocationRef,
+        invocationRef,
+      )
+    ) {
+      return false;
+    }
+    this.entries.delete(requestId);
+    this.unresolved -= 1;
+    entry.listeners.clear();
+    // The helper may fail before returning the fresh ticket. Mark the internal
+    // promise handled while preserving rejection for any reentrant coalescer.
+    void entry.deferred.promise.catch(() => undefined);
+    entry.deferred.reject(error);
+    return true;
+  }
+
+  reportFailure(error: unknown): void {
+    this.report(error);
   }
 
   private ticket(
@@ -428,6 +519,7 @@ export interface AdmitOperationAndEnqueueOptions<
 > {
   readonly registry: OperationRegistry<Outcome, InvocationRef>;
   readonly identity: OperationAdmissionIdentity<InvocationRef>;
+  readonly retry?: "new-invocation";
   readonly enqueue: () => EnqueueResult;
   readonly receiptOnEnqueueFailure: () => OperationReceiptMetadata;
 }
@@ -469,7 +561,10 @@ export function admitOperationAndEnqueue<Outcome, InvocationRef, EnqueueResult>(
       readonly kind: "coalesced" | "replayed";
       readonly operation: OperationTicket<Outcome, InvocationRef>;
     } {
-  const admission = options.registry.admit(options.identity);
+  const admission = options.registry.admit(
+    options.identity,
+    options.retry ? { retry: options.retry } : undefined,
+  );
   if (admission.kind !== "fresh") {
     return { kind: admission.kind, operation: admission.ticket };
   }
@@ -490,12 +585,21 @@ export function admitOperationAndEnqueue<Outcome, InvocationRef, EnqueueResult>(
       enqueueResult,
     };
   } catch (error) {
-    options.registry.settle(
-      options.identity.requestId,
-      options.identity.invocationRef,
-      options.registry.enqueueFailureOutcome(error),
-      options.receiptOnEnqueueFailure(),
-    );
+    try {
+      options.registry.settle(
+        options.identity.requestId,
+        options.identity.invocationRef,
+        options.registry.enqueueFailureOutcome(error),
+        options.receiptOnEnqueueFailure(),
+      );
+    } catch (settlementError) {
+      options.registry.rollbackAdmission(
+        options.identity.requestId,
+        options.identity.invocationRef,
+        settlementError,
+      );
+      options.registry.reportFailure(settlementError);
+    }
     throw error;
   }
 }
@@ -513,12 +617,86 @@ export function finalizeOperationAdmission<
 ): ReturnType<
   typeof admitOperationAndEnqueue<Outcome, InvocationRef, EnqueueResult>
 > {
-  const retained = options.registry.reattach(options.identity);
-  if (retained) {
-    return { kind: retained.kind, operation: retained.ticket };
+  if (!options.retry) {
+    const retained = options.registry.reattach(options.identity);
+    if (retained) {
+      return { kind: retained.kind, operation: retained.ticket };
+    }
   }
   options.assertFinalAdmission();
   return admitOperationAndEnqueue(options);
+}
+
+export interface OperationActorDisposalSource {
+  onActorDisposed(
+    listener: (event: {
+      readonly machineId: string;
+      readonly key: unknown;
+      readonly metadata: { readonly actorInstanceId: ActorInstanceId };
+      readonly cause: ActorDisposalCause;
+    }) => void,
+  ): () => void;
+}
+
+export interface OperationWindowSessionDisposalSource {
+  onWindowSessionDisposed(
+    listener: (windowSessionId: string) => void,
+  ): () => void;
+}
+
+/**
+ * Narrow lifecycle composition for authoritative operation ownership. Actor
+ * events cover key, machine, and host bulk disposal because those paths dispose
+ * every owned actor; the window-session signal covers client-owner teardown.
+ */
+export function bindOperationRegistryLifetimes<
+  Outcome,
+  InvocationRef,
+>(options: {
+  readonly registry: OperationRegistry<Outcome, InvocationRef>;
+  readonly actors: OperationActorDisposalSource;
+  readonly windowSessions: OperationWindowSessionDisposalSource;
+  readonly hostId: string;
+  readonly keyToId: (machineId: string, key: unknown) => string;
+}): () => void {
+  let active = true;
+  const removeActor = options.actors.onActorDisposed((event) => {
+    switch (event.cause) {
+      case "machine-disposal":
+        options.registry.settleMachine(options.hostId, event.machineId);
+        return;
+      case "shutdown":
+        options.registry.settleHost(options.hostId);
+        return;
+      case "explicit":
+      case "entity-deletion":
+        options.registry.settleKey(
+          options.hostId,
+          event.machineId,
+          options.keyToId(event.machineId, event.key),
+        );
+        return;
+      case "idle":
+      case "terminal":
+        options.registry.settleActor(event.metadata.actorInstanceId);
+        return;
+    }
+  });
+  const removeWindowSession = options.windowSessions.onWindowSessionDisposed(
+    (windowSessionId) => {
+      options.registry.settleWindowSession(windowSessionId);
+    },
+  );
+  let removeRegistryDispose: () => void = () => undefined;
+  const dispose = () => {
+    if (!active) return;
+    active = false;
+    removeActor();
+    removeWindowSession();
+    removeRegistryDispose();
+  };
+  removeRegistryDispose = options.registry.onDispose(dispose);
+  return dispose;
 }
 
 export function createOperationOutcomePublisher<Outcome, InvocationRef>(

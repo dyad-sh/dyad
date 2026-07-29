@@ -668,6 +668,36 @@ describe("TransactionalDispatcher", () => {
     expect(errors).toMatchObject([{ stage: "outcome" }]);
   });
 
+  it("reserves outcomes before hostile post-commit callbacks", () => {
+    const source = [{ requestId: "original" }];
+    const published: { readonly requestId: string }[] = [];
+    const dispatcher = new TransactionalDispatcher<
+      TestState,
+      TestEvent,
+      TestCommand,
+      TestReason,
+      { readonly requestId: string }
+    >({
+      initialState: { value: 0 },
+      transition: (state, event) =>
+        event.type === "SET"
+          ? change({ value: event.value }, [], source)
+          : ignore(state, "ignored"),
+      runCommand: () => undefined,
+      scheduler: independentScheduler(),
+      observer: {
+        onTransitionApplied() {
+          source.splice(0, 1, { requestId: "mutated" });
+        },
+      },
+      publishOutcome: (outcome) => published.push(outcome),
+    });
+
+    dispatcher.send({ type: "SET", value: 1 });
+
+    expect(published).toEqual([{ requestId: "original" }]);
+  });
+
   it("fails meaningfully against an observer-before-commit reference", async () => {
     const adapter = createConformanceAdapter();
     adapter.create = (options) => {

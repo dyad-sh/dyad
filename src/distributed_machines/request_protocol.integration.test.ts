@@ -7,6 +7,7 @@ import {
 import { ActorHost } from "./actor_host";
 import type { DistributedMachineDefinition } from "./definition";
 import {
+  bindOperationRegistryLifetimes,
   finalizeOperationAdmission,
   OperationRegistry,
   type OperationAdmissionIdentity,
@@ -30,7 +31,12 @@ function controlled() {
 
 describe("completion-aware actor request bridge", () => {
   it("registers the client handle before IPC while main registers only at final admission", async () => {
-    type Outcome = { readonly kind: "succeeded" };
+    type Outcome =
+      | { readonly kind: "succeeded" }
+      | {
+          readonly kind: "disposed";
+          readonly cause: "key" | "window-session";
+        };
     type Ref = { readonly id: string };
     const authorization = controlled();
     const events: string[] = [];
@@ -79,9 +85,27 @@ describe("completion-aware actor request bridge", () => {
       maxSettledReplay: 4,
       now: () => 1,
       sameInvocationRef: (left, right) => left.id === right.id,
-      disposalOutcome: () => ({ kind: "succeeded" }),
+      disposalOutcome: (cause) => ({
+        kind: "disposed",
+        cause: cause === "window-session" ? "window-session" : "key",
+      }),
       supersededOutcome: () => ({ kind: "succeeded" }),
       enqueueFailureOutcome: () => ({ kind: "succeeded" }),
+    });
+    let windowSessionDisposed: ((windowSessionId: string) => void) | undefined;
+    const unbindLifetimes = bindOperationRegistryLifetimes({
+      registry,
+      hostId: "host",
+      keyToId: (_machineId, key) => String(key),
+      actors: host,
+      windowSessions: {
+        onWindowSessionDisposed(listener) {
+          windowSessionDisposed = listener;
+          return () => {
+            windowSessionDisposed = undefined;
+          };
+        },
+      },
     });
     const identity: RequestIdentity = {
       requestId: "request-one" as RequestId,
@@ -201,5 +225,31 @@ describe("completion-aware actor request bridge", () => {
       kind: "completed",
       outcome: { kind: "succeeded" },
     });
+
+    const actorOwned = registry.admit({
+      ...operationIdentity,
+      requestId: "request-actor-disposal" as RequestId,
+      invocationRef: { id: "runtime-actor-disposal" },
+    });
+    await host.disposeKey(definition.id, "key");
+    await expect(actorOwned.ticket.settled).resolves.toMatchObject({
+      outcome: { kind: "disposed", cause: "key" },
+    });
+
+    const windowOwned = registry.admit({
+      ...operationIdentity,
+      requestId: "request-window-disposal" as RequestId,
+      invocationRef: { id: "runtime-window-disposal" },
+      owner: {
+        ...operationIdentity.owner,
+        actorInstanceId: "retained-actor",
+      },
+    });
+    windowSessionDisposed?.(identity.windowSessionId);
+    await expect(windowOwned.ticket.settled).resolves.toMatchObject({
+      outcome: { kind: "disposed", cause: "window-session" },
+    });
+    unbindLifetimes();
+    expect(windowSessionDisposed).toBeUndefined();
   });
 });

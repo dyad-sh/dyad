@@ -94,12 +94,60 @@ describe("PreparedRequest", () => {
 
     expect(scope.inspectActiveCount()).toBe(0);
     await expect(request.settled).resolves.toEqual({
-      kind: "not-admitted",
-      reason: "disposed",
+      kind: "detached",
+      authoritativeOperationMayContinue: true,
     });
     await expect(request.admission).resolves.toEqual({ kind: "disposed" });
     dispatch.resolve({ kind: "refused", reason: "unauthorized" });
     expect(scope.inspectActiveCount()).toBe(0);
+  });
+
+  it("does not start dispatch when detached before the transport microtask", async () => {
+    const dispatch = vi.fn<() => Promise<DispatchResult>>();
+    const request = prepare({ dispatch });
+
+    request.detach();
+
+    await expect(request.admission).resolves.toEqual({ kind: "disposed" });
+    await expect(request.settled).resolves.toEqual({
+      kind: "not-admitted",
+      reason: "disposed",
+    });
+    await Promise.resolve();
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it("consumes and reports a late admitted rejection after in-flight disposal", async () => {
+    const scope = new PreparedRequestScope("window-session");
+    const dispatch = controlled<DispatchResult>();
+    const authoritative = controlled<{ readonly kind: "succeeded" }>();
+    const reportError = vi.fn();
+    const request = prepareRequest({
+      identity: identity(),
+      fingerprint: "immutable-request",
+      scope,
+      retry: { kind: "none" },
+      classifyFailure: () => ({ kind: "unexpected" }),
+      reportError,
+      dispatch: () => dispatch.promise,
+    });
+    await Promise.resolve();
+    scope.dispose();
+    dispatch.resolve({
+      kind: "admitted",
+      admission: { accepted: true },
+      disposition: "fresh",
+      settled: authoritative.promise,
+    });
+    await Promise.resolve();
+    const failure = new Error("late authoritative failure");
+    authoritative.reject(failure);
+
+    await expect(request.settled).resolves.toEqual({
+      kind: "detached",
+      authoritativeOperationMayContinue: true,
+    });
+    await vi.waitFor(() => expect(reportError).toHaveBeenCalledWith(failure));
   });
 
   it("models authorization refusal as typed data", async () => {

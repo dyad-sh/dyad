@@ -31,13 +31,16 @@ Background and before/after examples of why this pattern exists:
 
 - Controllers migrated to `TransactionalDispatcher` use one event transaction:
   enqueue FIFO; run the pure transition exactly once; validate; reserve the
-  command batch without running domain code; cancel exiting state-owned leases;
-  commit the snapshot (the linearization point); update the authoritative
-  projection; notify snapshot subscribers; notify transition observers; then
-  hand the reserved batch to the injected domain scheduler. Re-entrant sends
-  from any callback append to the FIFO and run after the current transaction.
-  Ignored events skip commit, projection, subscribers, and commands, but notify
-  observers at the equivalent point in FIFO order.
+  command batch and any explicit post-commit outcome batch without running
+  domain code; cancel exiting state-owned leases; commit the snapshot (the
+  linearization point); update the authoritative projection; notify snapshot
+  subscribers; notify transition observers; then publish the reserved outcomes
+  and hand the reserved commands to the injected domain scheduler. Re-entrant
+  callbacks may mutate transition-owned arrays, so both batches must be
+  shallow-copied before callbacks. Re-entrant sends append to the FIFO and run
+  after the current transaction. Ignored events skip commit, projection,
+  subscribers, outcomes, and commands, but notify observers at the equivalent
+  point in FIFO order.
 - The dispatcher isolates and reports projection, subscriber, observer,
   scheduler, and command failures. Adapters convert expected command failures
   to typed domain events; unexpected throws/rejections may be mapped by the

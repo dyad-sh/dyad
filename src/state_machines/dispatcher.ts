@@ -293,6 +293,7 @@ export class TransactionalDispatcher<
 
     // Reservation is deliberately data-only: no scheduler or adapter code.
     const batch = this.reserve(result.commands);
+    const outcomes = Object.freeze([...(result.outcomes ?? [])]);
     try {
       this.options.beforeCommit?.(previous, result.state);
     } catch (error) {
@@ -311,7 +312,7 @@ export class TransactionalDispatcher<
     }
 
     this.notifyObserver(previous, event, result, dispatchContext);
-    this.publishOutcomes(result.outcomes ?? []);
+    this.publishOutcomes(outcomes);
     this.startBatch(batch);
     settleCurrent({ kind: "applied", state: this.store.getSnapshot() });
   }

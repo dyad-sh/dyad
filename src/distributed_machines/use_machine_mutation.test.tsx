@@ -358,4 +358,90 @@ describe("useMachineMutation", () => {
       expect(result.current.execution).toEqual({ kind: "succeeded" }),
     );
   });
+
+  it("reports synchronous request preparation failures and clears stale ownership", async () => {
+    const failure = new Error("identity conflict");
+    const onUnexpectedError = vi.fn();
+    const request = vi.fn(() => {
+      throw failure;
+    });
+    const { result } = renderHook(() =>
+      useMachineMutation({
+        connection: "ready",
+        snapshot: unavailable,
+        request,
+        classifyOutcome: classify,
+        onUnexpectedError,
+      }),
+    );
+
+    await expect(result.current.mutate("input")).rejects.toBe(failure);
+
+    await waitFor(() =>
+      expect(result.current.execution).toEqual({
+        kind: "failed",
+        error: failure,
+      }),
+    );
+    expect(onUnexpectedError).toHaveBeenCalledWith(failure);
+    await expect(result.current.retry()).resolves.toBeUndefined();
+  });
+
+  it("does not create request ownership through a retained callback after unmount", async () => {
+    const request = vi.fn();
+    const { result, unmount } = renderHook(() =>
+      useMachineMutation({
+        connection: "ready",
+        snapshot: unavailable,
+        request,
+        classifyOutcome: classify,
+      }),
+    );
+    const retainedMutate = result.current.mutate;
+    unmount();
+
+    await expect(retainedMutate("input")).resolves.toEqual({
+      kind: "not-admitted",
+      reason: "disposed",
+    });
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it("does not report a stale retry failure after unmount", async () => {
+    const admission = controlled<PreparedAdmission<string, string>>();
+    const settled = controlled<PreparedRequestSettlement<Outcome, string>>();
+    const retry = controlled<PreparedAdmission<string, string>>();
+    const onUnexpectedError = vi.fn();
+    const { result, unmount } = renderHook(() =>
+      useMachineMutation({
+        connection: "ready",
+        snapshot: unavailable,
+        request: () =>
+          fakeRequest(admission, settled, vi.fn(), () => retry.promise),
+        classifyOutcome: classify,
+        onUnexpectedError,
+      }),
+    );
+    act(() => {
+      void result.current.mutate("input");
+      admission.resolve({
+        kind: "disconnected",
+        retryable: true,
+        error: new Error("offline"),
+      });
+    });
+    await waitFor(() =>
+      expect(result.current.admission).toMatchObject({
+        kind: "refused",
+        retryable: true,
+      }),
+    );
+    const retrying = result.current.retry();
+    unmount();
+    const failure = new Error("late retry failure");
+    retry.reject(failure);
+
+    await expect(retrying).rejects.toBe(failure);
+    expect(onUnexpectedError).not.toHaveBeenCalled();
+  });
 });

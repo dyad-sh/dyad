@@ -178,6 +178,7 @@ export interface PrepareRequestOptions<Admission, Outcome, Refusal> {
   readonly classifyFailure: (
     error: unknown,
   ) => PreparedRequestFailureClassification;
+  readonly reportError?: (error: unknown) => void;
 }
 
 /**
@@ -192,6 +193,7 @@ export function prepareRequest<Admission, Outcome, Refusal>(
   let firstAdmissionPending = true;
   let terminalPending = true;
   let admitted = false;
+  let dispatchInFlight = false;
   let attemptPending:
     | Promise<PreparedAdmission<Admission, Refusal>>
     | undefined;
@@ -219,7 +221,7 @@ export function prepareRequest<Admission, Outcome, Refusal>(
         firstAdmission.resolve({ kind: "disposed" });
       }
       settleTerminal(
-        admitted
+        admitted || dispatchInFlight
           ? { kind: "detached", authoritativeOperationMayContinue: true }
           : { kind: "not-admitted", reason: "disposed" },
       );
@@ -235,11 +237,20 @@ export function prepareRequest<Admission, Outcome, Refusal>(
     }
     if (attemptPending) return attemptPending;
     const attempt = Promise.resolve()
-      .then(() => options.dispatch(identity))
+      .then<
+        | PreparedDispatchResult<Admission, Outcome, Refusal>
+        | { readonly kind: "disposed" }
+      >(() => {
+        if (!terminalPending) {
+          return { kind: "disposed" } as const;
+        }
+        dispatchInFlight = true;
+        return options.dispatch(identity);
+      })
       .then(
         (result): PreparedAdmission<Admission, Refusal> => {
-          if (!terminalPending) {
-            return { kind: "disconnected", retryable: false, error: undefined };
+          if (result.kind === "disposed") {
+            return result;
           }
           if (result.kind === "refused") {
             settleTerminal({
@@ -256,7 +267,15 @@ export function prepareRequest<Admission, Outcome, Refusal>(
                 kind: "completed",
                 outcome,
               }),
-            rejectTerminal,
+            (error) => {
+              if (!rejectTerminal(error)) {
+                try {
+                  options.reportError?.(error);
+                } catch {
+                  // Reporting cannot replace the authoritative failure.
+                }
+              }
+            },
           );
           return {
             kind: "admitted",
@@ -273,7 +292,13 @@ export function prepareRequest<Admission, Outcome, Refusal>(
             throw classificationError;
           }
           if (classification.kind === "unexpected") {
-            rejectTerminal(error);
+            if (!rejectTerminal(error)) {
+              try {
+                options.reportError?.(error);
+              } catch {
+                // Reporting cannot replace the transport failure.
+              }
+            }
             throw error;
           }
           const retryable =
@@ -285,6 +310,7 @@ export function prepareRequest<Admission, Outcome, Refusal>(
         },
       )
       .finally(() => {
+        dispatchInFlight = false;
         if (attemptPending === attempt) attemptPending = undefined;
       });
     attemptPending = attempt;
@@ -320,7 +346,7 @@ export function prepareRequest<Admission, Outcome, Refusal>(
         firstAdmission.resolve({ kind: "disposed" });
       }
       settleTerminal(
-        admitted
+        admitted || dispatchInFlight
           ? { kind: "detached", authoritativeOperationMayContinue: true }
           : { kind: "not-admitted", reason: "disposed" },
       );

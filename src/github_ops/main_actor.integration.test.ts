@@ -1,10 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ActorHost } from "@/distributed_machines/actor_host";
 import type { HostedActorRef } from "@/distributed_machines/definition";
-import { RemoteMachineClient } from "@/distributed_machines/remote_client";
+import {
+  RemoteMachineClient,
+  type RemoteActorRef,
+} from "@/distributed_machines/remote_client";
 import { createRemoteMachineManifest } from "@/distributed_machines/remote_manifest";
 import { RemoteMachineTransport } from "@/distributed_machines/remote_transport";
 import { FakeDuplexRemoteTransport } from "@/distributed_machines/testing";
+import type {
+  RequestId,
+  RequestIdempotencyKey,
+  RequestMessageId,
+} from "@/distributed_machines/request_identity";
 import {
   createFakeClock,
   createSequentialIdSource,
@@ -14,10 +22,14 @@ import {
   CONFLICT_RESOLUTION_CLAIM_TIMEOUT_MS,
   githubOpsDefinition,
 } from "@/ipc/services/github_ops_definition";
+import { GithubOpsActorService } from "@/ipc/services/github_ops_actor_service";
+import { githubOpsOperationService } from "@/ipc/services/github_ops_operation_service";
 import { githubOpsClientDefinition } from "./client_definition";
 import type { GithubOpsIgnoreReason } from "./state";
 import {
   githubOpsKey,
+  type GithubOpsIntentEvent,
+  type GithubOpsRemoteSnapshot,
   type GithubOpsActorState,
   type GithubOpsWireEvent,
 } from "./transport";
@@ -29,8 +41,6 @@ const service = vi.hoisted(() => ({
       () => Promise<{ mergeInProgress: boolean; rebaseInProgress: boolean }>
     >(),
   getConflicts: vi.fn<() => Promise<string[]>>(),
-  settle: vi.fn<() => Promise<void>>(async () => undefined),
-  assertAcceptingOperations: vi.fn(),
 }));
 
 const database = vi.hoisted(() => ({
@@ -38,8 +48,9 @@ const database = vi.hoisted(() => ({
 }));
 const invalidations = vi.hoisted(() => ({ publish: vi.fn() }));
 const presentation = vi.hoisted(() => ({
-  forget: vi.fn(),
+  markTerminal: vi.fn(),
   recordInitiator: vi.fn(),
+  releaseOwner: vi.fn(),
   showError: vi.fn(),
 }));
 
@@ -135,18 +146,29 @@ type GithubOpsHostedActor = HostedActorRef<
   GithubOpsIgnoreReason | "stale-operation"
 >;
 
-describe("main-hosted github_ops actor", () => {
+function dispatchCurrent(
+  actor: RemoteActorRef<GithubOpsRemoteSnapshot, GithubOpsIntentEvent, string>,
+  event: GithubOpsIntentEvent,
+) {
+  const snapshot = actor.getView().snapshot;
+  return actor.dispatch(
+    event,
+    snapshot.kind === "available"
+      ? { expected: snapshot.observedRevision }
+      : undefined,
+  );
+}
+
+describe("main-hosted github_ops actor integration", () => {
   beforeEach(() => {
     service.run.mockReset();
     service.getGitState.mockReset();
     service.getConflicts.mockReset();
-    service.settle.mockReset();
-    service.settle.mockResolvedValue(undefined);
-    service.assertAcceptingOperations.mockReset();
     database.findFirst.mockReset();
     invalidations.publish.mockReset();
-    presentation.forget.mockReset();
+    presentation.markTerminal.mockReset();
     presentation.recordInitiator.mockReset();
+    presentation.releaseOwner.mockReset();
     presentation.showError.mockReset();
     database.findFirst.mockResolvedValue({ id: 7 });
     service.run.mockResolvedValue(undefined);
@@ -165,7 +187,7 @@ describe("main-hosted github_ops actor", () => {
     await actorA.resync();
     await actorB.resync();
 
-    const receipt = await actorA.dispatch({
+    const receipt = await dispatchCurrent(actorA, {
       type: "OP_REQUESTED",
       op: { type: "pull" },
       operationId: "pull-a",
@@ -195,12 +217,131 @@ describe("main-hosted github_ops actor", () => {
     releaseB();
   });
 
+  it("delivers authoritative success through the protocol-v1 operation adapter", async () => {
+    const pending = deferred();
+    service.run.mockReturnValue(pending.promise);
+    const { actorA } = createHarness();
+    await actorA.resync();
+    const settlement = new Promise<unknown>((resolve) => {
+      actorA.subscribeOperationOutcome("tracked-success", resolve);
+    });
+
+    await dispatchCurrent(actorA, {
+      type: "OP_REQUESTED",
+      operationId: "tracked-success",
+      op: { type: "push", mode: "normal" },
+    });
+    pending.resolve();
+
+    await expect(settlement).resolves.toEqual({
+      kind: "succeeded",
+      operation: "push",
+    });
+  });
+
+  it("coalesces and replays a stable request after the actor revision advances", async () => {
+    const pending = deferred();
+    service.run.mockReturnValue(pending.promise);
+    const { actorA } = createHarness();
+    await actorA.resync();
+    const snapshot = actorA.getView().snapshot;
+    if (snapshot.kind !== "available") throw new Error("actor unavailable");
+    const intent = {
+      type: "OP_REQUESTED" as const,
+      operationId: "duplicate-operation",
+      op: { type: "push" as const, mode: "normal" as const },
+    };
+    const requestId = "duplicate-request" as RequestId;
+    const idempotencyKey = "duplicate-idempotency" as RequestIdempotencyKey;
+    const dispatch = (messageId: string) =>
+      actorA.dispatch(intent, {
+        expected: snapshot.observedRevision,
+        requestIdentity: {
+          requestId,
+          messageId: messageId as RequestMessageId,
+          idempotencyKey,
+          windowSessionId: "renderer-session",
+        },
+      });
+
+    await expect(dispatch("message-1")).resolves.toMatchObject({
+      kind: "applied",
+    });
+    await expect(dispatch("message-2")).resolves.toMatchObject({
+      kind: "applied",
+    });
+    expect(service.run).toHaveBeenCalledOnce();
+
+    pending.resolve();
+    await vi.waitFor(() =>
+      expect(actorA.getSnapshot().state.type).toBe("idle"),
+    );
+    await expect(dispatch("message-3")).resolves.toMatchObject({
+      kind: "applied",
+    });
+    expect(service.run).toHaveBeenCalledOnce();
+  });
+
+  it("rejects an authorization result after the app actor is replaced", async () => {
+    const { actorA, host } = createHarness();
+    await actorA.resync();
+    const authorizationCalls = database.findFirst.mock.calls.length;
+    let authorize!: (app: { id: number }) => void;
+    database.findFirst.mockReturnValueOnce(
+      new Promise((resolve) => {
+        authorize = resolve;
+      }),
+    );
+    const dispatch = dispatchCurrent(actorA, {
+      type: "OP_REQUESTED",
+      operationId: "authorization-race",
+      op: { type: "push", mode: "normal" },
+    });
+    await vi.waitFor(() =>
+      expect(database.findFirst.mock.calls.length).toBeGreaterThan(
+        authorizationCalls,
+      ),
+    );
+    await host.disposeKey(
+      githubOpsDefinition.id,
+      githubOpsKey(7),
+      "entity-deletion",
+    );
+    host.ensure(githubOpsDefinition, githubOpsKey(7));
+    authorize({ id: 7 });
+
+    await expect(dispatch).resolves.toMatchObject({
+      kind: "rejected",
+      reason: "stale-actor",
+    });
+    expect(service.run).not.toHaveBeenCalled();
+    expect(githubOpsOperationService.inspect().unresolved).toBe(0);
+  });
+
+  it("fences GitHub intents during failed deletion and reopens only on abort", async () => {
+    const { actorA, host } = createHarness();
+    await actorA.resync();
+    const deletion = new GithubOpsActorService(host).beginAppDeletion(7);
+    await deletion.seal();
+
+    await expect(
+      dispatchCurrent(actorA, { type: "RECONCILE_REQUESTED" }),
+    ).resolves.toMatchObject({
+      kind: "rejected",
+      reason: "host-disposing",
+    });
+    expect(deletion.abort()).toBe(true);
+    await expect(
+      dispatchCurrent(actorA, { type: "RECONCILE_REQUESTED" }),
+    ).resolves.toMatchObject({ kind: "applied" });
+  });
+
   it("reattaches after a mid-rebase window close while work continues", async () => {
     const pending = deferred();
     service.run.mockReturnValue(pending.promise);
     const { actorA, clientA, duplex, host, releaseA } = createHarness();
     await actorA.resync();
-    await actorA.dispatch({
+    await dispatchCurrent(actorA, {
       type: "OP_REQUESTED",
       op: { type: "rebase" },
       operationId: "rebase-before-reload",
@@ -261,7 +402,7 @@ describe("main-hosted github_ops actor", () => {
 
     await actor.resync();
     await expect(
-      actor.dispatch({
+      dispatchCurrent(actor, {
         type: "CONFLICT_RESOLUTION_STARTED",
         claimId: "missing-claim",
       }),
@@ -270,13 +411,13 @@ describe("main-hosted github_ops actor", () => {
       reason: "stale-operation",
     });
     await expect(
-      actor.dispatch({
+      dispatchCurrent(actor, {
         type: "RESOLVE_WITH_AI_STARTED",
         claimId: "claim-after-sync",
       }),
     ).resolves.toMatchObject({ kind: "applied" });
     await expect(
-      actor.dispatch({
+      dispatchCurrent(actor, {
         type: "CONFLICT_RESOLUTION_STARTED",
         claimId: "claim-after-sync",
       }),
@@ -295,7 +436,7 @@ describe("main-hosted github_ops actor", () => {
     await flush();
     expect(actorA.getSnapshot().state.type).toBe("conflicted");
 
-    const receipt = await actorA.dispatch({
+    const receipt = await dispatchCurrent(actorA, {
       type: "RESOLVE_WITH_AI_STARTED",
       claimId: "claim-a",
     });
@@ -303,7 +444,7 @@ describe("main-hosted github_ops actor", () => {
     expect(actorA.getSnapshot().state.type).toBe("conflicted");
     expect(service.run).not.toHaveBeenCalled();
     await expect(
-      actorB.dispatch({
+      dispatchCurrent(actorB, {
         type: "RESOLVE_WITH_AI_STARTED",
         claimId: "claim-b",
       }),
@@ -312,7 +453,7 @@ describe("main-hosted github_ops actor", () => {
       reason: "invalid-in-current-state",
     });
 
-    await actorA.dispatch({
+    await dispatchCurrent(actorA, {
       type: "CONFLICT_RESOLUTION_STARTED",
       claimId: "claim-a",
     });
@@ -331,15 +472,15 @@ describe("main-hosted github_ops actor", () => {
     local.send({ type: "CONFLICTS", files: ["src/conflicted.ts"] });
     await flush();
 
-    await actorA.dispatch({
+    await dispatchCurrent(actorA, {
       type: "RESOLVE_WITH_AI_STARTED",
       claimId: "claim-a",
     });
-    await actorB.dispatch({ type: "RECONCILE_REQUESTED" });
+    await dispatchCurrent(actorB, { type: "RECONCILE_REQUESTED" });
 
     expect(actorB.getSnapshot().conflictResolutionClaimed).toBe(true);
     await expect(
-      actorB.dispatch({
+      dispatchCurrent(actorB, {
         type: "RESOLVE_WITH_AI_STARTED",
         claimId: "claim-b",
       }),
@@ -360,7 +501,7 @@ describe("main-hosted github_ops actor", () => {
     await flush();
     const staleRevision = actorA.getSnapshot().revision;
 
-    await actorA.dispatch({
+    await dispatchCurrent(actorA, {
       type: "RESOLVE_WITH_AI_STARTED",
       claimId: "claim-a",
     });
@@ -391,13 +532,13 @@ describe("main-hosted github_ops actor", () => {
     );
     local.send({ type: "CONFLICTS", files: ["src/conflicted.ts"] });
     await flush();
-    await actorA.dispatch({
+    await dispatchCurrent(actorA, {
       type: "RESOLVE_WITH_AI_STARTED",
       claimId: "claim-a",
     });
 
     await expect(
-      actorB.dispatch({
+      dispatchCurrent(actorB, {
         type: "CONFLICT_RESOLUTION_CANCELLED",
         claimId: "claim-b",
       }),
@@ -418,7 +559,7 @@ describe("main-hosted github_ops actor", () => {
     );
     local.send({ type: "CONFLICTS", files: ["src/conflicted.ts"] });
     await flush();
-    await actorA.dispatch({
+    await dispatchCurrent(actorA, {
       type: "RESOLVE_WITH_AI_STARTED",
       claimId: "abandoned-claim",
     });
@@ -430,7 +571,7 @@ describe("main-hosted github_ops actor", () => {
 
     expect(local.getSnapshot().conflictResolutionClaimId).toBeNull();
     await expect(
-      actorB.dispatch({
+      dispatchCurrent(actorB, {
         type: "RESOLVE_WITH_AI_STARTED",
         claimId: "replacement-claim",
       }),
@@ -472,8 +613,8 @@ describe("main-hosted github_ops actor", () => {
     const { actorA } = createHarness();
     await actorA.resync();
 
-    await actorA.dispatch({ type: "RECONCILE_REQUESTED" });
-    await actorA.dispatch({ type: "RECONCILE_REQUESTED" });
+    await dispatchCurrent(actorA, { type: "RECONCILE_REQUESTED" });
+    await dispatchCurrent(actorA, { type: "RECONCILE_REQUESTED" });
     rejectGitState(new Error("superseded Git-state failure"));
     await flush();
 
@@ -488,9 +629,9 @@ describe("main-hosted github_ops actor", () => {
       )
       .mockResolvedValue([]);
 
-    await actorA.dispatch({ type: "RECONCILE_REQUESTED" });
+    await dispatchCurrent(actorA, { type: "RECONCILE_REQUESTED" });
     await flush();
-    await actorA.dispatch({ type: "RECONCILE_REQUESTED" });
+    await dispatchCurrent(actorA, { type: "RECONCILE_REQUESTED" });
     await flush();
     rejectConflicts(new Error("superseded conflict failure"));
     await flush();
@@ -505,7 +646,7 @@ describe("main-hosted github_ops actor", () => {
     await sentinel.resync();
 
     await expect(
-      sentinel.dispatch({
+      dispatchCurrent(sentinel, {
         type: "OP_REQUESTED",
         operationId: "sentinel-operation",
         op: {
@@ -526,9 +667,14 @@ describe("main-hosted github_ops actor", () => {
 
   it("keeps actor disposal pending until admitted Git work settles", async () => {
     const settlement = deferred();
-    service.settle.mockReturnValue(settlement.promise);
+    service.run.mockReturnValue(settlement.promise);
     const { actorA, host } = createHarness();
     await actorA.resync();
+    await dispatchCurrent(actorA, {
+      type: "OP_REQUESTED",
+      operationId: "pending-during-disposal",
+      op: { type: "push", mode: "normal" },
+    });
 
     let disposed = false;
     const disposal = host
@@ -536,7 +682,7 @@ describe("main-hosted github_ops actor", () => {
       .then(() => {
         disposed = true;
       });
-    await vi.waitFor(() => expect(service.settle).toHaveBeenCalledWith(7));
+    await vi.waitFor(() => expect(service.run).toHaveBeenCalledOnce());
     expect(disposed).toBe(false);
 
     settlement.resolve();
@@ -552,7 +698,10 @@ describe("main-hosted github_ops actor", () => {
     );
     const { actorA } = createHarness();
     await actorA.resync();
-    await actorA.dispatch({
+    const settlement = new Promise<unknown>((resolve) => {
+      actorA.subscribeOperationOutcome("unsafe-error", resolve);
+    });
+    await dispatchCurrent(actorA, {
       type: "OP_REQUESTED",
       operationId: "unsafe-error",
       op: { type: "push", mode: "normal" },
@@ -566,5 +715,10 @@ describe("main-hosted github_ops actor", () => {
         },
       }),
     );
+    await expect(settlement).resolves.toMatchObject({
+      kind: "failed",
+      operation: "push",
+      failure: { kind: "external" },
+    });
   });
 });

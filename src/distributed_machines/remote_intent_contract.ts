@@ -170,9 +170,9 @@ export interface RemoteIntentEnvelopeBudgets {
 /**
  * Declarative contract layered beside the protocol-v1 runtime contract.
  *
- * PR2 intentionally does not consume this declaration at runtime. It separates
- * renderer intents from trusted events and gives conformance/report tooling a
- * complete policy surface without changing transport or actor admission.
+ * Protocol-v1 definitions use this declaration through the transport's narrow
+ * compatibility adapter. The wire envelope remains unchanged while admitted
+ * renderer data is converted into trusted internal events.
  */
 export interface RemoteIntentContract<
   Key,

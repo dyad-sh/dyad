@@ -3,6 +3,7 @@ import { DyadErrorKind } from "@/errors/dyad_error";
 import type { InvocationRef } from "@/state_machines/invocation_ref";
 import type {
   GithubOperation,
+  GithubOpsOperationOutcome,
   GithubOperationFailure,
   GithubOpsEvent,
   GithubOpsState,
@@ -54,6 +55,15 @@ export const GithubOpsInvocationRefSchema = z
     operationId: operationIdSchema,
   })
   .strict();
+
+const operationDisposalReasonSchema = z.enum([
+  "superseded",
+  "actor-disposed",
+  "app-disposed",
+  "machine-disposed",
+  "host-disposed",
+  "window-disposed",
+]);
 
 const pushOperationSchema = z
   .object({
@@ -242,6 +252,18 @@ export const GithubOpsIntentEventSchema = z.union([
 ]);
 export type GithubOpsIntentEvent = z.infer<typeof GithubOpsIntentEventSchema>;
 
+type TrackedGithubOpsIntent = Extract<
+  GithubOpsIntentEvent,
+  { type: "OP_REQUESTED" | "ABORT_AND_SWITCH_CONFIRMED" }
+>;
+
+export type GithubOpsTrustedIntentEvent =
+  | (TrackedGithubOpsIntent & {
+      readonly requestId: import("@/distributed_machines/request_identity").RequestId;
+      readonly initiatorWindowSessionId: string;
+    })
+  | Exclude<GithubOpsIntentEvent, TrackedGithubOpsIntent>;
+
 const operationFailureSchema: z.ZodType<GithubOperationFailure> = z
   .object({
     code: z.string().optional(),
@@ -291,11 +313,16 @@ export const GithubOpsProducerEventSchema = z.union([
 export type GithubOpsProducerEvent = z.infer<
   typeof GithubOpsProducerEventSchema
 >;
-export type GithubOpsWireEvent = GithubOpsIntentEvent | GithubOpsProducerEvent;
+export type GithubOpsWireEvent =
+  | GithubOpsTrustedIntentEvent
+  | GithubOpsProducerEvent;
 
 export interface GithubOpsActorState {
   readonly state: GithubOpsState;
   readonly activeInvocationRef: GithubOpsInvocationRef | null;
+  readonly activeRequestId:
+    | import("@/distributed_machines/request_identity").RequestId
+    | null;
   readonly conflictResolutionClaimId: string | null;
 }
 
@@ -331,6 +358,49 @@ export function projectGithubOpsRemoteSnapshot(
     conflictResolutionClaimed: actorState.conflictResolutionClaimId !== null,
   };
 }
+
+const GithubOpsOperationOutcomeObjectSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("succeeded"),
+      operation: operationTypeSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("failed"),
+      operation: z.union([operationTypeSchema, z.literal("unknown")]),
+      failure: operationFailureSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("cancelled"),
+      reason: operationDisposalReasonSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("rejected"),
+      reason: z.enum([
+        "op-in-flight",
+        "blocked-by-conflicts",
+        "invalid-in-current-state",
+        "stale-op",
+        "no-change",
+        "stale-operation",
+      ]),
+    })
+    .strict(),
+]);
+
+export const GithubOpsOperationOutcomeSchema = z
+  .custom<unknown>((value) => !(value instanceof Error), {
+    message: "Error instances are not GitHub operation outcomes",
+  })
+  .pipe(
+    GithubOpsOperationOutcomeObjectSchema,
+  ) satisfies z.ZodType<GithubOpsOperationOutcome>;
 
 export function isGithubOpsStateSensitiveIntent(
   event: GithubOpsIntentEvent,

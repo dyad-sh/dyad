@@ -68,22 +68,6 @@ export const compatibilityBoundaryInventory = [
     removalOwner: "Conditional follow-up A — remaining remote definitions",
   },
   {
-    machine: "github_ops",
-    exactFile: "ipc/services/github_ops_definition.ts",
-    mechanism: "wideningCasts",
-    expectedCount: 1,
-    why: "The protocol-v1 codec still widens renderer intents to trusted events.",
-    removalOwner: "Conditional follow-up A — GitHub operations",
-  },
-  {
-    machine: "github_ops",
-    exactFile: "github_ops/useGithubOps.ts",
-    mechanism: "rawDispatchOrEnqueue",
-    expectedCount: 6,
-    why: "GitHub operations were explicitly excluded from the MVP pilots.",
-    removalOwner: "Conditional follow-up A — GitHub operations",
-  },
-  {
     machine: "version_preview",
     exactFile: "ipc/services/version_preview_definition.ts",
     mechanism: "wideningCasts",
@@ -164,28 +148,12 @@ export const compatibilityBoundaryInventory = [
     removalOwner: "Conditional follow-up C — chat/plan owned queue",
   },
   {
-    machine: "github_ops",
-    exactFile: "ipc/services/github_ops_service.ts",
-    mechanism: "deletionResetFences",
-    expectedCount: 8,
-    why: "GitHub operations retain domain-owned deletion/reset counters.",
-    removalOwner: "Conditional follow-up A — GitHub operations",
-  },
-  {
     machine: "version_preview",
     exactFile: "ipc/services/version_preview_service.ts",
     mechanism: "deletionResetFences",
     expectedCount: 8,
     why: "Version preview retains domain-owned deletion/reset counters.",
     removalOwner: "Conditional follow-up A — version-preview ownership",
-  },
-  {
-    machine: "github_ops",
-    exactFile: "ipc/services/github_ops_presentation_service.ts",
-    mechanism: "initiatorRoutingMaps",
-    expectedCount: 4,
-    why: "GitHub presentation routing predates correlated operation ownership.",
-    removalOwner: "Conditional follow-up A — GitHub operations",
   },
   {
     machine: "version_preview",
@@ -256,6 +224,7 @@ export const frameworkOwnedBoundaryInventory = {
 export const migratedSurfaceBoundaryInventory = {
   wideningCasts: [
     owned("app_run/definition.ts", 1),
+    owned("ipc/services/github_ops_definition.ts", 1),
     owned("ipc/services/image_generation_definition.ts", 1),
   ],
   rawDispatchOrEnqueue: [

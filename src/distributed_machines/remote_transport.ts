@@ -647,7 +647,7 @@ export class RemoteMachineTransport {
       return { receipt: this.rejected(envelope.messageId, "invalid-event") };
     }
     const intent = (
-      definition.remoteIntent
+      this.intentContract(definition)
         ? immutablePreparedClone(intentResult.data)
         : intentResult.data
     ) as { readonly type: string };
@@ -666,17 +666,15 @@ export class RemoteMachineTransport {
         fingerprint,
       };
     }
+    const intentContract = this.intentContract(definition);
     if (
-      definition.remoteIntent?.keyIntentRelationship.kind === "validate" &&
-      !definition.remoteIntent.keyIntentRelationship.validate(
-        admittedEntry.key,
-        intent,
-      )
+      intentContract?.keyIntentRelationship.kind === "validate" &&
+      !intentContract.keyIntentRelationship.validate(admittedEntry.key, intent)
     ) {
       return {
         receipt: this.rejected(
           envelope.messageId,
-          definition.remoteIntent.refusalMap.keyIntentMismatch,
+          intentContract.refusalMap.keyIntentMismatch,
         ),
       };
     }
@@ -701,7 +699,7 @@ export class RemoteMachineTransport {
       };
     }
     const revisionPolicy =
-      definition.remoteIntent?.intents[intent.type]?.observedRevision;
+      this.intentContract(definition)?.intents[intent.type]?.observedRevision;
     if (
       revisionPolicy?.kind === "actor" &&
       (envelope.expectedActorInstanceId === undefined ||
@@ -745,6 +743,18 @@ export class RemoteMachineTransport {
   ): Promise<MachineDispatchReceipt> {
     const { definition, key, intent, address, actor, actorMetadata } = prepared;
     const senderContext = this.senderContext(sender, prepared.windowSessionId);
+    const remoteOperation = definition.remoteOperation as
+      | RemoteOperationContract<
+          unknown,
+          unknown,
+          unknown,
+          unknown,
+          InvocationRef
+        >
+      | undefined;
+    let precomputedOperationPreparation:
+      | ReturnType<NonNullable<typeof remoteOperation>["prepare"]>
+      | undefined;
     let event: unknown;
     let dispatchActorMetadata = actorMetadata;
     if (!definition.remoteIntent) {
@@ -803,6 +813,61 @@ export class RemoteMachineTransport {
       if (!stabilized) {
         return this.rejected(envelope.messageId, "revision-conflict");
       }
+      const requestIdentity = this.requestIdentityFor(
+        definition,
+        intent,
+        envelope,
+        senderContext.windowSessionId,
+      );
+      event = this.toInternalEvent(
+        definition,
+        key,
+        intent,
+        senderContext.windowSessionId,
+        requestIdentity,
+      );
+      const finalRefusal = this.revalidateLegacyPreparedDispatch(
+        sender,
+        prepared,
+        dispatchActorMetadata,
+      );
+      if (finalRefusal) {
+        return this.rejected(envelope.messageId, finalRefusal);
+      }
+      if (definition.remoteIntentAdapter === "protocol-v1") {
+        precomputedOperationPreparation = remoteOperation?.prepare({
+          key,
+          intent,
+          event,
+          sender: { windowSessionId: prepared.windowSessionId },
+          actor: dispatchActorMetadata,
+          hostId: "main",
+          fingerprint: prepared.fingerprint,
+          requestIdentity,
+        });
+        if (precomputedOperationPreparation) {
+          const retained = precomputedOperationPreparation.registry.reattach(
+            precomputedOperationPreparation.identity,
+          );
+          if (retained) {
+            this.deliverDeclaredOperationOutcome(
+              sender,
+              definition,
+              prepared,
+              precomputedOperationPreparation.identity.requestId,
+              retained.ticket.settled,
+            );
+            prepared.consumed = true;
+            return {
+              kind: "applied",
+              actorInstanceId: dispatchActorMetadata.actorInstanceId,
+              revision: dispatchActorMetadata.snapshotRevision,
+              transactionSequence: dispatchActorMetadata.transactionSequence,
+              messageId: envelope.messageId,
+            };
+          }
+        }
+      }
       const revisionPolicy = definition.remote.revisionPolicy(intent as never);
       if (
         revisionPolicy === "reject-stale" &&
@@ -811,14 +876,13 @@ export class RemoteMachineTransport {
       ) {
         return this.rejected(envelope.messageId, "revision-conflict");
       }
-      event = intent;
-      const finalRefusal = this.revalidateLegacyPreparedDispatch(
+      const postRevisionPolicyRefusal = this.revalidateLegacyPreparedDispatch(
         sender,
         prepared,
         dispatchActorMetadata,
       );
-      if (finalRefusal) {
-        return this.rejected(envelope.messageId, finalRefusal);
+      if (postRevisionPolicyRefusal) {
+        return this.rejected(envelope.messageId, postRevisionPolicyRefusal);
       }
     } else {
       const decision = await this.authorizeDispatch(definition, {
@@ -945,7 +1009,7 @@ export class RemoteMachineTransport {
               ) {
                 return;
               }
-              const codecs = definition.remoteIntent?.operationOutcome;
+              const codecs = this.intentContract(definition)?.operationOutcome;
               if (!codecs) {
                 throw new Error(
                   `Remote machine ${definition.id} does not declare operation outcome codecs`,
@@ -1018,24 +1082,23 @@ export class RemoteMachineTransport {
           causationId: envelope.causationId,
         },
       );
-    const remoteOperation = definition.remoteOperation as
-      | RemoteOperationContract<
-          unknown,
-          unknown,
-          unknown,
-          unknown,
-          InvocationRef
-        >
-      | undefined;
-    const operationPreparation = remoteOperation?.prepare({
-      key,
-      intent,
-      event,
-      sender: { windowSessionId: prepared.windowSessionId },
-      actor: dispatchActorMetadata,
-      hostId: "main",
-      fingerprint: prepared.fingerprint,
-    });
+    const operationPreparation =
+      precomputedOperationPreparation ??
+      remoteOperation?.prepare({
+        key,
+        intent,
+        event,
+        sender: { windowSessionId: prepared.windowSessionId },
+        actor: dispatchActorMetadata,
+        hostId: "main",
+        fingerprint: prepared.fingerprint,
+        requestIdentity: this.requestIdentityFor(
+          definition,
+          intent,
+          envelope,
+          prepared.windowSessionId,
+        ),
+      });
     let ticket;
     let operationInvocationRef: InvocationRef | undefined;
     let freshOperation:
@@ -1076,6 +1139,15 @@ export class RemoteMachineTransport {
         receiptOnEnqueueFailure: () =>
           remoteOperation!.receipt(dispatchActorMetadata),
       });
+      if (definition.remoteIntentAdapter === "protocol-v1") {
+        this.deliverDeclaredOperationOutcome(
+          sender,
+          definition,
+          prepared,
+          operationPreparation.identity.requestId,
+          operationAdmission.operation.settled,
+        );
+      }
       operationInvocationRef = operationAdmission.operation.invocationRef;
       if (operationAdmission.kind !== "enqueued") {
         prepared.consumed = true;
@@ -1118,7 +1190,7 @@ export class RemoteMachineTransport {
         if (outcome.error.code === "stale-actor-revision") {
           return this.rejected(
             envelope.messageId,
-            definition.remoteIntent?.refusalMap.revisionChanged ??
+            this.intentContract(definition)?.refusalMap.revisionChanged ??
               "revision-conflict",
           );
         }
@@ -1213,7 +1285,7 @@ export class RemoteMachineTransport {
         if (outcome.error.code === "stale-actor-revision") {
           return this.rejected(
             messageId,
-            definition.remoteIntent?.refusalMap.revisionChanged ??
+            this.intentContract(definition)?.refusalMap.revisionChanged ??
               "revision-conflict",
           );
         }
@@ -1273,7 +1345,7 @@ export class RemoteMachineTransport {
     envelope: MachineDispatchEnvelope,
     windowSessionId: string,
   ) {
-    const policy = definition.remoteIntent?.intents[intent.type];
+    const policy = this.intentContract(definition)?.intents[intent.type];
     if (policy?.completion !== "tracked-completion") return undefined;
     const legacyRequestId =
       "operationId" in intent && typeof intent.operationId === "string"
@@ -1288,6 +1360,67 @@ export class RemoteMachineTransport {
         envelope.messageId) as RequestIdempotencyKey,
       windowSessionId,
     });
+  }
+
+  private deliverDeclaredOperationOutcome(
+    sender: RemoteTransportEndpoint,
+    definition: AnyRemoteMachineDefinition,
+    prepared: PreparedDispatchIdentity,
+    requestId: RequestId,
+    settled: Promise<{
+      readonly invocationRef: unknown;
+      readonly outcome: unknown;
+      readonly receipt: { readonly actor: ActorRuntimeMetadata };
+    }>,
+  ): void {
+    void settled.then(
+      (settlement) => {
+        try {
+          if (
+            this.options.windows.sessionForWebContents(sender.id) !==
+            prepared.windowSessionId
+          ) {
+            return;
+          }
+          const codecs = this.intentContract(definition)?.operationOutcome;
+          if (!codecs) {
+            throw new Error(
+              `Remote machine ${definition.id} does not declare operation outcome codecs`,
+            );
+          }
+          const outcomeEnvelope: MachineOperationOutcomeEnvelope = {
+            protocolVersion: definition.remote.protocolVersion,
+            machineId: definition.id,
+            encodedKey: prepared.encodedKey,
+            requestId,
+            invocationRef: codecs.invocationRefCodec.parse(
+              settlement.invocationRef,
+            ),
+            outcome: codecs.outcomeCodec.parse(settlement.outcome),
+            actor: settlement.receipt.actor,
+          };
+          if (
+            !this.isWithinSerializedLimit(
+              outcomeEnvelope,
+              codecs.maxEnvelopeBytes,
+            )
+          ) {
+            throw new DyadError(
+              `Remote operation outcome exceeds the transport limit for ${definition.id}`,
+              DyadErrorKind.RateLimited,
+            );
+          }
+          this.send(
+            sender.id,
+            "distributed-machine:operation-outcome",
+            outcomeEnvelope,
+          );
+        } catch (error) {
+          this.options.onError?.(error);
+        }
+      },
+      (error: unknown) => this.options.onError?.(error),
+    );
   }
 
   private dispatchFingerprint(
@@ -1382,7 +1515,7 @@ export class RemoteMachineTransport {
   ): MachineRejectedReason | undefined {
     const { definition, address, admittedEntry, actor, actorMetadata, key } =
       prepared;
-    const refusalMap = definition.remoteIntent?.refusalMap;
+    const refusalMap = this.intentContract(definition)?.refusalMap;
     if (
       prepared.consumed ||
       this.disposed ||
@@ -1421,7 +1554,8 @@ export class RemoteMachineTransport {
     }
 
     const observedRevision =
-      definition.remoteIntent?.intents[prepared.intent.type]?.observedRevision;
+      this.intentContract(definition)?.intents[prepared.intent.type]
+        ?.observedRevision;
     if (
       observedRevision?.kind === "actor" &&
       (envelope.expectedActorInstanceId !== actorMetadata.actorInstanceId ||
@@ -1455,7 +1589,7 @@ export class RemoteMachineTransport {
       metadata,
     );
     const parsed = (
-      entry.definition.remoteIntent?.snapshotCodec ??
+      this.intentContract(entry.definition)?.snapshotCodec ??
       entry.definition.remote.snapshotCodec
     ).safeParse(projected);
     if (!parsed.success) {
@@ -1471,8 +1605,8 @@ export class RemoteMachineTransport {
       revision: metadata.snapshotRevision,
       encodedState: parsed.data,
     };
-    const nativeSnapshotLimit =
-      entry.definition.remoteIntent?.budgets.snapshotBytes;
+    const nativeSnapshotLimit = this.intentContract(entry.definition)?.budgets
+      .snapshotBytes;
     const snapshotLimit =
       nativeSnapshotLimit === undefined
         ? (entry.definition.remote.maxSnapshotEnvelopeBytes ??
@@ -1578,7 +1712,7 @@ export class RemoteMachineTransport {
         DyadErrorKind.Validation,
       );
     }
-    return definition.remoteIntent
+    return this.intentContract(definition)
       ? immutablePreparedClone(parsed.data)
       : parsed.data;
   }
@@ -1587,7 +1721,7 @@ export class RemoteMachineTransport {
     definition: AnyRemoteMachineDefinition,
     key: unknown,
   ): unknown {
-    const keyContract = definition.remoteIntent ?? definition.remote;
+    const keyContract = this.intentContract(definition) ?? definition.remote;
     const encodedKey = keyContract.encodeKey(key);
     const roundTrip = keyContract.keyCodec.safeParse(encodedKey);
     if (
@@ -1597,13 +1731,15 @@ export class RemoteMachineTransport {
     ) {
       throw new Error(`Remote key encoding failed for ${definition.id}`);
     }
-    return definition.remoteIntent
+    return this.intentContract(definition)
       ? immutablePreparedClone(encodedKey)
       : encodedKey;
   }
 
   private keyCodec(definition: AnyRemoteMachineDefinition) {
-    return definition.remoteIntent?.keyCodec ?? definition.remote.keyCodec;
+    return (
+      this.intentContract(definition)?.keyCodec ?? definition.remote.keyCodec
+    );
   }
 
   private requireDefinition(machineId: string): AnyRemoteMachineDefinition {
@@ -1662,7 +1798,7 @@ export class RemoteMachineTransport {
 
   private rendererIntentCodec(definition: AnyRemoteMachineDefinition) {
     return (
-      definition.remoteIntent?.rendererIntentCodec ??
+      this.intentContract(definition)?.rendererIntentCodec ??
       definition.remote.eventCodec
     );
   }
@@ -1733,8 +1869,13 @@ export class RemoteMachineTransport {
     windowSessionId: string,
     requestIdentity: ReturnType<RemoteMachineTransport["requestIdentityFor"]>,
   ): unknown {
-    if (!definition.remoteIntent) return intent;
-    const event = definition.remoteIntent.toInternalEvent({
+    const intentContract = this.intentContract(definition);
+    if (!intentContract) return intent;
+    const convert =
+      "toInternalEvent" in intentContract
+        ? intentContract.toInternalEvent
+        : intentContract.toTrustedEvent;
+    const event = convert({
       key,
       intent,
       sender: { windowSessionId },
@@ -1750,6 +1891,15 @@ export class RemoteMachineTransport {
       );
     }
     return immutablePreparedClone(event);
+  }
+
+  private intentContract(definition: AnyRemoteMachineDefinition) {
+    return (
+      definition.remoteIntent ??
+      (definition.remoteIntentAdapter === "protocol-v1"
+        ? definition.remoteIntentDeclaration
+        : undefined)
+    );
   }
 
   private assertProtocol(

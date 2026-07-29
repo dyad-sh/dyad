@@ -6,6 +6,7 @@ import { useGithubOps } from "./useGithubOps";
 
 const mocks = vi.hoisted(() => ({
   dispatch: vi.fn(),
+  request: vi.fn(),
   showError: vi.fn(),
   connection: "connecting" as "connecting" | "ready" | "disconnected",
   remote: undefined as any,
@@ -15,11 +16,29 @@ vi.mock("@/distributed_machines/react", () => ({
   useDistributedMachine: () => mocks.remote,
 }));
 
+vi.mock("@/distributed_machines/use_machine_mutation", () => ({
+  useMachineMutation: (options: any) => ({
+    mutate: async (input: any) => {
+      const request = options.request(input, undefined);
+      await request.admission;
+      return request.settled;
+    },
+  }),
+}));
+
+vi.mock("./request_actor", () => ({
+  useGithubOpsRequestActor: () => ({
+    request: mocks.request,
+    sendAdmissionOnly: mocks.dispatch,
+  }),
+}));
+
 vi.mock("@/lib/toast", () => ({ showError: mocks.showError }));
 
 describe("useGithubOps remote readiness", () => {
   beforeEach(() => {
     mocks.dispatch.mockReset();
+    mocks.request.mockReset();
     mocks.showError.mockReset();
     mocks.connection = "connecting";
     mocks.remote = {
@@ -32,7 +51,8 @@ describe("useGithubOps remote readiness", () => {
       },
       projection: projectGithubOps(INITIAL_GITHUB_OPS_STATE),
       connection: mocks.connection,
-      dispatch: mocks.dispatch,
+      snapshot: { kind: "unavailable" },
+      observedRevision: undefined,
     };
   });
 
@@ -47,16 +67,21 @@ describe("useGithubOps remote readiness", () => {
     mocks.remote = { ...mocks.remote, connection: "ready" };
     rerender();
     await vi.waitFor(() =>
-      expect(mocks.dispatch).toHaveBeenCalledWith({
-        type: "RECONCILE_REQUESTED",
-      }),
+      expect(mocks.dispatch).toHaveBeenCalledWith(
+        {
+          type: "RECONCILE_REQUESTED",
+        },
+        undefined,
+      ),
     );
   });
 
   it("consumes transport rejections from ordinary UI sends", async () => {
     mocks.connection = "ready";
     mocks.remote = { ...mocks.remote, connection: "ready" };
-    mocks.dispatch.mockRejectedValue(new Error("disconnected"));
+    mocks.request.mockImplementation(() => {
+      throw new Error("disconnected");
+    });
     const { result } = renderHook(() =>
       useGithubOps(7, { reconcileOnMount: false }),
     );

@@ -1,28 +1,49 @@
+import { OperationRouteRegistry } from "@/window_infrastructure/main/operation_route_registry";
 import {
   windowRegistry,
   type WindowRegistry,
 } from "@/window_infrastructure/main/window_registry";
 import type { WindowSessionId } from "@/window_infrastructure/types";
 
-export class GithubOpsPresentationService {
-  private readonly initiatorByOperationId = new Map<string, WindowSessionId>();
+export const GITHUB_OPS_PRESENTATION_FALLBACK_POLICY =
+  "initiator-then-app-window-then-focused-window" as const;
 
-  constructor(private readonly windows: WindowRegistry = windowRegistry) {}
+export interface GithubOpsPresentationRoute {
+  readonly appId: number;
+}
+
+function createRouteRegistry(): OperationRouteRegistry<GithubOpsPresentationRoute> {
+  return new OperationRouteRegistry<GithubOpsPresentationRoute>({
+    maxUnresolved: 64,
+    maxTerminalRetained: 128,
+    snapshotRoute: (route) => Object.freeze({ ...route }),
+    sameRoute: (left, right) => left.appId === right.appId,
+  });
+}
+
+export class GithubOpsPresentationService {
+  constructor(
+    private readonly windows: WindowRegistry = windowRegistry,
+    readonly routes = createRouteRegistry(),
+  ) {}
 
   recordInitiator(
     operationId: string,
+    actorInstanceId: string,
+    appId: number,
     windowSessionId: string | undefined,
   ): void {
-    if (windowSessionId) {
-      if (this.initiatorByOperationId.size >= 256) {
-        const oldest = this.initiatorByOperationId.keys().next().value;
-        if (oldest) this.initiatorByOperationId.delete(oldest);
-      }
-      this.initiatorByOperationId.set(
-        operationId,
-        windowSessionId as WindowSessionId,
-      );
-    }
+    this.routes.admit({
+      operationId,
+      owner: {
+        ownerId: actorInstanceId,
+        machineId: "github_ops",
+        ...(windowSessionId
+          ? { windowSessionId: windowSessionId as WindowSessionId }
+          : {}),
+        route: { appId },
+      },
+    });
   }
 
   showError(
@@ -30,26 +51,58 @@ export class GithubOpsPresentationService {
     operationId: string | undefined,
     message: string,
   ): void {
-    const initiator = operationId
-      ? this.initiatorByOperationId.get(operationId)
+    const route = operationId
+      ? this.routes
+          .inspect()
+          .routes.find((candidate) => candidate.operationId === operationId)
       : undefined;
+    const initiator = route?.owner.windowSessionId as
+      | WindowSessionId
+      | undefined;
+    const routedAppId = route?.owner.route.appId ?? appId;
+    // Explicit fallback policy: the initiating window owns first delivery.
+    // If it closed, prefer another window displaying the app, then the
+    // focused ordinary-presentation target.
     const target =
       this.windows.routePresentation({
         effect: "operation-toast",
         ...(initiator ? { initiatorWindowSessionId: initiator } : {}),
-        entity: { kind: "app", id: appId },
+        entity: { kind: "app", id: routedAppId },
       }) ??
       this.windows.routePresentation({
         effect: "ordinary",
-        ...(initiator ? { initiatorWindowSessionId: initiator } : {}),
-        entity: { kind: "app", id: appId },
+        entity: { kind: "app", id: routedAppId },
       });
     if (!target) return;
     this.windows.endpointForSession(target)?.send("toast:error", { message });
   }
 
-  forget(operationId: string | undefined): void {
-    if (operationId) this.initiatorByOperationId.delete(operationId);
+  markTerminal(operationId: string): boolean {
+    const snapshot = this.routes
+      .inspect()
+      .routes.find((candidate) => candidate.operationId === operationId);
+    if (!snapshot) return false;
+    const admission = this.routes.admit({
+      operationId,
+      owner: snapshot.owner,
+    });
+    return this.routes.markTerminal(admission.handle);
+  }
+
+  releaseOwner(actorInstanceId: string): number {
+    return this.routes.releaseOwner("github_ops", actorInstanceId);
+  }
+
+  inspectWindowRoutes(windowSessionId: string) {
+    return this.routes.inspectWindowRoutes(windowSessionId);
+  }
+
+  inspect() {
+    return this.routes.inspect();
+  }
+
+  dispose(): void {
+    this.routes.dispose();
   }
 }
 

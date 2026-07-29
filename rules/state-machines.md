@@ -722,3 +722,13 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   producers, partition the actor key by owner or add first-class scoped gate
   generations; filtering drain events alone cannot preserve unrelated captured
   generations through seal and release.
+- Runtime consumption of a declarative protocol-v1 intent contract must be an
+  explicit per-definition adapter capability. Do not make every declaration
+  runtime-active when migrating one domain; that silently changes trusted-event
+  conversion, revision enforcement, and outcome delivery for other pilots.
+- For a stable tracked request, attempt conflict-checked retained reattachment
+  after authorization and final actor/gate revalidation but before rejecting
+  its stale observed revision. The first admission necessarily advances the
+  actor revision; rejecting that exact retry before registry reattachment makes
+  coalescing and terminal replay unreachable. Fresh requests must still pass
+  normal revision admission, and adapter callbacks require final revalidation.

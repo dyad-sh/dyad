@@ -10,6 +10,12 @@
  * composition root.
  */
 
+import type {
+  CorrelatedOperationOutcome,
+  OperationDisposalCause,
+} from "@/distributed_machines/operation_registry";
+import type { RequestId } from "@/distributed_machines/request_identity";
+
 export type PushMode = "normal" | "force" | "lease";
 
 export type ConnectRepositoryOperation =
@@ -141,6 +147,11 @@ export type GithubOpsCommand =
       kind: "success" | "error" | "info";
       message: string;
     }
+  | {
+      type: "record-operation-route";
+      operationId: string;
+      windowSessionId: string;
+    }
   | { type: "start-conflict-resolution"; files: readonly string[] };
 
 export type GithubOpsIgnoreReason =
@@ -149,6 +160,60 @@ export type GithubOpsIgnoreReason =
   | "invalid-in-current-state"
   | "stale-op"
   | "no-change";
+
+export type GithubOpsOperationKind = GithubOperation["type"];
+
+export type GithubOpsOperationOutcome =
+  | {
+      readonly kind: "succeeded";
+      readonly operation: GithubOpsOperationKind;
+    }
+  | {
+      readonly kind: "failed";
+      readonly operation: GithubOpsOperationKind | "unknown";
+      readonly failure: GithubOperationFailure;
+    }
+  | {
+      readonly kind: "cancelled";
+      readonly reason:
+        | "superseded"
+        | "actor-disposed"
+        | "app-disposed"
+        | "machine-disposed"
+        | "host-disposed"
+        | "window-disposed";
+    }
+  | {
+      readonly kind: "rejected";
+      readonly reason: GithubOpsIgnoreReason | "stale-operation";
+    };
+
+export type GithubOpsCorrelatedOutcome = CorrelatedOperationOutcome<
+  GithubOpsOperationOutcome,
+  import("./transport").GithubOpsInvocationRef
+>;
+
+export function githubOpsDisposalReason(
+  cause: OperationDisposalCause,
+): Extract<GithubOpsOperationOutcome, { kind: "cancelled" }>["reason"] {
+  switch (cause) {
+    case "actor":
+      return "actor-disposed";
+    case "key":
+      return "app-disposed";
+    case "machine":
+      return "machine-disposed";
+    case "host":
+      return "host-disposed";
+    case "window-session":
+      return "window-disposed";
+  }
+}
+
+export interface GithubOpsOperationOwnership {
+  readonly requestId: RequestId;
+  readonly invocationRef: import("./transport").GithubOpsInvocationRef;
+}
 
 export type GithubOpsTransitionResult =
   import("@/state_machines/types").TransitionResult<

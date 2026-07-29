@@ -4,6 +4,7 @@ import { appRunConformance } from "@/app_run/conformance.test_support";
 import { appRunRemoteIntentContract } from "@/app_run/remote_intent_contract";
 import { unsafeEscapeHatchInventory } from "../boundary_inventory.test_support";
 import { imageGenerationConformance } from "@/image_generation/conformance.test_support";
+import { githubOpsConformance } from "@/github_ops/conformance.test_support";
 import { imageGenerationRemoteIntentContract } from "@/image_generation/remote_intent_contract";
 import { declareRemoteIntentContractForProtocolV1 } from "../remote_intent_contract";
 import {
@@ -332,8 +333,9 @@ describe("remote intent contract registration", () => {
       PILOT_CONFORMANCE_REGISTRATIONS.map(
         ({ conformance }) => conformance.machineId,
       ),
-    ).toEqual(["app_run", "image_generation"]);
+    ).toEqual(["app_run", "github_ops", "image_generation"]);
     expect(appRunConformance.tiers).toEqual(["T0", "T1", "T2"]);
+    expect(githubOpsConformance.tiers).toEqual(["T0", "T1", "T2"]);
     expect(imageGenerationConformance.tiers).toEqual(["T0", "T1", "T2"]);
     expect(appRunConformance.representativeCapabilities.canRebuild).toEqual([
       "rebuild",
@@ -346,6 +348,7 @@ describe("remote intent contract registration", () => {
     );
     const names = new Set([
       ...appRunConformance.historicalFailureShapes,
+      ...githubOpsConformance.historicalFailureShapes,
       ...imageGenerationConformance.historicalFailureShapes,
     ]);
     expect(

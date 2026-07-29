@@ -23,7 +23,7 @@ export { remoteMachineHost };
 const remoteMachineDefinitions = [
   appRunDefinition,
   defineLegacyRemoteMachineCompatibility(chatStreamDefinition),
-  defineLegacyRemoteMachineCompatibility(githubOpsDefinition),
+  githubOpsDefinition,
   imageGenerationDefinition,
   defineLegacyRemoteMachineCompatibility(planHandoffDefinition),
   defineLegacyRemoteMachineCompatibility(versionPreviewDefinition),

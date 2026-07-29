@@ -24,6 +24,7 @@ import type {
   OperationReceiptMetadata,
   OperationRegistry,
 } from "./operation_registry";
+import type { RequestIdentity } from "./request_identity";
 
 export type ActorInstanceId = string;
 
@@ -227,6 +228,7 @@ export interface RemoteOperationContract<
     readonly actor: ActorRuntimeMetadata;
     readonly hostId: string;
     readonly fingerprint: string;
+    readonly requestIdentity?: RequestIdentity;
   }):
     | {
         readonly registry: OperationRegistry<
@@ -315,6 +317,11 @@ export interface DistributedMachineDefinition<
     Event,
     unknown
   >;
+  /**
+   * Opts a protocol-v1 definition into trusted-event conversion and
+   * declaration policy enforcement without changing its wire envelope.
+   */
+  readonly remoteIntentAdapter?: "protocol-v1";
   /** Optional completion-aware admission for declared request intents. */
   readonly remoteOperation?: RemoteOperationContract<
     Key,

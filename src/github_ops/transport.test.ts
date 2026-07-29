@@ -73,6 +73,7 @@ describe("github_ops wire contracts", () => {
     const snapshot = GithubOpsRemoteSnapshotSchema.parse(
       projectGithubOpsRemoteSnapshot(7, 2, {
         conflictResolutionClaimId: "claim-1",
+        activeRequestId: null,
         activeInvocationRef: {
           kind: GITHUB_OPS_INVOCATION_KIND,
           entityKey: 7,

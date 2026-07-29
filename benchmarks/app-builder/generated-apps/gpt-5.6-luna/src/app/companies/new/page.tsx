@@ -1,0 +1,1 @@
+import Link from 'next/link';import {CompanyForm} from '@/components/company-form';export default function NewCompanyPage(){return <main className="mx-auto max-w-6xl px-6 py-10"><Link href="/companies" className="text-sm text-indigo-600 hover:underline">← Back to companies</Link><h1 className="mb-6 mt-5 text-3xl font-semibold">New company</h1><CompanyForm/></main>}

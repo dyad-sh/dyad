@@ -1,0 +1,2 @@
+import { getCurrentUser } from '@/lib/auth/session'; import { ensureActiveWorkspace, getMemberships } from '@/lib/workspaces';
+export async function GET() { const user = await getCurrentUser(); if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 }); const active = await ensureActiveWorkspace(user); const memberships = await getMemberships(user.id); return Response.json({ id: user.id, email: user.email, name: user.name, activeWorkspaceId: active.id, memberships }); }

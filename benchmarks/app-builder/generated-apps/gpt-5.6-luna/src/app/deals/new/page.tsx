@@ -1,0 +1,1 @@
+import Link from 'next/link';import {DealForm} from '@/components/deal-form';export default function NewDealPage(){return <main className="mx-auto max-w-6xl px-6 py-10"><Link href="/deals" className="text-sm text-indigo-600 hover:underline">← Back to deals</Link><h1 className="mb-6 mt-5 text-3xl font-semibold">New deal</h1><DealForm/></main>}

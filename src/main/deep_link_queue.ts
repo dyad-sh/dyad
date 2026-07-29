@@ -25,5 +25,9 @@ export function createDeepLinkQueue(handler: DeepLinkHandler) {
         void handler(url);
       }
     },
+
+    markNotReady() {
+      isReady = false;
+    },
   };
 }

@@ -1,0 +1,14 @@
+{
+  "name": "pivot",
+  "model": "gpt-5.6-sol",
+  "estTokens": 196386,
+  "chars": 785543,
+  "messageCount": 72,
+  "fillerMessages": 16,
+  "authoringUsage": {
+    "prompt_tokens": 23615,
+    "completion_tokens": 40004
+  },
+  "missingEvidence": [],
+  "withinBand": true
+}

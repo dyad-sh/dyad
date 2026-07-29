@@ -41,7 +41,12 @@ export { supabaseContracts } from "./supabase";
 export { neonContracts } from "./neon";
 export { migrationContracts } from "./migration";
 export { systemContracts, systemEvents } from "./system";
-export { versionContracts, MAX_VERSION_NOTE_LENGTH } from "./version";
+export {
+  versionContracts,
+  versionEvents,
+  versionEventClient,
+  MAX_VERSION_NOTE_LENGTH,
+} from "./version";
 export { languageModelContracts } from "./language-model";
 export { promptContracts } from "./prompts";
 export { templateContracts } from "./templates";

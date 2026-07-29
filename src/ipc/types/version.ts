@@ -1,5 +1,11 @@
 import { z } from "zod";
-import { defineContract, createClient } from "../contracts/core";
+import {
+  defineContract,
+  createClient,
+  createEventClient,
+  defineEvent,
+} from "../contracts/core";
+import { SafeGitRefSchema } from "../../shared/git_refs";
 
 // =============================================================================
 // Version Schemas
@@ -58,11 +64,6 @@ export const VersionCommandResultSchema = z.object({
 
 export type VersionCommandResult = z.infer<typeof VersionCommandResultSchema>;
 export type RevertVersionResponse = VersionCommandResult;
-
-const SafeGitRefSchema = z
-  .string()
-  .min(1)
-  .refine((v) => !v.startsWith("-"), "git ref must not start with '-'");
 
 export const CheckoutVersionParamsSchema = z.discriminatedUnion("purpose", [
   z.object({
@@ -157,39 +158,62 @@ export type RestoreToMessageResponse = z.infer<
   typeof RestoreToMessageResponseSchema
 >;
 
+export const VersionPreviewPresentationResultSchema = z
+  .object({
+    operationId: z.string(),
+    appId: z.number().int().positive(),
+    notification: z
+      .object({
+        kind: z.enum(["success", "warning", "error"]),
+        message: z.string(),
+      })
+      .nullable(),
+    affectedChatId: z.number().int().positive().nullable(),
+    createdChatId: z.number().int().positive().nullable(),
+  })
+  .strict();
+
 // =============================================================================
 // Version Contracts
 // =============================================================================
 
 export const versionContracts = {
+  acquirePreviewWindowInterest: defineContract({
+    channel: "version-preview:acquire-window-interest",
+    input: z.object({ appId: z.number().int().positive() }).strict(),
+    output: z.object({ acquired: z.boolean() }).strict(),
+  }),
+
+  restorePreviewWindowInterest: defineContract({
+    channel: "version-preview:restore-window-interest",
+    input: z.object({ appId: z.number().int().positive() }).strict(),
+    output: z.object({ acquired: z.boolean() }).strict(),
+  }),
+
+  releasePreviewWindowInterest: defineContract({
+    channel: "version-preview:release-window-interest",
+    input: z
+      .object({
+        appId: z.number().int().positive(),
+        operationId: z.string().min(1),
+        exit: z.discriminatedUnion("type", [
+          z.object({ type: z.literal("close") }).strict(),
+          z
+            .object({
+              type: z.literal("switch-app"),
+              nextAppId: z.number().int().positive().nullable(),
+            })
+            .strict(),
+        ]),
+      })
+      .strict(),
+    output: z.object({ cleanupStarted: z.boolean() }).strict(),
+  }),
+
   listVersions: defineContract({
     channel: "list-versions",
     input: z.object({ appId: z.number(), ref: SafeGitRefSchema.optional() }),
     output: z.array(VersionSchema),
-  }),
-
-  revertVersion: defineContract({
-    channel: "revert-version",
-    input: RevertVersionParamsSchema,
-    output: VersionCommandResultSchema,
-    invalidates: (input) => [
-      { family: "branches", appId: input.appId },
-      { family: "versions", appId: input.appId },
-      { family: "app", appId: input.appId },
-      { family: "problems", appId: input.appId },
-    ],
-  }),
-
-  checkoutVersion: defineContract({
-    channel: "checkout-version",
-    input: CheckoutVersionParamsSchema,
-    output: CheckoutVersionResponseSchema,
-    invalidates: (input) => [
-      { family: "branches", appId: input.appId },
-      { family: "versions", appId: input.appId },
-      { family: "app", appId: input.appId },
-      { family: "problems", appId: input.appId },
-    ],
   }),
 
   getVersionChanges: defineContract({
@@ -212,19 +236,6 @@ export const versionContracts = {
     invalidates: (input) => [{ family: "versions", appId: input.appId }],
   }),
 
-  restoreToMessageVersion: defineContract({
-    channel: "restore-to-message-version",
-    input: RestoreToMessageParamsSchema,
-    output: RestoreToMessageResponseSchema,
-    invalidates: (input) => [
-      { family: "branches", appId: input.appId },
-      { family: "versions", appId: input.appId },
-      { family: "app", appId: input.appId },
-      { family: "problems", appId: input.appId },
-      { family: "chats" },
-    ],
-  }),
-
   getCurrentBranch: defineContract({
     channel: "get-current-branch",
     input: z.object({ appId: z.number() }),
@@ -237,3 +248,12 @@ export const versionContracts = {
 // =============================================================================
 
 export const versionClient = createClient(versionContracts);
+
+export const versionEvents = {
+  previewResult: defineEvent({
+    channel: "version-preview:result",
+    payload: VersionPreviewPresentationResultSchema,
+  }),
+} as const;
+
+export const versionEventClient = createEventClient(versionEvents);

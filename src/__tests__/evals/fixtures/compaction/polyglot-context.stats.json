@@ -1,0 +1,14 @@
+{
+  "name": "polyglot-context",
+  "model": "gpt-5.6-sol",
+  "estTokens": 195165,
+  "chars": 780660,
+  "messageCount": 74,
+  "fillerMessages": 18,
+  "authoringUsage": {
+    "prompt_tokens": 9438,
+    "completion_tokens": 36054
+  },
+  "missingEvidence": [],
+  "withinBand": true
+}

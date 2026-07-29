@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   registerQueryInvalidationListener,
+  visibleEntitiesForRoute,
   type RendererIpcClient,
 } from "./registerRendererIpcListeners";
 import { queryKeys } from "@/lib/queryKeys";
@@ -11,6 +12,21 @@ import type {
   QueryInvalidationBatch,
   WindowSessionId,
 } from "@/window_infrastructure/types";
+
+describe("visible entity publication", () => {
+  it("publishes entities only for routes that visibly present them", () => {
+    expect(visibleEntitiesForRoute("/app-details", 7, null)).toEqual([
+      { kind: "app", id: 7 },
+    ]);
+    expect(visibleEntitiesForRoute("/chat", 7, 11)).toEqual([
+      { kind: "app", id: 7 },
+      { kind: "chat", id: 11 },
+    ]);
+    expect(visibleEntitiesForRoute("/", 7, 11)).toEqual([]);
+    expect(visibleEntitiesForRoute("/settings", 7, 11)).toEqual([]);
+    expect(visibleEntitiesForRoute("/library", 7, 11)).toEqual([]);
+  });
+});
 
 describe("query invalidation listener", () => {
   it("replays startup batches and carries its epoch across re-registration", async () => {

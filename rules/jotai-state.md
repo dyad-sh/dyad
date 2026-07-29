@@ -6,20 +6,20 @@ Use Jotai for client-only state, not as a second cache for IPC data.
 
 The renderer mounts no root Jotai `<Provider>`, so production components and
 `useStore()` resolve to jotai's default store, while tests wrap components in
-`<Provider store={createStore()}>`. Module-scope services that read/write
-atoms outside React (e.g. the version preview command adapter in
-`src/version_preview/commands.ts`) must receive the store from `useStore()`
-at initialization instead of importing `getDefaultStore()`, or test stores
-will silently diverge from the store the service writes to.
+`<Provider store={createStore()}>`. Module-scope services that read/write atoms
+outside React must receive the store from `useStore()` at initialization
+instead of importing `getDefaultStore()`, or test stores will silently diverge
+from the store the service writes to.
 
 ## Version preview state is machine-owned
 
-Git preview orchestration and its ephemeral presentation selection live in
-the app-keyed state machine under `src/version_preview/`. Never add a parallel
-Jotai atom for the selected version, diff file, return branch, or mutation
-status; read the machine snapshot and send events through
-`useVersionPreview(appId)`. The command adapter is the only renderer caller of
-version-mutation IPC (see `plans/better-state-machine.md`).
+Git preview orchestration lives in the main-owned app-keyed actor under
+`src/version_preview/`. Its renderer provider owns only window-local
+presentation state such as pane visibility and selected diff file. Never add a
+parallel Jotai atom for the selected version, return branch, or mutation status;
+read the remote actor snapshot and send revisioned events through
+`useVersionPreview(appId)`. Mutation IPC is not a renderer escape hatch:
+checkout, restore, switch, and recovery commands execute behind the main actor.
 
 Derive UI visibility and action availability from the lifecycle state as well
 as retained session fields. Returning/recovery states may intentionally retain
@@ -33,12 +33,20 @@ block events that those states reject.
 - Router/search params own primary navigation identity. If an atom mirrors a
   route value, keep writes centralized in route-level synchronization code or a
   navigation helper.
-- Jotai owns client-only UI/runtime state that must survive component unmounts:
-  selected UI modes, queues, in-flight streaming state, optimistic chat state,
-  preview runtime state, and transient UI state shared across distant
-  components.
+- Jotai owns client-only UI state that must survive component unmounts:
+  selected UI modes, edit buffers, optimistic content, and transient
+  presentation state shared across distant components. Machine lifecycle,
+  queues, streaming status, and external-runtime status stay in their
+  authoritative snapshots/read models.
 - React local state owns form fields, modal visibility, measurement, and state
   used by a single component subtree.
+
+Each Electron renderer window has an independent Jotai store. Treat that as a
+per-window presentation boundary, never as shared cross-window authority.
+Shared facts belong in a main-owned actor/read model or React Query and arrive
+through subscriptions/invalidation. One-way machine outcomes may update
+window-local presentation atoms only at the permanent, commented write sites
+inventoried by `src/state_machines/boundaries.test.ts`.
 
 ## Entity Scoping
 
@@ -48,9 +56,9 @@ singleton selected-entity value.
 Good examples:
 
 ```ts
-chatMessagesByIdAtom: Map<number, Message[]>;
-isStreamingByIdAtom: Map<number, boolean>;
-previewRunStateByAppIdAtom: Map<number, PreviewRunState>;
+chatInputValuesByIdAtom: Map<number, string>;
+terminalOpenByChatIdAtom: Map<number, boolean>;
+dismissedImageGenerationJobIdsAtom: Set<string>;
 ```
 
 Avoid unkeyed global booleans for entity-specific async work. A value like
@@ -63,13 +71,13 @@ selected id.
 Expose derived atoms or domain hooks for "current selected" reads:
 
 ```ts
-currentPreviewErrorAtom = atom((get) => {
+currentTestSpecsAtom = atom((get) => {
   const appId = get(selectedAppIdAtom);
-  return appId == null ? undefined : get(previewErrorByAppIdAtom).get(appId);
+  return appId == null ? [] : (get(testSpecsByAppIdAtom).get(appId) ?? []);
 });
 ```
 
-Components should usually read `currentPreviewErrorAtom` rather than repeat
+Components should usually read `currentTestSpecsAtom` rather than repeat
 `selectedAppIdAtom` plus raw map lookup logic.
 
 ## Updates
@@ -88,9 +96,9 @@ Components should usually read `currentPreviewErrorAtom` rather than repeat
 
 ## Cleanup
 
-When deleting an entity, prune any keyed Jotai state for that entity. Chat
-state already uses helper atoms such as `removeChatIdFromAllTrackingAtom`; app
-scoped runtime state should follow the same pattern.
+When deleting an entity, prune any keyed Jotai presentation state for that
+entity. Chat state already uses helper atoms such as
+`removeChatIdFromAllTrackingAtom`.
 
 For provider-owned disposable services, keep constructors side-effect-free and
 start external subscriptions only after the provider commits. React StrictMode

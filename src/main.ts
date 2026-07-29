@@ -40,7 +40,10 @@ import {
   retryRecoveryWithKeychainUnlock,
 } from "./main/safe_storage_legacy";
 import { recordUpdaterError } from "./main/updater_state";
-import { sendTelemetryEvent } from "./ipc/utils/telemetry";
+import {
+  sendTelemetryEvent,
+  sendTelemetryEventToWindow,
+} from "./ipc/utils/telemetry";
 import { handleSupabaseOAuthReturn } from "./supabase_admin/supabase_return_handler";
 import { handleDyadProReturn } from "./main/pro";
 import { IS_TEST_BUILD } from "./ipc/utils/test_utils";
@@ -100,6 +103,11 @@ import {
   getUserDataPath,
 } from "./paths/paths";
 import { createDeepLinkQueue } from "./main/deep_link_queue";
+import { DeepLinkWindowReadiness } from "./main/deep_link_window_readiness";
+import {
+  closedWindowSessionDisposition,
+  shouldQuitAfterAllWindowsClosed,
+} from "./main/window_lifecycle_policy";
 import { registerDyadProtocolLinux } from "./main/linux_protocol_registration";
 import {
   applyManagedPnpmToProcessPath,
@@ -131,6 +139,22 @@ import {
 import { pathToFileURL } from "node:url";
 import { windowRegistry } from "./window_infrastructure/main/window_registry";
 import type { WindowSessionId } from "./window_infrastructure/types";
+import {
+  awaitProductWindowRenderer,
+  configureWindowProductController,
+} from "./window_infrastructure/main/window_product_controller";
+import {
+  forgetWindowSessionBestEffort,
+  getWindowSessionFilePath,
+  MAX_PRODUCT_WINDOWS,
+  prepareWindowSessionForCreation,
+  rememberWindowSessionBestEffort,
+  restorableVisibleEntity,
+  WindowSessionPersistence,
+  type WindowSessionPersistenceFailurePolicy,
+  type WindowSessionDescriptor,
+} from "./window_infrastructure/main/window_session_persistence";
+import { DyadError, DyadErrorKind, isDyadError } from "./errors/dyad_error";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();
@@ -302,6 +326,17 @@ function crashReportName(dumpPath: string): string {
   return `crash-${ts}-${id}.dmp`;
 }
 const deepLinkQueue = createDeepLinkQueue(handleDeepLinkReturn);
+const deepLinkWindowReadiness = new DeepLinkWindowReadiness<BrowserWindow>(
+  deepLinkQueue,
+);
+let crashRecoveryWindowReadiness: DeepLinkWindowReadiness<BrowserWindow>;
+crashRecoveryWindowReadiness = new DeepLinkWindowReadiness<BrowserWindow>({
+  markReady: () => {
+    const target = crashRecoveryWindowReadiness.getTarget();
+    if (target) deliverPendingCrashRecovery(target);
+  },
+  markNotReady: () => undefined,
+});
 
 // Load environment variables from .env file
 dotenv.config();
@@ -496,7 +531,7 @@ export async function onReady() {
   }
 
   await onFirstRunMaybe(settings);
-  createWindow();
+  restoreWindowSessions();
   createApplicationMenu();
 
   sendTelemetryEvent("runtime_source", {
@@ -597,38 +632,186 @@ declare global {
 }
 
 let mainWindow: BrowserWindow | null = null;
+const productWindows = new Map<WindowSessionId, BrowserWindow>();
+let windowSessionPersistence: WindowSessionPersistence | undefined;
+let lastClosedWindowSession: WindowSessionDescriptor | undefined;
 let pendingForceCloseData: any = null;
 let pendingActiveChatId: number | null = null;
 let pendingCrashDetected = false;
 let isAppQuitting = false;
 let safeStorageKeychainUnlockRetryScheduled = false;
 
-const createWindow = () => {
-  // Create the browser window.
-  mainWindow = new BrowserWindow({
-    width: process.env.NODE_ENV === "development" ? 1280 : 960,
-    minWidth: 800,
-    height: 700,
-    minHeight: 500,
-    titleBarStyle: "hidden",
-    titleBarOverlay: false,
-    trafficLightPosition: {
-      x: 13,
-      y: 13,
-    },
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      preload: path.join(__dirname, "preload.js"),
-      // transparent: true,
-    },
-    icon: path.join(app.getAppPath(), "assets/icon/logo.png"),
-    // backgroundColor: "#00000001",
-    // frame: false,
+function deliverPendingCrashRecovery(target: BrowserWindow): void {
+  if (!pendingCrashDetected || target !== mainWindow || target.isDestroyed()) {
+    return;
+  }
+
+  target.webContents.send("force-close-detected", {
+    ...(pendingForceCloseData && {
+      performanceData: pendingForceCloseData,
+    }),
+    ...(pendingActiveChatId != null && {
+      activeChatId: pendingActiveChatId,
+    }),
   });
-  const windowSessionId = randomUUID() as WindowSessionId;
-  windowRegistry.register(mainWindow.webContents, windowSessionId);
-  mainWindow.on("focus", () => windowRegistry.setFocused(windowSessionId));
+
+  const nativeCrash = pendingNativeBrowserCrash?.summary ?? null;
+  const nativeCrashAttribution = pendingNativeBrowserCrash?.attribution ?? null;
+  pendingNativeBrowserCrash = null;
+
+  const oom = classifyOom({
+    nativeCrash,
+    performance: pendingForceCloseData,
+  });
+
+  sendTelemetryEventToWindow(target, "app:crash_detected", {
+    // Mark as error so renderer PostHog before_send sampling does not
+    // drop 90% of events for non-Pro users (see src/renderer.tsx).
+    error: true,
+    has_performance_data: !!pendingForceCloseData,
+    ...(pendingForceCloseData &&
+      crashPerformanceEventFields(pendingForceCloseData)),
+    // "native" when a minidump was attributed to this crash, else
+    // "unknown" (no dump: force-kill / OOM-kill / power loss / missed).
+    crash_cause: nativeCrash ? "native" : "unknown",
+    ...(nativeCrash && {
+      // "ptype" when the dump named the browser process itself; "sentinel"
+      // when an annotation-stripped dump was correlated with the crash
+      // sentinel instead (see browserCrashAttribution). Sentinel
+      // attribution is weaker: the dump could belong to a child process
+      // that also lost its labels.
+      crash_attribution: nativeCrashAttribution,
+      crash_reason: nativeCrash.crashReason,
+      exception_code: nativeCrash.exceptionCode,
+      fault_address: nativeCrash.faultAddress,
+      access_type: nativeCrash.accessType,
+      in_page_error_status: nativeCrash.inPageErrorStatus,
+      oom_allocation_size_bytes: nativeCrash.oomAllocationSizeBytes,
+      fast_fail_code: nativeCrash.fastFailCode,
+      faulting_module: nativeCrash.faultingModule,
+      faulting_offset: nativeCrash.faultingOffset,
+      faulting_debug_file: nativeCrash.faultingDebugFile,
+      faulting_debug_id: nativeCrash.faultingDebugId,
+    }),
+    ...(nativeCrash?.annotations &&
+      crashAnnotationEventFields(nativeCrash.annotations)),
+    // The OOM verdict and the signals behind it (see classifyOom).
+    // Comma-joined: crash event properties stay scalar for PostHog.
+    oom_verdict: oom.verdict,
+    ...(oom.signals.length > 0 && { oom_signals: oom.signals.join(",") }),
+  });
+
+  pendingForceCloseData = null;
+  pendingActiveChatId = null;
+  pendingCrashDetected = false;
+}
+
+function getWindowSessionPersistence(): WindowSessionPersistence {
+  windowSessionPersistence ??= new WindowSessionPersistence(
+    getWindowSessionFilePath(app.getPath("userData")),
+  );
+  return windowSessionPersistence;
+}
+
+const createWindow = ({
+  windowSessionId = randomUUID() as WindowSessionId,
+  visibleEntity,
+  persistenceFailurePolicy = "throw",
+}: Partial<WindowSessionDescriptor> & {
+  persistenceFailurePolicy?: WindowSessionPersistenceFailurePolicy;
+} = {}): {
+  windowSessionId: WindowSessionId;
+  browserWindow: BrowserWindow;
+  rendererLoad: Promise<void>;
+} => {
+  const persistence = getWindowSessionPersistence();
+  const { wasAlreadyPersisted, wasPersisted } = prepareWindowSessionForCreation(
+    {
+      persistence,
+      descriptor: { windowSessionId, visibleEntity },
+      failurePolicy: persistenceFailurePolicy,
+      onFailure: (error) => {
+        logger.error(
+          "Failed to persist startup window session; continuing with an unpersisted window:",
+          error,
+        );
+      },
+    },
+  );
+
+  // Create the browser window.
+  let browserWindow: BrowserWindow;
+  try {
+    browserWindow = new BrowserWindow({
+      width: process.env.NODE_ENV === "development" ? 1280 : 960,
+      minWidth: 800,
+      height: 700,
+      minHeight: 500,
+      titleBarStyle: "hidden",
+      titleBarOverlay: false,
+      trafficLightPosition: {
+        x: 13,
+        y: 13,
+      },
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        preload: path.join(__dirname, "preload.js"),
+        // transparent: true,
+      },
+      icon: path.join(app.getAppPath(), "assets/icon/logo.png"),
+      // backgroundColor: "#00000001",
+      // frame: false,
+    });
+  } catch (error) {
+    if (!wasAlreadyPersisted && wasPersisted) {
+      persistence.forget(windowSessionId);
+    }
+    throw error;
+  }
+  mainWindow = browserWindow;
+  deepLinkWindowReadiness.setTarget(browserWindow);
+  crashRecoveryWindowReadiness.setTarget(browserWindow);
+  productWindows.set(windowSessionId, browserWindow);
+  windowRegistry.register(browserWindow.webContents, windowSessionId);
+  browserWindow.on("focus", () => {
+    mainWindow = browserWindow;
+    deepLinkWindowReadiness.setTarget(browserWindow);
+    crashRecoveryWindowReadiness.setTarget(browserWindow);
+    windowRegistry.setFocused(windowSessionId);
+  });
+  browserWindow.once("closed", () => {
+    const descriptor = getWindowSessionPersistence()
+      .read()
+      .find((candidate) => candidate.windowSessionId === windowSessionId);
+    const sessionDisposition = closedWindowSessionDisposition({
+      isAppQuitting,
+      openWindowCountBeforeClose: productWindows.size,
+    });
+    productWindows.delete(windowSessionId);
+    if (sessionDisposition === "forget") {
+      forgetWindowSessionBestEffort({
+        persistence: getWindowSessionPersistence(),
+        windowSessionId,
+        onFailure: (error) => {
+          logger.error(
+            "Failed to remove closed window restoration state; continuing in-memory cleanup:",
+            error,
+          );
+        },
+      });
+    } else if (descriptor) {
+      lastClosedWindowSession = descriptor;
+    }
+    if (mainWindow === browserWindow) {
+      mainWindow =
+        [...productWindows.values()].find((window) => window.isFocused()) ??
+        [...productWindows.values()].at(-1) ??
+        null;
+      deepLinkWindowReadiness.setTarget(mainWindow);
+      crashRecoveryWindowReadiness.setTarget(mainWindow);
+    }
+  });
   const packagedRendererUrl = pathToFileURL(
     path.join(__dirname, "../renderer/main_window/index.html"),
   ).href;
@@ -652,10 +835,10 @@ const createWindow = () => {
       logger.warn("Blocked unexpected main-window navigation:", event.url);
     }
   };
-  mainWindow.webContents.on("will-navigate", rejectUnexpectedNavigation);
-  mainWindow.webContents.on("will-redirect", rejectUnexpectedNavigation);
+  browserWindow.webContents.on("will-navigate", rejectUnexpectedNavigation);
+  browserWindow.webContents.on("will-redirect", rejectUnexpectedNavigation);
   const previewPopupWindows = new Set<BrowserWindow>();
-  mainWindow.webContents.setWindowOpenHandler((details) => {
+  browserWindow.webContents.setWindowOpenHandler((details) => {
     const response = getWindowOpenHandlerResponse(details, allowedDevServerUrl);
     if (response.action === "deny") {
       logger.warn("Blocked unexpected child window:", details.url);
@@ -674,35 +857,35 @@ const createWindow = () => {
       },
     };
   });
-  // In development, wait for DevTools to open, then reload the page once so React DevTools initializes correctly
-  if (process.env.NODE_ENV === "development") {
-    mainWindow.webContents.once("devtools-opened", () => {
-      setTimeout(() => {
-        const windowRef = mainWindow;
-        if (!windowRef?.isDestroyed()) {
-          windowRef?.webContents.reloadIgnoringCache();
-        }
-      }, 300);
-    });
-    mainWindow.webContents.openDevTools();
-  }
+  browserWindow.webContents.on(
+    "did-start-navigation",
+    (_event, _url, isInPlace, isMainFrame) => {
+      if (!isMainFrame || isInPlace) return;
+
+      deepLinkWindowReadiness.markNotReady(browserWindow);
+      crashRecoveryWindowReadiness.markNotReady(browserWindow);
+    },
+  );
 
   // and load the index.html of the app.
+  let initialLoad: Promise<void>;
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+    initialLoad = browserWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
   } else {
-    mainWindow.loadFile(
+    initialLoad = browserWindow.loadFile(
       path.join(__dirname, "../renderer/main_window/index.html"),
     );
   }
+  void initialLoad.catch((error) => {
+    logger.error("Product window renderer failed to load:", error);
+  });
 
   // Handle force-close message and development reload coordination
-  let forceCloseMessageSent = false;
   let devToolsReloadedCount = 0;
-
-  mainWindow.webContents.on("did-finish-load", () => {
-    // Must run on first load, else deep links break in dev.
-    deepLinkQueue.markReady();
+  browserWindow.webContents.on("did-finish-load", () => {
+    // Mark every completed load ready before development-only coordination so
+    // transport readiness does not depend on the DevTools reload heuristic.
+    deepLinkWindowReadiness.markReady(browserWindow);
 
     if (process.env.NODE_ENV === "development") {
       // In dev, wait until AFTER the DevTools-triggered reload before sending the message
@@ -716,74 +899,10 @@ const createWindow = () => {
     // the main process crashed natively, that summary becomes the crash cause
     // reported in app:crash_detected.
     processNativeCrashDumps();
-
-    // Send force-close once after the correct load
-    if (pendingCrashDetected && !forceCloseMessageSent) {
-      forceCloseMessageSent = true;
-
-      const windowRef = mainWindow;
-      if (!windowRef?.isDestroyed()) {
-        windowRef?.webContents.send("force-close-detected", {
-          ...(pendingForceCloseData && {
-            performanceData: pendingForceCloseData,
-          }),
-          ...(pendingActiveChatId != null && {
-            activeChatId: pendingActiveChatId,
-          }),
-        });
-      }
-
-      const nativeCrash = pendingNativeBrowserCrash?.summary ?? null;
-      const nativeCrashAttribution =
-        pendingNativeBrowserCrash?.attribution ?? null;
-      pendingNativeBrowserCrash = null;
-
-      const oom = classifyOom({
-        nativeCrash,
-        performance: pendingForceCloseData,
-      });
-
-      sendTelemetryEvent("app:crash_detected", {
-        // Mark as error so renderer PostHog before_send sampling does not
-        // drop 90% of events for non-Pro users (see src/renderer.tsx).
-        error: true,
-        has_performance_data: !!pendingForceCloseData,
-        ...(pendingForceCloseData &&
-          crashPerformanceEventFields(pendingForceCloseData)),
-        // "native" when a minidump was attributed to this crash, else
-        // "unknown" (no dump: force-kill / OOM-kill / power loss / missed).
-        crash_cause: nativeCrash ? "native" : "unknown",
-        ...(nativeCrash && {
-          // "ptype" when the dump named the browser process itself; "sentinel"
-          // when an annotation-stripped dump was correlated with the crash
-          // sentinel instead (see browserCrashAttribution). Sentinel
-          // attribution is weaker: the dump could belong to a child process
-          // that also lost its labels.
-          crash_attribution: nativeCrashAttribution,
-          crash_reason: nativeCrash.crashReason,
-          exception_code: nativeCrash.exceptionCode,
-          fault_address: nativeCrash.faultAddress,
-          access_type: nativeCrash.accessType,
-          in_page_error_status: nativeCrash.inPageErrorStatus,
-          oom_allocation_size_bytes: nativeCrash.oomAllocationSizeBytes,
-          fast_fail_code: nativeCrash.fastFailCode,
-          faulting_module: nativeCrash.faultingModule,
-          faulting_offset: nativeCrash.faultingOffset,
-          faulting_debug_file: nativeCrash.faultingDebugFile,
-          faulting_debug_id: nativeCrash.faultingDebugId,
-        }),
-        ...(nativeCrash?.annotations &&
-          crashAnnotationEventFields(nativeCrash.annotations)),
-        // The OOM verdict and the signals behind it (see classifyOom).
-        // Comma-joined: crash event properties stay scalar for PostHog.
-        oom_verdict: oom.verdict,
-        ...(oom.signals.length > 0 && { oom_signals: oom.signals.join(",") }),
-      });
-
-      pendingForceCloseData = null;
-      pendingActiveChatId = null;
-      pendingCrashDetected = false;
-    }
+    // Crash recovery follows the focused/current product window and waits for
+    // its post-DevTools-reload renderer. Background restored windows cannot
+    // consume the one-shot dialog or telemetry event.
+    crashRecoveryWindowReadiness.markReady(browserWindow);
 
     // Forward any pending renderer crash recorded on a previous load. We send
     // this from `did-finish-load` rather than `render-process-gone` because the
@@ -791,7 +910,7 @@ const createWindow = () => {
     const rendererCrash = readRendererCrashRecord();
     if (rendererCrash) {
       const perf = rendererCrash.performance;
-      sendTelemetryEvent("renderer:crash_detected", {
+      sendTelemetryEventToWindow(browserWindow, "renderer:crash_detected", {
         // Mark as error so renderer PostHog before_send sampling does not
         // drop 90% of events for non-Pro users (see src/renderer.tsx).
         error: true,
@@ -810,12 +929,31 @@ const createWindow = () => {
 
     scheduleSafeStorageKeychainUnlockRetryAfterRendererLoad();
   });
+  // Start the development-only DevTools reload after the initial renderer load
+  // succeeds. Explicit new-window creation can safely await `initialLoad`
+  // without that intentional reload aborting its promise.
+  if (process.env.NODE_ENV === "development") {
+    void initialLoad.then(
+      () => {
+        if (browserWindow.isDestroyed()) return;
+        browserWindow.webContents.once("devtools-opened", () => {
+          setTimeout(() => {
+            if (!browserWindow.isDestroyed()) {
+              browserWindow.webContents.reloadIgnoringCache();
+            }
+          }, 300);
+        });
+        browserWindow.webContents.openDevTools();
+      },
+      () => undefined,
+    );
+  }
 
   // Persist any non-clean renderer-process termination so we can report it on
   // the next successful renderer load. We deliberately do nothing here besides
   // writing the record: triggering reloads/dialogs is out of scope for the
   // telemetry hook.
-  mainWindow.webContents.on("render-process-gone", (_event, details) => {
+  browserWindow.webContents.on("render-process-gone", (_event, details) => {
     if (isAppQuitting) {
       return;
     }
@@ -840,7 +978,7 @@ const createWindow = () => {
   });
 
   // Enable native context menu on right-click
-  mainWindow.webContents.on("context-menu", (event, params) => {
+  browserWindow.webContents.on("context-menu", (event, params) => {
     // Prevent any default behavior and show our own menu
     event.preventDefault();
 
@@ -861,7 +999,7 @@ const createWindow = () => {
             label: suggestion,
             click: () => {
               try {
-                mainWindow?.webContents.replaceMisspelling(suggestion);
+                browserWindow.webContents.replaceMisspelling(suggestion);
               } catch (error) {
                 logger.error("Failed to replace misspelling:", error);
               }
@@ -890,15 +1028,100 @@ const createWindow = () => {
         {
           label: "Inspect Element",
           click: () =>
-            mainWindow?.webContents.inspectElement(params.x, params.y),
+            browserWindow.webContents.inspectElement(params.x, params.y),
         },
       );
     }
 
     const menu = Menu.buildFromTemplate(template);
-    menu.popup({ window: mainWindow! });
+    menu.popup({ window: browserWindow });
   });
+  return { windowSessionId, browserWindow, rendererLoad: initialLoad };
 };
+
+function restoreWindowSessions(): void {
+  const sessions = getWindowSessionPersistence().read();
+  if (sessions.length === 0) {
+    createWindow({ persistenceFailurePolicy: "continue" });
+    return;
+  }
+  for (const session of sessions) {
+    createWindow({ ...session, persistenceFailurePolicy: "continue" });
+  }
+}
+
+configureWindowProductController({
+  openEntityInNewWindow: async (entity) => {
+    if (productWindows.size >= MAX_PRODUCT_WINDOWS) {
+      throw new DyadError(
+        `Dyad supports up to ${MAX_PRODUCT_WINDOWS} open windows`,
+        DyadErrorKind.Precondition,
+      );
+    }
+    try {
+      const created = createWindow({
+        windowSessionId: randomUUID() as WindowSessionId,
+        visibleEntity: entity,
+      });
+      return await awaitProductWindowRenderer({
+        rendererLoad: created.rendererLoad,
+        result: created.windowSessionId,
+        rollback: () => {
+          const {
+            windowSessionId: failedSessionId,
+            browserWindow: failedWindow,
+          } = created;
+          const failedWebContentsId = failedWindow.webContents.id;
+          if (!failedWindow.isDestroyed()) failedWindow.destroy();
+          windowRegistry.unregister(failedWebContentsId);
+          productWindows.delete(failedSessionId);
+          try {
+            getWindowSessionPersistence().forget(failedSessionId);
+          } catch (rollbackError) {
+            logger.error(
+              "Failed to remove a window session after renderer load failure:",
+              rollbackError,
+            );
+          }
+        },
+      });
+    } catch (error) {
+      if (isDyadError(error)) throw error;
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new DyadError(
+        `Failed to open a new window: ${detail}`,
+        DyadErrorKind.External,
+        { cause: error },
+      );
+    }
+  },
+  initialEntityForSession: (windowSessionId) =>
+    getWindowSessionPersistence()
+      .read()
+      .find((window) => window.windowSessionId === windowSessionId)
+      ?.visibleEntity,
+  setVisibleEntities: (windowSessionId, entities) => {
+    const visibleEntity = restorableVisibleEntity(entities);
+    rememberWindowSessionBestEffort({
+      persistence: getWindowSessionPersistence(),
+      windowSessionId,
+      visibleEntity,
+      onFailure: (error) => {
+        logger.error(
+          "Failed to persist visible window route; continuing without updating restoration state:",
+          error,
+        );
+      },
+    });
+  },
+  mayMigrateLegacyChatTabSession: (windowSessionId) =>
+    getWindowSessionPersistence().read()[0]?.windowSessionId ===
+    windowSessionId,
+  restorableWindowSessionIds: () =>
+    getWindowSessionPersistence()
+      .read()
+      .map((session) => session.windowSessionId),
+});
 
 /**
  * Create application menu with Edit shortcuts (Undo, Redo, Cut, Copy, Paste, etc.)
@@ -991,6 +1214,14 @@ protocol.registerSchemesAsPrivileged([
   },
 ]);
 
+// A cold-start protocol URL arrives in argv before any renderer is ready.
+// Queue it in both production and E2E builds; the latter skips only the
+// singleton lock so parallel test processes can coexist.
+const initialDeepLink = process.argv.find((arg) => arg.startsWith("dyad://"));
+if (initialDeepLink) {
+  deepLinkQueue.handle(initialDeepLink);
+}
+
 // Skip singleton lock for E2E test builds to allow parallel test execution.
 // Deep link handling still works via the 'open-url' event registered below.
 // The 'second-instance' handler is intentionally omitted since it requires the singleton lock.
@@ -1014,18 +1245,6 @@ if (IS_TEST_BUILD) {
         deepLinkQueue.handle(url);
       }
     });
-
-    // On a cold start the deep link arrives in this instance's argv (the
-    // .desktop Exec %u), and second-instance only fires for later launches, so
-    // drain the initial argv here. The queue holds it until the app is ready.
-    // This runs on every launch, so match by dyad:// prefix to ignore the
-    // normal (no-deep-link) startup args.
-    const initialDeepLink = process.argv.find((arg) =>
-      arg.startsWith("dyad://"),
-    );
-    if (initialDeepLink) {
-      deepLinkQueue.handle(initialDeepLink);
-    }
 
     startAppWhenReady();
   }
@@ -1258,7 +1477,7 @@ app.on("child-process-gone", (_event, details) => {
 // for applications and their menu bar to stay active until the user quits
 // explicitly with Cmd + Q.
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
+  if (shouldQuitAfterAllWindowsClosed(process.platform)) {
     app.quit();
   }
 });
@@ -1307,7 +1526,10 @@ app.on("activate", () => {
   // On OS X it's common to re-create a window in the app when the
   // dock icon is clicked and there are no other windows open.
   if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
+    createWindow({
+      ...lastClosedWindowSession,
+      persistenceFailurePolicy: "continue",
+    });
   }
 });
 

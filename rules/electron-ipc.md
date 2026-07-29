@@ -108,7 +108,18 @@ writeSettings({
 
 **Stream-admission barrier atomicity:** In `chat_stream_handlers.ts`, a stream's final admission-block check (`streamAdmissionBlockCounts`) and its `admissionPendingStreams.delete(controller)` "start" transition must run in the **same synchronous frame — no `await` between them**. `cancelActiveStreamsForApp` (used by restore-to-message) deliberately skips controllers still in `admissionPendingStreams`, so a restore that installs its `blockNewStreamsForApp` barrier in a gap between the check and the marker removal would neither cancel the stream nor make it re-observe the new barrier — letting it start mid-restore and dirty the freshly reverted tree. Adding any `await` in that window silently reintroduces this race.
 
-**Electron readiness:** `readSettings()` and `writeSettings()` may decrypt/encrypt secrets through Electron `safeStorage`, which throws `safeStorage cannot be used before app is ready` before `app.whenReady()`. Queue pre-ready entry points like deep links (`open-url`, `second-instance`) until the app/window is ready before calling OAuth/settings handlers.
+**Electron readiness:** `readSettings()` and `writeSettings()` may decrypt/encrypt secrets through Electron `safeStorage`, which throws `safeStorage cannot be used before app is ready` before `app.whenReady()`. Queue pre-ready entry points like deep links (`open-url`, `second-instance`) until the app/window is ready before calling OAuth/settings handlers. In a multi-window flow, tie renderer readiness to the current delivery target: mark delivery not-ready when the target changes to a loading window, and drain only after that target finishes loading. A global first-window-ready flag can flush payloads to a different renderer before its listeners exist.
+`did-finish-load` can still precede React effect subscriptions, so fire-and-forget startup events must register a renderer-module-level listener before bootstrap and replay buffered payloads when their UI consumer mounts.
+Mark transport readiness before development-only completed-load filters: a DevTools reload can abort the initial navigation, making the filtered completion the window's only `did-finish-load` event.
+Clear a window's renderer readiness only for a non-in-place main-frame `did-start-navigation`. `did-start-loading` is broader and can leave deep links queued when a usable renderer triggers loading activity that has no matching top-level `did-finish-load`.
+When explicit window creation awaits `loadURL()` / `loadFile()`, start any
+development-only DevTools reload only after that initial load promise resolves.
+Scheduling the reload first can reject the awaited promise with
+`ERR_ABORTED (-3)` and incorrectly roll back a healthy window.
+When a loaded window consumes and clears a persisted one-shot event, send the
+event through that known-ready window rather than `BrowserWindow.getAllWindows()[0]`.
+In multi-window startup the first global window may still be loading, which
+would drop the only replay before its early listener exists.
 
 **Custom-protocol debugging:** Before using `git bisect` on a `dyad://` flow, quit every dev and packaged Dyad instance and verify which build owns the protocol registration. macOS may route the link to a different running/registered build, producing a convincing but false good/bad result.
 
@@ -122,6 +133,10 @@ writeSettings({
 - Treat output schemas as type/validation contracts, not production serializers: `createTypedHandler` returns the handler result unchanged outside development. Explicitly project and map renderer-visible database columns before returning, especially for large or main-only fields such as `aiMessagesJson`.
 - When editing shared IPC contract code imported by `src/preload.ts` (especially `src/ipc/contracts/core.ts`), run `npm run build` before E2E. The preload Vite target may not resolve `@/...` aliases from those shared modules; use relative imports for preload-reachable shared code when packaging reports `Rollup failed to resolve import "@/..."`.
 - Avoid unguarded top-level `app.on(...)` or similar Electron API calls in modules that are imported broadly by tests. Many unit tests mock only the Electron APIs they touch, so prefer guarded calls like `app?.on?.(...)` or move event registration behind an explicit initialization function.
+- Keep best-effort persistence failures from escaping `BrowserWindow` close
+  callbacks. Catch and log file writes before continuing in-memory registry,
+  focused-window, and delivery-target cleanup; otherwise a closed window can
+  remain the authoritative target.
 - Electron lifecycle events do not await async handlers. When `before-quit` must finish asynchronous cleanup, call `event.preventDefault()` synchronously, wait with a hard timeout, then call `app.quit()` again behind a re-entry guard so cleanup cannot hang or recursively restart shutdown.
 - When main awaits a correlated renderer decision that can auto-settle on timeout or abort, emit a request-specific terminal event for every settlement path. Key every actionable renderer projection (including native notifications) by that request ID, consume the terminal event in each projection, and guard async UI setup so it cannot create stale UI after settlement; stream-end cleanup alone may be delayed or never run.
 - When splitting large handlers behind service boundaries, leave the handler responsible for IPC registration and request orchestration while moving runtime/policy logic into `src/ipc/services/*`. Preserve any intentional module side effects in the extracted service, such as `fixPath()` for child process PATH setup.

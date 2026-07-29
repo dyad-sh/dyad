@@ -1,4 +1,4 @@
-import { StrictMode, useCallback, useEffect } from "react";
+import { StrictMode, useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { router } from "./router";
 import { RouterProvider } from "@tanstack/react-router";
@@ -40,9 +40,21 @@ import {
   useRegisterEntityDisposer,
 } from "./state_machines/react";
 import { clearTestRuntimeForAppAtom } from "./atoms/testRuntimeAtoms";
+import { initializeChatTabSessionStorageAtom } from "./atoms/chatAtoms";
+import {
+  configureChatTabWindowSession,
+  pruneChatTabWindowSessions,
+} from "./window_infrastructure/chat_tab_session_storage";
+import type { VisibleEntity } from "./window_infrastructure/types";
+import { initialWindowNavigation } from "./window_infrastructure/initial_window_navigation";
+import {
+  earlyTelemetryEvents,
+  registerEarlyRendererEvents,
+} from "./app_wiring/early_renderer_events";
 
 // @ts-ignore
 console.log("Running in mode:", import.meta.env.MODE);
+registerEarlyRendererEvents();
 
 interface MyMeta extends Record<string, unknown> {
   showErrorToast: boolean;
@@ -149,6 +161,7 @@ function RendererServices() {
   const store = useStore();
   const chatStreamManager = useChatStreamManager();
   const entityDisposal = useEntityDisposal();
+  const [windowReady, setWindowReady] = useState(false);
   const clearAppRuntime = useCallback(
     (appId: number) => {
       store.set(clearTestRuntimeForAppAtom, appId);
@@ -186,14 +199,9 @@ function RendererServices() {
     };
   }, []);
 
-  useEffect(() => {
-    return registerRendererIpcListeners({
-      ipcClient: ipc,
-      store,
-      queryClient,
-      chatStreamManager,
-      entityDisposal,
-      onTelemetryEvent: ({ eventName, properties }) => {
+  useEffect(
+    () =>
+      earlyTelemetryEvents.subscribe(({ eventName, properties }) => {
         if (eventName === "$exception") {
           posthog.captureException(
             createExceptionFromTelemetry(properties),
@@ -203,11 +211,76 @@ function RendererServices() {
         }
 
         posthog.capture(eventName, properties);
-      },
-    });
-  }, [chatStreamManager, entityDisposal, queryClient, store]);
+      }),
+    [],
+  );
 
-  return <RouterProvider router={router} />;
+  useEffect(() => {
+    let disposed = false;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    let retryDelayMs = 100;
+    const bootstrapWindow = () => {
+      void ipc.windowInfrastructure
+        .bootstrap({})
+        .then((bootstrap) => {
+          if (disposed) return;
+          configureChatTabWindowSession(bootstrap.windowSessionId, {
+            mayMigrateLegacySession: bootstrap.mayMigrateLegacyChatTabSession,
+          });
+          try {
+            pruneChatTabWindowSessions(
+              window.localStorage,
+              bootstrap.restorableWindowSessionIds,
+            );
+            store.set(initializeChatTabSessionStorageAtom);
+          } catch (error) {
+            // Browser storage is optional presentation state. A denied or full
+            // localStorage must not turn a successful main-process bootstrap
+            // into a permanently blank product window.
+            console.error(
+              "Failed to initialize chat tab session storage",
+              error,
+            );
+          }
+          const entity: VisibleEntity | undefined = bootstrap.initialEntity;
+          const navigation = initialWindowNavigation(
+            entity,
+            bootstrap.initialChatAppId,
+          );
+          if (navigation) {
+            void router.navigate({ ...navigation, replace: true });
+          }
+          setWindowReady(true);
+        })
+        .catch((error) => {
+          if (disposed) return;
+          console.error("Failed to initialize window session", error);
+          retryTimer = setTimeout(bootstrapWindow, retryDelayMs);
+          retryDelayMs = Math.min(retryDelayMs * 2, 5_000);
+        });
+    };
+    bootstrapWindow();
+    return () => {
+      disposed = true;
+      if (retryTimer) clearTimeout(retryTimer);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!windowReady) return;
+    return registerRendererIpcListeners({
+      ipcClient: ipc,
+      store,
+      queryClient,
+      chatStreamManager,
+      entityDisposal,
+      getCurrentPathname: () => router.state.location.pathname,
+      subscribeToNavigation: (listener) =>
+        router.subscribe("onResolved", listener),
+    });
+  }, [chatStreamManager, entityDisposal, queryClient, store, windowReady]);
+
+  return windowReady ? <RouterProvider router={router} /> : null;
 }
 
 createRoot(document.getElementById("root")!).render(

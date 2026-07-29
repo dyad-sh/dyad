@@ -4,8 +4,8 @@
 // with the params the renderer computes; this version clicks the REAL Undo
 // button in MessagesList's footer, which computes the previous version from
 // the loaded version list (falling back to the message's sourceCommitHash)
-// and calls the real revert-version IPC — then asserts files, git log, db
-// messages, and the message list DOM shrinking.
+// and dispatches the real main-owned version-preview actor — then asserts
+// files, git log, db messages, and the message list DOM shrinking.
 //
 // The harness mounts the real Toaster, so the UI-visible
 // "Restored version" success toast is asserted alongside the revert commit,
@@ -140,9 +140,6 @@ describe("undo (integration)", () => {
     );
     await waitFor(async () => expect(await loadMessages()).toHaveLength(2), {
       timeout: 15_000,
-    });
-    expect(harness.bridge.lastInvoke("revert-version")?.args[0]).toMatchObject({
-      expectedHeadOid: expect.any(String),
     });
     expect(harness.readAppFile(INDEX_PATH)).toContain("Testing:write-index!");
     expect(harness.readAppFile(INDEX_PATH)).not.toContain(

@@ -154,7 +154,10 @@ export function FirstPromptProvider({
     },
     async openPreviewIfSetupRequired(appId) {
       const opened = await openPreviewIfSetupRequired(appId);
-      if (!opened) store.set(isPreviewOpenAtom, false);
+      if (!opened) {
+        // Keep preview closed when setup has no preview to open.
+        store.set(isPreviewOpenAtom, false);
+      }
       return opened;
     },
     submitPrompt({ appId, chatId, payload }) {
@@ -190,8 +193,11 @@ export function FirstPromptProvider({
       setIsSetupDialogOpen(true);
     },
     clearEditingBuffer() {
+      // Clear submitted prompt text from the home composer.
       store.set(homeChatInputValueAtom, "");
+      // Clear submitted attachments from the home composer.
       store.set(attachmentsAtom, []);
+      // Clear the submitted app selection from the home composer.
       store.set(homeSelectedAppAtom, null);
     },
     showError(message, failure) {

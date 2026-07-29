@@ -45,6 +45,7 @@ export const SETTING_IDS = {
     "setting-enable-pnpm-minimum-release-age-warning",
   enableMcpToolSearch: "setting-enable-mcp-tool-search",
   enableCodeExplorer: "setting-enable-code-explorer",
+  enableMultiWindow: "setting-enable-multi-window",
   enableSelectAppFromHomeChatInput:
     "setting-enable-select-app-from-home-chat-input",
   reset: "setting-reset",
@@ -514,6 +515,22 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
       "graph",
       "agent",
       "tools",
+      "experiment",
+    ],
+    sectionId: SECTION_IDS.experiments,
+    sectionLabel: "Experiments",
+  },
+  {
+    id: SETTING_IDS.enableMultiWindow,
+    label: "Enable multiple windows",
+    description:
+      'Show the experimental "Open in New Window" action in app context menus',
+    keywords: [
+      "window",
+      "multiple",
+      "multi-window",
+      "app",
+      "context menu",
       "experiment",
     ],
     sectionId: SECTION_IDS.experiments,

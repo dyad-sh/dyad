@@ -41,7 +41,7 @@ adding a store, projection, or machine field:
 | Machine-owned lifecycle state | Store it only in the machine snapshot. Read it through domain hooks or facades, derive it with pure selectors, and never mirror it into a writable atom or reconstruct it from command side effects. |
 | External entity data          | Keep IPC-backed and persisted entities in React Query or main-process persistence. Copy data into a machine only when correctness requires a stable operation snapshot.                              |
 | UI/runtime state              | Use Jotai when client-only state is shared or must survive unmounts, and local React state when it belongs to one subtree. Do not promote UI state into a machine merely to reduce the atom count.   |
-| Cross-process projections     | Expose a named read model with one adapter owning hydration, ordering, and writes. Its public API is read-only; it may remain Jotai-backed only where that materially helps composition.             |
+| Cross-process read models     | Expose a named serializable read model. Each renderer window owns a subscription/bootstrap adapter and reads it through domain hooks; the adapter is not a second writable lifecycle authority.      |
 | Derived indexes               | Build read-only external-store selectors over authoritative keyed snapshots. Expose them only for real cross-key consumers and never mutate them independently.                                      |
 
 The verified cleanup inventory in
@@ -58,6 +58,12 @@ The practical test is simple: a lifecycle fact represented in a machine
 snapshot must not also be stored in Jotai. Cross-machine work travels through
 typed facades or owned stores, not through an atom used as a mailbox or status
 bus.
+
+That ownership rule also defines the renderer boundary. A renderer sends a
+typed facade intent; the owner separately decides whether it was admitted,
+committed, completed, or durably accepted. Main-owned actors publish read
+models back to every attached window, while Jotai remains per-window
+presentation state.
 
 ## A quick primer, if state machines aren't familiar
 

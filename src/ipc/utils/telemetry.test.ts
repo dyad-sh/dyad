@@ -1,6 +1,10 @@
-import { describe, expect, it } from "vitest";
+import type { BrowserWindow } from "electron";
+import { describe, expect, it, vi } from "vitest";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { shouldFilterTelemetryException } from "@/ipc/utils/telemetry";
+import {
+  sendTelemetryEventToWindow,
+  shouldFilterTelemetryException,
+} from "@/ipc/utils/telemetry";
 
 describe("shouldFilterTelemetryException", () => {
   it("filters the known Supabase auth noise message", () => {
@@ -70,5 +74,19 @@ describe("shouldFilterTelemetryException", () => {
     expect(
       shouldFilterTelemetryException(new DyadError("?", DyadErrorKind.Unknown)),
     ).toBe(false);
+  });
+});
+
+describe("sendTelemetryEventToWindow", () => {
+  it("sends through the selected product window", () => {
+    const send = vi.fn();
+    const target = { webContents: { send } } as unknown as BrowserWindow;
+
+    sendTelemetryEventToWindow(target, "app:crash_detected", { error: true });
+
+    expect(send).toHaveBeenCalledWith("telemetry:event", {
+      eventName: "app:crash_detected",
+      properties: { error: true },
+    });
   });
 });

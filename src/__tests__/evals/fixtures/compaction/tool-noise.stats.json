@@ -1,0 +1,14 @@
+{
+  "name": "tool-noise",
+  "model": "gpt-5.6-sol",
+  "estTokens": 192017,
+  "chars": 768065,
+  "messageCount": 72,
+  "fillerMessages": 18,
+  "authoringUsage": {
+    "prompt_tokens": 12044,
+    "completion_tokens": 46745
+  },
+  "missingEvidence": [],
+  "withinBand": true
+}

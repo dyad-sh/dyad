@@ -28,4 +28,17 @@ describe("createDeepLinkQueue", () => {
     expect(handler).toHaveBeenCalledOnce();
     expect(handler).toHaveBeenCalledWith("dyad://ready");
   });
+
+  it("queues again while a newly targeted window is loading", () => {
+    const handler = vi.fn();
+    const queue = createDeepLinkQueue(handler);
+    queue.markReady();
+    queue.markNotReady();
+
+    queue.handle("dyad://new-window");
+    expect(handler).not.toHaveBeenCalled();
+
+    queue.markReady();
+    expect(handler).toHaveBeenCalledWith("dyad://new-window");
+  });
 });

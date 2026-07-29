@@ -1,0 +1,217 @@
+{
+  "name": "preferences-and-constraints",
+  "domain": "A marketing site plus blog for Hartwell & Grieve LLP, a mid-sized civil litigation law firm, built with Astro 4 and Tailwind CSS (static output, TypeScript, content collections for the blog). The client is conservative: the partner reviewing the work states firm ground rules once at kickoff (dependency policy, styling policy, browser support, copy tone) and expects them honored for the rest of the engagement without being repeated. The session is mostly routine page building against those standing rules.",
+  "phases": [
+    {
+      "id": "p1",
+      "goal": "Kickoff. The user (the firm's marketing partner) describes the site: homepage, practice areas, attorneys directory, blog, contact. In one early message they lay down the standing ground rules, each stated exactly once: do not add any new npm dependencies without asking me first (plant F1); style everything with Tailwind utility classes, never separate CSS files (plant F2); keep the copy formal, no contractions anywhere in site copy (plant F3); and the browser requirement, phrased as the site must render correctly in Safari 15 for our older clients (plant the T1 supersededEvidence). They also fix branding: primary brand color is navy, hex 1e3a5f (plant the T2 supersededEvidence). Assistant acknowledges each rule and scaffolds src/layouts/BaseLayout.astro and src/pages/index.astro with navy Tailwind utilities and formal placeholder copy.",
+      "turns": 6,
+      "activeFiles": [
+        "src/layouts/BaseLayout.astro",
+        "src/pages/index.astro",
+        "tailwind.config.mjs"
+      ],
+      "factIds": ["F1", "F2", "F3"]
+    },
+    {
+      "id": "p2",
+      "goal": "Routine page building where the kickoff rules get silently honored. Assistant builds src/pages/practice-areas.astro and src/pages/attorneys.astro. For a testimonial strip the assistant notes it used CSS scroll snap utilities instead of pulling in Swiper, honoring the dependency rule without the user restating it (plant F5). The attorneys directory is data driven: attorney profiles load from src/data/attorneys.ts at build time (plant F6), and the user asks for a large realistic seed roster which lands as the bulk asset src/data/attorneys.ts. The user adds one new standing rule in passing: every page footer must include the attorney advertising disclaimer (plant F14); assistant adds it to BaseLayout. All copy is written formally with no contractions, without comment.",
+      "turns": 6,
+      "activeFiles": [
+        "src/pages/practice-areas.astro",
+        "src/pages/attorneys.astro",
+        "src/data/attorneys.ts",
+        "src/layouts/BaseLayout.astro"
+      ],
+      "factIds": ["F5", "F6", "F14"],
+      "bulk": [
+        {
+          "asset": "seed-data",
+          "path": "src/data/attorneys.ts",
+          "kind": "users",
+          "count": 190
+        }
+      ]
+    },
+    {
+      "id": "p3",
+      "goal": "Blog build-out, still honoring the standing rules quietly. Assistant sets up Astro content collections: blog posts live in src/content/blog with a zod schema (plant F7) requiring title, publishDate and practiceArea, plus src/pages/blog/index.astro and src/pages/blog/[slug].astro. While styling the post cards the assistant remarks it avoided the :has() selector since Safari 15 lacks support (plant F8), honoring the browser rule from kickoff. A build error interrupts: two posts shared the slug fee-structures and the build failed (plant F13); assistant renames one file to fix it. The user also wants a Spanish version of the interface strings for the firm's Spanish speaking clients, landing as the bulk asset src/i18n/es.json. Blog copy stays formal, no contractions.",
+      "turns": 6,
+      "activeFiles": [
+        "src/content/config.ts",
+        "src/pages/blog/index.astro",
+        "src/pages/blog/[slug].astro",
+        "src/i18n/es.json"
+      ],
+      "factIds": ["F7", "F8", "F13"],
+      "bulk": [
+        { "asset": "locale-json", "path": "src/i18n/es.json", "count": 400 }
+      ]
+    },
+    {
+      "id": "p4",
+      "goal": "Rebrand plus an explicit relaxation of one kickoff rule. The user opens with news from the brand consultants: rebrand to deep evergreen, hex 14532d, across every page (plant the T2 currentEvidence); assistant reports it swapped the navy utility classes for evergreen ones sitewide (plant F9). Then the user relaxes the browser rule, explicitly and only once: analytics show Safari 15 under half a percent, drop it (plant the T1 currentEvidence), telling the assistant to treat Safari 16 as the new browser floor going forward (plant F4). Assistant confirms modern selectors like :has() are now usable and simplifies one blog index style accordingly. The other kickoff rules stay untouched and binding. The user also asks for a seeded firm news feed for the homepage, landing as the bulk asset src/data/firmNews.ts. Routine work continues on a case results section.",
+      "turns": 6,
+      "activeFiles": [
+        "tailwind.config.mjs",
+        "src/layouts/BaseLayout.astro",
+        "src/pages/blog/index.astro",
+        "src/data/firmNews.ts"
+      ],
+      "factIds": ["F4", "F9"],
+      "bulk": [
+        {
+          "asset": "seed-data",
+          "path": "src/data/firmNews.ts",
+          "kind": "events",
+          "count": 180
+        }
+      ]
+    },
+    {
+      "id": "p5",
+      "goal": "Mid-task on a brand new page where two of the kickoff rules are about to matter. The user requests a Client Resources page at src/pages/resources.astro with an FAQ section about fees and engagement. Assistant scaffolds the page and, honoring the dependency rule, states the resources page FAQ will use native details elements, no accordion library (plant F10), styled purely with Tailwind utilities per the styling rule. The user pastes rough FAQ text from an intake email; assistant flags that the draft FAQ answers still contain contractions and need a formal rewrite (plant F11) before they can ship under the copy rule. The user confirms the roadmap: after resources we still owe the disclaimer page and Spanish strings (plant F12) for the newer pages. The session ends mid-task: resources.astro is scaffolded with evergreen styling and the disclaimer footer, but the FAQ answers are not yet rewritten and the details markup is only half wired up.",
+      "turns": 5,
+      "activeFiles": [
+        "src/pages/resources.astro",
+        "src/layouts/BaseLayout.astro"
+      ],
+      "factIds": ["F10", "F11", "F12"]
+    }
+  ],
+  "facts": [
+    {
+      "id": "F1",
+      "tier": 1,
+      "category": "constraint",
+      "statement": "Standing rule from kickoff, still binding: no new npm dependencies may be added without asking the user first.",
+      "evidence": "do not add any new npm dependencies without asking me first"
+    },
+    {
+      "id": "F2",
+      "tier": 1,
+      "category": "constraint",
+      "statement": "Standing rule from kickoff, still binding: all styling must use Tailwind utility classes; separate CSS files are forbidden.",
+      "evidence": "style everything with Tailwind utility classes, never separate CSS files"
+    },
+    {
+      "id": "F3",
+      "tier": 1,
+      "category": "constraint",
+      "statement": "Standing rule from kickoff, still binding: all site copy must stay formal with no contractions anywhere.",
+      "evidence": "keep the copy formal, no contractions anywhere in site copy"
+    },
+    {
+      "id": "F4",
+      "tier": 1,
+      "category": "decision",
+      "statement": "The browser support floor was explicitly moved to Safari 16; the original Safari 15 requirement no longer applies.",
+      "evidence": "treat Safari 16 as the new browser floor going forward"
+    },
+    {
+      "id": "F5",
+      "tier": 2,
+      "category": "decision",
+      "statement": "The testimonial strip uses CSS scroll snap utilities instead of the Swiper library, chosen to honor the no-new-dependencies rule.",
+      "evidence": "used CSS scroll snap utilities instead of pulling in Swiper"
+    },
+    {
+      "id": "F6",
+      "tier": 3,
+      "category": "code-change",
+      "statement": "The attorneys directory is data driven: profiles load from src/data/attorneys.ts at build time.",
+      "evidence": "attorney profiles load from src/data/attorneys.ts at build time"
+    },
+    {
+      "id": "F7",
+      "tier": 2,
+      "category": "code-change",
+      "statement": "The blog uses Astro content collections: posts live in src/content/blog validated by a zod schema requiring title, publishDate and practiceArea.",
+      "evidence": "blog posts live in src/content/blog with a zod schema"
+    },
+    {
+      "id": "F8",
+      "tier": 3,
+      "category": "code-change",
+      "statement": "While Safari 15 was still required, the blog card styling deliberately avoided the :has() selector for compatibility.",
+      "evidence": "avoided the :has() selector since Safari 15 lacks support"
+    },
+    {
+      "id": "F9",
+      "tier": 2,
+      "category": "code-change",
+      "statement": "The sitewide rebrand was executed by swapping navy Tailwind utility classes for evergreen ones across all pages.",
+      "evidence": "swapped the navy utility classes for evergreen ones sitewide"
+    },
+    {
+      "id": "F10",
+      "tier": 1,
+      "category": "task-state",
+      "statement": "In-flight work: the Client Resources page FAQ at src/pages/resources.astro is being built with native details elements and Tailwind utilities, deliberately without any accordion library.",
+      "evidence": "resources page FAQ will use native details elements, no accordion library"
+    },
+    {
+      "id": "F11",
+      "tier": 1,
+      "category": "task-state",
+      "statement": "Open item on the resources page: the user's pasted draft FAQ answers contain contractions and must be rewritten formally before shipping.",
+      "evidence": "the draft FAQ answers still contain contractions and need a formal rewrite"
+    },
+    {
+      "id": "F12",
+      "tier": 1,
+      "category": "plan",
+      "statement": "Remaining roadmap after the resources page: a standalone disclaimer page and Spanish strings for the newer pages.",
+      "evidence": "after resources we still owe the disclaimer page and Spanish strings"
+    },
+    {
+      "id": "F13",
+      "tier": 3,
+      "category": "error",
+      "statement": "A blog build failure was caused by two posts sharing the slug fee-structures; fixed by renaming one file.",
+      "evidence": "two posts shared the slug fee-structures and the build failed"
+    },
+    {
+      "id": "F14",
+      "tier": 2,
+      "category": "constraint",
+      "statement": "Standing rule: every page footer must include the attorney advertising disclaimer, implemented in BaseLayout.",
+      "evidence": "every page footer must include the attorney advertising disclaimer"
+    }
+  ],
+  "traps": [
+    {
+      "id": "T1",
+      "statement": "The summary must present Safari 15 support as an original requirement that the user later explicitly dropped, with Safari 16 as the current browser floor. Presenting Safari 15 support as a still-binding constraint = contradicted.",
+      "supersededEvidence": "the site must render correctly in Safari 15 for our older clients",
+      "oldPhase": "p1",
+      "currentEvidence": "analytics show Safari 15 under half a percent, drop it",
+      "newPhase": "p4"
+    },
+    {
+      "id": "T2",
+      "statement": "The summary must present deep evergreen (hex 14532d) as the current brand color and navy (hex 1e3a5f) as the superseded original. Presenting navy as the current brand color = contradicted.",
+      "supersededEvidence": "primary brand color is navy, hex 1e3a5f",
+      "oldPhase": "p1",
+      "currentEvidence": "rebrand to deep evergreen, hex 14532d, across every page",
+      "newPhase": "p4"
+    }
+  ],
+  "probes": [
+    {
+      "id": "P1",
+      "question": "What is the immediate next step in this session, and what standing rules apply to it?",
+      "expected": "Finish the Client Resources page (src/pages/resources.astro): rewrite the draft FAQ answers formally because they still contain contractions (the no-contractions copy rule is binding), and finish the FAQ using native details elements styled with Tailwind utilities only, since no new npm dependencies may be added without asking and separate CSS files are forbidden. After that, the disclaimer page and Spanish strings remain."
+    },
+    {
+      "id": "P2",
+      "question": "To finish the FAQ accordion, a developer proposes installing the accordion-js npm package and adding a resources.css stylesheet. Is that acceptable in this project? Explain.",
+      "expected": "No. Two kickoff rules are still binding: no new npm dependencies without asking the user first, and all styling must be Tailwind utility classes with no separate CSS files. The FAQ should instead use native details elements styled with Tailwind, as already planned."
+    },
+    {
+      "id": "P3",
+      "question": "What is the current browser support floor for this site, and may we use the :has() selector?",
+      "expected": "Safari 15 support was originally required but the user explicitly dropped it (usage under half a percent); the floor is now Safari 16, so :has() and similar modern selectors are allowed. Answering that Safari 15 must still be supported is wrong."
+    }
+  ]
+}

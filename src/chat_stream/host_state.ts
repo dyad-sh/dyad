@@ -1,5 +1,5 @@
 import type { ChatResponseEnd } from "@/ipc/types/chat";
-import type { ChatStreamInvocationRef } from "./state";
+import type { ChatStreamInvocationRef } from "./invocation";
 import type { ChatQueueEntry, SerializableChatTurnIntent } from "./transport";
 
 export interface ChatStreamHostState {

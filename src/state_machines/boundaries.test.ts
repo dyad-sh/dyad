@@ -8,6 +8,7 @@ const MACHINE_DIRECTORIES = [
   "app_run",
   "chat_stream",
   "connection_flow",
+  "deep_link_window_readiness",
   "first_prompt",
   "github_ops",
   "image_generation",
@@ -20,7 +21,6 @@ const MACHINE_DIRECTORIES = [
   "user_input",
 ] as const;
 type MachineDirectory = (typeof MACHINE_DIRECTORIES)[number];
-type DeletionPr = "A2" | "A3" | "A4" | "A5" | "A6";
 type BoundaryRule =
   | "pure-machine-module"
   | "writable-projection-export"
@@ -32,47 +32,90 @@ interface AllowlistEntry {
   atom: string;
   file: string;
   detail: string;
-  deletionPr: DeletionPr;
-  note?: string;
 }
 
 /**
- * Temporary ownership violations verified against the population-2 and
- * population-3 inventory in plans/claude-cleanup-machines.md.
+ * Permanent machine-to-UI side effects. These are one-way presentation
+ * writes, never lifecycle projections or machine inputs.
  *
- * Exact matching is intentional: deleting a violation makes this list stale,
- * while adding one fails until it is classified and assigned to A2-A6.
+ * Plan-handoff navigation now crosses the presentation-routing boundary and
+ * lands in hooks/usePlanEvents.ts; first-prompt clears its submitted editing
+ * buffer; chat-stream and first-prompt may open/close the window-local preview.
  */
-const ALLOWLIST: readonly AllowlistEntry[] = [
+const PERMANENT_UI_WRITE_ALLOWLIST = [
   {
-    rule: "pure-machine-module",
-    atom: "chatMessagesByIdAtom",
-    file: "chat_stream/state.ts",
-    detail: "@/ipc/types",
-    deletionPr: "A6",
-    note: "Inventory gap: lifecycle request types still come from IPC.",
+    atom: "previewModeAtom",
+    file: "hooks/usePlanEvents.ts",
+    marker: 'setPreviewMode("preview")',
+    rationale: "Show implementation preview after the handoff is accepted.",
   },
   {
-    rule: "writable-projection-export",
-    atom: "chatMessagesByIdAtom",
-    file: "atoms/chatAtoms.ts",
-    detail: "exported writable atom",
-    deletionPr: "A6",
+    atom: "selectedChatIdAtom",
+    file: "hooks/usePlanEvents.ts",
+    marker: "setSelectedChatId(payload.targetChatId)",
+    rationale: "Select the chat that will implement the accepted plan.",
   },
   {
-    rule: "writable-projection-export",
-    atom: "planStateAtom",
-    file: "atoms/planAtoms.ts",
-    detail: "exported writable atom",
-    deletionPr: "A6",
+    atom: "isPreviewOpenAtom",
+    file: "first_prompt/FirstPromptProvider.tsx",
+    marker: "store.set(isPreviewOpenAtom, false)",
+    rationale: "Keep preview closed when setup has no preview to open.",
+  },
+  {
+    atom: "homeChatInputValueAtom",
+    file: "first_prompt/FirstPromptProvider.tsx",
+    marker: 'store.set(homeChatInputValueAtom, "")',
+    rationale: "Clear submitted prompt text from the home composer.",
+  },
+  {
+    atom: "attachmentsAtom",
+    file: "first_prompt/FirstPromptProvider.tsx",
+    marker: "store.set(attachmentsAtom, [])",
+    rationale: "Clear submitted attachments from the home composer.",
+  },
+  {
+    atom: "homeSelectedAppAtom",
+    file: "first_prompt/FirstPromptProvider.tsx",
+    marker: "store.set(homeSelectedAppAtom, null)",
+    rationale: "Clear the submitted app selection from the home composer.",
+  },
+  {
+    atom: "isPreviewOpenAtom",
+    file: "chat_stream/remote_manager.ts",
+    marker: "this.store.set(isPreviewOpenAtom, true)",
+    rationale: "Open the window-local preview after generated files change.",
   },
 ] as const;
+
+/**
+ * The chat stream's message collection is a renderer read-model cache, not a
+ * lifecycle projection or UI-presentation side effect.
+ */
+const PERMANENT_READ_MODEL_WRITE_ALLOWLIST = [
+  {
+    atom: "chatMessagesByIdAtom",
+    file: "chat_stream/remote_manager.ts",
+  },
+  {
+    atom: "chatMessagesByIdAtom",
+    file: "version_preview/VersionPreviewProvider.tsx",
+  },
+] as const;
+
+const ALLOWLIST: readonly AllowlistEntry[] = [];
 
 interface BoundaryViolation {
   rule: BoundaryRule;
   file: string;
   detail: string;
   atom: string;
+}
+
+interface ObservedAtomWrite {
+  atom: string;
+  file: string;
+  call: ts.CallExpression;
+  sourceFile: ts.SourceFile;
 }
 
 function productionFiles(directory: string): string[] {
@@ -370,6 +413,306 @@ function importedCallName(
   return undefined;
 }
 
+function importedJotaiCallName(
+  call: ts.CallExpression,
+  bindings: Map<string, { imported: string; source: string }>,
+): string | undefined {
+  if (ts.isIdentifier(call.expression)) {
+    const binding = bindings.get(call.expression.text);
+    return binding && isJotaiModule(binding.source)
+      ? binding.imported
+      : undefined;
+  }
+  if (
+    ts.isPropertyAccessExpression(call.expression) &&
+    ts.isIdentifier(call.expression.expression)
+  ) {
+    const binding = bindings.get(call.expression.expression.text);
+    if (binding?.imported === "*" && isJotaiModule(binding.source)) {
+      return call.expression.name.text;
+    }
+  }
+  return undefined;
+}
+
+function atomArgumentName(
+  call: ts.CallExpression,
+  index: number,
+  bindings: Map<string, { imported: string; source: string }>,
+): string | undefined {
+  const argument = call.arguments[index];
+  if (argument && ts.isIdentifier(argument)) {
+    const binding = bindings.get(argument.text);
+    return binding && binding.imported !== "*"
+      ? binding.imported
+      : argument.text;
+  }
+  if (
+    argument &&
+    (ts.isPropertyAccessExpression(argument) ||
+      ts.isElementAccessExpression(argument)) &&
+    ts.isIdentifier(argument.expression)
+  ) {
+    const binding = bindings.get(argument.expression.text);
+    const atom =
+      ts.isPropertyAccessExpression(argument) ||
+      !argument.argumentExpression ||
+      !ts.isStringLiteralLike(argument.argumentExpression)
+        ? ts.isPropertyAccessExpression(argument)
+          ? argument.name.text
+          : undefined
+        : argument.argumentExpression.text;
+    return binding?.imported === "*" ? atom : undefined;
+  }
+  return undefined;
+}
+
+function jotaiStoreTypeAliases(
+  sourceFile: ts.SourceFile,
+  bindings: Map<string, { imported: string; source: string }>,
+): Set<string> {
+  const aliases = new Set<string>();
+  for (const statement of sourceFile.statements) {
+    if (
+      !ts.isTypeAliasDeclaration(statement) ||
+      !ts.isTypeReferenceNode(statement.type) ||
+      !ts.isIdentifier(statement.type.typeName) ||
+      statement.type.typeName.text !== "ReturnType"
+    ) {
+      continue;
+    }
+    const argument = statement.type.typeArguments?.[0];
+    if (
+      argument &&
+      ts.isTypeQueryNode(argument) &&
+      ts.isIdentifier(argument.exprName)
+    ) {
+      const binding = bindings.get(argument.exprName.text);
+      if (
+        binding?.imported === "createStore" &&
+        isJotaiModule(binding.source)
+      ) {
+        aliases.add(statement.name.text);
+      }
+    }
+  }
+  return aliases;
+}
+
+function isJotaiStoreType(
+  type: ts.TypeNode | undefined,
+  aliases: Set<string>,
+  bindings: Map<string, { imported: string; source: string }>,
+): boolean {
+  if (
+    !type ||
+    !ts.isTypeReferenceNode(type) ||
+    !ts.isIdentifier(type.typeName)
+  ) {
+    return false;
+  }
+  if (aliases.has(type.typeName.text)) return true;
+  const binding = bindings.get(type.typeName.text);
+  return binding?.imported === "Store" && isJotaiModule(binding.source);
+}
+
+interface JotaiStoreBindings {
+  identifiers: Set<string>;
+  properties: Set<string>;
+}
+
+function jotaiStoreBindings(
+  sourceFile: ts.SourceFile,
+  bindings: Map<string, { imported: string; source: string }>,
+): JotaiStoreBindings {
+  const stores: JotaiStoreBindings = {
+    identifiers: new Set<string>(),
+    properties: new Set<string>(),
+  };
+  const aliases = jotaiStoreTypeAliases(sourceFile, bindings);
+  const visit = (node: ts.Node) => {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
+      if (
+        (node.initializer &&
+          ts.isCallExpression(node.initializer) &&
+          ["createStore", "useStore"].includes(
+            importedJotaiCallName(node.initializer, bindings) ?? "",
+          )) ||
+        isJotaiStoreType(node.type, aliases, bindings)
+      ) {
+        stores.identifiers.add(node.name.text);
+      }
+    } else if (
+      (ts.isParameter(node) || ts.isPropertyDeclaration(node)) &&
+      ts.isIdentifier(node.name) &&
+      isJotaiStoreType(node.type, aliases, bindings)
+    ) {
+      stores.identifiers.add(node.name.text);
+      stores.properties.add(node.name.text);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return stores;
+}
+
+function isJotaiStoreSetCall(
+  call: ts.CallExpression,
+  stores: JotaiStoreBindings,
+): boolean {
+  let receiver: ts.Expression | undefined;
+  if (
+    ts.isPropertyAccessExpression(call.expression) &&
+    call.expression.name.text === "set"
+  ) {
+    receiver = call.expression.expression;
+  } else if (
+    ts.isElementAccessExpression(call.expression) &&
+    call.expression.argumentExpression &&
+    ts.isStringLiteralLike(call.expression.argumentExpression) &&
+    call.expression.argumentExpression.text === "set"
+  ) {
+    receiver = call.expression.expression;
+  }
+  if (!receiver) return false;
+  if (ts.isIdentifier(receiver)) {
+    return stores.identifiers.has(receiver.text);
+  }
+  return (
+    ts.isPropertyAccessExpression(receiver) &&
+    receiver.expression.kind === ts.SyntaxKind.ThisKeyword &&
+    stores.properties.has(receiver.name.text)
+  );
+}
+
+function atomSetterBindings(
+  sourceFile: ts.SourceFile,
+  bindings: Map<string, { imported: string; source: string }>,
+): Map<string, string> {
+  const setterAtoms = new Map<string, string>();
+  const visit = (node: ts.Node) => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      node.initializer &&
+      ts.isCallExpression(node.initializer)
+    ) {
+      const hook = importedJotaiCallName(node.initializer, bindings);
+      const atom = atomArgumentName(node.initializer, 0, bindings);
+      if (atom && hook === "useSetAtom" && ts.isIdentifier(node.name)) {
+        setterAtoms.set(node.name.text, atom);
+      } else if (
+        atom &&
+        hook === "useAtom" &&
+        ts.isArrayBindingPattern(node.name)
+      ) {
+        const setter = node.name.elements[1];
+        if (
+          setter &&
+          ts.isBindingElement(setter) &&
+          ts.isIdentifier(setter.name)
+        ) {
+          setterAtoms.set(setter.name.text, atom);
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return setterAtoms;
+}
+
+function collectAtomWritesIn(
+  filePath: string,
+  sourceFile: ts.SourceFile,
+  root: ts.Node,
+  bindings: Map<string, { imported: string; source: string }>,
+  setterAtoms: Map<string, string>,
+  stores: JotaiStoreBindings,
+): ObservedAtomWrite[] {
+  const writes: ObservedAtomWrite[] = [];
+  const visit = (node: ts.Node) => {
+    if (ts.isCallExpression(node)) {
+      let atom: string | undefined;
+      if (isJotaiStoreSetCall(node, stores)) {
+        atom = atomArgumentName(node, 0, bindings);
+      } else if (ts.isIdentifier(node.expression)) {
+        atom = setterAtoms.get(node.expression.text);
+      }
+      if (atom) {
+        writes.push({
+          atom,
+          file: relativeSourcePath(filePath),
+          call: node,
+          sourceFile,
+        });
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(root);
+  return writes;
+}
+
+function collectMachineAtomWrites(): ObservedAtomWrite[] {
+  return MACHINE_DIRECTORIES.flatMap((machine) =>
+    productionFiles(path.join(SOURCE_ROOT, machine)).flatMap((filePath) => {
+      const sourceFile = sourceFileFor(filePath);
+      const bindings = importedBindings(sourceFile);
+      return collectAtomWritesIn(
+        filePath,
+        sourceFile,
+        sourceFile,
+        bindings,
+        atomSetterBindings(sourceFile, bindings),
+        jotaiStoreBindings(sourceFile, bindings),
+      );
+    }),
+  );
+}
+
+function collectPlanHandoffPresentationWrites(): ObservedAtomWrite[] {
+  const filePath = path.join(SOURCE_ROOT, "hooks/usePlanEvents.ts");
+  const sourceFile = sourceFileFor(filePath);
+  const bindings = importedBindings(sourceFile);
+  const setterAtoms = atomSetterBindings(sourceFile, bindings);
+
+  const writes: ObservedAtomWrite[] = [];
+  const findPresentationCallback = (node: ts.Node) => {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      node.expression.name.text === "onHandoffPresentation"
+    ) {
+      const callback = node.arguments[0];
+      if (callback) {
+        writes.push(
+          ...collectAtomWritesIn(
+            filePath,
+            sourceFile,
+            callback,
+            bindings,
+            setterAtoms,
+            jotaiStoreBindings(sourceFile, bindings),
+          ),
+        );
+      }
+      return;
+    }
+    ts.forEachChild(node, findPresentationCallback);
+  };
+  findPresentationCallback(sourceFile);
+  return writes;
+}
+
+function precedingLine(sourceFile: ts.SourceFile, node: ts.Node): string {
+  const { line } = sourceFile.getLineAndCharacterOfPosition(
+    node.getStart(sourceFile),
+  );
+  if (line === 0) return "";
+  const lineStarts = sourceFile.getLineStarts();
+  return sourceFile.text.slice(lineStarts[line - 1], lineStarts[line]).trim();
+}
+
 function usesRuntimeGetDefaultStore(sourceFile: ts.SourceFile): boolean {
   const jotaiNamespaces = new Set<string>();
   for (const statement of sourceFile.statements) {
@@ -485,6 +828,95 @@ describe("state-machine boundaries", () => {
     expect(toPortablePath("first_prompt\\FirstPromptProvider.tsx")).toBe(
       "first_prompt/FirstPromptProvider.tsx",
     );
+  });
+
+  it("keeps only the permanent machine-to-UI presentation writes", () => {
+    const writes = [
+      ...collectMachineAtomWrites(),
+      ...collectPlanHandoffPresentationWrites(),
+    ];
+    const comparable = (entry: { atom: string; file: string }) => ({
+      atom: entry.atom,
+      file: entry.file,
+    });
+    const sort = <T extends ReturnType<typeof comparable>>(entries: T[]) =>
+      entries.sort((left, right) =>
+        `${left.file}:${left.atom}`.localeCompare(
+          `${right.file}:${right.atom}`,
+        ),
+      );
+
+    expect(sort(writes.map(comparable))).toEqual(
+      sort(
+        [
+          ...PERMANENT_UI_WRITE_ALLOWLIST,
+          ...PERMANENT_READ_MODEL_WRITE_ALLOWLIST,
+        ].map(comparable),
+      ),
+    );
+
+    for (const entry of PERMANENT_UI_WRITE_ALLOWLIST) {
+      const write = writes.find(
+        (candidate) =>
+          candidate.atom === entry.atom && candidate.file === entry.file,
+      );
+      expect(write, `${entry.file} retains ${entry.atom} write`).toBeDefined();
+      expect(write!.call.getText(write!.sourceFile)).toBe(entry.marker);
+      expect(
+        precedingLine(write!.sourceFile, write!.call),
+        `${entry.file} documents the ${entry.atom} permanent keep`,
+      ).toContain(entry.rationale);
+    }
+  });
+
+  it("detects direct, hook, and namespace machine-to-Jotai writes", () => {
+    const filePath = path.join(SOURCE_ROOT, "first_prompt/fixture.tsx");
+    const sourceFile = ts.createSourceFile(
+      filePath,
+      `
+        import { atom, useSetAtom, useStore } from "jotai";
+        import { useAtom } from "jotai/react";
+        import { lifecycleAtom } from "@/atoms/lifecycleAtoms";
+        import * as atoms from "@/atoms/lifecycleAtoms";
+        import { externalLifecycle } from "../compatibility/lifecycle";
+        const store = useStore();
+        const localLifecycle = atom(false);
+        const ordinaryMap = new Map();
+        const setLifecycle = useSetAtom(lifecycleAtom);
+        const [, setLifecycleFromTuple] = useAtom(lifecycleAtom);
+        store.set(lifecycleAtom, direct);
+        store.set(localLifecycle, local);
+        store.set(externalLifecycle, external);
+        ordinaryMap.set(externalLifecycle, notAJotaiWrite);
+        setLifecycle(hook);
+        setLifecycleFromTuple(tupleHook);
+        store.set(atoms.lifecycleAtom, namespace);
+        store["set"](atoms["lifecycleAtom"], elementAccess);
+      `,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TSX,
+    );
+    const bindings = importedBindings(sourceFile);
+
+    expect(
+      collectAtomWritesIn(
+        filePath,
+        sourceFile,
+        sourceFile,
+        bindings,
+        atomSetterBindings(sourceFile, bindings),
+        jotaiStoreBindings(sourceFile, bindings),
+      ).map((write) => write.call.getText(sourceFile)),
+    ).toEqual([
+      "store.set(lifecycleAtom, direct)",
+      "store.set(localLifecycle, local)",
+      "store.set(externalLifecycle, external)",
+      "setLifecycle(hook)",
+      "setLifecycleFromTuple(tupleHook)",
+      "store.set(atoms.lifecycleAtom, namespace)",
+      'store["set"](atoms["lifecycleAtom"], elementAccess)',
+    ]);
   });
 
   it("recognizes runtime default-store access through supported import forms", () => {
@@ -1016,6 +1448,53 @@ describe("state-machine boundaries", () => {
       "createUserInputChatStreamFacade",
     ]) {
       expect(productionSource).not.toContain(obsoleteAuthority);
+    }
+  });
+
+  it("keeps retired lifecycle atoms and mailboxes from returning", () => {
+    for (const relativePath of [
+      "atoms/previewRuntimeAtoms.ts",
+      "store/appAtoms.ts",
+    ]) {
+      expect(fs.existsSync(path.join(SOURCE_ROOT, relativePath))).toBe(false);
+    }
+
+    const productionSource = productionFiles(SOURCE_ROOT)
+      .map((filePath) => fs.readFileSync(filePath, "utf8"))
+      .join("\n");
+    for (const retiredName of [
+      "isStreamingByIdAtom",
+      "chatErrorByIdAtom",
+      "firstPromptSagaProjectionWriteAtom",
+      "firstPromptSagaAtom",
+      "previewRunStateByAppIdAtom",
+      "previewErrorByAppIdAtom",
+      "appUrlByAppIdAtom",
+      "previewReloadTokenByAppIdAtom",
+      "previewAppExitByAppIdAtom",
+      "consoleEntriesByAppIdAtom",
+      "packageManagerWarningByAppIdAtom",
+      "dismissedPackageManagerWarningAppIdsAtom",
+      "currentPreviewErrorAtom",
+      "currentAppUrlAtom",
+      "currentPreviewReloadTokenAtom",
+      "currentConsoleEntriesAtom",
+      "currentPackageManagerWarningAtom",
+      "setPreviewRunStateForAppAtom",
+      "setPreviewErrorForAppAtom",
+      "setAppUrlForAppAtom",
+      "bumpPreviewReloadTokenForAppAtom",
+      "setConsoleEntriesForAppAtom",
+      "appendConsoleEntriesForAppAtom",
+      "setPackageManagerWarningForAppAtom",
+      "dismissPackageManagerWarningsAtom",
+      "clearPackageManagerWarningForAppAtom",
+      "clearPreviewRuntimeForAppAtom",
+      "activeCheckoutCounterAtom",
+      "isAnyCheckoutVersionInProgressAtom",
+      "pendingScreenshotAppIdsAtom",
+    ]) {
+      expect(productionSource).not.toContain(retiredName);
     }
   });
 });

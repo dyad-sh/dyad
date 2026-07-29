@@ -149,8 +149,23 @@ export const createResponsesHandler =
       });
     }
 
+    // Handle compaction summary requests (from streamText() in
+    // compaction_handler; Pro users pin an openai-provider compaction model,
+    // which routes here instead of the chat-completions handler). Checked
+    // before fixture loading because the summarized transcript can itself
+    // contain tc=<name> markers from earlier turns.
+    const isCompactionRequest = lastUserText.startsWith(
+      "Please summarize the following conversation:",
+    );
+    if (isCompactionRequest) {
+      messageContent =
+        "## Key Decisions Made\n- Completed initial task as requested\n\n## Current Task State\nConversation was compacted to save context space.";
+    }
+
     // Load a fixture file when the prompt includes tc=<name>
-    const testCaseName = extractTestCaseName(lastUserText);
+    const testCaseName = isCompactionRequest
+      ? null
+      : extractTestCaseName(lastUserText);
     if (testCaseName && !testCaseName.startsWith("local-agent/")) {
       const testFilePath = path.join(
         resolveFixturesDir(),
@@ -167,14 +182,19 @@ export const createResponsesHandler =
       }
     }
 
-    // Check if the message contains "[dump]" to generate a dump
-    if (lastUserText.includes("[dump]")) {
+    // Check if the message contains "[dump]" to generate a dump. Skipped for
+    // compaction requests: the summarized transcript can embed "[dump]" from
+    // earlier turns, which must not overwrite the canned summary.
+    if (!isCompactionRequest && lastUserText.includes("[dump]")) {
       messageContent = generateDump(req);
     }
 
     // See consentClassifier.ts: fake decisions for the MCP auto-consent
-    // classifier, shared with the chat-completions fake route.
-    const consentMatch = matchConsentClassifierPayload(lastUserText);
+    // classifier, shared with the chat-completions fake route. Also gated off
+    // for compaction requests, whose transcript can quote classifier payloads.
+    const consentMatch = isCompactionRequest
+      ? null
+      : matchConsentClassifierPayload(lastUserText);
     if (consentMatch) {
       messageContent = consentMatch.content;
       // Answer slowly for print_envs so e2e can observe the "AI reviewing"

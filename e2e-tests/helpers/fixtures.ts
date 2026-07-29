@@ -25,6 +25,7 @@ export interface ElectronConfig {
   postLaunchHook?: () => Promise<void>;
   showSetupScreen?: boolean;
   showPnpmMinimumReleaseAgeWarning?: boolean;
+  launchArgs?: string[];
 }
 
 // Close through Playwright first so it tears down its Electron protocol
@@ -207,6 +208,7 @@ export const test = base.extend<{
           appInfo.main,
           "--enable-logging",
           `--user-data-dir=${userDataDir}`,
+          ...(electronConfig.launchArgs ?? []),
         ],
         executablePath: appInfo.executable,
         // Strong suspicion this is causing issues on Windows with tests hanging due to error:

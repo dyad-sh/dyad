@@ -19,8 +19,14 @@ export const TabInstanceIdSchema = z
   .uuid()
   .transform((value) => value as TabInstanceId);
 
+export const AppVisibleEntitySchema = z.object({
+  kind: z.literal("app"),
+  id: z.number().int().positive(),
+});
+export type AppVisibleEntity = z.infer<typeof AppVisibleEntitySchema>;
+
 export const VisibleEntitySchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("app"), id: z.number().int().positive() }),
+  AppVisibleEntitySchema,
   z.object({ kind: z.literal("chat"), id: z.number().int().positive() }),
 ]);
 export type VisibleEntity = z.infer<typeof VisibleEntitySchema>;

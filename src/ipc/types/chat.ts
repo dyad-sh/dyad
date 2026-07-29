@@ -20,7 +20,7 @@ import {
   MAX_CHAT_WIRE_ID_CHARS,
   validateSerializedChatAttachments,
 } from "../../shared/chatAttachmentLimits";
-import type { ChatStreamInvocationRef } from "@/chat_stream/state";
+import type { ChatStreamInvocationRef } from "@/chat_stream/invocation";
 
 // =============================================================================
 // Chat Schemas

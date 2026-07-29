@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
-import type { StreamEvent } from "@/chat_stream/state";
+import type { StreamEvent } from "@/chat_stream/renderer_facade";
 
 import { useResolveMergeConflictsWithAI } from "./useResolveMergeConflictsWithAI";
 

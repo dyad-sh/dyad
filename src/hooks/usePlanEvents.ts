@@ -68,7 +68,9 @@ export function usePlanEvents() {
     });
     const unsubscribePresentation = planEventClient.onHandoffPresentation(
       (payload) => {
+        // Show implementation preview after the handoff is accepted.
         setPreviewMode("preview");
+        // Select the chat that will implement the accepted plan.
         setSelectedChatId(payload.targetChatId);
         void navigate({
           to: "/chat",

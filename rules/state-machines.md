@@ -240,7 +240,6 @@ Background and before/after examples of why this pattern exists:
   acquire the resource before the StrictMode-safe disposal microtask runs.
 - When disposal can race an async command that registers external state after
   an `await`, clean up both immediately and again after the command settles.
-  Disposal must also clear any machine-owned legacy projection synchronously.
 - When a cross-owner facade defers keyed delivery to a microtask, entity
   disposal must invalidate both queued and future deliveries for that key.
   Otherwise the deferred callback can recreate a controller after deletion.
@@ -303,14 +302,21 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   and keep it acyclic. Construct concrete facade adapters at an application
   composition root, outside both machines.
 
-## Projections
+## Read models and intents
 
-- A machine projection has one writer: its controller or manager. Jotai atoms
-  exposed to legacy UI are read-only views and are updated from snapshots in
-  one subscription through `projectToAtom` or a claim from
-  `registerAtomWriter`, not opportunistically by individual commands. A
-  projection is safe only once the machine is its single writer; interim
-  dual-writer periods are where races live.
+- The former same-process Jotai projection compatibility layer was retired by
+  `plans/cleanup-state-machines.md`. Do not reintroduce `projectToAtom`,
+  `registerAtomWriter`, or another lifecycle-mirroring helper. Renderer
+  consumers read the owner snapshot through domain hooks and pure selectors.
+- Cross-process actors expose a named, serializable read model. Each renderer
+  window owns its subscription/bootstrap adapter and treats unavailable or
+  pre-bootstrap data as non-authoritative. The adapter may cache the remote
+  snapshot for `useSyncExternalStore`; it must not create a second writable
+  lifecycle authority in Jotai.
+- Renderer actions cross the owner boundary as typed facade intents. Intent
+  admission, transition commit, command completion, and durable acceptance are
+  distinct outcomes; expose the narrow receipt or settlement signal the caller
+  actually needs.
 - Manager admission and transition application are separate facts. Before
   deleting an admission-gated side channel, characterize admitted events that
   the transition deliberately ignores (including startup, shutdown, and
@@ -353,7 +359,36 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   when acknowledgement fails or the claim expires.
 - An unavailable/bootstrap remote snapshot is not authoritative idle state.
   Gate every actor-backed capability on a ready connection and defer recovery
-  dispatches until subscription bootstrap has completed.
+  dispatches until subscription bootstrap has completed. Cleanup dispatched
+  while navigating away must temporarily retain the old actor, resync stale
+  revisions, and retry with the same stable operation identity; losing an exit
+  intent can leave the external resource under hidden retained ownership.
+- When window-local presentation controls a shared external lifecycle, track
+  explicit per-window interest in main and clean up only when the last owner
+  explicitly releases it. Window destruction should drop stale interest without
+  triggering cleanup when the actor is designed to survive renderer reloads.
+- A safe remote projection contains only domain facts needed by consumers.
+  Keep window-local presentation fields out of the authoritative snapshot and
+  route one-shot toast/navigation outcomes to the initiating window. Publish
+  durable query scopes separately so every attached window converges. At the
+  renderer boundary, explicitly recombine the local presentation snapshot with
+  every remote lifecycle state, including transient command states; otherwise a
+  correct domain transition can silently reset the visible pane or selection.
+- Apply presentation for a remotely adjudicated selection only after an
+  applied receipt, and serialize rapid selections through resync. Suppressing
+  an earlier accepted presentation merely because a later stale dispatch is
+  pending can leave the UI disagreeing with the external resource.
+- Treat an operation ID's initiating window as a first-writer ownership claim.
+  A duplicate intent from another window must not overwrite that routing entry,
+  even if the duplicate transition will later be ignored.
+- Authorization can run before revision admission. Keep any presentation
+  ownership recorded there tentative and expire it unless an applied
+  transition confirms the claim; rejected stale dispatches never reach actor
+  observers and otherwise leak bounded routing capacity.
+- Do not hide local presentation for a cleanup intent until main accepts the
+  exit (or already reports a safe terminal state). Resync and retry stale
+  cleanup receipts with one operation ID so a hidden pane cannot mask retained
+  external ownership.
 - Keep transport revisions separate from semantic presentation epochs. A
   revision may advance for bookkeeping-only transitions, while a reload token
   must advance exactly once for each user-visible remount.
@@ -387,6 +422,18 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
 - Model hydration explicitly when persisted state gates machine behavior.
   Persist through an adapter-owned, debounced command using a versioned zod
   schema; do not let components write snapshots independently.
+- When a side effect can make recovery state externally observable (for
+  example, detaching Git HEAD), force and await persistence of the exact
+  committed checkpoint before starting it. Observer error isolation must not
+  allow the side effect to run after that checkpoint fails.
+- A checkpoint immediately before a destructive step means that step may have
+  started. Restart reconciliation must not infer "not started" from one
+  unchanged external fact such as Git HEAD; validate every relevant identity
+  and mutable surface (for example branch, HEAD, and user-visible index/tree),
+  and classify failure from the last effect boundary that may have crossed.
+- A durable `completed` checkpoint must follow every authoritative effect, not
+  just the primary one. If a workflow mutates Git and then SQLite, persist an
+  explicit post-Git/next-database step until the database mutation finishes.
 - Define merge/replacement semantics for events received during hydration.
   On teardown, flush the latest accepted snapshot through a transport that is
   safe for the lifecycle boundary (for example, one-way IPC during pagehide).
@@ -394,6 +441,14 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   entity lock. Recheck the fence inside the lock, stop actor admission before
   unrelated awaited cleanup, and make actor disposal flush every admitted
   command before database or filesystem deletion.
+- Deletion settlement tracks the full command-runner continuation, including
+  post-handler lifecycle work and the terminal event that may synchronously
+  enqueue compensation. Waiting only for the low-level handler promise can
+  dispose the actor before its compensating command exists.
+- A persisted main-owned recovery actor must reconcile its domain facts with
+  the external resource before accepting new mutations after restart. Treat
+  matching origin state as closed and detached/divergent state as explicit
+  recovery; never serialize command handles or renderer presentation state.
 
 ## Query keys and recorded decisions
 
@@ -434,6 +489,11 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   expected ignore reason.
 - `boundaries.test.ts` enforces kernel purity and machine-to-machine isolation;
   add new machine directories to its inventory when they are introduced.
+- Boundary allowlist tests must derive the actual production call sites and
+  exact-compare them with the declared inventory. Checking only that declared
+  markers still exist does not prevent an undeclared boundary crossing.
+  Classify calls through the owning API (for example, Jotai stores and hooks),
+  not an expected import directory; domain values may be local or re-exported.
 - Keep host-only distributed-machine definitions outside shared machine
   directories (for example, under `src/ipc/services/` for a main-owned actor).
   Shared machine directories are scanned as renderer-reachable code and may

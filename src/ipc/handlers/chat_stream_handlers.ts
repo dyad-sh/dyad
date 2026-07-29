@@ -37,7 +37,7 @@ import { buildNeonPromptForApp } from "../../neon_admin/neon_prompt_context";
 import { getDyadAppPath } from "../../paths/paths";
 import { buildDyadMediaUrl } from "../../lib/dyadMediaUrl";
 import type { ChatStreamParams } from "@/ipc/types";
-import type { ChatStreamInvocationRef } from "@/chat_stream/state";
+import type { ChatStreamInvocationRef } from "@/chat_stream/invocation";
 import type { SerializableChatTurnIntent } from "@/chat_stream/transport";
 import type {
   ChatStreamChunkPayload,
@@ -84,7 +84,7 @@ import {
 } from "../../pro/main/ipc/handlers/local_agent/local_agent_handler";
 import { userInputRegistry } from "../../user_input/main";
 
-import { safeSend } from "../utils/safe_sender";
+import { safeSend, type SafeSender } from "../utils/safe_sender";
 import {
   releaseChatProducerInterest,
   sendChatChunk,
@@ -385,6 +385,7 @@ function executionObserver(
 // src/chat_stream/host_transition.ts and src/chat_stream/main_actor.test.ts.
 interface TrackedStream {
   abortController: AbortController;
+  sender: SafeSender;
   invocationRef?: ChatStreamInvocationRef;
   /** @deprecated Correlation used only by pre-InvocationRef renderers. */
   streamId?: number;
@@ -559,7 +560,7 @@ export function takePartialResponseForStream(
 // unwind waiting. Keep in sync with src/chat_stream/host_transition.ts.
 async function cancelTrackedStreams(
   chatIds: number[],
-  sender: WebContents,
+  sender: SafeSender | undefined,
 ): Promise<boolean> {
   const trackedStreams = chatIds
     .map((chatId) => ({
@@ -598,26 +599,40 @@ async function cancelTrackedStreams(
   for (const { chatId, streams } of trackedStreams) {
     const correlations =
       streams.length > 0
-        ? streams.map(({ invocationRef, streamId }) => ({
+        ? streams.map(({ invocationRef, streamId, sender: streamSender }) => ({
             invocationRef,
             streamId,
+            sender: streamSender,
           }))
-        : [{ invocationRef: undefined, streamId: undefined }];
-    for (const { invocationRef, streamId } of correlations) {
+        : [{ invocationRef: undefined, streamId: undefined, sender }];
+    for (const {
+      invocationRef,
+      streamId,
+      sender: streamSender,
+    } of correlations) {
       if (invocationRef) {
         cancelledActorInvocations.add(invocationRef.operationId);
       }
-      safeSend(sender, "chat:response:end", {
-        chatId,
-        invocationRef,
-        streamId,
-        updatedFiles: false,
-        wasCancelled: true,
-      } satisfies ChatStreamEndPayload);
+      const targetSender = streamSender ?? sender;
+      if (targetSender) {
+        safeSend(targetSender, "chat:response:end", {
+          chatId,
+          invocationRef,
+          streamId,
+          updatedFiles: false,
+          wasCancelled: true,
+        } satisfies ChatStreamEndPayload);
+      }
     }
-    safeSend(sender, "chat:stream:end", {
-      chatId,
-    } satisfies ChatStreamTransportEndPayload);
+    const terminalSenders = new Set(
+      streams.map(({ sender: streamSender }) => streamSender),
+    );
+    if (terminalSenders.size === 0 && sender) terminalSenders.add(sender);
+    for (const terminalSender of terminalSenders) {
+      safeSend(terminalSender, "chat:stream:end", {
+        chatId,
+      } satisfies ChatStreamTransportEndPayload);
+    }
   }
 
   await Promise.all(
@@ -640,7 +655,7 @@ async function cancelTrackedStreams(
  */
 export async function cancelActiveStreamsForChat(
   chatId: number,
-  sender: WebContents,
+  sender: SafeSender | undefined,
   pendingInvocationRef?: ChatStreamInvocationRef,
 ): Promise<boolean> {
   if (
@@ -661,7 +676,7 @@ export async function cancelActiveStreamsForChat(
  */
 export async function cancelActiveStreamsForApp(
   appId: number,
-  sender: WebContents,
+  sender?: SafeSender,
 ): Promise<boolean> {
   const inFlightChatIds = [
     ...new Set([...activeStreams.keys(), ...streamCompletions.keys()]),
@@ -863,6 +878,7 @@ export function registerChatStreamHandlers() {
       let dyadRequestId: string | undefined;
       trackedStream = {
         abortController,
+        sender: event.sender,
         invocationRef: req.invocationRef,
         streamId: req.streamId,
       };

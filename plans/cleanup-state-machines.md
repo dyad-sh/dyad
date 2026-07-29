@@ -499,8 +499,7 @@ proceeds. The appendix's proposed renderer `MessagesStore`, `QueueStore`,
 and accepted-plan projection are recipes to evaluate—not preapproved
 destination architecture.
 
-**A7 — Compatibility infrastructure removal: after A2–A6 and relevant C
-waves.**
+**A7 — Compatibility infrastructure removal: in flight (this PR).**
 
 - delete or narrow `registerAtomWriter`/`projectToAtom`;
 - remove boundary allowlist entries only when their owner is gone;
@@ -680,6 +679,20 @@ app deletion first fences admission and prunes its read-model entries before
 bounded cancellation. Restart begins with no active-job state while preserving
 media already committed to disk.
 
+Status: **`version_preview` cutover implemented** — main owns the per-app
+checkout/recovery actor, command execution, restart reconciliation, and
+domain-only recovery persistence. Renderers attach to its safe revisioned
+projection while pane visibility, diff selection, toast, navigation, and
+query-refresh effects remain window-local. Active checkout continues after an
+initiating window closes; a second window can reattach; deletion fences new
+work, returns or settles the actor, and disposes it before repository removal.
+The renderer controller, manager, command adapter, and version-mutation IPC
+channels in this wave's deletion budget are removed in the same review stack.
+The verified lifecycle row remains the policy recorded above, and the
+serializability, projection, event-admission, and deletion decisions are
+recorded in the
+[B0 ADR](../docs/adr/main-owned-state-machines.md#version_preview).
+
 `connection_flow` and `mcp_oauth` are already correctly main-authoritative.
 First expose them through the common remote reference/read-model contract if
 needed. Their listener, timer, waiter, claim, and close-barrier registries stay
@@ -777,6 +790,12 @@ full-snapshot IPC, superseded projection atoms, and shadow lifecycle model.
 Only the read-only legacy queue importer remains for one-time migration.
 
 **C4 — Multi-window product surface.**
+
+Status: **C4a implemented; C4b pending C3.** C4a ships product-window
+creation, explicit app-surface duplication, stable per-window restore,
+per-window chat-tab session persistence with legacy migration, and live app
+visibility/focus routing. C4b owns chat-tab drag/transfer and chat-surface
+notification routing after the C3 authority cutover lands.
 
 Window creation, explicit duplication, tab drag/transfer, per-window session
 restore, and focus routing. Moving a tab preserves serializable presentation

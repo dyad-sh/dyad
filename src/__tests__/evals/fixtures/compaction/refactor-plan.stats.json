@@ -1,0 +1,14 @@
+{
+  "name": "refactor-plan",
+  "model": "gpt-5.6-sol",
+  "estTokens": 209084,
+  "chars": 836336,
+  "messageCount": 70,
+  "fillerMessages": 16,
+  "authoringUsage": {
+    "prompt_tokens": 10461,
+    "completion_tokens": 35457
+  },
+  "missingEvidence": [],
+  "withinBand": true
+}

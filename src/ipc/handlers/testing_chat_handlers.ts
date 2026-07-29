@@ -1,7 +1,7 @@
 import { safeSend } from "../utils/safe_sender";
 import { cleanFullResponse } from "../utils/cleanFullResponse";
 import { computeStreamingPatch } from "../utils/stream_text_utils";
-import type { ChatStreamInvocationRef } from "@/chat_stream/state";
+import type { ChatStreamInvocationRef } from "@/chat_stream/invocation";
 
 /**
  * Maximum number of unacked chunks the canned test stream is allowed to

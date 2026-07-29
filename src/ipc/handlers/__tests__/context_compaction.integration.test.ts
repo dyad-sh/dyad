@@ -30,6 +30,7 @@ import {
 } from "@/testing/hybrid_chat_harness";
 import { h } from "@/testing/hybrid.setup";
 import { ipc } from "@/ipc/types";
+import { versionPreviewHandlerService } from "@/ipc/handlers/version_handlers";
 import { chats, messages } from "@/db/schema";
 import {
   getCurrentCommitHash,
@@ -39,6 +40,7 @@ import {
   gitCurrentBranch,
   gitLog,
 } from "@/ipc/utils/git_utils";
+import type { RestoreRecovery } from "@/version_preview/state";
 
 describe("context compaction (integration)", () => {
   let harness: HybridChatHarness;
@@ -154,7 +156,7 @@ describe("context compaction (integration)", () => {
       targetPrompt!.createdAt.getTime(),
     );
 
-    const restoreResult = await ipc.version.restoreToMessageVersion({
+    const restoreResult = await versionPreviewHandlerService.restoreToMessage({
       appId: harness.appId,
       chatId: harness.chatId,
       messageId: targetPrompt!.id,
@@ -189,12 +191,13 @@ describe("context compaction (integration)", () => {
     );
     expect(laterPrompt).toBeDefined();
 
-    const laterRestoreResult = await ipc.version.restoreToMessageVersion({
-      appId: harness.appId,
-      chatId: harness.chatId,
-      messageId: laterPrompt!.id,
-      restoreCodebase: false,
-    });
+    const laterRestoreResult =
+      await versionPreviewHandlerService.restoreToMessage({
+        appId: harness.appId,
+        chatId: harness.chatId,
+        messageId: laterPrompt!.id,
+        restoreCodebase: false,
+      });
     expect(laterRestoreResult).toHaveProperty("createdChatId");
     const laterRestoredMessages = await loadChatMessages(
       laterRestoreResult.createdChatId ?? -1,
@@ -279,14 +282,29 @@ describe("context compaction (integration)", () => {
       })
       .returning();
 
-    const result = await ipc.version.restoreToMessageVersion({
-      appId: harness.appId,
-      chatId: chatRow.id,
-      messageId: firstMessage.id,
-      restoreCodebase: true,
-    });
+    const progress: RestoreRecovery[] = [];
+    const result = await versionPreviewHandlerService.restoreToMessage(
+      {
+        appId: harness.appId,
+        chatId: chatRow.id,
+        messageId: firstMessage.id,
+        restoreCodebase: true,
+      },
+      undefined,
+      (checkpoint) => progress.push(checkpoint),
+    );
 
     expect(result).toHaveProperty("createdChatId");
+    expect(progress.slice(-2)).toMatchObject([
+      {
+        repositoryOutcome: "target-applied",
+        nextStep: "chat-mutation",
+      },
+      {
+        repositoryOutcome: "target-applied",
+        nextStep: "completed",
+      },
+    ]);
     const createdChatId = result.createdChatId ?? -1;
     await expect(loadChatMessages(createdChatId)).resolves.toEqual([]);
     await expect(
@@ -330,7 +348,28 @@ describe("context compaction (integration)", () => {
     expect(await gitCurrentBranch({ path: harness.appDir })).toBeNull();
 
     try {
-      const result = await ipc.version.restoreToMessageVersion({
+      await expect(
+        versionPreviewHandlerService.restoreToMessage(
+          {
+            appId: harness.appId,
+            chatId: chatRow.id,
+            messageId: firstMessage.id,
+            restoreCodebase: true,
+            targetBranchName: targetBranchName!,
+          },
+          undefined,
+          (checkpoint) => {
+            if (checkpoint.nextStep === "checkout-branch") {
+              throw new Error("checkpoint failed before checkout");
+            }
+          },
+        ),
+      ).rejects.toThrow("checkpoint failed before checkout");
+      await expect(
+        gitCurrentBranch({ path: harness.appDir }),
+      ).resolves.toBeNull();
+
+      const result = await versionPreviewHandlerService.restoreToMessage({
         appId: harness.appId,
         chatId: chatRow.id,
         messageId: firstMessage.id,
@@ -383,15 +422,52 @@ describe("context compaction (integration)", () => {
 
     await gitCheckout({ path: harness.appDir, ref: previewCommitHash });
     try {
-      const result = await ipc.version.restoreToMessageVersion({
-        appId: harness.appId,
-        chatId: chatRow.id,
-        messageId: firstMessage.id,
-        restoreCodebase: false,
-      });
+      const chatsBeforeCheckpointFailure =
+        await harness.db.query.chats.findMany();
+      await expect(
+        versionPreviewHandlerService.restoreToMessage(
+          {
+            appId: harness.appId,
+            chatId: chatRow.id,
+            messageId: firstMessage.id,
+            restoreCodebase: false,
+          },
+          undefined,
+          (checkpoint) => {
+            if (checkpoint.nextStep === "chat-mutation") {
+              throw new Error("checkpoint failed before chat mutation");
+            }
+          },
+        ),
+      ).rejects.toThrow("checkpoint failed before chat mutation");
+      await expect(harness.db.query.chats.findMany()).resolves.toHaveLength(
+        chatsBeforeCheckpointFailure.length,
+      );
+
+      const progress: RestoreRecovery[] = [];
+      const result = await versionPreviewHandlerService.restoreToMessage(
+        {
+          appId: harness.appId,
+          chatId: chatRow.id,
+          messageId: firstMessage.id,
+          restoreCodebase: false,
+        },
+        undefined,
+        (checkpoint) => progress.push(checkpoint),
+      );
 
       expect(result).toHaveProperty("createdChatId");
       expect(result.repositoryOutcome).toBe("unchanged");
+      expect(progress).toEqual([
+        {
+          repositoryOutcome: "unchanged",
+          nextStep: "chat-mutation",
+        },
+        {
+          repositoryOutcome: "unchanged",
+          nextStep: "completed",
+        },
+      ]);
       const forkedChat = await harness.db.query.chats.findFirst({
         where: (chat, { eq }) => eq(chat.id, result.createdChatId ?? -1),
       });
@@ -472,7 +548,7 @@ describe("context compaction (integration)", () => {
       await fs.promises.writeFile(conflictFile, "interrupted generation\n");
 
       await expect(
-        ipc.version.restoreToMessageVersion({
+        versionPreviewHandlerService.restoreToMessage({
           appId: harness.appId,
           chatId: restoreChat.id,
           messageId: restoreMessage.id,
@@ -481,7 +557,7 @@ describe("context compaction (integration)", () => {
       ).rejects.toThrow("Cannot restore while viewing a historical version");
       expect(backgroundSettled).toBe(false);
 
-      const result = await ipc.version.restoreToMessageVersion({
+      const result = await versionPreviewHandlerService.restoreToMessage({
         appId: harness.appId,
         chatId: restoreChat.id,
         messageId: restoreMessage.id,

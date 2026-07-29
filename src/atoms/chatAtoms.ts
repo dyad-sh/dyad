@@ -10,6 +10,7 @@ import type { Getter, Setter } from "jotai";
 import { atom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { planAcceptInNewChatByChatIdAtom } from "@/atoms/planAtoms";
+import { createChatTabSessionStorage } from "@/window_infrastructure/chat_tab_session_storage";
 
 // Per-chat atoms implemented with maps keyed by chatId
 export const chatMessagesByIdAtom = atom<Map<number, Message[]>>(new Map());
@@ -111,12 +112,24 @@ function sessionsHaveSameShape(
   );
 }
 
+const chatTabSessionStorage = createChatTabSessionStorage(() =>
+  typeof window === "undefined" ? undefined : window.localStorage,
+);
+
 export const chatTabSessionStorageAtom = atomWithStorage<ChatTabSession>(
   "chat-tab-session",
   EMPTY_CHAT_TAB_SESSION,
-  undefined,
+  chatTabSessionStorage,
   { getOnInit: true },
 );
+
+export const initializeChatTabSessionStorageAtom = atom(null, (_get, set) => {
+  const configuredSession = chatTabSessionStorage.getItem(
+    "chat-tab-session",
+    EMPTY_CHAT_TAB_SESSION,
+  );
+  set(chatTabSessionStorageAtom, configuredSession);
+});
 
 // When enabled, tabs are kept grouped by app on every render (a live layout),
 // so newly opened chats automatically slot into their app's group. Turned off

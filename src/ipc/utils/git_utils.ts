@@ -535,6 +535,7 @@ export async function gitCheckout({
 export async function gitStageToRevert({
   path,
   targetOid,
+  onBeforeReset,
 }: GitStageToRevertParams): Promise<boolean> {
   // Get the current HEAD commit hash
   const currentHeadResult = await execGit(["rev-parse", "HEAD"], path);
@@ -582,6 +583,11 @@ export async function gitStageToRevert({
     return false;
   }
 
+  onBeforeReset?.({
+    preRestoreHead: currentCommit,
+    targetHead: targetOid,
+    nextStep: "hard-reset",
+  });
   // Reset the working directory and index to match the target commit state
   // This effectively undoes all changes since the target commit
   await execOrThrow(
@@ -590,6 +596,11 @@ export async function gitStageToRevert({
     `Failed to reset to target commit '${targetOid}'`,
   );
 
+  onBeforeReset?.({
+    preRestoreHead: currentCommit,
+    targetHead: targetOid,
+    nextStep: "soft-reset",
+  });
   // Reset back to the original HEAD but keep the working directory as it is
   // This stages all the changes needed to revert to the target state
   await execOrThrow(

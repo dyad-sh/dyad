@@ -1,0 +1,210 @@
+{
+  "name": "debug-spiral",
+  "domain": "Ledgerline is an expense-tracker web app: React 18 + Vite frontend using Recharts for the dashboard chart and React Query for data fetching, with an Express + better-sqlite3 backend and dayjs for date handling. Expense amounts are stored as integer cents and created_at timestamps as ISO 8601 UTC strings. The dashboard shows per-day expense totals fetched from GET /api/summary. The session is a bug hunt: daily totals on the dashboard are wrong for expenses created shortly after midnight UTC.",
+  "phases": [
+    {
+      "id": "p1",
+      "goal": "The user reports that dashboard daily totals are wrong after midnight UTC: expenses logged between 00:00 and 05:00 UTC land in the previous day's total (plant F1). The assistant reproduces it with a concrete case: a 42.50 taxi expense stamped 03:14 UTC shows under Tuesday instead of Wednesday (plant F2). The assistant reads the chart components and forms hypothesis 1, stating that its first suspect is Recharts converting the timestamps to browser local time (plant trap T1 superseded evidence). To get a reliable repro dataset, the assistant also writes a large seed file of expense events.",
+      "turns": 5,
+      "activeFiles": [
+        "src/pages/Dashboard.tsx",
+        "src/components/DailyTotalsChart.tsx",
+        "src/server/seed/expenses.ts"
+      ],
+      "factIds": ["F1", "F2"],
+      "bulk": [
+        {
+          "asset": "seed-data",
+          "path": "src/server/seed/expenses.ts",
+          "kind": "events",
+          "count": 220
+        }
+      ]
+    },
+    {
+      "id": "p2",
+      "goal": "Hypothesis 1 is disproven: the assistant curls the API directly and shows the raw /api/summary payload is already wrong before Recharts ever sees it (plant F3, and this is the T1 current evidence), so the chart library is ruled out. The assistant then forms hypothesis 2, saying maybe a stale React Query cache is serving yesterday's summary data (plant trap T2 superseded evidence) and starts inspecting the query client setup and staleTime configuration. Some dashboard styling cleanup also lands as a large utilities stylesheet while waiting on the user to retest.",
+      "turns": 5,
+      "activeFiles": [
+        "src/lib/queryClient.ts",
+        "src/pages/Dashboard.tsx",
+        "src/styles/utilities.css"
+      ],
+      "factIds": ["F3"],
+      "bulk": [
+        {
+          "asset": "long-css",
+          "path": "src/styles/utilities.css",
+          "count": 240
+        }
+      ]
+    },
+    {
+      "id": "p3",
+      "goal": "Hypothesis 2 is disproven: the totals are still wrong after a hard reload with React Query caching fully disabled (plant F4, the T2 current evidence). The assistant forms hypothesis 3, suspecting floating point rounding in the currency math is dropping cents (plant trap T3 superseded evidence) and digs into the cents-based money helpers and currency formatting. The user states a hard constraint: we cannot touch the schema, created_at stays an ISO 8601 UTC string (plant F10). While auditing currency formatting the assistant also generates a large locale strings file for currency labels.",
+      "turns": 5,
+      "activeFiles": [
+        "src/lib/money.ts",
+        "src/lib/queryClient.ts",
+        "src/locales/en.json"
+      ],
+      "factIds": ["F4", "F10"],
+      "bulk": [
+        { "asset": "locale-json", "path": "src/locales/en.json", "count": 380 }
+      ]
+    },
+    {
+      "id": "p4",
+      "goal": "Hypothesis 3 is disproven: the math is all integer cents and the discrepancy is exactly 4250 cents, one whole expense, not rounding drift (plant F5, the T3 current evidence). The assistant forms and quickly kills hypothesis 4, duplicated rows from a client retry, by running SQL showing count(*) matches count(distinct id) for every day, so no duplicated rows (plant F6). Digging into environments, the assistant discovers prod runs in America/New_York while local dev defaults to UTC (plant F12), explaining why it never reproduced locally. To compare bucketing, the assistant writes a diagnostic script: scripts/check-buckets.mjs prints the server and client buckets side by side (plant F11).",
+      "turns": 6,
+      "activeFiles": [
+        "src/server/db.ts",
+        "src/server/routes/summary.ts",
+        "scripts/check-buckets.mjs"
+      ],
+      "factIds": ["F5", "F6", "F11", "F12"],
+      "bulk": []
+    },
+    {
+      "id": "p5",
+      "goal": "The check-buckets output nails the real root cause: the server buckets expenses by local time while the client buckets by UTC (plant F7). The fix begins: the assistant edits the summary route so groupByDay in src/server/routes/summary.ts now formats dates with dayjs.utc (plant F8) and starts wiring a vitest regression test around the midnight boundary. The session ends mid-task: the server change is written but the assistant says it still needs the midnight boundary regression test before we can call this fixed (plant F9), and the client-side verification against prod timezone has not run yet.",
+      "turns": 6,
+      "activeFiles": [
+        "src/server/routes/summary.ts",
+        "src/server/routes/summary.test.ts",
+        "scripts/check-buckets.mjs"
+      ],
+      "factIds": ["F7", "F8", "F9"],
+      "bulk": []
+    }
+  ],
+  "facts": [
+    {
+      "id": "F1",
+      "tier": 1,
+      "category": "error",
+      "statement": "The bug symptom: dashboard daily totals are wrong because expenses logged between 00:00 and 05:00 UTC are counted in the previous day's total.",
+      "evidence": "expenses logged between 00:00 and 05:00 UTC land in the previous day's total"
+    },
+    {
+      "id": "F2",
+      "tier": 3,
+      "category": "error",
+      "statement": "The concrete repro case is a 42.50 taxi expense timestamped 03:14 UTC that appears under Tuesday instead of Wednesday.",
+      "evidence": "the 42.50 taxi expense stamped 03:14 UTC shows under Tuesday instead of Wednesday"
+    },
+    {
+      "id": "F3",
+      "tier": 2,
+      "category": "decision",
+      "statement": "The Recharts timezone-conversion hypothesis was ruled out because the raw /api/summary API response is already wrong before the chart library processes it.",
+      "evidence": "the raw /api/summary payload is already wrong before Recharts ever sees it"
+    },
+    {
+      "id": "F4",
+      "tier": 2,
+      "category": "decision",
+      "statement": "The stale React Query cache hypothesis was ruled out because totals were still wrong after a hard reload with caching fully disabled.",
+      "evidence": "still wrong after a hard reload with React Query caching fully disabled"
+    },
+    {
+      "id": "F5",
+      "tier": 2,
+      "category": "decision",
+      "statement": "The currency rounding hypothesis was ruled out because the discrepancy is exactly 4250 cents, one whole expense, not fractional rounding drift.",
+      "evidence": "the discrepancy is exactly 4250 cents, one whole expense, not rounding drift"
+    },
+    {
+      "id": "F6",
+      "tier": 2,
+      "category": "decision",
+      "statement": "The duplicated-rows-from-retry hypothesis was ruled out because count(*) matches count(distinct id) for every day in the expenses table.",
+      "evidence": "count(*) matches count(distinct id) for every day, so no duplicated rows"
+    },
+    {
+      "id": "F7",
+      "tier": 1,
+      "category": "decision",
+      "statement": "The confirmed root cause: the server buckets expenses by local time while the client buckets by UTC, so day boundaries disagree.",
+      "evidence": "the server buckets expenses by local time while the client buckets by UTC"
+    },
+    {
+      "id": "F8",
+      "tier": 1,
+      "category": "code-change",
+      "statement": "The fix is in groupByDay in src/server/routes/summary.ts, which now formats bucket dates with dayjs.utc instead of local time.",
+      "evidence": "groupByDay in src/server/routes/summary.ts now formats dates with dayjs.utc"
+    },
+    {
+      "id": "F9",
+      "tier": 1,
+      "category": "task-state",
+      "statement": "Current task state: the server-side fix is written, but a midnight-boundary regression test is still needed before the fix can be considered done.",
+      "evidence": "still need the midnight boundary regression test before we can call this fixed"
+    },
+    {
+      "id": "F10",
+      "tier": 2,
+      "category": "constraint",
+      "statement": "User constraint: the database schema must not change; created_at remains an ISO 8601 UTC string.",
+      "evidence": "we cannot touch the schema, created_at stays an ISO 8601 UTC string"
+    },
+    {
+      "id": "F11",
+      "tier": 3,
+      "category": "code-change",
+      "statement": "A diagnostic script scripts/check-buckets.mjs was written that prints the server-side and client-side day buckets side by side.",
+      "evidence": "scripts/check-buckets.mjs prints the server and client buckets side by side"
+    },
+    {
+      "id": "F12",
+      "tier": 2,
+      "category": "error",
+      "statement": "The bug only shows in production because prod runs in the America/New_York timezone while local dev defaults to UTC.",
+      "evidence": "prod runs in America/New_York while local dev defaults to UTC"
+    }
+  ],
+  "traps": [
+    {
+      "id": "T1",
+      "statement": "The hypothesis that Recharts converts timestamps to browser local time was disproven; the summary must present it as ruled out (the raw API payload was already wrong). Presenting the chart library as a current or open suspect counts as contradicted.",
+      "supersededEvidence": "my first suspect is Recharts converting the timestamps to browser local time",
+      "oldPhase": "p1",
+      "currentEvidence": "the raw /api/summary payload is already wrong before Recharts ever sees it",
+      "newPhase": "p2"
+    },
+    {
+      "id": "T2",
+      "statement": "The hypothesis that a stale React Query cache caused the wrong totals was disproven by a hard reload with caching disabled; the summary must present it as ruled out. Presenting caching as a current or open suspect counts as contradicted.",
+      "supersededEvidence": "maybe a stale React Query cache is serving yesterday's summary data",
+      "oldPhase": "p2",
+      "currentEvidence": "still wrong after a hard reload with React Query caching fully disabled",
+      "newPhase": "p3"
+    },
+    {
+      "id": "T3",
+      "statement": "The hypothesis that floating point rounding in the currency math caused the bad totals was disproven because the discrepancy is a whole expense in integer cents; the summary must present it as ruled out. Presenting rounding as a current or open suspect counts as contradicted.",
+      "supersededEvidence": "I suspect floating point rounding in the currency math is dropping cents",
+      "oldPhase": "p3",
+      "currentEvidence": "the discrepancy is exactly 4250 cents, one whole expense, not rounding drift",
+      "newPhase": "p4"
+    }
+  ],
+  "probes": [
+    {
+      "id": "P1",
+      "question": "What is the confirmed root cause of the wrong dashboard totals, and what is the very next step to finish the fix?",
+      "expected": "Root cause: the server buckets expenses by local time while the client buckets by UTC. The server fix (groupByDay in src/server/routes/summary.ts using dayjs.utc) is written; next step is adding the midnight-boundary regression test (and verifying against the prod America/New_York timezone) before calling it fixed."
+    },
+    {
+      "id": "P2",
+      "question": "Did we already investigate React Query caching as the cause of the bad totals? What did we conclude and why?",
+      "expected": "Yes, it was investigated and ruled out: the totals were still wrong after a hard reload with React Query caching fully disabled, so stale cache is not the cause."
+    },
+    {
+      "id": "P3",
+      "question": "Why did this bug never reproduce in local development, and what constraint limits how we can fix it?",
+      "expected": "Prod runs in America/New_York while local dev defaults to UTC, so local server bucketing matched UTC and hid the bug. Constraint: the schema cannot change; created_at must stay an ISO 8601 UTC string, so the fix must be in bucketing logic, not storage."
+    }
+  ]
+}

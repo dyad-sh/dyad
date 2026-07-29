@@ -1,4 +1,4 @@
-import { test } from "./helpers/test_helper";
+import { test, testWithConfig } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 
 test("add prompt via deep link with base64-encoded data", async ({
@@ -52,3 +52,34 @@ test("add prompt via deep link with base64-encoded data", async ({
     po.page.getByTestId("library-prompt-card"),
   ).toMatchAriaSnapshot();
 });
+
+const coldStartPrompt = {
+  title: "Cold Start Deep Link",
+  description: "Delivered after the renderer loads",
+  content: "Verify that a queued startup deep link is not dropped.",
+};
+const coldStartPayload = Buffer.from(JSON.stringify(coldStartPrompt)).toString(
+  "base64",
+);
+const coldStartTest = testWithConfig({
+  launchArgs: [
+    `dyad://add-prompt?data=${encodeURIComponent(coldStartPayload)}`,
+  ],
+});
+
+coldStartTest(
+  "queues a cold-start deep link until renderer listeners are ready",
+  async ({ po }) => {
+    const dialog = po.page.getByRole("dialog");
+    await expect(dialog.getByText("Create New Prompt")).toBeVisible();
+    await expect(dialog.getByRole("textbox", { name: "Title" })).toHaveValue(
+      coldStartPrompt.title,
+    );
+    await expect(
+      dialog.getByRole("textbox", { name: "Description (optional)" }),
+    ).toHaveValue(coldStartPrompt.description);
+    await expect(dialog.getByRole("textbox", { name: "Content" })).toHaveValue(
+      coldStartPrompt.content,
+    );
+  },
+);

@@ -39,7 +39,6 @@ import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useReducedMotionPref } from "@/hooks/useReducedMotion";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { useVersionPreview } from "@/hooks/useVersionPreview";
-import { isPaneVisibleState } from "@/version_preview/state";
 import { useChatStreamState } from "@/hooks/useChatStream";
 import {
   useChatStreamManager,
@@ -98,9 +97,8 @@ export function ChatPanel({
   const reducedMotion = useReducedMotionPref();
   // Pane visibility derives from the version preview machine; open/close are
   // events, so hiding the pane can never skip repository recovery.
-  const { state: versionPreviewState, send: sendVersionPreview } =
+  const { isPaneVisible: isVersionPaneOpen, send: sendVersionPreview } =
     useVersionPreview(selectedAppId);
-  const isVersionPaneOpen = isPaneVisibleState(versionPreviewState);
   const [terminalFitSignal, setTerminalFitSignal] = useState(0);
   const streamState = useChatStreamState(chatId) ?? { type: "idle" };
   const chatStreamManager = useChatStreamManager();

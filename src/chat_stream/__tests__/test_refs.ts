@@ -1,4 +1,4 @@
-import type { ChatStreamInvocationRef } from "../state";
+import type { ChatStreamInvocationRef } from "../invocation";
 
 export function makeChatStreamRef(
   index: number,

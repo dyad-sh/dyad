@@ -420,6 +420,7 @@ const BaseUserSettingsFields = {
   enableSandboxScriptExecution: z.boolean().optional(),
   enableMcpToolSearch: z.boolean().optional(),
   enableCodeExplorer: z.boolean().optional(),
+  enableMultiWindow: z.boolean().optional(),
   enableAutoUpdate: z.boolean(),
   releaseChannel: ReleaseChannelSchema,
   runtimeMode2: RuntimeMode2Schema.optional(),

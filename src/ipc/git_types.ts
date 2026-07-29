@@ -77,6 +77,11 @@ export interface GitInitParams extends GitBaseParams {
 }
 export interface GitStageToRevertParams extends GitBaseParams {
   targetOid: string;
+  onBeforeReset?: (progress: {
+    preRestoreHead: string;
+    targetHead: string;
+    nextStep: "hard-reset" | "soft-reset";
+  }) => void;
 }
 export interface GitAuthorParam {
   name: string;

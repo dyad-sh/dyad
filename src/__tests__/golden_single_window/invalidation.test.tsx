@@ -11,13 +11,10 @@ import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { queryKeys } from "@/lib/queryKeys";
 import { useCreateApp } from "@/hooks/useCreateApp";
 import { useRenameBranch } from "@/hooks/useRenameBranch";
-import { createVersionPreviewRuntime } from "@/version_preview/commands";
 
 const mocks = vi.hoisted(() => ({
-  checkoutVersion: vi.fn(),
   createApp: vi.fn(),
   renameBranch: vi.fn(),
-  revertVersion: vi.fn(),
 }));
 
 vi.mock("@/ipc/types", async (importOriginal) => {
@@ -30,11 +27,6 @@ vi.mock("@/ipc/types", async (importOriginal) => {
         ...original.ipc.app,
         createApp: mocks.createApp,
         renameBranch: mocks.renameBranch,
-      },
-      version: {
-        ...original.ipc.version,
-        checkoutVersion: mocks.checkoutVersion,
-        revertVersion: mocks.revertVersion,
       },
     },
   };
@@ -85,20 +77,6 @@ describe("golden single-window: local invalidation counts", () => {
     vi.clearAllMocks();
     mocks.createApp.mockResolvedValue({ appId: 7, chatId: 11 });
     mocks.renameBranch.mockResolvedValue(undefined);
-    mocks.revertVersion.mockResolvedValue({
-      repositoryOutcome: "target-applied",
-      notification: null,
-      runtimeAction: "none",
-      affectedChatId: null,
-      createdChatId: null,
-    });
-    mocks.checkoutVersion.mockResolvedValue({
-      repositoryOutcome: "target-applied",
-      notification: null,
-      runtimeAction: "none",
-      affectedChatId: null,
-      createdChatId: null,
-    });
   });
 
   it("app creation invalidates apps and chats exactly once each", async () => {
@@ -130,37 +108,4 @@ describe("golden single-window: local invalidation counts", () => {
       queryKeys.versions.list({ appId: 7 }),
     ]);
   });
-
-  it.each(["checkout", "restore"] as const)(
-    "version %s invalidates four related families exactly once",
-    async (operation) => {
-      const { invalidations, queryClient, store } = setup();
-      const runtime = createVersionPreviewRuntime({
-        queryClient,
-        store,
-        restartApp: vi.fn().mockResolvedValue(undefined),
-      });
-
-      if (operation === "checkout") {
-        await runtime.commands.checkoutVersion({
-          appId: 7,
-          versionId: "abc123",
-        });
-      } else {
-        await runtime.commands.restoreVersion({
-          appId: 7,
-          versionId: "abc123",
-          targetBranch: null,
-          expectedHeadOid: "head",
-        });
-      }
-
-      expect(invalidations).toEqual([
-        queryKeys.branches.byApp({ appId: 7 }),
-        queryKeys.versions.list({ appId: 7 }),
-        queryKeys.apps.detail({ appId: 7 }),
-        queryKeys.problems.byApp({ appId: 7 }),
-      ]);
-    },
-  );
 });

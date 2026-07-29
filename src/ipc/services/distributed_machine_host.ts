@@ -12,6 +12,7 @@ import type { WindowSessionId } from "@/window_infrastructure/types";
 import { remoteMachineHost } from "./distributed_machine_actor_host";
 import { githubOpsDefinition } from "./github_ops_definition";
 import { imageGenerationDefinition } from "./image_generation_definition";
+import { versionPreviewDefinition } from "./version_preview_definition";
 
 export { remoteMachineHost };
 
@@ -21,6 +22,7 @@ export const remoteMachineManifest = createRemoteMachineManifest([
   githubOpsDefinition,
   imageGenerationDefinition,
   planHandoffDefinition,
+  versionPreviewDefinition,
 ]);
 
 export const remoteMachineTransport = new RemoteMachineTransport({

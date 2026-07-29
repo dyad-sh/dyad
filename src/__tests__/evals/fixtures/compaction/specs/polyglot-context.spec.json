@@ -1,0 +1,207 @@
+{
+  "name": "polyglot-context",
+  "domain": "A venue-bookings web app for a co-working space: Fastify + Drizzle ORM on the server, React + TypeScript on the client. The session is a full database migration from SQLite to Postgres that touches every layer: new Drizzle schema files, hand-written migration SQL, a rewritten repository layer, Fastify route handlers, and frontend types. Many distinct file paths across server and client are in play.",
+  "phases": [
+    {
+      "id": "p1",
+      "goal": "The user says the bookings app has outgrown SQLite (write locks under concurrent bookings) and asks for a migration to Postgres using Drizzle's pg-core. The assistant surveys the codebase: server/src/db/schema.ts (single SQLite schema file), server/src/repositories/bookingsRepo.sqlite.ts, and the Fastify routes. Two early decisions are stated confidently and will be revised later: first, the assistant proposes renaming the users.name column to display_name in the new schema (T1 superseded evidence must be voiced here); second, the plan is to dual-write every booking to both SQLite and Postgres during a transition window (T2 superseded evidence here). The user also states one hard constraint that must be quoted: booking ids stay ULID text strings (F1 evidence in the user's words).",
+      "turns": 5,
+      "activeFiles": [
+        "server/src/db/schema.ts",
+        "server/src/repositories/bookingsRepo.sqlite.ts",
+        "server/src/routes/bookings.ts",
+        "server/package.json"
+      ],
+      "factIds": ["F1"]
+    },
+    {
+      "id": "p2",
+      "goal": "The new Drizzle pg-core schema layer is built as two files: server/src/db/schema/bookings.ts and server/src/db/schema/users.ts (F2 evidence when the assistant announces the split). All date columns use timestamptz, stated explicitly (F3 evidence). The user also asks for realistic demo bookings so staging is not empty; the assistant generates server/src/db/seed/seedEvents.ts with 220 demo events (F4 evidence when this lands). Phase ends with the schema files written and compiling.",
+      "turns": 6,
+      "activeFiles": [
+        "server/src/db/schema/bookings.ts",
+        "server/src/db/schema/users.ts",
+        "server/src/db/seed/seedEvents.ts"
+      ],
+      "factIds": ["F2", "F3", "F4"],
+      "bulk": [
+        {
+          "asset": "seed-data",
+          "path": "server/src/db/seed/seedEvents.ts",
+          "kind": "events",
+          "count": 220
+        }
+      ]
+    },
+    {
+      "id": "p3",
+      "goal": "Migration SQL phase. The assistant runs drizzle-kit generate, but the emitted SQL declares bookings.id as a serial integer primary key, violating the ULID constraint; the assistant shows this failure and therefore hand-writes the migration at server/drizzle/0001_postgres_init.sql instead (F5 evidence when explaining why). While planning the data move, the dual-write transition idea is explicitly abandoned as too risky and complex; the new decision is a hard cutover with a one-shot copy script at server/scripts/copy-sqlite-to-pg.ts (T2 current evidence must be a clear statement that dual-writing is dropped; F6 evidence when the copy script is created). Mid-phase the user separately asks for the German locale file for the booking UI, generated at client/src/locales/de.json.",
+      "turns": 6,
+      "activeFiles": [
+        "server/drizzle/0001_postgres_init.sql",
+        "server/scripts/copy-sqlite-to-pg.ts",
+        "client/src/locales/de.json"
+      ],
+      "factIds": ["F5", "F6"],
+      "bulk": [
+        {
+          "asset": "locale-json",
+          "path": "client/src/locales/de.json",
+          "count": 400
+        }
+      ]
+    },
+    {
+      "id": "p4",
+      "goal": "Repository and first route updates. The assistant writes server/src/repositories/bookingsRepo.pg.ts implementing the exact same exported function signatures as the old SQLite repo (F7 evidence), and rewires server/src/routes/bookings.ts to import it (F8 evidence). Testing against local Postgres, requests start failing with the error 'sorry, too many clients already' because each request built its own Pool; fixed by a singleton pool module at server/src/db/pool.ts (F9 evidence when the fix lands). Reviewing the admin CSV export, the user realizes too much depends on users.name, so the column rename is reversed: users.name stays, and display_name becomes a computed alias selected in queries only (T1 current evidence must be an explicit reversal). The user also asks for a utility stylesheet for the new admin booking screens, generated at client/src/styles/admin-utilities.css.",
+      "turns": 6,
+      "activeFiles": [
+        "server/src/repositories/bookingsRepo.pg.ts",
+        "server/src/routes/bookings.ts",
+        "server/src/db/pool.ts",
+        "client/src/styles/admin-utilities.css"
+      ],
+      "factIds": ["F7", "F8", "F9"],
+      "bulk": [
+        {
+          "asset": "long-css",
+          "path": "client/src/styles/admin-utilities.css",
+          "count": 240
+        }
+      ]
+    },
+    {
+      "id": "p5",
+      "goal": "Frontend types plus the in-flight tail. The assistant updates client/src/types/booking.ts so startsAt and endsAt are ISO strings and adds an optional displayName field (F10 evidence). Then a grep across server/src/routes shows that server/src/routes/availability.ts and server/src/routes/admin.ts still import bookingsRepo.sqlite.ts (F11 evidence in a status update). The stated next step is to rewire both routes to bookingsRepo.pg.ts and only then delete the old SQLite repo file (F12 evidence). The final turn must end with the assistant mid-edit inside availability.ts, having just opened it and swapped nothing yet, not with a wrap-up.",
+      "turns": 5,
+      "activeFiles": [
+        "client/src/types/booking.ts",
+        "server/src/routes/availability.ts",
+        "server/src/routes/admin.ts",
+        "server/src/repositories/bookingsRepo.sqlite.ts"
+      ],
+      "factIds": ["F10", "F11", "F12"]
+    }
+  ],
+  "facts": [
+    {
+      "id": "F1",
+      "tier": 1,
+      "category": "constraint",
+      "statement": "Binding user constraint: booking ids must remain ULID text strings in Postgres; serial integer primary keys are forbidden.",
+      "evidence": "booking ids must stay ULID text strings, never serial integers, in the new database"
+    },
+    {
+      "id": "F2",
+      "tier": 2,
+      "category": "code-change",
+      "statement": "The new Drizzle pg-core schema is split into two files: server/src/db/schema/bookings.ts and server/src/db/schema/users.ts.",
+      "evidence": "split the pg-core schema into schema/bookings.ts and schema/users.ts instead of one file"
+    },
+    {
+      "id": "F3",
+      "tier": 3,
+      "category": "decision",
+      "statement": "All date and time columns in the new Postgres schema use timestamptz.",
+      "evidence": "every date column in the new schema uses timestamptz, not plain timestamp"
+    },
+    {
+      "id": "F4",
+      "tier": 3,
+      "category": "code-change",
+      "statement": "server/src/db/seed/seedEvents.ts was added with 220 demo booking events for staging.",
+      "evidence": "seedEvents.ts now carries 220 demo booking events for the staging database"
+    },
+    {
+      "id": "F5",
+      "tier": 2,
+      "category": "error",
+      "statement": "drizzle-kit generate emitted a serial integer primary key for bookings.id, violating the ULID constraint, so the migration SQL was hand-written at server/drizzle/0001_postgres_init.sql.",
+      "evidence": "drizzle-kit generated a serial integer id, so I hand-wrote 0001_postgres_init.sql myself"
+    },
+    {
+      "id": "F6",
+      "tier": 2,
+      "category": "code-change",
+      "statement": "Data moves via a one-shot copy script at server/scripts/copy-sqlite-to-pg.ts as part of the hard cutover.",
+      "evidence": "the one-shot copy script lives at server/scripts/copy-sqlite-to-pg.ts"
+    },
+    {
+      "id": "F7",
+      "tier": 2,
+      "category": "code-change",
+      "statement": "server/src/repositories/bookingsRepo.pg.ts implements the exact same exported function signatures as bookingsRepo.sqlite.ts, so routes can swap imports without other edits.",
+      "evidence": "bookingsRepo.pg.ts mirrors every exported signature of the old SQLite repo exactly"
+    },
+    {
+      "id": "F8",
+      "tier": 2,
+      "category": "code-change",
+      "statement": "server/src/routes/bookings.ts has already been rewired to import bookingsRepo.pg.ts.",
+      "evidence": "routes/bookings.ts now imports bookingsRepo.pg.ts and no longer touches SQLite"
+    },
+    {
+      "id": "F9",
+      "tier": 3,
+      "category": "error",
+      "statement": "Local testing hit the Postgres error 'sorry, too many clients already' because each request created its own Pool; fixed by a singleton pool module at server/src/db/pool.ts.",
+      "evidence": "sorry, too many clients already went away once pool.ts exported a singleton Pool"
+    },
+    {
+      "id": "F10",
+      "tier": 2,
+      "category": "code-change",
+      "statement": "client/src/types/booking.ts was updated: startsAt and endsAt are ISO strings and an optional displayName field was added.",
+      "evidence": "booking.ts types now use ISO strings for startsAt and endsAt plus optional displayName"
+    },
+    {
+      "id": "F11",
+      "tier": 1,
+      "category": "task-state",
+      "statement": "Two route handlers, server/src/routes/availability.ts and server/src/routes/admin.ts, still import the old bookingsRepo.sqlite.ts module.",
+      "evidence": "availability.ts and admin.ts still import bookingsRepo.sqlite.ts, the last two holdouts"
+    },
+    {
+      "id": "F12",
+      "tier": 1,
+      "category": "task-state",
+      "statement": "The immediate next step is to rewire availability.ts and admin.ts to bookingsRepo.pg.ts, and only after that delete bookingsRepo.sqlite.ts.",
+      "evidence": "rewire those two routes to the pg repo first, then delete the SQLite repo file"
+    }
+  ],
+  "traps": [
+    {
+      "id": "T1",
+      "statement": "The summary must present the users.name to display_name column rename as reversed: the current schema keeps users.name, and display_name exists only as a computed alias in queries. Presenting the rename as done or still planned counts as contradicted.",
+      "supersededEvidence": "rename the users.name column to display_name in the new Postgres schema",
+      "oldPhase": "p1",
+      "currentEvidence": "keep users.name as is; display_name is only a computed alias in queries",
+      "newPhase": "p4"
+    },
+    {
+      "id": "T2",
+      "statement": "The summary must present the dual-write transition window as abandoned and the hard cutover with the one-shot copy script as the current plan. Presenting dual-writing to both databases as current or planned counts as contradicted.",
+      "supersededEvidence": "dual-write every booking to both SQLite and Postgres during a transition window",
+      "oldPhase": "p1",
+      "currentEvidence": "dual-writing is dropped; we do a hard cutover with a one-shot copy script",
+      "newPhase": "p3"
+    }
+  ],
+  "probes": [
+    {
+      "id": "P1",
+      "question": "What remains before the Postgres migration is complete, and what exactly is the next edit?",
+      "expected": "Two route handlers, server/src/routes/availability.ts and server/src/routes/admin.ts, still import the old bookingsRepo.sqlite.ts. The next edit is swapping their imports to bookingsRepo.pg.ts (availability.ts is currently open mid-edit), and only after both are rewired does bookingsRepo.sqlite.ts get deleted."
+    },
+    {
+      "id": "P2",
+      "question": "In the new Postgres schema, is the users.name column being renamed to display_name? Answer and explain the current state.",
+      "expected": "No. The rename was proposed early but reversed: users.name stays as the physical column because the admin CSV export and other consumers depend on it, and display_name exists only as a computed alias selected in queries. The frontend booking type has an optional displayName field."
+    },
+    {
+      "id": "P3",
+      "question": "List the files created or updated so far for the migration, layer by layer (schema, SQL, data move, server code, frontend).",
+      "expected": "Schema: server/src/db/schema/bookings.ts and server/src/db/schema/users.ts (pg-core, timestamptz columns). Migration SQL: hand-written server/drizzle/0001_postgres_init.sql. Data move: server/scripts/copy-sqlite-to-pg.ts one-shot copy script. Server code: server/src/repositories/bookingsRepo.pg.ts, singleton pool at server/src/db/pool.ts, and server/src/routes/bookings.ts rewired to the pg repo. Frontend: client/src/types/booking.ts with ISO-string startsAt/endsAt and optional displayName."
+    }
+  ]
+}

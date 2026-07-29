@@ -1,5 +1,4 @@
 import { act, render, renderHook } from "@testing-library/react";
-import { QueryClient } from "@tanstack/react-query";
 import { createStore, Provider } from "jotai";
 import type { PropsWithChildren } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -12,7 +11,6 @@ import { ImageGenerationProvider } from "@/image_generation/ImageGenerationProvi
 import { PackageManagerWarningProvider } from "@/package_manager_warnings/PackageManagerWarningProvider";
 import { PackageManagerWarningStore } from "@/package_manager_warnings/store";
 import { createSequentialIdSource } from "@/state_machines/testing";
-import { createVersionPreviewRuntime } from "@/version_preview/commands";
 import {
   DeferredPreviewErrorFacade,
   PreviewErrorFacadeProvider,
@@ -38,7 +36,6 @@ const mocks = vi.hoisted(() => ({
   showImageGeneratingToast: vi.fn(),
   showImageSuccessToast: vi.fn(),
   showInputRequest: vi.fn(),
-  toastError: vi.fn(),
 }));
 
 vi.mock("@/ipc/types", async (importOriginal) => {
@@ -104,7 +101,7 @@ vi.mock("sonner", () => ({
   toast: {
     success: vi.fn(),
     warning: vi.fn(),
-    error: mocks.toastError,
+    error: vi.fn(),
     dismiss: vi.fn(),
   },
 }));
@@ -247,29 +244,5 @@ describe("golden single-window: runtime presentation delivery", () => {
       expect.any(Function),
     );
     view.unmount();
-  });
-
-  it("shows one stable recovery toast for version-preview recovery", () => {
-    const runtime = createVersionPreviewRuntime({
-      queryClient: new QueryClient(),
-      store: createStore(),
-      restartApp: vi.fn().mockResolvedValue(undefined),
-    });
-    const retry = vi.fn();
-
-    runtime.notifyRecovery({
-      appId: 7,
-      error: new Error("return failed"),
-      retry,
-    });
-
-    expect(mocks.toastError).toHaveBeenCalledExactlyOnceWith(
-      "Unable to return to the branch that was active before previewing this version.",
-      expect.objectContaining({
-        id: "version-preview-recovery-7",
-        duration: Infinity,
-        action: { label: "Retry", onClick: retry },
-      }),
-    );
   });
 });

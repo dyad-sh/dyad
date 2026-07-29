@@ -44,6 +44,12 @@ export function selectVersionPreviewCapabilities(
         canSelectVersion: false,
         canSwitchBranch: true,
       };
+    case "restore-recovery-required":
+      return {
+        canRestore: false,
+        canSelectVersion: false,
+        canSwitchBranch: false,
+      };
     case "checking-out":
     case "restoring":
     case "returning":

@@ -15,6 +15,32 @@ export interface PreviewError {
   message: string;
 }
 
+export type RestoreRecovery =
+  | {
+      readonly preRestoreHead: string;
+      readonly preRestoreBranch: string | null;
+      readonly targetHead: string | null;
+      readonly nextStep:
+        | "preparing"
+        | "preserve-dirty-tree"
+        | "checkout-branch"
+        | "hard-reset"
+        | "soft-reset"
+        | "commit";
+    }
+  | {
+      readonly preRestoreHead: string;
+      readonly preRestoreBranch: string | null;
+      readonly targetHead: string;
+      readonly completedHead: string;
+      readonly repositoryOutcome: "target-applied";
+      readonly nextStep: "chat-mutation" | "completed";
+    }
+  | {
+      readonly repositoryOutcome: "unchanged";
+      readonly nextStep: "chat-mutation" | "completed";
+    };
+
 export interface PreviewSession {
   /** The app that owns this session. Never substituted after creation. */
   appId: number;
@@ -53,8 +79,19 @@ export type PreviewState =
       type: "restoring";
       session: PreviewSession;
       fallback: "closed" | "browsing" | "previewing";
+      /**
+       * Main-process durable recovery facts. They are intentionally omitted
+       * from the renderer projection.
+       */
+      restoreRecovery?: RestoreRecovery;
     }
   | { type: "returning"; session: PreviewSession }
+  | {
+      type: "restore-recovery-required";
+      session: PreviewSession;
+      error: PreviewError;
+      restoreRecovery?: RestoreRecovery;
+    }
   | {
       type: "switching-branch";
       appId: number;
@@ -62,6 +99,16 @@ export type PreviewState =
       fallback: BranchSwitchFallback;
     }
   | { type: "recovery-required"; session: PreviewSession; error: PreviewError };
+
+export function ownsHistoricalCheckout(state: PreviewState): boolean {
+  if (state.type === "switching-branch") {
+    return (
+      state.fallback.type === "previewing" ||
+      state.fallback.type === "recovery-required"
+    );
+  }
+  return state.type !== "closed" && state.session.checkedOutVersionId !== null;
+}
 
 export type PreviewEvent =
   // UI intents
@@ -106,6 +153,11 @@ export type PreviewEvent =
       repositoryOutcome: "target-applied" | "unchanged";
     }
   | { type: "RESTORE_FAILED"; error: PreviewError }
+  | {
+      type: "RESTORE_RECOVERY_REQUIRED";
+      error: PreviewError;
+      restoreRecovery: RestoreRecovery;
+    }
   | { type: "RETURN_SUCCEEDED" }
   | { type: "RETURN_FAILED"; error: PreviewError }
   | { type: "SWITCH_BRANCH_SUCCEEDED" }
@@ -157,6 +209,7 @@ export function isPaneVisibleState(state: PreviewState): boolean {
     case "returning":
     case "switching-branch":
     case "recovery-required":
+    case "restore-recovery-required":
       return false;
   }
 }
@@ -175,24 +228,29 @@ export function isMutatingState(state: PreviewState): boolean {
     case "resolving-origin":
     case "previewing":
     case "recovery-required":
+    case "restore-recovery-required":
       return false;
   }
 }
 
-function canShowDiff(
-  state: PreviewState,
-): state is Exclude<
+function canShowDiff(state: PreviewState): state is Exclude<
   PreviewState,
   | { type: "closed" }
   | { type: "returning"; session: PreviewSession }
   | { type: "switching-branch" }
   | { type: "recovery-required"; session: PreviewSession; error: PreviewError }
+  | {
+      type: "restore-recovery-required";
+      session: PreviewSession;
+      error: PreviewError;
+    }
 > {
   return (
     state.type !== "closed" &&
     state.type !== "returning" &&
     state.type !== "switching-branch" &&
-    state.type !== "recovery-required"
+    state.type !== "recovery-required" &&
+    state.type !== "restore-recovery-required"
   );
 }
 

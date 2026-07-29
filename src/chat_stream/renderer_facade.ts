@@ -1,12 +1,5 @@
 import type { Chat, ComponentSelection, FileAttachment } from "@/ipc/types";
-import type { InvocationRef } from "@/state_machines/invocation_ref";
 import type { UserInputFollowUpQueueOwner } from "@/state_machines/handoff_types";
-
-export const CHAT_STREAM_INVOCATION_KIND = "chat-stream" as const;
-export type ChatStreamInvocationRef = InvocationRef<
-  typeof CHAT_STREAM_INVOCATION_KIND,
-  number
->;
 
 export interface StreamSettledResult {
   success: boolean;
@@ -34,7 +27,7 @@ export interface StreamRequest {
   onSettled?: (result: StreamSettledResult) => void;
 }
 
-/** Compatibility surface used by React callers; main owns all transitions. */
+/** Renderer facade event surface; main owns all lifecycle transitions. */
 export type StreamEvent =
   | { type: "submit"; request: StreamRequest }
   | { type: "cancel" }

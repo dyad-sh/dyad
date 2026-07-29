@@ -87,8 +87,33 @@ export function useTestRecorder({
   >(null);
   // The auth to (re)send while we're waiting for the in-iframe sign-in; set for
   // the duration of `authenticate` so a bootstrap that (re)loads mid-flow can be
-  // handed the credentials as soon as it announces itself.
-  const pendingAuthRef = useRef<RecordingAuth | null>(null);
+  // handed the credentials as soon as it announces itself. Tagged with the app it
+  // belongs to: the iframe ref follows the *selected* app, so an unqualified
+  // resend would hand one app's test credentials to another app's preview.
+  // `nonce` names this sign-in attempt. The bootstrap's own state has to cross a
+  // document navigation via sessionStorage, which outlives the attempt, so it
+  // reports back which attempt its leftover marker came from and we answer with
+  // the one we're actually waiting on.
+  const pendingAuthRef = useRef<{
+    appId: number;
+    auth: RecordingAuth;
+    nonce: string;
+  } | null>(null);
+  // Apps whose main-process session this hook started and hasn't stopped yet.
+  // The session outlives the renderer's state (it holds an isolated database and
+  // the per-app lock), so every path that walks away from one — an app switch, a
+  // preview unmount — has to hand it back explicitly.
+  const ownedSessionsRef = useRef(new Set<number>());
+  // Distinguishes a real unmount from the app-change re-run of the release
+  // effect below. `startRecording` consults it after each await: refs survive
+  // unmount, so an app-id comparison alone still looks satisfied.
+  const mountedRef = useRef(true);
+  useEffect(
+    () => () => {
+      mountedRef.current = false;
+    },
+    [],
+  );
 
   useEffect(() => {
     iframeElRef.current = iframeEl;
@@ -180,9 +205,16 @@ export function useTestRecorder({
           // The (possibly reloaded/restarted) bootstrap is listening — hand it
           // the credentials. This closes the race where our first send lands in
           // the gap during a dev-server restart and would otherwise be lost.
-          if (pendingAuthRef.current) {
+          // Only for the app the credentials were minted for: after an app
+          // switch this iframe belongs to someone else.
+          const pending = pendingAuthRef.current;
+          if (pending && pending.appId === currentAppId) {
             postToIframe(
-              { type: "dyad-auth-login", auth: pendingAuthRef.current },
+              {
+                type: "dyad-auth-login",
+                auth: pending.auth,
+                nonce: pending.nonce,
+              },
               previewOrigin(),
             );
           }
@@ -198,7 +230,10 @@ export function useTestRecorder({
         case "pushState":
         case "replaceState": {
           if (phaseRef.current !== "recording" || currentAppId == null) return;
-          const path = toAppPath(data.newUrl);
+          // The shim (and the auth bootstrap) nest history changes under
+          // `payload`, unlike every other message this handler consumes.
+          const payload = data.payload as { newUrl?: unknown } | undefined;
+          const path = toAppPath(payload?.newUrl);
           if (path) {
             appendEntry({
               appId: currentAppId,
@@ -220,10 +255,19 @@ export function useTestRecorder({
     const unsub = ipc.events.recording.onEnded(
       ({ appId: endedAppId, reason, message }) => {
         if (endedAppId == null) return;
+        ownedSessionsRef.current.delete(endedAppId);
         const failureMessage =
           reason === "error" || reason === "timed-out"
             ? (message ?? "The recording session ended unexpectedly.")
             : undefined;
+        // The user-driven stops (stopAndReview / cancelRecording) disarm the
+        // in-page recorder themselves. On every other ending the iframe is
+        // usually still alive, so without this the injected client keeps its
+        // capture-phase listeners attached and keeps painting the red hover
+        // highlight — with no recording bar left to explain it.
+        if (reason !== "stopped" && endedAppId === appIdRef.current) {
+          postToIframe({ type: "deactivate-dyad-recorder" });
+        }
         patchState(endedAppId, (prev) =>
           prev.phase === "idle"
             ? prev
@@ -233,7 +277,44 @@ export function useTestRecorder({
       },
     );
     return unsub;
-  }, [patchState]);
+  }, [patchState, postToIframe]);
+
+  /**
+   * Hand a still-running session back to the main process and reset the app's
+   * recorder state. Used when we're walking away from a session rather than
+   * finishing it: only apps in `ownedSessionsRef` are touched, so a captured
+   * draft in review is never disturbed.
+   */
+  const releaseSession = useCallback(
+    (targetAppId: number) => {
+      if (!ownedSessionsRef.current.delete(targetAppId)) return;
+      if (pendingAuthRef.current?.appId === targetAppId) {
+        pendingAuthRef.current = null;
+        authReadyRef.current = null;
+      }
+      if (targetAppId === appIdRef.current) {
+        postToIframe({ type: "deactivate-dyad-recorder" });
+      }
+      void ipc.recording.stopRecording({ appId: targetAppId }).catch(() => {});
+      clearEntries(targetAppId);
+      patchState(targetAppId, { phase: "idle" });
+    },
+    [clearEntries, patchState, postToIframe],
+  );
+
+  // A recording only exists while the preview that can stop it is on screen.
+  // Switching to the Code tab, or to another app, unmounts (or re-points) this
+  // hook and would otherwise leave the main-process session alive until the
+  // 30-minute cap: the app keeps serving the isolated test database and keeps
+  // rejecting test runs and further recordings, with no UI left to end it.
+  useEffect(() => {
+    return () => {
+      // Snapshot: releaseSession removes from the set as it goes.
+      for (const owned of Array.from(ownedSessionsRef.current)) {
+        releaseSession(owned);
+      }
+    };
+  }, [appId, releaseSession]);
 
   // (Re)activate the in-page recorder whenever we're in the recording phase.
   // The activate posted inside startRecording can be lost if the iframe is
@@ -260,7 +341,7 @@ export function useTestRecorder({
   }, [patchState]);
 
   const authenticate = useCallback(
-    (auth: RecordingAuth) =>
+    (targetAppId: number, auth: RecordingAuth) =>
       new Promise<{ ok: boolean; error?: string }>((resolve) => {
         let done = false;
         const finish = (ok: boolean, error?: string) => {
@@ -278,11 +359,12 @@ export function useTestRecorder({
         // Register the creds FIRST so the fresh load's bootstrap announce
         // triggers a (re)send, then force that fresh load. Also post directly
         // for the case where the current page is alive and listening.
-        pendingAuthRef.current = auth;
+        const nonce = crypto.randomUUID();
+        pendingAuthRef.current = { appId: targetAppId, auth, nonce };
         authReadyRef.current = (result) =>
           finish(Boolean(result.ok), result.error);
         reloadPreview();
-        postToIframe({ type: "dyad-auth-login", auth }, previewOrigin());
+        postToIframe({ type: "dyad-auth-login", auth, nonce }, previewOrigin());
       }),
     [postToIframe, previewOrigin, reloadPreview],
   );
@@ -317,6 +399,18 @@ export function useTestRecorder({
       return;
     }
 
+    ownedSessionsRef.current.add(targetAppId);
+    // Everything below reaches the preview through refs that track the
+    // *selected* app (the iframe, its URL, its origin). If the user switched
+    // apps while isolation was being set up, continuing would reload and sign
+    // the wrong preview in with this app's test credentials, then arm it — while
+    // this app's session stayed alive, locked, and invisible. Bail instead, and
+    // give the session back. Same for a preview that unmounted while we waited.
+    if (!mountedRef.current || appIdRef.current !== targetAppId) {
+      releaseSession(targetAppId);
+      return;
+    }
+
     let auth = result.auth;
     patchState(targetAppId, (prev) => ({
       ...prev,
@@ -332,7 +426,13 @@ export function useTestRecorder({
         phase: "authenticating",
         progress: "Signing in the test user…",
       }));
-      const signIn = await authenticate(auth);
+      const signIn = await authenticate(targetAppId, auth);
+      // Sign-in waits up to 30s for the preview to announce itself — plenty of
+      // room for the selection to move on, or for the preview to go away.
+      if (!mountedRef.current || appIdRef.current !== targetAppId) {
+        releaseSession(targetAppId);
+        return;
+      }
       if (!signIn.ok) {
         // Sign-in failed: record unauthenticated (and don't emit signIn), so
         // the flow degrades gracefully instead of dead-ending.
@@ -359,7 +459,15 @@ export function useTestRecorder({
       progress: undefined,
       startedAt: Date.now(),
     }));
-  }, [appId, authenticate, clearEntries, patchState, postToIframe]);
+  }, [
+    appId,
+    authenticate,
+    clearEntries,
+    patchState,
+    postToIframe,
+    releaseSession,
+    reloadPreview,
+  ]);
 
   /**
    * End the session and capture what was recorded as a draft — no file is
@@ -372,6 +480,9 @@ export function useTestRecorder({
       const targetAppId = appId;
       if (targetAppId == null) return null;
 
+      // We're finishing this session ourselves, so the unmount/app-switch
+      // safety net must not also try to stop it.
+      ownedSessionsRef.current.delete(targetAppId);
       patchState(targetAppId, (prev) => ({ ...prev, phase: "finishing" }));
       postToIframe({ type: "deactivate-dyad-recorder" });
 
@@ -465,6 +576,7 @@ export function useTestRecorder({
   const cancelRecording = useCallback(async () => {
     const targetAppId = appId;
     if (targetAppId == null) return;
+    ownedSessionsRef.current.delete(targetAppId);
     postToIframe({ type: "deactivate-dyad-recorder" });
     void ipc.recording
       .discardRecordedTestDraft({ appId: targetAppId })

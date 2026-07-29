@@ -12,6 +12,28 @@ export type RecorderAuthMode =
   | "neon-better-auth"
   | "supabase-password";
 
+/**
+ * Marker line stamped into a generated fixture, naming the auth mode it signs in
+ * with. The helper's signature (`signIn(page)`) is the same for every mode but
+ * its body is not, so a spec recorded after an app moved between Neon and
+ * Supabase needs a different file than the one already on disk. The marker is
+ * how the writer tells "mine, for this backend" from "mine, for the other one"
+ * from "the user's own".
+ */
+export function fixtureMarker(mode: Exclude<RecorderAuthMode, "none">): string {
+  return `// dyad-generated-fixture: ${mode}`;
+}
+
+/** The auth mode a fixture declares, or null when it isn't Dyad-generated. */
+export function readFixtureMode(
+  source: string,
+): Exclude<RecorderAuthMode, "none"> | null {
+  for (const mode of ["neon-better-auth", "supabase-password"] as const) {
+    if (source.includes(fixtureMarker(mode))) return mode;
+  }
+  return null;
+}
+
 // Written as arrays of plain double-quoted lines so the emitted source can
 // contain backticks and ${...} verbatim without escaping.
 const NEON_BETTER_AUTH_FIXTURE: string[] = [
@@ -99,10 +121,9 @@ const SUPABASE_PASSWORD_FIXTURE: string[] = [
 export function generateTestUserFixtureSource(
   mode: Exclude<RecorderAuthMode, "none">,
 ): string {
-  switch (mode) {
-    case "neon-better-auth":
-      return NEON_BETTER_AUTH_FIXTURE.join("\n");
-    case "supabase-password":
-      return SUPABASE_PASSWORD_FIXTURE.join("\n");
-  }
+  const body =
+    mode === "neon-better-auth"
+      ? NEON_BETTER_AUTH_FIXTURE
+      : SUPABASE_PASSWORD_FIXTURE;
+  return [fixtureMarker(mode), ...body].join("\n");
 }

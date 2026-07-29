@@ -16,6 +16,7 @@ import type {
   CreateRecordedSpecResult,
 } from "../types/tests";
 import { assertMutationPathAllowed } from "../utils/path_utils";
+import { withLock } from "../utils/lock_utils";
 import { gitAdd } from "../utils/git_utils";
 import { extractJson } from "../utils/extract_json";
 import { getModelClient } from "../utils/get_model_client";
@@ -38,7 +39,10 @@ import {
   recordedBodyStatements,
   recordedSpecFileName,
 } from "@/lib/test_recorder/codegen";
-import { generateTestUserFixtureSource } from "@/lib/test_recorder/fixture_templates";
+import {
+  generateTestUserFixtureSource,
+  readFixtureMode,
+} from "@/lib/test_recorder/fixture_templates";
 import { isSingleAssertionStatement } from "@/lib/test_recorder/assertion_code";
 import {
   ASSERTIONS_TAG,
@@ -104,8 +108,19 @@ async function stage(appPath: string, relativePath: string): Promise<void> {
 }
 
 /**
- * Write the `signIn` helper the generated spec imports, unless the app already
- * has one — never overwrite the user's edits to it.
+ * Write the `signIn` helper the generated spec imports.
+ *
+ * An existing file is never blindly reused: the spec that's about to be written
+ * imports `signIn` from here, so a fixture built for the other auth backend — or
+ * a user's own unrelated file that happens to sit at this path — produces a spec
+ * that fails to compile or silently records as anonymous, while the save UI
+ * reports success. Each case gets its own answer:
+ *
+ * - ours, same auth mode → reuse it (edits included; the contract still holds)
+ * - ours, other auth mode, unedited → rewrite for the mode just recorded
+ * - ours, other auth mode, edited → refuse; the user's edits are theirs to move
+ * - not ours, exports `signIn` → reuse; the user's helper wins
+ * - not ours, no `signIn` → refuse; naming the file the user has to reconcile
  */
 async function ensureSignInFixture(
   appPath: string,
@@ -117,25 +132,59 @@ async function ensureSignInFixture(
     relativePath: FIXTURE_PATH,
   });
   const absolutePath = path.join(appPath, relativePath);
-  if (await fileExists(absolutePath)) return;
+  const source = generateTestUserFixtureSource(draft.authMode);
+
+  if (await fileExists(absolutePath)) {
+    const existing = await fs.promises.readFile(absolutePath, "utf-8");
+    const existingMode = readFixtureMode(existing);
+
+    if (existingMode === draft.authMode) return;
+
+    if (existingMode) {
+      if (existing !== generateTestUserFixtureSource(existingMode)) {
+        throw new DyadError(
+          `${relativePath} was generated for ${existingMode} auth and has been edited, but this recording signs in with ${draft.authMode}. Move your changes into a helper of your own (or delete the file) and generate the test again.`,
+          DyadErrorKind.Precondition,
+        );
+      }
+      logger.info(
+        `Regenerating ${relativePath}: was ${existingMode}, recording used ${draft.authMode}`,
+      );
+    } else if (
+      /export\s+(async\s+)?function\s+signIn\b|export\s*{[^}]*\bsignIn\b/.test(
+        existing,
+      )
+    ) {
+      // The user's own helper. Same import, same call — leave it alone.
+      return;
+    } else {
+      throw new DyadError(
+        `${relativePath} already exists but doesn't export a \`signIn\` helper, and the generated test imports one from there. Rename or remove that file, then generate the test again.`,
+        DyadErrorKind.Precondition,
+      );
+    }
+  }
+
   await fs.promises.mkdir(path.dirname(absolutePath), { recursive: true });
-  await fs.promises.writeFile(
-    absolutePath,
-    generateTestUserFixtureSource(draft.authMode),
-    "utf-8",
-  );
+  await fs.promises.writeFile(absolutePath, source, "utf-8");
   await stage(appPath, relativePath);
 }
 
 /**
- * Claim a free `e2e-tests/recorded-<slug>.spec.ts`. A re-recording, a second
- * flow whose name slugifies the same, or repeated blank-name saves must never
- * clobber a spec that already exists — disambiguate with a numeric suffix.
+ * Claim a free `e2e-tests/recorded-<slug>.spec.ts` and write it. A re-recording,
+ * a second flow whose name slugifies the same, or repeated blank-name saves must
+ * never clobber a spec that already exists — disambiguate with a numeric suffix.
+ *
+ * Claiming and writing are one exclusive-create call rather than "check, then
+ * write": those are two syscalls, so anything that took the name in between (a
+ * concurrent approval, the user's editor) would otherwise be silently
+ * overwritten. Losing that race just advances to the next suffix.
  */
-async function resolveSpecPath(
+async function writeSpecToFreePath(
   appPath: string,
   testName: string,
-): Promise<{ relativePath: string; absolutePath: string }> {
+  source: string,
+): Promise<{ relativePath: string }> {
   for (let index = 1; index <= MAX_SPEC_NAME_ATTEMPTS; index++) {
     const candidate = `${E2E_TEST_DIR}/${recordedSpecFileName(testName, index)}`;
     // Re-validated per candidate: the name is derived from user input, and this
@@ -144,8 +193,16 @@ async function resolveSpecPath(
       appPath,
       relativePath: candidate,
     });
-    if (!(await fileExists(path.join(appPath, relativePath)))) {
-      return { relativePath, absolutePath: path.join(appPath, relativePath) };
+    const absolutePath = path.join(appPath, relativePath);
+    await fs.promises.mkdir(path.dirname(absolutePath), { recursive: true });
+    try {
+      await fs.promises.writeFile(absolutePath, source, {
+        encoding: "utf-8",
+        flag: "wx",
+      });
+      return { relativePath };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
     }
   }
   throw new DyadError(
@@ -171,19 +228,14 @@ async function writeRecordedSpec({
   const appPath = await getAppPath(appId);
   await ensureSignInFixture(appPath, draft);
 
-  const { relativePath, absolutePath } = await resolveSpecPath(
+  const { relativePath } = await writeSpecToFreePath(
     appPath,
     draft.testName,
-  );
-  await fs.promises.mkdir(path.dirname(absolutePath), { recursive: true });
-  await fs.promises.writeFile(
-    absolutePath,
     generateSpecSource({
       testName: draft.testName,
       includeSignIn: draftIncludesSignIn(draft),
       bodyStatements,
     }),
-    "utf-8",
   );
   await stage(appPath, relativePath);
 
@@ -279,15 +331,15 @@ async function synthesizeAssertionCode({
   testTitle,
   bodyStatements,
   items,
+  pending,
 }: {
   appId: number;
   testTitle: string;
   bodyStatements: string[];
   items: AssertionPlanItem[];
+  /** The assertions whose code must come from the model, decided by the caller. */
+  pending: Extract<AssertionPlanItem, { kind: "assertion" }>[];
 }): Promise<{ codeById: Map<string, string>; warning?: string }> {
-  const pending = items.filter(
-    (item) => isAssertionItem(item) && (item.needsCode || !item.code),
-  ) as Extract<AssertionPlanItem, { kind: "assertion" }>[];
   if (pending.length === 0) return { codeById: new Map() };
 
   // "after step N" gives the model the local context an assertion belongs to.
@@ -350,9 +402,14 @@ async function synthesizeAssertionCode({
 }
 
 /**
- * Guard against a renderer that lost, duplicated, or invented a step: the
- * recorded interactions must survive the round-trip exactly, or the plan is
+ * Guard against a renderer that lost, duplicated, invented, or reordered a step:
+ * the recorded interactions must survive the round-trip exactly, or the plan is
  * describing a different recording than the one we're about to write.
+ *
+ * Compared in encounter order, not sorted — the write loop below emits steps in
+ * the submitted order, so a resequenced `[1, 0]` would otherwise validate
+ * against `[0, 1]` and generate a test that replays the recording backwards.
+ * Assertions are free to move; steps are not.
  */
 function assertStepsMatch(
   submitted: AssertionPlanItem[],
@@ -362,7 +419,6 @@ function assertStepsMatch(
     items
       .filter((item) => item.kind === "step")
       .map((item) => (item as { stepIndex: number }).stepIndex)
-      .sort((a, b) => a - b)
       .join(",");
   if (indices(submitted) !== indices(stored)) {
     throw new DyadError(
@@ -370,6 +426,51 @@ function assertStepsMatch(
       DyadErrorKind.Validation,
     );
   }
+}
+
+/**
+ * Decide, per assertion, which code may be written — never trusting the
+ * renderer's `code`/`needsCode` pair on its own.
+ *
+ * An assertion whose text is unchanged from the stored proposal keeps the code
+ * that proposal already validated. Anything else (edited text, user-authored,
+ * an id we've never seen) is synthesized here from the text and re-validated.
+ * Without this, a renderer could set `needsCode: false` alongside arbitrary
+ * TypeScript and have it written verbatim into a spec that later runs with
+ * Node's privileges.
+ */
+function resolveAssertionCode({
+  item,
+  stored,
+  synthesized,
+}: {
+  item: Extract<AssertionPlanItem, { kind: "assertion" }>;
+  stored: Map<string, Extract<AssertionPlanItem, { kind: "assertion" }>>;
+  synthesized: Map<string, string>;
+}): string | undefined {
+  const fresh = synthesized.get(item.id);
+  if (fresh) return fresh;
+  const original = stored.get(item.id);
+  if (!original?.code) return undefined;
+  // The stored text is what the user reviewed the stored code against.
+  if (original.text.trim() !== item.text.trim()) return undefined;
+  return isSingleAssertionStatement(original.code) ? original.code : undefined;
+}
+
+/**
+ * Which assertions need code synthesized: everything the renderer flagged, plus
+ * everything we can't safely reuse from the stored proposal. Computed here (not
+ * taken from `needsCode`) so the trust decision lives in one place.
+ */
+function needsSynthesis(
+  item: Extract<AssertionPlanItem, { kind: "assertion" }>,
+  stored: Map<string, Extract<AssertionPlanItem, { kind: "assertion" }>>,
+): boolean {
+  if (item.needsCode) return true;
+  const original = stored.get(item.id);
+  if (!original?.code || !isSingleAssertionStatement(original.code))
+    return true;
+  return original.text.trim() !== item.text.trim();
 }
 
 async function assertChatOwnsApp(chatId: number, appId: number): Promise<void> {
@@ -402,116 +503,138 @@ export function registerTestAssertionHandlers() {
 
   createTypedHandler(
     testsContracts.applyTestAssertions,
-    async (_event, params): Promise<ApplyTestAssertionsResult> => {
-      const { appId, chatId, proposalId, items } = params;
+    // The approval reads the proposal's status, spends up to a minute in the
+    // model, then writes "approved" back. Serializing per proposal is what makes
+    // that read-modify-write an actual latch: a double click or a second window
+    // would otherwise both pass the status check and generate two spec files.
+    // The loser re-reads the now-approved tag and returns the idempotent answer.
+    async (_event, params): Promise<ApplyTestAssertionsResult> =>
+      withLock(`assertion-approval:${params.proposalId}`, async () => {
+        const { appId, chatId, proposalId, items } = params;
 
-      await assertChatOwnsApp(chatId, appId);
+        await assertChatOwnsApp(chatId, appId);
 
-      const chatMessages = await db.query.messages.findMany({
-        where: eq(messages.chatId, chatId),
-      });
-      const row = chatMessages.find(
-        (message) =>
-          message.content.includes(`<${ASSERTIONS_TAG}`) &&
-          readAssertionsTagAttribute(message.content, "proposal-id") ===
-            proposalId,
-      );
-      if (!row) {
-        throw new DyadError(
-          "This assertion proposal no longer exists.",
-          DyadErrorKind.NotFound,
+        const chatMessages = await db.query.messages.findMany({
+          where: eq(messages.chatId, chatId),
+        });
+        const row = chatMessages.find(
+          (message) =>
+            message.content.includes(`<${ASSERTIONS_TAG}`) &&
+            readAssertionsTagAttribute(message.content, "proposal-id") ===
+              proposalId,
         );
-      }
+        if (!row) {
+          throw new DyadError(
+            "This assertion proposal no longer exists.",
+            DyadErrorKind.NotFound,
+          );
+        }
 
-      const stored = parseAssertionsPayloadFromMessage(row.content);
-      if (!stored) {
-        throw new DyadError(
-          "This assertion proposal is corrupted and can't be applied.",
-          DyadErrorKind.Validation,
+        const stored = parseAssertionsPayloadFromMessage(row.content);
+        if (!stored) {
+          throw new DyadError(
+            "This assertion proposal is corrupted and can't be applied.",
+            DyadErrorKind.Validation,
+          );
+        }
+        if (stored.appId !== appId) {
+          throw new DyadError(
+            "This assertion proposal belongs to a different app.",
+            DyadErrorKind.Validation,
+          );
+        }
+
+        // Idempotent: a second approve (double click, stale card) must not write
+        // a second spec file.
+        if (readAssertionsTagAttribute(row.content, "status") === "approved") {
+          return {
+            specPath: stored.specPath ?? "",
+            appliedCount: countAssertions(stored.items),
+            warning: "This test was already generated.",
+          };
+        }
+
+        assertStepsMatch(items, stored.items);
+
+        const bodyStatements = recordedBodyStatements(stored.draft);
+        const withText = items.filter(
+          (item) => item.kind === "step" || item.text.trim().length > 0,
         );
-      }
-      if (stored.appId !== appId) {
-        throw new DyadError(
-          "This assertion proposal belongs to a different app.",
-          DyadErrorKind.Validation,
+        // The proposal in the chat message is the trusted record of what the model
+        // wrote and the user reviewed. The renderer may reorder, drop, and edit
+        // plan items, but the code that lands in the spec is only ever the
+        // proposal's own validated code or something synthesized here.
+        const storedAssertions = new Map(
+          stored.items
+            .filter(isAssertionItem)
+            .map((item) => [item.id, item] as const),
         );
-      }
+        const pending = withText
+          .filter(isAssertionItem)
+          .filter((item) => needsSynthesis(item, storedAssertions));
+        const { codeById, warning: synthesisWarning } =
+          await synthesizeAssertionCode({
+            appId,
+            testTitle: stored.testTitle,
+            bodyStatements,
+            items: withText,
+            pending,
+          });
 
-      // Idempotent: a second approve (double click, stale card) must not write
-      // a second spec file.
-      if (readAssertionsTagAttribute(row.content, "status") === "approved") {
-        return {
-          specPath: stored.specPath ?? "",
-          appliedCount: countAssertions(stored.items),
-          warning: "This test was already generated.",
-        };
-      }
+        const finalItems: AssertionPlanItem[] = [];
+        const finalStatements: string[] = [];
+        for (const item of withText) {
+          if (item.kind === "step") {
+            finalItems.push(item);
+            finalStatements.push(bodyStatements[item.stepIndex]);
+            continue;
+          }
+          const code = resolveAssertionCode({
+            item,
+            stored: storedAssertions,
+            synthesized: codeById,
+          });
+          if (!code) continue; // synthesis failed or was rejected; already warned
+          finalItems.push({ ...item, code, needsCode: false });
+          finalStatements.push(code);
+        }
 
-      assertStepsMatch(items, stored.items);
-
-      const bodyStatements = recordedBodyStatements(stored.draft);
-      const withText = items.filter(
-        (item) => item.kind === "step" || item.text.trim().length > 0,
-      );
-      const { codeById, warning: synthesisWarning } =
-        await synthesizeAssertionCode({
+        const { specPath } = await writeRecordedSpec({
           appId,
-          testTitle: stored.testTitle,
-          bodyStatements,
-          items: withText,
+          draft: stored.draft,
+          bodyStatements: finalStatements,
         });
 
-      const finalItems: AssertionPlanItem[] = [];
-      const finalStatements: string[] = [];
-      for (const item of withText) {
-        if (item.kind === "step") {
-          finalItems.push(item);
-          finalStatements.push(bodyStatements[item.stepIndex]);
-          continue;
-        }
-        const code =
-          item.needsCode || !item.code ? codeById.get(item.id) : item.code;
-        if (!code) continue; // synthesis failed or was rejected; already warned
-        finalItems.push({ ...item, code, needsCode: false });
-        finalStatements.push(code);
-      }
-
-      const { specPath } = await writeRecordedSpec({
-        appId,
-        draft: stored.draft,
-        bodyStatements: finalStatements,
-      });
-
-      // Rewriting the tag is the durable approval latch: it survives a reload
-      // and re-hydrates the card in its approved state, now pointing at the
-      // spec it generated. Splice it in place — the tool emitted the card
-      // inside the agent's assistant message, so the surrounding prose and any
-      // sibling tool cards must survive untouched.
-      const approvedContent = replaceAssertionsTagInMessage(
-        row.content,
-        buildAssertionsTagContent({
-          proposalId,
-          status: "approved",
-          payload: { ...stored, items: finalItems, specPath },
-        }),
-      );
-      if (approvedContent === null) {
-        // The message matched on proposal-id above, so the tag must be there.
-        throw new DyadError(
-          "This assertion proposal is corrupted and can't be applied.",
-          DyadErrorKind.Validation,
+        // Rewriting the tag is the durable approval latch: it survives a reload
+        // and re-hydrates the card in its approved state, now pointing at the
+        // spec it generated. Splice it in place — the tool emitted the card
+        // inside the agent's assistant message, so the surrounding prose and any
+        // sibling tool cards must survive untouched.
+        const approvedContent = replaceAssertionsTagInMessage(
+          row.content,
+          buildAssertionsTagContent({
+            proposalId,
+            status: "approved",
+            payload: { ...stored, items: finalItems, specPath },
+          }),
         );
-      }
-      await db
-        .update(messages)
-        .set({ content: approvedContent })
-        .where(eq(messages.id, row.id));
+        if (approvedContent === null) {
+          // The message matched on proposal-id above, so the tag must be there.
+          throw new DyadError(
+            "This assertion proposal is corrupted and can't be applied.",
+            DyadErrorKind.Validation,
+          );
+        }
+        await db
+          .update(messages)
+          .set({ content: approvedContent })
+          .where(eq(messages.id, row.id));
 
-      const appliedCount = countAssertions(finalItems);
-      logger.info(
-        `Generated ${specPath} with ${appliedCount} assertion(s) (chat ${chatId})`,
-      );
-      return { specPath, appliedCount, warning: synthesisWarning };
-    },
+        const appliedCount = countAssertions(finalItems);
+        logger.info(
+          `Generated ${specPath} with ${appliedCount} assertion(s) (chat ${chatId})`,
+        );
+        return { specPath, appliedCount, warning: synthesisWarning };
+      }),
   );
 }

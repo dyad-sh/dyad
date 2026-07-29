@@ -9,8 +9,15 @@ function q(value: string): string {
 /**
  * Render a locator descriptor as a Playwright locator chain WITHOUT the leading
  * `page.` (the caller prepends it), including any `.nth(...)` disambiguation.
+ *
+ * `exact` matters on every name-matching getter, not just `getByText`:
+ * getByRole/getByLabel/getByPlaceholder all match case-insensitive substrings by
+ * default. The recorder decides uniqueness by exact string equality, so a
+ * locator it called unique — "Save", with no `.nth()` — would otherwise also
+ * match "Save draft" at replay and fail Playwright's strict mode.
  */
 export function locatorToCode(locator: LocatorDescriptor): string {
+  const exact = locator.exact ? ", exact: true" : "";
   let call: string;
   switch (locator.kind) {
     case "testid":
@@ -18,14 +25,18 @@ export function locatorToCode(locator: LocatorDescriptor): string {
       break;
     case "role":
       call = locator.name
-        ? `getByRole(${q(locator.value)}, { name: ${q(locator.name)} })`
+        ? `getByRole(${q(locator.value)}, { name: ${q(locator.name)}${exact} })`
         : `getByRole(${q(locator.value)})`;
       break;
     case "placeholder":
-      call = `getByPlaceholder(${q(locator.value)})`;
+      call = locator.exact
+        ? `getByPlaceholder(${q(locator.value)}, { exact: true })`
+        : `getByPlaceholder(${q(locator.value)})`;
       break;
     case "label":
-      call = `getByLabel(${q(locator.value)})`;
+      call = locator.exact
+        ? `getByLabel(${q(locator.value)}, { exact: true })`
+        : `getByLabel(${q(locator.value)})`;
       break;
     case "text":
       call = locator.exact

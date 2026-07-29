@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { apps, chats, messages } from "@/db/schema";
 import { DyadErrorKind } from "@/errors/dyad_error";
+import { generateTestUserFixtureSource } from "@/lib/test_recorder/fixture_templates";
 import {
   type HandlerTestHarness,
   setupHandlerTestHarness,
@@ -239,18 +240,72 @@ describe("registerTestAssertionHandlers", () => {
       expect(specExists("e2e-tests/fixtures/test-user.ts")).toBe(true);
     });
 
-    it("never overwrites an existing fixture the user may have edited", async () => {
-      const { appId } = seed();
+    function writeFixture(source: string): string {
       const fixturePath = path.join(tmpDir, "e2e-tests/fixtures/test-user.ts");
       fs.mkdirSync(path.dirname(fixturePath), { recursive: true });
-      fs.writeFileSync(fixturePath, "// mine\n", "utf-8");
+      fs.writeFileSync(fixturePath, source, "utf-8");
+      return fixturePath;
+    }
+
+    it("reuses the user's own signIn helper without touching it", async () => {
+      const { appId } = seed();
+      const mine = `export async function signIn(page) {\n  // mine\n}\n`;
+      const fixturePath = writeFixture(mine);
 
       await harness.invokeHandler("tests:create-recorded-spec", {
         appId,
         draft: { ...DRAFT, authMode: "neon-better-auth" },
       });
 
+      expect(fs.readFileSync(fixturePath, "utf-8")).toBe(mine);
+    });
+
+    it("refuses when the fixture path is taken by a file with no signIn", async () => {
+      const { appId } = seed();
+      // The generated spec imports `signIn` from here, so silently reusing this
+      // would report success and leave the user with a spec that can't compile.
+      const fixturePath = writeFixture("// mine\n");
+
+      await expect(
+        harness.invokeHandler("tests:create-recorded-spec", {
+          appId,
+          draft: { ...DRAFT, authMode: "neon-better-auth" },
+        }),
+      ).rejects.toThrow(/doesn't export a `signIn` helper/);
       expect(fs.readFileSync(fixturePath, "utf-8")).toBe("// mine\n");
+      expect(specExists(SPEC_PATH)).toBe(false);
+    });
+
+    it("regenerates a fixture that was generated for the other auth backend", async () => {
+      const { appId } = seed();
+      const fixturePath = writeFixture(
+        generateTestUserFixtureSource("supabase-password"),
+      );
+
+      // The app moved from Supabase to Neon auth. The helper's signature is the
+      // same but its body isn't, so the stale one guarantees a failing sign-in.
+      await harness.invokeHandler("tests:create-recorded-spec", {
+        appId,
+        draft: { ...DRAFT, authMode: "neon-better-auth" },
+      });
+
+      expect(fs.readFileSync(fixturePath, "utf-8")).toBe(
+        generateTestUserFixtureSource("neon-better-auth"),
+      );
+    });
+
+    it("refuses to discard edits made to a fixture for the other backend", async () => {
+      const { appId } = seed();
+      const edited = `${generateTestUserFixtureSource("supabase-password")}\n// my tweak\n`;
+      const fixturePath = writeFixture(edited);
+
+      await expect(
+        harness.invokeHandler("tests:create-recorded-spec", {
+          appId,
+          draft: { ...DRAFT, authMode: "neon-better-auth" },
+        }),
+      ).rejects.toThrow(/has been edited/);
+      expect(fs.readFileSync(fixturePath, "utf-8")).toBe(edited);
     });
 
     it("suffixes rather than clobbering a spec that already exists", async () => {
@@ -334,6 +389,119 @@ describe("registerTestAssertionHandlers", () => {
 
       expect(bodyLines()[0]).toBe(
         `  await expect(page.getByTestId("row")).toBeVisible();`,
+      );
+    });
+
+    it("never writes renderer-supplied assertion code", async () => {
+      const { appId, chatId } = seed();
+      const { proposalId } = propose(appId, chatId);
+      const items = planFromMessage(storedMessages()[0].content);
+      // A compromised renderer claims the code is already good (needsCode:
+      // false) while swapping in arbitrary TypeScript. Text unchanged, so
+      // nothing on the wire says "re-synthesize this".
+      const hostile = items.map((item) =>
+        item.kind === "assertion"
+          ? { ...item, code: `require("fs").rmSync("/", { recursive: true });` }
+          : item,
+      );
+
+      await harness.invokeHandler("tests:apply-assertions", {
+        appId,
+        chatId,
+        proposalId,
+        items: hostile,
+      });
+
+      // The stored proposal's own validated code is what lands on disk.
+      expect(bodyLines()).toEqual([
+        `  await page.goto("/");`,
+        `  await page.getByRole("button", { name: "Add" }).click();`,
+        `  await expect(page.getByTestId("row")).toBeVisible();`,
+      ]);
+      expect(readSpec()).not.toContain("rmSync");
+    });
+
+    it("re-synthesizes when the submitted text no longer matches the stored code", async () => {
+      const { appId, chatId } = seed();
+      const { proposalId } = propose(appId, chatId);
+      const items = planFromMessage(storedMessages()[0].content);
+      // Edited text but `needsCode` left false — the flag is the renderer's, so
+      // the decision to re-synthesize has to come from comparing against the
+      // stored proposal instead.
+      const edited = items.map((item) =>
+        item.kind === "assertion"
+          ? { ...item, text: "The heading is visible" }
+          : item,
+      );
+      const assertion = items.find((i) => i.kind === "assertion")!;
+      respondWith(
+        JSON.stringify({
+          assertions: [
+            {
+              id: assertion.kind === "assertion" ? assertion.id : "",
+              code: `await expect(page.getByRole("heading")).toBeVisible();`,
+            },
+          ],
+        }),
+      );
+
+      await harness.invokeHandler("tests:apply-assertions", {
+        appId,
+        chatId,
+        proposalId,
+        items: edited,
+      });
+
+      expect(bodyLines().at(-1)).toBe(
+        `  await expect(page.getByRole("heading")).toBeVisible();`,
+      );
+    });
+
+    it("rejects a plan whose recorded steps were resequenced", async () => {
+      const { appId, chatId } = seed();
+      const { proposalId } = propose(appId, chatId);
+      const items = planFromMessage(storedMessages()[0].content);
+      const steps = items.filter((i) => i.kind === "step");
+      // [1, 0] used to validate against [0, 1] because both sides were sorted,
+      // while the write loop kept the submitted order — silently generating a
+      // test that replays the recording backwards.
+      const resequenced = [...steps].reverse();
+
+      await expect(
+        harness.invokeHandler("tests:apply-assertions", {
+          appId,
+          chatId,
+          proposalId,
+          items: resequenced,
+        }),
+      ).rejects.toThrow(/doesn't match the recorded steps/);
+      expect(specExists(SPEC_PATH)).toBe(false);
+    });
+
+    it("generates one spec when the same proposal is approved twice at once", async () => {
+      const { appId, chatId } = seed();
+      const { proposalId } = propose(appId, chatId);
+      const items = planFromMessage(storedMessages()[0].content);
+
+      // Two clicks in flight together. The status check and the "approved"
+      // write-back have to be one critical section, or both pass and two
+      // numbered specs appear.
+      const [first, second] = await Promise.all([
+        harness.invokeHandler<{ specPath: string; warning?: string }>(
+          "tests:apply-assertions",
+          { appId, chatId, proposalId, items },
+        ),
+        harness.invokeHandler<{ specPath: string; warning?: string }>(
+          "tests:apply-assertions",
+          { appId, chatId, proposalId, items },
+        ),
+      ]);
+
+      expect(first.specPath).toBe(SPEC_PATH);
+      expect(second.specPath).toBe(SPEC_PATH);
+      expect(second.warning).toBe("This test was already generated.");
+      expect(specExists("e2e-tests/recorded-add-an-item-2.spec.ts")).toBe(
+        false,
       );
     });
 

@@ -14,22 +14,31 @@
  *   session into localStorage under `sb-<ref>-auth-token`, then reload.
  *
  * Plain, dependency-free IIFE JS. Protocol:
- *   down (from parent): { type: "dyad-auth-login", auth }
- *   up   (to parent):   { type: "dyad-auth-ready", ok: boolean, error?: string }
+ *   down (from parent): { type: "dyad-auth-login", auth, nonce }
+ *   up   (to parent):   { type: "dyad-auth-bootstrap-ready", pendingNonce? }
+ *                       { type: "dyad-auth-ready", ok: boolean, error?: string }
+ *
+ * `nonce` identifies one sign-in attempt. Sign-in spans a document navigation
+ * (sign in → replace("/") → verify in the new document), and the marker that
+ * carries state across it lives in sessionStorage — which is scoped to the
+ * long-lived Dyad window, not to the attempt. The nonce is how the new document
+ * tells "the marker this attempt just wrote" from "a marker some earlier attempt
+ * abandoned"; the parent answers by resending the login message for the attempt
+ * it is actually waiting on.
  */
 (() => {
   const PENDING_KEY = "__dyad_auth_pending__";
   const HOME_SETTLE_DELAY_MS = 500;
   const MAX_HOME_REDIRECTS = 3;
-  // sessionStorage for the preview origin is scoped to the long-lived Dyad
-  // window, so it survives the iframe remount between recordings and is not
-  // touched by the main process's clearStorageData. A marker left behind by a
-  // cancelled / timed-out / crashed session would otherwise make the NEXT
-  // recording verify a non-existent session (cookies were cleared) and report a
-  // false sign-in failure. The legitimate marker is consumed within a second or
-  // two (sign-in → reload → verify → settle), so treat anything older than this
-  // as leftover and ignore it.
+  // Backstop for a marker the parent never adjudicates (a nonce-less marker from
+  // an older build, or a parent that went away mid-attempt). The legitimate
+  // marker is consumed within a second or two — sign-in → reload → verify →
+  // settle — so anything older than this is leftover.
   const PENDING_TTL_MS = 15_000;
+
+  // The marker found in sessionStorage when this document loaded, held until the
+  // parent tells us which attempt it belongs to.
+  let pendingOnLoad = null;
 
   function post(ok, error) {
     window.parent.postMessage({ type: "dyad-auth-ready", ok, error }, "*");
@@ -153,7 +162,7 @@
     }, HOME_SETTLE_DELAY_MS);
   }
 
-  async function login(auth) {
+  async function login(auth, nonce) {
     if (loggingIn) return;
     loggingIn = true;
     try {
@@ -163,6 +172,7 @@
           PENDING_KEY,
           JSON.stringify({
             mode: auth.mode,
+            nonce: nonce,
             homeRedirects: 0,
             startedAt: Date.now(),
           }),
@@ -176,6 +186,7 @@
           PENDING_KEY,
           JSON.stringify({
             mode: auth.mode,
+            nonce: nonce,
             ref: projectRef(auth.projectUrl),
             homeRedirects: 0,
             startedAt: Date.now(),
@@ -229,11 +240,34 @@
     }
   }
 
+  /**
+   * The parent has named the attempt it's waiting on. Either the marker this
+   * document loaded with belongs to that attempt — in which case this IS the
+   * post-sign-in reload and we verify it — or it belongs to one that was
+   * cancelled, timed out, or crashed, and must be dropped. Verifying a foreign
+   * marker is what made the new recording report a phantom sign-in failure and
+   * start signed out: this recording's setup cleared the cookies and
+   * localStorage the marker refers to.
+   */
+  function handleLogin(auth, nonce) {
+    const pending = pendingOnLoad;
+    pendingOnLoad = null;
+    if (pending && nonce && pending.nonce === nonce) {
+      verifyPending(pending);
+      return;
+    }
+    if (pending) clearPending();
+    login(auth, nonce);
+  }
+
   window.addEventListener("message", (e) => {
     if (e.source !== window.parent) return;
     const data = e.data;
     if (data && data.type === "dyad-auth-login" && data.auth) {
-      login(data.auth);
+      handleLogin(
+        data.auth,
+        typeof data.nonce === "string" ? data.nonce : null,
+      );
     }
   });
 
@@ -251,15 +285,18 @@
       clearPending();
       pending = null;
     }
-    if (!pending) {
-      // Fresh (pre-login) load: tell the parent we're ready to receive
-      // credentials. The parent (re)sends `dyad-auth-login` in response, so the
-      // handshake can't race a dev-server restart / reload that briefly leaves
-      // no bootstrap listening.
-      window.parent.postMessage({ type: "dyad-auth-bootstrap-ready" }, "*");
-      return;
-    }
-    verifyPending(pending);
+    pendingOnLoad = pending;
+    // Always announce, marker or not, and let the parent decide whose marker
+    // this is. The announcement doubles as the handshake that survives a
+    // dev-server restart / reload briefly leaving no bootstrap listening: the
+    // parent (re)sends `dyad-auth-login` in response.
+    window.parent.postMessage(
+      {
+        type: "dyad-auth-bootstrap-ready",
+        pendingNonce: pending && pending.nonce ? pending.nonce : null,
+      },
+      "*",
+    );
   }
 
   if (document.readyState === "loading") {

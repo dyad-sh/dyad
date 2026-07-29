@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { generateTestUserFixtureSource } from "./fixture_templates";
+import {
+  generateTestUserFixtureSource,
+  readFixtureMode,
+} from "./fixture_templates";
 
 describe("generateTestUserFixtureSource", () => {
   it("generates a Better Auth (Neon) sign-in helper", () => {
@@ -26,5 +29,20 @@ describe("generateTestUserFixtureSource", () => {
     expect(source).toContain("process.env.DYAD_TEST_SUPABASE_ANON_KEY");
     expect(source).toContain("addInitScript");
     expect(source).toContain("sb-${projectRef}-auth-token");
+  });
+
+  it("stamps the auth mode so a fixture for the other backend is detectable", () => {
+    // The two helpers share a signature but not a body, so an app that moved
+    // between Neon and Supabase needs the file rewritten rather than reused.
+    expect(
+      readFixtureMode(generateTestUserFixtureSource("neon-better-auth")),
+    ).toBe("neon-better-auth");
+    expect(
+      readFixtureMode(generateTestUserFixtureSource("supabase-password")),
+    ).toBe("supabase-password");
+  });
+
+  it("reports a user-authored fixture as not Dyad-generated", () => {
+    expect(readFixtureMode(`export async function signIn() {}\n`)).toBeNull();
   });
 });

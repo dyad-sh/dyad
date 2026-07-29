@@ -219,7 +219,12 @@ export function registerRecordingHandlers() {
               );
             }
           }
-          activeRecordings.delete(appId);
+          // Only retire our own entry. Teardown runs for seconds, so a
+          // registration made in the meantime must survive this cleanup — the
+          // per-session `stop` closure is the session's identity.
+          if (activeRecordings.get(appId)?.stop === stop) {
+            activeRecordings.delete(appId);
+          }
           clearTimeout(sessionTimer);
           event.sender.removeListener?.("destroyed", onDestroyed);
           if (started) {

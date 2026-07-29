@@ -112,13 +112,33 @@ function setup({
       for (const callback of pendingTimers) callback();
     },
     pendingTimerCount: () => timers.length,
-    sendLogin: (auth: Record<string, unknown>) =>
+    /**
+     * The parent naming the attempt it's waiting on. A marker already in
+     * sessionStorage is verified only when `nonce` matches the one it carries —
+     * that's what tells this document's marker apart from one an earlier,
+     * abandoned attempt left behind.
+     */
+    sendLogin: (auth: Record<string, unknown>, nonce = "attempt-1") =>
       messageHandler?.({
         source: parent,
-        data: { type: "dyad-auth-login", auth },
+        data: { type: "dyad-auth-login", auth, nonce },
       }),
   };
 }
+
+/** A minimal auth payload; the verify path never reads its fields. */
+const SUPABASE_AUTH = {
+  mode: "supabase-password",
+  email: "e@x.test",
+  password: "pw",
+  projectUrl: "https://ref123.supabase.co",
+  anonKey: "anon-key",
+};
+const NEON_AUTH = {
+  mode: "neon-better-auth",
+  email: "e@x.test",
+  password: "pw",
+};
 
 describe("dyad auth bootstrap", () => {
   it("seeds the supabase session into localStorage and lands on the homepage", async () => {
@@ -203,11 +223,27 @@ describe("dyad auth bootstrap", () => {
     expect(h.replace).not.toHaveBeenCalled();
   });
 
-  it("verifies a pending supabase session on load and reports ready", async () => {
+  it("verifies a pending supabase session once the parent claims the attempt", async () => {
     const h = setup({
-      pending: { mode: "supabase-password", ref: "ref123" },
+      pending: {
+        mode: "supabase-password",
+        ref: "ref123",
+        nonce: "attempt-1",
+      },
       preLocal: { "sb-ref123-auth-token": '{"access_token":"a"}' },
     });
+
+    // Nothing happens on load alone — the marker is held until the parent says
+    // whose attempt it belongs to.
+    expect(h.pendingTimerCount()).toBe(0);
+    expect(h.posts).toContainEqual(
+      expect.objectContaining({
+        type: "dyad-auth-bootstrap-ready",
+        pendingNonce: "attempt-1",
+      }),
+    );
+
+    h.sendLogin(SUPABASE_AUTH, "attempt-1");
 
     await vi.waitFor(() => expect(h.pendingTimerCount()).toBe(1));
     expect(
@@ -229,14 +265,16 @@ describe("dyad auth bootstrap", () => {
     expect(h.sessionStorage.getItem("__dyad_auth_pending__")).toBeNull();
   });
 
-  it("verifies a pending Neon session on load via get-session", async () => {
+  it("verifies a pending Neon session via get-session", async () => {
     const h = setup({
-      pending: { mode: "neon-better-auth" },
+      pending: { mode: "neon-better-auth", nonce: "attempt-1" },
       fetchImpl: async () => ({
         ok: true,
         json: async () => ({ user: { id: "u" } }),
       }),
     });
+
+    h.sendLogin(NEON_AUTH, "attempt-1");
 
     await vi.waitFor(() => expect(h.pendingTimerCount()).toBe(1));
     h.flushTimers();
@@ -251,9 +289,15 @@ describe("dyad auth bootstrap", () => {
 
   it("returns to / when the app auth guard redirects during session startup", async () => {
     const h = setup({
-      pending: { mode: "supabase-password", ref: "ref123" },
+      pending: {
+        mode: "supabase-password",
+        ref: "ref123",
+        nonce: "attempt-1",
+      },
       preLocal: { "sb-ref123-auth-token": '{"access_token":"a"}' },
     });
+
+    h.sendLogin(SUPABASE_AUTH, "attempt-1");
 
     await vi.waitFor(() => expect(h.pendingTimerCount()).toBe(1));
     // Simulate a protected-route effect moving the iframe after the bootstrap
@@ -272,6 +316,39 @@ describe("dyad auth bootstrap", () => {
       ref: "ref123",
       homeRedirects: 1,
     });
+  });
+
+  it("signs in fresh when the marker belongs to an abandoned attempt", async () => {
+    // A prior attempt crashed or was cancelled inside the 15-second TTL, so its
+    // marker is still there and still "fresh". Verifying it would check cookies
+    // and localStorage that this recording's setup already cleared, report a
+    // phantom sign-in failure, and start the session signed out.
+    const h = setup({
+      pending: { mode: "neon-better-auth", nonce: "attempt-0" },
+    });
+    h.fetchMock.mockResolvedValue({ ok: true });
+
+    expect(h.posts).toContainEqual(
+      expect.objectContaining({
+        type: "dyad-auth-bootstrap-ready",
+        pendingNonce: "attempt-0",
+      }),
+    );
+
+    h.sendLogin(NEON_AUTH, "attempt-1");
+
+    await vi.waitFor(() => expect(h.replace).toHaveBeenCalledWith("/"));
+    expect(h.fetchMock).toHaveBeenCalledWith(
+      "/api/auth/sign-in/email",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(
+      h.posts.some((p) => p.type === "dyad-auth-ready" && p.ok === false),
+    ).toBe(false);
+    // The abandoned marker was replaced by this attempt's own.
+    expect(
+      JSON.parse(h.sessionStorage.getItem("__dyad_auth_pending__")!),
+    ).toMatchObject({ mode: "neon-better-auth", nonce: "attempt-1" });
   });
 
   it("ignores a stale pending marker left by a previous session", () => {

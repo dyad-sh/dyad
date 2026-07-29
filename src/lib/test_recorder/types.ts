@@ -26,7 +26,13 @@ export const LocatorDescriptorSchema = z.object({
   value: z.string(),
   /** Accessible name, only for `kind: "role"`. */
   name: z.string().optional(),
-  /** Whether the match is exact (used for `kind: "text"`). */
+  /**
+   * Match the name/text exactly instead of Playwright's default
+   * case-insensitive substring. Applies to `role`, `placeholder`, `label`, and
+   * `text` — the recorder checks uniqueness with `===`, so the generated locator
+   * has to hold itself to the same standard or replay can match more elements
+   * than the recorder saw.
+   */
   exact: z.boolean().optional(),
   /** Zero-based index when the locator matches multiple elements. */
   nth: z.number().int().nonnegative().optional(),

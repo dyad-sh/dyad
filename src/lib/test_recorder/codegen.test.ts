@@ -57,6 +57,27 @@ describe("locatorToCode", () => {
     );
   });
 
+  it("carries exact through every name-matching builder", () => {
+    // The recorder decides uniqueness by exact equality, but getByRole/getByLabel
+    // /getByPlaceholder match case-insensitive substrings by default — so a
+    // "Save" locator it called unique would also match "Save draft" at replay
+    // and trip strict mode.
+    expect(
+      locatorToCode({
+        kind: "role",
+        value: "button",
+        name: "Save",
+        exact: true,
+      }),
+    ).toBe(`getByRole("button", { name: "Save", exact: true })`);
+    expect(
+      locatorToCode({ kind: "placeholder", value: "Email", exact: true }),
+    ).toBe(`getByPlaceholder("Email", { exact: true })`);
+    expect(locatorToCode({ kind: "label", value: "Email", exact: true })).toBe(
+      `getByLabel("Email", { exact: true })`,
+    );
+  });
+
   it("appends nth for ambiguous locators", () => {
     expect(
       locatorToCode({ kind: "role", value: "button", name: "Item", nth: 1 }),

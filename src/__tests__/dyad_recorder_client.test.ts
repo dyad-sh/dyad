@@ -136,7 +136,7 @@ describe("dyad recorder client", () => {
     expect(r.actions).toEqual([
       {
         kind: "click",
-        locator: { kind: "role", value: "button", name: "Add" },
+        locator: { kind: "role", value: "button", name: "Add", exact: true },
       },
     ]);
   });
@@ -149,7 +149,10 @@ describe("dyad recorder client", () => {
     r.settleClick();
 
     expect(r.actions).toEqual([
-      { kind: "click", locator: { kind: "role", value: "button", name: "Go" } },
+      {
+        kind: "click",
+        locator: { kind: "role", value: "button", name: "Go", exact: true },
+      },
     ]);
   });
 
@@ -165,7 +168,7 @@ describe("dyad recorder client", () => {
     expect(r.actions).toEqual([
       {
         kind: "dblclick",
-        locator: { kind: "role", value: "button", name: "Open" },
+        locator: { kind: "role", value: "button", name: "Open", exact: true },
       },
     ]);
   });
@@ -182,12 +185,12 @@ describe("dyad recorder client", () => {
     expect(r.actions).toEqual([
       {
         kind: "fill",
-        locator: { kind: "placeholder", value: "Email" },
+        locator: { kind: "placeholder", value: "Email", exact: true },
         value: "a",
       },
       {
         kind: "fill",
-        locator: { kind: "placeholder", value: "Email" },
+        locator: { kind: "placeholder", value: "Email", exact: true },
         value: "ab",
       },
     ]);
@@ -203,8 +206,58 @@ describe("dyad recorder client", () => {
     expect(r.actions).toEqual([
       {
         kind: "fill",
-        locator: { kind: "label", value: "Password" },
+        locator: { kind: "label", value: "Password", exact: true },
         value: "REPLACE_WITH_PASSWORD",
+      },
+    ]);
+  });
+
+  it("keeps redacting a password field after a show/hide toggle reveals it", () => {
+    const r = setup();
+    r.setHtml(`<input type="password" aria-label="Password" />`);
+    r.activate();
+    const input = r.doc.querySelector("input");
+    // Typed while masked, so the field is observed as a password...
+    r.typeInto(input, "hunter");
+    // ...then the app's reveal toggle flips it to plain text. Everything typed
+    // after that would otherwise be captured verbatim into a committed spec.
+    input.setAttribute("type", "text");
+    r.typeInto(input, "hunter2");
+
+    // Every value stayed redacted (identical consecutive fills collapse, so one
+    // action is expected) and no plaintext reached the parent.
+    expect(r.actions.map((action: any) => action.value)).toEqual([
+      "REPLACE_WITH_PASSWORD",
+    ]);
+    expect(JSON.stringify(r.actions)).not.toContain("hunter");
+  });
+
+  it("redacts a secret-bearing field that was never type=password", () => {
+    const r = setup();
+    r.setHtml(`<input name="apiKey" placeholder="API key" />`);
+    r.activate();
+    r.typeInto(r.doc.querySelector("input"), "sk-live-abc123");
+
+    expect(r.actions).toEqual([
+      {
+        kind: "fill",
+        locator: { kind: "placeholder", value: "API key", exact: true },
+        value: "REPLACE_WITH_PASSWORD",
+      },
+    ]);
+  });
+
+  it("records an ordinary field's value verbatim", () => {
+    const r = setup();
+    r.setHtml(`<input name="email" placeholder="Email address" />`);
+    r.activate();
+    r.typeInto(r.doc.querySelector("input"), "someone@example.com");
+
+    expect(r.actions).toEqual([
+      {
+        kind: "fill",
+        locator: { kind: "placeholder", value: "Email address", exact: true },
+        value: "someone@example.com",
       },
     ]);
   });
@@ -220,12 +273,12 @@ describe("dyad recorder client", () => {
     expect(r.actions).toEqual([
       {
         kind: "press",
-        locator: { kind: "placeholder", value: "Search" },
+        locator: { kind: "placeholder", value: "Search", exact: true },
         key: "Enter",
       },
       {
         kind: "press",
-        locator: { kind: "placeholder", value: "Search" },
+        locator: { kind: "placeholder", value: "Search", exact: true },
         key: "Control+A",
       },
     ]);
@@ -251,15 +304,25 @@ describe("dyad recorder client", () => {
     expect(r.actions).toEqual([
       {
         kind: "check",
-        locator: { kind: "role", value: "checkbox", name: "Subscribe" },
+        locator: {
+          kind: "role",
+          value: "checkbox",
+          name: "Subscribe",
+          exact: true,
+        },
       },
       {
         kind: "uncheck",
-        locator: { kind: "role", value: "checkbox", name: "Subscribe" },
+        locator: {
+          kind: "role",
+          value: "checkbox",
+          name: "Subscribe",
+          exact: true,
+        },
       },
       {
         kind: "check",
-        locator: { kind: "role", value: "radio", name: "Plan" },
+        locator: { kind: "role", value: "radio", name: "Plan", exact: true },
       },
     ]);
   });
@@ -278,7 +341,12 @@ describe("dyad recorder client", () => {
     expect(r.actions).toEqual([
       {
         kind: "select",
-        locator: { kind: "role", value: "combobox", name: "Color" },
+        locator: {
+          kind: "role",
+          value: "combobox",
+          name: "Color",
+          exact: true,
+        },
         values: ["green"],
       },
     ]);
@@ -307,7 +375,13 @@ describe("dyad recorder client", () => {
     expect(r.actions).toEqual([
       {
         kind: "click",
-        locator: { kind: "role", value: "button", name: "Item", nth: 1 },
+        locator: {
+          kind: "role",
+          value: "button",
+          name: "Item",
+          exact: true,
+          nth: 1,
+        },
       },
     ]);
   });

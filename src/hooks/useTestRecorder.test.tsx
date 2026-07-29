@@ -5,6 +5,7 @@ import type { PropsWithChildren } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { previewIframeRefAtom } from "@/atoms/previewAtoms";
 import {
   RECORDING_REQUEST_TTL_MS,
   recordingStartRequestAtom,
@@ -17,12 +18,14 @@ const {
   saveDraftMock,
   discardDraftMock,
   createRecordedSpecMock,
+  onEndedMock,
 } = vi.hoisted(() => ({
   startRecordingMock: vi.fn(),
   stopRecordingMock: vi.fn(),
   saveDraftMock: vi.fn(),
   discardDraftMock: vi.fn(),
   createRecordedSpecMock: vi.fn(),
+  onEndedMock: vi.fn(),
 }));
 
 vi.mock("@/ipc/types", () => ({
@@ -38,7 +41,7 @@ vi.mock("@/ipc/types", () => ({
     },
     events: {
       recording: {
-        onEnded: () => () => {},
+        onEnded: onEndedMock,
         onSetupProgress: () => () => {},
       },
     },
@@ -67,6 +70,30 @@ function makeWrapper() {
   };
 }
 
+/**
+ * A stand-in for the preview iframe. The hook only accepts messages whose
+ * `source` is the iframe's contentWindow, and posts commands back through it, so
+ * the fake records what it was told.
+ */
+function makeIframe() {
+  const posted: any[] = [];
+  const contentWindow = {
+    postMessage: (message: unknown) => posted.push(message),
+  };
+  return {
+    posted,
+    contentWindow,
+    el: { contentWindow } as unknown as HTMLIFrameElement,
+    /** Deliver a message as if the preview had posted it up. */
+    send(data: unknown) {
+      const event = new MessageEvent("message", { data });
+      // `source` is read-only on the prototype; shadow it on the instance.
+      Object.defineProperty(event, "source", { value: contentWindow });
+      window.dispatchEvent(event);
+    },
+  };
+}
+
 describe("useTestRecorder", () => {
   beforeEach(() => {
     startRecordingMock.mockReset();
@@ -74,6 +101,8 @@ describe("useTestRecorder", () => {
     saveDraftMock.mockReset();
     discardDraftMock.mockReset();
     createRecordedSpecMock.mockReset();
+    onEndedMock.mockReset();
+    onEndedMock.mockReturnValue(() => {});
     startRecordingMock.mockResolvedValue({
       appId: 1,
       isolation: { mode: "none" },
@@ -259,6 +288,138 @@ describe("useTestRecorder", () => {
     // A failed write must not throw the session away.
     expect(result.current.phase).toBe("reviewing");
     expect(result.current.draft?.testName).toBe("my flow");
+  });
+
+  it("records SPA navigations from the shim's message envelope", async () => {
+    const { store, Wrapper } = makeWrapper();
+    store.set(selectedAppIdAtom, 1);
+    const iframe = makeIframe();
+    store.set(previewIframeRefAtom, iframe.el);
+
+    const { result } = renderHook(
+      () => useTestRecorder({ reloadPreview: () => {} }),
+      { wrapper: Wrapper },
+    );
+    await act(async () => {
+      await result.current.startRecording();
+    });
+
+    // The shim (worker/dyad-shim.js) nests the URL under `payload`, unlike every
+    // other message the hook consumes.
+    act(() => {
+      iframe.send({
+        type: "pushState",
+        payload: { oldUrl: "/", newUrl: "https://preview.test/items?q=x" },
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.steps).toContain(`await page.goto("/items?q=x");`);
+    });
+  });
+
+  it("hands the session back when the preview unmounts mid-recording", async () => {
+    const { store, Wrapper } = makeWrapper();
+    store.set(selectedAppIdAtom, 1);
+    const iframe = makeIframe();
+    store.set(previewIframeRefAtom, iframe.el);
+
+    const { result, unmount } = renderHook(
+      () => useTestRecorder({ reloadPreview: () => {} }),
+      { wrapper: Wrapper },
+    );
+    await act(async () => {
+      await result.current.startRecording();
+    });
+    expect(result.current.isRecording).toBe(true);
+
+    // Switching to the Code tab takes away the only UI that can stop the
+    // session; the isolated database and per-app lock must not outlive it.
+    unmount();
+
+    expect(stopRecordingMock).toHaveBeenCalledWith({ appId: 1 });
+    expect(iframe.posted).toContainEqual({
+      type: "deactivate-dyad-recorder",
+    });
+  });
+
+  it("disarms the in-page recorder when a session ends abnormally", async () => {
+    const { store, Wrapper } = makeWrapper();
+    store.set(selectedAppIdAtom, 1);
+    const iframe = makeIframe();
+    store.set(previewIframeRefAtom, iframe.el);
+
+    const { result } = renderHook(
+      () => useTestRecorder({ reloadPreview: () => {} }),
+      { wrapper: Wrapper },
+    );
+    await act(async () => {
+      await result.current.startRecording();
+    });
+    iframe.posted.length = 0;
+
+    const onEnded = onEndedMock.mock.calls.at(-1)![0];
+    act(() => {
+      onEnded({ appId: 1, reason: "timed-out", message: "session cap" });
+    });
+
+    // Otherwise the injected client keeps its capture-phase listeners and its
+    // red hover overlay with no recording bar left to explain them.
+    expect(iframe.posted).toContainEqual({
+      type: "deactivate-dyad-recorder",
+    });
+    expect(result.current.phase).toBe("idle");
+  });
+
+  it("abandons setup when the selected app changes mid-start", async () => {
+    const { store, Wrapper } = makeWrapper();
+    store.set(selectedAppIdAtom, 1);
+    let finishStart!: () => void;
+    startRecordingMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishStart = () =>
+            resolve({
+              appId: 1,
+              isolation: { mode: "none" },
+              auth: {
+                mode: "neon-better-auth",
+                email: "t@example.com",
+                password: "s3cret",
+              },
+            });
+        }),
+    );
+
+    const { result } = renderHook(
+      () => useTestRecorder({ reloadPreview: () => {} }),
+      { wrapper: Wrapper },
+    );
+
+    let started!: Promise<void>;
+    act(() => {
+      started = result.current.startRecording();
+    });
+
+    // The user switches apps while isolation is still being set up. The iframe
+    // and app-URL refs now point at app 2, so app 1's test credentials must not
+    // be delivered there — and app 1's session must not be left running.
+    const iframe = makeIframe();
+    act(() => {
+      store.set(selectedAppIdAtom, 2);
+      store.set(previewIframeRefAtom, iframe.el);
+    });
+
+    await act(async () => {
+      finishStart();
+      await started;
+    });
+
+    expect(stopRecordingMock).toHaveBeenCalledWith({ appId: 1 });
+    expect(
+      iframe.posted.some((message: any) => message?.type === "dyad-auth-login"),
+    ).toBe(false);
+    expect(result.current.phase).toBe("idle");
   });
 
   it("drops the parked draft when the recording is discarded", async () => {

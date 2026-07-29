@@ -459,20 +459,29 @@ export async function setupChatFlowHarness(
       // Renderer dispatch receipts acknowledge actor admission, not completion
       // of the main-owned command. Fence new stream work and drain both actor
       // and legacy handler lifetimes before closing resources they still use.
-      const releaseStreamAdmission = blockNewStreamsForApp(appId);
-      let releaseActorAdmission: () => void = () => undefined;
+      const releaseStreamAdmissions = [blockNewStreamsForApp(appId)];
+      const releaseActorAdmissions: Array<() => void> = [];
       try {
+        const harnessApps = await db.query.apps.findMany({
+          columns: { id: true },
+        });
+        releaseStreamAdmissions.push(
+          ...harnessApps
+            .filter(({ id }) => id !== appId)
+            .map(({ id }) => blockNewStreamsForApp(id)),
+        );
         // The hybrid harness registers the main-owned machine graph; the
         // node-only harness invokes the legacy handler directly and therefore
         // has no remote definitions to dispose.
         if (options.registerChatStreamHandlers === false) {
-          releaseActorAdmission = await beginAppChatActorMutation(appId);
-          const ownedChats = await db.query.chats.findMany({
+          for (const { id } of harnessApps) {
+            releaseActorAdmissions.push(await beginAppChatActorMutation(id));
+          }
+          const harnessChats = await db.query.chats.findMany({
             columns: { id: true },
-            where: eq(chats.appId, appId),
           });
           await Promise.all(
-            ownedChats.map(({ id }) => settleChatActorsForDeletion(id)),
+            harnessChats.map(({ id }) => settleChatActorsForDeletion(id)),
           );
         }
         await cancelAllActiveStreams();
@@ -502,8 +511,12 @@ export async function setupChatFlowHarness(
         electronMock.ipcListeners?.clear();
         restoreHarnessEnv(envSnapshot);
         activeChatFlowHarness = false;
-        releaseActorAdmission();
-        releaseStreamAdmission();
+        for (const release of releaseActorAdmissions.reverse()) {
+          release();
+        }
+        for (const release of releaseStreamAdmissions.reverse()) {
+          release();
+        }
       }
     };
     let disposePromise: Promise<void> | undefined;

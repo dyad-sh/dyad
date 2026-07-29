@@ -181,7 +181,8 @@ A distributed-machine dispatch receipt confirms admission, not completion of
 the main-owned command. Hybrid harness disposal must fence new actor work,
 cancel and dispose every harness-owned actor, drain legacy stream handlers, and
 await harness wrapper post-processing before closing SQLite, fake services, or
-the temp root.
+the temp root. Enumerate every app and chat in the isolated harness database;
+tests can create secondary apps whose actors are still owned by that harness.
 
 Close a harness's public operation admission synchronously when disposal
 starts, before its first `await`. Draining a one-time snapshot of tracked work

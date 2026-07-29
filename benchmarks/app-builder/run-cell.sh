@@ -24,6 +24,14 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# The code-explorer worker bundle must exist for the headless utilityProcess
+# shim (electron_mock) — deep context is part of the measured product.
+if [[ ! -f "$REPO/dist/code_explorer_worker.js" ]]; then
+  echo "[run-cell] building code explorer worker bundle…"
+  (cd "$REPO" && npx vite build --config vite.code-explorer-worker.config.mts >/dev/null 2>&1) \
+    || { echo "worker bundle build failed"; exit 1; }
+fi
+
 # Engine drain check: leaked server-side requests from a previous (killed) run
 # queue behind per-key serialization and poison the new run with 300s stalls.
 # Refuse to start until a tiny request answers quickly.
@@ -38,6 +46,15 @@ for i in $(seq 1 30); do
   echo "  engine busy/unreachable (code=$code), waiting 30s ($i/30)…"
   sleep 30
   [[ $i == 30 ]] && { echo "engine never drained; aborting"; exit 1; }
+done
+
+# A previous sim instance surviving on 7788 (or a stale proxy on 7789) makes
+# the new start fail to bind while health checks pass against STALE code —
+# observed live (a day-old sim served pre-fix clone responses). Clear the
+# ports by PID before starting.
+for port in 7788 7789; do
+  stale=$(lsof -ti :$port -sTCP:LISTEN 2>/dev/null || true)
+  [[ -n "$stale" ]] && { echo "[run-cell] killing stale listener on :$port (pid $stale)"; kill -9 $stale 2>/dev/null || true; sleep 1; }
 done
 
 echo "[run-cell] starting neon-sim…"

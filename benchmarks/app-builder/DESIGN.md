@@ -16,18 +16,18 @@ Headline report per model (CursorBench-style): **Score %, $/app, tokens/app, min
 
 ## 2. Fixed decisions
 
-| Decision                 | Choice                                                                                                                                                                                                                                             |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Models (Dyad engine ids) | `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, `anthropic/claude-sonnet-5`, `anthropic/claude-opus-5`, `anthropic/claude-fable-5`, `openrouter/x-ai/grok-4.5`                                                                                     |
-| Harness                  | Headless `chat_flow_harness` (real `chat:stream` pipeline, local-agent Pro mode); packaged-Electron parity smoke (§Runner)                                                                                                                         |
-| Template                 | `dyad-sh/nextjs-template`, pinned snapshot vendored into the task bundle                                                                                                                                                                           |
-| Backend                  | **neon-sim**: offline local Postgres behind a Neon v2 control-plane shim + serverless-driver SQL proxy + self-hosted better-auth standing in for Neon Auth (§neon-sim)                                                                             |
-| Auth contract            | Identical across all 3 apps: custom sign-up/sign-in forms with pinned test ids; prebuilt AuthView disallowed; email verification off; a short factual auth-SDK note ships in the template's `AI_RULES.md` (+ identical `AGENTS.md` for phase 2)    |
-| Milestone timeouts       | 30 min per milestone (raised from 15/20/25 after S-CELL showed wall-clock was dominated by transport stalls, not model speed — see §11; recalibrate on clean cells); timeout ⇒ outcome `truncated` (scored as-is, flagged — distinct from failure) |
-| Checkpoint capture       | Git commit + tag per milestone; DB captured via `CREATE DATABASE … TEMPLATE` snapshot in neon-sim; scoring clones the snapshot per attempt                                                                                                         |
-| Judge                    | 3 fixed judges — `gpt-5.6-terra`, `claude-opus-5`, `gemini-3.6-flash`; each candidate scored by its **two cross-vendor judges** (same-vendor judge dropped; grok-4.5 → terra+opus); inputs hard-capped (≤40k chars diff + ≤20k chars source)       |
-| Scale                    | N=1, all 7 models (~$130–260 expected list-price; guards in §4)                                                                                                                                                                                    |
-| Reasoning effort         | Dyad product defaults per model — recorded per run and disclosed (phase 1 measures "what a Dyad user gets")                                                                                                                                        |
+| Decision                 | Choice                                                                                                                                                                                                                                                                |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Models (Dyad engine ids) | `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, `anthropic/claude-sonnet-5`, `anthropic/claude-opus-5`, `anthropic/claude-fable-5`, `openrouter/x-ai/grok-4.5`                                                                                                        |
+| Harness                  | Headless `chat_flow_harness` (real `chat:stream` pipeline, local-agent Pro mode); packaged-Electron parity smoke (§Runner)                                                                                                                                            |
+| Template                 | `dyad-sh/nextjs-template`, pinned snapshot vendored into the task bundle                                                                                                                                                                                              |
+| Backend                  | **neon-sim**: offline local Postgres behind a Neon v2 control-plane shim + serverless-driver SQL proxy + self-hosted better-auth standing in for Neon Auth (§neon-sim)                                                                                                |
+| Auth contract            | Identical across all 3 apps: custom sign-up/sign-in forms with pinned test ids; prebuilt AuthView disallowed; email verification off; a short factual auth-SDK note ships in the template's `AI_RULES.md` (+ identical `AGENTS.md` for phase 2)                       |
+| Milestone timeouts       | 30 min per milestone (raised from 15/20/25 after S-CELL showed wall-clock was dominated by transport stalls, not model speed — see §11; recalibrate on clean cells); timeout ⇒ outcome `truncated` (scored as-is, flagged — distinct from failure)                    |
+| Checkpoint capture       | Git commit + tag per milestone; DB captured via `CREATE DATABASE … TEMPLATE` snapshot in neon-sim; scoring clones the snapshot per attempt                                                                                                                            |
+| Judge                    | **Single fixed judge: `gpt-5.6-sol`** for every candidate (user decision 2026-07-29, superseding the cross-vendor pair scheme; same-vendor bias toward the gpt-5.6 candidates is disclosed in every report); inputs hard-capped (≤40k chars diff + ≤20k chars source) |
+| Scale                    | N=1, all 7 models (~$130–260 expected list-price; guards in §4)                                                                                                                                                                                                       |
+| Reasoning effort         | Dyad product defaults per model — recorded per run and disclosed (phase 1 measures "what a Dyad user gets")                                                                                                                                                           |
 
 ## 3. Feasibility findings (research summary)
 
@@ -132,6 +132,11 @@ The Dyad patch set shrank to two code changes (`DYAD_NEON_API_BASE_URL`,
 - **Build gate is compile/type errors, not lint**: `next build --no-lint` in the
   scorer — the template's eslint import-resolver false-positives on tsconfig
   aliases and package-exports subpaths would fail every model's app.
+- **Code explorer disabled headless** (`enableCodeExplorer: false`): it runs as
+  an Electron utilityProcess and hangs forever under the harness ("Starting
+  code explorer host" then silence — wedged gpt-5.6-sol's cell twice; luna
+  never engaged it). Disclosed fidelity gap: models that would use deep
+  context lose it here; the packaged-app parity smoke can quantify the effect.
 - **End-to-end validation (S-FORMS + S-SCORE, 2026-07-29):** with all fixes,
   cells run clean (luna M1 2 min/$0.15, sonnet-5 6 min/$1.44, grok-4.5
   7 min/$0.71, zero tool failures). Scoring is **deterministic**: sonnet-5

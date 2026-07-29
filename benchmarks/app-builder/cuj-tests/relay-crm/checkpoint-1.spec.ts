@@ -17,14 +17,14 @@ import {
   type BrowserContext,
   type Page,
 } from "@playwright/test";
+import {
+  RUN_ID,
+  identity,
+  signUp,
+  expectSignedIn,
+  findIdByValue,
+} from "./fixtures";
 
-const RUN_ID = `${Date.now()}`;
-const PASSWORD = "Passw0rd!Relay1";
-const identity = (role: string) => ({
-  name: `Relay ${role[0].toUpperCase()}${role.slice(1)}`,
-  email: `relay-${RUN_ID}-${role}@example.com`,
-  password: PASSWORD,
-});
 const OWNER = identity("owner");
 const OUTSIDER = identity("outsider");
 
@@ -37,41 +37,6 @@ const ADA_EMAIL = `ada-${RUN_ID}@example.com`;
 const ADA_PHONE = "555-0100";
 const ADA_TITLE = `Engineer ${RUN_ID}`;
 const ADA_TITLE_2 = `VP ${RUN_ID}`;
-
-async function signUp(
-  page: Page,
-  who: { name: string; email: string; password: string },
-) {
-  await page.goto("/auth/sign-up");
-  await page.getByTestId("signup-name").fill(who.name);
-  await page.getByTestId("signup-email").fill(who.email);
-  await page.getByTestId("signup-password").fill(who.password);
-  await page.getByTestId("signup-submit").click();
-}
-
-async function expectSignedIn(page: Page, email: string) {
-  // "Ends on /contacts (or redirects there within 15s)"
-  await page.waitForURL("**/contacts", { timeout: 15_000 });
-  await expect(page.getByTestId("user-menu")).toContainText(email, {
-    timeout: 15_000,
-  });
-}
-
-// Find a record id in a pinned list endpoint by matching any string value.
-async function findIdByValue(
-  context: BrowserContext,
-  listPath: string,
-  needle: string,
-): Promise<string | null> {
-  const resp = await context.request.get(listPath);
-  if (!resp.ok()) return null;
-  const items = (await resp.json()) as Array<Record<string, unknown>>;
-  if (!Array.isArray(items)) return null;
-  const hit = items.find((it) =>
-    Object.values(it).some((v) => typeof v === "string" && v.includes(needle)),
-  );
-  return hit && hit.id != null ? String(hit.id) : null;
-}
 
 test.describe.serial("relay-crm checkpoint 1", () => {
   let owner: BrowserContext;

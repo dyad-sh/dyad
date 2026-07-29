@@ -184,3 +184,12 @@ errors after an otherwise successful assertion.
   tiny requests time out (undici's 300s headersTimeout + silent AI-SDK retries
   look like exactly-300s stall loops). Probe with a small request before starting
   a new run; never kill-and-relaunch without letting the engine drain.
+- Long-lived benchmark servers: a bash trap that kills a `( cd … && node … )`
+  subshell does NOT kill the node child — orphaned listeners then squat on the
+  port and health checks silently pass against STALE code. Kill by port
+  (`lsof -ti :PORT | xargs kill`) before binding, and treat any in-memory
+  registry as lost on restart (rebuild from durable state, e.g. Postgres).
+- When two different models/agents fail the SAME single test, suspect the test
+  or the environment before the models — in this benchmark that signature was,
+  in successive rounds: a missing browser build, an over-strict assertion, and
+  a stale server. All three masqueraded as "consistent model failure".

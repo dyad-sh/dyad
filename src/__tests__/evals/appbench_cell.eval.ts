@@ -104,6 +104,10 @@ async function json(url: string, init?: RequestInit) {
       selectedModel: { provider: MODEL_PROVIDER, name: MODEL_NAME },
       settings: {
         enableDyadPro: true,
+        // Deep context stays ON (user decision): the electron mock's
+        // utilityProcess shim forks the real worker bundle headless. Requires
+        // dist/code_explorer_worker.js — run-cell.sh builds it if missing.
+        enableCodeExplorer: true,
         // Headless: consent prompts have no user to click and hang to their
         // 300s deadline before failing as denied (observed in run 3 — this
         // both stalled milestones and denied the model schema changes).

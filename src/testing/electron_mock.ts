@@ -183,11 +183,56 @@ export function createElectronMock(shared: ElectronMockShared) {
     },
     net: {},
     utilityProcess: {
-      fork: vi.fn(() => ({
-        on: vi.fn(),
-        postMessage: vi.fn(),
-        kill: vi.fn(),
-      })),
+      // Functional shim: forks the real worker bundle via child_process with
+      // a parentPort bridge (code_explorer_fork_wrapper.cjs), so utility-
+      // process consumers (code explorer) actually WORK headless instead of
+      // hanging on a ready-promise that an inert stub would never resolve.
+      fork: vi.fn((modulePath: string, _args?: string[], _opts?: unknown) => {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const { fork } =
+          require("node:child_process") as typeof import("node:child_process");
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const nodeFs = require("node:fs") as typeof import("node:fs");
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const nodePath = require("node:path") as typeof import("node:path");
+        const repoRoot = nodePath.resolve(__dirname, "..", "..");
+        const base = nodePath.basename(modulePath);
+        const candidates = [
+          modulePath,
+          nodePath.join(repoRoot, "dist", base),
+          nodePath.join(repoRoot, "dist", base.replace(/\.js$/, ".cjs")),
+        ];
+        const bundle = candidates.find((p) => nodeFs.existsSync(p));
+        if (!bundle) {
+          throw new Error(
+            `utilityProcess shim: worker bundle not found (tried ${candidates.join(", ")}). ` +
+              `Build it: npx vite build --config vite.code-explorer-worker.config.mts`,
+          );
+        }
+        const child = fork(
+          nodePath.join(__dirname, "code_explorer_fork_wrapper.cjs"),
+          [],
+          {
+            env: { ...process.env, DYAD_TEST_WORKER_BUNDLE: bundle },
+            // utilityProcess execArgv V8 flags aren't applied by Electron 40
+            // either (see code_explorer.ts) — drop them here too.
+            execArgv: [],
+            stdio: ["ignore", "ignore", "inherit", "ipc"],
+          },
+        );
+        return {
+          on: (event: string, cb: (...a: unknown[]) => void) => {
+            if (event === "error") {
+              child.on("error", (err) => cb("unknown", "spawn", String(err)));
+            } else {
+              child.on(event as "spawn" | "message" | "exit", cb);
+            }
+          },
+          postMessage: (m: unknown) => child.send(m as object),
+          kill: () => child.kill(),
+          pid: child.pid,
+        };
+      }),
     },
   };
 }

@@ -111,6 +111,16 @@ const server = http.createServer((req, res) => {
         stream: parsed.stream,
         messageCount: parsed.messages?.length,
         toolCount: parsed.tools?.length,
+        // Reasoning-effort disclosure (design §2): capture whichever field the
+        // provider path uses so runs prove the effort tier actually sent.
+        effort:
+          parsed.reasoning?.effort ??
+          parsed.reasoning_effort ??
+          parsed.effort ??
+          parsed.output_config?.effort ??
+          (parsed.thinking
+            ? `thinking:${parsed.thinking.type ?? "on"}`
+            : undefined),
       };
     } catch {
       /* non-JSON bodies pass through unrecorded */

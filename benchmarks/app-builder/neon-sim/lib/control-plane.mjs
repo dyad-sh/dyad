@@ -308,8 +308,22 @@ export function createControlPlane({ port = 7788, ledgerDir, sqlProxy }) {
     }
 
     if (op === "clone") {
-      if (!state.snapshots.has(body.snapshot))
-        return json(res, 404, { message: "snapshot not found" });
+      if (!state.snapshots.has(body.snapshot)) {
+        // Snapshots are durable Postgres databases; the in-memory registry
+        // dies with each sim instance. Recognize any existing sim_* database
+        // so scoring works across sim restarts (observed: an entire scoring
+        // phase silently cloned nothing because the registry was empty).
+        const durable =
+          validLabel(body.snapshot) &&
+          (await listSimDatabases()).includes(body.snapshot);
+        if (!durable) return json(res, 404, { message: "snapshot not found" });
+        state.snapshots.set(body.snapshot, {
+          projectId: "recovered",
+          branchId: "recovered",
+          sourceDb: body.snapshot,
+          createdAt: new Date().toISOString(),
+        });
+      }
       if (!validLabel(body.label))
         return json(res, 400, { message: "label must match ^sim_[a-z0-9_]+$" });
       await createDatabase(body.label, { template: body.snapshot });

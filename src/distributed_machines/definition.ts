@@ -15,6 +15,11 @@ import type {
 } from "@/state_machines/types";
 import type { RuntimeRemoteIntentContract } from "./remote_intent_contract";
 import type { KeyedAdmissionGeneration } from "./keyed_admission_gate";
+import type {
+  OperationAdmissionIdentity,
+  OperationReceiptMetadata,
+  OperationRegistry,
+} from "./operation_registry";
 
 export type ActorInstanceId = string;
 
@@ -61,6 +66,16 @@ export interface ActorEventSink<Event> {
   readonly admissionGeneration: KeyedAdmissionGeneration;
   send(event: Event): void;
 }
+
+type OutcomePublisher<Outcome> = {
+  bivarianceHack(outcome: Outcome): void;
+}["bivarianceHack"];
+
+type OutcomePublisherFactory<Key, State, Event, Outcome> = {
+  bivarianceHack(
+    context: MachineHostContext<Key, State, Event>,
+  ): OutcomePublisher<Outcome>;
+}["bivarianceHack"];
 
 /**
  * A returned Promise must span the complete command continuation. Returning
@@ -187,6 +202,36 @@ export interface RemoteMachineContract<
   }) => void | Promise<void>;
 }
 
+export interface RemoteOperationContract<
+  Key,
+  RemoteIntent,
+  Event,
+  DomainOutcome,
+  OperationInvocationRef,
+> {
+  prepare(context: {
+    readonly key: Key;
+    readonly intent: RemoteIntent;
+    readonly event: Event;
+    readonly sender: Required<Pick<RemoteMachineSender, "windowSessionId">>;
+    readonly actor: ActorRuntimeMetadata;
+    readonly hostId: string;
+    readonly fingerprint: string;
+  }):
+    | {
+        readonly registry: OperationRegistry<
+          DomainOutcome,
+          OperationInvocationRef
+        >;
+        readonly identity: OperationAdmissionIdentity<OperationInvocationRef>;
+      }
+    | undefined;
+  ignoredOutcome(reason: string): DomainOutcome;
+  receipt(actor: ActorRuntimeMetadata): OperationReceiptMetadata;
+  settleWindowSession?(windowSessionId: string): number;
+  releaseManager?(): number;
+}
+
 export interface DistributedMachineDefinition<
   Id extends string,
   Key,
@@ -223,9 +268,12 @@ export interface DistributedMachineDefinition<
    * Optional authoritative post-commit outcome sink. ActorHost invokes it only
    * after the new snapshot is committed; failures are isolated by dispatcher.
    */
-  readonly createOutcomePublisher?: (
-    context: MachineHostContext<Key, State, Event>,
-  ) => (outcome: Outcome) => void;
+  readonly createOutcomePublisher?: OutcomePublisherFactory<
+    Key,
+    State,
+    Event,
+    Outcome
+  >;
   readonly lifecycle: ActorLifecyclePolicy<Key, State>;
   readonly persistence?: MachinePersistencePolicy<Key, State>;
   readonly remote?: RemoteMachineContract<Key, State, Event>;
@@ -239,6 +287,14 @@ export interface DistributedMachineDefinition<
     Extract<RemoteIntent, { readonly type: string }>,
     Event,
     unknown
+  >;
+  /** Optional completion-aware admission for declared request intents. */
+  readonly remoteOperation?: RemoteOperationContract<
+    Key,
+    Extract<RemoteIntent, { readonly type: string }>,
+    Event,
+    any,
+    any
   >;
 }
 

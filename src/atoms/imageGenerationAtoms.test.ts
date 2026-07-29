@@ -4,9 +4,11 @@ import {
   selectChatImageGenerationJobs,
   selectImageGenerationPendingCount,
 } from "@/image_generation/selectors";
+import type { RequestId } from "@/distributed_machines/request_identity";
 
 const baseJob: ImageGenerationJobView = {
   id: "job-1",
+  requestId: "request-1" as RequestId,
   prompt: "A lighthouse",
   themeMode: "plain",
   targetAppId: 1,

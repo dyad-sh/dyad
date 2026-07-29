@@ -66,11 +66,18 @@ const THEME_SYSTEM_PROMPTS: Record<ImageThemeMode, string | null> = {
 
 export class ImageGenerationService {
   private readonly active = new Map<string, ActiveGeneration>();
+  private readonly cancellationTombstones = new Set<string>();
   private readonly deletionFences = new Map<number, number>();
   private resetFenceCount = 0;
 
   generate(params: GenerateImageInput) {
     this.assertAcceptingGenerations(params.targetAppId);
+    if (this.cancellationTombstones.delete(params.requestId)) {
+      throw new DyadError(
+        "Image generation cancelled.",
+        DyadErrorKind.UserCancelled,
+      );
+    }
     if (this.active.has(params.requestId)) {
       throw new DyadError(
         "Image generation invocation is already active",
@@ -337,9 +344,20 @@ export class ImageGenerationService {
     return savedImage;
   }
 
-  cancel(requestId: string): boolean {
+  cancel(
+    requestId: string,
+    options: { readonly retainIfMissing?: boolean } = {},
+  ): boolean {
     const active = this.active.get(requestId);
-    if (!active) return false;
+    if (!active) {
+      if (!options.retainIfMissing) return false;
+      if (this.cancellationTombstones.size >= 128) {
+        const oldest = this.cancellationTombstones.values().next().value;
+        if (oldest) this.cancellationTombstones.delete(oldest);
+      }
+      this.cancellationTombstones.add(requestId);
+      return true;
+    }
     active.controller.abort();
     logger.log(`Image generation cancellation requested: ${requestId}`);
     return true;
@@ -363,6 +381,17 @@ export class ImageGenerationService {
       active.map((entry) => entry.settlement),
       timeoutMs,
     );
+    this.cancellationTombstones.clear();
+  }
+
+  inspectOwnedResources(): {
+    readonly active: number;
+    readonly cancellationTombstones: number;
+  } {
+    return {
+      active: this.active.size,
+      cancellationTombstones: this.cancellationTombstones.size,
+    };
   }
 }
 

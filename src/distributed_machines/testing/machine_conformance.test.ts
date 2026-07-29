@@ -259,6 +259,7 @@ describe("remote intent contract registration", () => {
     const intent =
       imageGenerationRemoteIntentContract.rendererIntentCodec.parse({
         type: "SUBMIT",
+        requestId: "request",
         operationId: "operation",
         job: {
           id: "job",
@@ -486,6 +487,7 @@ describe("pilot envelope budgets", () => {
       declaredLimit: imageGenerationRemoteIntentContract.budgets.intentBytes,
       worstCase: () => ({
         type: "SUBMIT",
+        requestId: "r".repeat(256),
         operationId: "o".repeat(256),
         job,
       }),
@@ -505,6 +507,7 @@ describe("pilot envelope budgets", () => {
         jobs: Array.from({ length: 32 }, (_, index) => ({
           ...job,
           id: `${index}-${job.id}`,
+          requestId: `request-${index}`,
           status: "success",
           result: {
             fileName: "f".repeat(256),

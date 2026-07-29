@@ -609,10 +609,11 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
 - If a scheduler retains an execution callback and then throws or rejects, the
   retained callback must be invalidated. Marking the batch failed while still
   allowing that callback to run lets command side effects escape after sealing.
-- A revision-bound producer sink that supports sequential emissions must
-  advance its expected revision in the dispatcher's synchronous settlement
-  callback. Updating only from `ticket.settled.then(...)` is too late when an
-  async command continuation resumes before that Promise reaction. Events
-  buffered during synchronous construction must retain the same mutable
-  per-sink revision cursor so activation can advance the sequence after each
-  replayed event.
+- A captured one-shot producer sink for a collection actor must bind to actor
+  instance plus keyed-admission generation, not to the snapshot revision at
+  which the effect started. Cancellation and unrelated parallel jobs
+  legitimately advance the same actor before terminal output arrives; use the
+  domain invocation identity to reject stale or replacement-job output.
+  Factory-buffered sequential emissions must retain the same captured actor and
+  admission identity through activation, and output after actor disposal must
+  remain non-creating.

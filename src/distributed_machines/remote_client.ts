@@ -93,6 +93,9 @@ export function observeDomainRevision(
 
 export interface RemoteDispatchOptions {
   readonly expected?: ObservedRevisionToken;
+  readonly messageId?: string;
+  readonly correlationId?: string;
+  readonly causationId?: string;
 }
 
 export interface RemoteSubscriptionLease {
@@ -881,8 +884,11 @@ export class RemoteMachineClient {
             : metadata?.observedRevision;
     const envelope: MachineDispatchEnvelope = {
       ...store.address,
-      messageId: this.ids.next(`${store.definition.id}:message`),
+      messageId:
+        options?.messageId ?? this.ids.next(`${store.definition.id}:message`),
       encodedEvent: parsedEvent.data,
+      correlationId: options?.correlationId,
+      causationId: options?.causationId,
       expectedActorInstanceId:
         (expected?.kind === "actor" ? expected.actorInstanceId : undefined) ??
         metadata?.actorInstanceId,

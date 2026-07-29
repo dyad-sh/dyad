@@ -461,6 +461,34 @@ export class OperationRegistry<Outcome, Ref extends InvocationRef> {
     );
   }
 
+  ticketFor(
+    requestId: RequestId,
+    matches: (owner: OperationOwner) => boolean,
+  ): OperationTicket<Outcome, InvocationRef> | undefined {
+    const entry = this.entries.get(requestId);
+    return entry && matches(entry.identity.owner)
+      ? this.ticket(entry)
+      : undefined;
+  }
+
+  /**
+   * Settles unresolved entries and removes both pending and retained terminal
+   * payloads at the declared ownership boundary.
+   */
+  releaseOwned(
+    cause: OperationDisposalCause,
+    matches: (owner: OperationOwner) => boolean,
+  ): number {
+    const settled = this.settleDisposed(cause, matches);
+    for (const [requestId, entry] of this.entries) {
+      if (!matches(entry.identity.owner)) continue;
+      entry.listeners.clear();
+      this.entries.delete(requestId);
+      if (!entry.settlement) this.unresolved -= 1;
+    }
+    return settled;
+  }
+
   has(requestId: RequestId): boolean {
     return this.entries.has(requestId);
   }

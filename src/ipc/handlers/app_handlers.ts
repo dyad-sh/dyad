@@ -397,11 +397,16 @@ async function deleteAppById(
   versionPreviewActorService.beginAppDeletion(appId);
   const releaseStreamAdmissionBlock = blockNewStreamsForApp(appId);
   githubOpsService.beginAppDeletion(appId);
-  imageGenerationService.beginAppDeletion(appId);
+  const imageGenerationDeletion =
+    imageGenerationActorService.beginAppDeletion(appId);
   const releaseChatCreation = beginAppChatDeletion(appId);
   const releaseChatActorAdmission: (() => void)[] = [];
+  let deletionCommitted = false;
   try {
     await versionPreviewActorService.prepareAppDeletion(appId);
+    await imageGenerationActorService.prepareAppDeletion(
+      imageGenerationDeletion,
+    );
     // Actor cancellation can wait for an in-flight stream to finish writes
     // under this app's lock. Drain before taking the lock, while the admission
     // barrier prevents another turn from entering behind us.
@@ -442,6 +447,7 @@ async function deleteAppById(
 
       try {
         await db.delete(apps).where(eq(apps.id, appId));
+        deletionCommitted = true;
         // Note: Associated chats will cascade delete
         if (options.publishDisposal !== false) {
           for (const { id: chatId } of appChats) {
@@ -462,7 +468,6 @@ async function deleteAppById(
     const actorCleanup = await Promise.allSettled([
       versionPreviewActorService.disposeApp(appId),
       githubOpsActorService.disposeApp(appId),
-      imageGenerationActorService.disposeApp(appId),
       appRunActorService.disposeApp(appId),
       ...appChats.map(({ id: chatId }) => userInputRegistry.settleChat(chatId)),
       ...appChats.map(({ id: chatId }) => settleChatActorsForDeletion(chatId)),
@@ -494,7 +499,10 @@ async function deleteAppById(
   } finally {
     for (const release of releaseChatActorAdmission) release();
     releaseChatCreation();
-    imageGenerationService.endAppDeletion(appId);
+    imageGenerationActorService.finishAppDeletion(
+      imageGenerationDeletion,
+      deletionCommitted,
+    );
     githubOpsService.endAppDeletion(appId);
     versionPreviewActorService.endAppDeletion(appId);
     releaseStreamAdmissionBlock();

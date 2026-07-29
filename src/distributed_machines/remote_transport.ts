@@ -12,6 +12,7 @@ import {
 import type {
   ActorRuntimeMetadata,
   HostedActorRef,
+  RemoteOperationContract,
   RemoteMachineSender,
 } from "./definition";
 import type {
@@ -27,6 +28,10 @@ import {
   type MachineSnapshotEnvelope,
 } from "./remote_protocol";
 import type { RemoteAuthorizationDecision } from "./remote_intent_contract";
+import {
+  finalizeOperationAdmission,
+  type OperationRegistry,
+} from "./operation_registry";
 
 export interface RemoteTransportEndpoint {
   readonly id: number;
@@ -150,6 +155,7 @@ export class RemoteMachineTransport {
   private readonly subscriptions = new Map<string, SubscriptionEntry>();
   private readonly actorKeys = new Map<string, unknown>();
   private readonly referencesPerWindow = new Map<number, number>();
+  private readonly windowSessions = new Map<number, WindowSessionId>();
   private readonly pendingSubscriptions = new Map<
     string,
     PendingSubscription
@@ -232,6 +238,7 @@ export class RemoteMachineTransport {
     this.assertOpen();
     this.assertAddressWithinLimit(input);
     const windowSessionId = this.options.windows.ensureRegistered(sender);
+    this.windowSessions.set(sender.id, windowSessionId);
     const definition = this.requireDefinition(input.machineId);
     this.assertProtocol(sender, definition, input.protocolVersion);
     const key = this.decodeKey(definition, input.encodedKey);
@@ -438,7 +445,10 @@ export class RemoteMachineTransport {
   ): Promise<void> {
     this.assertOpen();
     this.assertAddressWithinLimit(input);
-    this.options.windows.ensureRegistered(sender);
+    this.windowSessions.set(
+      sender.id,
+      this.options.windows.ensureRegistered(sender),
+    );
     const definition = this.requireDefinition(input.machineId);
     this.assertProtocol(sender, definition, input.protocolVersion);
     const key = this.decodeKey(definition, input.encodedKey);
@@ -458,6 +468,7 @@ export class RemoteMachineTransport {
   ): Promise<MachineDispatchReceipt> {
     this.assertOpen();
     const windowSessionId = this.options.windows.ensureRegistered(sender);
+    this.windowSessions.set(sender.id, windowSessionId);
     const dispatchDefinition = this.options.manifest.get(envelope.machineId);
     const nativeDispatchLimit =
       dispatchDefinition?.remoteIntent?.budgets.intentBytes;
@@ -582,10 +593,17 @@ export class RemoteMachineTransport {
     }
     this.removeWindowListener();
     this.removeDisposalListener();
+    for (const definition of this.options.manifest.definitions) {
+      const operation = definition.remoteOperation as
+        | RemoteOperationContract<unknown, unknown, unknown, unknown, unknown>
+        | undefined;
+      operation?.releaseManager?.();
+    }
     for (const entry of this.subscriptions.values()) entry.unsubscribeActor();
     this.subscriptions.clear();
     this.actorKeys.clear();
     this.referencesPerWindow.clear();
+    this.windowSessions.clear();
     this.pendingReferencesPerWindow.clear();
     this.receiptLedger.dispose();
   }
@@ -835,19 +853,77 @@ export class RemoteMachineTransport {
         return this.rejected(envelope.messageId, finalRefusal);
       }
     }
-    prepared.consumed = true;
-    const ticket = this.options.host.dispatchCaptured(
-      definition,
+    const enqueue = () =>
+      this.options.host.dispatchCaptured(
+        definition,
+        key,
+        event,
+        prepared.lifecycleGeneration,
+        dispatchActorMetadata,
+        {
+          messageId: envelope.messageId,
+          correlationId: envelope.correlationId,
+          causationId: envelope.causationId,
+        },
+      );
+    const remoteOperation = definition.remoteOperation as
+      | RemoteOperationContract<unknown, unknown, unknown, unknown, unknown>
+      | undefined;
+    const operationPreparation = remoteOperation?.prepare({
       key,
+      intent,
       event,
-      prepared.lifecycleGeneration,
-      dispatchActorMetadata,
-      {
-        messageId: envelope.messageId,
-        correlationId: envelope.correlationId,
-        causationId: envelope.causationId,
-      },
-    );
+      sender: { windowSessionId: prepared.windowSessionId },
+      actor: dispatchActorMetadata,
+      hostId: "main",
+      fingerprint: prepared.fingerprint,
+    });
+    let ticket;
+    if (operationPreparation) {
+      const operationAdmission = finalizeOperationAdmission({
+        registry: operationPreparation.registry as OperationRegistry<
+          unknown,
+          unknown
+        >,
+        identity: operationPreparation.identity,
+        assertFinalAdmission: () => {
+          const refusal = definition.remoteIntent
+            ? this.revalidatePreparedDispatch(sender, envelope, prepared)
+            : this.revalidateLegacyPreparedDispatch(
+                sender,
+                prepared,
+                dispatchActorMetadata,
+              );
+          if (refusal) {
+            throw new ActorAdmissionError(
+              refusal === "stale-actor"
+                ? "stale-actor-instance"
+                : refusal === "revision-conflict"
+                  ? "stale-actor-revision"
+                  : "key-fenced",
+              `Prepared operation admission was refused: ${refusal}`,
+            );
+          }
+        },
+        enqueue,
+        receiptOnEnqueueFailure: () =>
+          remoteOperation!.receipt(dispatchActorMetadata),
+      });
+      if (operationAdmission.kind !== "enqueued") {
+        prepared.consumed = true;
+        return {
+          kind: "applied",
+          actorInstanceId: dispatchActorMetadata.actorInstanceId,
+          revision: dispatchActorMetadata.snapshotRevision,
+          transactionSequence: dispatchActorMetadata.transactionSequence,
+          messageId: envelope.messageId,
+        };
+      }
+      ticket = operationAdmission.enqueueResult;
+    } else {
+      ticket = enqueue();
+    }
+    prepared.consumed = true;
     const dispatchedActor = this.options.host.peek<unknown, unknown, string>(
       definition.id,
       key,
@@ -878,6 +954,14 @@ export class RemoteMachineTransport {
       return this.rejected(envelope.messageId, "host-disposing");
     }
     if (outcome.kind === "ignored") {
+      if (operationPreparation) {
+        operationPreparation.registry.settle(
+          operationPreparation.identity.requestId,
+          operationPreparation.identity.invocationRef,
+          remoteOperation!.ignoredOutcome(outcome.reason),
+          remoteOperation!.receipt(metadata),
+        );
+      }
       return {
         kind: "ignored",
         actorInstanceId: metadata.actorInstanceId,
@@ -1120,6 +1204,16 @@ export class RemoteMachineTransport {
   }
 
   private removeWindow(webContentsId: number): void {
+    const windowSessionId = this.windowSessions.get(webContentsId);
+    this.windowSessions.delete(webContentsId);
+    if (windowSessionId) {
+      for (const definition of this.options.manifest.definitions) {
+        const operation = definition.remoteOperation as
+          | RemoteOperationContract<unknown, unknown, unknown, unknown, unknown>
+          | undefined;
+        operation?.settleWindowSession?.(windowSessionId);
+      }
+    }
     for (const pending of this.pendingSubscriptions.values()) {
       if (pending.webContentsId === webContentsId) {
         this.cancelPendingSubscription(pending);

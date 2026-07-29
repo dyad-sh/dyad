@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { RequestIdSchema } from "@/distributed_machines/request_identity";
 import { REMOTE_MACHINE_PROTOCOL_VERSION } from "@/distributed_machines/remote_protocol";
 import type { RemoteClientDefinition } from "@/distributed_machines/remote_client";
 import { ImageThemeModeSchema } from "@/ipc/types/image_generation";
@@ -55,6 +56,7 @@ export const ImageGenerationIntentEventSchema = z.union([
     .object({
       type: z.literal("SUBMIT"),
       job: jobDetailsSchema,
+      requestId: RequestIdSchema,
       operationId: z.string().min(1),
     })
     .strict(),
@@ -77,6 +79,7 @@ const resultViewSchema = z
 
 const imageGenerationJobViewSchema = jobDetailsSchema
   .extend({
+    requestId: RequestIdSchema,
     status: z.enum(["pending", "cancelling", "success", "error", "cancelled"]),
     result: resultViewSchema.optional(),
     error: z.string().optional(),
@@ -100,9 +103,10 @@ export function projectImageGenerationRemoteSnapshot(
   revision: number,
 ): ImageGenerationRemoteSnapshot {
   return {
-    jobs: state.jobs.map(({ job, activeInvocationRef }) => ({
+    jobs: state.jobs.map(({ job, requestId, activeInvocationRef }) => ({
       id: job.id,
       startedAt: job.startedAt,
+      requestId,
       prompt: job.prompt,
       themeMode: job.themeMode,
       targetAppId: job.targetAppId,
@@ -128,7 +132,12 @@ export function projectImageGenerationRemoteSnapshot(
   };
 }
 
-export const imageGenerationClientDefinition = {
+export const imageGenerationClientDefinition: RemoteClientDefinition<
+  ImageGenerationKey,
+  ImageGenerationRemoteSnapshot,
+  ImageGenerationIntentEvent,
+  ImageGenerationIgnoreReason
+> = {
   id: IMAGE_GENERATION_MACHINE_ID,
   host: "main",
   remote: {
@@ -140,12 +149,7 @@ export const imageGenerationClientDefinition = {
     keyToString: () => "jobs",
     unavailableSnapshot: () => ({ jobs: [], revision: 0 }),
   },
-} satisfies RemoteClientDefinition<
-  ImageGenerationKey,
-  ImageGenerationRemoteSnapshot,
-  ImageGenerationIntentEvent,
-  ImageGenerationIgnoreReason
->;
+};
 
 export function sameImageGenerationInvocation(
   left: ImageGenerationInvocationRef | null,

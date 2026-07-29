@@ -3,6 +3,7 @@ import type { ImageGenerationActorState } from "@/image_generation/state";
 import { WindowRegistry } from "@/window_infrastructure/main/window_registry";
 import { WindowSessionIdSchema } from "@/window_infrastructure/types";
 import { ImageGenerationPresentationService } from "./image_generation_presentation_service";
+import type { RequestId } from "@/distributed_machines/request_identity";
 
 function setup() {
   const windows = new WindowRegistry();
@@ -31,6 +32,7 @@ function setup() {
 function pendingState(): ImageGenerationActorState {
   return {
     jobs: ["job-1", "job-2"].map((id) => ({
+      requestId: `request-${id}` as RequestId,
       job: {
         id,
         prompt: id,
@@ -69,7 +71,7 @@ describe("ImageGenerationPresentationService", () => {
     });
   });
 
-  it("falls back to another visible window after the initiator closes", () => {
+  it("does not present an initiator's result in another window", () => {
     const { first, firstSession, second, secondSession, service, windows } =
       setup();
     const state = pendingState();
@@ -79,10 +81,7 @@ describe("ImageGenerationPresentationService", () => {
 
     service.present(state, "job-1");
 
-    expect(second.send).toHaveBeenCalledWith("image-generation:presentation", {
-      type: "progress",
-      pendingCount: 2,
-    });
+    expect(second.send).not.toHaveBeenCalled();
   });
 
   it("omits the absolute path from success presentation", () => {
@@ -90,6 +89,7 @@ describe("ImageGenerationPresentationService", () => {
     const state: ImageGenerationActorState = {
       jobs: [
         {
+          requestId: "request-1" as RequestId,
           job: {
             id: "job-1",
             prompt: "A lighthouse",
@@ -131,6 +131,7 @@ describe("ImageGenerationPresentationService", () => {
       jobs: [
         ...pendingState().jobs,
         {
+          requestId: "request-3" as RequestId,
           job: {
             id: "job-3",
             prompt: "Another app",

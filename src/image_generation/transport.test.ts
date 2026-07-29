@@ -5,12 +5,14 @@ import {
   projectImageGenerationRemoteSnapshot,
 } from "./transport";
 import type { ImageGenerationActorState } from "./state";
+import type { RequestId } from "@/distributed_machines/request_identity";
 
 describe("image generation transport", () => {
   it("publishes a safe job-list projection without absolute file paths", () => {
     const state: ImageGenerationActorState = {
       jobs: [
         {
+          requestId: "request-1" as RequestId,
           job: {
             id: "job-1",
             prompt: "A lighthouse",

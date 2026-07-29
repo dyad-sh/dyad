@@ -128,7 +128,7 @@ function harness(
 }
 
 describe("ActorHost keyed admission integration", () => {
-  it("rejects output captured for an old revision of the same actor", async () => {
+  it("admits correlated output after an unrelated revision of the same actor", async () => {
     let context!: MachineHostContext<string, State, Event>;
     const definition = machine({
       id: "revision-bound-sink",
@@ -143,7 +143,7 @@ describe("ActorHost keyed admission integration", () => {
     actor.send({ type: "WORK" });
     sink.send({ type: "PRODUCER" });
 
-    expect(actor.getSnapshot().events).toEqual(["COMMAND", "WORK"]);
+    expect(actor.getSnapshot().events).toEqual(["COMMAND", "WORK", "PRODUCER"]);
     await host.dispose();
   });
 
@@ -298,7 +298,11 @@ describe("ActorHost keyed admission integration", () => {
     expect(await isSettled(sealing)).toBe(false);
     command.resolve();
     await sealing;
-    expect(actor.getSnapshot().events).toEqual(["COMMAND", "CLEANUP"]);
+    expect(actor.getSnapshot().events).toEqual([
+      "COMMAND",
+      "CLEANUP",
+      "COMMAND_DONE",
+    ]);
 
     actor.send({ type: "WORK" });
     producer.send({ type: "PRODUCER" });
@@ -306,7 +310,11 @@ describe("ActorHost keyed admission integration", () => {
     await expect(
       host.dispatch(definition, "one", { type: "CLEANUP" } as Event).settled,
     ).resolves.toMatchObject({ kind: "failed" });
-    expect(actor.getSnapshot().events).toEqual(["COMMAND", "CLEANUP"]);
+    expect(actor.getSnapshot().events).toEqual([
+      "COMMAND",
+      "CLEANUP",
+      "COMMAND_DONE",
+    ]);
 
     fence.commit();
     expect(host.inspectAdmission(definition.id, "one").phase).toBe("committed");

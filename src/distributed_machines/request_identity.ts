@@ -1,4 +1,5 @@
 import type { IdSource } from "@/state_machines/clock";
+import { z } from "zod";
 
 declare const requestIdBrand: unique symbol;
 declare const messageIdBrand: unique symbol;
@@ -6,6 +7,11 @@ declare const idempotencyKeyBrand: unique symbol;
 
 /** Stable identity for one logical completion-aware request. */
 export type RequestId = string & { readonly [requestIdBrand]: true };
+
+export const RequestIdSchema = z.custom<RequestId>(
+  (value) => typeof value === "string" && value.length > 0,
+  "RequestId must be a non-empty string",
+);
 
 /** Delivery identity for one transport message. */
 export type RequestMessageId = string & { readonly [messageIdBrand]: true };

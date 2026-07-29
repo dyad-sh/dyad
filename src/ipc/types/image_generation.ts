@@ -1,11 +1,18 @@
 import { z } from "zod";
-import { createEventClient, defineEvent } from "../contracts/core";
+import {
+  createClient,
+  createEventClient,
+  defineContract,
+  defineEvent,
+} from "../contracts/core";
 import type {
+  ImageGenerationOperationOutcome,
   ImageGenerationResultView,
   ImageThemeMode,
 } from "../../image_generation/state";
 
 export type { ImageGenerationResultView, ImageThemeMode };
+export type { ImageGenerationOperationOutcome };
 
 export const ImageThemeModeSchema = z.enum([
   "plain",
@@ -64,6 +71,65 @@ export type ImageGenerationPresentationEvent = z.infer<
   typeof ImageGenerationPresentationEventSchema
 >;
 
+export const ImageGenerationOperationOutcomeSchema = z.discriminatedUnion(
+  "kind",
+  [
+    z
+      .object({
+        kind: z.literal("succeeded"),
+        jobId: z.string(),
+        result: ImageGenerationResultViewSchema,
+      })
+      .strict(),
+    z
+      .object({
+        kind: z.literal("failed"),
+        jobId: z.string(),
+        message: z.string(),
+        failureKind: z.enum(["provider", "unexpected"]),
+      })
+      .strict(),
+    z.object({ kind: z.literal("cancelled"), jobId: z.string() }).strict(),
+    z
+      .object({
+        kind: z.literal("disposed"),
+        jobId: z.string(),
+        cause: z.enum([
+          "actor",
+          "key",
+          "machine",
+          "host",
+          "window-session",
+          "app-deletion",
+        ]),
+      })
+      .strict(),
+    z
+      .object({
+        kind: z.literal("rejected"),
+        jobId: z.string(),
+        reason: z.enum([
+          "already-cancelling",
+          "already-terminal",
+          "duplicate-job",
+          "job-id-conflict",
+          "operation-id-conflict",
+          "job-not-found",
+          "stale-operation",
+        ]),
+      })
+      .strict(),
+  ],
+) satisfies z.ZodType<ImageGenerationOperationOutcome>;
+
+export const imageGenerationContracts = {
+  waitForOperation: defineContract({
+    channel: "image-generation:wait-for-operation",
+    input: z.object({ requestId: z.string().min(1) }).strict(),
+    output: ImageGenerationOperationOutcomeSchema,
+  }),
+} as const;
+
 type MutuallyAssignable<Left, Right> = [Left] extends [Right]
   ? [Right] extends [Left]
     ? true
@@ -94,3 +160,4 @@ export const imageGenerationEvents = {
 export const imageGenerationEventClient = createEventClient(
   imageGenerationEvents,
 );
+export const imageGenerationClient = createClient(imageGenerationContracts);

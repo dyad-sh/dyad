@@ -63,7 +63,10 @@ export { freeAgentQuotaContracts } from "./free_agent_quota";
 export { freeModelQuotaContracts } from "./free_model_quota";
 export { audioContracts } from "./audio";
 export { mediaContracts } from "./media";
-export { imageGenerationEvents } from "./image_generation";
+export {
+  imageGenerationContracts,
+  imageGenerationEvents,
+} from "./image_generation";
 export { appBlueprintContracts, appBlueprintEvents } from "./app_blueprint";
 export { appCollectionContracts } from "./app_collections";
 export { terminalContracts } from "./terminal";
@@ -115,7 +118,10 @@ export { freeAgentQuotaClient } from "./free_agent_quota";
 export { freeModelQuotaClient } from "./free_model_quota";
 export { audioClient } from "./audio";
 export { mediaClient } from "./media";
-export { imageGenerationEventClient } from "./image_generation";
+export {
+  imageGenerationClient,
+  imageGenerationEventClient,
+} from "./image_generation";
 export { appBlueprintClient, appBlueprintEventClient } from "./app_blueprint";
 export { appCollectionClient } from "./app_collections";
 export { terminalClient } from "./terminal";
@@ -382,6 +388,7 @@ export type {
 export type {
   ImageThemeMode,
   ImageGenerationResultView,
+  ImageGenerationOperationOutcome,
 } from "./image_generation";
 
 // Tests types
@@ -475,7 +482,10 @@ import { freeAgentQuotaClient } from "./free_agent_quota";
 import { freeModelQuotaClient } from "./free_model_quota";
 import { audioClient } from "./audio";
 import { mediaClient } from "./media";
-import { imageGenerationEventClient } from "./image_generation";
+import {
+  imageGenerationClient,
+  imageGenerationEventClient,
+} from "./image_generation";
 import { appBlueprintClient, appBlueprintEventClient } from "./app_blueprint";
 import { appCollectionClient } from "./app_collections";
 import { terminalClient } from "./terminal";
@@ -558,6 +568,7 @@ export const ipc = {
   firstPrompt: firstPromptClient,
   windowInfrastructure: windowInfrastructureClient,
   distributedMachine: distributedMachineClient,
+  imageGeneration: imageGenerationClient,
 
   // Event clients for main->renderer pub/sub
   events: {

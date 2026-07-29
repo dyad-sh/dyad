@@ -4,6 +4,10 @@ import { db } from "@/db";
 import { apps } from "@/db/schema";
 import type { DistributedMachineDefinition } from "@/distributed_machines/definition";
 import { REMOTE_MACHINE_PROTOCOL_VERSION } from "@/distributed_machines/remote_protocol";
+import {
+  defineCorrelatedEffectHandlers,
+  runCorrelatedEffect,
+} from "@/distributed_machines/one_shot_effects";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import {
   IMAGE_GENERATION_MACHINE_ID,
@@ -21,13 +25,86 @@ import {
   type ImageGenerationEvent,
   type ImageGenerationIgnoreReason,
   type ImageGenerationIntentEvent,
+  type ImageGenerationCorrelatedOutcome,
+  type ImageGenerationFailureKind,
 } from "@/image_generation/state";
 import { isTerminal, transition } from "@/image_generation/transition";
 import { queryInvalidationBus } from "@/window_infrastructure/main/query_invalidation_bus";
 import { imageGenerationPresentationService } from "./image_generation_presentation_service";
 import { imageGenerationService } from "./image_generation_service";
+import { imageGenerationOperationService } from "./image_generation_operation_service";
 
 export const IMAGE_GENERATION_TERMINAL_RETENTION_MS = 30 * 60 * 1000;
+
+type GenerateImageCommand = Extract<
+  ImageGenerationCommand,
+  { readonly type: "GenerateImage" }
+>;
+
+interface GenerationFailure {
+  readonly message: string;
+  readonly kind: ImageGenerationFailureKind;
+}
+
+const imageGenerationEffectHandlers = defineCorrelatedEffectHandlers<
+  GenerateImageCommand,
+  ImageGenerationEvent
+>()({
+  GenerateImage: {
+    correlation: (command) => command.invocationRef.operationId,
+    disposal: "abort-and-settle",
+    run: (command) =>
+      imageGenerationService.generate({
+        requestId: command.invocationRef.operationId,
+        prompt: command.params.prompt,
+        themeMode: command.params.themeMode,
+        targetAppId: command.params.targetAppId,
+      }),
+    succeeded: (command, result) => ({
+      type: "JOB_SUCCEEDED",
+      jobId: command.jobId,
+      invocationRef: command.invocationRef,
+      result: result as Awaited<
+        ReturnType<typeof imageGenerationService.generate>
+      >,
+    }),
+    failed: (command, failure) => {
+      const typed = failure as GenerationFailure;
+      return {
+        type: "JOB_FAILED",
+        jobId: command.jobId,
+        invocationRef: command.invocationRef,
+        message: typed.message,
+        kind: typed.kind,
+      };
+    },
+    cancelled: (command) => ({
+      type: "JOB_FAILED",
+      jobId: command.jobId,
+      invocationRef: command.invocationRef,
+      message: "Image generation cancelled.",
+      kind: "user_cancelled",
+    }),
+    classifyFailure: (error) => {
+      if (isDyadError(error)) {
+        if (error.kind === DyadErrorKind.UserCancelled) {
+          return { kind: "cancelled" };
+        }
+        return {
+          kind: "expected",
+          failure: { message: error.message, kind: "provider" },
+        };
+      }
+      return {
+        kind: "unexpected",
+        failure: {
+          message: error instanceof Error ? error.message : String(error),
+          kind: "unexpected",
+        },
+      };
+    },
+  },
+});
 
 function createCommandRunner(
   context: import("@/distributed_machines/definition").MachineHostContext<
@@ -36,41 +113,20 @@ function createCommandRunner(
     ImageGenerationEvent
   >,
 ) {
-  return (command: ImageGenerationCommand): void => {
+  return (command: ImageGenerationCommand): void | Promise<void> => {
     switch (command.type) {
       case "GenerateImage":
-        void imageGenerationService
-          .generate({
-            requestId: command.invocationRef.operationId,
-            prompt: command.params.prompt,
-            themeMode: command.params.themeMode,
-            targetAppId: command.params.targetAppId,
-          })
-          .then(
-            (result) =>
-              context.send({
-                type: "JOB_SUCCEEDED",
-                jobId: command.jobId,
-                invocationRef: command.invocationRef,
-                result,
-              }),
-            (error) =>
-              context.send({
-                type: "JOB_FAILED",
-                jobId: command.jobId,
-                invocationRef: command.invocationRef,
-                message: error instanceof Error ? error.message : String(error),
-                kind:
-                  isDyadError(error) &&
-                  error.kind === DyadErrorKind.UserCancelled
-                    ? "user_cancelled"
-                    : "other",
-              }),
-          );
-        return;
+        return runCorrelatedEffect({
+          command,
+          handlers: imageGenerationEffectHandlers,
+          sink: context.captureSink(),
+          reportUnexpected: (error) =>
+            console.error("Unexpected image generation effect failure", error),
+        });
       case "RequestCancel": {
         const cancelled = imageGenerationService.cancel(
           command.invocationRef.operationId,
+          { retainIfMissing: true },
         );
         context.send({
           type: "CANCEL_CONFIRMED",
@@ -124,7 +180,9 @@ type ImageGenerationDefinition = DistributedMachineDefinition<
   ImageGenerationActorState,
   ImageGenerationEvent,
   ImageGenerationCommand,
-  ImageGenerationIgnoreReason
+  ImageGenerationIgnoreReason,
+  ImageGenerationIntentEvent,
+  ImageGenerationCorrelatedOutcome
 > & {
   readonly host: "main";
   readonly remote: NonNullable<
@@ -134,7 +192,9 @@ type ImageGenerationDefinition = DistributedMachineDefinition<
       ImageGenerationActorState,
       ImageGenerationEvent,
       ImageGenerationCommand,
-      ImageGenerationIgnoreReason
+      ImageGenerationIgnoreReason,
+      ImageGenerationIntentEvent,
+      ImageGenerationCorrelatedOutcome
     >["remote"]
   >;
 };
@@ -150,6 +210,8 @@ export const imageGenerationDefinition: ImageGenerationDefinition = {
     },
   }),
   createCommandRunner,
+  createOutcomePublisher: (context) =>
+    imageGenerationOperationService.createPublisher(context.getMetadata),
   createBeforeCommit: (context) => (previous, next) => {
     const nextIds = new Set(next.jobs.map(({ job }) => job.id));
     for (const { job } of previous.jobs) {
@@ -173,7 +235,13 @@ export const imageGenerationDefinition: ImageGenerationDefinition = {
     isTerminal: (state) =>
       state.jobs.length > 0 && state.jobs.every(({ job }) => isTerminal(job)),
     flush: () => imageGenerationService.cancelAndSettleAll(),
-    onDisposed: () => imageGenerationPresentationService.clear(),
+    settleWaiters: ({ metadata }) => {
+      imageGenerationOperationService.settleActor(metadata.actorInstanceId);
+    },
+    onDisposed: ({ metadata }) => {
+      imageGenerationOperationService.releaseActor(metadata.actorInstanceId);
+      imageGenerationPresentationService.clear();
+    },
   },
   remote: {
     protocolVersion: REMOTE_MACHINE_PROTOCOL_VERSION,
@@ -219,6 +287,7 @@ export const imageGenerationDefinition: ImageGenerationDefinition = {
       }
     },
   },
+  remoteOperation: imageGenerationOperationService.remoteContract(),
 };
 
 function assertNever(value: never): never {

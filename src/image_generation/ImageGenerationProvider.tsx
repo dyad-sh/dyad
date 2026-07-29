@@ -6,6 +6,7 @@ import {
 } from "@/components/ImageGenerationToast";
 import { ipc } from "@/ipc/types";
 import { showError } from "@/lib/toast";
+import { ImageGenerationRequestScopeProvider } from "./request_scope";
 
 export function ImageGenerationProvider({ children }: PropsWithChildren) {
   const pendingCountRef = useRef(0);
@@ -29,5 +30,9 @@ export function ImageGenerationProvider({ children }: PropsWithChildren) {
     };
   }, []);
 
-  return children;
+  return (
+    <ImageGenerationRequestScopeProvider>
+      {children}
+    </ImageGenerationRequestScopeProvider>
+  );
 }

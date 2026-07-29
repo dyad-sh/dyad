@@ -6,6 +6,7 @@ import type {
   ImageGenerationJobDetails,
 } from "./state";
 import { transition } from "./transition";
+import type { RequestId } from "@/distributed_machines/request_identity";
 
 const job: ImageGenerationJobDetails = {
   id: "job-1",
@@ -21,6 +22,7 @@ const invocationRef: ImageGenerationInvocationRef = {
   entityKey: job.id,
   operationId: "operation-1",
 };
+const requestId = "request-1" as RequestId;
 const result = {
   fileName: "generated.png",
   filePath: "/tmp/generated.png",
@@ -32,7 +34,7 @@ const result = {
 function submittedState(): ImageGenerationActorState {
   const outcome = transition(
     { jobs: [] },
-    { type: "SUBMIT", job, operationId: invocationRef.operationId },
+    { type: "SUBMIT", job, requestId, operationId: invocationRef.operationId },
   );
   if (outcome.kind !== "applied") throw new Error("submit was ignored");
   return outcome.state;
@@ -44,6 +46,7 @@ describe("image generation transition", () => {
     const first = transition(initial, {
       type: "SUBMIT",
       job,
+      requestId,
       operationId: invocationRef.operationId,
     });
     expect(first).toMatchObject({
@@ -67,6 +70,7 @@ describe("image generation transition", () => {
       transition(first.state, {
         type: "SUBMIT",
         job,
+        requestId: "request-2" as RequestId,
         operationId: "retry-operation",
       }),
     ).toMatchObject({ kind: "ignored", reason: "duplicate-job" });
@@ -74,6 +78,7 @@ describe("image generation transition", () => {
       transition(first.state, {
         type: "SUBMIT",
         job: { ...job, prompt: "Different payload" },
+        requestId: "request-3" as RequestId,
         operationId: "conflicting-operation",
       }),
     ).toMatchObject({ kind: "ignored", reason: "job-id-conflict" });
@@ -81,6 +86,7 @@ describe("image generation transition", () => {
       transition(first.state, {
         type: "SUBMIT",
         job: { ...job, id: "job-2" },
+        requestId: "request-4" as RequestId,
         operationId: invocationRef.operationId,
       }),
     ).toMatchObject({ kind: "ignored", reason: "operation-id-conflict" });
@@ -92,6 +98,7 @@ describe("image generation transition", () => {
       {
         type: "SUBMIT",
         job,
+        requestId,
         operationId: invocationRef.operationId,
         initiatorWindowSessionId: "window-a",
       },
@@ -107,6 +114,7 @@ describe("image generation transition", () => {
       transition(first.state, {
         type: "SUBMIT",
         job,
+        requestId: "request-2" as RequestId,
         operationId: "duplicate-operation",
         initiatorWindowSessionId: "window-b",
       }),
@@ -187,6 +195,17 @@ describe("image generation transition", () => {
           type: "RequestCancel",
           jobId: job.id,
           invocationRef,
+        },
+      ],
+      outcomes: [
+        {
+          requestId,
+          invocationRef,
+          outcome: {
+            kind: "disposed",
+            jobId: job.id,
+            cause: "app-deletion",
+          },
         },
       ],
     });

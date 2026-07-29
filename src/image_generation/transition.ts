@@ -4,6 +4,7 @@ import {
   type ImageGenerationActorJob,
   type ImageGenerationActorState,
   type ImageGenerationCommand,
+  type ImageGenerationCorrelatedOutcome,
   type ImageGenerationEvent,
   type ImageGenerationInvocationRef,
   type ImageGenerationJob,
@@ -38,6 +39,7 @@ export function transition(
           ...state.jobs,
           {
             job: { ...event.job, status: "pending" },
+            requestId: event.requestId,
             activeInvocationRef,
           },
         ],
@@ -91,6 +93,21 @@ export function transition(
             ]
           : [],
       ),
+      outcomes: removed.flatMap(({ job, requestId, activeInvocationRef }) =>
+        activeInvocationRef
+          ? [
+              {
+                requestId,
+                invocationRef: activeInvocationRef,
+                outcome: {
+                  kind: "disposed" as const,
+                  jobId: job.id,
+                  cause: "app-deletion" as const,
+                },
+              },
+            ]
+          : [],
+      ),
     };
   }
 
@@ -135,6 +152,7 @@ export function transition(
         index,
         {
           job: { ...current.job, status: "cancelling" },
+          requestId: current.requestId,
           activeInvocationRef: current.activeInvocationRef,
         },
         [
@@ -157,13 +175,31 @@ export function transition(
           result: event.result,
           lateAfterCancel,
         },
+        requestId: current.requestId,
         activeInvocationRef: null,
       };
-      return replace(state, index, nextJob, [
-        { type: "InvalidateMediaQueries" },
-        { type: "SchedulePrune", jobId: current.job.id },
-        { type: "Present", jobId: current.job.id },
-      ]);
+      const { fileName, appId, appName } = event.result;
+      return replace(
+        state,
+        index,
+        nextJob,
+        [
+          { type: "InvalidateMediaQueries" },
+          { type: "SchedulePrune", jobId: current.job.id },
+          { type: "Present", jobId: current.job.id },
+        ],
+        [
+          {
+            requestId: current.requestId,
+            invocationRef: event.invocationRef,
+            outcome: {
+              kind: "succeeded",
+              jobId: current.job.id,
+              result: { fileName, appId, appName },
+            },
+          },
+        ],
+      );
     }
 
     case "JOB_FAILED": {
@@ -178,12 +214,33 @@ export function transition(
               status: "error",
               error: event.message,
             },
+        requestId: current.requestId,
         activeInvocationRef: null,
       };
-      return replace(state, index, nextJob, [
-        { type: "SchedulePrune", jobId: current.job.id },
-        { type: "Present", jobId: current.job.id },
-      ]);
+      return replace(
+        state,
+        index,
+        nextJob,
+        [
+          { type: "SchedulePrune", jobId: current.job.id },
+          { type: "Present", jobId: current.job.id },
+        ],
+        [
+          {
+            requestId: current.requestId,
+            invocationRef: event.invocationRef,
+            outcome: cancelled
+              ? { kind: "cancelled", jobId: current.job.id }
+              : {
+                  kind: "failed",
+                  jobId: current.job.id,
+                  message: event.message,
+                  failureKind:
+                    event.kind === "unexpected" ? "unexpected" : "provider",
+                },
+          },
+        ],
+      );
     }
 
     case "CANCEL_CONFIRMED":
@@ -202,6 +259,7 @@ function replace(
   index: number,
   job: ImageGenerationActorJob,
   commands: readonly ImageGenerationCommand[],
+  outcomes: readonly ImageGenerationCorrelatedOutcome[] = [],
 ): ImageGenerationTransitionResult {
   return {
     kind: "applied",
@@ -209,6 +267,7 @@ function replace(
       jobs: replaceJob(state.jobs, index, job),
     },
     commands,
+    ...(outcomes.length > 0 ? { outcomes } : {}),
   };
 }
 

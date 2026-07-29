@@ -9,7 +9,7 @@ import {
   createSequentialIdSource,
 } from "@/state_machines/testing";
 import { TwoWindowHarness } from "@/testing/two_window_harness";
-import { DyadErrorKind } from "@/errors/dyad_error";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
   IMAGE_GENERATION_TERMINAL_RETENTION_MS,
   imageGenerationDefinition,
@@ -18,6 +18,8 @@ import {
   getImageGenerationKey,
   imageGenerationClientDefinition,
 } from "./transport";
+import type { RequestId } from "@/distributed_machines/request_identity";
+import { imageGenerationOperationService } from "@/ipc/services/image_generation_operation_service";
 
 const service = vi.hoisted(() => ({
   generate: vi.fn(),
@@ -61,10 +63,12 @@ vi.mock(
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((resolvePromise) => {
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
     resolve = resolvePromise;
+    reject = rejectPromise;
   });
-  return { promise, resolve };
+  return { promise, reject, resolve };
 }
 
 async function flush(): Promise<void> {
@@ -89,12 +93,14 @@ function createHarness() {
     clock,
   });
   const duplex = new FakeDuplexRemoteTransport(transport, manifest, windows);
+  const connectionA = duplex.connect();
+  const connectionB = duplex.connect();
   const clientA = new RemoteMachineClient(
-    duplex.connect(),
+    connectionA,
     createSequentialIdSource(),
   );
   const clientB = new RemoteMachineClient(
-    duplex.connect(),
+    connectionB,
     createSequentialIdSource(),
   );
   clientA.start();
@@ -118,6 +124,8 @@ function createHarness() {
     releaseA,
     releaseB,
     transport,
+    windowSessionA: connectionA.sessionId,
+    windows,
   };
 }
 
@@ -132,11 +140,16 @@ const submit = {
     source: "chat" as const,
     startedAt: 10,
   },
+  requestId: "request-1" as RequestId,
   operationId: "operation-1",
 };
 
 describe("main-hosted image generation actor", () => {
+  let requestSequence = 0;
+
   beforeEach(() => {
+    requestSequence += 1;
+    submit.requestId = `request-${requestSequence}` as RequestId;
     service.generate.mockReset();
     service.cancel.mockReset();
     service.cancel.mockReturnValue(true);
@@ -160,19 +173,32 @@ describe("main-hosted image generation actor", () => {
       appName: string;
     }>();
     service.generate.mockReturnValue(generation.promise);
-    const { actorA, actorB, clientA, releaseA, transport } = createHarness();
+    const {
+      actorA,
+      actorB,
+      clientA,
+      releaseA,
+      transport,
+      windowSessionA,
+      windows,
+    } = createHarness();
     await actorA.resync();
     await actorB.resync();
 
     await expect(actorA.dispatch(submit)).resolves.toMatchObject({
       kind: "applied",
     });
+    const initiatingTicket = imageGenerationOperationService.registry.ticketFor(
+      submit.requestId,
+      () => true,
+    );
     expect(actorB.getSnapshot().jobs[0]).toMatchObject({
       id: "job-1",
       status: "pending",
     });
     releaseA();
     clientA.dispose();
+    windows.destroy(windowSessionA);
     expect(transport.inspectSubscriptions()[0]?.totalReferences).toBe(1);
 
     generation.resolve({
@@ -189,6 +215,67 @@ describe("main-hosted image generation actor", () => {
     });
     expect(actorB.getSnapshot().jobs[0]?.result).not.toHaveProperty("filePath");
     expect(invalidations.publish).toHaveBeenCalledWith([{ family: "media" }]);
+    await expect(initiatingTicket?.settled).resolves.toMatchObject({
+      outcome: { kind: "disposed", cause: "window-session" },
+    });
+  });
+
+  it("admits parallel jobs and settles each by stable request/runtime identity", async () => {
+    const generations = new Map<
+      string,
+      ReturnType<
+        typeof deferred<{
+          fileName: string;
+          filePath: string;
+          appPath: string;
+          appId: number;
+          appName: string;
+        }>
+      >
+    >();
+    service.generate.mockImplementation(
+      ({ requestId }: { requestId: string }) => {
+        const generation = deferred<{
+          fileName: string;
+          filePath: string;
+          appPath: string;
+          appId: number;
+          appName: string;
+        }>();
+        generations.set(requestId, generation);
+        return generation.promise;
+      },
+    );
+    const { actorA } = createHarness();
+    await actorA.resync();
+    const second = {
+      ...submit,
+      requestId: `${submit.requestId}:second` as RequestId,
+      operationId: "operation-2",
+      job: { ...submit.job, id: "job-2", prompt: "A forest" },
+    };
+
+    await actorA.dispatch(submit);
+    await actorA.dispatch(second);
+    expect(actorA.getSnapshot().jobs).toHaveLength(2);
+    generations.get("operation-2")?.resolve({
+      fileName: "forest.png",
+      filePath: "/tmp/forest.png",
+      appPath: "app",
+      appId: 7,
+      appName: "App",
+    });
+    await flush();
+
+    expect(
+      actorA.getSnapshot().jobs.find((job) => job.id === "job-1")?.status,
+    ).toBe("pending");
+    expect(
+      actorA.getSnapshot().jobs.find((job) => job.id === "job-2")?.status,
+    ).toBe("success");
+    expect(
+      imageGenerationOperationService.inspect().unresolved,
+    ).toBeGreaterThan(0);
   });
 
   it("requires the active invocation for cancellation", async () => {
@@ -233,6 +320,93 @@ describe("main-hosted image generation actor", () => {
     ).rejects.toMatchObject({
       kind: DyadErrorKind.NotFound,
       message: "Target app not found",
+    });
+  });
+
+  it("refuses admission captured before an app-deletion fence is published", async () => {
+    const authorization = deferred<{ id: number } | undefined>();
+    database.findFirst.mockReturnValue(authorization.promise);
+    const { actorA, host } = createHarness();
+    await actorA.resync();
+
+    const dispatch = actorA.dispatch(submit);
+    await flush();
+    const fence = host.beginFence(imageGenerationDefinition, {
+      key: getImageGenerationKey(),
+      allowDuringDrain: (event) => event.type !== "SUBMIT",
+    });
+    authorization.resolve({ id: 7 });
+
+    await expect(dispatch).resolves.toMatchObject({ kind: "rejected" });
+    expect(
+      imageGenerationOperationService.registry.ticketFor(
+        submit.requestId,
+        () => true,
+      ),
+    ).toBeUndefined();
+    expect(fence.abort()).toBe(true);
+  });
+
+  it("settles cancellation during provider execution as a typed non-error outcome", async () => {
+    const generation = deferred<never>();
+    service.generate.mockReturnValue(generation.promise);
+    service.cancel.mockReturnValue(true);
+    const { actorA } = createHarness();
+    await actorA.resync();
+    await actorA.dispatch(submit);
+    const activeInvocationRef =
+      actorA.getSnapshot().jobs[0]?.activeInvocationRef;
+    if (!activeInvocationRef) throw new Error("missing invocation");
+
+    await actorA.dispatch({
+      type: "CANCEL_REQUESTED",
+      jobId: "job-1",
+      activeInvocationRef,
+    });
+    await vi.waitFor(() => expect(service.cancel).toHaveBeenCalledOnce());
+    generation.reject(
+      new DyadError("Image generation cancelled", DyadErrorKind.UserCancelled),
+    );
+    await vi.waitFor(() =>
+      expect(actorA.getSnapshot().jobs[0]?.status).toBe("cancelled"),
+    );
+    await expect(
+      imageGenerationOperationService.registry.ticketFor(
+        submit.requestId,
+        () => true,
+      )?.settled,
+    ).resolves.toMatchObject({
+      outcome: { kind: "cancelled", jobId: "job-1" },
+    });
+  });
+
+  it("settles a provider failure only after authoritative admission", async () => {
+    service.generate.mockRejectedValue(
+      new DyadError("Provider quota exhausted", DyadErrorKind.External),
+    );
+    const { actorA } = createHarness();
+    await actorA.resync();
+
+    await expect(actorA.dispatch(submit)).resolves.toMatchObject({
+      kind: "applied",
+    });
+    await flush();
+
+    expect(actorA.getSnapshot().jobs[0]).toMatchObject({
+      status: "error",
+      error: "Provider quota exhausted",
+    });
+    await expect(
+      imageGenerationOperationService.registry.ticketFor(
+        submit.requestId,
+        () => true,
+      )?.settled,
+    ).resolves.toMatchObject({
+      outcome: {
+        kind: "failed",
+        failureKind: "provider",
+        message: "Provider quota exhausted",
+      },
     });
   });
 
@@ -285,6 +459,7 @@ describe("main-hosted image generation actor", () => {
       actorA.dispatch({
         ...submit,
         job: { ...submit.job, id: "job-2" },
+        requestId: "request-2" as RequestId,
         operationId: "operation-2",
       }),
     ).resolves.toMatchObject({ kind: "applied" });

@@ -2,6 +2,7 @@ export * from "./actor_host";
 export * from "./definition";
 export * from "./keyed_admission_gate";
 export * from "./operation_registry";
+export * from "./one_shot_effects";
 export * from "./prepared_request";
 export * from "./request_actor";
 export * from "./request_identity";

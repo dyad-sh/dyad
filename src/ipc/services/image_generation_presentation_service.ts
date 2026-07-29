@@ -27,12 +27,7 @@ export class ImageGenerationPresentationService {
   present(state: ImageGenerationActorState, jobId: string): void {
     const entry = state.jobs.find(({ job }) => job.id === jobId);
     if (!entry) return;
-    const initiator = this.initiatorByJobId.get(jobId);
-    const target = this.windows.routePresentation({
-      effect: "operation-toast",
-      ...(initiator ? { initiatorWindowSessionId: initiator } : {}),
-      entity: { kind: "app", id: entry.job.targetAppId },
-    });
+    const target = this.routeForJob(entry.job);
     if (target) {
       const pendingCount = state.jobs.filter(
         ({ job }) =>
@@ -78,9 +73,11 @@ export class ImageGenerationPresentationService {
 
   private routeForJob(job: ImageGenerationJob): WindowSessionId | null {
     const initiator = this.initiatorByJobId.get(job.id);
+    if (initiator) {
+      return this.windows.endpointForSession(initiator) ? initiator : null;
+    }
     return this.windows.routePresentation({
       effect: "operation-toast",
-      ...(initiator ? { initiatorWindowSessionId: initiator } : {}),
       entity: { kind: "app", id: job.targetAppId },
     });
   }

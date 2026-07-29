@@ -518,7 +518,14 @@ class HostedActor<
           undefined,
           generation,
           true,
-          sinkState.expectedActor,
+          {
+            ...sinkState.expectedActor,
+            // A one-shot producer is bound to the actor instance and admission
+            // generation, not to the snapshot revision at which it started.
+            // Concurrent events may legitimately advance a collection actor;
+            // the domain invocation identity rejects stale job output.
+            snapshotRevision: this.getMetadata().snapshotRevision,
+          },
           advanceExpectedActor,
         );
         // The dispatcher normally settles synchronously. The Promise path also

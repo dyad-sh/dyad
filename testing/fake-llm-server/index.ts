@@ -250,6 +250,20 @@ export function createFakeLlmApp(_getPort: () => number) {
     res.json(lmStudioModels);
   });
 
+  app.get("/google/v1beta/models", (req, res) => {
+    const apiKey = req.headers["x-goog-api-key"];
+    if (typeof apiKey === "string" && /invalid/i.test(apiKey)) {
+      return res.status(401).json({
+        error: {
+          code: 401,
+          message: "Invalid API key",
+          status: "UNAUTHENTICATED",
+        },
+      });
+    }
+    res.json({ models: [{ name: "models/gemini-flash-latest" }] });
+  });
+
   app.post(
     /^\/google\/v1beta\/models\/.+:(streamGenerateContent|generateContent)/,
     (req, res) => {
@@ -299,6 +313,10 @@ export function createFakeLlmApp(_getPort: () => number) {
       res.json(response);
     },
   );
+
+  app.get("/openrouter/v1/key", (_req, res) => {
+    res.json({ data: { label: "Fake OpenRouter key" } });
+  });
 
   ["lmstudio", "ollama", "azure", "openrouter"].forEach((provider) => {
     app.post(

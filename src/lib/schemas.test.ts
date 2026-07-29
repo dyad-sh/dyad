@@ -68,6 +68,33 @@ describe("StoredUserSettingsSchema lastKnownPerformance", () => {
 });
 
 describe("migrateStoredSettings", () => {
+  it("migrates the legacy auto model to a configured OpenRouter model", () => {
+    const stored = StoredUserSettingsSchema.parse({
+      ...baseSettings,
+      providerSettings: {
+        openrouter: { apiKey: { value: "sk-or-test" } },
+      },
+    });
+
+    expect(migrateStoredSettings(stored).selectedModel).toEqual({
+      provider: "openrouter",
+      name: "openrouter/free",
+    });
+  });
+
+  it("preserves an explicit model selection", () => {
+    const selectedModel = { provider: "openrouter", name: "z-ai/glm-5" };
+    const stored = StoredUserSettingsSchema.parse({
+      ...baseSettings,
+      selectedModel,
+      providerSettings: {
+        openrouter: { apiKey: { value: "sk-or-test" } },
+      },
+    });
+
+    expect(migrateStoredSettings(stored).selectedModel).toEqual(selectedModel);
+  });
+
   it("accepts and removes the deprecated native Git setting", () => {
     const stored = StoredUserSettingsSchema.parse({
       ...baseSettings,

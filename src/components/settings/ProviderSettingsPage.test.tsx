@@ -137,6 +137,7 @@ describe("ProviderSettingsPage", () => {
     mocks.settings = {
       providerSettings: {},
       defaultChatMode: "local-agent",
+      selectedModel: { provider: "auto", name: "auto" },
     };
   });
 
@@ -166,6 +167,10 @@ describe("ProviderSettingsPage", () => {
           google: { apiKey: { value: "test-google-key" } },
         },
         defaultChatMode: "local-agent",
+        selectedModel: {
+          provider: "google",
+          name: "gemini-flash-latest",
+        },
       }),
     );
     expect(mocks.navigate).not.toHaveBeenCalledWith({

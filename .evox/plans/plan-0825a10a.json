@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "id": "plan-0825a10a",
+  "title": "仓库提供 `npm run make` 生成 macOS 安装产物；当前机器是 Intel (`x86_64`)，目标应为 x64。重新安装会替换 `/App…",
+  "status": "draft",
+  "content": "仓库提供 `npm run make` 生成 macOS 安装产物；当前机器是 Intel (`x86_64`)，目标应为 x64。重新安装会替换 `/Applications/Dyad.app`，并需要先关闭正在运行的 Dyad，因此我先把构建、备份和替换步骤提交确认。",
+  "tasks": [
+    {
+      "id": "t1",
+      "content": "仓库提供 `npm run make` 生成 macOS 安装产物；当前机器是 Intel (`x86_64`)，目标应为 x64。重新安装会替换 `/App…",
+      "status": "pending",
+      "line": 0
+    }
+  ],
+  "revision": 8,
+  "created_at": 1785330517348,
+  "updated_at": 1785336327123,
+  "origin_session_id": "1bb2f347-1e59-4e4c-8f79-1eea7874412f"
+}

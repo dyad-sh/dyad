@@ -35,6 +35,7 @@ import {
   formatInvalidProviderApiKeyMessage,
   normalizeProviderApiKeyInput,
 } from "@/lib/providerApiKey";
+import { getDefaultModelForProvider } from "@/lib/providerDefaultModel";
 
 import { ProviderSettingsHeader } from "./ProviderSettingsHeader";
 import { ApiKeyConfiguration } from "./ApiKeyConfiguration";
@@ -238,6 +239,12 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
           },
         },
       };
+      if (
+        settings?.selectedModel.provider === "auto" &&
+        settings.selectedModel.name === "auto"
+      ) {
+        settingsUpdate.selectedModel = getDefaultModelForProvider(provider);
+      }
       await updateSettings(settingsUpdate);
       setApiKeyInput(""); // Clear input on success
       if (isFirstProviderSetup && hasArmedPayload) {

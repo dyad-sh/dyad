@@ -310,6 +310,7 @@ export async function executePiChatTurn(
     },
     optionOverrides: {
       enableAppBlueprint: context.enableAppBlueprint,
+      appBlueprintPending: context.enableAppBlueprint,
     },
   });
   const priorMessages = rebuildAgentMessages(input.historyRows);

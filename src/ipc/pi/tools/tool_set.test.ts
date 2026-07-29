@@ -158,6 +158,26 @@ describe("buildPiToolSet", () => {
     }
   });
 
+  it("hides mutating tools while an app blueprint is pending", () => {
+    const names = buildPiToolSet({
+      chatMode: "local-agent",
+      gatingContext: gatingContext({ enableAppBlueprint: true }),
+      contextFactory: noopFactory,
+      optionOverrides: {
+        enableAppBlueprint: true,
+        appBlueprintPending: true,
+      },
+    }).map((tool) => tool.name);
+
+    expect(names).toContain("write_app_blueprint");
+    expect(names).toContain("planning_questionnaire");
+    expect(names).toContain("read_file");
+    expect(names).not.toContain("write_file");
+    expect(names).not.toContain("bash");
+    expect(names).not.toContain("delete_file");
+    expect(names).not.toContain("set_chat_summary");
+  });
+
   it("keeps app blueprint attachments optional in the provider schema", () => {
     const tools = buildPiToolSet({
       chatMode: "local-agent",

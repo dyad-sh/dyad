@@ -130,6 +130,54 @@ describe("chat:stream pi pipeline (integration)", () => {
     ]);
   });
 
+  it("does not expose write tools while an app blueprint is pending", async () => {
+    const [blueprintChat] = await harness.db
+      .insert(chats)
+      .values({ appId: harness.appId, chatMode: "local-agent" })
+      .returning();
+    await harness.db
+      .update(apps)
+      .set({ needsAppBlueprint: true })
+      .where(eq(apps.id, harness.appId));
+    writeSettings({ enableAppBlueprint: true });
+    faux.setResponses([
+      fauxAssistantMessage(
+        fauxToolCall("write_file", {
+          path: "src/blocked-before-blueprint.txt",
+          content: "must not be written\n",
+          description: "should be gated by blueprint",
+        }),
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage(fauxText("BLUEPRINT_GATE_DONE")),
+    ]);
+
+    try {
+      const result = await harness.streamChat("build a new app", {
+        chatId: blueprintChat.id,
+      });
+
+      expect(harness.appFileExists("src/blocked-before-blueprint.txt")).toBe(
+        false,
+      );
+      expect(
+        result
+          .eventsFor("chat:response:error")
+          .some((event) =>
+            String(event.payload).includes(
+              "App blueprint must be created and approved",
+            ),
+          ),
+      ).toBe(false);
+    } finally {
+      await harness.db
+        .update(apps)
+        .set({ needsAppBlueprint: false })
+        .where(eq(apps.id, harness.appId));
+      writeSettings({ enableAppBlueprint: false });
+    }
+  });
+
   it("resolves the stored app path before executing and committing a write tool", async () => {
     faux.setResponses([
       fauxAssistantMessage(

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { getDefaultModelForProvider } from "./providerDefaultModel";
 
 export const SecretSchema = z.object({
   value: z.string(),
@@ -488,8 +489,21 @@ export function migrateStoredSettings(
   delete activeSettings.enableSandboxScriptExecution;
   delete activeSettings.enableCodeExplorer;
 
+  const isLegacyAutoModel =
+    stored.selectedModel.provider === "auto" &&
+    stored.selectedModel.name === "auto";
+  const configuredProvider = isLegacyAutoModel
+    ? Object.entries(stored.providerSettings).find(([, providerSettings]) =>
+        Boolean(providerSettings.apiKey?.value?.trim()),
+      )?.[0]
+    : undefined;
+  const migratedSelectedModel = configuredProvider
+    ? getDefaultModelForProvider(configuredProvider)
+    : undefined;
+
   return {
     ...activeSettings,
+    selectedModel: migratedSelectedModel ?? activeSettings.selectedModel,
     runtimeMode2:
       stored.runtimeMode2 === "cloud" ? "host" : stored.runtimeMode2,
     selectedChatMode: migrateStoredChatMode(stored.selectedChatMode),

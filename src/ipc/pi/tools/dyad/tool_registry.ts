@@ -100,6 +100,8 @@ export interface BuildAgentToolSetOptions {
   planModeOnly?: boolean;
   /** If false, exclude app blueprint tools (write_app_blueprint). */
   enableAppBlueprint?: boolean;
+  /** While true, expose blueprint/read-only tools but hide app mutations. */
+  appBlueprintPending?: boolean;
 }
 
 /** Tools that should ONLY be available in plan mode. */
@@ -111,7 +113,11 @@ const PLANNING_SPECIFIC_TOOLS = new Set([
   "planning_questionnaire",
 ]);
 
-/** Tools that are part of the app blueprint flow. */
+/** Tools available while the app blueprint flow is awaiting completion. */
+const APP_BLUEPRINT_FLOW_TOOLS = new Set<string>([
+  "planning_questionnaire",
+  "write_app_blueprint",
+]);
 const APP_BLUEPRINT_TOOLS = new Set<string>(["write_app_blueprint"]);
 const PER_INVOCATION_CONSENT_TOOLS = new Set<string>(["bash"]);
 
@@ -184,6 +190,15 @@ export function shouldIncludeTool(
   }
   // Skip plan-mode-only tools when NOT in plan mode.
   if (!options.planModeOnly && PLAN_MODE_ONLY_TOOLS.has(tool.name)) {
+    return false;
+  }
+  // While a new app awaits its blueprint, don't advertise tools that cannot
+  // succeed yet. Keep the blueprint tool itself available to complete the flow.
+  if (
+    options.appBlueprintPending &&
+    toolModifiesState(tool, ctx) &&
+    !APP_BLUEPRINT_FLOW_TOOLS.has(tool.name)
+  ) {
     return false;
   }
   // Skip app blueprint tools when the feature is disabled.

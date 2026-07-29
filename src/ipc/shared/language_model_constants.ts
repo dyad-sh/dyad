@@ -26,6 +26,11 @@ export const GEMINI_3_1_PRO_PREVIEW = "gemini-3.1-pro-preview";
 export const NEMOTRON_3_SUPER_FREE = "nvidia/nemotron-3-super-120b-a12b:free";
 export const GPT_5_NANO = "gpt-5-nano";
 
+export {
+  DEFAULT_MODELS_BY_PROVIDER,
+  getDefaultModelForProvider,
+} from "../../lib/providerDefaultModel";
+
 export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
   openai: [
     {

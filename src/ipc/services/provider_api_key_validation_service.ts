@@ -2,21 +2,16 @@ import log from "electron-log";
 
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import type { ProviderApiKeyValidationProvider } from "@/ipc/types";
-import { getPiModels, resolveDyadModel } from "@/ipc/pi/model_runtime";
-import { buildStreamOptions } from "@/ipc/pi/stream_fn";
-import { readEffectiveSettings } from "@/main/settings";
 import {
   findInvalidProviderApiKeyCharacter,
   formatInvalidProviderApiKeyMessage,
   normalizeProviderApiKeyInput,
 } from "@/lib/providerApiKey";
-import type { UserSettings } from "@/lib/schemas";
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
+import { getOpenRouterAppAttributionHeaders } from "@/ipc/utils/openrouter_attribution";
 
 const logger = log.scope("provider_api_key_validation");
 
-const VALIDATION_PROMPT =
-  "What number is after four? Reply with only the number.";
 const VALIDATION_TIMEOUT_MS = 20_000;
 
 const PROVIDER_DISPLAY_NAMES: Record<ProviderApiKeyValidationProvider, string> =
@@ -24,11 +19,6 @@ const PROVIDER_DISPLAY_NAMES: Record<ProviderApiKeyValidationProvider, string> =
     google: "Google",
     openrouter: "OpenRouter",
   };
-
-const VALIDATION_MODELS = {
-  google: "gemini-flash-latest",
-  openrouter: "openrouter/free",
-} as const satisfies Record<ProviderApiKeyValidationProvider, string>;
 
 export async function validateProviderApiKey({
   provider,
@@ -67,21 +57,12 @@ export async function validateProviderApiKey({
   });
 
   try {
-    const completionPromise = createValidationCompletion(
-      provider,
-      normalizedApiKey,
-      controller.signal,
-    );
-    completionPromise.catch(() => {});
-    const completion = await Promise.race([completionPromise, timeout]);
-    if (
-      completion.stopReason === "error" ||
-      completion.stopReason === "aborted"
-    ) {
-      throw new Error(
-        completion.errorMessage || `${providerDisplayName} validation failed`,
-      );
-    }
+    const validationPromise =
+      provider === "openrouter"
+        ? validateOpenRouterApiKey(normalizedApiKey, controller.signal)
+        : validateGoogleApiKey(normalizedApiKey, controller.signal);
+    validationPromise.catch(() => {});
+    await Promise.race([validationPromise, timeout]);
     return { ok: true };
   } catch (error) {
     throw classifyValidationError(error, providerDisplayName);
@@ -92,56 +73,58 @@ export async function validateProviderApiKey({
   }
 }
 
-async function createValidationCompletion(
-  provider: ProviderApiKeyValidationProvider,
+export async function validateOpenRouterApiKey(
   apiKey: string,
   signal: AbortSignal,
-) {
-  const selectedModel = {
-    provider,
-    name: VALIDATION_MODELS[provider],
-  };
-  const settings = {
-    ...(await readEffectiveSettings()),
-    selectedModel,
-  } satisfies UserSettings;
-  const resolvedModel = await resolveDyadModel(selectedModel);
-  const model = {
-    ...resolvedModel,
-    baseUrl:
-      provider === "google"
-        ? (getGoogleBaseUrl() ?? resolvedModel.baseUrl)
-        : getOpenRouterBaseUrl(),
-  };
-  const streamOptions = await buildStreamOptions(selectedModel, settings);
+  fetchFn: typeof fetch = fetch,
+): Promise<void> {
+  const response = await fetchFn(`${getOpenRouterBaseUrl()}/key`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      ...getOpenRouterAppAttributionHeaders(),
+    },
+    signal,
+  });
+  if (response.ok) {
+    return;
+  }
 
-  return getPiModels().completeSimple(
-    model,
-    {
-      messages: [
-        {
-          role: "user",
-          content: VALIDATION_PROMPT,
-          timestamp: Date.now(),
-        },
-      ],
-    },
-    {
-      ...streamOptions,
-      apiKey,
-      maxTokens: 8,
-      temperature: 0,
-      maxRetries: 0,
-      signal,
-    },
-  );
+  const body = await response.text().catch(() => "");
+  const error = new Error(
+    body || `OpenRouter API key check failed with status ${response.status}`,
+  ) as Error & { status: number };
+  error.status = response.status;
+  throw error;
+}
+
+export async function validateGoogleApiKey(
+  apiKey: string,
+  signal: AbortSignal,
+  fetchFn: typeof fetch = fetch,
+): Promise<void> {
+  const response = await fetchFn(`${getGoogleBaseUrl()}/models?pageSize=1`, {
+    method: "GET",
+    headers: { "x-goog-api-key": apiKey },
+    signal,
+  });
+  if (response.ok) {
+    return;
+  }
+
+  const body = await response.text().catch(() => "");
+  const error = new Error(
+    body || `Google API key check failed with status ${response.status}`,
+  ) as Error & { status: number };
+  error.status = response.status;
+  throw error;
 }
 
 function getGoogleBaseUrl() {
   if (IS_TEST_BUILD && process.env.FAKE_LLM_PORT) {
     return `http://localhost:${process.env.FAKE_LLM_PORT}/google/v1beta`;
   }
-  return undefined;
+  return "https://generativelanguage.googleapis.com/v1beta";
 }
 
 function getOpenRouterBaseUrl() {
@@ -190,14 +173,28 @@ function classifyValidationError(
   );
 }
 
-function extractErrorMessage(error: unknown): string {
+function extractErrorMessage(error: unknown, depth = 0): string {
+  if (depth > 5) {
+    return "";
+  }
   if (error instanceof Error) {
+    const causeMessage = extractErrorMessage(error.cause, depth + 1);
+    if (causeMessage && causeMessage !== error.message) {
+      return `${error.message}: ${causeMessage}`;
+    }
     return error.message;
   }
   if (typeof error === "string") {
     return error;
   }
-  return String(error);
+  if (error && typeof error === "object" && "message" in error) {
+    const candidate = error as { message?: unknown; cause?: unknown };
+    const message =
+      typeof candidate.message === "string" ? candidate.message : "";
+    const causeMessage = extractErrorMessage(candidate.cause, depth + 1);
+    return [message, causeMessage].filter(Boolean).join(": ");
+  }
+  return error == null ? "" : String(error);
 }
 
 function extractStatusCode(error: unknown, depth = 0): number | undefined {

@@ -37,6 +37,13 @@ export const MachineDisposedEnvelopeSchema = MachineAddressSchema.extend({
   finalRevision: revisionSchema,
 });
 
+export const MachineOperationOutcomeEnvelopeSchema =
+  MachineAddressSchema.extend({
+    requestId: z.string().min(1).max(256),
+    invocationRef: z.unknown(),
+    outcome: z.unknown(),
+  });
+
 export const MachineProtocolMismatchSchema = z.object({
   machineId: machineIdSchema,
   expectedProtocolVersion: protocolVersionSchema,
@@ -86,6 +93,9 @@ export type MachineSnapshotEnvelope = z.infer<
 >;
 export type MachineDisposedEnvelope = z.infer<
   typeof MachineDisposedEnvelopeSchema
+>;
+export type MachineOperationOutcomeEnvelope = z.infer<
+  typeof MachineOperationOutcomeEnvelopeSchema
 >;
 export type MachineProtocolMismatch = z.infer<
   typeof MachineProtocolMismatchSchema

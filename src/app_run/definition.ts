@@ -1,9 +1,13 @@
 import { db } from "@/db";
 import { apps } from "@/db/schema";
-import type {
-  DistributedMachineDefinition,
-  MachineHostContext,
-} from "@/distributed_machines/definition";
+import type { DistributedMachineDefinition } from "@/distributed_machines/definition";
+import {
+  createOperationOutcomePublisher,
+  finalizeOperationAdmission,
+  type CorrelatedOperationOutcome,
+} from "@/distributed_machines/operation_registry";
+import type { RequestId } from "@/distributed_machines/request_identity";
+import { defineRuntimeRemoteIntentContract } from "@/distributed_machines/remote_intent_contract";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { addLog, clearLogs } from "@/lib/log_store";
 import { appRuntimeService } from "@/ipc/services/app_runtime_service";
@@ -26,6 +30,7 @@ import {
   appRunKey,
   projectAppRunRemoteSnapshot,
   type AppRunKey,
+  type AppRunIntentEvent,
   type AppRunProducerEvent,
   type AppRunRemoteSnapshot,
   type AppRunWireEvent,
@@ -33,26 +38,35 @@ import {
 import { transition } from "./transition";
 import { ignore } from "@/state_machines/types";
 import { MainAppRuntimeOutput } from "@/ipc/services/main_app_runtime_output";
+import {
+  appRunOperationRegistry,
+  type AppRunOperationOutcome,
+} from "./operations";
+import { appRunRemoteIntentContract } from "./remote_intent_contract";
+import { sameInvocationRef } from "@/state_machines/invocation_ref";
 
 export const APP_RUN_MACHINE_ID = "app_run" as const;
 
 type CorrelatedRunCommand =
   | (Extract<RunCommand, { type: "start" | "stop" }> & {
-      operationId: string;
+      requestId: RequestId;
     })
   | Exclude<RunCommand, { type: "start" | "stop" }>;
 
 function correlateCommand(
   command: RunCommand,
-  event: AppRunWireEvent,
+  event: AppRunActorEvent,
 ): CorrelatedRunCommand {
   if (command.type !== "start" && command.type !== "stop") return command;
+  const requestId =
+    ("requestId" in event && event.requestId) ||
+    ("operationId" in event ? (event.operationId as RequestId) : undefined);
+  if (!requestId) {
+    throw new Error("App-run command is missing request correlation");
+  }
   return {
     ...command,
-    operationId:
-      "operationId" in event
-        ? event.operationId
-        : command.invocationRef.operationId,
+    requestId,
   };
 }
 
@@ -73,7 +87,7 @@ function invocation(appId: number, operationId: string): AppRunInvocationRef {
 function toDomainEvent(
   key: AppRunKey,
   state: AppRunActorState,
-  event: AppRunWireEvent,
+  event: AppRunActorEvent,
 ): RunEvent {
   switch (event.type) {
     case "START":
@@ -169,6 +183,10 @@ function toDomainEvent(
         exitCode: event.exitCode,
         timestamp: event.timestamp,
       };
+    default: {
+      const exhaustive: never = event;
+      return exhaustive;
+    }
   }
 }
 
@@ -190,10 +208,6 @@ interface AppRunActorState {
   readonly previewReloadEpoch: number;
   readonly observedExit: AppRunRemoteSnapshot["exit"];
   readonly reusableStartInvocation: AppRunInvocationRef | null;
-  readonly pendingOperations: readonly {
-    operationId: string;
-    invocationRef: AppRunInvocationRef;
-  }[];
   readonly lastSettlement: {
     readonly operationId: string;
     readonly kind: "run" | "stop";
@@ -202,33 +216,54 @@ interface AppRunActorState {
   } | null;
 }
 
+export type AppRunAdmittedIntent = AppRunIntentEvent & {
+  readonly requestId?: RequestId;
+  readonly windowSessionId?: string;
+};
+
+type AppRunCorrelatedProducerEvent = AppRunProducerEvent & {
+  readonly requestId?: RequestId;
+};
+
+export type AppRunActorEvent =
+  | AppRunAdmittedIntent
+  | AppRunCorrelatedProducerEvent;
+
+type AppRunCorrelatedOutcome = CorrelatedOperationOutcome<
+  AppRunOperationOutcome,
+  AppRunInvocationRef
+>;
+
 function settlementFor(
-  state: AppRunActorState,
-  event: AppRunWireEvent,
+  event: AppRunActorEvent,
 ): AppRunActorState["lastSettlement"] {
+  const requestId =
+    ("requestId" in event && event.requestId) ||
+    ("operationId" in event ? (event.operationId as RequestId) : undefined);
+  if (!requestId) return null;
   switch (event.type) {
     case "PROCESS_SPAWNED":
       return {
-        operationId: event.operationId,
+        operationId: requestId,
         kind: "run",
         outcome: "succeeded",
       };
     case "PROCESS_FAILED":
       return {
-        operationId: event.operationId,
+        operationId: requestId,
         kind: "run",
         outcome: "failed",
         error: event.error,
       };
     case "PROCESS_STOPPED":
       return {
-        operationId: event.operationId,
+        operationId: requestId,
         kind: "stop",
         outcome: "succeeded",
       };
     case "PROCESS_STOP_FAILED":
       return {
-        operationId: event.operationId,
+        operationId: requestId,
         kind: "stop",
         outcome: "failed",
         error: event.error,
@@ -238,39 +273,11 @@ function settlementFor(
   }
 }
 
-function pendingIndexFor(
-  state: AppRunActorState,
-  event: AppRunWireEvent,
-): number {
-  switch (event.type) {
-    case "PROCESS_SPAWNED":
-    case "PROCESS_FAILED":
-    case "PROCESS_STOPPED":
-    case "PROCESS_STOP_FAILED":
-      return state.pendingOperations.findIndex(
-        ({ operationId }) => operationId === event.operationId,
-      );
-    default:
-      return -1;
-  }
-}
-
-function pendingOperationFor(event: AppRunWireEvent): string | null {
-  switch (event.type) {
-    case "START":
-    case "RESTART":
-    case "STOP_REQUESTED":
-      return event.operationId;
-    default:
-      return null;
-  }
-}
-
-function pendingInvocationFor(
+export function resolveAppRunInvocationRef(
   key: AppRunKey,
   state: AppRunActorState,
-  event: AppRunWireEvent,
-): AppRunInvocationRef | null {
+  event: AppRunAdmittedIntent,
+): AppRunInvocationRef {
   switch (event.type) {
     case "START":
       return state.runState.type === "ready" ||
@@ -284,15 +291,19 @@ function pendingInvocationFor(
     case "RESTART":
     case "STOP_REQUESTED":
       return invocation(key.appId, event.operationId);
-    default:
-      return null;
+    case "MANUAL_RELOAD":
+      throw new Error("Admission-only reloads do not create operations");
+    default: {
+      const exhaustive: never = event;
+      return exhaustive;
+    }
   }
 }
 
 function transitionActor(
   key: AppRunKey,
   state: AppRunActorState,
-  event: AppRunWireEvent,
+  event: AppRunActorEvent,
 ) {
   if ("invocationRef" in event && event.invocationRef.entityKey !== key.appId) {
     return ignore(state, "stale-operation");
@@ -318,24 +329,7 @@ function transitionActor(
         }
       : null;
   const result = transition(state.runState, toDomainEvent(key, state, event));
-  const settlement = settlementFor(state, event);
-  const settledPendingIndex = settlement ? pendingIndexFor(state, event) : -1;
-  const pendingOperationId = pendingOperationFor(event);
-  const pendingInvocation = pendingInvocationFor(key, state, event);
-  const pendingOperations =
-    settledPendingIndex >= 0
-      ? state.pendingOperations.filter(
-          (_, index) => index !== settledPendingIndex,
-        )
-      : pendingOperationId && pendingInvocation
-        ? [
-            ...state.pendingOperations,
-            {
-              operationId: pendingOperationId,
-              invocationRef: pendingInvocation,
-            },
-          ]
-        : state.pendingOperations;
+  const settlement = settlementFor(event);
   const observedExit =
     event.type === "START" ||
     event.type === "RESTART" ||
@@ -364,7 +358,6 @@ function transitionActor(
           kind: "applied" as const,
           state: {
             ...state,
-            pendingOperations,
             observedExit,
             reusableStartInvocation,
             lastSettlement: settlement ?? state.lastSettlement,
@@ -397,10 +390,36 @@ function transitionActor(
               state.previewReloadEpoch + (bumpsPreviewReload ? 1 : 0),
             observedExit,
             reusableStartInvocation,
-            pendingOperations,
             lastSettlement: settlement ?? state.lastSettlement,
           },
     commands,
+    ...(settlement
+      ? {
+          outcomes: [
+            {
+              requestId: settlement.operationId as RequestId,
+              invocationRef: (
+                event as AppRunCorrelatedProducerEvent & {
+                  readonly invocationRef: AppRunInvocationRef;
+                }
+              ).invocationRef,
+              outcome:
+                settlement.outcome === "succeeded"
+                  ? {
+                      kind: "succeeded" as const,
+                      operation: settlement.kind,
+                    }
+                  : {
+                      kind: "failed" as const,
+                      operation: settlement.kind,
+                      error: settlement.error ?? {
+                        message: "App runtime operation failed",
+                      },
+                    },
+            },
+          ] satisfies AppRunCorrelatedOutcome[],
+        }
+      : {}),
   };
 }
 
@@ -431,11 +450,13 @@ function runErrorInfo(error: unknown): RunErrorInfo {
   };
 }
 
-function createCommandRunner(
-  context: MachineHostContext<AppRunKey, AppRunActorState, AppRunWireEvent>,
-) {
-  const emit = (event: AppRunProducerEvent) => context.send(event);
-  return (command: CorrelatedRunCommand): void => {
+function createCommandRunner() {
+  return (
+    command: CorrelatedRunCommand,
+    emitActorEvent: (event: AppRunActorEvent) => void,
+  ): void | Promise<void> => {
+    const emit = (event: AppRunCorrelatedProducerEvent) =>
+      emitActorEvent(event);
     switch (command.type) {
       case "start": {
         if (command.operation !== "rebuild") {
@@ -465,7 +486,7 @@ function createCommandRunner(
           timestamp: command.startedAt,
           invocationRef: command.invocationRef,
         });
-        const operation =
+        const operation = Promise.resolve().then(() =>
           command.operation === "run"
             ? appRuntimeService.start({
                 appId: command.appId,
@@ -478,42 +499,47 @@ function createCommandRunner(
                 removeNodeModules: command.options.removeNodeModules,
                 recreateSandbox: command.options.recreateSandbox,
                 output,
-              });
-        void operation.then(
+              }),
+        );
+        return operation.then(
           () =>
             emit({
               type: "PROCESS_SPAWNED",
-              operationId: command.operationId,
+              operationId: command.invocationRef.operationId,
+              requestId: command.requestId,
               invocationRef: command.invocationRef,
             }),
           (error) =>
             emit({
               type: "PROCESS_FAILED",
-              operationId: command.operationId,
+              operationId: command.invocationRef.operationId,
+              requestId: command.requestId,
               invocationRef: command.invocationRef,
               error: runErrorInfo(error),
               runtimeMayBeLive: false,
             }),
         );
-        return;
       }
       case "stop":
-        void appRuntimeService.stop(command.appId).then(
-          () =>
-            emit({
-              type: "PROCESS_STOPPED",
-              operationId: command.operationId,
-              invocationRef: command.invocationRef,
-            }),
-          (error) =>
-            emit({
-              type: "PROCESS_STOP_FAILED",
-              operationId: command.operationId,
-              invocationRef: command.invocationRef,
-              error: runErrorInfo(error),
-            }),
-        );
-        return;
+        return Promise.resolve()
+          .then(() => appRuntimeService.stop(command.appId))
+          .then(
+            () =>
+              emit({
+                type: "PROCESS_STOPPED",
+                operationId: command.invocationRef.operationId,
+                requestId: command.requestId,
+                invocationRef: command.invocationRef,
+              }),
+            (error) =>
+              emit({
+                type: "PROCESS_STOP_FAILED",
+                operationId: command.invocationRef.operationId,
+                requestId: command.requestId,
+                invocationRef: command.invocationRef,
+                error: runErrorInfo(error),
+              }),
+          );
       case "reload":
         emit({
           type: "RELOAD_COMPLETED",
@@ -538,7 +564,6 @@ export const appRunDefinition = {
     previewReloadEpoch: 0,
     observedExit: null,
     reusableStartInvocation: null,
-    pendingOperations: [],
     lastSettlement: null,
   }),
   transition: (state, event, key) => transitionActor(key, state, event),
@@ -548,6 +573,27 @@ export const appRunDefinition = {
     },
   }),
   createCommandRunner,
+  createObserver: () => ({
+    onTransitionApplied: ({ previous, state }) => {
+      const previousRun = previous.runState;
+      const nextRun = state.runState;
+      if (
+        previousRun.type === "idle" ||
+        nextRun.type === "idle" ||
+        sameInvocationRef(previousRun.invocationRef, nextRun.invocationRef)
+      ) {
+        return;
+      }
+      appRunOperationRegistry.settleSuperseded((identity) =>
+        sameInvocationRef(identity.invocationRef, previousRun.invocationRef),
+      );
+    },
+  }),
+  createOutcomePublisher: (context) =>
+    createOperationOutcomePublisher(appRunOperationRegistry, () => ({
+      actor: context.getMetadata(),
+      acknowledgedAt: Date.now(),
+    })),
   lifecycle: {
     subscriptionCreates: true,
     dispatchCreates: false,
@@ -558,6 +604,9 @@ export const appRunDefinition = {
     survivesRendererReload: true,
     restartPersistence: "ephemeral",
     flushOnShutdown: true,
+    settleWaiters: ({ metadata }) => {
+      appRunOperationRegistry.settleActor(metadata.actorInstanceId);
+    },
     onDisposed: ({ key }) => {
       appRuntimeService.cleanup(key.appId);
     },
@@ -600,11 +649,113 @@ export const appRunDefinition = {
       }
     },
   },
+  remoteIntent: defineRuntimeRemoteIntentContract<
+    AppRunKey,
+    AppRunActorState,
+    AppRunIntentEvent,
+    AppRunActorEvent,
+    AppRunRemoteSnapshot
+  >({
+    ...appRunRemoteIntentContract,
+    keyToString: (key: AppRunKey) => String(key.appId),
+    toInternalEvent: ({ intent, sender, requestIdentity }) => {
+      if (!requestIdentity && intent.type !== "MANUAL_RELOAD") {
+        throw new DyadError(
+          "App run request identity is missing",
+          DyadErrorKind.Validation,
+        );
+      }
+      return Object.freeze({
+        ...intent,
+        ...(requestIdentity ? { requestId: requestIdentity.requestId } : {}),
+        windowSessionId: sender.windowSessionId,
+      }) as AppRunAdmittedIntent;
+    },
+    authorizeSubscribe: async ({ key }) => {
+      try {
+        await authorizeApp(key.appId);
+        return { kind: "allow" as const };
+      } catch (error) {
+        if (isDyadError(error)) {
+          return { kind: "deny" as const, error };
+        }
+        throw error;
+      }
+    },
+    authorizeDispatch: async ({ key, intent, currentState }) => {
+      try {
+        await authorizeApp(key.appId);
+        if (
+          intent.type === "STOP_REQUESTED" &&
+          !isCurrentInvocation(
+            (currentState as AppRunActorState).runState,
+            intent.activeInvocationRef,
+          )
+        ) {
+          throw new DyadError(
+            "Cancellation does not target the active app run",
+            DyadErrorKind.Auth,
+          );
+        }
+        return { kind: "allow" as const };
+      } catch (error) {
+        if (isDyadError(error)) {
+          return { kind: "deny" as const, error };
+        }
+        throw error;
+      }
+    },
+    finalizeOperation: (context, controls) => {
+      const event = context.event as AppRunAdmittedIntent;
+      const admission = finalizeOperationAdmission({
+        registry: appRunOperationRegistry,
+        identity: {
+          requestId: context.requestIdentity.requestId,
+          fingerprint: context.fingerprint,
+          owner: {
+            hostId: "main-remote-machine-host",
+            machineId: APP_RUN_MACHINE_ID,
+            keyId: String(context.key.appId),
+            actorInstanceId: context.actor.actorInstanceId,
+            actorRevision: context.actor.snapshotRevision,
+            windowSessionId: context.sender.windowSessionId,
+          },
+        },
+        createInvocationRef: () =>
+          resolveAppRunInvocationRef(
+            context.key,
+            context.currentState as AppRunActorState,
+            event,
+          ),
+        assertFinalAdmission: controls.assertFinalAdmission,
+        enqueue: controls.enqueue,
+        receiptOnEnqueueFailure: () => ({
+          actor: context.actor,
+          acknowledgedAt: Date.now(),
+        }),
+      });
+      return admission.kind === "enqueued"
+        ? {
+            disposition: "fresh" as const,
+            enqueueResult: admission.enqueueResult,
+            operation: admission.operation,
+          }
+        : {
+            disposition: admission.kind,
+            operation: admission.operation,
+          };
+    },
+    disposeWindowSession: (windowSessionId) => {
+      appRunOperationRegistry.settleWindowSession(windowSessionId);
+    },
+  }),
 } satisfies DistributedMachineDefinition<
   typeof APP_RUN_MACHINE_ID,
   AppRunKey,
   AppRunActorState,
-  AppRunWireEvent,
+  AppRunActorEvent,
   CorrelatedRunCommand,
-  AppRunIgnoreReason
+  AppRunIgnoreReason,
+  AppRunIntentEvent,
+  AppRunCorrelatedOutcome
 >;

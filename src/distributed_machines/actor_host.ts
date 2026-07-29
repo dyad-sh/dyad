@@ -86,6 +86,13 @@ export class ActorAdmissionError extends Error {
   }
 }
 
+export interface ActorMachineFenceHandle {
+  seal(): Promise<void>;
+  commit(): boolean;
+  abort(): boolean;
+  release(): boolean;
+}
+
 function settledTicket<State, Reason extends IgnoreReason>(
   outcome: DispatchTicketOutcome<State, Reason>,
 ): ActorDispatchTicket<State, Reason> {
@@ -485,7 +492,7 @@ class HostedActor<
     };
   }
 
-  private captureSink(
+  captureSink(
     generation: KeyedAdmissionGeneration = this.admission.capture(),
     revisionPolicy: "captured" | "allow-advance" = "captured",
   ): ActorEventSink<Event> {
@@ -918,6 +925,13 @@ export class ActorHost {
     Map<unknown, HostedActor<any, any, any, any, any>>
   >();
   private readonly machineDisposals = new Map<string, Promise<void>>();
+  private readonly machineAdmissionFences = new Map<
+    string,
+    {
+      readonly handles: readonly FenceHandle<unknown>[];
+      phase: "draining" | "sealed" | "committed";
+    }
+  >();
   private readonly machineConstructionDisposals = new Map<
     string,
     Promise<void>[]
@@ -1084,6 +1098,118 @@ export class ActorHost {
       commit: handle.commit,
       abort: handle.abort,
       release: handle.release,
+    };
+  }
+
+  /**
+   * Publishes a machine-wide creation barrier and fences every currently
+   * materialized key. This is the reset counterpart to beginFence().
+   */
+  beginMachineFence<
+    Id extends string,
+    Key,
+    State,
+    Event,
+    Command,
+    Reason extends IgnoreReason,
+    RemoteIntent,
+    Outcome,
+  >(
+    definition: DistributedMachineDefinition<
+      Id,
+      Key,
+      State,
+      Event,
+      Command,
+      Reason,
+      RemoteIntent,
+      Outcome
+    >,
+    options: {
+      readonly allowDuringDrain: (event: Event) => boolean;
+    },
+  ): ActorMachineFenceHandle {
+    this.assertRegistered(definition);
+    if (this.disposed) {
+      throw new ActorAdmissionError("host-disposed", "ActorHost is disposed");
+    }
+    if (
+      this.machineDisposals.has(definition.id) ||
+      this.machineAdmissionFences.has(definition.id)
+    ) {
+      this.throwMachineDisposing(definition.id);
+    }
+    const record: {
+      handles: FenceHandle<unknown>[];
+      phase: "draining" | "sealed" | "committed";
+    } = { handles: [], phase: "draining" };
+    // Machine-fence publication linearization point: no await precedes it.
+    this.machineAdmissionFences.set(definition.id, record);
+    const keys = new Set<unknown>([
+      ...(this.actors.get(definition.id)?.keys() ?? []),
+      ...(this.constructing.get(definition.id) ?? []),
+    ]);
+    try {
+      for (const key of keys) {
+        const admissionKey = this.admissionKey(definition, key as Key);
+        if (record.handles.some((handle) => handle.key === admissionKey)) {
+          continue;
+        }
+        if (this.hasUntrackedCommandCompletion(definition.id, admissionKey)) {
+          throw new ActorAdmissionError(
+            "untracked-command-completion",
+            `Actor ${definition.id} handed off command work without a completion promise`,
+          );
+        }
+        record.handles.push(
+          this.gate(definition.id).beginFence({
+            key: admissionKey,
+            allowDuringDrain: options.allowDuringDrain as (
+              event: unknown,
+            ) => boolean,
+          }),
+        );
+      }
+    } catch (error) {
+      for (const handle of record.handles.reverse()) handle.abort();
+      this.machineAdmissionFences.delete(definition.id);
+      throw error;
+    }
+    return {
+      seal: async () => {
+        await Promise.all(record.handles.map((handle) => handle.seal()));
+        record.phase = "sealed";
+      },
+      commit: () => {
+        if (record.phase !== "sealed") {
+          throw new Error("A machine fence must be sealed before commit");
+        }
+        const committed = record.handles.every((handle) => handle.commit());
+        if (committed) record.phase = "committed";
+        return committed;
+      },
+      abort: () => {
+        if (record.phase === "committed") {
+          throw new Error("A committed machine fence cannot abort");
+        }
+        if (this.machineAdmissionFences.get(definition.id) !== record) {
+          return false;
+        }
+        for (const handle of record.handles) handle.abort();
+        this.machineAdmissionFences.delete(definition.id);
+        return true;
+      },
+      release: () => {
+        if (record.phase !== "committed") {
+          throw new Error("Only a committed machine fence can be released");
+        }
+        if (this.machineAdmissionFences.get(definition.id) !== record) {
+          return false;
+        }
+        for (const handle of record.handles) handle.release();
+        this.machineAdmissionFences.delete(definition.id);
+        return true;
+      },
     };
   }
 
@@ -1479,6 +1605,7 @@ export class ActorHost {
     } finally {
       this.definitions.clear();
       this.machineLifecycleGenerations.clear();
+      this.machineAdmissionFences.clear();
       this.untrackedCommandKeys.clear();
       for (const gate of this.admissionGates.values()) gate.dispose();
       this.admissionGates.clear();
@@ -1512,6 +1639,12 @@ export class ActorHost {
     }
     if (this.machineDisposals.has(definition.id)) {
       this.throwMachineDisposing(definition.id);
+    }
+    if (this.machineAdmissionFences.has(definition.id)) {
+      throw new ActorAdmissionError(
+        "key-fenced",
+        `Actor machine ${definition.id} is fenced`,
+      );
     }
     if (this.isConstructionDisposing(definition.id, key)) {
       this.throwActorDisposing(definition.id);

@@ -1,6 +1,19 @@
 import { uuidIdSource, type IdSource } from "@/state_machines/clock";
-import { RemoteMachineClient } from "@/distributed_machines/remote_client";
-import type { RemoteMachineClientConnection } from "@/distributed_machines/remote_client";
+import {
+  RemoteMachineClient,
+  RemoteMachineTransportError,
+  type ObservedRevisionToken,
+  type RemoteMachineClientConnection,
+} from "@/distributed_machines/remote_client";
+import {
+  createRemoteRequestActor,
+  dispatchRemoteAdmissionOnly,
+} from "@/distributed_machines/request_actor";
+import {
+  PreparedRequestScope,
+  type PreparedRequest,
+  type PreparedRequestSettlement,
+} from "@/distributed_machines/prepared_request";
 import { IpcRemoteMachineConnection } from "@/distributed_machines/ipc_connection";
 import { PreviewConsoleStore } from "@/preview_console/store";
 import { DyadError } from "@/errors/dyad_error";
@@ -11,6 +24,7 @@ import {
   type AppRunRemoteSnapshot,
 } from "./transport";
 import { appRunClientDefinition } from "./client_definition";
+import type { AppRunOperationOutcome } from "./operations";
 
 export type AppRunRemoteConnection = RemoteMachineClientConnection & {
   start?: () => () => void;
@@ -21,7 +35,7 @@ export type AppRunRemoteStateChangedListener = (
   state: AppRunRemoteSnapshot,
 ) => void;
 
-type RunOperationInput =
+export type AppRunOperationInput =
   | { type: "START"; startedAt: number }
   | {
       type: "RESTART";
@@ -31,10 +45,19 @@ type RunOperationInput =
   | { type: "REBUILD"; startedAt: number }
   | { type: "STOP"; startedAt: number };
 
-interface SettlementResult {
-  settlement: NonNullable<AppRunRemoteSnapshot["lastSettlement"]> | null;
-  errorMessage?: string;
-}
+export type AppRunAdmission = { readonly kind: "accepted" };
+export type AppRunRefusal = string;
+
+type PreparedRunOperation = AppRunOperationInput & {
+  readonly observed?: ObservedRevisionToken;
+  readonly activeInvocationRef: AppRunRemoteSnapshot["invocationRef"];
+};
+
+export type AppRunPreparedRequest = PreparedRequest<
+  AppRunAdmission,
+  AppRunOperationOutcome,
+  AppRunRefusal
+>;
 
 /**
  * Per-window adapter over main-hosted app-run actors.
@@ -45,15 +68,8 @@ interface SettlementResult {
 export class AppRunRemoteManager {
   readonly previewConsole = new PreviewConsoleStore();
   private readonly client: RemoteMachineClient;
-  private readonly actorSubscriptions = new Map<
-    number,
-    { consumers: number; unsubscribe: () => void }
-  >();
+  private readonly requestScope: PreparedRequestScope;
   private readonly listeners = new Set<AppRunRemoteStateChangedListener>();
-  private readonly settlementWaiters = new Map<
-    string,
-    { appId: number; resolve: (result: SettlementResult) => void }
-  >();
   private stopConnection?: () => void;
   private disposed = false;
 
@@ -62,6 +78,9 @@ export class AppRunRemoteManager {
     private readonly connection: AppRunRemoteConnection = new IpcRemoteMachineConnection(),
   ) {
     this.client = new RemoteMachineClient(this.connection, ids);
+    this.requestScope = new PreparedRequestScope(
+      this.ids.next("app-run-window-session"),
+    );
   }
 
   start(): void {
@@ -79,17 +98,14 @@ export class AppRunRemoteManager {
   getSnapshot = (appId: number): AppRunRemoteSnapshot =>
     this.actor(appId).getSnapshot();
 
+  getView = (appId: number) => this.actor(appId).getView();
+
   subscribeKey = (appId: number, listener: () => void): (() => void) => {
     const actor = this.actor(appId);
-    const releaseManagerSubscription = this.retainActorSubscription(
-      appId,
-      actor,
-    );
-    const unsubscribe = actor.subscribe(listener);
-    return () => {
-      unsubscribe();
-      releaseManagerSubscription();
-    };
+    return actor.subscribe(() => {
+      this.handleActorSnapshot(appId, actor.getSnapshot());
+      listener();
+    });
   };
 
   subscribeRunStateChanged = (
@@ -100,124 +116,187 @@ export class AppRunRemoteManager {
     return () => this.listeners.delete(listener);
   };
 
-  async dispatch(appId: number, input: RunOperationInput): Promise<void> {
+  async dispatch(appId: number, input: AppRunOperationInput): Promise<void> {
+    const prepared = this.prepareRequest(appId, input);
+    if (!prepared) return;
+    void prepared.admission.catch(() => undefined);
+    return this.settlePreparedRequest(appId, input, prepared);
+  }
+
+  prepareRequest(
+    appId: number,
+    input: AppRunOperationInput,
+    capturedObserved?: ObservedRevisionToken,
+  ): AppRunPreparedRequest | undefined {
     this.start();
     const actor = this.actor(appId);
-    const releaseManagerSubscription = this.retainActorSubscription(
-      appId,
+    const view = actor.getView();
+    const observed =
+      capturedObserved ??
+      (view.snapshot.kind === "available"
+        ? view.snapshot.observedRevision
+        : undefined);
+    const activeInvocationRef = view.state.invocationRef;
+    if (input.type === "STOP" && !activeInvocationRef) return;
+    const requestActor = createRemoteRequestActor<
+      PreparedRunOperation,
+      AppRunIntentEvent,
+      AppRunRemoteSnapshot,
+      string,
+      AppRunAdmission,
+      AppRunOperationOutcome,
+      AppRunRefusal
+    >({
       actor,
-    );
-    try {
-      await actor.resync();
-      const snapshot = actor.getSnapshot();
-      let event: AppRunIntentEvent;
-      switch (input.type) {
-        case "START":
-          event = {
-            type: "START",
-            operationId: this.ids.next("app-run"),
-            startedAt: input.startedAt,
-            expectedRevision: snapshot.revision,
-          };
-          break;
-        case "RESTART":
-          event = {
-            type: "RESTART",
-            operation: "restart",
-            operationId: this.ids.next("app-run"),
-            startedAt: input.startedAt,
-            expectedRevision: snapshot.revision,
-            options: input.options,
-          };
-          break;
-        case "REBUILD":
-          event = {
-            type: "RESTART",
-            operation: "rebuild",
-            operationId: this.ids.next("app-run"),
-            startedAt: input.startedAt,
-            expectedRevision: snapshot.revision,
-          };
-          break;
-        case "STOP":
-          if (!snapshot.invocationRef) return;
-          event = {
-            type: "STOP_REQUESTED",
-            operationId: this.ids.next("app-run-stop"),
-            startedAt: input.startedAt,
-            activeInvocationRef: snapshot.invocationRef,
-          };
-          break;
-      }
-      let settlement = this.waitForSettlement(appId, event.operationId);
-      let receipt: Awaited<ReturnType<typeof actor.dispatch>>;
-      try {
-        receipt = await actor.dispatch(event);
-      } catch (error) {
-        settlement.cancel();
-        throw error;
-      }
-      if (
-        input.type === "START" &&
-        event.type === "START" &&
-        receipt.kind === "rejected" &&
-        receipt.reason === "revision-conflict"
-      ) {
-        settlement.cancel();
+      scope: this.requestScope,
+      ids: this.ids,
+      windowSessionId: this.requestScope.windowSessionId,
+      prepareIntent: (operation) => {
+        const currentView = actor.getView();
+        const currentObserved =
+          currentView.snapshot.kind === "available"
+            ? currentView.snapshot.observedRevision
+            : undefined;
+        const expectedRevision =
+          operation.observed?.kind === "actor"
+            ? operation.observed.revision
+            : currentObserved?.kind === "actor"
+              ? currentObserved.revision
+              : currentView.state.revision;
+        let event: AppRunIntentEvent;
+        const runtimeOperationId = this.ids.next("app-run-invocation");
+        switch (input.type) {
+          case "START":
+            event = {
+              type: "START",
+              operationId: runtimeOperationId,
+              startedAt: input.startedAt,
+              expectedRevision,
+            };
+            break;
+          case "RESTART":
+            event = {
+              type: "RESTART",
+              operation: "restart",
+              operationId: runtimeOperationId,
+              startedAt: input.startedAt,
+              expectedRevision,
+              options: input.options,
+            };
+            break;
+          case "REBUILD":
+            event = {
+              type: "RESTART",
+              operation: "rebuild",
+              operationId: runtimeOperationId,
+              startedAt: input.startedAt,
+              expectedRevision,
+            };
+            break;
+          case "STOP":
+            event = {
+              type: "STOP_REQUESTED",
+              operationId: runtimeOperationId,
+              startedAt: input.startedAt,
+              activeInvocationRef: operation.activeInvocationRef!,
+            };
+            break;
+        }
+        return {
+          intent: event,
+          expected: operation.observed ?? currentObserved,
+        };
+      },
+      fingerprint: (_identity, operation) =>
+        JSON.stringify({ appId, operation }),
+      selectOutcome: (current, requestId) => {
+        const settlement = current.state.lastSettlement;
+        if (settlement?.operationId !== requestId) return undefined;
+        return settlement.outcome === "succeeded"
+          ? { kind: "succeeded", operation: settlement.kind }
+          : {
+              kind: "failed",
+              operation: settlement.kind,
+              error: settlement.error ?? {
+                message: "App runtime operation failed",
+              },
+            };
+      },
+      admissionFromReceipt: (receipt) =>
+        receipt.kind === "rejected" || receipt.kind === "ignored"
+          ? { kind: "refused", reason: String(receipt.reason) }
+          : { kind: "accepted" },
+      isRefusal: (value): value is { kind: "refused"; reason: AppRunRefusal } =>
+        value.kind === "refused",
+      classifyFailure: (error) =>
+        error instanceof RemoteMachineTransportError &&
+        error.code === "disconnected"
+          ? {
+              kind: "disconnect",
+              retryable: true,
+              admission: "unknown",
+            }
+          : { kind: "unexpected" },
+      retry:
+        input.type === "START"
+          ? {
+              kind: "stable-id",
+              receiverDeduplication: "required",
+            }
+          : { kind: "none" },
+    });
+    return requestActor.request({
+      ...input,
+      observed,
+      activeInvocationRef,
+    });
+  }
+
+  async settlePreparedRequest(
+    appId: number,
+    input: AppRunOperationInput,
+    prepared: AppRunPreparedRequest,
+    settlement?: PreparedRequestSettlement<
+      AppRunOperationOutcome,
+      AppRunRefusal
+    >,
+  ): Promise<void> {
+    const result = settlement ?? (await prepared.settled);
+    return this.applyPublicSettlement(appId, input, result);
+  }
+
+  async applyPublicSettlement(
+    appId: number,
+    input: AppRunOperationInput,
+    result: PreparedRequestSettlement<AppRunOperationOutcome, AppRunRefusal>,
+  ): Promise<void> {
+    if (result.kind === "not-admitted") {
+      if (input.type === "START" && result.refusal === "revision-conflict") {
+        const actor = this.actor(appId);
         await actor.resync();
-        const latest = actor.getSnapshot();
-        if (
-          latest.phase === "starting" ||
-          latest.phase === "ready" ||
-          latest.phase === "reloading"
-        ) {
-          return;
-        }
-        event = { ...event, expectedRevision: latest.revision };
-        settlement = this.waitForSettlement(appId, event.operationId);
-        try {
-          receipt = await actor.dispatch(event);
-        } catch (error) {
-          settlement.cancel();
-          throw error;
-        }
-      }
-      if (receipt.kind === "rejected") {
-        settlement.cancel();
-        throw new Error(`App run request rejected: ${receipt.reason}`);
-      }
-      if (receipt.kind === "ignored") {
-        settlement.cancel();
         return;
       }
-      const result = await settlement.promise;
-      if (!result.settlement || result.settlement.outcome === "failed") {
-        const error = result.settlement?.error;
-        if (error?.kind) {
-          throw new DyadError(error.message, error.kind);
-        }
-        throw new Error(
-          error?.message ??
-            result.errorMessage ??
-            "App runtime operation failed",
-        );
-      }
-    } finally {
-      releaseManagerSubscription();
+      if (result.refusal === "host-disposing") return;
+      if (result.reason === "disposed") return;
+      throw new Error(
+        `App run request rejected: ${result.refusal ?? result.reason}`,
+      );
+    }
+    if (result.kind === "detached") return;
+    if (result.outcome.kind === "cancelled") return;
+    if (result.outcome.kind === "failed") {
+      const error = result.outcome.error;
+      if (error.kind) throw new DyadError(error.message, error.kind);
+      throw new Error(error.message);
     }
   }
 
   requestManualReload = (appId: number): void => {
     this.start();
     const actor = this.actor(appId);
-    const releaseManagerSubscription = this.retainActorSubscription(
-      appId,
-      actor,
-    );
     void (async () => {
       try {
-        await actor.resync();
-        const receipt = await actor.dispatch({
+        const receipt = await dispatchRemoteAdmissionOnly(actor, {
           type: "MANUAL_RELOAD",
           operationId: this.ids.next("app-run-reload"),
           startedAt: Date.now(),
@@ -227,36 +306,21 @@ export class AppRunRemoteManager {
         }
       } catch (error) {
         console.error("[app-run] Preview reload dispatch failed:", error);
-      } finally {
-        releaseManagerSubscription();
       }
     })();
   };
 
   disposeKey = (appId: number): void => {
-    this.actorSubscriptions.get(appId)?.unsubscribe();
-    this.actorSubscriptions.delete(appId);
     this.previewConsole.disposeKey(appId);
-    this.resolveSettlementsForApp(appId);
   };
 
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
     this.stop();
-    for (const subscription of this.actorSubscriptions.values()) {
-      subscription.unsubscribe();
-    }
-    this.actorSubscriptions.clear();
     this.listeners.clear();
     this.previewConsole.dispose();
-    for (const waiter of this.settlementWaiters.values()) {
-      waiter.resolve({
-        settlement: null,
-        errorMessage: "App run manager was disposed",
-      });
-    }
-    this.settlementWaiters.clear();
+    this.requestScope.dispose();
     this.client.dispose();
   }
 
@@ -264,97 +328,16 @@ export class AppRunRemoteManager {
     return this.client.actor(appRunClientDefinition, appRunKey(appId));
   }
 
-  private retainActorSubscription(
-    appId: number,
-    actor: ReturnType<AppRunRemoteManager["actor"]>,
-  ): () => void {
-    const existing = this.actorSubscriptions.get(appId);
-    if (existing) {
-      existing.consumers += 1;
-      return this.releaseActorSubscription(appId, existing);
-    }
-    const subscription = {
-      consumers: 1,
-      unsubscribe: actor.subscribe(() =>
-        this.handleActorSnapshot(appId, actor),
-      ),
-    };
-    this.actorSubscriptions.set(appId, subscription);
-    return this.releaseActorSubscription(appId, subscription);
-  }
-
-  private releaseActorSubscription(
-    appId: number,
-    subscription: { consumers: number; unsubscribe: () => void },
-  ): () => void {
-    let active = true;
-    return () => {
-      if (!active) return;
-      active = false;
-      if (this.actorSubscriptions.get(appId) !== subscription) return;
-      subscription.consumers -= 1;
-      if (subscription.consumers > 0) return;
-      subscription.unsubscribe();
-      this.actorSubscriptions.delete(appId);
-    };
-  }
-
   private handleActorSnapshot(
     appId: number,
-    actor: ReturnType<AppRunRemoteManager["actor"]>,
+    snapshot: AppRunRemoteSnapshot,
   ): void {
-    const snapshot = actor.getSnapshot();
-    const settlement = snapshot.lastSettlement;
-    if (settlement) {
-      this.settlementWaiters.get(settlement.operationId)?.resolve({
-        settlement,
-      });
-      this.settlementWaiters.delete(settlement.operationId);
-    } else if (snapshot.revision === 0 && actor.getStatus() !== "connecting") {
-      this.resolveSettlementsForApp(
-        appId,
-        actor.getStatus() === "ready"
-          ? "App run subscription was disposed"
-          : "App run subscription became unavailable",
-      );
-    }
     for (const listener of this.listeners) {
       try {
         listener(appId, snapshot);
       } catch (error) {
         console.error("[app-run] Remote state listener failed:", error);
       }
-    }
-  }
-
-  private waitForSettlement(appId: number, operationId: string) {
-    let resolvePromise!: (result: SettlementResult) => void;
-    const promise = new Promise<SettlementResult>((resolve) => {
-      resolvePromise = resolve;
-    });
-    const waiter = { appId, resolve: resolvePromise };
-    this.settlementWaiters.set(operationId, waiter);
-    return {
-      promise,
-      cancel: () => {
-        if (this.settlementWaiters.get(operationId) === waiter) {
-          this.settlementWaiters.delete(operationId);
-        }
-      },
-    };
-  }
-
-  private resolveSettlementsForApp(
-    appId: number,
-    errorMessage = "App run subscription was disposed",
-  ): void {
-    for (const [operationId, waiter] of this.settlementWaiters) {
-      if (waiter.appId !== appId) continue;
-      waiter.resolve({
-        settlement: null,
-        errorMessage,
-      });
-      this.settlementWaiters.delete(operationId);
     }
   }
 }

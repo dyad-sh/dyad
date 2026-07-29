@@ -5,8 +5,8 @@ const mocks = vi.hoisted(() => ({
   createExternalLifecycleRef: vi.fn(),
 }));
 
-vi.mock("@/app_run/definition", () => ({
-  appRunDefinition: { id: "app_run" },
+vi.mock("@/app_run/definition", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/app_run/definition")>()),
   requireExistingApp: mocks.requireExistingApp,
 }));
 
@@ -34,6 +34,7 @@ describe("AppRunActorService.executeAlreadyLockedExternalRestart", () => {
   };
   const actor = {
     send: vi.fn(),
+    captureSink: vi.fn(() => ({ send: actor.send })),
   };
   const host = {
     ensure: vi.fn(() => actor),
@@ -104,13 +105,26 @@ describe("AppRunActorService lifecycle settlement", () => {
           void service.disposeAllApps();
           return outcome;
         }),
+        getSettledMetadata: () => undefined,
       })),
-      getSnapshot: vi.fn(() => ({ lastSettlement: null })),
+      getSnapshot: vi.fn(() => ({
+        runState: { type: "idle" as const },
+        previewReloadEpoch: 0,
+        observedExit: null,
+        reusableStartInvocation: null,
+        lastSettlement: null,
+      })),
+      getMetadata: vi.fn(() => ({
+        actorInstanceId: "app-run-actor",
+        snapshotRevision: 0,
+        transactionSequence: 0,
+      })),
       subscribe: vi.fn(() => () => undefined),
+      captureSink: vi.fn(),
     };
     const host = {
       ensure: vi.fn(() => actor),
-      peek: vi.fn(),
+      peek: vi.fn(() => actor),
       disposeKey: vi.fn(),
       disposeMachine: vi.fn().mockResolvedValue(undefined),
       dispose: vi.fn(),

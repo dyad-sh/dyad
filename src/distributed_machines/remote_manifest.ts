@@ -7,7 +7,6 @@ import { MachineIdentitySchema } from "./remote_protocol";
  * compatibility adapter in PR4. Remove IDs only in their domain migration PR.
  */
 export const REMOTE_PROTOCOL_V1_COMPATIBILITY_INVENTORY = Object.freeze([
-  "app_run",
   "chat_stream",
   "github_ops",
   "image_generation",

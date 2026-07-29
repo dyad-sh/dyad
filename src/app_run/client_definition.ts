@@ -10,6 +10,7 @@ import {
   type AppRunKey,
   type AppRunRemoteSnapshot,
 } from "./transport";
+import { appRunRemoteIntentContract } from "./remote_intent_contract";
 
 export const appRunClientDefinition = {
   id: "app_run",
@@ -23,6 +24,14 @@ export const appRunClientDefinition = {
     keyToString: (key) => String(key.appId),
     unavailableSnapshot: (key) =>
       projectAppRunRemoteSnapshot(key.appId, 0, { type: "idle" }),
+  },
+  remoteIntent: {
+    keyCodec: AppRunKeySchema,
+    encodeKey: (key: AppRunKey) => key,
+    keyToString: (key: AppRunKey) => String(key.appId),
+    rendererIntentCodec: AppRunIntentEventSchema,
+    snapshotCodec: AppRunRemoteSnapshotSchema,
+    intents: appRunRemoteIntentContract.intents,
   },
 } satisfies RemoteClientDefinition<
   AppRunKey,

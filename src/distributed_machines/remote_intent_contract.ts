@@ -2,6 +2,7 @@ import type { z } from "zod";
 import type { DyadError } from "@/errors/dyad_error";
 import type { RemoteMachineContract } from "./definition";
 import type { ActorRuntimeMetadata, RemoteMachineSender } from "./definition";
+import type { RequestIdentity } from "./request_identity";
 
 export const DEFAULT_REMOTE_INTENT_ENVELOPE_BYTES = 256 * 1_024;
 export const DEFAULT_REMOTE_SNAPSHOT_ENVELOPE_BYTES = 1_024 * 1_024;
@@ -21,6 +22,11 @@ export interface AdmittedIntentContext<Key, Intent> {
   readonly sender: {
     readonly windowSessionId: string;
   };
+  /**
+   * Present for completion-aware protocol-v1 requests. Main replaces the
+   * renderer's local session value with the authenticated window session.
+   */
+  readonly requestIdentity?: RequestIdentity;
 }
 
 export type RemoteAuthorizationDecision =
@@ -63,6 +69,33 @@ export interface DomainRevisionContext<Key, Intent, State> {
   readonly key: Key;
   readonly intent: Intent;
   readonly currentState: State;
+}
+
+export interface RemoteOperationAdmissionContext<
+  Key,
+  State,
+  RemoteIntent,
+  InternalEvent,
+> {
+  readonly key: Key;
+  readonly intent: RemoteIntent;
+  readonly event: InternalEvent;
+  readonly currentState: State;
+  readonly actor: ActorRuntimeMetadata;
+  readonly sender: { readonly windowSessionId: string };
+  readonly requestIdentity: RequestIdentity;
+  readonly fingerprint: string;
+}
+
+export interface RemoteOperationAdmissionResult<EnqueueResult> {
+  readonly disposition: "fresh" | "coalesced" | "replayed";
+  readonly enqueueResult?: EnqueueResult;
+  readonly operation: {
+    readonly settled: Promise<{
+      readonly invocationRef: unknown;
+      readonly outcome: unknown;
+    }>;
+  };
 }
 
 export type ObservedRevisionPolicy =
@@ -178,6 +211,19 @@ export interface RuntimeRemoteIntentContract<
   readonly resolveDomainRevision?: (
     context: DomainRevisionContext<Key, RemoteIntent, State>,
   ) => number;
+  readonly finalizeOperation?: (
+    context: RemoteOperationAdmissionContext<
+      Key,
+      State,
+      RemoteIntent,
+      InternalEvent
+    >,
+    controls: {
+      readonly assertFinalAdmission: () => void;
+      readonly enqueue: () => unknown;
+    },
+  ) => RemoteOperationAdmissionResult<unknown>;
+  readonly disposeWindowSession?: (windowSessionId: string) => void;
 }
 
 export function defineRuntimeRemoteIntentContract<

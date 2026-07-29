@@ -514,4 +514,52 @@ describe("ActorHost keyed admission integration", () => {
     });
     await host.dispose();
   });
+
+  it("publishes a machine reset fence before returning and reopens on abort", async () => {
+    const definition = machine({ id: "machine-reset-abort" });
+    const { host } = harness(definition);
+    const actor = host.localRef(definition, "existing");
+
+    const reset = host.beginMachineFence(definition, {
+      allowDuringDrain: (event) => event.type === "CLEANUP",
+    });
+
+    await expect(
+      actor.enqueue({ type: "WORK" }).settled,
+    ).resolves.toMatchObject({
+      kind: "failed",
+      stage: "before-admission",
+      error: expect.objectContaining({ code: "key-fenced" }),
+    });
+    expect(() => host.localRef(definition, "new")).toThrow(
+      expect.objectContaining({ code: "key-fenced" }),
+    );
+
+    expect(reset.abort()).toBe(true);
+    expect(host.localRef(definition, "new").getSnapshot()).toEqual({
+      events: [],
+    });
+    await host.dispose();
+  });
+
+  it("holds a committed machine reset fence through actor disposal", async () => {
+    const definition = machine({ id: "machine-reset-commit" });
+    const { host } = harness(definition);
+    host.localRef(definition, "existing");
+    const reset = host.beginMachineFence(definition, {
+      allowDuringDrain: () => false,
+    });
+
+    await reset.seal();
+    await host.disposeMachine(definition.id);
+    expect(reset.commit()).toBe(true);
+    expect(() => host.localRef(definition, "replacement")).toThrow(
+      expect.objectContaining({ code: "key-fenced" }),
+    );
+    expect(reset.release()).toBe(true);
+    expect(host.localRef(definition, "replacement").getSnapshot()).toEqual({
+      events: [],
+    });
+    await host.dispose();
+  });
 });

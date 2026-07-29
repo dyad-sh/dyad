@@ -91,6 +91,9 @@ export class FakeRemoteRenderer implements RemoteMachineClientConnection {
   >();
   private readonly snapshotListeners = new Set<(payload: unknown) => void>();
   private readonly disposedListeners = new Set<(payload: unknown) => void>();
+  private readonly operationOutcomeListeners = new Set<
+    (payload: unknown) => void
+  >();
   private holdBootstrap = false;
   private readonly bootstrapReleases: Array<() => void> = [];
   private connected = true;
@@ -109,6 +112,10 @@ export class FakeRemoteRenderer implements RemoteMachineClientConnection {
         } else if (channel === "distributed-machine:disposed") {
           for (const listener of this.disposedListeners) listener(payload);
           this.receiveDisposed(payload);
+        } else if (channel === "distributed-machine:operation-outcome") {
+          for (const listener of this.operationOutcomeListeners) {
+            listener(payload);
+          }
         }
       },
     );
@@ -137,6 +144,11 @@ export class FakeRemoteRenderer implements RemoteMachineClientConnection {
   onDisposed(listener: (payload: unknown) => void): () => void {
     this.disposedListeners.add(listener);
     return () => this.disposedListeners.delete(listener);
+  }
+
+  onOperationOutcome(listener: (payload: unknown) => void): () => void {
+    this.operationOutcomeListeners.add(listener);
+    return () => this.operationOutcomeListeners.delete(listener);
   }
 
   reportIncompatible(): void {

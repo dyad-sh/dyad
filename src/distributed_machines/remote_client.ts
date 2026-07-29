@@ -3,14 +3,17 @@ import { SnapshotStore } from "@/state_machines/snapshot_store";
 import type { IgnoreReason } from "@/state_machines/types";
 import type { z } from "zod";
 import type { RemoteIntentPolicy } from "./remote_intent_contract";
+import type { RequestIdentity } from "./request_identity";
 import {
   MachineDispatchReceiptSchema,
   MachineDisposedEnvelopeSchema,
+  MachineOperationOutcomeEnvelopeSchema,
   MachineSnapshotEnvelopeSchema,
   type MachineAddress,
   type MachineDispatchEnvelope,
   type MachineDispatchReceipt,
   type MachineDisposedEnvelope,
+  type MachineOperationOutcomeEnvelope,
   type MachineSnapshotEnvelope,
 } from "./remote_protocol";
 
@@ -30,6 +33,7 @@ export interface RemoteMachineClientConnection {
   onStatusChange(listener: (status: RemoteTransportStatus) => void): () => void;
   onSnapshot(listener: (payload: unknown) => void): () => void;
   onDisposed(listener: (payload: unknown) => void): () => void;
+  onOperationOutcome?(listener: (payload: unknown) => void): () => void;
   subscribe(address: MachineAddress): Promise<MachineSnapshotEnvelope>;
   unsubscribe(address: MachineAddress): Promise<void>;
   dispatch(envelope: MachineDispatchEnvelope): Promise<MachineDispatchReceipt>;
@@ -96,6 +100,11 @@ export interface RemoteDispatchOptions {
   readonly messageId?: string;
   readonly correlationId?: string;
   readonly causationId?: string;
+  /**
+   * Completion-aware requests reuse protocol-v1 correlation fields while
+   * keeping delivery, logical request, and receiver-dedup identities distinct.
+   */
+  readonly requestIdentity?: RequestIdentity;
 }
 
 export interface RemoteSubscriptionLease {
@@ -115,6 +124,10 @@ export interface RemoteActorRef<State, Event, Reason extends IgnoreReason> {
   getSnapshot(): State;
   getView(): RemoteActorView<State>;
   subscribe(listener: () => void): () => void;
+  subscribeOperationOutcome(
+    requestId: string,
+    listener: (outcome: unknown) => void,
+  ): () => void;
   dispatch(
     event: Event,
     options?: RemoteDispatchOptions,
@@ -188,6 +201,10 @@ class RemoteSnapshotStore<
   private readonly view: SnapshotStore<RemoteActorView<State>>;
   private readonly buffered: MachineSnapshotEnvelope[] = [];
   private readonly disposedActorIds = new Set<string>();
+  private readonly operationOutcomeListeners = new Map<
+    string,
+    Set<(outcome: unknown) => void>
+  >();
   private metadata?: StoreMetadata;
   private bootstrapped = false;
   private subscribers = 0;
@@ -248,6 +265,25 @@ class RemoteSnapshotStore<
       unsubscribeView();
       this.subscribers -= 1;
       if (this.subscribers === 0) this.lease?.release();
+    };
+  };
+
+  subscribeOperationOutcome = (
+    requestId: string,
+    listener: (outcome: unknown) => void,
+  ): (() => void) => {
+    if (this.disposed) return () => undefined;
+    let listeners = this.operationOutcomeListeners.get(requestId);
+    if (!listeners) {
+      listeners = new Set();
+      this.operationOutcomeListeners.set(requestId, listeners);
+    }
+    listeners.add(listener);
+    return () => {
+      listeners?.delete(listener);
+      if (listeners?.size === 0) {
+        this.operationOutcomeListeners.delete(requestId);
+      }
     };
   };
 
@@ -492,6 +528,21 @@ class RemoteSnapshotStore<
     );
   }
 
+  receiveOperationOutcome(envelope: MachineOperationOutcomeEnvelope): void {
+    if (envelope.protocolVersion !== this.address.protocolVersion) return;
+    if (this.client.addressKey(envelope) !== this.addressKey) return;
+    for (const listener of Array.from(
+      this.operationOutcomeListeners.get(envelope.requestId) ?? [],
+    )) {
+      try {
+        listener(envelope.outcome);
+      } catch (error) {
+        this.client.reportSubscriberError(error);
+      }
+    }
+    this.operationOutcomeListeners.delete(envelope.requestId);
+  }
+
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
@@ -510,6 +561,7 @@ class RemoteSnapshotStore<
     );
     this.view.dispose();
     this.buffered.splice(0);
+    this.operationOutcomeListeners.clear();
   }
 
   private applyBootstrap(snapshot: MachineSnapshotEnvelope): void {
@@ -672,6 +724,7 @@ export class RemoteMachineClient {
   private removeStatusListener?: () => void;
   private removeSnapshotListener?: () => void;
   private removeDisposedListener?: () => void;
+  private removeOperationOutcomeListener?: () => void;
   private readonly startWaiters = new Set<{
     readonly resolve: () => void;
     readonly reject: (error: RemoteMachineTransportError) => void;
@@ -871,6 +924,13 @@ export class RemoteMachineClient {
       nativePolicies?.[(parsedEvent.data as { readonly type: string }).type]
         ?.observedRevision;
     const suppliedExpected = options?.expected;
+    const legacyIntentRevision =
+      typeof parsedEvent.data === "object" &&
+      parsedEvent.data !== null &&
+      "expectedRevision" in parsedEvent.data &&
+      typeof parsedEvent.data.expectedRevision === "number"
+        ? parsedEvent.data.expectedRevision
+        : undefined;
     const expected =
       nativeRevisionPolicy?.kind === "actor" &&
       suppliedExpected?.kind === "actor"
@@ -879,16 +939,28 @@ export class RemoteMachineClient {
             suppliedExpected?.kind === "domain" &&
             suppliedExpected.name === nativeRevisionPolicy.name
           ? suppliedExpected
-          : store.definition.remoteIntent
-            ? undefined
-            : metadata?.observedRevision;
+          : nativeRevisionPolicy?.kind === "actor" &&
+              metadata &&
+              legacyIntentRevision !== undefined
+            ? ({
+                kind: "actor",
+                actorInstanceId: metadata.actorInstanceId,
+                revision: legacyIntentRevision,
+              } as ObservedRevisionToken)
+            : store.definition.remoteIntent
+              ? undefined
+              : metadata?.observedRevision;
     const envelope: MachineDispatchEnvelope = {
       ...store.address,
       messageId:
-        options?.messageId ?? this.ids.next(`${store.definition.id}:message`),
+        options?.requestIdentity?.messageId ??
+        options?.messageId ??
+        this.ids.next(`${store.definition.id}:message`),
       encodedEvent: parsedEvent.data,
-      correlationId: options?.correlationId,
-      causationId: options?.causationId,
+      correlationId:
+        options?.requestIdentity?.requestId ?? options?.correlationId,
+      causationId:
+        options?.requestIdentity?.idempotencyKey ?? options?.causationId,
       expectedActorInstanceId:
         (expected?.kind === "actor" ? expected.actorInstanceId : undefined) ??
         metadata?.actorInstanceId,
@@ -1003,6 +1075,15 @@ export class RemoteMachineClient {
         .get(this.addressKey(parsed.data))
         ?.receiveDisposed(parsed.data);
     });
+    this.removeOperationOutcomeListener = this.connection.onOperationOutcome?.(
+      (payload) => {
+        const parsed = MachineOperationOutcomeEnvelopeSchema.safeParse(payload);
+        if (!parsed.success) return;
+        this.stores
+          .get(this.addressKey(parsed.data))
+          ?.receiveOperationOutcome(parsed.data);
+      },
+    );
     const currentStatus = this.connection.getStatus();
     if (currentStatus === this.status) {
       for (const store of this.stores.values()) {
@@ -1020,9 +1101,11 @@ export class RemoteMachineClient {
     this.removeStatusListener?.();
     this.removeSnapshotListener?.();
     this.removeDisposedListener?.();
+    this.removeOperationOutcomeListener?.();
     this.removeStatusListener = undefined;
     this.removeSnapshotListener = undefined;
     this.removeDisposedListener = undefined;
+    this.removeOperationOutcomeListener = undefined;
   }
 
   private handleStatus(status: RemoteTransportStatus, cause?: unknown): void {

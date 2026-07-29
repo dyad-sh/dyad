@@ -15,6 +15,7 @@ import { appRunClientDefinition } from "./client_definition";
 import { appRunDefinition } from "./definition";
 import { appRunKey } from "./transport";
 import { AppRunRemoteManager } from "./remote_manager";
+import { appRunOperationRegistry } from "./operations";
 
 const runtime = vi.hoisted(() => ({
   start: vi.fn<() => Promise<void>>(),
@@ -171,18 +172,14 @@ describe("main-hosted app-run actor", () => {
       invocationRef: { operationId: "start-a" },
     });
 
-    host.ensure(appRunDefinition, appRunKey(7)).send({
-      type: "PROXY_READY",
-      invocationRef: {
-        kind: "app-run",
-        entityKey: 7,
-        operationId: "start-a",
-      },
-      url: {
-        appUrl: "http://localhost:3210",
-        originalUrl: "http://localhost:5173",
-        mode: "host",
-      },
+    const [[startOptions]] = runtime.start.mock.calls as unknown as [
+      [{ output: { enqueue(output: unknown): void } }],
+    ];
+    startOptions.output.enqueue({
+      type: "stdout",
+      appId: 7,
+      message:
+        "[dyad-proxy-server]started=[http://localhost:3210] original=[http://localhost:5173] mode=[host]",
     });
     expect(actorA.getSnapshot()).toMatchObject({
       phase: "starting",
@@ -302,7 +299,62 @@ describe("main-hosted app-run actor", () => {
     });
     manager.dispose();
   });
-  it("rejects renderer dispatch when reset disposes its actor", async () => {
+
+  it("settles a synchronous command-runner failure as a run failure", async () => {
+    runtime.start.mockImplementationOnce(() => {
+      throw new Error("runner exploded");
+    });
+    const { duplex } = createHarness();
+    const manager = new AppRunRemoteManager(
+      createSequentialIdSource(),
+      duplex.connect(),
+    );
+    manager.start();
+
+    await expect(
+      manager.dispatch(7, { type: "START", startedAt: 10 }),
+    ).rejects.toThrow("runner exploded");
+    expect(appRunOperationRegistry.inspect().total).toBe(0);
+    manager.dispose();
+  });
+
+  it("settles stop success and stop failure through their own requests", async () => {
+    const { duplex } = createHarness();
+    const manager = new AppRunRemoteManager(
+      createSequentialIdSource(),
+      duplex.connect(),
+    );
+    manager.start();
+    const unsubscribe = manager.subscribeKey(7, () => undefined);
+    await manager.dispatch(7, { type: "START", startedAt: 10 });
+
+    await expect(
+      manager.dispatch(7, { type: "STOP", startedAt: 20 }),
+    ).resolves.toBeUndefined();
+    expect(runtime.stop).toHaveBeenCalledOnce();
+    expect(appRunOperationRegistry.inspect().total).toBe(0);
+    unsubscribe();
+    manager.dispose();
+
+    const failingHarness = createHarness();
+    const failingManager = new AppRunRemoteManager(
+      createSequentialIdSource(),
+      failingHarness.duplex.connect(),
+    );
+    failingManager.start();
+    const unsubscribeFailing = failingManager.subscribeKey(7, () => undefined);
+    await failingManager.dispatch(7, { type: "START", startedAt: 30 });
+    runtime.stop.mockRejectedValueOnce(new Error("stop failed"));
+
+    await expect(
+      failingManager.dispatch(7, { type: "STOP", startedAt: 40 }),
+    ).rejects.toThrow("stop failed");
+    expect(appRunOperationRegistry.inspect().total).toBe(0);
+    unsubscribeFailing();
+    failingManager.dispose();
+  });
+
+  it("treats actor disposal as an expected renderer cancellation", async () => {
     const pending = deferred<void>();
     runtime.start.mockReturnValue(pending.promise);
     const { duplex, host } = createHarness();
@@ -318,7 +370,7 @@ describe("main-hosted app-run actor", () => {
     });
     await host.disposeMachine(appRunDefinition.id);
 
-    await expect(dispatch).rejects.toThrow("subscription was disposed");
+    await expect(dispatch).resolves.toBeUndefined();
     manager.dispose();
   });
 
@@ -352,13 +404,13 @@ describe("main-hosted app-run actor", () => {
     for (let appId = 1001; appId < 1261; appId += 1) {
       manager.subscribeKey(appId, () => undefined)();
     }
-    expect(
-      (
-        manager as unknown as {
-          actorSubscriptions: Map<number, unknown>;
-        }
-      ).actorSubscriptions.size,
-    ).toBe(0);
+    await vi.waitFor(() => {
+      expect(
+        transport
+          .inspectSubscriptions()
+          .filter((entry) => (entry.key as { appId: number }).appId !== 7),
+      ).toHaveLength(0);
+    });
 
     manager.dispose();
   });
@@ -468,7 +520,7 @@ describe("main-hosted app-run actor", () => {
     manager.dispose();
   });
 
-  it("settles a superseded ensure-running request under its request ID", async () => {
+  it("rejects output captured by a superseded runtime invocation", async () => {
     const { actorA } = createHarness();
     await actorA.resync();
     await actorA.dispatch({
@@ -508,7 +560,7 @@ describe("main-hosted app-run actor", () => {
       phase: "ready",
       invocationRef: { operationId: "replacement" },
       lastSettlement: {
-        operationId: "ensure-running",
+        operationId: "replacement",
         outcome: "succeeded",
       },
     });
@@ -531,16 +583,6 @@ describe("main-hosted app-run actor", () => {
         previewReloadEpoch: 0,
         observedExit: null,
         reusableStartInvocation: null,
-        pendingOperations: [
-          {
-            operationId: "request-a",
-            invocationRef: sharedInvocation,
-          },
-          {
-            operationId: "request-b",
-            invocationRef: sharedInvocation,
-          },
-        ],
         lastSettlement: null,
       },
       {
@@ -555,7 +597,6 @@ describe("main-hosted app-run actor", () => {
     expect(result).toMatchObject({
       kind: "applied",
       state: {
-        pendingOperations: [{ operationId: "request-a" }],
         lastSettlement: {
           operationId: "request-b",
           outcome: "failed",
@@ -582,7 +623,6 @@ describe("main-hosted app-run actor", () => {
         previewReloadEpoch: 0,
         observedExit: null,
         reusableStartInvocation: null,
-        pendingOperations: [],
         lastSettlement: null,
       },
       {
@@ -603,19 +643,11 @@ describe("main-hosted app-run actor", () => {
             operationId: "retry-request",
           },
         },
-        pendingOperations: [
-          {
-            operationId: "retry-request",
-            invocationRef: {
-              operationId: "retry-request",
-            },
-          },
-        ],
       },
       commands: [
         {
           type: "start",
-          operationId: "retry-request",
+          requestId: "retry-request",
           invocationRef: {
             operationId: "retry-request",
           },
@@ -643,7 +675,6 @@ describe("main-hosted app-run actor", () => {
         previewReloadEpoch: 0,
         observedExit: null,
         reusableStartInvocation: null,
-        pendingOperations: [],
         lastSettlement: null,
       },
       {
@@ -696,7 +727,6 @@ describe("main-hosted app-run actor", () => {
         previewReloadEpoch: 0,
         observedExit: null,
         reusableStartInvocation: invocationRef,
-        pendingOperations: [],
         lastSettlement: null,
       },
       {
@@ -823,9 +853,9 @@ describe("main-hosted app-run actor", () => {
     expect(
       (
         manager as unknown as {
-          settlementWaiters: Map<string, unknown>;
+          requestScope: { inspectActiveCount(): number };
         }
-      ).settlementWaiters.size,
+      ).requestScope.inspectActiveCount(),
     ).toBe(0);
     manager.dispose();
   });
@@ -910,5 +940,215 @@ describe("main-hosted app-run actor", () => {
     pending.resolve();
     await flush();
     expect(actorB.getSnapshot().phase).toBe("ready");
+  });
+
+  it("keeps logical request identity distinct from runtime invocation identity", async () => {
+    const { duplex } = createHarness();
+    const connection = duplex.connect();
+    const originalDispatch = connection.dispatch.bind(connection);
+    const envelopes: Parameters<typeof connection.dispatch>[0][] = [];
+    connection.dispatch = vi.fn(async (envelope) => {
+      envelopes.push(envelope);
+      return originalDispatch(envelope);
+    });
+    const manager = new AppRunRemoteManager(
+      createSequentialIdSource(),
+      connection,
+    );
+    manager.start();
+
+    await manager.dispatch(7, { type: "START", startedAt: 10 });
+
+    expect(envelopes).toHaveLength(1);
+    const envelope = envelopes[0];
+    if (!envelope) throw new Error("expected a captured dispatch");
+    expect(envelope.correlationId).toBeTruthy();
+    expect(envelope.correlationId).not.toBe(
+      (envelope.encodedEvent as { operationId: string }).operationId,
+    );
+    expect(envelope.messageId).not.toBe(envelope.correlationId);
+    expect(envelope.causationId).not.toBe(envelope.messageId);
+    manager.dispose();
+  });
+
+  it("settles multiple pending requests only from their correlated outcomes", async () => {
+    const first = deferred<void>();
+    const second = deferred<void>();
+    runtime.start
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    const { duplex } = createHarness();
+    const manager = new AppRunRemoteManager(
+      createSequentialIdSource(),
+      duplex.connect(),
+    );
+    manager.start();
+    let firstSettled = false;
+    let secondSettled = false;
+
+    const firstRequest = manager
+      .dispatch(7, { type: "START", startedAt: 10 })
+      .then(() => {
+        firstSettled = true;
+      });
+    const secondRequest = manager
+      .dispatch(8, { type: "START", startedAt: 20 })
+      .then(() => {
+        secondSettled = true;
+      });
+    await vi.waitFor(() => {
+      expect(runtime.start).toHaveBeenCalledTimes(2);
+    });
+    expect(appRunOperationRegistry.inspect().unresolved).toBe(2);
+
+    second.resolve();
+    await secondRequest;
+    expect(secondSettled).toBe(true);
+    expect(firstSettled).toBe(false);
+    expect(appRunOperationRegistry.inspect().unresolved).toBe(1);
+
+    first.resolve();
+    await firstRequest;
+    expect(appRunOperationRegistry.inspect()).toEqual({
+      unresolved: 0,
+      settled: 0,
+      total: 0,
+    });
+    manager.dispose();
+  });
+
+  it("settles a superseded renderer request without accepting old output", async () => {
+    const oldRuntime = deferred<void>();
+    runtime.start.mockReturnValue(oldRuntime.promise);
+    const { duplex, host } = createHarness();
+    const ids = createSequentialIdSource();
+    const firstManager = new AppRunRemoteManager(ids, duplex.connect());
+    const replacementManager = new AppRunRemoteManager(ids, duplex.connect());
+    firstManager.start();
+    replacementManager.start();
+
+    const firstRequest = firstManager.dispatch(7, {
+      type: "START",
+      startedAt: 10,
+    });
+    await vi.waitFor(() => expect(runtime.start).toHaveBeenCalledOnce());
+
+    await replacementManager.dispatch(7, {
+      type: "RESTART",
+      startedAt: 20,
+      options: { removeNodeModules: false, recreateSandbox: false },
+    });
+    await expect(firstRequest).resolves.toBeUndefined();
+    const replacement = host
+      .ensure(appRunDefinition, appRunKey(7))
+      .getSnapshot().runState;
+    expect(replacement.type).toBe("ready");
+
+    oldRuntime.resolve();
+    await flush();
+    expect(
+      host.ensure(appRunDefinition, appRunKey(7)).getSnapshot().runState,
+    ).toEqual(replacement);
+    expect(appRunOperationRegistry.inspect().total).toBe(0);
+    firstManager.dispose();
+    replacementManager.dispose();
+  });
+
+  it("settles window-owned operations when the renderer disconnects", async () => {
+    const pending = deferred<void>();
+    runtime.start.mockReturnValue(pending.promise);
+    const { duplex } = createHarness();
+    const connection = duplex.connect();
+    const manager = new AppRunRemoteManager(
+      createSequentialIdSource(),
+      connection,
+    );
+    manager.start();
+
+    const request = manager.dispatch(7, { type: "START", startedAt: 10 });
+    await vi.waitFor(() => expect(runtime.start).toHaveBeenCalledOnce());
+    expect(appRunOperationRegistry.inspect().unresolved).toBe(1);
+
+    connection.disconnect();
+    await vi.waitFor(() => {
+      expect(appRunOperationRegistry.inspect().total).toBe(0);
+    });
+    manager.dispose();
+    await expect(request).resolves.toBeUndefined();
+    pending.resolve();
+  });
+
+  it("fences app deletion synchronously and reopens only through its handle", async () => {
+    const { actorA, host } = createHarness();
+    await actorA.resync();
+    const service = new AppRunActorService(host);
+    const deletion = service.beginAppDeletion(7);
+
+    await expect(
+      actorA.dispatch({
+        type: "START",
+        operationId: "blocked",
+        startedAt: 10,
+        expectedRevision: actorA.getSnapshot().revision,
+      }),
+    ).resolves.toMatchObject({ kind: "rejected" });
+    expect(deletion.abort()).toBe(true);
+    const currentDeletion = service.beginAppDeletion(7);
+    expect(deletion.abort()).toBe(false);
+    expect(currentDeletion.abort()).toBe(true);
+    await expect(
+      actorA.dispatch({
+        type: "START",
+        operationId: "after-abort",
+        startedAt: 20,
+        expectedRevision: actorA.getSnapshot().revision,
+      }),
+    ).resolves.toMatchObject({ kind: "applied" });
+  });
+
+  it("keeps successful deletion fenced through final actor cleanup", async () => {
+    const { host } = createHarness();
+    const service = new AppRunActorService(host);
+    service.actor(7);
+    const deletion = service.beginAppDeletion(7);
+
+    await deletion.seal();
+    expect(deletion.commit()).toBe(true);
+    await service.disposeApp(7);
+    expect(() => service.actor(7)).toThrow(
+      expect.objectContaining({ code: "key-fenced" }),
+    );
+    expect(deletion.release()).toBe(true);
+  });
+
+  it("drops late output without recreating or reaching a replacement actor", async () => {
+    const { host } = createHarness();
+    const service = new AppRunActorService(host);
+    service.actor(7);
+    const oldOutput = service.outputFor(7, {
+      kind: "app-run",
+      entityKey: 7,
+      operationId: "old-runtime",
+    });
+
+    await service.disposeApp(7);
+    const replacement = service.actor(7);
+    oldOutput.enqueue({
+      type: "stdout",
+      appId: 7,
+      message:
+        "[dyad-proxy-server]started=[http://localhost:3210] original=[http://localhost:5173] mode=[host]",
+    });
+    oldOutput.send({
+      type: "app-exit",
+      appId: 7,
+      message: "late exit",
+      exitCode: 1,
+      timestamp: 30,
+    });
+    await flush();
+
+    expect(host.peek(appRunDefinition.id, appRunKey(7))).toBe(replacement);
+    expect(replacement.getSnapshot().runState).toEqual({ type: "idle" });
   });
 });

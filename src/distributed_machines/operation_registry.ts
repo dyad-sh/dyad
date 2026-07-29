@@ -489,6 +489,34 @@ export class OperationRegistry<Outcome, Ref extends InvocationRef> {
     return settled;
   }
 
+  /** Settles unresolved operations invalidated by a committed replacement. */
+  settleSuperseded(
+    matches: (identity: OperationAdmissionIdentity<InvocationRef>) => boolean,
+  ): number {
+    let settled = 0;
+    for (const entry of Array.from(this.entries.values())) {
+      if (entry.settlement || !matches(entry.identity)) continue;
+      if (
+        this.settle(
+          entry.identity.requestId,
+          entry.identity.invocationRef,
+          this.options.supersededOutcome(),
+          {
+            actor: {
+              actorInstanceId: entry.identity.owner.actorInstanceId,
+              snapshotRevision: entry.identity.owner.actorRevision,
+              transactionSequence: 0,
+            },
+            acknowledgedAt: this.options.now(),
+          },
+        )
+      ) {
+        settled += 1;
+      }
+    }
+    return settled;
+  }
+
   has(requestId: RequestId): boolean {
     return this.entries.has(requestId);
   }

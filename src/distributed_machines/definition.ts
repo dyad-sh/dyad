@@ -318,6 +318,11 @@ export interface HostedActorRef<
   Event,
   Reason extends IgnoreReason,
 > extends LocalActorRef<State, Event> {
+  /**
+   * Captures a non-creating producer sink bound to this actor instance and
+   * admission generation.
+   */
+  captureSink(): ActorEventSink<Event>;
   enqueue(
     event: Event,
     dispatchContext?: DispatchContext,

@@ -61,6 +61,7 @@ export class TestAppRunRemoteConnection implements AppRunRemoteConnection {
   ): Promise<MachineDispatchReceipt> {
     const appId = AppRunKeySchema.parse(envelope.encodedKey).appId;
     const event = AppRunIntentEventSchema.parse(envelope.encodedEvent);
+    const requestId = envelope.correlationId ?? event.operationId;
     this.dispatches.push(event);
     this.onDispatch?.(appId, event);
 
@@ -95,7 +96,7 @@ export class TestAppRunRemoteConnection implements AppRunRemoteConnection {
             },
           },
           {
-            operationId: event.operationId,
+            operationId: requestId,
             kind: "run",
             outcome: "succeeded",
           },
@@ -114,7 +115,7 @@ export class TestAppRunRemoteConnection implements AppRunRemoteConnection {
             timestamp: null,
           },
           {
-            operationId: event.operationId,
+            operationId: requestId,
             kind: "stop",
             outcome: "succeeded",
           },

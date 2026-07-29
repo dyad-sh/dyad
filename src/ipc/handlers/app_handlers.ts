@@ -398,12 +398,34 @@ async function deleteAppById(
   appId: number,
   options: DeleteAppByIdOptions = {},
 ): Promise<void> {
-  await appDeletionQueue.run(() => deleteAppByIdExclusive(appId, options));
+  const appRunDeletion = appRunActorService.beginAppDeletion(appId);
+  let appRunDeletionCommitted = false;
+  try {
+    await appDeletionQueue.run(() =>
+      deleteAppByIdExclusive(appId, options, {
+        seal: () => appRunDeletion.seal(),
+        commit: () => {
+          appRunDeletion.commit();
+          appRunDeletionCommitted = true;
+        },
+      }),
+    );
+  } finally {
+    if (appRunDeletionCommitted) {
+      appRunDeletion.release();
+    } else {
+      appRunDeletion.abort();
+    }
+  }
 }
 
 async function deleteAppByIdExclusive(
   appId: number,
   options: DeleteAppByIdOptions = {},
+  appRunDeletion: {
+    seal(): Promise<void>;
+    commit(): void;
+  },
 ): Promise<void> {
   let versionPreviewDeletionStarted = false;
   let githubDeletionStarted = false;
@@ -450,6 +472,8 @@ async function deleteAppByIdExclusive(
 
       if (!app) {
         if (options.allowMissing && options.knownAppPath) {
+          await appRunDeletion.seal();
+          appRunDeletion.commit();
           deletionCommitted = true;
           return options.knownAppPath;
         }
@@ -467,8 +491,10 @@ async function deleteAppByIdExclusive(
         }
       }
 
+      await appRunDeletion.seal();
       try {
         await db.delete(apps).where(eq(apps.id, appId));
+        appRunDeletion.commit();
         deletionCommitted = true;
         // Note: Associated chats will cascade delete
         if (options.publishDisposal !== false) {
@@ -1486,6 +1512,8 @@ export function registerAppHandlers() {
   });
 
   createTypedHandler(systemContracts.resetAll, async () => {
+    const appRunReset = appRunActorService.beginReset();
+    let appRunResetCommitted = false;
     versionPreviewService.beginReset();
     githubOpsService.beginReset();
     imageGenerationService.beginReset();
@@ -1505,6 +1533,7 @@ export function registerAppHandlers() {
         }
       }
       logger.log("all running apps stopped.");
+      await appRunReset.seal();
       await appRunActorService.disposeAllApps();
       logger.log("all app run actors disposed.");
       await githubOpsActorService.disposeAllApps();
@@ -1530,6 +1559,8 @@ export function registerAppHandlers() {
           logger.log(`Database file deleted: ${dbFilePath}`);
         }
       }
+      appRunReset.commit();
+      appRunResetCommitted = true;
       logger.log("database deleted.");
       logger.log("deleting settings...");
       // 2. Remove settings
@@ -1570,6 +1601,11 @@ export function registerAppHandlers() {
       logger.log("all app files removed.");
       logger.log("reset all complete.");
     } finally {
+      if (appRunResetCommitted) {
+        appRunReset.release();
+      } else {
+        appRunReset.abort();
+      }
       imageGenerationService.endReset();
       githubOpsService.endReset();
       versionPreviewService.endReset();

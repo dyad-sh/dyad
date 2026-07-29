@@ -41,6 +41,10 @@ export class IpcRemoteMachineConnection implements RemoteMachineClientConnection
     return ipc.events.distributedMachine.onDisposed(listener);
   }
 
+  onOperationOutcome(listener: (payload: unknown) => void): () => void {
+    return ipc.events.distributedMachine.onOperationOutcome(listener);
+  }
+
   subscribe(address: MachineAddress): Promise<MachineSnapshotEnvelope> {
     return ipc.distributedMachine.subscribe(address);
   }

@@ -25,9 +25,15 @@ import {
   type MachineDispatchEnvelope,
   type MachineDispatchReceipt,
   type MachineDisposedEnvelope,
+  type MachineOperationOutcomeEnvelope,
   type MachineRejectedReason,
   type MachineSnapshotEnvelope,
 } from "./remote_protocol";
+import type {
+  RequestId,
+  RequestIdempotencyKey,
+  RequestMessageId,
+} from "./request_identity";
 import type { RemoteAuthorizationDecision } from "./remote_intent_contract";
 import type { RequestId } from "./request_identity";
 import {
@@ -162,6 +168,7 @@ export class RemoteMachineTransport {
     PendingSubscription
   >();
   private readonly pendingReferencesPerWindow = new Map<number, number>();
+  private readonly windowSessions = new Map<number, WindowSessionId>();
   private readonly receiptLedger: PendingReceiptLedger<MachineDispatchReceipt>;
   private readonly removeWindowListener: () => void;
   private readonly removeDisposalListener: () => void;
@@ -239,6 +246,7 @@ export class RemoteMachineTransport {
     this.assertOpen();
     this.assertAddressWithinLimit(input);
     const windowSessionId = this.options.windows.ensureRegistered(sender);
+    this.windowSessions.set(sender.id, windowSessionId);
     const definition = this.requireDefinition(input.machineId);
     this.assertProtocol(sender, definition, input.protocolVersion);
     const key = this.decodeKey(definition, input.encodedKey);
@@ -465,6 +473,7 @@ export class RemoteMachineTransport {
   ): Promise<MachineDispatchReceipt> {
     this.assertOpen();
     const windowSessionId = this.options.windows.ensureRegistered(sender);
+    this.windowSessions.set(sender.id, windowSessionId);
     const dispatchDefinition = this.options.manifest.get(envelope.machineId);
     const nativeDispatchLimit =
       dispatchDefinition?.remoteIntent?.budgets.intentBytes;
@@ -606,6 +615,7 @@ export class RemoteMachineTransport {
     this.actorKeys.clear();
     this.referencesPerWindow.clear();
     this.pendingReferencesPerWindow.clear();
+    this.windowSessions.clear();
     this.receiptLedger.dispose();
   }
 
@@ -838,11 +848,18 @@ export class RemoteMachineTransport {
       if (preConversionRefusal) {
         return this.rejected(envelope.messageId, preConversionRefusal);
       }
+      const requestIdentity = this.requestIdentityFor(
+        definition,
+        intent,
+        envelope,
+        senderContext.windowSessionId,
+      );
       event = this.toInternalEvent(
         definition,
         key,
         intent,
         senderContext.windowSessionId,
+        requestIdentity,
       );
       this.assertPreparedDispatchContent(prepared, envelope);
       const finalRefusal = this.revalidatePreparedDispatch(
@@ -852,6 +869,111 @@ export class RemoteMachineTransport {
       );
       if (finalRefusal) {
         return this.rejected(envelope.messageId, finalRefusal);
+      }
+      if (definition.remoteIntent.finalizeOperation && requestIdentity) {
+        let admitted;
+        try {
+          admitted = definition.remoteIntent.finalizeOperation(
+            {
+              key,
+              intent,
+              event,
+              currentState: actor.getSnapshot(),
+              actor: dispatchActorMetadata,
+              sender: { windowSessionId: senderContext.windowSessionId },
+              requestIdentity,
+              fingerprint: prepared.fingerprint,
+            },
+            {
+              assertFinalAdmission: () => {
+                this.assertPreparedDispatchContent(prepared, envelope);
+                const refusal = this.revalidatePreparedDispatch(
+                  sender,
+                  envelope,
+                  prepared,
+                );
+                if (refusal) {
+                  throw new ActorAdmissionError(
+                    refusal === "stale-actor"
+                      ? "stale-actor-instance"
+                      : refusal === "revision-conflict"
+                        ? "stale-actor-revision"
+                        : "stale-admission-generation",
+                    `Remote operation admission was refused: ${refusal}`,
+                  );
+                }
+              },
+              enqueue: () =>
+                this.options.host.dispatchCaptured(
+                  definition,
+                  key,
+                  event,
+                  prepared.lifecycleGeneration,
+                  dispatchActorMetadata,
+                  {
+                    messageId: envelope.messageId,
+                    correlationId: envelope.correlationId,
+                    causationId: envelope.causationId,
+                  },
+                ),
+            },
+          );
+        } catch (error) {
+          if (!(error instanceof ActorAdmissionError)) throw error;
+          prepared.consumed = true;
+          return this.rejected(
+            envelope.messageId,
+            error.code === "stale-actor-instance"
+              ? "stale-actor"
+              : error.code === "stale-actor-revision"
+                ? "revision-conflict"
+                : "host-disposing",
+          );
+        }
+        prepared.consumed = true;
+        void admitted.operation.settled.then(
+          (settlement: {
+            readonly invocationRef: unknown;
+            readonly outcome: unknown;
+          }) => {
+            if (
+              this.options.windows.sessionForWebContents(sender.id) !==
+              senderContext.windowSessionId
+            ) {
+              return;
+            }
+            const outcomeEnvelope: MachineOperationOutcomeEnvelope = {
+              protocolVersion: definition.remote.protocolVersion,
+              machineId: definition.id,
+              encodedKey: prepared.encodedKey,
+              requestId: requestIdentity.requestId,
+              invocationRef: settlement.invocationRef,
+              outcome: settlement.outcome,
+            };
+            this.send(
+              sender.id,
+              "distributed-machine:operation-outcome",
+              outcomeEnvelope,
+            );
+          },
+          (error: unknown) => this.options.onError?.(error),
+        );
+        if (admitted.disposition !== "fresh") {
+          return {
+            kind: "applied",
+            actorInstanceId: dispatchActorMetadata.actorInstanceId,
+            revision: dispatchActorMetadata.snapshotRevision,
+            transactionSequence: dispatchActorMetadata.transactionSequence,
+            messageId: envelope.messageId,
+          };
+        }
+        return this.receiptFromDispatchTicket(
+          definition,
+          key,
+          address,
+          envelope.messageId,
+          admitted.enqueueResult,
+        );
       }
     }
     const enqueue = () =>
@@ -1024,6 +1146,95 @@ export class RemoteMachineTransport {
       transactionSequence: metadata.transactionSequence,
       messageId: envelope.messageId,
     };
+  }
+
+  private async receiptFromDispatchTicket(
+    definition: AnyRemoteMachineDefinition,
+    key: unknown,
+    address: string,
+    messageId: string,
+    value: unknown,
+  ): Promise<MachineDispatchReceipt> {
+    const ticket = value as {
+      readonly settled: Promise<
+        | { readonly kind: "applied" }
+        | { readonly kind: "ignored"; readonly reason: unknown }
+        | { readonly kind: "disposed" }
+        | { readonly kind: "failed"; readonly error: unknown }
+      >;
+      getSettledMetadata(): ActorRuntimeMetadata | undefined;
+    };
+    if (!ticket || typeof ticket !== "object" || !("settled" in ticket)) {
+      throw new Error(
+        "Remote operation admission did not return a dispatch ticket",
+      );
+    }
+    const dispatchedActor = this.options.host.peek<unknown, unknown, string>(
+      definition.id,
+      key,
+    );
+    const outcome = await ticket.settled;
+    if (outcome.kind === "failed") {
+      if (outcome.error instanceof ActorAdmissionError) {
+        if (outcome.error.code === "stale-actor-instance") {
+          return this.rejected(messageId, "stale-actor");
+        }
+        if (outcome.error.code === "stale-actor-revision") {
+          return this.rejected(
+            messageId,
+            definition.remoteIntent?.refusalMap.revisionChanged ??
+              "revision-conflict",
+          );
+        }
+        return this.rejected(messageId, "host-disposing");
+      }
+      throw outcome.error;
+    }
+    if (outcome.kind === "disposed" || !dispatchedActor) {
+      this.actorKeys.delete(address);
+      return this.rejected(messageId, "host-disposing");
+    }
+    const metadata = ticket.getSettledMetadata();
+    if (!metadata) return this.rejected(messageId, "host-disposing");
+    return outcome.kind === "ignored"
+      ? {
+          kind: "ignored",
+          actorInstanceId: metadata.actorInstanceId,
+          revision: metadata.snapshotRevision,
+          transactionSequence: metadata.transactionSequence,
+          messageId,
+          reason: outcome.reason,
+        }
+      : {
+          kind: "applied",
+          actorInstanceId: metadata.actorInstanceId,
+          revision: metadata.snapshotRevision,
+          transactionSequence: metadata.transactionSequence,
+          messageId,
+        };
+  }
+
+  private requestIdentityFor(
+    definition: AnyRemoteMachineDefinition,
+    intent: { readonly type: string },
+    envelope: MachineDispatchEnvelope,
+    windowSessionId: string,
+  ) {
+    const policy = definition.remoteIntent?.intents[intent.type];
+    if (policy?.completion !== "tracked-completion") return undefined;
+    const legacyRequestId =
+      "operationId" in intent && typeof intent.operationId === "string"
+        ? intent.operationId
+        : undefined;
+    const requestId = envelope.correlationId ?? legacyRequestId;
+    if (!requestId) return undefined;
+    return Object.freeze({
+      requestId: requestId as RequestId,
+      messageId: envelope.messageId as RequestMessageId,
+      idempotencyKey: (envelope.causationId ??
+        envelope.messageId) as RequestIdempotencyKey,
+      windowSessionId,
+    });
   }
 
   private dispatchFingerprint(
@@ -1250,6 +1461,13 @@ export class RemoteMachineTransport {
   }
 
   private removeWindow(webContentsId: number): void {
+    const windowSessionId = this.windowSessions.get(webContentsId);
+    this.windowSessions.delete(webContentsId);
+    if (windowSessionId) {
+      for (const definition of this.options.manifest.definitions) {
+        definition.remoteIntent?.disposeWindowSession?.(windowSessionId);
+      }
+    }
     for (const pending of this.pendingSubscriptions.values()) {
       if (pending.webContentsId === webContentsId) {
         this.cancelPendingSubscription(pending);
@@ -1460,12 +1678,14 @@ export class RemoteMachineTransport {
     key: unknown,
     intent: { readonly type: string },
     windowSessionId: string,
+    requestIdentity: ReturnType<RemoteMachineTransport["requestIdentityFor"]>,
   ): unknown {
     if (!definition.remoteIntent) return intent;
     const event = definition.remoteIntent.toInternalEvent({
       key,
       intent,
       sender: { windowSessionId },
+      ...(requestIdentity ? { requestIdentity } : {}),
     });
     if (
       typeof intent === "object" &&

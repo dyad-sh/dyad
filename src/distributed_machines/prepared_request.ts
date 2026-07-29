@@ -183,6 +183,7 @@ export interface PrepareRequestOptions<Admission, Outcome, Refusal> {
       };
   readonly dispatch: (
     identity: RequestIdentity,
+    signal: AbortSignal,
   ) => Promise<PreparedDispatchResult<Admission, Outcome, Refusal>>;
   readonly classifyFailure: (
     error: unknown,
@@ -205,6 +206,7 @@ export function prepareRequest<Admission, Outcome, Refusal>(
   let dispatchInFlight = false;
   let admissionMayHaveOccurred = false;
   let retryEligible = false;
+  const detached = new AbortController();
   let attemptPending:
     | Promise<PreparedAdmission<Admission, Refusal>>
     | undefined;
@@ -228,6 +230,7 @@ export function prepareRequest<Admission, Outcome, Refusal>(
     identity,
     options.fingerprint,
     () => {
+      detached.abort();
       if (firstAdmissionPending) {
         firstAdmissionPending = false;
         firstAdmission.resolve({ kind: "disposed" });
@@ -269,7 +272,7 @@ export function prepareRequest<Admission, Outcome, Refusal>(
           return { kind: "disposed" } as const;
         }
         dispatchInFlight = true;
-        return options.dispatch(identity);
+        return options.dispatch(identity, detached.signal);
       })
       .then(
         (result): PreparedAdmission<Admission, Refusal> => {
@@ -395,6 +398,7 @@ export function prepareRequest<Admission, Outcome, Refusal>(
           }
         : { kind: "disabled" },
     detach() {
+      detached.abort();
       if (firstAdmissionPending) {
         firstAdmissionPending = false;
         firstAdmission.resolve({ kind: "disposed" });

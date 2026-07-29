@@ -9,6 +9,7 @@ import {
   MachineDispatchEnvelopeSchema,
   MachineDispatchReceiptSchema,
   MachineDisposedEnvelopeSchema,
+  MachineOperationOutcomeEnvelopeSchema,
   MachineProtocolMismatchSchema,
   MachineSnapshotEnvelopeSchema,
 } from "../../distributed_machines/remote_protocol";
@@ -40,6 +41,10 @@ export const distributedMachineEvents = {
   disposed: defineEvent({
     channel: "distributed-machine:disposed",
     payload: MachineDisposedEnvelopeSchema,
+  }),
+  operationOutcome: defineEvent({
+    channel: "distributed-machine:operation-outcome",
+    payload: MachineOperationOutcomeEnvelopeSchema,
   }),
   protocolMismatch: defineEvent({
     channel: "distributed-machine:protocol-mismatch",

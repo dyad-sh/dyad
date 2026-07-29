@@ -465,6 +465,27 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
 - Treat an operation ID's initiating window as a first-writer ownership claim.
   A duplicate intent from another window must not overwrite that routing entry,
   even if the duplicate transition will later be ignored.
+- Main-owned presentation routes use `OperationRouteRegistry` from
+  `src/window_infrastructure/main/`. Admit with the stable authoritative
+  operation ID and an owner containing stable owner/machine identities, an
+  optional window session, and an opaque route. Identical duplicates coalesce
+  (or replay while terminal retention remains); conflicts never replace the
+  first owner.
+- `OperationRouteRegistry` pins unresolved routes behind a separately bounded
+  admission limit and evicts only terminal routes, in settlement order, behind
+  a declared finite retention count. Call `markTerminal(handle)` only at
+  authoritative publication/settlement, then release with the opaque
+  generation-bearing handle or an explicit owner/window/machine disposal
+  method. Duplicate terminal/release calls and stale handles are no-ops.
+- Window destruction must call the registry's read-only
+  `inspectWindowRoutes()` before the domain explicitly chooses drop,
+  entity-window, or focused-window fallback. Do not wire window unregister to
+  `releaseWindow()`: unresolved ownership survives renderer loss until the
+  authoritative operation settles or the domain explicitly disposes it.
+- Use `inspect()` for route resource accounting and leak diagnostics; it
+  reports operation identity, owner, machine/window metadata, state, and
+  generation. Registry disposal is terminal and must leave the route count at
+  zero.
 - Authorization can run before revision admission. Keep any presentation
   ownership recorded there tentative and expire it unless an applied
   transition confirms the claim; rejected stale dispatches never reach actor

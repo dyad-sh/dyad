@@ -80,10 +80,6 @@ describe("useMachineMutation", () => {
       }) =>
         useMachineMutation({
           ...props,
-          observedRevision:
-            props.snapshot.kind === "available"
-              ? props.snapshot.observedRevision
-              : undefined,
           request,
           classifyOutcome: classify,
         }),
@@ -225,7 +221,6 @@ describe("useMachineMutation", () => {
         useMachineMutation({
           connection: "ready",
           snapshot: { kind: "available", observedRevision: revision },
-          observedRevision: revision,
           request,
           classifyOutcome: classify,
         }),

@@ -47,7 +47,16 @@ export type PreparedDispatchResult<Admission, Outcome, Refusal> =
   | AdmissionRefusal<Refusal>;
 
 export type PreparedRequestFailureClassification =
-  | { readonly kind: "disconnect"; readonly retryable: boolean }
+  | {
+      readonly kind: "disconnect";
+      readonly retryable: boolean;
+      /**
+       * A lost response cannot prove that main did not accept the request.
+       * Only failures classified at a pre-delivery boundary may claim that no
+       * authoritative operation exists.
+       */
+      readonly admission: "definitely-not-admitted" | "unknown";
+    }
   | { readonly kind: "unexpected" };
 
 export interface PreparedRequest<Admission, Outcome, Refusal> {
@@ -194,9 +203,12 @@ export function prepareRequest<Admission, Outcome, Refusal>(
   let terminalPending = true;
   let admitted = false;
   let dispatchInFlight = false;
+  let admissionMayHaveOccurred = false;
+  let retryEligible = false;
   let attemptPending:
     | Promise<PreparedAdmission<Admission, Refusal>>
     | undefined;
+  let pendingAttemptIsRetry = false;
 
   const settleTerminal = (
     value: PreparedRequestSettlement<Outcome, Refusal>,
@@ -221,7 +233,7 @@ export function prepareRequest<Admission, Outcome, Refusal>(
         firstAdmission.resolve({ kind: "disposed" });
       }
       settleTerminal(
-        admitted || dispatchInFlight
+        admitted || dispatchInFlight || admissionMayHaveOccurred
           ? { kind: "detached", authoritativeOperationMayContinue: true }
           : { kind: "not-admitted", reason: "disposed" },
       );
@@ -229,13 +241,25 @@ export function prepareRequest<Admission, Outcome, Refusal>(
   );
   void terminal.promise.then(releaseRegistration, releaseRegistration);
 
-  const dispatchAttempt = (): Promise<
-    PreparedAdmission<Admission, Refusal>
-  > => {
+  const dispatchAttempt = (
+    retryAttempt = false,
+  ): Promise<PreparedAdmission<Admission, Refusal>> => {
     if (!terminalPending) {
       return Promise.reject(new Error("Prepared request is already settled"));
     }
-    if (attemptPending) return attemptPending;
+    if (attemptPending) {
+      if (!retryAttempt || pendingAttemptIsRetry) return attemptPending;
+      return Promise.reject(
+        new Error("Prepared request is not eligible for retry"),
+      );
+    }
+    if (retryAttempt && !retryEligible) {
+      return Promise.reject(
+        new Error("Prepared request is not eligible for retry"),
+      );
+    }
+    if (retryAttempt) retryEligible = false;
+    pendingAttemptIsRetry = retryAttempt;
     const attempt = Promise.resolve()
       .then<
         | PreparedDispatchResult<Admission, Outcome, Refusal>
@@ -253,14 +277,23 @@ export function prepareRequest<Admission, Outcome, Refusal>(
             return result;
           }
           if (result.kind === "refused") {
-            settleTerminal({
-              kind: "not-admitted",
-              reason: "refused",
-              refusal: result.reason,
-            });
+            retryEligible = false;
+            settleTerminal(
+              admissionMayHaveOccurred
+                ? {
+                    kind: "detached",
+                    authoritativeOperationMayContinue: true,
+                  }
+                : {
+                    kind: "not-admitted",
+                    reason: "refused",
+                    refusal: result.reason,
+                  },
+            );
             return result;
           }
           admitted = true;
+          retryEligible = false;
           void result.settled.then(
             (outcome) =>
               settleTerminal({
@@ -288,7 +321,13 @@ export function prepareRequest<Admission, Outcome, Refusal>(
           try {
             classification = options.classifyFailure(error);
           } catch (classificationError) {
-            rejectTerminal(classificationError);
+            if (!rejectTerminal(classificationError)) {
+              try {
+                options.reportError?.(classificationError);
+              } catch {
+                // Reporting cannot replace the classifier failure.
+              }
+            }
             throw classificationError;
           }
           if (classification.kind === "unexpected") {
@@ -303,15 +342,27 @@ export function prepareRequest<Admission, Outcome, Refusal>(
           }
           const retryable =
             classification.retryable && options.retry.kind === "stable-id";
+          admissionMayHaveOccurred ||= classification.admission === "unknown";
+          retryEligible = retryable;
           if (!retryable) {
-            settleTerminal({ kind: "not-admitted", reason: "disconnected" });
+            settleTerminal(
+              admissionMayHaveOccurred
+                ? {
+                    kind: "detached",
+                    authoritativeOperationMayContinue: true,
+                  }
+                : { kind: "not-admitted", reason: "disconnected" },
+            );
           }
           return { kind: "disconnected", retryable, error };
         },
       )
       .finally(() => {
         dispatchInFlight = false;
-        if (attemptPending === attempt) attemptPending = undefined;
+        if (attemptPending === attempt) {
+          attemptPending = undefined;
+          pendingAttemptIsRetry = false;
+        }
       });
     attemptPending = attempt;
     return attempt;
@@ -338,7 +389,10 @@ export function prepareRequest<Admission, Outcome, Refusal>(
     settled: terminal.promise,
     retry:
       options.retry.kind === "stable-id"
-        ? { kind: "enabled", dispatch: dispatchAttempt }
+        ? {
+            kind: "enabled",
+            dispatch: () => dispatchAttempt(true),
+          }
         : { kind: "disabled" },
     detach() {
       if (firstAdmissionPending) {
@@ -346,7 +400,7 @@ export function prepareRequest<Admission, Outcome, Refusal>(
         firstAdmission.resolve({ kind: "disposed" });
       }
       settleTerminal(
-        admitted || dispatchInFlight
+        admitted || dispatchInFlight || admissionMayHaveOccurred
           ? { kind: "detached", authoritativeOperationMayContinue: true }
           : { kind: "not-admitted", reason: "disposed" },
       );

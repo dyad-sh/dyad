@@ -178,6 +178,7 @@ export const nonRemoteDispatchOrEnqueueInventory = [
  * explicitly admission-only paths, not unmigrated raw domain dispatch.
  */
 export const completionAwareDispatchOrEnqueueInventory = [
+  "distributed_machines/operation_registry.ts::admitOperationAndEnqueue::access(options.enqueue)",
   "distributed_machines/operation_registry.ts::admitOperationAndEnqueue::call(options.enqueue)",
   "distributed_machines/prepared_request.ts::prepareRequest.dispatchAttempt.attempt::call(options.dispatch)",
   "distributed_machines/request_actor.ts::createCompletionAwareActor::access(options.enqueue)",

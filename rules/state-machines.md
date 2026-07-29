@@ -571,6 +571,16 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   callback, not merely after asynchronous authorization. Revision policies,
   intent conversion, and similar callbacks can reenter fencing, subscription,
   or disposal code before final host admission.
+- Treat supersession settlement listeners as synchronous domain callbacks.
+  Revalidate after they run and roll back any replacement registration before
+  enqueue if they fence, replace, or dispose the intended actor.
+- A transport disconnect does not prove that authoritative admission failed.
+  Preserve delivery/admission ambiguity across retry and disposal; only a
+  failure classified at a definitely-pre-delivery boundary may settle as
+  `not-admitted`.
+- If terminal outcome or receipt construction throws, reject or explicitly
+  fail the exact correlated registry entry and continue bulk disposal. Never
+  leave callback-construction failures pinned as unresolved work.
 - A fresh subscription or actor-reference acquisition must assert that keyed
   admission is open even when it retains an existing actor. Generation equality
   alone is insufficient because work prepared after fencing captures the

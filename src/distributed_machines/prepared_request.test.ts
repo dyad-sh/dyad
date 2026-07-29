@@ -56,7 +56,11 @@ function prepare(options: {
     dispatch: options.dispatch,
     classifyFailure: (error) =>
       error === disconnect
-        ? { kind: "disconnect", retryable: true }
+        ? {
+            kind: "disconnect",
+            retryable: true,
+            admission: "definitely-not-admitted",
+          }
         : { kind: "unexpected" },
   });
 }
@@ -196,6 +200,60 @@ describe("PreparedRequest", () => {
     });
   });
 
+  it("detaches when a disconnect leaves authoritative admission unknown", async () => {
+    const request = prepareRequest({
+      identity: identity(),
+      fingerprint: "immutable-request",
+      scope: new PreparedRequestScope("window-session"),
+      retry: { kind: "none" },
+      dispatch: async () => {
+        throw disconnect;
+      },
+      classifyFailure: () => ({
+        kind: "disconnect",
+        retryable: false,
+        admission: "unknown",
+      }),
+    });
+
+    await expect(request.admission).resolves.toMatchObject({
+      kind: "disconnected",
+      retryable: false,
+    });
+    await expect(request.settled).resolves.toEqual({
+      kind: "detached",
+      authoritativeOperationMayContinue: true,
+    });
+  });
+
+  it("preserves unknown admission through retryable disconnect disposal", async () => {
+    const scope = new PreparedRequestScope("window-session");
+    const request = prepareRequest({
+      identity: identity(),
+      fingerprint: "immutable-request",
+      scope,
+      retry: { kind: "stable-id", receiverDeduplication: "required" },
+      dispatch: async () => {
+        throw disconnect;
+      },
+      classifyFailure: () => ({
+        kind: "disconnect",
+        retryable: true,
+        admission: "unknown",
+      }),
+    });
+
+    await expect(request.admission).resolves.toMatchObject({
+      kind: "disconnected",
+      retryable: true,
+    });
+    scope.dispose();
+    await expect(request.settled).resolves.toEqual({
+      kind: "detached",
+      authoritativeOperationMayContinue: true,
+    });
+  });
+
   it("preserves retry eligibility and stable logical identity", async () => {
     const authoritative = controlled<{ readonly kind: "succeeded" }>();
     const identities: RequestIdentity[] = [];
@@ -235,6 +293,72 @@ describe("PreparedRequest", () => {
       kind: "completed",
       outcome: { kind: "succeeded" },
     });
+  });
+
+  it("rejects retry dispatch unless a classified disconnect grants eligibility", async () => {
+    const authoritative = controlled<{ readonly kind: "succeeded" }>();
+    const dispatch = vi.fn(async () => ({
+      kind: "admitted" as const,
+      admission: { accepted: true as const },
+      disposition: "fresh" as const,
+      settled: authoritative.promise,
+    }));
+    const request = prepare({ retry: "stable-id", dispatch });
+
+    await expect(request.admission).resolves.toMatchObject({
+      kind: "admitted",
+    });
+    if (request.retry.kind === "disabled") throw new Error("retry disabled");
+    await expect(request.retry.dispatch()).rejects.toThrow(
+      "not eligible for retry",
+    );
+    expect(dispatch).toHaveBeenCalledOnce();
+    authoritative.resolve({ kind: "succeeded" });
+  });
+
+  it("rejects a retry that overlaps the initial unclassified attempt", async () => {
+    const dispatch = controlled<DispatchResult>();
+    const dispatchFn = vi.fn(() => dispatch.promise);
+    const request = prepare({ retry: "stable-id", dispatch: dispatchFn });
+    await Promise.resolve();
+
+    if (request.retry.kind === "disabled") throw new Error("retry disabled");
+    await expect(request.retry.dispatch()).rejects.toThrow(
+      "not eligible for retry",
+    );
+    expect(dispatchFn).toHaveBeenCalledOnce();
+
+    dispatch.resolve({ kind: "refused", reason: "unauthorized" });
+    await expect(request.admission).resolves.toMatchObject({ kind: "refused" });
+  });
+
+  it("reports a late failure-classifier bug after disposal", async () => {
+    const scope = new PreparedRequestScope("window-session");
+    const dispatch = controlled<DispatchResult>();
+    const classifierFailure = new Error("classifier failed");
+    const reportError = vi.fn();
+    const request = prepareRequest({
+      identity: identity(),
+      fingerprint: "immutable-request",
+      scope,
+      retry: { kind: "none" },
+      dispatch: () => dispatch.promise,
+      classifyFailure: () => {
+        throw classifierFailure;
+      },
+      reportError,
+    });
+    await Promise.resolve();
+    scope.dispose();
+    dispatch.reject(disconnect);
+
+    await expect(request.settled).resolves.toEqual({
+      kind: "detached",
+      authoritativeOperationMayContinue: true,
+    });
+    await vi.waitFor(() =>
+      expect(reportError).toHaveBeenCalledWith(classifierFailure),
+    );
   });
 
   it("rejects conflicting RequestId reuse and removes registrations in finally", async () => {

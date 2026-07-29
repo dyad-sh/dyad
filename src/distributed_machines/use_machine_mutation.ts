@@ -31,6 +31,11 @@ export type MachineMutationExecution<Failure = unknown> =
   | { readonly kind: "superseded" }
   | { readonly kind: "failed"; readonly error: Failure };
 
+export type MachineMutationTerminalExecution<Failure = unknown> = Exclude<
+  MachineMutationExecution<Failure>,
+  { readonly kind: "idle" } | { readonly kind: "running" }
+>;
+
 export interface UseMachineMutationOptions<
   Input,
   Admission,
@@ -45,18 +50,13 @@ export interface UseMachineMutationOptions<
         readonly kind: "available";
         readonly observedRevision: ObservedRevisionToken;
       };
-  /**
-   * This token is captured by the returned render-time callback. The helper
-   * never substitutes a newer token when the callback is invoked.
-   */
-  readonly observedRevision?: ObservedRevisionToken;
   readonly request: (
     input: Input,
     observedRevision: ObservedRevisionToken | undefined,
   ) => PreparedRequest<Admission, Outcome, Refusal>;
   readonly classifyOutcome: (
     outcome: Outcome,
-  ) => Exclude<MachineMutationExecution<Failure>, { readonly kind: "idle" }>;
+  ) => MachineMutationTerminalExecution<Failure>;
   readonly onUnexpectedError?: (error: unknown) => void;
 }
 
@@ -109,8 +109,9 @@ export function useMachineMutation<
   >(undefined);
   const mounted = useRef(true);
   const nextGeneration = useRef(0);
-  const { request, observedRevision, classifyOutcome, onUnexpectedError } =
-    options;
+  const { request, snapshot, classifyOutcome, onUnexpectedError } = options;
+  const observedRevision =
+    snapshot.kind === "available" ? snapshot.observedRevision : undefined;
   const reportUnexpected = useCallback(
     (error: unknown): void => {
       try {

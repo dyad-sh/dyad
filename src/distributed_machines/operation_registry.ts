@@ -1,4 +1,8 @@
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import {
+  sameInvocationRef,
+  type InvocationRef,
+} from "@/state_machines/invocation_ref";
 import type {
   ActorDisposalCause,
   ActorInstanceId,
@@ -22,12 +26,17 @@ export interface OperationOwner {
   readonly windowSessionId: string;
 }
 
-export interface OperationAdmissionIdentity<InvocationRef> {
+export interface OperationLookupIdentity {
   readonly requestId: RequestId;
-  readonly invocationRef: InvocationRef;
   /** Complete immutable identity/fingerprint for conflict detection. */
   readonly fingerprint: string;
   readonly owner: OperationOwner;
+}
+
+export interface OperationAdmissionIdentity<
+  Ref extends InvocationRef,
+> extends OperationLookupIdentity {
+  readonly invocationRef: Ref;
 }
 
 export interface OperationReceiptMetadata {
@@ -104,14 +113,16 @@ function deferred<Value>(): Deferred<Value> {
   return { promise, resolve, reject };
 }
 
-interface OperationEntry<Outcome, InvocationRef> {
-  readonly identity: OperationAdmissionIdentity<InvocationRef>;
-  readonly deferred: Deferred<OperationSettlement<Outcome, InvocationRef>>;
+interface OperationEntry<Outcome, Ref extends InvocationRef> {
+  readonly identity: OperationAdmissionIdentity<Ref>;
+  readonly deferred: Deferred<OperationSettlement<Outcome, Ref>>;
   readonly listeners: Set<
-    (settlement: OperationSettlement<Outcome, InvocationRef>) => void
+    (settlement: OperationSettlement<Outcome, Ref>) => void
   >;
-  ticket?: OperationTicket<Outcome, InvocationRef>;
-  settlement?: OperationSettlement<Outcome, InvocationRef>;
+  ticket?: OperationTicket<Outcome, Ref>;
+  settlement?: OperationSettlement<Outcome, Ref>;
+  rejected: boolean;
+  rejection?: unknown;
 }
 
 function sameOwner(left: OperationOwner, right: OperationOwner): boolean {
@@ -137,17 +148,13 @@ function sameLogicalOwner(
   );
 }
 
-export interface OperationRegistryOptions<Outcome, InvocationRef> {
+export interface OperationRegistryOptions<Outcome> {
   readonly maxUnresolved: number;
   readonly maxSettledReplay: number;
   readonly now: () => number;
   readonly disposalOutcome: (cause: OperationDisposalCause) => Outcome;
   readonly supersededOutcome: () => Outcome;
   readonly enqueueFailureOutcome: (error: unknown) => Outcome;
-  readonly sameInvocationRef: (
-    left: InvocationRef,
-    right: InvocationRef,
-  ) => boolean;
   readonly reportError?: (error: unknown) => void;
 }
 
@@ -155,18 +162,13 @@ export interface OperationRegistryOptions<Outcome, InvocationRef> {
  * In-process authoritative request settlement. Unresolved entries are pinned;
  * only independently bounded settled replay history is evicted.
  */
-export class OperationRegistry<Outcome, InvocationRef> {
-  private readonly entries = new Map<
-    RequestId,
-    OperationEntry<Outcome, InvocationRef>
-  >();
+export class OperationRegistry<Outcome, Ref extends InvocationRef> {
+  private readonly entries = new Map<RequestId, OperationEntry<Outcome, Ref>>();
   private unresolved = 0;
   private disposed = false;
   private readonly disposeListeners = new Set<() => void>();
 
-  constructor(
-    private readonly options: OperationRegistryOptions<Outcome, InvocationRef>,
-  ) {
+  constructor(private readonly options: OperationRegistryOptions<Outcome>) {
     if (
       !Number.isSafeInteger(options.maxUnresolved) ||
       options.maxUnresolved < 1 ||
@@ -178,9 +180,9 @@ export class OperationRegistry<Outcome, InvocationRef> {
   }
 
   admit(
-    identity: OperationAdmissionIdentity<InvocationRef>,
+    identity: OperationAdmissionIdentity<Ref>,
     options: { readonly retry?: "new-invocation" } = {},
-  ): OperationAdmission<Outcome, InvocationRef> {
+  ): OperationAdmission<Outcome, Ref> {
     if (this.disposed) throw new Error("OperationRegistry is disposed");
     const existing = this.entries.get(identity.requestId);
     if (existing) {
@@ -193,7 +195,7 @@ export class OperationRegistry<Outcome, InvocationRef> {
       if (options.retry !== "new-invocation") {
         if (
           !sameOwner(existing.identity.owner, identity.owner) ||
-          !this.options.sameInvocationRef(
+          !sameInvocationRef(
             existing.identity.invocationRef,
             identity.invocationRef,
           )
@@ -201,12 +203,12 @@ export class OperationRegistry<Outcome, InvocationRef> {
           throw new OperationIdentityConflictError(identity.requestId);
         }
         return {
-          kind: existing.settlement ? "replayed" : "coalesced",
+          kind: this.isTerminal(existing) ? "replayed" : "coalesced",
           ticket: this.ticket(existing),
         };
       }
       if (
-        this.options.sameInvocationRef(
+        sameInvocationRef(
           existing.identity.invocationRef,
           identity.invocationRef,
         )
@@ -214,12 +216,12 @@ export class OperationRegistry<Outcome, InvocationRef> {
         throw new OperationIdentityConflictError(identity.requestId);
       }
       if (
-        existing.settlement &&
+        this.isTerminal(existing) &&
         this.unresolved >= this.options.maxUnresolved
       ) {
         throw new OperationCapacityError();
       }
-      if (!existing.settlement) {
+      if (!this.isTerminal(existing)) {
         this.settle(
           existing.identity.requestId,
           existing.identity.invocationRef,
@@ -245,13 +247,14 @@ export class OperationRegistry<Outcome, InvocationRef> {
     if (this.unresolved >= this.options.maxUnresolved) {
       throw new OperationCapacityError();
     }
-    const entry: OperationEntry<Outcome, InvocationRef> = {
+    const entry: OperationEntry<Outcome, Ref> = {
       identity: Object.freeze({
         ...identity,
         owner: Object.freeze({ ...identity.owner }),
       }),
       deferred: deferred(),
       listeners: new Set(),
+      rejected: false,
     };
     this.entries.set(identity.requestId, entry);
     this.unresolved += 1;
@@ -263,10 +266,10 @@ export class OperationRegistry<Outcome, InvocationRef> {
    * This never creates authoritative state.
    */
   reattach(
-    identity: OperationAdmissionIdentity<InvocationRef>,
+    identity: OperationLookupIdentity,
   ):
     | Extract<
-        OperationAdmission<Outcome, InvocationRef>,
+        OperationAdmission<Outcome, Ref>,
         { readonly kind: "coalesced" | "replayed" }
       >
     | undefined {
@@ -279,25 +282,22 @@ export class OperationRegistry<Outcome, InvocationRef> {
       throw new OperationIdentityConflictError(identity.requestId);
     }
     return {
-      kind: existing.settlement ? "replayed" : "coalesced",
+      kind: this.isTerminal(existing) ? "replayed" : "coalesced",
       ticket: this.ticket(existing),
     };
   }
 
   settle(
     requestId: RequestId,
-    invocationRef: InvocationRef,
+    invocationRef: Ref,
     outcome: Outcome,
     receipt: OperationReceiptMetadata,
   ): boolean {
     const entry = this.entries.get(requestId);
     if (
       !entry ||
-      entry.settlement ||
-      !this.options.sameInvocationRef(
-        entry.identity.invocationRef,
-        invocationRef,
-      )
+      this.isTerminal(entry) ||
+      !sameInvocationRef(entry.identity.invocationRef, invocationRef)
     ) {
       return false;
     }
@@ -331,23 +331,32 @@ export class OperationRegistry<Outcome, InvocationRef> {
   ): number {
     let settled = 0;
     for (const entry of Array.from(this.entries.values())) {
-      if (entry.settlement || !matches(entry.identity.owner)) continue;
-      if (
-        this.settle(
+      if (this.isTerminal(entry) || !matches(entry.identity.owner)) continue;
+      try {
+        if (
+          this.settle(
+            entry.identity.requestId,
+            entry.identity.invocationRef,
+            this.options.disposalOutcome(cause),
+            {
+              actor: {
+                actorInstanceId: entry.identity.owner.actorInstanceId,
+                snapshotRevision: entry.identity.owner.actorRevision,
+                transactionSequence: 0,
+              },
+              acknowledgedAt: this.options.now(),
+            },
+          )
+        ) {
+          settled += 1;
+        }
+      } catch (error) {
+        this.reject(
           entry.identity.requestId,
           entry.identity.invocationRef,
-          this.options.disposalOutcome(cause),
-          {
-            actor: {
-              actorInstanceId: entry.identity.owner.actorInstanceId,
-              snapshotRevision: entry.identity.owner.actorRevision,
-              transactionSequence: 0,
-            },
-            acknowledgedAt: this.options.now(),
-          },
-        )
-      ) {
-        settled += 1;
+          error,
+        );
+        this.report(error);
       }
     }
     return settled;
@@ -416,18 +425,21 @@ export class OperationRegistry<Outcome, InvocationRef> {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    this.settleDisposed("host");
-    for (const entry of this.entries.values()) entry.listeners.clear();
-    this.entries.clear();
-    this.unresolved = 0;
-    for (const listener of Array.from(this.disposeListeners)) {
-      try {
-        listener();
-      } catch (error) {
-        this.report(error);
+    try {
+      this.settleDisposed("host");
+    } finally {
+      for (const entry of this.entries.values()) entry.listeners.clear();
+      this.entries.clear();
+      this.unresolved = 0;
+      for (const listener of Array.from(this.disposeListeners)) {
+        try {
+          listener();
+        } catch (error) {
+          this.report(error);
+        }
       }
+      this.disposeListeners.clear();
     }
-    this.disposeListeners.clear();
   }
 
   enqueueFailureOutcome(error: unknown): Outcome {
@@ -436,17 +448,14 @@ export class OperationRegistry<Outcome, InvocationRef> {
 
   rollbackAdmission(
     requestId: RequestId,
-    invocationRef: InvocationRef,
+    invocationRef: Ref,
     error: unknown,
   ): boolean {
     const entry = this.entries.get(requestId);
     if (
       !entry ||
-      entry.settlement ||
-      !this.options.sameInvocationRef(
-        entry.identity.invocationRef,
-        invocationRef,
-      )
+      this.isTerminal(entry) ||
+      !sameInvocationRef(entry.identity.invocationRef, invocationRef)
     ) {
       return false;
     }
@@ -464,18 +473,34 @@ export class OperationRegistry<Outcome, InvocationRef> {
     this.report(error);
   }
 
+  reject(requestId: RequestId, invocationRef: Ref, error: unknown): boolean {
+    const entry = this.entries.get(requestId);
+    if (
+      !entry ||
+      this.isTerminal(entry) ||
+      !sameInvocationRef(entry.identity.invocationRef, invocationRef)
+    ) {
+      return false;
+    }
+    entry.rejected = true;
+    entry.rejection = error;
+    this.unresolved -= 1;
+    entry.listeners.clear();
+    entry.deferred.reject(error);
+    this.trimSettledReplay();
+    return true;
+  }
+
   private ticket(
-    entry: OperationEntry<Outcome, InvocationRef>,
-  ): OperationTicket<Outcome, InvocationRef> {
+    entry: OperationEntry<Outcome, Ref>,
+  ): OperationTicket<Outcome, Ref> {
     if (entry.ticket) return entry.ticket;
     entry.ticket = Object.freeze({
       requestId: entry.identity.requestId,
       invocationRef: entry.identity.invocationRef,
       settled: entry.deferred.promise,
       subscribe: (
-        listener: (
-          settlement: OperationSettlement<Outcome, InvocationRef>,
-        ) => void,
+        listener: (settlement: OperationSettlement<Outcome, Ref>) => void,
       ) => {
         if (entry.settlement) {
           try {
@@ -485,6 +510,7 @@ export class OperationRegistry<Outcome, InvocationRef> {
           }
           return () => undefined;
         }
+        if (entry.rejected) return () => undefined;
         entry.listeners.add(listener);
         return () => entry.listeners.delete(listener);
       },
@@ -496,7 +522,7 @@ export class OperationRegistry<Outcome, InvocationRef> {
     let settledCount = this.entries.size - this.unresolved;
     if (settledCount <= this.options.maxSettledReplay) return;
     for (const [requestId, entry] of this.entries) {
-      if (!entry.settlement) continue;
+      if (!this.isTerminal(entry)) continue;
       this.entries.delete(requestId);
       settledCount -= 1;
       if (settledCount <= this.options.maxSettledReplay) return;
@@ -510,29 +536,38 @@ export class OperationRegistry<Outcome, InvocationRef> {
       // Error reporting cannot corrupt settlement.
     }
   }
+
+  private isTerminal(entry: OperationEntry<Outcome, Ref>): boolean {
+    return entry.settlement !== undefined || entry.rejected;
+  }
 }
 
 export interface AdmitOperationAndEnqueueOptions<
   Outcome,
-  InvocationRef,
+  Ref extends InvocationRef,
   EnqueueResult,
 > {
-  readonly registry: OperationRegistry<Outcome, InvocationRef>;
-  readonly identity: OperationAdmissionIdentity<InvocationRef>;
+  readonly registry: OperationRegistry<Outcome, Ref>;
+  readonly identity: OperationAdmissionIdentity<Ref>;
   readonly retry?: "new-invocation";
-  readonly enqueue: () => EnqueueResult;
+  readonly enqueue: () => EnqueueResult extends PromiseLike<unknown>
+    ? never
+    : EnqueueResult;
   readonly receiptOnEnqueueFailure: () => OperationReceiptMetadata;
+  readonly assertAfterRegistration?: () => void;
 }
 
 export interface FinalizeOperationAdmissionOptions<
   Outcome,
-  InvocationRef,
+  Ref extends InvocationRef,
   EnqueueResult,
-> extends AdmitOperationAndEnqueueOptions<
-  Outcome,
-  InvocationRef,
-  EnqueueResult
+> extends Omit<
+  AdmitOperationAndEnqueueOptions<Outcome, Ref, EnqueueResult>,
+  "identity"
 > {
+  readonly identity: OperationLookupIdentity;
+  /** Minted only after the final authoritative admission check succeeds. */
+  readonly createInvocationRef: () => Ref;
   /**
    * Synchronously rechecks authorization lifetime, actor instance/revision,
    * keyed gate, host, machine, key, and window session immediately before the
@@ -545,22 +580,27 @@ export interface FinalizeOperationAdmissionOptions<
  * The final admission linearization point. There is deliberately no async
  * boundary between authoritative registration and trusted-event enqueue.
  */
-export function admitOperationAndEnqueue<Outcome, InvocationRef, EnqueueResult>(
-  options: AdmitOperationAndEnqueueOptions<
-    Outcome,
-    InvocationRef,
-    EnqueueResult
-  >,
+export function admitOperationAndEnqueue<
+  Outcome,
+  Ref extends InvocationRef,
+  EnqueueResult,
+>(
+  options: AdmitOperationAndEnqueueOptions<Outcome, Ref, EnqueueResult>,
 ):
   | {
       readonly kind: "enqueued";
-      readonly operation: OperationTicket<Outcome, InvocationRef>;
+      readonly operation: OperationTicket<Outcome, Ref>;
       readonly enqueueResult: EnqueueResult;
     }
   | {
       readonly kind: "coalesced" | "replayed";
-      readonly operation: OperationTicket<Outcome, InvocationRef>;
+      readonly operation: OperationTicket<Outcome, Ref>;
     } {
+  if (options.enqueue.constructor.name === "AsyncFunction") {
+    throw new Error(
+      "Authoritative operation enqueue must be synchronous and non-thenable",
+    );
+  }
   const admission = options.registry.admit(
     options.identity,
     options.retry ? { retry: options.retry } : undefined,
@@ -569,12 +609,26 @@ export function admitOperationAndEnqueue<Outcome, InvocationRef, EnqueueResult>(
     return { kind: admission.kind, operation: admission.ticket };
   }
   try {
+    options.assertAfterRegistration?.();
+  } catch (error) {
+    options.registry.rollbackAdmission(
+      options.identity.requestId,
+      options.identity.invocationRef,
+      error,
+    );
+    throw error;
+  }
+  try {
     const enqueueResult = options.enqueue();
     if (
       ((typeof enqueueResult === "object" && enqueueResult !== null) ||
         typeof enqueueResult === "function") &&
       "then" in enqueueResult
     ) {
+      const thenable = enqueueResult as PromiseLike<unknown>;
+      void Promise.resolve(thenable).catch((error) =>
+        options.registry.reportFailure(error),
+      );
       throw new Error(
         "Authoritative operation enqueue must be synchronous and non-thenable",
       );
@@ -606,17 +660,11 @@ export function admitOperationAndEnqueue<Outcome, InvocationRef, EnqueueResult>(
 
 export function finalizeOperationAdmission<
   Outcome,
-  InvocationRef,
+  Ref extends InvocationRef,
   EnqueueResult,
 >(
-  options: FinalizeOperationAdmissionOptions<
-    Outcome,
-    InvocationRef,
-    EnqueueResult
-  >,
-): ReturnType<
-  typeof admitOperationAndEnqueue<Outcome, InvocationRef, EnqueueResult>
-> {
+  options: FinalizeOperationAdmissionOptions<Outcome, Ref, EnqueueResult>,
+): ReturnType<typeof admitOperationAndEnqueue<Outcome, Ref, EnqueueResult>> {
   if (!options.retry) {
     const retained = options.registry.reattach(options.identity);
     if (retained) {
@@ -624,7 +672,20 @@ export function finalizeOperationAdmission<
     }
   }
   options.assertFinalAdmission();
-  return admitOperationAndEnqueue(options);
+  const identity: OperationAdmissionIdentity<Ref> = {
+    ...options.identity,
+    invocationRef: options.createInvocationRef(),
+  };
+  // IdSource/mint adapters are injected synchronous code and may reenter
+  // disposal or replacement before returning the runtime identity.
+  options.assertFinalAdmission();
+  return admitOperationAndEnqueue({
+    ...options,
+    identity,
+    assertAfterRegistration: options.retry
+      ? options.assertFinalAdmission
+      : undefined,
+  });
 }
 
 export interface OperationActorDisposalSource {
@@ -651,9 +712,9 @@ export interface OperationWindowSessionDisposalSource {
  */
 export function bindOperationRegistryLifetimes<
   Outcome,
-  InvocationRef,
+  Ref extends InvocationRef,
 >(options: {
-  readonly registry: OperationRegistry<Outcome, InvocationRef>;
+  readonly registry: OperationRegistry<Outcome, Ref>;
   readonly actors: OperationActorDisposalSource;
   readonly windowSessions: OperationWindowSessionDisposalSource;
   readonly hostId: string;
@@ -699,16 +760,25 @@ export function bindOperationRegistryLifetimes<
   return dispose;
 }
 
-export function createOperationOutcomePublisher<Outcome, InvocationRef>(
-  registry: OperationRegistry<Outcome, InvocationRef>,
+export function createOperationOutcomePublisher<
+  Outcome,
+  Ref extends InvocationRef,
+>(
+  registry: OperationRegistry<Outcome, Ref>,
   captureReceipt: (
-    outcome: CorrelatedOperationOutcome<Outcome, InvocationRef>,
+    outcome: CorrelatedOperationOutcome<Outcome, Ref>,
   ) => OperationReceiptMetadata,
-): (outcome: CorrelatedOperationOutcome<Outcome, InvocationRef>) => void {
+): (outcome: CorrelatedOperationOutcome<Outcome, Ref>) => void {
   return (outcome) => {
     // Capture mutable actor transaction metadata synchronously at the
     // post-commit publication point, before any settlement callback can reenter.
-    const receipt = captureReceipt(outcome);
+    let receipt: OperationReceiptMetadata;
+    try {
+      receipt = captureReceipt(outcome);
+    } catch (error) {
+      registry.reject(outcome.requestId, outcome.invocationRef, error);
+      throw error;
+    }
     registry.settle(
       outcome.requestId,
       outcome.invocationRef,

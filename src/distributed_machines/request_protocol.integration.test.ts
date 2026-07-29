@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { change } from "@/state_machines/types";
 import {
+  createInvocationRef,
+  type InvocationRef,
+} from "@/state_machines/invocation_ref";
+import {
   createFakeClock,
   createSequentialIdSource,
 } from "@/state_machines/testing";
@@ -10,7 +14,7 @@ import {
   bindOperationRegistryLifetimes,
   finalizeOperationAdmission,
   OperationRegistry,
-  type OperationAdmissionIdentity,
+  type OperationLookupIdentity,
 } from "./operation_registry";
 import { PreparedRequestScope } from "./prepared_request";
 import { createCompletionAwareActor } from "./request_actor";
@@ -37,7 +41,7 @@ describe("completion-aware actor request bridge", () => {
           readonly kind: "disposed";
           readonly cause: "key" | "window-session";
         };
-    type Ref = { readonly id: string };
+    type Ref = InvocationRef<"request-test", string>;
     const authorization = controlled();
     const events: string[] = [];
     type State = { readonly value: number };
@@ -84,7 +88,6 @@ describe("completion-aware actor request bridge", () => {
       maxUnresolved: 4,
       maxSettledReplay: 4,
       now: () => 1,
-      sameInvocationRef: (left, right) => left.id === right.id,
       disposalOutcome: (cause) => ({
         kind: "disposed",
         cause: cause === "window-session" ? "window-session" : "key",
@@ -113,16 +116,16 @@ describe("completion-aware actor request bridge", () => {
       idempotencyKey: "dedupe-one" as RequestIdempotencyKey,
       windowSessionId: "window-session",
     };
-    const invocationRef = { id: "runtime-one" };
     const scope = new PreparedRequestScope("window-session");
+    const operationIds = createSequentialIdSource();
+    let invocationRef: Ref | undefined;
     const register = scope.register.bind(scope);
     scope.register = (...args) => {
       events.push("client-registered");
       return register(...args);
     };
-    const operationIdentity: OperationAdmissionIdentity<Ref> = {
+    const operationIdentity: OperationLookupIdentity = {
       requestId: identity.requestId,
-      invocationRef,
       fingerprint: "intent-fingerprint",
       owner: {
         hostId: "host",
@@ -147,6 +150,15 @@ describe("completion-aware actor request bridge", () => {
         const admitted = finalizeOperationAdmission({
           registry,
           identity: operationIdentity,
+          createInvocationRef: () => {
+            events.push("invocation-minted");
+            invocationRef = createInvocationRef(
+              definition.id,
+              "key",
+              operationIds,
+            );
+            return invocationRef;
+          },
           assertFinalAdmission: () => {
             events.push("final-revalidation");
             expect(
@@ -207,11 +219,14 @@ describe("completion-aware actor request bridge", () => {
       "ipc-started",
       "authorization-finished",
       "final-revalidation",
+      "invocation-minted",
+      "final-revalidation",
       "trusted-event-enqueued",
     ]);
     expect(registry.inspect().unresolved).toBe(1);
     expect(hostedActor.getSnapshot()).toEqual({ value: 1 });
 
+    if (!invocationRef) throw new Error("Invocation was not minted");
     registry.settle(
       identity.requestId,
       invocationRef,
@@ -229,7 +244,7 @@ describe("completion-aware actor request bridge", () => {
     const actorOwned = registry.admit({
       ...operationIdentity,
       requestId: "request-actor-disposal" as RequestId,
-      invocationRef: { id: "runtime-actor-disposal" },
+      invocationRef: createInvocationRef(definition.id, "key", operationIds),
     });
     await host.disposeKey(definition.id, "key");
     await expect(actorOwned.ticket.settled).resolves.toMatchObject({
@@ -239,7 +254,7 @@ describe("completion-aware actor request bridge", () => {
     const windowOwned = registry.admit({
       ...operationIdentity,
       requestId: "request-window-disposal" as RequestId,
-      invocationRef: { id: "runtime-window-disposal" },
+      invocationRef: createInvocationRef(definition.id, "key", operationIds),
       owner: {
         ...operationIdentity.owner,
         actorInstanceId: "retained-actor",

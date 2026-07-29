@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { DyadErrorKind } from "@/errors/dyad_error";
 import { TransactionalDispatcher } from "@/state_machines/dispatcher";
+import type { InvocationRef } from "@/state_machines/invocation_ref";
 import { change } from "@/state_machines/types";
 import {
   bindOperationRegistryLifetimes,
@@ -16,9 +17,7 @@ import {
 } from "./operation_registry";
 import type { RequestId } from "./request_identity";
 
-interface Ref {
-  readonly id: string;
-}
+type Ref = InvocationRef<"operation-test", string>;
 
 type Outcome =
   | { readonly kind: "succeeded"; readonly value?: number }
@@ -32,7 +31,6 @@ function registry(maxUnresolved = 8, maxSettledReplay = 4) {
     maxUnresolved,
     maxSettledReplay,
     now: () => 100,
-    sameInvocationRef: (left, right) => left.id === right.id,
     disposalOutcome: (cause) => ({ kind: "disposed", cause }),
     supersededOutcome: () => ({ kind: "superseded" }),
     enqueueFailureOutcome: (error) => ({
@@ -51,7 +49,11 @@ function identity(
 ): OperationAdmissionIdentity<Ref> {
   return {
     requestId: request as RequestId,
-    invocationRef: { id: invocation },
+    invocationRef: {
+      kind: "operation-test",
+      entityKey: overrides.keyId ?? "key",
+      operationId: invocation,
+    },
     fingerprint: overrides.fingerprint ?? "fingerprint",
     owner: {
       hostId: overrides.hostId ?? "host",
@@ -61,6 +63,13 @@ function identity(
       actorRevision: overrides.actorRevision ?? 3,
       windowSessionId: overrides.windowSessionId ?? "window",
     },
+  };
+}
+
+function finalAdmission(identity: OperationAdmissionIdentity<Ref>) {
+  return {
+    identity,
+    createInvocationRef: () => identity.invocationRef,
   };
 }
 
@@ -110,7 +119,7 @@ describe("OperationRegistry", () => {
     const fresh = operations.admit(stable);
     const duplicate = operations.admit({
       ...stable,
-      invocationRef: { id: stable.invocationRef.id },
+      invocationRef: { ...stable.invocationRef },
     });
     expect(duplicate.kind).toBe("coalesced");
     expect(duplicate.ticket).toBe(fresh.ticket);
@@ -280,6 +289,57 @@ describe("OperationRegistry", () => {
     },
   );
 
+  it.each(["outcome", "clock"] as const)(
+    "rejects every operation and completes cleanup when disposal %s throws",
+    async (failureStage) => {
+      const failure = new Error(`disposal ${failureStage} failed`);
+      const reported: unknown[] = [];
+      const operations = new OperationRegistry<Outcome, Ref>({
+        maxUnresolved: 4,
+        maxSettledReplay: 4,
+        now:
+          failureStage === "clock"
+            ? () => {
+                throw failure;
+              }
+            : () => 100,
+        disposalOutcome:
+          failureStage === "outcome"
+            ? () => {
+                throw failure;
+              }
+            : (cause) => ({ kind: "disposed", cause }),
+        supersededOutcome: () => ({ kind: "superseded" }),
+        enqueueFailureOutcome: () => ({
+          kind: "failed",
+          error: "enqueue",
+        }),
+        reportError: (error) => reported.push(error),
+      });
+      const first = operations.admit(identity("first"));
+      const second = operations.admit(identity("second", "second-ref"));
+      const firstRejected = expect(first.ticket.settled).rejects.toBe(failure);
+      const secondRejected = expect(second.ticket.settled).rejects.toBe(
+        failure,
+      );
+      const disposed = vi.fn();
+      operations.onDispose(disposed);
+
+      operations.dispose();
+
+      await firstRejected;
+      await secondRejected;
+      expect(operations.inspect()).toEqual({
+        unresolved: 0,
+        settled: 0,
+        total: 0,
+      });
+      expect(disposed).toHaveBeenCalledOnce();
+      expect(reported).toEqual([failure, failure]);
+      expect(() => operations.dispose()).not.toThrow();
+    },
+  );
+
   it("rejects stale invocation settlement after an explicit retry", async () => {
     const operations = registry();
     const stable = identity();
@@ -311,6 +371,22 @@ describe("OperationRegistry", () => {
     await expect(replacement.ticket.settled).resolves.toMatchObject({
       invocationRef: replacementIdentity.invocationRef,
     });
+  });
+
+  it("compares the complete shared invocation identity", () => {
+    const operations = registry();
+    const stable = identity();
+    operations.admit(stable);
+
+    expect(() =>
+      operations.admit({
+        ...stable,
+        invocationRef: {
+          ...stable.invocationRef,
+          entityKey: "other-key",
+        },
+      }),
+    ).toThrow(OperationIdentityConflictError);
   });
 
   it("rejects an explicit retry that reuses the runtime InvocationRef", () => {
@@ -363,10 +439,12 @@ describe("OperationRegistry", () => {
 
     const retained = finalizeOperationAdmission({
       registry: operations,
-      identity: identity("request-one", "unknown-retry-invocation", {
-        actorInstanceId: "replacement-actor",
-        actorRevision: 99,
-      }),
+      ...finalAdmission(
+        identity("request-one", "unknown-retry-invocation", {
+          actorInstanceId: "replacement-actor",
+          actorRevision: 99,
+        }),
+      ),
       assertFinalAdmission,
       enqueue,
       receiptOnEnqueueFailure: receipt,
@@ -434,7 +512,6 @@ describe("OperationRegistry", () => {
       maxUnresolved: 2,
       maxSettledReplay: 2,
       now: () => 100,
-      sameInvocationRef: (left, right) => left.id === right.id,
       disposalOutcome: (cause) => ({ kind: "disposed", cause }),
       supersededOutcome: () => ({ kind: "superseded" }),
       enqueueFailureOutcome: () => ({ kind: "failed", error: "enqueue" }),
@@ -470,7 +547,7 @@ describe("OperationRegistry", () => {
     expect(() =>
       finalizeOperationAdmission({
         registry: operations,
-        identity: stable,
+        ...finalAdmission(stable),
         assertFinalAdmission: () => {
           order.push("revalidate");
           throw new Error("fenced");
@@ -483,7 +560,7 @@ describe("OperationRegistry", () => {
 
     finalizeOperationAdmission({
       registry: operations,
-      identity: stable,
+      ...finalAdmission(stable),
       assertFinalAdmission: () => order.push("revalidate-current-actor"),
       enqueue: () => {
         expect(operations.has(stable.requestId)).toBe(true);
@@ -494,8 +571,34 @@ describe("OperationRegistry", () => {
     expect(order).toEqual([
       "revalidate",
       "revalidate-current-actor",
+      "revalidate-current-actor",
       "enqueue",
     ]);
+  });
+
+  it("revalidates after runtime invocation minting reentry", () => {
+    const operations = registry();
+    const stable = identity();
+    let current = true;
+    const enqueue = vi.fn();
+
+    expect(() =>
+      finalizeOperationAdmission({
+        registry: operations,
+        identity: stable,
+        createInvocationRef: () => {
+          current = false;
+          return stable.invocationRef;
+        },
+        assertFinalAdmission: () => {
+          if (!current) throw new Error("actor replaced during mint");
+        },
+        enqueue,
+        receiptOnEnqueueFailure: receipt,
+      }),
+    ).toThrow("actor replaced during mint");
+    expect(enqueue).not.toHaveBeenCalled();
+    expect(operations.inspect().total).toBe(0);
   });
 
   it("replays a retained match without requiring fresh actor admission", () => {
@@ -514,7 +617,7 @@ describe("OperationRegistry", () => {
 
     const replay = finalizeOperationAdmission({
       registry: operations,
-      identity: stable,
+      ...finalAdmission(stable),
       assertFinalAdmission,
       enqueue: () => {
         throw new Error("must not enqueue replay");
@@ -533,7 +636,7 @@ describe("OperationRegistry", () => {
       expect(() =>
         finalizeOperationAdmission({
           registry: operations,
-          identity: identity(),
+          ...finalAdmission(identity()),
           assertFinalAdmission: () => {
             throw new Error(failure);
           },
@@ -557,7 +660,7 @@ describe("OperationRegistry", () => {
     expect(() =>
       finalizeOperationAdmission({
         registry: operations,
-        identity: stable,
+        ...finalAdmission(stable),
         assertFinalAdmission: () => undefined,
         enqueue: () => {
           throw new Error("enqueue failed");
@@ -583,7 +686,7 @@ describe("OperationRegistry", () => {
     expect(() =>
       finalizeOperationAdmission({
         registry: operations,
-        identity: identity(),
+        ...finalAdmission(identity()),
         assertFinalAdmission: () => undefined,
         enqueue: () => callableThenable,
         receiptOnEnqueueFailure: receipt,
@@ -596,6 +699,26 @@ describe("OperationRegistry", () => {
     });
   });
 
+  it("rejects an async enqueue before it can schedule delayed work", () => {
+    const operations = registry();
+    const invoked = vi.fn();
+    const asyncEnqueue = (async () => {
+      invoked();
+    }) as unknown as () => void;
+
+    expect(() =>
+      finalizeOperationAdmission({
+        registry: operations,
+        ...finalAdmission(identity()),
+        assertFinalAdmission: () => undefined,
+        enqueue: asyncEnqueue,
+        receiptOnEnqueueFailure: receipt,
+      }),
+    ).toThrow("synchronous and non-thenable");
+    expect(invoked).not.toHaveBeenCalled();
+    expect(operations.inspect().total).toBe(0);
+  });
+
   it("atomically admits and enqueues an explicit replacement invocation", async () => {
     const operations = registry();
     const oldIdentity = identity();
@@ -605,7 +728,7 @@ describe("OperationRegistry", () => {
 
     const replacement = finalizeOperationAdmission({
       registry: operations,
-      identity: replacementIdentity,
+      ...finalAdmission(replacementIdentity),
       retry: "new-invocation",
       assertFinalAdmission: () => order.push("revalidated"),
       enqueue: () => {
@@ -616,7 +739,12 @@ describe("OperationRegistry", () => {
     });
 
     expect(replacement.kind).toBe("enqueued");
-    expect(order).toEqual(["revalidated", "enqueued"]);
+    expect(order).toEqual([
+      "revalidated",
+      "revalidated",
+      "revalidated",
+      "enqueued",
+    ]);
     await expect(old.ticket.settled).resolves.toMatchObject({
       outcome: { kind: "superseded" },
     });
@@ -630,6 +758,35 @@ describe("OperationRegistry", () => {
     ).toBe(false);
   });
 
+  it("rolls back a replacement fenced by supersession reentry", () => {
+    const operations = registry();
+    const old = operations.admit(identity());
+    let current = true;
+    old.ticket.subscribe(() => {
+      current = false;
+    });
+    const enqueue = vi.fn();
+
+    expect(() =>
+      finalizeOperationAdmission({
+        registry: operations,
+        ...finalAdmission(identity("request-one", "invocation-two")),
+        retry: "new-invocation",
+        assertFinalAdmission: () => {
+          if (!current) throw new Error("fenced during supersession");
+        },
+        enqueue,
+        receiptOnEnqueueFailure: receipt,
+      }),
+    ).toThrow("fenced during supersession");
+    expect(enqueue).not.toHaveBeenCalled();
+    expect(operations.inspect()).toEqual({
+      unresolved: 0,
+      settled: 0,
+      total: 0,
+    });
+  });
+
   it.each(["outcome", "receipt"] as const)(
     "rolls back fresh admission when enqueue failure %s mapping throws",
     (failureStage) => {
@@ -639,7 +796,6 @@ describe("OperationRegistry", () => {
         maxUnresolved: 1,
         maxSettledReplay: 1,
         now: () => 100,
-        sameInvocationRef: (left, right) => left.id === right.id,
         disposalOutcome: (cause) => ({ kind: "disposed", cause }),
         supersededOutcome: () => ({ kind: "superseded" }),
         enqueueFailureOutcome:
@@ -654,7 +810,7 @@ describe("OperationRegistry", () => {
       expect(() =>
         finalizeOperationAdmission({
           registry: operations,
-          identity: identity(),
+          ...finalAdmission(identity()),
           assertFinalAdmission: () => undefined,
           enqueue: () => {
             throw new Error("enqueue failed");
@@ -741,7 +897,11 @@ describe("OperationRegistry", () => {
     );
     publish({
       requestId: admitted.ticket.requestId,
-      invocationRef: { id: "stale" },
+      invocationRef: {
+        kind: "operation-test",
+        entityKey: "key",
+        operationId: "stale",
+      },
       outcome: { kind: "succeeded" },
     });
     expect(operations.inspect().unresolved).toBe(1);
@@ -753,6 +913,33 @@ describe("OperationRegistry", () => {
     await expect(admitted.ticket.settled).resolves.toMatchObject({
       outcome: { kind: "succeeded" },
     });
+  });
+
+  it("rejects and replays a terminal receipt-capture failure", async () => {
+    const operations = registry();
+    const stable = identity();
+    const admitted = operations.admit(stable);
+    const captureFailure = new Error("receipt capture failed");
+    const publish = createOperationOutcomePublisher(operations, () => {
+      throw captureFailure;
+    });
+
+    expect(() =>
+      publish({
+        requestId: stable.requestId,
+        invocationRef: stable.invocationRef,
+        outcome: { kind: "succeeded" },
+      }),
+    ).toThrow(captureFailure);
+    await expect(admitted.ticket.settled).rejects.toBe(captureFailure);
+    expect(operations.inspect()).toEqual({
+      unresolved: 0,
+      settled: 1,
+      total: 1,
+    });
+    const replay = operations.admit(stable);
+    expect(replay.kind).toBe("replayed");
+    await expect(replay.ticket.settled).rejects.toBe(captureFailure);
   });
 
   it("does not confuse observer or scheduler handoff with completion", async () => {

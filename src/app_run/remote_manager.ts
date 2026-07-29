@@ -147,6 +147,7 @@ export class AppRunRemoteManager {
       scope: this.requestScope,
       ids: this.ids,
       windowSessionId: this.requestScope.windowSessionId,
+      snapshotInput: (operation) => Object.freeze(structuredClone(operation)),
       prepareIntent: (operation) => {
         const currentView = actor.getView();
         const currentObserved =

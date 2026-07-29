@@ -118,6 +118,7 @@ export interface CreateRemoteRequestActorOptions<
   readonly scope: PreparedRequestScope;
   readonly ids: IdSource;
   readonly windowSessionId: string;
+  readonly snapshotInput: (input: Input) => Input;
   readonly prepareIntent: (
     input: Input,
     identity: RequestIdentity,
@@ -189,15 +190,17 @@ export function createRemoteRequestActor<
         never
       >({
         scope: options.scope,
+        snapshotIntent: options.snapshotInput,
         prepareIdentity: () =>
           createRequestIdentity(options.ids, options.windowSessionId),
-        fingerprint: (identity) => options.fingerprint(identity, input),
+        fingerprint: (identity, requestInput) =>
+          options.fingerprint(identity, requestInput),
         retry: options.retry,
         classifyFailure: options.classifyFailure,
         enqueue: () => {
           throw new Error("Remote completion-aware actors do not raw-enqueue");
         },
-        dispatchRequest: async (identity, _input, signal) => {
+        dispatchRequest: async (identity, requestInput, signal) => {
           const lease = options.actor.retain();
           let unsubscribe: () => void = () => undefined;
           let unsubscribeOutcome: () => void = () => undefined;
@@ -241,7 +244,7 @@ export function createRemoteRequestActor<
             if (signal.aborted) throw signal.reason;
             const request =
               preparedIntent.get(identity) ??
-              options.prepareIntent(input, identity);
+              options.prepareIntent(requestInput, identity);
             preparedIntent.set(identity, request);
             if (!("intent" in request)) {
               cleanup();

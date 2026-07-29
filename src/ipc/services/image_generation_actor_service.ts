@@ -40,6 +40,7 @@ export class ImageGenerationActorService {
       const handle = this.host.beginFence(imageGenerationDefinition, {
         key: getImageGenerationKey(),
         allowDuringDrain: (event) =>
+          event.type === "APP_DELETION_STARTED" ||
           event.type === "APP_DELETED" ||
           event.type === "JOB_SUCCEEDED" ||
           event.type === "JOB_FAILED" ||
@@ -61,6 +62,12 @@ export class ImageGenerationActorService {
   }
 
   async prepareAppDeletion(fence: ImageGenerationDeletionFence): Promise<void> {
+    if (fence.actor) {
+      await fence.actor.enqueue({
+        type: "APP_DELETION_STARTED",
+        appId: fence.appId,
+      }).settled;
+    }
     await imageGenerationService.cancelAndSettleApp(fence.appId);
     await fence.handle.seal();
   }

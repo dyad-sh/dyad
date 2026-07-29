@@ -71,6 +71,55 @@ export function transition(
     };
   }
 
+  if (event.type === "APP_DELETION_STARTED") {
+    const disposing = state.jobs.filter(
+      ({ job, activeInvocationRef }) =>
+        job.targetAppId === event.appId && activeInvocationRef !== null,
+    );
+    if (disposing.length === 0) return ignore(state, "job-not-found");
+    return {
+      kind: "applied",
+      state: {
+        jobs: state.jobs.map((current) =>
+          current.job.targetAppId === event.appId &&
+          current.activeInvocationRef !== null
+            ? {
+                ...current,
+                job: { ...current.job, status: "cancelled" as const },
+                activeInvocationRef: null,
+              }
+            : current,
+        ),
+      },
+      commands: disposing.flatMap(({ job, activeInvocationRef }) =>
+        activeInvocationRef
+          ? [
+              {
+                type: "RequestCancel" as const,
+                jobId: job.id,
+                invocationRef: activeInvocationRef,
+              },
+            ]
+          : [],
+      ),
+      outcomes: disposing.flatMap(({ job, requestId, activeInvocationRef }) =>
+        activeInvocationRef
+          ? [
+              {
+                requestId,
+                invocationRef: activeInvocationRef,
+                outcome: {
+                  kind: "disposed" as const,
+                  jobId: job.id,
+                  cause: "app-deletion" as const,
+                },
+              },
+            ]
+          : [],
+      ),
+    };
+  }
+
   if (event.type === "APP_DELETED") {
     const removed = state.jobs.filter(
       ({ job }) => job.targetAppId === event.appId,

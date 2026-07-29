@@ -182,14 +182,22 @@ describe("image generation transition", () => {
     });
   });
 
-  it("cancels active work and prunes every job for a deleted app", () => {
-    const outcome = transition(submittedState(), {
-      type: "APP_DELETED",
+  it("settles active work as disposed before pruning a deleted app", () => {
+    const disposing = transition(submittedState(), {
+      type: "APP_DELETION_STARTED",
       appId: 1,
     });
-    expect(outcome).toEqual({
+    expect(disposing).toEqual({
       kind: "applied",
-      state: { jobs: [] },
+      state: {
+        jobs: [
+          {
+            requestId,
+            job: { ...job, status: "cancelled" },
+            activeInvocationRef: null,
+          },
+        ],
+      },
       commands: [
         {
           type: "RequestCancel",
@@ -208,6 +216,19 @@ describe("image generation transition", () => {
           },
         },
       ],
+    });
+
+    if (disposing.kind !== "applied") throw new Error("Expected disposal");
+    expect(
+      transition(disposing.state, {
+        type: "APP_DELETED",
+        appId: 1,
+      }),
+    ).toEqual({
+      kind: "applied",
+      state: { jobs: [] },
+      commands: [],
+      outcomes: [],
     });
   });
 });

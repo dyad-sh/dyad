@@ -167,6 +167,7 @@ export type ImageGenerationProducerEvent =
       readonly cancelled: boolean;
     }
   | { readonly type: "PRUNE_JOB"; readonly jobId: string }
+  | { readonly type: "APP_DELETION_STARTED"; readonly appId: number }
   | { readonly type: "APP_DELETED"; readonly appId: number };
 
 export type ImageGenerationEvent =

@@ -17,6 +17,7 @@ const imageGenerationEventVariants = defineVariantInventory<
   "JOB_FAILED",
   "CANCEL_CONFIRMED",
   "PRUNE_JOB",
+  "APP_DELETION_STARTED",
   "APP_DELETED",
 ]);
 

@@ -83,18 +83,24 @@ describe("ImageGenerationActorService", () => {
 
     const deletion = actorService.beginAppDeletion(7);
     await actorService.prepareAppDeletion(deletion);
-    expect(enqueue).not.toHaveBeenCalled();
+    expect(enqueue).toHaveBeenCalledWith({
+      type: "APP_DELETION_STARTED",
+      appId: 7,
+    });
     await actorService.finishAppDeletion(deletion, true);
 
     expect(service.beginAppDeletion).toHaveBeenCalledWith(7);
     expect(presentation.forgetApp).toHaveBeenCalledWith(7, state);
     expect(enqueue).toHaveBeenCalledWith({ type: "APP_DELETED", appId: 7 });
     expect(service.cancelAndSettleApp).toHaveBeenCalledWith(7);
+    expect(enqueue.mock.invocationCallOrder[0]).toBeLessThan(
+      service.cancelAndSettleApp.mock.invocationCallOrder[0],
+    );
     expect(service.cancelAndSettleApp.mock.invocationCallOrder[0]).toBeLessThan(
       fence.seal.mock.invocationCallOrder[0],
     );
     expect(fence.release.mock.invocationCallOrder[0]).toBeLessThan(
-      enqueue.mock.invocationCallOrder[0],
+      enqueue.mock.invocationCallOrder[1],
     );
     expect(fence.seal).toHaveBeenCalled();
     expect(fence.commit).toHaveBeenCalled();

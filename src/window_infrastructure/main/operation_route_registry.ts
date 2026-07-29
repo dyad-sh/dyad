@@ -353,33 +353,35 @@ export class OperationRouteRegistry<Route> {
     const version = this.mutationVersion;
     this.adapterReentryAttempted = false;
     this.invokingAdapter = true;
-    let value: Value;
     try {
-      value = call();
+      const value = call();
+      if (this.adapterReentryAttempted) {
+        this.adapterReentryAttempted = false;
+        throw new Error("Operation route adapter attempted forbidden reentry");
+      }
+      this.assertOpen();
+      if (this.mutationVersion !== version) {
+        throw new Error("Operation route adapter mutated registry ownership");
+      }
+      if (
+        ((typeof value === "object" && value !== null) ||
+          typeof value === "function") &&
+        "then" in value
+      ) {
+        if (
+          value instanceof Promise &&
+          Object.getPrototypeOf(value) === Promise.prototype
+        ) {
+          void Promise.prototype.then.call(value, undefined, () => undefined);
+        }
+        throw new Error(
+          "Operation route adapters must be synchronous and non-thenable",
+        );
+      }
+      return value;
     } finally {
       this.invokingAdapter = false;
     }
-    if (this.adapterReentryAttempted) {
-      this.adapterReentryAttempted = false;
-      throw new Error("Operation route adapter attempted forbidden reentry");
-    }
-    this.assertOpen();
-    if (this.mutationVersion !== version) {
-      throw new Error("Operation route adapter mutated registry ownership");
-    }
-    if (
-      ((typeof value === "object" && value !== null) ||
-        typeof value === "function") &&
-      "then" in value
-    ) {
-      void Promise.resolve(value as PromiseLike<unknown>).catch(
-        () => undefined,
-      );
-      throw new Error(
-        "Operation route adapters must be synchronous and non-thenable",
-      );
-    }
-    return value;
   }
 
   private assertOpen(): void {

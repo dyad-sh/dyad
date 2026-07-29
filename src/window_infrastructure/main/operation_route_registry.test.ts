@@ -438,25 +438,35 @@ describe("OperationRouteRegistry", () => {
   });
 
   it("rejects thenable snapshot and equality adapter results", () => {
+    let customThenCalled = false;
+    const customThenable = {};
+    const thenProperty = ["th", "en"].join("");
+    Object.defineProperty(customThenable, thenProperty, {
+      value: () => {
+        customThenCalled = true;
+        asyncSnapshot.dispose();
+      },
+    });
     const asyncSnapshot = new OperationRouteRegistry<Route>({
       maxUnresolved: 1,
       maxTerminalRetained: 1,
-      snapshotRoute: (() =>
-        Promise.resolve({
-          channel: "async",
-        })) as unknown as (route: Route) => Route,
+      snapshotRoute: (() => customThenable) as unknown as (
+        route: Route,
+      ) => Route,
       sameRoute: (left, right) => left.channel === right.channel,
     });
     expect(() => asyncSnapshot.admit(claim("async-snapshot"))).toThrow(
       "must be synchronous and non-thenable",
     );
+    expect(customThenCalled).toBe(false);
     expect(asyncSnapshot.inspect().total).toBe(0);
 
     const asyncEquality = new OperationRouteRegistry<Route>({
       maxUnresolved: 1,
       maxTerminalRetained: 1,
       snapshotRoute: (route) => ({ ...route }),
-      sameRoute: (() => Promise.resolve(false)) as unknown as (
+      sameRoute: (() =>
+        Promise.reject(new Error("async comparator failed"))) as unknown as (
         left: Route,
         right: Route,
       ) => boolean,

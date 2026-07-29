@@ -35,7 +35,6 @@ import type {
   RequestMessageId,
 } from "./request_identity";
 import type { RemoteAuthorizationDecision } from "./remote_intent_contract";
-import type { RequestId } from "./request_identity";
 import {
   finalizeOperationAdmission,
   type OperationRegistry,

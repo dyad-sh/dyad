@@ -1148,7 +1148,9 @@ export class RemoteMachineTransport {
     definition: AnyRemoteMachineDefinition,
     key: unknown,
   ): string {
-    return `${definition.id}\0${definition.remote.keyToString(key)}`;
+    const keyToString =
+      definition.remoteIntent?.keyToString ?? definition.remote.keyToString;
+    return `${definition.id}\0${keyToString(key)}`;
   }
 
   private wireAddress(

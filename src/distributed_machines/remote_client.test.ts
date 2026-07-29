@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import {
   createFakeClock,
   createSequentialIdSource,
@@ -201,6 +202,29 @@ describe("RemoteMachineClient", () => {
       kind: "rejected",
       reason: "revision-conflict",
     });
+  });
+
+  it("routes native snapshots with the native key identity contract", async () => {
+    const base = createRemoteTestMachine();
+    const machine = {
+      ...base,
+      remote: {
+        ...base.remote,
+        keyCodec: z.string().transform((key) => `legacy:${key}`),
+      },
+    };
+    const { duplex } = createHarness(machine);
+    const client = new RemoteMachineClient(
+      duplex.connect(),
+      createSequentialIdSource(),
+    );
+    client.start();
+    const actor = client.actor(machine, "actor");
+    actor.subscribe(() => undefined);
+    await waitFor(() => actor.getStatus() === "ready");
+
+    await actor.dispatch({ type: "INCREMENT" });
+    await waitFor(() => actor.getSnapshot().value === 1);
   });
 
   it("refreshes without changing ownership and ignores a stale release", async () => {

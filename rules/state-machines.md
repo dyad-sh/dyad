@@ -97,7 +97,10 @@ Background and before/after examples of why this pattern exists:
   created by subscription and must lock admission to that actor instance.
 - Remote key codecs need an explicit encoder as well as a decoder. Use the
   canonical encoded value in every wire envelope; never emit the decoded domain
-  key, which may be transformed or non-serializable. Bound every untrusted
+  key, which may be transformed or non-serializable. A native intent contract's
+  codec, encoder, and key identity function must also own renderer store
+  identity plus inbound snapshot/disposal routing; mixing in the legacy key
+  contract can silently drop native updates. Bound every untrusted
   envelope before its codec runs, including subscribe/unsubscribe addresses,
   and bound snapshot envelopes before delivery. Use a
   structured-clone-compatible byte measurement; JSON sizing is not

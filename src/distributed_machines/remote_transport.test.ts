@@ -143,6 +143,7 @@ function createNativeObjectKeyMachine(
     remoteIntent: {
       keyCodec: legacy.remote.keyCodec,
       encodeKey: legacy.remote.encodeKey,
+      keyToString: legacy.remote.keyToString,
       rendererIntentCodec: legacy.remote.eventCodec,
       snapshotCodec: legacy.remote.snapshotCodec,
       toInternalEvent: ({ intent }: { readonly intent: { type: string } }) =>

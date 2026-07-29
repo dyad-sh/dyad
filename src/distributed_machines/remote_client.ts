@@ -148,6 +148,7 @@ export type RemoteClientDefinition<
         readonly remoteIntent: {
           readonly keyCodec: z.ZodType<Key>;
           readonly encodeKey: (key: Key) => unknown;
+          readonly keyToString: (key: Key) => string;
           readonly rendererIntentCodec: z.ZodType<Event>;
           readonly snapshotCodec: z.ZodType<State>;
           readonly intents: Event extends { readonly type: infer Type }
@@ -728,7 +729,7 @@ export class RemoteMachineClient {
       machineId: definition.id,
       encodedKey,
     };
-    const addressKey = `${definition.id}\0${definition.remote.keyToString(parsedKey.data)}`;
+    const addressKey = `${definition.id}\0${keyContract.keyToString(parsedKey.data)}`;
     const existing = this.stores.get(addressKey);
     if (existing) return existing;
     const store = new RemoteSnapshotStore(
@@ -811,11 +812,11 @@ export class RemoteMachineClient {
       (store) => store.definition.id === address.machineId,
     );
     if (!matching) return `${address.machineId}\0<unknown>`;
-    const key = matching.definition.remote.keyCodec.safeParse(
-      address.encodedKey,
-    );
+    const keyContract =
+      matching.definition.remoteIntent ?? matching.definition.remote;
+    const key = keyContract.keyCodec.safeParse(address.encodedKey);
     return key.success
-      ? `${address.machineId}\0${matching.definition.remote.keyToString(key.data)}`
+      ? `${address.machineId}\0${keyContract.keyToString(key.data)}`
       : `${address.machineId}\0<invalid>`;
   }
 

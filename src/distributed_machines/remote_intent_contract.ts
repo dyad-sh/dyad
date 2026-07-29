@@ -165,6 +165,7 @@ export interface RuntimeRemoteIntentContract<
   RemoteIntentContract<Key, RemoteIntent, InternalEvent, Snapshot>,
   "toTrustedEvent" | "authorization"
 > {
+  readonly keyToString: (key: Key) => string;
   readonly toInternalEvent: (
     context: AdmittedIntentContext<Key, RemoteIntent>,
   ) => InternalEvent;

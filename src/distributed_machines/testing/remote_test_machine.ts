@@ -184,6 +184,7 @@ export function createRemoteTestMachine(
     >({
       keyCodec: z.string().min(1).max(128),
       encodeKey: (key) => key,
+      keyToString: (key) => key,
       rendererIntentCodec: RemoteTestIntentSchema,
       snapshotCodec: RemoteTestSnapshotSchema,
       toInternalEvent: ({ intent }) => {

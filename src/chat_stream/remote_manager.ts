@@ -714,6 +714,7 @@ export class ChatStreamRemoteManager {
           });
         })
         .catch((error) => {
+          if (this.disposed) return;
           console.error(
             "[chat-stream] Failed to refresh completed chat",
             error,

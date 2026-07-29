@@ -1004,6 +1004,61 @@ describe("remote machine transport", () => {
     });
   });
 
+  it("validates declared domain revisions at final native admission", async () => {
+    const base = createRemoteTestMachine();
+    const machine = {
+      ...base,
+      remoteIntent: {
+        ...base.remoteIntent,
+        intents: {
+          ...base.remoteIntent.intents,
+          INCREMENT: {
+            ...base.remoteIntent.intents.INCREMENT,
+            observedRevision: {
+              kind: "domain",
+              name: "counter-value",
+              required: true,
+            },
+          },
+        },
+        resolveDomainRevision({
+          currentState,
+        }: {
+          currentState: { value: number };
+        }) {
+          return currentState.value;
+        },
+      },
+    } as AnyRemoteMachineDefinition;
+    const { duplex } = createHarness({ machine });
+    const renderer = duplex.connect();
+    await renderer.subscribe(address());
+
+    await expect(
+      renderer.dispatch(
+        dispatch(
+          { type: "INCREMENT" },
+          {
+            expectedRevision: 99,
+          },
+        ),
+      ),
+    ).resolves.toMatchObject({
+      kind: "rejected",
+      reason: "revision-conflict",
+    });
+    await expect(
+      renderer.dispatch(
+        dispatch(
+          { type: "INCREMENT" },
+          {
+            expectedRevision: 0,
+          },
+        ),
+      ),
+    ).resolves.toMatchObject({ kind: "applied", revision: 1 });
+  });
+
   it("revalidates the exact revision after trusted event conversion", async () => {
     const base = createRemoteTestMachine();
     let actor: ReturnType<ActorHost["peek"]>;
@@ -1736,8 +1791,7 @@ describe("remote machine transport", () => {
     ]);
     expect(firstReceipt).toMatchObject({ kind: "applied" });
     expect(secondReceipt).toMatchObject({
-      kind: "rejected",
-      reason: "revision-conflict",
+      kind: "applied",
     });
     const retryReceipt = await second.dispatch({
       ...secondEnvelope,
@@ -1753,13 +1807,13 @@ describe("remote machine transport", () => {
 
     const subscriber = duplex.connect();
     await subscriber.subscribe(objectAddress());
-    expect(subscriber.view(objectAddress())?.state).toEqual({ value: 2 });
+    expect(subscriber.view(objectAddress())?.state).toEqual({ value: 3 });
     await subscriber.dispatch({
       ...objectAddress(),
       messageId: "object-message:3",
       encodedEvent: { type: "INCREMENT" },
     });
-    expect(subscriber.view(objectAddress())?.state).toEqual({ value: 3 });
+    expect(subscriber.view(objectAddress())?.state).toEqual({ value: 4 });
     await host.disposeMachine("object-key");
     expect(subscriber.view(objectAddress())?.state).toBeUndefined();
   });
@@ -1779,6 +1833,50 @@ describe("remote machine transport", () => {
       }),
     ).resolves.toMatchObject({ kind: "applied", revision: 1 });
     expect(renderer.view(objectAddress())?.state).toEqual({ value: 1 });
+  });
+
+  it("re-authorizes allow-stale protocol-v1 dispatch after the actor revision changes", async () => {
+    let releaseAuthorization!: () => void;
+    let authorizationStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      authorizationStarted = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      releaseAuthorization = resolve;
+    });
+    let delayFirstAuthorization = true;
+    const machine = createObjectKeyMachine(async () => {
+      if (!delayFirstAuthorization) return;
+      delayFirstAuthorization = false;
+      authorizationStarted();
+      await gate;
+    });
+    const { duplex } = createHarness({ machine });
+    const first = duplex.connect();
+    const second = duplex.connect();
+    await first.subscribe(objectAddress());
+    await second.subscribe(objectAddress());
+
+    const pending = first.dispatch({
+      ...objectAddress(),
+      messageId: "legacy-racing-message",
+      encodedEvent: { type: "INCREMENT" },
+    });
+    await started;
+    await expect(
+      second.dispatch({
+        ...objectAddress(),
+        messageId: "legacy-concurrent-message",
+        encodedEvent: { type: "INCREMENT" },
+      }),
+    ).resolves.toMatchObject({ kind: "applied", revision: 1 });
+    releaseAuthorization();
+
+    await expect(pending).resolves.toMatchObject({
+      kind: "applied",
+      revision: 2,
+    });
+    expect(first.view(objectAddress())?.state).toEqual({ value: 2 });
   });
 
   it("rolls back subscription ownership when bootstrap projection fails", async () => {

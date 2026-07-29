@@ -6,6 +6,7 @@ import {
 import { TwoWindowHarness } from "@/testing/two_window_harness";
 import { ActorHost, type ActorHostError } from "./actor_host";
 import {
+  observeDomainRevision,
   RemoteMachineClient,
   RemoteMachineTransportError,
 } from "./remote_client";
@@ -147,6 +148,59 @@ describe("RemoteMachineClient", () => {
     lease.release();
     await flush();
     expect(transport.inspectSubscriptions()).toHaveLength(0);
+  });
+
+  it("sends an explicitly observed domain revision without substituting the actor revision", async () => {
+    const base = createRemoteTestMachine();
+    const machine = {
+      ...base,
+      remoteIntent: {
+        ...base.remoteIntent,
+        intents: {
+          ...base.remoteIntent.intents,
+          INCREMENT: {
+            ...base.remoteIntent.intents.INCREMENT,
+            observedRevision: {
+              kind: "domain",
+              name: "counter-value",
+              required: true,
+            },
+          },
+        },
+        resolveDomainRevision({
+          currentState,
+        }: {
+          currentState: { value: number };
+        }) {
+          return currentState.value;
+        },
+      },
+    } as ReturnType<typeof createRemoteTestMachine>;
+    const { duplex } = createHarness(machine);
+    const client = new RemoteMachineClient(
+      duplex.connect(),
+      createSequentialIdSource(),
+    );
+    client.start();
+    const actor = client.actor(machine, "actor");
+    actor.subscribe(() => undefined);
+    await waitFor(() => actor.getStatus() === "ready");
+
+    await expect(
+      actor.dispatch(
+        { type: "INCREMENT" },
+        { expected: observeDomainRevision("counter-value", 0) },
+      ),
+    ).resolves.toMatchObject({ kind: "applied", revision: 1 });
+    await expect(
+      actor.dispatch(
+        { type: "INCREMENT" },
+        { expected: observeDomainRevision("other-counter", 1) },
+      ),
+    ).resolves.toMatchObject({
+      kind: "rejected",
+      reason: "revision-conflict",
+    });
   });
 
   it("refreshes without changing ownership and ignores a stale release", async () => {

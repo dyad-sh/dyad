@@ -63,10 +63,32 @@ export interface RemoteActorView<State> {
 
 declare const observedRevisionBrand: unique symbol;
 
-export interface ObservedRevisionToken {
-  readonly actorInstanceId: string;
-  readonly revision: number;
-  readonly [observedRevisionBrand]: true;
+export type ObservedRevisionToken =
+  | {
+      readonly kind: "actor";
+      readonly actorInstanceId: string;
+      readonly revision: number;
+      readonly [observedRevisionBrand]: true;
+    }
+  | {
+      readonly kind: "domain";
+      readonly name: string;
+      readonly revision: number;
+      readonly [observedRevisionBrand]: true;
+    };
+
+export function observeDomainRevision(
+  name: string,
+  revision: number,
+): ObservedRevisionToken {
+  if (name.length === 0 || !Number.isSafeInteger(revision) || revision < 0) {
+    throw new Error("Invalid observed domain revision");
+  }
+  return Object.freeze({
+    kind: "domain",
+    name,
+    revision,
+  }) as ObservedRevisionToken;
 }
 
 export interface RemoteDispatchOptions {
@@ -626,6 +648,7 @@ class RemoteSnapshotStore<
     snapshot: Pick<MachineSnapshotEnvelope, "actorInstanceId" | "revision">,
   ): ObservedRevisionToken {
     return Object.freeze({
+      kind: "actor",
       actorInstanceId: snapshot.actorInstanceId,
       revision: snapshot.revision,
     }) as ObservedRevisionToken;
@@ -827,15 +850,31 @@ export class RemoteMachineClient {
     const sequence = ++this.dispatchSequence;
     const generation = this.generation;
     const metadata = store.currentMetadata();
-    const expected = store.definition.remoteIntent
-      ? options?.expected
-      : metadata?.observedRevision;
+    const nativePolicies = store.definition.remoteIntent?.intents as
+      | Readonly<Record<string, RemoteIntentPolicy>>
+      | undefined;
+    const nativeRevisionPolicy =
+      nativePolicies?.[(parsedEvent.data as { readonly type: string }).type]
+        ?.observedRevision;
+    const suppliedExpected = options?.expected;
+    const expected =
+      nativeRevisionPolicy?.kind === "actor" &&
+      suppliedExpected?.kind === "actor"
+        ? suppliedExpected
+        : nativeRevisionPolicy?.kind === "domain" &&
+            suppliedExpected?.kind === "domain" &&
+            suppliedExpected.name === nativeRevisionPolicy.name
+          ? suppliedExpected
+          : store.definition.remoteIntent
+            ? undefined
+            : metadata?.observedRevision;
     const envelope: MachineDispatchEnvelope = {
       ...store.address,
       messageId: this.ids.next(`${store.definition.id}:message`),
       encodedEvent: parsedEvent.data,
       expectedActorInstanceId:
-        expected?.actorInstanceId ?? metadata?.actorInstanceId,
+        (expected?.kind === "actor" ? expected.actorInstanceId : undefined) ??
+        metadata?.actorInstanceId,
       expectedRevision: expected?.revision,
     };
     const releaseCompletion = store.beginCompletionRetention();

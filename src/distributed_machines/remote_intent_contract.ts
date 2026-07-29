@@ -58,6 +58,13 @@ export interface DispatchAuthorizationContext<Key, Intent, State> {
   readonly expectedObservedRevision?: number;
 }
 
+export interface DomainRevisionContext<Key, Intent, State> {
+  readonly name: string;
+  readonly key: Key;
+  readonly intent: Intent;
+  readonly currentState: State;
+}
+
 export type ObservedRevisionPolicy =
   | { readonly kind: "none" }
   | { readonly kind: "actor"; readonly required: true }
@@ -167,6 +174,9 @@ export interface RuntimeRemoteIntentContract<
   readonly authorizeDispatch: (
     context: DispatchAuthorizationContext<Key, RemoteIntent, State>,
   ) => RemoteAuthorizationDecision | Promise<RemoteAuthorizationDecision>;
+  readonly resolveDomainRevision?: (
+    context: DomainRevisionContext<Key, RemoteIntent, State>,
+  ) => number;
 }
 
 export function defineRuntimeRemoteIntentContract<
@@ -190,6 +200,17 @@ export function defineRuntimeRemoteIntentContract<
   InternalEvent,
   Snapshot
 > {
+  const policies = contract.intents as Readonly<
+    Record<string, RemoteIntentPolicy>
+  >;
+  const requiresDomainRevision = Object.values(policies).some(
+    (policy) => policy.observedRevision.kind === "domain",
+  );
+  if (requiresDomainRevision && !contract.resolveDomainRevision) {
+    throw new Error(
+      "Native remote domain revision policies require resolveDomainRevision",
+    );
+  }
   return Object.freeze(contract);
 }
 

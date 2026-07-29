@@ -115,7 +115,9 @@ Background and before/after examples of why this pattern exists:
 - Remote authorization hooks use `DyadErrorKind.Auth` for expected access
   denial. Convert only that explicit classification to an unauthorized receipt;
   propagate unexpected hook failures so telemetry can distinguish dependency
-  failures and bugs from ordinary refusal.
+  failures and bugs from ordinary refusal. A named domain-revision policy needs
+  both an explicit renderer-observed domain token and a main-side resolver;
+  never compare it with, or silently substitute, the actor snapshot revision.
 - Capture receipt metadata synchronously when that dispatch ticket settles.
   Reading mutable actor metadata after awaiting the ticket can observe a
   re-entrant follow-up transaction instead of the acknowledged event.
@@ -518,7 +520,9 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   compatibility adapter until a domain migrates. Moving trusted conversion or
   adding a second revision fence to legacy dispatch can change terminal
   delivery even when the wire envelope is unchanged; cover a representative
-  legacy streaming integration when editing the adapter.
+  legacy streaming integration when editing the adapter. Preserve the adapter's
+  bounded re-authorization when an allow-stale event races an actor revision;
+  exact captured-revision rejection belongs to the native prepared path.
 - Model StrictMode subscriber replay and explicit subscription leases as
   different ownership classes. A shared subscriber lease may use a
   replacement generation, while every explicit `retain()` needs its own live

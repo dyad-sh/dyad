@@ -121,6 +121,7 @@ const DEFAULT_MAX_SUBSCRIPTIONS_PER_WINDOW = 256;
 const DEFAULT_MAX_ADDRESS_ENVELOPE_BYTES = 64 * 1_024;
 const DEFAULT_MAX_DISPATCH_ENVELOPE_BYTES = 256 * 1_024;
 const DEFAULT_MAX_SNAPSHOT_ENVELOPE_BYTES = 1_024 * 1_024;
+const MAX_LEGACY_AUTHORIZATION_STABILIZATION_ATTEMPTS = 3;
 
 function deepFreezePreparedValue<T>(value: T, seen = new Set<object>()): T {
   if (typeof value !== "object" || value === null || seen.has(value)) {
@@ -700,64 +701,68 @@ export class RemoteMachineTransport {
   ): Promise<MachineDispatchReceipt> {
     const { definition, key, intent, address, actor, actorMetadata } = prepared;
     const senderContext = this.senderContext(sender, prepared.windowSessionId);
-    const decision = await this.authorizeDispatch(definition, {
-      sender: senderContext,
-      key,
-      intent,
-      currentState: actor.getSnapshot(),
-      actor: actorMetadata,
-      expectedObservedRevision: envelope.expectedRevision,
-    });
-    if (decision.kind === "deny") {
-      if (decision.error.kind !== DyadErrorKind.Auth) {
-        throw decision.error;
-      }
-      return this.rejected(
-        envelope.messageId,
-        definition.remoteIntent?.refusalMap.authorization ?? "unauthorized",
-      );
-    }
     let event: unknown;
+    let dispatchActorMetadata = actorMetadata;
     if (!definition.remoteIntent) {
-      if (
-        this.disposed ||
-        !this.isCurrentSender(sender, prepared.windowSessionId)
+      let stabilized = false;
+      for (
+        let attempt = 0;
+        attempt < MAX_LEGACY_AUTHORIZATION_STABILIZATION_ATTEMPTS;
+        attempt += 1
       ) {
-        return this.rejected(envelope.messageId, "host-disposing");
+        const authorizedMetadata = actor.getMetadata();
+        const decision = await this.authorizeDispatch(definition, {
+          sender: senderContext,
+          key,
+          intent,
+          currentState: actor.getSnapshot(),
+          actor: authorizedMetadata,
+          expectedObservedRevision: envelope.expectedRevision,
+        });
+        if (decision.kind === "deny") {
+          return this.rejected(envelope.messageId, "unauthorized");
+        }
+        if (
+          this.disposed ||
+          !this.isCurrentSender(sender, prepared.windowSessionId)
+        ) {
+          return this.rejected(envelope.messageId, "host-disposing");
+        }
+        if (
+          this.subscriptions.get(address) !== prepared.admittedEntry ||
+          !prepared.admittedEntry.windows.has(sender.id) ||
+          this.options.host.peek(definition.id, key) !== actor
+        ) {
+          return this.rejected(envelope.messageId, "stale-actor");
+        }
+        if (
+          !this.options.host.isAdmissionGenerationCurrent(
+            definition.id,
+            prepared.lifecycleGeneration,
+          )
+        ) {
+          return this.rejected(envelope.messageId, "host-disposing");
+        }
+        const currentMetadata = actor.getMetadata();
+        if (
+          currentMetadata.actorInstanceId ===
+            authorizedMetadata.actorInstanceId &&
+          currentMetadata.snapshotRevision ===
+            authorizedMetadata.snapshotRevision
+        ) {
+          dispatchActorMetadata = currentMetadata;
+          stabilized = true;
+          break;
+        }
       }
-      if (
-        this.subscriptions.get(address) !== prepared.admittedEntry ||
-        !prepared.admittedEntry.windows.has(sender.id)
-      ) {
-        return this.rejected(envelope.messageId, "stale-actor");
-      }
-      if (
-        !this.options.host.isAdmissionGenerationCurrent(
-          definition.id,
-          prepared.lifecycleGeneration,
-        )
-      ) {
-        return this.rejected(envelope.messageId, "host-disposing");
-      }
-      const current = this.options.host.peek<unknown, unknown, string>(
-        definition.id,
-        key,
-      );
-      if (!current || current !== actor) {
-        return this.rejected(envelope.messageId, "stale-actor");
-      }
-      const currentMetadata = current.getMetadata();
-      if (currentMetadata.actorInstanceId !== actorMetadata.actorInstanceId) {
-        return this.rejected(envelope.messageId, "stale-actor");
-      }
-      if (currentMetadata.snapshotRevision !== actorMetadata.snapshotRevision) {
+      if (!stabilized) {
         return this.rejected(envelope.messageId, "revision-conflict");
       }
       const revisionPolicy = definition.remote.revisionPolicy(intent as never);
       if (
         revisionPolicy === "reject-stale" &&
         (envelope.expectedRevision === undefined ||
-          currentMetadata.snapshotRevision !== envelope.expectedRevision)
+          dispatchActorMetadata.snapshotRevision !== envelope.expectedRevision)
       ) {
         return this.rejected(envelope.messageId, "revision-conflict");
       }
@@ -770,6 +775,23 @@ export class RemoteMachineTransport {
         return this.rejected(envelope.messageId, "stale-actor");
       }
     } else {
+      const decision = await this.authorizeDispatch(definition, {
+        sender: senderContext,
+        key,
+        intent,
+        currentState: actor.getSnapshot(),
+        actor: actorMetadata,
+        expectedObservedRevision: envelope.expectedRevision,
+      });
+      if (decision.kind === "deny") {
+        if (decision.error.kind !== DyadErrorKind.Auth) {
+          throw decision.error;
+        }
+        return this.rejected(
+          envelope.messageId,
+          definition.remoteIntent.refusalMap.authorization,
+        );
+      }
       this.assertPreparedDispatchContent(prepared, envelope);
       const preConversionRefusal = this.revalidatePreparedDispatch(
         sender,
@@ -800,7 +822,7 @@ export class RemoteMachineTransport {
       definition,
       key,
       event,
-      actorMetadata.actorInstanceId,
+      dispatchActorMetadata.actorInstanceId,
       {
         messageId: envelope.messageId,
         correlationId: envelope.correlationId,
@@ -940,6 +962,21 @@ export class RemoteMachineTransport {
         envelope.expectedRevision !== actorMetadata.snapshotRevision)
     ) {
       return refusalMap?.revisionChanged ?? "revision-conflict";
+    }
+    if (observedRevision?.kind === "domain") {
+      const currentDomainRevision =
+        definition.remoteIntent?.resolveDomainRevision?.({
+          name: observedRevision.name,
+          key,
+          intent: prepared.intent,
+          currentState: current.getSnapshot(),
+        });
+      if (
+        currentDomainRevision === undefined ||
+        envelope.expectedRevision !== currentDomainRevision
+      ) {
+        return refusalMap?.revisionChanged ?? "revision-conflict";
+      }
     }
     return undefined;
   }

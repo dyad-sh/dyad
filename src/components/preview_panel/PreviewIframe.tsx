@@ -34,7 +34,6 @@ import {
   CircleDot,
   Square,
   Loader2,
-  FileCode2,
 } from "lucide-react";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { CopyErrorMessage } from "@/components/CopyErrorMessage";
@@ -93,8 +92,7 @@ import { useAttachments } from "@/hooks/useAttachments";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { Annotator } from "@/pro/ui/components/Annotator/Annotator";
 import { VisualEditingToolbar } from "./VisualEditingToolbar";
-import { RecordingCodePreview } from "./RecordingCodePreview";
-import { RecordedStepsList } from "./RecordedStepsList";
+import { RecordingBanner, recordingStatusMessage } from "./RecordingBanner";
 import { resolvePreviewBrowserUrl } from "./previewBrowserUrl";
 import { PreviewLoadingScreen } from "./PreviewLoadingScreen";
 import { useTranslation } from "react-i18next";
@@ -222,29 +220,6 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
 const PREVIEW_TOOLBAR_BUTTON_CLASSES =
   "flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-40";
 
-// Quiet actions in the recording banner (Cancel / Done / Open test file). The
-// banner sits on the panel background, so the hover fill has to come from
-// `--background-darkest` — `bg-muted` is nearly invisible against it in light
-// mode.
-const RECORDING_SECONDARY_BUTTON_CLASSES =
-  "rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-(--background-darkest) hover:text-foreground";
-
-/** Status line for the recorder's non-interactive (spinner) phases. */
-function recordingStatusMessage(recorder: TestRecorderController): string {
-  switch (recorder.phase) {
-    case "finishing":
-      return "Wrapping up the recording…";
-    case "saving":
-      return "Generating the test file…";
-    case "stopping":
-      return "Cleaning up the test environment…";
-    case "authenticating":
-      return recorder.progress ?? "Signing in the test user…";
-    default:
-      return recorder.progress ?? "Setting up the test environment…";
-  }
-}
-
 /**
  * The prompt that starts the assertion pass. The recording isn't a file yet, so
  * the statements travel in the message — the agent describes them and proposes
@@ -339,7 +314,6 @@ export const PreviewIframe = ({
   const canGoForward = selectCanGoForward(iframeState);
   const [annotatorMode, setAnnotatorMode] = useAtom(annotatorModeAtom);
   const { app: loadedApp } = useLoadApp(selectedAppId);
-  const [recordName, setRecordName] = useState("");
   const setSelectedFile = useSetAtom(selectedFileAtom);
   const setPreviewMode = useSetAtom(previewModeAtom);
   // Recording is part of the testing feature, so the entry point only exists
@@ -348,7 +322,6 @@ export const PreviewIframe = ({
 
   const handleRecordClick = () => {
     if (recorder.phase !== "idle") return;
-    setRecordName("");
     void recorder.startRecording();
   };
 
@@ -1193,6 +1166,11 @@ export const PreviewIframe = ({
     );
   };
 
+  // Isolation setup restarts the dev server and signs the test user in, so the
+  // preview is showing a page nothing the user does will survive. It reads as
+  // inert rather than covered — see RecordingSetupOverlay.
+  const isRecorderSettingUp = recorder.isBusy && !annotatorMode;
+
   const { showOpenBrowser } =
     getPreviewToolbarActionVisibility(previewToolbarWidth);
   const openBrowserDisabled = isCloudMode
@@ -1653,145 +1631,12 @@ export const PreviewIframe = ({
         </div>
       )}
 
-      {/* One banner for the whole session: the status row and the live code line
-          share a container (and the toolbar's background) so recording reads as
-          a single strip under the toolbar rather than stacked alerts. */}
       {recorder.phase !== "idle" && !annotatorMode && (
-        <div className="border-b" data-testid="preview-recording-bar">
-          <div className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm">
-            {recorder.isRecording ? (
-              <>
-                <span className="flex items-center gap-1.5 font-medium text-purple-700 dark:text-purple-300">
-                  <CircleDot size={14} className="animate-pulse" />
-                  Recording
-                </span>
-                <span
-                  className="text-muted-foreground"
-                  data-testid="preview-recording-step-count"
-                >
-                  {recorder.entryCount} step
-                  {recorder.entryCount === 1 ? "" : "s"}
-                </span>
-                {recorder.isolation && recorder.isolation.mode !== "none" && (
-                  <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-xs text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
-                    isolated data
-                  </span>
-                )}
-                {recorder.isolation &&
-                  recorder.isolation.mode !== "none" &&
-                  recorder.auth?.mode === "none" && (
-                    <span
-                      className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground"
-                      data-testid="preview-recording-signed-out-badge"
-                    >
-                      signed out
-                    </span>
-                  )}
-                <input
-                  value={recordName}
-                  onChange={(e) => setRecordName(e.target.value)}
-                  placeholder="Test name"
-                  aria-label="Test name"
-                  data-testid="preview-recording-name-input"
-                  className="ml-auto min-w-0 max-w-48 flex-1 rounded-sm border border-border bg-(--background-lighter) px-2 py-1 text-xs outline-none"
-                />
-                <button
-                  onClick={() => void recorder.stopAndReview(recordName)}
-                  data-testid="preview-recording-stop-button"
-                  className="flex items-center gap-1 rounded-md bg-purple-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-purple-700"
-                >
-                  <Square size={12} /> Stop
-                </button>
-                <button
-                  onClick={() => void recorder.cancelRecording()}
-                  data-testid="preview-recording-cancel-button"
-                  className={RECORDING_SECONDARY_BUTTON_CLASSES}
-                >
-                  Cancel
-                </button>
-              </>
-            ) : recorder.phase === "reviewing" ? (
-              <>
-                <span className="min-w-0 truncate font-medium text-foreground">
-                  {recorder.draft?.testName}
-                </span>
-                <span className="text-muted-foreground">
-                  {recorder.draftSteps.length} step
-                  {recorder.draftSteps.length === 1 ? "" : "s"} recorded — not
-                  saved yet
-                </span>
-                <button
-                  onClick={handleGenerateAssertions}
-                  data-testid="preview-recording-generate-assertions-button"
-                  className="ml-auto flex items-center gap-1 rounded-md bg-purple-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-purple-700 disabled:opacity-60"
-                >
-                  <Sparkles size={12} /> Generate assertions
-                </button>
-                <button
-                  onClick={() => void recorder.saveWithoutAssertions()}
-                  data-testid="preview-recording-save-plain-button"
-                  className={cn(
-                    RECORDING_SECONDARY_BUTTON_CLASSES,
-                    "flex items-center gap-1",
-                  )}
-                >
-                  <FileCode2 size={12} /> Save without assertions
-                </button>
-                <button
-                  onClick={() => void recorder.discardDraft()}
-                  data-testid="preview-recording-discard-button"
-                  className={RECORDING_SECONDARY_BUTTON_CLASSES}
-                >
-                  Discard
-                </button>
-              </>
-            ) : recorder.phase === "saved" ? (
-              <>
-                <span className="min-w-0 truncate font-medium text-emerald-700 dark:text-emerald-300">
-                  Saved {recorder.savedSpecPath}
-                </span>
-                <button
-                  onClick={() =>
-                    recorder.savedSpecPath &&
-                    handleOpenSavedSpec(recorder.savedSpecPath)
-                  }
-                  data-testid="preview-recording-open-file-button"
-                  className={cn(
-                    RECORDING_SECONDARY_BUTTON_CLASSES,
-                    "ml-auto flex items-center gap-1",
-                  )}
-                >
-                  <FileCode2 size={12} /> Open test file
-                </button>
-                <button
-                  onClick={() => recorder.dismissReview()}
-                  data-testid="preview-recording-done-button"
-                  className={RECORDING_SECONDARY_BUTTON_CLASSES}
-                >
-                  Done
-                </button>
-              </>
-            ) : (
-              <span className="flex items-center gap-1.5 text-muted-foreground">
-                <Loader2 size={14} className="animate-spin" />
-                {recordingStatusMessage(recorder)}
-              </span>
-            )}
-            {recorder.warning && (
-              <span className="w-full text-xs text-amber-600 dark:text-amber-400">
-                {recorder.warning}
-              </span>
-            )}
-          </div>
-
-          {recorder.isRecording && (
-            <RecordingCodePreview steps={recorder.steps} />
-          )}
-
-          {recorder.phase === "reviewing" && (
-            <RecordedStepsList steps={recorder.draftSteps} />
-          )}
-        </div>
+        <RecordingBanner
+          recorder={recorder}
+          onGenerateAssertions={handleGenerateAssertions}
+          onOpenSavedSpec={handleOpenSavedSpec}
+        />
       )}
 
       <AgentModeRequiredDialog
@@ -1829,6 +1674,9 @@ export const PreviewIframe = ({
             className={cn(
               "w-full h-full",
               deviceMode !== "desktop" && "flex justify-center",
+              // Greyed out while the recorder sets up, the same way a cancelled
+              // chat message reads as inert.
+              isRecorderSettingUp && "opacity-50 transition-opacity",
             )}
           >
             {annotatorMode && screenshotDataUrl ? (
@@ -1888,18 +1736,27 @@ export const PreviewIframe = ({
             )}
           </div>
         )}
-        {recorder.isBusy && !annotatorMode && (
-          <RecordingSetupOverlay recorder={recorder} />
-        )}
+        {isRecorderSettingUp && <RecordingSetupOverlay recorder={recorder} />}
       </div>
     </div>
   );
 };
 
 /**
- * Blocks (and explains) the preview while a recording session is being set up
- * or torn down. Isolation setup restarts the dev server and signs the test user
- * in, so anything the user clicks in that window is both lost and confusing.
+ * Explains the preview — and swallows clicks — while a recording session is
+ * being set up or torn down. Anything the user does in that window is lost to
+ * the dev-server restart, and confusing besides.
+ *
+ * Nothing is laid over the app: the preview itself greys out, the way a
+ * cancelled chat message does. Dimming says "inert" without covering anything,
+ * so the page stays completely sharp — watching it reload into the isolated
+ * environment is most of the reassurance this wait has to offer. This layer is
+ * transparent and exists only to hold the message and eat pointer events.
+ *
+ * The message keeps a card of its own, which is the one place this departs
+ * from the cancelled-message pattern: a chat message controls what sits behind
+ * its label, and a preview does not — bare text lands on top of whatever the
+ * app happens to be rendering.
  */
 function RecordingSetupOverlay({
   recorder,
@@ -1908,20 +1765,22 @@ function RecordingSetupOverlay({
 }) {
   return (
     <div
-      className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-background/85 px-6 text-center backdrop-blur-sm"
+      className="absolute inset-0 z-20 flex items-center justify-center px-6 text-center"
       data-testid="preview-recording-overlay"
       role="status"
       aria-live="polite"
     >
-      <Loader2 className="size-8 animate-spin text-purple-600 dark:text-purple-300" />
-      <p className="text-base font-medium text-foreground">
-        {recordingStatusMessage(recorder)}
-      </p>
-      <p className="max-w-sm text-sm text-muted-foreground">
-        {recorder.phase === "starting" || recorder.phase === "authenticating"
-          ? "Dyad is preparing an isolated environment for your recording — hold off on interacting with the preview until it's ready."
-          : "Hold off on interacting with the preview until this finishes."}
-      </p>
+      <div className="flex max-w-sm flex-col items-center gap-2.5 rounded-xl border border-border bg-(--background-lightest) px-6 py-5 shadow-lg">
+        <Loader2 className="size-7 animate-spin text-purple-600 dark:text-purple-300" />
+        <p className="text-base font-medium text-foreground">
+          {recordingStatusMessage(recorder)}
+        </p>
+        <p className="text-sm text-muted-foreground">
+          {recorder.phase === "starting" || recorder.phase === "authenticating"
+            ? "Dyad is preparing an isolated environment for your recording — hold off on interacting with the preview until it's ready."
+            : "Hold off on interacting with the preview until this finishes."}
+        </p>
+      </div>
     </div>
   );
 }

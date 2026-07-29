@@ -4,8 +4,9 @@ import { ChevronRight, Code2 } from "lucide-react";
 /**
  * Live code strip that shows the Playwright statement generated for the step
  * the user just performed. It renders as the second row *inside* the recording
- * banner — a hairline divider, no background of its own — so the status row and
- * the code read as one cohesive surface rather than two stacked banners.
+ * banner — no background of its own, and the banner draws the hairline above
+ * it — so the status row and the code read as one cohesive surface rather than
+ * two stacked banners.
  *
  * Only the current (latest) step is shown — as each new interaction is recorded
  * the line is replaced and animates in, so the banner always reflects "the code
@@ -22,7 +23,7 @@ export function RecordingCodePreview({
 
   return (
     <div
-      className="flex items-center gap-2 border-t border-border/60 px-3 py-1.5"
+      className="flex items-center gap-2 px-3 py-1.5"
       data-testid="preview-recording-code"
     >
       <span className="flex shrink-0 items-center gap-1.5 text-xs font-semibold tracking-wide text-purple-700 uppercase dark:text-purple-300">

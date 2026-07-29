@@ -9,13 +9,15 @@ import { ChevronRight } from "lucide-react";
  * step 3 are looking at the same line.
  *
  * Deliberately quiet — it's context for the decision in the bar above it
- * ("generate assertions?"), not the decision itself.
+ * ("generate assertions?"), not the decision itself. It renders flush on the
+ * recording banner's own surface: the banner draws the hairline above it, so
+ * this is a section of that banner rather than a second one.
  */
 export function RecordedStepsList({ steps }: { steps: string[] }) {
   if (steps.length === 0) {
     return (
       <div
-        className="border-t border-border/60 px-3 py-2 text-xs text-muted-foreground italic"
+        className="px-3 py-2 text-xs text-muted-foreground italic"
         data-testid="preview-recorded-steps"
       >
         Nothing was recorded — the test would only open the app.
@@ -25,7 +27,7 @@ export function RecordedStepsList({ steps }: { steps: string[] }) {
 
   return (
     <ol
-      className="max-h-40 overflow-y-auto border-t border-border/60 px-3 py-1.5"
+      className="max-h-40 overflow-y-auto px-3 py-1.5"
       data-testid="preview-recorded-steps"
     >
       {steps.map((step, index) => (

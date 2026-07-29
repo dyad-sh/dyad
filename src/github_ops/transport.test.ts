@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { githubOpsRemoteIntentContract } from "./remote_intent_contract";
 import {
   GITHUB_OPS_INVOCATION_KIND,
   GithubOpsIntentEventSchema,
@@ -8,6 +9,35 @@ import {
 } from "./transport";
 
 describe("github_ops wire contracts", () => {
+  it("derives trusted operation identity from the distinct stable request identity", () => {
+    const convert = (requestId: string) =>
+      githubOpsRemoteIntentContract.toTrustedEvent({
+        key: { appId: 7 },
+        intent: {
+          type: "OP_REQUESTED",
+          op: { type: "push", mode: "normal" },
+          operationId: "renderer-reused-operation",
+        },
+        sender: { windowSessionId: "window-1" as never },
+        requestIdentity: {
+          requestId,
+          messageId: `message:${requestId}`,
+          idempotencyKey: `idempotency:${requestId}`,
+          windowSessionId: "window-1",
+        } as never,
+      });
+
+    expect(convert("request-1")).toMatchObject({
+      requestId: "request-1",
+      operationId: "github-operation-request:request-1",
+    });
+    expect(convert("request-2")).toMatchObject({
+      requestId: "request-2",
+      operationId: "github-operation-request:request-2",
+    });
+    expect(convert("request-1")).toEqual(convert("request-1"));
+  });
+
   it("keeps renderer intents value-only and rejects host settlements", () => {
     expect(
       GithubOpsIntentEventSchema.safeParse({

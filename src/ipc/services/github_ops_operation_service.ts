@@ -184,18 +184,11 @@ export class GithubOpsOperationService {
   }
 
   settleKey(keyId: string): number {
-    return this.registry.settleKey(
-      "main-remote-machine-host",
-      GITHUB_OPS_MACHINE_ID,
-      keyId,
-    );
+    return this.registry.settleKey("main", GITHUB_OPS_MACHINE_ID, keyId);
   }
 
   settleMachine(): number {
-    return this.registry.settleMachine(
-      "main-remote-machine-host",
-      GITHUB_OPS_MACHINE_ID,
-    );
+    return this.registry.settleMachine("main", GITHUB_OPS_MACHINE_ID);
   }
 
   settle(cause: OperationDisposalCause): number {

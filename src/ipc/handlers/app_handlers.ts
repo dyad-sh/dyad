@@ -405,7 +405,8 @@ async function deleteAppById(
     appRunDeletion.abort();
     throw error;
   }
-  let machineDeletionCommitted = false;
+  let appRunDeletionCommitted = false;
+  let githubDeletionCommitted = false;
   try {
     await appDeletionQueue.run(() =>
       deleteAppByIdExclusive(appId, options, {
@@ -413,18 +414,40 @@ async function deleteAppById(
           await Promise.all([appRunDeletion.seal(), githubDeletion.seal()]);
         },
         commit: () => {
-          appRunDeletion.commit();
-          githubDeletion.commit();
-          machineDeletionCommitted = true;
+          let commitFailure: unknown;
+          try {
+            appRunDeletionCommitted = appRunDeletion.commit();
+          } catch (error) {
+            commitFailure = error;
+          }
+          try {
+            githubDeletionCommitted = githubDeletion.commit();
+          } catch (error) {
+            commitFailure = commitFailure
+              ? new AggregateError(
+                  [commitFailure, error],
+                  "Coordinated app deletion fence commit failed",
+                )
+              : error;
+          }
+          if (commitFailure) throw commitFailure;
+          if (!appRunDeletionCommitted || !githubDeletionCommitted) {
+            throw new Error(
+              "Coordinated app deletion fence ownership became stale",
+            );
+          }
         },
       }),
     );
   } finally {
-    if (machineDeletionCommitted) {
+    if (appRunDeletionCommitted) {
       appRunDeletion.release();
-      githubDeletion.release();
     } else {
       appRunDeletion.abort();
+    }
+    if (githubDeletionCommitted) {
+      githubDeletion.release();
+    } else {
       githubDeletion.abort();
     }
   }
@@ -1524,7 +1547,8 @@ export function registerAppHandlers() {
       appRunReset.abort();
       throw error;
     }
-    let machineResetCommitted = false;
+    let appRunResetCommitted = false;
+    let githubResetCommitted = false;
     let machineResetCompleted = false;
     versionPreviewService.beginReset();
     imageGenerationService.beginReset();
@@ -1567,9 +1591,26 @@ export function registerAppHandlers() {
       // Closing the database is the last reversible boundary. Commit before
       // deleting any SQLite file so a partial sidecar deletion cannot reopen
       // app-run admission against a partially reset database.
-      appRunReset.commit();
-      githubReset.commit();
-      machineResetCommitted = true;
+      let commitFailure: unknown;
+      try {
+        appRunResetCommitted = appRunReset.commit();
+      } catch (error) {
+        commitFailure = error;
+      }
+      try {
+        githubResetCommitted = githubReset.commit();
+      } catch (error) {
+        commitFailure = commitFailure
+          ? new AggregateError(
+              [commitFailure, error],
+              "Coordinated reset fence commit failed",
+            )
+          : error;
+      }
+      if (commitFailure) throw commitFailure;
+      if (!appRunResetCommitted || !githubResetCommitted) {
+        throw new Error("Coordinated reset fence ownership became stale");
+      }
       for (const dbFilePath of dbFilePaths) {
         if (fs.existsSync(dbFilePath)) {
           await fsPromises.unlink(dbFilePath);
@@ -1620,9 +1661,17 @@ export function registerAppHandlers() {
       if (machineResetCompleted) {
         appRunReset.release();
         githubReset.release();
-      } else if (!machineResetCommitted) {
-        appRunReset.abort();
-        githubReset.abort();
+      } else {
+        if (appRunResetCommitted) {
+          appRunReset.release();
+        } else {
+          appRunReset.abort();
+        }
+        if (githubResetCommitted) {
+          githubReset.release();
+        } else {
+          githubReset.abort();
+        }
       }
       imageGenerationService.endReset();
       versionPreviewService.endReset();

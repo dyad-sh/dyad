@@ -336,6 +336,80 @@ describe("main-hosted github_ops actor integration", () => {
     ).resolves.toMatchObject({ kind: "applied" });
   });
 
+  it("delivers tracked Git output through the new generation after deletion abort", async () => {
+    const pending = deferred();
+    service.run.mockReturnValue(pending.promise);
+    const { actorA, host } = createHarness();
+    await actorA.resync();
+    const deletion = new GithubOpsActorService(host).beginAppDeletion(7);
+    await deletion.seal();
+    expect(deletion.abort()).toBe(true);
+    const settlement = new Promise<unknown>((resolve) => {
+      actorA.subscribeOperationOutcome("post-abort-request", resolve);
+    });
+
+    const snapshot = actorA.getView().snapshot;
+    if (snapshot.kind !== "available") throw new Error("actor unavailable");
+    await actorA.dispatch(
+      {
+        type: "OP_REQUESTED",
+        operationId: "renderer-operation",
+        op: { type: "push", mode: "normal" },
+      },
+      {
+        expected: snapshot.observedRevision,
+        requestIdentity: {
+          requestId: "post-abort-request" as RequestId,
+          messageId: "post-abort-message" as RequestMessageId,
+          idempotencyKey: "post-abort-key" as RequestIdempotencyKey,
+          windowSessionId: "renderer-session",
+        },
+      },
+    );
+    pending.resolve();
+
+    await expect(settlement).resolves.toEqual({
+      kind: "succeeded",
+      operation: "push",
+    });
+    expect(githubOpsOperationService.inspect().unresolved).toBe(0);
+  });
+
+  it("rearms a conflict claim lease after a failed deletion boundary", async () => {
+    const { actorA, actorB, clock, host } = createHarness();
+    await actorA.resync();
+    await actorB.resync();
+    const local: GithubOpsHostedActor = host.ensure(
+      githubOpsDefinition,
+      githubOpsKey(7),
+    );
+    local.send({ type: "CONFLICTS", files: ["src/conflicted.ts"] });
+    await flush();
+    await dispatchCurrent(actorA, {
+      type: "RESOLVE_WITH_AI_STARTED",
+      claimId: "claim-before-deletion",
+    });
+    const deletion = new GithubOpsActorService(host).beginAppDeletion(7);
+    await deletion.seal();
+    clock.advanceBy(CONFLICT_RESOLUTION_CLAIM_TIMEOUT_MS);
+    await flush();
+    expect(local.getSnapshot().conflictResolutionClaimId).toBe(
+      "claim-before-deletion",
+    );
+
+    expect(deletion.abort()).toBe(true);
+    clock.advanceBy(CONFLICT_RESOLUTION_CLAIM_TIMEOUT_MS);
+    await flush();
+
+    expect(local.getSnapshot().conflictResolutionClaimId).toBeNull();
+    await expect(
+      dispatchCurrent(actorB, {
+        type: "RESOLVE_WITH_AI_STARTED",
+        claimId: "claim-after-deletion",
+      }),
+    ).resolves.toMatchObject({ kind: "applied" });
+  });
+
   it("reattaches after a mid-rebase window close while work continues", async () => {
     const pending = deferred();
     service.run.mockReturnValue(pending.promise);

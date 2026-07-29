@@ -284,6 +284,8 @@ export const migratedActorEnsureInventory = [
 export const migratedStatefulOwnerInventory = [
   owned("app_run/remote_manager.ts", 1),
   owned("app_run/transport.ts", 1),
+  owned("github_ops/projection.ts", 1),
+  owned("github_ops/transport.ts", 1),
   owned("hooks/useRunApp.ts", 1),
   owned("image_generation/selectors.ts", 1),
   owned("ipc/services/app_runtime_service.ts", 3),

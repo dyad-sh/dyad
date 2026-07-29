@@ -27,10 +27,10 @@ export type GithubOpsAdmission = Extract<
   GithubOpsReceipt,
   { readonly kind: "applied" }
 >;
-export type GithubOpsRefusal =
-  | GithubOpsIgnoreReason
-  | "stale-operation"
-  | Extract<GithubOpsReceipt, { readonly kind: "rejected" }>["reason"];
+export type GithubOpsRefusal = Extract<
+  GithubOpsReceipt,
+  { readonly kind: "rejected" | "ignored" }
+>;
 
 export type GithubOpsTrackedIntent = Extract<
   GithubOpsIntentEvent,
@@ -56,6 +56,20 @@ export interface GithubOpsRequestActor {
     intent: GithubOpsAdmissionOnlyIntent,
     observedRevision?: ObservedRevisionToken,
   ): Promise<GithubOpsReceipt>;
+}
+
+export function classifyGithubOpsRequestFailure(error: unknown) {
+  if (!(error instanceof RemoteMachineTransportError)) {
+    return { kind: "unexpected" as const };
+  }
+  if (error.code === "invalid-payload") {
+    return { kind: "unexpected" as const };
+  }
+  return {
+    kind: "disconnect" as const,
+    retryable: error.code === "disconnected",
+    admission: "unknown" as const,
+  };
 }
 
 export function useGithubOpsRequestActor(appId: number): GithubOpsRequestActor {
@@ -100,7 +114,7 @@ export function useGithubOpsRequestActor(appId: number): GithubOpsRequestActor {
       }),
       admissionFromReceipt: (receipt) =>
         receipt.kind === "rejected" || receipt.kind === "ignored"
-          ? { kind: "refused", reason: receipt.reason }
+          ? { kind: "refused", reason: receipt }
           : receipt,
       isRefusal: (
         value,
@@ -108,14 +122,7 @@ export function useGithubOpsRequestActor(appId: number): GithubOpsRequestActor {
         readonly kind: "refused";
         readonly reason: GithubOpsRefusal;
       } => value.kind === "refused",
-      classifyFailure: (error) =>
-        error instanceof RemoteMachineTransportError
-          ? {
-              kind: "disconnect",
-              retryable: true,
-              admission: "unknown",
-            }
-          : { kind: "unexpected" },
+      classifyFailure: classifyGithubOpsRequestFailure,
       retry: {
         kind: "stable-id",
         receiverDeduplication: "required",

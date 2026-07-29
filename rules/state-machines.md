@@ -732,3 +732,12 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   actor revision; rejecting that exact retry before registry reattachment makes
   coalescing and terminal replay unreachable. Fresh requests must still pass
   normal revision admission, and adapter callbacks require final revalidation.
+- Long-lived command runners must emit asynchronous producer outcomes through
+  the per-command sink supplied by ActorHost. An actor-construction-time sink
+  keeps the pre-fence admission generation and becomes permanently stale when
+  an aborted destructive fence reopens the surviving actor under a new
+  generation.
+- One-shot actor timers that can fire while a destructive fence is sealed need
+  an abort recovery policy. If sealed admission consumes and rejects the timer
+  event, re-arm the lease after a failed destructive commit so the reopened
+  actor cannot retain an expiring claim forever.

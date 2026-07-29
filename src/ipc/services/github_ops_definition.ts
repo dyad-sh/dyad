@@ -32,7 +32,6 @@ import {
   type GithubOpsIntentEvent,
   type GithubOpsInvocationRef,
   type GithubOpsKey,
-  type GithubOpsProducerEvent,
   type GithubOpsWireEvent,
 } from "@/github_ops/transport";
 import { githubOpsRemoteIntentContract } from "@/github_ops/remote_intent_contract";
@@ -109,7 +108,8 @@ function transitionActor(
   if (
     (event.type === "CONFLICT_RESOLUTION_STARTED" ||
       event.type === "CONFLICT_RESOLUTION_CANCELLED" ||
-      event.type === "CONFLICT_RESOLUTION_CLAIM_EXPIRED") &&
+      event.type === "CONFLICT_RESOLUTION_CLAIM_EXPIRED" ||
+      event.type === "CONFLICT_RESOLUTION_CLAIM_REARM_REQUESTED") &&
     actorState.conflictResolutionClaimId !== event.claimId
   ) {
     return ignore(actorState, "stale-operation");
@@ -122,6 +122,18 @@ function transitionActor(
         conflictResolutionClaimId: null,
       },
       commands: [],
+    };
+  }
+  if (event.type === "CONFLICT_RESOLUTION_CLAIM_REARM_REQUESTED") {
+    return {
+      kind: "applied" as const,
+      state: actorState,
+      commands: [
+        {
+          type: "schedule-conflict-claim-expiry" as const,
+          claimId: event.claimId,
+        },
+      ],
     };
   }
 
@@ -251,10 +263,11 @@ function createCommandRunner(
 ) {
   let gitStateProbeGeneration = 0;
   let conflictProbeGeneration = 0;
-  const producerSink = context.captureSink({ revisionPolicy: "allow-advance" });
-  const emit = (event: GithubOpsProducerEvent) => producerSink.send(event);
 
-  return (actorCommand: GithubOpsActorCommand): Promise<void> => {
+  return (
+    actorCommand: GithubOpsActorCommand,
+    emit: (event: GithubOpsWireEvent) => void,
+  ): Promise<void> => {
     if (actorCommand.type === "schedule-conflict-claim-expiry") {
       context.timers.replace(
         CONFLICT_RESOLUTION_CLAIM_TIMER,

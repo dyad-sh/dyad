@@ -61,6 +61,7 @@ export function useGithubOps(
   const latestRequestRef = useRef<GithubOpsPreparedRequest | undefined>(
     undefined,
   );
+  const retriedWhileReadyRef = useRef<string | null>(null);
   const routedAppId = appId ?? 0;
   const remote = useDistributedMachine(
     githubOpsClientDefinition,
@@ -82,6 +83,23 @@ export function useGithubOps(
     classifyOutcome,
     requestOwnership: "parallel",
   });
+  useEffect(() => {
+    if (remote.connection !== "ready") {
+      retriedWhileReadyRef.current = null;
+      return;
+    }
+    if (
+      mutation.admission.kind !== "refused" ||
+      mutation.admission.reason !== "disconnected" ||
+      !mutation.admission.retryable
+    ) {
+      return;
+    }
+    const requestId = latestRequestRef.current?.requestId;
+    if (!requestId || retriedWhileReadyRef.current === requestId) return;
+    retriedWhileReadyRef.current = requestId;
+    void mutation.retry().catch(() => undefined);
+  }, [mutation.admission, mutation.retry, remote.connection]);
 
   const dispatchTracked = useCallback(
     async (
@@ -95,8 +113,15 @@ export function useGithubOps(
       }
       void settlement.catch(() => undefined);
       const admission = await prepared.admission;
-      if (admission.kind !== "admitted") return undefined;
-      return admission.admission;
+      switch (admission.kind) {
+        case "admitted":
+          return admission.admission;
+        case "refused":
+          return admission.reason;
+        case "disconnected":
+        case "disposed":
+          return undefined;
+      }
     },
     [mutation.mutate],
   );

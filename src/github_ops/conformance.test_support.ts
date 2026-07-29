@@ -25,6 +25,7 @@ const githubOpsEventVariants = defineVariantInventory<
   "CONFLICTS",
   "GIT_STATE",
   "CONFLICT_RESOLUTION_CLAIM_EXPIRED",
+  "CONFLICT_RESOLUTION_CLAIM_REARM_REQUESTED",
 ]);
 
 export const githubOpsConformance = defineMachineConformance({

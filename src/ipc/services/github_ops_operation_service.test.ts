@@ -37,7 +37,7 @@ function prepare(service: GithubOpsOperationService, fingerprint: string) {
       windowSessionId: "window-1" as WindowSessionId,
     },
     actor,
-    hostId: "main-remote-machine-host",
+    hostId: "main",
     fingerprint,
     requestIdentity,
   })!;
@@ -112,6 +112,30 @@ describe("GithubOpsOperationService", () => {
       unresolved: 0,
       settled: 0,
       total: 0,
+    });
+  });
+
+  it("settles app and machine ownership with their declared cancellation causes", async () => {
+    const appService = new GithubOpsOperationService(createFakeClock());
+    const appPrepared = prepare(appService, "app-fingerprint");
+    const appAdmission = appPrepared.registry.admit({
+      ...appPrepared.identity,
+      invocationRef: appPrepared.createInvocationRef(),
+    });
+    expect(appService.settleKey("7")).toBe(1);
+    await expect(appAdmission.ticket.settled).resolves.toMatchObject({
+      outcome: { kind: "cancelled", reason: "app-disposed" },
+    });
+
+    const machineService = new GithubOpsOperationService(createFakeClock());
+    const machinePrepared = prepare(machineService, "machine-fingerprint");
+    const machineAdmission = machinePrepared.registry.admit({
+      ...machinePrepared.identity,
+      invocationRef: machinePrepared.createInvocationRef(),
+    });
+    expect(machineService.settleMachine()).toBe(1);
+    await expect(machineAdmission.ticket.settled).resolves.toMatchObject({
+      outcome: { kind: "cancelled", reason: "machine-disposed" },
     });
   });
 });

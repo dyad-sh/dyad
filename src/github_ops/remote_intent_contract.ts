@@ -71,6 +71,7 @@ export const githubOpsRemoteIntentContract = defineRemoteIntentContract<
       }
       return Object.freeze({
         ...structuredClone(intent),
+        operationId: `github-operation-request:${requestIdentity.requestId}`,
         requestId: requestIdentity.requestId,
         initiatorWindowSessionId: sender.windowSessionId,
       }) satisfies GithubOpsTrustedIntentEvent;

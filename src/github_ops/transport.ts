@@ -309,6 +309,12 @@ export const GithubOpsProducerEventSchema = z.union([
       claimId: conflictResolutionClaimIdSchema,
     })
     .strict(),
+  z
+    .object({
+      type: z.literal("CONFLICT_RESOLUTION_CLAIM_REARM_REQUESTED"),
+      claimId: conflictResolutionClaimIdSchema,
+    })
+    .strict(),
 ]);
 export type GithubOpsProducerEvent = z.infer<
   typeof GithubOpsProducerEventSchema
@@ -442,6 +448,7 @@ export function toGithubOpsDomainEvent(
     case "CONFLICT_RESOLUTION_CANCELLED":
       return { type: "RECONCILE_REQUESTED" };
     case "CONFLICT_RESOLUTION_CLAIM_EXPIRED":
+    case "CONFLICT_RESOLUTION_CLAIM_REARM_REQUESTED":
       return { type: "RECONCILE_REQUESTED" };
     case "ABORT_AND_SWITCH_CONFIRMED":
     case "BLOCKED_DISMISSED":

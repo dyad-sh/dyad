@@ -1093,6 +1093,7 @@ export class ActorHost {
     options: {
       readonly key: Key;
       readonly allowDuringDrain: (event: NoInfer<Event>) => boolean;
+      readonly onAbort?: (key: Key) => void;
     },
   ): FenceHandle<Key> {
     this.assertRegistered(definition);
@@ -1126,7 +1127,13 @@ export class ActorHost {
         }
       },
       commit: handle.commit,
-      abort: handle.abort,
+      abort: (abortOptions) =>
+        handle.abort({
+          requestResync: () => {
+            abortOptions?.requestResync?.();
+            options.onAbort?.(options.key);
+          },
+        }),
       release: handle.release,
     };
   }
@@ -1157,6 +1164,7 @@ export class ActorHost {
     >,
     options: {
       readonly allowDuringDrain: (event: Event) => boolean;
+      readonly onAbort?: (key: Key) => void;
     },
   ): ActorMachineFenceHandle {
     this.assertRegistered(definition);
@@ -1225,7 +1233,11 @@ export class ActorHost {
         if (this.machineAdmissionFences.get(definition.id) !== record) {
           return false;
         }
-        for (const handle of record.handles) handle.abort();
+        for (const handle of record.handles) {
+          handle.abort({
+            requestResync: () => options.onAbort?.(handle.key as Key),
+          });
+        }
         this.machineAdmissionFences.delete(definition.id);
         return true;
       },

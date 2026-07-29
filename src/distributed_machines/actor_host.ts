@@ -286,7 +286,8 @@ class HostedActor<
           this.bufferedEvents.push({ event });
         }
       },
-      captureSink: () => this.captureSink(),
+      captureSink: (options) =>
+        this.captureSink(undefined, options?.revisionPolicy),
     };
     try {
       const domainObserver = definition.createObserver?.(context);
@@ -486,6 +487,7 @@ class HostedActor<
 
   private captureSink(
     generation: KeyedAdmissionGeneration = this.admission.capture(),
+    revisionPolicy: "captured" | "allow-advance" = "captured",
   ): ActorEventSink<Event> {
     const actor = this.getMetadata();
     const sinkState: CapturedSinkState = { expectedActor: actor };
@@ -518,14 +520,12 @@ class HostedActor<
           undefined,
           generation,
           true,
-          {
-            ...sinkState.expectedActor,
-            // A one-shot producer is bound to the actor instance and admission
-            // generation, not to the snapshot revision at which it started.
-            // Concurrent events may legitimately advance a collection actor;
-            // the domain invocation identity rejects stale job output.
-            snapshotRevision: this.getMetadata().snapshotRevision,
-          },
+          revisionPolicy === "allow-advance"
+            ? {
+                ...sinkState.expectedActor,
+                snapshotRevision: this.getMetadata().snapshotRevision,
+              }
+            : sinkState.expectedActor,
           advanceExpectedActor,
         );
         // The dispatcher normally settles synchronously. The Promise path also

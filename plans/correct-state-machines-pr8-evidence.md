@@ -45,13 +45,15 @@
 - Duplicate output for the same runtime identity cannot overwrite its first
   terminal payload. Output from an older runtime identity cannot settle a
   replacement.
-- Cancellation is a typed `cancelled` outcome. Actor, machine, host, window,
-  and app-deletion disposal use typed `disposed` outcomes; manager teardown
-  uses the owning host disposal cause.
+- Cancellation is a typed `cancelled` outcome. Actor, machine, host, and
+  app-deletion disposal use typed `disposed` outcomes; manager teardown uses
+  the owning host disposal cause. Renderer/window release detaches observation
+  but does not replace a host-owned terminal outcome.
 - The app-deletion fence is published synchronously, permits only declared
   cancellation/terminal cleanup while draining, seals before database deletion,
   commits through the destructive transaction, and aborts only through the
-  generation-bound handle on failure.
+  generation-bound handle on failure. App deletions use an explicit global
+  queue because the image operation collection has one global actor key.
 
 ## Compatibility, rollback, and escape hatches
 
@@ -67,9 +69,10 @@
 - Provider-level deletion/reset counters remain because the provider owns
   database/filesystem work outside the actor host. The authoritative actor
   admission boundary is nevertheless the keyed gate.
-- The pilot found and closed a framework gap: captured producer sinks were
-  revision-bound, so cancellation or a parallel job could suppress legitimate
-  terminal output. Sinks now bind to actor instance plus keyed-admission
-  generation, while job/runtime identity rejects stale output.
+- The pilot found and closed a framework gap: image-generation producer sinks
+  need to survive unrelated collection revisions. Captured sinks remain
+  revision-bound by default; this pilot explicitly opts into actor-instance plus
+  keyed-admission-generation binding, while job/runtime identity rejects stale
+  output.
 - No `OperationRouteRegistry`, saga/workflow layer, generated binding, protocol
   envelope change, persistence, or app-run migration was introduced.

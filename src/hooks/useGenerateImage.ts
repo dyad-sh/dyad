@@ -119,7 +119,9 @@ export function useGenerateImage() {
       try {
         const admission = await prepared.admission;
         if (admission.kind === "admitted") return input.jobId;
+        prepared.detach();
       } catch {
+        prepared.detach();
         // The existing failure presentation below covers unexpected admission.
       }
       showError(
@@ -139,10 +141,14 @@ export function useGenerateImage() {
       void prepared?.admission.then(
         (admission) => {
           if (admission.kind !== "admitted") {
+            prepared.detach();
             showError("Could not cancel image generation. Please try again.");
           }
         },
-        () => showError("Could not cancel image generation. Please try again."),
+        () => {
+          prepared.detach();
+          showError("Could not cancel image generation. Please try again.");
+        },
       );
       void settlement.catch(() =>
         showError("Could not cancel image generation. Please try again."),

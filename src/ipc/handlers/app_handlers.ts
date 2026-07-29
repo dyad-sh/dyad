@@ -135,10 +135,14 @@ import { queryInvalidationBus } from "@/window_infrastructure/main/query_invalid
 import { entityDisposalBus } from "@/window_infrastructure/main/entity_disposal_bus";
 import { appRunActorService } from "../services/app_run_actor_service";
 import { githubOpsActorService } from "../services/github_ops_actor_service";
-import { imageGenerationActorService } from "../services/image_generation_actor_service";
+import {
+  imageGenerationActorService,
+  type ImageGenerationDeletionFence,
+} from "../services/image_generation_actor_service";
 import { imageGenerationService } from "../services/image_generation_service";
 import { githubOpsService } from "../services/github_ops_service";
 import { versionPreviewActorService } from "../services/version_preview_actor_service";
+import { appDeletionQueue } from "../services/app_deletion_queue";
 import { versionPreviewService } from "../services/version_preview_service";
 import {
   beginChatActorDeletion,
@@ -394,15 +398,30 @@ async function deleteAppById(
   appId: number,
   options: DeleteAppByIdOptions = {},
 ): Promise<void> {
-  versionPreviewActorService.beginAppDeletion(appId);
-  const releaseStreamAdmissionBlock = blockNewStreamsForApp(appId);
-  githubOpsService.beginAppDeletion(appId);
-  const imageGenerationDeletion =
-    imageGenerationActorService.beginAppDeletion(appId);
-  const releaseChatCreation = beginAppChatDeletion(appId);
+  await appDeletionQueue.run(() => deleteAppByIdExclusive(appId, options));
+}
+
+async function deleteAppByIdExclusive(
+  appId: number,
+  options: DeleteAppByIdOptions = {},
+): Promise<void> {
+  let versionPreviewDeletionStarted = false;
+  let githubDeletionStarted = false;
+  let releaseStreamAdmissionBlock: (() => void) | undefined;
+  let imageGenerationDeletion: ImageGenerationDeletionFence | undefined;
+  let releaseChatCreation: (() => void) | undefined;
   const releaseChatActorAdmission: (() => void)[] = [];
   let deletionCommitted = false;
   try {
+    versionPreviewActorService.beginAppDeletion(appId);
+    versionPreviewDeletionStarted = true;
+    releaseStreamAdmissionBlock = blockNewStreamsForApp(appId);
+    githubOpsService.beginAppDeletion(appId);
+    githubDeletionStarted = true;
+    imageGenerationDeletion =
+      imageGenerationActorService.beginAppDeletion(appId);
+    releaseChatCreation = beginAppChatDeletion(appId);
+
     await versionPreviewActorService.prepareAppDeletion(appId);
     await imageGenerationActorService.prepareAppDeletion(
       imageGenerationDeletion,
@@ -429,6 +448,7 @@ async function deleteAppById(
 
       if (!app) {
         if (options.allowMissing && options.knownAppPath) {
+          deletionCommitted = true;
           return options.knownAppPath;
         }
         throw new DyadError("App not found", DyadErrorKind.NotFound);
@@ -498,14 +518,27 @@ async function deleteAppById(
     }
   } finally {
     for (const release of releaseChatActorAdmission) release();
-    releaseChatCreation();
-    imageGenerationActorService.finishAppDeletion(
-      imageGenerationDeletion,
-      deletionCommitted,
-    );
-    githubOpsService.endAppDeletion(appId);
-    versionPreviewActorService.endAppDeletion(appId);
-    releaseStreamAdmissionBlock();
+    releaseChatCreation?.();
+    try {
+      if (imageGenerationDeletion) {
+        imageGenerationActorService.finishAppDeletion(
+          imageGenerationDeletion,
+          deletionCommitted,
+        );
+      }
+    } finally {
+      try {
+        if (githubDeletionStarted) githubOpsService.endAppDeletion(appId);
+      } finally {
+        try {
+          if (versionPreviewDeletionStarted) {
+            versionPreviewActorService.endAppDeletion(appId);
+          }
+        } finally {
+          releaseStreamAdmissionBlock?.();
+        }
+      }
+    }
   }
 }
 

@@ -58,7 +58,13 @@ export interface MachineHostContext<Key, State, Event> {
    * Captures a non-creating producer sink bound to this actor instance and the
    * current keyed admission generation.
    */
-  captureSink(): ActorEventSink<Event>;
+  captureSink(options?: {
+    /**
+     * Opt in only when every producer event carries domain correlation that
+     * rejects stale work after unrelated collection revisions.
+     */
+    readonly revisionPolicy?: "captured" | "allow-advance";
+  }): ActorEventSink<Event>;
 }
 
 export interface ActorEventSink<Event> {
@@ -228,7 +234,6 @@ export interface RemoteOperationContract<
     | undefined;
   ignoredOutcome(reason: string): DomainOutcome;
   receipt(actor: ActorRuntimeMetadata): OperationReceiptMetadata;
-  settleWindowSession?(windowSessionId: string): number;
   releaseManager?(): number;
 }
 

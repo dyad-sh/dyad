@@ -216,7 +216,7 @@ describe("main-hosted image generation actor", () => {
     expect(actorB.getSnapshot().jobs[0]?.result).not.toHaveProperty("filePath");
     expect(invalidations.publish).toHaveBeenCalledWith([{ family: "media" }]);
     await expect(initiatingTicket?.settled).resolves.toMatchObject({
-      outcome: { kind: "disposed", cause: "window-session" },
+      outcome: { kind: "succeeded", jobId: "job-1" },
     });
   });
 

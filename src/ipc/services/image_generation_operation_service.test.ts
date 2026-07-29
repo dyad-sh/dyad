@@ -23,6 +23,7 @@ function identity(
   invocationRef: ImageGenerationInvocationRef,
   windowSessionId = "window:a",
   keyId = "jobs",
+  actorRevision = 0,
 ) {
   return {
     requestId: requestId as RequestId,
@@ -33,7 +34,7 @@ function identity(
       machineId: "image_generation",
       keyId,
       actorInstanceId: "actor:1",
-      actorRevision: 0,
+      actorRevision,
       windowSessionId,
     },
   };
@@ -61,7 +62,7 @@ const receipt = {
 };
 
 describe("ImageGenerationOperationService", () => {
-  it("isolates operation settlement to the initiating window", async () => {
+  it("allows a shared window to await an operation without changing presentation ownership", async () => {
     const service = new ImageGenerationOperationService(createFakeClock());
     const ref = invocation("job:1");
     service.registry.admit(identity("request:1", ref));
@@ -72,14 +73,35 @@ describe("ImageGenerationOperationService", () => {
       receipt,
     );
 
-    await expect(service.waitFor("request:1", "window:a")).resolves.toEqual(
+    await expect(service.waitFor("request:1")).resolves.toEqual(
       succeeded("job:1"),
     );
-    await expect(
-      service.waitFor("request:1", "window:b"),
-    ).rejects.toMatchObject({
-      message: "Image generation operation not found",
-    });
+    await expect(service.waitFor("request:1")).resolves.toEqual(
+      succeeded("job:1"),
+    );
+  });
+
+  it("reattaches a stable retry after actor revision advances", () => {
+    const service = new ImageGenerationOperationService(createFakeClock());
+    const ref = invocation("job:retry");
+    service.registry.admit(identity("request:retry", ref));
+
+    expect(
+      service.registry.reattach(
+        identity("request:retry", ref, "window:a", "jobs", 5),
+      )?.kind,
+    ).toBe("coalesced");
+
+    expect(() =>
+      service.registry.reattach({
+        ...identity("request:retry", ref, "window:a", "jobs", 5),
+        owner: {
+          ...identity("request:retry", ref).owner,
+          actorInstanceId: "actor:replacement",
+          actorRevision: 5,
+        },
+      }),
+    ).toThrow("conflicting identity");
   });
 
   it("ignores stale and duplicate terminal output by runtime identity", async () => {
@@ -117,9 +139,9 @@ describe("ImageGenerationOperationService", () => {
       ),
     ).toBe(false);
 
-    await expect(
-      service.waitFor("request:replacement", "window:a"),
-    ).resolves.toEqual(succeeded("job:replacement"));
+    await expect(service.waitFor("request:replacement")).resolves.toEqual(
+      succeeded("job:replacement"),
+    );
   });
 
   it("bounds terminal retention independently without evicting pending work", () => {
@@ -165,24 +187,16 @@ describe("ImageGenerationOperationService", () => {
     expect(service.inspect()).toEqual({ unresolved: 0, settled: 0, total: 0 });
   });
 
-  it("releases window and manager ownership without retaining terminal payloads", async () => {
+  it("releases manager ownership without retaining terminal payloads", async () => {
     const service = new ImageGenerationOperationService(createFakeClock());
-    const firstRef = invocation("job:window");
-    const secondRef = invocation("job:manager");
-    const first = service.registry.admit(
-      identity("request:window", firstRef, "window:a"),
-    ).ticket;
-    const second = service.registry.admit(
-      identity("request:manager", secondRef, "window:b"),
+    const ref = invocation("job:manager");
+    const ticket = service.registry.admit(
+      identity("request:manager", ref, "window:b"),
     ).ticket;
     const contract = service.remoteContract();
 
-    expect(contract.settleWindowSession?.("window:a")).toBe(1);
-    await expect(first.settled).resolves.toMatchObject({
-      outcome: { kind: "disposed", cause: "window-session" },
-    });
     expect(contract.releaseManager?.()).toBe(1);
-    await expect(second.settled).resolves.toMatchObject({
+    await expect(ticket.settled).resolves.toMatchObject({
       outcome: { kind: "disposed", cause: "host" },
     });
     expect(service.inspect()).toEqual({ unresolved: 0, settled: 0, total: 0 });

@@ -155,7 +155,6 @@ export class RemoteMachineTransport {
   private readonly subscriptions = new Map<string, SubscriptionEntry>();
   private readonly actorKeys = new Map<string, unknown>();
   private readonly referencesPerWindow = new Map<number, number>();
-  private readonly windowSessions = new Map<number, WindowSessionId>();
   private readonly pendingSubscriptions = new Map<
     string,
     PendingSubscription
@@ -238,7 +237,6 @@ export class RemoteMachineTransport {
     this.assertOpen();
     this.assertAddressWithinLimit(input);
     const windowSessionId = this.options.windows.ensureRegistered(sender);
-    this.windowSessions.set(sender.id, windowSessionId);
     const definition = this.requireDefinition(input.machineId);
     this.assertProtocol(sender, definition, input.protocolVersion);
     const key = this.decodeKey(definition, input.encodedKey);
@@ -445,10 +443,7 @@ export class RemoteMachineTransport {
   ): Promise<void> {
     this.assertOpen();
     this.assertAddressWithinLimit(input);
-    this.windowSessions.set(
-      sender.id,
-      this.options.windows.ensureRegistered(sender),
-    );
+    this.options.windows.ensureRegistered(sender);
     const definition = this.requireDefinition(input.machineId);
     this.assertProtocol(sender, definition, input.protocolVersion);
     const key = this.decodeKey(definition, input.encodedKey);
@@ -468,7 +463,6 @@ export class RemoteMachineTransport {
   ): Promise<MachineDispatchReceipt> {
     this.assertOpen();
     const windowSessionId = this.options.windows.ensureRegistered(sender);
-    this.windowSessions.set(sender.id, windowSessionId);
     const dispatchDefinition = this.options.manifest.get(envelope.machineId);
     const nativeDispatchLimit =
       dispatchDefinition?.remoteIntent?.budgets.intentBytes;
@@ -603,7 +597,6 @@ export class RemoteMachineTransport {
     this.subscriptions.clear();
     this.actorKeys.clear();
     this.referencesPerWindow.clear();
-    this.windowSessions.clear();
     this.pendingReferencesPerWindow.clear();
     this.receiptLedger.dispose();
   }
@@ -1204,16 +1197,6 @@ export class RemoteMachineTransport {
   }
 
   private removeWindow(webContentsId: number): void {
-    const windowSessionId = this.windowSessions.get(webContentsId);
-    this.windowSessions.delete(webContentsId);
-    if (windowSessionId) {
-      for (const definition of this.options.manifest.definitions) {
-        const operation = definition.remoteOperation as
-          | RemoteOperationContract<unknown, unknown, unknown, unknown, unknown>
-          | undefined;
-        operation?.settleWindowSession?.(windowSessionId);
-      }
-    }
     for (const pending of this.pendingSubscriptions.values()) {
       if (pending.webContentsId === webContentsId) {
         this.cancelPendingSubscription(pending);

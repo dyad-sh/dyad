@@ -71,7 +71,7 @@ export type ImageGenerationPresentationEvent = z.infer<
   typeof ImageGenerationPresentationEventSchema
 >;
 
-export const ImageGenerationOperationOutcomeSchema = z.discriminatedUnion(
+const ImageGenerationOperationOutcomeObjectSchema = z.discriminatedUnion(
   "kind",
   [
     z
@@ -120,7 +120,15 @@ export const ImageGenerationOperationOutcomeSchema = z.discriminatedUnion(
       })
       .strict(),
   ],
-) satisfies z.ZodType<ImageGenerationOperationOutcome>;
+);
+
+export const ImageGenerationOperationOutcomeSchema = z
+  .custom<unknown>((value) => !(value instanceof Error), {
+    message: "Error instances are not image-generation domain outcomes",
+  })
+  .pipe(
+    ImageGenerationOperationOutcomeObjectSchema,
+  ) satisfies z.ZodType<ImageGenerationOperationOutcome>;
 
 export const imageGenerationContracts = {
   waitForOperation: defineContract({
@@ -147,7 +155,13 @@ const imageGenerationSchemaTypeAssertions: [
   AssertTrue<
     MutuallyAssignable<z.infer<typeof ImageThemeModeSchema>, ImageThemeMode>
   >,
-] = [true, true];
+  AssertTrue<
+    MutuallyAssignable<
+      z.infer<typeof ImageGenerationOperationOutcomeSchema>,
+      ImageGenerationOperationOutcome
+    >
+  >,
+] = [true, true, true];
 void imageGenerationSchemaTypeAssertions;
 
 export const imageGenerationEvents = {

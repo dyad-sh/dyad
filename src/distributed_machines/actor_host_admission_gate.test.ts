@@ -128,7 +128,7 @@ function harness(
 }
 
 describe("ActorHost keyed admission integration", () => {
-  it("admits correlated output after an unrelated revision of the same actor", async () => {
+  it("rejects default sink output after an unrelated actor revision", async () => {
     let context!: MachineHostContext<string, State, Event>;
     const definition = machine({
       id: "revision-bound-sink",
@@ -140,6 +140,25 @@ describe("ActorHost keyed admission integration", () => {
     const actor = host.localRef(definition, "one");
     actor.send({ type: "COMMAND" });
     const sink = context.captureSink();
+    actor.send({ type: "WORK" });
+    sink.send({ type: "PRODUCER" });
+
+    expect(actor.getSnapshot().events).toEqual(["COMMAND", "WORK"]);
+    await host.dispose();
+  });
+
+  it("admits explicitly correlated collection output after another revision", async () => {
+    let context!: MachineHostContext<string, State, Event>;
+    const definition = machine({
+      id: "correlated-collection-sink",
+      runCommand(commandContext) {
+        context = commandContext;
+      },
+    });
+    const { host } = harness(definition);
+    const actor = host.localRef(definition, "one");
+    actor.send({ type: "COMMAND" });
+    const sink = context.captureSink({ revisionPolicy: "allow-advance" });
     actor.send({ type: "WORK" });
     sink.send({ type: "PRODUCER" });
 
@@ -298,11 +317,7 @@ describe("ActorHost keyed admission integration", () => {
     expect(await isSettled(sealing)).toBe(false);
     command.resolve();
     await sealing;
-    expect(actor.getSnapshot().events).toEqual([
-      "COMMAND",
-      "CLEANUP",
-      "COMMAND_DONE",
-    ]);
+    expect(actor.getSnapshot().events).toEqual(["COMMAND", "CLEANUP"]);
 
     actor.send({ type: "WORK" });
     producer.send({ type: "PRODUCER" });
@@ -310,11 +325,7 @@ describe("ActorHost keyed admission integration", () => {
     await expect(
       host.dispatch(definition, "one", { type: "CLEANUP" } as Event).settled,
     ).resolves.toMatchObject({ kind: "failed" });
-    expect(actor.getSnapshot().events).toEqual([
-      "COMMAND",
-      "CLEANUP",
-      "COMMAND_DONE",
-    ]);
+    expect(actor.getSnapshot().events).toEqual(["COMMAND", "CLEANUP"]);
 
     fence.commit();
     expect(host.inspectAdmission(definition.id, "one").phase).toBe("committed");

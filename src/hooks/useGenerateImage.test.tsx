@@ -120,7 +120,8 @@ describe("useGenerateImage", () => {
   });
 
   it("reports refused admission without returning a started job", async () => {
-    mocks.request.mockReturnValue(prepared({ admitted: false }));
+    const request = prepared({ admitted: false });
+    mocks.request.mockReturnValue(request);
     const { result } = renderHook(() => useGenerateImage());
 
     let jobId: string | null = "not-set";
@@ -129,6 +130,7 @@ describe("useGenerateImage", () => {
     });
 
     expect(jobId).toBeNull();
+    expect(request.detach).toHaveBeenCalledOnce();
     expect(mocks.showError).toHaveBeenCalledOnce();
   });
 
@@ -156,6 +158,25 @@ describe("useGenerateImage", () => {
     const { result } = renderHook(() => useGenerateImage());
 
     await expect(result.current.start(params)).resolves.toBeNull();
+    expect(request.detach).toHaveBeenCalledOnce();
+    expect(mocks.showError).toHaveBeenCalledOnce();
+  });
+
+  it("detaches an abandoned retryable disconnect", async () => {
+    const request = {
+      ...prepared({ admitted: false }),
+      admission: Promise.resolve({
+        kind: "disconnected" as const,
+        error: new Error("offline"),
+        retryable: true,
+      }),
+      detach: vi.fn(),
+    };
+    mocks.request.mockReturnValue(request);
+    const { result } = renderHook(() => useGenerateImage());
+
+    await expect(result.current.start(params)).resolves.toBeNull();
+    expect(request.detach).toHaveBeenCalledOnce();
     expect(mocks.showError).toHaveBeenCalledOnce();
   });
 
@@ -176,5 +197,6 @@ describe("useGenerateImage", () => {
     expect(detach).toHaveBeenCalledOnce();
     admission.resolve({ kind: "refused", reason: "disposed" });
     await expect(started).resolves.toBeNull();
+    expect(detach).toHaveBeenCalledTimes(2);
   });
 });

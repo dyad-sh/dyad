@@ -119,7 +119,7 @@ function createCommandRunner(
         return runCorrelatedEffect({
           command,
           handlers: imageGenerationEffectHandlers,
-          sink: context.captureSink(),
+          sink: context.captureSink({ revisionPolicy: "allow-advance" }),
           reportUnexpected: (error) =>
             console.error("Unexpected image generation effect failure", error),
         });

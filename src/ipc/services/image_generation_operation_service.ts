@@ -50,6 +50,16 @@ export class ImageGenerationOperationService {
       maxSettledReplay: IMAGE_GENERATION_MAX_RETAINED_OPERATIONS,
       now: () => this.clock.now(),
       sameInvocationRef: sameInvocation,
+      // A stable-id retry can outlive the receipt ledger and arrive after the
+      // actor has advanced. Reattachment remains bound to the same actor
+      // instance and initiator, while the original admission revision is not
+      // treated as operation identity.
+      sameOwnerForReattachment: (left, right) =>
+        left.hostId === right.hostId &&
+        left.machineId === right.machineId &&
+        left.keyId === right.keyId &&
+        left.actorInstanceId === right.actorInstanceId &&
+        left.windowSessionId === right.windowSessionId,
       disposalOutcome: (cause) => ({
         kind: "disposed",
         jobId: "",
@@ -115,8 +125,6 @@ export class ImageGenerationOperationService {
         actor,
         acknowledgedAt: this.clock.now(),
       }),
-      settleWindowSession: (windowSessionId) =>
-        this.registry.settleWindowSession(windowSessionId),
       releaseManager: () => this.registry.releaseOwned("host", () => true),
     };
   }
@@ -131,14 +139,8 @@ export class ImageGenerationOperationService {
     );
   }
 
-  async waitFor(
-    requestId: string,
-    windowSessionId: string,
-  ): Promise<ImageGenerationOperationOutcome> {
-    const ticket = this.registry.ticketFor(
-      requestId as RequestId,
-      (owner) => owner.windowSessionId === windowSessionId,
-    );
+  async waitFor(requestId: string): Promise<ImageGenerationOperationOutcome> {
+    const ticket = this.registry.ticketFor(requestId as RequestId, () => true);
     if (!ticket) {
       throw new DyadError(
         "Image generation operation not found",

@@ -1,7 +1,10 @@
 import { appRunDefinition } from "@/app_run/definition";
 import { chatStreamDefinition } from "@/chat_stream/definition";
 import { planHandoffDefinition } from "@/plan_handoff/definition";
-import { createRemoteMachineManifest } from "@/distributed_machines/remote_manifest";
+import {
+  assertRemoteProtocolV1CompatibilityInventory,
+  createRemoteMachineManifest,
+} from "@/distributed_machines/remote_manifest";
 import {
   RemoteMachineTransport,
   type RemoteTransportEndpoint,
@@ -16,14 +19,20 @@ import { versionPreviewDefinition } from "./version_preview_definition";
 
 export { remoteMachineHost };
 
-export const remoteMachineManifest = createRemoteMachineManifest([
+const remoteMachineDefinitions = [
   appRunDefinition,
   chatStreamDefinition,
   githubOpsDefinition,
   imageGenerationDefinition,
   planHandoffDefinition,
   versionPreviewDefinition,
-]);
+] as const;
+
+assertRemoteProtocolV1CompatibilityInventory(remoteMachineDefinitions);
+
+export const remoteMachineManifest = createRemoteMachineManifest(
+  remoteMachineDefinitions,
+);
 
 export const remoteMachineTransport = new RemoteMachineTransport({
   host: remoteMachineHost,

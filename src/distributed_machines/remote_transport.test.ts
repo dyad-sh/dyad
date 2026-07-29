@@ -9,7 +9,9 @@ import { getTraceLog } from "@/state_machines/trace";
 import { change } from "@/state_machines/types";
 import { ActorHost, type ActorHostError } from "./actor_host";
 import {
+  assertRemoteProtocolV1CompatibilityInventory,
   createRemoteMachineManifest,
+  REMOTE_PROTOCOL_V1_COMPATIBILITY_INVENTORY,
   type AnyRemoteMachineDefinition,
 } from "./remote_manifest";
 import {
@@ -195,6 +197,30 @@ describe("remote machine manifest", () => {
       ]),
     ).toThrow("Invalid remote machine identity");
   });
+
+  it("requires the production compatibility inventory to exactly match legacy definitions", () => {
+    const legacy = createObjectKeyMachine();
+    const productionLegacyDefinitions =
+      REMOTE_PROTOCOL_V1_COMPATIBILITY_INVENTORY.map((id) => ({
+        ...legacy,
+        id,
+      }));
+
+    expect(() =>
+      assertRemoteProtocolV1CompatibilityInventory(productionLegacyDefinitions),
+    ).not.toThrow();
+    expect(() =>
+      assertRemoteProtocolV1CompatibilityInventory([
+        ...productionLegacyDefinitions,
+        { ...legacy, id: "unlisted" },
+      ]),
+    ).toThrow("Unlisted: unlisted");
+    expect(() =>
+      assertRemoteProtocolV1CompatibilityInventory(
+        productionLegacyDefinitions.slice(1),
+      ),
+    ).toThrow(`Stale: ${REMOTE_PROTOCOL_V1_COMPATIBILITY_INVENTORY[0]}`);
+  });
 });
 
 describe("remote machine transport", () => {
@@ -336,6 +362,30 @@ describe("remote machine transport", () => {
     await expect(
       renderer.dispatch(dispatch({ type: "INCREMENT" })),
     ).rejects.toBe(dispatchFailure);
+  });
+
+  it("propagates non-auth typed dispatch denials", async () => {
+    const expected = new DyadError(
+      "Synthetic dispatch dependency failure",
+      DyadErrorKind.Validation,
+    );
+    const base = createRemoteTestMachine();
+    const machine = {
+      ...base,
+      remoteIntent: {
+        ...base.remoteIntent,
+        authorizeDispatch() {
+          return { kind: "deny", error: expected } as const;
+        },
+      },
+    };
+    const { duplex } = createHarness({ machine });
+    const renderer = duplex.connect();
+    await renderer.subscribe(address());
+
+    await expect(
+      renderer.dispatch(dispatch({ type: "INCREMENT" })),
+    ).rejects.toBe(expected);
   });
 
   it("rejects producer events and forged provenance at the renderer boundary", async () => {
@@ -1812,6 +1862,43 @@ describe("remote machine transport", () => {
       ).rejects.toMatchObject({ kind: DyadErrorKind.Auth });
     }
     expect(canonicalize).not.toHaveBeenCalled();
+    expect(transport.inspectSubscriptions()).toEqual([]);
+  });
+
+  it("rejects post-authorization key canonicalization that changes the wire address", async () => {
+    const keyCodec = z.string().transform((wireId) => ({
+      entityId: "actor",
+      wireId,
+    }));
+    const base = createNativeObjectKeyMachine(() => ({ kind: "allow" }));
+    const machine = {
+      ...base,
+      remote: {
+        ...base.remote,
+        keyCodec,
+        encodeKey: (key: { wireId: string }) => key.wireId,
+        keyToString: (key: { entityId: string }) => key.entityId,
+        canonicalizeKeyAfterAuthorization: (key: {
+          entityId: string;
+          wireId: string;
+        }) => ({ ...key, wireId: "canonical-actor" }),
+      },
+      remoteIntent: {
+        ...base.remoteIntent,
+        keyCodec,
+        encodeKey: (key: { wireId: string }) => key.wireId,
+      },
+    } as AnyRemoteMachineDefinition;
+    const { transport, windows } = createHarness({ machine });
+    const sessionId = windows.createTrustedRendererWindow();
+
+    await expect(
+      transport.subscribe(windows.endpoint(sessionId), objectAddress()),
+    ).rejects.toMatchObject({
+      kind: DyadErrorKind.Precondition,
+      message:
+        "Remote machine wire address changed during subscription authorization",
+    });
     expect(transport.inspectSubscriptions()).toEqual([]);
   });
 

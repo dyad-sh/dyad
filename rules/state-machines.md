@@ -108,7 +108,10 @@ Background and before/after examples of why this pattern exists:
   interner used by main-process producers only after subscription authorization
   succeeds, then pass that canonical key to `ActorHost`. Its actor map is
   identity-keyed, but interning inside an untrusted wire decoder lets rejected
-  entity IDs grow a process-lifetime cache.
+  entity IDs grow a process-lifetime cache. Post-authorization canonicalization
+  must preserve the reserved encoded wire address; otherwise reject it or
+  atomically re-key pending quota, subscription, disposal, and reference
+  bookkeeping before admitting the actor.
 - Remote authorization hooks use `DyadErrorKind.Auth` for expected access
   denial. Convert only that explicit classification to an unauthorized receipt;
   propagate unexpected hook failures so telemetry can distinguish dependency

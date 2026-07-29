@@ -15,6 +15,30 @@ export const REMOTE_PROTOCOL_V1_COMPATIBILITY_INVENTORY = Object.freeze([
   "version_preview",
 ]);
 
+export function assertRemoteProtocolV1CompatibilityInventory(
+  definitions: readonly AnyRemoteMachineDefinition[],
+): void {
+  const expected = new Set(REMOTE_PROTOCOL_V1_COMPATIBILITY_INVENTORY);
+  const actual = new Set(
+    definitions
+      .filter((definition) => definition.remoteIntent === undefined)
+      .map((definition) => definition.id),
+  );
+  const unlisted = [...actual].filter((id) => !expected.has(id));
+  const stale = [...expected].filter((id) => !actual.has(id));
+  if (unlisted.length === 0 && stale.length === 0) return;
+
+  throw new Error(
+    [
+      "Remote protocol-v1 compatibility inventory is out of date.",
+      unlisted.length > 0 ? `Unlisted: ${unlisted.join(", ")}` : undefined,
+      stale.length > 0 ? `Stale: ${stale.join(", ")}` : undefined,
+    ]
+      .filter(Boolean)
+      .join(" "),
+  );
+}
+
 export type AnyRemoteMachineDefinition = DistributedMachineDefinition<
   string,
   any,

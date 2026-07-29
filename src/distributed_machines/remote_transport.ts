@@ -295,6 +295,14 @@ export class RemoteMachineTransport {
           DyadErrorKind.Precondition,
         );
       }
+      if (
+        !serialize(canonicalEncodedKey).equals(serialize(prepared.encodedKey))
+      ) {
+        throw new DyadError(
+          "Remote machine wire address changed during subscription authorization",
+          DyadErrorKind.Precondition,
+        );
+      }
       const canonicalKey = this.actorKeys.get(address) ?? authorizedKey;
       const currentReferences = this.referencesPerWindow.get(sender.id) ?? 0;
       let entry = this.subscriptions.get(address);
@@ -701,6 +709,9 @@ export class RemoteMachineTransport {
       expectedObservedRevision: envelope.expectedRevision,
     });
     if (decision.kind === "deny") {
+      if (decision.error.kind !== DyadErrorKind.Auth) {
+        throw decision.error;
+      }
       return this.rejected(
         envelope.messageId,
         definition.remoteIntent?.refusalMap.authorization ?? "unauthorized",

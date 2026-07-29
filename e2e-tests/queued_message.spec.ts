@@ -168,7 +168,7 @@ testSkipIfWindows(
 
     // Build an app so we have a preview with selectable components
     await po.sendPrompt("tc=basic");
-    await po.previewPanel.clickTogglePreviewPanel();
+    await po.previewPanel.ensurePreviewPanelOpen();
 
     // Start a slow streaming response so the setup below finishes while queuing is still active
     await po.sendPrompt("tc=1 [sleep=long]", {

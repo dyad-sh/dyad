@@ -4,7 +4,7 @@ import { testSkipIfWindows, Timeout } from "./helpers/test_helper";
 testSkipIfWindows("select component", async ({ po }) => {
   await po.setUp();
   await po.sendPrompt("tc=basic");
-  await po.previewPanel.clickTogglePreviewPanel();
+  await po.previewPanel.ensurePreviewPanelOpen();
   await po.previewPanel.clickPreviewPickElement();
 
   await po.previewPanel
@@ -37,7 +37,7 @@ testSkipIfWindows("select component", async ({ po }) => {
 testSkipIfWindows("select multiple components", async ({ po }) => {
   await po.setUp();
   await po.sendPrompt("tc=basic");
-  await po.previewPanel.clickTogglePreviewPanel();
+  await po.previewPanel.ensurePreviewPanelOpen();
   await po.previewPanel.clickPreviewPickElement();
 
   await po.previewPanel
@@ -72,7 +72,7 @@ testSkipIfWindows("select multiple components", async ({ po }) => {
 testSkipIfWindows("deselect component", async ({ po }) => {
   await po.setUp();
   await po.sendPrompt("tc=basic");
-  await po.previewPanel.clickTogglePreviewPanel();
+  await po.previewPanel.ensurePreviewPanelOpen();
   await po.previewPanel.clickPreviewPickElement();
 
   await po.previewPanel
@@ -102,7 +102,7 @@ testSkipIfWindows(
   async ({ po }) => {
     await po.setUp();
     await po.sendPrompt("tc=basic");
-    await po.previewPanel.clickTogglePreviewPanel();
+    await po.previewPanel.ensurePreviewPanelOpen();
     await po.previewPanel.clickPreviewPickElement();
 
     await po.previewPanel
@@ -175,7 +175,7 @@ testSkipIfWindows("select component next.js", async ({ po }) => {
   await po.chatActions.selectChatMode("build");
   // Next.js apps take longer to build on the first prompt, use LONG timeout
   await po.sendPrompt("tc=basic", { timeout: Timeout.LONG });
-  await po.previewPanel.clickTogglePreviewPanel();
+  await po.previewPanel.ensurePreviewPanelOpen();
 
   // Wait for the preview iframe to be visible before interacting
   // Next.js apps take longer to compile and start the dev server

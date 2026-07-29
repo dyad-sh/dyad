@@ -79,21 +79,7 @@ export class PreviewPanel {
     // Mode buttons live inside the preview panel, so the panel must be expanded
     // before they're clickable. If the panel is collapsed, the chat panel covers
     // the toolbar and intercepts pointer events.
-    const previewPanel = this.page.locator("#preview-panel");
-    const sizeAttr = await previewPanel.getAttribute("data-panel-size");
-    if (sizeAttr === null || parseFloat(sizeAttr) < 5) {
-      await this.page.getByTestId("toggle-preview-panel-button").click();
-      // Wait for panel-resize transition (chat.tsx uses 100ms transition)
-      await this.page.waitForFunction(
-        () => {
-          const el = document.querySelector("#preview-panel");
-          const v = el?.getAttribute("data-panel-size");
-          return v !== null && v !== undefined && parseFloat(v) >= 5;
-        },
-        undefined,
-        { timeout: Timeout.MEDIUM },
-      );
-    }
+    await this.ensurePreviewPanelOpen();
 
     // When the tab row is too narrow, trailing tabs move into an overflow
     // dropdown ("…"). Open the dropdown first if the direct button isn't
@@ -113,6 +99,24 @@ export class PreviewPanel {
       await expect(directButton.first()).toBeVisible({ timeout: 1_000 });
       await directButton.first().click({ timeout: 1_000 });
     }).toPass({ timeout: Timeout.MEDIUM });
+  }
+
+  async ensurePreviewPanelOpen() {
+    const previewPanel = this.page.locator("#preview-panel");
+    const sizeAttr = await previewPanel.getAttribute("data-panel-size");
+    if (sizeAttr === null || parseFloat(sizeAttr) < 5) {
+      await this.page.getByTestId("toggle-preview-panel-button").click();
+      // Wait for panel-resize transition (chat.tsx uses 100ms transition)
+      await this.page.waitForFunction(
+        () => {
+          const el = document.querySelector("#preview-panel");
+          const v = el?.getAttribute("data-panel-size");
+          return v !== null && v !== undefined && parseFloat(v) >= 5;
+        },
+        undefined,
+        { timeout: Timeout.MEDIUM },
+      );
+    }
   }
 
   // --- Tests panel (behind the per-app opt-in gate) ---
@@ -167,9 +171,12 @@ export class PreviewPanel {
   }
 
   async clickPreviewPickElement() {
-    await this.getPreviewPickElementButton().click({
+    await this.ensurePreviewPanelOpen();
+    const button = this.getPreviewPickElementButton();
+    await expect(button).toBeEnabled({
       timeout: Timeout.EXTRA_LONG,
     });
+    await button.click();
   }
 
   getPreviewPickElementButton() {

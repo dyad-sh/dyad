@@ -199,6 +199,7 @@ export class OperationRouteRegistry<Route> {
    * Re-insertion makes eviction deterministic by settlement order.
    */
   markTerminal(handle: OperationRouteHandle): boolean {
+    this.assertMutationAllowed();
     const entry = this.currentEntry(handle);
     if (!entry || entry.snapshot.state === "terminal") return false;
     entry.snapshot.state = "terminal";
@@ -212,6 +213,7 @@ export class OperationRouteRegistry<Route> {
 
   /** Explicit authoritative release for one operation generation. */
   release(handle: OperationRouteHandle): boolean {
+    this.assertMutationAllowed();
     const entry = this.currentEntry(handle);
     if (!entry) return false;
     this.entries.delete(handle.operationId);
@@ -221,18 +223,21 @@ export class OperationRouteRegistry<Route> {
   }
 
   releaseOwner(machineId: string, ownerId: string): number {
+    this.assertMutationAllowed();
     return this.releaseMatching(
       (owner) => owner.machineId === machineId && owner.ownerId === ownerId,
     );
   }
 
   releaseWindow(windowSessionId: string): number {
+    this.assertMutationAllowed();
     return this.releaseMatching(
       (owner) => owner.windowSessionId === windowSessionId,
     );
   }
 
   releaseMachine(machineId: string): number {
+    this.assertMutationAllowed();
     return this.releaseMatching((owner) => owner.machineId === machineId);
   }
 
@@ -261,6 +266,7 @@ export class OperationRouteRegistry<Route> {
 
   dispose(): void {
     if (this.disposed) return;
+    this.assertMutationAllowed();
     this.disposed = true;
     this.entries.clear();
     this.unresolved = 0;
@@ -361,6 +367,13 @@ export class OperationRouteRegistry<Route> {
     throw new DyadError(
       "Operation route registry is disposed",
       DyadErrorKind.Precondition,
+    );
+  }
+
+  private assertMutationAllowed(): void {
+    if (!this.invokingAdapter) return;
+    throw new Error(
+      "Operation route adapters cannot mutate registry ownership",
     );
   }
 }

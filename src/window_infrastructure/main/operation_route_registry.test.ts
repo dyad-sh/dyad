@@ -389,11 +389,13 @@ describe("OperationRouteRegistry", () => {
     });
 
     expect(() => registry.admit(claim("disposed"))).toThrow(
-      "Operation route registry is disposed",
+      "adapters cannot mutate registry ownership",
     );
     expect(registry.inspect().total).toBe(0);
 
     disposeDuringSnapshot = false;
+    expect(registry.admit(claim("after-rejected-disposal")).kind).toBe("fresh");
+    registry.dispose();
     let admittedHandle:
       | ReturnType<OperationRouteRegistry<Route>["admit"]>["handle"]
       | undefined;
@@ -409,8 +411,17 @@ describe("OperationRouteRegistry", () => {
     admittedHandle = releasingRegistry.admit(claim("released")).handle;
 
     expect(() => releasingRegistry.admit(claim("released"))).toThrow(
-      "adapter mutated registry ownership",
+      "adapters cannot mutate registry ownership",
     );
-    expect(releasingRegistry.inspect().total).toBe(0);
+    expect(releasingRegistry.inspect()).toMatchObject({
+      unresolved: 1,
+      total: 1,
+      routes: [
+        expect.objectContaining({
+          operationId: "released",
+          state: "unresolved",
+        }),
+      ],
+    });
   });
 });

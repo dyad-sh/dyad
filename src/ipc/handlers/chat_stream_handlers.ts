@@ -853,6 +853,10 @@ export function registerChatStreamHandlers() {
     let attachmentPaths: string[] = [];
     const abortController = new AbortController();
     let trackedStream: TrackedStream | undefined;
+    // Set on every successful terminal path — including the agent-mode branches
+    // that return early below. The `finally` block only arms a user-input
+    // follow-up (`streamFinished`) when this is true, so leaving it false on a
+    // turn that actually completed sweeps the armed request instead.
     let finishedNaturally = false;
     let replayedAcceptedFollowUp = false;
     let mutatedPersistedChat = false;
@@ -2173,6 +2177,7 @@ This conversation includes one or more image attachments. When the user uploads 
               "Ask mode local agent stream did not complete successfully",
             );
           }
+          finishedNaturally = streamSuccess;
           return;
         }
 
@@ -2188,17 +2193,22 @@ This conversation includes one or more image attachments. When the user uploads 
             freeModelMode,
           });
 
-          await handleLocalAgentStream(event, req, abortController, {
-            placeholderMessageId: placeholderAssistantMessage.id,
-            systemPrompt: planModeSystemPrompt,
-            dyadRequestId: dyadRequestId ?? "[no-request-id]",
-            planModeOnly: true,
-            messageOverride: isSummarizeIntent ? chatMessages : undefined,
-            settingsOverride: settings,
-            freeModelMode,
-            referencedApps: referencedAppsForAgent,
-            currentTurnHasOnDiskAttachment: false,
-          });
+          finishedNaturally = await handleLocalAgentStream(
+            event,
+            req,
+            abortController,
+            {
+              placeholderMessageId: placeholderAssistantMessage.id,
+              systemPrompt: planModeSystemPrompt,
+              dyadRequestId: dyadRequestId ?? "[no-request-id]",
+              planModeOnly: true,
+              messageOverride: isSummarizeIntent ? chatMessages : undefined,
+              settingsOverride: settings,
+              freeModelMode,
+              referencedApps: referencedAppsForAgent,
+              currentTurnHasOnDiskAttachment: false,
+            },
+          );
           return;
         }
 
@@ -2259,6 +2269,7 @@ This conversation includes one or more image attachments. When the user uploads 
             }
           }
 
+          finishedNaturally = streamSuccess;
           return;
         }
 

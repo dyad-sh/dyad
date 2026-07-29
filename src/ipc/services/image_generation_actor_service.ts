@@ -5,6 +5,7 @@ import type {
   ImageGenerationIgnoreReason,
 } from "@/image_generation/state";
 import type { FenceHandle } from "@/distributed_machines/keyed_admission_gate";
+import type { HostedActorRef } from "@/distributed_machines/definition";
 import { imageGenerationDefinition } from "./image_generation_definition";
 import { imageGenerationPresentationService } from "./image_generation_presentation_service";
 import { imageGenerationService } from "./image_generation_service";
@@ -19,6 +20,13 @@ type ImageGenerationActorHost = Pick<
 export interface ImageGenerationDeletionFence {
   readonly appId: number;
   readonly handle: FenceHandle<ReturnType<typeof getImageGenerationKey>>;
+  readonly actor:
+    | HostedActorRef<
+        ImageGenerationActorState,
+        ImageGenerationEvent,
+        ImageGenerationIgnoreReason
+      >
+    | undefined;
 }
 
 export class ImageGenerationActorService {
@@ -29,16 +37,22 @@ export class ImageGenerationActorService {
   beginAppDeletion(appId: number): ImageGenerationDeletionFence {
     imageGenerationService.beginAppDeletion(appId);
     try {
+      const handle = this.host.beginFence(imageGenerationDefinition, {
+        key: getImageGenerationKey(),
+        allowDuringDrain: (event) =>
+          event.type === "APP_DELETED" ||
+          event.type === "JOB_SUCCEEDED" ||
+          event.type === "JOB_FAILED" ||
+          event.type === "CANCEL_REQUESTED",
+      });
       return {
         appId,
-        handle: this.host.beginFence(imageGenerationDefinition, {
-          key: getImageGenerationKey(),
-          allowDuringDrain: (event) =>
-            event.type === "APP_DELETED" ||
-            event.type === "JOB_SUCCEEDED" ||
-            event.type === "JOB_FAILED" ||
-            event.type === "CANCEL_REQUESTED",
-        }),
+        handle,
+        actor: this.host.peek<
+          ImageGenerationActorState,
+          ImageGenerationEvent,
+          ImageGenerationIgnoreReason
+        >(imageGenerationDefinition.id, getImageGenerationKey()),
       };
     } catch (error) {
       imageGenerationService.endAppDeletion(appId);
@@ -47,24 +61,14 @@ export class ImageGenerationActorService {
   }
 
   async prepareAppDeletion(fence: ImageGenerationDeletionFence): Promise<void> {
-    const { appId } = fence;
-    const actor = this.host.peek<
-      ImageGenerationActorState,
-      ImageGenerationEvent,
-      ImageGenerationIgnoreReason
-    >(imageGenerationDefinition.id, getImageGenerationKey());
-    if (actor) {
-      imageGenerationPresentationService.forgetApp(appId, actor.getSnapshot());
-      await actor.enqueue({ type: "APP_DELETED", appId }).settled;
-    }
-    await imageGenerationService.cancelAndSettleApp(appId);
+    await imageGenerationService.cancelAndSettleApp(fence.appId);
     await fence.handle.seal();
   }
 
-  finishAppDeletion(
+  async finishAppDeletion(
     fence: ImageGenerationDeletionFence,
     committed: boolean,
-  ): void {
+  ): Promise<void> {
     try {
       if (committed) {
         if (!fence.handle.commit()) {
@@ -72,12 +76,22 @@ export class ImageGenerationActorService {
             "Image-generation deletion fence is no longer current",
           );
         }
-        imageGenerationOperationService.releaseApp(fence.appId);
         if (!fence.handle.release()) {
           throw new Error(
             "Image-generation deletion fence could not be released",
           );
         }
+        if (fence.actor) {
+          imageGenerationPresentationService.forgetApp(
+            fence.appId,
+            fence.actor.getSnapshot(),
+          );
+          await fence.actor.enqueue({
+            type: "APP_DELETED",
+            appId: fence.appId,
+          }).settled;
+        }
+        imageGenerationOperationService.releaseApp(fence.appId);
       } else {
         fence.handle.abort();
       }

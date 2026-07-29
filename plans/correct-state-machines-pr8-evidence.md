@@ -69,6 +69,12 @@
 - Provider-level deletion/reset counters remain because the provider owns
   database/filesystem work outside the actor host. The authoritative actor
   admission boundary is nevertheless the keyed gate.
+- The global image-job collection exposes a framework limitation for
+  app-scoped destruction: its keyed fence must drain the whole actor before
+  sealing, so deleting one app waits for unrelated in-flight image jobs and
+  temporarily blocks collection-wide submission. Safely preserving unrelated
+  generations requires app-partitioned actor keys or scoped gate generations;
+  PR8 does not conceal that broader framework change in domain lifecycle glue.
 - The pilot found and closed a framework gap: image-generation producer sinks
   need to survive unrelated collection revisions. Captured sinks remain
   revision-bound by default; this pilot explicitly opts into actor-instance plus

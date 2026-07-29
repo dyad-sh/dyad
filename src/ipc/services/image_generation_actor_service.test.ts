@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   ImageGenerationActorState,
   ImageGenerationEvent,
@@ -37,7 +37,11 @@ vi.mock("./distributed_machine_host", () => ({
 }));
 
 describe("ImageGenerationActorService", () => {
-  it("settles and prunes matching jobs before app deletion continues", async () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("settles and prunes matching jobs only after app deletion commits", async () => {
     const state: ImageGenerationActorState = {
       jobs: [
         {
@@ -79,14 +83,18 @@ describe("ImageGenerationActorService", () => {
 
     const deletion = actorService.beginAppDeletion(7);
     await actorService.prepareAppDeletion(deletion);
-    actorService.finishAppDeletion(deletion, true);
+    expect(enqueue).not.toHaveBeenCalled();
+    await actorService.finishAppDeletion(deletion, true);
 
     expect(service.beginAppDeletion).toHaveBeenCalledWith(7);
     expect(presentation.forgetApp).toHaveBeenCalledWith(7, state);
     expect(enqueue).toHaveBeenCalledWith({ type: "APP_DELETED", appId: 7 });
     expect(service.cancelAndSettleApp).toHaveBeenCalledWith(7);
-    expect(enqueue.mock.invocationCallOrder[0]).toBeLessThan(
-      service.cancelAndSettleApp.mock.invocationCallOrder[0],
+    expect(service.cancelAndSettleApp.mock.invocationCallOrder[0]).toBeLessThan(
+      fence.seal.mock.invocationCallOrder[0],
+    );
+    expect(fence.release.mock.invocationCallOrder[0]).toBeLessThan(
+      enqueue.mock.invocationCallOrder[0],
     );
     expect(fence.seal).toHaveBeenCalled();
     expect(fence.commit).toHaveBeenCalled();
@@ -95,7 +103,7 @@ describe("ImageGenerationActorService", () => {
     expect(service.endAppDeletion).toHaveBeenCalledWith(7);
   });
 
-  it("reopens only through the current fence handle when deletion fails", () => {
+  it("reopens without removing jobs when deletion fails", async () => {
     const fence = {
       key: { collection: "default" },
       generation: { ordinal: 1, identity: {} },
@@ -104,18 +112,25 @@ describe("ImageGenerationActorService", () => {
       abort: vi.fn(() => true),
       release: vi.fn(() => true),
     };
+    const enqueue = vi.fn();
     const actorService = new ImageGenerationActorService({
-      peek: vi.fn(),
+      peek: vi.fn(() => ({
+        getSnapshot: () => ({ jobs: [] }),
+        enqueue,
+      })),
       disposeMachine: vi.fn(),
       beginFence: vi.fn(() => fence),
     } as never);
 
     const deletion = actorService.beginAppDeletion(7);
-    actorService.finishAppDeletion(deletion, false);
+    await actorService.finishAppDeletion(deletion, false);
 
     expect(fence.abort).toHaveBeenCalledOnce();
     expect(fence.commit).not.toHaveBeenCalled();
     expect(fence.release).not.toHaveBeenCalled();
+    expect(enqueue).not.toHaveBeenCalled();
+    expect(presentation.forgetApp).not.toHaveBeenCalled();
+    expect(operations.releaseApp).not.toHaveBeenCalled();
     expect(service.endAppDeletion).toHaveBeenCalledWith(7);
   });
 

@@ -617,3 +617,8 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   stale or replacement-job output. Factory-buffered sequential emissions must
   retain the same captured identity through activation, and output after actor
   disposal must remain non-creating.
+- A destructive fence is scoped to the actor key, not to a domain predicate
+  within a collection. If owner deletion must preserve unrelated in-flight
+  producers, partition the actor key by owner or add first-class scoped gate
+  generations; filtering drain events alone cannot preserve unrelated captured
+  generations through seal and release.

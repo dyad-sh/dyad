@@ -521,7 +521,7 @@ async function deleteAppByIdExclusive(
     releaseChatCreation?.();
     try {
       if (imageGenerationDeletion) {
-        imageGenerationActorService.finishAppDeletion(
+        await imageGenerationActorService.finishAppDeletion(
           imageGenerationDeletion,
           deletionCommitted,
         );

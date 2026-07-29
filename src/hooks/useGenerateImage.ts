@@ -138,21 +138,24 @@ export function useGenerateImage() {
       if (!job?.activeInvocationRef) return;
       const settlement = cancelMutation.mutate(job);
       const prepared = latestCancellation.current;
-      void prepared?.admission.then(
-        (admission) => {
-          if (admission.kind !== "admitted") {
-            prepared.detach();
-            showError("Could not cancel image generation. Please try again.");
+      void settlement.catch(() => undefined);
+      void (async () => {
+        try {
+          if (!prepared) {
+            throw new Error("Image cancellation request was not prepared");
           }
-        },
-        () => {
-          prepared.detach();
+          const admission = await prepared.admission;
+          if (admission.kind !== "admitted") {
+            prepared?.detach();
+            showError("Could not cancel image generation. Please try again.");
+            return;
+          }
+          await settlement;
+        } catch {
+          prepared?.detach();
           showError("Could not cancel image generation. Please try again.");
-        },
-      );
-      void settlement.catch(() =>
-        showError("Could not cancel image generation. Please try again."),
-      );
+        }
+      })();
     },
     [cancelMutation.mutate, remote.state.jobs],
   );

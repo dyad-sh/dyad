@@ -134,7 +134,7 @@ function createCommandRunner(
           invocationRef: command.invocationRef,
           cancelled,
         });
-        return;
+        return Promise.resolve();
       }
       case "SchedulePrune":
         context.timers.replace(
@@ -144,22 +144,22 @@ function createCommandRunner(
           (jobId) => ({ type: "PRUNE_JOB", jobId: String(jobId) }),
           context.send,
         );
-        return;
+        return Promise.resolve();
       case "Present":
         imageGenerationPresentationService.present(
           context.getSnapshot(),
           command.jobId,
         );
-        return;
+        return Promise.resolve();
       case "RecordInitiator":
         imageGenerationPresentationService.recordInitiator(
           command.jobId,
           command.windowSessionId,
         );
-        return;
+        return Promise.resolve();
       case "InvalidateMediaQueries":
         queryInvalidationBus.publish([{ family: "media" }]);
-        return;
+        return Promise.resolve();
       default:
         return assertNever(command);
     }

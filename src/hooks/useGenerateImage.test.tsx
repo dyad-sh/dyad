@@ -1,9 +1,10 @@
-import { act, renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PreparedRequest } from "@/distributed_machines/prepared_request";
 import { useGenerateImage } from "./useGenerateImage";
 
 const mocks = vi.hoisted(() => ({
+  jobs: [] as any[],
   request: vi.fn(),
   cancel: vi.fn(),
   showError: vi.fn(),
@@ -11,7 +12,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/image_generation/hooks", () => ({
   useImageGenerationActor: () => ({
-    state: { jobs: [] },
+    state: { jobs: mocks.jobs },
     connection: "ready",
     snapshot: {
       kind: "available",
@@ -103,6 +104,7 @@ describe("useGenerateImage", () => {
     mocks.request.mockReset();
     mocks.cancel.mockReset();
     mocks.showError.mockReset();
+    mocks.jobs.splice(0);
   });
 
   it("returns a job ID only after authoritative admission", async () => {
@@ -198,5 +200,24 @@ describe("useGenerateImage", () => {
     admission.resolve({ kind: "refused", reason: "disposed" });
     await expect(started).resolves.toBeNull();
     expect(detach).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows one error when cancellation admission is refused", async () => {
+    mocks.jobs.push({
+      id: "job:cancel",
+      requestId: "request:cancel",
+      activeInvocationRef: {
+        kind: "image-generation",
+        entityKey: "job:cancel",
+        operationId: "runtime:cancel",
+      },
+      status: "pending",
+    });
+    mocks.cancel.mockReturnValue(prepared({ admitted: false }));
+    const { result } = renderHook(() => useGenerateImage());
+
+    act(() => result.current.cancel("job:cancel"));
+
+    await waitFor(() => expect(mocks.showError).toHaveBeenCalledOnce());
   });
 });

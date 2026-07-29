@@ -135,6 +135,7 @@ describe("useChatMode with an active chat", () => {
       title: "",
       messages: [],
       chatMode: null,
+      referencedApps: [],
     } satisfies Chat;
 
     const { result } = renderHook(() => useChatMode(chat.id), {
@@ -152,6 +153,7 @@ describe("useChatMode with an active chat", () => {
       title: "",
       messages: [],
       chatMode: "build",
+      referencedApps: [],
     } satisfies Chat;
 
     const { result } = renderHook(() => useChatMode(chat.id), {

@@ -20,6 +20,10 @@ import {
   toRendererMessage,
 } from "../utils/renderer_chat_message";
 import { createChatForApp } from "../utils/chat_creation_utils";
+import {
+  getReferencedAppsForDisplay,
+  readStoredReferencedAppIds,
+} from "../utils/mention_apps";
 import { firstPromptCreationRegistry } from "../services/first_prompt_creation_service";
 import { userInputRegistry } from "@/user_input/main";
 import {
@@ -115,6 +119,7 @@ export function registerChatHandlers() {
         title: true,
         initialCommitHash: true,
         chatMode: true,
+        referencedAppIds: true,
       },
       with: {
         messages: {
@@ -137,9 +142,33 @@ export function registerChatHandlers() {
       title: chat.title ?? "",
       initialCommitHash: chat.initialCommitHash,
       chatMode: normalizeStoredChatMode(chat.chatMode),
+      referencedApps: await getReferencedAppsForDisplay(chat.referencedAppIds),
       messages: chat.messages.map(toRendererMessage),
     };
   });
+
+  createTypedHandler(
+    chatContracts.removeChatReferencedApp,
+    async (_, { chatId, appId }) => {
+      const chat = await db.query.chats.findFirst({
+        where: eq(chats.id, chatId),
+        columns: { referencedAppIds: true },
+      });
+
+      if (!chat) {
+        throw new DyadError("Chat not found", DyadErrorKind.NotFound);
+      }
+
+      const remaining = readStoredReferencedAppIds(
+        chat.referencedAppIds,
+      ).filter((id) => id !== appId);
+
+      await db
+        .update(chats)
+        .set({ referencedAppIds: remaining })
+        .where(eq(chats.id, chatId));
+    },
+  );
 
   createTypedHandler(chatContracts.getChatMetadata, async (_, chatId) => {
     const chat = await db.query.chats.findFirst({
@@ -252,6 +281,13 @@ export function registerChatHandlers() {
       sender: event.sender,
       mutation: async () => {
         await db.delete(messages).where(eq(messages.chatId, chatId));
+        // Clearing the conversation clears its referenced apps too: the
+        // mentions that established them are gone, so keeping the agent's
+        // read access to other apps would outlive anything the user can see.
+        await db
+          .update(chats)
+          .set({ referencedAppIds: [] })
+          .where(eq(chats.id, chatId));
       },
     });
   });

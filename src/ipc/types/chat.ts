@@ -49,6 +49,13 @@ export const NullableChatModeSchema = StoredChatModeSchema.nullable().transform(
   (mode): ChatMode | null => migrateStoredChatMode(mode ?? undefined) ?? null,
 );
 
+export const ReferencedAppSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+});
+
+export type ReferencedApp = z.infer<typeof ReferencedAppSchema>;
+
 /**
  * Schema for a Chat object.
  */
@@ -60,6 +67,11 @@ export const ChatSchema = z.object({
   initialCommitHash: z.string().nullable().optional(),
   dbTimestamp: z.string().nullable().optional(),
   chatMode: NullableChatModeSchema,
+  /**
+   * Apps referenced via `@app:Name` that stay readable for the rest of the
+   * chat in agent-backed modes.
+   */
+  referencedApps: z.array(ReferencedAppSchema).default([]),
 });
 
 export type Chat = z.infer<typeof ChatSchema>;
@@ -307,6 +319,15 @@ export const UpdateChatParamsSchema = z.object({
 
 export type UpdateChatParams = z.infer<typeof UpdateChatParamsSchema>;
 
+export const RemoveChatReferencedAppParamsSchema = z.object({
+  chatId: z.number(),
+  appId: z.number(),
+});
+
+export type RemoveChatReferencedAppParams = z.infer<
+  typeof RemoveChatReferencedAppParamsSchema
+>;
+
 export const SetChatFavoriteParamsSchema = z.object({
   chatId: z.number(),
   isFavorite: z.boolean(),
@@ -418,6 +439,13 @@ export const chatContracts = {
       { family: "chat", chatId: input.chatId },
     ],
     originHandles: () => [{ family: "chats" }],
+  }),
+
+  removeChatReferencedApp: defineContract({
+    channel: "remove-chat-referenced-app",
+    input: RemoveChatReferencedAppParamsSchema,
+    output: z.void(),
+    invalidates: (input) => [{ family: "chat", chatId: input.chatId }],
   }),
 
   deleteChat: defineContract({

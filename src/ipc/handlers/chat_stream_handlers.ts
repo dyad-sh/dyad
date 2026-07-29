@@ -101,7 +101,9 @@ import {
 } from "@/ipc/utils/model_refusal";
 import {
   extractMentionedAppsCodebasesFromPrompt,
-  extractMentionedAppsReferencesFromPrompt,
+  persistReferencedAppIds,
+  readStoredReferencedAppIds,
+  resolveStickyReferencedApps,
   type MentionedAppCodebaseEntry,
   type MentionedAppReference,
 } from "../utils/mention_apps";
@@ -1577,11 +1579,21 @@ ${componentSnippet}
         let mentionedAppsCodebases: MentionedAppCodebaseEntry[] = [];
         let referencedAppsForAgent: MentionedAppReference[] = [];
         if (willUseLocalAgentStream) {
-          referencedAppsForAgent =
-            await extractMentionedAppsReferencesFromPrompt(
-              req.prompt,
-              updatedChat.app.id, // Exclude current app
-            );
+          // References are sticky for the rest of the chat here: carrying a
+          // name/path pair costs nothing until the model actually reads from
+          // it, and re-typing `@app:Name` every turn to keep tool access is a
+          // trap (the mention stays visible in history after access is gone).
+          const stickyReferences = await resolveStickyReferencedApps({
+            prompt: req.prompt,
+            persistedAppIds: readStoredReferencedAppIds(
+              updatedChat.referencedAppIds,
+            ),
+            excludeCurrentAppId: updatedChat.app.id,
+          });
+          referencedAppsForAgent = stickyReferences.references;
+          if (stickyReferences.changed) {
+            await persistReferencedAppIds(req.chatId, stickyReferences.appIds);
+          }
         } else {
           mentionedAppsCodebases =
             await extractMentionedAppsCodebasesFromPrompt(
@@ -1599,6 +1611,11 @@ ${componentSnippet}
             ? localAgentAiUserPrompt
             : defaultAiUserPrompt;
 
+        // Note: because agent-mode references are sticky, this now stays off
+        // for the rest of the chat once an app is referenced, rather than
+        // flipping back on the next turn that omits the mention. That matches
+        // the intent — the reference really is still live — and detaching the
+        // app in the composer re-enables it.
         const isDeepContextEnabled =
           isEngineEnabled &&
           settings.enableProSmartFilesContextMode &&

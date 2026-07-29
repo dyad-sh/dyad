@@ -20,6 +20,7 @@ describe("triggerResync", () => {
       id: 17,
       appId: 1,
       title: "Chat",
+      referencedApps: [],
       chatMode: null,
       messages: [],
     });
@@ -36,6 +37,7 @@ describe("triggerResync", () => {
       id: 18,
       appId: 1,
       title: "Chat",
+      referencedApps: [],
       chatMode: null,
       messages: [],
     });

@@ -241,6 +241,11 @@
   "messageHistory": "Message History",
   "codebase": "Codebase",
   "mentionedApps": "Mentioned Apps",
+  "referencedApps": {
+    "label": "Referenced apps",
+    "description": "These apps stay readable for the rest of this chat. The agent can read their files but cannot edit them.",
+    "remove": "Stop referencing {{appName}}"
+  },
   "systemPrompt": "System Prompt",
   "currentInput": "Current Input",
   "total": "Total",

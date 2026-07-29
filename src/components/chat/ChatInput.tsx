@@ -106,7 +106,8 @@ import { useRouter } from "@tanstack/react-router";
 import { showError as showErrorToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { useVoiceToText } from "@/hooks/useVoiceToText";
-import { isDyadProEnabled } from "@/lib/schemas";
+import { isDyadProEnabled, isLocalAgentBackedMode } from "@/lib/schemas";
+import { ReferencedAppsBar } from "./ReferencedAppsBar";
 import { useChatMode } from "@/hooks/useChatMode";
 import { useOpenPreviewIfSetupRequired } from "@/hooks/useOpenPreviewIfSetupRequired";
 import { getUserInputReadModel } from "@/user_input/read_model";
@@ -932,6 +933,12 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           )}
 
           <SelectedComponentsDisplay />
+
+          {/* Apps referenced with @app: that stay readable for this chat */}
+          <ReferencedAppsBar
+            chatId={chatId}
+            isEnabled={isLocalAgentBackedMode(effectiveMode)}
+          />
 
           {/* Use the AttachmentsList component */}
           <AttachmentsList

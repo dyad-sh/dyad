@@ -143,6 +143,13 @@ export const chats = sqliteTable("chats", {
   compactionBackupPath: text("compaction_backup_path"),
   pendingCompaction: integer("pending_compaction", { mode: "boolean" }),
   chatMode: text("chat_mode").$type<StoredChatMode | null>(),
+  // App ids referenced via `@app:Name` that stay available for the rest of the
+  // chat (agent-backed modes only). Stored on the chat rather than derived from
+  // message history so references survive compaction, which rewrites history.
+  // Ids, not paths: apps can be renamed or moved, so paths are resolved per turn.
+  referencedAppIds: text("referenced_app_ids", { mode: "json" }).$type<
+    number[] | null
+  >(),
   isFavorite: integer("is_favorite", { mode: "boolean" })
     .notNull()
     .default(sql`0`),

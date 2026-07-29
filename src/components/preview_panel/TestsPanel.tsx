@@ -32,7 +32,7 @@ import {
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useCurrentAppUrl } from "@/hooks/useAppRun";
-import { selectedFileAtom } from "@/atoms/viewAtoms";
+import { selectedFileAtom, stagedDiffFileAtom } from "@/atoms/viewAtoms";
 import {
   applyTestRunFinishedAtom,
   applyTestRunStartedAtom,
@@ -617,6 +617,7 @@ export function TestsPanel() {
   const setRunState = useSetAtom(setTestRunStateForAppAtom);
   const setPreviewMode = useSetAtom(previewModeAtom);
   const setSelectedFile = useSetAtom(selectedFileAtom);
+  const setStagedDiffFile = useSetAtom(stagedDiffFileAtom);
   // For lazy, subscription-free reads of the streamed output (askAiToFix runs
   // long after the chunks arrive; subscribing would re-render the whole panel
   // on every flush and defeat the point of the separate output atom).
@@ -947,23 +948,37 @@ export function TestsPanel() {
   // at the test's own line when the user opened a specific test case.
   const openInEditor = useCallback(
     (file: string, line?: number) => {
+      // CodeView renders a staged-file diff in preference to the selected file,
+      // so a diff left open from the commit menu would swallow this request.
+      setStagedDiffFile(null);
       setSelectedFile({ path: file, line: line ?? null });
       setPreviewMode("code");
     },
-    [setSelectedFile, setPreviewMode],
+    [setSelectedFile, setPreviewMode, setStagedDiffFile],
   );
 
-  // The spec file awaiting delete confirmation. Only the path is stored (never
-  // a callback), so Delete always runs through the latest handler.
-  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+  // The spec file awaiting delete confirmation, tagged with the app it came
+  // from. Only data is stored (never a callback), so Delete always runs through
+  // the latest handler.
+  const [pendingDelete, setPendingDelete] = useState<{
+    appId: number;
+    file: string;
+  } | null>(null);
 
   const confirmDelete = useCallback(async () => {
     // No deletes while a run is in flight — the backend serializes on the same
     // per-app lock, but re-check here so a run that started after the dialog
     // opened can't slip a delete through the confirmation window.
-    if (selectedAppId == null || pendingDelete == null || isRunning) return;
-    const appId = selectedAppId;
-    const file = pendingDelete;
+    if (pendingDelete == null || isRunning) return;
+    // Delete against the app the confirmation was opened for, never whichever
+    // app happens to be selected now: this panel stays mounted across app
+    // switches, so the selection can have moved to a different app with a
+    // same-named spec while the dialog was open.
+    const { appId, file } = pendingDelete;
+    if (appId !== selectedAppId) {
+      setPendingDelete(null);
+      return;
+    }
     try {
       await deleteTestAsync({ appId, testFile: file });
     } catch {
@@ -990,6 +1005,12 @@ export function TestsPanel() {
   useEffect(() => {
     if (isRunning) setPendingDelete(null);
   }, [isRunning]);
+
+  // Switching apps invalidates the pending confirmation: the dialog names a
+  // spec in the app the user just left.
+  useEffect(() => {
+    setPendingDelete(null);
+  }, [selectedAppId]);
   const toggleOutput = useCallback(() => {
     setOutputOpen((v) => !v);
   }, []);
@@ -1369,7 +1390,9 @@ export function TestsPanel() {
                 onRunFile={() => runTests(spec.file)}
                 onRunCase={(line) => runTests(spec.file, line)}
                 onOpenInEditor={(line) => openInEditor(spec.file, line)}
-                onDelete={() => setPendingDelete(spec.file)}
+                onDelete={() =>
+                  setPendingDelete({ appId: selectedAppId, file: spec.file })
+                }
                 caseStatus={(testCase) => caseStatus(spec.file, testCase)}
                 caseResult={(testCase) => caseResult(spec.file, testCase)}
                 onAskAiToFix={askAiToFix}
@@ -1382,9 +1405,9 @@ export function TestsPanel() {
       <OutputDrawer open={outputOpen} onToggle={toggleOutput} />
 
       <DeleteTestFileDialog
-        file={pendingDelete}
+        file={pendingDelete?.file ?? null}
         testCount={
-          specs.find((s) => s.file === pendingDelete)?.tests.length ?? 0
+          specs.find((s) => s.file === pendingDelete?.file)?.tests.length ?? 0
         }
         onOpenChange={(open) => {
           if (!open) setPendingDelete(null);

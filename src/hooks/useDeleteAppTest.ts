@@ -13,7 +13,11 @@ export function useDeleteAppTest() {
   const queryClient = useQueryClient();
 
   const mutation = useMutation<
-    { file: string; committed: boolean },
+    {
+      file: string;
+      committed: boolean;
+      uncommittedReason: "untracked" | "commit-failed" | null;
+    },
     Error,
     { appId: number; testFile: string }
   >({
@@ -30,12 +34,16 @@ export function useDeleteAppTest() {
         queryKey: queryKeys.uncommittedFiles.byApp({ appId }),
       });
       const fileName = result.file.split("/").pop() ?? result.file;
-      // Only a tracked file leaves a commit behind to restore from; an
-      // untracked file is gone for good, so don't promise recovery we can't keep.
+      // Recovery guidance differs by why nothing was committed: an untracked
+      // file is gone for good, while a failed commit leaves the deletion staged
+      // in pending changes. Don't promise recovery we can't keep, and don't
+      // call a recoverable deletion unrecoverable either.
       showSuccess(
-        result.committed
-          ? `Deleted ${fileName}`
-          : `Deleted ${fileName} (was untracked, not recoverable)`,
+        result.uncommittedReason === "untracked"
+          ? `Deleted ${fileName} (was untracked, not recoverable)`
+          : result.uncommittedReason === "commit-failed"
+            ? `Deleted ${fileName} (not committed — see pending changes)`
+            : `Deleted ${fileName}`,
       );
     },
     onError: (error) => {

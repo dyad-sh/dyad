@@ -832,8 +832,11 @@ export function registerTestsHandlers() {
         followFinalSymlink: false,
       });
       const fullPath = safeJoin(appPath, testFile);
+      // Confirm the spec is actually there before touching git, so a stale row
+      // in the panel reports "not found" instead of committing a phantom
+      // deletion for a path that was already removed elsewhere.
       try {
-        await fs.promises.unlink(fullPath);
+        await fs.promises.lstat(fullPath);
       } catch (error: any) {
         if (error?.code === "ENOENT") {
           throw new DyadError(
@@ -845,20 +848,39 @@ export function registerTestsHandlers() {
       }
       // Commit just this deletion, so deleting a test doesn't leave the user
       // with an uncommitted change to review (and the deletion lands in version
-      // history, where it can be restored from). Best-effort: the file is
-      // already gone from disk, so a git failure (untracked file, non-repo app)
+      // history, where it can be restored from). `git rm` removes the file from
+      // disk and stages that removal in one step: unlinking first would leave a
+      // window where an editor or agent write could recreate the path, only for
+      // `git rm -f` to delete the new content without a second confirmation.
+      // Best-effort by design: a git failure (untracked file, non-repo app)
       // must not report the delete itself as failed. We surface whether it was
       // committed so the UI doesn't promise a recovery path that may not exist.
-      const commitHash = await gitService.removeFileAndCommit({
-        path: appPath,
-        filepath: testFile,
-        message: `[dyad] delete test ${testFile}`,
-      });
+      const { commitHash, uncommittedReason } =
+        await gitService.removeFileAndCommit({
+          path: appPath,
+          filepath: testFile,
+          message: `[dyad] delete test ${testFile}`,
+        });
+      if (uncommittedReason === "untracked") {
+        // Git removed nothing (untracked spec, or the app isn't a repo), so the
+        // file is still on disk and it's on us to delete it.
+        try {
+          await fs.promises.unlink(fullPath);
+        } catch (error: any) {
+          if (error?.code !== "ENOENT") {
+            throw error;
+          }
+        }
+      }
       queueCloudSandboxSnapshotSync({
         appId: params.appId,
         deletedPaths: [testFile],
       });
-      return { file: testFile, committed: commitHash !== null };
+      return {
+        file: testFile,
+        committed: commitHash !== null,
+        uncommittedReason,
+      };
     });
   });
 

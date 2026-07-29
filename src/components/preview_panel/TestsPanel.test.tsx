@@ -1,11 +1,17 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { Provider, createStore } from "jotai";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
-import { selectedFileAtom } from "@/atoms/viewAtoms";
+import { selectedFileAtom, stagedDiffFileAtom } from "@/atoms/viewAtoms";
 import { TestsPanel } from "./TestsPanel";
 
 const mocks = vi.hoisted(() => ({
@@ -111,7 +117,11 @@ describe("TestsPanel", () => {
         },
       ],
     });
-    mocks.deleteAppTest.mockResolvedValue({ file: SPEC_FILE, committed: true });
+    mocks.deleteAppTest.mockResolvedValue({
+      file: SPEC_FILE,
+      committed: true,
+      uncommittedReason: null,
+    });
   });
 
   it("opens a spec file in the code editor", async () => {
@@ -128,6 +138,22 @@ describe("TestsPanel", () => {
       path: SPEC_FILE,
       line: null,
     });
+  });
+
+  it("clears a staged diff so the spec is what actually shows up", async () => {
+    const { store } = renderPanel();
+    // A diff opened earlier from the commit menu: CodeView renders it in
+    // preference to the selected file, so opening a spec has to clear it.
+    store.set(stagedDiffFileAtom, "src/main.ts");
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Open in code editor: signup.spec.ts",
+      }),
+    );
+
+    expect(store.get(stagedDiffFileAtom)).toBeNull();
+    expect(store.get(previewModeAtom)).toBe("code");
   });
 
   it("opens an individual test at its own line", async () => {
@@ -176,6 +202,29 @@ describe("TestsPanel", () => {
       });
     });
     expect(await screen.findByText("No tests yet")).not.toBeNull();
+  });
+
+  it("drops the pending confirmation when the app changes", async () => {
+    const { store } = renderPanel();
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Delete test file: signup.spec.ts",
+      }),
+    );
+    expect(await screen.findByTestId("delete-test-file-dialog")).not.toBeNull();
+
+    // The panel stays mounted across app switches. The confirmation named a
+    // spec in the app the user just left, so it must not carry over and delete
+    // a same-named spec from the app that's now selected.
+    act(() => {
+      store.set(selectedAppIdAtom, 2);
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("delete-test-file-dialog")).toBeNull();
+    });
+    expect(mocks.deleteAppTest).not.toHaveBeenCalled();
   });
 
   it("keeps the spec listed when cancelling the confirmation", async () => {

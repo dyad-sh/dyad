@@ -204,6 +204,13 @@ export const DeleteAppTestResultSchema = z.object({
    * version history to restore from.
    */
   committed: z.boolean(),
+  /**
+   * Why the deletion wasn't committed, or null when it was. "untracked" means
+   * git had nothing to record, so the file is gone for good; "commit-failed"
+   * means the removal is staged and still recoverable from pending changes.
+   * The two need different recovery guidance in the UI.
+   */
+  uncommittedReason: z.enum(["untracked", "commit-failed"]).nullable(),
 });
 
 // =============================================================================

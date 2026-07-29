@@ -61,7 +61,9 @@ testSkipIfWindows(
     // The regression: the armed follow-up is dispatched as a real turn, so the
     // conversation keeps going instead of stopping after Continue.
     await expect(
-      messages.getByText("Continue. I have completed the supabase integration."),
+      messages.getByText(
+        "Continue. I have completed the supabase integration.",
+      ),
     ).toBeVisible({ timeout: Timeout.LONG });
 
     // The request settled: the card drops its pending controls and switches to

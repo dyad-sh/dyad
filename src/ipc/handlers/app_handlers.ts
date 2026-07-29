@@ -1514,6 +1514,7 @@ export function registerAppHandlers() {
   createTypedHandler(systemContracts.resetAll, async () => {
     const appRunReset = appRunActorService.beginReset();
     let appRunResetCommitted = false;
+    let appRunResetCompleted = false;
     versionPreviewService.beginReset();
     githubOpsService.beginReset();
     imageGenerationService.beginReset();
@@ -1553,14 +1554,17 @@ export function registerAppHandlers() {
       // 1. Drop the database by closing the singleton and deleting SQLite files
       const dbFilePaths = getDatabaseFilePaths();
       closeDatabase();
+      // Closing the database is the last reversible boundary. Commit before
+      // deleting any SQLite file so a partial sidecar deletion cannot reopen
+      // app-run admission against a partially reset database.
+      appRunReset.commit();
+      appRunResetCommitted = true;
       for (const dbFilePath of dbFilePaths) {
         if (fs.existsSync(dbFilePath)) {
           await fsPromises.unlink(dbFilePath);
           logger.log(`Database file deleted: ${dbFilePath}`);
         }
       }
-      appRunReset.commit();
-      appRunResetCommitted = true;
       logger.log("database deleted.");
       logger.log("deleting settings...");
       // 2. Remove settings
@@ -1600,10 +1604,11 @@ export function registerAppHandlers() {
       }
       logger.log("all app files removed.");
       logger.log("reset all complete.");
+      appRunResetCompleted = true;
     } finally {
-      if (appRunResetCommitted) {
+      if (appRunResetCompleted) {
         appRunReset.release();
-      } else {
+      } else if (!appRunResetCommitted) {
         appRunReset.abort();
       }
       imageGenerationService.endReset();

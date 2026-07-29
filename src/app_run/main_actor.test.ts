@@ -1369,6 +1369,30 @@ describe("main-hosted app-run actor", () => {
     expect(reset.release()).toBe(true);
   });
 
+  it("keeps reset admission closed after a post-commit failure", async () => {
+    const { actorA, host } = createHarness();
+    await actorA.resync();
+    const service = new AppRunActorService(host);
+    const reset = service.beginReset();
+
+    await reset.seal();
+    expect(reset.commit()).toBe(true);
+
+    expect(() => reset.abort()).toThrow(
+      "A committed machine fence cannot abort",
+    );
+    await expect(
+      actorA.dispatch({
+        type: "START",
+        operationId: "blocked-after-reset-commit",
+        startedAt: 10,
+        expectedRevision: actorA.getSnapshot().revision,
+      }),
+    ).resolves.toMatchObject({ kind: "rejected" });
+
+    expect(reset.release()).toBe(true);
+  });
+
   it("can fence a normally completed run without untracked command work", async () => {
     const { duplex, host } = createHarness();
     const manager = new AppRunRemoteManager(

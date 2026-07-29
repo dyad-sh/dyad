@@ -34,10 +34,12 @@ Background and before/after examples of why this pattern exists:
   command batch and any explicit post-commit outcome batch without running
   domain code; cancel exiting state-owned leases; commit the snapshot (the
   linearization point); update the authoritative projection; publish reserved
-  correlated outcomes; notify snapshot subscribers and transition observers;
-  then hand the reserved commands to the injected domain scheduler. Publishing
-  authoritative outcomes before teardown-capable observers prevents disposal
-  from winning after the operation's state has already committed. Re-entrant
+  correlated outcomes, marking the entire correlated batch terminal before
+  invoking any settlement listener; notify snapshot subscribers and transition
+  observers; then hand the reserved commands to the injected domain scheduler.
+  Publishing authoritative outcomes before teardown-capable observers prevents
+  disposal from winning after the operation's state has already committed.
+  Re-entrant
   callbacks may mutate transition-owned arrays, so both batches must be
   shallow-copied before callbacks. Re-entrant sends append to the FIFO and run
   after the current transaction. Ignored events skip commit, projection,

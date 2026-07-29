@@ -494,7 +494,7 @@ class HostedActor<
       admissionGeneration: generation,
       send: (event: Event) => {
         const dispatcher = this.dispatcher as
-          | TransactionalDispatcher<State, Event, Command, Reason>
+          | TransactionalDispatcher<State, Event, Command, Reason, Outcome>
           | undefined;
         if (!dispatcher) {
           this.bufferedEvents.push({

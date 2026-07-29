@@ -369,6 +369,51 @@ describe("useMachineMutation", () => {
     expect(onUnexpectedError).toHaveBeenCalledWith(retryFailure);
   });
 
+  it("restores admission when settlement rejection clears active ownership before retry rejection", async () => {
+    const admission = controlled<PreparedAdmission<string, string>>();
+    const settled = controlled<PreparedRequestSettlement<Outcome, string>>();
+    const retry = controlled<PreparedAdmission<string, string>>();
+    const failure = new Error("shared terminal failure");
+    const { result } = renderHook(() =>
+      useMachineMutation({
+        connection: "ready",
+        snapshot: unavailable,
+        request: () =>
+          fakeRequest(admission, settled, vi.fn(), () => retry.promise),
+        classifyOutcome: classify,
+      }),
+    );
+    let mutation!: Promise<PreparedRequestSettlement<Outcome, string>>;
+    act(() => {
+      mutation = result.current.mutate("input");
+      admission.resolve({
+        kind: "disconnected",
+        retryable: true,
+        error: new Error("offline"),
+      });
+    });
+    await waitFor(() =>
+      expect(result.current.admission).toMatchObject({
+        kind: "refused",
+        retryable: true,
+      }),
+    );
+    const retrying = result.current.retry();
+
+    settled.reject(failure);
+    await expect(mutation).rejects.toBe(failure);
+    retry.reject(failure);
+    await expect(retrying).rejects.toBe(failure);
+
+    await waitFor(() =>
+      expect(result.current.admission).toMatchObject({
+        kind: "refused",
+        reason: "disconnected",
+        retryable: true,
+      }),
+    );
+  });
+
   it("remains active after StrictMode effect replay", async () => {
     const admission = controlled<PreparedAdmission<string, string>>();
     const settled = controlled<PreparedRequestSettlement<Outcome, string>>();

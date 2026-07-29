@@ -1001,6 +1001,57 @@ describe("OperationRegistry", () => {
     });
   });
 
+  it("marks an entire committed outcome batch before settlement listener reentry", async () => {
+    const operations = registry();
+    const firstIdentity = identity("batch-first", "batch-first-ref");
+    const secondIdentity = identity("batch-second", "batch-second-ref");
+    const first = operations.admit(firstIdentity);
+    const second = operations.admit(secondIdentity);
+    first.ticket.subscribe(() => {
+      operations.settleWindowSession(firstIdentity.owner.windowSessionId);
+    });
+    const dispatcher = new TransactionalDispatcher<
+      number,
+      "TERMINAL",
+      never,
+      never,
+      CorrelatedOperationOutcome<Outcome, Ref>
+    >({
+      initialState: 0,
+      transition: (state) =>
+        change(
+          state + 1,
+          [],
+          [
+            {
+              requestId: firstIdentity.requestId,
+              invocationRef: firstIdentity.invocationRef,
+              outcome: { kind: "succeeded" },
+            },
+            {
+              requestId: secondIdentity.requestId,
+              invocationRef: secondIdentity.invocationRef,
+              outcome: { kind: "succeeded" },
+            },
+          ],
+        ),
+      runCommand: () => undefined,
+      scheduler: { schedule: () => undefined },
+      publishOutcome: createOperationOutcomePublisher(operations, () =>
+        receipt(),
+      ),
+    });
+
+    dispatcher.send("TERMINAL");
+
+    await expect(first.ticket.settled).resolves.toMatchObject({
+      outcome: { kind: "succeeded" },
+    });
+    await expect(second.ticket.settled).resolves.toMatchObject({
+      outcome: { kind: "succeeded" },
+    });
+  });
+
   it("rejects and replays a terminal receipt-capture failure", async () => {
     const operations = registry();
     const stable = identity();

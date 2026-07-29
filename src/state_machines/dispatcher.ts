@@ -64,6 +64,15 @@ export interface ReservedCommandBatch<Command> {
   readonly commands: readonly Command[];
 }
 
+export interface TransitionOutcomePublisher<Outcome> {
+  (outcome: Outcome): unknown;
+  /**
+   * Optional atomic publication hook. Correlated registries use this to mark
+   * every committed outcome terminal before any settlement listener reenters.
+   */
+  publishBatch?(outcomes: readonly Outcome[]): unknown;
+}
+
 export type CommandExecutor<Command> = (command: Command) => Promise<void>;
 
 /**
@@ -112,7 +121,7 @@ export interface TransactionalDispatcherOptions<
    * Publishes explicit transition outcomes after the authoritative snapshot
    * commit. Failures are isolated and cannot roll back the transition.
    */
-  publishOutcome?(outcome: Outcome): unknown;
+  publishOutcome?: TransitionOutcomePublisher<Outcome>;
   mapUnexpectedCommandError?(
     command: Command,
     error: unknown,
@@ -151,7 +160,10 @@ export class TransactionalDispatcher<
       Outcome
     >,
   ) {
-    if (options.publishOutcome?.constructor.name === "AsyncFunction") {
+    if (
+      options.publishOutcome?.constructor.name === "AsyncFunction" ||
+      options.publishOutcome?.publishBatch?.constructor.name === "AsyncFunction"
+    ) {
       throw new Error(
         "Transition outcome publisher must be synchronous and non-thenable",
       );
@@ -413,27 +425,42 @@ export class TransactionalDispatcher<
 
   private publishOutcomes(outcomes: readonly Outcome[]): void {
     if (!this.options.publishOutcome) return;
-    for (const outcome of outcomes) {
+    if (this.options.publishOutcome.publishBatch) {
       try {
-        const published = this.options.publishOutcome(outcome);
-        if (
-          ((typeof published === "object" && published !== null) ||
-            typeof published === "function") &&
-          "then" in published
-        ) {
-          void Promise.resolve(published).catch((error) => {
-            this.report({ stage: "outcome", error });
-          });
-          this.report({
-            stage: "outcome",
-            error: new Error(
-              "Transition outcome publisher must be synchronous and non-thenable",
-            ),
-          });
-        }
+        this.rejectThenableOutcomePublication(
+          this.options.publishOutcome.publishBatch(outcomes),
+        );
       } catch (error) {
         this.report({ stage: "outcome", error });
       }
+      return;
+    }
+    for (const outcome of outcomes) {
+      try {
+        this.rejectThenableOutcomePublication(
+          this.options.publishOutcome(outcome),
+        );
+      } catch (error) {
+        this.report({ stage: "outcome", error });
+      }
+    }
+  }
+
+  private rejectThenableOutcomePublication(published: unknown): void {
+    if (
+      ((typeof published === "object" && published !== null) ||
+        typeof published === "function") &&
+      "then" in published
+    ) {
+      void Promise.resolve(published).catch((error) => {
+        this.report({ stage: "outcome", error });
+      });
+      this.report({
+        stage: "outcome",
+        error: new Error(
+          "Transition outcome publisher must be synchronous and non-thenable",
+        ),
+      });
     }
   }
 

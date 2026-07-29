@@ -249,7 +249,7 @@ export function useMachineMutation<
       return result;
     } catch (error) {
       const isCurrent =
-        mounted.current && active.current?.generation === current.generation;
+        mounted.current && nextGeneration.current === current.generation;
       if (isCurrent) {
         setAdmission(previousAdmission);
         setExecution({ kind: "failed", error: error as Failure });

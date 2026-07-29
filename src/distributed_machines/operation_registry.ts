@@ -3,6 +3,7 @@ import {
   sameInvocationRef,
   type InvocationRef,
 } from "@/state_machines/invocation_ref";
+import type { TransitionOutcomePublisher } from "@/state_machines/dispatcher";
 import type {
   ActorDisposalCause,
   ActorInstanceId,
@@ -123,6 +124,11 @@ interface OperationEntry<Outcome, Ref extends InvocationRef> {
   settlement?: OperationSettlement<Outcome, Ref>;
   rejected: boolean;
   rejection?: unknown;
+}
+
+interface MarkedOperationSettlement<Outcome, Ref extends InvocationRef> {
+  readonly entry: OperationEntry<Outcome, Ref>;
+  readonly settlement: OperationSettlement<Outcome, Ref>;
 }
 
 function sameOwner(left: OperationOwner, right: OperationOwner): boolean {
@@ -303,13 +309,56 @@ export class OperationRegistry<Outcome, Ref extends InvocationRef> {
     outcome: Outcome,
     receipt: OperationReceiptMetadata,
   ): boolean {
+    const marked = this.markSettlement(
+      requestId,
+      invocationRef,
+      outcome,
+      receipt,
+    );
+    if (!marked) return false;
+    this.publishMarkedSettlement(marked);
+    this.trimSettledReplay();
+    return true;
+  }
+
+  settleBatch(
+    outcomes: readonly {
+      readonly requestId: RequestId;
+      readonly invocationRef: Ref;
+      readonly outcome: Outcome;
+      readonly receipt: OperationReceiptMetadata;
+    }[],
+  ): number {
+    const marked: MarkedOperationSettlement<Outcome, Ref>[] = [];
+    for (const item of outcomes) {
+      const settlement = this.markSettlement(
+        item.requestId,
+        item.invocationRef,
+        item.outcome,
+        item.receipt,
+      );
+      if (settlement) marked.push(settlement);
+    }
+    for (const settlement of marked) {
+      this.publishMarkedSettlement(settlement);
+    }
+    this.trimSettledReplay();
+    return marked.length;
+  }
+
+  private markSettlement(
+    requestId: RequestId,
+    invocationRef: Ref,
+    outcome: Outcome,
+    receipt: OperationReceiptMetadata,
+  ): MarkedOperationSettlement<Outcome, Ref> | undefined {
     const entry = this.entries.get(requestId);
     if (
       !entry ||
       this.isTerminal(entry) ||
       !sameInvocationRef(entry.identity.invocationRef, invocationRef)
     ) {
-      return false;
+      return undefined;
     }
     const settlement = Object.freeze({
       requestId,
@@ -322,6 +371,13 @@ export class OperationRegistry<Outcome, Ref extends InvocationRef> {
     });
     entry.settlement = settlement;
     this.unresolved -= 1;
+    return { entry, settlement };
+  }
+
+  private publishMarkedSettlement({
+    entry,
+    settlement,
+  }: MarkedOperationSettlement<Outcome, Ref>): void {
     entry.deferred.resolve(settlement);
     for (const listener of Array.from(entry.listeners)) {
       try {
@@ -331,8 +387,6 @@ export class OperationRegistry<Outcome, Ref extends InvocationRef> {
       }
     }
     entry.listeners.clear();
-    this.trimSettledReplay();
-    return true;
   }
 
   settleDisposed(
@@ -778,22 +832,50 @@ export function createOperationOutcomePublisher<
   captureReceipt: (
     outcome: CorrelatedOperationOutcome<Outcome, Ref>,
   ) => OperationReceiptMetadata,
-): (outcome: CorrelatedOperationOutcome<Outcome, Ref>) => void {
-  return (outcome) => {
+): TransitionOutcomePublisher<CorrelatedOperationOutcome<Outcome, Ref>> {
+  const capture = (
+    outcome: CorrelatedOperationOutcome<Outcome, Ref>,
+  ):
+    | {
+        readonly requestId: RequestId;
+        readonly invocationRef: Ref;
+        readonly outcome: Outcome;
+        readonly receipt: OperationReceiptMetadata;
+      }
+    | undefined => {
     // Capture mutable actor transaction metadata synchronously at the
     // post-commit publication point, before any settlement callback can reenter.
-    let receipt: OperationReceiptMetadata;
     try {
-      receipt = captureReceipt(outcome);
+      return {
+        ...outcome,
+        receipt: captureReceipt(outcome),
+      };
     } catch (error) {
       registry.reject(outcome.requestId, outcome.invocationRef, error);
       throw error;
     }
-    registry.settle(
-      outcome.requestId,
-      outcome.invocationRef,
-      outcome.outcome,
-      receipt,
-    );
   };
+  const publish: TransitionOutcomePublisher<
+    CorrelatedOperationOutcome<Outcome, Ref>
+  > = (outcome) => {
+    const captured = capture(outcome);
+    if (captured) registry.settleBatch([captured]);
+  };
+  publish.publishBatch = (outcomes) => {
+    const captured: NonNullable<ReturnType<typeof capture>>[] = [];
+    let firstFailure: unknown;
+    let hasFailure = false;
+    for (const outcome of outcomes) {
+      try {
+        const item = capture(outcome);
+        if (item) captured.push(item);
+      } catch (error) {
+        if (!hasFailure) firstFailure = error;
+        hasFailure = true;
+      }
+    }
+    registry.settleBatch(captured);
+    if (hasFailure) throw firstFailure;
+  };
+  return publish;
 }

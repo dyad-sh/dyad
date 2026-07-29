@@ -183,6 +183,11 @@ cancel and dispose every harness-owned actor, drain legacy stream handlers, and
 await harness wrapper post-processing before closing SQLite, fake services, or
 the temp root.
 
+Close a harness's public operation admission synchronously when disposal
+starts, before its first `await`. Draining a one-time snapshot of tracked work
+is insufficient if a continuation can enqueue another operation during
+teardown.
+
 Fake-server delays used for cancellation tests must clear their timers when the
 HTTP response closes. Do not treat the request's `close` event as client
 disconnect: it can fire after the request body is consumed while the response

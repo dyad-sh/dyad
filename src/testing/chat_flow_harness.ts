@@ -75,6 +75,8 @@ const IMPORT_APP_FIXTURES = path.join(FIXTURES_ROOT, "import-app");
 const SECOND_SETUP_ERROR =
   "Second harness setup in one process — one harness per test FILE " +
   "(forks pool isolation); split the file";
+const HARNESS_DISPOSING_ERROR =
+  "Cannot start a chat stream after harness disposal has begun";
 
 let activeChatFlowHarness = false;
 
@@ -383,6 +385,7 @@ export async function setupChatFlowHarness(
       readServerDump(listDumpPaths(), opts);
 
     const inFlightHarnessOperations = new Set<Promise<unknown>>();
+    let isDisposing = false;
 
     const streamChatOnce = async (
       prompt: string,
@@ -419,6 +422,9 @@ export async function setupChatFlowHarness(
       prompt,
       streamOptions,
     ) => {
+      if (isDisposing) {
+        return Promise.reject(new Error(HARNESS_DISPOSING_ERROR));
+      }
       const operation = streamChatOnce(prompt, streamOptions);
       inFlightHarnessOperations.add(operation);
       void operation.then(
@@ -502,6 +508,9 @@ export async function setupChatFlowHarness(
     };
     let disposePromise: Promise<void> | undefined;
     const dispose = (): Promise<void> => {
+      // Close harness-level admission synchronously. Otherwise a continuation
+      // can enqueue streamChat() after disposeOnce snapshots the tracked work.
+      isDisposing = true;
       disposePromise ??= disposeOnce();
       return disposePromise;
     };

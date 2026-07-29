@@ -38,6 +38,9 @@ describe("chat flow harness disposal", () => {
     const firstDisposal = harness.dispose();
     const secondDisposal = harness.dispose();
     expect(secondDisposal).toBe(firstDisposal);
+    await expect(harness.streamChat("too late")).rejects.toThrow(
+      "Cannot start a chat stream after harness disposal has begun",
+    );
     await firstDisposal;
     await stream;
 

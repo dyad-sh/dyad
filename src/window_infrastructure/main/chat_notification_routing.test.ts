@@ -4,6 +4,7 @@ import type { TabInstanceId, WindowSessionId } from "../types";
 import { WindowRegistry, type WindowEndpoint } from "./window_registry";
 import {
   chatNotificationTarget,
+  deliverChatNavigationToExistingWindow,
   revealWindow,
 } from "./chat_notification_routing";
 
@@ -67,5 +68,30 @@ describe("chat notification window routing", () => {
     expect(window.restore).toHaveBeenCalledOnce();
     expect(window.show).toHaveBeenCalledOnce();
     expect(window.focus).toHaveBeenCalledOnce();
+  });
+
+  it("drops a stale target when delivery fails so callers can fall back", () => {
+    const windows = new WindowRegistry();
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const target = endpoint(1);
+    target.send = vi.fn(() => {
+      throw new Error("window closed");
+    });
+    windows.register(target, session(1));
+    const window = {
+      isMinimized: vi.fn(() => false),
+      show: vi.fn(),
+      focus: vi.fn(),
+    } as unknown as BrowserWindow;
+
+    expect(
+      deliverChatNavigationToExistingWindow(
+        windows,
+        session(1),
+        { chatId: 7, appId: 9 },
+        () => window,
+      ),
+    ).toBe(false);
+    expect(windows.endpointForSession(session(1))).toBeUndefined();
   });
 });

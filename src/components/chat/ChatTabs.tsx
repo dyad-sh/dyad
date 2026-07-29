@@ -44,7 +44,6 @@ import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedComponentsPreviewAtom } from "@/atoms/previewAtoms";
 import { terminalOpenByChatIdAtom } from "@/atoms/terminalAtoms";
 import {
-  activeStoredChatTabInstanceState,
   assertActiveStoredChatTabInstance,
   adoptStoredChatTab,
   chatTabSessionStorageKey,
@@ -1010,16 +1009,9 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
       ({ transferId, tabInstanceId, chatId }) => {
         void (async () => {
           try {
-            const storedState = activeStoredChatTabInstanceState(tabInstanceId);
-            if (storedState === "absent") {
-              markSourceChatTabRemoval(transferId, tabInstanceId);
-              await ipc.windowInfrastructure.confirmSourceChatTabRemoval({
-                transferId,
-                tabInstanceId,
-                chatId,
-              });
-              return;
-            }
+            // Missing storage is not a removal receipt: cross-window startup
+            // deduplication can remove the durable entry while this renderer
+            // still owns the live tab. Always reconcile the in-memory state.
             const storageKey = chatTabSessionStorageKey(
               getActiveWindowSessionId(),
             );

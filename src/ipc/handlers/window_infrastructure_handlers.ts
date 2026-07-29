@@ -16,12 +16,11 @@ import {
 import type { ChatResponseChunk } from "../types/chat";
 import { getWindowProductController } from "../../window_infrastructure/main/window_product_controller";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { BrowserWindow, type WebContents } from "electron";
 import { ChatTabTransferCoordinator } from "@/window_infrastructure/main/chat_tab_transfer_coordinator";
 import { readSettings } from "@/main/settings";
 import {
   chatNotificationTarget,
-  revealWindow,
+  deliverChatNavigationToExistingWindow,
 } from "@/window_infrastructure/main/chat_notification_routing";
 
 const chatTabTransfers = new ChatTabTransferCoordinator(windowRegistry);
@@ -92,7 +91,10 @@ export function registerWindowInfrastructureHandlers(): void {
     async (_event, entity) => {
       const controller = getWindowProductController();
       if (!controller) {
-        throw new Error("Window product controller is not ready");
+        throw new DyadError(
+          "Window product controller is not ready",
+          DyadErrorKind.Precondition,
+        );
       }
       const exists =
         entity.kind === "app"
@@ -187,23 +189,22 @@ export function registerWindowInfrastructureHandlers(): void {
         entity,
         !!readSettings().enableMultiWindow,
       );
-      if (targetSession) {
-        const endpoint = windowRegistry.endpointForSession(targetSession);
-        if (endpoint) {
-          const targetWindow = BrowserWindow.fromWebContents(
-            endpoint as WebContents,
-          );
-          if (targetWindow) revealWindow(targetWindow);
-          endpoint.send("window:navigate-to-chat", {
-            chatId,
-            appId: chat.appId,
-          });
-          return { windowSessionId: targetSession };
-        }
+      if (
+        targetSession &&
+        deliverChatNavigationToExistingWindow(windowRegistry, targetSession, {
+          chatId,
+          appId: chat.appId,
+        })
+      ) {
+        return { windowSessionId: targetSession };
       }
       const controller = getWindowProductController();
-      if (!controller)
-        throw new Error("Window product controller is not ready");
+      if (!controller) {
+        throw new DyadError(
+          "Window product controller is not ready",
+          DyadErrorKind.Precondition,
+        );
+      }
       return {
         windowSessionId: await controller.openEntityInNewWindow(entity),
       };

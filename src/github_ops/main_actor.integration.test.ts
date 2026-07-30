@@ -467,6 +467,34 @@ describe("main-hosted github_ops actor integration", () => {
     ).resolves.toMatchObject({ kind: "applied" });
   });
 
+  it("rearms each domain-keyed conflict claim after a reset fence abort", async () => {
+    const { actorA, clock, host } = createHarness();
+    await actorA.resync();
+    const local: GithubOpsHostedActor = host.ensure(
+      githubOpsDefinition,
+      githubOpsKey(7),
+    );
+    local.send({ type: "CONFLICTS", files: ["src/conflicted.ts"] });
+    await flush();
+    await dispatchCurrent(actorA, {
+      type: "RESOLVE_WITH_AI_STARTED",
+      claimId: "claim-before-reset",
+    });
+    const reset = new GithubOpsActorService(host).beginReset();
+    await reset.seal();
+    clock.advanceBy(CONFLICT_RESOLUTION_CLAIM_TIMEOUT_MS);
+    await flush();
+    expect(local.getSnapshot().conflictResolutionClaimId).toBe(
+      "claim-before-reset",
+    );
+
+    expect(reset.abort()).toBe(true);
+    clock.advanceBy(CONFLICT_RESOLUTION_CLAIM_TIMEOUT_MS);
+    await flush();
+
+    expect(local.getSnapshot().conflictResolutionClaimId).toBeNull();
+  });
+
   it("reattaches after a mid-rebase window close while work continues", async () => {
     const pending = deferred();
     service.run.mockReturnValue(pending.promise);

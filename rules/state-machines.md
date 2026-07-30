@@ -746,3 +746,7 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   an abort recovery policy. If sealed admission consumes and rejects the timer
   event, re-arm the lease after a failed destructive commit so the reopened
   actor cannot retain an expiring claim forever.
+- Machine-wide fence records must retain each original domain key separately
+  from its serialized admission key. Domain abort/resync callbacks need the
+  typed key; passing the gate handle's encoded key can silently target an
+  invalid entity during recovery.

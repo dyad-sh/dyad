@@ -12,6 +12,11 @@ const mocks = vi.hoisted(() => ({
   sendPreviewEventAndWait: vi.fn(async () => undefined),
   versionChanges: [] as Array<Record<string, unknown>>,
   uncommittedFiles: [] as Array<Record<string, unknown>>,
+  // What the app lists after returning to the origin branch, i.e. the branch's
+  // latest files rather than the previewed checkout's.
+  originBranchFiles: [] as string[],
+  refreshApp: vi.fn(),
+  showWarning: vi.fn(),
 }));
 
 vi.mock("react-i18next", () => ({
@@ -38,7 +43,11 @@ vi.mock("@/hooks/useUncommittedFiles", () => ({
 }));
 
 vi.mock("@/hooks/useLoadApp", () => ({
-  useLoadApp: () => ({ refreshApp: vi.fn() }),
+  useLoadApp: () => ({ refreshApp: mocks.refreshApp }),
+}));
+
+vi.mock("@/lib/toast", () => ({
+  showWarning: mocks.showWarning,
 }));
 
 vi.mock("./VersionDiffView", () => ({
@@ -132,6 +141,12 @@ describe("CodeView diff editing", () => {
     mocks.sendPreviewEventAndWait.mockResolvedValue(undefined);
     mocks.versionChanges = [];
     mocks.uncommittedFiles = [];
+    mocks.originBranchFiles = ["src/selected.ts"];
+    mocks.refreshApp.mockReset();
+    mocks.refreshApp.mockImplementation(async () => ({
+      data: { id: 1, files: mocks.originBranchFiles },
+    }));
+    mocks.showWarning.mockReset();
   });
 
   it("opens the displayed version-diff path in the regular editor", () => {
@@ -193,6 +208,25 @@ describe("CodeView diff editing", () => {
       expect(store.get(selectedFileAtom)).toEqual({ path: "src/selected.ts" });
     });
     expect(queryClient.getQueryData(staleContentKey)).toBeUndefined();
+  });
+
+  it("does not open a file that the origin branch no longer has", async () => {
+    const store = createStore();
+    mocks.previewState = previewingState("src/only-in-version.ts");
+    mocks.versionChanges = [{ path: "src/only-in-version.ts" }];
+    // The detached checkout on disk still lists the previewed commit's file...
+    renderCodeView(store, ["src/only-in-version.ts"]);
+    // ...but the branch deleted it, so the post-return listing omits it.
+    mocks.originBranchFiles = ["src/current.ts"];
+
+    fireEvent.click(screen.getByTestId("edit-latest-version-button"));
+
+    await waitFor(() => {
+      expect(mocks.showWarning).toHaveBeenCalledWith(
+        "preview.editLatestVersionMissing",
+      );
+    });
+    expect(store.get(selectedFileAtom)).toBeNull();
   });
 
   it("keeps the diff open when returning to the origin branch fails", async () => {

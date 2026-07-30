@@ -238,6 +238,7 @@
     "loadingFileContent": "Cargando contenido del archivo...",
     "noContentAvailable": "No hay contenido disponible",
     "editLatestVersion": "Editar la versión más reciente",
+    "editLatestVersionMissing": "{{path}} ya no existe en la versión más reciente, así que no hay nada que editar.",
     "sendToChat": "Enviar al chat",
     "systemMessages": "Mensajes del Sistema",
     "consoleFilters": {

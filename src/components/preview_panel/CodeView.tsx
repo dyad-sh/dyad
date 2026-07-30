@@ -36,6 +36,7 @@ import {
   getDisplayedStagedDiffPath,
   getDisplayedVersionDiffPath,
 } from "./diffSelection";
+import { showWarning } from "@/lib/toast";
 
 interface App {
   id?: number;
@@ -146,6 +147,16 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
       queryClient.removeQueries({
         queryKey: queryKeys.appFiles.content({ appId, filePath: path }),
       });
+    }
+    // While detached, app.files listed the previewed commit's working tree, so
+    // the button's existence guard could not speak for the origin branch. Now
+    // that the branch is checked out again, re-list and confirm the file is
+    // still there: a file that only exists in the previewed version would
+    // otherwise open an empty editor that re-creates it on save.
+    const latestFiles = (await refreshApp()).data?.files;
+    if (latestFiles && !latestFiles.includes(path)) {
+      showWarning(t("preview.editLatestVersionMissing", { path }));
+      return;
     }
     setSelectedFile({ path });
   };

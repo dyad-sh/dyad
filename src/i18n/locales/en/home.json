@@ -247,6 +247,7 @@
     "viewingStagedChanges": "Viewing staged changes",
     "backToEditor": "Back to editor",
     "editLatestVersion": "Edit latest version",
+    "editLatestVersionMissing": "{{path}} no longer exists in the latest version, so there's nothing to edit.",
     "commit": "Commit",
     "committing": "Committing...",
     "cancel": "Cancel",

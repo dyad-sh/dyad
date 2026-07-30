@@ -6,6 +6,7 @@ import { FileDiffEditor } from "./FileDiffEditor";
 import { STATUS_META } from "./versionChangeMeta";
 import { useVersionPreview } from "@/hooks/useVersionPreview";
 import { selectedDiffFileForState } from "@/version_preview/state";
+import { getDisplayedVersionDiffPath } from "./diffSelection";
 
 interface VersionDiffViewProps {
   appId: number;
@@ -77,11 +78,8 @@ export function VersionDiffView({ appId, versionId }: VersionDiffViewProps) {
   // first changed file. Computing this during render (rather than via an effect)
   // means a version switch immediately shows a valid selection even when the
   // previously selected path is absent in the new version.
-  const selected =
-    (selectedDiffPath
-      ? changes.find((c) => c.path === selectedDiffPath)
-      : undefined) ?? changes[0];
-  const selectedPath = selected?.path ?? null;
+  const selectedPath = getDisplayedVersionDiffPath(changes, selectedDiffPath);
+  const selected = changes.find((file) => file.path === selectedPath)!;
 
   return (
     <div

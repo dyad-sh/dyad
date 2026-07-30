@@ -9,6 +9,7 @@ import {
   LineStats,
 } from "@/components/chat/uncommittedFileStatus";
 import { FileDiffEditor } from "./FileDiffEditor";
+import { getDisplayedStagedDiffPath } from "./diffSelection";
 
 interface StagedDiffViewProps {
   appId: number;
@@ -26,10 +27,12 @@ export function StagedDiffView({ appId }: StagedDiffViewProps) {
   // Derive the displayed file from the user's selection, falling back to the
   // first staged file so a valid selection shows even if the clicked file was
   // just committed away.
+  const displayedPath = getDisplayedStagedDiffPath(
+    uncommittedFiles,
+    selectedPath,
+  );
   const selected =
-    uncommittedFiles.find((f) => f.path === selectedPath) ??
-    uncommittedFiles[0] ??
-    null;
+    uncommittedFiles.find((file) => file.path === displayedPath) ?? null;
 
   const {
     diff,

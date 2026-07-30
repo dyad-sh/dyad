@@ -237,6 +237,7 @@
     "fileSaved": "Archivo guardado",
     "loadingFileContent": "Cargando contenido del archivo...",
     "noContentAvailable": "No hay contenido disponible",
+    "editLatestVersion": "Editar la versión más reciente",
     "sendToChat": "Enviar al chat",
     "systemMessages": "Mensajes del Sistema",
     "consoleFilters": {

@@ -234,6 +234,7 @@
     "fileSaved": "文件已保存",
     "loadingFileContent": "正在加载文件内容...",
     "noContentAvailable": "没有可用内容",
+    "editLatestVersion": "编辑最新版本",
     "sendToChat": "发送到聊天",
     "systemMessages": "系统消息",
     "consoleFilters": {

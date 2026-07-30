@@ -2,14 +2,22 @@ import { FileEditor } from "./FileEditor";
 import { FileTree } from "./FileTree";
 import { useEffect, useState } from "react";
 import { useLoadApp } from "@/hooks/useLoadApp";
-import { RefreshCw, Maximize2, Minimize2, ArrowLeft } from "lucide-react";
+import {
+  RefreshCw,
+  Maximize2,
+  Minimize2,
+  ArrowLeft,
+  Pencil,
+} from "lucide-react";
 import {
   Tooltip,
   TooltipTrigger,
   TooltipContent,
 } from "@/components/ui/tooltip";
 import { useAtomValue, useSetAtom } from "jotai";
+import { useQueryClient } from "@tanstack/react-query";
 import { selectedFileAtom, stagedDiffFileAtom } from "@/atoms/viewAtoms";
+import { queryKeys } from "@/lib/queryKeys";
 import { useTranslation } from "react-i18next";
 import { VersionDiffView } from "./VersionDiffView";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
@@ -17,7 +25,17 @@ import { StagedDiffView } from "./StagedDiffView";
 import { CommitMenu } from "./CommitMenu";
 import { useUncommittedFiles } from "@/hooks/useUncommittedFiles";
 import { useVersionPreview } from "@/hooks/useVersionPreview";
-import { diffVersionIdForState } from "@/version_preview/state";
+import {
+  diffVersionIdForState,
+  isMutatingState,
+  ownsHistoricalCheckout,
+  selectedDiffFileForState,
+} from "@/version_preview/state";
+import { useVersionChanges } from "@/hooks/useVersionChanges";
+import {
+  getDisplayedStagedDiffPath,
+  getDisplayedVersionDiffPath,
+} from "./diffSelection";
 
 interface App {
   id?: number;
@@ -33,14 +51,24 @@ export interface CodeViewProps {
 export const CodeView = ({ loading, app }: CodeViewProps) => {
   const { t } = useTranslation("home");
   const selectedFile = useAtomValue(selectedFileAtom);
-  const { state: previewState, send: sendPreviewEvent } = useVersionPreview(
-    app?.id ?? null,
-  );
+  const setSelectedFile = useSetAtom(selectedFileAtom);
+  const {
+    state: previewState,
+    send: sendPreviewEvent,
+    sendAndWaitForMutation: sendPreviewEventAndWait,
+  } = useVersionPreview(app?.id ?? null);
+  const queryClient = useQueryClient();
   const selectedVersionId = diffVersionIdForState(previewState);
   const stagedDiffFile = useAtomValue(stagedDiffFileAtom);
   const setStagedDiffFile = useSetAtom(stagedDiffFileAtom);
   const { refreshApp } = useLoadApp(app?.id ?? null);
-  const { hasUncommittedFiles } = useUncommittedFiles(app?.id ?? null);
+  const { uncommittedFiles, hasUncommittedFiles } = useUncommittedFiles(
+    app?.id ?? null,
+  );
+  const { changes: versionChanges } = useVersionChanges(
+    app?.id ?? null,
+    selectedVersionId,
+  );
 
   // Exits version-diff mode (entered via the version history pane or the chat's
   // modified-files card) and returns to the live file tree. Without this the
@@ -49,6 +77,8 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
     sendPreviewEvent({ type: "CLOSE_VERSION_DIFF" });
   };
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isLeavingHistoricalCheckout, setIsLeavingHistoricalCheckout] =
+    useState(false);
 
   useEffect(() => {
     if (!isFullscreen) return;
@@ -85,6 +115,68 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
   const isVersionDiffMode = selectedVersionId != null && app.id != null;
   const isStagedDiffMode =
     stagedDiffFile != null && app.id != null && !isVersionDiffMode;
+  const selectedVersionDiffFile = selectedDiffFileForState(previewState);
+  const displayedDiffPath = isVersionDiffMode
+    ? getDisplayedVersionDiffPath(
+        versionChanges,
+        selectedVersionDiffFile?.versionId === selectedVersionId
+          ? selectedVersionDiffFile.path
+          : null,
+      )
+    : isStagedDiffMode
+      ? getDisplayedStagedDiffPath(uncommittedFiles, stagedDiffFile)
+      : null;
+  const canEditDisplayedDiff =
+    displayedDiffPath != null &&
+    app.files?.includes(displayedDiffPath) === true &&
+    // A Git mutation is in flight (checkout, return, restore, branch switch):
+    // which commit the editor would open is undecided until it settles.
+    !isMutatingState(previewState) &&
+    !isLeavingHistoricalCheckout;
+
+  // Previewing a version checks the app out at that commit (detached HEAD), so
+  // opening the editor there would show - and save over - the historical copy.
+  // Return to the origin branch first, then open the branch's latest version.
+  const editAfterLeavingHistoricalCheckout = async (path: string) => {
+    const appId = app.id;
+    await sendPreviewEventAndWait({ type: "CLOSE" });
+    if (appId != null) {
+      // Content cached while detached describes the historical commit, so drop
+      // it rather than briefly showing it as the file's latest version.
+      queryClient.removeQueries({
+        queryKey: queryKeys.appFiles.content({ appId, filePath: path }),
+      });
+    }
+    setSelectedFile({ path });
+  };
+
+  const editDisplayedDiff = () => {
+    if (!displayedDiffPath || !canEditDisplayedDiff) return;
+    const path = displayedDiffPath;
+
+    if (!isVersionDiffMode) {
+      setSelectedFile({ path });
+      setStagedDiffFile(null);
+      return;
+    }
+
+    if (!ownsHistoricalCheckout(previewState)) {
+      // Nothing is checked out historically (e.g. a diff opened from the chat's
+      // modified-files card), so the working tree already holds the latest
+      // files and closing the diff is enough.
+      setSelectedFile({ path });
+      closeVersionDiff();
+      return;
+    }
+
+    setIsLeavingHistoricalCheckout(true);
+    void editAfterLeavingHistoricalCheckout(path)
+      // Returning to the branch failed: the app is still detached, so leave the
+      // diff open instead of editing the historical copy. The failed return
+      // surfaces its own recovery notification.
+      .catch(() => undefined)
+      .finally(() => setIsLeavingHistoricalCheckout(false));
+  };
 
   // The version diff view is driven by the selected commit, not the current
   // working-tree files, so it must render even when the checkout has no files
@@ -161,6 +253,25 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
                 : `${app.files?.length ?? 0} ${t("preview.files")}`}
           </div>
           <div className="flex-1" />
+          {(isVersionDiffMode || isStagedDiffMode) && (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    onClick={editDisplayedDiff}
+                    disabled={!canEditDisplayedDiff}
+                    aria-label={t("preview.editLatestVersion")}
+                    data-testid="edit-latest-version-button"
+                    className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                }
+              >
+                <Pencil size={16} />
+              </TooltipTrigger>
+              <TooltipContent>{t("preview.editLatestVersion")}</TooltipContent>
+            </Tooltip>
+          )}
           {app.id != null && <CommitMenu appId={app.id} />}
           <Tooltip>
             <TooltipTrigger

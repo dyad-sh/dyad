@@ -246,6 +246,7 @@
     "noChangesToDisplay": "No changes to display",
     "viewingStagedChanges": "Viewing staged changes",
     "backToEditor": "Back to editor",
+    "editLatestVersion": "Edit latest version",
     "commit": "Commit",
     "committing": "Committing...",
     "cancel": "Cancel",

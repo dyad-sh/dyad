@@ -722,3 +722,31 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   producers, partition the actor key by owner or add first-class scoped gate
   generations; filtering drain events alone cannot preserve unrelated captured
   generations through seal and release.
+- Runtime consumption of a declarative protocol-v1 intent contract must be an
+  explicit per-definition adapter capability. Do not make every declaration
+  runtime-active when migrating one domain; that silently changes trusted-event
+  conversion, revision enforcement, and outcome delivery for other pilots.
+- For a stable tracked request, attempt conflict-checked retained reattachment
+  after authorization and final actor/gate revalidation but before rejecting
+  its stale observed revision. The first admission necessarily advances the
+  actor revision; rejecting that exact retry before registry reattachment makes
+  coalescing and terminal replay unreachable. Fresh requests must still pass
+  normal revision admission, and adapter callbacks require final revalidation.
+- Split immutable authorization from mutable domain preconditions for stable
+  tracked retries. After access authorization, an already-owned RequestId may
+  bypass preconditions invalidated by its own completed first attempt; registry
+  fingerprint and logical-owner checks must still reject conflicting reuse
+  before any new side effect can enqueue.
+- Long-lived command runners must emit asynchronous producer outcomes through
+  the per-command sink supplied by ActorHost. An actor-construction-time sink
+  keeps the pre-fence admission generation and becomes permanently stale when
+  an aborted destructive fence reopens the surviving actor under a new
+  generation.
+- One-shot actor timers that can fire while a destructive fence is sealed need
+  an abort recovery policy. If sealed admission consumes and rejects the timer
+  event, re-arm the lease after a failed destructive commit so the reopened
+  actor cannot retain an expiring claim forever.
+- Machine-wide fence records must retain each original domain key separately
+  from its serialized admission key. Domain abort/resync callbacks need the
+  typed key; passing the gate handle's encoded key can silently target an
+  invalid entity during recovery.

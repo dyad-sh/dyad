@@ -140,7 +140,6 @@ import {
   type ImageGenerationDeletionFence,
 } from "../services/image_generation_actor_service";
 import { imageGenerationService } from "../services/image_generation_service";
-import { githubOpsService } from "../services/github_ops_service";
 import { versionPreviewActorService } from "../services/version_preview_actor_service";
 import { appDeletionQueue } from "../services/app_deletion_queue";
 import { versionPreviewService } from "../services/version_preview_service";
@@ -399,14 +398,44 @@ async function deleteAppById(
   options: DeleteAppByIdOptions = {},
 ): Promise<void> {
   const appRunDeletion = appRunActorService.beginAppDeletion(appId);
+  let githubDeletion: ReturnType<typeof githubOpsActorService.beginAppDeletion>;
+  try {
+    githubDeletion = githubOpsActorService.beginAppDeletion(appId);
+  } catch (error) {
+    appRunDeletion.abort();
+    throw error;
+  }
   let appRunDeletionCommitted = false;
+  let githubDeletionCommitted = false;
   try {
     await appDeletionQueue.run(() =>
       deleteAppByIdExclusive(appId, options, {
-        seal: () => appRunDeletion.seal(),
+        seal: async () => {
+          await Promise.all([appRunDeletion.seal(), githubDeletion.seal()]);
+        },
         commit: () => {
-          appRunDeletion.commit();
-          appRunDeletionCommitted = true;
+          let commitFailure: unknown;
+          try {
+            appRunDeletionCommitted = appRunDeletion.commit();
+          } catch (error) {
+            commitFailure = error;
+          }
+          try {
+            githubDeletionCommitted = githubDeletion.commit();
+          } catch (error) {
+            commitFailure = commitFailure
+              ? new AggregateError(
+                  [commitFailure, error],
+                  "Coordinated app deletion fence commit failed",
+                )
+              : error;
+          }
+          if (commitFailure) throw commitFailure;
+          if (!appRunDeletionCommitted || !githubDeletionCommitted) {
+            throw new Error(
+              "Coordinated app deletion fence ownership became stale",
+            );
+          }
         },
       }),
     );
@@ -416,19 +445,23 @@ async function deleteAppById(
     } else {
       appRunDeletion.abort();
     }
+    if (githubDeletionCommitted) {
+      githubDeletion.release();
+    } else {
+      githubDeletion.abort();
+    }
   }
 }
 
 async function deleteAppByIdExclusive(
   appId: number,
   options: DeleteAppByIdOptions = {},
-  appRunDeletion: {
+  machineDeletion: {
     seal(): Promise<void>;
     commit(): void;
   },
 ): Promise<void> {
   let versionPreviewDeletionStarted = false;
-  let githubDeletionStarted = false;
   let releaseStreamAdmissionBlock: (() => void) | undefined;
   let imageGenerationDeletion: ImageGenerationDeletionFence | undefined;
   let releaseChatCreation: (() => void) | undefined;
@@ -440,8 +473,6 @@ async function deleteAppByIdExclusive(
     versionPreviewActorService.beginAppDeletion(appId);
     versionPreviewDeletionStarted = true;
     releaseStreamAdmissionBlock = blockNewStreamsForApp(appId);
-    githubOpsService.beginAppDeletion(appId);
-    githubDeletionStarted = true;
     imageGenerationDeletion =
       imageGenerationActorService.beginAppDeletion(appId);
     releaseChatCreation = beginAppChatDeletion(appId);
@@ -472,8 +503,8 @@ async function deleteAppByIdExclusive(
 
       if (!app) {
         if (options.allowMissing && options.knownAppPath) {
-          await appRunDeletion.seal();
-          appRunDeletion.commit();
+          await machineDeletion.seal();
+          machineDeletion.commit();
           deletionCommitted = true;
           return options.knownAppPath;
         }
@@ -491,10 +522,10 @@ async function deleteAppByIdExclusive(
         }
       }
 
-      await appRunDeletion.seal();
+      await machineDeletion.seal();
       try {
         await db.delete(apps).where(eq(apps.id, appId));
-        appRunDeletion.commit();
+        machineDeletion.commit();
         deletionCommitted = true;
         // Note: Associated chats will cascade delete
         if (options.publishDisposal !== false) {
@@ -568,15 +599,11 @@ async function deleteAppByIdExclusive(
       }
     } finally {
       try {
-        if (githubDeletionStarted) githubOpsService.endAppDeletion(appId);
-      } finally {
-        try {
-          if (versionPreviewDeletionStarted) {
-            versionPreviewActorService.endAppDeletion(appId);
-          }
-        } finally {
-          releaseStreamAdmissionBlock?.();
+        if (versionPreviewDeletionStarted) {
+          versionPreviewActorService.endAppDeletion(appId);
         }
+      } finally {
+        releaseStreamAdmissionBlock?.();
       }
     }
   }
@@ -1513,10 +1540,17 @@ export function registerAppHandlers() {
 
   createTypedHandler(systemContracts.resetAll, async () => {
     const appRunReset = appRunActorService.beginReset();
+    let githubReset: ReturnType<typeof githubOpsActorService.beginReset>;
+    try {
+      githubReset = githubOpsActorService.beginReset();
+    } catch (error) {
+      appRunReset.abort();
+      throw error;
+    }
     let appRunResetCommitted = false;
-    let appRunResetCompleted = false;
+    let githubResetCommitted = false;
+    let machineResetCompleted = false;
     versionPreviewService.beginReset();
-    githubOpsService.beginReset();
     imageGenerationService.beginReset();
     try {
       logger.log("start: resetting all apps and settings.");
@@ -1534,7 +1568,7 @@ export function registerAppHandlers() {
         }
       }
       logger.log("all running apps stopped.");
-      await appRunReset.seal();
+      await Promise.all([appRunReset.seal(), githubReset.seal()]);
       await appRunActorService.disposeAllApps();
       logger.log("all app run actors disposed.");
       await githubOpsActorService.disposeAllApps();
@@ -1557,8 +1591,26 @@ export function registerAppHandlers() {
       // Closing the database is the last reversible boundary. Commit before
       // deleting any SQLite file so a partial sidecar deletion cannot reopen
       // app-run admission against a partially reset database.
-      appRunReset.commit();
-      appRunResetCommitted = true;
+      let commitFailure: unknown;
+      try {
+        appRunResetCommitted = appRunReset.commit();
+      } catch (error) {
+        commitFailure = error;
+      }
+      try {
+        githubResetCommitted = githubReset.commit();
+      } catch (error) {
+        commitFailure = commitFailure
+          ? new AggregateError(
+              [commitFailure, error],
+              "Coordinated reset fence commit failed",
+            )
+          : error;
+      }
+      if (commitFailure) throw commitFailure;
+      if (!appRunResetCommitted || !githubResetCommitted) {
+        throw new Error("Coordinated reset fence ownership became stale");
+      }
       for (const dbFilePath of dbFilePaths) {
         if (fs.existsSync(dbFilePath)) {
           await fsPromises.unlink(dbFilePath);
@@ -1604,15 +1656,24 @@ export function registerAppHandlers() {
       }
       logger.log("all app files removed.");
       logger.log("reset all complete.");
-      appRunResetCompleted = true;
+      machineResetCompleted = true;
     } finally {
-      if (appRunResetCompleted) {
+      if (machineResetCompleted) {
         appRunReset.release();
-      } else if (!appRunResetCommitted) {
-        appRunReset.abort();
+        githubReset.release();
+      } else {
+        if (appRunResetCommitted) {
+          appRunReset.release();
+        } else {
+          appRunReset.abort();
+        }
+        if (githubResetCommitted) {
+          githubReset.release();
+        } else {
+          githubReset.abort();
+        }
       }
       imageGenerationService.endReset();
-      githubOpsService.endReset();
       versionPreviewService.endReset();
     }
   });

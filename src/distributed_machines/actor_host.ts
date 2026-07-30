@@ -958,7 +958,10 @@ export class ActorHost {
   private readonly machineAdmissionFences = new Map<
     string,
     {
-      readonly handles: readonly FenceHandle<unknown>[];
+      readonly handles: readonly {
+        readonly domainKey: unknown;
+        readonly fence: FenceHandle<unknown>;
+      }[];
       phase: "draining" | "sealed" | "committed";
     }
   >();
@@ -1093,6 +1096,7 @@ export class ActorHost {
     options: {
       readonly key: Key;
       readonly allowDuringDrain: (event: NoInfer<Event>) => boolean;
+      readonly onAbort?: (key: Key) => void;
     },
   ): FenceHandle<Key> {
     this.assertRegistered(definition);
@@ -1126,7 +1130,13 @@ export class ActorHost {
         }
       },
       commit: handle.commit,
-      abort: handle.abort,
+      abort: (abortOptions) =>
+        handle.abort({
+          requestResync: () => {
+            abortOptions?.requestResync?.();
+            options.onAbort?.(options.key);
+          },
+        }),
       release: handle.release,
     };
   }
@@ -1157,6 +1167,7 @@ export class ActorHost {
     >,
     options: {
       readonly allowDuringDrain: (event: Event) => boolean;
+      readonly onAbort?: (key: Key) => void;
     },
   ): ActorMachineFenceHandle {
     this.assertRegistered(definition);
@@ -1170,7 +1181,10 @@ export class ActorHost {
       this.throwMachineDisposing(definition.id);
     }
     const record: {
-      handles: FenceHandle<unknown>[];
+      handles: {
+        readonly domainKey: Key;
+        readonly fence: FenceHandle<unknown>;
+      }[];
       phase: "draining" | "sealed" | "committed";
     } = { handles: [], phase: "draining" };
     // Machine-fence publication linearization point: no await precedes it.
@@ -1182,7 +1196,7 @@ export class ActorHost {
     try {
       for (const key of keys) {
         const admissionKey = this.admissionKey(definition, key as Key);
-        if (record.handles.some((handle) => handle.key === admissionKey)) {
+        if (record.handles.some(({ fence }) => fence.key === admissionKey)) {
           continue;
         }
         if (this.hasUntrackedCommandCompletion(definition.id, admissionKey)) {
@@ -1191,30 +1205,31 @@ export class ActorHost {
             `Actor ${definition.id} handed off command work without a completion promise`,
           );
         }
-        record.handles.push(
-          this.gate(definition.id).beginFence({
+        record.handles.push({
+          domainKey: key as Key,
+          fence: this.gate(definition.id).beginFence({
             key: admissionKey,
             allowDuringDrain: options.allowDuringDrain as (
               event: unknown,
             ) => boolean,
           }),
-        );
+        });
       }
     } catch (error) {
-      for (const handle of record.handles.reverse()) handle.abort();
+      for (const { fence } of record.handles.reverse()) fence.abort();
       this.machineAdmissionFences.delete(definition.id);
       throw error;
     }
     return {
       seal: async () => {
-        await Promise.all(record.handles.map((handle) => handle.seal()));
+        await Promise.all(record.handles.map(({ fence }) => fence.seal()));
         record.phase = "sealed";
       },
       commit: () => {
         if (record.phase !== "sealed") {
           throw new Error("A machine fence must be sealed before commit");
         }
-        const committed = record.handles.every((handle) => handle.commit());
+        const committed = record.handles.every(({ fence }) => fence.commit());
         if (committed) record.phase = "committed";
         return committed;
       },
@@ -1225,7 +1240,11 @@ export class ActorHost {
         if (this.machineAdmissionFences.get(definition.id) !== record) {
           return false;
         }
-        for (const handle of record.handles) handle.abort();
+        for (const { domainKey, fence } of record.handles) {
+          fence.abort({
+            requestResync: () => options.onAbort?.(domainKey),
+          });
+        }
         this.machineAdmissionFences.delete(definition.id);
         return true;
       },
@@ -1236,7 +1255,7 @@ export class ActorHost {
         if (this.machineAdmissionFences.get(definition.id) !== record) {
           return false;
         }
-        for (const handle of record.handles) handle.release();
+        for (const { fence } of record.handles) fence.release();
         this.machineAdmissionFences.delete(definition.id);
         return true;
       },

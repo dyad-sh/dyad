@@ -6,13 +6,35 @@ import { useGithubOps } from "./useGithubOps";
 
 const mocks = vi.hoisted(() => ({
   dispatch: vi.fn(),
+  request: vi.fn(),
   showError: vi.fn(),
   connection: "connecting" as "connecting" | "ready" | "disconnected",
   remote: undefined as any,
+  mutationAdmission: { kind: "idle" } as any,
+  retry: vi.fn(),
 }));
 
 vi.mock("@/distributed_machines/react", () => ({
   useDistributedMachine: () => mocks.remote,
+}));
+
+vi.mock("@/distributed_machines/use_machine_mutation", () => ({
+  useMachineMutation: (options: any) => ({
+    admission: mocks.mutationAdmission,
+    mutate: async (input: any) => {
+      const request = options.request(input, undefined);
+      await request.admission;
+      return request.settled;
+    },
+    retry: mocks.retry,
+  }),
+}));
+
+vi.mock("./request_actor", () => ({
+  useGithubOpsRequestActor: () => ({
+    request: mocks.request,
+    sendAdmissionOnly: mocks.dispatch,
+  }),
 }));
 
 vi.mock("@/lib/toast", () => ({ showError: mocks.showError }));
@@ -20,7 +42,10 @@ vi.mock("@/lib/toast", () => ({ showError: mocks.showError }));
 describe("useGithubOps remote readiness", () => {
   beforeEach(() => {
     mocks.dispatch.mockReset();
+    mocks.request.mockReset();
     mocks.showError.mockReset();
+    mocks.retry.mockReset().mockResolvedValue(undefined);
+    mocks.mutationAdmission = { kind: "idle" };
     mocks.connection = "connecting";
     mocks.remote = {
       state: {
@@ -32,7 +57,8 @@ describe("useGithubOps remote readiness", () => {
       },
       projection: projectGithubOps(INITIAL_GITHUB_OPS_STATE),
       connection: mocks.connection,
-      dispatch: mocks.dispatch,
+      snapshot: { kind: "unavailable" },
+      observedRevision: undefined,
     };
   });
 
@@ -47,16 +73,21 @@ describe("useGithubOps remote readiness", () => {
     mocks.remote = { ...mocks.remote, connection: "ready" };
     rerender();
     await vi.waitFor(() =>
-      expect(mocks.dispatch).toHaveBeenCalledWith({
-        type: "RECONCILE_REQUESTED",
-      }),
+      expect(mocks.dispatch).toHaveBeenCalledWith(
+        {
+          type: "RECONCILE_REQUESTED",
+        },
+        undefined,
+      ),
     );
   });
 
   it("consumes transport rejections from ordinary UI sends", async () => {
     mocks.connection = "ready";
     mocks.remote = { ...mocks.remote, connection: "ready" };
-    mocks.dispatch.mockRejectedValue(new Error("disconnected"));
+    mocks.request.mockImplementation(() => {
+      throw new Error("disconnected");
+    });
     const { result } = renderHook(() =>
       useGithubOps(7, { reconcileOnMount: false }),
     );
@@ -88,6 +119,72 @@ describe("useGithubOps remote readiness", () => {
 
     expect(receipt).toBeUndefined();
     expect(mocks.showError).toHaveBeenCalledOnce();
+  });
+
+  it("preserves a tracked typed refusal receipt", async () => {
+    const refusal = {
+      kind: "ignored" as const,
+      reason: "op-in-flight" as const,
+      actorInstanceId: "actor-1",
+      revision: 2,
+      transactionSequence: 3,
+      messageId: "message-1",
+    };
+    mocks.connection = "ready";
+    mocks.remote = { ...mocks.remote, connection: "ready" };
+    mocks.request.mockReturnValue({
+      requestId: "request-1",
+      admission: Promise.resolve({ kind: "refused", reason: refusal }),
+      settled: Promise.resolve({
+        kind: "not-admitted",
+        reason: "refused",
+        refusal,
+      }),
+    });
+    const { result } = renderHook(() =>
+      useGithubOps(7, { reconcileOnMount: false }),
+    );
+
+    await expect(
+      result.current.dispatch({
+        type: "OP_REQUESTED",
+        op: { type: "push", mode: "normal" },
+      }),
+    ).resolves.toEqual(refusal);
+    expect(mocks.showError).not.toHaveBeenCalled();
+  });
+
+  it("retries a stable request once when transport is ready", async () => {
+    mocks.connection = "ready";
+    mocks.remote = { ...mocks.remote, connection: "ready" };
+    mocks.request.mockReturnValue({
+      requestId: "request-1",
+      admission: Promise.resolve({
+        kind: "disconnected",
+        retryable: true,
+        error: new Error("disconnected"),
+      }),
+      settled: new Promise(() => undefined),
+    });
+
+    const { result, rerender } = renderHook(() =>
+      useGithubOps(7, { reconcileOnMount: false }),
+    );
+    await act(async () => {
+      await result.current.dispatch({
+        type: "OP_REQUESTED",
+        op: { type: "push", mode: "normal" },
+      });
+    });
+    mocks.mutationAdmission = {
+      kind: "refused",
+      reason: "disconnected",
+      retryable: true,
+    };
+    rerender();
+    await vi.waitFor(() => expect(mocks.retry).toHaveBeenCalledOnce());
+    rerender();
+    expect(mocks.retry).toHaveBeenCalledOnce();
   });
 
   it("clears the local claim when cancellation dispatch rejects", async () => {

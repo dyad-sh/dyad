@@ -738,11 +738,13 @@ function isMigratedSurfacePath(sourcePath: string): boolean {
   if (sourcePath.endsWith("/testing.ts")) return false;
   return (
     sourcePath.startsWith("app_run/") ||
+    sourcePath.startsWith("github_ops/") ||
     sourcePath.startsWith("image_generation/") ||
     sourcePath === "hooks/useRunApp.ts" ||
     sourcePath === "hooks/useGenerateImage.ts" ||
     sourcePath.startsWith("ipc/services/app_run_") ||
     sourcePath.startsWith("ipc/services/app_runtime_") ||
+    sourcePath.startsWith("ipc/services/github_ops_") ||
     sourcePath === "ipc/services/main_app_runtime_output.ts" ||
     sourcePath.startsWith("ipc/services/image_generation_")
   );
@@ -1113,12 +1115,13 @@ describe("progressive distributed-machine inventories", () => {
     );
   }, 20_000);
 
-  it("requires the two migrated definitions to use the framework capability constructor", () => {
+  it("requires the three migrated definitions to use the framework capability constructor", () => {
     assertInventory(
       "framework-covered definitions",
       collectProduction(frameworkCoveredDefinitionBoundaries),
       [
         "app_run/definition.ts::appRunDefinition",
+        "ipc/services/github_ops_definition.ts::githubOpsDefinition",
         "ipc/services/image_generation_definition.ts::imageGenerationDefinition",
       ],
     );
@@ -1132,7 +1135,6 @@ describe("progressive distributed-machine inventories", () => {
         "distributed_machines/remote_manifest.ts::call(createRemoteMachineManifest:definitions)",
         "ipc/services/distributed_machine_host.ts::call(createProductionRemoteMachineManifest:remoteMachineDefinitions)",
         "ipc/services/distributed_machine_host.ts::call(defineLegacyRemoteMachineCompatibility:chatStreamDefinition)",
-        "ipc/services/distributed_machine_host.ts::call(defineLegacyRemoteMachineCompatibility:githubOpsDefinition)",
         "ipc/services/distributed_machine_host.ts::call(defineLegacyRemoteMachineCompatibility:planHandoffDefinition)",
         "ipc/services/distributed_machine_host.ts::call(defineLegacyRemoteMachineCompatibility:versionPreviewDefinition)",
       ].sort(),
@@ -1235,7 +1237,7 @@ describe("progressive distributed-machine inventories", () => {
   it("keeps migrated pilots out of the unsafe compatibility inventory", () => {
     expect(
       compatibilityBoundaryInventory.filter(({ machine }) =>
-        ["app_run", "image_generation"].includes(machine),
+        ["app_run", "github_ops", "image_generation"].includes(machine),
       ),
     ).toEqual([]);
     const unsafe = Object.values(unsafeEscapeHatchInventory).flat();
@@ -1243,10 +1245,12 @@ describe("progressive distributed-machine inventories", () => {
       unsafe.filter(
         ({ exactFile }) =>
           exactFile.startsWith("app_run/") ||
+          exactFile.startsWith("github_ops/") ||
           exactFile.startsWith("hooks/useRunApp") ||
           exactFile.startsWith("image_generation/") ||
           exactFile.startsWith("hooks/useGenerateImage") ||
           exactFile.startsWith("ipc/services/app_run") ||
+          exactFile.startsWith("ipc/services/github_ops") ||
           exactFile.startsWith("ipc/services/image_generation"),
       ),
     ).toEqual([]);

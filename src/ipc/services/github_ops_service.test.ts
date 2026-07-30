@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { DyadErrorKind } from "@/errors/dyad_error";
 import { GithubOpsService } from "./github_ops_service";
 
 const handlers = vi.hoisted(() => ({
@@ -29,43 +28,12 @@ vi.mock("../handlers/git_branch_handlers", () => ({
   handleSwitchBranch: vi.fn(),
 }));
 
-describe("GithubOpsService lifecycle", () => {
+describe("GithubOpsService", () => {
   beforeEach(() => {
     handlers.push.mockReset();
   });
 
-  it("rejects queued operations after the deletion fence is raised", async () => {
-    const service = new GithubOpsService();
-    service.beginAppDeletion(7);
-
-    await expect(
-      service.run(7, { type: "push", mode: "normal" }),
-    ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
-    expect(handlers.push).not.toHaveBeenCalled();
-
-    service.endAppDeletion(7);
-  });
-
-  it("rejects every app while a full reset is fenced", async () => {
-    const service = new GithubOpsService();
-    service.beginReset();
-
-    await expect(
-      service.run(7, { type: "push", mode: "normal" }),
-    ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
-    await expect(
-      service.run(8, { type: "push", mode: "normal" }),
-    ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
-    expect(handlers.push).not.toHaveBeenCalled();
-
-    service.endReset();
-    handlers.push.mockResolvedValue();
-    await expect(
-      service.run(7, { type: "push", mode: "normal" }),
-    ).resolves.toBeUndefined();
-  });
-
-  it("keeps settlement pending until an admitted operation finishes", async () => {
+  it("returns the complete Git continuation to the actor host", async () => {
     let release!: () => void;
     handlers.push.mockImplementation(
       () =>
@@ -78,7 +46,7 @@ describe("GithubOpsService lifecycle", () => {
     await vi.waitFor(() => expect(handlers.push).toHaveBeenCalledOnce());
 
     let settled = false;
-    const settlement = service.settle(7).then(() => {
+    void run.then(() => {
       settled = true;
     });
     await Promise.resolve();
@@ -86,7 +54,5 @@ describe("GithubOpsService lifecycle", () => {
 
     release();
     await expect(run).resolves.toBeUndefined();
-    await settlement;
-    expect(settled).toBe(true);
   });
 });

@@ -1613,11 +1613,13 @@ ${componentSnippet}
             ? localAgentAiUserPrompt
             : defaultAiUserPrompt;
 
-        // Note: because agent-mode references are sticky, this now stays off
-        // for the rest of the chat once an app is referenced, rather than
-        // flipping back on the next turn that omits the mention. That matches
-        // the intent — the reference really is still live — and detaching the
-        // app in the composer re-enables it.
+        // The referenced-apps clause only ever fires for build mode: deep
+        // context suppresses `dyadFiles` in favor of `dyadVersionedFiles`, and
+        // the engine's deep pipeline does not read `dyadMentionedApps`, so a
+        // mentioned app's codebase would silently never reach the model. Agent
+        // modes populate `referencedAppsForAgent` from the sticky set, but they
+        // return via handleLocalAgentStream before this flag is read and pass
+        // no smart context mode at all — so stickiness never reaches here.
         const isDeepContextEnabled =
           isEngineEnabled &&
           settings.enableProSmartFilesContextMode &&

@@ -1,4 +1,4 @@
-import { ChevronRight } from "lucide-react";
+import { highlightPlaywrightLine } from "./playwrightHighlight";
 
 /**
  * The recorded flow, as the list of Playwright statements it will replay.
@@ -12,6 +12,12 @@ import { ChevronRight } from "lucide-react";
  * ("generate assertions?"), not the decision itself. It renders flush on the
  * recording banner's own surface: the banner draws the hairline above it, so
  * this is a section of that banner rather than a second one.
+ *
+ * Statements wrap rather than truncate. What identifies a step is the button
+ * label or field name at the *end* of the locator, so an ellipsis cut the one
+ * part that told two steps apart — a column of `await page.getByRole("button",
+ * { name: "…` reads as the same step four times. Wrapped lines hang under their
+ * number so the start of each step stays findable.
  */
 export function RecordedStepsList({ steps }: { steps: string[] }) {
   if (steps.length === 0) {
@@ -27,23 +33,28 @@ export function RecordedStepsList({ steps }: { steps: string[] }) {
 
   return (
     <ol
-      className="max-h-40 overflow-y-auto px-3 py-1.5"
+      // Focusable so the steps past the fold are reachable without a mouse: the
+      // list is capped and scrolls, and nothing inside it takes focus on its own.
+      tabIndex={0}
+      aria-label="Recorded steps"
+      className="max-h-44 overflow-y-auto overscroll-contain px-3 py-1.5 focus-visible:ring-2 focus-visible:ring-purple-500/40 focus-visible:outline-none focus-visible:ring-inset"
       data-testid="preview-recorded-steps"
     >
       {steps.map((step, index) => (
         <li
           key={`${index}-${step}`}
           data-testid={`preview-recorded-step-${index}`}
-          className="flex items-center gap-1.5 py-0.5 font-mono text-xs"
+          // No vertical padding: `leading-5` already opens 4px above and below
+          // each line, which separates rows AND the wrapped lines within one row.
+          // Padding on top of that costs a visible step per screenful.
+          className="flex items-start gap-2 font-mono text-xs leading-5"
         >
-          <span className="w-5 shrink-0 text-right text-[10px] text-muted-foreground tabular-nums">
+          <span className="w-5 shrink-0 text-right text-[10px] leading-5 text-muted-foreground tabular-nums">
             {index + 1}
           </span>
-          <ChevronRight
-            size={11}
-            className="shrink-0 text-purple-500/70 dark:text-purple-400/70"
-          />
-          <span className="truncate">{step}</span>
+          <span className="min-w-0 flex-1 pl-5 -indent-5 break-words">
+            {highlightPlaywrightLine(step)}
+          </span>
         </li>
       ))}
     </ol>

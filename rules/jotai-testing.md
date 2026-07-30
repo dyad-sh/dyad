@@ -41,6 +41,22 @@ The symptom when you get this wrong is assertions like `expected false to be tru
 
 See `src/atoms/githubSyncAtoms.test.tsx` for a complete example covering unmount/remount, cross-unmount completion, and per-key isolation.
 
+## StrictMode: `renderHook` needs `reactStrictMode`, not a wrapper
+
+Wrapping the hook in `<StrictMode>` via the `wrapper` option does **not** replay effects under `renderHook` — the mount effect runs once and a StrictMode-only bug passes the test. Pass the render option instead: `renderHook(() => useThing(), { wrapper, reactStrictMode: true })`. (`render()` does replay with a `<StrictMode>` element in the tree; only `renderHook` differs.)
+
+Worth testing because the app renders under `<StrictMode>` (`src/renderer.tsx`), where the dev mount/unmount/remount replay runs cleanup on a hook that is still mounted. A "am I still mounted" ref must therefore be re-armed in the effect body, not just at ref creation:
+
+```tsx
+const mountedRef = useRef(true);
+useEffect(() => {
+  mountedRef.current = true; // without this, permanently false after the replay
+  return () => {
+    mountedRef.current = false;
+  };
+}, []);
+```
+
 ## No jest-dom matchers
 
 The vitest setup does not register `@testing-library/jest-dom`, so matchers like `toBeInTheDocument()` or `toBeDisabled()` fail with `Invalid Chai property: toBeInTheDocument`. Use plain assertions instead: `expect(screen.queryByTestId(...)).toBeNull()` / `.not.toBeNull()` for presence, and `expect((button as HTMLButtonElement).disabled).toBe(false)` for disabled state.

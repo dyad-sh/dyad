@@ -236,6 +236,38 @@ describe("useTestRecorder", () => {
     expect(result.current.draftSteps).toEqual([`await page.goto("/");`]);
   });
 
+  it("keeps the review when the stop we asked for reports back late", async () => {
+    const { store, Wrapper } = makeWrapper();
+    store.set(selectedAppIdAtom, 1);
+    const iframe = makeIframe();
+    store.set(previewIframeRefAtom, iframe.el);
+
+    const { result } = renderHook(
+      () => useTestRecorder({ reloadPreview: () => {} }),
+      { wrapper: Wrapper },
+    );
+    await act(async () => {
+      await result.current.startRecording();
+    });
+    await act(async () => {
+      await result.current.stopAndReview("my flow");
+    });
+    expect(result.current.phase).toBe("reviewing");
+
+    // The main process reports the session ended for the very stop we asked
+    // for. That event and the stopRecording reply travel different IPC
+    // interfaces, so it can arrive after the review is already on screen —
+    // resetting to idle here would take the steps and the assertions button
+    // with it.
+    const onEnded = onEndedMock.mock.calls.at(-1)![0];
+    act(() => {
+      onEnded({ appId: 1, reason: "stopped" });
+    });
+
+    expect(result.current.phase).toBe("reviewing");
+    expect(result.current.draft?.testName).toBe("my flow");
+  });
+
   it("generates the spec from the draft when saving without assertions", async () => {
     const { store, Wrapper } = makeWrapper();
     store.set(selectedAppIdAtom, 1);
@@ -341,6 +373,27 @@ describe("useTestRecorder", () => {
     expect(iframe.posted).toContainEqual({
       type: "deactivate-dyad-recorder",
     });
+  });
+
+  it("keeps the session after StrictMode's mount/unmount/remount replay", async () => {
+    const { store, Wrapper } = makeWrapper();
+    store.set(selectedAppIdAtom, 1);
+    const iframe = makeIframe();
+    store.set(previewIframeRefAtom, iframe.el);
+
+    const { result } = renderHook(
+      () => useTestRecorder({ reloadPreview: () => {} }),
+      { wrapper: Wrapper, reactStrictMode: true },
+    );
+    await act(async () => {
+      await result.current.startRecording();
+    });
+
+    // StrictMode runs the mount effect's cleanup on a hook that is still very
+    // much mounted. Treating that as a real unmount handed the freshly prepared
+    // session straight back — in dev, recording could never start.
+    expect(stopRecordingMock).not.toHaveBeenCalled();
+    expect(result.current.isRecording).toBe(true);
   });
 
   it("disarms the in-page recorder when a session ends abnormally", async () => {

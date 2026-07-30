@@ -110,6 +110,23 @@ describe("RecordingBanner", () => {
     ).toBeTruthy();
   });
 
+  it("shows each recorded step in full, reachable by keyboard", () => {
+    const long =
+      'await page.getByRole("button", { name: "Save this rather long label" }).click();';
+    renderBanner(makeRecorder("reviewing", { draftSteps: [long, long] }));
+
+    const list = screen.getByTestId("preview-recorded-steps");
+    // The label at the END of the locator is what tells two otherwise identical
+    // steps apart, so the statement must never be cut short.
+    expect(screen.getByTestId("preview-recorded-step-0").textContent).toContain(
+      long,
+    );
+    // The list is capped and scrolls; nothing inside it takes focus, so the list
+    // itself has to be reachable or the steps past the fold need a mouse.
+    expect(list.getAttribute("tabindex")).toBe("0");
+    expect(list.getAttribute("aria-label")).toBe("Recorded steps");
+  });
+
   it("keeps a warning inside the one banner", () => {
     renderBanner(
       makeRecorder("recording", {

@@ -107,13 +107,18 @@ export function useTestRecorder({
   // Distinguishes a real unmount from the app-change re-run of the release
   // effect below. `startRecording` consults it after each await: refs survive
   // unmount, so an app-id comparison alone still looks satisfied.
+  // Re-armed in the effect body, not just at ref creation: StrictMode's dev
+  // mount/unmount/remount replay runs the cleanup once on a hook that is very
+  // much still mounted, and a ref that is only ever set to false would stay
+  // false for the rest of the session — making every start hand its session
+  // straight back.
   const mountedRef = useRef(true);
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
       mountedRef.current = false;
-    },
-    [],
-  );
+    };
+  }, []);
 
   useEffect(() => {
     iframeElRef.current = iframeEl;
@@ -249,23 +254,32 @@ export function useTestRecorder({
   }, [appendEntry, postToIframe, previewOrigin]);
 
   // Reset the UI if a session ends outside our control (app stopped / crash /
-  // hitting the session cap). A failure reason is surfaced as a toast — the
-  // recording bar unmounts on idle, so a state field alone would go unseen.
+  // hitting the session cap) — and only then. A failure reason is surfaced as a
+  // toast: the recording bar unmounts on idle, so a state field alone would go
+  // unseen.
   useEffect(() => {
     const unsub = ipc.events.recording.onEnded(
       ({ appId: endedAppId, reason, message }) => {
         if (endedAppId == null) return;
         ownedSessionsRef.current.delete(endedAppId);
+        // "stopped" is only ever reported for a stop we asked for — the main
+        // process reports it from the stopRecording handler and nowhere else.
+        // Whichever path asked already owns what comes next (stopAndReview is
+        // on its way to the review; cancel and release go to idle themselves),
+        // and this event races that: it travels a different IPC interface than
+        // the stopRecording reply, so it can land *after* the review is on
+        // screen and wipe it — taking the steps and the assertions button with
+        // it. Only endings we didn't ask for need the UI reset below.
+        if (reason === "stopped") return;
         const failureMessage =
           reason === "error" || reason === "timed-out"
             ? (message ?? "The recording session ended unexpectedly.")
             : undefined;
-        // The user-driven stops (stopAndReview / cancelRecording) disarm the
-        // in-page recorder themselves. On every other ending the iframe is
-        // usually still alive, so without this the injected client keeps its
-        // capture-phase listeners attached and keeps painting the red hover
-        // highlight — with no recording bar left to explain it.
-        if (reason !== "stopped" && endedAppId === appIdRef.current) {
+        // The iframe is usually still alive on these endings, so without this
+        // the injected client keeps its capture-phase listeners attached and
+        // keeps painting the hover highlight — with no recording bar left to
+        // explain it. (The user-driven stops disarm it themselves.)
+        if (endedAppId === appIdRef.current) {
           postToIframe({ type: "deactivate-dyad-recorder" });
         }
         patchState(endedAppId, (prev) =>

@@ -52,9 +52,9 @@ export function recordingStatusMessage(
  *
  * It is deliberately a single surface. The status line, the live code (while
  * recording), the recorded steps (while reviewing) and any warning all sit on
- * the same tint inside one border, separated by hairlines rather than by their
- * own backgrounds — otherwise they read as a stack of unrelated alerts wedged
- * between the toolbar and the app.
+ * the same tint inside one border, with no backgrounds or edges of their own —
+ * otherwise they read as a stack of unrelated alerts wedged between the toolbar
+ * and the app.
  *
  * Everything below the status line is a disclosure: the review list can get
  * long, and once you've read it the steps are just in the way of the app you're
@@ -267,7 +267,14 @@ export function RecordingBanner({
       {details && isExpanded && (
         <div
           id={DETAILS_ID}
-          className="border-t border-purple-200/60 dark:border-purple-900/40"
+          className={cn(
+            // The live code is one more row of the same status line — a
+            // hairline there splits the recorder into two stacked banners. The
+            // review list scrolls, so it keeps an edge for its content to
+            // disappear under.
+            !recorder.isRecording &&
+              "border-t border-purple-200/60 dark:border-purple-900/40",
+          )}
         >
           {details}
         </div>

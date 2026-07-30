@@ -284,6 +284,12 @@ If you need to rebase but have uncommitted changes (e.g., package-lock.json from
 
 This prevents rebase conflicts from uncommitted changes while preserving any work in progress.
 
+## `git stash push` flags must precede `--`
+
+`git stash push -- <path> -q` parses `-q` as a **pathspec**, not a flag, and fails with `error: pathspec ':(,prefix:0)-q' did not match any file(s)`. Put flags before `--`: `git stash push -q -- <path>`.
+
+This matters because of what usually follows: chaining `git stash push ... && <cmd>; git stash pop` runs the `pop` unconditionally when the push fails, popping whatever unrelated stash sits at `stash@{0}` into the working tree (conflicts, stray files, staged changes from someone else's branch). Never pair push/pop across a `;`, and prefer editing the file back with an editor tool over stashing when you only need to A/B one file.
+
 ## Resolving documentation rebase conflicts
 
 When rebasing a PR branch that conflicts with upstream documentation changes (e.g., AGENTS.md):

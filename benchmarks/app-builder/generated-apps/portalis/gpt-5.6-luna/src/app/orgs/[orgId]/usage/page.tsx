@@ -1,0 +1,13 @@
+import Link from "next/link";
+import { sql } from "@/db";
+import { PortalHeader } from "@/components/portal-header";
+import { getMemberOrg, requireUser } from "@/lib/orgs";
+
+export const dynamic = "force-dynamic";
+export default async function UsagePage({ params }: { params: Promise<{ orgId: string }> }) {
+  const user = await requireUser(); const { orgId } = await params; const org = await getMemberOrg(orgId, user.id);
+  if (!org) return <div className="min-h-screen bg-slate-50"><PortalHeader email={user.email} /><main className="p-16"><div data-testid="not-authorized">Not authorized</div></main></div>;
+  const rows = await sql`SELECT (SELECT COUNT(*)::int FROM projects WHERE organization_id = ${org.id}::uuid) AS projects, (SELECT COUNT(*)::int FROM organization_members WHERE organization_id = ${org.id}::uuid) AS members, (SELECT COUNT(*)::int FROM api_keys WHERE organization_id = ${org.id}::uuid AND status = 'active') AS "apiKeys", (SELECT COUNT(*)::int FROM audit_logs WHERE organization_id = ${org.id}::uuid) AS events`;
+  const counts = rows[0] as { projects: number; members: number; apiKeys: number; events: number };
+  return <div className="min-h-screen bg-slate-50"><PortalHeader email={user.email} /><main className="mx-auto max-w-5xl px-6 py-10"><Link href={`/orgs/${org.id}`} className="text-sm font-medium text-blue-600 hover:underline">← Back to {org.name}</Link><div className="mt-6"><p className="text-sm font-medium text-blue-600">Organization insights</p><h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">Usage</h1><p className="mt-2 text-sm text-slate-500">A current snapshot of your organization.</p></div><div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4"><div className="rounded-2xl border bg-white p-6 shadow-sm"><p className="text-sm text-slate-500">Projects</p><p data-testid="usage-projects-count" className="mt-3 text-3xl font-semibold text-slate-950">{counts.projects}</p></div><div className="rounded-2xl border bg-white p-6 shadow-sm"><p className="text-sm text-slate-500">Members</p><p data-testid="usage-members-count" className="mt-3 text-3xl font-semibold text-slate-950">{counts.members}</p></div><div className="rounded-2xl border bg-white p-6 shadow-sm"><p className="text-sm text-slate-500">Active API keys</p><p data-testid="usage-api-keys-count" className="mt-3 text-3xl font-semibold text-slate-950">{counts.apiKeys}</p></div><div className="rounded-2xl border bg-white p-6 shadow-sm"><p className="text-sm text-slate-500">Audit events</p><p data-testid="usage-events-count" className="mt-3 text-3xl font-semibold text-slate-950">{counts.events}</p></div></div></main></div>;
+}

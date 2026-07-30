@@ -1,0 +1,11 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { AppUser } from "@/lib/tickets";
+
+export function UsersTable() {
+  const [users, setUsers] = useState<AppUser[] | null>(null);
+  async function update(user: AppUser, change: { role?: string; active?: boolean }) { const response = await fetch(`/api/admin/users/${user.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(change) }); if (response.ok) { const updated = await response.json(); setUsers(current => current?.map(item => item.id === updated.id ? updated : item) ?? null); } }
+  useEffect(() => { fetch("/api/admin/users").then(async response => response.ok ? response.json() : []).then(setUsers); }, []);
+  return <div data-testid="users-table" className="mt-8 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"><table className="w-full text-left text-sm"><thead className="bg-slate-50 text-slate-500"><tr><th className="px-5 py-3 font-medium">Name</th><th className="px-5 py-3 font-medium">Email</th><th className="px-5 py-3 font-medium">Role</th><th className="px-5 py-3 font-medium">Status</th><th className="px-5 py-3 font-medium"></th></tr></thead><tbody>{users?.map(user => <tr data-testid="user-row" data-user-id={user.id} key={user.id} className="border-t border-slate-100"><td className="px-5 py-4 font-medium text-slate-900">{user.name}</td><td className="px-5 py-4 text-slate-600">{user.email}</td><td className="px-5 py-4"><select data-testid="user-role-select" value={user.role} onChange={event => update(user, { role: event.target.value })} className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-slate-700"><option value="requester">Requester</option><option value="agent">Agent</option><option value="admin">Admin</option></select></td><td data-testid="user-status" className="px-5 py-4"><span className={user.active ? "text-emerald-700" : "text-red-700"}>{user.active ? "Active" : "Deactivated"}</span></td><td className="px-5 py-4"><button data-testid="user-deactivate" onClick={() => update(user, { active: !user.active })} className="text-sm font-semibold text-cyan-700">{user.active ? "Deactivate" : "Reactivate"}</button></td></tr>)}</tbody></table></div>;
+}

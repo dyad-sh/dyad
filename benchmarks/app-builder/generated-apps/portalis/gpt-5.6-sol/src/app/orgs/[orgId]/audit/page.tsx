@@ -1,0 +1,17 @@
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { NotAuthorized, OrgShell } from "@/components/org-shell";
+import { getAuditEvents } from "@/lib/admin-data";
+import { auditActions, type AuditAction } from "@/lib/audit-actions";
+import { getAuthorizedOrganization } from "@/lib/organizations";
+import { requireUser } from "@/lib/session";
+
+export const dynamic = "force-dynamic"; export const revalidate = 0;
+
+export default async function AuditPage({ params, searchParams }: { params: Promise<{ orgId: string }>; searchParams: Promise<{ action?: string; actor?: string }> }) {
+  const user = await requireUser(); const { orgId } = await params; const organization = await getAuthorizedOrganization(orgId, user.id);
+  if (!organization || organization.role !== "org_admin") return <NotAuthorized />;
+  const filters = await searchParams; const action = auditActions.includes(filters.action as AuditAction) ? filters.action as AuditAction : null; const actor = filters.actor?.trim() || null; const events = await getAuditEvents(orgId, action, actor);
+  return <OrgShell organization={organization}><div className="mb-6"><h2 className="text-xl font-semibold text-slate-950">Audit log</h2><p className="mt-1 text-sm text-slate-500">An append-only history of organization activity.</p></div><Card className="mb-5 bg-white shadow-sm"><CardContent className="pt-6"><form className="grid gap-4 sm:grid-cols-[220px_1fr_auto] sm:items-end"><div className="space-y-2"><label className="text-sm font-medium" htmlFor="audit-action-filter">Action</label><select id="audit-action-filter" name="action" defaultValue={action ?? ""} className="h-9 w-full rounded-md border bg-white px-3 text-sm" data-testid="audit-filter-action"><option value="">All actions</option>{auditActions.map((item) => <option key={item} value={item}>{item}</option>)}</select></div><div className="space-y-2"><label className="text-sm font-medium" htmlFor="audit-actor-filter">Actor email</label><input id="audit-actor-filter" name="actor" defaultValue={actor ?? ""} placeholder="person@company.com" className="h-9 w-full rounded-md border bg-white px-3 text-sm" data-testid="audit-filter-actor" /></div><Button type="submit" data-testid="audit-filter-apply">Apply filters</Button></form></CardContent></Card>{events.length === 0 ? <Card className="border-dashed bg-white"><CardContent className="py-12 text-center text-sm text-slate-500" data-testid="audit-empty">No audit events match these filters.</CardContent></Card> : <Card className="bg-white shadow-sm"><CardContent className="pt-6"><Table data-testid="audit-table"><TableHeader><TableRow><TableHead>Action</TableHead><TableHead>Actor</TableHead><TableHead>Target</TableHead><TableHead>Timestamp</TableHead></TableRow></TableHeader><TableBody>{events.map((event) => <TableRow key={event.id} data-testid="audit-row" data-audit-id={event.id} data-action={event.action} data-actor-email={event.actorEmail}><TableCell className="font-medium" data-testid="audit-action">{event.action}</TableCell><TableCell data-testid="audit-actor">{event.actorEmail}</TableCell><TableCell className="font-mono text-xs">{event.target}</TableCell><TableCell className="whitespace-nowrap text-slate-500" data-testid="audit-timestamp">{new Date(event.timestamp).toLocaleString()}</TableCell></TableRow>)}</TableBody></Table></CardContent></Card>}</OrgShell>;
+}

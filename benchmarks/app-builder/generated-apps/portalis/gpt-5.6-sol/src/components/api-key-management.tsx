@@ -1,0 +1,17 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { KeyRound, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import type { ApiKeySummary } from "@/lib/admin-data";
+
+export function ApiKeyManagement({ orgId, keys }: { orgId: string; keys: ApiKeySummary[] }) {
+  const router = useRouter(); const [name, setName] = useState(""); const [plaintext, setPlaintext] = useState(""); const [error, setError] = useState(""); const [busy, setBusy] = useState(false);
+  async function create(event: React.FormEvent) { event.preventDefault(); setBusy(true); setError(""); setPlaintext(""); const response = await fetch(`/api/orgs/${orgId}/api-keys`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) }); const data = await response.json(); setBusy(false); if (!response.ok) { setError(data.error ?? "Unable to create the key."); return; } setPlaintext(data.key); setName(""); router.refresh(); }
+  async function revoke(keyId: string) { setError(""); const response = await fetch(`/api/orgs/${orgId}/api-keys/${keyId}`, { method: "DELETE" }); if (!response.ok) { const data = await response.json(); setError(data.error ?? "Unable to revoke the key."); return; } router.refresh(); }
+  return <div className="space-y-8"><section className="rounded-xl border bg-white p-6 shadow-sm"><h2 className="font-semibold text-slate-950">Create API key</h2><p className="mt-1 text-sm text-slate-500">Keys provide read-only access to this organization&apos;s projects.</p><form className="mt-5 flex max-w-xl items-end gap-3" onSubmit={create}><div className="flex-1 space-y-2"><Label htmlFor="apikey-name">Key name</Label><Input id="apikey-name" value={name} onChange={(event) => setName(event.target.value)} required placeholder="Production integration" data-testid="apikey-name-input" /></div><Button type="submit" disabled={busy} className="bg-sky-600 hover:bg-sky-700" data-testid="apikey-create-submit">{busy ? <Loader2 className="animate-spin" /> : <KeyRound />}Create key</Button></form>{plaintext && <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4"><p className="text-sm font-semibold text-amber-900">Copy this key now. It will not be shown again.</p><code className="mt-2 block break-all text-sm text-amber-950" data-testid="apikey-plaintext">{plaintext}</code></div>}{error && <p className="mt-4 text-sm text-red-700">{error}</p>}</section><section className="rounded-xl border bg-white p-6 shadow-sm"><h2 className="mb-4 font-semibold text-slate-950">API keys</h2><Table data-testid="apikeys-table"><TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Prefix</TableHead><TableHead>Status</TableHead><TableHead /></TableRow></TableHeader><TableBody>{keys.map((key) => <TableRow key={key.id} data-testid="apikey-row" data-key-id={key.id}><TableCell className="font-medium" data-testid="apikey-name">{key.name}</TableCell><TableCell><code data-testid="apikey-prefix">{key.prefix}…</code></TableCell><TableCell className="capitalize" data-testid="apikey-status">{key.status}</TableCell><TableCell className="text-right">{key.status === "active" && <Button size="sm" variant="ghost" onClick={() => revoke(key.id)} data-testid="apikey-revoke">Revoke</Button>}</TableCell></TableRow>)}</TableBody></Table></section></div>;
+}

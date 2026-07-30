@@ -34,6 +34,11 @@ const argOf = (f) => {
 const CELL = argOf("--cell");
 const M = Number(argOf("--milestone"));
 if (!CELL || !M) throw new Error("--cell and --milestone required");
+const APP = CELL.endsWith("-deskhero")
+  ? "deskhero"
+  : CELL.endsWith("-portalis")
+    ? "portalis"
+    : "relay-crm";
 
 // Single fixed judge for every candidate (user decision 2026-07-29,
 // superseding the cross-vendor pair design). Same-vendor bias toward the
@@ -143,7 +148,7 @@ function testResults() {
 }
 
 const prompt = fs.readFileSync(
-  path.join(BENCH, "specs", "relay-crm", `m${M}.md`),
+  path.join(BENCH, "specs", APP, `m${M}.md`),
   "utf8",
 );
 const rubric = fs.readFileSync(path.join(__dirname, "rubric.md"), "utf8");

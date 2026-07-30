@@ -9,6 +9,8 @@ set -uo pipefail
 BENCH="$(cd "$(dirname "$0")" && pwd)"
 CELL="${1:?cellId required}"
 ATTEMPTS="${2:-1}"
+APP="${APPBENCH_APP:-relay-crm}"
+APP_PORT="${APP_PORT:-3000}"
 SUM="$BENCH/results/s-cell/$CELL.summary.json"
 CHECKOUT="$BENCH/results/s-cell/checkouts/$CELL"
 OUT_DIR="$BENCH/results/s-score"
@@ -50,8 +52,8 @@ for M in $MILESTONES; do
 
     APP_DIR="$APP_DIR" \
     SCORE_OUT="$OUT_DIR/$CELL-ckpt$M-a$ATTEMPT.json" \
-    SPEC="relay-crm/checkpoint-$M.spec.ts" \
-    APP_PORT=3000 \
+    SPEC="$APP/checkpoint-$M.spec.ts" \
+    APP_PORT="$APP_PORT" \
     DATABASE_URL="$DATABASE_URL" \
     NEON_AUTH_BASE_URL="$AUTH_URL" \
     NEON_AUTH_COOKIE_SECRET="$(openssl rand -hex 32)" \

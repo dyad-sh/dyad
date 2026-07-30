@@ -21,9 +21,8 @@ const h = vi.hoisted(() => {
   process.env.NODE_ENV = "development";
   if (process.env.APPBENCH_CELL === "1") {
     // Must be set before app modules import (dyad_engine_url reads at import time).
-    process.env.DYAD_ENGINE_URL = "http://127.0.0.1:7789";
-    process.env.DYAD_LANGUAGE_MODEL_CATALOG_URL =
-      "http://127.0.0.1:7789/catalog";
+    process.env.DYAD_ENGINE_URL = `http://127.0.0.1:${process.env.APPBENCH_PROXY_PORT ?? "7789"}`;
+    process.env.DYAD_LANGUAGE_MODEL_CATALOG_URL = `http://127.0.0.1:${process.env.APPBENCH_PROXY_PORT ?? "7789"}/catalog`;
     process.env.DYAD_NEON_API_BASE_URL = "http://127.0.0.1:7788/api/v2";
     // The in-process Neon mock must NOT engage; neon-sim only mirrors it.
     delete process.env.E2E_TEST_BUILD;
@@ -50,16 +49,17 @@ import {
 const REPO = path.resolve(__dirname, "..", "..", "..");
 const BENCH = path.join(REPO, "benchmarks", "app-builder");
 const TEMPLATE = path.join(BENCH, "template", "nextjs");
-const SPECS = path.join(BENCH, "specs", "relay-crm");
+const APP = process.env.APPBENCH_APP ?? "relay-crm";
+const SPECS = path.join(BENCH, "specs", APP);
 const RESULTS = path.join(BENCH, "results", "s-cell");
 const SIM = "http://127.0.0.1:7788";
-const PROXY = "http://127.0.0.1:7789";
+const PROXY = `http://127.0.0.1:${process.env.APPBENCH_PROXY_PORT ?? "7789"}`;
 
 // e.g. APPBENCH_MODEL=openai/gpt-5.6-luna or anthropic/claude-sonnet-5
 const MODEL_SPEC = process.env.APPBENCH_MODEL ?? "openai/gpt-5.6-luna";
 const [MODEL_PROVIDER, ...rest] = MODEL_SPEC.split("/");
 const MODEL_NAME = rest.join("/");
-const CELL_ID = `${MODEL_NAME.replace(/[^a-z0-9.-]/gi, "_")}-relay-crm`;
+const CELL_ID = `${MODEL_NAME.replace(/[^a-z0-9.-]/gi, "_")}-${APP}`;
 // Distinguishes snapshot DBs across reruns of the same cell.
 const RUN_STAMP = Date.now().toString(36);
 

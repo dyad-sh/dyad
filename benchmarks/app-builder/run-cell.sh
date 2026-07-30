@@ -19,6 +19,7 @@ fi
 : "${DYAD_PRO_KEY:?DYAD_PRO_KEY must be set (env or $REPO/.env)}"
 
 cleanup() {
+  [[ "${APPBENCH_EXTERNAL_SERVICES:-0}" == "1" ]] && return 0
   [[ -n "${SIM_PID:-}" ]] && kill "$SIM_PID" 2>/dev/null || true
   [[ -n "${PROXY_PID:-}" ]] && kill "$PROXY_PID" 2>/dev/null || true
 }
@@ -48,6 +49,9 @@ for i in $(seq 1 30); do
   [[ $i == 30 ]] && { echo "engine never drained; aborting"; exit 1; }
 done
 
+if [[ "${APPBENCH_EXTERNAL_SERVICES:-0}" == "1" ]]; then
+  echo "[run-cell] external services mode: skipping server lifecycle"
+else
 # A previous sim instance surviving on 7788 (or a stale proxy on 7789) makes
 # the new start fail to bind while health checks pass against STALE code —
 # observed live (a day-old sim served pre-fix clone responses). Clear the
@@ -77,6 +81,7 @@ if [[ "${APPBENCH_RESET:-0}" == "1" ]]; then
   curl -sf -X POST http://127.0.0.1:7788/__sim/reset >/dev/null || {
     echo "sim reset failed"; exit 1;
   }
+fi
 fi
 echo "[run-cell] Running cell: $MODEL"
 

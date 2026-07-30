@@ -193,3 +193,8 @@ errors after an otherwise successful assertion.
   or the environment before the models — in this benchmark that signature was,
   in successive rounds: a missing browser build, an over-strict assertion, and
   a stale server. All three masqueraded as "consistent model failure".
+- Score aggregators must gate on status before counting failures: a checkpoint
+  whose suite never ran reports an EMPTY failures list, which naive aggregation
+  reads as a perfect pass. Zero-credit anything whose buildStatus isn't "ok",
+  and exclude partially-scored cells from composites instead of counting their
+  unscored parts as zeros.

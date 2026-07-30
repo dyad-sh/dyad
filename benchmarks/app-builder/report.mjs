@@ -1,5 +1,6 @@
 // Generates RESULTS.md + scatter-{light,dark}.svg from the current results/
-// tree. Rerun after any scoring pass: node benchmarks/app-builder/report.mjs
+// tree, across all app columns present. Rerun after any scoring pass:
+//   node benchmarks/app-builder/report.mjs
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,69 +9,89 @@ const BENCH = path.dirname(fileURLToPath(import.meta.url));
 const R = (...p) => path.join(BENCH, "results", ...p);
 
 const MODELS = [
-  { name: "gpt-5.6-terra", cell: "gpt-5.6-terra-relay-crm", vendor: "OpenAI" },
-  { name: "gpt-5.6-luna", cell: "gpt-5.6-luna-relay-crm", vendor: "OpenAI" },
-  { name: "gpt-5.6-sol", cell: "gpt-5.6-sol-relay-crm", vendor: "OpenAI" },
-  {
-    name: "claude-sonnet-5",
-    cell: "claude-sonnet-5-relay-crm",
-    vendor: "Anthropic",
-  },
-  {
-    name: "claude-opus-5",
-    cell: "claude-opus-5-relay-crm",
-    vendor: "Anthropic",
-  },
-  {
-    name: "claude-fable-5",
-    cell: "claude-fable-5-relay-crm",
-    vendor: "Anthropic",
-  },
-  { name: "grok-4.5", cell: "x-ai_grok-4.5-relay-crm", vendor: "xAI" },
+  { name: "gpt-5.6-terra", slug: "gpt-5.6-terra", vendor: "OpenAI" },
+  { name: "gpt-5.6-luna", slug: "gpt-5.6-luna", vendor: "OpenAI" },
+  { name: "gpt-5.6-sol", slug: "gpt-5.6-sol", vendor: "OpenAI" },
+  { name: "claude-sonnet-5", slug: "claude-sonnet-5", vendor: "Anthropic" },
+  { name: "claude-opus-5", slug: "claude-opus-5", vendor: "Anthropic" },
+  { name: "claude-fable-5", slug: "claude-fable-5", vendor: "Anthropic" },
+  { name: "grok-4.5", slug: "x-ai_grok-4.5", vendor: "xAI" },
 ];
-const PROBES = { 1: 2, 2: 6, 3: 8 };
-const CUJS = { 1: 10, 2: 12, 3: 12 };
+
+// Per-app checkpoint composition + probe-id classifier (suite conventions
+// differ per app; see each app's fixtures).
+const APPS = {
+  "relay-crm": {
+    cujs: { 1: 10, 2: 12, 3: 12 },
+    probes: { 1: 2, 2: 6, 3: 8 },
+    isProbe: (id) => /-s\d/.test(id),
+  },
+  deskhero: {
+    cujs: { 1: 9, 2: 12, 3: 12 },
+    probes: { 1: 3, 2: 8, 3: 10 },
+    isProbe: (id) => /-p-/.test(id),
+  },
+  portalis: {
+    cujs: { 1: 10, 2: 12, 3: 12 },
+    probes: { 1: 2, 2: 7, 3: 9 },
+    isProbe: (id) => /^S\d-/.test(id),
+  },
+};
 // Categorical slots 1-3 (validated via dataviz validate_palette.js both modes).
 const VENDOR_COLOR = {
   light: { OpenAI: "#2a78d6", Anthropic: "#eb6834", xAI: "#1baf7a" },
   dark: { OpenAI: "#3987e5", Anthropic: "#d95926", xAI: "#199e70" },
 };
 
-const rows = MODELS.map((m) => {
-  const sum = JSON.parse(
-    fs.readFileSync(R("s-cell", `${m.cell}.summary.json`)),
-  );
+function scoreCell(slug, app) {
+  const cfg = APPS[app];
+  const cell = `${slug}-${app}`;
+  const sumPath = R("s-cell", `${cell}.summary.json`);
+  if (!fs.existsSync(sumPath)) return null;
+  const sum = JSON.parse(fs.readFileSync(sumPath));
   const minutes = Math.round(
-    sum.milestones.reduce((a, x) => a + x.durationMs, 0) / 60000,
+    sum.milestones.reduce((a, m) => a + m.durationMs, 0) / 60000,
   );
-  const cost = sum.milestones.reduce((a, x) => a + x.estimatedUsd, 0);
+  const cost = sum.milestones.reduce((a, m) => a + m.estimatedUsd, 0);
   let cujP = 0,
     cujT = 0,
     prP = 0,
     prT = 0,
     judge = 0,
-    jn = 0;
+    jn = 0,
+    scored = 0;
   const fails = [];
   for (const ck of [1, 2, 3]) {
-    cujT += CUJS[ck];
-    prT += PROBES[ck];
-    const f = R("s-score", `${m.cell}-ckpt${ck}-a1.json`);
+    cujT += cfg.cujs[ck];
+    prT += cfg.probes[ck];
+    const f = R("s-score", `${cell}-ckpt${ck}-a1.json`);
     if (!fs.existsSync(f)) continue;
+    scored++;
     const x = JSON.parse(fs.readFileSync(f));
-    const probeFails = x.failures.filter((id) => /-s\d/.test(id)).length;
-    cujP += CUJS[ck] - (x.failures.length - probeFails);
-    prP += PROBES[ck] - probeFails;
-    fails.push(...x.failures.map((id) => `${id}@ckpt${ck}`));
-    const jf = R("judge", `${m.cell}-m${ck}.json`);
+    if (x.buildStatus !== "ok") {
+      // Non-building checkpoint: zero credit (its failures list is empty
+      // because the suite never ran — do NOT count that as passing).
+      fails.push(`${x.buildStatus}@${app}:ckpt${ck}`);
+      continue;
+    }
+    const probeFails = x.failures.filter(cfg.isProbe).length;
+    cujP += cfg.cujs[ck] - (x.failures.length - probeFails);
+    prP += cfg.probes[ck] - probeFails;
+    fails.push(...x.failures.map((id) => `${id}@${app}:ckpt${ck}`));
+    const jf = R("judge", `${cell}-m${ck}.json`);
     if (fs.existsSync(jf)) {
       judge += JSON.parse(fs.readFileSync(jf)).judgeScore;
       jn++;
     }
   }
   const judgeAvg = jn ? judge / jn : 0;
-  const composite = 0.6 * (cujP / cujT) + 0.25 * (prP / prT) + 0.15 * judgeAvg;
+  // Composite only when all 3 checkpoints are scored — a mid-scoring cell
+  // would otherwise count its unscored checkpoints as zeros.
+  const composite =
+    scored === 3
+      ? 0.6 * (cujP / cujT) + 0.25 * (prP / prT) + 0.15 * judgeAvg
+      : null;
   return {
-    ...m,
     minutes,
     cost,
     cujP,
@@ -80,10 +101,26 @@ const rows = MODELS.map((m) => {
     judgeAvg,
     composite,
     fails,
+    scored,
   };
-}).sort((a, b) => b.composite - a.composite);
+}
 
-// ---- scatter SVG (score vs cost) ------------------------------------------
+const appNames = Object.keys(APPS);
+const rows = MODELS.map((m) => {
+  const perApp = Object.fromEntries(
+    appNames.map((a) => [a, scoreCell(m.slug, a)]),
+  );
+  const present = appNames.map((a) => perApp[a]).filter(Boolean);
+  const scoredApps = present.filter((x) => x.composite !== null);
+  const overall = scoredApps.length
+    ? scoredApps.reduce((s, x) => s + x.composite, 0) / scoredApps.length
+    : null;
+  const totalCost = present.reduce((s, x) => s + x.cost, 0);
+  const totalMin = present.reduce((s, x) => s + x.minutes, 0);
+  return { ...m, perApp, overall, totalCost, totalMin };
+}).sort((a, b) => (b.overall ?? -1) - (a.overall ?? -1));
+
+// ---- scatter SVG (overall score vs total cost) ----------------------------
 function scatter(mode) {
   const ink =
     mode === "light"
@@ -92,40 +129,34 @@ function scatter(mode) {
   const W = 720,
     H = 420,
     M = { t: 44, r: 24, b: 52, l: 64 };
-  const xMax = 14,
-    yMin = 85,
-    yMax = 95;
+  const maxCost = Math.max(...rows.map((r) => r.totalCost), 1);
+  const xMax = Math.ceil(maxCost / 10) * 10;
+  const yMin = 80,
+    yMax = 96;
   const X = (c) => M.l + ((W - M.l - M.r) * c) / xMax;
   const Y = (s) =>
     M.t + (H - M.t - M.b) * (1 - (s * 100 - yMin) / (yMax - yMin));
   const els = [];
-  for (let g = yMin; g <= yMax; g += 2.5) {
+  for (let g = yMin; g <= yMax; g += 4) {
     els.push(
       `<line x1="${M.l}" y1="${Y(g / 100)}" x2="${W - M.r}" y2="${Y(g / 100)}" stroke="${ink.grid}" stroke-width="1"/>`,
       `<text x="${M.l - 8}" y="${Y(g / 100) + 4}" text-anchor="end" fill="${ink.muted}" font-size="11">${g}%</text>`,
     );
   }
-  for (let c = 0; c <= xMax; c += 2) {
+  const xStep = xMax > 30 ? 10 : 4;
+  for (let c = 0; c <= xMax; c += xStep) {
     els.push(
       `<text x="${X(c)}" y="${H - M.b + 18}" text-anchor="middle" fill="${ink.muted}" font-size="11">$${c}</text>`,
     );
   }
-  // label offsets tuned for collisions (terra/luna share x≈1.5)
-  const off = {
-    "gpt-5.6-terra": [0, 22],
-    "gpt-5.6-luna": [-46, -12],
-    "grok-4.5": [40, -12],
-    "claude-sonnet-5": [0, 22],
-    "gpt-5.6-sol": [0, -12],
-    "claude-opus-5": [0, 22],
-    "claude-fable-5": [0, -12],
-  };
+  let flip = false;
   for (const r of rows) {
+    if (r.overall === null) continue;
     const c = VENDOR_COLOR[mode][r.vendor];
-    const [dx, dy] = off[r.name] ?? [0, -12];
+    flip = !flip;
     els.push(
-      `<circle cx="${X(r.cost)}" cy="${Y(r.composite)}" r="7" fill="${c}" stroke="${ink.ring}" stroke-width="2"/>`,
-      `<text x="${X(r.cost) + dx}" y="${Y(r.composite) + dy}" text-anchor="middle" fill="${ink.text}" font-size="11.5">${r.name}</text>`,
+      `<circle cx="${X(r.totalCost)}" cy="${Y(r.overall)}" r="7" fill="${c}" stroke="${ink.ring}" stroke-width="2"/>`,
+      `<text x="${X(r.totalCost)}" y="${Y(r.overall) + (flip ? -12 : 22)}" text-anchor="middle" fill="${ink.text}" font-size="11.5">${r.name}</text>`,
     );
   }
   const legend = Object.entries(VENDOR_COLOR[mode])
@@ -138,58 +169,55 @@ function scatter(mode) {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" font-family="system-ui,sans-serif">
 ${legend}
 ${els.join("\n")}
-<text x="${(M.l + W - M.r) / 2}" y="${H - 10}" text-anchor="middle" fill="${ink.text}" font-size="12.5">Build cost per app (USD, list price)</text>
-<text transform="rotate(-90)" x="${-(M.t + (H - M.t - M.b) / 2)}" y="16" text-anchor="middle" fill="${ink.text}" font-size="12.5">Composite score (axis from ${yMin}%)</text>
+<text x="${(M.l + W - M.r) / 2}" y="${H - 10}" text-anchor="middle" fill="${ink.text}" font-size="12.5">Total build cost, all apps (USD, list price)</text>
+<text transform="rotate(-90)" x="${-(M.t + (H - M.t - M.b) / 2)}" y="16" text-anchor="middle" fill="${ink.text}" font-size="12.5">Overall composite (axis from ${yMin}%)</text>
 </svg>`;
 }
 fs.writeFileSync(path.join(BENCH, "scatter-light.svg"), scatter("light"));
 fs.writeFileSync(path.join(BENCH, "scatter-dark.svg"), scatter("dark"));
 
 // ---- RESULTS.md ------------------------------------------------------------
+const pct = (x) => (x === null ? "—" : `${(100 * x).toFixed(1)}%`);
+const appCol = (r, a) => {
+  const x = r.perApp[a];
+  if (!x) return "—";
+  if (x.composite === null) return `built ($${x.cost.toFixed(2)})`;
+  return `${pct(x.composite)} ($${x.cost.toFixed(2)})`;
+};
 const table = rows
   .map(
     (r) =>
-      `| ${r.name} | ${r.minutes} min | $${r.cost.toFixed(2)} | ${r.cujP}/${r.cujT} | ${r.prP}/${r.prT} | ${r.judgeAvg.toFixed(2)} | **${(100 * r.composite).toFixed(1)}%** |`,
+      `| ${r.name} | ${appCol(r, "relay-crm")} | ${appCol(r, "deskhero")} | ${appCol(r, "portalis")} | ${r.totalMin} min | $${r.totalCost.toFixed(2)} | **${pct(r.overall)}** |`,
   )
   .join("\n");
 const failDetail = rows
-  .map(
-    (r) =>
-      `- **${r.name}**: ${r.fails.length ? r.fails.join(", ") : "clean sweep"}`,
-  )
+  .map((r) => {
+    const fails = appNames.flatMap((a) => r.perApp[a]?.fails ?? []);
+    return `- **${r.name}**: ${fails.length ? fails.join(", ") : "clean sweep"}`;
+  })
   .join("\n");
 
 fs.writeFileSync(
   path.join(BENCH, "RESULTS.md"),
-  `# App-Builder Benchmark — Results (Relay CRM column)
+  `# App-Builder Benchmark — Results
 
-Run: 2026-07-29 · 7 models × 1 app (Relay CRM) × 3 milestones, N=1, Dyad
-local-agent mode at product-default reasoning effort (medium, recorded per
-request). Scored: 34 CUJs + 16 security probes per model (fixed Playwright
-suites against pinned UI contracts) + LLM judge (gpt-5.6-sol, single judge,
-input-capped). Costs are list-price dollars computed from exact per-request
-token counts (cached/uncached/cache-write split) captured at the wire.
+Run: 2026-07-29 · 7 models × up to 3 apps (Relay CRM, Deskhero, Portalis) ×
+3 milestones each, N=1, Dyad local-agent mode at product-default reasoning
+effort (medium, recorded per request). Per checkpoint: fixed Playwright CUJ
+suites + adversarial security probes against pinned UI contracts, plus an LLM
+judge (gpt-5.6-sol, single judge, input-capped). Composite per app =
+60% CUJ + 25% probes + 15% judge; overall = mean of scored app composites.
+Costs are list-price dollars from exact per-request token counts
+(cached/uncached/cache-write split) captured at the wire.
 
-| Model | Build | Cost | CUJs | Security | Judge | Composite |
+| Model | Relay CRM | Deskhero | Portalis | Build time | Total cost | Overall |
 |---|---|---|---|---|---|---|
 ${table}
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="scatter-dark.svg">
-  <img alt="Composite score vs build cost scatter; quality clusters between 90 and 93 percent while cost spans 1.46 to 12.86 dollars" src="scatter-light.svg">
+  <img alt="Overall composite score versus total build cost across all apps" src="scatter-light.svg">
 </picture>
-
-## Reading
-
-- **Quality is a tight band (90–93%) while cost spans ~9×.** gpt-5.6-terra and
-  gpt-5.6-luna deliver ≈97% of claude-fable-5's composite at ≈11% of its price.
-- **terra built the app in 6 minutes** — 63 agent steps vs 120–260 for the
-  others, same app size (~5k LOC) and equal CUJ pass rate: efficiency, not
-  skipped work.
-- **Every model passed all cross-tenant/role-escalation probes** except one
-  luna miss (crm-m1-s02); server-side authorization held across the board.
-- claude-sonnet-5 is the only model failing the sign-up-flow CUJ (crm-m1-01)
-  at every checkpoint.
 
 ## Per-model failures
 
@@ -197,19 +225,21 @@ ${failDetail}
 
 ## Caveats (disclosed by design)
 
-- N=1 per cell; single app so far (Relay CRM; apps 2–3 are designed, not run).
-- Judge is gpt-5.6-sol for all candidates (user decision; same-vendor bias
-  toward the gpt-5.6 family — mitigated by judge weight of 15%).
+- N=1 per cell. Judge is gpt-5.6-sol for all candidates (user decision;
+  same-vendor bias toward the gpt-5.6 family — bounded by the 15% judge weight).
 - claude-sonnet-5 priced at intro rates (through 2026-08-31).
-- Durations exclude infra stalls (verified: zero client-abort rows in all
-  seven cells); luna's cell predates the headless code-explorer fix but never
-  attempted deep context.
 - Web tools enabled (product realism over reproducibility; web drift caveat).
+- Durations exclude infra stalls (client-abort rows checked per cell).
+- A complementary blind code review (opus-5, correctness/security/
+  maintainability) lives in results/opus-review/ — behavioral scores and code
+  quality diverge; see the PR discussion.
 
 Regenerate: \`node benchmarks/app-builder/report.mjs\` (reads results/).
 `,
 );
-console.log("wrote RESULTS.md + scatter-light.svg + scatter-dark.svg");
+console.log("wrote RESULTS.md + scatters");
 console.log(
-  rows.map((r) => `${r.name} ${(100 * r.composite).toFixed(1)}%`).join(" | "),
+  rows
+    .map((r) => `${r.name} ${pct(r.overall)} $${r.totalCost.toFixed(2)}`)
+    .join(" | "),
 );

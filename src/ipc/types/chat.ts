@@ -446,6 +446,9 @@ export const chatContracts = {
     input: RemoveChatReferencedAppParamsSchema,
     output: z.void(),
     invalidates: (input) => [{ family: "chat", chatId: input.chatId }],
+    // The chip row invalidates the chat itself in `onSettled`, so the calling
+    // window would otherwise refetch twice per detach.
+    originHandles: (input) => [{ family: "chat", chatId: input.chatId }],
   }),
 
   deleteChat: defineContract({

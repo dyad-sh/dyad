@@ -65,6 +65,7 @@ import {
   waitForAppChatActorsIdle,
 } from "@/ipc/services/chat_actor_service";
 import type { RestoreRecovery } from "@/version_preview/state";
+import { readStoredReferencedAppIds } from "../utils/mention_apps";
 
 const logger = log.scope("version_handlers");
 
@@ -1329,6 +1330,14 @@ export function registerVersionHandlers() {
         // and let the renderer's localized fallback title handle display.
         const restoredTitle = latestChat.title;
 
+        // Keep `null` (rather than `[]`) when there is nothing to carry over so
+        // forked chats match the shape of freshly created ones.
+        const storedReferencedAppIds = readStoredReferencedAppIds(
+          latestChat.referencedAppIds,
+        );
+        const forkReferencedAppIds =
+          storedReferencedAppIds.length > 0 ? storedReferencedAppIds : null;
+
         // Anchor the forked chat to the version it actually starts from. When we
         // restored the codebase, that's the target version. When we only forked
         // the chat (codebase left untouched), the new chat starts from the
@@ -1417,6 +1426,15 @@ export function registerVersionHandlers() {
               title: restoredTitle,
               chatMode: latestChat.chatMode,
               initialCommitHash: forkInitialCommitHash,
+              // Carry over the sticky referenced apps. The fork copies the
+              // history containing the `@app:` mentions, so dropping these
+              // would leave the mention visible while the next agent turn
+              // silently lost read access to that app. We copy the whole set
+              // rather than re-deriving it from the copied messages: these ids
+              // exist precisely because message text is not a reliable source
+              // (compaction rewrites history), and the fork's chip row shows
+              // every carried-over app with a way to detach it.
+              referencedAppIds: forkReferencedAppIds,
             })
             .returning()
             .get();

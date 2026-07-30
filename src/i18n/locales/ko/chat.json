@@ -244,7 +244,8 @@
   "referencedApps": {
     "label": "참조된 앱",
     "description": "이 앱들은 이 채팅이 끝날 때까지 계속 읽을 수 있습니다. 에이전트는 해당 앱의 파일을 읽을 수 있지만 편집할 수는 없습니다.",
-    "remove": "{{appName}} 참조 중지"
+    "remove": "{{appName}} 참조 중지",
+    "removeDisabledWhileStreaming": "응답이 끝날 때까지 기다려 주세요. 에이전트는 이번 턴이 끝날 때까지 이 앱의 파일을 유지합니다."
   },
   "systemPrompt": "시스템 프롬프트",
   "currentInput": "현재 입력",

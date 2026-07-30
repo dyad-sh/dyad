@@ -242,7 +242,8 @@
   "referencedApps": {
     "label": "Aplicaciones referenciadas",
     "description": "Estas aplicaciones permanecen legibles durante el resto de este chat. El agente puede leer sus archivos, pero no editarlos.",
-    "remove": "Dejar de referenciar {{appName}}"
+    "remove": "Dejar de referenciar {{appName}}",
+    "removeDisabledWhileStreaming": "Espera a que termine la respuesta: el agente conserva los archivos de esta aplicación durante el resto de este turno."
   },
   "systemPrompt": "Prompt del Sistema",
   "currentInput": "Entrada Actual",

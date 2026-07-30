@@ -317,6 +317,54 @@ describe("context compaction (integration)", () => {
     });
   });
 
+  it("carries sticky referenced apps into the forked chat", async () => {
+    const initialCommitHash = await getCurrentCommitHash({
+      path: harness.appDir,
+    });
+    // The referenced app does not have to exist for the fork: the ids are
+    // resolved fresh per turn, so a stale one is pruned then rather than here.
+    const referencedAppIds = [harness.appId + 1];
+    const [chatRow] = await harness.db
+      .insert(chats)
+      .values({
+        appId: harness.appId,
+        chatMode: "local-agent",
+        initialCommitHash,
+        referencedAppIds,
+      })
+      .returning();
+    const insertedMessages = await harness.db
+      .insert(messages)
+      .values([
+        {
+          chatId: chatRow.id,
+          role: "user" as const,
+          content: "Compare this with @app:other-app",
+        },
+        {
+          chatId: chatRow.id,
+          role: "user" as const,
+          content: "Now apply the same change here",
+        },
+      ])
+      .returning();
+
+    const result = await versionPreviewHandlerService.restoreToMessage({
+      appId: harness.appId,
+      chatId: chatRow.id,
+      messageId: insertedMessages[1].id,
+      restoreCodebase: false,
+    });
+
+    // The fork keeps the message carrying the @app: mention, so dropping the
+    // referenced ids would show the mention while the agent lost access.
+    await expect(
+      harness.db.query.chats.findFirst({
+        where: (chats, { eq }) => eq(chats.id, result.createdChatId ?? -1),
+      }),
+    ).resolves.toMatchObject({ referencedAppIds });
+  });
+
   it("restore to message uses the target branch while previewing detached history", async () => {
     const targetBranchName = await gitCurrentBranch({
       path: harness.appDir,

@@ -241,7 +241,8 @@
   "referencedApps": {
     "label": "引用的应用",
     "description": "这些应用在本次聊天的剩余过程中保持可读。Agent 可以读取它们的文件，但不能编辑。",
-    "remove": "停止引用 {{appName}}"
+    "remove": "停止引用 {{appName}}",
+    "removeDisabledWhileStreaming": "请等待响应结束——Agent 在本轮剩余过程中会继续保留该应用的文件。"
   },
   "systemPrompt": "系统提示词",
   "currentInput": "当前输入",

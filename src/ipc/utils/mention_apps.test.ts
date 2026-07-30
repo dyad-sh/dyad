@@ -57,6 +57,8 @@ vi.mock("electron-log", () => ({
   },
 }));
 
+import { eq } from "drizzle-orm";
+import { chats } from "@/db/schema";
 import {
   persistReferencedAppIds,
   readStoredReferencedAppIds,
@@ -176,6 +178,8 @@ describe("mention app utilities", () => {
     await persistReferencedAppIds(7, [1, 2]);
 
     expect(dbMocks.set).toHaveBeenCalledWith({ referencedAppIds: [1, 2] });
+    // Without the id predicate the UPDATE would rewrite every chat row.
+    expect(dbMocks.where).toHaveBeenCalledExactlyOnceWith(eq(chats.id, 7));
     // The turn only invalidates the chat once it terminates, so the write has
     // to announce itself or the composer's chip row lags a whole turn behind.
     expect(

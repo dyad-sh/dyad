@@ -38,19 +38,20 @@ cleanup() {
 trap cleanup EXIT
 
 write_summary() {
-  # $1 buildStatus  $2 cujPassed  $3 cujTotal  $4 failures-json-array
+  # $1 buildStatus  $2 cujPassed  $3 cujTotal  $4 failures-json-array  $5 cujRan (optional)
   node -e "
     require('fs').writeFileSync(process.argv[1], JSON.stringify({
       buildStatus: process.argv[2],
       cujPassed: Number(process.argv[3]),
       cujTotal: Number(process.argv[4]),
       failures: JSON.parse(process.argv[5]),
+      cujRan: process.argv[8] ? Number(process.argv[8]) : 0,
       spec: process.argv[6],
       appDir: process.argv[7],
       scoredAt: new Date().toISOString(),
     }, null, 2))
-  " "$SCORE_OUT" "$1" "$2" "$3" "$4" "$SPEC" "$APP_DIR"
-  echo "[score] $1: $2/$3 -> $SCORE_OUT"
+  " "$SCORE_OUT" "$1" "$2" "$3" "$4" "$SPEC" "$APP_DIR" "${5:-0}"
+  echo "[score] $1: $2 passed / ${5:-0} ran / $3 total -> $SCORE_OUT"
 }
 
 count_total() {
@@ -64,6 +65,10 @@ POSTGRES_URL=$DATABASE_URL
 NEON_AUTH_BASE_URL=$NEON_AUTH_BASE_URL
 NEON_AUTH_COOKIE_SECRET=$NEON_AUTH_COOKIE_SECRET
 EOF
+
+# Generated apps can carry their own Playwright version; its install step
+# garbage-collects "unused" browser builds, including the one this suite needs.
+export PLAYWRIGHT_SKIP_BROWSER_GC=1
 
 echo "[score] pnpm install in $APP_DIR"
 if ! (cd "$APP_DIR" && pnpm install --prefer-offline >> "$BUILD_LOG" 2>&1); then
@@ -113,13 +118,37 @@ if [[ ! -f "$CUJ_JSON" ]]; then
   exit 0
 fi
 
-read -r PASSED TOTAL FAILURES < <(node -e "
+# A spec's `ok` flag is TRUE for tests that never ran (skipped), so `ok` alone
+# silently counts skipped tests as passes. Count only status === "passed", and
+# record how many actually ran so under-coverage can never hide again.
+read -r PASSED TOTAL RAN FAILURES < <(node -e "
   const r = require('$CUJ_JSON');
   const tests = [];
   const walk = (s) => { (s.suites||[]).forEach(walk); (s.specs||[]).forEach(sp => tests.push(sp)); };
   (r.suites||[]).forEach(walk);
-  const passed = tests.filter(t => t.ok).length;
-  const failures = tests.filter(t => !t.ok).map(t => t.title.split(' ')[0]);
-  console.log(passed, tests.length, JSON.stringify(failures));
+  const statusOf = (t) => t.tests?.[0]?.results?.[0]?.status ?? 'missing';
+  const passed = tests.filter(t => statusOf(t) === 'passed').length;
+  const ran = tests.filter(t => statusOf(t) !== 'skipped').length;
+  const failures = tests
+    .filter(t => statusOf(t) !== 'passed')
+    .map(t => t.title.split(' ')[0] + (statusOf(t) === 'skipped' ? ':skipped' : ''));
+  console.log(passed, tests.length, ran, JSON.stringify(failures));
 ")
-write_summary "ok" "$PASSED" "$TOTAL" "$FAILURES"
+# An infrastructure failure (e.g. the Playwright browser binary being
+# garbage-collected by another package's install) makes every test fail with
+# a launch error. Recording that as 0/N blames the model for a broken
+# harness, so detect it and mark the checkpoint unscored instead.
+HARNESS_FAIL=$(node -e "
+  const r = require('$CUJ_JSON');
+  const tests = [];
+  const walk = (s) => { (s.suites||[]).forEach(walk); (s.specs||[]).forEach(sp => tests.push(sp)); };
+  (r.suites||[]).forEach(walk);
+  const msg = (t) => t.tests?.[0]?.results?.[0]?.error?.message ?? '';
+  const infra = tests.filter(t => /browserType.launch|Executable doesn|playwright install/.test(msg(t))).length;
+  console.log(tests.length > 0 && infra === tests.length ? 'yes' : 'no');
+")
+if [[ "$HARNESS_FAIL" == "yes" ]]; then
+  write_summary "harness_error" 0 "$TOTAL" "[]" "$RAN"
+  exit 0
+fi
+write_summary "ok" "$PASSED" "$TOTAL" "$FAILURES" "$RAN"

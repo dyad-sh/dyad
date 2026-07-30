@@ -3,56 +3,41 @@
 // 12 CUJs (3 regression + 9 new) + 9 probes — the highest-signal table in the
 // benchmark.
 //
-// The CUJ block runs on the design's `setupOrgWithMember()` world (A admin, B
-// org_member, 2 projects) and ends by removing B (P3-09). The probes need a
-// live member, a second member to remove mid-session, and an unrelated admin,
-// so they build their own world (S3-01) rather than reusing a torn-down one.
-import { test, expect, type BrowserContext, type Page } from "@playwright/test";
+// Every test is independent: the CUJs that the design runs on
+// `setupOrgWithMember()` (A admin, B org_member, 2 projects) build that world
+// for themselves, and each probe builds exactly the world its row names (a live
+// member, a member removed mid-session, an unrelated admin, a fresh org). Any
+// test can be run alone with
+//   npx playwright test portalis/checkpoint-3.spec.ts -g "S3-04"
+// and a failure can never skip another test.
+import { type Page } from "@playwright/test";
 import {
   RUN_ID,
   UUID_RE,
-  acceptInviteAt,
   apiKeyRow,
-  bearerContext,
   createApiKey,
-  createOrg,
   createProject,
+  expect,
   expectDeniedPage,
   expectNoLeak,
   getMe,
-  identity,
-  inviteLinkFor,
-  inviteMember,
   inviteRow,
   memberRow,
   membershipRoles,
   numericText,
   projectIdSet,
+  provisionApiKey,
+  provisionMember,
+  provisionOrg,
+  provisionProject,
+  provisionWorkspace,
+  removeMemberVia,
+  revokeApiKey,
+  scopedName,
+  setupOrgWithMember,
   signIn,
-  signUpAndLand,
+  test,
 } from "./fixtures";
-
-const A = identity("m3", "a");
-const B = identity("m3", "b");
-// Probe world.
-const QA = identity("m3", "qa"); // admin of orgQ
-const QB = identity("m3", "qb"); // org_member of orgQ (kept a member)
-const QB2 = identity("m3", "qb2"); // org_member removed mid-session (S3-04)
-const QC = identity("m3", "qc"); // admin of unrelated orgC
-
-const ORG = `Audit Co ${RUN_ID}`;
-const PROJ1 = `Alpha ${RUN_ID}`;
-const PROJ2 = `Beta ${RUN_ID}`;
-const PROJ3 = `Gamma ${RUN_ID}`;
-const THROWAWAY = `Throwaway ${RUN_ID}`;
-const KEY_NAME = `ci-key-${RUN_ID}`;
-const ORG_Q = `Probe Q ${RUN_ID}`;
-const ORG_C = `Probe C ${RUN_ID}`;
-const ORG_Q3 = `Probe Q3 ${RUN_ID}`;
-const QP1 = `QProj1 ${RUN_ID}`;
-const QP4 = `QProj4 ${RUN_ID}`;
-const QKEY = `q-key-${RUN_ID}`;
-const RKEY = `revoked-key-${RUN_ID}`;
 
 const ACTION_STRINGS = [
   "org.created",
@@ -106,116 +91,90 @@ function itemsOf(body: unknown): Array<Record<string, unknown>> {
   return Array.isArray(items) ? (items as Array<Record<string, unknown>>) : [];
 }
 
-test.describe.serial("portalis checkpoint 3", () => {
-  let a: BrowserContext;
-  let aPage: Page;
-  let b: BrowserContext;
-  let bPage: Page;
-  let aId = "";
-  let bId = "";
-  let org = "";
-  let keySecret = "";
-
-  // Probe world.
-  let qa: BrowserContext;
-  let qaPage: Page;
-  let qb: BrowserContext;
-  let qb2: BrowserContext;
-  let qb2Page: Page;
-  let qc: BrowserContext;
-  let orgQ = "";
-  let orgC = "";
-  let orgQ3 = "";
-  let qp4Id = "";
-  let qKeySecret = "";
-  let qKeyId = "";
-
-  // setupOrgWithMember(): sign up A, create org, invite + accept B as
-  // org_member, create 2 projects.
-  test.beforeAll(async ({ browser }) => {
-    a = await browser.newContext();
-    aPage = await a.newPage();
-    await signUpAndLand(aPage, A);
-    aId = String((await getMe(a)).id ?? "");
-    org = await createOrg(aPage, ORG, `auditco-${RUN_ID}`);
-
-    await inviteMember(aPage, org, B.email, "org_member");
-    const link = await inviteLinkFor(aPage, org, B.email);
-    b = await browser.newContext();
-    bPage = await b.newPage();
-    await signUpAndLand(bPage, B);
-    bId = String((await getMe(b)).id ?? "");
-    await acceptInviteAt(bPage, link);
-
-    await createProject(aPage, org, PROJ1);
-    await createProject(aPage, org, PROJ2);
-  });
-
-  test.afterAll(async () => {
-    for (const ctx of [a, b, qa, qb, qb2, qc]) await ctx?.close();
-  });
-
+test.describe("portalis checkpoint 3", () => {
   // ---- regression ---------------------------------------------------------
 
-  test("P1-01 session round-trips (regression)", async () => {
-    await aPage.goto("/orgs");
-    await aPage.getByTestId("sign-out-button").click();
-    await aPage.waitForURL("**/auth/sign-in", { timeout: 15_000 });
-    await signIn(aPage, A);
-    await aPage.waitForURL("**/orgs**", { timeout: 15_000 });
-    await expect(aPage.getByTestId("user-email")).toContainText(A.email, {
+  test("P1-01 session round-trips (regression)", async ({ world }) => {
+    const a = await world.signUp("m3-p1-01", "a");
+
+    await a.page.goto("/orgs");
+    await a.page.getByTestId("sign-out-button").click();
+    await a.page.waitForURL("**/auth/sign-in", { timeout: 15_000 });
+    await signIn(a.page, a);
+    await a.page.waitForURL("**/orgs**", { timeout: 15_000 });
+    await expect(a.page.getByTestId("user-email")).toContainText(a.email, {
       timeout: 15_000,
     });
-    const me = await getMe(a);
-    expect(me.email).toBe(A.email);
-    expect(String(me.id)).toBe(aId);
+    const me = await getMe(a.ctx);
+    expect(me.email).toBe(a.email);
+    expect(String(me.id)).toBe(a.id);
     expect(String(me.name ?? "")).not.toHaveLength(0);
   });
 
-  test("P2-02 invited member joined as org_member (regression)", async () => {
-    await aPage.goto(`/orgs/${org}/members`);
-    expect(await numericText(aPage.getByTestId("member-count").first())).toBe(
+  test("P2-02 invited member joined as org_member (regression)", async ({
+    world,
+  }) => {
+    const {
+      admin: a,
+      org,
+      member: b,
+    } = await setupOrgWithMember(world, "m3-p2-02", {
+      orgLabel: "Audit Co",
+      projects: 0,
+    });
+
+    await a.page.goto(`/orgs/${org.id}/members`);
+    expect(await numericText(a.page.getByTestId("member-count").first())).toBe(
       2,
     );
-    const row = memberRow(aPage, B.email);
+    const row = memberRow(a.page, b.email);
     await expect(row.getByTestId("member-role")).toContainText("org_member");
-    expect(await row.getAttribute("data-user-id")).toBe(bId);
+    expect(await row.getAttribute("data-user-id")).toBe(b.id);
     await expect(
-      inviteRow(aPage, B.email).getByTestId("invite-status"),
+      inviteRow(a.page, b.email).getByTestId("invite-status"),
     ).toContainText("accepted", { timeout: 15_000 });
   });
 
-  test("P2-05 admin project lifecycle (regression)", async () => {
-    const id = await createProject(aPage, org, THROWAWAY);
-    await aPage.goto(`/orgs/${org}/projects/${id}`);
-    await aPage
-      .getByTestId("project-edit-name-input")
-      .fill(`${THROWAWAY} edited`);
-    await aPage.getByTestId("project-save").click();
-    await aPage.goto(`/orgs/${org}/projects`);
+  test("P2-05 admin project lifecycle (regression)", async ({ world }) => {
+    const { admin: a, org } = await provisionWorkspace(world, "m3-p2-05", {
+      orgLabel: "Audit Co",
+    });
+    const throwaway = scopedName("m3-p2-05", "Throwaway");
+    const edited = `${throwaway} edited`;
+
+    const id = await createProject(a.page, org.id, throwaway);
+    await a.page.goto(`/orgs/${org.id}/projects/${id}`);
+    await a.page.getByTestId("project-edit-name-input").fill(edited);
+    await a.page.getByTestId("project-save").click();
+    await a.page.goto(`/orgs/${org.id}/projects`);
     await expect(
-      aPage
-        .getByTestId("project-row-name")
-        .filter({ hasText: `${THROWAWAY} edited` }),
+      a.page.getByTestId("project-row-name").filter({ hasText: edited }),
     ).toHaveCount(1, { timeout: 15_000 });
 
-    await aPage.goto(`/orgs/${org}/projects/${id}`);
-    await aPage.getByTestId("project-delete").click();
-    await aPage.getByTestId("project-delete-confirm").first().click();
-    await aPage.goto(`/orgs/${org}/projects`);
+    await a.page.goto(`/orgs/${org.id}/projects/${id}`);
+    await a.page.getByTestId("project-delete").click();
+    await a.page.getByTestId("project-delete-confirm").first().click();
+    await a.page.goto(`/orgs/${org.id}/projects`);
     await expect(
-      aPage.getByTestId("project-row").filter({ hasText: THROWAWAY }),
+      a.page.getByTestId("project-row").filter({ hasText: throwaway }),
     ).toHaveCount(0, { timeout: 15_000 });
   });
 
   // ---- new ----------------------------------------------------------------
 
-  test("P3-01 audit log covers the actions taken so far", async () => {
-    await aPage.goto(`/orgs/${org}/audit`);
-    await expect(aPage.getByTestId("audit-table")).toBeVisible({
+  test("P3-01 audit log covers the actions taken so far", async ({ world }) => {
+    // The design's fixture world: A admin, B org_member, 2 projects.
+    const {
+      admin: a,
+      org,
+      member: b,
+    } = await setupOrgWithMember(world, "m3-p3-01", { orgLabel: "Audit Co" });
+
+    await a.page.goto(`/orgs/${org.id}/audit`);
+    await expect(a.page.getByTestId("audit-table")).toBeVisible({
       timeout: 15_000,
     });
-    const rows = await auditRows(aPage);
+    const rows = await auditRows(a.page);
     expect(rows.length, "audit rows").toBeGreaterThan(0);
 
     for (const action of [
@@ -232,7 +191,7 @@ test.describe.serial("portalis checkpoint 3", () => {
       ).toBeTruthy();
     }
     for (const row of rows) {
-      expect([A.email, B.email], `actor ${row.actor}`).toContain(row.actor);
+      expect([a.email, b.email], `actor ${row.actor}`).toContain(row.actor);
     }
 
     const times = rows
@@ -249,13 +208,19 @@ test.describe.serial("portalis checkpoint 3", () => {
     }
   });
 
-  test("P3-02 audit filters by action", async () => {
-    await aPage.goto(`/orgs/${org}/audit`);
-    await setFilter(aPage, "audit-filter-action", "project.created");
-    await aPage.getByTestId("audit-filter-apply").click();
-    await aPage.waitForLoadState("networkidle").catch(() => undefined);
+  test("P3-02 audit filters by action", async ({ world }) => {
+    // Two projects so the pinned "count >= 2" is about the filter, not setup.
+    const { admin: a, org } = await provisionWorkspace(world, "m3-p3-02", {
+      orgLabel: "Audit Co",
+      projects: 2,
+    });
 
-    const rows = await auditRows(aPage);
+    await a.page.goto(`/orgs/${org.id}/audit`);
+    await setFilter(a.page, "audit-filter-action", "project.created");
+    await a.page.getByTestId("audit-filter-apply").click();
+    await a.page.waitForLoadState("networkidle").catch(() => undefined);
+
+    const rows = await auditRows(a.page);
     expect(rows.length, "project.created rows").toBeGreaterThanOrEqual(2);
     for (const row of rows) {
       expect(row.action, "every visible row matches the filter").toBe(
@@ -264,39 +229,58 @@ test.describe.serial("portalis checkpoint 3", () => {
     }
   });
 
-  test("P3-03 audit filters by actor", async () => {
-    await aPage.goto(`/orgs/${org}/audit`);
-    await setFilter(aPage, "audit-filter-action", "");
-    await setFilter(aPage, "audit-filter-actor", B.email);
-    await aPage.getByTestId("audit-filter-apply").click();
-    await aPage.waitForLoadState("networkidle").catch(() => undefined);
+  test("P3-03 audit filters by actor", async ({ world }) => {
+    const {
+      admin: a,
+      org,
+      member: b,
+    } = await setupOrgWithMember(world, "m3-p3-03", {
+      orgLabel: "Audit Co",
+      projects: 0,
+    });
 
-    const rows = await auditRows(aPage);
+    await a.page.goto(`/orgs/${org.id}/audit`);
+    await setFilter(a.page, "audit-filter-action", "");
+    await setFilter(a.page, "audit-filter-actor", b.email);
+    await a.page.getByTestId("audit-filter-apply").click();
+    await a.page.waitForLoadState("networkidle").catch(() => undefined);
+
+    const rows = await auditRows(a.page);
     expect(rows.length, "rows for actor B").toBeGreaterThan(0);
-    for (const row of rows) expect(row.actor).toBe(B.email);
+    for (const row of rows) expect(row.actor).toBe(b.email);
     expect(
       rows.some((r) => r.action === "invite.accepted"),
       "B's invite.accepted must be present",
     ).toBeTruthy();
   });
 
-  test("P3-04 member cannot view the audit log", async () => {
-    await bPage.goto(`/orgs/${org}`);
-    await expect(bPage.getByTestId("nav-audit")).toHaveCount(0);
-    await expectDeniedPage(bPage, `/orgs/${org}/audit`, ACTION_STRINGS);
-    await expect(bPage.getByTestId("audit-row")).toHaveCount(0);
+  test("P3-04 member cannot view the audit log", async ({ world }) => {
+    const { org, member: b } = await setupOrgWithMember(world, "m3-p3-04", {
+      orgLabel: "Audit Co",
+      projects: 0,
+    });
+
+    await b.page.goto(`/orgs/${org.id}`);
+    await expect(b.page.getByTestId("nav-audit")).toHaveCount(0);
+    await expectDeniedPage(b.page, `/orgs/${org.id}/audit`, ACTION_STRINGS);
+    await expect(b.page.getByTestId("audit-row")).toHaveCount(0);
   });
 
-  test("P3-05 api key plaintext is shown exactly once", async () => {
-    keySecret = await createApiKey(aPage, org, KEY_NAME);
+  test("P3-05 api key plaintext is shown exactly once", async ({ world }) => {
+    const { admin: a, org } = await provisionWorkspace(world, "m3-p3-05", {
+      orgLabel: "Audit Co",
+    });
+    const keyName = `ci-key-m3-p3-05-${RUN_ID}`;
+
+    const keySecret = await createApiKey(a.page, org.id, keyName);
     expect(keySecret.length, "api key length").toBeGreaterThanOrEqual(24);
 
-    await aPage.reload();
-    await expect(aPage.getByTestId("apikey-plaintext")).toHaveCount(0, {
+    await a.page.reload();
+    await expect(a.page.getByTestId("apikey-plaintext")).toHaveCount(0, {
       timeout: 15_000,
     });
 
-    const row = apiKeyRow(aPage, KEY_NAME);
+    const row = apiKeyRow(a.page, keyName);
     await expect(row).toBeVisible({ timeout: 15_000 });
     const rawPrefix = (
       (await row.getByTestId("apikey-prefix").first().textContent()) ?? ""
@@ -310,11 +294,19 @@ test.describe.serial("portalis checkpoint 3", () => {
     await expect(row.getByTestId("apikey-status")).toContainText("active");
   });
 
-  test("P3-06 bearer key lists exactly that org's projects", async () => {
-    const uiIds = await projectIdSet(aPage, org);
+  test("P3-06 bearer key lists exactly that org's projects", async ({
+    world,
+  }) => {
+    const { admin: a, org } = await provisionWorkspace(world, "m3-p3-06", {
+      orgLabel: "Audit Co",
+      projects: 2,
+    });
+    const key = await provisionApiKey(a, org, "m3-p3-06");
+
+    const uiIds = await projectIdSet(a.page, org.id);
     expect(uiIds.size, "projects in the UI").toBeGreaterThan(0);
 
-    const api = await bearerContext(keySecret);
+    const api = await world.bearer(key.secret);
     const resp = await api.get("/api/v1/projects");
     expect(resp.status(), "bearer GET /api/v1/projects").toBe(200);
     const items = itemsOf(await resp.json());
@@ -326,68 +318,86 @@ test.describe.serial("portalis checkpoint 3", () => {
       ).not.toHaveLength(0);
     }
     expect(new Set(items.map((i) => String(i.id)))).toEqual(uiIds);
-    await api.dispose();
   });
 
-  test("P3-07 revoked key stops authenticating", async () => {
-    await aPage.goto(`/orgs/${org}/api-keys`);
-    const row = apiKeyRow(aPage, KEY_NAME);
+  test("P3-07 revoked key stops authenticating", async ({ world }) => {
+    const { admin: a, org } = await provisionWorkspace(world, "m3-p3-07", {
+      orgLabel: "Audit Co",
+    });
+    const key = await provisionApiKey(a, org, "m3-p3-07");
+
+    await a.page.goto(`/orgs/${org.id}/api-keys`);
+    const row = apiKeyRow(a.page, key.name);
     await row.getByTestId("apikey-revoke").first().click();
-    await expect(apiKeyRow(aPage, KEY_NAME)).toBeVisible({ timeout: 15_000 });
+    await expect(apiKeyRow(a.page, key.name)).toBeVisible({ timeout: 15_000 });
     await expect(
-      apiKeyRow(aPage, KEY_NAME).getByTestId("apikey-status"),
+      apiKeyRow(a.page, key.name).getByTestId("apikey-status"),
     ).toContainText("revoked", { timeout: 15_000 });
 
-    const api = await bearerContext(keySecret);
+    const api = await world.bearer(key.secret);
     const resp = await api.get("/api/v1/projects", { maxRedirects: 0 });
     expect(resp.status(), "revoked key must be 401").toBe(401);
-    await api.dispose();
   });
 
-  test("P3-08 usage dashboard counts match reality", async () => {
-    await aPage.goto(`/orgs/${org}/usage`);
+  test("P3-08 usage dashboard counts match reality", async ({ world }) => {
+    // Members = 2, projects = 2, and one key created then revoked so the
+    // pinned "0 active keys after revocation" is meaningful.
+    const { admin: a, org } = await setupOrgWithMember(world, "m3-p3-08", {
+      orgLabel: "Audit Co",
+    });
+    const key = await provisionApiKey(a, org, "m3-p3-08");
+    await revokeApiKey(a.page, org.id, key.name);
+
+    await a.page.goto(`/orgs/${org.id}/usage`);
     expect(
-      await numericText(aPage.getByTestId("usage-members-count").first()),
+      await numericText(a.page.getByTestId("usage-members-count").first()),
     ).toBe(2);
     const before = await numericText(
-      aPage.getByTestId("usage-projects-count").first(),
+      a.page.getByTestId("usage-projects-count").first(),
     );
-    const uiIds = await projectIdSet(aPage, org);
+    const uiIds = await projectIdSet(a.page, org.id);
     expect(before, "projects count matches the list").toBe(uiIds.size);
-    await aPage.goto(`/orgs/${org}/usage`);
+    await a.page.goto(`/orgs/${org.id}/usage`);
     expect(
-      await numericText(aPage.getByTestId("usage-api-keys-count").first()),
+      await numericText(a.page.getByTestId("usage-api-keys-count").first()),
       "active keys after revocation",
     ).toBe(0);
     expect(
-      await numericText(aPage.getByTestId("usage-events-count").first()),
+      await numericText(a.page.getByTestId("usage-events-count").first()),
     ).toBeGreaterThan(0);
 
-    await createProject(aPage, org, PROJ3);
-    await aPage.goto(`/orgs/${org}/usage`);
+    await provisionProject(a, org, "m3-p3-08", "Gamma");
+    await a.page.goto(`/orgs/${org.id}/usage`);
     expect(
-      await numericText(aPage.getByTestId("usage-projects-count").first()),
+      await numericText(a.page.getByTestId("usage-projects-count").first()),
     ).toBe(before + 1);
   });
 
-  test("P3-09 removal is audited and history is preserved", async () => {
-    await aPage.goto(`/orgs/${org}/members`);
-    const row = memberRow(aPage, B.email);
-    await row.getByTestId("member-remove").first().click();
-    const scoped = row.getByTestId("member-remove-confirm");
-    if (await scoped.count()) {
-      await scoped.first().click();
-    } else {
-      await aPage.getByTestId("member-remove-confirm").first().click();
-    }
+  test("P3-09 removal is audited and history is preserved", async ({
+    world,
+  }) => {
+    // A key created and revoked before the removal, so the audit log must
+    // carry apikey.created / apikey.revoked / member.removed with A as actor.
+    const {
+      admin: a,
+      org,
+      member: b,
+    } = await setupOrgWithMember(world, "m3-p3-09", {
+      orgLabel: "Audit Co",
+      projects: 0,
+    });
+    const key = await provisionApiKey(a, org, "m3-p3-09");
+    await revokeApiKey(a.page, org.id, key.name);
+
+    await removeMemberVia(a.page, org.id, b.email);
     await expect
-      .poll(async () => membershipRoles(await getMe(b), org).length, {
+      .poll(async () => membershipRoles(await getMe(b.ctx), org.id).length, {
         timeout: 20_000,
       })
       .toBe(0);
 
-    await aPage.goto(`/orgs/${org}/audit`);
-    const rows = await auditRows(aPage);
+    await a.page.goto(`/orgs/${org.id}/audit`);
+    const rows = await auditRows(a.page);
     for (const action of [
       "apikey.created",
       "apikey.revoked",
@@ -395,71 +405,39 @@ test.describe.serial("portalis checkpoint 3", () => {
     ]) {
       const hit = rows.find((r) => r.action === action);
       expect(hit, `audit must contain ${action}`).toBeTruthy();
-      expect(hit!.actor, `${action} actor`).toBe(A.email);
+      expect(hit!.actor, `${action} actor`).toBe(a.email);
     }
     const accepted = rows.find((r) => r.action === "invite.accepted");
     expect(accepted, "invite.accepted survives removal").toBeTruthy();
     expect(
       accepted!.actor,
       "removed member's email must survive in history",
-    ).toBe(B.email);
+    ).toBe(b.email);
   });
 
   // ---- probes -------------------------------------------------------------
 
   test("S3-01 api key secret is never stored in plaintext", async ({
-    browser,
+    world,
   }) => {
     test.setTimeout(180_000);
 
-    // Build the probe world.
-    qa = await browser.newContext();
-    qaPage = await qa.newPage();
-    await signUpAndLand(qaPage, QA);
-    orgQ = await createOrg(qaPage, ORG_Q, `probeq-${RUN_ID}`);
-    await createProject(qaPage, orgQ, QP1);
-    orgQ3 = await createOrg(qaPage, ORG_Q3, `probeq3-${RUN_ID}`);
-
-    for (const who of [QB, QB2]) {
-      await inviteMember(qaPage, orgQ, who.email, "org_member");
-      const link = await inviteLinkFor(qaPage, orgQ, who.email);
-      const ctx = await browser.newContext();
-      const page = await ctx.newPage();
-      await signUpAndLand(page, who);
-      await acceptInviteAt(page, link);
-      await expect
-        .poll(async () => membershipRoles(await getMe(ctx), orgQ).join(","), {
-          timeout: 20_000,
-        })
-        .toContain("org_member");
-      if (who === QB) {
-        qb = ctx;
-      } else {
-        qb2 = ctx;
-        qb2Page = page;
-      }
-    }
-
-    qc = await browser.newContext();
-    const qcPage = await qc.newPage();
-    await signUpAndLand(qcPage, QC);
-    orgC = await createOrg(qcPage, ORG_C, `probec-${RUN_ID}`);
-    qp4Id = await createProject(qcPage, orgC, QP4);
-
+    const { admin: qa, org: orgQ } = await provisionWorkspace(
+      world,
+      "m3-s3-01",
+      { adminWho: "qa", orgLabel: "Probe Q" },
+    );
     // Key created through the UI, plaintext captured.
-    qKeySecret = await createApiKey(qaPage, orgQ, QKEY);
-    await qaPage.reload();
-    qKeyId = String(await apiKeyRow(qaPage, QKEY).getAttribute("data-key-id"));
-    expect(qKeyId, "data-key-id").toBeTruthy();
+    const key = await provisionApiKey(qa, orgQ, "m3-s3-01", "q-key");
 
     // The secret must not appear in any admin-readable API surface.
     for (const path of [
-      `/api/orgs/${orgQ}/api-keys`,
-      `/api/orgs/${orgQ}/audit`,
+      `/api/orgs/${orgQ.id}/api-keys`,
+      `/api/orgs/${orgQ.id}/audit`,
     ]) {
-      const resp = await qa.request.get(path);
+      const resp = await qa.ctx.request.get(path);
       if (resp.ok()) {
-        expectNoLeak(await resp.text(), [qKeySecret], path);
+        expectNoLeak(await resp.text(), [key.secret], path);
       }
     }
 
@@ -485,8 +463,11 @@ test.describe.serial("portalis checkpoint 3", () => {
           );
           const byTable = new Map<string, string[]>();
           for (const row of cols.rows) {
-            const key = `"${row.table_schema}"."${row.table_name}"`;
-            byTable.set(key, [...(byTable.get(key) ?? []), row.column_name]);
+            const tableKey = `"${row.table_schema}"."${row.table_name}"`;
+            byTable.set(tableKey, [
+              ...(byTable.get(tableKey) ?? []),
+              row.column_name,
+            ]);
           }
           for (const [table, columns] of byTable) {
             const where = columns
@@ -494,7 +475,7 @@ test.describe.serial("portalis checkpoint 3", () => {
               .join(" OR ");
             const hit = await client.query(
               `SELECT 1 FROM ${table} WHERE ${where} LIMIT 1`,
-              [`%${qKeySecret}%`],
+              [`%${key.secret}%`],
             );
             expect(
               hit.rowCount,
@@ -528,47 +509,65 @@ test.describe.serial("portalis checkpoint 3", () => {
       const fs: any = await import("node:fs");
       if (fs.existsSync(logPath)) {
         expect(
-          fs.readFileSync(logPath, "utf8").includes(qKeySecret),
+          fs.readFileSync(logPath, "utf8").includes(key.secret),
           "api key secret must not appear in the server log",
         ).toBeFalsy();
       }
     }
   });
 
-  test("S3-02 revoked and random bearer tokens are rejected", async () => {
-    const revokedSecret = await createApiKey(qaPage, orgQ, RKEY);
-    await qaPage.reload();
-    await apiKeyRow(qaPage, RKEY).getByTestId("apikey-revoke").first().click();
-    await expect(
-      apiKeyRow(qaPage, RKEY).getByTestId("apikey-status"),
-    ).toContainText("revoked", { timeout: 15_000 });
+  test("S3-02 revoked and random bearer tokens are rejected", async ({
+    world,
+  }) => {
+    const { admin: qa, org: orgQ } = await provisionWorkspace(
+      world,
+      "m3-s3-02",
+      { adminWho: "qa", orgLabel: "Probe Q" },
+    );
+    const qp1 = await provisionProject(qa, orgQ, "m3-s3-02", "QProj1");
+    const key = await provisionApiKey(qa, orgQ, "m3-s3-02", "revoked-key");
+    await revokeApiKey(qa.page, orgQ.id, key.name);
 
-    const random = revokedSecret
+    const random = key.secret
       .split("")
       .reverse()
       .join("")
       .replace(/[^a-zA-Z0-9_-]/g, "x");
     for (const [label, token] of [
-      ["revoked", revokedSecret],
+      ["revoked", key.secret],
       ["random", random],
     ] as const) {
-      const api = await bearerContext(token);
+      const api = await world.bearer(token);
       const resp = await api.get("/api/v1/projects", { maxRedirects: 0 });
       expect(resp.status(), `${label} token must be 401`).toBe(401);
-      expectNoLeak(await resp.text(), [QP1, QP4], `${label} token`);
-      await api.dispose();
+      expectNoLeak(await resp.text(), [qp1.name], `${label} token`);
     }
   });
 
-  test("S3-03 keys are org-scoped and read-only", async () => {
-    const uiIds = await projectIdSet(qaPage, orgQ);
-    const api = await bearerContext(qKeySecret);
+  test("S3-03 keys are org-scoped and read-only", async ({ world }) => {
+    const { admin: qa, org: orgQ } = await provisionWorkspace(
+      world,
+      "m3-s3-03",
+      { adminWho: "qa", orgLabel: "Probe Q", projects: 1 },
+    );
+    const key = await provisionApiKey(qa, orgQ, "m3-s3-03", "q-key");
+
+    // An unrelated admin with their own org and project.
+    const qc = await world.signUp("m3-s3-03", "qc");
+    const orgC = await provisionOrg(qc, "m3-s3-03", "Probe C");
+    const qp4 = await provisionProject(qc, orgC, "m3-s3-03", "QProj4");
+
+    const uiIds = await projectIdSet(qa.page, orgQ.id);
+    const api = await world.bearer(key.secret);
 
     const list = await api.get("/api/v1/projects");
     expect(list.status()).toBe(200);
     const ids = new Set(itemsOf(await list.json()).map((i) => String(i.id)));
     expect(ids, "bearer list is scoped to its own org").toEqual(uiIds);
-    expect(ids.has(qp4Id), "other org's project id must be absent").toBeFalsy();
+    expect(
+      ids.has(qp4.id),
+      "other org's project id must be absent",
+    ).toBeFalsy();
 
     const write = await api.post("/api/v1/projects", {
       data: { name: `pwn ${RUN_ID}` },
@@ -579,72 +578,107 @@ test.describe.serial("portalis checkpoint 3", () => {
       `keys are read-only (got ${write.status()})`,
     ).toContain(write.status());
 
-    const crossOrg = await api.get(`/api/orgs/${orgC}/projects`, {
+    const crossOrg = await api.get(`/api/orgs/${orgC.id}/projects`, {
       maxRedirects: 0,
     });
     expect(
       [401, 404],
       `cross-org bearer read (got ${crossOrg.status()})`,
     ).toContain(crossOrg.status());
-    expectNoLeak(await crossOrg.text(), [QP4], "cross-org bearer read");
-    await api.dispose();
+    expectNoLeak(await crossOrg.text(), [qp4.name], "cross-org bearer read");
   });
 
-  test("S3-04 removing a member invalidates their live session", async () => {
-    await qaPage.goto(`/orgs/${orgQ}/members`);
-    const row = memberRow(qaPage, QB2.email);
+  test("S3-04 removing a member invalidates their live session", async ({
+    world,
+  }) => {
+    // QB2's context stays open across the removal — no re-login anywhere.
+    const {
+      admin: qa,
+      org: orgQ,
+      member: qb2,
+      projects,
+    } = await setupOrgWithMember(world, "m3-s3-04", {
+      adminWho: "qa",
+      memberWho: "qb2",
+      orgLabel: "Probe Q",
+      projectLabels: ["QProj1"],
+    });
+    const qp1 = projects[0];
+
+    await qa.page.goto(`/orgs/${orgQ.id}/members`);
+    const row = memberRow(qa.page, qb2.email);
     await expect(row).toBeVisible({ timeout: 15_000 });
-    await row.getByTestId("member-remove").first().click();
-    const scoped = row.getByTestId("member-remove-confirm");
-    if (await scoped.count()) {
-      await scoped.first().click();
-    } else {
-      await qaPage.getByTestId("member-remove-confirm").first().click();
-    }
-    await expect(memberRow(qaPage, QB2.email)).toHaveCount(0, {
+    expect(
+      await row.getAttribute("data-user-id"),
+      "A targets the row whose data-user-id is B's own /api/me id",
+    ).toBe(qb2.id);
+    await removeMemberVia(qa.page, orgQ.id, qb2.email);
+    await expect(memberRow(qa.page, qb2.email)).toHaveCount(0, {
       timeout: 20_000,
     });
 
     // Same context, no re-login.
-    const api = await qb2.request.get(`/api/orgs/${orgQ}/projects`, {
+    const api = await qb2.ctx.request.get(`/api/orgs/${orgQ.id}/projects`, {
       maxRedirects: 0,
     });
     expect(
       api.status(),
       `removed member's API access must be 404 (got ${api.status()})`,
     ).toBe(404);
-    expectNoLeak(await api.text(), [QP1], "removed member API read");
+    expectNoLeak(await api.text(), [qp1.name], "removed member API read");
 
-    await expectDeniedPage(qb2Page, `/orgs/${orgQ}`, [QP1]);
-    await qb2Page.goto("/orgs");
-    expectNoLeak(await qb2Page.content(), [ORG_Q], "removed member /orgs");
-    expect(membershipRoles(await getMe(qb2), orgQ)).toHaveLength(0);
+    await expectDeniedPage(qb2.page, `/orgs/${orgQ.id}`, [qp1.name]);
+    await qb2.page.goto("/orgs");
+    expectNoLeak(await qb2.page.content(), [orgQ.name], "removed member /orgs");
+    expect(membershipRoles(await getMe(qb2.ctx), orgQ.id)).toHaveLength(0);
   });
 
-  test("S3-05 audit log denied to members and non-members", async () => {
-    const member = await qb.request.get(`/api/orgs/${orgQ}/audit`, {
+  test("S3-05 audit log denied to members and non-members", async ({
+    world,
+  }) => {
+    const {
+      admin: qa,
+      org: orgQ,
+      member: qb,
+    } = await setupOrgWithMember(world, "m3-s3-05", {
+      adminWho: "qa",
+      memberWho: "qb",
+      orgLabel: "Probe Q",
+      projects: 0,
+    });
+    // C administers an unrelated org and is never a member of orgQ.
+    const qc = await world.signUp("m3-s3-05", "qc");
+    await provisionOrg(qc, "m3-s3-05", "Probe C");
+
+    const member = await qb.ctx.request.get(`/api/orgs/${orgQ.id}/audit`, {
       maxRedirects: 0,
     });
     expect(member.status(), "org_member reading audit must be 403").toBe(403);
     expectNoLeak(
       await member.text(),
-      [...ACTION_STRINGS, QA.email],
+      [...ACTION_STRINGS, qa.email],
       "member audit read",
     );
 
-    const outsider = await qc.request.get(`/api/orgs/${orgQ}/audit`, {
+    const outsider = await qc.ctx.request.get(`/api/orgs/${orgQ.id}/audit`, {
       maxRedirects: 0,
     });
     expect(outsider.status(), "non-member reading audit must be 404").toBe(404);
     expectNoLeak(
       await outsider.text(),
-      [...ACTION_STRINGS, QA.email],
+      [...ACTION_STRINGS, qa.email],
       "non-member audit read",
     );
   });
 
-  test("S3-06 audit log is append-only", async () => {
-    const before = await qa.request.get(`/api/orgs/${orgQ}/audit`);
+  test("S3-06 audit log is append-only", async ({ world }) => {
+    const { admin: qa, org: orgQ } = await provisionWorkspace(
+      world,
+      "m3-s3-06",
+      { adminWho: "qa", orgLabel: "Probe Q", projects: 1 },
+    );
+
+    const before = await qa.ctx.request.get(`/api/orgs/${orgQ.id}/audit`);
     expect(before.status()).toBe(200);
     const rows = itemsOf(await before.json());
     expect(rows.length, "audit entries via API").toBeGreaterThan(0);
@@ -652,12 +686,12 @@ test.describe.serial("portalis checkpoint 3", () => {
     expect(entryId, "pinned audit item id").not.toHaveLength(0);
 
     const targets = [
-      `/api/orgs/${orgQ}/audit`,
-      `/api/orgs/${orgQ}/audit/${entryId}`,
+      `/api/orgs/${orgQ.id}/audit`,
+      `/api/orgs/${orgQ.id}/audit/${entryId}`,
     ];
     for (const target of targets) {
       for (const verb of ["delete", "patch", "put"] as const) {
-        const resp = await qa.request[verb](target, {
+        const resp = await qa.ctx.request[verb](target, {
           data: verb === "delete" ? undefined : { action: "tampered" },
           maxRedirects: 0,
         });
@@ -668,82 +702,125 @@ test.describe.serial("portalis checkpoint 3", () => {
       }
     }
 
-    const after = await qa.request.get(`/api/orgs/${orgQ}/audit`);
+    const after = await qa.ctx.request.get(`/api/orgs/${orgQ.id}/audit`);
     expect(itemsOf(await after.json()).length, "audit count unchanged").toBe(
       rows.length,
     );
   });
 
-  test("S3-07 member cannot create or list api keys", async () => {
-    const create = await qb.request.post(`/api/orgs/${orgQ}/api-keys`, {
+  test("S3-07 member cannot create or list api keys", async ({ world }) => {
+    const {
+      admin: qa,
+      org: orgQ,
+      member: qb,
+    } = await setupOrgWithMember(world, "m3-s3-07", {
+      adminWho: "qa",
+      memberWho: "qb",
+      orgLabel: "Probe Q",
+      projects: 0,
+    });
+
+    const create = await qb.ctx.request.post(`/api/orgs/${orgQ.id}/api-keys`, {
       data: { name: "pwn" },
       maxRedirects: 0,
     });
     expect(create.status(), "member POST api-keys must be 403").toBe(403);
-    const list = await qb.request.get(`/api/orgs/${orgQ}/api-keys`, {
+    const list = await qb.ctx.request.get(`/api/orgs/${orgQ.id}/api-keys`, {
       maxRedirects: 0,
     });
     expect(list.status(), "member GET api-keys must be 403").toBe(403);
 
-    await qaPage.goto(`/orgs/${orgQ}/api-keys`);
+    await qa.page.goto(`/orgs/${orgQ.id}/api-keys`);
     await expect(
-      qaPage.getByTestId("apikey-row").filter({ hasText: "pwn" }),
+      qa.page.getByTestId("apikey-row").filter({ hasText: "pwn" }),
     ).toHaveCount(0, { timeout: 15_000 });
 
-    await qaPage.goto(`/orgs/${orgQ}/audit`);
-    const rows = await auditRows(qaPage);
+    await qa.page.goto(`/orgs/${orgQ.id}/audit`);
+    const rows = await auditRows(qa.page);
     expect(
-      rows.filter((r) => r.action === "apikey.created" && r.actor === QB.email),
+      rows.filter((r) => r.action === "apikey.created" && r.actor === qb.email),
       "no apikey.created attributed to the member",
     ).toHaveLength(0);
   });
 
-  test("S3-08 cross-org api key revocation is denied", async () => {
+  test("S3-08 cross-org api key revocation is denied", async ({ world }) => {
+    const { admin: qa, org: orgQ } = await provisionWorkspace(
+      world,
+      "m3-s3-08",
+      { adminWho: "qa", orgLabel: "Probe Q", projects: 1 },
+    );
+    // KAid is read from A's own view and handed to the attacker on purpose.
+    const key = await provisionApiKey(qa, orgQ, "m3-s3-08", "q-key");
+    expect(key.id, "data-key-id").toBeTruthy();
+
+    const qc = await world.signUp("m3-s3-08", "qc");
+    const orgC = await provisionOrg(qc, "m3-s3-08", "Probe C");
+
     for (const path of [
-      `/api/orgs/${orgC}/api-keys/${qKeyId}`,
-      `/api/orgs/${orgQ}/api-keys/${qKeyId}`,
+      `/api/orgs/${orgC.id}/api-keys/${key.id}`,
+      `/api/orgs/${orgQ.id}/api-keys/${key.id}`,
     ]) {
-      const resp = await qc.request.delete(path, { maxRedirects: 0 });
+      const resp = await qc.ctx.request.delete(path, { maxRedirects: 0 });
       expect(resp.status(), `${path} with C's cookie must be 404`).toBe(404);
     }
 
     // The key still works — revocation-by-IDOR must fail.
-    const api = await bearerContext(qKeySecret);
+    const api = await world.bearer(key.secret);
     const resp = await api.get("/api/v1/projects");
     expect(
       resp.status(),
       "key still authenticates after the IDOR attempt",
     ).toBe(200);
-    await api.dispose();
   });
 
-  test("S3-09 non-member cannot write to a fresh org", async () => {
-    const create = await qb.request.post(`/api/orgs/${orgQ3}/projects`, {
+  test("S3-09 non-member cannot write to a fresh org", async ({ world }) => {
+    // Fresh org O3 owned by A; B is a signed-up user who was never a member.
+    const { admin: qa, org: orgQ3 } = await provisionWorkspace(
+      world,
+      "m3-s3-09",
+      { adminWho: "qa", orgLabel: "Probe Q3" },
+    );
+    // B must be a member of SOME other org, not a membership-less user: an app
+    // that authorizes on "caller belongs to any org" would deny a bare user for
+    // the wrong reason and this probe would pass without exercising the
+    // per-org check it exists for. The design only requires B is never a member
+    // of O3.
+    const orgOther = await provisionOrg(qa, "m3-s3-09-other", "Probe Q3 Other");
+    const qb = await provisionMember(
+      world,
+      qa,
+      orgOther,
+      "m3-s3-09",
+      "qb",
+      "org_member",
+    );
+
+    const create = await qb.ctx.request.post(`/api/orgs/${orgQ3.id}/projects`, {
       data: { name: `pwn ${RUN_ID}`, description: "x" },
       maxRedirects: 0,
     });
     expect(create.status(), "non-member POST projects must be 404").toBe(404);
-    const invite = await qb.request.post(`/api/orgs/${orgQ3}/invites`, {
-      data: { email: `pwn-${RUN_ID}@example.test`, role: "org_admin" },
+    const invite = await qb.ctx.request.post(`/api/orgs/${orgQ3.id}/invites`, {
+      data: { email: `pwn-m3-s3-09-${RUN_ID}@example.test`, role: "org_admin" },
       maxRedirects: 0,
     });
     expect(invite.status(), "non-member POST invites must be 404").toBe(404);
 
-    await qaPage.goto(`/orgs/${orgQ3}/projects`);
+    await qa.page.goto(`/orgs/${orgQ3.id}/projects`);
     await expect(
-      qaPage.getByTestId("project-row").filter({ hasText: `pwn ${RUN_ID}` }),
+      qa.page.getByTestId("project-row").filter({ hasText: `pwn ${RUN_ID}` }),
     ).toHaveCount(0, { timeout: 15_000 });
 
-    await qaPage.goto(`/orgs/${orgQ3}/audit`);
-    const rows = await auditRows(qaPage);
+    await qa.page.goto(`/orgs/${orgQ3.id}/audit`);
+    const rows = await auditRows(qa.page);
     expect(
       rows.filter(
         (r) =>
           ["project.created", "member.invited"].includes(r.action) &&
-          r.actor === QB.email,
+          r.actor === qb.email,
       ),
       "no entries attributed to the non-member",
     ).toHaveLength(0);
-    expect(UUID_RE.test(orgQ3), "org id is a UUID").toBeTruthy();
+    expect(UUID_RE.test(orgQ3.id), "org id is a UUID").toBeTruthy();
   });
 });

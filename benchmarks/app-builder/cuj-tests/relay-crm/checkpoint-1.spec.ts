@@ -2,81 +2,68 @@
 // (checkpoint 1)" + "Security probes (checkpoint 1)").
 //
 // Conventions (design "Test fixtures & conventions"):
-// - Serial: later CUJs depend on data created by earlier ones; a failure skips
-//   the rest, and skipped tests score as failures.
+// - Independent: every test provisions the personas and records its own
+//   scenario needs through the `world` fixture, so one failure can never skip
+//   (and silently void) another test. No `.serial`, no shared mutable state.
 // - Personas own a browser context each; raw-HTTP probes go through
 //   context.request so they carry exactly that persona's cookies.
 // - Ids come only from pinned surfaces (GET /api/me, list endpoints' id
 //   fields) — never scraped from the DOM.
-// - Every identity/record is RUN_ID-suffixed so reruns and model-created data
-//   never collide.
+// - Every identity/record is RUN_ID- and test-suffixed so reruns, sibling
+//   tests and model-created data never collide.
+import { request as pwRequest } from "@playwright/test";
 import {
   test,
   expect,
-  request as pwRequest,
-  type BrowserContext,
-  type Page,
-} from "@playwright/test";
-import {
   RUN_ID,
-  identity,
   signUp,
   expectSignedIn,
   findIdByValue,
+  createCompany,
+  createContact,
+  createContactWithId,
+  settleAfterSubmit,
 } from "./fixtures";
-
-const OWNER = identity("owner");
-const OUTSIDER = identity("outsider");
 
 const ADA = `Ada ${RUN_ID}`;
 const ZOE = `Zoe ${RUN_ID}`;
 const TEMP = `Temp ${RUN_ID}`;
 const ACME = `Acme ${RUN_ID}`;
-const ACME_DOMAIN = `acme-${RUN_ID}.test`;
-const ADA_EMAIL = `ada-${RUN_ID}@example.com`;
 const ADA_PHONE = "555-0100";
 const ADA_TITLE = `Engineer ${RUN_ID}`;
 const ADA_TITLE_2 = `VP ${RUN_ID}`;
 
-test.describe.serial("relay-crm checkpoint 1", () => {
-  let owner: BrowserContext;
-  let ownerPage: Page;
-  let outsider: BrowserContext;
-  let adaContactId: string | null = null;
-
-  test.beforeAll(async ({ browser }) => {
-    owner = await browser.newContext();
-    ownerPage = await owner.newPage();
-  });
-
-  test.afterAll(async () => {
-    await owner?.close();
-    await outsider?.close();
-  });
-
-  test("crm-m1-01 sign-up creates session", async () => {
-    await signUp(ownerPage, OWNER);
-    await expectSignedIn(ownerPage, OWNER.email);
-    const me = await owner.request.get("/api/me");
+test.describe("relay-crm checkpoint 1", () => {
+  test("crm-m1-01 sign-up creates session", async ({ world }) => {
+    const who = world.identity("owner");
+    const context = await world.newContext();
+    const page = await context.newPage();
+    await signUp(page, who);
+    await expectSignedIn(page, who.email);
+    // The header contract is scored HERE (the CUJ that pins it), not in the
+    // shared provisioning helper.
+    await expect(page.getByTestId("user-menu")).toContainText(who.email, {
+      timeout: 15_000,
+    });
+    const me = await context.request.get("/api/me");
     expect(me.status()).toBe(200);
     const body = await me.json();
-    expect(body.email).toBe(OWNER.email);
+    expect(body.email).toBe(who.email);
     expect(String(body.id ?? "")).not.toHaveLength(0);
   });
 
-  test("crm-m1-02 sign-out and sign-in", async () => {
-    await ownerPage.getByTestId("sign-out-button").click();
-    await ownerPage.waitForURL("**/auth/sign-in", { timeout: 15_000 });
-    await ownerPage.getByTestId("signin-email").fill(OWNER.email);
-    await ownerPage.getByTestId("signin-password").fill(OWNER.password);
-    await ownerPage.getByTestId("signin-submit").click();
-    await expectSignedIn(ownerPage, OWNER.email);
+  test("crm-m1-02 sign-out and sign-in", async ({ world }) => {
+    const owner = await world.signUp("owner");
+    await owner.page.getByTestId("sign-out-button").click();
+    await owner.page.waitForURL("**/auth/sign-in", { timeout: 15_000 });
+    await owner.page.getByTestId("signin-email").fill(owner.email);
+    await owner.page.getByTestId("signin-password").fill(owner.password);
+    await owner.page.getByTestId("signin-submit").click();
+    await expectSignedIn(owner.page, owner.email);
   });
 
-  test("crm-m1-03 signed-out routes redirect to sign-in", async ({
-    browser,
-  }) => {
-    const fresh = await browser.newContext();
+  test("crm-m1-03 signed-out routes redirect to sign-in", async ({ world }) => {
+    const fresh = await world.newContext();
     const page = await fresh.newPage();
     for (const route of ["/", "/contacts", "/contacts/new"]) {
       await page.goto(route);
@@ -84,112 +71,159 @@ test.describe.serial("relay-crm checkpoint 1", () => {
       const html = await page.content();
       expect(html).not.toContain(ADA);
     }
-    await fresh.close();
   });
 
-  test("crm-m1-04 create company", async () => {
-    await ownerPage.goto("/companies");
-    await ownerPage.getByTestId("company-new-button").click();
-    await ownerPage.getByTestId("company-form-name").fill(ACME);
-    await ownerPage.getByTestId("company-form-domain").fill(ACME_DOMAIN);
-    await ownerPage.getByTestId("company-form-submit").click();
-    await ownerPage.goto("/companies");
+  test("crm-m1-04 create company", async ({ world }) => {
+    const owner = await world.signUp("owner");
+    await owner.page.goto("/companies");
+    await owner.page.getByTestId("company-new-button").click();
+    await owner.page.getByTestId("company-form-name").fill(ACME);
+    await owner.page
+      .getByTestId("company-form-domain")
+      .fill(`${world.token("acme")}.test`);
+    await owner.page.getByTestId("company-form-submit").click();
+    await settleAfterSubmit(owner.page);
+    await owner.page.goto("/companies");
     await expect(
-      ownerPage
+      owner.page
         .getByTestId("company-row-name")
         .filter({ hasText: ACME })
         .first(),
     ).toBeVisible();
   });
 
-  test("crm-m1-05 create contact linked to company", async () => {
-    await ownerPage.goto("/contacts");
-    await ownerPage.getByTestId("contact-new-button").click();
-    await ownerPage.getByTestId("contact-form-name").fill(ADA);
-    await ownerPage.getByTestId("contact-form-email").fill(ADA_EMAIL);
-    await ownerPage.getByTestId("contact-form-phone").fill(ADA_PHONE);
-    await ownerPage.getByTestId("contact-form-title").fill(ADA_TITLE);
-    await ownerPage
+  test("crm-m1-05 create contact linked to company", async ({ world }) => {
+    const owner = await world.signUp("owner");
+    await createCompany(owner.page, {
+      name: ACME,
+      domain: `${world.token("acme")}.test`,
+    });
+    const adaEmail = world.email("ada");
+
+    await owner.page.goto("/contacts");
+    await owner.page.getByTestId("contact-new-button").click();
+    await owner.page.getByTestId("contact-form-name").fill(ADA);
+    await owner.page.getByTestId("contact-form-email").fill(adaEmail);
+    await owner.page.getByTestId("contact-form-phone").fill(ADA_PHONE);
+    await owner.page.getByTestId("contact-form-title").fill(ADA_TITLE);
+    await owner.page
       .getByTestId("contact-form-company")
       .selectOption({ label: ACME });
-    await ownerPage.getByTestId("contact-form-submit").click();
-    await ownerPage.goto("/contacts");
-    const row = ownerPage
+    await owner.page.getByTestId("contact-form-submit").click();
+    await settleAfterSubmit(owner.page);
+    await owner.page.goto("/contacts");
+    const row = owner.page
       .getByTestId("contact-row")
       .filter({ hasText: ADA })
       .first();
     await expect(row).toBeVisible();
-    await expect(row.getByTestId("contact-row-email")).toContainText(ADA_EMAIL);
+    await expect(row.getByTestId("contact-row-email")).toContainText(adaEmail);
     await expect(row.getByTestId("contact-row-company")).toContainText(ACME);
-    adaContactId = await findIdByValue(owner, "/api/contacts", ADA);
+    const adaContactId = await findIdByValue(
+      owner.context,
+      "/api/contacts",
+      ADA,
+    );
     expect(adaContactId, "Ada's id from pinned GET /api/contacts").toBeTruthy();
   });
 
-  test("crm-m1-06 contact detail shows all fields", async () => {
-    await ownerPage.goto("/contacts");
-    await ownerPage
+  test("crm-m1-06 contact detail shows all fields", async ({ world }) => {
+    const owner = await world.signUp("owner");
+    const adaEmail = world.email("ada");
+    await createCompany(owner.page, {
+      name: ACME,
+      domain: `${world.token("acme")}.test`,
+    });
+    await createContact(owner.page, {
+      name: ADA,
+      email: adaEmail,
+      phone: ADA_PHONE,
+      title: ADA_TITLE,
+      company: ACME,
+    });
+
+    await owner.page.goto("/contacts");
+    await owner.page
       .getByTestId("contact-row")
       .filter({ hasText: ADA })
       .first()
       .getByTestId("contact-row-link")
       .click();
-    await expect(ownerPage.getByTestId("contact-detail-name")).toContainText(
+    await expect(owner.page.getByTestId("contact-detail-name")).toContainText(
       ADA,
     );
-    await expect(ownerPage.getByTestId("contact-detail-email")).toContainText(
-      ADA_EMAIL,
+    await expect(owner.page.getByTestId("contact-detail-email")).toContainText(
+      adaEmail,
     );
-    await expect(ownerPage.getByTestId("contact-detail-phone")).toContainText(
+    await expect(owner.page.getByTestId("contact-detail-phone")).toContainText(
       ADA_PHONE,
     );
-    await expect(ownerPage.getByTestId("contact-detail-title")).toContainText(
+    await expect(owner.page.getByTestId("contact-detail-title")).toContainText(
       ADA_TITLE,
     );
-    await expect(ownerPage.getByTestId("contact-detail-company")).toContainText(
-      ACME,
-    );
+    await expect(
+      owner.page.getByTestId("contact-detail-company"),
+    ).toContainText(ACME);
   });
 
-  test("crm-m1-07 edit contact title", async () => {
-    await ownerPage.getByTestId("contact-edit-button").click();
-    await ownerPage.getByTestId("contact-form-title").fill(ADA_TITLE_2);
-    await ownerPage.getByTestId("contact-form-submit").click();
-    await ownerPage.goto(`/contacts/${adaContactId}`);
-    await expect(ownerPage.getByTestId("contact-detail-title")).toContainText(
+  test("crm-m1-07 edit contact title", async ({ world }) => {
+    const owner = await world.signUp("owner");
+    const adaContactId = await createContactWithId(owner.context, owner.page, {
+      name: ADA,
+      email: world.email("ada"),
+      phone: ADA_PHONE,
+      title: ADA_TITLE,
+    });
+
+    await owner.page.goto("/contacts");
+    await owner.page
+      .getByTestId("contact-row")
+      .filter({ hasText: ADA })
+      .first()
+      .getByTestId("contact-row-link")
+      .click();
+    await owner.page.getByTestId("contact-edit-button").click();
+    await owner.page.getByTestId("contact-form-title").fill(ADA_TITLE_2);
+    await owner.page.getByTestId("contact-form-submit").click();
+    await settleAfterSubmit(owner.page);
+    await owner.page.goto(`/contacts/${adaContactId}`);
+    await expect(owner.page.getByTestId("contact-detail-title")).toContainText(
       ADA_TITLE_2,
     );
-    await ownerPage.goto("/contacts");
+    await owner.page.goto("/contacts");
     await expect(
-      ownerPage.getByTestId("contact-row").filter({ hasText: ADA }).first(),
+      owner.page.getByTestId("contact-row").filter({ hasText: ADA }).first(),
     ).toBeVisible();
   });
 
-  test("crm-m1-08 delete contact", async () => {
+  test("crm-m1-08 delete contact", async ({ world }) => {
+    const owner = await world.signUp("owner");
     // Create the throwaway through the UI, then delete it from its detail page.
-    await ownerPage.goto("/contacts");
-    await ownerPage.getByTestId("contact-new-button").click();
-    await ownerPage.getByTestId("contact-form-name").fill(TEMP);
-    await ownerPage
+    await owner.page.goto("/contacts");
+    await owner.page.getByTestId("contact-new-button").click();
+    await owner.page.getByTestId("contact-form-name").fill(TEMP);
+    await owner.page
       .getByTestId("contact-form-email")
-      .fill(`temp-${RUN_ID}@example.com`);
-    await ownerPage.getByTestId("contact-form-submit").click();
-    await ownerPage.goto("/contacts");
-    const tempId = await findIdByValue(owner, "/api/contacts", TEMP);
+      .fill(world.email("temp"));
+    await owner.page.getByTestId("contact-form-submit").click();
+    await settleAfterSubmit(owner.page);
+    await owner.page.goto("/contacts");
+    const tempId = await findIdByValue(owner.context, "/api/contacts", TEMP);
     expect(tempId, "Temp's id from pinned GET /api/contacts").toBeTruthy();
-    await ownerPage
+    await owner.page
       .getByTestId("contact-row")
       .filter({ hasText: TEMP })
       .first()
       .getByTestId("contact-row-link")
       .click();
-    await ownerPage.getByTestId("contact-delete-button").click();
-    await ownerPage.getByTestId("contact-delete-confirm").click();
-    await ownerPage.goto("/contacts");
+    await owner.page.getByTestId("contact-delete-button").click();
+    await owner.page.getByTestId("contact-delete-confirm").click();
+    await owner.page.goto("/contacts");
     await expect(
-      ownerPage.getByTestId("contact-row").filter({ hasText: TEMP }),
+      owner.page.getByTestId("contact-row").filter({ hasText: TEMP }),
     ).toHaveCount(0);
     // Direct GET of the detail URL: 404/redirect (or at minimum no old data).
-    const resp = await owner.request.get(`/contacts/${tempId}`, {
+    const resp = await owner.context.request.get(`/contacts/${tempId}`, {
       maxRedirects: 0,
     });
     if (resp.status() === 200) {
@@ -199,89 +233,107 @@ test.describe.serial("relay-crm checkpoint 1", () => {
     }
   });
 
-  test("crm-m1-09 search filters contacts", async () => {
+  test("crm-m1-09 search filters contacts", async ({ world }) => {
+    const owner = await world.signUp("owner");
+    await createContact(owner.page, { name: ADA, email: world.email("ada") });
+
     // Create Zoe so there are two RUN_ID contacts, then filter for Ada.
-    await ownerPage.goto("/contacts");
-    await ownerPage.getByTestId("contact-new-button").click();
-    await ownerPage.getByTestId("contact-form-name").fill(ZOE);
-    await ownerPage
-      .getByTestId("contact-form-email")
-      .fill(`zoe-${RUN_ID}@example.com`);
-    await ownerPage.getByTestId("contact-form-submit").click();
-    await ownerPage.goto("/contacts");
-    await ownerPage.getByTestId("contacts-search").fill(`Ada ${RUN_ID}`);
-    const adaRow = ownerPage
+    await owner.page.goto("/contacts");
+    await owner.page.getByTestId("contact-new-button").click();
+    await owner.page.getByTestId("contact-form-name").fill(ZOE);
+    await owner.page.getByTestId("contact-form-email").fill(world.email("zoe"));
+    await owner.page.getByTestId("contact-form-submit").click();
+    await settleAfterSubmit(owner.page);
+    await owner.page.goto("/contacts");
+    await owner.page.getByTestId("contacts-search").fill(ADA);
+    const adaRow = owner.page
       .getByTestId("contact-row")
       .filter({ hasText: ADA });
-    const zoeRow = ownerPage
+    const zoeRow = owner.page
       .getByTestId("contact-row")
       .filter({ hasText: ZOE });
     await expect(adaRow.first()).toBeVisible();
     await expect(zoeRow).toHaveCount(0);
-    await ownerPage.getByTestId("contacts-search").fill("");
+    await owner.page.getByTestId("contacts-search").fill("");
     await expect(adaRow.first()).toBeVisible();
     await expect(zoeRow.first()).toBeVisible();
   });
 
-  test("crm-m1-10 second user sees empty CRM", async ({ browser }) => {
-    outsider = await browser.newContext();
-    const page = await outsider.newPage();
-    await signUp(page, OUTSIDER);
-    await expectSignedIn(page, OUTSIDER.email);
-    await page.goto("/contacts");
-    const rows = await page.getByTestId("contact-row").count();
+  test("crm-m1-10 second user sees empty CRM", async ({ world }) => {
+    const owner = await world.signUp("owner");
+    await createContact(owner.page, { name: ADA, email: world.email("ada") });
+
+    const outsider = await world.signUp("outsider");
+    await outsider.page.goto("/contacts");
+    const rows = await outsider.page.getByTestId("contact-row").count();
     if (rows > 0) {
       // Rows may exist only if the model pre-seeded demo data; the owner's
       // records must never appear.
       expect(rows).toBe(0);
     } else {
       await expect(
-        page
+        outsider.page
           .getByTestId("contacts-empty")
-          .or(page.getByTestId("contacts-list")),
+          .or(outsider.page.getByTestId("contacts-list")),
       ).toBeVisible();
     }
-    expect(await page.content()).not.toContain(ADA);
-    const me = await outsider.request.get("/api/me");
+    expect(await outsider.page.content()).not.toContain(ADA);
+    const me = await outsider.context.request.get("/api/me");
     expect(me.status()).toBe(200);
-    expect((await me.json()).email).toBe(OUTSIDER.email);
+    expect((await me.json()).email).toBe(outsider.email);
   });
 
-  test("crm-m1-s01 unauthenticated API access denied", async () => {
+  test("crm-m1-s01 unauthenticated API access denied", async ({ world }) => {
+    const owner = await world.signUp("owner");
+    const adaContactId = await createContactWithId(owner.context, owner.page, {
+      name: ADA,
+      email: world.email("ada"),
+    });
+
     const anon = await pwRequest.newContext({
       baseURL: test.info().project.use.baseURL,
     });
-    for (const p of [
-      "/api/me",
-      "/api/contacts",
-      `/api/contacts/${adaContactId}`,
-    ]) {
-      const resp = await anon.get(p, { maxRedirects: 0 });
-      expect(
-        [401, 403, 301, 302, 303, 307, 308],
-        `${p} must deny anonymous access (got ${resp.status()})`,
-      ).toContain(resp.status());
-      const text = await resp.text();
-      expect(text).not.toContain(ADA);
-      expect(text).not.toContain(OWNER.email);
+    try {
+      for (const p of [
+        "/api/me",
+        "/api/contacts",
+        `/api/contacts/${adaContactId}`,
+      ]) {
+        const resp = await anon.get(p, { maxRedirects: 0 });
+        expect(
+          [401, 403, 301, 302, 303, 307, 308],
+          `${p} must deny anonymous access (got ${resp.status()})`,
+        ).toContain(resp.status());
+        const text = await resp.text();
+        expect(text).not.toContain(ADA);
+        expect(text).not.toContain(owner.email);
+      }
+    } finally {
+      await anon.dispose();
     }
-    await anon.dispose();
   });
 
-  test("crm-m1-s02 cross-user API access denied", async () => {
-    expect(adaContactId, "needs Ada's id from crm-m1-05").toBeTruthy();
-    const read = await outsider.request.get(`/api/contacts/${adaContactId}`, {
-      maxRedirects: 0,
+  test("crm-m1-s02 cross-user API access denied", async ({ world }) => {
+    const owner = await world.signUp("owner");
+    const adaContactId = await createContactWithId(owner.context, owner.page, {
+      name: ADA,
+      email: world.email("ada"),
     });
+    const outsider = await world.signUp("outsider");
+
+    const read = await outsider.context.request.get(
+      `/api/contacts/${adaContactId}`,
+      { maxRedirects: 0 },
+    );
     expect([401, 403, 404]).toContain(read.status());
     expect(await read.text()).not.toContain(ADA);
-    const write = await outsider.request.patch(
+    const write = await outsider.context.request.patch(
       `/api/contacts/${adaContactId}`,
       { data: { name: "pwned" }, maxRedirects: 0 },
     );
     expect([401, 403, 404]).toContain(write.status());
     // Owner re-read: name unchanged.
-    const recheck = await owner.request.get("/api/contacts");
+    const recheck = await owner.context.request.get("/api/contacts");
     expect(await recheck.text()).toContain(ADA);
     expect(await recheck.text()).not.toContain("pwned");
   });

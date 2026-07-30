@@ -13,7 +13,9 @@ export default defineConfig({
   workers: 1,
   retries: 0,
   fullyParallel: false,
-  timeout: 60_000,
+  // Independent tests provision their own personas/records, so each test
+  // does more setup work than when state cascaded through a serial group.
+  timeout: 120_000,
   expect: { timeout: 10_000 },
   reporter: [["list"], ["json", { outputFile: CUJ_RESULTS }]],
   use: {

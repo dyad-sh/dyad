@@ -12,6 +12,7 @@ import {
   type VersionPreviewKey,
   type VersionPreviewRemoteSnapshot,
 } from "./transport";
+import { versionPreviewRemoteIntentContract } from "./remote_intent_contract";
 
 const unavailableState: VersionPreviewActorState = {
   state: CLOSED_STATE,
@@ -31,6 +32,15 @@ export const versionPreviewClientDefinition = {
     keyToString: (key) => String(key.appId),
     unavailableSnapshot: (key) =>
       projectVersionPreviewRemoteSnapshot(key.appId, 0, unavailableState),
+  },
+  remoteIntent: {
+    keyCodec: VersionPreviewKeySchema,
+    encodeKey: (key: VersionPreviewKey) => key,
+    keyToString: (key: VersionPreviewKey) => String(key.appId),
+    rendererIntentCodec: VersionPreviewIntentEventSchema,
+    snapshotCodec: VersionPreviewRemoteSnapshotSchema,
+    operationOutcome: versionPreviewRemoteIntentContract.operationOutcome,
+    intents: versionPreviewRemoteIntentContract.intents,
   },
 } satisfies RemoteClientDefinition<
   VersionPreviewKey,

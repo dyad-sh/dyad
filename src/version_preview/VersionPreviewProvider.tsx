@@ -2,6 +2,8 @@ import {
   createContext,
   useContext,
   useEffect,
+  useMemo,
+  useRef,
   useState,
   type PropsWithChildren,
 } from "react";
@@ -14,12 +16,18 @@ import { useSelectChat } from "@/hooks/useSelectChat";
 import { ipc, versionEventClient } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
 import { useRemoteMachineClient } from "@/distributed_machines/react";
+import { PreparedRequestScope } from "@/distributed_machines/prepared_request";
 import { useRegisterEntityDisposer } from "@/state_machines/react";
 import { versionPreviewClientDefinition } from "./client_definition";
 import { VersionPreviewPresentationStore } from "./presentation_store";
 import { ownsHistoricalCheckout } from "./state";
 import { versionPreviewKey } from "./transport";
 import { VersionPreviewWindowInterestClient } from "./window_interest_client";
+import { VersionPreviewRequestScopeProvider } from "./request_scope";
+import {
+  createVersionPreviewRequestActor,
+  observeVersionPreviewAdmission,
+} from "./request_actor";
 
 const PresentationStoreContext =
   createContext<VersionPreviewPresentationStore | null>(null);
@@ -48,13 +56,21 @@ export function useVersionPreviewWindowInterestClient() {
 
 export function VersionPreviewProvider({ children }: PropsWithChildren) {
   const [presentation] = useState(() => new VersionPreviewPresentationStore());
-  const [windowInterest] = useState(
-    () => new VersionPreviewWindowInterestClient(),
-  );
   const client = useRemoteMachineClient();
+  const [requestScope] = useState(
+    () =>
+      new PreparedRequestScope(
+        `version-preview-window:${globalThis.crypto.randomUUID()}`,
+      ),
+  );
+  const windowInterest = useMemo(
+    () => new VersionPreviewWindowInterestClient(client, requestScope),
+    [client, requestScope],
+  );
   const jotaiStore = useStore();
   const queryClient = useQueryClient();
   const { selectChat } = useSelectChat();
+  const lifecycleGeneration = useRef(0);
 
   useRegisterEntityDisposer("app", presentation.disposeKey);
 
@@ -65,42 +81,26 @@ export function VersionPreviewProvider({ children }: PropsWithChildren) {
       if (previousAppId !== null && previousAppId !== nextAppId) {
         const releasedAppId = previousAppId;
         const operationId = `version-preview:${globalThis.crypto.randomUUID()}`;
-        void (async () => {
-          for (let attempt = 0; attempt < 3; attempt += 1) {
-            try {
-              await windowInterest.release(releasedAppId, operationId, {
-                type: "switch-app",
-                nextAppId,
-              });
-              presentation.send(releasedAppId, {
-                type: "APP_CHANGED",
-                nextAppId,
-              });
-              return;
-            } catch (error) {
-              if (attempt === 2) throw error;
-              try {
-                await client
-                  .actor(
-                    versionPreviewClientDefinition,
-                    versionPreviewKey(releasedAppId),
-                  )
-                  .resync();
-              } catch {
-                // The stable release operation remains safe to retry even when
-                // the actor transport cannot resync yet.
-              }
-            }
-          }
-        })().catch(() => {
-          toast.error(
-            "Version preview could not finish switching apps. Reopen the app and try again.",
-          );
-        });
+        void windowInterest
+          .release(releasedAppId, operationId, {
+            type: "switch-app",
+            nextAppId,
+          })
+          .then(() => {
+            presentation.send(releasedAppId, {
+              type: "APP_CHANGED",
+              nextAppId,
+            });
+          })
+          .catch(() => {
+            toast.error(
+              "Version preview could not finish switching apps. Reopen the app and try again.",
+            );
+          });
       }
       previousAppId = nextAppId;
     });
-  }, [client, jotaiStore, presentation, windowInterest]);
+  }, [client, jotaiStore, presentation, requestScope, windowInterest]);
 
   useEffect(
     () =>
@@ -248,19 +248,39 @@ export function VersionPreviewProvider({ children }: PropsWithChildren) {
               action: {
                 label: "Retry",
                 onClick: () => {
-                  const event = {
-                    type: "RETRY_RETURN" as const,
-                    operationId: `version-preview:${globalThis.crypto.randomUUID()}`,
-                  };
                   void (async () => {
                     for (let attempt = 0; attempt < 3; attempt += 1) {
                       if (actor.getStatus() !== "ready") await actor.resync();
-                      const receipt = await actor.dispatch(event);
-                      if (receipt.kind === "applied") return;
+                      const view = actor.getView();
+                      const request = createVersionPreviewRequestActor(
+                        client,
+                        requestScope,
+                        appId,
+                      ).request({
+                        intent: {
+                          type: "RETRY_RETURN",
+                          operationId: `version-preview:${globalThis.crypto.randomUUID()}`,
+                        },
+                        observed:
+                          view.snapshot.kind === "available"
+                            ? view.snapshot.observedRevision
+                            : undefined,
+                      });
+                      await observeVersionPreviewAdmission(
+                        request,
+                        () => undefined,
+                      );
+                      const settlement = await request.settled;
                       if (
-                        receipt.kind === "rejected" &&
-                        (receipt.reason === "revision-conflict" ||
-                          receipt.reason === "stale-actor")
+                        settlement.kind === "completed" &&
+                        settlement.outcome.kind === "succeeded"
+                      ) {
+                        return;
+                      }
+                      if (
+                        settlement.kind === "not-admitted" &&
+                        (settlement.refusal === "revision-conflict" ||
+                          settlement.refusal === "stale-actor")
                       ) {
                         await actor.resync();
                         continue;
@@ -312,13 +332,34 @@ export function VersionPreviewProvider({ children }: PropsWithChildren) {
     };
   }, [client, jotaiStore, presentation, windowInterest]);
 
-  useEffect(() => () => presentation.dispose(), [presentation]);
+  useEffect(() => {
+    const generation = ++lifecycleGeneration.current;
+    return () => {
+      queueMicrotask(() => {
+        if (lifecycleGeneration.current !== generation) return;
+        const disposal = (
+          windowInterest as VersionPreviewWindowInterestClient & {
+            dispose?: () => void | Promise<void>;
+          }
+        ).dispose?.();
+        void Promise.resolve(disposal)
+          .catch(() => undefined)
+          .then(() => {
+            if (lifecycleGeneration.current !== generation) return;
+            presentation.dispose();
+            requestScope.dispose();
+          });
+      });
+    };
+  }, [presentation, requestScope, windowInterest]);
 
   return (
-    <WindowInterestContext.Provider value={windowInterest}>
-      <PresentationStoreContext.Provider value={presentation}>
-        {children}
-      </PresentationStoreContext.Provider>
-    </WindowInterestContext.Provider>
+    <VersionPreviewRequestScopeProvider scope={requestScope}>
+      <WindowInterestContext.Provider value={windowInterest}>
+        <PresentationStoreContext.Provider value={presentation}>
+          {children}
+        </PresentationStoreContext.Provider>
+      </WindowInterestContext.Provider>
+    </VersionPreviewRequestScopeProvider>
   );
 }

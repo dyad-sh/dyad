@@ -10,6 +10,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { getDefaultStore } from "jotai";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { PreparedRequestScope } from "@/distributed_machines/prepared_request";
+import { RemoteMachineTransportError } from "@/distributed_machines/remote_client";
 import { useVersionPreview } from "@/hooks/useVersionPreview";
 import { CLOSED_STATE, type PreviewState } from "./state";
 import { VersionPreviewProvider } from "./VersionPreviewProvider";
@@ -28,11 +30,33 @@ const actor = {
       activeInvocationRef: null,
       lastSettlement: null,
     },
+    connection: "ready" as const,
+    snapshot: {
+      kind: "available" as const,
+      observedRevision: {
+        kind: "actor" as const,
+        actorInstanceId: "version-preview-test-actor",
+        revision: 0,
+      },
+    },
   }),
   subscribe: (listener: () => void) => {
     actorListeners.add(listener);
     return () => actorListeners.delete(listener);
   },
+  subscribeOperationOutcome: vi.fn(
+    (
+      _requestId: string,
+      _listener: (outcome: unknown, metadata: unknown) => void,
+    ) =>
+      () =>
+        undefined,
+  ),
+  retain: vi.fn(() => ({
+    ready: Promise.resolve(),
+    refresh: vi.fn(async () => undefined),
+    release: vi.fn(),
+  })),
 };
 
 const toastError = vi.hoisted(() => vi.fn());
@@ -50,6 +74,7 @@ const windowInterest = vi.hoisted(() => ({
   ),
   selectionEpoch: vi.fn(() => 0),
   isSelectionEpochCurrent: vi.fn(() => true),
+  dispose: vi.fn(async () => undefined),
 }));
 vi.mock("sonner", () => ({
   toast: {
@@ -67,6 +92,7 @@ vi.mock("./window_interest_client", () => ({
     release = windowInterest.release;
     selectionEpoch = windowInterest.selectionEpoch;
     isSelectionEpochCurrent = windowInterest.isSelectionEpochCurrent;
+    dispose = windowInterest.dispose;
   },
 }));
 
@@ -77,6 +103,7 @@ vi.mock("@/distributed_machines/react", async (importOriginal) => ({
     state: actor.getView().state,
     projection: actor.getView().state,
     connection: "ready",
+    snapshot: actor.getView().snapshot,
     dispatch: actor.dispatch,
   }),
 }));
@@ -124,12 +151,13 @@ describe("VersionPreviewProvider", () => {
       .mockResolvedValue({ cleanupStarted: false });
     windowInterest.selectionEpoch.mockReset().mockReturnValue(0);
     windowInterest.isSelectionEpochCurrent.mockReset().mockReturnValue(true);
+    windowInterest.dispose.mockReset().mockResolvedValue(undefined);
     getDefaultStore().set(selectedAppIdAtom, null);
   });
 
   it("keeps window-local presentation live across StrictMode replay", async () => {
     const queryClient = new QueryClient();
-    render(
+    const view = render(
       <StrictMode>
         <QueryClientProvider client={queryClient}>
           <VersionPreviewProvider>
@@ -140,12 +168,115 @@ describe("VersionPreviewProvider", () => {
     );
 
     await waitFor(() => expect(screen.getByTestId("probe")).toBeTruthy());
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(windowInterest.dispose).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId("probe"));
     await waitFor(() =>
       expect(screen.getByTestId("probe").getAttribute("data-state")).toBe(
         "browsing",
       ),
     );
+
+    view.unmount();
+    await waitFor(() => expect(windowInterest.dispose).toHaveBeenCalledOnce());
+  });
+
+  it("handles diff presentation controls without remote admission", async () => {
+    const queryClient = new QueryClient();
+
+    function DiffPresentationProbe() {
+      const { state, send } = useVersionPreview(1);
+      const file =
+        state.type === "viewing-diff"
+          ? state.session.selectedDiffFile?.path
+          : undefined;
+      return (
+        <div
+          data-testid="diff-presentation"
+          data-state={state.type}
+          data-file={file ?? "none"}
+        >
+          <button
+            onClick={() =>
+              send({
+                type: "VIEW_VERSION_DIFF",
+                appId: 1,
+                versionId: "v1",
+                file: { versionId: "v1", path: "src/first.ts" },
+              })
+            }
+          >
+            View
+          </button>
+          <button
+            onClick={() =>
+              send({
+                type: "SELECT_DIFF_FILE",
+                file: { versionId: "v1", path: "src/second.ts" },
+              })
+            }
+          >
+            Select file
+          </button>
+          <button onClick={() => send({ type: "CLOSE_VERSION_DIFF" })}>
+            Close diff
+          </button>
+        </div>
+      );
+    }
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <VersionPreviewProvider>
+          <DiffPresentationProbe />
+        </VersionPreviewProvider>
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(screen.getByText("View"));
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("diff-presentation").getAttribute("data-file"),
+      ).toBe("src/first.ts"),
+    );
+    fireEvent.click(screen.getByText("Select file"));
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("diff-presentation").getAttribute("data-file"),
+      ).toBe("src/second.ts"),
+    );
+    fireEvent.click(screen.getByText("Close diff"));
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("diff-presentation").getAttribute("data-state"),
+      ).toBe("closed"),
+    );
+    expect(actor.dispatch).not.toHaveBeenCalled();
+    expect(windowInterest.acquire).not.toHaveBeenCalled();
+  });
+
+  it("keeps the request scope alive until queued window cleanup finishes", async () => {
+    const cleanup = deferred<undefined>();
+    windowInterest.dispose.mockReturnValueOnce(cleanup.promise);
+    const disposeScope = vi.spyOn(PreparedRequestScope.prototype, "dispose");
+    const queryClient = new QueryClient();
+    const view = render(
+      <QueryClientProvider client={queryClient}>
+        <VersionPreviewProvider>
+          <div>content</div>
+        </VersionPreviewProvider>
+      </QueryClientProvider>,
+    );
+
+    view.unmount();
+    await waitFor(() => expect(windowInterest.dispose).toHaveBeenCalledOnce());
+    expect(disposeScope).not.toHaveBeenCalled();
+
+    cleanup.resolve(undefined);
+    await waitFor(() => expect(disposeScope).toHaveBeenCalledOnce());
+    disposeScope.mockRestore();
   });
 
   it("does not commit a local version selection when main rejects it", async () => {
@@ -190,6 +321,171 @@ describe("VersionPreviewProvider", () => {
     expect(
       screen.getByTestId("selection-probe").getAttribute("data-state"),
     ).toBe("closed");
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  it("automatically retries a lost admission receipt with the stable request identity", async () => {
+    actor.dispatch
+      .mockRejectedValueOnce(
+        new RemoteMachineTransportError("disconnected", "connection lost"),
+      )
+      .mockResolvedValueOnce({ kind: "applied" });
+    const queryClient = new QueryClient();
+
+    function SelectionProbe() {
+      const { state, send } = useVersionPreview(1);
+      return (
+        <button
+          data-testid="selection-probe"
+          data-state={state.type}
+          onClick={() =>
+            send({ type: "SELECT_VERSION", versionId: "retried-version" })
+          }
+        >
+          Select
+        </button>
+      );
+    }
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <VersionPreviewProvider>
+          <SelectionProbe />
+        </VersionPreviewProvider>
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(screen.getByTestId("selection-probe"));
+    await waitFor(() => expect(actor.dispatch).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("selection-probe").getAttribute("data-state"),
+      ).toBe("viewing-diff"),
+    );
+    expect(actor.dispatch.mock.calls[1]?.[1].requestIdentity).toEqual(
+      actor.dispatch.mock.calls[0]?.[1].requestIdentity,
+    );
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  it("handles admission observer rejection and reports one unexpected transport error", async () => {
+    actor.dispatch.mockRejectedValueOnce(new Error("IPC exploded"));
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    const queryClient = new QueryClient();
+
+    function SelectionProbe() {
+      const { send } = useVersionPreview(1);
+      return (
+        <button
+          onClick={() =>
+            send({ type: "SELECT_VERSION", versionId: "failed-version" })
+          }
+        >
+          Select
+        </button>
+      );
+    }
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <VersionPreviewProvider>
+          <SelectionProbe />
+        </VersionPreviewProvider>
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(screen.getByText("Select"));
+    await waitFor(() =>
+      expect(consoleError).toHaveBeenCalledWith(
+        "Version controls are temporarily unavailable. Please try again.",
+      ),
+    );
+    expect(
+      consoleError.mock.calls.filter(
+        ([message]) =>
+          message ===
+          "Version controls are temporarily unavailable. Please try again.",
+      ),
+    ).toHaveLength(1);
+    consoleError.mockRestore();
+  });
+
+  it("preserves expected Git failures as typed authoritative settlements", async () => {
+    let outcomeListener:
+      | ((outcome: unknown, metadata: unknown) => void)
+      | undefined;
+    actor.subscribeOperationOutcome.mockImplementationOnce(
+      (_requestId, listener) => {
+        outcomeListener = listener;
+        return () => {
+          outcomeListener = undefined;
+        };
+      },
+    );
+    actor.dispatch.mockImplementationOnce(async () => {
+      queueMicrotask(() => {
+        outcomeListener?.(
+          {
+            kind: "failed",
+            operation: "restore",
+            error: { message: "Git checkout failed" },
+          },
+          {
+            actorInstanceId: "version-preview-test-actor",
+            snapshotRevision: 0,
+            transactionSequence: 1,
+          },
+        );
+      });
+      return { kind: "applied" };
+    });
+    const queryClient = new QueryClient();
+    let caught: unknown;
+
+    function RestoreProbe() {
+      const { sendAndWaitForMutation } = useVersionPreview(1);
+      return (
+        <button
+          onClick={() => {
+            void sendAndWaitForMutation({
+              type: "RESTORE",
+              appId: 1,
+              versionId: "failed-version",
+            }).catch((error: unknown) => {
+              caught = error;
+            });
+          }}
+        >
+          Restore
+        </button>
+      );
+    }
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <VersionPreviewProvider>
+          <RestoreProbe />
+        </VersionPreviewProvider>
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(screen.getByText("Restore"));
+    await waitFor(() =>
+      expect(caught).toMatchObject({
+        name: "VersionPreviewExpectedSettlementError",
+        settlement: {
+          kind: "completed",
+          outcome: {
+            kind: "failed",
+            operation: "restore",
+            error: { message: "Git checkout failed" },
+          },
+        },
+      }),
+    );
+    expect(toastError).not.toHaveBeenCalled();
   });
 
   it("releases app-switch cleanup through the main interest coordinator", async () => {
@@ -217,12 +513,10 @@ describe("VersionPreviewProvider", () => {
     expect(actor.dispatch).not.toHaveBeenCalled();
   });
 
-  it("keeps the old presentation visible until an app-switch release retry is accepted", async () => {
+  it("keeps the old presentation visible until app-switch release is accepted", async () => {
     getDefaultStore().set(selectedAppIdAtom, 1);
     const accepted = deferred<{ cleanupStarted: false }>();
-    windowInterest.release
-      .mockRejectedValueOnce(new Error("transport unavailable"))
-      .mockReturnValueOnce(accepted.promise);
+    windowInterest.release.mockReturnValueOnce(accepted.promise);
     const queryClient = new QueryClient();
     render(
       <QueryClientProvider client={queryClient}>
@@ -240,11 +534,7 @@ describe("VersionPreviewProvider", () => {
 
     act(() => getDefaultStore().set(selectedAppIdAtom, 2));
     await waitFor(() =>
-      expect(windowInterest.release).toHaveBeenCalledTimes(2),
-    );
-    expect(actor.resync).toHaveBeenCalled();
-    expect(windowInterest.release.mock.calls[0]?.[1]).toBe(
-      windowInterest.release.mock.calls[1]?.[1],
+      expect(windowInterest.release).toHaveBeenCalledTimes(1),
     );
     expect(screen.getByTestId("probe").getAttribute("data-state")).toBe(
       "browsing",
@@ -483,6 +773,55 @@ describe("VersionPreviewProvider", () => {
       expect(toastError).toHaveBeenCalledWith(
         "Version recovery could not be started. Please try again.",
       ),
+    );
+  });
+
+  it("retries recovery delivery with stable identity and observed revision", async () => {
+    getDefaultStore().set(selectedAppIdAtom, 1);
+    remoteState = {
+      type: "recovery-required",
+      session: {
+        appId: 1,
+        originBranch: "main",
+        targetVersionId: "abc123",
+        checkedOutVersionId: "abc123",
+        exitIntent: { type: "none" },
+        selectedDiffFile: null,
+        isDiffVisible: false,
+      },
+      error: { message: "Return failed" },
+    };
+    actor.dispatch
+      .mockRejectedValueOnce(
+        new RemoteMachineTransportError("disconnected", "connection lost"),
+      )
+      .mockResolvedValueOnce({
+        kind: "ignored",
+        reason: "invalid-transition",
+      });
+    const queryClient = new QueryClient();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <VersionPreviewProvider>
+          <div>content</div>
+        </VersionPreviewProvider>
+      </QueryClientProvider>,
+    );
+
+    const recoveryToast = toastError.mock.calls.find(
+      ([message]) =>
+        message ===
+        "Unable to return to the branch that was active before previewing this version.",
+    );
+    expect(recoveryToast).toBeDefined();
+    act(() => recoveryToast?.[1]?.action?.onClick());
+
+    await waitFor(() => expect(actor.dispatch).toHaveBeenCalledTimes(2));
+    expect(actor.dispatch.mock.calls[1]?.[1]?.requestIdentity).toEqual(
+      actor.dispatch.mock.calls[0]?.[1]?.requestIdentity,
+    );
+    expect(actor.dispatch.mock.calls[1]?.[1]?.expected).toEqual(
+      actor.dispatch.mock.calls[0]?.[1]?.expected,
     );
   });
 

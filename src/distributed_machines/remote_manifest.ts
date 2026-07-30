@@ -14,14 +14,12 @@ export const REMOTE_PROTOCOL_V1_COMPATIBILITY_INVENTORY = Object.freeze([
   "github_ops",
   "image_generation",
   "plan_handoff",
-  "version_preview",
 ]);
 
 export const LEGACY_REMOTE_MACHINE_DEFINITION_INVENTORY = Object.freeze([
   "chat_stream",
   "github_ops",
   "plan_handoff",
-  "version_preview",
 ] as const);
 
 export function assertRemoteProtocolV1CompatibilityInventory(

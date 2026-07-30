@@ -85,6 +85,12 @@ describe("distributed machine boundaries", () => {
       "plan_handoff/transport.ts",
       "version_preview/VersionPreviewProvider.tsx",
       "version_preview/client_definition.ts",
+      "version_preview/operations.ts",
+      "version_preview/remote_intent_contract.ts",
+      "version_preview/request_actor.ts",
+      "version_preview/request_scope.tsx",
+      "version_preview/transport.ts",
+      "version_preview/window_interest_client.ts",
     ]);
   });
 });

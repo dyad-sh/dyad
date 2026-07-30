@@ -243,7 +243,14 @@ export interface RuntimeRemoteIntentContract<
       readonly enqueue: () => unknown;
     },
   ) => RemoteOperationAdmissionResult<unknown>;
-  readonly disposeWindowSession?: (windowSessionId: string) => void;
+  readonly disposeWindowSession?: (
+    windowSessionId: string,
+    controls: {
+      readonly dispatchExisting: (
+        eventForKey: (key: Key) => InternalEvent,
+      ) => void;
+    },
+  ) => void;
 }
 
 export function defineRuntimeRemoteIntentContract<

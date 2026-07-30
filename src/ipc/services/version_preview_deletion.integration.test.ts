@@ -3,7 +3,6 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ActorHost } from "@/distributed_machines/actor_host";
-import { DyadErrorKind } from "@/errors/dyad_error";
 import {
   createFakeClock,
   createSequentialIdSource,
@@ -50,6 +49,10 @@ vi.mock("./version_preview_presentation_service", () => ({
     originEndpointFor: vi.fn(),
     forget: vi.fn(),
     confirm: vi.fn(),
+    settle: vi.fn(),
+    settleApp: vi.fn(),
+    settleActor: vi.fn(),
+    settleMachine: vi.fn(),
   },
 }));
 vi.mock(
@@ -124,12 +127,13 @@ describe("version preview deletion lifecycle", () => {
       type: "SELECT_VERSION",
       versionId: "abc123",
       operationId: "preview-1",
+      windowSessionId: "window-1",
     });
     await flush();
     expect(actor.getSnapshot().state.type).toBe("checking-out");
 
-    actors.beginAppDeletion(7);
-    const preparation = actors.prepareAppDeletion(7);
+    const fence = actors.beginAppDeletion(7);
+    const preparation = actors.prepareAppDeletion(fence);
     let prepared = false;
     void preparation.then(() => {
       prepared = true;
@@ -169,7 +173,7 @@ describe("version preview deletion lifecycle", () => {
     expect(host.peek(versionPreviewDefinition.id, versionPreviewKey(7))).toBe(
       undefined,
     );
-    actors.endAppDeletion(7);
+    actors.finishAppDeletion(fence, true);
   });
 
   it("rejects subscription actor creation after deletion begins", () => {
@@ -181,20 +185,57 @@ describe("version preview deletion lifecycle", () => {
     host.register(versionPreviewDefinition);
     const actors = new VersionPreviewActorService(host as never);
 
-    actors.beginAppDeletion(7);
+    const fence = actors.beginAppDeletion(7);
     try {
       expect(() =>
-        versionPreviewDefinition.remote.canonicalizeKeyAfterAuthorization?.(
-          versionPreviewKey(7),
-        ),
-      ).toThrowError(
-        expect.objectContaining({ kind: DyadErrorKind.Precondition }),
-      );
+        host.localRef(versionPreviewDefinition, versionPreviewKey(7)),
+      ).toThrow();
       expect(host.peek(versionPreviewDefinition.id, versionPreviewKey(7))).toBe(
         undefined,
       );
     } finally {
-      actors.endAppDeletion(7);
+      actors.finishAppDeletion(fence, false);
     }
+  });
+
+  it("reopens admission after a failed destructive commit", () => {
+    const host = new ActorHost({
+      placement: "main",
+      clock: createFakeClock(),
+      ids: createSequentialIdSource(),
+    });
+    host.register(versionPreviewDefinition);
+    const actors = new VersionPreviewActorService(host as never);
+
+    const fence = actors.beginAppDeletion(7);
+    actors.finishAppDeletion(fence, false);
+
+    expect(() =>
+      host.localRef(versionPreviewDefinition, versionPreviewKey(7)),
+    ).not.toThrow();
+  });
+
+  it("does not let a stale fence reopen its replacement generation", () => {
+    const host = new ActorHost({
+      placement: "main",
+      clock: createFakeClock(),
+      ids: createSequentialIdSource(),
+    });
+    host.register(versionPreviewDefinition);
+    const actors = new VersionPreviewActorService(host as never);
+
+    const stale = actors.beginAppDeletion(7);
+    actors.finishAppDeletion(stale, false);
+    const replacement = actors.beginAppDeletion(7);
+
+    actors.finishAppDeletion(stale, false);
+    expect(() =>
+      host.localRef(versionPreviewDefinition, versionPreviewKey(7)),
+    ).toThrow();
+
+    actors.finishAppDeletion(replacement, false);
+    expect(() =>
+      host.localRef(versionPreviewDefinition, versionPreviewKey(7)),
+    ).not.toThrow();
   });
 });

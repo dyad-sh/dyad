@@ -19,13 +19,13 @@ describe("VersionPreviewPresentationService", () => {
     const service = new VersionPreviewPresentationService(windows as never);
 
     for (let index = 0; index < 256; index += 1) {
-      service.recordInitiator(`operation-${index}`, `window-${index}`);
+      service.recordInitiator(7, `operation-${index}`, `window-${index}`);
     }
     expect(() =>
-      service.recordInitiator("operation-overflow", "window-256"),
+      service.recordInitiator(7, "operation-overflow", "window-256"),
     ).toThrowError(
       expect.objectContaining({
-        kind: DyadErrorKind.Auth,
+        kind: DyadErrorKind.RateLimited,
       }),
     );
 
@@ -35,7 +35,7 @@ describe("VersionPreviewPresentationService", () => {
     expect(service.originEndpointFor("operation-overflow")).toBeUndefined();
 
     service.forget("operation-0");
-    service.recordInitiator("operation-after-settlement", "window-256");
+    service.recordInitiator(7, "operation-after-settlement", "window-256");
     expect(service.originEndpointFor("operation-after-settlement")).toBe(
       endpoints.get("window-256"),
     );
@@ -52,8 +52,10 @@ describe("VersionPreviewPresentationService", () => {
     };
     const service = new VersionPreviewPresentationService(windows as never);
 
-    service.recordInitiator("shared-operation", "original");
-    service.recordInitiator("shared-operation", "other-window");
+    service.recordInitiator(7, "shared-operation", "original");
+    expect(() =>
+      service.recordInitiator(7, "shared-operation", "other-window"),
+    ).toThrowError(expect.objectContaining({ kind: DyadErrorKind.Conflict }));
 
     expect(service.originEndpointFor("shared-operation")).toBe(original);
   });
@@ -71,7 +73,7 @@ describe("VersionPreviewPresentationService", () => {
 
     endpoints.set("initiator", { send: vi.fn() });
     endpoints.set("survivor", survivor);
-    service.recordInitiator("operation", "initiator");
+    service.recordInitiator(7, "operation", "initiator");
     endpoints.delete("initiator");
 
     service.publishResult(7, "operation", {
@@ -84,6 +86,13 @@ describe("VersionPreviewPresentationService", () => {
 
     expect(survivor.send).not.toHaveBeenCalled();
     expect(windows.routePresentation).not.toHaveBeenCalled();
+    expect(service.inspect().unresolved).toBe(1);
+    service.settle("operation");
+    expect(service.inspect()).toMatchObject({
+      unresolved: 0,
+      terminal: 1,
+      total: 1,
+    });
   });
 
   it("isolates endpoint send failures from post-mutation lifecycle work", () => {
@@ -98,7 +107,7 @@ describe("VersionPreviewPresentationService", () => {
       routePresentation: vi.fn(),
     };
     const service = new VersionPreviewPresentationService(windows as never);
-    service.recordInitiator("operation", "initiator");
+    service.recordInitiator(7, "operation", "initiator");
 
     expect(() =>
       service.publishResult(7, "operation", {
@@ -118,26 +127,70 @@ describe("VersionPreviewPresentationService", () => {
     });
   });
 
-  it("expires unadmitted ownership but retains confirmed operations", () => {
-    vi.useFakeTimers();
-    try {
-      const endpoint = { send: vi.fn() };
-      const windows = {
-        endpointForSession: vi.fn(() => endpoint),
-        routePresentation: vi.fn(),
-      };
-      const service = new VersionPreviewPresentationService(windows as never);
+  it("releases rejected routes and retains settled routes within the bound", () => {
+    const endpoint = { send: vi.fn() };
+    const windows = {
+      endpointForSession: vi.fn(() => endpoint),
+      routePresentation: vi.fn(),
+    };
+    const service = new VersionPreviewPresentationService(windows as never);
 
-      service.recordInitiator("rejected", "window");
-      vi.runAllTimers();
-      expect(service.originEndpointFor("rejected")).toBeUndefined();
+    service.recordInitiator(7, "rejected", "window");
+    service.forget("rejected");
+    expect(service.originEndpointFor("rejected")).toBeUndefined();
 
-      service.recordInitiator("admitted", "window");
-      service.confirm("admitted");
-      vi.runAllTimers();
-      expect(service.originEndpointFor("admitted")).toBe(endpoint);
-    } finally {
-      vi.useRealTimers();
-    }
+    service.recordInitiator(7, "admitted", "window");
+    service.settle("admitted");
+    expect(service.originEndpointFor("admitted")).toBe(endpoint);
+    expect(service.inspect()).toMatchObject({
+      unresolved: 0,
+      terminal: 1,
+      total: 1,
+    });
+  });
+
+  it("retains closed-window routes until authoritative actor settlement", () => {
+    const windows = {
+      endpointForSession: vi.fn(() => undefined),
+      routePresentation: vi.fn(),
+    };
+    const service = new VersionPreviewPresentationService(windows as never);
+
+    service.recordInitiator(7, "closed-window-operation", "closed-window");
+
+    expect(service.inspect().unresolved).toBe(1);
+    expect(
+      service.originEndpointFor("closed-window-operation"),
+    ).toBeUndefined();
+    expect(service.inspect().unresolved).toBe(1);
+    service.settle("closed-window-operation");
+    expect(service.inspect()).toMatchObject({
+      unresolved: 0,
+      terminal: 1,
+    });
+  });
+
+  it("does not settle a replacement actor's route when a stale actor disposes", () => {
+    const windows = {
+      endpointForSession: vi.fn(() => undefined),
+      routePresentation: vi.fn(),
+    };
+    const service = new VersionPreviewPresentationService(windows as never);
+
+    service.recordInitiator(7, "stale-operation", "window-a", "actor-old");
+    service.recordInitiator(
+      7,
+      "replacement-operation",
+      "window-b",
+      "actor-new",
+    );
+
+    expect(service.settleActor("actor-old")).toBe(1);
+    expect(service.inspect()).toMatchObject({
+      unresolved: 1,
+      terminal: 1,
+    });
+    expect(service.originEndpointFor("replacement-operation")).toBeUndefined();
+    expect(service.settleActor("actor-new")).toBe(1);
   });
 });

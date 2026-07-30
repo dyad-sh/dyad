@@ -142,8 +142,8 @@ import {
 import { imageGenerationService } from "../services/image_generation_service";
 import { githubOpsService } from "../services/github_ops_service";
 import { versionPreviewActorService } from "../services/version_preview_actor_service";
+import type { VersionPreviewDeletionFence } from "../services/version_preview_actor_service";
 import { appDeletionQueue } from "../services/app_deletion_queue";
-import { versionPreviewService } from "../services/version_preview_service";
 import {
   beginChatActorDeletion,
   settleChatActorsForDeletion,
@@ -427,7 +427,7 @@ async function deleteAppByIdExclusive(
     commit(): void;
   },
 ): Promise<void> {
-  let versionPreviewDeletionStarted = false;
+  let versionPreviewDeletion: VersionPreviewDeletionFence | undefined;
   let githubDeletionStarted = false;
   let releaseStreamAdmissionBlock: (() => void) | undefined;
   let imageGenerationDeletion: ImageGenerationDeletionFence | undefined;
@@ -437,8 +437,7 @@ async function deleteAppByIdExclusive(
   let imageGenerationCleanupFailed = false;
   let imageGenerationCleanupError: unknown;
   try {
-    versionPreviewActorService.beginAppDeletion(appId);
-    versionPreviewDeletionStarted = true;
+    versionPreviewDeletion = versionPreviewActorService.beginAppDeletion(appId);
     releaseStreamAdmissionBlock = blockNewStreamsForApp(appId);
     githubOpsService.beginAppDeletion(appId);
     githubDeletionStarted = true;
@@ -446,7 +445,7 @@ async function deleteAppByIdExclusive(
       imageGenerationActorService.beginAppDeletion(appId);
     releaseChatCreation = beginAppChatDeletion(appId);
 
-    await versionPreviewActorService.prepareAppDeletion(appId);
+    await versionPreviewActorService.prepareAppDeletion(versionPreviewDeletion);
     await imageGenerationActorService.prepareAppDeletion(
       imageGenerationDeletion,
     );
@@ -571,8 +570,11 @@ async function deleteAppByIdExclusive(
         if (githubDeletionStarted) githubOpsService.endAppDeletion(appId);
       } finally {
         try {
-          if (versionPreviewDeletionStarted) {
-            versionPreviewActorService.endAppDeletion(appId);
+          if (versionPreviewDeletion) {
+            versionPreviewActorService.finishAppDeletion(
+              versionPreviewDeletion,
+              deletionCommitted,
+            );
           }
         } finally {
           releaseStreamAdmissionBlock?.();
@@ -1513,9 +1515,11 @@ export function registerAppHandlers() {
 
   createTypedHandler(systemContracts.resetAll, async () => {
     const appRunReset = appRunActorService.beginReset();
+    const versionPreviewReset = versionPreviewActorService.beginReset();
     let appRunResetCommitted = false;
     let appRunResetCompleted = false;
-    versionPreviewService.beginReset();
+    let versionPreviewResetCommitted = false;
+    let versionPreviewResetCompleted = false;
     githubOpsService.beginReset();
     imageGenerationService.beginReset();
     try {
@@ -1535,6 +1539,7 @@ export function registerAppHandlers() {
       }
       logger.log("all running apps stopped.");
       await appRunReset.seal();
+      await versionPreviewReset.seal();
       await appRunActorService.disposeAllApps();
       logger.log("all app run actors disposed.");
       await githubOpsActorService.disposeAllApps();
@@ -1559,6 +1564,8 @@ export function registerAppHandlers() {
       // app-run admission against a partially reset database.
       appRunReset.commit();
       appRunResetCommitted = true;
+      versionPreviewReset.commit();
+      versionPreviewResetCommitted = true;
       for (const dbFilePath of dbFilePaths) {
         if (fs.existsSync(dbFilePath)) {
           await fsPromises.unlink(dbFilePath);
@@ -1605,15 +1612,20 @@ export function registerAppHandlers() {
       logger.log("all app files removed.");
       logger.log("reset all complete.");
       appRunResetCompleted = true;
+      versionPreviewResetCompleted = true;
     } finally {
       if (appRunResetCompleted) {
         appRunReset.release();
       } else if (!appRunResetCommitted) {
         appRunReset.abort();
       }
+      if (versionPreviewResetCompleted) {
+        versionPreviewReset.release();
+      } else if (!versionPreviewResetCommitted) {
+        versionPreviewReset.abort();
+      }
       imageGenerationService.endReset();
       githubOpsService.endReset();
-      versionPreviewService.endReset();
     }
   });
 

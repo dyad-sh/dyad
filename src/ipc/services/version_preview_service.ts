@@ -18,10 +18,7 @@ import { versionPreviewPresentationService } from "./version_preview_presentatio
 const NO_BRANCH = "<no-branch>";
 
 export class VersionPreviewService {
-  private readonly deletionFences = new Map<number, number>();
   private readonly reconcilingApps = new Set<number>();
-  private readonly pendingByApp = new Map<number, Set<Promise<unknown>>>();
-  private resetFenceCount = 0;
 
   run(
     command: Extract<
@@ -38,13 +35,6 @@ export class VersionPreviewService {
     operationId?: string,
     onRestoreProgress?: (progress: RestoreRecovery) => void,
   ): Promise<VersionCommandResult> {
-    if (command.type !== "return") {
-      try {
-        this.assertAcceptingOperations(command.appId);
-      } catch (error) {
-        return Promise.reject(error);
-      }
-    }
     let operation: Promise<VersionCommandResult>;
     switch (command.type) {
       case "checkout":
@@ -94,33 +84,25 @@ export class VersionPreviewService {
         );
         break;
     }
-    return this.track(command.appId, operation);
+    return operation;
   }
 
   resolveOriginBranch(appId: number): Promise<{ branch: string | null }> {
-    try {
-      this.assertAcceptingOperations(appId);
-    } catch (error) {
-      return Promise.reject(error);
-    }
-    return this.track(
-      appId,
-      (async () => {
-        const app = await db.query.apps.findFirst({
-          columns: { path: true },
-          where: eq(apps.id, appId),
-        });
-        if (!app) {
-          throw new DyadError("App not found", DyadErrorKind.NotFound);
-        }
-        const appPath = getDyadAppPath(app.path);
-        if (!fs.existsSync(path.join(appPath, ".git"))) {
-          throw new DyadError("Not a git repository", DyadErrorKind.External);
-        }
-        const branch = await gitCurrentBranch({ path: appPath });
-        return { branch: branch && branch !== NO_BRANCH ? branch : null };
-      })(),
-    );
+    return (async () => {
+      const app = await db.query.apps.findFirst({
+        columns: { path: true },
+        where: eq(apps.id, appId),
+      });
+      if (!app) {
+        throw new DyadError("App not found", DyadErrorKind.NotFound);
+      }
+      const appPath = getDyadAppPath(app.path);
+      if (!fs.existsSync(path.join(appPath, ".git"))) {
+        throw new DyadError("Not a git repository", DyadErrorKind.External);
+      }
+      const branch = await gitCurrentBranch({ path: appPath });
+      return { branch: branch && branch !== NO_BRANCH ? branch : null };
+    })();
   }
 
   reconcile(appId: number): Promise<{
@@ -128,59 +110,29 @@ export class VersionPreviewService {
     headOid: string | null;
     isClean: boolean;
   }> {
-    return this.track(
-      appId,
-      (async () => {
-        const app = await db.query.apps.findFirst({
-          columns: { path: true },
-          where: eq(apps.id, appId),
-        });
-        if (!app) {
-          throw new DyadError("App not found", DyadErrorKind.NotFound);
-        }
-        const appPath = getDyadAppPath(app.path);
-        if (!fs.existsSync(path.join(appPath, ".git"))) {
-          throw new DyadError("Not a git repository", DyadErrorKind.External);
-        }
-        const [branch, headOid, uncommittedFiles] = await Promise.all([
-          gitCurrentBranch({ path: appPath }),
-          getCurrentCommitHash({ path: appPath }),
-          getGitUncommittedFilesWithStatus({ path: appPath }),
-        ]);
-        return {
-          branch: branch && branch !== NO_BRANCH ? branch : null,
-          headOid: headOid || null,
-          isClean: uncommittedFiles.length === 0,
-        };
-      })(),
-    );
-  }
-
-  beginAppDeletion(appId: number): void {
-    this.deletionFences.set(appId, (this.deletionFences.get(appId) ?? 0) + 1);
-  }
-
-  endAppDeletion(appId: number): void {
-    const remaining = (this.deletionFences.get(appId) ?? 1) - 1;
-    if (remaining > 0) this.deletionFences.set(appId, remaining);
-    else this.deletionFences.delete(appId);
-  }
-
-  beginReset(): void {
-    this.resetFenceCount += 1;
-  }
-
-  endReset(): void {
-    this.resetFenceCount = Math.max(0, this.resetFenceCount - 1);
-  }
-
-  assertAcceptingOperations(appId: number): void {
-    if (this.resetFenceCount > 0 || this.deletionFences.has(appId)) {
-      throw new DyadError(
-        "The app is being deleted",
-        DyadErrorKind.Precondition,
-      );
-    }
+    return (async () => {
+      const app = await db.query.apps.findFirst({
+        columns: { path: true },
+        where: eq(apps.id, appId),
+      });
+      if (!app) {
+        throw new DyadError("App not found", DyadErrorKind.NotFound);
+      }
+      const appPath = getDyadAppPath(app.path);
+      if (!fs.existsSync(path.join(appPath, ".git"))) {
+        throw new DyadError("Not a git repository", DyadErrorKind.External);
+      }
+      const [branch, headOid, uncommittedFiles] = await Promise.all([
+        gitCurrentBranch({ path: appPath }),
+        getCurrentCommitHash({ path: appPath }),
+        getGitUncommittedFilesWithStatus({ path: appPath }),
+      ]);
+      return {
+        branch: branch && branch !== NO_BRANCH ? branch : null,
+        headOid: headOid || null,
+        isClean: uncommittedFiles.length === 0,
+      };
+    })();
   }
 
   beginReconciliation(appId: number): void {
@@ -192,18 +144,11 @@ export class VersionPreviewService {
   }
 
   assertReadyForIntent(appId: number): void {
-    this.assertAcceptingOperations(appId);
     if (this.reconcilingApps.has(appId)) {
       throw new DyadError(
         "Version preview is reconciling after restart",
         DyadErrorKind.Precondition,
       );
-    }
-  }
-
-  async settle(appId: number): Promise<void> {
-    while (this.pendingByApp.get(appId)?.size) {
-      await Promise.allSettled(this.pendingByApp.get(appId) ?? []);
     }
   }
 
@@ -244,31 +189,6 @@ export class VersionPreviewService {
       targetHead: command.type === "restore" ? command.versionId : null,
       nextStep: "preparing",
     });
-  }
-
-  trackLifecycle<Result>(
-    appId: number,
-    promise: Promise<Result>,
-  ): Promise<Result> {
-    return this.track(appId, promise);
-  }
-
-  private track<Result>(
-    appId: number,
-    promise: Promise<Result>,
-  ): Promise<Result> {
-    let pending = this.pendingByApp.get(appId);
-    if (!pending) {
-      pending = new Set();
-      this.pendingByApp.set(appId, pending);
-    }
-    pending.add(promise);
-    const cleanup = () => {
-      pending?.delete(promise);
-      if (pending?.size === 0) this.pendingByApp.delete(appId);
-    };
-    void promise.then(cleanup, cleanup);
-    return promise;
   }
 }
 

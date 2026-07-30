@@ -89,7 +89,10 @@ describe("version preview window interest handlers", () => {
     ).resolves.toEqual({ acquired: true });
 
     expect(windows.ensureRegistered).toHaveBeenCalledWith(sender);
-    expect(actors.restoreWindowInterest).toHaveBeenCalledWith(7, 42);
+    expect(actors.restoreWindowInterest).toHaveBeenCalledWith(
+      7,
+      "window-session",
+    );
     expect(actors.acquireWindowInterest).not.toHaveBeenCalled();
   });
 });

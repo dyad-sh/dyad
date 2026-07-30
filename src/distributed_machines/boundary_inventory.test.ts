@@ -1113,13 +1113,14 @@ describe("progressive distributed-machine inventories", () => {
     );
   }, 20_000);
 
-  it("requires the two migrated definitions to use the framework capability constructor", () => {
+  it("requires migrated definitions to use the framework capability constructor", () => {
     assertInventory(
       "framework-covered definitions",
       collectProduction(frameworkCoveredDefinitionBoundaries),
       [
         "app_run/definition.ts::appRunDefinition",
         "ipc/services/image_generation_definition.ts::imageGenerationDefinition",
+        "ipc/services/version_preview_definition.ts::versionPreviewDefinition",
       ],
     );
   }, 20_000);
@@ -1134,7 +1135,6 @@ describe("progressive distributed-machine inventories", () => {
         "ipc/services/distributed_machine_host.ts::call(defineLegacyRemoteMachineCompatibility:chatStreamDefinition)",
         "ipc/services/distributed_machine_host.ts::call(defineLegacyRemoteMachineCompatibility:githubOpsDefinition)",
         "ipc/services/distributed_machine_host.ts::call(defineLegacyRemoteMachineCompatibility:planHandoffDefinition)",
-        "ipc/services/distributed_machine_host.ts::call(defineLegacyRemoteMachineCompatibility:versionPreviewDefinition)",
       ].sort(),
     );
   }, 20_000);

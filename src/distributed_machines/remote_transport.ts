@@ -1518,7 +1518,11 @@ export class RemoteMachineTransport {
     this.windowSessions.delete(webContentsId);
     if (windowSessionId) {
       for (const definition of this.options.manifest.definitions) {
-        definition.remoteIntent?.disposeWindowSession?.(windowSessionId);
+        definition.remoteIntent?.disposeWindowSession?.(windowSessionId, {
+          dispatchExisting: (eventForKey) => {
+            this.options.host.dispatchExisting(definition, eventForKey);
+          },
+        });
       }
     }
     for (const pending of this.pendingSubscriptions.values()) {

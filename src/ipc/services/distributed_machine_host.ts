@@ -26,7 +26,7 @@ const remoteMachineDefinitions = [
   defineLegacyRemoteMachineCompatibility(githubOpsDefinition),
   imageGenerationDefinition,
   defineLegacyRemoteMachineCompatibility(planHandoffDefinition),
-  defineLegacyRemoteMachineCompatibility(versionPreviewDefinition),
+  versionPreviewDefinition,
 ] as const;
 
 assertRemoteProtocolV1CompatibilityInventory(remoteMachineDefinitions);

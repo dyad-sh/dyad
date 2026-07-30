@@ -128,6 +128,7 @@ export interface CreateRemoteRequestActorOptions<
   readonly selectOutcome: (
     view: RemoteActorView<State>,
     requestId: RequestId,
+    input: Input,
   ) => Outcome | undefined;
   /**
    * Observes request-owned snapshot changes without adding a second
@@ -258,7 +259,11 @@ export function createRemoteRequestActor<
           const inspect = (notify = false) => {
             const view = options.actor.getView();
             if (notify) observe(view);
-            const outcome = options.selectOutcome(view, identity.requestId);
+            const outcome = options.selectOutcome(
+              view,
+              identity.requestId,
+              requestInput,
+            );
             if (outcome !== undefined) {
               complete(outcome);
               return;

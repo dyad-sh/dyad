@@ -26,6 +26,9 @@ export type HistoricalFailureShape =
   | "bootstrap-generation-regression"
   | "delivery-projection-divergence"
   | "error-classification-collapse"
+  | "error-instance-wire-outcome"
+  | "cross-actor-supersession"
+  | "closed-window-route-terminal-retention"
   | "abort-terminal-settlement";
 
 export const REQUIRED_HISTORICAL_FAILURE_SHAPES = [

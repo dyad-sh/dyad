@@ -54,7 +54,9 @@ export class WindowRegistry {
     string,
     MutableCapabilityLease
   >();
-  private readonly unregisterListeners = new Set<(id: number) => void>();
+  private readonly unregisterListeners = new Set<
+    (id: number, sessionId: WindowSessionId) => void
+  >();
   private focusSequence = 0;
 
   constructor(private readonly options: WindowRegistryOptions = {}) {}
@@ -97,10 +99,14 @@ export class WindowRegistry {
         this.revokeLease(lease, "window-destroyed");
       }
     }
-    for (const listener of this.unregisterListeners) listener(webContentsId);
+    for (const listener of this.unregisterListeners) {
+      listener(webContentsId, record.sessionId);
+    }
   }
 
-  onUnregister(listener: (webContentsId: number) => void): () => void {
+  onUnregister(
+    listener: (webContentsId: number, windowSessionId: WindowSessionId) => void,
+  ): () => void {
     this.unregisterListeners.add(listener);
     return () => this.unregisterListeners.delete(listener);
   }

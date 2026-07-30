@@ -1285,6 +1285,42 @@ export class ActorHost {
     return actor?.isDisposing() ? undefined : actor;
   }
 
+  /**
+   * Dispatches a trusted lifecycle event to every currently hosted actor for a
+   * machine without creating or hydrating actors that are not already live.
+   */
+  dispatchExisting<
+    Id extends string,
+    Key,
+    State,
+    Event,
+    Command,
+    Reason extends IgnoreReason,
+    RemoteIntent,
+    Outcome,
+  >(
+    definition: DistributedMachineDefinition<
+      Id,
+      Key,
+      State,
+      Event,
+      Command,
+      Reason,
+      RemoteIntent,
+      Outcome
+    >,
+    eventForKey: (key: Key) => Event,
+  ): readonly ActorDispatchTicket<State, Reason>[] {
+    this.assertRegistered(definition);
+    const actors = this.actors.get(definition.id);
+    if (!actors) return [];
+    return [...actors].map(([key, actor]) =>
+      (
+        actor as HostedActor<Key, State, Event, Command, Reason, Outcome>
+      ).enqueue(eventForKey(key as Key)),
+    );
+  }
+
   localRef<
     Id extends string,
     Key,

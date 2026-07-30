@@ -21,6 +21,7 @@ import {
   type MachineConformance,
 } from "./machine_conformance";
 import { PILOT_CONFORMANCE_REGISTRATIONS } from "./pilot_conformance";
+import { versionPreviewConformance } from "@/version_preview/conformance.test_support";
 
 const maximumIdentity = "i".repeat(256);
 
@@ -332,9 +333,10 @@ describe("remote intent contract registration", () => {
       PILOT_CONFORMANCE_REGISTRATIONS.map(
         ({ conformance }) => conformance.machineId,
       ),
-    ).toEqual(["app_run", "image_generation"]);
+    ).toEqual(["app_run", "image_generation", "version_preview"]);
     expect(appRunConformance.tiers).toEqual(["T0", "T1", "T2"]);
     expect(imageGenerationConformance.tiers).toEqual(["T0", "T1", "T2"]);
+    expect(versionPreviewConformance.tiers).toEqual(["T0", "T1", "T2", "T3"]);
     expect(appRunConformance.representativeCapabilities.canRebuild).toEqual([
       "rebuild",
     ]);
@@ -347,6 +349,7 @@ describe("remote intent contract registration", () => {
     const names = new Set([
       ...appRunConformance.historicalFailureShapes,
       ...imageGenerationConformance.historicalFailureShapes,
+      ...versionPreviewConformance.historicalFailureShapes,
     ]);
     expect(
       REQUIRED_HISTORICAL_FAILURE_SHAPES.filter((name) => !names.has(name)),

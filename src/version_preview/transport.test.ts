@@ -68,12 +68,20 @@ describe("version_preview wire contracts", () => {
         activeInvocationRef: null,
         lastSettlement: {
           operationId: "return-1",
+          requestId: "request-1",
+          operation: "close",
           outcome: "failed",
+          cleanupStarted: true,
           error: { message: "return failed" },
         },
       }),
     );
 
+    expect(snapshot.lastSettlement).toEqual({
+      operationId: "return-1",
+      outcome: "failed",
+      error: { message: "return failed" },
+    });
     expect(JSON.parse(JSON.stringify(snapshot))).toEqual(snapshot);
     expect(JSON.stringify(snapshot)).not.toMatch(
       /retry|callback|appPath|repositoryPath/,

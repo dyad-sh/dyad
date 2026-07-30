@@ -1,4 +1,4 @@
-import { Check } from "lucide-react";
+import { Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -25,14 +25,23 @@ function sourceOf(entry: McpCatalogEntry): string {
   return hostnameOf(entry.url);
 }
 
+// What an already-added entry is doing. "Added" on its own says only
+// that a row exists, which reads as finished while an OAuth connect is
+// still running or has failed.
+export type CatalogCardStatus =
+  | "not-added"
+  | "added"
+  | "connecting"
+  | "needs-connect";
+
 export function CatalogCard({
   entry,
-  isAdded,
+  status,
   isAdding,
   onAdd,
 }: {
   entry: McpCatalogEntry;
-  isAdded: boolean;
+  status: CatalogCardStatus;
   isAdding: boolean;
   onAdd: (entry: McpCatalogEntry) => void;
 }) {
@@ -61,7 +70,16 @@ export function CatalogCard({
           <span className="text-xs text-muted-foreground truncate">
             {sourceOf(entry)}
           </span>
-          {isAdded ? (
+          {status === "connecting" ? (
+            <span className="flex items-center gap-1 text-xs font-medium text-muted-foreground shrink-0">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              Connecting…
+            </span>
+          ) : status === "needs-connect" ? (
+            <span className="text-xs font-medium text-amber-600 dark:text-amber-400 shrink-0">
+              Not connected
+            </span>
+          ) : status === "added" ? (
             <span className="flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400 shrink-0">
               <Check className="w-3.5 h-3.5" />
               Added

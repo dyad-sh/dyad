@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -74,6 +75,7 @@ export function AddPluginDialog({
     opts: { wantsOAuth: boolean },
   ) => Promise<void>;
 }) {
+  const navigate = useNavigate();
   const { createServer } = useMcp();
   const [name, setName] = useState("");
   const [transport, setTransport] = useState<Transport>("stdio");
@@ -185,10 +187,22 @@ export function AddPluginDialog({
     setOauthScope("");
     onOpenChange(false);
 
-    if (transport === "http" && created) {
-      await onServerCreated(created, { wantsOAuth });
-    } else if (created) {
-      // http servers get feedback from the OAuth/probe flow above.
+    if (!created) return;
+
+    // Land on the new server's page: a stdio server usually still
+    // needs env vars, an http one headers, and an OAuth connect shows
+    // its progress there. The form gives no way to tell which of those
+    // apply, so go there either way.
+    navigate({ to: "/plugins/$serverId", params: { serverId: created.id } });
+
+    if (transport === "http") {
+      // Not awaited: the connect runs while the user is already on the
+      // detail page, which reports its own progress. Connect state
+      // lives in shared atoms, so navigating can't lose it.
+      void onServerCreated(created, { wantsOAuth });
+    } else {
+      // Only stdio needs a toast; an http server reports itself
+      // through the connect flow above.
       showSuccess(`Added "${created.name}"`);
     }
   };

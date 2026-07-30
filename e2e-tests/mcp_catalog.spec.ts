@@ -148,10 +148,16 @@ testSkipIfWindows(
       await po.navigation.goToPluginsTab();
 
       await po.catalog.addFromCatalog("E2E OAuth Server");
-      await po.catalog.expectAdded("E2E OAuth Server");
+      // Adding an OAuth entry lands on the new server's page, so the
+      // connect reports progress where the user is already looking.
+      await expect(po.page.getByTestId("plugin-detail")).toBeVisible();
       await expect(po.page.getByText("OAuth: connected")).toBeVisible({
         timeout: 15_000,
       });
+
+      // Back on the catalog the entry reads as added, not as pending.
+      await po.navigation.goToPluginsTab();
+      await po.catalog.expectAdded("E2E OAuth Server");
     } finally {
       await stop(oauthServer);
     }

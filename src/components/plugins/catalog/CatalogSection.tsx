@@ -1,8 +1,11 @@
 import { useMemo, useState } from "react";
 import { Star } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { useMcp } from "@/hooks/useMcp";
 import { useMcpCatalog } from "@/hooks/useMcpCatalog";
+import { usePluginConnect } from "../usePluginConnect";
 import { CatalogCard } from "./CatalogCard";
+import { catalogCardStatus } from "./catalogCardStatus";
 import { StdioCatalogConsentDialog } from "./StdioCatalogConsentDialog";
 import { useAddFromCatalog } from "./useAddFromCatalog";
 
@@ -18,11 +21,22 @@ export function CatalogSection() {
 
   const catalogQuery = useMcpCatalog();
 
+  const { servers } = useMcp();
+  const { connectingServerId } = usePluginConnect();
+
   const entries = catalogQuery.data?.entries ?? [];
   const addedSlugs = useMemo(
     () => new Set(catalogQuery.data?.addedSlugs ?? []),
     [catalogQuery.data?.addedSlugs],
   );
+
+  const serverBySlug = useMemo(() => {
+    const map = new Map<string, (typeof servers)[number]>();
+    for (const server of servers) {
+      if (server.catalogSlug) map.set(server.catalogSlug, server);
+    }
+    return map;
+  }, [servers]);
 
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -98,7 +112,12 @@ export function CatalogSection() {
               <CatalogCard
                 key={entry.slug}
                 entry={entry}
-                isAdded={addedSlugs.has(entry.slug)}
+                status={catalogCardStatus({
+                  entry,
+                  addedSlugs,
+                  serverBySlug,
+                  connectingServerId,
+                })}
                 isAdding={addingSlug === entry.slug}
                 onAdd={addFromCatalog}
               />
@@ -116,7 +135,12 @@ export function CatalogSection() {
               <CatalogCard
                 key={entry.slug}
                 entry={entry}
-                isAdded={addedSlugs.has(entry.slug)}
+                status={catalogCardStatus({
+                  entry,
+                  addedSlugs,
+                  serverBySlug,
+                  connectingServerId,
+                })}
                 isAdding={addingSlug === entry.slug}
                 onAdd={addFromCatalog}
               />

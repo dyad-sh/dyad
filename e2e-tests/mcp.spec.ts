@@ -38,6 +38,11 @@ testSkipIfWindows("mcp - call calculator", async ({ po }) => {
     .fill(testMcpServerPath);
   await po.plugins.submitAddPluginDialog();
 
+  // Adding lands on the new server's page, which is where env vars are
+  // entered. Asserted before openPluginDetail below, which tolerates
+  // either starting point.
+  await expect(po.page.getByTestId("plugin-detail")).toBeVisible();
+
   // Environment variables are edited on the plugin's detail page.
   await po.plugins.openPluginDetail("testing-mcp-server");
   const detail = po.page.getByTestId("plugin-detail");

@@ -80,6 +80,14 @@ export function useAddFromCatalog() {
     // competing flow) and reuses the probed callback port; it is not
     // awaited so an abandoned browser step can't wedge the add.
     if (entry.transport === "http" && entry.oauth?.required) {
+      // Go to the server's page first, so the connect reports progress
+      // somewhere the user is looking. An entry with nothing to
+      // configure and no connect to watch stays on the catalog, which
+      // keeps adding several in a row workable.
+      navigate({
+        to: "/plugins/$serverId",
+        params: { serverId: created.id },
+      });
       void onServerCreated(created, { wantsOAuth: true });
     }
   };

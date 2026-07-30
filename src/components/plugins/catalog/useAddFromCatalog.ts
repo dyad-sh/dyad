@@ -15,7 +15,7 @@ export function useAddFromCatalog() {
   // consent is pending.
   const [pendingStdioEntry, setPendingStdioEntry] =
     useState<McpCatalogEntry | null>(null);
-  const { onServerCreated } = usePluginConnect();
+  const { onServerCreated, connectingServerId } = usePluginConnect();
 
   const mutation = useMutation({
     mutationFn: async (entry: McpCatalogEntry) => {
@@ -114,6 +114,9 @@ export function useAddFromCatalog() {
   return {
     addFromCatalog,
     addingSlug,
+    // Passed through so the catalog can show connect progress without
+    // mounting the connect hook a second time.
+    connectingServerId,
     pendingStdioEntry,
     confirmPendingStdio,
     cancelPendingStdio,

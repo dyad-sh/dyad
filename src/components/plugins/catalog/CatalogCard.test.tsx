@@ -54,4 +54,19 @@ describe("CatalogCard status", () => {
     expect(screen.getByText("Added")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Add" })).toBeNull();
   });
+
+  // The label changes as a connect progresses, so it has to sit in a
+  // region assistive tech watches.
+  it.each(["connecting", "needs-connect", "added"] as const)(
+    "announces the %s state through a status role",
+    (status) => {
+      renderCard(status);
+      expect(screen.getByRole("status")).toBeTruthy();
+    },
+  );
+
+  it("keeps the decorative icon out of the announced text", () => {
+    renderCard("connecting");
+    expect(screen.getByRole("status").textContent).toBe("Connecting…");
+  });
 });

@@ -70,24 +70,36 @@ export function CatalogCard({
           <span className="text-xs text-muted-foreground truncate">
             {sourceOf(entry)}
           </span>
-          {status === "connecting" ? (
-            <span className="flex items-center gap-1 text-xs font-medium text-muted-foreground shrink-0">
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              Connecting…
-            </span>
-          ) : status === "needs-connect" ? (
-            <span className="text-xs font-medium text-amber-600 dark:text-amber-400 shrink-0">
-              Not connected
-            </span>
-          ) : status === "added" ? (
-            <span className="flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400 shrink-0">
-              <Check className="w-3.5 h-3.5" />
-              Added
-            </span>
-          ) : (
+          {status === "not-added" ? (
             <Button size="sm" onClick={() => onAdd(entry)} disabled={isAdding}>
               {isAdding ? "Adding…" : "Add"}
             </Button>
+          ) : (
+            // One region for every state, so a change from Connecting…
+            // to Added or Not connected is announced. The icons repeat
+            // the label, so they stay out of the accessible name.
+            <span
+              role="status"
+              className={`flex items-center gap-1 text-xs font-medium shrink-0 ${
+                status === "connecting"
+                  ? "text-muted-foreground"
+                  : status === "needs-connect"
+                    ? "text-amber-600 dark:text-amber-400"
+                    : "text-green-600 dark:text-green-400"
+              }`}
+            >
+              {status === "connecting" && (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden />
+              )}
+              {status === "added" && (
+                <Check className="w-3.5 h-3.5" aria-hidden />
+              )}
+              {status === "connecting"
+                ? "Connecting…"
+                : status === "needs-connect"
+                  ? "Not connected"
+                  : "Added"}
+            </span>
           )}
         </div>
       </CardHeader>

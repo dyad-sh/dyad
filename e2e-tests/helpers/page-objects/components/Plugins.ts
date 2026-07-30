@@ -28,18 +28,23 @@ export class Plugins {
   // by itself, so callers can ask for it either way.
   async openPluginDetail(serverName: string) {
     const detail = this.page.getByTestId("plugin-detail");
-    const card = this.page
-      .getByTestId("plugin-card")
-      .filter({ has: this.page.getByText(serverName, { exact: true }) });
+    const named = this.page.getByText(serverName, { exact: true });
+    // Scoped to this server: a detail page for a different one still
+    // needs the card clicked.
+    const detailForServer = detail.filter({ has: named });
+    const card = this.page.getByTestId("plugin-card").filter({ has: named });
     // Adding navigates here on its own, so wait for whichever of the two
     // settles first. Checking the detail page alone would read false
     // while a navigation is still in flight, then look for a card that
     // has already left the DOM.
-    await expect(detail.or(card).first()).toBeVisible({
+    await expect(detailForServer.or(card).first()).toBeVisible({
       timeout: Timeout.MEDIUM,
     });
-    if (!(await detail.isVisible())) {
-      await card.click();
+    if (!(await detailForServer.isVisible())) {
+      // A navigation landing between that check and this click removes
+      // the card, which is a success rather than a failure. The
+      // assertions below decide either way.
+      await card.click().catch(() => {});
     }
     await expect(detail).toBeVisible({ timeout: Timeout.MEDIUM });
     await expect(detail.getByText(serverName, { exact: true })).toBeVisible({

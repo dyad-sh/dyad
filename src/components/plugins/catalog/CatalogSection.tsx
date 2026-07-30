@@ -3,7 +3,6 @@ import { Star } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useMcp } from "@/hooks/useMcp";
 import { useMcpCatalog } from "@/hooks/useMcpCatalog";
-import { usePluginConnect } from "../usePluginConnect";
 import { CatalogCard } from "./CatalogCard";
 import { catalogCardStatus } from "./catalogCardStatus";
 import { StdioCatalogConsentDialog } from "./StdioCatalogConsentDialog";
@@ -14,6 +13,7 @@ export function CatalogSection() {
   const {
     addFromCatalog,
     addingSlug,
+    connectingServerId,
     pendingStdioEntry,
     confirmPendingStdio,
     cancelPendingStdio,
@@ -22,7 +22,6 @@ export function CatalogSection() {
   const catalogQuery = useMcpCatalog();
 
   const { servers } = useMcp();
-  const { connectingServerId } = usePluginConnect();
 
   const entries = catalogQuery.data?.entries ?? [];
   const addedSlugs = useMemo(

@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   createTempTestUser: vi.fn(),
   deleteTempTestUser: vi.fn().mockResolvedValue(undefined),
   checkRls: vi.fn().mockResolvedValue({ tablesWithoutRls: [] }),
+  detectLegacyAppKey: vi.fn().mockResolvedValue(undefined),
   updateNeonEnvVars: vi.fn().mockResolvedValue(undefined),
   readEnvFileIfExists: vi.fn().mockResolvedValue(null),
   executeApp: vi.fn().mockResolvedValue(undefined),
@@ -43,6 +44,9 @@ vi.mock("../utils/supabase_test_user", () => ({
   createTempTestUser: mocks.createTempTestUser,
   deleteTempTestUser: mocks.deleteTempTestUser,
   checkRls: mocks.checkRls,
+}));
+vi.mock("../../supabase_admin/supabase_app_key", () => ({
+  detectLegacyAppKey: mocks.detectLegacyAppKey,
 }));
 vi.mock("../utils/app_env_var_utils", () => ({
   ENV_FILE_NAME: ".env.local",
@@ -106,6 +110,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.runningApps.clear();
   mocks.checkRls.mockResolvedValue({ tablesWithoutRls: [] });
+  mocks.detectLegacyAppKey.mockResolvedValue(undefined);
   mocks.readEnvFileIfExists.mockResolvedValue(null);
   mocks.createTempTestUser.mockResolvedValue({
     userId: "user-1",
@@ -116,6 +121,53 @@ beforeEach(() => {
 });
 
 describe("prepareIsolatedTestDatabase — Supabase test-user path", () => {
+  // The test signs in through the app's own login UI, so a legacy key in the
+  // app's client is a failure waiting to happen — one that reads as broken
+  // login code rather than a retired key. Warn, and let the panel offer a fix.
+  it("warns and offers the switch when the app is on a legacy key", async () => {
+    mocks.detectLegacyAppKey.mockResolvedValue({
+      clientFilePath: "/apps/app1/src/integrations/supabase/client.ts",
+      legacyKey: "eyJ.legacy-anon",
+      publishableKey: "sb_publishable_abc",
+    });
+
+    const prepared = await prepareIsolatedTestDatabase({
+      app: makeApp({
+        supabaseProjectId: "sb-1",
+        supabaseOrganizationSlug: "org-1",
+      }),
+      emit,
+      runtimeMode: "host",
+    });
+
+    expect(prepared.isolation.reason).toMatch(/legacy API key/);
+    expect(prepared.isolation.canSwitchToPublishableKey).toBe(true);
+    // Warns, never blocks — the run still happens.
+    expect(prepared.infraError).toBeUndefined();
+    expect(mocks.createTempTestUser).toHaveBeenCalled();
+  });
+
+  it("combines the legacy-key warning with the RLS warning", async () => {
+    mocks.checkRls.mockResolvedValue({ tablesWithoutRls: ["todos"] });
+    mocks.detectLegacyAppKey.mockResolvedValue({
+      clientFilePath: "/apps/app1/src/integrations/supabase/client.ts",
+      legacyKey: "eyJ.legacy-anon",
+      publishableKey: "sb_publishable_abc",
+    });
+
+    const prepared = await prepareIsolatedTestDatabase({
+      app: makeApp({
+        supabaseProjectId: "sb-1",
+        supabaseOrganizationSlug: "org-1",
+      }),
+      emit,
+      runtimeMode: "host",
+    });
+
+    expect(prepared.isolation.reason).toMatch(/Row-Level Security/);
+    expect(prepared.isolation.reason).toMatch(/legacy API key/);
+  });
+
   it("creates a test user and returns credentials when RLS is fully enabled", async () => {
     const prepared = await prepareIsolatedTestDatabase({
       app: makeApp({

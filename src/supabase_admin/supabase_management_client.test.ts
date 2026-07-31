@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  getProjectApiKeys,
   listSupabaseOrganizations,
   refreshSupabaseToken,
 } from "./supabase_management_client";
@@ -100,5 +101,46 @@ describe("refreshSupabaseToken", () => {
       undefined,
       undefined,
     ]);
+  });
+});
+
+describe("getProjectApiKeys", () => {
+  beforeEach(() => {
+    vi.mocked(readSettings).mockReturnValue({
+      supabase: {
+        organizations: {
+          "org-1": {
+            accessToken: { value: "org-token" },
+            expiresIn: 3600,
+            tokenTimestamp: Math.floor(Date.now() / 1000),
+          },
+        },
+      },
+    } as unknown as ReturnType<typeof readSettings>);
+  });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  // Supabase redacts secret key VALUES unless the request asks to reveal them,
+  // so an admin caller that forgets the flag can only ever use the legacy JWT.
+  it("reveals secret key values only when asked", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("[]", { status: 200 })),
+    );
+
+    await getProjectApiKeys({
+      projectId: "proj-1",
+      organizationSlug: "org-1",
+      reveal: true,
+    });
+    expect(vi.mocked(fetch).mock.calls[0][0]).toBe(
+      "https://api.supabase.com/v1/projects/proj-1/api-keys?reveal=true",
+    );
+
+    await getProjectApiKeys({ projectId: "proj-1", organizationSlug: "org-1" });
+    expect(vi.mocked(fetch).mock.calls[1][0]).toBe(
+      "https://api.supabase.com/v1/projects/proj-1/api-keys",
+    );
   });
 });

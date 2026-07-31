@@ -11,6 +11,11 @@ import {
   type SupabaseProjectLog,
 } from "../../supabase_admin/supabase_management_client";
 import { extractFunctionName } from "../../supabase_admin/supabase_utils";
+import {
+  detectLegacyAppKey,
+  switchAppToPublishableKey,
+} from "../../supabase_admin/supabase_app_key";
+import { getDyadAppPath } from "../../paths/paths";
 import { createTypedHandler } from "./base";
 import { createTestOnlyLoggedHandler } from "./safe_handle";
 import { readSettings, writeSettings } from "../../main/settings";
@@ -236,6 +241,49 @@ export function registerSupabaseHandlers() {
 
     logger.info(`Removed Supabase project association for app ${app}`);
   });
+
+  // Does this app still authenticate with the project's legacy anon key?
+  createTypedHandler(
+    supabaseContracts.detectLegacyAppKey,
+    async (_, { appId }) => {
+      const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+      // An app with no Supabase project has nothing to check. Reporting
+      // "no legacy key" beats throwing: the caller only wants to know whether
+      // to offer the switch.
+      if (!app?.supabaseProjectId) {
+        return { hasLegacyKey: false };
+      }
+      const legacy = await detectLegacyAppKey({
+        appPath: getDyadAppPath(app.path),
+        projectId: app.supabaseProjectId,
+        organizationSlug: app.supabaseOrganizationSlug,
+      });
+      return { hasLegacyKey: !!legacy };
+    },
+  );
+
+  // Swap an app's generated client off the legacy anon key it was created with.
+  createTypedHandler(
+    supabaseContracts.switchAppToPublishableKey,
+    async (_, { appId }) => {
+      const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+      if (!app) {
+        throw new DyadError(`App ${appId} not found.`, DyadErrorKind.NotFound);
+      }
+      if (!app.supabaseProjectId) {
+        throw new DyadError(
+          `App ${appId} is not connected to a Supabase project.`,
+          DyadErrorKind.Precondition,
+        );
+      }
+      const updated = await switchAppToPublishableKey({
+        appPath: getDyadAppPath(app.path),
+        projectId: app.supabaseProjectId,
+        organizationSlug: app.supabaseOrganizationSlug,
+      });
+      return { updated };
+    },
+  );
 
   testOnlyHandle(
     "supabase:fake-connect-and-set-project",

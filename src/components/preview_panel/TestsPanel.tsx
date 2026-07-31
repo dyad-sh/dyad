@@ -68,7 +68,7 @@ import { AgentModeRequiredDialog } from "./AgentModeRequiredDialog";
 import { MigrateTestsBanner } from "./MigrateTestsBanner";
 import { queryKeys } from "@/lib/queryKeys";
 import { cn } from "@/lib/utils";
-import { showInfo } from "@/lib/toast";
+import { showError, showInfo, showSuccess } from "@/lib/toast";
 import { findCaseResult, statusLabel, testKey } from "@/lib/testResultUtils";
 
 function StatusIcon({ status }: { status: TestStatus }) {
@@ -752,6 +752,35 @@ export function TestsPanel() {
   const applyRunStarted = useSetAtom(applyTestRunStartedAtom);
   const applyRunFinished = useSetAtom(applyTestRunFinishedAtom);
 
+  // One-click swap of an app's generated Supabase client off the legacy anon
+  // key it was created with. Offered beside the setup warning that detected it.
+  const [isSwitchingKey, setIsSwitchingKey] = useState(false);
+  const [keySwitched, setKeySwitched] = useState(false);
+  // A fresh run re-detects the key, so let its verdict govern the button again.
+  useEffect(() => setKeySwitched(false), [runState.isolation]);
+
+  const switchToPublishableKey = useCallback(async () => {
+    if (selectedAppId == null) return;
+    setIsSwitchingKey(true);
+    try {
+      const { updated } = await ipc.supabase.switchAppToPublishableKey({
+        appId: selectedAppId,
+      });
+      setKeySwitched(true);
+      if (updated) {
+        showSuccess(
+          "Updated the app's Supabase key. Restart the app to pick it up.",
+        );
+      } else {
+        showInfo("The app's Supabase key was already up to date.");
+      }
+    } catch (error) {
+      showError(error);
+    } finally {
+      setIsSwitchingKey(false);
+    }
+  }, [selectedAppId]);
+
   const runTests = useCallback(
     async (file?: string, line?: number) => {
       if (selectedAppId == null) return;
@@ -1255,6 +1284,19 @@ export function TestsPanel() {
               <div className="flex items-start gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 text-sm text-amber-800 dark:text-amber-200">
                 <AlertTriangle size={15} className="shrink-0 mt-0.5" />
                 <span className="flex-1">{runState.isolation.reason}</span>
+                {runState.isolation.canSwitchToPublishableKey && (
+                  <button
+                    onClick={switchToPublishableKey}
+                    disabled={isSwitchingKey || keySwitched}
+                    className="shrink-0 px-2 py-1 rounded-md bg-amber-200 dark:bg-amber-800 hover:bg-amber-300 dark:hover:bg-amber-700 disabled:opacity-60 disabled:cursor-default cursor-pointer text-xs font-medium"
+                  >
+                    {keySwitched
+                      ? "Updated"
+                      : isSwitchingKey
+                        ? "Updating…"
+                        : "Update key"}
+                  </button>
+                )}
               </div>
             )}
 

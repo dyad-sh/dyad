@@ -149,6 +149,12 @@ export const RunAppTestsParamsSchema = z.object({
 export const TestIsolationSchema = z.object({
   mode: z.enum(["neon-branch", "supabase-test-user", "none"]),
   reason: z.string().optional(),
+  /**
+   * Set when the app's generated Supabase client still uses the project's
+   * legacy `anon` key and a publishable key exists to replace it. The panel
+   * pairs the `reason` warning with a one-click switch.
+   */
+  canSwitchToPublishableKey: z.boolean().optional(),
 });
 export type TestIsolation = z.infer<typeof TestIsolationSchema>;
 

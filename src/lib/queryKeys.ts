@@ -342,6 +342,8 @@ export const queryKeys = {
     all: ["supabase"] as const,
     organizations: ["supabase", "organizations"] as const,
     projects: ["supabase", "projects"] as const,
+    legacyAppKey: ({ appId }: { appId: number | null }) =>
+      ["supabase", "legacyAppKey", appId] as const,
     branches: ({
       projectId,
       organizationSlug,

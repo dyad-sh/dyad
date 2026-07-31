@@ -2,7 +2,11 @@ import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
 import { retryWithRateLimit } from "@/ipc/utils/retryWithRateLimit";
 import { renderTestDatabaseSchema } from "@/lib/test_database_schema";
-import { getSupabaseClient } from "./supabase_management_client";
+import {
+  getProjectApiKeys,
+  getSupabaseClient,
+  type SupabaseApiKey,
+} from "./supabase_management_client";
 import {
   SUPABASE_SCHEMA_QUERY,
   SUPABASE_FUNCTIONS_QUERY,
@@ -15,6 +19,34 @@ import {
   renderSchemaSql,
 } from "ts-pg-schema-diff";
 
+// Prefix of a new-format publishable key.
+const PUBLISHABLE_KEY_PREFIX = "sb_publishable_";
+
+/**
+ * Pick the key the generated app authenticates with, newest format first.
+ *
+ * Deliberately NOT one `find` with an OR across the formats: Supabase doesn't
+ * document the ordering of `/api-keys`, and it keeps listing the legacy
+ * `anon`/`service_role` pair after they've been disabled in the dashboard. A
+ * predicate that treats a legacy key as an equal alternative therefore lets a
+ * DISABLED key win on position — and the app then 401s with "Legacy API keys
+ * are disabled" on every request it makes, including sign-in. The legacy tier
+ * stays last so projects that never migrated keep working.
+ */
+function pickPublishableKey(
+  keys: readonly SupabaseApiKey[],
+): SupabaseApiKey | undefined {
+  return (
+    keys.find(
+      (key) =>
+        key.type === "publishable" &&
+        key.api_key?.startsWith(PUBLISHABLE_KEY_PREFIX),
+    ) ??
+    keys.find((key) => key.type === "publishable") ??
+    keys.find((key) => key.name === "anon")
+  );
+}
+
 async function getPublishableKey({
   projectId,
   organizationSlug,
@@ -26,29 +58,24 @@ async function getPublishableKey({
     return "test-publishable-key";
   }
 
-  const supabase = await getSupabaseClient({ organizationSlug });
   let keys;
   try {
-    keys = await retryWithRateLimit(
-      () => supabase.getProjectApiKeys(projectId),
-      `Get API keys for ${projectId}`,
-    );
+    // No reveal: publishable keys are public by design and never redacted, and
+    // revealing would expose the project's secret keys for nothing.
+    keys = await getProjectApiKeys({ projectId, organizationSlug });
   } catch (error) {
     throw new DyadError(
       `Failed to fetch API keys for Supabase project "${projectId}". This could be due to: 1) Invalid project ID, 2) Network connectivity issues, or 3) Supabase API unavailability. Original error: ${error instanceof Error ? error.message : String(error)}`,
       DyadErrorKind.External,
     );
   }
-  if (!keys) {
+  if (!keys?.length) {
     throw new DyadError(
       "No keys found for Supabase project " + projectId,
       DyadErrorKind.NotFound,
     );
   }
-  const publishableKey = keys.find(
-    (key) =>
-      (key as any)["name"] === "anon" || (key as any)["type"] === "publishable",
-  );
+  const publishableKey = pickPublishableKey(keys);
 
   if (!publishableKey) {
     throw new DyadError(

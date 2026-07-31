@@ -34,6 +34,10 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLoadApp } from "@/hooks/useLoadApp";
+import {
+  useLegacySupabaseKey,
+  useSwitchToPublishableKey,
+} from "@/hooks/useLegacySupabaseKey";
 
 // @ts-ignore
 import supabaseLogoLight from "../../assets/supabase/supabase-logo-wordmark--light.svg";
@@ -63,6 +67,16 @@ export function SupabaseConnector({ appId }: { appId: number }) {
 
   // Check if there are any connected organizations
   const isConnected = isSupabaseConnected(settings);
+
+  // Gates the update offer: true only when the app's generated client is
+  // holding this project's legacy key and a publishable key exists to replace
+  // it.
+  const legacyKeyQuery = useLegacySupabaseKey(
+    appId,
+    isConnected && !!app?.supabaseProjectId,
+  );
+  const hasLegacyKey = legacyKeyQuery.data?.hasLegacyKey ?? false;
+  const switchKey = useSwitchToPublishableKey();
 
   const branchesProjectId =
     app?.supabaseParentProjectId || app?.supabaseProjectId;
@@ -205,6 +219,24 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     }
   };
 
+  const handleUpdateApiKey = async () => {
+    try {
+      const { updated } = await switchKey.mutateAsync({ appId });
+      toast.success(
+        updated
+          ? t("integrations.supabase.apiKeyUpdated")
+          : t("integrations.supabase.apiKeyAlreadyCurrent"),
+      );
+    } catch (error) {
+      console.error("Failed to update the app's Supabase key:", error);
+      toast.error(
+        t("integrations.supabase.failedUpdateApiKey", {
+          error: String(error),
+        }),
+      );
+    }
+  };
+
   const handleUnsetProject = async () => {
     try {
       await unsetAppProject(appId);
@@ -326,6 +358,32 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                 </Select>
               )}
             </div>
+
+            {/* Shown only once the app's client is confirmed to hold this
+            project's legacy key — an app already on a publishable key has
+            nothing to update. Detection has to find the key for this to appear
+            at all (see detectLegacyAppKey). */}
+            {hasLegacyKey && (
+              <div className="space-y-2" data-testid="supabase-legacy-key">
+                <Alert>
+                  <Info className="h-4 w-4" />
+                  <AlertDescription>
+                    {t("integrations.supabase.legacyApiKeyWarning")}
+                  </AlertDescription>
+                </Alert>
+                <Button
+                  variant="outline"
+                  onClick={handleUpdateApiKey}
+                  disabled={switchKey.isPending}
+                  data-testid="supabase-update-api-key-button"
+                >
+                  {t("integrations.supabase.updateApiKey")}
+                </Button>
+                <p className="text-xs text-muted-foreground">
+                  {t("integrations.supabase.updateApiKeyDescription")}
+                </p>
+              </div>
+            )}
 
             <Button variant="destructive" onClick={handleUnsetProject}>
               {t("integrations.supabase.disconnectProject")}

@@ -13,6 +13,7 @@ import {
   deleteTempTestUser,
   type TempTestUser,
 } from "../utils/supabase_test_user";
+import { detectLegacyAppKey } from "../../supabase_admin/supabase_app_key";
 import {
   getEnvFilePath,
   readEnvFileIfExists,
@@ -269,7 +270,21 @@ async function prepareSupabaseTestUserIsolation({
 
   // RLS gate (warn, don't refuse): surface unprotected tables to the user.
   const rls = await checkRls({ projectId, organizationSlug });
-  const warning = buildRlsWarning(rls);
+  // The test signs the isolated user in through the app's OWN login UI, so a
+  // legacy key in the app's generated client is a test failure waiting to
+  // happen — and one that reads as "my login is broken" rather than "my key was
+  // retired". Warn (never block) and let the panel offer the switch.
+  const legacyKey = await detectLegacyAppKey({
+    appPath: getDyadAppPath(app.path),
+    projectId,
+    organizationSlug,
+  });
+  const warning = joinWarnings(
+    buildRlsWarning(rls),
+    legacyKey
+      ? "This app's Supabase client still uses the project's legacy API key, which Supabase is retiring — sign-in will start failing once legacy keys are disabled."
+      : undefined,
+  );
 
   let testUser: TempTestUser | undefined;
   const teardown = async () => {
@@ -297,7 +312,11 @@ async function prepareSupabaseTestUserIsolation({
     emit("Creating an isolated test user…\n", "setup");
     testUser = await createTempTestUser(app);
     return {
-      isolation: { mode: "supabase-test-user", reason: warning },
+      isolation: {
+        mode: "supabase-test-user",
+        reason: warning,
+        canSwitchToPublishableKey: !!legacyKey,
+      },
       testCredentials: {
         DYAD_TEST_USER_EMAIL: testUser.email,
         DYAD_TEST_USER_PASSWORD: testUser.password,
@@ -331,6 +350,12 @@ async function prepareSupabaseTestUserIsolation({
       teardown: NOOP_TEARDOWN,
     };
   }
+}
+
+/** Combine the setup warnings into one `reason`, dropping the empty ones. */
+function joinWarnings(...warnings: (string | undefined)[]): string | undefined {
+  const present = warnings.filter((warning): warning is string => !!warning);
+  return present.length > 0 ? present.join(" ") : undefined;
 }
 
 /** Build the user-facing RLS warning, or undefined when fully protected. */

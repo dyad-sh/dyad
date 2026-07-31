@@ -6,14 +6,12 @@ import { db } from "../../db";
 import { apps } from "../../db/schema";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
-import {
-  fetchWithRetry,
-  retryWithRateLimit,
-} from "@/ipc/utils/retryWithRateLimit";
+import { fetchWithRetry } from "@/ipc/utils/retryWithRateLimit";
 import { withLock } from "@/ipc/utils/lock_utils";
 import {
   executeSupabaseSql,
-  getSupabaseClientForOrganization,
+  getProjectApiKeys,
+  type SupabaseApiKey,
 } from "../../supabase_admin/supabase_management_client";
 
 const logger = log.scope("supabase_test_user");
@@ -58,10 +56,39 @@ function projectUrlFor(ref: string): string {
   return `https://${ref}.supabase.co`;
 }
 
+// Prefix of a new-format secret key. Preferring it keeps us on a value we know
+// Supabase actually revealed — a redacted key keeps the shape of one but can't
+// authenticate.
+const SECRET_KEY_PREFIX = "sb_secret_";
+
 /**
- * Fetch a project's `service_role` (secret) key. Used ONLY by the main process
- * for test-user setup/teardown — it must NEVER be injected into the app under
- * test (which runs with the anon/publishable key).
+ * Pick the key to authenticate Auth Admin calls with, newest format first.
+ *
+ * Deliberately NOT one `find` with an OR across the formats: Supabase doesn't
+ * document the ordering of `/api-keys`, and it keeps listing the legacy
+ * `anon`/`service_role` pair after they've been disabled in the dashboard. A
+ * predicate that treats a legacy key as an equal alternative therefore lets a
+ * DISABLED key win on position, and every admin call 401s with "Legacy API keys
+ * are disabled". The legacy tier stays last so projects that never migrated
+ * keep working.
+ */
+function pickSecretKey(
+  keys: readonly SupabaseApiKey[],
+): SupabaseApiKey | undefined {
+  return (
+    keys.find(
+      (key) =>
+        key.type === "secret" && key.api_key?.startsWith(SECRET_KEY_PREFIX),
+    ) ??
+    keys.find((key) => key.type === "secret") ??
+    keys.find((key) => key.name === "service_role")
+  );
+}
+
+/**
+ * Fetch a project's secret (`sb_secret_…`, formerly `service_role`) key. Used
+ * ONLY by the main process for test-user setup/teardown — it must NEVER be
+ * injected into the app under test (which runs with the publishable key).
  */
 async function getServiceRoleKey({
   projectId,
@@ -70,25 +97,23 @@ async function getServiceRoleKey({
   projectId: string;
   organizationSlug: string;
 }): Promise<string> {
-  const supabase = await getSupabaseClientForOrganization(organizationSlug);
-  const keys = await retryWithRateLimit(
-    () => supabase.getProjectApiKeys(projectId),
-    `Get API keys for ${projectId}`,
-  );
-  if (!keys) {
+  // reveal: without it Supabase redacts secret key values, which would leave
+  // the legacy service_role JWT as the only usable key on the project.
+  const keys = await getProjectApiKeys({
+    projectId,
+    organizationSlug,
+    reveal: true,
+  });
+  if (!keys?.length) {
     throw new DyadError(
       `No API keys found for Supabase project ${projectId}.`,
       DyadErrorKind.NotFound,
     );
   }
-  const secret = keys.find(
-    (key) =>
-      (key as any)["type"] === "secret" ||
-      (key as any)["name"] === "service_role",
-  );
+  const secret = pickSecretKey(keys);
   if (!secret?.api_key) {
     throw new DyadError(
-      `No service_role key found for Supabase project ${projectId}. An isolated test user can't be created without it.`,
+      `No secret key (or legacy service_role key) found for Supabase project ${projectId}. An isolated test user can't be created without one — create a secret key in Supabase under Settings → API Keys.`,
       DyadErrorKind.NotFound,
     );
   }
@@ -186,6 +211,15 @@ export async function createTempTestUser(
   );
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
+    // The project turned its legacy keys off and had no secret key for us to
+    // use instead. That's fixable in the Supabase dashboard, so say how rather
+    // than surfacing raw Supabase JSON as an unexplained External failure.
+    if (response.status === 401 && /legacy api keys/i.test(detail)) {
+      throw new DyadError(
+        "This Supabase project has its legacy API keys (anon, service_role) disabled, and Dyad couldn't find a secret key to use instead. Create a secret key in Supabase under Settings → API Keys, then run the tests again.",
+        DyadErrorKind.Precondition,
+      );
+    }
     throw new DyadError(
       `Supabase rejected the test-user creation (${response.status}). ${detail}`,
       DyadErrorKind.External,

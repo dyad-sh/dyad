@@ -567,6 +567,62 @@ export async function getSupabaseProjectName(
   return project?.name || `<project not found for: ${projectId}>`;
 }
 
+/**
+ * A project API key as returned by the Management API. A project can carry both
+ * the new-format keys (`publishable` / `secret`) and the legacy JWT pair
+ * (`anon` / `service_role`, typed `legacy`) — and Supabase keeps listing the
+ * legacy pair after it's been disabled in the dashboard, so presence here says
+ * nothing about whether a key still works.
+ */
+export interface SupabaseApiKey {
+  name: string;
+  api_key: string;
+  type?: "publishable" | "secret" | "legacy" | null;
+}
+
+/**
+ * Fetch a project's API keys.
+ *
+ * Deliberately not `SupabaseManagementAPI.getProjectApiKeys()`: that helper
+ * can't send `reveal`, and without it Supabase redacts the VALUE of every
+ * `secret` key while returning the legacy `service_role` JWT in full — so the
+ * new-format admin key comes back unusable.
+ *
+ * `reveal` is opt-in: revealing exposes every secret key on the project and is
+ * recorded in the organization's audit log, so only pass it where an admin key
+ * is genuinely needed.
+ */
+export async function getProjectApiKeys({
+  projectId,
+  organizationSlug,
+  reveal = false,
+}: {
+  projectId: string;
+  organizationSlug: string | null;
+  reveal?: boolean;
+}): Promise<SupabaseApiKey[]> {
+  const supabase = await getSupabaseClient({ organizationSlug });
+
+  const response = await fetchWithRetry(
+    `https://api.supabase.com/v1/projects/${encodeURIComponent(
+      projectId,
+    )}/api-keys${reveal ? "?reveal=true" : ""}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${(supabase as any).options.accessToken}`,
+      },
+    },
+    `Get API keys for ${projectId}`,
+  );
+
+  if (response.status !== 200) {
+    throw await createResponseError(response, "get project api keys");
+  }
+
+  return response.json();
+}
+
 export async function getSupabaseProjectLogs(
   projectId: string,
   timestampStart?: number,

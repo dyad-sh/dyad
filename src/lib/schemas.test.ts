@@ -82,6 +82,58 @@ describe("migrateStoredSettings", () => {
     });
   });
 
+  it("skips legacy auto provider settings when choosing a configured model", () => {
+    const stored = StoredUserSettingsSchema.parse({
+      ...baseSettings,
+      providerSettings: {
+        auto: { apiKey: { value: "legacy" } },
+        openrouter: { apiKey: { value: "sk-or-test" } },
+      },
+    });
+
+    expect(migrateStoredSettings(stored).selectedModel).toEqual({
+      provider: "openrouter",
+      name: "openrouter/free",
+    });
+  });
+
+  it("recognizes complete Vertex credentials", () => {
+    const stored = StoredUserSettingsSchema.parse({
+      ...baseSettings,
+      providerSettings: {
+        vertex: {
+          serviceAccountKey: { value: "service-account" },
+          projectId: "project",
+          location: "us-central1",
+        },
+      },
+    });
+
+    expect(migrateStoredSettings(stored).selectedModel).toEqual({
+      provider: "vertex",
+      name: "gemini-flash-latest",
+    });
+  });
+
+  it("uses an environment-configured provider", () => {
+    const stored = StoredUserSettingsSchema.parse(baseSettings);
+
+    expect(
+      migrateStoredSettings(stored, {
+        environmentProviderIds: ["openai"],
+      }).selectedModel,
+    ).toEqual({ provider: "openai", name: "gpt-5.2" });
+  });
+
+  it("falls back to a concrete model without configured credentials", () => {
+    const stored = StoredUserSettingsSchema.parse(baseSettings);
+
+    expect(migrateStoredSettings(stored).selectedModel).toEqual({
+      provider: "anthropic",
+      name: "claude-sonnet-4-6",
+    });
+  });
+
   it("preserves an explicit model selection", () => {
     const selectedModel = { provider: "openrouter", name: "z-ai/glm-5" };
     const stored = StoredUserSettingsSchema.parse({

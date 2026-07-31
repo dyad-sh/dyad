@@ -259,6 +259,77 @@ describe("retryWithRateLimit", () => {
 
     await expectation;
     expect(operation).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("does not start an operation when its signal is already aborted", async () => {
+    const controller = new AbortController();
+    const cancellation = new Error("cancelled");
+    controller.abort(cancellation);
+    const operation = vi.fn().mockResolvedValue("unexpected");
+
+    await expect(
+      retryWithRateLimit(operation, "test-operation", {
+        signal: controller.signal,
+      }),
+    ).rejects.toBe(cancellation);
+    expect(operation).not.toHaveBeenCalled();
+  });
+
+  it("waits for an in-flight operation to settle before reporting cancellation", async () => {
+    const controller = new AbortController();
+    const cancellation = new Error("cancelled");
+    let resolveOperation!: (value: string) => void;
+    const operation = vi.fn(
+      () =>
+        new Promise<string>((resolve) => {
+          resolveOperation = resolve;
+        }),
+    );
+    let settled = false;
+
+    const result = retryWithRateLimit(operation, "test-operation", {
+      signal: controller.signal,
+    });
+    const expectation = expect(result).rejects.toBe(cancellation);
+    void result.then(
+      () => {
+        settled = true;
+      },
+      () => {
+        settled = true;
+      },
+    );
+
+    controller.abort(cancellation);
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    resolveOperation("late success");
+    await expectation;
+    expect(settled).toBe(true);
+  });
+
+  it("preserves cancellation when an in-flight operation later fails", async () => {
+    const controller = new AbortController();
+    const cancellation = new Error("cancelled");
+    let rejectOperation!: (error: Error) => void;
+    const operation = vi.fn(
+      () =>
+        new Promise<string>((_resolve, reject) => {
+          rejectOperation = reject;
+        }),
+    );
+
+    const result = retryWithRateLimit(operation, "test-operation", {
+      signal: controller.signal,
+    });
+    const expectation = expect(result).rejects.toBe(cancellation);
+
+    controller.abort(cancellation);
+    rejectOperation(new Error("late operation failure"));
+
+    await expectation;
   });
 
   describe("exhausted retries", () => {
@@ -465,6 +536,24 @@ describe("fetchWithRetry", () => {
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(fetch).toHaveBeenCalledWith("https://example.com/api", {
       method: "GET",
+    });
+  });
+
+  it("passes a retry signal to fetch", async () => {
+    const controller = new AbortController();
+    const successResponse = new Response(null, { status: 200 });
+    vi.mocked(fetch).mockResolvedValue(successResponse);
+
+    await fetchWithRetry(
+      "https://example.com/api",
+      { method: "GET" },
+      "test-fetch",
+      { signal: controller.signal },
+    );
+
+    expect(fetch).toHaveBeenCalledWith("https://example.com/api", {
+      method: "GET",
+      signal: controller.signal,
     });
   });
 

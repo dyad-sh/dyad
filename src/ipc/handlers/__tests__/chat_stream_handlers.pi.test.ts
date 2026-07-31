@@ -130,6 +130,76 @@ describe("chat:stream pi pipeline (integration)", () => {
     ]);
   });
 
+  it("includes selected component source in the provider prompt", async () => {
+    const [componentChat] = await harness.db
+      .insert(chats)
+      .values({ appId: harness.appId, chatMode: "local-agent" })
+      .returning();
+    let providerMessages: any[] = [];
+    faux.setResponses([
+      (context) => {
+        providerMessages = context.messages;
+        return fauxAssistantMessage("COMPONENT_CONTEXT_OK");
+      },
+    ]);
+
+    await harness.streamChat("edit the selected component", {
+      chatId: componentChat.id,
+      selectedComponents: [
+        {
+          id: "selected-1",
+          name: "App",
+          relativePath: "src/App.tsx",
+          lineNumber: 1,
+          columnNumber: 0,
+        },
+      ],
+    });
+
+    const currentUser = providerMessages.at(-1);
+    expect(currentUser?.role).toBe("user");
+    expect(JSON.stringify(currentUser?.content)).toContain(
+      "Minimal imported app",
+    );
+    expect(JSON.stringify(currentUser?.content)).toContain("Selected line: 1");
+  });
+
+  it("limits provider history to the configured number of user turns", async () => {
+    const [historyChat] = await harness.db
+      .insert(chats)
+      .values({ appId: harness.appId, chatMode: "local-agent" })
+      .returning();
+    await harness.db.insert(messages).values([
+      { chatId: historyChat.id, role: "user", content: "history-old-1" },
+      { chatId: historyChat.id, role: "assistant", content: "answer-old-1" },
+      { chatId: historyChat.id, role: "user", content: "history-kept-2" },
+      { chatId: historyChat.id, role: "assistant", content: "answer-kept-2" },
+      { chatId: historyChat.id, role: "user", content: "history-kept-3" },
+      { chatId: historyChat.id, role: "assistant", content: "answer-kept-3" },
+    ]);
+    writeSettings({ maxChatTurnsInContext: 2 });
+    let providerMessages: any[] = [];
+    faux.setResponses([
+      (context) => {
+        providerMessages = context.messages;
+        return fauxAssistantMessage("HISTORY_LIMIT_OK");
+      },
+    ]);
+
+    try {
+      await harness.streamChat("current turn", { chatId: historyChat.id });
+
+      const providerContext = JSON.stringify(providerMessages);
+      expect(providerContext).not.toContain("history-old-1");
+      expect(providerContext).not.toContain("answer-old-1");
+      expect(providerContext).toContain("history-kept-2");
+      expect(providerContext).toContain("history-kept-3");
+      expect(providerContext).toContain("current turn");
+    } finally {
+      writeSettings({ maxChatTurnsInContext: undefined });
+    }
+  });
+
   it("does not expose write tools while an app blueprint is pending", async () => {
     const [blueprintChat] = await harness.db
       .insert(chats)
@@ -528,11 +598,53 @@ describe("chat:stream pi pipeline (integration)", () => {
       where: eq(messages.chatId, errorChat.id),
     });
     const assistant = errorRows.find((message) => message.role === "assistant");
-    expect(assistant?.content).toBe("partial provider output");
-    expect(piMessages(assistant).at(-1)).toMatchObject({
+    expect(assistant?.content).toBe("");
+    const failedAssistant = piMessages(assistant).at(-1);
+    expect(failedAssistant).toMatchObject({
       role: "assistant",
       stopReason: "error",
       errorMessage: "provider integration failure",
+      content: [],
+    });
+    expect(JSON.stringify(failedAssistant)).not.toContain(
+      "partial provider output",
+    );
+  });
+
+  it("persists model refusals as a clean inline warning", async () => {
+    const [refusalChat] = await harness.db
+      .insert(chats)
+      .values({ appId: harness.appId, chatMode: "local-agent" })
+      .returning();
+    faux.setResponses([
+      fauxAssistantMessage("partial refusal output", {
+        stopReason: "error",
+        errorMessage: "The model refused to complete the request",
+      }),
+    ]);
+
+    const result = await harness.streamChat("trigger model refusal", {
+      chatId: refusalChat.id,
+    });
+
+    expect(result.eventsFor("chat:response:error")).toEqual([]);
+    expect(result.event("chat:response:end")).toBeDefined();
+    const refusalRows = await harness.db.query.messages.findMany({
+      where: eq(messages.chatId, refusalChat.id),
+    });
+    const assistant = refusalRows.find(
+      (message) => message.role === "assistant",
+    );
+    expect(assistant?.content).toContain("Model refused to respond");
+    expect(assistant?.content).not.toContain("partial refusal output");
+    expect(piMessages(assistant).at(-1)).toMatchObject({
+      role: "assistant",
+      stopReason: "stop",
+      content: [
+        expect.objectContaining({
+          text: expect.stringContaining("Model refused to respond"),
+        }),
+      ],
     });
   });
 

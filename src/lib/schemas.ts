@@ -474,6 +474,7 @@ export function migrateStoredChatMode(
  */
 export function migrateStoredSettings(
   stored: StoredUserSettings,
+  options: { environmentProviderIds?: readonly string[] } = {},
 ): UserSettings {
   const activeSettings = { ...stored };
   delete activeSettings.enableNativeGit;
@@ -492,18 +493,43 @@ export function migrateStoredSettings(
   const isLegacyAutoModel =
     stored.selectedModel.provider === "auto" &&
     stored.selectedModel.name === "auto";
-  const configuredProvider = isLegacyAutoModel
-    ? Object.entries(stored.providerSettings).find(([, providerSettings]) =>
-        Boolean(providerSettings.apiKey?.value?.trim()),
-      )?.[0]
-    : undefined;
-  const migratedSelectedModel = configuredProvider
-    ? getDefaultModelForProvider(configuredProvider)
-    : undefined;
+  const configuredProviders = isLegacyAutoModel
+    ? [
+        ...Object.entries(stored.providerSettings)
+          .filter(([provider, providerSettings]) => {
+            if (provider === "vertex") {
+              const vertex = providerSettings as VertexProviderSetting;
+              return Boolean(
+                vertex.serviceAccountKey?.value?.trim() &&
+                vertex.projectId?.trim() &&
+                vertex.location?.trim(),
+              );
+            }
+            if (provider === "azure") {
+              const azure = providerSettings as AzureProviderSetting;
+              return Boolean(
+                azure.apiKey?.value?.trim() && azure.resourceName?.trim(),
+              );
+            }
+            return Boolean(providerSettings.apiKey?.value?.trim());
+          })
+          .map(([provider]) => provider),
+        ...(options.environmentProviderIds ?? []),
+      ]
+    : [];
+  const migratedSelectedModel = configuredProviders
+    .map(getDefaultModelForProvider)
+    .find((model) => model !== undefined);
+  const legacyAutoFallback = {
+    provider: "anthropic",
+    name: "claude-sonnet-4-6",
+  };
 
   return {
     ...activeSettings,
-    selectedModel: migratedSelectedModel ?? activeSettings.selectedModel,
+    selectedModel:
+      migratedSelectedModel ??
+      (isLegacyAutoModel ? legacyAutoFallback : activeSettings.selectedModel),
     runtimeMode2:
       stored.runtimeMode2 === "cloud" ? "host" : stored.runtimeMode2,
     selectedChatMode: migrateStoredChatMode(stored.selectedChatMode),

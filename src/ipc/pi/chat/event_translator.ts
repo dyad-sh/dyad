@@ -238,6 +238,14 @@ export class ChatEventTranslator {
     return chunk ? [chunk] : [];
   }
 
+  /** Append app-owned status XML after the provider turn has settled. */
+  appendCommittedContent(content: string): ChatResponseChunk[] {
+    this.activeAssistantText = "";
+    this.committedContent.push(content);
+    const chunk = this.textChunk();
+    return chunk ? [chunk] : [];
+  }
+
   /** The final assistant content string (assistant text + tool XML). */
   finalContent(): string {
     return this.composeContent();

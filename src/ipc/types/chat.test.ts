@@ -5,7 +5,11 @@ import {
   MAX_CHAT_ATTACHMENTS,
   MAX_CHAT_ATTACHMENT_DATA_URL_CHARS,
 } from "../../shared/chatAttachmentLimits";
-import { ChatAttachmentSchema, ChatStreamParamsSchema } from "./chat";
+import {
+  ChatAttachmentSchema,
+  ChatStreamParamsSchema,
+  ComponentSelectionSchema,
+} from "./chat";
 
 const validAttachment = {
   name: "notes.txt",
@@ -92,6 +96,35 @@ describe("ChatStreamParamsSchema attachment limits", () => {
         prompt: "hello",
         attachments: [{ ...validAttachment, data: "SGVsbG8=" }],
       }).success,
+    ).toBe(false);
+  });
+});
+
+describe("ComponentSelectionSchema", () => {
+  const component = {
+    id: "component-1",
+    name: "App",
+    relativePath: "src/App.tsx",
+    lineNumber: 1,
+    columnNumber: 0,
+  };
+
+  it("accepts one-indexed lines and zero-indexed columns", () => {
+    expect(ComponentSelectionSchema.safeParse(component).success).toBe(true);
+  });
+
+  it("rejects invalid source coordinates", () => {
+    expect(
+      ComponentSelectionSchema.safeParse({ ...component, lineNumber: 0 })
+        .success,
+    ).toBe(false);
+    expect(
+      ComponentSelectionSchema.safeParse({ ...component, columnNumber: -1 })
+        .success,
+    ).toBe(false);
+    expect(
+      ComponentSelectionSchema.safeParse({ ...component, lineNumber: 1.5 })
+        .success,
     ).toBe(false);
   });
 });

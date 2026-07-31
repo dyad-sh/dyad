@@ -72,8 +72,8 @@ export const ComponentSelectionSchema = z.object({
   name: z.string().max(MAX_CHAT_COMPONENT_FIELD_CHARS),
   runtimeId: z.string().max(MAX_CHAT_COMPONENT_FIELD_CHARS).optional(),
   relativePath: z.string().max(MAX_CHAT_COMPONENT_FIELD_CHARS),
-  lineNumber: z.number(),
-  columnNumber: z.number(),
+  lineNumber: z.number().int().positive(),
+  columnNumber: z.number().int().nonnegative(),
 });
 
 export type ComponentSelection = z.infer<typeof ComponentSelectionSchema>;

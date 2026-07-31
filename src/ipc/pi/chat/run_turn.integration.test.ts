@@ -169,6 +169,64 @@ describe("runTurn (real pi Agent via faux provider)", () => {
     expect(previews[previews.length - 1].streamingPreview?.content).toBe("");
   });
 
+  it("stops after the configured number of tool-call steps", async () => {
+    const { faux } = setupFauxModels();
+    faux.setResponses([
+      fauxAssistantMessage([fauxToolCall("echo_tool", { value: "hi" })]),
+      () => {
+        throw new Error("provider should not be called after the step limit");
+      },
+    ]);
+    const execute = vi.fn(async () => ({
+      content: [{ type: "text" as const, text: "echoed: hi" }],
+      details: {
+        toolName: "echo_tool",
+        xml: "<dyad-echo>hi</dyad-echo>",
+        appendedUserMessages: [],
+      },
+    }));
+    const echoTool: AgentTool<any, any> = {
+      name: "echo_tool",
+      label: "echo",
+      description: "echo a value",
+      parameters: Type.Object({ value: Type.String() }),
+      execute,
+    };
+    const chunks: ChatResponseChunk[] = [];
+
+    const outcome = await runTurn({
+      chatId: 23,
+      streamingMessageId: 230,
+      model: { provider: "openai", name: "gpt-test" },
+      settings: { maxToolCallSteps: 1 } as any,
+      chatMode: "local-agent",
+      systemPrompt: "test",
+      prompt: "use the tool",
+      tools: [echoTool],
+      onChunk: (chunk) => {
+        chunks.push(chunk);
+      },
+    });
+
+    expect(execute).toHaveBeenCalledOnce();
+    expect(faux.state.callCount).toBe(1);
+    expect(outcome.toolLimitReached).toBe(true);
+    expect(outcome.errorMessage).toBeUndefined();
+    expect(outcome.content).toContain("<dyad-echo>hi</dyad-echo>");
+    expect(outcome.content).toContain('<dyad-step-limit steps="1" limit="1">');
+    expect(reconstructFromPatches(chunks)).toBe(outcome.content);
+    expect(outcome.turnMessages.at(-1)).toMatchObject({
+      role: "assistant",
+      stopReason: "stop",
+      content: [
+        expect.objectContaining({
+          type: "text",
+          text: expect.stringContaining("<dyad-step-limit"),
+        }),
+      ],
+    });
+  });
+
   it("checkpoints a complete tool call and result before the next provider turn", async () => {
     const { faux } = setupFauxModels();
     faux.setResponses([
@@ -350,6 +408,76 @@ describe("runTurn (real pi Agent via faux provider)", () => {
     expect(outcome.errorMessage).toBeUndefined();
     expect(outcome.content).toBe("Recovered response");
     expect(reconstructFromPatches(chunks)).toBe("Recovered response");
+  });
+
+  it("replaces a model refusal with a clean inline warning", async () => {
+    const { faux } = setupFauxModels();
+    faux.setResponses([
+      fauxAssistantMessage("Partial refusal text", {
+        stopReason: "error",
+        errorMessage: "The model refused to complete the request",
+      }),
+    ]);
+    const chunks: ChatResponseChunk[] = [];
+
+    const outcome = await runTurn({
+      chatId: 41,
+      streamingMessageId: 410,
+      model: { provider: "openai", name: "gpt-test" },
+      settings: {} as any,
+      chatMode: "local-agent",
+      systemPrompt: "test",
+      prompt: "request",
+      tools: [],
+      onChunk: (chunk) => {
+        chunks.push(chunk);
+      },
+    });
+
+    expect(outcome.refused).toBe(true);
+    expect(outcome.errorMessage).toBeUndefined();
+    expect(outcome.content).not.toContain("Partial refusal text");
+    expect(outcome.content).toContain("Model refused to respond");
+    expect(reconstructFromPatches(chunks)).toBe(outcome.content);
+    expect(JSON.stringify(outcome.turnMessages)).not.toContain(
+      "Partial refusal text",
+    );
+    expect(outcome.turnMessages.at(-1)).toMatchObject({
+      role: "assistant",
+      stopReason: "stop",
+    });
+  });
+
+  it("discards partial text from a non-retryable failed response", async () => {
+    const { faux } = setupFauxModels();
+    faux.setResponses([
+      fauxAssistantMessage("Incomplete invalid response", {
+        stopReason: "error",
+        errorMessage: "invalid request",
+      }),
+    ]);
+    const chunks: ChatResponseChunk[] = [];
+
+    const outcome = await runTurn({
+      chatId: 42,
+      streamingMessageId: 420,
+      model: { provider: "openai", name: "gpt-test" },
+      settings: {} as any,
+      chatMode: "local-agent",
+      systemPrompt: "test",
+      prompt: "request",
+      tools: [],
+      onChunk: (chunk) => {
+        chunks.push(chunk);
+      },
+    });
+
+    expect(outcome.errorMessage).toBe("invalid request");
+    expect(outcome.content).toBe("");
+    expect(reconstructFromPatches(chunks)).toBe("");
+    expect(JSON.stringify(outcome.turnMessages)).not.toContain(
+      "Incomplete invalid response",
+    );
   });
 
   it("does not repeat completed tool execution when retrying", async () => {

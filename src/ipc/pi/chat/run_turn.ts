@@ -34,6 +34,8 @@ import { createDyadAgent } from "../agent_factory";
 import { classifyPiProviderError } from "../provider_error";
 import type { AdaptedToolDetails } from "../tools/adapter";
 import { ChatEventTranslator } from "./event_translator";
+import { DEFAULT_MAX_TOOL_CALL_STEPS } from "@/constants/settings_constants";
+import { isPiModelRefusal, MODEL_REFUSAL_WARNING } from "../model_refusal";
 
 /** Sink the handler provides to receive translated chunks as the turn streams. */
 export type ChunkSink = (chunk: ChatResponseChunk) => void | Promise<void>;
@@ -85,6 +87,10 @@ export interface TurnOutcome {
   errorMessage?: string;
   /** Classified provider failure, when the turn ended with an error. */
   errorKind?: DyadErrorKind;
+  /** True when a model safety refusal was converted to an inline warning. */
+  refused: boolean;
+  /** True when the configured tool-call step limit stopped the agent loop. */
+  toolLimitReached: boolean;
 }
 
 const EMPTY_USAGE = {
@@ -180,6 +186,24 @@ function createPreAbortedOutcome(
     turnMessages: transcript.slice(initialMessageCount),
     aborted: true,
     errorMessage: "Cancelled by user",
+    refused: false,
+    toolLimitReached: false,
+  };
+}
+
+function createStatusAssistantMessage(
+  agent: Agent,
+  content: string,
+): AssistantMessage {
+  return {
+    role: "assistant",
+    content: [{ type: "text", text: content }],
+    api: agent.state.model.api,
+    provider: agent.state.model.provider,
+    model: agent.state.model.id,
+    usage: EMPTY_USAGE,
+    stopReason: "stop",
+    timestamp: Date.now(),
   };
 }
 
@@ -210,18 +234,39 @@ export async function runTurn(input: RunTurnInput): Promise<TurnOutcome> {
   // v1: tools execute sequentially so the single-slot preview overlay in the
   // translator matches at most one running tool (see review point 3).
   agent.toolExecution = "sequential";
-  agent.afterToolCall = async ({ toolCall, isError }) => {
-    if (!isError) return undefined;
+  const maxToolCallSteps = Math.max(
+    1,
+    Math.floor(input.settings.maxToolCallSteps ?? DEFAULT_MAX_TOOL_CALL_STEPS),
+  );
+  const countedToolBatches = new WeakSet<AssistantMessage>();
+  const terminatingToolBatches = new WeakSet<AssistantMessage>();
+  let toolCallSteps = 0;
+  let toolLimitReached = false;
+  agent.afterToolCall = async ({ assistantMessage, toolCall, isError }) => {
+    if (!countedToolBatches.has(assistantMessage)) {
+      countedToolBatches.add(assistantMessage);
+      toolCallSteps++;
+      if (toolCallSteps >= maxToolCallSteps) {
+        terminatingToolBatches.add(assistantMessage);
+        toolLimitReached = true;
+      }
+    }
 
-    const xml = input.takeToolErrorXml?.(toolCall.id);
-    if (!xml) return undefined;
+    const xml = isError ? input.takeToolErrorXml?.(toolCall.id) : undefined;
+    const terminate = terminatingToolBatches.has(assistantMessage);
+    if (!xml && !terminate) return undefined;
 
     return {
-      details: {
-        toolName: toolCall.name,
-        xml,
-        appendedUserMessages: [],
-      } satisfies AdaptedToolDetails,
+      ...(xml
+        ? {
+            details: {
+              toolName: toolCall.name,
+              xml,
+              appendedUserMessages: [],
+            } satisfies AdaptedToolDetails,
+          }
+        : {}),
+      ...(terminate ? { terminate: true } : {}),
     };
   };
 
@@ -346,7 +391,7 @@ export async function runTurn(input: RunTurnInput): Promise<TurnOutcome> {
     abortSignal?.removeEventListener("abort", onAbort);
   }
 
-  const failed = Boolean(abortSignal?.aborted) || !!agent.state.errorMessage;
+  let failed = Boolean(abortSignal?.aborted) || !!agent.state.errorMessage;
   const transcript = agent.state.messages.filter(
     (message) => message !== followUpMessage,
   );
@@ -357,16 +402,54 @@ export async function runTurn(input: RunTurnInput): Promise<TurnOutcome> {
         message.role === "assistant" && message.stopReason === "error",
     );
 
+  let errorKind = failedAssistant
+    ? classifyPiProviderError(failedAssistant)
+    : failed
+      ? DyadErrorKind.External
+      : undefined;
+  let refused = false;
+
+  if (failedAssistant) {
+    for (const chunk of translator.discardActiveAssistant()) {
+      await input.onChunk(chunk);
+    }
+    const failedIndex = transcript.lastIndexOf(failedAssistant);
+    if (isPiModelRefusal(failedAssistant)) {
+      refused = true;
+      failed = false;
+      errorMessage = undefined;
+      errorKind = undefined;
+      const warningMessage = createStatusAssistantMessage(
+        agent,
+        MODEL_REFUSAL_WARNING,
+      );
+      transcript[failedIndex] = warningMessage;
+      for (const chunk of translator.appendCommittedContent(
+        MODEL_REFUSAL_WARNING,
+      )) {
+        await input.onChunk(chunk);
+      }
+    } else {
+      transcript[failedIndex] = { ...failedAssistant, content: [] };
+    }
+  }
+
+  if (toolLimitReached) {
+    const stepLimitContent = `<dyad-step-limit steps="${toolCallSteps}" limit="${maxToolCallSteps}">The agent paused after reaching the tool-call step limit.</dyad-step-limit>`;
+    transcript.push(createStatusAssistantMessage(agent, stepLimitContent));
+    for (const chunk of translator.appendCommittedContent(stepLimitContent)) {
+      await input.onChunk(chunk);
+    }
+  }
+
   return {
     content: translator.finalContent(),
     transcript,
     turnMessages: transcript.slice(initialMessageCount),
     aborted: Boolean(abortSignal?.aborted),
     errorMessage: failed ? errorMessage : undefined,
-    errorKind: failedAssistant
-      ? classifyPiProviderError(failedAssistant)
-      : failed
-        ? DyadErrorKind.External
-        : undefined,
+    errorKind: failed ? errorKind : undefined,
+    refused,
+    toolLimitReached,
   };
 }

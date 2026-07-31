@@ -355,6 +355,7 @@ export async function executePiChatTurn(
   if (
     !input.abortController.signal.aborted &&
     !outcome.errorMessage &&
+    !outcome.refused &&
     !readOnly &&
     !planModeOnly
   ) {
@@ -427,7 +428,8 @@ export async function executePiChatTurn(
   if (
     maxTokensUsed !== undefined &&
     !input.abortController.signal.aborted &&
-    !outcome.errorMessage
+    !outcome.errorMessage &&
+    !outcome.refused
   ) {
     await checkAndMarkForCompaction(input.chatId, maxTokensUsed);
   }

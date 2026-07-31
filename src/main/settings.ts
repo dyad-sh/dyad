@@ -28,6 +28,7 @@ import {
   type RemoteDesktopConfig,
 } from "@/ipc/shared/remote_desktop_config";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { PROVIDER_TO_ENV_VAR } from "@/ipc/shared/language_model_constants";
 import { ZodError } from "zod";
 import {
   getRecoveryStats,
@@ -35,6 +36,19 @@ import {
 } from "./safe_storage_legacy";
 
 const logger = log.scope("settings");
+
+function getEnvironmentProviderIds(): string[] {
+  return Object.entries(PROVIDER_TO_ENV_VAR).flatMap(
+    ([provider, environmentVariable]) => {
+      const hasApiKey = Boolean(process.env[environmentVariable]?.trim());
+      const isConfigured =
+        provider === "azure"
+          ? hasApiKey && Boolean(process.env.AZURE_RESOURCE_NAME?.trim())
+          : hasApiKey;
+      return isConfigured ? [provider] : [];
+    },
+  );
+}
 
 // WARNING: Do not change values once it's been
 // set in DEFAULT_SETTINGS.
@@ -669,7 +683,9 @@ function readExistingSettingsFile(
   const storedSettings = StoredUserSettingsSchema.parse(combinedSettings);
   // "conservative" is deprecated, use undefined to use the default value
   // Migrate stored settings to active settings (converts deprecated values)
-  const migratedSettings = migrateStoredSettings(storedSettings);
+  const migratedSettings = migrateStoredSettings(storedSettings, {
+    environmentProviderIds: getEnvironmentProviderIds(),
+  });
   // Validate the migrated settings against the active schema
   const settings = UserSettingsSchema.parse(migratedSettings);
   return { settings, preserved: ctx.preserved };

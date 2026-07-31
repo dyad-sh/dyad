@@ -11,7 +11,10 @@ import path from "node:path";
 import log from "electron-log";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { ensureDyadGitignored } from "../handlers/gitignoreUtils";
-import { generateImage as generateImageWithUserProvider } from "@/ipc/pi/image_generation";
+import {
+  generateImage as generateImageWithUserProvider,
+  imageMimeTypeToExtension,
+} from "@/ipc/pi/image_generation";
 
 const logger = log.scope("image_generation_service");
 
@@ -169,7 +172,8 @@ export class ImageGenerationService {
             .replace(/_+/g, "_")
             .replace(/^_|_$/g, "")
             .toLowerCase() || "image";
-        const fileName = `generated_${sanitizedPrompt}_${timestamp}.png`;
+        const extension = imageMimeTypeToExtension(image.mimeType);
+        const fileName = `generated_${sanitizedPrompt}_${timestamp}.${extension}`;
         const filePath = safeJoin(mediaDir, fileName);
         const tempFilePath = safeJoin(mediaDir, `.${fileName}.tmp`);
 

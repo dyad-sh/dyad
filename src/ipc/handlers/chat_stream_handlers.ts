@@ -87,6 +87,9 @@ import { inspectBase64DataUrl } from "../../shared/chatAttachmentLimits";
 import { toRendererMessage } from "../utils/renderer_chat_message";
 import { extractCodebase } from "../../utils/codebase";
 import { validateChatContext } from "../utils/context_paths_utils";
+import { buildSelectedComponentContext } from "@/ipc/pi/chat/selected_component_context";
+import { limitChatHistoryRows } from "@/ipc/pi/chat/history_limit";
+import { MAX_CHAT_TURNS_IN_CONTEXT } from "@/constants/settings_constants";
 
 const logger = log.scope("chat_stream_handlers");
 
@@ -1086,8 +1089,13 @@ You may update the plan at \`${planPath}\` to mark your progress.`;
         }
       }
 
+      const selectedComponentContext = await buildSelectedComponentContext(
+        getDyadAppPath(chat.app.path),
+        req.selectedComponents ?? [],
+      );
+      const aiUserPrompt = userPrompt + selectedComponentContext;
       const defaultAiUserPrompt =
-        userPrompt + (attachmentInfo ? attachmentInfo : "");
+        aiUserPrompt + (attachmentInfo ? attachmentInfo : "");
 
       let { settings: storedSettings, mode: selectedChatMode } =
         await resolveChatModeForTurn({
@@ -1209,7 +1217,7 @@ You may update the plan at \`${planPath}\` to mark your progress.`;
         mode: selectedChatMode,
       });
       const localAgentAiUserPrompt =
-        userPrompt +
+        aiUserPrompt +
         buildLocalAgentAttachmentInfo(
           storedAttachments,
           attachmentDeliveryConfig,
@@ -1361,10 +1369,13 @@ You may update the plan at \`${planPath}\` to mark your progress.`;
         event,
         chatId: req.chatId,
         app: updatedChat.app,
-        historyRows: getPostCompactionMessages(updatedChat.messages).filter(
-          (message) =>
-            message.id !== userMessageId &&
-            message.id !== placeholderAssistantMessage.id,
+        historyRows: limitChatHistoryRows(
+          getPostCompactionMessages(updatedChat.messages).filter(
+            (message) =>
+              message.id !== userMessageId &&
+              message.id !== placeholderAssistantMessage.id,
+          ),
+          settings.maxChatTurnsInContext ?? MAX_CHAT_TURNS_IN_CONTEXT,
         ),
         userMessageId,
         placeholderMessageId: placeholderAssistantMessage.id,

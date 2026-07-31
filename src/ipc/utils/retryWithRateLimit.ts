@@ -73,7 +73,7 @@ export interface RetryWithRateLimitOptions {
   baseDelay?: number;
   /** Maximum delay in ms */
   maxDelay?: number;
-  /** Cancels the active operation and any pending retry delay. */
+  /** Passed to each operation and cancels pending retry delays. */
   signal?: AbortSignal;
 }
 
@@ -81,34 +81,25 @@ function getAbortReason(signal: AbortSignal): unknown {
   return signal.reason ?? new DOMException("Aborted", "AbortError");
 }
 
-function runAbortable<T>(
-  operation: Promise<T>,
-  signal?: AbortSignal,
-): Promise<T> {
-  if (!signal) return operation;
-  if (signal.aborted) return Promise.reject(getAbortReason(signal));
-
-  return new Promise<T>((resolve, reject) => {
-    const onAbort = () => reject(getAbortReason(signal));
-    signal.addEventListener("abort", onAbort, { once: true });
-    operation.then(
-      (value) => {
-        signal.removeEventListener("abort", onAbort);
-        resolve(value);
-      },
-      (error) => {
-        signal.removeEventListener("abort", onAbort);
-        reject(error);
-      },
-    );
-  });
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw getAbortReason(signal);
 }
 
 function waitForRetry(delay: number, signal?: AbortSignal): Promise<void> {
-  return runAbortable(
-    new Promise<void>((resolve) => setTimeout(resolve, delay)),
-    signal,
-  );
+  throwIfAborted(signal);
+  return new Promise<void>((resolve, reject) => {
+    const finish = () => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    };
+    const onAbort = () => {
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", onAbort);
+      reject(getAbortReason(signal!));
+    };
+    const timeout = setTimeout(finish, delay);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 /**
@@ -120,7 +111,7 @@ function waitForRetry(delay: number, signal?: AbortSignal): Promise<void> {
  * @param options - Optional retry configuration
  */
 export async function retryWithRateLimit<T>(
-  operation: () => Promise<T>,
+  operation: (signal?: AbortSignal) => Promise<T>,
   context: string,
   options?: RetryWithRateLimitOptions,
 ): Promise<T> {
@@ -133,13 +124,21 @@ export async function retryWithRateLimit<T>(
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      const result = await runAbortable(operation(), signal);
+      throwIfAborted(signal);
+      const result = await operation(signal);
+      // An operation that ignores cancellation must still settle before the
+      // caller observes the abort. This avoids detaching work that mutates
+      // remote state after retryWithRateLimit has already rejected.
+      throwIfAborted(signal);
       if (attempt > 0) {
         logger.info(`${context}: Success after ${attempt + 1} attempts`);
       }
       return result;
     } catch (error: any) {
       lastError = error;
+      // Let an operation that ignored its signal finish, but preserve the
+      // caller's cancellation as the observable result once it settles.
+      throwIfAborted(signal);
 
       // Only retry on rate limit errors
       if (!isRateLimitError(error)) {
@@ -205,8 +204,11 @@ export async function fetchWithRetry(
 ): Promise<Response> {
   const signal = retryOptions?.signal ?? init?.signal ?? undefined;
   return retryWithRateLimit(
-    async () => {
-      const response = await fetch(input, init);
+    async (attemptSignal) => {
+      const requestInit = attemptSignal
+        ? { ...init, signal: attemptSignal }
+        : init;
+      const response = await fetch(input, requestInit);
       if (response.status === 429) {
         const retryAfterMs = parseRetryAfter(
           response.headers.get("Retry-After"),

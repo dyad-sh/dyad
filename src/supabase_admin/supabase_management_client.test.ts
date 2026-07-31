@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  deleteSupabaseFunction,
   listSupabaseOrganizations,
   refreshSupabaseToken,
 } from "./supabase_management_client";
@@ -100,5 +101,43 @@ describe("refreshSupabaseToken", () => {
       undefined,
       undefined,
     ]);
+  });
+});
+
+describe("deleteSupabaseFunction", () => {
+  beforeEach(() => {
+    vi.mocked(readSettings).mockReturnValue({
+      supabase: {
+        accessToken: { value: "management-token" },
+        expiresIn: 3_600,
+        tokenTimestamp: Math.floor(Date.now() / 1_000),
+      },
+    } as ReturnType<typeof readSettings>);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(null, { status: 200 })),
+    );
+  });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("uses an abortable DELETE request against the management API", async () => {
+    const controller = new AbortController();
+
+    await deleteSupabaseFunction({
+      supabaseProjectId: "project/ref",
+      functionName: "function name",
+      organizationSlug: null,
+      signal: controller.signal,
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      "https://api.supabase.com/v1/projects/project%2Fref/functions/function%20name",
+      {
+        method: "DELETE",
+        headers: { Authorization: "Bearer management-token" },
+        signal: controller.signal,
+      },
+    );
   });
 });

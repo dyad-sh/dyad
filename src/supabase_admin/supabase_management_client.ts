@@ -667,11 +667,21 @@ export async function deleteSupabaseFunction({
     `Deleting Supabase function: ${functionName} from project: ${supabaseProjectId}`,
   );
   const supabase = await getSupabaseClient({ organizationSlug });
-  await retryWithRateLimit(
-    () => supabase.deleteFunction(supabaseProjectId, functionName),
+  const response = await fetchWithRetry(
+    `https://api.supabase.com/v1/projects/${encodeURIComponent(supabaseProjectId)}/functions/${encodeURIComponent(functionName)}`,
+    {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${(supabase as any).options.accessToken}`,
+      },
+      signal,
+    },
     `Delete function ${functionName}`,
     { signal },
   );
+  if (response.status !== 200) {
+    throw await createResponseError(response, "delete function");
+  }
   logger.info(
     `Deleted Supabase function: ${functionName} from project: ${supabaseProjectId}`,
   );

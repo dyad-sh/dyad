@@ -16,9 +16,14 @@ const { mockGenerateImageWithUserProvider } = vi.hoisted(() => ({
   mockGenerateImageWithUserProvider: vi.fn(),
 }));
 
-vi.mock("@/ipc/pi/image_generation", () => ({
-  generateImage: mockGenerateImageWithUserProvider,
-}));
+vi.mock("@/ipc/pi/image_generation", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/ipc/pi/image_generation")>();
+  return {
+    ...actual,
+    generateImage: mockGenerateImageWithUserProvider,
+  };
+});
 
 vi.mock("@/paths/paths", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/paths/paths")>();
@@ -117,6 +122,19 @@ describe("ImageGenerationService", () => {
       expect.any(AbortSignal),
     );
     expect(fs.readFileSync(result.filePath)).toEqual(Buffer.from("image"));
+  });
+
+  it("uses the generated image MIME type for the saved extension", async () => {
+    mockGenerateImageWithUserProvider.mockResolvedValue({
+      data: Buffer.from("jpeg-image").toString("base64"),
+      mimeType: "image/jpeg",
+    });
+
+    const result = await generate("jpeg-provider");
+
+    expect(result.fileName).toMatch(/\.jpg$/);
+    expect(result.filePath).toMatch(/\.jpg$/);
+    expect(fs.readFileSync(result.filePath)).toEqual(Buffer.from("jpeg-image"));
   });
 
   it("aborts the initial generation request", async () => {

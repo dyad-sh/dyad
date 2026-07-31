@@ -1,4 +1,5 @@
 import {
+  findKnownAppMentionMatches,
   formatKnownAppMentionsForPrompt,
   MENTION_REGEX,
   parseAppMentions,
@@ -273,6 +274,40 @@ describe("splitAppMentionTrailingDots", () => {
 });
 
 describe("parseKnownAppMentions", () => {
+  it("returns the full source range for a spaced app mention", () => {
+    const prompt = "Compare @app:This Is My App with the current app";
+    const [match] = findKnownAppMentionMatches(prompt, ["This Is My App"]);
+
+    expect(prompt.slice(match.start, match.end)).toBe("@app:This Is My App");
+  });
+
+  it("matches known app names containing spaces", () => {
+    const result = parseKnownAppMentions(
+      "Compare @app:This Is My App with the current app",
+      ["This Is My App"],
+    );
+
+    expect(result).toEqual(["This Is My App"]);
+  });
+
+  it("prefers the longest spaced app name", () => {
+    const result = parseKnownAppMentions("Compare @app:This Is My App.", [
+      "This Is",
+      "This Is My App",
+    ]);
+
+    expect(result).toEqual(["This Is My App"]);
+  });
+
+  it("does not match a spaced app name inside a longer word", () => {
+    const result = parseKnownAppMentions(
+      "Compare @app:This Is My Application",
+      ["This Is My App"],
+    );
+
+    expect(result).toEqual([]);
+  });
+
   it("matches dotted app names from the known app list", () => {
     const result = parseKnownAppMentions("Check @app:foo.app.com", [
       "foo.app.com",
@@ -336,6 +371,15 @@ describe("parseKnownAppMentions", () => {
 });
 
 describe("formatKnownAppMentionsForPrompt", () => {
+  it("formats visible app names containing spaces", () => {
+    const result = formatKnownAppMentionsForPrompt(
+      "Compare @This Is My App with the current app",
+      ["This Is My App"],
+    );
+
+    expect(result).toBe("Compare @app:This Is My App with the current app");
+  });
+
   it("allows terminal periods after visible app mentions", () => {
     const result = formatKnownAppMentionsForPrompt("Fix bug in @MyApp.", [
       "MyApp",

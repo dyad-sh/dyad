@@ -2,8 +2,12 @@ import { render, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { LexicalChatInput } from "./LexicalChatInput";
 
+const mocks = vi.hoisted(() => ({
+  apps: [] as Array<{ id: number; name: string }>,
+}));
+
 vi.mock("@/hooks/useLoadApps", () => ({
-  useLoadApps: () => ({ apps: [] }),
+  useLoadApps: () => ({ apps: mocks.apps }),
 }));
 vi.mock("@/hooks/usePrompts", () => ({
   usePrompts: () => ({ prompts: [] }),
@@ -22,6 +26,7 @@ vi.mock("jotai", async (importOriginal) => ({
 describe("LexicalChatInput", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
+    mocks.apps = [];
   });
 
   it("reactively updates editor editability when disabled changes", async () => {
@@ -47,5 +52,35 @@ describe("LexicalChatInput", () => {
         container.querySelector('[contenteditable="false"]'),
       ).not.toBeNull();
     });
+  });
+
+  it("restores an app mention containing spaces as one mention node", async () => {
+    mocks.apps = [{ id: 1, name: "This Is My App" }];
+
+    const { container } = render(
+      <LexicalChatInput
+        value="Compare @app:This Is My App."
+        onChange={vi.fn()}
+        onSubmit={vi.fn()}
+        messageHistory={[]}
+        excludeCurrentApp={false}
+        disableSendButton={false}
+      />,
+    );
+
+    await waitFor(() => {
+      const mention = container.querySelector("[data-beautiful-mention]");
+      expect(mention).not.toBeNull();
+      expect(mention?.getAttribute("data-beautiful-mention")).toBe(
+        "@This Is My App",
+      );
+    });
+
+    expect(container.querySelectorAll("[data-beautiful-mention]")).toHaveLength(
+      1,
+    );
+    expect(
+      container.querySelector('[contenteditable="true"]')?.textContent,
+    ).toBe("Compare @This Is My App.");
   });
 });

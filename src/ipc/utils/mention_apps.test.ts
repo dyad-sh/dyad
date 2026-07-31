@@ -73,4 +73,25 @@ describe("mention app utilities", () => {
       },
     ]);
   });
+
+  it("resolves an app mention whose name contains spaces", async () => {
+    dbMocks.findMany.mockResolvedValue([
+      {
+        id: 1,
+        name: "This Is My App",
+        path: "this-is-my-app",
+      },
+    ]);
+
+    const result = await extractMentionedAppsReferencesFromPrompt(
+      "Please compare @app:This Is My App with the current app",
+    );
+
+    expect(result).toEqual([
+      {
+        appName: "This Is My App",
+        appPath: "/dyad-apps/this-is-my-app",
+      },
+    ]);
+  });
 });

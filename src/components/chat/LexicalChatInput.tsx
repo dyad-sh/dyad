@@ -27,10 +27,10 @@ import { forwardRef } from "react";
 import { useAtomValue } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import {
-  APP_MENTION_NAME_PATTERN,
+  findKnownAppMentionMatches,
   formatKnownAppMentionsForPrompt,
   MENTION_REGEX,
-  parseAppMentions,
+  parseKnownAppMentions,
   splitAppMentionTrailingDots,
 } from "@/shared/parse_mention_apps";
 import { useLoadApp } from "@/hooks/useLoadApp";
@@ -186,9 +186,11 @@ function EditableStatePlugin({ editable }: { editable: boolean }) {
 // Plugin to sync external value prop into the editor
 function ExternalValueSyncPlugin({
   value,
+  appNames,
   promptsById,
 }: {
   value: string;
+  appNames: string[];
   promptsById: Record<number, string>;
 }) {
   const [editor] = useLexicalComposerContext();
@@ -224,45 +226,79 @@ function ExternalValueSyncPlugin({
 
       const paragraph = $createParagraphNode();
 
-      // Build nodes from internal value, turning @app:Name, @prompt:<id>, @file:<path>, and @media:<ref> into mention nodes
+      // Build nodes from internal value, turning app, prompt, file, and media
+      // references into mention nodes.
+      const appMentionMatches =
+        appNames.length > 0
+          ? findKnownAppMentionMatches(value, appNames)
+          : Array.from(
+              value.matchAll(new RegExp(MENTION_REGEX.source, "g")),
+            ).flatMap((match) => {
+              const { appName } = splitAppMentionTrailingDots(match[1]);
+              if (!appName) {
+                return [];
+              }
+              return [
+                {
+                  appName,
+                  start: match.index,
+                  end: match.index + "@app:".length + appName.length,
+                },
+              ];
+            });
+      const mentionMatches: Array<{
+        start: number;
+        end: number;
+        type: "app" | "prompt" | "file" | "media";
+        value: string;
+      }> = appMentionMatches.map((match) => ({
+        start: match.start,
+        end: match.end,
+        type: "app",
+        value: match.appName,
+      }));
+
+      const nonAppMentionRegex =
+        /@prompt:(\d+)|@file:([^\s]+)|@media:([^\s]+)/g;
+      let nonAppMatch: RegExpExecArray | null;
+      while ((nonAppMatch = nonAppMentionRegex.exec(value)) !== null) {
+        mentionMatches.push({
+          start: nonAppMatch.index,
+          end: nonAppMatch.index + nonAppMatch[0].length,
+          type: nonAppMatch[1] ? "prompt" : nonAppMatch[2] ? "file" : "media",
+          value: nonAppMatch[1] ?? nonAppMatch[2] ?? nonAppMatch[3],
+        });
+      }
+      mentionMatches.sort((a, b) => a.start - b.start);
+
       let lastIndex = 0;
-      let match: RegExpExecArray | null;
-      const combined = new RegExp(
-        `@app:(${APP_MENTION_NAME_PATTERN})|@prompt:(\\d+)|@file:([^\\s]+)|@media:([^\\s]+)`,
-        "g",
-      );
-      while ((match = combined.exec(value)) !== null) {
-        const start = match.index;
-        const full = match[0];
+      for (const match of mentionMatches) {
+        const start = match.start;
+        if (start < lastIndex) {
+          continue;
+        }
         if (start > lastIndex) {
           const textBefore = value.slice(lastIndex, start);
           if (textBefore) paragraph.append($createTextNode(textBefore));
         }
-        if (match[1]) {
-          const { appName, trailingDots } = splitAppMentionTrailingDots(
-            match[1],
-          );
-          paragraph.append($createBeautifulMentionNode("@", appName));
-          if (trailingDots) {
-            paragraph.append($createTextNode(trailingDots));
-          }
-        } else if (match[2]) {
-          const id = Number(match[2]);
+        if (match.type === "app") {
+          paragraph.append($createBeautifulMentionNode("@", match.value));
+        } else if (match.type === "prompt") {
+          const id = Number(match.value);
           const title = promptsById[id] || `prompt:${id}`;
           paragraph.append($createBeautifulMentionNode("@", title));
-        } else if (match[3]) {
-          const filePath = match[3];
-          paragraph.append($createBeautifulMentionNode("@", filePath));
-        } else if (match[4]) {
+        } else if (match.type === "file") {
+          paragraph.append($createBeautifulMentionNode("@", match.value));
+        } else {
           let mediaRef: string;
           try {
-            mediaRef = decodeURIComponent(match[4]);
+            mediaRef = decodeURIComponent(match.value);
           } catch {
-            mediaRef = match[4];
+            mediaRef = match.value;
           }
           paragraph.append($createBeautifulMentionNode("@", mediaRef));
         }
-        lastIndex = start + full.length;
+        lastIndex = match.end;
       }
       if (lastIndex < value.length) {
         const trailing = value.slice(lastIndex);
@@ -276,7 +312,7 @@ function ExternalValueSyncPlugin({
       root.append(paragraph);
       paragraph.selectEnd();
     });
-  }, [editor, value, promptsById]);
+  }, [appNames, editor, value, promptsById]);
 
   return null;
 }
@@ -315,6 +351,10 @@ export function LexicalChatInput({
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const { app } = useLoadApp(selectedAppId);
   const appFiles = app?.files;
+  const appNames = React.useMemo(
+    () => (apps ?? []).map((candidate) => candidate.name),
+    [apps],
+  );
 
   // Prepare mention items - convert apps to mention format
   const mentionItems = React.useMemo(() => {
@@ -352,7 +392,7 @@ export function LexicalChatInput({
     const currentAppName = currentApp?.name;
 
     // Parse already mentioned apps from current input value
-    const alreadyMentioned = parseAppMentions(value);
+    const alreadyMentioned = parseKnownAppMentions(value, appNames);
 
     // Filter out current app and already mentioned apps
     const filteredApps = apps.filter((app) => {
@@ -399,6 +439,7 @@ export function LexicalChatInput({
     return result;
   }, [
     apps,
+    appNames,
     selectedAppId,
     value,
     excludeCurrentApp,
@@ -528,6 +569,7 @@ export function LexicalChatInput({
         />
         <ExternalValueSyncPlugin
           value={value}
+          appNames={appNames}
           promptsById={Object.fromEntries(
             (prompts || []).map((p) => [p.id, p.title]),
           )}

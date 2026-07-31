@@ -934,7 +934,6 @@ export function registerAppHandlers() {
       operationId: params.invocationRef?.operationId ?? randomUUID(),
       startedAt: Date.now(),
       removeNodeModules: params.removeNodeModules ?? false,
-      recreateSandbox: params.recreateSandbox ?? false,
     });
   });
 

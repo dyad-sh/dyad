@@ -1,5 +1,6 @@
 import type { Chat, FileAttachment, Message, AgentTodo } from "@/ipc/types";
 import type { ListedApp } from "@/ipc/types/app";
+import type { ComponentSelection } from "@/ipc/types/visual-editing";
 import type { Getter, Setter } from "jotai";
 import { atom } from "jotai";
 import { atomWithStorage } from "jotai/utils";

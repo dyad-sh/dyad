@@ -23,7 +23,7 @@ export interface PreviewIframeState {
 
 export interface PreviewError {
   readonly message: string;
-  readonly source: "preview-app" | "dyad-app" | "dyad-sync";
+  readonly source: "preview-app" | "dyad-app";
 }
 
 export const INITIAL_PREVIEW_IFRAME_STATE: PreviewIframeState = {
@@ -69,8 +69,6 @@ export type PreviewIframeEvent =
       message: string;
       source: "preview-app" | "dyad-app";
     }
-  | { type: "SYNC_ERROR"; message: string }
-  | { type: "SYNC_RECOVERED" }
   | { type: "APP_ERROR"; message: string }
   | { type: "APP_ERROR_CLEARED" }
   | { type: "DISMISS" };

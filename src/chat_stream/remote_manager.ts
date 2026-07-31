@@ -25,7 +25,6 @@ import {
 import { sha256Hex } from "@/lib/browser_hash";
 import { serializeImmutableChatTurnPayload } from "./intent_payload";
 import { queryKeys } from "@/lib/queryKeys";
-import { isFreeProModel } from "@/lib/freeProModel";
 import { ipc } from "@/ipc/types";
 import { mergeResyncMessages } from "@/lib/resyncChat";
 import { shouldShowPnpmMinimumReleaseAgeWarning } from "@/lib/schemas";
@@ -619,18 +618,6 @@ export class ChatStreamRemoteManager {
     this.runtimeDeps?.queryClient.invalidateQueries({
       queryKey: queryKeys.tokenCount.all,
     });
-    this.runtimeDeps?.queryClient.invalidateQueries({
-      queryKey: queryKeys.userBudget.info,
-    });
-    this.runtimeDeps?.queryClient.invalidateQueries({
-      queryKey: queryKeys.freeAgentQuota.status,
-    });
-    const settings = this.runtimeDeps?.getSettings();
-    if (isFreeProModel(settings?.selectedModel)) {
-      this.runtimeDeps?.queryClient.invalidateQueries({
-        queryKey: queryKeys.freeModelQuota.status,
-      });
-    }
     if (targetAppId !== null) {
       this.runtimeDeps?.queryClient.invalidateQueries({
         queryKey: queryKeys.apps.detail({ appId: targetAppId }),
@@ -721,6 +708,7 @@ export class ChatStreamRemoteManager {
           );
         });
     }
+    const settings = this.runtimeDeps?.getSettings();
     if (completion.updatedFiles && snapshot.chatId > 0) {
       if (settings?.autoExpandPreviewPanel) {
         // Open the window-local preview after generated files change.

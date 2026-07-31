@@ -34,6 +34,14 @@ import { AgentConsentBanner } from "./AgentConsentBanner";
 import { TodoList } from "./TodoList";
 import { QuestionnaireInput } from "./QuestionnaireInput";
 import { QueuedMessagesList } from "./QueuedMessagesList";
+import {
+  currentComponentCoordinatesAtom,
+  pendingVisualChangesAtom,
+  previewIframeRefAtom,
+  selectedComponentsPreviewAtom,
+  visualEditingSelectedComponentAtom,
+} from "@/atoms/previewAtoms";
+import { SelectedComponentsDisplay } from "./SelectedComponentDisplay";
 import { LexicalChatInput } from "./LexicalChatInput";
 import { AuxiliaryActionsMenu } from "./AuxiliaryActionsMenu";
 import { ChatImageGenerationStrip } from "./ChatImageGenerationStrip";
@@ -41,6 +49,7 @@ import { dismissedImageGenerationJobIdsAtom } from "@/atoms/imageGenerationAtoms
 import { useChatImageGenerationJobs } from "@/image_generation/hooks";
 import { ImageGeneratorDialog } from "@/components/ImageGeneratorDialog";
 import { useChatModeToggle } from "@/hooks/useChatModeToggle";
+import { VisualEditingChangesDialog } from "@/components/preview_panel/VisualEditingChangesDialog";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 import {
@@ -126,6 +135,18 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     setShowTokenBar((prev) => !prev);
     queryClient.invalidateQueries({ queryKey: queryKeys.tokenCount.all });
   }, [setShowTokenBar, queryClient]);
+  const [selectedComponents, setSelectedComponents] = useAtom(
+    selectedComponentsPreviewAtom,
+  );
+  const previewIframeRef = useAtomValue(previewIframeRefAtom);
+  const setVisualEditingSelectedComponent = useSetAtom(
+    visualEditingSelectedComponentAtom,
+  );
+  const setCurrentComponentCoordinates = useSetAtom(
+    currentComponentCoordinatesAtom,
+  );
+  const setPendingVisualChanges = useSetAtom(pendingVisualChangesAtom);
+  const sendPreviewIframeEvent = useSendPreviewIframeEvent(appId);
   const store = useStore();
   const userInputReadModel = getUserInputReadModel({ store });
   const consentsForThisChat = usePendingToolConsents(chatId);
@@ -146,6 +167,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   // Get todos for this chat
   const agentTodosByChatId = useAtomValue(agentTodosByChatIdAtom);
   const chatTodos = chatId ? (agentTodosByChatId.get(chatId) ?? []) : [];
+  const { refreshAppIframe } = useRunApp();
   const { navigate } = useRouter();
   const setSelectedChatId = useSetAtom(selectedChatIdAtom);
   const { invalidateChats } = useChats(appId);
@@ -261,7 +283,20 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   // Attachments are cleared separately because their timing varies by path.
   const clearComposerAfterSubmit = useCallback(() => {
     setInputValue("");
-  }, [setInputValue]);
+    setSelectedComponents([]);
+    sendPreviewIframeEvent({ type: "PICKER_DEACTIVATED" });
+    setVisualEditingSelectedComponent(null);
+    previewIframeRef?.contentWindow?.postMessage(
+      { type: "clear-dyad-component-overlays" },
+      "*",
+    );
+  }, [
+    previewIframeRef,
+    sendPreviewIframeEvent,
+    setInputValue,
+    setSelectedComponents,
+    setVisualEditingSelectedComponent,
+  ]);
 
   // Shared cleanup for exiting queued message editing state
   const resetEditingState = useCallback(() => {
@@ -290,6 +325,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     return () => {
       if (editingQueuedMessageIdRef.current) {
         clearAttachments();
+        setSelectedComponents([]);
+        setVisualEditingSelectedComponent(null);
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -327,12 +364,16 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         updateQueuedMessage(editingQueuedMessageId, {
           prompt: inputValue,
           attachments,
+          selectedComponents,
         });
       }
       // Load the message content into the input
       setInputValue(msg.prompt);
       // Restore attachments from the queued message.
       replaceAttachments(msg.attachments ?? []);
+      setSelectedComponents(msg.selectedComponents ?? []);
+      sendPreviewIframeEvent({ type: "SELECTION_RESTORE_QUEUED" });
+      setVisualEditingSelectedComponent(null);
       // Set editing mode
       setEditingQueuedMessageId(id);
     },
@@ -341,8 +382,12 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       editingQueuedMessageId,
       inputValue,
       attachments,
+      selectedComponents,
       setInputValue,
       replaceAttachments,
+      setSelectedComponents,
+      setVisualEditingSelectedComponent,
+      sendPreviewIframeEvent,
       updateQueuedMessage,
     ],
   );
@@ -444,12 +489,14 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     }
 
     const currentInput = promptWithImages;
+    const componentsToSend = selectedComponents;
 
     // Handle editing a queued message
     if (editingQueuedMessageId) {
       updateQueuedMessage(editingQueuedMessageId, {
         prompt: currentInput,
         attachments,
+        selectedComponents: componentsToSend,
       });
       resetEditingState();
       return;
@@ -461,6 +508,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       const queued = queueMessage({
         prompt: currentInput,
         attachments,
+        selectedComponents: componentsToSend,
       });
       if (queued) {
         // Only clear input, attachments, and components on successful queue
@@ -482,6 +530,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       chatId,
       attachments,
       redo: false,
+      selectedComponents: componentsToSend,
       requestedChatMode: isChatModeLoading ? null : storedChatMode,
     });
     clearAttachments();
@@ -621,6 +670,19 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               </button>
             </div>
           )}
+          <VisualEditingChangesDialog
+            onReset={() => {
+              setSelectedComponents([]);
+              sendPreviewIframeEvent({ type: "PICKER_DEACTIVATED" });
+              setVisualEditingSelectedComponent(null);
+              setCurrentComponentCoordinates(null);
+              setPendingVisualChanges(new Map());
+              refreshAppIframe();
+            }}
+          />
+
+          <SelectedComponentsDisplay />
+
           {/* Use the AttachmentsList component */}
           <AttachmentsList
             attachments={attachments}

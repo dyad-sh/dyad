@@ -431,7 +431,7 @@ export class PageObject {
   }
 
   async clickRestart() {
-    await this.previewPanel.ensurePreviewPanelIsOpen();
+    await this.previewPanel.ensurePreviewPanelOpen();
     await this.page.getByRole("button", { name: "Restart" }).click();
   }
 
@@ -690,8 +690,8 @@ export class PageObject {
     return this.chatActions.sendPrompt(prompt, options);
   }
 
-  async importApp(appDir: string) {
-    return this.appManagement.importApp(appDir);
+  async importApp(appDir: string, appName?: string) {
+    return this.appManagement.importApp(appDir, appName);
   }
 
   // ================================

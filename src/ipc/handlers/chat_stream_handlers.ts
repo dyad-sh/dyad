@@ -11,10 +11,7 @@ import {
 } from "../../prompts/system_prompt";
 import { detectFrameworkType } from "../utils/framework_utils";
 import { getThemePromptById } from "../utils/theme_utils";
-import {
-  getSupabaseAvailableSystemPrompt,
-  SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT,
-} from "../../prompts/supabase_prompt";
+import { getSupabaseAvailableSystemPrompt } from "../../prompts/supabase_prompt";
 import { registerTrustedIpcHandler } from "./trusted_handle";
 import { buildNeonPromptForApp } from "../../neon_admin/neon_prompt_context";
 import { getDyadAppPath } from "../../paths/paths";
@@ -53,8 +50,6 @@ import {
   sendChatChunk,
 } from "@/window_infrastructure/main/production_high_volume";
 import { queryInvalidationBus } from "@/window_infrastructure/main/query_invalidation_bus";
-import { cancelOrphanedBaseStream } from "../utils/stream_text_utils";
-import { cleanFullResponse } from "../utils/cleanFullResponse";
 import { escapeXmlAttr, escapeXmlContent } from "../../../shared/xmlEscape";
 import {
   appendReferencedAppsReminder,

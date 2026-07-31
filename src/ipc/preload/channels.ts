@@ -62,6 +62,7 @@ import {
   distributedMachineContracts,
   distributedMachineEvents,
 } from "../types/distributed_machines";
+import { visualEditingContracts } from "../types/visual-editing";
 
 // =============================================================================
 // Invoke Channels (derived from all contracts)
@@ -120,6 +121,7 @@ export const VALID_INVOKE_CHANNELS = [
   ...getInvokeChannels(windowInfrastructureContracts),
   ...getInvokeChannels(distributedMachineContracts),
   ...getInvokeChannels(imageGenerationContracts),
+  ...getInvokeChannels(visualEditingContracts),
 
   // Test-only channels
   ...TEST_INVOKE_CHANNELS,

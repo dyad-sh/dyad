@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "id": "plan-1353db5f",
+  "title": "剩余明确的商业 Pro 行为主要有两处：压缩时根据 Dyad Engine 密钥选择“Pro 专属模型”，以及遥测按非 Pro 用户降采样的旧注释/逻辑；预览…",
+  "status": "draft",
+  "content": "剩余明确的商业 Pro 行为主要有两处：压缩时根据 Dyad Engine 密钥选择“Pro 专属模型”，以及遥测按非 Pro 用户降采样的旧注释/逻辑；预览中的 `dyad-pro-mode` 需要核实是兼容协议还是门控。计划会把可执行代码、数据库迁移、文档说明和针对性测试一起收口，并保留历史迁移文件与第三方 Pi 的可选传递依赖。",
+  "tasks": [
+    {
+      "id": "t1",
+      "content": "剩余明确的商业 Pro 行为主要有两处：压缩时根据 Dyad Engine 密钥选择“Pro 专属模型”，以及遥测按非 Pro 用户降采样的旧注释/逻辑；预览…",
+      "status": "pending",
+      "line": 0
+    }
+  ],
+  "revision": 4,
+  "created_at": 1785445294750,
+  "updated_at": 1785445366813,
+  "origin_session_id": "64085028-e04a-481e-9dc6-01e6ce68c817"
+}

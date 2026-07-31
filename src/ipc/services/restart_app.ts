@@ -8,7 +8,6 @@ export interface RestartAppOptions {
   appId: number;
   invocationRef?: AppRunInvocationRef;
   removeNodeModules?: boolean;
-  recreateSandbox?: boolean;
   clearRuntimeLogs?: boolean;
 }
 

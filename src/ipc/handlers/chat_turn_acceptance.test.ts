@@ -102,7 +102,7 @@ describe("acceptChatTurn", () => {
       acceptChatTurn(db, {
         chatId,
         storedChatMode: null,
-        selectedChatMode: "build",
+        selectedChatMode: "local-agent",
         content: "third",
         chatTurnIntentId: "third",
       }),

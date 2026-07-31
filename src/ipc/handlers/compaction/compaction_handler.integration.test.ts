@@ -211,7 +211,7 @@ describe("performCompaction", () => {
     );
   });
 
-  it("summarizes with the user's selected model for non-Pro users", async () => {
+  it("summarizes with the user's selected model", async () => {
     mockStreamSimple.mockReturnValue(textEvents(["Complete summary"]));
 
     const result = await performCompaction(
@@ -228,32 +228,6 @@ describe("performCompaction", () => {
     });
     expect(mockBuildStreamOptions).toHaveBeenCalledWith(
       { provider: "anthropic", name: "test-model" },
-      settingsState.current,
-    );
-  });
-
-  it("pins the benchmarked compaction model for Dyad Pro users", async () => {
-    settingsState.current = {
-      selectedModel: { provider: "anthropic", name: "test-model" },
-      enableDyadPro: true,
-      providerSettings: { auto: { apiKey: { value: "dyad-pro-key" } } },
-    };
-    mockStreamSimple.mockReturnValue(textEvents(["Complete summary"]));
-
-    const result = await performCompaction(
-      { sender: {} } as never,
-      chatId,
-      "/tmp/test-app",
-      "request-id",
-    );
-
-    expect(result).toMatchObject({ success: true });
-    expect(mockResolveDyadModel).toHaveBeenCalledWith({
-      provider: "openai",
-      name: "gpt-5.6-luna",
-    });
-    expect(mockBuildStreamOptions).toHaveBeenCalledWith(
-      { provider: "openai", name: "gpt-5.6-luna" },
       settingsState.current,
     );
   });

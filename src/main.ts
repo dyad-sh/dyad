@@ -58,10 +58,7 @@ import {
   disposeConnectionFlowsForShutdown,
   runOAuthReturnExchange,
 } from "./ipc/handlers/connection_flow_handlers";
-import {
-  AddPromptDataSchema,
-  AddPromptPayload,
-} from "./ipc/deep_link_data";
+import { AddPromptDataSchema, AddPromptPayload } from "./ipc/deep_link_data";
 import {
   startPerformanceMonitoring,
   stopPerformanceMonitoring,
@@ -416,11 +413,6 @@ export async function onReady() {
   // Remove GitHub tokens that older versions embedded in git remote URLs
   scrubGithubTokenFromRemotes();
 
-  // Encrypt MCP headers and env vars that are still stored as
-  // plaintext. Awaited so no MCP read can see a row the pass is about
-  // to correct. It returns rather than throwing on failure, and does
-  // no work at all once there are no plaintext values left.
-
   const settings = await readEffectiveSettings();
 
   // Add dyad-apps directory to git safe.directory (required for Windows).
@@ -658,8 +650,7 @@ function deliverPendingCrashRecovery(target: BrowserWindow): void {
   });
 
   sendTelemetryEventToWindow(target, "app:crash_detected", {
-    // Mark as error so renderer PostHog before_send sampling does not
-    // drop 90% of events for non-Pro users (see src/renderer.tsx).
+    // Mark as error so renderer PostHog sampling always retains crash events.
     error: true,
     has_performance_data: !!pendingForceCloseData,
     ...(pendingForceCloseData &&
@@ -904,8 +895,7 @@ const createWindow = ({
     if (rendererCrash) {
       const perf = rendererCrash.performance;
       sendTelemetryEventToWindow(browserWindow, "renderer:crash_detected", {
-        // Mark as error so renderer PostHog before_send sampling does not
-        // drop 90% of events for non-Pro users (see src/renderer.tsx).
+        // Mark as error so renderer PostHog sampling always retains crash events.
         error: true,
         reason: rendererCrash.reason,
         exit_code: rendererCrash.exitCode,
@@ -1395,8 +1385,7 @@ app.on("child-process-gone", (_event, details) => {
     details.exitCode,
   );
   sendTelemetryEvent("utility_process:crash_detected", {
-    // Mark as error so renderer PostHog before_send sampling does not
-    // drop 90% of events for non-Pro users (see src/renderer.tsx).
+    // Mark as error so renderer PostHog sampling always retains crash events.
     error: true,
     reason: details.reason,
     exit_code: details.exitCode,

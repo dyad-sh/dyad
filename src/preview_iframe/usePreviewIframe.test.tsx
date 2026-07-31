@@ -183,7 +183,7 @@ describe("useSendPreviewIframeEvent", () => {
       result.current.previewErrors.setAppError(1, "queued");
       result.current.entityDisposal.disposeForApp(1);
       await Promise.resolve();
-      result.current.previewErrors.setSyncError(1, "late");
+      result.current.previewErrors.setAppError(1, "late");
       await Promise.resolve();
     });
 

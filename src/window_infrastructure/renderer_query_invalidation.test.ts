@@ -76,7 +76,7 @@ describe("RendererQueryInvalidationConsumer", () => {
     });
   });
 
-  it("maps durable completion, provider, and MCP scopes after reload recovery", () => {
+  it("maps durable completion and provider scopes after reload recovery", () => {
     const invalidateQueries = vi.fn(() => Promise.resolve());
     const consumer = new RendererQueryInvalidationConsumer(
       { invalidateQueries },
@@ -88,13 +88,7 @@ describe("RendererQueryInvalidationConsumer", () => {
       [],
       [
         { family: "token-count" },
-        { family: "user-budget" },
-        { family: "free-agent-quota" },
-        { family: "free-model-quota" },
         { family: "provider-status", provider: "neon" },
-        { family: "mcp-servers" },
-        { family: "mcp-catalog" },
-        { family: "mcp-tools" },
       ],
     );
 
@@ -105,14 +99,8 @@ describe("RendererQueryInvalidationConsumer", () => {
     ).map(([filter]) => filter.queryKey);
     expect(invalidatedKeys).toEqual([
       queryKeys.tokenCount.all,
-      queryKeys.userBudget.info,
-      queryKeys.freeAgentQuota.status,
-      queryKeys.freeModelQuota.status,
       queryKeys.settings.all,
       queryKeys.neon.all,
-      queryKeys.mcp.servers,
-      queryKeys.mcp.catalog,
-      queryKeys.mcp.toolsByServer.all,
     ]);
   });
 

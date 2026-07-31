@@ -29,17 +29,6 @@ import { addLog, clearLogs } from "@/lib/log_store";
 import { getDyadAppPath } from "@/paths/paths";
 import { startProxy } from "@/ipc/utils/start_proxy_server";
 import {
-  buildCloudSandboxFileMap,
-  CloudSandboxApiError,
-  createCloudSandbox,
-  destroyCloudSandbox,
-  registerRunningCloudSandbox,
-  setCloudSandboxSyncUpdateListener,
-  streamCloudSandboxLogs,
-  uploadCloudSandboxFiles,
-  restartCloudSandbox,
-} from "@/ipc/utils/cloud_sandbox_provider";
-import {
   processCounter,
   removeAppIfCurrentProcess,
   removeDockerVolumesForApp,
@@ -54,7 +43,6 @@ import {
   getPackageManagerCommandEnv,
   getPnpmMinimumReleaseAgeSupport,
   isPnpmIgnoredBuildsError,
-  parsePnpmIgnoredBuildsFromOutput,
   type PackageManager,
   PNPM_PM_ON_FAIL_IGNORE_ARG,
   PNPM_INSTALL_POLICY_ARGS,
@@ -87,37 +75,6 @@ export type { AppRuntimeOutput } from "@/ipc/types/app_runtime";
 
 // Needed, otherwise Electron on macOS/Linux may not find node/pnpm.
 fixPath();
-
-export function formatCloudSandboxError(error: unknown) {
-  if (!(error instanceof CloudSandboxApiError)) {
-    return error instanceof Error ? error.message : String(error);
-  }
-
-  switch (error.code) {
-    case "sandbox_pro_required":
-      return "Dyad Pro is required to use cloud sandboxes.";
-    case "sandbox_insufficient_credits":
-      return "You need at least 1 credit available to start a cloud sandbox.";
-    case "sandbox_billing_unavailable":
-      return "Dyad couldn’t verify sandbox billing right now. Please try again.";
-    case "sandbox_credits_exhausted":
-      return "This cloud sandbox stopped because your credits ran out.";
-    default:
-      if (error.status === 404) {
-        return "This cloud sandbox is no longer available.";
-      }
-      if (error.status === 401 || error.status === 403) {
-        return "Dyad couldn’t authorize the cloud sandbox request. Please try again.";
-      }
-      if (error.status === 429) {
-        return "Dyad is rate limiting cloud sandbox requests right now. Please try again.";
-      }
-      if (typeof error.status === "number" && error.status >= 500) {
-        return "Dyad’s cloud sandbox service is temporarily unavailable. Please try again.";
-      }
-      return error.message;
-  }
-}
 
 function getPnpmInstallCommand(): string {
   return `pnpm ${PNPM_INSTALL_POLICY_ARGS.join(" ")} install`;
@@ -297,15 +254,6 @@ export async function executeApp({
       startCommand,
       invocationRef,
     });
-  } else if (runtimeMode === "cloud") {
-    await executeAppInCloud({
-      appPath,
-      appId,
-      output,
-      installCommand,
-      startCommand,
-      invocationRef,
-    });
   } else {
     notifyPnpmVersionMigrationAvailable({ appPath, appId, output });
     await executeAppLocalNode({
@@ -407,13 +355,9 @@ export async function ensureProxyForRunningApp({
     return;
   }
 
-  const proxyAuthToken =
-    mode === "cloud" ? appInfo.cloudPreviewAuthToken : undefined;
-
   if (
     appInfo.proxyWorker &&
     appInfo.originalUrl === originalUrl &&
-    appInfo.proxyAuthToken === proxyAuthToken &&
     appInfo.proxyUrl
   ) {
     emitProxyServerStarted({
@@ -452,7 +396,6 @@ export async function ensureProxyForRunningApp({
       ) {
         latestAppInfo.proxyUrl = proxyUrl;
         latestAppInfo.originalUrl = originalUrl;
-        latestAppInfo.proxyAuthToken = proxyAuthToken;
       }
       emitProxyServerStarted({
         appId,
@@ -471,12 +414,6 @@ export async function ensureProxyForRunningApp({
         appId,
       });
     },
-    fixedHeaders:
-      mode === "cloud" && proxyAuthToken
-        ? {
-            Authorization: `Bearer ${proxyAuthToken}`,
-          }
-        : undefined,
   });
 
   const latestAppInfo = runningApps.get(appId);
@@ -488,7 +425,6 @@ export async function ensureProxyForRunningApp({
   ) {
     latestAppInfo.proxyWorker = proxyWorker;
     latestAppInfo.originalUrl = originalUrl;
-    latestAppInfo.proxyAuthToken = proxyAuthToken;
   } else {
     await proxyWorker.terminate();
   }
@@ -629,73 +565,6 @@ Details: ${details || "n/a"}
           }
         : undefined,
   });
-}
-
-let cloudSandboxSyncUpdateListenerRegistered = false;
-
-export function registerCloudSandboxSyncUpdateListener(): void {
-  if (cloudSandboxSyncUpdateListenerRegistered) {
-    return;
-  }
-
-  setCloudSandboxSyncUpdateListener(({ appId, errorMessage }) => {
-    const appInfo = runningApps.get(appId);
-    if (!appInfo || appInfo.mode !== "cloud") {
-      return;
-    }
-
-    const previousErrorMessage = appInfo.cloudSyncErrorMessage ?? null;
-    appInfo.cloudSyncErrorMessage = errorMessage ?? undefined;
-
-    const output = appInfo.output;
-    if (!output) {
-      return;
-    }
-
-    if (errorMessage) {
-      if (previousErrorMessage === errorMessage) {
-        return;
-      }
-
-      addLog({
-        level: "error",
-        type: "server",
-        message: errorMessage,
-        timestamp: Date.now(),
-        appId,
-      });
-
-      output.send({
-        type: "sync-error",
-        message: errorMessage,
-        appId,
-      });
-      return;
-    }
-
-    if (!previousErrorMessage) {
-      return;
-    }
-
-    const recoveredMessage =
-      "Cloud sandbox sync recovered. Local changes are uploading again.";
-
-    addLog({
-      level: "info",
-      type: "server",
-      message: recoveredMessage,
-      timestamp: Date.now(),
-      appId,
-    });
-
-    output.send({
-      type: "sync-recovered",
-      message: recoveredMessage,
-      appId,
-    });
-  });
-
-  cloudSandboxSyncUpdateListenerRegistered = true;
 }
 
 // Records builds that a successful install skipped (the "Ignored build
@@ -1171,201 +1040,6 @@ ${errorOutput || "(empty)"}`,
   });
 }
 
-async function executeAppInCloud({
-  appPath,
-  appId,
-  output,
-  installCommand,
-  startCommand,
-  invocationRef,
-}: {
-  appPath: string;
-  appId: number;
-  output: AppRuntimeOutput;
-  installCommand?: string | null;
-  startCommand?: string | null;
-  invocationRef?: AppRunInvocationRef;
-}): Promise<void> {
-  const currentProcessId = processCounter.increment();
-  let sandboxId: string | undefined;
-  let previewUrl: string | undefined;
-  let previewAuthToken: string | undefined;
-
-  try {
-    const createResult = await createCloudSandbox({
-      appId,
-      appPath,
-      installCommand,
-      startCommand,
-    });
-    sandboxId = createResult.sandboxId;
-    previewUrl = createResult.previewUrl;
-    previewAuthToken = createResult.previewAuthToken;
-
-    const files = await buildCloudSandboxFileMap(appPath);
-    const uploadResult = await uploadCloudSandboxFiles({
-      sandboxId,
-      files,
-      replaceAll: true,
-    });
-    previewUrl = uploadResult.previewUrl ?? previewUrl;
-    previewAuthToken = uploadResult.previewAuthToken ?? previewAuthToken;
-  } catch (error) {
-    if (sandboxId) {
-      try {
-        await destroyCloudSandbox(sandboxId);
-      } catch (cleanupError) {
-        logger.warn(
-          `Failed to clean up cloud sandbox ${sandboxId} after startup error for app ${appId}:`,
-          cleanupError,
-        );
-      }
-    }
-    throw new Error(formatCloudSandboxError(error));
-  }
-
-  const resolvedPreviewUrl = previewUrl;
-  const resolvedPreviewAuthToken = previewAuthToken;
-  if (!sandboxId || !resolvedPreviewUrl || !resolvedPreviewAuthToken) {
-    throw new Error(
-      "Cloud sandbox startup returned incomplete preview credentials.",
-    );
-  }
-
-  const cloudLogAbortController = new AbortController();
-  runningApps.set(appId, {
-    process: null,
-    processId: currentProcessId,
-    invocationRef,
-    mode: "cloud",
-    output,
-    cloudSandboxId: sandboxId,
-    cloudPreviewUrl: resolvedPreviewUrl,
-    cloudPreviewAuthToken: resolvedPreviewAuthToken,
-    cloudLogAbortController,
-    lastViewedAt: Date.now(),
-    originalUrl: resolvedPreviewUrl,
-  });
-  registerRunningCloudSandbox({
-    appId,
-    appPath,
-    sandboxId,
-  });
-
-  await ensureProxyForRunningApp({
-    appId,
-    output,
-    originalUrl: resolvedPreviewUrl,
-    mode: "cloud",
-    invocationRef,
-  });
-
-  startCloudSandboxLogStream({
-    appId,
-    appPath,
-    output,
-    sandboxId,
-    cloudLogAbortController,
-  });
-}
-
-export function startCloudSandboxLogStream(input: {
-  appId: number;
-  appPath?: string;
-  output: AppRuntimeOutput;
-  sandboxId: string;
-  cloudLogAbortController: AbortController;
-}) {
-  // The sandbox install runs remotely and node_modules is never synced back,
-  // so the only way to observe ignored builds is the "Ignored build scripts"
-  // line in the streamed install output. Keep a bounded tail across chunks
-  // (the line may be split) and record denials locally once, best-effort.
-  const MAX_LOG_TAIL_LENGTH = 16 * 1024;
-  let logTail = "";
-  let ignoredBuildsRecorded = false;
-  const maybeRecordIgnoredBuilds = (message: string) => {
-    if (!input.appPath || ignoredBuildsRecorded) {
-      return;
-    }
-    logTail = (logTail + message).slice(-MAX_LOG_TAIL_LENGTH);
-    const ignoredBuilds = parsePnpmIgnoredBuildsFromOutput(logTail);
-    if (ignoredBuilds.length === 0) {
-      return;
-    }
-    ignoredBuildsRecorded = true;
-    const appPath = input.appPath;
-    void (async () => {
-      try {
-        // Output-only on purpose: the install ran remotely, so the local
-        // .modules.yaml (if any) does not describe this sandbox.
-        await recordAndReportDeniedPnpmBuilds({
-          appPath,
-          ignoredBuilds,
-          source: "cloud-sandbox",
-        });
-      } catch (error) {
-        logger.warn(
-          "Failed to record ignored pnpm builds from cloud sandbox logs:",
-          error,
-        );
-      }
-    })();
-  };
-
-  void (async () => {
-    try {
-      for await (const message of streamCloudSandboxLogs(
-        input.sandboxId,
-        input.cloudLogAbortController.signal,
-      )) {
-        const appInfo = runningApps.get(input.appId);
-        if (!appInfo || appInfo.cloudSandboxId !== input.sandboxId) {
-          return;
-        }
-
-        maybeRecordIgnoredBuilds(message);
-
-        addLog({
-          level: "info",
-          type: "server",
-          message,
-          timestamp: Date.now(),
-          appId: input.appId,
-        });
-
-        input.output.send({
-          type: "stdout",
-          message,
-          appId: input.appId,
-        });
-      }
-    } catch (error) {
-      if (input.cloudLogAbortController.signal.aborted) {
-        return;
-      }
-
-      const message =
-        error instanceof Error
-          ? error.message
-          : `Cloud sandbox log stream failed: ${String(error)}`;
-
-      addLog({
-        level: "error",
-        type: "server",
-        message,
-        timestamp: Date.now(),
-        appId: input.appId,
-      });
-
-      input.output.send({
-        type: "stderr",
-        message,
-        appId: input.appId,
-      });
-    }
-  })();
-}
-
 async function killProcessOnPort(port: number): Promise<void> {
   try {
     await killPort(port, "tcp");
@@ -1450,10 +1124,6 @@ export interface AppRuntimeServiceDependencies {
   stopProcess(appId: number, appInfo: RunningAppInfo): Promise<void>;
   removeCurrentProcess(appId: number, process: ChildProcess): void;
   cleanPort(port: number): Promise<void>;
-  restartSandbox(sandboxId: string): Promise<{
-    previewUrl: string;
-    previewAuthToken: string;
-  }>;
   ensureProxy(input: {
     appId: number;
     output: AppRuntimeOutput;
@@ -1461,13 +1131,6 @@ export interface AppRuntimeServiceDependencies {
     mode: RuntimeMode2;
     invocationRef?: AppRunInvocationRef;
   }): Promise<void>;
-  startCloudLogs(input: {
-    appId: number;
-    appPath?: string;
-    output: AppRuntimeOutput;
-    sandboxId: string;
-    cloudLogAbortController: AbortController;
-  }): void;
   clearLogs(appId: number): void;
   readRuntimeMode(): RuntimeMode2;
   removeNodeModules(appPath: string): Promise<void>;
@@ -1485,7 +1148,6 @@ export interface StartAppRuntimeOptions {
 
 export interface RestartAppRuntimeOptions extends StartAppRuntimeOptions {
   removeNodeModules?: boolean;
-  recreateSandbox?: boolean;
   clearRuntimeLogs?: boolean;
 }
 
@@ -1575,10 +1237,7 @@ export class AppRuntimeService {
   async restart(options: RestartAppRuntimeOptions): Promise<void> {
     const {
       appId,
-      output,
-      invocationRef,
       removeNodeModules = false,
-      recreateSandbox = false,
       clearRuntimeLogs = false,
     } = options;
     logger.log(`Restarting app ${appId}`);
@@ -1586,22 +1245,6 @@ export class AppRuntimeService {
       const app = await this.requireApp(appId);
       const appPath = this.dependencies.resolveAppPath(app.path);
       const appInfo = this.dependencies.getRunningApp(appId);
-
-      if (
-        appInfo?.mode === "cloud" &&
-        appInfo.cloudSandboxId &&
-        !recreateSandbox
-      ) {
-        await this.restartCloudSandboxInPlace({
-          appId,
-          appPath,
-          output,
-          invocationRef,
-          clearRuntimeLogs,
-          appInfo,
-        });
-        return;
-      }
 
       if (appInfo) {
         logger.log(
@@ -1665,7 +1308,7 @@ export class AppRuntimeService {
         );
         if (process) {
           this.dependencies.removeCurrentProcess(appId, process);
-        } else if (appInfo.mode !== "cloud") {
+        } else {
           this.dependencies.deleteRunningApp(appId);
         }
         throw new DyadError(
@@ -1764,7 +1407,6 @@ export class AppRuntimeService {
         output: options.output,
         invocationRef,
         removeNodeModules: options.operation === "rebuild",
-        recreateSandbox: options.operation === "rebuild",
         clearRuntimeLogs: true,
       });
       runtimeMayBeLive = true;
@@ -1822,42 +1464,6 @@ export class AppRuntimeService {
       installCommand: app.installCommand,
       startCommand: app.startCommand,
       invocationRef: options.invocationRef,
-    });
-  }
-
-  private async restartCloudSandboxInPlace(input: {
-    appId: number;
-    appPath: string;
-    output: AppRuntimeOutput;
-    invocationRef?: AppRunInvocationRef;
-    clearRuntimeLogs: boolean;
-    appInfo: RunningAppInfo;
-  }): Promise<void> {
-    const sandboxId = input.appInfo.cloudSandboxId!;
-    input.appInfo.cloudLogAbortController?.abort();
-    const result = await this.dependencies.restartSandbox(sandboxId);
-    input.appInfo.cloudPreviewUrl = result.previewUrl;
-    input.appInfo.cloudPreviewAuthToken = result.previewAuthToken;
-    input.appInfo.lastViewedAt = this.dependencies.now();
-    input.appInfo.invocationRef = input.invocationRef;
-    input.appInfo.output = input.output;
-    input.appInfo.cloudLogAbortController = new AbortController();
-    if (input.clearRuntimeLogs) {
-      this.dependencies.clearLogs(input.appId);
-    }
-    await this.dependencies.ensureProxy({
-      appId: input.appId,
-      output: input.output,
-      originalUrl: result.previewUrl,
-      mode: "cloud",
-      invocationRef: input.invocationRef,
-    });
-    this.dependencies.startCloudLogs({
-      appId: input.appId,
-      appPath: input.appPath,
-      output: input.output,
-      sandboxId,
-      cloudLogAbortController: input.appInfo.cloudLogAbortController,
     });
   }
 
@@ -1943,9 +1549,7 @@ export const appRuntimeService = new AppRuntimeService({
   stopProcess: stopAppByInfo,
   removeCurrentProcess: removeAppIfCurrentProcess,
   cleanPort: cleanUpPort,
-  restartSandbox: restartCloudSandbox,
   ensureProxy: ensureProxyForRunningApp,
-  startCloudLogs: startCloudSandboxLogStream,
   clearLogs,
   readRuntimeMode: () => readSettings().runtimeMode2 ?? "host",
   removeNodeModules: async (appPath) => {

@@ -102,7 +102,7 @@ describe("visual editing handlers", () => {
     expect(mocks.gitCommit).toHaveBeenCalledWith({
       path: mocks.appPath,
       message: "Apply visual editing changes",
-      filepaths: ["One.tsx", "Two.tsx"],
+      paths: ["One.tsx", "Two.tsx"],
     });
   });
 

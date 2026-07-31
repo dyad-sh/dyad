@@ -4,7 +4,7 @@ import path from "node:path";
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 
-describe("0042 Pro and MCP cleanup migration", () => {
+describe("0043 Pro and MCP cleanup migration", () => {
   it("drops removed structures while preserving message data", () => {
     const database = new Database(":memory:");
     try {
@@ -23,7 +23,7 @@ describe("0042 Pro and MCP cleanup migration", () => {
       `);
 
       const migration = fs.readFileSync(
-        path.join(process.cwd(), "drizzle", "0042_giant_santa_claus.sql"),
+        path.join(process.cwd(), "drizzle", "0043_uneven_hardball.sql"),
         "utf8",
       );
       for (const statement of migration.split("--> statement-breakpoint")) {

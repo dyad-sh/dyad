@@ -411,7 +411,7 @@ describe("pilot envelope budgets", () => {
         operationId: "r".repeat(256),
         startedAt: Number.MAX_SAFE_INTEGER,
         expectedRevision: Number.MAX_SAFE_INTEGER,
-        options: { removeNodeModules: true, recreateSandbox: true },
+        options: { removeNodeModules: true },
       }),
       toEnvelope: (event) =>
         dispatchEnvelope(

@@ -274,13 +274,16 @@ export const migratedSurfaceBoundaryInventory = {
  * transport. Exact files and counts prevent this exclusion from becoming a
  * wildcard.
  */
+export const nonRemoteWideningCastInventory = [
+  owned("ipc/pi/tools/adapter.ts", 1),
+] as const;
+
 export const nonRemoteDispatchOrEnqueueInventory = [
   owned("hooks/useRunApp.ts", 1),
   owned("ipc/services/app_runtime_service.ts", 2),
   owned("ipc/services/app_runtime_transport.ts", 1),
   owned("ipc/services/main_app_runtime_output.ts", 1),
   owned("ipc/utils/debug_fetch.ts", 1),
-  owned("ipc/utils/fallback_ai_model.ts", 1),
   owned("state_machines/dispatcher.ts", 1),
   owned("supabase_admin/supabase_deploy_queue.ts", 1),
   owned("version_preview/window_interest_client.ts", 3),

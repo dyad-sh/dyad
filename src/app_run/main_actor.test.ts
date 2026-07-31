@@ -240,7 +240,7 @@ describe("main-hosted app-run actor", () => {
       operationId: "restart-b",
       startedAt: 20,
       expectedRevision: actorB.getSnapshot().revision,
-      options: { removeNodeModules: false, recreateSandbox: true },
+      options: { removeNodeModules: false },
     });
     expect(restart.kind).toBe("applied");
     await flush();
@@ -623,13 +623,12 @@ describe("main-hosted app-run actor", () => {
     await manager.dispatch(7, {
       type: "RESTART",
       startedAt: 10,
-      options: { removeNodeModules: true, recreateSandbox: false },
+      options: { removeNodeModules: true },
     });
 
     expect(runtime.restart).toHaveBeenCalledWith(
       expect.objectContaining({
         removeNodeModules: true,
-        recreateSandbox: false,
       }),
     );
     manager.dispose();
@@ -660,7 +659,7 @@ describe("main-hosted app-run actor", () => {
       operationId: "replacement",
       startedAt: 3,
       expectedRevision: actorA.getSnapshot().revision,
-      options: { removeNodeModules: false, recreateSandbox: false },
+      options: { removeNodeModules: false },
     });
     await flush();
     expect(actorA.getSnapshot()).toMatchObject({
@@ -1144,7 +1143,7 @@ describe("main-hosted app-run actor", () => {
         operationId: "restart-b",
         startedAt: 20,
         expectedRevision: 0,
-        options: { removeNodeModules: false, recreateSandbox: false },
+        options: { removeNodeModules: false },
       }),
     ]);
     expect(started.kind).toBe("applied");
@@ -1303,7 +1302,7 @@ describe("main-hosted app-run actor", () => {
     await replacementManager.dispatch(7, {
       type: "RESTART",
       startedAt: 20,
-      options: { removeNodeModules: false, recreateSandbox: false },
+      options: { removeNodeModules: false },
     });
     await expect(firstRequest).resolves.toBeUndefined();
     const replacement = host

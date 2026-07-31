@@ -8,13 +8,12 @@ import {
   useRef,
   useState,
 } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import {
   ArrowLeft,
   ArrowRight,
   RefreshCw,
   ExternalLink,
-  Cloud,
   Cog,
   X,
   Sparkles,
@@ -78,11 +77,9 @@ import {
   formatPreviewConsoleMessage,
   formatPreviewNetworkStatus,
 } from "@/lib/preview_console_buffer";
-import { queryKeys } from "@/lib/queryKeys";
 import { useAttachments } from "@/hooks/useAttachments";
 import { Annotator } from "./annotator/Annotator";
 import { VisualEditingToolbar } from "./VisualEditingToolbar";
-import { resolvePreviewBrowserUrl } from "./previewBrowserUrl";
 import { PreviewLoadingScreen } from "./PreviewLoadingScreen";
 import { useTranslation } from "react-i18next";
 import {
@@ -106,7 +103,7 @@ interface ErrorBannerProps {
   error:
     | {
         message: string;
-        source: "preview-app" | "dyad-app" | "dyad-sync";
+        source: "preview-app" | "dyad-app";
       }
     | undefined;
   onDismiss: () => void;
@@ -119,7 +116,6 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
   if (!error) return null;
   const isDockerError = error.message.includes("Cannot connect to the Docker");
   const isInternalDyadError = error.source === "dyad-app";
-  const isSyncError = error.source === "dyad-sync";
 
   const getTruncatedError = () => {
     const firstLine = error.message.split("\n")[0];
@@ -143,19 +139,14 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
         <X size={14} className="text-red-500 dark:text-red-400" />
       </button>
 
-      {(isInternalDyadError || isSyncError) && (
+      {isInternalDyadError && (
         <div className="absolute top-1 right-1 p-1 bg-red-100 dark:bg-red-900 rounded-md text-xs font-medium text-red-700 dark:text-red-300">
-          {isSyncError ? "Cloud sync issue" : "Internal Dyad error"}
+          Internal Dyad error
         </div>
       )}
 
       {/* Error message in the middle */}
-      <div
-        className={cn(
-          "px-6 py-1 text-sm",
-          (isInternalDyadError || isSyncError) && "pt-6",
-        )}
-      >
+      <div className={cn("px-6 py-1 text-sm", isInternalDyadError && "pt-6")}>
         <div
           className="text-red-700 dark:text-red-300 text-wrap font-mono whitespace-pre-wrap break-words text-xs cursor-pointer flex gap-1 items-start"
           onClick={() => setIsCollapsed(!isCollapsed)}
@@ -179,11 +170,9 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
             <span className="font-medium">Tip: </span>
             {isDockerError
               ? "Make sure Docker Desktop is running and try restarting the app."
-              : isSyncError
-                ? "Dyad could not upload your latest local changes to the cloud sandbox. Check your network connection or wait for sync to recover."
-                : isInternalDyadError
-                  ? "Try restarting the Dyad app or restarting your computer to see if that fixes the error."
-                  : "Check if restarting the app fixes the error."}
+              : isInternalDyadError
+                ? "Try restarting the Dyad app or restarting your computer to see if that fixes the error."
+                : "Check if restarting the app fixes the error."}
           </span>
         </div>
       </div>
@@ -213,7 +202,7 @@ const PREVIEW_TOOLBAR_BUTTON_CLASSES =
 export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const { t } = useTranslation("home");
   const selectedAppId = useAtomValue(selectedAppIdAtom);
-  const { appUrl, originalUrl, mode } = useCurrentAppUrl(selectedAppId);
+  const { appUrl, originalUrl } = useCurrentAppUrl(selectedAppId);
   const appRunManager = useAppRunRemoteManager();
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const { streamMessage } = useStreamChat();
@@ -224,7 +213,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   } = useParseRouter(selectedAppId);
   const { restartApp, refreshAppIframe } = useRunApp();
   const { settings, updateSettings } = useSettings();
-  const queryClient = useQueryClient();
   const setSelectedComponentsPreview = useSetAtom(
     selectedComponentsPreviewAtom,
   );
@@ -340,15 +328,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   // Device mode state
   const deviceMode: DeviceMode = settings?.previewDeviceMode ?? "desktop";
   const [isDevicePopoverOpen, setIsDevicePopoverOpen] = useState(false);
-  const {
-    mutateAsync: createCloudSandboxShareLink,
-    isPending: isCreatingCloudSandboxShareLink,
-  } = useMutation({
-    mutationFn: async ({ appId }: { appId: number }) => {
-      return ipc.app.createCloudSandboxShareLink({ appId });
-    },
-  });
-
   // Device configurations
   const deviceWidthConfig = {
     tablet: 768,
@@ -357,8 +336,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
   //detect if the user is using Mac
   const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
-  const isCloudMode = mode === "cloud";
-  const isCloudSandboxMode = settings?.runtimeMode2 === "cloud";
   const { mutate: clearSessionData } = useMutation({
     mutationFn: () => {
       return ipc.system.clearSessionData();
@@ -371,80 +348,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       showError(`Error clearing preview data: ${error}`);
     },
   });
-  const { data: cloudSandboxStatus } = useQuery({
-    queryKey: queryKeys.cloudSandboxes.status({ appId: selectedAppId }),
-    queryFn: async () => {
-      if (selectedAppId === null) {
-        return null;
-      }
-      return ipc.app.getCloudSandboxStatus({ appId: selectedAppId });
-    },
-    enabled: isCloudMode && selectedAppId !== null,
-    refetchInterval: 15_000,
-    retry: false,
-  });
-
-  useEffect(() => {
-    if (!isCloudMode || !cloudSandboxStatus) {
-      return;
-    }
-
-    if (
-      cloudSandboxStatus.status === "destroyed" &&
-      (cloudSandboxStatus.terminationReason === "credits_exhausted" ||
-        cloudSandboxStatus.terminationReason === "billing_unavailable" ||
-        cloudSandboxStatus.lastErrorCode === "sandbox_credits_exhausted" ||
-        cloudSandboxStatus.lastErrorCode === "sandbox_billing_unavailable")
-    ) {
-      sendIframeEvent({
-        type: "IFRAME_ERROR",
-        message: cloudSandboxStatus.lastErrorMessage
-          ? cloudSandboxStatus.lastErrorMessage.includes("Dyad stopped")
-            ? cloudSandboxStatus.lastErrorMessage
-            : cloudSandboxStatus.terminationReason === "credits_exhausted"
-              ? "This cloud sandbox was stopped because your Dyad Pro credits ran out. Add credits and start it again."
-              : "This cloud sandbox was stopped because Dyad could not confirm billing. Please try starting it again."
-          : cloudSandboxStatus.terminationReason === "credits_exhausted"
-            ? "This cloud sandbox was stopped because your Dyad Pro credits ran out. Add credits and start it again."
-            : "This cloud sandbox was stopped because Dyad could not confirm billing. Please try starting it again.",
-        source: "dyad-app",
-      });
-    }
-  }, [cloudSandboxStatus, isCloudMode, sendIframeEvent]);
-
-  useEffect(() => {
-    if (!isCloudMode || !cloudSandboxStatus) {
-      return;
-    }
-
-    const localSyncErrorMessage = cloudSandboxStatus.localSyncErrorMessage;
-
-    if (localSyncErrorMessage) {
-      sendIframeEvent({
-        type: "SYNC_ERROR",
-        message: localSyncErrorMessage,
-      });
-      return;
-    }
-
-    sendIframeEvent({ type: "SYNC_RECOVERED" });
-  }, [cloudSandboxStatus, isCloudMode, sendIframeEvent]);
-
-  useEffect(() => {
-    if (!isCloudMode || !cloudSandboxStatus) {
-      return;
-    }
-
-    void queryClient.invalidateQueries({
-      queryKey: queryKeys.userBudget.info,
-    });
-  }, [
-    cloudSandboxStatus?.billingSlicesCharged,
-    cloudSandboxStatus?.terminationReason,
-    isCloudMode,
-    queryClient,
-  ]);
-
   const analyzeComponent = async (componentId: string) => {
     if (!componentId || !selectedAppId) return;
 
@@ -553,16 +456,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   useEffect(() => {
     setPreviewIframeRef(iframeRef.current);
   }, [iframeRef.current, setPreviewIframeRef]);
-
-  // Visual editing is available to all users.
-  useEffect(() => {
-    if (iframeRef.current?.contentWindow && isComponentSelectorInitialized) {
-      iframeRef.current.contentWindow.postMessage(
-        { type: "dyad-pro-mode", enabled: true },
-        "*",
-      );
-    }
-  }, [isComponentSelectorInitialized]);
 
   // Component-side postMessage routes. The preview-iframe hook owns the one
   // window listener and claims navigation/selector lifecycle messages before
@@ -694,10 +587,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       }
 
       if (event.data?.type === "dyad-component-selector-initialized") {
-        iframeRef.current?.contentWindow?.postMessage(
-          { type: "dyad-pro-mode", enabled: true },
-          "*",
-        );
         return;
       }
 
@@ -909,7 +798,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       sendIframeEvent,
       setSelectedComponentsPreview,
       setVisualEditingSelectedComponent,
-      queryClient,
     ],
   );
   componentMessageHandlerRef.current = handleComponentMessage;
@@ -1038,20 +926,8 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   };
 
   const openPreviewInBrowser = async () => {
-    try {
-      const url = await resolvePreviewBrowserUrl({
-        isCloudMode,
-        selectedAppId,
-        originalUrl,
-        createCloudSandboxShareLink,
-      });
-      await ipc.system.openExternalUrl(url);
-    } catch (error) {
-      showError(
-        error instanceof Error
-          ? error.message
-          : "Failed to open cloud sandbox share link.",
-      );
+    if (originalUrl) {
+      await ipc.system.openExternalUrl(originalUrl);
     }
   };
 
@@ -1062,18 +938,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     );
   };
 
-  const onRecreateSandbox = () => {
-    runAppLifecycleInBackground(
-      "restart",
-      restartApp({ recreateSandbox: true }),
-    );
-  };
-
   const { showOpenBrowser } =
     getPreviewToolbarActionVisibility(previewToolbarWidth);
-  const openBrowserDisabled = isCloudMode
-    ? isCreatingCloudSandboxShareLink
-    : !originalUrl;
+  const openBrowserDisabled = !originalUrl;
 
   return (
     <div className="flex flex-col h-full">
@@ -1161,23 +1028,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
           {/* Browser navigation group */}
           <div className="flex shrink-0 items-center gap-1.5">
-            {isCloudMode && (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <div
-                      aria-label="Running in a cloud sandbox"
-                      className="flex items-center rounded-full bg-sky-100 px-2 py-1 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300"
-                      data-testid="preview-cloud-badge"
-                      role="status"
-                    />
-                  }
-                >
-                  <Cloud size={14} />
-                </TooltipTrigger>
-                <TooltipContent>Running in a Cloud sandbox</TooltipContent>
-              </Tooltip>
-            )}
             <div className="flex items-center gap-0.5">
               <Tooltip>
                 <TooltipTrigger
@@ -1415,18 +1265,14 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                   <button
                     onClick={onRestart}
                     data-testid="preview-restart-button"
-                    aria-label={
-                      isCloudMode ? "Restart Cloud Sandbox" : "Restart"
-                    }
+                    aria-label="Restart"
                     className={PREVIEW_TOOLBAR_BUTTON_CLASSES}
                   />
                 }
               >
                 <Power size={16} />
               </TooltipTrigger>
-              <TooltipContent>
-                {isCloudMode ? "Restart Cloud Sandbox" : "Restart App"}
-              </TooltipContent>
+              <TooltipContent>Restart App</TooltipContent>
             </Tooltip>
             <DropdownMenu>
               <DropdownMenuTrigger
@@ -1466,17 +1312,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                     </span>
                   </div>
                 </DropdownMenuItem>
-                {isCloudSandboxMode && (
-                  <DropdownMenuItem onClick={onRecreateSandbox}>
-                    <Cog size={16} />
-                    <div className="flex flex-col">
-                      <span>Recreate Sandbox</span>
-                      <span className="text-xs text-muted-foreground">
-                        Destroys the current sandbox and creates a new one
-                      </span>
-                    </div>
-                  </DropdownMenuItem>
-                )}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>

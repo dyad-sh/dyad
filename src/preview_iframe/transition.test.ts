@@ -43,8 +43,6 @@ const EVENTS: readonly PreviewIframeEvent[] = [
 const ERROR_EVENTS: readonly PreviewIframeEvent[] = [
   { type: "IFRAME_ERROR", message: "iframe failed", source: "preview-app" },
   { type: "IFRAME_ERROR", message: "sandbox failed", source: "dyad-app" },
-  { type: "SYNC_ERROR", message: "sync failed" },
-  { type: "SYNC_RECOVERED" },
   { type: "APP_ERROR", message: "run failed" },
   { type: "APP_ERROR_CLEARED" },
   { type: "DISMISS" },
@@ -354,41 +352,14 @@ describe("preview iframe transition", () => {
     expect(selectCanGoForward(state)).toBe(true);
   });
 
-  it("keeps higher-priority iframe and app errors ahead of sync errors", () => {
-    for (const source of ["preview-app", "dyad-app"] as const) {
-      const errored = transition(INITIAL_PREVIEW_IFRAME_STATE, {
-        type: "IFRAME_ERROR",
-        message: `${source} failed`,
-        source,
-      });
-      const sync = transition(errored.state, {
-        type: "SYNC_ERROR",
-        message: "sync failed",
-      });
-      expect(sync.state).toBe(errored.state);
-      expect(ignoreReasonOf(sync)).toBe("higher-priority-error");
-    }
-  });
-
-  it("only clears sync-owned errors on recovery and dismisses any source", () => {
+  it("dismisses errors from any source", () => {
     const appError = transition(INITIAL_PREVIEW_IFRAME_STATE, {
       type: "APP_ERROR",
       message: "run failed",
     });
-    expect(transition(appError.state, { type: "SYNC_RECOVERED" }).state).toBe(
-      appError.state,
-    );
     expect(transition(appError.state, { type: "DISMISS" }).state.error).toBe(
       undefined,
     );
-
-    const syncError = transition(INITIAL_PREVIEW_IFRAME_STATE, {
-      type: "SYNC_ERROR",
-      message: "sync failed",
-    });
-    expect(
-      transition(syncError.state, { type: "SYNC_RECOVERED" }).state.error,
-    ).toBeUndefined();
   });
 
   it("serializes app-run sets and iframe clears by event arrival", () => {

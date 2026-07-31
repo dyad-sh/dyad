@@ -121,23 +121,6 @@ vi.mock("@/ipc/utils/telemetry", () => ({
   sendTelemetryEvent: (...args: unknown[]) => sendTelemetryEventMock(...args),
 }));
 
-vi.mock("@/ipc/utils/cloud_sandbox_provider", () => ({
-  buildCloudSandboxFileMap: vi.fn(),
-  CloudSandboxApiError: class CloudSandboxApiError extends Error {
-    code?: string;
-    status?: number;
-  },
-  createCloudSandbox: vi.fn(),
-  destroyCloudSandbox: vi.fn(),
-  registerRunningCloudSandbox: vi.fn(),
-  restartCloudSandbox: vi.fn(),
-  setCloudSandboxSyncUpdateListener: vi.fn(),
-  stopCloudSandboxFileSync: vi.fn(),
-  streamCloudSandboxLogs: vi.fn(),
-  unregisterRunningCloudSandbox: vi.fn(),
-  uploadCloudSandboxFiles: vi.fn(),
-}));
-
 vi.mock("@/ipc/utils/start_proxy_server", () => ({
   startProxy: (...args: unknown[]) => startProxyMock(...args),
 }));
@@ -145,10 +128,8 @@ vi.mock("@/ipc/utils/start_proxy_server", () => ({
 import {
   ensureProxyForRunningApp,
   executeApp,
-  startCloudSandboxLogStream,
   type AppRuntimeOutput,
 } from "./app_runtime_service";
-import { streamCloudSandboxLogs } from "@/ipc/utils/cloud_sandbox_provider";
 import { processCounter, runningApps } from "@/ipc/utils/process_manager";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
@@ -455,50 +436,6 @@ describe("executeApp", () => {
     expect(recordDeniedPnpmBuildsMock).toHaveBeenCalledTimes(1);
   });
 
-  it("records ignored builds surfaced in cloud sandbox logs", async () => {
-    const event = createEvent();
-    runningApps.set(7, {
-      process: null,
-      processId: 1,
-      mode: "cloud",
-      output: createOutput(event),
-      cloudSandboxId: "sb-1",
-      lastViewedAt: Date.now(),
-    } as any);
-    const ignoredBuilds = [
-      { packageName: "core-js", packageSpec: "core-js@3.49.0" },
-    ];
-    vi.mocked(streamCloudSandboxLogs).mockImplementation(async function* () {
-      yield "Ignored build scripts: core-js@3.49.0.";
-    });
-    parsePnpmIgnoredBuildsFromOutputMock.mockReturnValue(ignoredBuilds);
-    recordDeniedPnpmBuildsMock.mockResolvedValue({
-      deniedBuilds: ignoredBuilds,
-    });
-
-    startCloudSandboxLogStream({
-      appId: 7,
-      appPath: "/tmp/cloud-app",
-      output: createOutput(event),
-      sandboxId: "sb-1",
-      cloudLogAbortController: new AbortController(),
-    });
-
-    await waitForAssertion(() => {
-      expect(recordDeniedPnpmBuildsMock).toHaveBeenCalledWith({
-        appPath: "/tmp/cloud-app",
-        ignoredBuilds,
-      });
-      expect(sendTelemetryEventMock).toHaveBeenCalledWith(
-        "pnpm:build-auto-denied",
-        {
-          packages: ["core-js@3.49.0"],
-          source: "cloud-sandbox",
-        },
-      );
-    });
-  });
-
   it("does not warn about old pnpm for apps that explicitly use npm", async () => {
     const appPath = await createTempAppDir();
     try {
@@ -634,7 +571,7 @@ describe("executeApp", () => {
         "lockfileVersion: '6.0'\n",
       );
       readSettingsMock.mockReturnValue({
-        runtimeMode2: "cloud",
+        runtimeMode2: "docker",
       });
 
       await expect(

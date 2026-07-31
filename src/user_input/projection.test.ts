@@ -23,15 +23,10 @@ type ArmedListener = (payload: {
   requestId: string;
   followUpPrompt: string;
 }) => void;
-type ClassifiedListener = (payload: {
-  requestId: string;
-  reason?: string;
-}) => void;
 type SettledListener = (payload: {
   requestId: string;
   outcome:
     | "human"
-    | "classifier-approved"
     | "timed-out"
     | "swept"
     | "superseded"
@@ -54,7 +49,6 @@ function agentDescriptor(
     chatId: 7,
     deadlineAt: 10_000,
     toolName,
-    classifier: "none",
   };
 }
 
@@ -65,20 +59,6 @@ function pending(
     status: "awaiting",
     descriptor,
     deadlineAt: descriptor.deadlineAt,
-    classifier: descriptor.classifier,
-  };
-}
-
-function mcpDescriptor(requestId: string): UserInputDescriptorPayload {
-  return {
-    kind: "mcp-consent",
-    requestId,
-    chatId: 7,
-    deadlineAt: 10_000,
-    serverId: 1,
-    serverName: "test server",
-    toolName: "read_file",
-    classifier: "racing",
   };
 }
 
@@ -90,7 +70,6 @@ function questionnaireDescriptor(
     requestId,
     chatId: 7,
     deadlineAt: 10_000,
-    classifier: "none",
     questions: [
       {
         id: "framework",
@@ -109,7 +88,6 @@ function integrationDescriptor(requestId: string): UserInputDescriptorPayload {
     chatId: 42,
     deadlineAt: 30_000,
     provider: "supabase",
-    classifier: "none",
     followUpPrompt: "Continue. I have completed the supabase integration.",
   };
 }
@@ -117,7 +95,6 @@ function integrationDescriptor(requestId: string): UserInputDescriptorPayload {
 function createFakeIpc() {
   const requested = new Set<RequestedListener>();
   const armed = new Set<ArmedListener>();
-  const classified = new Set<ClassifiedListener>();
   const settled = new Set<SettledListener>();
   const followUpDue = new Set<FollowUpDueListener>();
   const getPending = vi.fn(
@@ -142,8 +119,6 @@ function createFakeIpc() {
         onRequested: (listener: RequestedListener) =>
           subscribe(requested, listener),
         onArmed: (listener: ArmedListener) => subscribe(armed, listener),
-        onClassified: (listener: ClassifiedListener) =>
-          subscribe(classified, listener),
         onSettled: (listener: SettledListener) => subscribe(settled, listener),
         onFollowUpDue: (listener: FollowUpDueListener) =>
           subscribe(followUpDue, listener),
@@ -159,8 +134,6 @@ function createFakeIpc() {
       requested.forEach((listener) => listener(payload)),
     sendArmed: (payload: Parameters<ArmedListener>[0]) =>
       armed.forEach((listener) => listener(payload)),
-    sendClassified: (payload: { requestId: string; reason?: string }) =>
-      classified.forEach((listener) => listener(payload)),
     sendSettled: (payload: Parameters<SettledListener>[0]) =>
       settled.forEach((listener) => listener(payload)),
     sendFollowUpDue: (payload: Parameters<FollowUpDueListener>[0]) =>
@@ -222,66 +195,12 @@ describe("user-input renderer read model", () => {
       requestId: "buffered",
       followUpPrompt: "Continue",
     });
-    fake.sendClassified({ requestId: "buffered", reason: "Review" });
     fake.sendFollowUpDue({ requestId: "buffered", chatId: 7, prompt: "Go" });
 
     expect(readModel.getSnapshot()).toBe(initial);
     expect(listener).not.toHaveBeenCalled();
 
     unsubscribe();
-    stop();
-  });
-
-  it("replays a classified event that beats its hydration snapshot", async () => {
-    const store = createStore();
-    const fake = createFakeIpc();
-    let resolveHydration!: (snapshots: PendingUserInputPayload[]) => void;
-    fake.getPending.mockReturnValueOnce(
-      new Promise((resolve) => {
-        resolveHydration = resolve;
-      }),
-    );
-    const adapter = getUserInputReadModel({
-      store,
-      ipcClient: fake.ipcClient,
-    });
-    const stop = adapter.start();
-
-    fake.sendClassified({ requestId: "mcp-request", reason: "needs review" });
-    resolveHydration([pending(mcpDescriptor("mcp-request"))]);
-
-    await vi.waitFor(() => {
-      const request = snapshotFor(store).requests.get("mcp-request");
-      expect(request?.status).toBe("awaiting");
-      if (!request || request.status === "settled") return;
-      expect(request.classifier).toBe("review");
-      expect(request.classifierReason).toBe("needs review");
-    });
-    stop();
-  });
-
-  it("rehydrates the classifier review reason", async () => {
-    const store = createStore();
-    const fake = createFakeIpc();
-    fake.getPending.mockResolvedValueOnce([
-      {
-        ...pending(mcpDescriptor("review-request")),
-        classifier: "review",
-        classifierReason: "sensitive input",
-      },
-    ]);
-    const adapter = getUserInputReadModel({
-      store,
-      ipcClient: fake.ipcClient,
-    });
-    const stop = adapter.start();
-
-    await vi.waitFor(() => {
-      const request = snapshotFor(store).requests.get("review-request");
-      expect(request?.status).toBe("awaiting");
-      if (!request || request.status === "settled") return;
-      expect(request.classifierReason).toBe("sensitive input");
-    });
     stop();
   });
 

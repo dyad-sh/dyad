@@ -117,11 +117,7 @@ function parseProxyReady(message: string): RunUrl | undefined {
   const appUrl = message.match(/\[dyad-proxy-server\]started=\[(.*?)\]/)?.[1];
   const originalUrl = message.match(/original=\[(.*?)\]/)?.[1];
   const mode = message.match(/mode=\[(.*?)\]/)?.[1];
-  if (
-    !appUrl ||
-    !originalUrl ||
-    (mode !== "host" && mode !== "docker" && mode !== "cloud")
-  ) {
+  if (!appUrl || !originalUrl || (mode !== "host" && mode !== "docker")) {
     return undefined;
   }
   return { appUrl, originalUrl, mode };

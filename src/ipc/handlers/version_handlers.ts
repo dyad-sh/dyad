@@ -50,7 +50,6 @@ import {
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
 import { retryOnLocked } from "../utils/retryOnLocked";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { syncCloudSandboxSnapshot } from "../utils/cloud_sandbox_provider";
 import {
   DIFF_BINARY_PLACEHOLDER,
   DIFF_TOO_LARGE_PLACEHOLDER,
@@ -184,9 +183,7 @@ function versionRuntimeAction(
   changedCodebase: boolean,
 ): "none" | "restart" {
   if (!changedCodebase) return "none";
-  return readSettings().runtimeMode2 === "cloud" || app.neonProjectId
-    ? "restart"
-    : "none";
+  return app.neonProjectId ? "restart" : "none";
 }
 
 function versionCommandResult({
@@ -286,17 +283,6 @@ async function resolveRestoreRef({
     ref: revertRef,
   });
   return { currentBranch, revertRef, currentCommitHash };
-}
-
-async function syncCloudSandboxSnapshotBestEffort(appId: number) {
-  try {
-    await syncCloudSandboxSnapshot({ appId });
-  } catch (error) {
-    logger.warn(
-      `Cloud sandbox sync failed after version operation for app ${appId}:`,
-      error,
-    );
-  }
 }
 
 function normalizeVersionNote(note: string | null): string | null {
@@ -409,7 +395,7 @@ async function restoreBranchForPreview({
 }
 
 /**
- * Reverts the app's codebase (and Neon DB / Supabase functions / cloud sandbox)
+ * Reverts the app's codebase (and Neon DB / Supabase functions)
  * to the given version. This does NOT modify any chat messages and does NOT take
  * the per-app lock — callers are responsible for holding `withLock(appId)`.
  */
@@ -699,8 +685,6 @@ async function revertCodebaseToVersion({
       // Continue with the revert operation even if function deployment fails
     }
   }
-  await syncCloudSandboxSnapshotBestEffort(appId);
-
   const restoreCompletion = {
     ...restoreFacts,
     completedHead: await getCurrentCommitHash({ path: appPath }),
@@ -1372,13 +1356,8 @@ export function registerVersionHandlers() {
         // Deliberately not copied from the source message:
         //  - `id`: autoIncrement primary key, generated per inserted row.
         //  - `chatId`: set to the newly created chat below.
-        //  - `usingFreeAgentModeQuota`: reset to false (see note below).
         //  - `userInputRequestId`: live delivery dedupe key, not message data.
-        type ExcludedMessageColumn =
-          | "id"
-          | "chatId"
-          | "usingFreeAgentModeQuota"
-          | "userInputRequestId";
+        type ExcludedMessageColumn = "id" | "chatId" | "userInputRequestId";
         // If a column is neither copied nor excluded, this `Exclude` is no
         // longer `never` and the assignment fails to compile, flagging the
         // unclassified column.
@@ -1431,10 +1410,9 @@ export function registerVersionHandlers() {
               .values(
                 // IMPORTANT: keep this field list in sync with the `messages`
                 // table schema in db/schema.ts. New columns are NOT copied
-                // automatically — add them here (or make a conscious decision to
-                // omit them, like `usingFreeAgentModeQuota` below) when the
-                // schema changes. The `_assertAllMessageColumnsHandled` guard
-                // above enforces this classification at compile time.
+                // automatically — add them here or explicitly classify them as
+                // excluded above. The `_assertAllMessageColumnsHandled` guard
+                // enforces this classification at compile time.
                 messagesBeforeInInsertOrder.map((m) => ({
                   chatId: createdChat.id,
                   role: m.role,
@@ -1446,12 +1424,6 @@ export function registerVersionHandlers() {
                   maxTokensUsed: m.maxTokensUsed,
                   model: m.model,
                   aiMessagesJson: m.aiMessagesJson,
-                  // Don't carry over the free-agent quota flag. The copied
-                  // messages represent already-completed turns; preserving the
-                  // flag would make getFreeAgentQuotaStatus (which counts every
-                  // row globally) double-count those past requests and could
-                  // exhaust a non-Pro user's quota without any new model call.
-                  usingFreeAgentModeQuota: false,
                   isCompactionSummary: m.isCompactionSummary,
                   createdAt: m.createdAt,
                 })),
@@ -1617,7 +1589,6 @@ export function registerVersionHandlers() {
         path: fullAppPath,
         ref: gitRef,
       });
-      await syncCloudSandboxSnapshotBestEffort(appId);
       return versionCommandResult({
         notification: warningMessage
           ? { kind: "warning", message: warningMessage }

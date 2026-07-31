@@ -169,9 +169,11 @@ testSkipIfWindows(
     // Build an app so we have a preview with selectable components
     await po.sendPrompt("tc=basic");
     await po.previewPanel.ensurePreviewPanelOpen();
+    await po.previewPanel.clickPreviewPickElement();
 
-    // Start a slow streaming response so the setup below finishes while queuing is still active
-    await po.sendPrompt("tc=1 [sleep=long]", {
+    // Start streaming only after the preview selector is ready so app startup
+    // time cannot consume the fake provider's delay before the queue assertion.
+    await po.sendPrompt("tc=1 [sleep=medium]", {
       skipWaitForCompletion: true,
     });
     await expect(chatInput).toBeVisible();

@@ -65,13 +65,6 @@ vi.mock("@/hooks/useLoadApps", () => ({
 vi.mock("@/hooks/useGenerateImage", () => ({
   useGenerateImage: () => ({ start: mocks.start }),
 }));
-vi.mock("@/hooks/useUserBudgetInfo", () => ({
-  useUserBudgetInfo: () => ({
-    userBudget: { remaining: 1 },
-    isLoadingUserBudget: false,
-  }),
-}));
-vi.mock("./ProBanner", () => ({ AiAccessBanner: () => null }));
 vi.mock("./AppSearchSelect", () => ({ AppSearchSelect: () => null }));
 
 describe("ImageGeneratorDialog", () => {

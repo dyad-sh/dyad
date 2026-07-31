@@ -505,7 +505,6 @@ function createCommandRunner() {
                 appId: command.appId,
                 invocationRef: command.invocationRef,
                 removeNodeModules: command.options.removeNodeModules,
-                recreateSandbox: command.options.recreateSandbox,
                 output,
               }));
           runtimeMayBeLive = true;

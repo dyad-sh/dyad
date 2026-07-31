@@ -16,12 +16,6 @@ export function queryKeysForInvalidationScope(
       return [queryKeys.media.all];
     case "token-count":
       return [queryKeys.tokenCount.all];
-    case "user-budget":
-      return [queryKeys.userBudget.info];
-    case "free-agent-quota":
-      return [queryKeys.freeAgentQuota.status];
-    case "free-model-quota":
-      return [queryKeys.freeModelQuota.status];
     case "app":
       return [queryKeys.apps.detail({ appId: scope.appId })];
     case "versions":
@@ -59,13 +53,5 @@ export function queryKeysForInvalidationScope(
             ? queryKeys.supabase.all
             : queryKeys.neon.all,
       ];
-    case "mcp-servers":
-      return [queryKeys.mcp.servers];
-    case "mcp-catalog":
-      return [queryKeys.mcp.catalog];
-    case "mcp-tools":
-      // Tool discovery is currently batched by the complete server-ID set.
-      // A server-scoped durable event therefore invalidates the family root.
-      return [queryKeys.mcp.toolsByServer.all];
   }
 }

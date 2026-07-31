@@ -210,7 +210,7 @@ export class AppManagement {
     }, appPath);
   }
 
-  async importApp(appDir: string) {
+  async importApp(appDir: string, appName?: string) {
     await this.page.getByRole("button", { name: "Import App" }).click();
     await eph.stubDialog(this.electronApp, "showOpenDialog", {
       filePaths: [
@@ -226,6 +226,9 @@ export class AppManagement {
       ],
     });
     await this.page.getByRole("button", { name: "Select Folder" }).click();
+    if (appName) {
+      await this.page.getByPlaceholder("Enter new app name").fill(appName);
+    }
     await this.page.getByRole("button", { name: "Import" }).click();
   }
 

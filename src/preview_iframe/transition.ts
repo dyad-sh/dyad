@@ -213,24 +213,6 @@ export function transition(
         ...state,
         error: { message: event.message, source: event.source },
       });
-    case "SYNC_ERROR":
-      if (state.error && state.error.source !== "dyad-sync") {
-        return ignore(state, "higher-priority-error");
-      }
-      if (
-        state.error?.source === "dyad-sync" &&
-        state.error.message === event.message
-      ) {
-        return ignore(state, "same-preview-error");
-      }
-      return applied({
-        ...state,
-        error: { message: event.message, source: "dyad-sync" },
-      });
-    case "SYNC_RECOVERED":
-      return state.error?.source === "dyad-sync"
-        ? applied({ ...state, error: undefined })
-        : ignore(state, "no-sync-error");
     case "APP_ERROR":
       if (
         state.error?.source === "dyad-app" &&

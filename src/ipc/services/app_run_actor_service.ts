@@ -116,7 +116,6 @@ export class AppRunActorService {
       operationId: string;
       startedAt: number;
       removeNodeModules: boolean;
-      recreateSandbox: boolean;
       expectedRevision?: number;
     },
   ): Promise<void> {
@@ -132,7 +131,6 @@ export class AppRunActorService {
       operation: "restart",
       options: {
         removeNodeModules: input.removeNodeModules,
-        recreateSandbox: input.recreateSandbox,
       },
     });
   }

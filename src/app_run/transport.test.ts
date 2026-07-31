@@ -30,7 +30,6 @@ const invocationRef = {
 };
 const restartOptions = {
   removeNodeModules: true,
-  recreateSandbox: false,
 };
 const url = {
   appUrl: "http://localhost:3210",

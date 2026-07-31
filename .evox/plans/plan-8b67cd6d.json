@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "id": "plan-8b67cd6d",
+  "title": "已完成仓库初步审计并提交实施计划，但计划审批超时，因此尚未修改文件。",
+  "status": "draft",
+  "content": "已完成仓库初步审计并提交实施计划，但计划审批超时，因此尚未修改文件。\n\n当前确认 `winter` 分支已经完成了大量基础迁移：\n\n- 已引入 `@earendil-works/pi-ai` 和 `@earendil-works/pi-agent-core`\n- 已建立 `src/ipc/pi/` 的模型、Agent、会话、工具、图片生成及事件转换层\n- 已开始清理 Pro/MCP 数据库结构\n- helpBot 主体似乎已删除\n- 仍残留 MCP 输入协议、查询失效域、生命周期及相关测试\n- 仍有少量 Pro 模型判断和 Pro 专属行为需要核实、移除\n- `AGENTS.md` 尚未记录 `winter` 分支的职责和迁移边界\n\n请批准上一条计划，我会继续实施、测试并更新 `AGENTS.md`。",
+  "tasks": [
+    {
+      "id": "t1",
+      "content": "已完成仓库初步审计并提交实施计划，但计划审批超时，因此尚未修改文件。",
+      "status": "pending",
+      "line": 0
+    }
+  ],
+  "revision": 5,
+  "created_at": 1785420225600,
+  "updated_at": 1785420599064,
+  "origin_session_id": "c5f0546d-add9-49f2-b2db-1e7e345b4ff8"
+}

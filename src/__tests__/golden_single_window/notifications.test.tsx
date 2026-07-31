@@ -3,9 +3,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useNotificationHandler } from "@/hooks/useNotificationHandler";
 
 const mocks = vi.hoisted(() => ({
-  classifiedListener: undefined as
-    | ((event: { requestId: string }) => void)
-    | undefined,
   completionListener: undefined as
     | ((event: {
         chatId: number;
@@ -55,10 +52,6 @@ vi.mock("@/ipc/types", () => ({
       userInput: {
         onRequested: (listener: typeof mocks.requestedListener) => {
           mocks.requestedListener = listener;
-          return vi.fn();
-        },
-        onClassified: (listener: typeof mocks.classifiedListener) => {
-          mocks.classifiedListener = listener;
           return vi.fn();
         },
         onSettled: (listener: typeof mocks.settledListener) => {
@@ -187,30 +180,4 @@ describe("golden single-window: notification routing", () => {
       hook.unmount();
     },
   );
-
-  it("waits for racing MCP consent classification before notifying once", async () => {
-    const hook = renderHook(() => useNotificationHandler());
-
-    act(() =>
-      mocks.requestedListener?.({
-        kind: "mcp-consent",
-        requestId: "mcp-consent:1",
-        chatId: 42,
-        toolName: "search",
-        serverName: "golden-server",
-        classifier: "racing",
-        deadlineAt: 1_000,
-      }),
-    );
-    expect(FakeNotification.instances).toHaveLength(0);
-
-    act(() => mocks.classifiedListener?.({ requestId: "mcp-consent:1" }));
-
-    await waitFor(() => expect(FakeNotification.instances).toHaveLength(1));
-    expect(FakeNotification.instances[0].options).toMatchObject({
-      tag: "dyad-mcp-consent-mcp-consent:1",
-      requireInteraction: true,
-    });
-    hook.unmount();
-  });
 });

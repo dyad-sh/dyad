@@ -168,43 +168,6 @@ describe("useAppOutputSubscription", () => {
     hook.unmount();
   });
 
-  it("shows throttled sync errors and records recovery presentation", () => {
-    const { manager, Wrapper } = makeWrapper(1);
-    const hook = renderHook(() => useAppOutputSubscription(), {
-      wrapper: Wrapper,
-    });
-
-    emitOutput({
-      type: "sync-error",
-      message: "Cloud sandbox sync failed",
-      appId: 1,
-    });
-    emitOutput({
-      type: "sync-error",
-      message: "Cloud sandbox sync failed",
-      appId: 1,
-    });
-    expect(mocks.showError).toHaveBeenCalledTimes(1);
-
-    act(() => vi.advanceTimersByTime(30_000));
-    emitOutput({
-      type: "sync-error",
-      message: "Cloud sandbox sync failed",
-      appId: 1,
-    });
-    emitOutput({
-      type: "sync-recovered",
-      message: "Cloud sandbox sync recovered",
-      appId: 1,
-    });
-
-    expect(mocks.showError).toHaveBeenCalledTimes(2);
-    expect(
-      manager.previewConsole.getSnapshot(1).map((entry) => entry.message),
-    ).toContain("Cloud sandbox sync recovered");
-    hook.unmount();
-  });
-
   it("keeps console and package warnings keyed by app", () => {
     mocks.settings.current = { enablePnpmMinimumReleaseAgeWarning: true };
     const { manager, packageWarnings, Wrapper } = makeWrapper(1);

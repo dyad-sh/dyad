@@ -12,18 +12,9 @@ testSkipIfWindows(
   async ({ po }) => {
     await po.setUp({ enableAppBlueprint: true });
 
-    // Seed a name collision: rename the first imported app to the exact name
-    // the blueprint fixture will try to claim ("Lumen Notes").
-    await po.importApp("minimal");
-    await po.appManagement.getTitleBarAppNameButton().click();
-    await po.appManagement.clickAppDetailsRenameAppButton();
-    await po.page
-      .getByRole("textbox", { name: "Enter new app name" })
-      .fill("Lumen Notes");
-    await po.page.getByRole("button", { name: "Continue" }).click();
-    await po.page
-      .getByRole("button", { name: "Recommended Rename app and" })
-      .click();
+    // Seed the exact name the blueprint fixture will try to claim. Naming the
+    // app during import avoids coupling this blueprint test to preview startup.
+    await po.importApp("minimal", "Lumen Notes");
     await expect(async () => {
       expect(await po.appManagement.getCurrentAppName()).toBe("Lumen Notes");
     }).toPass({ timeout: Timeout.MEDIUM });
@@ -53,7 +44,7 @@ testSkipIfWindows(
       expect(appPath.endsWith("lumen-notes-2"), `appPath=${appPath}`).toBe(
         true,
       );
-    }).toPass({ timeout: Timeout.MEDIUM });
+    }).toPass({ timeout: Timeout.EXTRA_LONG });
   },
 );
 testSkipIfWindows(

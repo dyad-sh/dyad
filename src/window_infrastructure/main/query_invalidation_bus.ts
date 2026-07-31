@@ -143,8 +143,6 @@ export class QueryInvalidationBus {
       case "problems":
       case "uncommitted-files":
         return { family: scope.family };
-      case "mcp-tools":
-        return { family: "mcp-tools" };
       default:
         return scope;
     }

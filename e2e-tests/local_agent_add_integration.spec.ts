@@ -16,7 +16,6 @@ import { Timeout, testSkipIfWindows } from "./helpers/test_helper";
 testSkipIfWindows(
   "local-agent - finishing the database integration resumes the chat",
   async ({ po }) => {
-    await po.setUpDyadPro({ localAgent: true });
     await po.importApp("minimal");
     await po.chatActions.selectLocalAgentMode();
 

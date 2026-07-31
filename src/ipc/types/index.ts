@@ -304,8 +304,6 @@ export type {
   DeleteCustomThemeParams,
 } from "./templates";
 
-// Proposal types
-
 // Import types
 export type { ImportAppParams, ImportAppResult } from "./import";
 
@@ -325,8 +323,6 @@ export type {
   AppOutput,
   EnvVar,
 } from "./misc";
-
-// Pro types
 
 // Media types
 export type {

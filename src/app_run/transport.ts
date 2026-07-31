@@ -48,7 +48,6 @@ export type AppRunWireInvocationRef = z.infer<typeof AppRunInvocationRefSchema>;
 const restartOptionsSchema = z
   .object({
     removeNodeModules: z.boolean(),
-    recreateSandbox: z.boolean(),
   })
   .strict();
 
@@ -463,7 +462,7 @@ function selectRemoteCapabilities(
         canStart: true,
         canRestart: true,
         canRebuild: true,
-        // A failed stop can leave a cloud sandbox/process registered. Since
+        // A failed stop can leave a process registered. Since
         // errored state does not retain failure provenance, keep cancellation
         // available conservatively; stopping an absent process is idempotent.
         canStop: true,

@@ -9,7 +9,7 @@ testSkipIfWindows(
     await po.sendPrompt("tc=local-agent/console-logs");
 
     // Wait for app to run
-    await po.previewPanel.ensurePreviewPanelIsOpen();
+    await po.previewPanel.ensurePreviewPanelOpen();
     await po.previewPanel.expectPreviewIframeIsVisible(Timeout.EXTRA_LONG);
 
     // Wait for iframe to load and app to render
@@ -91,7 +91,7 @@ testSkipIfWindows(
     await po.sendPrompt("tc=local-agent/network-requests");
 
     // Wait for app to run
-    await po.previewPanel.ensurePreviewPanelIsOpen();
+    await po.previewPanel.ensurePreviewPanelOpen();
     await po.previewPanel.expectPreviewIframeIsVisible(Timeout.EXTRA_LONG);
 
     // Wait for iframe to load - wait for content to appear
@@ -186,7 +186,7 @@ testSkipIfWindows(
     await po.sendPrompt("tc=local-agent/write-index");
 
     // Wait for app to run
-    await po.previewPanel.ensurePreviewPanelIsOpen();
+    await po.previewPanel.ensurePreviewPanelOpen();
     await po.previewPanel.expectPreviewIframeIsVisible(Timeout.EXTRA_LONG);
 
     // Open the system messages console
@@ -220,7 +220,7 @@ testSkipIfWindows("clear filters button works", async ({ po }) => {
   await po.sendPrompt("tc=local-agent/write-index");
 
   // Wait for app to run
-  await po.previewPanel.ensurePreviewPanelIsOpen();
+  await po.previewPanel.ensurePreviewPanelOpen();
   await po.previewPanel.expectPreviewIframeIsVisible(Timeout.EXTRA_LONG);
 
   // Open the system messages console
@@ -252,7 +252,7 @@ testSkipIfWindows("clear logs button clears all logs", async ({ po }) => {
   await po.sendPrompt("tc=local-agent/console-logs");
 
   // Wait for app to run
-  await po.previewPanel.ensurePreviewPanelIsOpen();
+  await po.previewPanel.ensurePreviewPanelOpen();
   await po.previewPanel.expectPreviewIframeIsVisible(Timeout.EXTRA_LONG);
 
   // Wait for iframe to load

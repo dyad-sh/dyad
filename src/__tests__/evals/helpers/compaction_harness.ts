@@ -10,7 +10,7 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
-import { generateText, type LanguageModel } from "ai";
+import { generateText, type LanguageModel } from "./pi_eval_compat";
 
 import { COMPACTION_SYSTEM_PROMPT } from "@/prompts/compaction_system_prompt";
 import {

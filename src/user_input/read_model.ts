@@ -25,7 +25,6 @@ import { TaskScope } from "@/state_machines/task_scope";
 
 type UserInputOutcome =
   | "human"
-  | "classifier-approved"
   | "timed-out"
   | "swept"
   | "superseded"
@@ -40,8 +39,6 @@ export type UserInputRequest =
       status: "awaiting" | "armed" | "due";
       descriptor: UserInputDescriptorPayload;
       deadlineAt: number;
-      classifier?: "none" | "racing" | "review";
-      classifierReason?: string;
       followUpPrompt?: string;
     }
   | {
@@ -98,8 +95,6 @@ function snapshotToReadModel(
     status: snapshot.status,
     descriptor: snapshot.descriptor,
     deadlineAt: snapshot.deadlineAt,
-    classifier: snapshot.classifier,
-    classifierReason: snapshot.classifierReason,
     followUpPrompt: snapshot.followUpPrompt,
   };
 }
@@ -116,10 +111,6 @@ export function getUserInputReadModel({
   let activeTasks: TaskScope<string> | undefined;
   let hydrationGeneration = 0;
   const revisions = new Map<string, number>();
-  const pendingClassifications = new Map<
-    string,
-    { reason?: string; revision: number }
-  >();
   const pendingArmed = new Map<
     string,
     { followUpPrompt: string; revision: number }
@@ -243,21 +234,9 @@ export function getUserInputReadModel({
         }
 
         const projected = snapshotToReadModel(snapshot);
-        const classification = pendingClassifications.get(requestId);
         const armed = pendingArmed.get(requestId);
         const followUp = pendingFollowUps.get(requestId);
         if (
-          changedDuringHydration &&
-          classification &&
-          classification.revision === revisions.get(requestId) &&
-          projected.status === "awaiting"
-        ) {
-          next.set(requestId, {
-            ...projected,
-            classifier: "review",
-            classifierReason: classification.reason,
-          });
-        } else if (
           changedDuringHydration &&
           armed &&
           armed.revision === revisions.get(requestId) &&
@@ -299,7 +278,6 @@ export function getUserInputReadModel({
           "requested",
           ipcClient.events.userInput.onRequested((descriptor) => {
             markChanged(descriptor.requestId);
-            pendingClassifications.delete(descriptor.requestId);
             pendingArmed.delete(descriptor.requestId);
             pendingFollowUps.delete(descriptor.requestId);
             updateRequests((current) => {
@@ -308,7 +286,6 @@ export function getUserInputReadModel({
                 status: "awaiting",
                 descriptor,
                 deadlineAt: descriptor.deadlineAt,
-                classifier: descriptor.classifier,
               });
               return next;
             });
@@ -341,28 +318,9 @@ export function getUserInputReadModel({
           ),
         ],
         [
-          "classified",
-          ipcClient.events.userInput.onClassified(({ requestId, reason }) => {
-            const revision = markChanged(requestId);
-            pendingClassifications.set(requestId, { reason, revision });
-            updateRequests((current) => {
-              const entry = current.get(requestId);
-              if (!entry || entry.status !== "awaiting") return current;
-              const next = new Map(current);
-              next.set(requestId, {
-                ...entry,
-                classifier: "review",
-                classifierReason: reason,
-              });
-              return next;
-            });
-          }),
-        ],
-        [
           "settled",
           ipcClient.events.userInput.onSettled(({ requestId, outcome }) => {
             markChanged(requestId);
-            pendingClassifications.delete(requestId);
             pendingArmed.delete(requestId);
             pendingFollowUps.delete(requestId);
             const pendingResponse = pendingResponses.get(requestId);

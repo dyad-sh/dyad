@@ -73,10 +73,6 @@ export function PreviewIframeProvider({
           manager.send(appId, { type: "APP_ERROR", message }),
         clearAppError: (appId) =>
           manager.send(appId, { type: "APP_ERROR_CLEARED" }),
-        setSyncError: (appId, message) =>
-          manager.send(appId, { type: "SYNC_ERROR", message }),
-        clearSyncError: (appId) =>
-          manager.send(appId, { type: "SYNC_RECOVERED" }),
       }),
     [manager, previewErrors],
   );

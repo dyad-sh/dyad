@@ -43,7 +43,6 @@ import {
   ScreenshotProvider,
   useScreenshotManager,
 } from "@/screenshot/ScreenshotProvider";
-import { useSyncDefaultChatMode } from "@/hooks/useSyncDefaultChatMode";
 import { PreviewErrorFacadeProvider } from "@/app_wiring/preview_error_facade";
 import { usePreviewErrorFacade } from "@/app_wiring/preview_error_facade";
 import { PackageManagerWarningProvider } from "@/package_manager_warnings/PackageManagerWarningProvider";
@@ -111,7 +110,6 @@ function RootLayoutContent({ children }: { children: ReactNode }) {
     selectedComponentsPreviewAtom,
   );
   const selectedAppId = useAtomValue(selectedAppIdAtom);
-  useSyncDefaultChatMode();
 
   // Initialize plan events listener
   usePlanEvents();

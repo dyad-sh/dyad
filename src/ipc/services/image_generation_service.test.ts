@@ -12,16 +12,13 @@ import {
 } from "@/testing/handler_test_harness";
 import { ImageGenerationService } from "./image_generation_service";
 
-vi.mock("@/main/settings", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/main/settings")>();
-  return {
-    ...actual,
-    readSettings: () => ({
-      ...actual.DEFAULT_SETTINGS,
-      providerSettings: { auto: { apiKey: { value: "test-api-key" } } },
-    }),
-  };
-});
+const { mockGenerateImageWithUserProvider } = vi.hoisted(() => ({
+  mockGenerateImageWithUserProvider: vi.fn(),
+}));
+
+vi.mock("@/ipc/pi/image_generation", () => ({
+  generateImage: mockGenerateImageWithUserProvider,
+}));
 
 vi.mock("@/paths/paths", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/paths/paths")>();
@@ -47,7 +44,7 @@ function deferred<T>(): Deferred<T> {
   return { promise, resolve };
 }
 
-function abortableFetch(signal?: AbortSignal): Promise<Response> {
+function abortableGeneration(signal?: AbortSignal): Promise<never> {
   return new Promise((_resolve, reject) => {
     const rejectAbort = () =>
       reject(signal?.reason ?? new DOMException("Aborted", "AbortError"));
@@ -75,6 +72,11 @@ describe("ImageGenerationService", () => {
       .run();
     appId = Number(result.lastInsertRowid);
     fs.mkdirSync(path.join(tempBase, "test-app"), { recursive: true });
+    mockGenerateImageWithUserProvider.mockReset();
+    mockGenerateImageWithUserProvider.mockResolvedValue({
+      data: Buffer.from("image").toString("base64"),
+      mimeType: "image/png",
+    });
   });
 
   afterEach(() => {
@@ -107,14 +109,25 @@ describe("ImageGenerationService", () => {
     service.endReset();
   });
 
-  it("aborts the initial generation request", async () => {
-    const fetchMock = vi.fn((_url: string, init?: RequestInit) =>
-      abortableFetch(init?.signal ?? undefined),
+  it("uses the user's image provider", async () => {
+    const result = await generate("user-provider");
+
+    expect(mockGenerateImageWithUserProvider).toHaveBeenCalledWith(
+      "A tiny lighthouse",
+      expect.any(AbortSignal),
     );
-    vi.stubGlobal("fetch", fetchMock);
+    expect(fs.readFileSync(result.filePath)).toEqual(Buffer.from("image"));
+  });
+
+  it("aborts the initial generation request", async () => {
+    mockGenerateImageWithUserProvider.mockImplementation(
+      (_prompt: string, signal?: AbortSignal) => abortableGeneration(signal),
+    );
 
     const generation = generate("generation-phase");
-    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    await vi.waitFor(() =>
+      expect(mockGenerateImageWithUserProvider).toHaveBeenCalledOnce(),
+    );
 
     await expect(cancel("generation-phase")).resolves.toEqual({
       cancelled: true,
@@ -124,184 +137,10 @@ describe("ImageGenerationService", () => {
     });
     await expect(cancel("generation-phase")).resolves.toEqual({
       cancelled: false,
-    });
-  });
-
-  it("aborts the URL download with the generation controller", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            created: 1,
-            data: [{ url: "https://example.com/generated.png" }],
-          }),
-          { status: 200 },
-        ),
-      )
-      .mockImplementationOnce((_url: string, init?: RequestInit) =>
-        abortableFetch(init?.signal ?? undefined),
-      );
-    vi.stubGlobal("fetch", fetchMock);
-
-    const generation = generate("download-phase");
-    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-
-    await expect(cancel("download-phase")).resolves.toEqual({
-      cancelled: true,
-    });
-    await expect(generation).rejects.toMatchObject({
-      kind: DyadErrorKind.UserCancelled,
-    });
-  });
-
-  it("classifies a URL download timeout as an external error", async () => {
-    const downloadTimeoutController = new AbortController();
-    vi.spyOn(AbortSignal, "timeout").mockReturnValue(
-      downloadTimeoutController.signal,
-    );
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            created: 1,
-            data: [{ url: "https://example.com/generated.png" }],
-          }),
-          { status: 200 },
-        ),
-      )
-      .mockImplementationOnce((_url: string, init?: RequestInit) =>
-        abortableFetch(init?.signal ?? undefined),
-      );
-    vi.stubGlobal("fetch", fetchMock);
-
-    const generation = generate("download-timeout");
-    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-    downloadTimeoutController.abort(
-      new DOMException("The operation timed out", "TimeoutError"),
-    );
-
-    await expect(generation).rejects.toMatchObject({
-      message: "Image download timed out. Please try again.",
-      kind: DyadErrorKind.External,
-    });
-    await expect(cancel("download-timeout")).resolves.toEqual({
-      cancelled: false,
-    });
-  });
-
-  it("classifies a URL download network failure as an external error", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi
-        .fn()
-        .mockResolvedValueOnce(
-          new Response(
-            JSON.stringify({
-              created: 1,
-              data: [{ url: "https://example.com/generated.png" }],
-            }),
-            { status: 200 },
-          ),
-        )
-        .mockRejectedValueOnce(new TypeError("fetch failed")),
-    );
-
-    await expect(generate("download-network-failure")).rejects.toMatchObject({
-      message: "Failed to download generated image.",
-      kind: DyadErrorKind.External,
-      cause: expect.any(TypeError),
-    });
-  });
-
-  it.each([
-    [401, DyadErrorKind.Auth],
-    [403, DyadErrorKind.Auth],
-    [429, DyadErrorKind.RateLimited],
-    [503, DyadErrorKind.External],
-  ])("classifies generation HTTP %i as %s", async (status, expectedKind) => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(new Response(null, { status })),
-    );
-
-    await expect(generate(`generation-http-${status}`)).rejects.toMatchObject({
-      kind: expectedKind,
-    });
-  });
-
-  it.each([
-    [401, DyadErrorKind.Auth],
-    [403, DyadErrorKind.Auth],
-    [429, DyadErrorKind.RateLimited],
-    [503, DyadErrorKind.External],
-  ])("classifies download HTTP %i as %s", async (status, expectedKind) => {
-    vi.stubGlobal(
-      "fetch",
-      vi
-        .fn()
-        .mockResolvedValueOnce(
-          new Response(
-            JSON.stringify({
-              created: 1,
-              data: [{ url: "https://example.com/generated.png" }],
-            }),
-            { status: 200 },
-          ),
-        )
-        .mockResolvedValueOnce(new Response(null, { status })),
-    );
-
-    await expect(generate(`download-http-${status}`)).rejects.toMatchObject({
-      kind: expectedKind,
-    });
-  });
-
-  it("checks for cancellation after a download body finishes", async () => {
-    const body = deferred<ArrayBuffer>();
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            created: 1,
-            data: [{ url: "https://example.com/generated.png" }],
-          }),
-          { status: 200 },
-        ),
-      )
-      .mockResolvedValueOnce({
-        ok: true,
-        arrayBuffer: () => body.promise,
-      });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const generation = generate("download-body-phase");
-    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-    await expect(cancel("download-body-phase")).resolves.toEqual({
-      cancelled: true,
-    });
-    body.resolve(new Uint8Array([1, 2, 3]).buffer);
-
-    await expect(generation).rejects.toMatchObject({
-      kind: DyadErrorKind.UserCancelled,
     });
   });
 
   it("checks for cancellation inside the media lock before writing", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        new Response(
-          JSON.stringify({
-            created: 1,
-            data: [{ b64_json: Buffer.from("image").toString("base64") }],
-          }),
-          { status: 200 },
-        ),
-      ),
-    );
     const mkdirStarted = deferred<void>();
     const releaseMkdir = deferred<void>();
     vi.spyOn(fs.promises, "mkdir").mockImplementationOnce(async () => {
@@ -329,18 +168,6 @@ describe("ImageGenerationService", () => {
   });
 
   it("aborts and cleans up a file write when generation is cancelled", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        new Response(
-          JSON.stringify({
-            created: 1,
-            data: [{ b64_json: Buffer.from("image").toString("base64") }],
-          }),
-          { status: 200 },
-        ),
-      ),
-    );
     const writeStarted = deferred<void>();
     const originalWriteFile = fs.promises.writeFile;
     const writeFile = vi
@@ -352,7 +179,7 @@ describe("ImageGenerationService", () => {
         const signal = (options as { signal?: AbortSignal } | undefined)
           ?.signal;
         writeStarted.resolve();
-        await abortableFetch(signal);
+        await abortableGeneration(signal);
       });
     const rename = vi.spyOn(fs.promises, "rename");
     const rm = vi.spyOn(fs.promises, "rm");
@@ -378,18 +205,6 @@ describe("ImageGenerationService", () => {
   });
 
   it("serializes with app moves and saves using the refreshed app path", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        new Response(
-          JSON.stringify({
-            created: 1,
-            data: [{ b64_json: Buffer.from("image").toString("base64") }],
-          }),
-          { status: 200 },
-        ),
-      ),
-    );
     const appLockAcquired = deferred<void>();
     const releaseAppLock = deferred<void>();
     const relocation = withLock(appId, async () => {
@@ -406,7 +221,9 @@ describe("ImageGenerationService", () => {
     await appLockAcquired.promise;
 
     const generation = generate("move-during-generation");
-    await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+    await vi.waitFor(() =>
+      expect(mockGenerateImageWithUserProvider).toHaveBeenCalledOnce(),
+    );
     releaseAppLock.resolve();
     await relocation;
 
@@ -427,18 +244,11 @@ describe("ImageGenerationService", () => {
   });
 
   it("removes failed requests from the active controller registry", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi
-        .fn()
-        .mockResolvedValue(
-          new Response("service unavailable", { status: 503 }),
-        ),
+    mockGenerateImageWithUserProvider.mockRejectedValue(
+      new Error("provider failed"),
     );
 
-    await expect(generate("failed-request")).rejects.toThrow(
-      "Image generation failed (HTTP 503)",
-    );
+    await expect(generate("failed-request")).rejects.toThrow("provider failed");
     await expect(cancel("failed-request")).resolves.toEqual({
       cancelled: false,
     });

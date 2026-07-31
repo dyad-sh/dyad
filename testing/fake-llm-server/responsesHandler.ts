@@ -145,11 +145,9 @@ export const createResponsesHandler =
       });
     }
 
-    // Handle compaction summary requests (from streamText() in
-    // compaction_handler; Pro users pin an openai-provider compaction model,
-    // which routes here instead of the chat-completions handler). Checked
-    // before fixture loading because the summarized transcript can itself
-    // contain tc=<name> markers from earlier turns.
+    // Handle compaction summary requests before fixture loading because the
+    // summarized transcript can itself contain tc=<name> markers from earlier
+    // turns.
     const isCompactionRequest = lastUserText.startsWith(
       "Please summarize the following conversation:",
     );

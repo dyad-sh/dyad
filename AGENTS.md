@@ -110,6 +110,34 @@ This is the only supported way to type-check the project. It uses the correct co
 - Data fetching/mutations should be handled with TanStack Query when touching IPC-backed endpoints.
 - Main-process IPC errors that are **not bugs** (validation, missing entities, auth, user refusal, etc.) should be thrown as **`DyadError`** with a **`DyadErrorKind`** so they can be excluded from PostHog exception telemetry. See [rules/dyad-errors.md](rules/dyad-errors.md).
 
+## `winter` branch scope
+
+The `winter` branch consolidates Dyad on Pi as its only AI agent runtime and
+removes the former commercial feature layer.
+
+- All chat modes, model streaming, tool calls, transcript persistence,
+  compaction, and image generation must use `@earendil-works/pi-agent-core`
+  and `@earendil-works/pi-ai` through `src/ipc/pi/`. Do not restore a parallel
+  legacy AI runtime or route agent execution through hosted Pro services.
+- Pro subscriptions, trials, upgrade/upsell prompts, quota-based product
+  access, entitlements, and feature gates are removed. New and existing local
+  product capabilities must not branch on a paid plan, trial state, hosted
+  credits, or a legacy Dyad Pro setting.
+- The product-level MCP server/catalog/OAuth feature and helpBot are removed.
+  Do not restore their IPC contracts, handlers, settings, UI, query keys, or
+  lifecycle hooks. Dyad tools belong under `src/ipc/pi/tools/` and use the
+  existing Pi tool adapter and consent policy.
+- Keep backward-cleanup code that removes deprecated Pro/MCP settings and the
+  database migration that removes legacy MCP tables and quota columns.
+  Historical migrations and snapshots must remain so existing installations
+  can upgrade.
+- An optional/transitive MCP package inside a Pi SDK dependency is not a Dyad
+  MCP product feature; do not edit the lockfile to remove upstream optional
+  metadata.
+- Technical subscriptions (IPC/events/state observers), provider-originated
+  rate-limit errors, and app dependency/Node/pnpm migration actions are not
+  commercial subscription or upgrade gates and should remain.
+
 ## Verifying your changes
 
 You should test your changes before committing or pushing. Run relevant unit tests and E2E tests to verify expected behavior. If it's truly impossible to test a change locally (e.g. CI-only behavior, third-party service integration), note this in the PR description explaining why and what manual verification is needed.

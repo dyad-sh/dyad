@@ -2,12 +2,11 @@ import { useCallback, useEffect, useRef } from "react";
 import { ipc, type AppOutput } from "@/ipc/types";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useAtomValue } from "jotai";
-import { showError, showInputRequest } from "@/lib/toast";
+import { showInputRequest } from "@/lib/toast";
 import { shouldShowPnpmMinimumReleaseAgeWarning } from "@/lib/schemas";
 import { useAppRunRemoteManager } from "@/app_run/AppRunRemoteProvider";
 import { useAppRunState } from "./useAppRun";
 import { useSettings } from "./useSettings";
-import { usePreviewErrorFacade } from "@/app_wiring/preview_error_facade";
 import { usePackageManagerWarningStore } from "@/package_manager_warnings/PackageManagerWarningProvider";
 import { useMachineMutation } from "@/distributed_machines/use_machine_mutation";
 import type {
@@ -17,8 +16,6 @@ import type {
   AppRunRefusal,
 } from "@/app_run/remote_manager";
 import type { AppRunOperationOutcome } from "@/app_run/operations";
-
-const CLOUD_SYNC_ERROR_TOAST_WINDOW_MS = 30_000;
 
 function classifyAppRunOutcome(outcome: AppRunOperationOutcome) {
   if (outcome.kind === "succeeded") return { kind: "succeeded" } as const;
@@ -60,7 +57,6 @@ export function useRebuildAppAfterPnpmInstall() {
 export function useAppOutputSubscription() {
   const { settings } = useSettings();
   const manager = useAppRunRemoteManager();
-  const previewErrors = usePreviewErrorFacade();
   const packageWarnings = usePackageManagerWarningStore();
   const appId = useAtomValue(selectedAppIdAtom);
   const selectedAppIdRef = useRef(appId);
@@ -68,9 +64,6 @@ export function useAppOutputSubscription() {
     hasSettings: Boolean(settings),
     showWarning: shouldShowPnpmMinimumReleaseAgeWarning(settings),
   });
-  const syncErrorToastRef = useRef(
-    new Map<number, { message: string; shownAt: number }>(),
-  );
 
   useEffect(() => {
     selectedAppIdRef.current = appId;
@@ -108,31 +101,6 @@ export function useAppOutputSubscription() {
         return null;
       }
 
-      if (output.type === "sync-error") {
-        const previousToast = syncErrorToastRef.current.get(output.appId);
-        const now = Date.now();
-
-        if (
-          selectedAppIdRef.current === output.appId &&
-          (!previousToast ||
-            previousToast.message !== output.message ||
-            now - previousToast.shownAt >= CLOUD_SYNC_ERROR_TOAST_WINDOW_MS)
-        ) {
-          showError(output.message);
-          syncErrorToastRef.current.set(output.appId, {
-            message: output.message,
-            shownAt: now,
-          });
-        }
-
-        previewErrors.setSyncError(output.appId, output.message);
-      }
-
-      if (output.type === "sync-recovered") {
-        syncErrorToastRef.current.delete(output.appId);
-        previewErrors.clearSyncError(output.appId);
-      }
-
       if (output.type === "app-exit") {
         return null;
       }
@@ -159,9 +127,7 @@ export function useAppOutputSubscription() {
 
       const logEntry = {
         level:
-          output.type === "stderr" ||
-          output.type === "client-error" ||
-          output.type === "sync-error"
+          output.type === "stderr" || output.type === "client-error"
             ? ("error" as const)
             : ("info" as const),
         type: "server" as const,
@@ -176,7 +142,7 @@ export function useAppOutputSubscription() {
 
       return logEntry;
     },
-    [packageWarnings, previewErrors],
+    [packageWarnings],
   );
 
   useEffect(() => {
@@ -294,11 +260,9 @@ export function useRunApp() {
     async ({
       appId: requestedAppId,
       removeNodeModules = false,
-      recreateSandbox = false,
     }: {
       appId?: number;
       removeNodeModules?: boolean;
-      recreateSandbox?: boolean;
     } = {}) => {
       const targetAppId = requestedAppId ?? appId;
       if (targetAppId === null) {
@@ -308,7 +272,7 @@ export function useRunApp() {
       await dispatchMutation(targetAppId, {
         type: "RESTART",
         startedAt: Date.now(),
-        options: { removeNodeModules, recreateSandbox },
+        options: { removeNodeModules },
       });
       if (
         warningBeforeRestart !== undefined &&

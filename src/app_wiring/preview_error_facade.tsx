@@ -12,8 +12,6 @@ import {
 export interface PreviewAppErrorSource {
   setAppError(appId: number, message: string): void;
   clearAppError(appId: number): void;
-  setSyncError(appId: number, message: string): void;
-  clearSyncError(appId: number): void;
 }
 
 /**
@@ -40,16 +38,6 @@ export class DeferredPreviewErrorFacade {
   /** Remote intent: idempotent presentation clear. */
   clearAppError = (appId: number): void => {
     this.defer(appId, (source) => source.clearAppError(appId));
-  };
-
-  /** Remote intent: state-sensitive presentation update. */
-  setSyncError = (appId: number, message: string): void => {
-    this.defer(appId, (source) => source.setSyncError(appId, message));
-  };
-
-  /** Remote intent: idempotent presentation recovery. */
-  clearSyncError = (appId: number): void => {
-    this.defer(appId, (source) => source.clearSyncError(appId));
   };
 
   /** Permanently rejects queued and late presentation work for a deleted app. */

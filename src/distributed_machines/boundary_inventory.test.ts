@@ -12,6 +12,7 @@ import {
   migratedSurfaceBoundaryInventory,
   migratedStatefulOwnerInventory,
   nonRemoteDispatchOrEnqueueInventory,
+  nonRemoteWideningCastInventory,
   unsafeEscapeHatchInventory,
 } from "./boundary_inventory.test_support";
 import { defineFrameworkCoveredRemoteMachine } from "./definition";
@@ -1146,6 +1147,7 @@ describe("progressive distributed-machine inventories", () => {
       [
         ...unsafeEscapeHatchInventory.wideningCasts,
         ...migratedSurfaceBoundaryInventory.wideningCasts,
+        ...nonRemoteWideningCastInventory,
       ].sort(),
     );
   }, 20_000);

@@ -40,7 +40,7 @@ export type AppRunOperationInput =
   | {
       type: "RESTART";
       startedAt: number;
-      options: { removeNodeModules: boolean; recreateSandbox: boolean };
+      options: { removeNodeModules: boolean };
     }
   | { type: "REBUILD"; startedAt: number }
   | { type: "STOP"; startedAt: number };

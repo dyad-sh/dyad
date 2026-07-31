@@ -86,7 +86,6 @@ export const appRunConformance = defineMachineConformance({
         operation: "restart",
         options: {
           removeNodeModules: false,
-          recreateSandbox: false,
         },
         operationId: "request-restart",
         startedAt: 1,

@@ -4,15 +4,6 @@ import {
   useManagerLifecycle,
   useManagerPagehideDisposal,
 } from "@/state_machines/react";
-import { createMcpBeforeQuitHandler } from "@/ipc/utils/mcp_shutdown";
-
-function deferred(): { promise: Promise<void>; resolve: () => void } {
-  let resolve!: () => void;
-  const promise = new Promise<void>((resolvePromise) => {
-    resolve = resolvePromise;
-  });
-  return { promise, resolve };
-}
 
 describe("golden single-window: reload and quit teardown", () => {
   it("stops a window-local manager before final disposal on reload", async () => {
@@ -52,36 +43,5 @@ describe("golden single-window: reload and quit teardown", () => {
 
     // Protects final-unmount ordering after the Phase B pagehide split.
     expect(order).toEqual(["start", "stop", "dispose"]);
-  });
-
-  it("releases quit resources before allowing Electron to resume quit", async () => {
-    const order: string[] = [];
-    const pendingCleanup = deferred();
-    const handler = createMcpBeforeQuitHandler({
-      cleanup: vi.fn(() => {
-        order.push("release-resources");
-        return pendingCleanup.promise.then(() => {
-          order.push("resources-released");
-        });
-      }),
-      quit: vi.fn(() => order.push("resume-quit")),
-    });
-    const event = {
-      preventDefault: vi.fn(() => order.push("pause-quit")),
-    };
-
-    handler(event);
-    await Promise.resolve();
-    expect(order).toEqual(["pause-quit", "release-resources"]);
-
-    pendingCleanup.resolve();
-    await vi.waitFor(() =>
-      expect(order).toEqual([
-        "pause-quit",
-        "release-resources",
-        "resources-released",
-        "resume-quit",
-      ]),
-    );
   });
 });

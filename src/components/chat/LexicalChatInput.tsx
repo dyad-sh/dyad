@@ -194,6 +194,7 @@ function ExternalValueSyncPlugin({
   promptsById: Record<number, string>;
 }) {
   const [editor] = useLexicalComposerContext();
+  const lastAppMentionSignatureRef = useRef<string | null>(null);
 
   useEffect(() => {
     // Derive the display text that should appear in the editor (@Name) from the
@@ -213,13 +214,37 @@ function ExternalValueSyncPlugin({
       }
     });
 
+    const appMentionMatches =
+      appNames.length > 0
+        ? findKnownAppMentionMatches(value, appNames)
+        : Array.from(
+            value.matchAll(new RegExp(MENTION_REGEX.source, "g")),
+          ).flatMap((match) => {
+            const { appName } = splitAppMentionTrailingDots(match[1]);
+            if (!appName) {
+              return [];
+            }
+            return [
+              {
+                appName,
+                start: match.index,
+                end: match.index + "@app:".length + appName.length,
+              },
+            ];
+          });
+    const appMentionSignature = JSON.stringify(appMentionMatches);
+    const appMentionStructureChanged =
+      lastAppMentionSignatureRef.current !== null &&
+      lastAppMentionSignatureRef.current !== appMentionSignature;
+    lastAppMentionSignatureRef.current = appMentionSignature;
+
     const currentText = editor.getEditorState().read(() => {
       const root = $getRoot();
       return root.getTextContent();
     });
 
     // If the editor already reflects the same display text, do nothing to avoid loops
-    if (currentText === displayText) return;
+    if (currentText === displayText && !appMentionStructureChanged) return;
     editor.update(() => {
       const root = $getRoot();
       root.clear();
@@ -228,24 +253,6 @@ function ExternalValueSyncPlugin({
 
       // Build nodes from internal value, turning app, prompt, file, and media
       // references into mention nodes.
-      const appMentionMatches =
-        appNames.length > 0
-          ? findKnownAppMentionMatches(value, appNames)
-          : Array.from(
-              value.matchAll(new RegExp(MENTION_REGEX.source, "g")),
-            ).flatMap((match) => {
-              const { appName } = splitAppMentionTrailingDots(match[1]);
-              if (!appName) {
-                return [];
-              }
-              return [
-                {
-                  appName,
-                  start: match.index,
-                  end: match.index + "@app:".length + appName.length,
-                },
-              ];
-            });
       const mentionMatches: Array<{
         start: number;
         end: number;

@@ -83,4 +83,38 @@ describe("LexicalChatInput", () => {
       container.querySelector('[contenteditable="true"]')?.textContent,
     ).toBe("Compare @This Is My App.");
   });
+
+  it("rebuilds a spaced app mention when app names finish loading", async () => {
+    const props = {
+      value: "Compare @app:This Is My App.",
+      onChange: vi.fn(),
+      onSubmit: vi.fn(),
+      messageHistory: [],
+      excludeCurrentApp: false,
+      disableSendButton: false,
+    };
+    const { container, rerender } = render(<LexicalChatInput {...props} />);
+
+    await waitFor(() => {
+      expect(
+        container
+          .querySelector("[data-beautiful-mention]")
+          ?.getAttribute("data-beautiful-mention"),
+      ).toBe("@This");
+    });
+
+    mocks.apps = [{ id: 1, name: "This Is My App" }];
+    rerender(<LexicalChatInput {...props} />);
+
+    await waitFor(() => {
+      expect(
+        container
+          .querySelector("[data-beautiful-mention]")
+          ?.getAttribute("data-beautiful-mention"),
+      ).toBe("@This Is My App");
+    });
+    expect(container.querySelectorAll("[data-beautiful-mention]")).toHaveLength(
+      1,
+    );
+  });
 });

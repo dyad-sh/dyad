@@ -84,6 +84,48 @@ describe("LexicalChatInput", () => {
     ).toBe("Compare @This Is My App.");
   });
 
+  it("does not rebuild a non-ASCII app mention on parent rerender", async () => {
+    mocks.apps = [{ id: 1, name: "猫" }];
+    const props = {
+      value: "Compare @app:猫.",
+      onChange: vi.fn(),
+      onSubmit: vi.fn(),
+      messageHistory: [],
+      excludeCurrentApp: false,
+      disableSendButton: false,
+    };
+    const { container, rerender } = render(<LexicalChatInput {...props} />);
+
+    await waitFor(() => {
+      const mention = container.querySelector("[data-beautiful-mention]");
+      expect(mention?.getAttribute("data-beautiful-mention")).toBe("@猫");
+    });
+
+    const editor = container.querySelector('[contenteditable="true"]');
+    if (!editor) {
+      throw new Error("Expected editor");
+    }
+    const textWalker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+    const leadingText = textWalker.nextNode();
+    if (!leadingText) {
+      throw new Error("Expected leading editor text");
+    }
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.setStart(leadingText, 2);
+    range.collapse(true);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    mocks.apps = [{ id: 1, name: "猫" }];
+    rerender(<LexicalChatInput {...props} />);
+
+    await waitFor(() => {
+      expect(selection?.anchorNode).toBe(leadingText);
+      expect(selection?.anchorOffset).toBe(2);
+    });
+  });
+
   it("rebuilds a spaced app mention when app names finish loading", async () => {
     const props = {
       value: "Compare @app:This Is My App.",

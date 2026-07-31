@@ -1,5 +1,6 @@
 import {
   findKnownAppMentionMatches,
+  formatKnownAppMentionsForDisplay,
   formatKnownAppMentionsForPrompt,
   MENTION_REGEX,
   parseAppMentions,
@@ -422,5 +423,13 @@ describe("formatKnownAppMentionsForPrompt", () => {
     ]);
 
     expect(result).toBe("Fix @app:Foo");
+  });
+});
+
+describe("formatKnownAppMentionsForDisplay", () => {
+  it("formats a known non-ASCII internal app mention", () => {
+    const result = formatKnownAppMentionsForDisplay("Compare @app:猫.", ["猫"]);
+
+    expect(result).toBe("Compare @猫.");
   });
 });

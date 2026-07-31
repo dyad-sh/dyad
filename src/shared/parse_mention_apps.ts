@@ -153,6 +153,25 @@ export function parseKnownAppMentions(
   );
 }
 
+export function formatKnownAppMentionsForDisplay(
+  prompt: string,
+  appNames: string[],
+): string {
+  const matches = findKnownAppMentionMatches(prompt, appNames);
+  if (matches.length === 0) {
+    return prompt;
+  }
+
+  let displayText = "";
+  let lastIndex = 0;
+  for (const match of matches) {
+    displayText += prompt.slice(lastIndex, match.start);
+    displayText += `@${match.appName}`;
+    lastIndex = match.end;
+  }
+  return displayText + prompt.slice(lastIndex);
+}
+
 export function formatKnownAppMentionsForPrompt(
   text: string,
   appNames: string[],

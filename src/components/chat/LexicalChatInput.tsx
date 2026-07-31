@@ -30,6 +30,7 @@ import { useAtomValue } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import {
   findKnownAppMentionMatches,
+  formatKnownAppMentionsForDisplay,
   formatKnownAppMentionsForPrompt,
   MENTION_REGEX,
   parseKnownAppMentions,
@@ -203,7 +204,10 @@ function ExternalValueSyncPlugin({
   useEffect(() => {
     // Derive the display text that should appear in the editor (@Name) from the
     // internal value representation (@app:Name)
-    let displayText = (value || "").replace(MENTION_REGEX, "@$1");
+    let displayText = formatKnownAppMentionsForDisplay(
+      value || "",
+      appNames,
+    ).replace(MENTION_REGEX, "@$1");
     displayText = displayText.replace(/@prompt:(\d+)/g, (_m, idStr) => {
       const id = Number(idStr);
       const title = promptsById[id];

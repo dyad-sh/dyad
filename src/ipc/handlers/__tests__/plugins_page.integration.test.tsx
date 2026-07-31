@@ -54,17 +54,22 @@ describe("Plugins page (integration)", () => {
     );
     fireEvent.click(within(dialog).getByRole("button", { name: "Add Plugin" }));
 
+    // Adding opens the new plugin's page, which is where env vars are
+    // entered.
+    const detail = await screen.findByTestId("plugin-detail");
+    expect(detail.textContent).toContain("testing-mcp-server");
+
+    // Tools appear once the stdio server finishes its handshake.
+    await within(detail).findByText("calculator_add", undefined, {
+      timeout: 20_000,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "All Plugins" }));
     const card = await screen.findByTestId("plugin-card");
     expect(card.textContent).toContain("testing-mcp-server");
-
-    // The tool count fills in once the stdio server finishes its
-    // handshake; the stats row aggregates it.
-    await waitFor(
-      () => {
-        expect(card.textContent).toMatch(/\d+ tools/);
-      },
-      { timeout: 20_000 },
-    );
+    await waitFor(() => {
+      expect(card.textContent).toMatch(/\d+ tools/);
+    });
     await waitFor(() => {
       expect(screen.getByTestId("plugins-stats").textContent).toMatch(
         /1 plugin · \d+ tools enabled/,

@@ -10,10 +10,16 @@ const entry: McpCatalogEntry = {
   url: "https://mcp.example.com/mcp",
 };
 
-function renderCard(status: CatalogCardStatus, isAdding = false) {
+const oauthEntry: McpCatalogEntry = { ...entry, oauth: { required: true } };
+
+function renderCard(
+  status: CatalogCardStatus,
+  isAdding = false,
+  cardEntry: McpCatalogEntry = entry,
+) {
   return render(
     <CatalogCard
-      entry={entry}
+      entry={cardEntry}
       status={status}
       isAdding={isAdding}
       onAdd={vi.fn()}
@@ -58,15 +64,23 @@ describe("CatalogCard status", () => {
   // The label changes as a connect progresses, so it has to sit in a
   // region assistive tech watches.
   it.each(["connecting", "needs-connect", "added"] as const)(
-    "announces the %s state through a status role",
+    "announces the %s state of a connectable entry through a status role",
     (status) => {
-      renderCard(status);
+      renderCard(status, false, oauthEntry);
       expect(screen.getByRole("status")).toBeTruthy();
     },
   );
 
+  // An entry that never connects settles on "added" and stays there, so
+  // a live region on it would only add noise.
+  it("does not make a settled entry a live region", () => {
+    renderCard("added");
+    expect(screen.getByText("Added")).toBeTruthy();
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
   it("keeps the decorative icon out of the announced text", () => {
-    renderCard("connecting");
+    renderCard("connecting", false, oauthEntry);
     expect(screen.getByRole("status").textContent).toBe("Connecting…");
   });
 });

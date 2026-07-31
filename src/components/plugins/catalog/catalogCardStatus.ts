@@ -3,6 +3,15 @@ import type { McpCatalogEntry } from "@/ipc/types/mcp_catalog";
 import type { CatalogCardStatus } from "./CatalogCard";
 
 /**
+ * Whether an entry's card can still change status. Only a required-OAuth
+ * entry connects on add, so every other card settles on "added" and
+ * stays there.
+ */
+export function catalogEntryCanConnect(entry: McpCatalogEntry): boolean {
+  return entry.transport === "http" && entry.oauth?.required === true;
+}
+
+/**
  * What an entry's card should report.
  *
  * `addedSlugs` and the server rows come from separate queries that
@@ -29,7 +38,8 @@ export function catalogCardStatus({
   const server = serverBySlug.get(entry.slug);
   if (!server) return "added";
   if (connectingServerId === server.id) return "connecting";
-  const requiresOauth = entry.transport === "http" && entry.oauth?.required;
-  if (requiresOauth && !server.oauthConnected) return "needs-connect";
+  if (catalogEntryCanConnect(entry) && !server.oauthConnected) {
+    return "needs-connect";
+  }
   return "added";
 }

@@ -43,8 +43,11 @@ export class Plugins {
     if (!(await detailForServer.isVisible())) {
       // A navigation landing between that check and this click removes
       // the card, which is a success rather than a failure. The
-      // assertions below decide either way.
-      await card.click().catch(() => {});
+      // assertions below decide either way; log so a real click problem
+      // isn't just an opaque timeout further down.
+      await card.click().catch((error) => {
+        console.log(`openPluginDetail: card click did not land: ${error}`);
+      });
     }
     await expect(detail).toBeVisible({ timeout: Timeout.MEDIUM });
     await expect(detail.getByText(serverName, { exact: true })).toBeVisible({

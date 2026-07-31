@@ -5,6 +5,7 @@ import {
   looksLikePackageSpec,
   type McpCatalogEntry,
 } from "@/ipc/types/mcp_catalog";
+import { catalogEntryCanConnect } from "./catalogCardStatus";
 
 // The schema already validates url, but parse defensively so one bad
 // entry can't throw during render and take down the whole section.
@@ -75,11 +76,11 @@ export function CatalogCard({
               {isAdding ? "Adding…" : "Add"}
             </Button>
           ) : (
-            // One region for every state, so a change from Connecting…
-            // to Added or Not connected is announced. The icons repeat
-            // the label, so they stay out of the accessible name.
+            // A live region only where the label can still change, so a
+            // catalog of settled entries isn't a wall of them. The icons
+            // repeat the label, so they stay out of the accessible name.
             <span
-              role="status"
+              role={catalogEntryCanConnect(entry) ? "status" : undefined}
               className={`flex items-center gap-1 text-xs font-medium shrink-0 ${
                 status === "connecting"
                   ? "text-muted-foreground"

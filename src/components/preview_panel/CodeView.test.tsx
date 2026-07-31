@@ -15,6 +15,9 @@ const mocks = vi.hoisted(() => ({
   // What the app lists after returning to the origin branch, i.e. the branch's
   // latest files rather than the previewed checkout's.
   originBranchFiles: [] as string[],
+  // What the machine reports once the CLOSE promise settles, which is not
+  // necessarily "returned" - another window may still hold the checkout.
+  stateAfterClose: { type: "closed" } as any,
   refreshApp: vi.fn(),
   showWarning: vi.fn(),
 }));
@@ -28,6 +31,7 @@ vi.mock("@/hooks/useVersionPreview", () => ({
     state: mocks.previewState,
     send: mocks.sendPreviewEvent,
     sendAndWaitForMutation: mocks.sendPreviewEventAndWait,
+    getState: () => mocks.stateAfterClose,
   }),
 }));
 
@@ -118,11 +122,11 @@ function renderCodeView(
   return {
     ...rendered,
     queryClient,
-    rerenderCodeView: (nextFiles: string[] = files) =>
+    rerenderCodeView: (nextFiles: string[] = files, appId = 1) =>
       rendered.rerender(
         <QueryClientProvider client={queryClient}>
           <Provider store={store}>
-            <CodeView loading={false} app={{ id: 1, files: nextFiles }} />
+            <CodeView loading={false} app={{ id: appId, files: nextFiles }} />
           </Provider>
         </QueryClientProvider>,
       ),
@@ -142,8 +146,10 @@ describe("CodeView diff editing", () => {
     mocks.versionChanges = [];
     mocks.uncommittedFiles = [];
     mocks.originBranchFiles = ["src/selected.ts"];
+    mocks.stateAfterClose = { type: "closed" };
     mocks.refreshApp.mockReset();
     mocks.refreshApp.mockImplementation(async () => ({
+      isError: false,
       data: { id: 1, files: mocks.originBranchFiles },
     }));
     mocks.showWarning.mockReset();
@@ -208,6 +214,121 @@ describe("CodeView diff editing", () => {
       expect(store.get(selectedFileAtom)).toEqual({ path: "src/selected.ts" });
     });
     expect(queryClient.getQueryData(staleContentKey)).toBeUndefined();
+  });
+
+  it("hides the previously open file while the return is in flight", async () => {
+    const store = createStore();
+    // A file opened before the version diff would otherwise keep rendering -
+    // showing the detached working tree's copy - the moment CLOSE hides the
+    // diff, which happens before the git return settles.
+    store.set(selectedFileAtom, { path: "src/already-open.ts" });
+    mocks.previewState = previewingState("src/selected.ts");
+    mocks.versionChanges = [{ path: "src/selected.ts" }];
+    let finishReturn: () => void = () => undefined;
+    mocks.sendPreviewEventAndWait.mockImplementation(
+      () =>
+        new Promise<undefined>((resolve) => {
+          finishReturn = () => resolve(undefined);
+        }),
+    );
+    renderCodeView(store, ["src/selected.ts"]);
+
+    fireEvent.click(screen.getByTestId("edit-latest-version-button"));
+
+    expect(store.get(selectedFileAtom)).toBeNull();
+
+    finishReturn();
+
+    await waitFor(() => {
+      expect(store.get(selectedFileAtom)).toEqual({ path: "src/selected.ts" });
+    });
+  });
+
+  it("does not edit when CLOSE settled without releasing the checkout", async () => {
+    const store = createStore();
+    mocks.previewState = previewingState("src/selected.ts");
+    mocks.versionChanges = [{ path: "src/selected.ts" }];
+    // CLOSE resolves without running the git return when another window still
+    // holds the preview, leaving the app on the detached checkout.
+    mocks.stateAfterClose = previewingState("src/selected.ts");
+    renderCodeView(store, ["src/selected.ts"]);
+
+    fireEvent.click(screen.getByTestId("edit-latest-version-button"));
+
+    await waitFor(() => {
+      expect(mocks.showWarning).toHaveBeenCalledWith(
+        "preview.editLatestVersionUnavailable",
+      );
+    });
+    expect(store.get(selectedFileAtom)).toBeNull();
+    expect(mocks.refreshApp).not.toHaveBeenCalled();
+  });
+
+  it("does not edit when the post-return file listing fails", async () => {
+    const store = createStore();
+    mocks.previewState = previewingState("src/selected.ts");
+    mocks.versionChanges = [{ path: "src/selected.ts" }];
+    // refetch() resolves with the last-good (detached) listing on failure, so
+    // the path being present there proves nothing about the origin branch.
+    mocks.refreshApp.mockResolvedValue({
+      isError: true,
+      data: { id: 1, files: ["src/selected.ts"] },
+    });
+    renderCodeView(store, ["src/selected.ts"]);
+
+    fireEvent.click(screen.getByTestId("edit-latest-version-button"));
+
+    await waitFor(() => {
+      expect(mocks.showWarning).toHaveBeenCalledWith(
+        "preview.editLatestVersionUnavailable",
+      );
+    });
+    expect(store.get(selectedFileAtom)).toBeNull();
+  });
+
+  it("drops the edit when another app is displayed before the return finishes", async () => {
+    const store = createStore();
+    mocks.previewState = previewingState("src/selected.ts");
+    mocks.versionChanges = [{ path: "src/selected.ts" }];
+    let finishReturn: () => void = () => undefined;
+    mocks.sendPreviewEventAndWait.mockImplementation(
+      () =>
+        new Promise<undefined>((resolve) => {
+          finishReturn = () => resolve(undefined);
+        }),
+    );
+    const { rerenderCodeView } = renderCodeView(store, ["src/selected.ts"]);
+
+    fireEvent.click(screen.getByTestId("edit-latest-version-button"));
+    rerenderCodeView(["src/other-app.ts"], 2);
+    finishReturn();
+
+    await waitFor(() => {
+      expect(mocks.sendPreviewEventAndWait).toHaveBeenCalled();
+    });
+    // The other app's editor must not inherit this app's file selection.
+    expect(store.get(selectedFileAtom)).toBeNull();
+    expect(mocks.refreshApp).not.toHaveBeenCalled();
+  });
+
+  it("clears a stale staged selection when editing a version diff", () => {
+    const store = createStore();
+    // Left over from a staged diff the user opened before the version diff.
+    store.set(stagedDiffFileAtom, "src/staged.ts");
+    mocks.previewState = versionDiffState("src/selected.ts");
+    mocks.versionChanges = [{ path: "src/selected.ts" }];
+    const { rerenderCodeView } = renderCodeView(store, ["src/selected.ts"]);
+
+    fireEvent.click(screen.getByTestId("edit-latest-version-button"));
+
+    expect(store.get(stagedDiffFileAtom)).toBeNull();
+    mocks.previewState = { type: "closed" };
+    rerenderCodeView();
+    // Staged-diff mode would otherwise take over once the version diff closed.
+    expect(screen.queryByTestId("staged-diff-view")).toBeNull();
+    expect(screen.getByTestId("file-editor").textContent).toBe(
+      "src/selected.ts",
+    );
   });
 
   it("does not open a file that the origin branch no longer has", async () => {

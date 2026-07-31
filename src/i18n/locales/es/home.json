@@ -239,6 +239,7 @@
     "noContentAvailable": "No hay contenido disponible",
     "editLatestVersion": "Editar la versión más reciente",
     "editLatestVersionMissing": "{{path}} ya no existe en la versión más reciente, así que no hay nada que editar.",
+    "editLatestVersionUnavailable": "No se pudo confirmar la versión más reciente de {{path}}, así que no se abrió. Inténtalo de nuevo.",
     "sendToChat": "Enviar al chat",
     "systemMessages": "Mensajes del Sistema",
     "consoleFilters": {

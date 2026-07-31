@@ -248,6 +248,7 @@
     "backToEditor": "Back to editor",
     "editLatestVersion": "Edit latest version",
     "editLatestVersionMissing": "{{path}} no longer exists in the latest version, so there's nothing to edit.",
+    "editLatestVersionUnavailable": "Couldn't confirm the latest version of {{path}}, so it wasn't opened. Please try again.",
     "commit": "Commit",
     "committing": "Committing...",
     "cancel": "Cancel",

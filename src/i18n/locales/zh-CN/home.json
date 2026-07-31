@@ -236,6 +236,7 @@
     "noContentAvailable": "没有可用内容",
     "editLatestVersion": "编辑最新版本",
     "editLatestVersionMissing": "{{path}} 在最新版本中已不存在，因此没有可编辑的内容。",
+    "editLatestVersionUnavailable": "无法确认 {{path}} 的最新版本，因此未打开。请重试。",
     "sendToChat": "发送到聊天",
     "systemMessages": "系统消息",
     "consoleFilters": {

@@ -84,6 +84,7 @@ export function useVersionPreview(appId: number | null): {
   isPaneVisible: boolean;
   send: (event: PreviewEvent) => void;
   sendAndWaitForMutation: (event: PreviewEvent) => Promise<void>;
+  getState: () => PreviewState;
 } {
   const routedAppId = appId ?? NULL_APP_ID;
   const key = versionPreviewKey(routedAppId);
@@ -256,6 +257,17 @@ export function useVersionPreview(appId: number | null): {
     (event: PreviewEvent) => dispatch(event, true),
     [dispatch],
   );
+  // Reads the machine's state directly instead of through React, so callers
+  // awaiting a mutation can check what actually happened without waiting for
+  // the re-render that the settled operation will eventually trigger.
+  const getState = useCallback((): PreviewState => {
+    if (appId === null) return CLOSED_STATE;
+    return combineVersionPreviewState(
+      appId,
+      actor.getView().state.state,
+      presentationStore.getSnapshot(appId),
+    );
+  }, [actor, appId, presentationStore]);
   const projection = useMemo(() => {
     const projected = projectVersionPreview(state);
     if (remote.connection === "ready") return projected;
@@ -275,5 +287,6 @@ export function useVersionPreview(appId: number | null): {
     isPaneVisible,
     send,
     sendAndWaitForMutation,
+    getState,
   };
 }

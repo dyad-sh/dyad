@@ -1,6 +1,6 @@
 import { FileEditor } from "./FileEditor";
 import { FileTree } from "./FileTree";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import {
   RefreshCw,
@@ -57,6 +57,7 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
     state: previewState,
     send: sendPreviewEvent,
     sendAndWaitForMutation: sendPreviewEventAndWait,
+    getState: getPreviewState,
   } = useVersionPreview(app?.id ?? null);
   const queryClient = useQueryClient();
   const selectedVersionId = diffVersionIdForState(previewState);
@@ -80,6 +81,14 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isLeavingHistoricalCheckout, setIsLeavingHistoricalCheckout] =
     useState(false);
+  // Which app the panel is showing right now. Returning to the origin branch is
+  // async, so the user can switch apps mid-flight; the continuation compares
+  // against this to avoid applying the edit to whatever app took its place.
+  const displayedAppIdRef = useRef(app?.id ?? null);
+
+  useEffect(() => {
+    displayedAppIdRef.current = app?.id ?? null;
+  }, [app?.id]);
 
   useEffect(() => {
     if (!isFullscreen) return;
@@ -140,7 +149,14 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
   // Return to the origin branch first, then open the branch's latest version.
   const editAfterLeavingHistoricalCheckout = async (path: string) => {
     const appId = app.id;
+    // Closing the diff is immediate while the git return is not, so any file
+    // already open would render the detached working tree's copy in the gap.
+    // Re-select only once the branch is back and the target is confirmed.
+    setSelectedFile(null);
     await sendPreviewEventAndWait({ type: "CLOSE" });
+    // The user moved on to another app while the return was in flight; its
+    // editor must not inherit this app's file selection.
+    if (displayedAppIdRef.current !== appId) return;
     if (appId != null) {
       // Content cached while detached describes the historical commit, so drop
       // it rather than briefly showing it as the file's latest version.
@@ -148,13 +164,29 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
         queryKey: queryKeys.appFiles.content({ appId, filePath: path }),
       });
     }
+    // CLOSE resolves without running the git return when this window was not
+    // the last one interested in the preview, so a settled promise is not proof
+    // the checkout was released. Read the machine directly (React may not have
+    // re-rendered yet) and bail out rather than edit the historical copy.
+    if (ownsHistoricalCheckout(getPreviewState())) {
+      showWarning(t("preview.editLatestVersionUnavailable"));
+      return;
+    }
     // While detached, app.files listed the previewed commit's working tree, so
     // the button's existence guard could not speak for the origin branch. Now
     // that the branch is checked out again, re-list and confirm the file is
     // still there: a file that only exists in the previewed version would
     // otherwise open an empty editor that re-creates it on save.
-    const latestFiles = (await refreshApp()).data?.files;
-    if (latestFiles && !latestFiles.includes(path)) {
+    const refreshed = await refreshApp();
+    if (displayedAppIdRef.current !== appId) return;
+    // refetch() resolves with the last-good (detached) listing when it fails,
+    // so an errored re-list cannot confirm anything and must not open the file.
+    const latestFiles = refreshed.isError ? undefined : refreshed.data?.files;
+    if (!latestFiles) {
+      showWarning(t("preview.editLatestVersionUnavailable"));
+      return;
+    }
+    if (!latestFiles.includes(path)) {
       showWarning(t("preview.editLatestVersionMissing", { path }));
       return;
     }
@@ -164,10 +196,13 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
   const editDisplayedDiff = () => {
     if (!displayedDiffPath || !canEditDisplayedDiff) return;
     const path = displayedDiffPath;
+    // A staged selection left over from before the version diff opened would
+    // put the panel back in staged-diff mode instead of the editor, so clear it
+    // on every path out of here.
+    setStagedDiffFile(null);
 
     if (!isVersionDiffMode) {
       setSelectedFile({ path });
-      setStagedDiffFile(null);
       return;
     }
 

@@ -117,4 +117,59 @@ describe("LexicalChatInput", () => {
       1,
     );
   });
+
+  it("does not emit changes while restoring an external app mention", async () => {
+    const onChange = vi.fn();
+    const { container } = render(
+      <LexicalChatInput
+        value="Compare @app:This Is My App."
+        onChange={onChange}
+        onSubmit={vi.fn()}
+        messageHistory={[]}
+        excludeCurrentApp={false}
+        disableSendButton={false}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(
+        container.querySelector("[data-beautiful-mention]"),
+      ).not.toBeNull();
+    });
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("preserves an unknown app mention when known apps finish loading", async () => {
+    const props = {
+      value: "Compare @app:MissingApp.",
+      onChange: vi.fn(),
+      onSubmit: vi.fn(),
+      messageHistory: [],
+      excludeCurrentApp: false,
+      disableSendButton: false,
+    };
+    const { container, rerender } = render(<LexicalChatInput {...props} />);
+
+    await waitFor(() => {
+      expect(
+        container
+          .querySelector("[data-beautiful-mention]")
+          ?.getAttribute("data-beautiful-mention"),
+      ).toBe("@MissingApp");
+    });
+
+    mocks.apps = [{ id: 1, name: "Another App" }];
+    rerender(<LexicalChatInput {...props} />);
+
+    await waitFor(() => {
+      expect(
+        container
+          .querySelector("[data-beautiful-mention]")
+          ?.getAttribute("data-beautiful-mention"),
+      ).toBe("@MissingApp");
+    });
+    expect(
+      container.querySelector('[contenteditable="true"]')?.textContent,
+    ).toBe("Compare @MissingApp.");
+  });
 });

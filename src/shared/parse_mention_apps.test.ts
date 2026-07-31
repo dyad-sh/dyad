@@ -308,6 +308,12 @@ describe("parseKnownAppMentions", () => {
     expect(result).toEqual([]);
   });
 
+  it("does not match a Unicode app name inside a longer Unicode word", () => {
+    const result = parseKnownAppMentions("Compare @app:猫猫", ["猫"]);
+
+    expect(result).toEqual([]);
+  });
+
   it("matches dotted app names from the known app list", () => {
     const result = parseKnownAppMentions("Check @app:foo.app.com", [
       "foo.app.com",
@@ -401,6 +407,12 @@ describe("formatKnownAppMentionsForPrompt", () => {
     const result = formatKnownAppMentionsForPrompt("Fix @foo.app.com", ["foo"]);
 
     expect(result).toBe("Fix @foo.app.com");
+  });
+
+  it("does not rewrite a Unicode app name inside a longer Unicode word", () => {
+    const result = formatKnownAppMentionsForPrompt("Compare @猫猫", ["猫"]);
+
+    expect(result).toBe("Compare @猫猫");
   });
 
   it("does not rewrite already-internal app mentions", () => {

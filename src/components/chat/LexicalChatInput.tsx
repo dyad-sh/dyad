@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useRef } from "react";
 import {
+  $addUpdateTag,
   $getRoot,
   $createParagraphNode,
   $createTextNode,
   EditorState,
+  type LexicalEditor,
 } from "lexical";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
@@ -44,6 +46,8 @@ const beautifulMentionsTheme: BeautifulMentionsTheme = {
   "/": "px-2 py-0.5 mx-0.5 bg-accent text-accent-foreground rounded-md",
   "/Focused": "outline-none ring-2 ring-ring",
 };
+
+const EXTERNAL_VALUE_SYNC_TAG = "external-value-sync";
 
 // Custom menu item component
 const CustomMenuItem = forwardRef<
@@ -214,24 +218,31 @@ function ExternalValueSyncPlugin({
       }
     });
 
-    const appMentionMatches =
-      appNames.length > 0
-        ? findKnownAppMentionMatches(value, appNames)
-        : Array.from(
-            value.matchAll(new RegExp(MENTION_REGEX.source, "g")),
-          ).flatMap((match) => {
-            const { appName } = splitAppMentionTrailingDots(match[1]);
-            if (!appName) {
-              return [];
-            }
-            return [
-              {
-                appName,
-                start: match.index,
-                end: match.index + "@app:".length + appName.length,
-              },
-            ];
-          });
+    const fallbackAppMentionMatches = Array.from(
+      value.matchAll(new RegExp(MENTION_REGEX.source, "g")),
+    ).flatMap((match) => {
+      const { appName } = splitAppMentionTrailingDots(match[1]);
+      if (!appName) {
+        return [];
+      }
+      return [
+        {
+          appName,
+          start: match.index,
+          end: match.index + "@app:".length + appName.length,
+        },
+      ];
+    });
+    const knownAppMentionMatches = findKnownAppMentionMatches(value, appNames);
+    const appMentionMatches = [
+      ...knownAppMentionMatches,
+      ...fallbackAppMentionMatches.filter(
+        (fallback) =>
+          !knownAppMentionMatches.some(
+            (known) => fallback.start < known.end && fallback.end > known.start,
+          ),
+      ),
+    ].sort((a, b) => a.start - b.start);
     const appMentionSignature = JSON.stringify(appMentionMatches);
     const appMentionStructureChanged =
       lastAppMentionSignatureRef.current !== null &&
@@ -246,6 +257,7 @@ function ExternalValueSyncPlugin({
     // If the editor already reflects the same display text, do nothing to avoid loops
     if (currentText === displayText && !appMentionStructureChanged) return;
     editor.update(() => {
+      $addUpdateTag(EXTERNAL_VALUE_SYNC_TAG);
       const root = $getRoot();
       root.clear();
 
@@ -467,7 +479,10 @@ export function LexicalChatInput({
   };
 
   const handleEditorChange = useCallback(
-    (editorState: EditorState) => {
+    (editorState: EditorState, _editor: LexicalEditor, tags: Set<string>) => {
+      if (tags.has(EXTERNAL_VALUE_SYNC_TAG)) {
+        return;
+      }
       editorState.read(() => {
         const root = $getRoot();
         let textContent = root.getTextContent();

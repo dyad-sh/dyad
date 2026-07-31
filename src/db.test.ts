@@ -32,6 +32,10 @@ vi.mock("drizzle-orm/better-sqlite3/migrator", () => ({
   migrate: mocks.migrate,
 }));
 
+vi.mock("@/db/migration_compat", () => ({
+  reconcileRenumberedMcpCleanupMigration: vi.fn(() => false),
+}));
+
 vi.mock("node:fs", () => ({
   default: mocks.fs,
 }));

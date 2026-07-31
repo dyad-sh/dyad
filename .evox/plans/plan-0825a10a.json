@@ -1,19 +1,19 @@
 {
   "version": 1,
   "id": "plan-0825a10a",
-  "title": "仓库提供 `npm run make` 生成 macOS 安装产物；当前机器是 Intel (`x86_64`)，目标应为 x64。重新安装会替换 `/App…",
+  "title": "迁移文件顺序本身是 `0042` 先给 MCP 表加密字段，`0043` 再删除 MCP 表，正常全新数据库不会失败。更可能是之前安装的代码已经执行了“删除 …",
   "status": "draft",
-  "content": "仓库提供 `npm run make` 生成 macOS 安装产物；当前机器是 Intel (`x86_64`)，目标应为 x64。重新安装会替换 `/Applications/Dyad.app`，并需要先关闭正在运行的 Dyad，因此我先把构建、备份和替换步骤提交确认。",
+  "content": "迁移文件顺序本身是 `0042` 先给 MCP 表加密字段，`0043` 再删除 MCP 表，正常全新数据库不会失败。更可能是之前安装的代码已经执行了“删除 MCP 表”，但数据库的 `__drizzle_migrations` 记录没有对应到当前 `0042/0043` 时间戳，导致新安装又从 `0042` 重放。下一步需要对实际 SQLite 做只读 schema/journal 检查并备份后修复迁移兼容性。",
   "tasks": [
     {
       "id": "t1",
-      "content": "仓库提供 `npm run make` 生成 macOS 安装产物；当前机器是 Intel (`x86_64`)，目标应为 x64。重新安装会替换 `/App…",
+      "content": "迁移文件顺序本身是 `0042` 先给 MCP 表加密字段，`0043` 再删除 MCP 表，正常全新数据库不会失败。更可能是之前安装的代码已经执行了“删除 …",
       "status": "pending",
       "line": 0
     }
   ],
-  "revision": 8,
+  "revision": 11,
   "created_at": 1785330517348,
-  "updated_at": 1785336327123,
+  "updated_at": 1785460382917,
   "origin_session_id": "1bb2f347-1e59-4e4c-8f79-1eea7874412f"
 }

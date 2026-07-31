@@ -10,6 +10,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { getUserDataPath } from "../paths/paths";
 import log from "electron-log";
+import { reconcileRenumberedMcpCleanupMigration } from "./migration_compat";
 
 const logger = log.scope("db");
 
@@ -74,6 +75,9 @@ export function initializeDatabase(): BetterSQLite3Database<typeof schema> & {
       throw new Error(`Migrations folder not found: ${migrationsFolder}`);
     }
     logger.log("Running migrations from:", migrationsFolder);
+    if (reconcileRenumberedMcpCleanupMigration(sqlite, migrationsFolder)) {
+      logger.info("Reconciled renumbered MCP cleanup migration ledger entry");
+    }
     migrate(_db, { migrationsFolder });
   } catch (error) {
     logger.error("Migration error:", error);

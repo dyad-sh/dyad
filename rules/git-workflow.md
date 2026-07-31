@@ -104,6 +104,10 @@ When a worktree symlinks `node_modules` from another checkout (common in agent w
 
 After a commit with lint-staged hooks, re-check both `git status --short` and any untracked artifact files you intentionally left out of the commit. Hook cleanup can leave the tracked tree clean while untracked scratch files under directories like `.agents/` have been removed; restore or report them before finishing.
 
+If Git fails with `Unable to create '.git/index.lock': File exists`, first run
+`lsof .git/index.lock` and inspect active Git processes. Remove only an
+unowned, stale lock; never delete a lock held by a running Git operation.
+
 When native Git commands accept a revision followed by optional paths, append
 `--` after the revision even when no paths are supplied. A branch name can also
 name a project file or directory (for example `src`), and omitting the separator

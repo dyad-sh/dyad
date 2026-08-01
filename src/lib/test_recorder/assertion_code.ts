@@ -4,8 +4,26 @@
  * Both LLM passes (the agent's `generate_test_assertions` tool and the
  * approve-time code synthesis) are gated on this: an assertion is spliced into
  * the generated spec verbatim, so anything that isn't exactly one awaited
- * `expect(...)` assertion would either break the file or smuggle an unrelated
- * expression into a test that runs with Node's privileges.
+ * `expect(...)` assertion would break the file or run something the card never
+ * presented as an assertion.
+ *
+ * What this DOES guarantee, precisely:
+ * - the line is one statement — no second statement, no trailing expression
+ *   after the matcher, no comment hiding the rest of it;
+ * - it is an awaited `expect(...)` with a matcher chain, so the card's "1 check"
+ *   is one check, and an async matcher is actually observed.
+ *
+ * What it does NOT: it says nothing about what the `expect(...)` argument
+ * contains. `await expect(somethingArbitrary()).toBeDefined();` is a
+ * well-formed assertion by every rule here. This is a SHAPE check, not a
+ * sandbox — a spec is ordinary TypeScript and runs with Node's privileges.
+ *
+ * The trust boundary that actually matters is provenance, and it lives in
+ * `test_assertion_handlers.ts`: assertion code only ever comes from the model,
+ * never from the renderer (see `resolveAssertionCode`), and the model in
+ * question is the one the user selected — the same one that can already call
+ * `write_file`. Tightening this validator would not change that, so don't read
+ * it as the thing standing between a hostile model and the user's repo.
  */
 
 /** The delimiter that closes each opener. */
@@ -100,7 +118,11 @@ const MEMBER_RE = /^\.\s*([A-Za-z_$][\w$]*)\s*/;
  *
  * This is what stops `await expect(a).toBeVisible(), fs.rmSync("/");` — a single
  * balanced statement by every other measure — from being presented to the user
- * as one assertion and then written into their repo verbatim.
+ * as one assertion when it is an assertion plus something else.
+ *
+ * Only the tail is checked. The `expect(...)` argument is not constrained at
+ * all, so this narrows what a line can DO alongside asserting; it does not make
+ * the assertion itself safe. See the file header.
  */
 function isMatcherChain(code: string, from: number): boolean {
   let i = from;

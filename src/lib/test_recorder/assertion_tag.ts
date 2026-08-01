@@ -63,14 +63,61 @@ export function parseAssertionsPayload(
   return result.success ? result.data : null;
 }
 
-/** Matches one whole `<dyad-test-assertions …>…</dyad-test-assertions>` block. */
-const ASSERTIONS_TAG_BLOCK_RE = new RegExp(
-  `<${ASSERTIONS_TAG}\\b[^>]*>[\\s\\S]*?</${ASSERTIONS_TAG}>`,
-);
+/** Matches every whole `<dyad-test-assertions …>…</dyad-test-assertions>` block. */
+function assertionsTagBlockRe(): RegExp {
+  return new RegExp(
+    `<${ASSERTIONS_TAG}\\b([^>]*)>([\\s\\S]*?)</${ASSERTIONS_TAG}>`,
+    "g",
+  );
+}
+
+function readAttribute(openTagAttrs: string, attribute: string): string | null {
+  const match = new RegExp(`\\s${attribute}="([^"]*)"`).exec(openTagAttrs);
+  return match ? match[1] : null;
+}
+
+interface AssertionsTagBlock {
+  /** The whole `<tag …>…</tag>` span. */
+  block: string;
+  /** Offset of `block` within the message. */
+  index: number;
+  /** The open tag's attribute text. */
+  attrs: string;
+  /** The raw (still XML-escaped) tag body. */
+  body: string;
+}
 
 /**
- * Swap the assertions tag inside a message for `nextTag`, leaving everything
- * around it untouched. Returns null when the message has no such tag.
+ * Locate the assertions card in a message. One assistant message can carry more
+ * than one card — the agent is free to call `generate_test_assertions` twice in
+ * a turn — so every read and every rewrite is scoped by `proposalId`. Without
+ * it, approving the second card would read, and then overwrite, the first.
+ *
+ * Omitting `proposalId` returns the first card, which is what the streaming
+ * renderer wants when it has no identity to match on yet.
+ */
+function findAssertionsTagBlock(
+  messageContent: string,
+  proposalId?: string,
+): AssertionsTagBlock | null {
+  const re = assertionsTagBlockRe();
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(messageContent)) !== null) {
+    const attrs = match[1];
+    if (
+      proposalId === undefined ||
+      readAttribute(attrs, "proposal-id") === proposalId
+    ) {
+      return { block: match[0], index: match.index, attrs, body: match[2] };
+    }
+  }
+  return null;
+}
+
+/**
+ * Swap one assertions tag inside a message for `nextTag`, leaving everything
+ * around it untouched. Returns null when the message has no such tag (or none
+ * with that `proposalId`).
  *
  * The tool writes the card into the middle of the agent's assistant message, so
  * approving must splice: replacing the whole content would delete the agent's
@@ -79,22 +126,35 @@ const ASSERTIONS_TAG_BLOCK_RE = new RegExp(
 export function replaceAssertionsTagInMessage(
   messageContent: string,
   nextTag: string,
+  proposalId?: string,
 ): string | null {
-  if (!ASSERTIONS_TAG_BLOCK_RE.test(messageContent)) return null;
-  // Replacement is a plain string, but `$&`-style patterns in the JSON payload
-  // would be interpreted by `replace`; a function replacer inserts it verbatim.
-  return messageContent.replace(ASSERTIONS_TAG_BLOCK_RE, () => nextTag);
+  const found = findAssertionsTagBlock(messageContent, proposalId);
+  if (!found) return null;
+  // Spliced by offset rather than `String.replace`, whose `$&`-style patterns
+  // would be interpreted inside the JSON payload.
+  return (
+    messageContent.slice(0, found.index) +
+    nextTag +
+    messageContent.slice(found.index + found.block.length)
+  );
 }
 
 /** Read an attribute off a raw message containing the tag (main-process side). */
 export function readAssertionsTagAttribute(
   messageContent: string,
   attribute: string,
+  proposalId?: string,
 ): string | null {
-  const match = new RegExp(
-    `<${ASSERTIONS_TAG}\\b[^>]*\\s${attribute}="([^"]*)"`,
-  ).exec(messageContent);
-  return match ? match[1] : null;
+  const found = findAssertionsTagBlock(messageContent, proposalId);
+  return found ? readAttribute(found.attrs, attribute) : null;
+}
+
+/** Whether the message carries a card for `proposalId`. */
+export function messageHasAssertionsProposal(
+  messageContent: string,
+  proposalId: string,
+): boolean {
+  return findAssertionsTagBlock(messageContent, proposalId) !== null;
 }
 
 /**
@@ -104,12 +164,11 @@ export function readAssertionsTagAttribute(
  */
 export function parseAssertionsPayloadFromMessage(
   messageContent: string,
+  proposalId?: string,
 ): AssertionProposalPayload | null {
-  const match = new RegExp(
-    `<${ASSERTIONS_TAG}\\b[^>]*>([\\s\\S]*?)</${ASSERTIONS_TAG}>`,
-  ).exec(messageContent);
-  if (!match) return null;
-  const unescaped = match[1]
+  const found = findAssertionsTagBlock(messageContent, proposalId);
+  if (!found) return null;
+  const unescaped = found.body
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&amp;/g, "&");

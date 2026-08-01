@@ -42,6 +42,14 @@ export interface RecordingState {
   error?: string;
   /** The captured recording, while phase is "reviewing" (or being saved). */
   draft?: RecordedTestDraft;
+  /**
+   * The assertion pass has been handed to the agent and we're waiting for its
+   * card. The review stays up meanwhile: the request can fail, be cancelled, or
+   * never reach the tool, and the draft has no other recovery UI — closing the
+   * banner on dispatch would strand it with nothing to retry, save, or discard
+   * from.
+   */
+  awaitingAssertions?: boolean;
   /** Path of the just-written spec, while phase is "saved". */
   savedSpecPath?: string;
   startedAt?: number;
@@ -117,12 +125,23 @@ export const setRecordingStateForAppAtom = atom(
   },
 );
 
+/**
+ * Ceiling on the actions one recording may buffer. The entries come from the
+ * previewed app over postMessage, so an app in a render loop (or a hostile one)
+ * could otherwise grow this list without bound — and every entry is also
+ * re-collapsed and re-rendered on arrival. Far above any hand-performed flow: a
+ * long recording is tens of steps, not thousands.
+ */
+export const MAX_RECORDED_ENTRIES = 5_000;
+
 export const appendRecordedEntryAtom = atom(
   null,
   (_get, set, { appId, entry }: { appId: number; entry: RecordedEntry }) => {
     set(recordedEntriesByAppIdAtom, (prev) => {
+      const current = prev.get(appId) ?? [];
+      if (current.length >= MAX_RECORDED_ENTRIES) return prev;
       const next = new Map(prev);
-      next.set(appId, [...(prev.get(appId) ?? []), entry]);
+      next.set(appId, [...current, entry]);
       return next;
     });
   },

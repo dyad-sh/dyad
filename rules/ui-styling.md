@@ -65,6 +65,6 @@ printf '@import "./src/styles/globals.css";\n@source "/abs/path/harness.html";\n
 npx @tailwindcss/cli -i .tw-probe.css -o /abs/path/out.css   # then delete .tw-probe.css
 ```
 
-The same probe doubles as a check that a utility actually exists before shipping it — `grep` the output for the generated rule (e.g. `.-indent-5 { text-indent: ... }`) rather than assuming a class name is valid.
+The same probe doubles as a check that a utility actually exists before shipping it — grep the output for the generated rule rather than assuming a class name is valid. Use a fixed-string match so the leading `.` isn't read as a regex wildcard: `grep -F '.-indent-5 {' /abs/path/out.css` (the class `-indent-5` compiles to the selector `.-indent-5`).
 
 Related: `npm run start:onboarding` launches the real app with fresh userData and `DYAD_DEV_NODEJS_STATUS=missing` to reproduce first-run / Node-missing states.

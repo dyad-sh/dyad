@@ -103,8 +103,7 @@ export function registerRecordingHandlers() {
           "Stop the running tests before starting a recording session.",
         );
       }
-      const proxyUrl = runningApps.get(appId)?.proxyUrl;
-      if (!proxyUrl) {
+      if (!runningApps.get(appId)?.proxyUrl) {
         return infraResult(
           appId,
           "Start the app before recording — the dev server isn't running.",
@@ -160,6 +159,22 @@ export function registerRecordingHandlers() {
               auth: NO_AUTH,
               infraError: prepared.infraError,
             });
+            return;
+          }
+
+          // Re-read the dev server rather than trusting the check above: this
+          // request may have queued behind another app operation, and isolation
+          // setup itself takes seconds. If the preview stopped in the meantime,
+          // arming the recorder would point it at nothing — report it as an
+          // infra error and let `finally` tear the isolation back down.
+          const proxyUrl = runningApps.get(appId)?.proxyUrl;
+          if (!proxyUrl) {
+            ready.resolve(
+              infraResult(
+                appId,
+                "The app stopped while the recording environment was being set up. Start it again and retry.",
+              ),
+            );
             return;
           }
 

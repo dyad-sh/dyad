@@ -119,11 +119,27 @@ function sendToolCallJson(
   });
 }
 
+/**
+ * Stream a tool call as SSE, a few characters at a time.
+ *
+ * `req` is what makes cancellation work: the argument chunks are deliberately
+ * spread over time, so a client that gives up (the user stopping a stream, a
+ * test aborting) would otherwise leave this loop writing to a destroyed
+ * response for the rest of its run.
+ */
 async function streamToolCall(
+  req: Request,
   res: Response,
   toolName: string,
   args: Record<string, unknown>,
 ) {
+  let closed = req.destroyed;
+  const onClose = () => {
+    closed = true;
+  };
+  req.on("close", onClose);
+  const finish = () => req.off("close", onClose);
+
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
@@ -166,8 +182,14 @@ async function streamToolCall(
       }),
     );
     await new Promise((resolve) => setTimeout(resolve, 5));
+    if (closed) {
+      finish();
+      return;
+    }
   }
 
+  finish();
+  if (closed) return;
   res.write(mkChunk({}, "tool_calls"));
   res.write("data: [DONE]\n\n");
   res.end();
@@ -312,6 +334,7 @@ export const createChatCompletionHandler =
     if (assertionsToolCall) {
       if (stream) {
         await streamToolCall(
+          req,
           res,
           assertionsToolCall.name,
           assertionsToolCall.args,
@@ -330,7 +353,7 @@ export const createChatCompletionHandler =
           ? buildExploreCodeSubmitReportArgs()
           : buildExploreCodeNestedToolArgs();
       if (stream) {
-        await streamToolCall(res, toolName, input);
+        await streamToolCall(req, res, toolName, input);
         return;
       }
       sendToolCallJson(res, toolName, input);

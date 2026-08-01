@@ -13,7 +13,9 @@ describe("isSingleAssertionStatement", () => {
       ),
     ).toBe(true);
     expect(
-      isSingleAssertionStatement(`expect(page.getByText("x")).toBeVisible();`),
+      isSingleAssertionStatement(
+        `await expect(page.getByText("x")).not.toBeVisible();`,
+      ),
     ).toBe(true);
   });
 
@@ -41,5 +43,34 @@ describe("isSingleAssertionStatement", () => {
     expect(
       isSingleAssertionStatement(`await expect(a)\n  .toBeVisible();`),
     ).toBe(false);
+  });
+
+  it("rejects an un-awaited assertion", () => {
+    // Playwright's web-first matchers are async: without `await` the test can
+    // finish before the assertion ever resolves.
+    expect(
+      isSingleAssertionStatement(`expect(page.getByText("x")).toBeVisible();`),
+    ).toBe(false);
+  });
+
+  it("rejects delimiters that balance by count but not by type", () => {
+    expect(
+      isSingleAssertionStatement(`await expect(page.getByText("x"]).toBe(1);`),
+    ).toBe(false);
+  });
+
+  it("rejects extra expressions smuggled onto the same statement", () => {
+    expect(
+      isSingleAssertionStatement(
+        `await expect(a).toBeVisible(), fs.rmSync("/tmp/x");`,
+      ),
+    ).toBe(false);
+    expect(
+      isSingleAssertionStatement(
+        `await expect(a).toBeVisible() || steal(document.cookie);`,
+      ),
+    ).toBe(false);
+    // A bare `expect(...)` with no matcher asserts nothing.
+    expect(isSingleAssertionStatement(`await expect(a);`)).toBe(false);
   });
 });

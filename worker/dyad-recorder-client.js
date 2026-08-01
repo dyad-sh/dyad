@@ -11,9 +11,11 @@
  * The action-capture semantics are a small port of Playwright's in-page
  * RecordActionTool: text entry is captured as a single `fill` with the full
  * value (never individual key presses), form-control toggles come from `change`
- * (so no capture-phase reversal is needed), plain clicks are stalled briefly so
- * a double-click can supersede them, and selectors are generated with a ranking
- * that prefers stable, human-readable locators.
+ * (so no capture-phase reversal is needed), and selectors are generated with a
+ * ranking that prefers stable, human-readable locators. Clicks are reported the
+ * moment they happen — a click that navigates would otherwise be lost with the
+ * unloading document — and the renderer's `collapseActions` is what folds the
+ * clicks preceding a double-click into it.
  *
  * This file is plain, dependency-free IIFE JS (no imports/exports) — it is read
  * verbatim and injected into every previewed HTML document. It communicates
@@ -28,7 +30,7 @@
  *   { kind: "click",   locator }
  *   { kind: "dblclick",locator }
  *   { kind: "fill",    locator, value }
- *   { kind: "press",   locator, key }
+ *   { kind: "press",   locator?, key }   // no locator = page-level shortcut
  *   { kind: "check",   locator }
  *   { kind: "uncheck", locator }
  *   { kind: "select",  locator, values: string[] }
@@ -38,8 +40,6 @@
  */
 (() => {
   const OVERLAY_CLASS = "__dyad_recorder_overlay__";
-  // Plain clicks are held this long so a following dblclick can supersede them.
-  const CLICK_DEBOUNCE_MS = 200;
   // Identical actions fired within this window are collapsed. This absorbs the
   // synthetic duplicate the browser dispatches when a <label> activates its
   // control, without swallowing deliberate repeat interactions (a real double
@@ -62,7 +62,11 @@
 
   // Controls seen as type="password" at any point this session. A show/hide
   // toggle flips the input to type="text", so without this every keystroke after
-  // the reveal would be captured in plaintext.
+  // the reveal would be captured in plaintext. Populated from three places: the
+  // handlers that see an element before typing starts (hover, click), the input
+  // path itself, and — for a field the user never pointed at, e.g. one filled by
+  // a password manager and then revealed — a MutationObserver watching `type`
+  // flip away from "password" (see `watchPasswordReveals`).
   //
   // Known limitation: this is heuristic. A secret typed into a field that was
   // never type="password" and whose attributes don't read as secret-bearing is
@@ -85,9 +89,9 @@
   ]);
 
   let active = false;
-  let pendingClick = null;
   let lastEmit = { key: "", at: 0 };
   let hoverBox = null;
+  let passwordObserver = null;
 
   /* ---------- small helpers -------------------------------------------- */
   const css = (el, obj) => Object.assign(el.style, obj);
@@ -146,6 +150,62 @@
     if (isPasswordField(el)) seenAsPassword.add(el);
   }
 
+  function noteRevealedPasswords(records) {
+    for (const record of records) {
+      if (
+        record.attributeName === "type" &&
+        (record.oldValue || "").toLowerCase() === "password"
+      ) {
+        seenAsPassword.add(record.target);
+      }
+    }
+  }
+
+  /**
+   * Apply any `type` mutations the observer hasn't delivered yet.
+   *
+   * MutationObserver callbacks are microtasks, so a reveal toggle and a
+   * keystroke that land in the same task would otherwise be evaluated before the
+   * flip is known — and that one keystroke would be captured in plaintext.
+   */
+  function drainPasswordMutations() {
+    if (passwordObserver) noteRevealedPasswords(passwordObserver.takeRecords());
+  }
+
+  /**
+   * Catch a reveal toggle even for a field the recorder has never seen as a
+   * password: watching `type` mutations with the old value means the
+   * password→text flip itself is the signal, so a field that was autofilled and
+   * then unmasked — never hovered, never clicked, never typed into while
+   * masked — is still redacted rather than captured in plaintext.
+   */
+  function watchPasswordReveals() {
+    const Observer =
+      typeof MutationObserver !== "undefined"
+        ? MutationObserver
+        : window.MutationObserver;
+    if (!Observer || passwordObserver) return;
+    passwordObserver = new Observer(noteRevealedPasswords);
+    passwordObserver.observe(document.documentElement || document, {
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["type"],
+      attributeOldValue: true,
+    });
+    // Anything already masked when recording starts is a password field even if
+    // the user only ever touches its reveal toggle.
+    Array.prototype.forEach.call(
+      document.querySelectorAll('input[type="password"]'),
+      (el) => seenAsPassword.add(el),
+    );
+  }
+
+  function stopWatchingPasswordReveals() {
+    if (!passwordObserver) return;
+    passwordObserver.disconnect();
+    passwordObserver = null;
+  }
+
   function looksSecretByName(el) {
     if (!el || !el.getAttribute) return false;
     const autocomplete = (el.getAttribute("autocomplete") || "").toLowerCase();
@@ -168,6 +228,7 @@
       seenAsPassword.add(el);
       return true;
     }
+    drainPasswordMutations();
     return seenAsPassword.has(el) || looksSecretByName(el);
   }
 
@@ -260,8 +321,10 @@
         if (type === "range") return "slider";
         if (type === "search") return "searchbox";
         if (type === "password") return null; // no matching ARIA role
-        if (["text", "email", "tel", "url", "number"].includes(type))
-          return "textbox";
+        // Playwright exposes number inputs as `spinbutton`; calling them
+        // textboxes would generate a locator that matches nothing at replay.
+        if (type === "number") return "spinbutton";
+        if (["text", "email", "tel", "url"].includes(type)) return "textbox";
         return "textbox";
       }
       default:
@@ -363,6 +426,42 @@
     return scan.names.get(el);
   }
 
+  /**
+   * Whether an element is exposed to the accessibility tree the way Playwright's
+   * `getByRole` sees it (`includeHidden: false`).
+   *
+   * Uniqueness and `nth` are computed from these matches, so counting a hidden
+   * duplicate — a closed dialog's buttons, a `display: none` mobile nav — would
+   * hand replay an `.nth(1)` that points at an element Playwright never sees.
+   */
+  function isAriaVisible(el) {
+    if (!el || el.nodeType !== 1) return false;
+    for (
+      let node = el;
+      node && node.nodeType === 1;
+      node = node.parentElement
+    ) {
+      if (node.getAttribute && node.getAttribute("aria-hidden") === "true") {
+        return false;
+      }
+      if (node.hasAttribute && node.hasAttribute("hidden")) return false;
+    }
+    // happy-dom and other minimal DOMs don't implement layout; treat "can't
+    // tell" as visible so selector quality degrades rather than breaking.
+    const view =
+      (el.ownerDocument && el.ownerDocument.defaultView) ||
+      (typeof window !== "undefined" ? window : null);
+    if (!view || typeof view.getComputedStyle !== "function") return true;
+    let style;
+    try {
+      style = view.getComputedStyle(el);
+    } catch {
+      return true;
+    }
+    if (!style) return true;
+    return style.display !== "none" && style.visibility !== "hidden";
+  }
+
   function hasDescendantWithText(el, value) {
     return Array.prototype.some.call(
       el.querySelectorAll("*"),
@@ -379,7 +478,9 @@
       case "role":
         return allElements().filter(
           (e) =>
-            roleOf(e) === descriptor.value && accNameOf(e) === descriptor.name,
+            roleOf(e) === descriptor.value &&
+            accNameOf(e) === descriptor.name &&
+            isAriaVisible(e),
         );
       case "placeholder":
         return allElements().filter(
@@ -485,6 +586,15 @@
       parts.unshift(part);
       node = parent;
     }
+    // The walk stops before <body>, so an element that *is* body (or the root)
+    // produces no segments at all — and `locator("")` throws at replay. Name the
+    // element itself instead, which is a selector Playwright can resolve.
+    if (parts.length === 0) {
+      return {
+        kind: "css",
+        value: el === document.documentElement ? "html" : "body",
+      };
+    }
     return { kind: "css", value: parts.join(" > ") };
   }
 
@@ -551,24 +661,6 @@
     window.parent.postMessage({ type: "dyad-recorder-action", action }, "*");
   }
 
-  function clearPendingClick() {
-    if (pendingClick) {
-      clearTimeout(pendingClick.timer);
-      pendingClick = null;
-    }
-  }
-
-  function scheduleClick(action) {
-    clearPendingClick();
-    pendingClick = {
-      action,
-      timer: setTimeout(() => {
-        pendingClick = null;
-        emit(action);
-      }, CLICK_DEBOUNCE_MS),
-    };
-  }
-
   /* ---------- key handling --------------------------------------------- */
   function keyCombo(e) {
     const mods = [];
@@ -620,13 +712,17 @@
       }
     }
 
+    // Emitted now, not after a debounce: a click on a link or a submit button
+    // unloads this document within milliseconds, and a stalled click would go
+    // with it — leaving the generated test with neither the click nor the
+    // navigation it caused. The click(s) preceding a double-click are folded
+    // into it by the renderer's `collapseActions` instead.
     const target = retarget(raw);
-    scheduleClick({ kind: "click", locator: selectorFor(target) });
+    emit({ kind: "click", locator: selectorFor(target) });
   }
 
   function onDblClick(e) {
     if (!active || !trustedOk(e) || isOverlayEvent(e)) return;
-    clearPendingClick();
     const target = retarget(deepTarget(e));
     emit({ kind: "dblclick", locator: selectorFor(target) });
   }
@@ -683,6 +779,17 @@
     if (!shouldRecordPress(e)) return;
     clearFillLocator();
     const target = retarget(deepTarget(e));
+    // Navigation keys and shortcuts fired with nothing focused target <body>,
+    // which has no meaningful locator. Record those as a page-level press
+    // (`page.keyboard.press`) rather than inventing a locator for the document.
+    if (
+      !target ||
+      target === document.body ||
+      target === document.documentElement
+    ) {
+      emit({ kind: "press", key: keyCombo(e) });
+      return;
+    }
     emit({ kind: "press", locator: selectorFor(target), key: keyCombo(e) });
   }
 
@@ -732,6 +839,7 @@
   function activate() {
     if (active) return;
     active = true;
+    watchPasswordReveals();
     document.addEventListener("click", onClick, true);
     document.addEventListener("dblclick", onDblClick, true);
     document.addEventListener("input", onInput, true);
@@ -743,7 +851,7 @@
   function deactivate() {
     if (!active) return;
     active = false;
-    clearPendingClick();
+    stopWatchingPasswordReveals();
     clearFillLocator();
     document.removeEventListener("click", onClick, true);
     document.removeEventListener("dblclick", onDblClick, true);

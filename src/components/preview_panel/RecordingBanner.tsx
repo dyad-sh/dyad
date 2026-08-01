@@ -158,16 +158,38 @@ export function RecordingBanner({
     );
     rest = (
       <>
-        <span className="text-muted-foreground">
-          {recorder.draftSteps.length} step
-          {recorder.draftSteps.length === 1 ? "" : "s"} recorded — not saved yet
+        <span
+          className={cn(
+            "flex items-center gap-1.5",
+            recorder.awaitingAssertions
+              ? "text-purple-700 dark:text-purple-300"
+              : "text-muted-foreground",
+          )}
+          // The wait for the agent's card is the one thing here that changes on
+          // its own, so it announces itself.
+          role={recorder.awaitingAssertions ? "status" : undefined}
+          data-testid="preview-recording-review-status"
+        >
+          {recorder.awaitingAssertions ? (
+            <>
+              <Loader2 size={13} className="animate-spin" />
+              Asking the AI for assertions…
+            </>
+          ) : (
+            <>
+              {recorder.draftSteps.length} step
+              {recorder.draftSteps.length === 1 ? "" : "s"} recorded — not saved
+              yet
+            </>
+          )}
         </span>
         <button
           onClick={onGenerateAssertions}
           data-testid="preview-recording-generate-assertions-button"
           className={cn(PRIMARY_BUTTON_CLASSES, "ml-auto")}
         >
-          <Sparkles size={12} /> Generate assertions
+          <Sparkles size={12} />{" "}
+          {recorder.awaitingAssertions ? "Ask again" : "Generate assertions"}
         </button>
         <button
           onClick={() => void recorder.saveWithoutAssertions()}
@@ -182,6 +204,16 @@ export function RecordingBanner({
           className={SECONDARY_BUTTON_CLASSES}
         >
           Discard
+        </button>
+        {/* The draft outlives this bar — the chat card owns it from here — so
+            closing is only ever hiding, never discarding. */}
+        <button
+          onClick={() => recorder.dismissReview()}
+          title="Hide this bar — the recording stays available in the chat card"
+          data-testid="preview-recording-hide-review-button"
+          className={SECONDARY_BUTTON_CLASSES}
+        >
+          Hide
         </button>
       </>
     );
@@ -216,7 +248,13 @@ export function RecordingBanner({
     );
   } else {
     label = (
-      <span className="flex items-center gap-1.5 text-muted-foreground">
+      // The spinner phases (setup, sign-in, saving, cleanup) only ever say what
+      // they're doing in this line, and it changes in place — a live region is
+      // what makes that progress reach a screen-reader user at all.
+      <span
+        role="status"
+        className="flex items-center gap-1.5 text-muted-foreground"
+      >
         <Loader2 size={14} className="animate-spin" />
         {recordingStatusMessage(recorder)}
       </span>

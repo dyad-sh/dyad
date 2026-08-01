@@ -36,6 +36,7 @@ function setup({ allowUntrusted = true }: { allowUntrusted?: boolean } = {}) {
   const win: any = {
     parent,
     CSS: (hw as any).CSS,
+    MutationObserver: (hw as any).MutationObserver,
     __DYAD_RECORDER_ALLOW_UNTRUSTED__: allowUntrusted,
     addEventListener: (type: string, handler: any) => {
       if (type === "message") messageHandler = handler;
@@ -47,6 +48,7 @@ function setup({ allowUntrusted = true }: { allowUntrusted?: boolean } = {}) {
   const sandbox: any = {
     window: win,
     document: doc,
+    MutationObserver: (hw as any).MutationObserver,
     console: { debug() {}, warn() {}, error() {}, log() {} },
     setTimeout: (fn: any, ms?: number) => setTimeout(fn, ms),
     clearTimeout: (id: any) => clearTimeout(id),
@@ -156,21 +158,102 @@ describe("dyad recorder client", () => {
     ]);
   });
 
-  it("supersedes a stalled single click with a double click", () => {
+  it("reports a click immediately, leaving the dblclick merge to the renderer", () => {
     const r = setup();
     r.setHtml(`<button>Open</button>`);
     r.activate();
     const btn = r.doc.querySelector("button");
     r.click(btn);
+    // Nothing is stalled waiting for a possible double-click: a click that
+    // navigates unloads this document long before any debounce would fire, and
+    // the click would be lost with it. `collapseActions` folds the leading
+    // clicks into the dblclick during review instead.
+    expect(r.actions).toHaveLength(1);
+
     r.dblclick(btn);
     r.settleClick();
 
+    const locator = {
+      kind: "role",
+      value: "button",
+      name: "Open",
+      exact: true,
+    };
+    expect(r.actions).toEqual([
+      { kind: "click", locator },
+      { kind: "dblclick", locator },
+    ]);
+  });
+
+  it("records two different controls clicked in quick succession", () => {
+    const r = setup();
+    r.setHtml(`<button>First</button><button>Second</button>`);
+    r.activate();
+    const [first, second] = r.doc.querySelectorAll("button");
+    r.click(first);
+    r.click(second);
+
+    expect(r.actions.map((a: any) => a.locator.name)).toEqual([
+      "First",
+      "Second",
+    ]);
+  });
+
+  it("uses the spinbutton role for a number input", () => {
+    const r = setup();
+    r.setHtml(`<input type="number" aria-label="Quantity" />`);
+    r.activate();
+    r.typeInto(r.doc.querySelector("input"), "3");
+
     expect(r.actions).toEqual([
       {
-        kind: "dblclick",
-        locator: { kind: "role", value: "button", name: "Open", exact: true },
+        kind: "fill",
+        locator: {
+          kind: "role",
+          value: "spinbutton",
+          name: "Quantity",
+          exact: true,
+        },
+        value: "3",
       },
     ]);
+  });
+
+  it("records a page-level shortcut without a locator", () => {
+    const r = setup();
+    r.setHtml(`<p>nothing focused</p>`);
+    r.activate();
+    r.keydown(r.doc.body, { key: "Escape" });
+
+    expect(r.actions).toEqual([{ kind: "press", key: "Escape" }]);
+  });
+
+  it("falls back to a body selector rather than an empty one", () => {
+    const r = setup();
+    r.setHtml(`<p>background</p>`);
+    r.activate();
+    r.click(r.doc.body);
+
+    expect(r.actions).toEqual([
+      { kind: "click", locator: { kind: "css", value: "body" } },
+    ]);
+  });
+
+  it("redacts a password field revealed before the recorder ever saw it", () => {
+    const r = setup();
+    // A name that reads as ordinary, so only the type flip can catch it.
+    r.setHtml(`<input type="password" name="field-x" />`);
+    r.activate();
+    const input = r.doc.querySelector("input");
+    // Never hovered, never clicked, never typed into while masked — the app's
+    // reveal toggle is the recorder's first sight of this control.
+    input.setAttribute("type", "text");
+    r.typeInto(input, "hunter2");
+
+    expect(r.actions.map((action: any) => action.value)).toEqual([
+      "REPLACE_WITH_PASSWORD",
+    ]);
+    expect(JSON.stringify(r.actions)).not.toContain("hunter2");
   });
 
   it("records typing as a growing fill, never as key presses", () => {

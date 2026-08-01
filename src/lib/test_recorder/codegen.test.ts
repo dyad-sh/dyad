@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  actionToCodeLine,
   generateDraftSpecSource,
   generateSpecSource,
   locatorToCode,
@@ -54,6 +55,20 @@ describe("locatorToCode", () => {
     );
     expect(locatorToCode({ kind: "css", value: ".foo > .bar" })).toBe(
       `locator(".foo > .bar")`,
+    );
+  });
+
+  it("escapes CSS-significant characters in a dyad id", () => {
+    // A raw `"` would close the attribute selector, producing a locator that
+    // throws at replay rather than the one that was recorded.
+    expect(locatorToCode({ kind: "dyadId", value: 'a"b\\c' })).toBe(
+      `locator("[data-dyad-id=\\"a\\\\\\"b\\\\\\\\c\\"]")`,
+    );
+  });
+
+  it("renders a locator-less press as a page-level keyboard press", () => {
+    expect(actionToCodeLine({ kind: "press", key: "Escape" })).toBe(
+      `await page.keyboard.press("Escape");`,
     );
   });
 

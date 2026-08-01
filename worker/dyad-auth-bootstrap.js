@@ -34,14 +34,26 @@
   // an older build, or a parent that went away mid-attempt). The legitimate
   // marker is consumed within a second or two — sign-in → reload → verify →
   // settle — so anything older than this is leftover.
-  const PENDING_TTL_MS = 15_000;
+  //
+  // Kept longer than the renderer's 30s `AUTH_READY_TIMEOUT_MS`: a slow preview
+  // reload must not expire a marker for an attempt the parent is still waiting
+  // on, or this document discards a valid in-flight sign-in and starts another
+  // one from scratch. The parent's nonce check is the real arbiter; this is only
+  // the floor under it.
+  const PENDING_TTL_MS = 45_000;
 
   // The marker found in sessionStorage when this document loaded, held until the
   // parent tells us which attempt it belongs to.
   let pendingOnLoad = null;
+  // The attempt this document is working on, echoed back in the terminal
+  // message so the parent can tell our completion from a stale one.
+  let activeNonce = null;
 
   function post(ok, error) {
-    window.parent.postMessage({ type: "dyad-auth-ready", ok, error }, "*");
+    window.parent.postMessage(
+      { type: "dyad-auth-ready", ok, error, nonce: activeNonce },
+      "*",
+    );
   }
 
   function projectRef(url) {
@@ -252,6 +264,7 @@
   function handleLogin(auth, nonce) {
     const pending = pendingOnLoad;
     pendingOnLoad = null;
+    activeNonce = nonce;
     if (pending && nonce && pending.nonce === nonce) {
       verifyPending(pending);
       return;

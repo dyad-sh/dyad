@@ -144,7 +144,24 @@ function collectProblems({
     );
   }
 
-  const describedIndexes = new Set(args.steps.map((step) => step.index));
+  // Every index covered isn't enough: two descriptions for the same statement
+  // means one of them is silently discarded, and the card would then show a
+  // plan the model didn't actually write. Ask again instead.
+  const stepIndexes = args.steps.map((step) => step.index);
+  const duplicateIndexes = Array.from(
+    new Set(
+      stepIndexes.filter(
+        (index, position) => stepIndexes.indexOf(index) !== position,
+      ),
+    ),
+  );
+  if (duplicateIndexes.length > 0) {
+    problems.push(
+      `multiple step descriptions for statement index ${duplicateIndexes.join(", ")} — describe each statement exactly once.`,
+    );
+  }
+
+  const describedIndexes = new Set(stepIndexes);
   const missing = Array.from(
     { length: statementCount },
     (_, index) => index,

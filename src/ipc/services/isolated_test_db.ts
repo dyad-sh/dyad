@@ -394,6 +394,14 @@ async function prepareSupabaseTestUserIsolation({
       );
     }
 
+    // The key fetch above is another multi-second network round trip. A Stop
+    // pressed during it must not resolve as "ready" once the request returns —
+    // the catch below is what tears the temporary user back down and reports the
+    // stopped result.
+    if (signal?.aborted) {
+      throw new Error("Test run stopped.");
+    }
+
     const testCredentials: Record<string, string> = {
       DYAD_TEST_USER_EMAIL: testUser.email,
       DYAD_TEST_USER_PASSWORD: testUser.password,

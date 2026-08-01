@@ -45,8 +45,8 @@ import {
 } from "@/lib/test_recorder/fixture_templates";
 import { isSingleAssertionStatement } from "@/lib/test_recorder/assertion_code";
 import {
-  ASSERTIONS_TAG,
   buildAssertionsTagContent,
+  messageHasAssertionsProposal,
   parseAssertionsPayloadFromMessage,
   readAssertionsTagAttribute,
   replaceAssertionsTagInMessage,
@@ -74,6 +74,16 @@ const FIXTURE_PATH = `${E2E_TEST_DIR}/fixtures/test-user.ts`;
 
 /** How many `recorded-<slug>-N.spec.ts` variants to try before giving up. */
 const MAX_SPEC_NAME_ATTEMPTS = 100;
+
+/**
+ * A user-written fixture that provides the `signIn` the generated spec imports.
+ * All three declaration forms count — `export function`, `export const/let/var`
+ * (including the arrow-function style most people write), and a re-export list —
+ * because the only thing that matters here is whether `import { signIn }` from
+ * this module resolves.
+ */
+const EXPORTS_SIGN_IN_RE =
+  /export\s+(async\s+)?function\s+signIn\b|export\s+(const|let|var)\s+signIn\b|export\s*{[^}]*\bsignIn\b/;
 
 const rawCodeSchema = z.object({
   assertions: z
@@ -150,11 +160,7 @@ async function ensureSignInFixture(
       logger.info(
         `Regenerating ${relativePath}: was ${existingMode}, recording used ${draft.authMode}`,
       );
-    } else if (
-      /export\s+(async\s+)?function\s+signIn\b|export\s*{[^}]*\bsignIn\b/.test(
-        existing,
-      )
-    ) {
+    } else if (EXPORTS_SIGN_IN_RE.test(existing)) {
       // The user's own helper. Same import, same call — leave it alone.
       return;
     } else {
@@ -243,6 +249,28 @@ async function writeRecordedSpec({
   // later agent turn propose assertions for a test that's already written.
   clearRecordedTestDraft(appId);
   return { specPath: relativePath };
+}
+
+/**
+ * Roll back a spec this approval just wrote, because the approval itself
+ * couldn't be recorded. Best-effort: leaving the file behind is a duplicate
+ * test, not data loss, so a failure here is logged rather than raised over the
+ * error that triggered the rollback.
+ */
+async function discardGeneratedSpec(
+  appId: number,
+  specPath: string,
+): Promise<void> {
+  try {
+    const appPath = await getAppPath(appId);
+    await fs.promises.rm(path.join(appPath, specPath), { force: true });
+    logger.warn(`Rolled back ${specPath}: the approval couldn't be persisted`);
+  } catch (error) {
+    logger.error(
+      `Couldn't roll back ${specPath} after a failed approval:`,
+      error,
+    );
+  }
 }
 
 /**
@@ -517,11 +545,11 @@ export function registerTestAssertionHandlers() {
         const chatMessages = await db.query.messages.findMany({
           where: eq(messages.chatId, chatId),
         });
-        const row = chatMessages.find(
-          (message) =>
-            message.content.includes(`<${ASSERTIONS_TAG}`) &&
-            readAssertionsTagAttribute(message.content, "proposal-id") ===
-              proposalId,
+        // Scoped to this proposal throughout: one assistant message can carry
+        // more than one card, and matching only the first would make approving
+        // the second read — and then overwrite — the wrong one.
+        const row = chatMessages.find((message) =>
+          messageHasAssertionsProposal(message.content, proposalId),
         );
         if (!row) {
           throw new DyadError(
@@ -530,7 +558,10 @@ export function registerTestAssertionHandlers() {
           );
         }
 
-        const stored = parseAssertionsPayloadFromMessage(row.content);
+        const stored = parseAssertionsPayloadFromMessage(
+          row.content,
+          proposalId,
+        );
         if (!stored) {
           throw new DyadError(
             "This assertion proposal is corrupted and can't be applied.",
@@ -546,7 +577,10 @@ export function registerTestAssertionHandlers() {
 
         // Idempotent: a second approve (double click, stale card) must not write
         // a second spec file.
-        if (readAssertionsTagAttribute(row.content, "status") === "approved") {
+        if (
+          readAssertionsTagAttribute(row.content, "status", proposalId) ===
+          "approved"
+        ) {
           return {
             specPath: stored.specPath ?? "",
             appliedCount: countAssertions(stored.items),
@@ -617,18 +651,29 @@ export function registerTestAssertionHandlers() {
             status: "approved",
             payload: { ...stored, items: finalItems, specPath },
           }),
+          proposalId,
         );
         if (approvedContent === null) {
           // The message matched on proposal-id above, so the tag must be there.
+          await discardGeneratedSpec(appId, specPath);
           throw new DyadError(
             "This assertion proposal is corrupted and can't be applied.",
             DyadErrorKind.Validation,
           );
         }
-        await db
-          .update(messages)
-          .set({ content: approvedContent })
-          .where(eq(messages.id, row.id));
+        try {
+          await db
+            .update(messages)
+            .set({ content: approvedContent })
+            .where(eq(messages.id, row.id));
+        } catch (error) {
+          // The spec exists but the proposal is still "proposed", so the card
+          // stays approvable — and a retry would claim the *next* free filename
+          // and leave two copies of the same test behind. Undo the write so the
+          // retry produces exactly one spec.
+          await discardGeneratedSpec(appId, specPath);
+          throw error;
+        }
 
         const appliedCount = countAssertions(finalItems);
         logger.info(

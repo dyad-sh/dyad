@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { previewIframeRefAtom } from "@/atoms/previewAtoms";
+import { appUrlByAppIdAtom } from "@/atoms/previewRuntimeAtoms";
 import {
   RECORDING_REQUEST_TTL_MS,
   recordingStartRequestAtom,
@@ -53,6 +54,10 @@ vi.mock("@/lib/toast", () => ({
   showSuccess: vi.fn(),
 }));
 
+/** Where the previewed app is served from — and the only origin the hook trusts. */
+const PREVIEW_URL = "https://preview.test/";
+const PREVIEW_ORIGIN = "https://preview.test";
+
 function makeWrapper() {
   const store = createStore();
   const queryClient = new QueryClient({
@@ -72,8 +77,8 @@ function makeWrapper() {
 
 /**
  * A stand-in for the preview iframe. The hook only accepts messages whose
- * `source` is the iframe's contentWindow, and posts commands back through it, so
- * the fake records what it was told.
+ * `source` is the iframe's contentWindow AND whose origin is the app's own, and
+ * posts commands back through it, so the fake records what it was told.
  */
 function makeIframe() {
   const posted: any[] = [];
@@ -85,13 +90,31 @@ function makeIframe() {
     contentWindow,
     el: { contentWindow } as unknown as HTMLIFrameElement,
     /** Deliver a message as if the preview had posted it up. */
-    send(data: unknown) {
-      const event = new MessageEvent("message", { data });
+    send(data: unknown, origin = PREVIEW_ORIGIN) {
+      const event = new MessageEvent("message", { data, origin });
       // `source` is read-only on the prototype; shadow it on the instance.
       Object.defineProperty(event, "source", { value: contentWindow });
       window.dispatchEvent(event);
     },
   };
+}
+
+/** Point the hook's preview at a running dev server, as an active session is. */
+function setAppUrl(store: ReturnType<typeof createStore>, appId: number) {
+  store.set(
+    appUrlByAppIdAtom,
+    new Map([
+      [
+        appId,
+        {
+          appUrl: PREVIEW_URL,
+          appId,
+          originalUrl: PREVIEW_URL,
+          mode: "host" as const,
+        },
+      ],
+    ]),
+  );
 }
 
 describe("useTestRecorder", () => {
@@ -241,6 +264,7 @@ describe("useTestRecorder", () => {
     store.set(selectedAppIdAtom, 1);
     const iframe = makeIframe();
     store.set(previewIframeRefAtom, iframe.el);
+    setAppUrl(store, 1);
 
     const { result } = renderHook(
       () => useTestRecorder({ reloadPreview: () => {} }),
@@ -327,6 +351,7 @@ describe("useTestRecorder", () => {
     store.set(selectedAppIdAtom, 1);
     const iframe = makeIframe();
     store.set(previewIframeRefAtom, iframe.el);
+    setAppUrl(store, 1);
 
     const { result } = renderHook(
       () => useTestRecorder({ reloadPreview: () => {} }),
@@ -350,11 +375,50 @@ describe("useTestRecorder", () => {
     });
   });
 
+  it("ignores messages from a preview that navigated off the app's origin", async () => {
+    const { store, Wrapper } = makeWrapper();
+    store.set(selectedAppIdAtom, 1);
+    const iframe = makeIframe();
+    store.set(previewIframeRefAtom, iframe.el);
+    setAppUrl(store, 1);
+
+    const { result } = renderHook(
+      () => useTestRecorder({ reloadPreview: () => {} }),
+      { wrapper: Wrapper },
+    );
+    await act(async () => {
+      await result.current.startRecording();
+    });
+
+    // The iframe's WindowProxy keeps its identity across navigations, so an
+    // external page the preview followed still passes the `source` check. Only
+    // the origin tells them apart — and this one could otherwise write whatever
+    // it liked into the user's generated test.
+    act(() => {
+      iframe.send(
+        {
+          type: "dyad-recorder-action",
+          action: {
+            kind: "click",
+            locator: { kind: "testid", value: "spoofed" },
+          },
+        },
+        "https://evil.example",
+      );
+    });
+
+    await waitFor(() => {
+      expect(result.current.entryCount).toBe(0);
+    });
+    expect(result.current.steps).toEqual([]);
+  });
+
   it("hands the session back when the preview unmounts mid-recording", async () => {
     const { store, Wrapper } = makeWrapper();
     store.set(selectedAppIdAtom, 1);
     const iframe = makeIframe();
     store.set(previewIframeRefAtom, iframe.el);
+    setAppUrl(store, 1);
 
     const { result, unmount } = renderHook(
       () => useTestRecorder({ reloadPreview: () => {} }),
@@ -380,6 +444,7 @@ describe("useTestRecorder", () => {
     store.set(selectedAppIdAtom, 1);
     const iframe = makeIframe();
     store.set(previewIframeRefAtom, iframe.el);
+    setAppUrl(store, 1);
 
     const { result } = renderHook(
       () => useTestRecorder({ reloadPreview: () => {} }),
@@ -401,6 +466,7 @@ describe("useTestRecorder", () => {
     store.set(selectedAppIdAtom, 1);
     const iframe = makeIframe();
     store.set(previewIframeRefAtom, iframe.el);
+    setAppUrl(store, 1);
 
     const { result } = renderHook(
       () => useTestRecorder({ reloadPreview: () => {} }),
@@ -461,6 +527,7 @@ describe("useTestRecorder", () => {
     act(() => {
       store.set(selectedAppIdAtom, 2);
       store.set(previewIframeRefAtom, iframe.el);
+      setAppUrl(store, 1);
     });
 
     await act(async () => {

@@ -7,6 +7,18 @@ function q(value: string): string {
 }
 
 /**
+ * Escape a value for use inside a double-quoted CSS attribute selector.
+ *
+ * `q()` alone only makes the result a valid *JavaScript* string; a `"` or `\`
+ * in the attribute value would still terminate or mangle the CSS selector
+ * Playwright parses, producing a locator that throws or silently matches
+ * something else. Mirrors what the recorder client's `cssEscape` does in-page.
+ */
+function cssAttrValue(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+/**
  * Render a locator descriptor as a Playwright locator chain WITHOUT the leading
  * `page.` (the caller prepends it), including any `.nth(...)` disambiguation.
  *
@@ -44,7 +56,7 @@ export function locatorToCode(locator: LocatorDescriptor): string {
         : `getByText(${q(locator.value)})`;
       break;
     case "dyadId":
-      call = `locator(${q(`[data-dyad-id="${locator.value}"]`)})`;
+      call = `locator(${q(`[data-dyad-id="${cssAttrValue(locator.value)}"]`)})`;
       break;
     case "css":
     default:
@@ -64,6 +76,13 @@ export function actionToCodeLine(action: RecordedAction): string {
   if (action.kind === "navigate") {
     return `await page.goto(${q(action.path)});`;
   }
+  // A shortcut pressed with nothing focused has no element to hang off; replay
+  // it against the page rather than inventing a locator for <body>.
+  if (action.kind === "press") {
+    return action.locator
+      ? `await page.${locatorToCode(action.locator)}.press(${q(action.key)});`
+      : `await page.keyboard.press(${q(action.key)});`;
+  }
 
   const target = `page.${locatorToCode(action.locator)}`;
   switch (action.kind) {
@@ -73,8 +92,6 @@ export function actionToCodeLine(action: RecordedAction): string {
       return `await ${target}.dblclick();`;
     case "fill":
       return `await ${target}.fill(${q(action.value)});`;
-    case "press":
-      return `await ${target}.press(${q(action.key)});`;
     case "check":
       return `await ${target}.check();`;
     case "uncheck":

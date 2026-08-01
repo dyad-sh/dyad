@@ -351,7 +351,10 @@ export const PreviewIframe = ({
       requestedChatMode: "local-agent",
     });
     showInfo("Sent to chat — asking the AI for assertions…");
-    recorder.dismissReview();
+    // The review stays up until the user closes it. The request can fail, be
+    // cancelled, or finish without ever calling the tool, and this bar is the
+    // only UI that can save the parked draft as-is, discard it, or ask again.
+    recorder.markAwaitingAssertions();
   };
 
   // Confirm the switch to Agent mode first when the chat is in another mode,

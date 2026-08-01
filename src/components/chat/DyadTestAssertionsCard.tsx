@@ -5,7 +5,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { getDefaultStore, useAtomValue, useSetAtom } from "jotai";
+import { useAtomValue, useSetAtom, useStore } from "jotai";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Check,
@@ -23,7 +23,7 @@ import { useStreamChat } from "@/hooks/useStreamChat";
 import { ipc } from "@/ipc/types";
 import { cn } from "@/lib/utils";
 import { queryKeys } from "@/lib/queryKeys";
-import { showError, showSuccess } from "@/lib/toast";
+import { showError, showSuccess, showWarning } from "@/lib/toast";
 import { syncChatFromDb } from "@/lib/resyncChat";
 import {
   isAssertionItem,
@@ -125,7 +125,6 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
   children,
 }) => {
   const proposalId = node.properties["proposal-id"] ?? "";
-  const specPath = node.properties["spec-path"] ?? "";
   const approvedOnServer = node.properties.status === "approved";
 
   const rawPayload = useMemo(() => toText(children), [children]);
@@ -140,11 +139,18 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
   const setSelectedFile = useSetAtom(selectedFileAtom);
   const setPreviewMode = useSetAtom(previewModeAtom);
   const queryClient = useQueryClient();
+  const store = useStore();
   const { streamMessage } = useStreamChat();
 
   const [items, setItems] = useState<AssertionPlanItem[]>(
     () => payload?.items ?? [],
   );
+  // The path the approval just generated, held locally until the rewritten
+  // message makes it back through `syncChatFromDb`. Without it the card flips to
+  // "Generated" with "Open test file" still disabled — the file exists, but the
+  // only way to reach it is dead until the verification stream finishes.
+  const [approvedSpecPath, setApprovedSpecPath] = useState<string | null>(null);
+  const specPath = approvedSpecPath ?? node.properties["spec-path"] ?? "";
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftText, setDraftText] = useState("");
   const [dragId, setDragId] = useState<string | null>(null);
@@ -286,20 +292,25 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
         proposalId,
         items,
       });
-      syncChatFromDb(
-        chatId,
-        setMessagesById,
-        "[TEST-ASSERTIONS]",
-        getDefaultStore(),
-      );
+      setApprovedSpecPath(result.specPath || null);
+      // The Provider-bound store, not `getDefaultStore()`: under a Jotai
+      // `Provider` (component and hybrid tests) the default store has none of
+      // this chat's state, so `syncChatFromDb` would miss the provider's
+      // `isStreaming` guard and overwrite live messages with the DB snapshot.
+      syncChatFromDb(chatId, setMessagesById, "[TEST-ASSERTIONS]", store);
       queryClient.invalidateQueries({ queryKey: queryKeys.appFiles.all });
       queryClient.invalidateQueries({
         queryKey: queryKeys.tests.list({ appId }),
       });
-      if (result.warning) {
-        showError(result.warning);
-      } else {
+      // A warning can accompany a spec that was written perfectly well — the
+      // already-generated case, or a partial synthesis. Report what happened
+      // (success) and what to know about it (warning) separately; a red error
+      // toast over a file that exists reads as "nothing was saved".
+      if (result.specPath) {
         showSuccess(`Generated ${result.specPath}`);
+        if (result.warning) showWarning(result.warning);
+      } else if (result.warning) {
+        showError(result.warning);
       }
       // A recorded test nobody has run is a guess: the flow replayed by
       // Playwright can behave differently from the flow performed by hand
@@ -309,6 +320,7 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
       requestVerificationRun(result.specPath);
     } catch (error) {
       setOptimisticApproved(false);
+      setApprovedSpecPath(null);
       showError(
         error instanceof Error
           ? error.message

@@ -13,16 +13,39 @@ function sameLocator(a: LocatorDescriptor, b: LocatorDescriptor): boolean {
  *
  * - consecutive `fill`s to the same locator keep only the final value (typing
  *   "hello" is recorded as five growing fills but replays as one),
- * - a `click` immediately followed by a `dblclick` on the same locator collapses
- *   to the `dblclick` (defensive; the in-page recorder already stalls clicks),
+ * - the `click`s that led up to a `dblclick` on the same locator are folded into
+ *   it — this is the only thing that removes them, since the in-page recorder
+ *   reports every click immediately (a stalled click is lost when the click
+ *   navigates),
  * - consecutive identical `navigate`s dedupe.
  */
 export function collapseActions(entries: RecordedEntry[]): RecordedAction[] {
   const out: RecordedEntry[] = [];
 
   for (const entry of entries) {
-    const prev = out[out.length - 1];
     const action = entry.action;
+
+    // A double-click arrives after the browser has already dispatched the one
+    // or two clicks that compose it. Drop those, not just the last one, or the
+    // spec replays a stray single click before the double-click.
+    if (action.kind === "dblclick") {
+      for (let absorbed = 0; absorbed < 2; absorbed++) {
+        const last = out[out.length - 1];
+        if (
+          !last ||
+          last.action.kind !== "click" ||
+          !sameLocator(last.action.locator, action.locator) ||
+          entry.at - last.at > DBLCLICK_MERGE_MS
+        ) {
+          break;
+        }
+        out.pop();
+      }
+      out.push(entry);
+      continue;
+    }
+
+    const prev = out[out.length - 1];
 
     if (prev) {
       const prevAction = prev.action;
@@ -31,16 +54,6 @@ export function collapseActions(entries: RecordedEntry[]): RecordedAction[] {
         action.kind === "fill" &&
         prevAction.kind === "fill" &&
         sameLocator(action.locator, prevAction.locator)
-      ) {
-        out[out.length - 1] = entry;
-        continue;
-      }
-
-      if (
-        action.kind === "dblclick" &&
-        prevAction.kind === "click" &&
-        sameLocator(action.locator, prevAction.locator) &&
-        entry.at - prev.at <= DBLCLICK_MERGE_MS
       ) {
         out[out.length - 1] = entry;
         continue;

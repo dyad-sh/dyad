@@ -183,6 +183,14 @@ export function useTestRecorder({
     const handler = (e: MessageEvent) => {
       const iframe = iframeElRef.current;
       if (!iframe || e.source !== iframe.contentWindow) return;
+      // `e.source` alone is not authentication: the iframe's WindowProxy keeps
+      // its identity across navigations, so a preview that followed an external
+      // link (or an OAuth redirect) would still look like our own document and
+      // could forge recorder actions or announce a sign-in that never happened.
+      // Fail closed when the app's own origin isn't known — that only happens
+      // before the dev server is up, which is before any session can exist.
+      const expectedOrigin = previewOrigin();
+      if (expectedOrigin === "*" || e.origin !== expectedOrigin) return;
       const data = e.data as { type?: string; [k: string]: unknown };
       if (!data || typeof data.type !== "string") return;
       const currentAppId = appIdRef.current;
@@ -226,6 +234,13 @@ export function useTestRecorder({
           break;
         }
         case "dyad-auth-ready": {
+          // Only the attempt we're actually waiting on may settle it. A sign-in
+          // that timed out (or was cancelled by an app switch) can still report
+          // back afterwards, and without the nonce that stale completion would
+          // advance the *next* attempt to "recording" with credentials that
+          // were never established.
+          const pending = pendingAuthRef.current;
+          if (!pending || data.nonce !== pending.nonce) break;
           authReadyRef.current?.({
             ok: Boolean(data.ok),
             error: typeof data.error === "string" ? data.error : undefined,
@@ -261,7 +276,6 @@ export function useTestRecorder({
     const unsub = ipc.events.recording.onEnded(
       ({ appId: endedAppId, reason, message }) => {
         if (endedAppId == null) return;
-        ownedSessionsRef.current.delete(endedAppId);
         // "stopped" is only ever reported for a stop we asked for — the main
         // process reports it from the stopRecording handler and nowhere else.
         // Whichever path asked already owns what comes next (stopAndReview is
@@ -270,7 +284,15 @@ export function useTestRecorder({
         // the stopRecording reply, so it can land *after* the review is on
         // screen and wipe it — taking the steps and the assertions button with
         // it. Only endings we didn't ask for need the UI reset below.
+        //
+        // Ownership is released *after* this check, not before: the path that
+        // asked for the stop has already released it, and this event can land
+        // after a *new* session for the same app has started. Dropping that
+        // session's ownership here would leave nothing to stop it on unmount —
+        // its isolated database and per-app lock would stay held until the
+        // 30-minute cap.
         if (reason === "stopped") return;
+        ownedSessionsRef.current.delete(endedAppId);
         const failureMessage =
           reason === "error" || reason === "timed-out"
             ? (message ?? "The recording session ended unexpectedly.")
@@ -577,6 +599,18 @@ export function useTestRecorder({
     patchState(appId, { phase: "idle" });
   }, [appId, patchState]);
 
+  /**
+   * The assertion pass has been sent to the agent. Deliberately does NOT close
+   * the review: the request can fail, be cancelled, or end without the tool ever
+   * being called, and this bar is the only place the parked draft can be saved
+   * as-is, discarded, or asked again. The user closes it themselves once the
+   * card shows up.
+   */
+  const markAwaitingAssertions = useCallback(() => {
+    if (appId == null) return;
+    patchState(appId, (prev) => ({ ...prev, awaitingAssertions: true }));
+  }, [appId, patchState]);
+
   /** Throw the recording away without generating anything. */
   const discardDraft = useCallback(async () => {
     const targetAppId = appId;
@@ -640,6 +674,7 @@ export function useTestRecorder({
     error: recordingState.error,
     draft,
     draftSteps,
+    awaitingAssertions: Boolean(recordingState.awaitingAssertions),
     savedSpecPath: recordingState.savedSpecPath,
     entryCount,
     steps,
@@ -655,6 +690,7 @@ export function useTestRecorder({
     saveWithoutAssertions,
     cancelRecording,
     dismissReview,
+    markAwaitingAssertions,
     discardDraft,
   };
 }

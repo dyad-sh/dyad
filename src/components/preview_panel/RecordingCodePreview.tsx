@@ -23,6 +23,11 @@ export function RecordingCodePreview({
 
   return (
     <div
+      // Each interaction replaces this line rather than appending to a list, so
+      // a screen-reader user has no other way to know what the recorder just
+      // captured. `status` announces it politely, without stealing focus from
+      // the app the user is driving.
+      role="status"
       className="flex items-center gap-2 px-3 py-1.5"
       data-testid="preview-recording-code"
     >

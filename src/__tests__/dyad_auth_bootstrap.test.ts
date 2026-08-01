@@ -356,7 +356,7 @@ describe("dyad auth bootstrap", () => {
       pending: {
         mode: "neon-better-auth",
         homeRedirects: 0,
-        // Older than PENDING_TTL_MS (15s) — leftover from a prior session.
+        // Older than PENDING_TTL_MS (45s) — leftover from a prior session.
         startedAt: Date.now() - 60_000,
       },
     });

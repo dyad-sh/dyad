@@ -4,6 +4,7 @@ import { parseFullMessage } from "../streamingMessageParser";
 import {
   ASSERTIONS_TAG,
   buildAssertionsTagContent,
+  messageHasAssertionsProposal,
   parseAssertionsPayload,
   parseAssertionsPayloadFromMessage,
   readAssertionsTagAttribute,
@@ -135,6 +136,52 @@ describe("replaceAssertionsTagInMessage", () => {
     )!;
 
     expect(parseAssertionsPayloadFromMessage(next)).toEqual(dollarPayload);
+  });
+
+  it("reads and rewrites the card named by proposal id, not the first one", () => {
+    // One assistant message can carry two cards — the agent is free to call the
+    // tool twice in a turn. Approving the second must not read, or overwrite,
+    // the first.
+    const second = buildAssertionsTagContent({
+      proposalId: "prop-2",
+      status: "proposed",
+      payload: { ...PAYLOAD, testTitle: "second flow" },
+    });
+    const message = `First:\n\n${proposed}\n\nSecond:\n\n${second}`;
+
+    expect(readAssertionsTagAttribute(message, "proposal-id", "prop-2")).toBe(
+      "prop-2",
+    );
+    expect(
+      parseAssertionsPayloadFromMessage(message, "prop-2")?.testTitle,
+    ).toBe("second flow");
+    expect(messageHasAssertionsProposal(message, "prop-2")).toBe(true);
+    expect(messageHasAssertionsProposal(message, "prop-3")).toBe(false);
+
+    const approvedSecond = buildAssertionsTagContent({
+      proposalId: "prop-2",
+      status: "approved",
+      payload: { ...PAYLOAD, testTitle: "second flow" },
+    });
+    const next = replaceAssertionsTagInMessage(
+      message,
+      approvedSecond,
+      "prop-2",
+    )!;
+
+    expect(next).toBe(`First:\n\n${proposed}\n\nSecond:\n\n${approvedSecond}`);
+    expect(readAssertionsTagAttribute(next, "status", "prop-1")).toBe(
+      "proposed",
+    );
+    expect(readAssertionsTagAttribute(next, "status", "prop-2")).toBe(
+      "approved",
+    );
+  });
+
+  it("returns null when no card matches the proposal id", () => {
+    expect(
+      replaceAssertionsTagInMessage(`prose ${proposed}`, approved, "prop-9"),
+    ).toBeNull();
   });
 
   it("returns null when the message has no card to replace", () => {

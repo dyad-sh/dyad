@@ -41,9 +41,19 @@ The symptom when you get this wrong is assertions like `expected false to be tru
 
 See `src/atoms/githubSyncAtoms.test.tsx` for a complete example covering unmount/remount, cross-unmount completion, and per-key isolation.
 
-## StrictMode: `renderHook` needs `reactStrictMode`, not a wrapper
+## StrictMode: use the `reactStrictMode` option, not a nested `<StrictMode>`
 
-Wrapping the hook in `<StrictMode>` via the `wrapper` option does **not** replay effects under `renderHook` — the mount effect runs once and a StrictMode-only bug passes the test. Pass the render option instead: `renderHook(() => useThing(), { wrapper, reactStrictMode: true })`. (`render()` does replay with a `<StrictMode>` element in the tree; only `renderHook` differs.)
+`<StrictMode>` only replays mount effects when it is the **root** of the rendered tree. A wrapper component of your own that renders `<StrictMode>` around `children` — which is what you end up writing as soon as you also need a Jotai `Provider` — does not replay: the mount effect runs once and a StrictMode-only bug passes the test. Measured with `@testing-library/react` v16:
+
+| how StrictMode is introduced                                                                            | mount effect runs |
+| ------------------------------------------------------------------------------------------------------- | ----------------- |
+| `renderHook(…, { wrapper: StrictMode })`                                                                | 2                 |
+| `renderHook(…, { reactStrictMode: true })`                                                              | 2                 |
+| `renderHook(…, { wrapper: MyWrapper })` where `MyWrapper` renders `<StrictMode>{children}</StrictMode>` | **1**             |
+| `render(<StrictMode><Ui /></StrictMode>)`                                                               | 2                 |
+| `render(<Ui />, { wrapper: MyWrapper })`                                                                | **1**             |
+
+This is not a `renderHook` quirk — `render()` behaves the same way. Pass the render option, which composes with whatever wrapper you already need: `renderHook(() => useThing(), { wrapper, reactStrictMode: true })`.
 
 Worth testing because the app renders under `<StrictMode>` (`src/renderer.tsx`), where the dev mount/unmount/remount replay runs cleanup on a hook that is still mounted. A "am I still mounted" ref must therefore be re-armed in the effect body, not just at ref creation:
 

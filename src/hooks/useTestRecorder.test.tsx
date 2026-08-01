@@ -20,6 +20,7 @@ const {
   discardDraftMock,
   createRecordedSpecMock,
   onEndedMock,
+  onDraftConsumedMock,
 } = vi.hoisted(() => ({
   startRecordingMock: vi.fn(),
   stopRecordingMock: vi.fn(),
@@ -27,6 +28,7 @@ const {
   discardDraftMock: vi.fn(),
   createRecordedSpecMock: vi.fn(),
   onEndedMock: vi.fn(),
+  onDraftConsumedMock: vi.fn(),
 }));
 
 vi.mock("@/ipc/types", () => ({
@@ -44,6 +46,7 @@ vi.mock("@/ipc/types", () => ({
       recording: {
         onEnded: onEndedMock,
         onSetupProgress: () => () => {},
+        onDraftConsumed: onDraftConsumedMock,
       },
     },
   },
@@ -126,6 +129,8 @@ describe("useTestRecorder", () => {
     createRecordedSpecMock.mockReset();
     onEndedMock.mockReset();
     onEndedMock.mockReturnValue(() => {});
+    onDraftConsumedMock.mockReset();
+    onDraftConsumedMock.mockReturnValue(() => {});
     startRecordingMock.mockResolvedValue({
       appId: 1,
       isolation: { mode: "none" },
@@ -257,6 +262,39 @@ describe("useTestRecorder", () => {
     expect(result.current.draft?.testName).toBe("My Flow");
     // The review list is the spec body, numbered as the assertion pass sees it.
     expect(result.current.draftSteps).toEqual([`await page.goto("/");`]);
+  });
+
+  it("closes the review once the assertions card has generated the spec", async () => {
+    const { store, Wrapper } = makeWrapper();
+    store.set(selectedAppIdAtom, 1);
+    setAppUrl(store, 1);
+
+    const { result } = renderHook(
+      () => useTestRecorder({ reloadPreview: () => {} }),
+      { wrapper: Wrapper },
+    );
+    await act(async () => {
+      await result.current.startRecording();
+    });
+    await act(async () => {
+      await result.current.stopAndReview("my flow");
+    });
+    result.current.markAwaitingAssertions();
+    expect(result.current.phase).toBe("reviewing");
+
+    // Approval happens entirely in the chat card, so this event is the only
+    // thing that tells the bar its draft is now a file. Left up, its "Save
+    // without assertions" would write a second, suffixed copy of the same test.
+    const onDraftConsumed = onDraftConsumedMock.mock.calls[0][0];
+    act(() => {
+      onDraftConsumed({
+        appId: 1,
+        specPath: "e2e-tests/recorded-my-flow.spec.ts",
+      });
+    });
+
+    expect(result.current.phase).toBe("idle");
+    expect(result.current.draft).toBeUndefined();
   });
 
   it("keeps the review when the stop we asked for reports back late", async () => {

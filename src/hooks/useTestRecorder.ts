@@ -382,6 +382,22 @@ export function useTestRecorder({
     }
   }, [recordingState.phase, postToIframe]);
 
+  // The review's draft became a spec somewhere else — the assertions card in
+  // the chat approved it. Close the bar: its remaining actions ("Save without
+  // assertions", "Discard") all act on a recording that has already been
+  // written, and taking one up would produce a second copy of the same test.
+  useEffect(() => {
+    const unsub = ipc.events.recording.onDraftConsumed(
+      ({ appId: consumedAppId }) => {
+        if (consumedAppId == null) return;
+        patchState(consumedAppId, (prev) =>
+          prev.phase === "reviewing" ? { phase: "idle" } : prev,
+        );
+      },
+    );
+    return unsub;
+  }, [patchState]);
+
   // Surface isolation/sign-in setup progress.
   useEffect(() => {
     const unsub = ipc.events.recording.onSetupProgress(

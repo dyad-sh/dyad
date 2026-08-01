@@ -17,12 +17,16 @@ import type {
 } from "../types/tests";
 import { assertMutationPathAllowed } from "../utils/path_utils";
 import { withLock } from "../utils/lock_utils";
+import { safeSend } from "../utils/safe_sender";
 import { gitAdd, gitResetFile } from "../utils/git_utils";
 import { extractJson } from "../utils/extract_json";
 import { getModelClient } from "../utils/get_model_client";
 import { fastTextOutput } from "../utils/stream_text_utils";
 import { getAiHeaders, getProviderOptions } from "../utils/provider_options";
-import { clearRecordedTestDraft } from "../services/recorded_test_drafts";
+import {
+  clearRecordedTestDraft,
+  getRecordedTestDraft,
+} from "../services/recorded_test_drafts";
 import { readSettings } from "@/main/settings";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
@@ -526,6 +530,16 @@ export function registerTestAssertionHandlers() {
     testsContracts.createRecordedSpec,
     async (_event, params): Promise<CreateRecordedSpecResult> => {
       const { appId, draft } = params;
+      // The parked draft is what says "this recording hasn't been written yet".
+      // Both write paths clear it, so its absence means the spec already exists
+      // and a second call — a stale recording bar, a double click — would write
+      // a suffixed duplicate of the same test.
+      if (!getRecordedTestDraft(appId)) {
+        throw new DyadError(
+          "This recording has already been saved.",
+          DyadErrorKind.Precondition,
+        );
+      }
       const { specPath } = await writeRecordedSpec({
         appId,
         draft,
@@ -543,7 +557,7 @@ export function registerTestAssertionHandlers() {
     // that read-modify-write an actual latch: a double click or a second window
     // would otherwise both pass the status check and generate two spec files.
     // The loser re-reads the now-approved tag and returns the idempotent answer.
-    async (_event, params): Promise<ApplyTestAssertionsResult> =>
+    async (event, params): Promise<ApplyTestAssertionsResult> =>
       withLock(`assertion-approval:${params.proposalId}`, async () => {
         const { appId, chatId, proposalId, items } = params;
 
@@ -681,6 +695,13 @@ export function registerTestAssertionHandlers() {
           await discardGeneratedSpec(appId, specPath);
           throw error;
         }
+
+        // The recording bar is still up in the preview, holding the draft this
+        // just turned into a file. Nothing else tells it — approval happens
+        // entirely in the chat — so without this it keeps offering "Save without
+        // assertions" for a test that already exists, which writes a second,
+        // suffixed copy of it.
+        safeSend(event.sender, "recording:draft-consumed", { appId, specPath });
 
         const appliedCount = countAssertions(finalItems);
         logger.info(

@@ -121,6 +121,23 @@ export const RecordingEndedPayloadSchema = z.object({
 });
 export type RecordingEndedPayload = z.infer<typeof RecordingEndedPayloadSchema>;
 
+/**
+ * The parked draft has become a spec file, so the recorder's review is done.
+ *
+ * Emitted when the assertions card generates the test — a path that runs
+ * entirely in the chat, with nothing telling the recording bar its draft is
+ * spent. Without it the bar keeps offering "Save without assertions" for a
+ * recording that has already been written, and taking it up produces a second,
+ * suffixed copy of the same test.
+ */
+export const RecordingDraftConsumedPayloadSchema = z.object({
+  appId: z.number(),
+  specPath: z.string(),
+});
+export type RecordingDraftConsumedPayload = z.infer<
+  typeof RecordingDraftConsumedPayloadSchema
+>;
+
 export const recordingEvents = {
   setupProgress: defineEvent({
     channel: "recording:setup-progress",
@@ -129,6 +146,10 @@ export const recordingEvents = {
   ended: defineEvent({
     channel: "recording:ended",
     payload: RecordingEndedPayloadSchema,
+  }),
+  draftConsumed: defineEvent({
+    channel: "recording:draft-consumed",
+    payload: RecordingDraftConsumedPayloadSchema,
   }),
 } as const;
 

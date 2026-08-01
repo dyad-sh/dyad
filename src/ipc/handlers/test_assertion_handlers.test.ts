@@ -76,7 +76,10 @@ import {
   type RecordedTestDraft,
 } from "@/lib/test_recorder/draft";
 import { recordedBodyStatements } from "@/lib/test_recorder/codegen";
-import { getRecordedTestDraft } from "@/ipc/services/recorded_test_drafts";
+import {
+  getRecordedTestDraft,
+  setRecordedTestDraft,
+} from "@/ipc/services/recorded_test_drafts";
 
 const SPEC_PATH = "e2e-tests/recorded-add-an-item.spec.ts";
 
@@ -213,13 +216,23 @@ describe("registerTestAssertionHandlers", () => {
   }
 
   describe("tests:create-recorded-spec", () => {
+    /**
+     * Save a recording the way the recorder bar does: the draft is parked in the
+     * main process when recording stops, and its presence is what says this
+     * recording hasn't been written yet.
+     */
+    function createSpec(appId: number, draft: RecordedTestDraft = DRAFT) {
+      setRecordedTestDraft(appId, draft);
+      return harness.invokeHandler<{ specPath: string }>(
+        "tests:create-recorded-spec",
+        { appId, draft },
+      );
+    }
+
     it("writes the recording as-is, with no assertions", async () => {
       const { appId } = seed();
 
-      const result = await harness.invokeHandler<{ specPath: string }>(
-        "tests:create-recorded-spec",
-        { appId, draft: DRAFT },
-      );
+      const result = await createSpec(appId);
 
       expect(result.specPath).toBe(SPEC_PATH);
       expect(bodyLines()).toEqual([
@@ -236,10 +249,7 @@ describe("registerTestAssertionHandlers", () => {
     it("generates the signIn fixture for an authenticated recording", async () => {
       const { appId } = seed();
 
-      await harness.invokeHandler("tests:create-recorded-spec", {
-        appId,
-        draft: { ...DRAFT, authMode: "neon-better-auth" },
-      });
+      await createSpec(appId, { ...DRAFT, authMode: "neon-better-auth" });
 
       expect(readSpec()).toContain(
         `import { signIn } from "./fixtures/test-user";`,
@@ -260,10 +270,7 @@ describe("registerTestAssertionHandlers", () => {
       const mine = `export async function signIn(page) {\n  // mine\n}\n`;
       const fixturePath = writeFixture(mine);
 
-      await harness.invokeHandler("tests:create-recorded-spec", {
-        appId,
-        draft: { ...DRAFT, authMode: "neon-better-auth" },
-      });
+      await createSpec(appId, { ...DRAFT, authMode: "neon-better-auth" });
 
       expect(fs.readFileSync(fixturePath, "utf-8")).toBe(mine);
     });
@@ -275,10 +282,7 @@ describe("registerTestAssertionHandlers", () => {
       const fixturePath = writeFixture("// mine\n");
 
       await expect(
-        harness.invokeHandler("tests:create-recorded-spec", {
-          appId,
-          draft: { ...DRAFT, authMode: "neon-better-auth" },
-        }),
+        createSpec(appId, { ...DRAFT, authMode: "neon-better-auth" }),
       ).rejects.toThrow(/doesn't export a `signIn` helper/);
       expect(fs.readFileSync(fixturePath, "utf-8")).toBe("// mine\n");
       expect(specExists(SPEC_PATH)).toBe(false);
@@ -292,10 +296,7 @@ describe("registerTestAssertionHandlers", () => {
 
       // The app moved from Supabase to Neon auth. The helper's signature is the
       // same but its body isn't, so the stale one guarantees a failing sign-in.
-      await harness.invokeHandler("tests:create-recorded-spec", {
-        appId,
-        draft: { ...DRAFT, authMode: "neon-better-auth" },
-      });
+      await createSpec(appId, { ...DRAFT, authMode: "neon-better-auth" });
 
       expect(fs.readFileSync(fixturePath, "utf-8")).toBe(
         generateTestUserFixtureSource("neon-better-auth"),
@@ -308,10 +309,7 @@ describe("registerTestAssertionHandlers", () => {
       const fixturePath = writeFixture(edited);
 
       await expect(
-        harness.invokeHandler("tests:create-recorded-spec", {
-          appId,
-          draft: { ...DRAFT, authMode: "neon-better-auth" },
-        }),
+        createSpec(appId, { ...DRAFT, authMode: "neon-better-auth" }),
       ).rejects.toThrow(/has been edited/);
       expect(fs.readFileSync(fixturePath, "utf-8")).toBe(edited);
     });
@@ -319,26 +317,39 @@ describe("registerTestAssertionHandlers", () => {
     it("suffixes rather than clobbering a spec that already exists", async () => {
       const { appId } = seed();
 
-      const first = await harness.invokeHandler<{ specPath: string }>(
-        "tests:create-recorded-spec",
-        { appId, draft: DRAFT },
-      );
-      const second = await harness.invokeHandler<{ specPath: string }>(
-        "tests:create-recorded-spec",
-        { appId, draft: DRAFT },
-      );
+      // Two separate recordings whose names slugify the same.
+      const first = await createSpec(appId);
+      const second = await createSpec(appId);
 
       expect(first.specPath).toBe(SPEC_PATH);
       expect(second.specPath).toBe("e2e-tests/recorded-add-an-item-2.spec.ts");
     });
 
+    it("refuses a recording that has already been written", async () => {
+      const { appId } = seed();
+      await createSpec(appId);
+
+      // The bar can still be on screen after the assertions card generated the
+      // spec (or after a double click). Writing again would leave the user with
+      // two copies of the same recording under different names.
+      await expect(
+        harness.invokeHandler("tests:create-recorded-spec", {
+          appId,
+          draft: DRAFT,
+        }),
+      ).rejects.toThrow(/already been saved/);
+      expect(specExists("e2e-tests/recorded-add-an-item-2.spec.ts")).toBe(
+        false,
+      );
+    });
+
     it("keeps a hostile test name inside e2e-tests/", async () => {
       const { appId } = seed();
 
-      const result = await harness.invokeHandler<{ specPath: string }>(
-        "tests:create-recorded-spec",
-        { appId, draft: { ...DRAFT, testName: "../../evil" } },
-      );
+      const result = await createSpec(appId, {
+        ...DRAFT,
+        testName: "../../evil",
+      });
 
       expect(result.specPath).toBe("e2e-tests/recorded-evil.spec.ts");
       expect(specExists("e2e-tests/recorded-evil.spec.ts")).toBe(true);

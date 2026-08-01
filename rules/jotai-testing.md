@@ -85,6 +85,32 @@ at the app-switch behavior.
 
 If a `renderHook` test starts failing with `No QueryClient set, use QueryClientProvider to set one`, check whether the hook now calls another hook such as `useSettings()` or `useAppVersion()` that uses TanStack Query internally. Either wrap the test in a `QueryClientProvider` or mock the indirect hook when the test is only exercising Jotai/event behavior.
 
+## Preview `postMessage` Tests Need an App URL
+
+Hooks that consume preview-iframe messages (e.g. `useTestRecorder`) validate `event.origin` against the running app's origin and **fail closed** when it isn't known. A `renderHook` test that only sets `previewIframeRefAtom` will therefore see every message silently dropped. Set `appUrlByAppIdAtom` too, and dispatch the `MessageEvent` with a matching `origin`:
+
+```tsx
+store.set(
+  appUrlByAppIdAtom,
+  new Map([
+    [
+      1,
+      {
+        appUrl: "https://preview.test/",
+        appId: 1,
+        originalUrl: "https://preview.test/",
+        mode: "host",
+      },
+    ],
+  ]),
+);
+const event = new MessageEvent("message", {
+  data,
+  origin: "https://preview.test",
+});
+Object.defineProperty(event, "source", { value: iframe.contentWindow }); // read-only on the prototype
+```
+
 ## Partial `jotai` Mocks
 
 When a component test mocks `jotai`, preserve the real module exports with `importOriginal` and override only the needed hooks. A full mock that only returns `useAtomValue` can fail during test collection with `[vitest] No "atom" export is defined on the "jotai" mock` once an indirectly imported atom module calls `atom(...)`.

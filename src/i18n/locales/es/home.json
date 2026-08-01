@@ -240,6 +240,8 @@
     "editLatestVersion": "Editar la versión más reciente",
     "editLatestVersionMissing": "{{path}} ya no existe en la versión más reciente, así que no hay nada que editar.",
     "editLatestVersionUnavailable": "No se pudo confirmar la versión más reciente de {{path}}, así que no se abrió. Inténtalo de nuevo.",
+    "returningToLatestVersion": "Volviendo a la versión más reciente...",
+    "historicalCheckoutNotReleased": "Esta aplicación sigue en la versión previsualizada. Usa la acción de reintentar en la notificación de recuperación para volver a la versión más reciente antes de editar archivos.",
     "sendToChat": "Enviar al chat",
     "systemMessages": "Mensajes del Sistema",
     "consoleFilters": {

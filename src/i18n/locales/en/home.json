@@ -249,6 +249,8 @@
     "editLatestVersion": "Edit latest version",
     "editLatestVersionMissing": "{{path}} no longer exists in the latest version, so there's nothing to edit.",
     "editLatestVersionUnavailable": "Couldn't confirm the latest version of {{path}}, so it wasn't opened. Please try again.",
+    "returningToLatestVersion": "Returning to the latest version...",
+    "historicalCheckoutNotReleased": "This app is still on the previewed version. Use the retry action in the recovery notification to return to the latest version before editing files.",
     "commit": "Commit",
     "committing": "Committing...",
     "cancel": "Cancel",

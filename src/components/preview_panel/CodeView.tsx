@@ -8,6 +8,7 @@ import {
   Minimize2,
   ArrowLeft,
   Pencil,
+  Loader2,
 } from "lucide-react";
 import {
   Tooltip,
@@ -136,13 +137,30 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
     : isStagedDiffMode
       ? getDisplayedStagedDiffPath(uncommittedFiles, stagedDiffFile)
       : null;
+  // While this session owns a historical checkout, app.files lists the
+  // previewed commit's working tree, so it cannot say whether the origin
+  // branch still has the file - a path deleted in the previewed version may
+  // well exist at latest. Defer to the post-return re-list in that case
+  // instead of disabling the action on the detached tree's say-so.
   const canEditDisplayedDiff =
     displayedDiffPath != null &&
-    app.files?.includes(displayedDiffPath) === true &&
+    (ownsHistoricalCheckout(previewState) ||
+      app.files?.includes(displayedDiffPath) === true) &&
     // A Git mutation is in flight (checkout, return, restore, branch switch):
     // which commit the editor would open is undecided until it settles.
     !isMutatingState(previewState) &&
     !isLeavingHistoricalCheckout;
+  // Returning to the origin branch is async, and until it settles the working
+  // tree - and therefore app.files - is still the previewed commit's. The
+  // machine has already dropped the diff presentation by then, so rendering the
+  // file tree here would invite the user to open, and save over, historical
+  // files. Same for a return that failed: the app stays detached until the
+  // recovery notification's retry succeeds.
+  const isReturningToLatestVersion =
+    isLeavingHistoricalCheckout || previewState.type === "returning";
+  const isStuckOnHistoricalCheckout =
+    previewState.type === "recovery-required" &&
+    ownsHistoricalCheckout(previewState);
 
   // Previewing a version checks the app out at that commit (detached HEAD), so
   // opening the editor there would show - and save over - the historical copy.
@@ -169,7 +187,7 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
     // the checkout was released. Read the machine directly (React may not have
     // re-rendered yet) and bail out rather than edit the historical copy.
     if (ownsHistoricalCheckout(getPreviewState())) {
-      showWarning(t("preview.editLatestVersionUnavailable"));
+      showWarning(t("preview.editLatestVersionUnavailable", { path }));
       return;
     }
     // While detached, app.files listed the previewed commit's working tree, so
@@ -183,7 +201,7 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
     // so an errored re-list cannot confirm anything and must not open the file.
     const latestFiles = refreshed.isError ? undefined : refreshed.data?.files;
     if (!latestFiles) {
-      showWarning(t("preview.editLatestVersionUnavailable"));
+      showWarning(t("preview.editLatestVersionUnavailable", { path }));
       return;
     }
     if (!latestFiles.includes(path)) {
@@ -233,6 +251,8 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
   if (
     isVersionDiffMode ||
     isStagedDiffMode ||
+    isReturningToLatestVersion ||
+    isStuckOnHistoricalCheckout ||
     (app.files && app.files.length > 0) ||
     (app.id != null && hasUncommittedFiles)
   ) {
@@ -309,11 +329,16 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
                     disabled={!canEditDisplayedDiff}
                     aria-label={t("preview.editLatestVersion")}
                     data-testid="edit-latest-version-button"
+                    aria-busy={isLeavingHistoricalCheckout}
                     className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                 }
               >
-                <Pencil size={16} />
+                {isLeavingHistoricalCheckout ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <Pencil size={16} />
+                )}
               </TooltipTrigger>
               <TooltipContent>{t("preview.editLatestVersion")}</TooltipContent>
             </Tooltip>
@@ -343,6 +368,21 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
           <VersionDiffView appId={app.id!} versionId={selectedVersionId} />
         ) : isStagedDiffMode ? (
           <StagedDiffView appId={app.id!} />
+        ) : isReturningToLatestVersion ? (
+          <div
+            data-testid="returning-to-latest-version"
+            className="flex-1 flex items-center justify-center gap-2 py-4 text-sm text-gray-500"
+          >
+            <Loader2 size={16} className="animate-spin" />
+            {t("preview.returningToLatestVersion")}
+          </div>
+        ) : isStuckOnHistoricalCheckout ? (
+          <div
+            data-testid="historical-checkout-not-released"
+            className="flex-1 flex items-center justify-center px-4 py-4 text-center text-sm text-gray-500"
+          >
+            {t("preview.historicalCheckoutNotReleased")}
+          </div>
         ) : (
           <PanelGroup
             direction="horizontal"

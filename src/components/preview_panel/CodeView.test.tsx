@@ -23,7 +23,12 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    // Mirror i18next's interpolation so a warning that forgets to pass {{path}}
+    // fails an assertion instead of silently rendering the raw placeholder.
+    t: (key: string, options?: { path?: string }) =>
+      options?.path === undefined ? key : `${key}:${options.path}`,
+  }),
 }));
 
 vi.mock("@/hooks/useVersionPreview", () => ({
@@ -103,6 +108,32 @@ function previewingState(selectedPath: string) {
       selectedDiffFile: { versionId: "version-1", path: selectedPath },
       isDiffVisible: true,
     },
+  };
+}
+
+// CLOSE moves the machine here while the git return runs. The diff is no
+// longer part of the presentation, but the working tree is still detached.
+function returningState() {
+  return {
+    type: "returning",
+    session: {
+      appId: 1,
+      originBranch: "main",
+      targetVersionId: "version-1",
+      checkedOutVersionId: "version-1",
+      selectedDiffFile: { versionId: "version-1", path: "src/selected.ts" },
+      isDiffVisible: true,
+    },
+  };
+}
+
+// A failed return leaves the app detached until the recovery notification's
+// retry succeeds, and the machine keeps the diff out of the presentation.
+function recoveryRequiredState() {
+  return {
+    ...returningState(),
+    type: "recovery-required",
+    error: { message: "could not return to main" },
   };
 }
 
@@ -257,7 +288,7 @@ describe("CodeView diff editing", () => {
 
     await waitFor(() => {
       expect(mocks.showWarning).toHaveBeenCalledWith(
-        "preview.editLatestVersionUnavailable",
+        "preview.editLatestVersionUnavailable:src/selected.ts",
       );
     });
     expect(store.get(selectedFileAtom)).toBeNull();
@@ -280,7 +311,7 @@ describe("CodeView diff editing", () => {
 
     await waitFor(() => {
       expect(mocks.showWarning).toHaveBeenCalledWith(
-        "preview.editLatestVersionUnavailable",
+        "preview.editLatestVersionUnavailable:src/selected.ts",
       );
     });
     expect(store.get(selectedFileAtom)).toBeNull();
@@ -344,10 +375,76 @@ describe("CodeView diff editing", () => {
 
     await waitFor(() => {
       expect(mocks.showWarning).toHaveBeenCalledWith(
-        "preview.editLatestVersionMissing",
+        "preview.editLatestVersionMissing:src/only-in-version.ts",
       );
     });
     expect(store.get(selectedFileAtom)).toBeNull();
+  });
+
+  it("blocks the file tree while the return to the origin branch is in flight", async () => {
+    const store = createStore();
+    mocks.previewState = previewingState("src/selected.ts");
+    mocks.versionChanges = [{ path: "src/selected.ts" }];
+    let finishReturn: () => void = () => undefined;
+    mocks.sendPreviewEventAndWait.mockImplementation(
+      () =>
+        new Promise<undefined>((resolve) => {
+          finishReturn = () => resolve(undefined);
+        }),
+    );
+    const { rerenderCodeView } = renderCodeView(store, ["src/selected.ts"]);
+
+    fireEvent.click(editButton());
+    // The machine drops the diff as soon as CLOSE is accepted, long before the
+    // git return settles; the file tree it would otherwise fall back to still
+    // lists the detached checkout's files.
+    mocks.previewState = returningState();
+    rerenderCodeView();
+
+    expect(screen.getByTestId("returning-to-latest-version")).not.toBeNull();
+    expect(screen.queryByTestId("file-editor")).toBeNull();
+
+    finishReturn();
+
+    await waitFor(() => {
+      expect(store.get(selectedFileAtom)).toEqual({ path: "src/selected.ts" });
+    });
+  });
+
+  it("keeps the file tree closed when the return leaves the app detached", async () => {
+    const store = createStore();
+    mocks.previewState = previewingState("src/selected.ts");
+    mocks.versionChanges = [{ path: "src/selected.ts" }];
+    mocks.sendPreviewEventAndWait.mockRejectedValue(new Error("return failed"));
+    const { rerenderCodeView } = renderCodeView(store, ["src/selected.ts"]);
+
+    fireEvent.click(editButton());
+
+    await waitFor(() => {
+      expect(mocks.sendPreviewEventAndWait).toHaveBeenCalled();
+    });
+    mocks.previewState = recoveryRequiredState();
+    rerenderCodeView();
+
+    // Editing anything here would edit - and on save overwrite - the previewed
+    // commit's copy, so point at the recovery retry instead.
+    expect(
+      screen.getByTestId("historical-checkout-not-released"),
+    ).not.toBeNull();
+    expect(screen.queryByTestId("file-editor")).toBeNull();
+    expect(store.get(selectedFileAtom)).toBeNull();
+  });
+
+  it("allows editing a path the previewed checkout does not have", () => {
+    const store = createStore();
+    mocks.previewState = previewingState("src/deleted-in-version.ts");
+    mocks.versionChanges = [{ path: "src/deleted-in-version.ts" }];
+    // The detached working tree cannot list a file the previewed version
+    // deleted, but the origin branch may still have it, so the decision belongs
+    // to the post-return re-list rather than to this pre-check.
+    renderCodeView(store, ["src/current.ts"]);
+
+    expect(editButton().disabled).toBe(false);
   });
 
   it("keeps the diff open when returning to the origin branch fails", async () => {

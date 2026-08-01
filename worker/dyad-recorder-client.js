@@ -446,20 +446,40 @@
       }
       if (node.hasAttribute && node.hasAttribute("hidden")) return false;
     }
+    // The real answer, where it exists: `checkVisibility` accounts for an
+    // ancestor's `display: none`, `content-visibility`, and detached subtrees.
+    // Walking computed styles cannot — `display` doesn't inherit, so a child of a
+    // hidden container computes to `block` and reads as visible.
+    if (typeof el.checkVisibility === "function") {
+      try {
+        return el.checkVisibility();
+      } catch {
+        // fall through to the manual check
+      }
+    }
     // happy-dom and other minimal DOMs don't implement layout; treat "can't
     // tell" as visible so selector quality degrades rather than breaking.
     const view =
       (el.ownerDocument && el.ownerDocument.defaultView) ||
       (typeof window !== "undefined" ? window : null);
     if (!view || typeof view.getComputedStyle !== "function") return true;
-    let style;
-    try {
-      style = view.getComputedStyle(el);
-    } catch {
-      return true;
+    for (
+      let node = el;
+      node && node.nodeType === 1;
+      node = node.parentElement
+    ) {
+      let style;
+      try {
+        style = view.getComputedStyle(node);
+      } catch {
+        return true;
+      }
+      if (!style) return true;
+      if (style.display === "none") return false;
+      // `visibility` inherits, so only the element's own computed value matters.
+      if (node === el && style.visibility === "hidden") return false;
     }
-    if (!style) return true;
-    return style.display !== "none" && style.visibility !== "hidden";
+    return true;
   }
 
   function hasDescendantWithText(el, value) {

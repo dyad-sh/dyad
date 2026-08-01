@@ -82,6 +82,14 @@ export function useTestRecorder({
   const entriesRef = useRef(entries);
   const appIdRef = useRef(appId);
   const appUrlRef = useRef(appUrl);
+  // The last origin this app's preview was actually served from. Isolation setup
+  // restarts the dev server, which empties the app URL until the new one
+  // arrives — a gap the sign-in handshake runs straight through. Remembering the
+  // previous origin keeps that window usable without ever widening trust: the
+  // live URL always wins (the server can come back on a different port), this
+  // only stands in while there is no live URL at all, and it is dropped on an
+  // app switch.
+  const lastPreviewOriginRef = useRef<string | null>(null);
   const authReadyRef = useRef<
     ((data: { ok?: boolean; error?: string }) => void) | null
   >(null);
@@ -132,9 +140,20 @@ export function useTestRecorder({
   }, [entries]);
   useEffect(() => {
     appIdRef.current = appId;
+    // The remembered origin belongs to the app that was selected; another app's
+    // preview must never be trusted (or sent credentials) on its strength.
+    lastPreviewOriginRef.current = null;
   }, [appId]);
   useEffect(() => {
     appUrlRef.current = appUrl;
+    // Captured as the URL arrives, not when it's first read: the restart gap can
+    // open before anything has had reason to ask for the origin.
+    if (!appUrl) return;
+    try {
+      lastPreviewOriginRef.current = new URL(appUrl).origin;
+    } catch {
+      // Not a URL we can pin to an origin; leave the previous one in place.
+    }
   }, [appUrl]);
 
   // Collapse the raw stream into what the spec will actually replay: typing
@@ -156,18 +175,18 @@ export function useTestRecorder({
   // Credentials must only be delivered to the running app's own origin. Pinning
   // the targetOrigin means a preview that has navigated cross-origin (an
   // external link, an OAuth redirect) can never receive the test user's login.
-  // Falls back to "*" only when the app URL isn't known yet (never during an
-  // active session, since recording requires the dev server to be running).
+  // Returns "*" only when no origin has ever been observed — before the dev
+  // server has come up once, which is before any session can exist.
   const previewOrigin = useCallback(() => {
     const url = appUrlRef.current;
     if (url) {
       try {
         return new URL(url).origin;
       } catch {
-        // fall through to the wildcard
+        // fall through to the remembered origin
       }
     }
-    return "*";
+    return lastPreviewOriginRef.current ?? "*";
   }, []);
 
   const patchState = useCallback(

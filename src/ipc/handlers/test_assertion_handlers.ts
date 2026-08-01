@@ -17,7 +17,7 @@ import type {
 } from "../types/tests";
 import { assertMutationPathAllowed } from "../utils/path_utils";
 import { withLock } from "../utils/lock_utils";
-import { gitAdd } from "../utils/git_utils";
+import { gitAdd, gitResetFile } from "../utils/git_utils";
 import { extractJson } from "../utils/extract_json";
 import { getModelClient } from "../utils/get_model_client";
 import { fastTextOutput } from "../utils/stream_text_utils";
@@ -264,6 +264,13 @@ async function discardGeneratedSpec(
   try {
     const appPath = await getAppPath(appId);
     await fs.promises.rm(path.join(appPath, specPath), { force: true });
+    // The write staged the file; leaving that entry behind would show the
+    // uncommitted-changes review a spec that no longer exists.
+    try {
+      await gitResetFile({ path: appPath, filepath: specPath });
+    } catch (error) {
+      logger.warn(`Removed ${specPath} but couldn't unstage it:`, error);
+    }
     logger.warn(`Rolled back ${specPath}: the approval couldn't be persisted`);
   } catch (error) {
     logger.error(

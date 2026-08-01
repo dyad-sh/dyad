@@ -20,13 +20,27 @@ export function extractJson(text: string): string | null {
   if (isParseable(widest)) return widest;
 
   for (let i = start; i < text.length; i++) {
-    if (text[i] !== "{") continue;
+    // Only `{` that could actually open a JSON object is worth a scan. A JSON
+    // object is `{}` or `{"…`, so this rejects prose like `{foo}` on one
+    // character — and keeps a pathological response (a long run of `{`) from
+    // turning this fallback into an O(n^2) walk of the whole text per brace.
+    if (text[i] !== "{" || !opensJsonObject(text, i)) continue;
     const candidate = balancedObjectAt(text, i);
     if (candidate && isParseable(candidate)) return candidate;
   }
   // Nothing parsed. Return the widest span anyway so the caller's own
   // `JSON.parse` reports the syntax error it would have reported before.
   return widest;
+}
+
+/** Whether the `{` at `start` is followed by `"` or `}` (ignoring whitespace). */
+function opensJsonObject(text: string, start: number): boolean {
+  for (let i = start + 1; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === " " || ch === "\t" || ch === "\n" || ch === "\r") continue;
+    return ch === '"' || ch === "}";
+  }
+  return false;
 }
 
 function isParseable(candidate: string): boolean {

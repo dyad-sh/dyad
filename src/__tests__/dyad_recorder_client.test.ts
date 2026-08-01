@@ -469,6 +469,25 @@ describe("dyad recorder client", () => {
     ]);
   });
 
+  it("ignores a duplicate hidden behind a display:none ancestor when indexing", () => {
+    const r = setup();
+    // Playwright's getByRole skips hidden elements, so counting this one would
+    // hand replay an .nth(1) pointing at an element it never sees.
+    r.setHtml(
+      `<div style="display: none"><button>Item</button></div>` +
+        `<button>Item</button>`,
+    );
+    r.activate();
+    r.click(r.doc.querySelectorAll("button")[1]);
+
+    expect(r.actions).toEqual([
+      {
+        kind: "click",
+        locator: { kind: "role", value: "button", name: "Item", exact: true },
+      },
+    ]);
+  });
+
   it("stops recording after deactivate", () => {
     const r = setup();
     r.setHtml(`<button>Add</button>`);

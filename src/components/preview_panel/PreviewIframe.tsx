@@ -1304,7 +1304,12 @@ export const PreviewIframe = ({
                     ? "Record a test"
                     : recorder.isRecording
                       ? "Recording — use the bar below to stop"
-                      : recordingStatusMessage(recorder)}
+                      : // `recordingStatusMessage` only speaks for the spinner
+                        // phases; reviewing/saved are waiting on the user, and
+                        // saying "Setting up…" there is just wrong.
+                        recorder.isBusy
+                        ? recordingStatusMessage(recorder)
+                        : "Finish the recorded test in the bar below first"}
                 </TooltipContent>
               </Tooltip>
             )}

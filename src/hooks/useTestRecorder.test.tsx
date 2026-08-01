@@ -413,6 +413,46 @@ describe("useTestRecorder", () => {
     expect(result.current.steps).toEqual([]);
   });
 
+  it("still accepts preview messages while the dev server is restarting", async () => {
+    const { store, Wrapper } = makeWrapper();
+    store.set(selectedAppIdAtom, 1);
+    const iframe = makeIframe();
+    store.set(previewIframeRefAtom, iframe.el);
+    setAppUrl(store, 1);
+
+    const { result } = renderHook(
+      () => useTestRecorder({ reloadPreview: () => {} }),
+      { wrapper: Wrapper },
+    );
+    await act(async () => {
+      await result.current.startRecording();
+    });
+
+    // Isolation setup restarts the dev server, and the run command empties the
+    // app URL until the new one arrives. The sign-in handshake runs straight
+    // through that gap, so messages from the origin we already know must keep
+    // being accepted — failing closed here would strand the session until the
+    // 30s auth timeout.
+    act(() => {
+      store.set(appUrlByAppIdAtom, new Map());
+    });
+    act(() => {
+      iframe.send({
+        type: "dyad-recorder-action",
+        action: {
+          kind: "click",
+          locator: { kind: "testid", value: "add" },
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.steps).toContain(
+        `await page.getByTestId("add").click();`,
+      );
+    });
+  });
+
   it("hands the session back when the preview unmounts mid-recording", async () => {
     const { store, Wrapper } = makeWrapper();
     store.set(selectedAppIdAtom, 1);

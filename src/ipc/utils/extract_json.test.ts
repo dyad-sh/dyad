@@ -33,6 +33,16 @@ describe("extractJson", () => {
     expect(extractJson("} {")).toBeNull();
   });
 
+  it("stays fast when the prose is full of non-JSON braces", () => {
+    // The fallback used to scan to end-of-text from every `{`, so prose with
+    // thousands of braces made this O(n^2) on the main process. Only a `{`
+    // followed by `"` or `}` can open a JSON object, so the rest cost O(1).
+    const text = `${"{tok} ".repeat(20_000)}result: {"ok":true}`;
+    const started = performance.now();
+    expect(JSON.parse(extractJson(text)!)).toEqual({ ok: true });
+    expect(performance.now() - started).toBeLessThan(1_000);
+  });
+
   it("returns the widest span when nothing parses, so the caller reports the syntax error", () => {
     expect(extractJson("prefix {not json at all} suffix")).toBe(
       "{not json at all}",

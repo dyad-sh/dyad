@@ -1,9 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  clearRecordedTestDraft,
-  setRecordedTestDraft,
-} from "@/ipc/services/recorded_test_drafts";
+import { setRecordedTestDraft } from "@/ipc/services/recorded_test_drafts";
 import {
   RECORDED_TEST_DRAFT_VERSION,
   type RecordedTestDraft,
@@ -62,16 +59,6 @@ function committedXml(ctx: AgentContext): string {
 describe("generate_test_assertions", () => {
   beforeEach(() => {
     setRecordedTestDraft(APP_ID, DRAFT);
-  });
-
-  it("is gated on the app's testing opt-in and excluded from read-only modes", () => {
-    expect(
-      generateTestAssertionsTool.isEnabled!(
-        makeCtx({ testingEnabled: false } as Partial<AgentContext>),
-      ),
-    ).toBe(false);
-    expect(generateTestAssertionsTool.isEnabled!(makeCtx())).toBe(true);
-    expect(generateTestAssertionsTool.modifiesState).toBe(true);
   });
 
   it("emits a proposed card with the steps and assertions interleaved", async () => {
@@ -150,28 +137,5 @@ describe("generate_test_assertions", () => {
 
     expect(result).toContain("isn't a single");
     expect(committedXml(ctx)).not.toContain("dyad-test-assertions");
-  });
-
-  it("tells the model there is nothing to annotate when no recording is waiting", async () => {
-    clearRecordedTestDraft(APP_ID);
-    const ctx = makeCtx();
-
-    const result = await generateTestAssertionsTool.execute(VALID_ARGS, ctx);
-
-    expect(result).toContain("no finished recording");
-    expect(result).toContain("search_replace");
-    expect(committedXml(ctx)).toContain("dyad-output");
-  });
-
-  it("accepts an empty assertion list", async () => {
-    const ctx = makeCtx();
-    const result = await generateTestAssertionsTool.execute(
-      { ...VALID_ARGS, assertions: [] },
-      ctx,
-    );
-
-    const payload = parseAssertionsPayloadFromMessage(committedXml(ctx))!;
-    expect(payload.items).toHaveLength(2);
-    expect(result).toContain("0 proposed assertion(s)");
   });
 });

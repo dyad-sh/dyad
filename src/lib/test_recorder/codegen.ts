@@ -7,12 +7,9 @@ function q(value: string): string {
 }
 
 /**
- * Escape a value for use inside a double-quoted CSS attribute selector.
- *
- * `q()` alone only makes the result a valid *JavaScript* string; a `"` or `\`
- * in the attribute value would still terminate or mangle the CSS selector
- * Playwright parses, producing a locator that throws or silently matches
- * something else. Mirrors what the recorder client's `cssEscape` does in-page.
+ * `q()` alone only makes the result a valid *JavaScript* string; a `"` or `\` in
+ * the attribute value would still mangle the CSS selector Playwright parses.
+ * Mirrors what the recorder client's `cssEscape` does in-page.
  */
 function cssAttrValue(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
@@ -20,7 +17,7 @@ function cssAttrValue(value: string): string {
 
 /**
  * Render a locator descriptor as a Playwright locator chain WITHOUT the leading
- * `page.` (the caller prepends it), including any `.nth(...)` disambiguation.
+ * `page.` (the caller prepends it).
  *
  * `exact` matters on every name-matching getter, not just `getByText`:
  * getByRole/getByLabel/getByPlaceholder all match case-insensitive substrings by
@@ -68,9 +65,8 @@ export function locatorToCode(locator: LocatorDescriptor): string {
 }
 
 /**
- * Render a single recorded action as its Playwright statement WITHOUT leading
- * indentation or trailing newline — the line the recorder's step list shows for
- * that step, and the exact statement `generateSpecSource` indents into the spec.
+ * Render a recorded action as its Playwright statement WITHOUT leading
+ * indentation or trailing newline.
  */
 export function actionToCodeLine(action: RecordedAction): string {
   if (action.kind === "navigate") {
@@ -107,13 +103,11 @@ export function actionToCodeLine(action: RecordedAction): string {
 }
 
 /**
- * The spec body a draft replays, as one trimmed statement per line: the
- * preamble (`signIn`, then `goto("/")`) followed by the recorded interactions.
- *
- * This is the numbering everything downstream agrees on — what the recorder
- * lists for the user, what the model describes and attaches assertions to, and
- * what `generateSpecSource` writes. Derived from the draft rather than stored,
- * so a proposal and the file it eventually produces can never disagree.
+ * The spec body a draft replays, one statement per line. This is the numbering
+ * everything downstream agrees on — what the recorder lists, what the model
+ * attaches assertions to, and what `generateSpecSource` writes. Derived from the
+ * draft rather than stored, so a proposal and the file it produces can't
+ * disagree.
  */
 export function recordedBodyStatements(draft: RecordedTestDraft): string[] {
   const statements: string[] = [];
@@ -127,19 +121,14 @@ export function recordedBodyStatements(draft: RecordedTestDraft): string[] {
 }
 
 /**
- * Generate a complete Playwright spec from the final body statements — the
- * recorded steps with any approved assertions already interleaved, in the order
- * they should run.
- *
- * This is the ONLY place a recorded spec is written: no model ever produces the
- * file, so approving a plan and re-approving the same plan give the same bytes.
+ * The ONLY place a recorded spec is written: no model ever produces the file, so
+ * approving a plan and re-approving the same plan give the same bytes.
  */
 export function generateSpecSource({
   testName,
   includeSignIn,
   bodyStatements,
 }: {
-  /** The Playwright test title. */
   testName: string;
   /** Emit `await signIn(page)` and import the auth fixture. */
   includeSignIn: boolean;
@@ -160,21 +149,7 @@ export function generateSpecSource({
   return lines.join("\n");
 }
 
-/** Generate the spec exactly as recorded, with no assertions. */
-export function generateDraftSpecSource(draft: RecordedTestDraft): string {
-  return generateSpecSource({
-    testName: draft.testName,
-    includeSignIn: draftIncludesSignIn(draft),
-    bodyStatements: recordedBodyStatements(draft),
-  });
-}
-
-/**
- * The slug is capped well under the 255-byte filename limit every common
- * filesystem enforces. The test name is free text the user typed (or pasted)
- * into the recording bar, and an over-long one would fail the write with a raw
- * ENAMETOOLONG rather than producing a test.
- */
+/** The test name is free text, and an over-long one would fail with ENAMETOOLONG. */
 const MAX_SLUG_LENGTH = 80;
 
 /**

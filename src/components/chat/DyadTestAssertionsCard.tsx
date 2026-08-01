@@ -34,22 +34,15 @@ import { parseAssertionsPayload } from "@/lib/test_recorder/assertion_tag";
 import type { CustomTagState } from "./stateTypes";
 
 /**
- * The `<dyad-test-assertions>` card: a reviewable plan of a recorded test's
- * steps with the AI's proposed assertions interleaved.
+ * The `<dyad-test-assertions>` card: a reviewable plan of a recorded test's steps
+ * with the AI's proposed assertions interleaved, editable and drag-reorderable.
+ * The test file does not exist while the card is reviewed — approving generates
+ * it from this exact plan, then asks the agent to run it. The card lives in a
+ * persisted assistant message, so its payload round-trips through the content.
  *
- * Assertions are editable, removable, and drag-reorderable. The test file does
- * not exist while the card is being reviewed — approving is what generates it,
- * from this exact plan — and the approval then asks the agent to run it. The
- * card is part of a persisted assistant message, so its payload (and, after
- * approval, its latched status and the path it produced) round-trips through
- * the message content.
- *
- * Layout is a timeline: one rail, a neutral node per recorded step, a filled
- * node per proposed assertion. The rail is what makes "this check runs after
- * that step" legible, and it lets the steps stay quiet context while the
- * assertions — the only thing the user actually decides on — carry the weight.
- * Color is restrained to the two places a decision happens: the assertion nodes
- * and the Approve button.
+ * Layout is a timeline: one rail, a neutral node per step, a filled node per
+ * assertion, so the steps stay quiet context while the assertions carry the
+ * weight. Color is restrained to the two places a decision happens.
  */
 
 /** The accent, in the recorder's purple. Also readable on a dark surface. */
@@ -89,15 +82,11 @@ function toText(children: React.ReactNode): string {
 }
 
 /**
- * The rail segment above/below a node; transparent at the two ends so the line
- * starts at the first node and stops at the last.
- *
- * `lead` is the height of the segment above a node, which is what centers that
- * node on its row's first line of text — steps and assertions set different
- * text sizes, so they need different leads.
- *
- * Tinted from the foreground rather than `--border`, which in dark mode is
- * within a hair of this card's own background and renders the rail invisible.
+ * The rail segment above/below a node; transparent at the ends so the line starts
+ * at the first node and stops at the last. `lead` is the height above a node,
+ * centering it on its row's first line of text — steps and assertions set
+ * different text sizes. Tinted from the foreground rather than `--border`, which
+ * in dark mode is within a hair of this card's background.
  */
 function RailSegment({
   hidden,
@@ -145,10 +134,9 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
   const [items, setItems] = useState<AssertionPlanItem[]>(
     () => payload?.items ?? [],
   );
-  // The path the approval just generated, held locally until the rewritten
-  // message makes it back through `syncChatFromDb`. Without it the card flips to
-  // "Generated" with "Open test file" still disabled — the file exists, but the
-  // only way to reach it is dead until the verification stream finishes.
+  // Held locally until the rewritten message makes it back through
+  // `syncChatFromDb`. Without it the card flips to "Generated" with "Open test
+  // file" dead until the verification stream finishes.
   const [approvedSpecPath, setApprovedSpecPath] = useState<string | null>(null);
   const specPath = approvedSpecPath ?? node.properties["spec-path"] ?? "";
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -262,9 +250,8 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
 
   /**
    * Ask the agent to run the spec the approval just generated. Sent as a normal
-   * chat turn (in Agent mode, which is where run_tests lives) so the run, its
-   * result, and any fix are visible in the conversation rather than hidden
-   * behind the card.
+   * chat turn (Agent mode, where run_tests lives) so the run and any fix are
+   * visible in the conversation rather than hidden behind the card.
    */
   const requestVerificationRun = (generatedSpecPath: string) => {
     if (chatId == null || !generatedSpecPath) return;
@@ -294,29 +281,26 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
       });
       setApprovedSpecPath(result.specPath || null);
       // The Provider-bound store, not `getDefaultStore()`: under a Jotai
-      // `Provider` (component and hybrid tests) the default store has none of
-      // this chat's state, so `syncChatFromDb` would miss the provider's
-      // `isStreaming` guard and overwrite live messages with the DB snapshot.
+      // `Provider` the default store has none of this chat's state, so
+      // `syncChatFromDb` would miss the `isStreaming` guard and overwrite live
+      // messages with the DB snapshot.
       syncChatFromDb(chatId, setMessagesById, "[TEST-ASSERTIONS]", store);
       queryClient.invalidateQueries({ queryKey: queryKeys.appFiles.all });
       queryClient.invalidateQueries({
         queryKey: queryKeys.tests.list({ appId }),
       });
-      // A warning can accompany a spec that was written perfectly well — the
-      // already-generated case, or a partial synthesis. Report what happened
-      // (success) and what to know about it (warning) separately; a red error
-      // toast over a file that exists reads as "nothing was saved".
+      // A warning can accompany a spec written perfectly well, so report success
+      // and the caveat separately: a red error toast over a file that exists
+      // reads as "nothing was saved".
       if (result.specPath) {
         showSuccess(`Generated ${result.specPath}`);
         if (result.warning) showWarning(result.warning);
       } else if (result.warning) {
         showError(result.warning);
       }
-      // A recorded test nobody has run is a guess: the flow replayed by
-      // Playwright can behave differently from the flow performed by hand
-      // (timing, a step that only worked because the page was already warm).
-      // Hand the fresh spec back to the agent so it verifies — and can fix —
-      // what the user just approved.
+      // A recorded test nobody has run is a guess: replay can behave differently
+      // from the hand-performed flow. Hand the spec back so the agent verifies —
+      // and can fix — what was just approved.
       requestVerificationRun(result.specPath);
     } catch (error) {
       setOptimisticApproved(false);
@@ -348,9 +332,8 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
     );
   }
 
-  // Filename only: every recorded spec lives in e2e-tests/, and in a narrow
-  // chat panel the directory is what eats the truncation. Before approval there
-  // is no file at all, so the test's own title stands in.
+  // Filename only: every recorded spec lives in e2e-tests/, and in a narrow chat
+  // panel the directory eats the truncation. Before approval the title stands in.
   const generatedPath = payload.specPath;
   const subtitle = generatedPath
     ? (generatedPath.split("/").pop() ?? generatedPath)
@@ -526,8 +509,7 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
                         "w-full rounded-sm text-left text-[13px] leading-5 text-foreground",
                         "focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none",
                         // Dotted underline on hover is the editable-text
-                        // convention; it's what tells the user the sentence
-                        // itself is the control.
+                        // convention: the sentence itself is the control.
                         "decoration-muted-foreground decoration-dotted underline-offset-4 hover:underline",
                         "disabled:cursor-default disabled:hover:no-underline",
                       )}

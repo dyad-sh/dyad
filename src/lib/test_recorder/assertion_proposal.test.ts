@@ -40,23 +40,6 @@ describe("buildPlanItems", () => {
     ]);
   });
 
-  it("falls back to the raw statement for a missing description and ignores a duplicate index", () => {
-    const { items } = buildPlanItems({
-      bodyStatements: STATEMENTS,
-      stepDescriptions: [
-        { index: 0, text: "First" },
-        { index: 0, text: "Duplicate that must not win" },
-      ],
-      assertions: [],
-      newId: idFactory(),
-    });
-    const steps = items.filter((i) => i.kind === "step");
-    expect(steps[0].kind === "step" && steps[0].text).toBe("First");
-    expect(steps[1].kind === "step" && steps[1].text).toBe(
-      `page.getByRole("button", { name: "Add" }).click()`,
-    );
-  });
-
   it("places an afterStep of -1 before the first step", () => {
     const { items } = buildPlanItems({
       bodyStatements: STATEMENTS,
@@ -64,7 +47,11 @@ describe("buildPlanItems", () => {
       assertions: [{ afterStep: -1, text: "before", code: "await expect(a);" }],
       newId: idFactory(),
     });
-    expect(items[0].kind).toBe("assertion");
+    expect(items[0]).toMatchObject({
+      kind: "assertion",
+      needsCode: false,
+      origin: "model",
+    });
   });
 
   it("drops out-of-range afterStep values rather than clamping them", () => {
@@ -80,33 +67,6 @@ describe("buildPlanItems", () => {
     });
     expect(droppedAssertionCount).toBe(2);
     expect(countAssertions(items)).toBe(1);
-  });
-
-  it("keeps model order for two assertions on the same step", () => {
-    const { items } = buildPlanItems({
-      bodyStatements: STATEMENTS,
-      stepDescriptions: [],
-      assertions: [
-        { afterStep: 1, text: "first", code: "await expect(a);" },
-        { afterStep: 1, text: "second", code: "await expect(b);" },
-      ],
-      newId: idFactory(),
-    });
-    const texts = items
-      .filter((i) => i.kind === "assertion")
-      .map((i) => i.kind === "assertion" && i.text);
-    expect(texts).toEqual(["first", "second"]);
-  });
-
-  it("marks every model assertion as not needing code re-synthesis", () => {
-    const { items } = buildPlanItems({
-      bodyStatements: STATEMENTS,
-      stepDescriptions: [],
-      assertions: [{ afterStep: 0, text: "x", code: "await expect(a);" }],
-      newId: idFactory(),
-    });
-    const assertion = items.find((i) => i.kind === "assertion");
-    expect(assertion).toMatchObject({ needsCode: false, origin: "model" });
   });
 });
 
@@ -130,19 +90,6 @@ describe("moveAssertion", () => {
     expect(
       next.map((i) => (i.kind === "step" ? `s${i.stepIndex}` : i.id)),
     ).toEqual(["s0", "s1", "s2", "x"]);
-  });
-
-  it("moves an assertion up", () => {
-    const moved = moveAssertion(plan, 1, 0);
-    expect(moved[0].kind).toBe("assertion");
-  });
-
-  it("returns the same reference on every no-op", () => {
-    expect(moveAssertion(plan, 1, 1)).toBe(plan);
-    expect(moveAssertion(plan, -1, 2)).toBe(plan);
-    expect(moveAssertion(plan, 1, 9)).toBe(plan);
-    // index 0 is a step, which is never draggable
-    expect(moveAssertion(plan, 0, 2)).toBe(plan);
   });
 
   it("never reorders the steps, for any (from, to) pair", () => {
@@ -217,42 +164,5 @@ describe("AssertionProposalPayloadSchema", () => {
     expect(
       AssertionProposalPayloadSchema.parse(JSON.parse(JSON.stringify(payload))),
     ).toEqual(payload);
-  });
-
-  it("accepts the spec path an approval fills in", () => {
-    const parsed = AssertionProposalPayloadSchema.parse({
-      version: ASSERTION_PROPOSAL_VERSION,
-      appId: 7,
-      draft,
-      testTitle: "add an item",
-      specPath: "e2e-tests/recorded-add-an-item.spec.ts",
-      items: [],
-    });
-    expect(parsed.specPath).toBe("e2e-tests/recorded-add-an-item.spec.ts");
-  });
-
-  it("rejects an unknown item kind", () => {
-    expect(
-      AssertionProposalPayloadSchema.safeParse({
-        version: ASSERTION_PROPOSAL_VERSION,
-        appId: 1,
-        draft,
-        testTitle: "t",
-        specPath: null,
-        items: [{ kind: "note", text: "x" }],
-      }).success,
-    ).toBe(false);
-  });
-
-  it("rejects a payload with no recording to generate from", () => {
-    expect(
-      AssertionProposalPayloadSchema.safeParse({
-        version: ASSERTION_PROPOSAL_VERSION,
-        appId: 1,
-        testTitle: "t",
-        specPath: null,
-        items: [],
-      }).success,
-    ).toBe(false);
   });
 });

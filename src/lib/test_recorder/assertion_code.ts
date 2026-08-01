@@ -1,29 +1,13 @@
 /**
- * Validation for the one-line Playwright assertions the model hands us.
+ * Validation for the one-line Playwright assertions the model hands us. An
+ * assertion is spliced into the generated spec verbatim, so both LLM passes are
+ * gated on this being exactly one awaited `expect(...)` with a matcher chain.
  *
- * Both LLM passes (the agent's `generate_test_assertions` tool and the
- * approve-time code synthesis) are gated on this: an assertion is spliced into
- * the generated spec verbatim, so anything that isn't exactly one awaited
- * `expect(...)` assertion would break the file or run something the card never
- * presented as an assertion.
- *
- * What this DOES guarantee, precisely:
- * - the line is one statement — no second statement, no trailing expression
- *   after the matcher, no comment hiding the rest of it;
- * - it is an awaited `expect(...)` with a matcher chain, so the card's "1 check"
- *   is one check, and an async matcher is actually observed.
- *
- * What it does NOT: it says nothing about what the `expect(...)` argument
- * contains. `await expect(somethingArbitrary()).toBeDefined();` is a
- * well-formed assertion by every rule here. This is a SHAPE check, not a
- * sandbox — a spec is ordinary TypeScript and runs with Node's privileges.
- *
- * The trust boundary that actually matters is provenance, and it lives in
- * `test_assertion_handlers.ts`: assertion code only ever comes from the model,
- * never from the renderer (see `resolveAssertionCode`), and the model in
- * question is the one the user selected — the same one that can already call
- * `write_file`. Tightening this validator would not change that, so don't read
- * it as the thing standing between a hostile model and the user's repo.
+ * This is a SHAPE check, not a sandbox: it says nothing about what the
+ * `expect(...)` argument contains, and a spec is ordinary TypeScript running
+ * with Node's privileges. The trust boundary that matters is provenance, in
+ * `test_assertion_handlers.ts` — assertion code only ever comes from the model
+ * the user selected, never from the renderer (see `resolveAssertionCode`).
  */
 
 /** The delimiter that closes each opener. */
@@ -42,10 +26,6 @@ interface Scan {
 }
 
 /**
- * Scan a single line of code from `from`, ignoring string literals, and report
- * whether the delimiters balance and whether a line comment appears outside a
- * string.
- *
  * Hand-rolled rather than regex because `expect(page.getByText("a;b"))` must not
  * be mistaken for two statements, and `getByText("http://x")` must not be
  * mistaken for a comment. Openers are tracked on a stack rather than as a depth
@@ -114,15 +94,9 @@ const MEMBER_RE = /^\.\s*([A-Za-z_$][\w$]*)\s*/;
 
 /**
  * Whether everything after the `expect(...)` group is a plain member/call chain
- * ending in a matcher call and nothing else.
- *
- * This is what stops `await expect(a).toBeVisible(), fs.rmSync("/");` — a single
- * balanced statement by every other measure — from being presented to the user
- * as one assertion when it is an assertion plus something else.
- *
- * Only the tail is checked. The `expect(...)` argument is not constrained at
- * all, so this narrows what a line can DO alongside asserting; it does not make
- * the assertion itself safe. See the file header.
+ * ending in a matcher call and nothing else. This is what stops
+ * `await expect(a).toBeVisible(), fs.rmSync("/");` — a single balanced statement
+ * by every other measure — from being presented to the user as one assertion.
  */
 function isMatcherChain(code: string, from: number): boolean {
   let i = from;
@@ -138,8 +112,6 @@ function isMatcherChain(code: string, from: number): boolean {
 
     if (code[i] === "(") {
       const scan = scanLine(code, i);
-      // `groupEnd` is the index past this call's `)`; anything unbalanced or a
-      // stray closer inside makes the whole line unusable.
       if (!scan.balanced || scan.hasComment || scan.groupEnd === -1)
         return false;
       i = scan.groupEnd;
@@ -150,13 +122,10 @@ function isMatcherChain(code: string, from: number): boolean {
 
 /**
  * True when `code` is exactly one awaited Playwright assertion statement on one
- * line: `await expect(<args>)` followed by a matcher chain and a `;`.
- *
- * Anything else is rejected rather than repaired — a guess at what the model
- * meant would land in the user's test file. `await` is required, not optional:
- * every web-first matcher this flow proposes (`toBeVisible`, `toHaveText`,
- * `toHaveURL`) is asynchronous, so an un-awaited assertion can pass a test
- * without ever observing its own result.
+ * line. Anything else is rejected rather than repaired — a guess at what the
+ * model meant would land in the user's test file. `await` is required: every
+ * web-first matcher this flow proposes is asynchronous, so an un-awaited
+ * assertion can pass a test without ever observing its own result.
  */
 export function isSingleAssertionStatement(code: string): boolean {
   const trimmed = code.trim();

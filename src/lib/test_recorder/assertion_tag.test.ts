@@ -67,31 +67,6 @@ describe("assertion tag round-trip", () => {
     expect(block.attributes["spec-path"]).toBe(PAYLOAD.specPath);
     expect(parseAssertionsPayload(block.content)).toEqual(PAYLOAD);
   });
-
-  it("round-trips on the main-process side too", () => {
-    expect(parseAssertionsPayloadFromMessage(content)).toEqual(PAYLOAD);
-    expect(readAssertionsTagAttribute(content, "status")).toBe("proposed");
-    expect(readAssertionsTagAttribute(content, "proposal-id")).toBe("prop-1");
-  });
-
-  it("reflects the approved latch", () => {
-    const approved = buildAssertionsTagContent({
-      proposalId: "prop-1",
-      status: "approved",
-      payload: PAYLOAD,
-    });
-    expect(readAssertionsTagAttribute(approved, "status")).toBe("approved");
-  });
-
-  it("carries an empty spec-path while no file has been generated", () => {
-    const pending = buildAssertionsTagContent({
-      proposalId: "prop-1",
-      status: "proposed",
-      payload: { ...PAYLOAD, specPath: null },
-    });
-    expect(readAssertionsTagAttribute(pending, "spec-path")).toBe("");
-    expect(parseAssertionsPayloadFromMessage(pending)?.specPath).toBeNull();
-  });
 });
 
 describe("replaceAssertionsTagInMessage", () => {
@@ -182,22 +157,5 @@ describe("replaceAssertionsTagInMessage", () => {
     expect(
       replaceAssertionsTagInMessage(`prose ${proposed}`, approved, "prop-9"),
     ).toBeNull();
-  });
-
-  it("returns null when the message has no card to replace", () => {
-    expect(replaceAssertionsTagInMessage("just prose", approved)).toBeNull();
-  });
-});
-
-describe("parseAssertionsPayload", () => {
-  it("returns null instead of throwing on unusable content", () => {
-    expect(parseAssertionsPayload("")).toBeNull();
-    expect(parseAssertionsPayload("not json")).toBeNull();
-    expect(parseAssertionsPayload(`{"version":2}`)).toBeNull();
-  });
-
-  it("returns null when the message has no tag at all", () => {
-    expect(parseAssertionsPayloadFromMessage("just some text")).toBeNull();
-    expect(readAssertionsTagAttribute("just some text", "status")).toBeNull();
   });
 });

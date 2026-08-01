@@ -34,10 +34,9 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 const logger = log.scope("recording_handlers");
 
 /**
- * Absolute cap on a single recording session so its per-app lock can't leak
- * forever if the renderer forgets to stop. This is a hard session limit, not an
- * inactivity timer: recorded actions are buffered in the renderer, so the main
- * process sees no per-action signal to reset against.
+ * Absolute cap on a session so its per-app lock can't leak forever if the
+ * renderer forgets to stop. A hard limit, not an inactivity timer: actions are
+ * buffered in the renderer, so the main process sees no signal to reset against.
  */
 const MAX_SESSION_MS = 30 * 60 * 1000;
 
@@ -135,9 +134,8 @@ export function registerRecordingHandlers() {
       event.sender.once?.("destroyed", onDestroyed);
       const sessionTimer = setTimeout(() => stop("timed-out"), MAX_SESSION_MS);
 
-      // Hold the per-app lock across the whole session (prepare → record →
-      // teardown). The handler resolves on `ready` (set once isolation is up);
-      // the lock is only released when the session is stopped.
+      // Hold the per-app lock across the whole session. The handler resolves on
+      // `ready`; the lock is released only when the session is stopped.
       const done = withLock(appId, async () => {
         let prepared: PreparedIsolation | undefined;
         let started = false;
@@ -162,11 +160,9 @@ export function registerRecordingHandlers() {
             return;
           }
 
-          // Re-read the dev server rather than trusting the check above: this
-          // request may have queued behind another app operation, and isolation
-          // setup itself takes seconds. If the preview stopped in the meantime,
-          // arming the recorder would point it at nothing — report it as an
-          // infra error and let `finally` tear the isolation back down.
+          // Re-read rather than trusting the check above: isolation setup takes
+          // seconds, and if the preview stopped meanwhile, arming the recorder
+          // would point it at nothing.
           const proxyUrl = runningApps.get(appId)?.proxyUrl;
           if (!proxyUrl) {
             ready.resolve(
@@ -178,10 +174,9 @@ export function registerRecordingHandlers() {
             return;
           }
 
-          // Start recording from the same pristine, logged-out state the
-          // generated test replays from: clear any preview session left over
-          // from the real database (the CoW branch copied the real users, so a
-          // stale cookie could still look valid).
+          // Start from the same pristine, logged-out state the generated test
+          // replays from: the CoW branch copied the real users, so a stale
+          // cookie could still look valid.
           try {
             const origin = new URL(proxyUrl).origin;
             await session.defaultSession.clearStorageData({
@@ -234,9 +229,9 @@ export function registerRecordingHandlers() {
               );
             }
           }
-          // Only retire our own entry. Teardown runs for seconds, so a
-          // registration made in the meantime must survive this cleanup — the
-          // per-session `stop` closure is the session's identity.
+          // Only retire our own entry: teardown runs for seconds, so a
+          // registration made meanwhile must survive. The per-session `stop`
+          // closure is the session's identity.
           if (activeRecordings.get(appId)?.stop === stop) {
             activeRecordings.delete(appId);
           }

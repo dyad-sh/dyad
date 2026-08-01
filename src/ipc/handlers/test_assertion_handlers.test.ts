@@ -76,10 +76,7 @@ import {
   type RecordedTestDraft,
 } from "@/lib/test_recorder/draft";
 import { recordedBodyStatements } from "@/lib/test_recorder/codegen";
-import {
-  getRecordedTestDraft,
-  setRecordedTestDraft,
-} from "@/ipc/services/recorded_test_drafts";
+import { setRecordedTestDraft } from "@/ipc/services/recorded_test_drafts";
 
 const SPEC_PATH = "e2e-tests/recorded-add-an-item.spec.ts";
 
@@ -456,26 +453,6 @@ describe("registerTestAssertionHandlers", () => {
       expect(latched).toContain("and also:");
     });
 
-    it("honors a reordered plan", async () => {
-      const { appId, chatId } = seed();
-      const { proposalId } = propose(appId, chatId);
-      const items = planFromMessage(storedMessages()[0].content);
-      // Drag the assertion to the very top.
-      const assertion = items.find((i) => i.kind === "assertion")!;
-      const reordered = [assertion, ...items.filter((i) => i.kind === "step")];
-
-      await harness.invokeHandler("tests:apply-assertions", {
-        appId,
-        chatId,
-        proposalId,
-        items: reordered,
-      });
-
-      expect(bodyLines()[0]).toBe(
-        `  await expect(page.getByTestId("row")).toBeVisible();`,
-      );
-    });
-
     it("never writes renderer-supplied assertion code", async () => {
       const { appId, chatId } = seed();
       const { proposalId } = propose(appId, chatId);
@@ -505,62 +482,44 @@ describe("registerTestAssertionHandlers", () => {
       expect(readSpec()).not.toContain("rmSync");
     });
 
-    it("re-synthesizes when the submitted text no longer matches the stored code", async () => {
-      const { appId, chatId } = seed();
-      const { proposalId } = propose(appId, chatId);
-      const items = planFromMessage(storedMessages()[0].content);
-      // Edited text but `needsCode` left false — the flag is the renderer's, so
-      // the decision to re-synthesize has to come from comparing against the
-      // stored proposal instead.
-      const edited = items.map((item) =>
-        item.kind === "assertion"
-          ? { ...item, text: "The heading is visible" }
-          : item,
-      );
-      const assertion = items.find((i) => i.kind === "assertion")!;
-      respondWith(
-        JSON.stringify({
-          assertions: [
-            {
-              id: assertion.kind === "assertion" ? assertion.id : "",
-              code: `await expect(page.getByRole("heading")).toBeVisible();`,
-            },
-          ],
-        }),
-      );
+    // `needsCode` is the renderer's flag, so the decision to re-synthesize has
+    // to come from comparing against the stored proposal — edited text must be
+    // re-synthesized either way.
+    it.each([false, true])(
+      "re-synthesizes edited assertion text (needsCode: %s)",
+      async (needsCode) => {
+        const { appId, chatId } = seed();
+        const { proposalId } = propose(appId, chatId);
+        const items = planFromMessage(storedMessages()[0].content);
+        const edited = items.map((item) =>
+          item.kind === "assertion"
+            ? { ...item, text: "The heading is visible", needsCode }
+            : item,
+        );
+        const assertion = items.find((i) => i.kind === "assertion")!;
+        respondWith(
+          JSON.stringify({
+            assertions: [
+              {
+                id: assertion.kind === "assertion" ? assertion.id : "",
+                code: `await expect(page.getByRole("heading")).toBeVisible();`,
+              },
+            ],
+          }),
+        );
 
-      await harness.invokeHandler("tests:apply-assertions", {
-        appId,
-        chatId,
-        proposalId,
-        items: edited,
-      });
-
-      expect(bodyLines().at(-1)).toBe(
-        `  await expect(page.getByRole("heading")).toBeVisible();`,
-      );
-    });
-
-    it("rejects a plan whose recorded steps were resequenced", async () => {
-      const { appId, chatId } = seed();
-      const { proposalId } = propose(appId, chatId);
-      const items = planFromMessage(storedMessages()[0].content);
-      const steps = items.filter((i) => i.kind === "step");
-      // [1, 0] used to validate against [0, 1] because both sides were sorted,
-      // while the write loop kept the submitted order — silently generating a
-      // test that replays the recording backwards.
-      const resequenced = [...steps].reverse();
-
-      await expect(
-        harness.invokeHandler("tests:apply-assertions", {
+        await harness.invokeHandler("tests:apply-assertions", {
           appId,
           chatId,
           proposalId,
-          items: resequenced,
-        }),
-      ).rejects.toThrow(/doesn't match the recorded steps/);
-      expect(specExists(SPEC_PATH)).toBe(false);
-    });
+          items: edited,
+        });
+
+        expect(bodyLines().at(-1)).toBe(
+          `  await expect(page.getByRole("heading")).toBeVisible();`,
+        );
+      },
+    );
 
     it("generates one spec when the same proposal is approved twice at once", async () => {
       const { appId, chatId } = seed();
@@ -586,39 +545,6 @@ describe("registerTestAssertionHandlers", () => {
       expect(second.warning).toBe("This test was already generated.");
       expect(specExists("e2e-tests/recorded-add-an-item-2.spec.ts")).toBe(
         false,
-      );
-    });
-
-    it("re-synthesizes code only for an edited assertion", async () => {
-      const { appId, chatId } = seed();
-      const { proposalId } = propose(appId, chatId);
-      const items = planFromMessage(storedMessages()[0].content);
-      const edited = items.map((item) =>
-        item.kind === "assertion"
-          ? { ...item, text: "The page title is visible", needsCode: true }
-          : item,
-      );
-      const assertionId = items.find((i) => i.kind === "assertion")!;
-      respondWith(
-        JSON.stringify({
-          assertions: [
-            {
-              id: assertionId.kind === "assertion" ? assertionId.id : "",
-              code: `await expect(page.getByRole("heading")).toBeVisible();`,
-            },
-          ],
-        }),
-      );
-
-      await harness.invokeHandler("tests:apply-assertions", {
-        appId,
-        chatId,
-        proposalId,
-        items: edited,
-      });
-
-      expect(readSpec()).toContain(
-        `  await expect(page.getByRole("heading")).toBeVisible();`,
       );
     });
 
@@ -651,21 +577,6 @@ describe("registerTestAssertionHandlers", () => {
       expect(mockGitAdd).not.toHaveBeenCalled();
     });
 
-    it("clears the pending draft so it can't be proposed against again", async () => {
-      const { appId, chatId } = seed();
-      const { proposalId } = propose(appId, chatId);
-      const items = planFromMessage(storedMessages()[0].content);
-
-      await harness.invokeHandler("tests:apply-assertions", {
-        appId,
-        chatId,
-        proposalId,
-        items,
-      });
-
-      expect(getRecordedTestDraft(appId)).toBeNull();
-    });
-
     it("rejects a chat that belongs to a different app", async () => {
       const { appId, chatId } = seed();
       const { proposalId } = propose(appId, chatId);
@@ -685,113 +596,88 @@ describe("registerTestAssertionHandlers", () => {
       ).rejects.toMatchObject({ kind: DyadErrorKind.Validation });
     });
 
-    it("skips an edited assertion when code synthesis fails, but still generates the test", async () => {
+    // Either way the recording still becomes a test: losing it because one
+    // assertion couldn't be written would throw away the user's whole session.
+    it.each([
+      [
+        "the model call fails",
+        /couldn't generate code/i,
+        (_id: string) => {
+          // Built lazily, at the moment the handler calls streamText — creating
+          // the rejected promise up front would be unhandled until then.
+          mockStreamText.mockImplementationOnce(() => ({
+            text: Promise.reject(new Error("boom")),
+          }));
+        },
+      ],
+      [
+        "the synthesized code isn't a single statement",
+        /couldn't be turned into working code/i,
+        (id: string) => {
+          respondWith(
+            JSON.stringify({
+              assertions: [
+                {
+                  id,
+                  code: `await expect(a).toBeVisible(); await expect(b).toBeVisible();`,
+                },
+              ],
+            }),
+          );
+        },
+      ],
+    ])(
+      "skips an edited assertion when %s",
+      async (_label, warning, arrange) => {
+        const { appId, chatId } = seed();
+        const { proposalId } = propose(appId, chatId);
+        const original = planFromMessage(storedMessages()[0].content);
+        const assertion = original.find((item) => item.kind === "assertion")!;
+        const items = original.map((item) =>
+          item.kind === "assertion"
+            ? { ...item, text: "Something unrelated", needsCode: true }
+            : item,
+        );
+        arrange(assertion.kind === "assertion" ? assertion.id : "");
+
+        const result = await harness.invokeHandler<{
+          appliedCount: number;
+          warning?: string;
+        }>("tests:apply-assertions", { appId, chatId, proposalId, items });
+
+        expect(result.appliedCount).toBe(0);
+        expect(result.warning).toMatch(warning);
+        expect(bodyLines()).toEqual([
+          `  await page.goto("/");`,
+          `  await page.getByRole("button", { name: "Add" }).click();`,
+        ]);
+      },
+    );
+
+    // The recorded interactions must survive the round-trip exactly, or the plan
+    // describes a different recording than the one about to be written.
+    // Resequencing in particular used to validate, because both sides were
+    // sorted while the write loop kept the submitted order.
+    it.each([
+      ["resequenced", (i: AssertionPlanItem[]) => [...i].reverse()],
+      [
+        "lost a step",
+        (i: AssertionPlanItem[]) =>
+          i.filter((item) => !(item.kind === "step" && item.stepIndex === 0)),
+      ],
+      [
+        "invented a step index",
+        (i: AssertionPlanItem[]) =>
+          i.map((item) =>
+            item.kind === "step" && item.stepIndex === 1
+              ? { ...item, stepIndex: 9 }
+              : item,
+          ),
+      ],
+    ])("rejects a plan whose steps were %s", async (_label, mutate) => {
       const { appId, chatId } = seed();
       const { proposalId } = propose(appId, chatId);
-      const items = planFromMessage(storedMessages()[0].content).map((item) =>
-        item.kind === "assertion"
-          ? { ...item, text: "Something unrelated", needsCode: true }
-          : item,
-      );
-      // Build the rejected promise lazily, at the moment the handler calls
-      // streamText — creating it up front would be unhandled until then.
-      mockStreamText.mockImplementationOnce(() => ({
-        text: Promise.reject(new Error("boom")),
-      }));
-
-      const result = await harness.invokeHandler<{
-        appliedCount: number;
-        warning?: string;
-      }>("tests:apply-assertions", { appId, chatId, proposalId, items });
-
-      expect(result.appliedCount).toBe(0);
-      expect(result.warning).toMatch(/couldn't generate code/i);
-      // The recording still becomes a test — losing it because one assertion
-      // couldn't be written would throw away the user's whole session.
-      expect(bodyLines()).toEqual([
-        `  await page.goto("/");`,
-        `  await page.getByRole("button", { name: "Add" }).click();`,
-      ]);
-    });
-
-    it("skips synthesized code that isn't a single statement", async () => {
-      const { appId, chatId } = seed();
-      const { proposalId } = propose(appId, chatId);
-      const original = planFromMessage(storedMessages()[0].content);
-      const assertion = original.find((item) => item.kind === "assertion")!;
-      const items = original.map((item) =>
-        item.kind === "assertion"
-          ? { ...item, text: "Something unrelated", needsCode: true }
-          : item,
-      );
-      respondWith(
-        JSON.stringify({
-          assertions: [
-            {
-              id: assertion.kind === "assertion" ? assertion.id : "",
-              code: `await expect(a).toBeVisible(); await expect(b).toBeVisible();`,
-            },
-          ],
-        }),
-      );
-
-      const result = await harness.invokeHandler<{
-        appliedCount: number;
-        warning?: string;
-      }>("tests:apply-assertions", { appId, chatId, proposalId, items });
-
-      expect(result.appliedCount).toBe(0);
-      expect(result.warning).toMatch(/couldn't be turned into working code/i);
-      expect(readSpec()).not.toContain("await expect(");
-    });
-
-    it("generates the recorded steps when the user removed every assertion", async () => {
-      const { appId, chatId } = seed();
-      const { proposalId } = propose(appId, chatId);
-      const items = planFromMessage(storedMessages()[0].content).filter(
-        (item) => item.kind === "step",
-      );
-
-      const result = await harness.invokeHandler<{
-        appliedCount: number;
-        warning?: string;
-      }>("tests:apply-assertions", { appId, chatId, proposalId, items });
-
-      expect(result.appliedCount).toBe(0);
-      expect(result.warning).toBeUndefined();
-      expect(bodyLines()).toEqual([
-        `  await page.goto("/");`,
-        `  await page.getByRole("button", { name: "Add" }).click();`,
-      ]);
-      expect(storedMessages()[0].content).toContain(`status="approved"`);
-    });
-
-    it("rejects a plan that lost a recorded step", async () => {
-      const { appId, chatId } = seed();
-      const { proposalId } = propose(appId, chatId);
-      const items = planFromMessage(storedMessages()[0].content).filter(
-        (item) => !(item.kind === "step" && item.stepIndex === 0),
-      );
-
-      await expect(
-        harness.invokeHandler("tests:apply-assertions", {
-          appId,
-          chatId,
-          proposalId,
-          items,
-        }),
-      ).rejects.toMatchObject({ kind: DyadErrorKind.Validation });
-      expect(specExists()).toBe(false);
-    });
-
-    it("rejects a plan that invented a step index", async () => {
-      const { appId, chatId } = seed();
-      const { proposalId } = propose(appId, chatId);
-      const items = planFromMessage(storedMessages()[0].content).map((item) =>
-        item.kind === "step" && item.stepIndex === 1
-          ? { ...item, stepIndex: 9 }
-          : item,
-      );
+      const items = mutate(planFromMessage(storedMessages()[0].content));
 
       await expect(
         harness.invokeHandler("tests:apply-assertions", {

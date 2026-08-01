@@ -2,76 +2,50 @@
  * dyad-recorder-client.js
  *
  * Injected into the preview iframe by the proxy server (see proxy_server.js).
- * Observes trusted user interactions while "recording" is active and reports a
- * normalized action stream to the Dyad renderer via postMessage. It is
- * OBSERVE-ONLY: it never calls preventDefault, so the app behaves exactly as it
- * would without the recorder. Fidelity of the recorded steps is verified later
- * by actually running the generated Playwright test.
+ * Observes user interactions while recording is active and reports a normalized
+ * action stream to the renderer via postMessage. OBSERVE-ONLY: it never calls
+ * preventDefault, so the app behaves exactly as it would without the recorder.
  *
- * The action-capture semantics are a small port of Playwright's in-page
- * RecordActionTool: text entry is captured as a single `fill` with the full
- * value (never individual key presses), form-control toggles come from `change`
- * (so no capture-phase reversal is needed), and selectors are generated with a
- * ranking that prefers stable, human-readable locators. Clicks are reported the
- * moment they happen — a click that navigates would otherwise be lost with the
- * unloading document — and the renderer's `collapseActions` is what folds the
- * clicks preceding a double-click into it.
+ * Capture semantics are a small port of Playwright's in-page RecordActionTool:
+ * text entry becomes a single `fill` with the full value, form-control toggles
+ * come from `change`, and selectors prefer stable, human-readable locators.
+ * Clicks are reported immediately — a click that navigates would otherwise be
+ * lost with the unloading document — and the renderer's `collapseActions` folds
+ * the clicks preceding a double-click into it.
  *
- * This file is plain, dependency-free IIFE JS (no imports/exports) — it is read
- * verbatim and injected into every previewed HTML document. It communicates
- * only through window.postMessage / addEventListener("message").
+ * Plain, dependency-free IIFE JS: it is read verbatim and injected into every
+ * previewed HTML document. See `src/lib/test_recorder/types.ts` for the schemas
+ * of the actions and locator descriptors it emits.
  *
  * Protocol:
  *   down (from parent): { type: "activate-dyad-recorder" | "deactivate-dyad-recorder" }
  *   up   (to parent):   { type: "dyad-recorder-initialized" }
  *                       { type: "dyad-recorder-action", action: RecordedAction }
- *
- * A RecordedAction is one of:
- *   { kind: "click",   locator }
- *   { kind: "dblclick",locator }
- *   { kind: "fill",    locator, value }
- *   { kind: "press",   locator?, key }   // no locator = page-level shortcut
- *   { kind: "check",   locator }
- *   { kind: "uncheck", locator }
- *   { kind: "select",  locator, values: string[] }
- * where `locator` is a serializable descriptor:
- *   { kind: "testid"|"role"|"placeholder"|"label"|"text"|"dyadId"|"css",
- *     value: string, name?: string, exact?: boolean, nth?: number }
  */
 (() => {
   const OVERLAY_CLASS = "__dyad_recorder_overlay__";
-  // Identical actions fired within this window are collapsed. This absorbs the
-  // synthetic duplicate the browser dispatches when a <label> activates its
-  // control, without swallowing deliberate repeat interactions (a real double
-  // single-click becomes a dblclick well before this).
+  // Absorbs the synthetic duplicate the browser dispatches when a <label>
+  // activates its control, without swallowing deliberate repeat interactions.
   const DEDUPE_MS = 50;
 
-  // Never copy a typed password verbatim into the generated spec — it would land
-  // on disk (and likely be committed) as a plaintext secret. Record the `fill`
-  // step so the flow/locator is preserved, but substitute a placeholder the user
-  // replaces with a real value (or an env var) before running the test.
+  // A typed password must never land in the generated spec as a plaintext
+  // secret. The `fill` step is still recorded so the flow/locator is preserved.
   const PASSWORD_PLACEHOLDER = "REPLACE_WITH_PASSWORD";
 
-  // Fields whose name says "secret" even though the type doesn't: API keys,
-  // bearer tokens, one-time codes. Matched against name/id/testid/aria-label.
-  // Deliberately conservative — a false positive costs the user one placeholder
-  // to replace, a false negative writes a live credential into their repo.
+  // Fields whose name says "secret" even though the type doesn't. Deliberately
+  // conservative — a false positive costs one placeholder to replace, a false
+  // negative writes a live credential into the user's repo.
   const SECRET_NAME_RE =
     /password|passwd|passphrase|secret|token|api[-_ ]?key|private[-_ ]?key|credential|\botp|\btotp|\bmfa|\b2fa/i;
   const SECRET_ATTRS = ["name", "id", "data-testid", "aria-label"];
 
   // Controls seen as type="password" at any point this session. A show/hide
   // toggle flips the input to type="text", so without this every keystroke after
-  // the reveal would be captured in plaintext. Populated from three places: the
-  // handlers that see an element before typing starts (hover, click), the input
-  // path itself, and — for a field the user never pointed at, e.g. one filled by
-  // a password manager and then revealed — a MutationObserver watching `type`
-  // flip away from "password" (see `watchPasswordReveals`).
+  // the reveal would be captured in plaintext.
   //
-  // Known limitation: this is heuristic. A secret typed into a field that was
-  // never type="password" and whose attributes don't read as secret-bearing is
-  // still recorded verbatim, so the generated spec is worth a glance before
-  // committing it.
+  // Known limitation: heuristic. A secret typed into a field that was never
+  // type="password" and whose attributes don't read as secret-bearing is still
+  // recorded verbatim, so a generated spec is worth a glance before committing.
   const seenAsPassword = new WeakSet();
 
   const INTERACTIVE_SELECTOR =
@@ -142,9 +116,7 @@
 
   /**
    * Remember a control that is currently a password field, so a later reveal
-   * toggle (type="text") can't launder its value into the recording. Called from
-   * the handlers that see elements before typing starts — hover and click — as
-   * well as from the input path itself.
+   * toggle (type="text") can't launder its value into the recording.
    */
   function notePasswordField(el) {
     if (isPasswordField(el)) seenAsPassword.add(el);
@@ -162,22 +134,18 @@
   }
 
   /**
-   * Apply any `type` mutations the observer hasn't delivered yet.
-   *
-   * MutationObserver callbacks are microtasks, so a reveal toggle and a
-   * keystroke that land in the same task would otherwise be evaluated before the
-   * flip is known — and that one keystroke would be captured in plaintext.
+   * MutationObserver callbacks are microtasks, so a reveal toggle and a keystroke
+   * landing in the same task would otherwise be evaluated before the flip is
+   * known — and that one keystroke captured in plaintext.
    */
   function drainPasswordMutations() {
     if (passwordObserver) noteRevealedPasswords(passwordObserver.takeRecords());
   }
 
   /**
-   * Catch a reveal toggle even for a field the recorder has never seen as a
-   * password: watching `type` mutations with the old value means the
-   * password→text flip itself is the signal, so a field that was autofilled and
-   * then unmasked — never hovered, never clicked, never typed into while
-   * masked — is still redacted rather than captured in plaintext.
+   * Catch a reveal toggle even for a field never seen as a password: the
+   * password→text flip is itself the signal, so a field that was autofilled and
+   * then unmasked is still redacted rather than captured in plaintext.
    */
   function watchPasswordReveals() {
     const Observer =
@@ -254,10 +222,9 @@
   }
 
   /**
-   * Resolve the actual control a pointer interaction concerns. Clicking a
-   * <label> (or content inside it) activates its associated control, so we map
-   * to that control and let the control's own `change`/`click` drive recording.
-   * Returns null for elements that are not form controls.
+   * Resolve the control a pointer interaction concerns. Clicking a <label>
+   * activates its associated control, so map to that and let the control's own
+   * `change`/`click` drive recording. Null for non-form-controls.
    */
   function resolveControl(el) {
     if (!el) return null;
@@ -389,11 +356,9 @@
   }
 
   /* ---------- selector generation -------------------------------------- */
-  // Per-`selectorFor`-call scratch space. A single call can consider several
-  // candidate kinds, each of which used to re-walk the whole document and
-  // recompute role + accessible name for every element — several O(N) sweeps per
-  // event, in the capture phase, i.e. before the app handles the same event.
-  // Memoizing within the call collapses that to at most one sweep.
+  // Per-`selectorFor`-call scratch space. Each candidate kind would otherwise
+  // re-walk the document recomputing role + accessible name — several O(N)
+  // sweeps per event, in the capture phase. Memoizing collapses that to one.
   let scan = null;
 
   function beginScan() {
@@ -427,12 +392,11 @@
   }
 
   /**
-   * Whether an element is exposed to the accessibility tree the way Playwright's
-   * `getByRole` sees it (`includeHidden: false`).
-   *
-   * Uniqueness and `nth` are computed from these matches, so counting a hidden
-   * duplicate — a closed dialog's buttons, a `display: none` mobile nav — would
-   * hand replay an `.nth(1)` that points at an element Playwright never sees.
+   * Whether an element is exposed to the a11y tree the way Playwright's
+   * `getByRole` sees it (`includeHidden: false`). Uniqueness and `nth` are
+   * computed from these matches, so counting a hidden duplicate — a closed
+   * dialog's buttons, a `display: none` mobile nav — would hand replay an
+   * `.nth(1)` pointing at an element Playwright never sees.
    */
   function isAriaVisible(el) {
     if (!el || el.nodeType !== 1) return false;
@@ -446,15 +410,14 @@
       }
       if (node.hasAttribute && node.hasAttribute("hidden")) return false;
     }
-    // The real answer, where it exists: `checkVisibility` accounts for an
-    // ancestor's `display: none`, `content-visibility`, and detached subtrees.
-    // Walking computed styles cannot — `display` doesn't inherit, so a child of a
-    // hidden container computes to `block` and reads as visible.
+    // `checkVisibility` accounts for an ancestor's `display: none`,
+    // `content-visibility`, and detached subtrees. Walking computed styles
+    // cannot: `display` doesn't inherit, so a child of a hidden container
+    // computes to `block` and reads as visible.
     if (typeof el.checkVisibility === "function") {
       try {
-        // `visibilityProperty` is off by default but Playwright does treat
-        // `visibility: hidden` as hidden. `opacityProperty` stays off, because
-        // Playwright does NOT — an `opacity: 0` element is still visible to it.
+        // Playwright treats `visibility: hidden` as hidden but NOT `opacity: 0`,
+        // so `visibilityProperty` is on and `opacityProperty` stays off.
         return el.checkVisibility({
           visibilityProperty: true,
           contentVisibilityAuto: true,
@@ -544,12 +507,10 @@
   /**
    * Candidate descriptors for `el`, highest priority first.
    *
-   * Every name/text-based candidate carries `exact: true`. Playwright's
-   * getByRole/getByLabel/getByPlaceholder/getByText match names as
-   * case-insensitive substrings by default, but the uniqueness check below
-   * compares them with `===`. Without `exact` the recorder would call a "Save"
-   * button unique and omit `.nth()`, while replay also matched "Save draft" and
-   * failed strict mode.
+   * Every name/text-based candidate carries `exact: true`: Playwright matches
+   * names as case-insensitive substrings by default, but the uniqueness check
+   * below compares with `===`. Without it the recorder would call a "Save" button
+   * unique and omit `.nth()`, while replay also matched "Save draft".
    */
   function buildCandidates(el) {
     const candidates = [];
@@ -612,9 +573,8 @@
       parts.unshift(part);
       node = parent;
     }
-    // The walk stops before <body>, so an element that *is* body (or the root)
-    // produces no segments at all — and `locator("")` throws at replay. Name the
-    // element itself instead, which is a selector Playwright can resolve.
+    // The walk stops before <body>, so an element that *is* body produces no
+    // segments — and `locator("")` throws at replay. Name the element instead.
     if (parts.length === 0) {
       return {
         kind: "css",
@@ -625,15 +585,12 @@
   }
 
   /**
-   * Pick the best selector descriptor for `el`: the highest-priority candidate
-   * that uniquely matches it; else the highest-priority one disambiguated by an
-   * nth index; else a CSS-path fallback.
+   * The highest-priority candidate that uniquely matches `el`; else the
+   * highest-priority one disambiguated by an nth index; else a CSS-path fallback.
    *
-   * Candidates are resolved lazily, in priority order, and the loop returns on
-   * the first unique match — so an element carrying a `data-testid` never pays
-   * for the whole-document role scan behind the candidate after it. Only when
-   * nothing is unique do the remaining candidates get evaluated, to pick an
-   * `nth`.
+   * Candidates are resolved lazily and the loop returns on the first unique
+   * match, so an element carrying a `data-testid` never pays for the
+   * whole-document role scan behind it.
    */
   function selectorFor(el) {
     beginScan();
@@ -657,14 +614,11 @@
     }
   }
 
-  // Typing is the only genuinely hot path: `input` fires per keystroke, and the
-  // element being typed into doesn't move between them. Consecutive fills on one
-  // locator collapse into a single step anyway, so reuse the descriptor already
-  // computed for that element instead of re-sweeping the document each keystroke.
-  //
-  // Only an uninterrupted run of `input` events on the same element reuses it:
-  // any other interaction (a click, a toggle, a shortcut) can have changed the
-  // DOM enough to make the cached locator ambiguous, so those clear it.
+  // Typing is the only genuinely hot path: `input` fires per keystroke and the
+  // element doesn't move between them, so reuse its descriptor instead of
+  // re-sweeping the document each time. Only an uninterrupted run of `input` on
+  // the same element reuses it — any other interaction can have changed the DOM
+  // enough to make the cached locator ambiguous, so those clear it.
   let lastFill = { el: null, locator: null };
 
   function clearFillLocator() {
@@ -726,9 +680,8 @@
     if (control) {
       // Seen before any reveal toggle can flip it to type="text".
       notePasswordField(control);
-      // Form-control interactions are recorded from their `change` event
-      // (toggles, selects) or their own `input` (text). Skip the click so we
-      // don't double-record or emit a spurious click before a fill.
+      // Form controls are recorded from `change` (toggles, selects) or `input`
+      // (text); skip the click so we don't double-record.
       if (
         isCheckboxOrRadio(control) ||
         control.tagName === "SELECT" ||
@@ -738,11 +691,9 @@
       }
     }
 
-    // Emitted now, not after a debounce: a click on a link or a submit button
-    // unloads this document within milliseconds, and a stalled click would go
-    // with it — leaving the generated test with neither the click nor the
-    // navigation it caused. The click(s) preceding a double-click are folded
-    // into it by the renderer's `collapseActions` instead.
+    // Emitted now, not after a debounce: a click on a link unloads this document
+    // within milliseconds and a stalled click would go with it. The clicks
+    // preceding a double-click are folded in by the renderer's `collapseActions`.
     const target = retarget(raw);
     emit({ kind: "click", locator: selectorFor(target) });
   }
@@ -805,9 +756,8 @@
     if (!shouldRecordPress(e)) return;
     clearFillLocator();
     const target = retarget(deepTarget(e));
-    // Navigation keys and shortcuts fired with nothing focused target <body>,
-    // which has no meaningful locator. Record those as a page-level press
-    // (`page.keyboard.press`) rather than inventing a locator for the document.
+    // Keys fired with nothing focused target <body>, which has no meaningful
+    // locator; record those as a page-level `page.keyboard.press`.
     if (
       !target ||
       target === document.body ||

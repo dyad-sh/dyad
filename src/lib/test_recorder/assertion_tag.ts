@@ -5,17 +5,12 @@ import {
 } from "./assertion_proposal";
 
 /**
- * Serialize/deserialize the `<dyad-test-assertions>` chat card.
- *
- * The card is emitted by the agent's `generate_test_assertions` tool into its
- * assistant message, so the tag is the durable store for a proposal: attributes
- * carry the identity and approval status, the JSON body carries the plan and
- * the recording it was computed from. Approving rewrites the tag in place with
- * `status="approved"` and the path of the spec it just generated, which is what
- * makes the latch survive a reload. The tag sits inside a larger message
- * (the agent's own prose and other tool cards surround it), so every rewrite
- * goes through `replaceAssertionsTagInMessage` — never by replacing the whole
- * message content.
+ * Serialize/deserialize the `<dyad-test-assertions>` chat card, the durable
+ * store for a proposal. Approving rewrites the tag in place with
+ * `status="approved"`, which is what makes the latch survive a reload. The tag
+ * sits inside a larger message (the agent's prose and other tool cards surround
+ * it), so every rewrite goes through `replaceAssertionsTagInMessage` — never by
+ * replacing the whole message content.
  */
 
 export const ASSERTIONS_TAG = "dyad-test-assertions";
@@ -34,8 +29,7 @@ export function buildAssertionsTagContent({
   const attrs = [
     `proposal-id="${escapeXmlAttr(proposalId)}"`,
     `status="${status}"`,
-    // Empty until the spec is generated on approve — the card falls back to the
-    // test title, which is all there is to show before a file exists.
+    // Empty until the spec is generated on approve; the card falls back to the title.
     `spec-path="${escapeXmlAttr(payload.specPath ?? "")}"`,
     `state="finished"`,
   ].join(" ");
@@ -44,9 +38,9 @@ export function buildAssertionsTagContent({
 }
 
 /**
- * Parse the JSON body of a `<dyad-test-assertions>` tag. Accepts the content the
- * streaming parser hands the card (already XML-unescaped). Returns null on
- * anything malformed so the card can render an error state instead of throwing.
+ * Accepts the content the streaming parser hands the card (already
+ * XML-unescaped). Returns null on anything malformed so the card can render an
+ * error state instead of throwing.
  */
 export function parseAssertionsPayload(
   content: string,
@@ -63,7 +57,6 @@ export function parseAssertionsPayload(
   return result.success ? result.data : null;
 }
 
-/** Matches every whole `<dyad-test-assertions …>…</dyad-test-assertions>` block. */
 function assertionsTagBlockRe(): RegExp {
   return new RegExp(
     `<${ASSERTIONS_TAG}\\b([^>]*)>([\\s\\S]*?)</${ASSERTIONS_TAG}>`,
@@ -81,20 +74,17 @@ interface AssertionsTagBlock {
   block: string;
   /** Offset of `block` within the message. */
   index: number;
-  /** The open tag's attribute text. */
   attrs: string;
   /** The raw (still XML-escaped) tag body. */
   body: string;
 }
 
 /**
- * Locate the assertions card in a message. One assistant message can carry more
- * than one card — the agent is free to call `generate_test_assertions` twice in
- * a turn — so every read and every rewrite is scoped by `proposalId`. Without
- * it, approving the second card would read, and then overwrite, the first.
- *
- * Omitting `proposalId` returns the first card, which is what the streaming
- * renderer wants when it has no identity to match on yet.
+ * One assistant message can carry more than one card — the agent is free to call
+ * `generate_test_assertions` twice in a turn — so every read and rewrite is
+ * scoped by `proposalId`. Without it, approving the second card would read, and
+ * then overwrite, the first. Omitting it returns the first card, which is what
+ * the streaming renderer wants when it has no identity to match on yet.
  */
 function findAssertionsTagBlock(
   messageContent: string,
@@ -116,12 +106,9 @@ function findAssertionsTagBlock(
 
 /**
  * Swap one assertions tag inside a message for `nextTag`, leaving everything
- * around it untouched. Returns null when the message has no such tag (or none
- * with that `proposalId`).
- *
- * The tool writes the card into the middle of the agent's assistant message, so
- * approving must splice: replacing the whole content would delete the agent's
- * prose and any other tool cards in the same message.
+ * around it untouched. The tool writes the card into the middle of the agent's
+ * message, so this must splice: replacing the whole content would delete the
+ * agent's prose and any other tool cards in the same message.
  */
 export function replaceAssertionsTagInMessage(
   messageContent: string,
@@ -139,7 +126,6 @@ export function replaceAssertionsTagInMessage(
   );
 }
 
-/** Read an attribute off a raw message containing the tag (main-process side). */
 export function readAssertionsTagAttribute(
   messageContent: string,
   attribute: string,
@@ -149,7 +135,6 @@ export function readAssertionsTagAttribute(
   return found ? readAttribute(found.attrs, attribute) : null;
 }
 
-/** Whether the message carries a card for `proposalId`. */
 export function messageHasAssertionsProposal(
   messageContent: string,
   proposalId: string,
@@ -158,9 +143,9 @@ export function messageHasAssertionsProposal(
 }
 
 /**
- * Extract the payload from a stored message. The main process reads back its own
- * escaped output, so unescape the two entities `escapeXmlContent` produces that
- * JSON can contain (`<`/`>` inside assertion text) plus `&` last.
+ * The main process reads back its own escaped output, so unescape the two
+ * entities `escapeXmlContent` produces that JSON can contain (`<`/`>` inside
+ * assertion text) plus `&` last.
  */
 export function parseAssertionsPayloadFromMessage(
   messageContent: string,

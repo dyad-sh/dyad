@@ -8,16 +8,10 @@ function sameLocator(a: LocatorDescriptor, b: LocatorDescriptor): boolean {
 }
 
 /**
- * Collapse a raw recorded stream into the minimal action list a Playwright spec
- * should replay. Mirrors Playwright's `collapseActions`:
- *
- * - consecutive `fill`s to the same locator keep only the final value (typing
- *   "hello" is recorded as five growing fills but replays as one),
- * - the `click`s that led up to a `dblclick` on the same locator are folded into
- *   it — this is the only thing that removes them, since the in-page recorder
- *   reports every click immediately (a stalled click is lost when the click
- *   navigates),
- * - consecutive identical `navigate`s dedupe.
+ * Collapse a raw recorded stream into the minimal action list a spec should
+ * replay. Mirrors Playwright's `collapseActions`: consecutive `fill`s to the
+ * same locator keep only the final value, the `click`s leading up to a
+ * `dblclick` are folded into it, and identical consecutive `navigate`s dedupe.
  */
 export function collapseActions(entries: RecordedEntry[]): RecordedAction[] {
   const out: RecordedEntry[] = [];

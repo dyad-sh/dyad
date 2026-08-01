@@ -1,11 +1,8 @@
 import { z } from "zod";
 
 /**
- * Shared model for the preview test recorder.
- *
- * The injected recorder client (`worker/dyad-recorder-client.js`) posts
- * `RecordedAction`s to the renderer, which buffers them as `RecordedEntry`s,
- * collapses them (see `merge.ts`), and generates a Playwright spec (`codegen.ts`).
+ * Shared model for the preview test recorder. The injected recorder client
+ * (`worker/dyad-recorder-client.js`) posts `RecordedAction`s to the renderer.
  * These are validated at the postMessage boundary with `parseRecorderAction`
  * because the payload originates in the previewed app's frame.
  */
@@ -22,11 +19,9 @@ export const LocatorKindSchema = z.enum([
 export type LocatorKind = z.infer<typeof LocatorKindSchema>;
 
 /**
- * Bounds for every free-form string that crosses the postMessage boundary. The
+ * Bounds for every free-form string crossing the postMessage boundary. The
  * previewed app is untrusted, so an unbounded schema lets it park megabytes per
- * action in renderer memory and in the draft that gets handed to the main
- * process. These ceilings are far above anything a real locator, typed value, or
- * key combination reaches, so legitimate recordings never notice them.
+ * action in renderer memory. Far above anything a real recording reaches.
  */
 const MAX_LOCATOR_LEN = 1_024;
 const MAX_VALUE_LEN = 10_000;
@@ -40,11 +35,10 @@ export const LocatorDescriptorSchema = z.object({
   /** Accessible name, only for `kind: "role"`. */
   name: z.string().max(MAX_LOCATOR_LEN).optional(),
   /**
-   * Match the name/text exactly instead of Playwright's default
-   * case-insensitive substring. Applies to `role`, `placeholder`, `label`, and
-   * `text` — the recorder checks uniqueness with `===`, so the generated locator
-   * has to hold itself to the same standard or replay can match more elements
-   * than the recorder saw.
+   * Match the name/text exactly instead of Playwright's default case-insensitive
+   * substring. The recorder checks uniqueness with `===`, so the generated
+   * locator must hold itself to the same standard or replay can match more
+   * elements than the recorder saw.
    */
   exact: z.boolean().optional(),
   /** Zero-based index when the locator matches multiple elements. */
@@ -53,14 +47,10 @@ export const LocatorDescriptorSchema = z.object({
 export type LocatorDescriptor = z.infer<typeof LocatorDescriptorSchema>;
 
 /**
- * A recorded navigation target. Constrained to an app-relative path so the
- * previewed app can't inject `page.goto("https://…")` into the spec that gets
- * written to the user's repo — the renderer only ever synthesizes these from
- * same-app history changes, and this is the boundary that enforces it against a
- * hand-crafted `dyad-recorder-action` message.
- *
- * `//host` is rejected alongside absolute URLs: a protocol-relative path is
- * off-origin too once Playwright resolves it against the base URL.
+ * Constrained to an app-relative path so the previewed app can't inject
+ * `page.goto("https://…")` into the spec written to the user's repo. `//host` is
+ * rejected alongside absolute URLs: a protocol-relative path is off-origin too
+ * once Playwright resolves it against the base URL.
  */
 const NavigatePathSchema = z
   .string()
@@ -79,9 +69,7 @@ export const RecordedActionSchema = z.discriminatedUnion("kind", [
   }),
   z.object({
     kind: z.literal("press"),
-    // Absent for a page-level shortcut: keys pressed with nothing focused
-    // target <body>, which has no meaningful locator, so they replay through
-    // `page.keyboard.press` instead.
+    // Absent for a page-level shortcut; those replay via `page.keyboard.press`.
     locator: LocatorDescriptorSchema.optional(),
     key: z.string().max(MAX_KEY_LEN),
   }),
@@ -92,8 +80,7 @@ export const RecordedActionSchema = z.discriminatedUnion("kind", [
     locator: LocatorDescriptorSchema,
     values: z.array(z.string().max(MAX_VALUE_LEN)).max(MAX_SELECT_VALUES),
   }),
-  // `navigate` has no locator: it is synthesized in the renderer from the
-  // preview's pushState/replaceState messages while recording is active.
+  // Synthesized in the renderer from the preview's pushState/replaceState.
   z.object({ kind: z.literal("navigate"), path: NavigatePathSchema }),
 ]);
 export type RecordedAction = z.infer<typeof RecordedActionSchema>;
@@ -104,10 +91,7 @@ export interface RecordedEntry {
   at: number;
 }
 
-/**
- * Validate an untrusted `dyad-recorder-action` postMessage payload. Returns the
- * parsed action, or null when the payload is malformed.
- */
+/** Validate an untrusted `dyad-recorder-action` payload; null when malformed. */
 export function parseRecorderAction(data: unknown): RecordedAction | null {
   const result = RecordedActionSchema.safeParse(data);
   return result.success ? result.data : null;

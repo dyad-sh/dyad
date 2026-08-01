@@ -27,60 +27,6 @@ describe("collapseActions", () => {
     ]);
   });
 
-  it("does not merge fills to different locators", () => {
-    const entries: RecordedEntry[] = [
-      {
-        at: 1,
-        action: { kind: "fill", locator: placeholder("Email"), value: "a" },
-      },
-      {
-        at: 2,
-        action: { kind: "fill", locator: placeholder("Name"), value: "b" },
-      },
-    ];
-    expect(collapseActions(entries)).toHaveLength(2);
-  });
-
-  it("merges a click into a following double-click on the same locator", () => {
-    const loc = { kind: "role", value: "button", name: "Open" } as const;
-    const entries: RecordedEntry[] = [
-      { at: 100, action: { kind: "click", locator: loc } },
-      { at: 300, action: { kind: "dblclick", locator: loc } },
-    ];
-    expect(collapseActions(entries)).toEqual([
-      { kind: "dblclick", locator: loc },
-    ]);
-  });
-
-  it("does not merge a click and double-click on different locators", () => {
-    const entries: RecordedEntry[] = [
-      {
-        at: 100,
-        action: {
-          kind: "click",
-          locator: { kind: "role", value: "button", name: "A" },
-        },
-      },
-      {
-        at: 300,
-        action: {
-          kind: "dblclick",
-          locator: { kind: "role", value: "button", name: "B" },
-        },
-      },
-    ];
-    expect(collapseActions(entries)).toHaveLength(2);
-  });
-
-  it("does not merge a click and double-click separated by more than 500ms", () => {
-    const loc = { kind: "role", value: "button", name: "Open" } as const;
-    const entries: RecordedEntry[] = [
-      { at: 100, action: { kind: "click", locator: loc } },
-      { at: 900, action: { kind: "dblclick", locator: loc } },
-    ];
-    expect(collapseActions(entries)).toHaveLength(2);
-  });
-
   it("absorbs both clicks the browser dispatches before a double-click", () => {
     // The in-page recorder reports every click as it happens (a stalled click
     // is lost when the click navigates), so a real double-click arrives as

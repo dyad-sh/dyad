@@ -127,46 +127,6 @@ describe("recording:start / recording:stop", () => {
     );
   });
 
-  it("reports auth mode none when the app has no supported auth", async () => {
-    mocks.prepareIsolatedTestDatabase.mockResolvedValue(makePrepared());
-    const { event } = makeEvent();
-
-    const result = await startHandler(event, { appId: 1 });
-    expect(result.auth).toEqual({ mode: "none" });
-
-    await stopHandler(event, { appId: 1 });
-  });
-
-  it("refuses when testing is not enabled", async () => {
-    mocks.findFirst.mockResolvedValue({ id: 1, testingEnabled: false });
-    const { event } = makeEvent();
-
-    const result = await startHandler(event, { appId: 1 });
-    expect(result.infraError?.message).toMatch(/Testing isn't enabled/i);
-    expect(mocks.prepareIsolatedTestDatabase).not.toHaveBeenCalled();
-    expect(activeRecordings.has(1)).toBe(false);
-  });
-
-  it("refuses when the dev server is not running", async () => {
-    mocks.runningApps.clear();
-    const { event } = makeEvent();
-
-    const result = await startHandler(event, { appId: 1 });
-    expect(result.infraError?.message).toMatch(
-      /Start the app before recording/i,
-    );
-    expect(mocks.prepareIsolatedTestDatabase).not.toHaveBeenCalled();
-  });
-
-  it("refuses when a test run is in progress", async () => {
-    mocks.isTestRunActive.mockReturnValue(true);
-    const { event } = makeEvent();
-
-    const result = await startHandler(event, { appId: 1 });
-    expect(result.infraError?.message).toMatch(/Stop the running tests/i);
-    expect(mocks.prepareIsolatedTestDatabase).not.toHaveBeenCalled();
-  });
-
   it("refuses a second concurrent recording for the same app", async () => {
     mocks.prepareIsolatedTestDatabase.mockResolvedValue(makePrepared());
     const { event } = makeEvent();

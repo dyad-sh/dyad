@@ -14,10 +14,9 @@ import { RecordedStepsList } from "./RecordedStepsList";
 import { RecordingCodePreview } from "./RecordingCodePreview";
 
 /**
- * Quiet actions in the recording banner (Cancel / Done / Open test file). The
- * banner has a tinted surface of its own, so the hover fill is a deeper tint of
- * that same surface — a neutral `bg-muted` would read as a control pasted on
- * top of the banner rather than part of it.
+ * Quiet actions in the recording banner. The banner has a tinted surface of its
+ * own, so the hover fill is a deeper tint of it — a neutral `bg-muted` would read
+ * as a control pasted on top rather than part of it.
  */
 const SECONDARY_BUTTON_CLASSES =
   "rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-purple-100/80 hover:text-foreground dark:hover:bg-purple-900/40";
@@ -47,19 +46,13 @@ export function recordingStatusMessage(
 }
 
 /**
- * The recorder's whole presence in the preview: one banner, for every phase of
- * a session.
+ * The recorder's whole presence in the preview: one banner, every phase.
  *
- * It is deliberately a single surface. The status line, the live code (while
- * recording), the recorded steps (while reviewing) and any warning all sit on
- * the same tint inside one border, with no backgrounds or edges of their own —
- * otherwise they read as a stack of unrelated alerts wedged between the toolbar
- * and the app.
- *
- * Everything below the status line is a disclosure: the review list can get
- * long, and once you've read it the steps are just in the way of the app you're
- * about to test. Collapsing keeps the decision (Generate assertions / Save /
- * Discard) in reach while handing the preview its height back.
+ * Deliberately a single surface — status line, live code, recorded steps and any
+ * warning all sit on the same tint inside one border, or they read as a stack of
+ * unrelated alerts wedged between the toolbar and the app. Everything below the
+ * status line is a disclosure: collapsing keeps the decision in reach while
+ * handing the preview its height back.
  */
 export function RecordingBanner({
   recorder,
@@ -76,8 +69,7 @@ export function RecordingBanner({
   const [isExpanded, setIsExpanded] = useState(true);
 
   // Each phase opens showing its details: a bar collapsed while recording still
-  // opens on the review it hands over to, which is the one part of the session
-  // the user is being asked to actually read.
+  // opens on the review, the one part the user is asked to actually read.
   useEffect(() => {
     setIsExpanded(true);
   }, [recorder.phase]);
@@ -248,9 +240,9 @@ export function RecordingBanner({
     );
   } else {
     label = (
-      // The spinner phases (setup, sign-in, saving, cleanup) only ever say what
-      // they're doing in this line, and it changes in place — a live region is
-      // what makes that progress reach a screen-reader user at all.
+      // The spinner phases only say what they're doing in this line, and it
+      // changes in place — a live region is what makes that reach a screen
+      // reader at all.
       <span
         role="status"
         className="flex items-center gap-1.5 text-muted-foreground"
@@ -306,10 +298,9 @@ export function RecordingBanner({
         <div
           id={DETAILS_ID}
           className={cn(
-            // The live code is one more row of the same status line — a
-            // hairline there splits the recorder into two stacked banners. The
-            // review list scrolls, so it keeps an edge for its content to
-            // disappear under.
+            // The live code is one more row of the same status line; a hairline
+            // there splits the recorder into two banners. The review list
+            // scrolls, so it keeps an edge for content to disappear under.
             !recorder.isRecording &&
               "border-t border-purple-200/60 dark:border-purple-900/40",
           )}

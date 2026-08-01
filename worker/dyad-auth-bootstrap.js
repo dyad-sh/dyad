@@ -19,27 +19,19 @@
  *                       { type: "dyad-auth-ready", ok: boolean, error?: string }
  *
  * `nonce` identifies one sign-in attempt. Sign-in spans a document navigation
- * (sign in → replace("/") → verify in the new document), and the marker that
- * carries state across it lives in sessionStorage — which is scoped to the
- * long-lived Dyad window, not to the attempt. The nonce is how the new document
- * tells "the marker this attempt just wrote" from "a marker some earlier attempt
- * abandoned"; the parent answers by resending the login message for the attempt
- * it is actually waiting on.
+ * (sign in → replace("/") → verify), and the marker carrying state across it
+ * lives in sessionStorage — scoped to the long-lived Dyad window, not to the
+ * attempt. The nonce is how the new document tells "the marker this attempt just
+ * wrote" from "one an earlier attempt abandoned".
  */
 (() => {
   const PENDING_KEY = "__dyad_auth_pending__";
   const HOME_SETTLE_DELAY_MS = 500;
   const MAX_HOME_REDIRECTS = 3;
-  // Backstop for a marker the parent never adjudicates (a nonce-less marker from
-  // an older build, or a parent that went away mid-attempt). The legitimate
-  // marker is consumed within a second or two — sign-in → reload → verify →
-  // settle — so anything older than this is leftover.
-  //
-  // Kept longer than the renderer's 30s `AUTH_READY_TIMEOUT_MS`: a slow preview
-  // reload must not expire a marker for an attempt the parent is still waiting
-  // on, or this document discards a valid in-flight sign-in and starts another
-  // one from scratch. The parent's nonce check is the real arbiter; this is only
-  // the floor under it.
+  // Backstop for a marker the parent never adjudicates. Kept longer than the
+  // renderer's 30s `AUTH_READY_TIMEOUT_MS` so a slow preview reload can't expire
+  // a marker for an attempt the parent is still waiting on. The parent's nonce
+  // check is the real arbiter; this is only the floor under it.
   const PENDING_TTL_MS = 45_000;
 
   // The marker found in sessionStorage when this document loaded, held until the
@@ -98,10 +90,9 @@
     );
   }
 
-  // After signing in, land on the app's homepage ("/") so recording starts
-  // from the same place the generated test replays from (goto("/")). This also
-  // avoids getting stuck on a "/login" route that would re-render after a bare
-  // reload. Once signed in, guard so a second login message can't double-run.
+  // Land on "/" so recording starts where the generated test replays from, and
+  // to avoid sticking on a "/login" route that would re-render after a bare
+  // reload. Guarded so a second login message can't double-run.
   let loggingIn = false;
 
   function goHome() {
@@ -140,13 +131,10 @@
   }
 
   /**
-   * Auth libraries commonly resolve their initial session asynchronously. A
-   * protected route can therefore redirect to /login shortly after the page
-   * has loaded, even though the session we just established is valid.
-   *
-   * Keep the pending marker until "/" remains stable for a short window. If
-   * the app's guard wins that race, load "/" once more now that its auth state
-   * is warm. Only then tell Dyad that recording can begin.
+   * Auth libraries resolve their initial session asynchronously, so a protected
+   * route can redirect to /login shortly after load even though the session is
+   * valid. Keep the marker until "/" stays stable for a short window; if the
+   * app's guard wins that race, load "/" again now that its auth state is warm.
    */
   function settleAtHome(pending) {
     if (location.pathname !== "/") {
@@ -254,12 +242,10 @@
 
   /**
    * The parent has named the attempt it's waiting on. Either the marker this
-   * document loaded with belongs to that attempt — in which case this IS the
-   * post-sign-in reload and we verify it — or it belongs to one that was
-   * cancelled, timed out, or crashed, and must be dropped. Verifying a foreign
-   * marker is what made the new recording report a phantom sign-in failure and
-   * start signed out: this recording's setup cleared the cookies and
-   * localStorage the marker refers to.
+   * document loaded with belongs to it — so this IS the post-sign-in reload and
+   * we verify — or it belongs to a cancelled/timed-out attempt and must be
+   * dropped. Verifying a foreign marker reports a phantom sign-in failure, since
+   * this recording's setup cleared the cookies the marker refers to.
    */
   function handleLogin(auth, nonce) {
     const pending = pendingOnLoad;
@@ -299,10 +285,9 @@
       pending = null;
     }
     pendingOnLoad = pending;
-    // Always announce, marker or not, and let the parent decide whose marker
-    // this is. The announcement doubles as the handshake that survives a
-    // dev-server restart / reload briefly leaving no bootstrap listening: the
-    // parent (re)sends `dyad-auth-login` in response.
+    // Always announce, marker or not. This doubles as the handshake that
+    // survives a dev-server restart briefly leaving no bootstrap listening: the
+    // parent resends `dyad-auth-login` in response.
     window.parent.postMessage(
       {
         type: "dyad-auth-bootstrap-ready",

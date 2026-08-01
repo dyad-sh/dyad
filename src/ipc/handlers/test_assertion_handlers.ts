@@ -61,13 +61,10 @@ import {
 } from "@/prompts/test_assertions_prompt";
 
 /**
- * Writing a recorded test to disk.
- *
- * The recorder stops with a draft, never a file. Both ways of turning that
- * draft into a spec — approving the assertion card, or saving the recording
- * as-is — land here and go through the same deterministic codegen, so what the
- * user reviewed is exactly what gets written. A model is only ever asked for
- * the text of an assertion, never for the file.
+ * Writing a recorded test to disk. Both ways of turning a draft into a spec —
+ * approving the assertion card, or saving as-is — go through the same
+ * deterministic codegen, so what the user reviewed is what gets written. A model
+ * is only ever asked for the text of an assertion, never for the file.
  */
 
 const logger = log.scope("test_assertion_handlers");
@@ -80,11 +77,10 @@ const FIXTURE_PATH = `${E2E_TEST_DIR}/fixtures/test-user.ts`;
 const MAX_SPEC_NAME_ATTEMPTS = 100;
 
 /**
- * A user-written fixture that provides the `signIn` the generated spec imports.
- * All three declaration forms count — `export function`, `export const/let/var`
- * (including the arrow-function style most people write), and a re-export list —
- * because the only thing that matters here is whether `import { signIn }` from
- * this module resolves.
+ * A user-written fixture providing the `signIn` the generated spec imports. All
+ * three declaration forms count — `export function`, `export const/let/var`, and
+ * a re-export list — since all that matters is whether `import { signIn }`
+ * resolves.
  */
 const EXPORTS_SIGN_IN_RE =
   /export\s+(async\s+)?function\s+signIn\b|export\s+(const|let|var)\s+signIn\b|export\s*{[^}]*\bsignIn\b/;
@@ -122,13 +118,9 @@ async function stage(appPath: string, relativePath: string): Promise<void> {
 }
 
 /**
- * Write the `signIn` helper the generated spec imports.
- *
- * An existing file is never blindly reused: the spec that's about to be written
- * imports `signIn` from here, so a fixture built for the other auth backend — or
- * a user's own unrelated file that happens to sit at this path — produces a spec
- * that fails to compile or silently records as anonymous, while the save UI
- * reports success. Each case gets its own answer:
+ * Write the `signIn` helper the generated spec imports. An existing file is never
+ * blindly reused — a fixture built for the other auth backend, or a user's own
+ * file at this path, produces a spec that fails to compile:
  *
  * - ours, same auth mode → reuse it (edits included; the contract still holds)
  * - ours, other auth mode, unedited → rewrite for the mode just recorded
@@ -181,13 +173,11 @@ async function ensureSignInFixture(
 }
 
 /**
- * Claim a free `e2e-tests/recorded-<slug>.spec.ts` and write it. A re-recording,
- * a second flow whose name slugifies the same, or repeated blank-name saves must
- * never clobber a spec that already exists — disambiguate with a numeric suffix.
+ * Claim a free `e2e-tests/recorded-<slug>.spec.ts` and write it, disambiguating
+ * with a numeric suffix so a re-recording never clobbers an existing spec.
  *
- * Claiming and writing are one exclusive-create call rather than "check, then
- * write": those are two syscalls, so anything that took the name in between (a
- * concurrent approval, the user's editor) would otherwise be silently
+ * One exclusive-create call rather than "check, then write": those are two
+ * syscalls, so anything that took the name in between would be silently
  * overwritten. Losing that race just advances to the next suffix.
  */
 async function writeSpecToFreePath(
@@ -222,9 +212,9 @@ async function writeSpecToFreePath(
 }
 
 /**
- * Generate the spec file for a recorded draft. `bodyStatements` is the final
- * body — the draft's recorded statements with any approved assertions already
- * interleaved — so this function is pure plumbing: resolve a name, write, stage.
+ * Generate the spec file for a recorded draft. `bodyStatements` is the final body
+ * (recorded statements with approved assertions already interleaved), so this is
+ * pure plumbing: resolve a name, write, stage.
  */
 async function writeRecordedSpec({
   appId,
@@ -256,10 +246,9 @@ async function writeRecordedSpec({
 }
 
 /**
- * Roll back a spec this approval just wrote, because the approval itself
- * couldn't be recorded. Best-effort: leaving the file behind is a duplicate
- * test, not data loss, so a failure here is logged rather than raised over the
- * error that triggered the rollback.
+ * Roll back a spec this approval just wrote, because the approval itself couldn't
+ * be recorded. Best-effort: leaving the file behind is a duplicate test, not data
+ * loss, so a failure here is logged rather than raised over the original error.
  */
 async function discardGeneratedSpec(
   appId: number,
@@ -286,10 +275,8 @@ async function discardGeneratedSpec(
 
 /**
  * One-off structured model call. Mirrors the MCP consent classifier's mechanics
- * (abort + timeout raced against the text promise, JSON sliced out of whatever
- * prose the model wrapped it in) with the compaction handler's routing, so the
- * user's selected model is used — which is also what makes E2E hit the fake
- * LLM server.
+ * with the compaction handler's routing, so the user's selected model is used —
+ * which is also what makes E2E hit the fake LLM server.
  */
 async function callStructuredModel<T>({
   appId,
@@ -340,9 +327,8 @@ async function callStructuredModel<T>({
       messages: [{ role: "user", content: payload }],
     });
 
-    // If the timeout wins the race, stream.text is orphaned and may reject once
-    // the abort propagates. Swallow it so it can't surface as an unhandled
-    // rejection.
+    // If the timeout wins, stream.text is orphaned and may reject once the abort
+    // propagates. Swallow it so it can't become an unhandled rejection.
     const textPromise = Promise.resolve(stream.text);
     textPromise.catch(() => {});
     const text = await Promise.race([textPromise, timeout]);
@@ -359,11 +345,8 @@ async function callStructuredModel<T>({
 
 /**
  * Synthesize Playwright code for the assertions the user edited or authored.
- *
- * Best-effort by design: a failure here drops only the affected assertions (with
- * a warning) rather than failing the whole approval, so the model-authored
- * assertions the user already reviewed still land — and the test file is still
- * generated.
+ * Best-effort: a failure drops only the affected assertions (with a warning)
+ * rather than failing the whole approval.
  */
 async function synthesizeAssertionCode({
   appId,
@@ -441,14 +424,11 @@ async function synthesizeAssertionCode({
 }
 
 /**
- * Guard against a renderer that lost, duplicated, invented, or reordered a step:
- * the recorded interactions must survive the round-trip exactly, or the plan is
- * describing a different recording than the one we're about to write.
- *
- * Compared in encounter order, not sorted — the write loop below emits steps in
- * the submitted order, so a resequenced `[1, 0]` would otherwise validate
- * against `[0, 1]` and generate a test that replays the recording backwards.
- * Assertions are free to move; steps are not.
+ * Guard against a renderer that lost, duplicated, invented, or reordered a step.
+ * Compared in encounter order, not sorted: the write loop emits steps in the
+ * submitted order, so a resequenced `[1, 0]` would otherwise validate against
+ * `[0, 1]` and replay the recording backwards. Assertions may move; steps
+ * may not.
  */
 function assertStepsMatch(
   submitted: AssertionPlanItem[],
@@ -469,14 +449,11 @@ function assertStepsMatch(
 
 /**
  * Decide, per assertion, which code may be written — never trusting the
- * renderer's `code`/`needsCode` pair on its own.
- *
- * An assertion whose text is unchanged from the stored proposal keeps the code
- * that proposal already validated. Anything else (edited text, user-authored,
- * an id we've never seen) is synthesized here from the text and re-validated.
- * Without this, a renderer could set `needsCode: false` alongside arbitrary
- * TypeScript and have it written verbatim into a spec that later runs with
- * Node's privileges.
+ * renderer's `code`/`needsCode` pair. Unchanged text keeps the code the stored
+ * proposal already validated; anything else is synthesized here and re-validated.
+ * Without this a renderer could set `needsCode: false` alongside arbitrary
+ * TypeScript and have it written verbatim into a spec that runs with Node's
+ * privileges.
  */
 function resolveAssertionCode({
   item,
@@ -497,9 +474,8 @@ function resolveAssertionCode({
 }
 
 /**
- * Which assertions need code synthesized: everything the renderer flagged, plus
- * everything we can't safely reuse from the stored proposal. Computed here (not
- * taken from `needsCode`) so the trust decision lives in one place.
+ * Everything the renderer flagged, plus everything we can't safely reuse from the
+ * stored proposal. Computed here so the trust decision lives in one place.
  */
 function needsSynthesis(
   item: Extract<AssertionPlanItem, { kind: "assertion" }>,
@@ -530,10 +506,9 @@ export function registerTestAssertionHandlers() {
     testsContracts.createRecordedSpec,
     async (_event, params): Promise<CreateRecordedSpecResult> => {
       const { appId, draft } = params;
-      // The parked draft is what says "this recording hasn't been written yet".
-      // Both write paths clear it, so its absence means the spec already exists
-      // and a second call — a stale recording bar, a double click — would write
-      // a suffixed duplicate of the same test.
+      // The parked draft says "this recording hasn't been written yet". Both
+      // write paths clear it, so its absence means a second call would write a
+      // suffixed duplicate of the same test.
       if (!getRecordedTestDraft(appId)) {
         throw new DyadError(
           "This recording has already been saved.",
@@ -553,10 +528,9 @@ export function registerTestAssertionHandlers() {
   createTypedHandler(
     testsContracts.applyTestAssertions,
     // The approval reads the proposal's status, spends up to a minute in the
-    // model, then writes "approved" back. Serializing per proposal is what makes
-    // that read-modify-write an actual latch: a double click or a second window
-    // would otherwise both pass the status check and generate two spec files.
-    // The loser re-reads the now-approved tag and returns the idempotent answer.
+    // model, then writes "approved" back. Serializing per proposal makes that
+    // read-modify-write an actual latch; the loser re-reads the now-approved tag
+    // and returns the idempotent answer.
     async (event, params): Promise<ApplyTestAssertionsResult> =>
       withLock(`assertion-approval:${params.proposalId}`, async () => {
         const { appId, chatId, proposalId, items } = params;
@@ -566,9 +540,8 @@ export function registerTestAssertionHandlers() {
         const chatMessages = await db.query.messages.findMany({
           where: eq(messages.chatId, chatId),
         });
-        // Scoped to this proposal throughout: one assistant message can carry
-        // more than one card, and matching only the first would make approving
-        // the second read — and then overwrite — the wrong one.
+        // Scoped to this proposal throughout: one message can carry more than
+        // one card, and matching the first would overwrite the wrong one.
         const row = chatMessages.find((message) =>
           messageHasAssertionsProposal(message.content, proposalId),
         );
@@ -615,10 +588,9 @@ export function registerTestAssertionHandlers() {
         const withText = items.filter(
           (item) => item.kind === "step" || item.text.trim().length > 0,
         );
-        // The proposal in the chat message is the trusted record of what the model
-        // wrote and the user reviewed. The renderer may reorder, drop, and edit
-        // plan items, but the code that lands in the spec is only ever the
-        // proposal's own validated code or something synthesized here.
+        // The proposal in the chat message is the trusted record. The renderer
+        // may reorder, drop, and edit plan items, but the code that lands in the
+        // spec is only ever the proposal's validated code or synthesized here.
         const storedAssertions = new Map(
           stored.items
             .filter(isAssertionItem)
@@ -661,10 +633,8 @@ export function registerTestAssertionHandlers() {
         });
 
         // Rewriting the tag is the durable approval latch: it survives a reload
-        // and re-hydrates the card in its approved state, now pointing at the
-        // spec it generated. Splice it in place — the tool emitted the card
-        // inside the agent's assistant message, so the surrounding prose and any
-        // sibling tool cards must survive untouched.
+        // and re-hydrates the card approved. Splice it in place so the agent's
+        // surrounding prose and sibling tool cards survive untouched.
         const approvedContent = replaceAssertionsTagInMessage(
           row.content,
           buildAssertionsTagContent({
@@ -688,19 +658,15 @@ export function registerTestAssertionHandlers() {
             .set({ content: approvedContent })
             .where(eq(messages.id, row.id));
         } catch (error) {
-          // The spec exists but the proposal is still "proposed", so the card
-          // stays approvable — and a retry would claim the *next* free filename
-          // and leave two copies of the same test behind. Undo the write so the
-          // retry produces exactly one spec.
+          // The card is still approvable, so a retry would claim the next free
+          // filename and leave two copies behind. Undo the write.
           await discardGeneratedSpec(appId, specPath);
           throw error;
         }
 
-        // The recording bar is still up in the preview, holding the draft this
-        // just turned into a file. Nothing else tells it — approval happens
-        // entirely in the chat — so without this it keeps offering "Save without
-        // assertions" for a test that already exists, which writes a second,
-        // suffixed copy of it.
+        // Approval happens entirely in the chat, so nothing else tells the
+        // recording bar its draft is now a file. Without this it keeps offering
+        // "Save without assertions", writing a second copy.
         safeSend(event.sender, "recording:draft-consumed", { appId, specPath });
 
         const appliedCount = countAssertions(finalItems);

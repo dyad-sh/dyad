@@ -43,11 +43,9 @@ export interface RecordingState {
   /** The captured recording, while phase is "reviewing" (or being saved). */
   draft?: RecordedTestDraft;
   /**
-   * The assertion pass has been handed to the agent and we're waiting for its
-   * card. The review stays up meanwhile: the request can fail, be cancelled, or
-   * never reach the tool, and the draft has no other recovery UI — closing the
-   * banner on dispatch would strand it with nothing to retry, save, or discard
-   * from.
+   * The assertion pass is with the agent and we're waiting for its card. The
+   * review stays up meanwhile: the request can fail, be cancelled, or never
+   * reach the tool, and the draft has no other recovery UI.
    */
   awaitingAssertions?: boolean;
   /** Path of the just-written spec, while phase is "saved". */
@@ -60,14 +58,10 @@ export const EMPTY_RECORDING_STATE: RecordingState = Object.freeze({
 }) as RecordingState;
 
 /**
- * A "start recording" ask from outside the preview (currently the Tests panel).
- * The recorder only lives while the preview is mounted, so the entry point
- * switches to the preview tab and leaves this request behind for
- * `useTestRecorder` to pick up once it mounts.
- *
- * `requestedAt` keeps a request that was never consumed (the user navigated
- * somewhere else before the preview mounted) from silently starting a session
- * minutes later — see `RECORDING_REQUEST_TTL_MS`.
+ * A "start recording" ask from outside the preview (the Tests panel). The
+ * recorder only lives while the preview is mounted, so the entry point leaves
+ * this behind for `useTestRecorder` to pick up. `requestedAt` keeps a request
+ * that was never consumed from silently starting a session minutes later.
  */
 export interface RecordingStartRequest {
   appId: number;
@@ -126,11 +120,9 @@ export const setRecordingStateForAppAtom = atom(
 );
 
 /**
- * Ceiling on the actions one recording may buffer. The entries come from the
- * previewed app over postMessage, so an app in a render loop (or a hostile one)
- * could otherwise grow this list without bound — and every entry is also
- * re-collapsed and re-rendered on arrival. Far above any hand-performed flow: a
- * long recording is tens of steps, not thousands.
+ * Ceiling on the actions one recording may buffer. Entries arrive from the
+ * previewed app over postMessage, so an app in a render loop could otherwise grow
+ * this without bound. Far above any hand-performed flow.
  */
 export const MAX_RECORDED_ENTRIES = 5_000;
 

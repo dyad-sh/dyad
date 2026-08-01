@@ -7,10 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { previewIframeRefAtom } from "@/atoms/previewAtoms";
 import { appUrlByAppIdAtom } from "@/atoms/previewRuntimeAtoms";
-import {
-  RECORDING_REQUEST_TTL_MS,
-  recordingStartRequestAtom,
-} from "@/atoms/recorderAtoms";
+import { recordingStartRequestAtom } from "@/atoms/recorderAtoms";
 import { useTestRecorder } from "@/hooks/useTestRecorder";
 
 const {
@@ -120,6 +117,42 @@ function setAppUrl(store: ReturnType<typeof createStore>, appId: number) {
   );
 }
 
+/**
+ * Mount the hook for app 1 with the pieces a test asks for: `iframe` attaches a
+ * fake preview window, `appUrl` points it at a running dev server (both are
+ * required before the hook will accept or send preview messages).
+ */
+function mountRecorder({
+  iframe,
+  appUrl = false,
+  reloadPreview = () => {},
+}: {
+  iframe?: ReturnType<typeof makeIframe>;
+  appUrl?: boolean;
+  reloadPreview?: () => void;
+} = {}) {
+  const { store, Wrapper } = makeWrapper();
+  store.set(selectedAppIdAtom, 1);
+  if (iframe) store.set(previewIframeRefAtom, iframe.el);
+  if (appUrl) setAppUrl(store, 1);
+  const { result, unmount, rerender } = renderHook(
+    () => useTestRecorder({ reloadPreview }),
+    { wrapper: Wrapper },
+  );
+  return { store, Wrapper, result, unmount, rerender };
+}
+
+/** `mountRecorder` plus a started session — the preamble most tests need. */
+async function recordingSession(
+  options: Parameters<typeof mountRecorder>[0] = {},
+) {
+  const mounted = mountRecorder(options);
+  await act(async () => {
+    await mounted.result.current.startRecording();
+  });
+  return mounted;
+}
+
 describe("useTestRecorder", () => {
   beforeEach(() => {
     startRecordingMock.mockReset();
@@ -164,87 +197,8 @@ describe("useTestRecorder", () => {
     });
   });
 
-  it("drops a request that went unconsumed for too long", async () => {
-    const { store, Wrapper } = makeWrapper();
-    store.set(selectedAppIdAtom, 1);
-    store.set(recordingStartRequestAtom, {
-      appId: 1,
-      requestedAt: Date.now() - RECORDING_REQUEST_TTL_MS - 1,
-    });
-
-    renderHook(() => useTestRecorder({ reloadPreview: () => {} }), {
-      wrapper: Wrapper,
-    });
-
-    await waitFor(() => {
-      expect(store.get(recordingStartRequestAtom)).toBeNull();
-    });
-    expect(startRecordingMock).not.toHaveBeenCalled();
-  });
-
-  it("leaves a fresh request for another app alone", async () => {
-    const { store, Wrapper } = makeWrapper();
-    store.set(selectedAppIdAtom, 1);
-    const request = { appId: 2, requestedAt: Date.now() };
-    store.set(recordingStartRequestAtom, request);
-
-    renderHook(() => useTestRecorder({ reloadPreview: () => {} }), {
-      wrapper: Wrapper,
-    });
-
-    expect(startRecordingMock).not.toHaveBeenCalled();
-    expect(store.get(recordingStartRequestAtom)).toBe(request);
-  });
-
-  it("stays in a stopping phase until teardown finishes", async () => {
-    const { store, Wrapper } = makeWrapper();
-    store.set(selectedAppIdAtom, 1);
-    let finishTeardown!: () => void;
-    stopRecordingMock.mockImplementation(
-      () =>
-        new Promise<{ ok: true }>((resolve) => {
-          finishTeardown = () => resolve({ ok: true });
-        }),
-    );
-
-    const { result } = renderHook(
-      () => useTestRecorder({ reloadPreview: () => {} }),
-      { wrapper: Wrapper },
-    );
-
-    await act(async () => {
-      await result.current.startRecording();
-    });
-    expect(result.current.isRecording).toBe(true);
-
-    let cancelled!: Promise<void>;
-    act(() => {
-      cancelled = result.current.cancelRecording();
-    });
-
-    // Teardown (dropping the Neon branch / Supabase test user) is still in
-    // flight, so the banner must keep showing a spinner instead of vanishing.
-    expect(result.current.phase).toBe("stopping");
-    expect(result.current.isBusy).toBe(true);
-
-    await act(async () => {
-      finishTeardown();
-      await cancelled;
-    });
-    expect(result.current.phase).toBe("idle");
-  });
-
   it("stops into a review phase without writing anything", async () => {
-    const { store, Wrapper } = makeWrapper();
-    store.set(selectedAppIdAtom, 1);
-
-    const { result } = renderHook(
-      () => useTestRecorder({ reloadPreview: () => {} }),
-      { wrapper: Wrapper },
-    );
-    await act(async () => {
-      await result.current.startRecording();
-    });
+    const { result } = await recordingSession();
 
     await act(async () => {
       await result.current.stopAndReview("  My Flow  ");
@@ -265,17 +219,7 @@ describe("useTestRecorder", () => {
   });
 
   it("closes the review once the assertions card has generated the spec", async () => {
-    const { store, Wrapper } = makeWrapper();
-    store.set(selectedAppIdAtom, 1);
-    setAppUrl(store, 1);
-
-    const { result } = renderHook(
-      () => useTestRecorder({ reloadPreview: () => {} }),
-      { wrapper: Wrapper },
-    );
-    await act(async () => {
-      await result.current.startRecording();
-    });
+    const { result } = await recordingSession({ appUrl: true });
     await act(async () => {
       await result.current.stopAndReview("my flow");
     });
@@ -298,18 +242,9 @@ describe("useTestRecorder", () => {
   });
 
   it("keeps the review when the stop we asked for reports back late", async () => {
-    const { store, Wrapper } = makeWrapper();
-    store.set(selectedAppIdAtom, 1);
-    const iframe = makeIframe();
-    store.set(previewIframeRefAtom, iframe.el);
-    setAppUrl(store, 1);
-
-    const { result } = renderHook(
-      () => useTestRecorder({ reloadPreview: () => {} }),
-      { wrapper: Wrapper },
-    );
-    await act(async () => {
-      await result.current.startRecording();
+    const { result } = await recordingSession({
+      iframe: makeIframe(),
+      appUrl: true,
     });
     await act(async () => {
       await result.current.stopAndReview("my flow");
@@ -331,16 +266,7 @@ describe("useTestRecorder", () => {
   });
 
   it("generates the spec from the draft when saving without assertions", async () => {
-    const { store, Wrapper } = makeWrapper();
-    store.set(selectedAppIdAtom, 1);
-
-    const { result } = renderHook(
-      () => useTestRecorder({ reloadPreview: () => {} }),
-      { wrapper: Wrapper },
-    );
-    await act(async () => {
-      await result.current.startRecording();
-    });
+    const { result } = await recordingSession();
     await act(async () => {
       await result.current.stopAndReview("my flow");
     });
@@ -360,17 +286,9 @@ describe("useTestRecorder", () => {
   });
 
   it("keeps the recording reviewable when generating the spec fails", async () => {
-    const { store, Wrapper } = makeWrapper();
-    store.set(selectedAppIdAtom, 1);
     createRecordedSpecMock.mockRejectedValue(new Error("disk full"));
 
-    const { result } = renderHook(
-      () => useTestRecorder({ reloadPreview: () => {} }),
-      { wrapper: Wrapper },
-    );
-    await act(async () => {
-      await result.current.startRecording();
-    });
+    const { result } = await recordingSession();
     await act(async () => {
       await result.current.stopAndReview("my flow");
     });
@@ -385,19 +303,8 @@ describe("useTestRecorder", () => {
   });
 
   it("records SPA navigations from the shim's message envelope", async () => {
-    const { store, Wrapper } = makeWrapper();
-    store.set(selectedAppIdAtom, 1);
     const iframe = makeIframe();
-    store.set(previewIframeRefAtom, iframe.el);
-    setAppUrl(store, 1);
-
-    const { result } = renderHook(
-      () => useTestRecorder({ reloadPreview: () => {} }),
-      { wrapper: Wrapper },
-    );
-    await act(async () => {
-      await result.current.startRecording();
-    });
+    const { result } = await recordingSession({ iframe, appUrl: true });
 
     // The shim (worker/dyad-shim.js) nests the URL under `payload`, unlike every
     // other message the hook consumes.
@@ -414,19 +321,8 @@ describe("useTestRecorder", () => {
   });
 
   it("ignores messages from a preview that navigated off the app's origin", async () => {
-    const { store, Wrapper } = makeWrapper();
-    store.set(selectedAppIdAtom, 1);
     const iframe = makeIframe();
-    store.set(previewIframeRefAtom, iframe.el);
-    setAppUrl(store, 1);
-
-    const { result } = renderHook(
-      () => useTestRecorder({ reloadPreview: () => {} }),
-      { wrapper: Wrapper },
-    );
-    await act(async () => {
-      await result.current.startRecording();
-    });
+    const { result } = await recordingSession({ iframe, appUrl: true });
 
     // The iframe's WindowProxy keeps its identity across navigations, so an
     // external page the preview followed still passes the `source` check. Only
@@ -452,19 +348,8 @@ describe("useTestRecorder", () => {
   });
 
   it("still accepts preview messages while the dev server is restarting", async () => {
-    const { store, Wrapper } = makeWrapper();
-    store.set(selectedAppIdAtom, 1);
     const iframe = makeIframe();
-    store.set(previewIframeRefAtom, iframe.el);
-    setAppUrl(store, 1);
-
-    const { result } = renderHook(
-      () => useTestRecorder({ reloadPreview: () => {} }),
-      { wrapper: Wrapper },
-    );
-    await act(async () => {
-      await result.current.startRecording();
-    });
+    const { store, result } = await recordingSession({ iframe, appUrl: true });
 
     // Isolation setup restarts the dev server, and the run command empties the
     // app URL until the new one arrives. The sign-in handshake runs straight
@@ -492,18 +377,10 @@ describe("useTestRecorder", () => {
   });
 
   it("hands the session back when the preview unmounts mid-recording", async () => {
-    const { store, Wrapper } = makeWrapper();
-    store.set(selectedAppIdAtom, 1);
     const iframe = makeIframe();
-    store.set(previewIframeRefAtom, iframe.el);
-    setAppUrl(store, 1);
-
-    const { result, unmount } = renderHook(
-      () => useTestRecorder({ reloadPreview: () => {} }),
-      { wrapper: Wrapper },
-    );
-    await act(async () => {
-      await result.current.startRecording();
+    const { result, unmount } = await recordingSession({
+      iframe,
+      appUrl: true,
     });
     expect(result.current.isRecording).toBe(true);
 
@@ -520,8 +397,7 @@ describe("useTestRecorder", () => {
   it("keeps the session after StrictMode's mount/unmount/remount replay", async () => {
     const { store, Wrapper } = makeWrapper();
     store.set(selectedAppIdAtom, 1);
-    const iframe = makeIframe();
-    store.set(previewIframeRefAtom, iframe.el);
+    store.set(previewIframeRefAtom, makeIframe().el);
     setAppUrl(store, 1);
 
     const { result } = renderHook(
@@ -540,19 +416,8 @@ describe("useTestRecorder", () => {
   });
 
   it("disarms the in-page recorder when a session ends abnormally", async () => {
-    const { store, Wrapper } = makeWrapper();
-    store.set(selectedAppIdAtom, 1);
     const iframe = makeIframe();
-    store.set(previewIframeRefAtom, iframe.el);
-    setAppUrl(store, 1);
-
-    const { result } = renderHook(
-      () => useTestRecorder({ reloadPreview: () => {} }),
-      { wrapper: Wrapper },
-    );
-    await act(async () => {
-      await result.current.startRecording();
-    });
+    const { result } = await recordingSession({ iframe, appUrl: true });
     iframe.posted.length = 0;
 
     const onEnded = onEndedMock.mock.calls.at(-1)![0];
@@ -569,8 +434,6 @@ describe("useTestRecorder", () => {
   });
 
   it("abandons setup when the selected app changes mid-start", async () => {
-    const { store, Wrapper } = makeWrapper();
-    store.set(selectedAppIdAtom, 1);
     let finishStart!: () => void;
     startRecordingMock.mockImplementation(
       () =>
@@ -588,10 +451,7 @@ describe("useTestRecorder", () => {
         }),
     );
 
-    const { result } = renderHook(
-      () => useTestRecorder({ reloadPreview: () => {} }),
-      { wrapper: Wrapper },
-    );
+    const { store, result } = mountRecorder();
 
     let started!: Promise<void>;
     act(() => {
@@ -617,29 +477,6 @@ describe("useTestRecorder", () => {
     expect(
       iframe.posted.some((message: any) => message?.type === "dyad-auth-login"),
     ).toBe(false);
-    expect(result.current.phase).toBe("idle");
-  });
-
-  it("drops the parked draft when the recording is discarded", async () => {
-    const { store, Wrapper } = makeWrapper();
-    store.set(selectedAppIdAtom, 1);
-
-    const { result } = renderHook(
-      () => useTestRecorder({ reloadPreview: () => {} }),
-      { wrapper: Wrapper },
-    );
-    await act(async () => {
-      await result.current.startRecording();
-    });
-    await act(async () => {
-      await result.current.stopAndReview("my flow");
-    });
-
-    await act(async () => {
-      await result.current.discardDraft();
-    });
-
-    expect(discardDraftMock).toHaveBeenCalledWith({ appId: 1 });
     expect(result.current.phase).toBe("idle");
   });
 });

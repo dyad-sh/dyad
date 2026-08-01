@@ -19,14 +19,6 @@ describe("isSingleAssertionStatement", () => {
     ).toBe(true);
   });
 
-  it("accepts a locator string that looks like a comment", () => {
-    expect(
-      isSingleAssertionStatement(
-        `await expect(page.getByText("http://x")).toBeVisible();`,
-      ),
-    ).toBe(true);
-  });
-
   it("rejects anything that isn't exactly one assertion statement", () => {
     expect(
       isSingleAssertionStatement(

@@ -2,21 +2,12 @@ import { z } from "zod";
 import { RecordedTestDraftSchema } from "./draft";
 
 /**
- * Data model for the reviewable "Generate assertions" flow.
+ * Data model for the reviewable "Generate assertions" flow: a flat, ordered list
+ * of the recorded test's steps and the proposed assertions interleaved.
  *
- * A proposal is a flat, ordered list of plan items — the recorded test's steps
- * and the proposed assertions interleaved. The user edits/removes/reorders that
- * list in the chat card, and approving it is what generates the spec file:
- * `codegen.ts` emits the draft's statements with the approved assertions in
- * place.
- *
- * The proposal therefore carries the whole recording, not a pointer to a file.
- * The chat message is its durable home, so a card can still be approved after a
- * restart, and there is no on-disk spec to drift out from under it.
- *
- * NOTE: this module is reachable from `src/ipc/types/tests.ts`, which the
- * preload bundle imports. Keep it dependency-free (zod only) and import it with
- * a RELATIVE path from there — the preload Vite target cannot resolve `@/...`.
+ * NOTE: reachable from `src/ipc/types/tests.ts`, which the preload bundle
+ * imports. Keep it dependency-free (zod only) and import it with a RELATIVE path
+ * from there — the preload Vite target cannot resolve `@/...`.
  */
 
 export const AssertionOriginSchema = z.enum(["model", "user"]);
@@ -25,13 +16,11 @@ export type AssertionOrigin = z.infer<typeof AssertionOriginSchema>;
 export const ProposedAssertionSchema = z.object({
   /** Stable client-side id; survives edits and reordering. */
   id: z.string().min(1),
-  /** The assertion in one plain-English sentence — what the card shows. */
   text: z.string(),
-  /** The Playwright statement, or null for a user-authored assertion with no code yet. */
+  /** Null for a user-authored assertion with no code yet. */
   code: z.string().nullable(),
   /**
-   * True when `code` no longer corresponds to `text` — the user edited the
-   * sentence or authored the assertion. The apply handler re-synthesizes the
+   * `code` no longer corresponds to `text`. The apply handler re-synthesizes the
    * code for exactly these, leaving everything else deterministic.
    */
   needsCode: z.boolean(),
@@ -44,7 +33,6 @@ export const AssertionPlanItemSchema = z.discriminatedUnion("kind", [
     kind: z.literal("step"),
     /** Index into `recordedBodyStatements(draft)` — the statement this row renders. */
     stepIndex: z.number().int().nonnegative(),
-    /** The step in one plain-English sentence. */
     text: z.string(),
   }),
   ProposedAssertionSchema.extend({ kind: z.literal("assertion") }),
@@ -59,11 +47,7 @@ export const AssertionProposalPayloadSchema = z.object({
   /** The recording the plan describes; the spec is generated from it on approve. */
   draft: RecordedTestDraftSchema,
   testTitle: z.string(),
-  /**
-   * App-relative path of the generated spec, e.g.
-   * "e2e-tests/recorded-add-item.spec.ts". Null until the user approves — no
-   * file exists before then, and the name is only claimed at write time.
-   */
+  /** Null until the user approves — the name is only claimed at write time. */
   specPath: z.string().nullable(),
   /** Steps and assertions interleaved, in the order they will be written. */
   items: z.array(AssertionPlanItemSchema),
@@ -72,7 +56,6 @@ export type AssertionProposalPayload = z.infer<
   typeof AssertionProposalPayloadSchema
 >;
 
-/** Narrowing helper — `kind` discriminates, but this reads better at call sites. */
 export function isAssertionItem(
   item: AssertionPlanItem,
 ): item is Extract<AssertionPlanItem, { kind: "assertion" }> {
@@ -83,7 +66,6 @@ export function countAssertions(items: AssertionPlanItem[]): number {
   return items.filter(isAssertionItem).length;
 }
 
-/** Strip `await ` / trailing `;` so a raw statement can stand in for a sentence. */
 function statementFallbackText(statement: string): string {
   return statement.replace(/^await\s+/, "").replace(/;\s*$/, "");
 }
@@ -105,9 +87,8 @@ export interface RawProposedAssertion {
  *
  * Every statement becomes exactly one `step` item, in order — that invariant is
  * what lets the approval rebuild the spec. Assertions whose `afterStep` is out
- * of range are DROPPED (and counted), never clamped: a hallucinated index means
- * the model wasn't looking at the statement we think it was, and clamping would
- * silently attach the assertion to the wrong step.
+ * of range are DROPPED (and counted), never clamped: clamping would silently
+ * attach the assertion to the wrong step.
  */
 export function buildPlanItems({
   bodyStatements,
@@ -128,8 +109,7 @@ export function buildPlanItems({
     descriptionByIndex.set(index, trimmed);
   }
 
-  // Bucket assertions by the step they follow. -1 is the "before everything"
-  // bucket. Model order is preserved within each bucket.
+  // Bucket by the step each follows; -1 is "before everything".
   const byAfterStep = new Map<number, RawProposedAssertion[]>();
   let droppedAssertionCount = 0;
   for (const assertion of assertions) {
@@ -174,14 +154,8 @@ export function buildPlanItems({
 /**
  * Move one assertion within the plan. Mirrors `reorderVisibleChatIds`
  * (`src/components/chat/ChatTabs.tsx`): remove at `fromIndex`, then insert at
- * `toIndex` interpreted in the post-removal array.
- *
- * Returns the SAME array reference on any no-op (equal indices, out of range, or
- * `items[fromIndex]` is a step) so callers can cheaply skip a re-render.
- *
- * Moving a single element never changes the relative order of the others, so
- * "each step appears exactly once, in ascending `stepIndex` order" is preserved
- * by construction — no validation needed in the drag handler.
+ * `toIndex` interpreted in the post-removal array. Returns the SAME array
+ * reference on any no-op so callers can cheaply skip a re-render.
  */
 export function moveAssertion(
   items: AssertionPlanItem[],

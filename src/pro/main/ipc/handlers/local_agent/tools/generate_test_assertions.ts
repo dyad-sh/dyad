@@ -118,12 +118,10 @@ For a recording whose statements are:
 </correct_example>`;
 
 /**
- * Validate the model's plan against the recording we actually have, and report
- * every problem at once so one retry can fix them all.
- *
- * Nothing is clamped or silently dropped: a wrong index means the model wasn't
- * looking at the statement we think it was, and attaching an assertion to the
- * wrong step is worse than asking again.
+ * Validate the model's plan against the recording we actually have, reporting
+ * every problem at once so one retry fixes them all. Nothing is clamped or
+ * silently dropped — attaching an assertion to the wrong step is worse than
+ * asking again.
  */
 function collectProblems({
   args,
@@ -144,9 +142,9 @@ function collectProblems({
     );
   }
 
-  // Every index covered isn't enough: two descriptions for the same statement
-  // means one of them is silently discarded, and the card would then show a
-  // plan the model didn't actually write. Ask again instead.
+  // Every index covered isn't enough: two descriptions for one statement means
+  // one is silently discarded, and the card would show a plan the model didn't
+  // write.
   const stepIndexes = args.steps.map((step) => step.index);
   const duplicateIndexes = Array.from(
     new Set(

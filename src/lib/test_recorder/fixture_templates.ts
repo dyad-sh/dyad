@@ -1,10 +1,7 @@
 /**
  * Templates for the generated `e2e-tests/fixtures/test-user.ts` sign-in helper.
- *
- * Recorded (and AI-written) auth-gated specs call `await signIn(page)` instead
- * of driving the login UI or hand-rolling credentials. The helper is generated
- * once per app from a per-auth-mode template — a plain, reviewable file — and
- * reads the isolated-session credentials Dyad injects into the Playwright run.
+ * Auth-gated specs call `await signIn(page)` instead of driving the login UI;
+ * the helper reads the isolated-session credentials Dyad injects into the run.
  */
 
 export type RecorderAuthMode =
@@ -13,12 +10,9 @@ export type RecorderAuthMode =
   | "supabase-password";
 
 /**
- * Marker line stamped into a generated fixture, naming the auth mode it signs in
- * with. The helper's signature (`signIn(page)`) is the same for every mode but
- * its body is not, so a spec recorded after an app moved between Neon and
- * Supabase needs a different file than the one already on disk. The marker is
- * how the writer tells "mine, for this backend" from "mine, for the other one"
- * from "the user's own".
+ * Marker stamped into a generated fixture, naming its auth mode. How the writer
+ * tells "mine, for this backend" from "mine, for the other one" from "the
+ * user's own" — an app that moved between Neon and Supabase needs a new file.
  */
 export function fixtureMarker(mode: Exclude<RecorderAuthMode, "none">): string {
   return `// dyad-generated-fixture: ${mode}`;

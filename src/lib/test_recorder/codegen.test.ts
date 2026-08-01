@@ -2,13 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   actionToCodeLine,
-  generateDraftSpecSource,
   generateSpecSource,
   locatorToCode,
   recordedBodyStatements,
   recordedSpecFileName,
 } from "./codegen";
 import {
+  draftIncludesSignIn,
   RECORDED_TEST_DRAFT_VERSION,
   type RecordedTestAuthMode,
   type RecordedTestDraft,
@@ -28,6 +28,15 @@ function draft(
     authMode,
     actions,
   };
+}
+
+/** The no-assertions save path, as `createRecordedSpec` composes it. */
+function specForDraft(value: RecordedTestDraft): string {
+  return generateSpecSource({
+    testName: value.testName,
+    includeSignIn: draftIncludesSignIn(value),
+    bodyStatements: recordedBodyStatements(value),
+  });
 }
 
 describe("locatorToCode", () => {
@@ -56,6 +65,9 @@ describe("locatorToCode", () => {
     expect(locatorToCode({ kind: "css", value: ".foo > .bar" })).toBe(
       `locator(".foo > .bar")`,
     );
+    expect(
+      locatorToCode({ kind: "role", value: "button", name: "Item", nth: 1 }),
+    ).toBe(`getByRole("button", { name: "Item" }).nth(1)`);
   });
 
   it("escapes CSS-significant characters in a dyad id", () => {
@@ -63,12 +75,6 @@ describe("locatorToCode", () => {
     // throws at replay rather than the one that was recorded.
     expect(locatorToCode({ kind: "dyadId", value: 'a"b\\c' })).toBe(
       `locator("[data-dyad-id=\\"a\\\\\\"b\\\\\\\\c\\"]")`,
-    );
-  });
-
-  it("renders a locator-less press as a page-level keyboard press", () => {
-    expect(actionToCodeLine({ kind: "press", key: "Escape" })).toBe(
-      `await page.keyboard.press("Escape");`,
     );
   });
 
@@ -92,23 +98,16 @@ describe("locatorToCode", () => {
       `getByLabel("Email", { exact: true })`,
     );
   });
-
-  it("appends nth for ambiguous locators", () => {
-    expect(
-      locatorToCode({ kind: "role", value: "button", name: "Item", nth: 1 }),
-    ).toBe(`getByRole("button", { name: "Item" }).nth(1)`);
-  });
 });
 
 describe("recordedSpecFileName", () => {
-  it("slugifies the test name", () => {
+  it("slugifies the test name, with a fallback and a numeric suffix", () => {
     expect(recordedSpecFileName("Add an item!")).toBe(
       "recorded-add-an-item.spec.ts",
     );
-  });
-
-  it("falls back to a usable name when nothing survives slugification", () => {
     expect(recordedSpecFileName("  ***  ")).toBe("recorded-test.spec.ts");
+    expect(recordedSpecFileName("add", 1)).toBe("recorded-add.spec.ts");
+    expect(recordedSpecFileName("add", 2)).toBe("recorded-add-2.spec.ts");
   });
 
   it("caps a very long name so the write can't fail with ENAMETOOLONG", () => {
@@ -118,11 +117,6 @@ describe("recordedSpecFileName", () => {
     expect(name.endsWith(".spec.ts")).toBe(true);
     // No dangling separator where the slug was cut.
     expect(name).not.toContain("-.spec.ts");
-  });
-
-  it("suffixes only from the second candidate on", () => {
-    expect(recordedSpecFileName("add", 1)).toBe("recorded-add.spec.ts");
-    expect(recordedSpecFileName("add", 2)).toBe("recorded-add-2.spec.ts");
   });
 });
 
@@ -152,41 +146,54 @@ describe("recordedBodyStatements", () => {
       `await page.goto("/");`,
     ]);
   });
+
+  it("renders each action kind, escaping recorded values", () => {
+    expect(actionToCodeLine({ kind: "press", key: "Escape" })).toBe(
+      `await page.keyboard.press("Escape");`,
+    );
+    expect(
+      actionToCodeLine({
+        kind: "select",
+        locator: { kind: "testid", value: "tags" },
+        values: ["a", "b"],
+      }),
+    ).toBe(`await page.getByTestId("tags").selectOption(["a", "b"]);`);
+    expect(
+      actionToCodeLine({
+        kind: "fill",
+        locator: { kind: "placeholder", value: "Bio" },
+        value: 'he said "hi"\nbye',
+      }),
+    ).toBe(
+      `await page.getByPlaceholder("Bio").fill("he said \\"hi\\"\\nbye");`,
+    );
+  });
 });
 
 describe("generateSpecSource", () => {
-  const actions: RecordedAction[] = [
-    {
-      kind: "fill",
-      locator: { kind: "placeholder", value: "Email" },
-      value: "a@b.com",
-    },
-    { kind: "click", locator: { kind: "role", value: "button", name: "Add" } },
-    {
-      kind: "check",
-      locator: { kind: "role", value: "checkbox", name: "Subscribe" },
-    },
-    {
-      kind: "select",
-      locator: { kind: "testid", value: "color" },
-      values: ["green"],
-    },
-    {
-      kind: "press",
-      locator: { kind: "placeholder", value: "Email" },
-      key: "Enter",
-    },
-    { kind: "navigate", path: "/done" },
-    {
-      kind: "dblclick",
-      locator: { kind: "text", value: "Row", exact: true, nth: 2 },
-    },
-  ];
-
-  it("generates a signed-in spec", () => {
-    expect(
-      generateDraftSpecSource(draft(actions, { authMode: "neon-better-auth" })),
-    ).toBe(`import { test, expect } from "@playwright/test";
+  it("generates a signed-in spec from a draft", () => {
+    const source = specForDraft(
+      draft(
+        [
+          {
+            kind: "fill",
+            locator: { kind: "placeholder", value: "Email" },
+            value: "a@b.com",
+          },
+          {
+            kind: "click",
+            locator: { kind: "role", value: "button", name: "Add" },
+          },
+          { kind: "navigate", path: "/done" },
+          {
+            kind: "dblclick",
+            locator: { kind: "text", value: "Row", exact: true, nth: 2 },
+          },
+        ],
+        { authMode: "neon-better-auth" },
+      ),
+    );
+    expect(source).toBe(`import { test, expect } from "@playwright/test";
 import { signIn } from "./fixtures/test-user";
 
 test("my flow", async ({ page }) => {
@@ -194,9 +201,6 @@ test("my flow", async ({ page }) => {
   await page.goto("/");
   await page.getByPlaceholder("Email").fill("a@b.com");
   await page.getByRole("button", { name: "Add" }).click();
-  await page.getByRole("checkbox", { name: "Subscribe" }).check();
-  await page.getByTestId("color").selectOption("green");
-  await page.getByPlaceholder("Email").press("Enter");
   await page.goto("/done");
   await page.getByText("Row", { exact: true }).nth(2).dblclick();
 });
@@ -204,39 +208,9 @@ test("my flow", async ({ page }) => {
   });
 
   it("omits the sign-in fixture for an unauthenticated recording", () => {
-    const source = generateDraftSpecSource(draft(actions));
+    const source = specForDraft(draft([], { testName: 'weird "name"' }));
     expect(source).not.toContain("signIn");
     expect(source).not.toContain("./fixtures/test-user");
-    expect(source).toContain(`await page.goto("/");`);
-  });
-
-  it("emits an array argument for multi-value selects", () => {
-    const source = generateDraftSpecSource(
-      draft([
-        {
-          kind: "select",
-          locator: { kind: "testid", value: "tags" },
-          values: ["a", "b"],
-        },
-      ]),
-    );
-    expect(source).toContain(`.selectOption(["a", "b"]);`);
-  });
-
-  it("escapes special characters in recorded values", () => {
-    const source = generateDraftSpecSource(
-      draft(
-        [
-          {
-            kind: "fill",
-            locator: { kind: "placeholder", value: "Bio" },
-            value: 'he said "hi"\nbye',
-          },
-        ],
-        { testName: 'weird "name"' },
-      ),
-    );
-    expect(source).toContain(`.fill("he said \\"hi\\"\\nbye");`);
     expect(source).toContain(`test("weird \\"name\\"",`);
   });
 

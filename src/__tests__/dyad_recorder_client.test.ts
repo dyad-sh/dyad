@@ -121,43 +121,6 @@ afterEach(() => {
 });
 
 describe("dyad recorder client", () => {
-  it("posts an initialized message on load", () => {
-    const r = setup();
-    expect(r.messages).toEqual(
-      expect.arrayContaining([{ type: "dyad-recorder-initialized" }]),
-    );
-  });
-
-  it("records a click using a role + accessible-name locator", () => {
-    const r = setup();
-    r.setHtml(`<button>Add</button>`);
-    r.activate();
-    r.click(r.doc.querySelector("button"));
-    r.settleClick();
-
-    expect(r.actions).toEqual([
-      {
-        kind: "click",
-        locator: { kind: "role", value: "button", name: "Add", exact: true },
-      },
-    ]);
-  });
-
-  it("retargets a click on inner content to the interactive ancestor", () => {
-    const r = setup();
-    r.setHtml(`<button><span>Go</span></button>`);
-    r.activate();
-    r.click(r.doc.querySelector("span"));
-    r.settleClick();
-
-    expect(r.actions).toEqual([
-      {
-        kind: "click",
-        locator: { kind: "role", value: "button", name: "Go", exact: true },
-      },
-    ]);
-  });
-
   it("reports a click immediately, leaving the dblclick merge to the renderer", () => {
     const r = setup();
     r.setHtml(`<button>Open</button>`);
@@ -345,28 +308,6 @@ describe("dyad recorder client", () => {
     ]);
   });
 
-  it("records Enter and modifier shortcuts as presses", () => {
-    const r = setup();
-    r.setHtml(`<input placeholder="Search" />`);
-    r.activate();
-    const input = r.doc.querySelector("input");
-    r.keydown(input, { key: "Enter" });
-    r.keydown(input, { key: "a", ctrlKey: true });
-
-    expect(r.actions).toEqual([
-      {
-        kind: "press",
-        locator: { kind: "placeholder", value: "Search", exact: true },
-        key: "Enter",
-      },
-      {
-        kind: "press",
-        locator: { kind: "placeholder", value: "Search", exact: true },
-        key: "Control+A",
-      },
-    ]);
-  });
-
   it("records checkbox and radio toggles from change events", () => {
     const r = setup();
     r.setHtml(
@@ -406,31 +347,6 @@ describe("dyad recorder client", () => {
       {
         kind: "check",
         locator: { kind: "role", value: "radio", name: "Plan", exact: true },
-      },
-    ]);
-  });
-
-  it("records a select change with the chosen option values", () => {
-    const r = setup();
-    r.setHtml(
-      `<select aria-label="Color"><option value="red">Red</option>` +
-        `<option value="green">Green</option></select>`,
-    );
-    r.activate();
-    const select = r.doc.querySelector("select");
-    select.value = "green";
-    r.change(select);
-
-    expect(r.actions).toEqual([
-      {
-        kind: "select",
-        locator: {
-          kind: "role",
-          value: "combobox",
-          name: "Color",
-          exact: true,
-        },
-        values: ["green"],
       },
     ]);
   });

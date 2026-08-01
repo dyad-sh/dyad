@@ -195,6 +195,26 @@ describe("recording:start / recording:stop", () => {
     expect(activeRecordings.has(1)).toBe(false);
   });
 
+  it("refuses when the preview stopped while isolation was being set up", async () => {
+    const prepared = makePrepared();
+    // A recording queued behind another app operation can reach this point long
+    // after the up-front check, with the dev server gone in the meantime.
+    mocks.prepareIsolatedTestDatabase.mockImplementation(async () => {
+      mocks.runningApps.clear();
+      return prepared;
+    });
+    const { event } = makeEvent();
+
+    const result = await startHandler(event, { appId: 1 });
+
+    expect(result.infraError?.message).toMatch(/app stopped while/i);
+    expect(mocks.clearStorageData).not.toHaveBeenCalled();
+    // The isolation that was already stood up has to come back down.
+    await activeRecordings.get(1)?.done;
+    expect(prepared.teardown).toHaveBeenCalledTimes(1);
+    expect(activeRecordings.has(1)).toBe(false);
+  });
+
   it("tears down and ends the session when the renderer is destroyed", async () => {
     const prepared = makePrepared();
     mocks.prepareIsolatedTestDatabase.mockResolvedValue(prepared);

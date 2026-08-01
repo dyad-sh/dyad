@@ -253,6 +253,14 @@ export async function prepareIsolatedTestDatabase({
       }
     }
 
+    // Provisioning the account is another multi-second network round trip (and
+    // its own catch deliberately swallows failures), so a Stop pressed during it
+    // would otherwise be reported as a ready session. The catch below restores
+    // the real branch and reports the stopped result instead.
+    if (signal?.aborted) {
+      throw new Error("Test run stopped.");
+    }
+
     return {
       isolation: { mode: "neon-branch" },
       testCredentials,

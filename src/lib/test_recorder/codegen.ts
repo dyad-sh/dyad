@@ -170,6 +170,14 @@ export function generateDraftSpecSource(draft: RecordedTestDraft): string {
 }
 
 /**
+ * The slug is capped well under the 255-byte filename limit every common
+ * filesystem enforces. The test name is free text the user typed (or pasted)
+ * into the recording bar, and an over-long one would fail the write with a raw
+ * ENAMETOOLONG rather than producing a test.
+ */
+const MAX_SLUG_LENGTH = 80;
+
+/**
  * Filename for a recorded test, e.g. `recorded-add-item.spec.ts`. `index` (2+)
  * disambiguates when that name is already taken — a re-recording, or two flows
  * whose names slugify the same, must never clobber an existing spec.
@@ -179,6 +187,7 @@ export function recordedSpecFileName(testName: string, index?: number): string {
     testName
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
+      .slice(0, MAX_SLUG_LENGTH)
       .replace(/^-+|-+$/g, "") || "test";
   return `recorded-${slug}${index && index > 1 ? `-${index}` : ""}.spec.ts`;
 }

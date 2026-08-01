@@ -66,7 +66,12 @@ export async function createNeonTestAccount({
     `Create Neon test account for app ${appId}`,
   );
   if (!response.ok) {
-    const detail = await response.text().catch(() => "");
+    // Truncated: this lands in a user-facing message, and a misconfigured auth
+    // service answers with a whole HTML error page.
+    const detail = await response
+      .text()
+      .then((body) => body.slice(0, 500))
+      .catch(() => "");
     throw new DyadError(
       `Better Auth rejected the test-account signup (${response.status}). ${detail}`.trim(),
       DyadErrorKind.External,

@@ -452,7 +452,13 @@
     // hidden container computes to `block` and reads as visible.
     if (typeof el.checkVisibility === "function") {
       try {
-        return el.checkVisibility();
+        // `visibilityProperty` is off by default but Playwright does treat
+        // `visibility: hidden` as hidden. `opacityProperty` stays off, because
+        // Playwright does NOT — an `opacity: 0` element is still visible to it.
+        return el.checkVisibility({
+          visibilityProperty: true,
+          contentVisibilityAuto: true,
+        });
       } catch {
         // fall through to the manual check
       }

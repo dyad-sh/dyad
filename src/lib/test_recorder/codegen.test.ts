@@ -111,6 +111,15 @@ describe("recordedSpecFileName", () => {
     expect(recordedSpecFileName("  ***  ")).toBe("recorded-test.spec.ts");
   });
 
+  it("caps a very long name so the write can't fail with ENAMETOOLONG", () => {
+    const name = recordedSpecFileName("a very long name ".repeat(50));
+    expect(name.length).toBeLessThan(120);
+    expect(name.startsWith("recorded-a-very-long-name-")).toBe(true);
+    expect(name.endsWith(".spec.ts")).toBe(true);
+    // No dangling separator where the slug was cut.
+    expect(name).not.toContain("-.spec.ts");
+  });
+
   it("suffixes only from the second candidate on", () => {
     expect(recordedSpecFileName("add", 1)).toBe("recorded-add.spec.ts");
     expect(recordedSpecFileName("add", 2)).toBe("recorded-add-2.spec.ts");

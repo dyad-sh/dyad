@@ -11,11 +11,14 @@ import {
   setupHandlerTestHarness,
 } from "@/testing/handler_test_harness";
 
-const { mockStreamText, mockGitAdd, appRoots } = vi.hoisted(() => ({
-  mockStreamText: vi.fn(),
-  mockGitAdd: vi.fn(async () => {}),
-  appRoots: new Map<string, string>(),
-}));
+const { mockStreamText, mockGitAdd, mockGitResetFile, appRoots } = vi.hoisted(
+  () => ({
+    mockStreamText: vi.fn(),
+    mockGitAdd: vi.fn(async () => {}),
+    mockGitResetFile: vi.fn(async () => {}),
+    appRoots: new Map<string, string>(),
+  }),
+);
 
 vi.mock("ai", async (importOriginal) => {
   const actual = await importOriginal<typeof import("ai")>();
@@ -50,6 +53,7 @@ vi.mock("../utils/stream_text_utils", () => ({
 
 vi.mock("../utils/git_utils", () => ({
   gitAdd: mockGitAdd,
+  gitResetFile: mockGitResetFile,
 }));
 
 vi.mock("../../paths/paths", () => ({
@@ -57,7 +61,11 @@ vi.mock("../../paths/paths", () => ({
 }));
 
 import { registerTestAssertionHandlers } from "./test_assertion_handlers";
-import { buildAssertionsTagContent } from "@/lib/test_recorder/assertion_tag";
+import { eq } from "drizzle-orm";
+import {
+  buildAssertionsTagContent,
+  readAssertionsTagAttribute,
+} from "@/lib/test_recorder/assertion_tag";
 import {
   ASSERTION_PROPOSAL_VERSION,
   buildPlanItems,
@@ -370,6 +378,71 @@ describe("registerTestAssertionHandlers", () => {
       expect(latched).toContain(`spec-path="${SPEC_PATH}"`);
       expect(latched.startsWith(MESSAGE_PREFIX)).toBe(true);
       expect(latched.endsWith(MESSAGE_SUFFIX)).toBe(true);
+    });
+
+    it("approves the named card when one message carries two", async () => {
+      // The agent is free to call generate_test_assertions twice in a turn.
+      // Every read and the rewrite must be scoped by proposal id, or approving
+      // the second card reads — and then overwrites — the first.
+      const { appId, chatId } = seed();
+      propose(appId, chatId);
+      const first = storedMessages()[0];
+      const firstCard = first.content
+        .replace(MESSAGE_PREFIX, "")
+        .replace(MESSAGE_SUFFIX, "");
+      const secondDraft: RecordedTestDraft = {
+        ...DRAFT,
+        testName: "second flow",
+      };
+      const secondItems = buildPlanItems({
+        bodyStatements: recordedBodyStatements(secondDraft),
+        stepDescriptions: [
+          { index: 0, text: "Open the home page" },
+          { index: 1, text: "Click the Add button" },
+        ],
+        assertions: [],
+        newId: () => "assertion-b0",
+      }).items;
+      const secondCard = buildAssertionsTagContent({
+        proposalId: "proposal-2",
+        status: "proposed",
+        payload: {
+          version: ASSERTION_PROPOSAL_VERSION,
+          appId,
+          draft: secondDraft,
+          testTitle: secondDraft.testName,
+          specPath: null,
+          items: secondItems,
+        },
+      });
+      harness.db
+        .update(messages)
+        .set({ content: `${firstCard}\n\nand also:\n\n${secondCard}` })
+        .where(eq(messages.id, first.id))
+        .run();
+
+      const result = await harness.invokeHandler<{ specPath: string }>(
+        "tests:apply-assertions",
+        {
+          appId,
+          chatId,
+          proposalId: "proposal-2",
+          items: secondItems,
+        },
+      );
+
+      // The second card's own recording was written, not the first's.
+      expect(result.specPath).toBe("e2e-tests/recorded-second-flow.spec.ts");
+      expect(specExists(SPEC_PATH)).toBe(false);
+
+      const latched = storedMessages()[0].content;
+      expect(readAssertionsTagAttribute(latched, "status", "proposal-1")).toBe(
+        "proposed",
+      );
+      expect(readAssertionsTagAttribute(latched, "status", "proposal-2")).toBe(
+        "approved",
+      );
+      expect(latched).toContain("and also:");
     });
 
     it("honors a reordered plan", async () => {

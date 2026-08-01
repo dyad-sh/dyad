@@ -31,11 +31,13 @@ function makeRecorder(
     steps: ['await page.getByRole("button", { name: "Increment" }).click();'],
     isRecording: phase === "recording",
     isBusy: false,
+    awaitingAssertions: false,
     startRecording: vi.fn(),
     stopAndReview: vi.fn(),
     saveWithoutAssertions: vi.fn(),
     cancelRecording: vi.fn(),
     dismissReview: vi.fn(),
+    markAwaitingAssertions: vi.fn(),
     discardDraft: vi.fn(),
     ...overrides,
   } as TestRecorderController;
@@ -125,6 +127,38 @@ describe("RecordingBanner", () => {
     // itself has to be reachable or the steps past the fold need a mouse.
     expect(list.getAttribute("tabindex")).toBe("0");
     expect(list.getAttribute("aria-label")).toBe("Recorded steps");
+  });
+
+  it("keeps every recovery action reachable while the AI is asked for assertions", () => {
+    // The request can fail, be cancelled, or end without the tool ever being
+    // called. This bar is the only place the parked draft can still be saved
+    // as-is, discarded, or asked again, so none of that may disappear on
+    // dispatch — and the wait itself has to be visible.
+    renderBanner(makeRecorder("reviewing", { awaitingAssertions: true }));
+
+    const status = screen.getByTestId("preview-recording-review-status");
+    expect(status.textContent).toContain("Asking the AI for assertions");
+    expect(status.getAttribute("role")).toBe("status");
+    expect(
+      screen.getByTestId("preview-recording-generate-assertions-button")
+        .textContent,
+    ).toContain("Ask again");
+    expect(
+      screen.getByTestId("preview-recording-save-plain-button"),
+    ).toBeTruthy();
+    expect(screen.getByTestId("preview-recording-discard-button")).toBeTruthy();
+  });
+
+  it("hides the review on request without discarding the recording", () => {
+    // The draft outlives the bar — the chat card owns it from here — so closing
+    // must not be wired to discardDraft.
+    const recorder = makeRecorder("reviewing");
+    renderBanner(recorder);
+
+    fireEvent.click(screen.getByTestId("preview-recording-hide-review-button"));
+
+    expect(recorder.dismissReview).toHaveBeenCalledTimes(1);
+    expect(recorder.discardDraft).not.toHaveBeenCalled();
   });
 
   it("keeps a warning inside the one banner", () => {

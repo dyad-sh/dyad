@@ -187,6 +187,12 @@ function editButton(): HTMLButtonElement {
   return screen.getByTestId("edit-latest-version-button") as HTMLButtonElement;
 }
 
+// Lets a settled edit continuation run to completion (or to the guard that
+// stops it) before the assertions look at what it did.
+function flushPendingEdit(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 describe("CodeView diff editing", () => {
   beforeEach(() => {
     mocks.previewState = { type: "closed" };
@@ -454,6 +460,62 @@ describe("CodeView diff editing", () => {
     expect(store.get(selectedFileAtom)).toBeNull();
   });
 
+  it("drops a pending edit when the panel is torn down", async () => {
+    const store = createStore();
+    mocks.previewState = previewingState("src/selected.ts");
+    mocks.versionChanges = [{ path: "src/selected.ts" }];
+    let finishReturn: () => void = () => undefined;
+    mocks.sendPreviewEventAndWait.mockImplementation(
+      () =>
+        new Promise<undefined>((resolve) => {
+          finishReturn = () => resolve(undefined);
+        }),
+    );
+    const { unmount } = renderCodeView(store, ["src/selected.ts"]);
+
+    fireEvent.click(editButton());
+    // Leaving Code mode unmounts the panel without an app change, so the
+    // app-id effect never runs and cannot invalidate the operation.
+    unmount();
+    finishReturn();
+    await flushPendingEdit();
+
+    // The selection is global: committing it here would let a later app render
+    // the editor with this app's path.
+    expect(store.get(selectedFileAtom)).toBeNull();
+    expect(mocks.refreshApp).not.toHaveBeenCalled();
+  });
+
+  it("does not blame the next app for the previous app's return", async () => {
+    const store = createStore();
+    mocks.previewState = previewingState("src/selected.ts");
+    mocks.versionChanges = [{ path: "src/selected.ts" }];
+    let failReturn: () => void = () => undefined;
+    mocks.sendPreviewEventAndWait.mockImplementation(
+      () =>
+        new Promise<undefined>((_resolve, reject) => {
+          failReturn = () => reject(new Error("return failed"));
+        }),
+    );
+    const { rerenderCodeView } = renderCodeView(store, ["src/selected.ts"]);
+
+    fireEvent.click(editButton());
+    // The user switches apps while the return is still running.
+    mocks.previewState = previewingWithHiddenDiffState();
+    mocks.versionChanges = [];
+    rerenderCodeView(["src/other-app.ts"], 2);
+
+    // The new app is not returning to anything, so it must not inherit the
+    // spinner or the disabled pencil.
+    expect(screen.queryByTestId("returning-to-latest-version")).toBeNull();
+
+    failReturn();
+    await flushPendingEdit();
+
+    // Nor may the previous app's failure surface as the new app's problem.
+    expect(screen.queryByTestId("historical-checkout-not-released")).toBeNull();
+  });
+
   it("keeps the file tree closed when another window keeps the checkout", async () => {
     const store = createStore();
     mocks.previewState = previewingState("src/selected.ts");
@@ -472,9 +534,11 @@ describe("CodeView diff editing", () => {
     mocks.previewState = previewingWithHiddenDiffState();
     rerenderCodeView();
 
+    // Nothing failed here, so there is no recovery notification to retry: the
+    // checkout is released when the other window closes its preview.
     expect(
-      screen.getByTestId("historical-checkout-not-released"),
-    ).not.toBeNull();
+      screen.getByTestId("historical-checkout-not-released").textContent,
+    ).toBe("preview.historicalCheckoutHeldElsewhere");
     expect(screen.queryByTestId("file-editor")).toBeNull();
   });
 
@@ -483,9 +547,10 @@ describe("CodeView diff editing", () => {
     mocks.previewState = restoreRecoveryRequiredState();
     renderCodeView(store, ["src/selected.ts"]);
 
+    // This one does have a recovery notification with a retry.
     expect(
-      screen.getByTestId("historical-checkout-not-released"),
-    ).not.toBeNull();
+      screen.getByTestId("historical-checkout-not-released").textContent,
+    ).toBe("preview.historicalCheckoutNotReleased");
     expect(screen.queryByTestId("file-editor")).toBeNull();
   });
 

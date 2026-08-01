@@ -243,6 +243,7 @@
     "editDisabledMissingAtLatest": "Este arquivo não está na versão mais recente, então não há nada para editar.",
     "returningToLatestVersion": "Voltando para a versão mais recente...",
     "historicalCheckoutNotReleased": "Este app ainda está na versão visualizada. Use a ação de tentar novamente na notificação de recuperação para voltar à versão mais recente antes de editar arquivos.",
+    "historicalCheckoutHeldElsewhere": "Outra janela ainda está visualizando uma versão deste app, então ele permanece nessa versão. Feche a visualização lá para editar os arquivos mais recentes.",
     "sendToChat": "Enviar para o chat",
     "systemMessages": "Mensagens do Sistema",
     "consoleFilters": {

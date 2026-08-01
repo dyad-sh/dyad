@@ -255,6 +255,7 @@
     "editDisabledMissingAtLatest": "This file isn't in the latest version, so there's nothing to edit.",
     "returningToLatestVersion": "Returning to the latest version...",
     "historicalCheckoutNotReleased": "This app is still on the previewed version. Use the retry action in the recovery notification to return to the latest version before editing files.",
+    "historicalCheckoutHeldElsewhere": "Another window is still previewing a version of this app, so it stays on that version. Close the preview there to edit the latest files.",
     "commit": "Commit",
     "committing": "Committing...",
     "cancel": "Cancel",

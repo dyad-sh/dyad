@@ -243,6 +243,7 @@
     "editDisabledMissingAtLatest": "该文件不在最新版本中，因此没有可编辑的内容。",
     "returningToLatestVersion": "正在返回最新版本...",
     "historicalCheckoutNotReleased": "此应用仍处于预览的版本。请先在恢复通知中使用重试操作返回最新版本，然后再编辑文件。",
+    "historicalCheckoutHeldElsewhere": "另一个窗口仍在预览此应用的某个版本，因此它保持在该版本。请在那个窗口关闭预览后再编辑最新文件。",
     "sendToChat": "发送到聊天",
     "systemMessages": "系统消息",
     "consoleFilters": {

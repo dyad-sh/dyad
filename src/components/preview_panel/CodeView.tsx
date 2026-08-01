@@ -91,12 +91,28 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
   // async, so the user can switch apps mid-flight; the continuation compares
   // against this to avoid applying the edit to whatever app took its place.
   const displayedAppIdRef = useRef(app?.id ?? null);
+  // Leaving Code mode tears the panel down without running the app-id effect,
+  // so displayedAppIdRef would keep answering for an app that is no longer
+  // displayed. The file selection it writes is global, so an unmounted panel
+  // must not commit one: a later app could render the editor with this app's
+  // path and overwrite the wrong file on save.
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     displayedAppIdRef.current = app?.id ?? null;
-    // The flag describes the app that was displayed when the edit was
-    // attempted, so it says nothing about the one that replaced it.
+    // Both flags describe the app that was displayed when the edit was
+    // attempted, so they say nothing about the one that replaced it. Without
+    // this, the new app shows the returning spinner and a disabled pencil for
+    // an operation it is not performing.
     setEditLeftAppDetached(false);
+    setIsLeavingHistoricalCheckout(false);
   }, [app?.id]);
 
   useEffect(() => {
@@ -179,11 +195,18 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
   // interrupted restore leaves the app detached until the recovery
   // notification's retry succeeds, and an edit that bailed out because another
   // window kept the checkout stays detached until that window releases it.
+  // Only the first has a retry to point the user at.
+  const isAwaitingCheckoutRecovery =
+    previewState.type === "recovery-required" ||
+    previewState.type === "restore-recovery-required";
   const isStuckOnHistoricalCheckout =
-    (previewState.type === "recovery-required" ||
-      previewState.type === "restore-recovery-required" ||
-      editLeftAppDetached) &&
+    (isAwaitingCheckoutRecovery || editLeftAppDetached) &&
     ownsHistoricalCheckout(previewState);
+
+  // An edit that outlived the view that started it must not touch state that
+  // belongs to whatever is displayed now - another app, or nothing at all.
+  const isEditStillDisplayed = (appId: number | undefined) =>
+    isMountedRef.current && displayedAppIdRef.current === appId;
 
   // Previewing a version checks the app out at that commit (detached HEAD), so
   // opening the editor there would show - and save over - the historical copy.
@@ -195,9 +218,10 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
     // Re-select only once the branch is back and the target is confirmed.
     setSelectedFile(null);
     await sendPreviewEventAndWait({ type: "CLOSE" });
-    // The user moved on to another app while the return was in flight; its
-    // editor must not inherit this app's file selection.
-    if (displayedAppIdRef.current !== appId) return;
+    // The user moved on - to another app, or out of Code mode entirely - while
+    // the return was in flight. Whatever is displayed next must not inherit
+    // this app's file selection.
+    if (!isEditStillDisplayed(appId)) return;
     if (appId != null) {
       // Content cached while detached describes the historical commit, so drop
       // it rather than briefly showing it as the file's latest version.
@@ -220,7 +244,7 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
     // still there: a file that only exists in the previewed version would
     // otherwise open an empty editor that re-creates it on save.
     const refreshed = await refreshApp();
-    if (displayedAppIdRef.current !== appId) return;
+    if (!isEditStillDisplayed(appId)) return;
     // Another window can start previewing a version while the re-list is in
     // flight, so the check above no longer speaks for the current checkout -
     // and the listing may already describe the newly detached tree. Confirm
@@ -266,14 +290,24 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
       return;
     }
 
+    const appId = app.id;
     setIsLeavingHistoricalCheckout(true);
     setEditLeftAppDetached(false);
     void editAfterLeavingHistoricalCheckout(path)
       // Returning to the branch failed: the app is still detached, so keep the
       // file tree closed instead of offering the historical copy for editing.
       // The failed return surfaces its own recovery notification.
-      .catch(() => setEditLeftAppDetached(true))
-      .finally(() => setIsLeavingHistoricalCheckout(false));
+      .catch(() => {
+        if (!isEditStillDisplayed(appId)) return;
+        setEditLeftAppDetached(true);
+      })
+      // A settlement that arrives after the panel moved on describes an
+      // operation the displayed app is not running, so it must not clear (or
+      // set) that app's edit state - the app-id effect already reset it.
+      .finally(() => {
+        if (!isEditStillDisplayed(appId)) return;
+        setIsLeavingHistoricalCheckout(false);
+      });
   };
 
   // The version diff view is driven by the selected commit, not the current
@@ -425,7 +459,9 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
             data-testid="historical-checkout-not-released"
             className="flex-1 flex items-center justify-center px-4 py-4 text-center text-sm text-gray-500"
           >
-            {t("preview.historicalCheckoutNotReleased")}
+            {isAwaitingCheckoutRecovery
+              ? t("preview.historicalCheckoutNotReleased")
+              : t("preview.historicalCheckoutHeldElsewhere")}
           </div>
         ) : (
           <PanelGroup

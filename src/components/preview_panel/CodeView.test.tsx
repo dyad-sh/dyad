@@ -137,6 +137,25 @@ function recoveryRequiredState() {
   };
 }
 
+// An interrupted restore is the same hazard: still detached, no diff.
+function restoreRecoveryRequiredState() {
+  return {
+    ...returningState(),
+    type: "restore-recovery-required",
+    error: { message: "restore was interrupted" },
+  };
+}
+
+// CLOSE hides this window's diff presentation even when another window keeps
+// the shared checkout alive, so the machine stays on the previewed commit.
+function previewingWithHiddenDiffState() {
+  const previewing = previewingState("src/selected.ts");
+  return {
+    ...previewing,
+    session: { ...previewing.session, isDiffVisible: false },
+  };
+}
+
 function renderCodeView(
   store: ReturnType<typeof createStore>,
   files: string[],
@@ -433,6 +452,95 @@ describe("CodeView diff editing", () => {
     ).not.toBeNull();
     expect(screen.queryByTestId("file-editor")).toBeNull();
     expect(store.get(selectedFileAtom)).toBeNull();
+  });
+
+  it("keeps the file tree closed when another window keeps the checkout", async () => {
+    const store = createStore();
+    mocks.previewState = previewingState("src/selected.ts");
+    mocks.versionChanges = [{ path: "src/selected.ts" }];
+    // CLOSE resolves without running the git return here, so the shared
+    // repository stays on the previewed commit.
+    mocks.stateAfterClose = previewingState("src/selected.ts");
+    const { rerenderCodeView } = renderCodeView(store, ["src/selected.ts"]);
+
+    fireEvent.click(editButton());
+
+    await waitFor(() => {
+      expect(mocks.showWarning).toHaveBeenCalled();
+    });
+    // This window's CLOSE still hid its own diff presentation.
+    mocks.previewState = previewingWithHiddenDiffState();
+    rerenderCodeView();
+
+    expect(
+      screen.getByTestId("historical-checkout-not-released"),
+    ).not.toBeNull();
+    expect(screen.queryByTestId("file-editor")).toBeNull();
+  });
+
+  it("keeps the file tree closed after an interrupted restore", () => {
+    const store = createStore();
+    mocks.previewState = restoreRecoveryRequiredState();
+    renderCodeView(store, ["src/selected.ts"]);
+
+    expect(
+      screen.getByTestId("historical-checkout-not-released"),
+    ).not.toBeNull();
+    expect(screen.queryByTestId("file-editor")).toBeNull();
+  });
+
+  it("does not open the editor when a new checkout starts during the re-list", async () => {
+    const store = createStore();
+    mocks.previewState = previewingState("src/selected.ts");
+    mocks.versionChanges = [{ path: "src/selected.ts" }];
+    // The return released the checkout, but another window starts previewing
+    // while the re-list is in flight, so the listing describes its checkout.
+    mocks.refreshApp.mockImplementation(async () => {
+      mocks.stateAfterClose = previewingState("src/selected.ts");
+      return { isError: false, data: { id: 1, files: ["src/selected.ts"] } };
+    });
+    renderCodeView(store, ["src/selected.ts"]);
+
+    fireEvent.click(editButton());
+
+    await waitFor(() => {
+      expect(mocks.showWarning).toHaveBeenCalledWith(
+        "preview.editLatestVersionUnavailable:src/selected.ts",
+      );
+    });
+    expect(store.get(selectedFileAtom)).toBeNull();
+  });
+
+  it("does not edit a staged diff while the app is on a previewed version", () => {
+    const store = createStore();
+    // Only the version-diff path returns to the origin branch first, so a
+    // staged diff would open the detached working tree's copy directly.
+    mocks.previewState = previewingWithHiddenDiffState();
+    store.set(stagedDiffFileAtom, "src/staged.ts");
+    mocks.uncommittedFiles = [{ path: "src/staged.ts", status: "modified" }];
+    renderCodeView(store, ["src/staged.ts"]);
+
+    expect(editButton().disabled).toBe(true);
+    expect(editButton().dataset.disabledReason).toBe(
+      "preview.editDisabledHistoricalCheckout",
+    );
+    fireEvent.click(editButton());
+    expect(store.get(selectedFileAtom)).toBeNull();
+  });
+
+  it("explains why the edit action is unavailable", () => {
+    const store = createStore();
+    mocks.previewState = versionDiffState("src/deleted.ts");
+    mocks.versionChanges = [{ path: "src/deleted.ts", type: "delete" }];
+    renderCodeView(store, ["src/current.ts"]);
+
+    // A bare disabled pencil says nothing about why it cannot be used.
+    expect(editButton().dataset.disabledReason).toBe(
+      "preview.editDisabledMissingAtLatest",
+    );
+    // The tooltip carrying that reason has to hang off a wrapper: a disabled
+    // button never emits the pointer events that would open it.
+    expect(editButton().parentElement?.dataset.slot).toBe("tooltip-trigger");
   });
 
   it("allows editing a path the previewed checkout does not have", () => {

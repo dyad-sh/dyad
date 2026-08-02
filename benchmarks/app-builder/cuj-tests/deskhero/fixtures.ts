@@ -51,6 +51,51 @@ export function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+// A status VALUE as a rendered-label pattern fragment.
+//
+// The milestones pin the status *values* (`open | in_progress | resolved |
+// closed`), the transition matrix, and the transition-button testids — but they
+// never pin the *label*. "in_progress", "in progress", "In Progress",
+// "in-progress" and "InProgress" are all conformant renderings of the same
+// value, so an assertion must not encode one house style. Only the word
+// separator and the case are relaxed.
+const statusFragment = (s: Status) => s.replace(/_/g, "[\\s_-]?");
+
+/**
+ * Format-insensitive matcher for the rendered text of a status value.
+ *
+ * Relaxes FORMATTING only, never identity: the four status words are mutually
+ * non-overlapping, so `statusText("open")` (/open/i) cannot be satisfied by any
+ * rendering of `in_progress`, `resolved` or `closed`, and
+ * `statusText("in_progress")` (/in[\s_-]?progress/i) cannot be satisfied by
+ * "Open"/"Resolved"/"Closed". A ticket that did not actually change status
+ * therefore still fails every assertion that uses this.
+ *
+ * Deliberately NOT word-anchored. A locator's text is the concatenation of its
+ * descendants with no separator inserted, so a row of adjacent badges reads
+ * `"…8/2/2026highopen"` — a leading `\b` would reject the very apps this exists
+ * to accommodate. (`ticket-reopen` is pinned as a *detail-page action*, not row
+ * or status-badge content, so "Reopen" is not in scope of any element asserted
+ * on here.)
+ */
+export function statusText(s: Status): RegExp {
+  return new RegExp(statusFragment(s), "i");
+}
+
+/**
+ * Audit-trail `old → new` detail for a status transition (M3 pins the detail
+ * as "old → new" but, again, not the label format or the arrow glyph).
+ * Still fails an app that never recorded the transition, or that recorded a
+ * different pair — both endpoints must appear, in that order, joined by an
+ * arrow/"to".
+ */
+export function transitionDetail(from: Status, to: Status): RegExp {
+  return new RegExp(
+    `${statusFragment(from)}\\s*(→|->|to)\\s*${statusFragment(to)}`,
+    "i",
+  );
+}
+
 // Design-pinned email shapes: admin+<token>@deskhero.test etc. The `admin+`
 // prefix triggers the M2 bootstrap rule; requester/agent prefixes are inert.
 // Display names are unique too: assignee/role selects list every user in the
@@ -444,7 +489,7 @@ export async function assignTo(
 export async function transition(actor: Persona, to: Status) {
   await actor.page.getByTestId(`transition-${to}`).click();
   await expect(actor.page.getByTestId("ticket-detail-status")).toContainText(
-    to,
+    statusText(to),
     { timeout: 15_000 },
   );
 }

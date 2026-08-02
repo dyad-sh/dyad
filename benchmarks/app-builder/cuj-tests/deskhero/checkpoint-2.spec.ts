@@ -18,6 +18,7 @@ import {
   addNote,
   assignTo,
   promoteToAgent,
+  statusText,
   transition,
 } from "./fixtures";
 
@@ -51,7 +52,7 @@ test.describe("deskhero checkpoint 2", () => {
     await r1.page.goto("/tickets");
     await expect(
       r1.page.getByTestId("ticket-row").filter({ hasText: t1 }).first(),
-    ).toContainText("open");
+    ).toContainText(statusText("open"));
     expect(await findTicketId(r1.ctx, t1)).toBeTruthy();
   });
 
@@ -112,16 +113,16 @@ test.describe("deskhero checkpoint 2", () => {
     await w.agent.page.getByTestId("transition-in_progress").click();
     await expect(
       w.agent.page.getByTestId("ticket-detail-status"),
-    ).toContainText("in_progress");
+    ).toContainText(statusText("in_progress"));
     await w.agent.page.getByTestId("transition-resolved").click();
     await expect(
       w.agent.page.getByTestId("ticket-detail-status"),
-    ).toContainText("resolved");
+    ).toContainText(statusText("resolved"));
     await w.requester.page.goto(`/tickets/${w.ticketId}`);
     await w.requester.page.getByTestId("transition-closed").click();
     await expect(
       w.requester.page.getByTestId("ticket-detail-status"),
-    ).toContainText("closed");
+    ).toContainText(statusText("closed"));
   });
 
   test("m2-reopen", async ({ desk }) => {
@@ -137,7 +138,7 @@ test.describe("deskhero checkpoint 2", () => {
     await w.requester.page.getByTestId("transition-open").click();
     await expect(
       w.requester.page.getByTestId("ticket-detail-status"),
-    ).toContainText("open");
+    ).toContainText(statusText("open"));
   });
 
   test("m2-button-gating", async ({ desk }) => {
@@ -267,7 +268,7 @@ test.describe("deskhero checkpoint 2", () => {
     await w.requester.page.goto(`/tickets/${w.ticketId}`);
     await expect(
       w.requester.page.getByTestId("ticket-detail-status"),
-    ).toContainText("open");
+    ).toContainText(statusText("open"));
   });
 
   test("m2-p-role-transition", async ({ desk }) => {
@@ -287,7 +288,7 @@ test.describe("deskhero checkpoint 2", () => {
     expect(resp.status()).toBeGreaterThanOrEqual(400);
     await r1.page.goto(`/tickets/${roleId}`);
     await expect(r1.page.getByTestId("ticket-detail-status")).toContainText(
-      "open",
+      statusText("open"),
     );
   });
 
@@ -306,7 +307,7 @@ test.describe("deskhero checkpoint 2", () => {
     expect(resp.status()).toBeGreaterThanOrEqual(400);
     await r1.page.goto(`/tickets/${unId}`);
     await expect(r1.page.getByTestId("ticket-detail-status")).toContainText(
-      "open",
+      statusText("open"),
     );
   });
 

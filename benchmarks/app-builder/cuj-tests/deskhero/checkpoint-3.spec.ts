@@ -20,8 +20,10 @@ import {
   promoteToAgent,
   selectOptionByText,
   setSlaDue,
+  statusText,
   toggleActive,
   transition,
+  transitionDetail,
 } from "./fixtures";
 
 const DAY_MS = 24 * 3_600_000;
@@ -203,7 +205,7 @@ test.describe("deskhero checkpoint 3", () => {
     await expect(
       w.admin.page
         .getByTestId("audit-row")
-        .filter({ hasText: /in_progress\s*(→|->|to)\s*resolved/i })
+        .filter({ hasText: transitionDetail("in_progress", "resolved") })
         .filter({ hasText: w.agent.who.email })
         .first(),
     ).toBeVisible();
@@ -229,7 +231,7 @@ test.describe("deskhero checkpoint 3", () => {
     await w.requester.page.getByTestId("transition-closed").click();
     await expect(
       w.requester.page.getByTestId("ticket-detail-status"),
-    ).toContainText("closed");
+    ).toContainText(statusText("closed"));
     expect(await w.requester.page.content()).not.toContain(marker);
   });
 

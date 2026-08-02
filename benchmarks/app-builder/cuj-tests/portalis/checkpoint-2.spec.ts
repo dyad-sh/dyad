@@ -8,10 +8,13 @@
 //   npx playwright test portalis/checkpoint-2.spec.ts -g "S2-04"
 // and a failure can never skip another test.
 import {
+  PINNED_VERB_DENIED,
   RUN_ID,
+  UNPINNED_VERB_DENIED,
   UUID_RE,
   appBaseURL,
   expect,
+  expectDeniedApi,
   expectDeniedPage,
   expectNoLeak,
   getMe,
@@ -222,6 +225,10 @@ test.describe("portalis checkpoint 2", () => {
     await a.page.goto(`/orgs/${org.id}/projects/${p1.id}`);
     await a.page.getByTestId("project-edit-name-input").fill(p1Renamed);
     await a.page.getByTestId("project-save").click();
+    // Same hazard settleAfterSubmit() documents for the create form: the click
+    // fires a client-side PATCH and the goto below would abort it in flight,
+    // failing an app whose save is perfectly correct.
+    await settleAfterSubmit(a.page);
     await a.page.goto(`/orgs/${org.id}/projects`);
     await expect(
       a.page.getByTestId("project-row-name").filter({ hasText: p1Renamed }),
@@ -232,6 +239,9 @@ test.describe("portalis checkpoint 2", () => {
     const confirm = a.page.getByTestId("project-delete-confirm");
     await expect(confirm).toBeVisible({ timeout: 15_000 });
     await confirm.click();
+    // Ditto for the DELETE: aborting it leaves the row present, and the
+    // toHaveCount(0) below would then fail an app that deletes correctly.
+    await settleAfterSubmit(a.page);
     await a.page.goto(`/orgs/${org.id}/projects`);
     await expect(
       a.page.getByTestId("project-row").filter({ hasText: p2.name }),
@@ -253,6 +263,7 @@ test.describe("portalis checkpoint 2", () => {
     await b.page.goto(`/orgs/${org.id}/projects/${p3.id}`);
     await b.page.getByTestId("project-edit-name-input").fill(p3Renamed);
     await b.page.getByTestId("project-save").click();
+    await settleAfterSubmit(b.page);
 
     await b.page.goto(`/orgs/${org.id}/projects`);
     await expect(
@@ -420,16 +431,22 @@ test.describe("portalis checkpoint 2", () => {
     const po = await world.signUp("m2-s2-02", "po");
     await provisionOrg(po, "m2-s2-02", "Outer");
 
-    for (const path of [
-      `/api/orgs/${orgP.id}/projects`,
-      `/api/orgs/${orgP.id}/projects/${pp1.id}`,
-    ]) {
+    // GET is pinned on the collection path, so that leg stays strictly 404.
+    // GET on the detail path is not a verb m2 asks for (it pins
+    // PATCH/DELETE there), so an app that built exactly the pinned surface may
+    // answer 405 — or 404 from the missing route. Either way it must not be
+    // the project.
+    for (const [path, allowed] of [
+      [`/api/orgs/${orgP.id}/projects`, PINNED_VERB_DENIED],
+      [`/api/orgs/${orgP.id}/projects/${pp1.id}`, UNPINNED_VERB_DENIED],
+    ] as const) {
       const resp = await po.ctx.request.get(path, { maxRedirects: 0 });
-      expect(
-        resp.status(),
-        `${path} with a non-member cookie must be 404 (existence must not leak)`,
-      ).toBe(404);
-      expectNoLeak(await resp.text(), [pp1.name], path);
+      await expectDeniedApi(
+        resp,
+        allowed,
+        `GET ${path} with a non-member cookie`,
+        [pp1.name],
+      );
     }
   });
 
@@ -564,13 +581,15 @@ test.describe("portalis checkpoint 2", () => {
       maxRedirects: 0,
     });
     const del = await po.ctx.request.delete(target, { maxRedirects: 0 });
-    for (const [label, resp] of [
-      ["GET", get],
-      ["PATCH", patch],
-      ["DELETE", del],
+    // PATCH and DELETE are the verbs m2 pins on the detail path, so they must
+    // be exactly 404. GET is not pinned there, so a conformant app with no GET
+    // handler may answer 405 instead — but never the project.
+    for (const [label, resp, allowed] of [
+      ["GET", get, UNPINNED_VERB_DENIED],
+      ["PATCH", patch, PINNED_VERB_DENIED],
+      ["DELETE", del, PINNED_VERB_DENIED],
     ] as const) {
-      expect(resp.status(), `${label} ${target} must be 404`).toBe(404);
-      expectNoLeak(await resp.text(), [pp1.name], `${label} ${target}`);
+      await expectDeniedApi(resp, allowed, `${label} ${target}`, [pp1.name]);
     }
 
     // Unmodified when re-read by its owner.

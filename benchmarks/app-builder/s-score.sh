@@ -65,6 +65,13 @@ for M in $MILESTONES; do
     rm -rf "$APP_DIR"
   done
 
+  # A re-score after a suite repair wants the judge held FIXED: the judge is 15%
+  # of the composite, so re-running it would fold judge variance into a delta
+  # that is supposed to isolate what the CUJ/probe repairs changed.
+  if [[ "${APPBENCH_SKIP_JUDGE:-0}" == "1" ]]; then
+    echo "[s-score] m$M: judge skipped (APPBENCH_SKIP_JUDGE=1, reusing prior verdict)"
+    continue
+  fi
   echo "[s-score] judging m$M"
   node "$BENCH/judge/judge.mjs" --cell "$CELL" --milestone "$M" \
     || echo "[s-score] judge m$M failed (non-fatal)"

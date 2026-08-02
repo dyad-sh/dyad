@@ -13,6 +13,7 @@ import {
   expectSignedIn,
   getMe,
   switchWorkspace,
+  workspaceOption,
   acceptInvite,
   numericText,
   createContact,
@@ -142,12 +143,12 @@ test.describe("relay-crm checkpoint 2", () => {
     await owner.page.getByTestId("workspace-create-button").click();
     await owner.page.getByTestId("workspace-form-name").fill(TEAM_B);
     await owner.page.getByTestId("workspace-form-submit").click();
-    await owner.page.getByTestId("workspace-switcher").first().click();
-    const options = owner.page.getByTestId("workspace-switcher-option");
-    await expect(options.filter({ hasText: TEAM_B }).first()).toBeVisible();
-    await expect(
-      options.filter({ hasText: firstWorkspaceName }).first(),
-    ).toBeVisible();
+    // Shape-agnostic: `workspaceOption` opens a click-to-reveal switcher when
+    // there is one and asserts the option is ATTACHED. A native <select>'s
+    // <option> is never "visible" to Playwright, and m2.md pins the switcher's
+    // behaviour and test ids but not the control's kind.
+    await workspaceOption(owner.page, TEAM_B);
+    await workspaceOption(owner.page, firstWorkspaceName);
     await owner.page.keyboard.press("Escape");
     const me = await getMe(owner.context);
     const memberships = me.memberships ?? [];
@@ -221,14 +222,8 @@ test.describe("relay-crm checkpoint 2", () => {
         .first(),
     ).toBeVisible();
     await acceptInvite(member.page, firstWorkspaceName);
-    await member.page.getByTestId("workspace-switcher").first().click();
-    await expect(
-      member.page
-        .getByTestId("workspace-switcher-option")
-        .filter({ hasText: firstWorkspaceName })
-        .first(),
-    ).toBeVisible();
-    await member.page.keyboard.press("Escape");
+    // The joined workspace becomes available in the switcher (any shape).
+    await workspaceOption(member.page, firstWorkspaceName);
     await switchWorkspace(member.page, firstWorkspaceName);
     await member.page.goto("/contacts");
     await expect(

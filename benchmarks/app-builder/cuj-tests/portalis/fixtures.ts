@@ -21,6 +21,7 @@ import {
   request as pwRequest,
   test as base,
   type APIRequestContext,
+  type APIResponse,
   type Browser,
   type BrowserContext,
   type Locator,
@@ -295,6 +296,10 @@ export async function createProject(
     await desc.first().fill(description);
   }
   await page.getByTestId("project-create-submit").click();
+  // Let the create actually land before navigating: the click fires a
+  // client-side POST and then routes, and a `goto` issued in the same tick
+  // aborts that request in flight, so the project is never written.
+  await settleAfterSubmit(page, "/new");
   await page.goto(`/orgs/${orgId}/projects`);
   const row = page.getByTestId("project-row").filter({ hasText: name }).first();
   await expect(row).toBeVisible({ timeout: 15_000 });
@@ -337,6 +342,15 @@ export function apiKeyRow(page: Page, name: string): Locator {
   return page.getByTestId("apikey-row").filter({ hasText: name }).first();
 }
 
+// M3 pins the `apikey-status` testid and the semantics ("Revoking is a state
+// change, not a delete"), never the badge's casing — the lowercase
+// `apikey.revoked` in M3 is an audit ACTION string, not a label. "Revoked" and
+// "revoked" are both conformant, so match case-insensitively — but on a word
+// boundary, so a key badged "Inactive" can never satisfy the *active*
+// assertion (a bare /active/i would have silently passed it).
+export const STATUS_ACTIVE_RE = /\bactive\b/i;
+export const STATUS_REVOKED_RE = /\brevoked\b/i;
+
 // The pinned revoke flow: `apikey-revoke` on that key's row, then the row
 // stays present with `apikey-status` = revoked.
 export async function revokeApiKey(page: Page, orgId: string, name: string) {
@@ -345,7 +359,7 @@ export async function revokeApiKey(page: Page, orgId: string, name: string) {
   await expect(apiKeyRow(page, name)).toBeVisible({ timeout: 15_000 });
   await expect(
     apiKeyRow(page, name).getByTestId("apikey-status"),
-  ).toContainText("revoked", { timeout: 15_000 });
+  ).toContainText(STATUS_REVOKED_RE, { timeout: 15_000 });
 }
 
 // ---- assertions -----------------------------------------------------------
@@ -367,6 +381,35 @@ export async function expectDeniedPage(
     `${url} must deny access (status ${status}, landed on ${page.url()})`,
   ).toBeTruthy();
   expectNoLeak(html, forbidden, url);
+}
+
+// The m2/m3 status contract for a verb the prompt actually pins on that path:
+// exactly 404 when the caller is not a member or the resource belongs to
+// another org. Nothing else is acceptable — 403 or 200 would leak existence.
+export const PINNED_VERB_DENIED: readonly number[] = [404];
+
+// A verb the prompt does NOT pin on that path. m2's endpoint table pins
+// `/api/orgs/{orgId}/projects/{projectId}` as `PATCH/DELETE` only; `GET` is
+// pinned on the collection path `/api/orgs/{orgId}/projects`. An app that
+// implements exactly what was asked has no GET handler on the detail path, so
+// it answers 405 (method not allowed) or 404 (no such route). Both are
+// denials that leak nothing; neither is the 200-with-the-project-name that a
+// leaking app returns, so a probe using this set still catches the IDOR.
+export const UNPINNED_VERB_DENIED: readonly number[] = [404, 405];
+
+// One denial assertion: an accepted status plus the body-leak check that is
+// the real payload of every cross-org probe.
+export async function expectDeniedApi(
+  resp: APIResponse,
+  allowed: readonly number[],
+  label: string,
+  forbidden: string[],
+) {
+  expect(
+    allowed,
+    `${label} must be denied without leaking existence (got ${resp.status()})`,
+  ).toContain(resp.status());
+  expectNoLeak(await resp.text(), forbidden, label);
 }
 
 export function expectNoLeak(body: string, forbidden: string[], label: string) {

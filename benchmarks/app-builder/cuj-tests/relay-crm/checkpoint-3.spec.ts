@@ -147,6 +147,16 @@ test.describe("relay-crm checkpoint 3", () => {
       .filter({ hasText: DEAL })
       .first();
     await card.getByTestId("deal-card-stage-select").selectOption("qualified");
+    // Settle the in-flight PATCH before reloading, exactly as the checkpoint-2
+    // copy of this CUJ does. Reloading straight after `selectOption` aborts the
+    // request in flight, so a conformant app loses the change to a race.
+    await expect(
+      owner.page
+        .getByTestId("kanban-column-qualified")
+        .getByTestId("deal-card")
+        .filter({ hasText: DEAL })
+        .first(),
+    ).toBeVisible({ timeout: 15_000 });
     await owner.page.reload();
     await expect(
       owner.page
@@ -375,11 +385,37 @@ test.describe("relay-crm checkpoint 3", () => {
   }) => {
     const owner = await world.signUp("owner3");
 
-    const before = (
-      (await (
-        await owner.context.request.get("/api/contacts")
-      ).json()) as unknown[]
-    ).length;
+    const countContacts = async () =>
+      (
+        (await (
+          await owner.context.request.get("/api/contacts")
+        ).json()) as unknown[]
+      ).length;
+    // m3.md pins the 400 + `{error}` + "the form shows the message in its
+    // existing error element", but nothing in the prompt forbids native HTML
+    // constraint validation (`required`, `type="email"`), which refuses the
+    // submit client-side so no server message ever arrives. Either outcome
+    // proves the invalid write was refused, so accept either — and the
+    // list-unchanged half is measured, not assumed.
+    const expectRefused = async (label: string, before: number) => {
+      const message = owner.page
+        .getByTestId("contact-form-error")
+        .filter({ hasText: /\S/ })
+        .first();
+      const shown = await message
+        .waitFor({ state: "visible", timeout: 8_000 })
+        .then(() => true)
+        .catch(() => false);
+      if (!shown) {
+        await owner.page.waitForLoadState("networkidle").catch(() => {});
+        expect(
+          await countContacts(),
+          `${label}: no server message in contact-form-error, so nothing may have been created`,
+        ).toBe(before);
+      }
+    };
+
+    const before = await countContacts();
     await owner.page.goto("/contacts");
     await owner.page.getByTestId("contact-new-button").click();
     await owner.page.getByTestId("contact-form-name").fill("");
@@ -387,13 +423,11 @@ test.describe("relay-crm checkpoint 3", () => {
       .getByTestId("contact-form-email")
       .fill(world.email("valid"));
     await owner.page.getByTestId("contact-form-submit").click();
-    await expect(owner.page.getByTestId("contact-form-error")).toBeVisible();
-    await expect(owner.page.getByTestId("contact-form-error")).not.toBeEmpty();
+    await expectRefused("blank name", before);
     await owner.page.getByTestId("contact-form-name").fill(`Valid ${RUN_ID}`);
     await owner.page.getByTestId("contact-form-email").fill("not-an-email");
     await owner.page.getByTestId("contact-form-submit").click();
-    await expect(owner.page.getByTestId("contact-form-error")).toBeVisible();
-    await expect(owner.page.getByTestId("contact-form-error")).not.toBeEmpty();
+    await expectRefused("malformed email", before);
     await owner.page.goto("/contacts");
     const after = (
       (await (
@@ -582,14 +616,29 @@ test.describe("relay-crm checkpoint 3", () => {
       },
       maxRedirects: 0,
     });
+    // What m3.md pins is that the record cannot MOVE workspace, so assert on the
+    // record's identity, not on its name. m2.md's "never trust a client-supplied
+    // workspace id" reading rejects the whole PATCH (name stays `MINE`); m3.md's
+    // "ignore client-supplied fields that must not be settable" reading strips
+    // the forbidden keys and applies the rename (name becomes `Renamed …`).
+    // Both are conformant, and matching on the name conflated them.
     const ownerList = await (
       await owner.context.request.get("/api/contacts")
     ).text();
-    expect(ownerList).toContain(MINE.split(" ")[0]); // still in W1 (any name)
+    const ownerIds = (
+      JSON.parse(ownerList) as Array<Record<string, unknown>>
+    ).map((c) => String(c.id));
+    expect(ownerIds, "the member's contact is still in W1").toContain(mineId);
     expect(ownerList).toContain(ADA); // Ada not overwritten
     const outsiderList = await (
       await outsider.context.request.get("/api/contacts")
     ).text();
+    const outsiderIds = (
+      JSON.parse(outsiderList) as Array<Record<string, unknown>>
+    ).map((c) => String(c.id));
+    expect(outsiderIds, "the contact did not move into W3").not.toContain(
+      mineId,
+    );
     expect(outsiderList).not.toContain(MINE);
     expect(outsiderList).not.toContain(`Renamed ${RUN_ID}`);
   });
@@ -672,7 +721,25 @@ test.describe("relay-crm checkpoint 3", () => {
     );
     await expect(row.first()).toBeVisible();
     await row.first().getByTestId("member-remove-button").click();
-    await owner.page.getByTestId("member-remove-confirm").click();
+    // m3.md's testid table says "per row" for `member-remove-button` and
+    // `member-remove-confirm` alike, so the confirm may live inside the row
+    // being removed rather than as one page-level control. Prefer the row's own
+    // confirm; fall back to a page-level one (the conditional-mount / modal
+    // shape). Whichever is clicked, the removal itself is asserted below.
+    const rowConfirm = row.first().getByTestId("member-remove-confirm").first();
+    const pageConfirm = owner.page.getByTestId("member-remove-confirm").first();
+    for (let i = 0; i < 24; i++) {
+      const candidate = (await rowConfirm.isVisible().catch(() => false))
+        ? rowConfirm
+        : (await pageConfirm.isVisible().catch(() => false))
+          ? pageConfirm
+          : null;
+      if (candidate) {
+        await candidate.click();
+        break;
+      }
+      await owner.page.waitForTimeout(250);
+    }
     await expect(
       owner.page.getByTestId("member-row").filter({ hasText: member.email }),
     ).toHaveCount(0);

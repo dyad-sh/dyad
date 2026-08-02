@@ -17,6 +17,7 @@ import {
   expectSignedIn,
   findTicketId,
   settleAfterSubmit,
+  statusText,
 } from "./fixtures";
 
 const BODY = "It smokes when I print.";
@@ -43,7 +44,7 @@ test.describe("deskhero checkpoint 1", () => {
       .first();
     await expect(row).toBeVisible();
     await expect(row).toContainText("high");
-    await expect(row).toContainText("open");
+    await expect(row).toContainText(statusText("open"));
     const t1Id = await findTicketId(r1.ctx, subject);
     expect(t1Id, "T1 id from pinned GET /api/tickets").toBeTruthy();
   });
@@ -75,7 +76,7 @@ test.describe("deskhero checkpoint 1", () => {
     );
     await expect(r1.page.getByTestId("ticket-detail-body")).toContainText(BODY);
     await expect(r1.page.getByTestId("ticket-detail-status")).toContainText(
-      "open",
+      statusText("open"),
     );
     await expect(r1.page.getByTestId("ticket-detail-priority")).toContainText(
       "high",
@@ -115,11 +116,11 @@ test.describe("deskhero checkpoint 1", () => {
     await r1.page.goto(`/tickets/${t1Id}`);
     await r1.page.getByTestId("ticket-close").click();
     await expect(r1.page.getByTestId("ticket-detail-status")).toContainText(
-      "closed",
+      statusText("closed"),
     );
     await r1.page.getByTestId("ticket-reopen").click();
     await expect(r1.page.getByTestId("ticket-detail-status")).toContainText(
-      "open",
+      statusText("open"),
     );
   });
 

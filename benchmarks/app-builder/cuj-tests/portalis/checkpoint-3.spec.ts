@@ -13,6 +13,8 @@
 import { type Page } from "@playwright/test";
 import {
   RUN_ID,
+  STATUS_ACTIVE_RE,
+  STATUS_REVOKED_RE,
   UUID_RE,
   apiKeyRow,
   createApiKey,
@@ -294,7 +296,10 @@ test.describe("portalis checkpoint 3", () => {
       keySecret.startsWith(prefix) && prefix.length < keySecret.length,
       `apikey-prefix "${prefix}" must be a strict prefix of the secret`,
     ).toBeTruthy();
-    await expect(row.getByTestId("apikey-status")).toContainText("active");
+    // Casing of the status badge is not pinned (see STATUS_ACTIVE_RE).
+    await expect(row.getByTestId("apikey-status")).toContainText(
+      STATUS_ACTIVE_RE,
+    );
   });
 
   test("P3-06 bearer key lists exactly that org's projects", async ({
@@ -335,7 +340,7 @@ test.describe("portalis checkpoint 3", () => {
     await expect(apiKeyRow(a.page, key.name)).toBeVisible({ timeout: 15_000 });
     await expect(
       apiKeyRow(a.page, key.name).getByTestId("apikey-status"),
-    ).toContainText("revoked", { timeout: 15_000 });
+    ).toContainText(STATUS_REVOKED_RE, { timeout: 15_000 });
 
     const api = await world.bearer(key.secret);
     const resp = await api.get("/api/v1/projects", { maxRedirects: 0 });

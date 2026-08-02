@@ -15,20 +15,20 @@
 <text x="380" y="386" text-anchor="middle" fill="#6b7280" font-size="11">$20</text>
 <text x="538" y="386" text-anchor="middle" fill="#6b7280" font-size="11">$30</text>
 <text x="696" y="386" text-anchor="middle" fill="#6b7280" font-size="11">$40</text>
-<circle cx="437.86118000000005" cy="435.08725649350663" r="7" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"/>
-<text x="437.86118000000005" y="423.08725649350663" text-anchor="middle" fill="#374151" font-size="11.5">claude-opus-5</text>
-<circle cx="384.43348000000003" cy="553.4969084224601" r="7" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"/>
-<text x="384.43348000000003" y="575.4969084224601" text-anchor="middle" fill="#374151" font-size="11.5">gpt-5.6-sol</text>
-<circle cx="597.60866" cy="554.7368220015279" r="7" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"/>
-<text x="597.60866" y="542.7368220015279" text-anchor="middle" fill="#374151" font-size="11.5">claude-fable-5</text>
-<circle cx="296.53018000000003" cy="960.4206455309399" r="7" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"/>
-<text x="296.53018000000003" y="982.4206455309399" text-anchor="middle" fill="#374151" font-size="11.5">claude-sonnet-5</text>
-<circle cx="160.90297999999999" cy="966.8572025401069" r="7" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"/>
-<text x="160.90297999999999" y="954.8572025401069" text-anchor="middle" fill="#374151" font-size="11.5">gpt-5.6-terra</text>
-<circle cx="114.26295999999999" cy="1158.2319279984722" r="7" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"/>
-<text x="114.26295999999999" y="1180.2319279984722" text-anchor="middle" fill="#374151" font-size="11.5">gpt-5.6-luna</text>
-<circle cx="142.00618" cy="1216.4629249427041" r="7" fill="#1baf7a" stroke="#fcfcfb" stroke-width="2"/>
-<text x="142.00618" y="1204.4629249427041" text-anchor="middle" fill="#374151" font-size="11.5">grok-4.5</text>
+<circle cx="384.43348000000003" cy="198.58798462566872" r="7" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"/>
+<text x="384.43348000000003" y="186.58798462566872" text-anchor="middle" fill="#374151" font-size="11.5">gpt-5.6-sol</text>
+<circle cx="437.86118000000005" cy="233.63970588235298" r="7" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"/>
+<text x="437.86118000000005" y="255.63970588235298" text-anchor="middle" fill="#374151" font-size="11.5">claude-opus-5</text>
+<circle cx="597.60866" cy="255.844418449198" r="7" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"/>
+<text x="597.60866" y="243.844418449198" text-anchor="middle" fill="#374151" font-size="11.5">claude-fable-5</text>
+<circle cx="160.90297999999999" cy="758.9089237967914" r="7" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"/>
+<text x="160.90297999999999" y="780.9089237967914" text-anchor="middle" fill="#374151" font-size="11.5">gpt-5.6-terra</text>
+<circle cx="296.53018000000003" cy="834.9131016042784" r="7" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"/>
+<text x="296.53018000000003" y="822.9131016042784" text-anchor="middle" fill="#374151" font-size="11.5">claude-sonnet-5</text>
+<circle cx="142.00618" cy="1010.2404984721163" r="7" fill="#1baf7a" stroke="#fcfcfb" stroke-width="2"/>
+<text x="142.00618" y="1032.2404984721163" text-anchor="middle" fill="#374151" font-size="11.5">grok-4.5</text>
+<circle cx="114.26295999999999" cy="1158.592890565317" r="7" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"/>
+<text x="114.26295999999999" y="1146.592890565317" text-anchor="middle" fill="#374151" font-size="11.5">gpt-5.6-luna</text>
 <text x="380" y="410" text-anchor="middle" fill="#374151" font-size="12.5">Total build cost, all apps (USD, list price)</text>
 <text transform="rotate(-90)" x="-206" y="16" text-anchor="middle" fill="#374151" font-size="12.5">Overall composite (axis from 80%)</text>
 </svg>

@@ -10,6 +10,7 @@ import {
   expect,
   type Browser,
   type BrowserContext,
+  type Locator,
   type Page,
   type TestInfo,
 } from "@playwright/test";
@@ -88,14 +89,98 @@ export async function getMe(context: BrowserContext): Promise<any> {
   return resp.json();
 }
 
+// ---------------------------------------------------------------------------
+// M2+ workspace switcher. m2.md pins the behaviour ("a header workspace
+// switcher lists the workspaces the user is a member of and switches the active
+// one") and the three test ids, but deliberately does NOT pin the control's
+// kind — it writes "(a `<select>`)" elsewhere when it means one. So the helpers
+// below are shape-agnostic and support every reasonable rendering:
+//   * a native <select> whose <option>s carry `workspace-switcher-option`
+//     (Playwright never reports an <option> as VISIBLE, so this shape can only
+//     be driven with selectOption and asserted with toBeAttached);
+//   * a click-to-reveal menu/dropdown that mounts its options when opened;
+//   * an always-visible row of buttons.
+// ---------------------------------------------------------------------------
+
+// The native <select> backing the switcher, or null when the switcher is a
+// menu/button-row. Checked most-specific first so a stray unrelated <select>
+// in the header cannot be mistaken for the switcher.
+export async function switcherSelect(page: Page): Promise<Locator | null> {
+  const owning = page.locator(
+    'select:has(option[data-testid="workspace-switcher-option"])',
+  );
+  if (await owning.count()) return owning.first();
+  const onSwitcher = page.locator('select[data-testid="workspace-switcher"]');
+  if (await onSwitcher.count()) return onSwitcher.first();
+  const inSwitcher = page.locator('[data-testid="workspace-switcher"] select');
+  if (await inSwitcher.count()) return inSwitcher.first();
+  return null;
+}
+
+/**
+ * Wait until the switcher offers `name`, opening a click-to-reveal control if
+ * that is the shape the app chose, and return that option. The returned locator
+ * is ATTACHED, not necessarily visible: a native <select>'s <option> never is.
+ */
+export async function workspaceOption(
+  page: Page,
+  name: string,
+  timeout = 20_000,
+): Promise<Locator> {
+  const allOptions = page.getByTestId("workspace-switcher-option");
+  const options = allOptions.filter({ hasText: name });
+  const select = await switcherSelect(page);
+  const deadline = Date.now() + timeout;
+  if (!select) {
+    while (Date.now() < deadline) {
+      if (await options.count()) break;
+      // Open the control only when it is mounting NO options at all, i.e. it is
+      // a closed dropdown. A button-row switcher already exposes them, and
+      // clicking its wrapper could land on a button and switch by accident.
+      if (!(await allOptions.count())) {
+        await page
+          .getByTestId("workspace-switcher")
+          .first()
+          .click({ timeout: 5_000 })
+          .catch(() => {});
+      }
+      await page.waitForTimeout(250);
+    }
+  }
+  await expect(
+    options.first(),
+    `the header switcher offers workspace "${name}"`,
+  ).toBeAttached({ timeout: Math.max(1_000, deadline - Date.now()) });
+  return options.first();
+}
+
 // M2+: switch the active workspace via the pinned header switcher.
 export async function switchWorkspace(page: Page, name: string) {
-  await page.getByTestId("workspace-switcher").first().click();
-  await page
-    .getByTestId("workspace-switcher-option")
-    .filter({ hasText: name })
-    .first()
-    .click();
+  const select = await switcherSelect(page);
+  const option = await workspaceOption(page, name);
+  if (select) {
+    // <option value> falls back to the option's own text when the attribute is
+    // absent, which is exactly what selectOption() matches on.
+    const value = await option
+      .evaluate((el) => (el instanceof HTMLOptionElement ? el.value : null))
+      .catch(() => null);
+    if (typeof value === "string") {
+      await select.selectOption(value);
+    } else {
+      await select.selectOption({ label: name });
+    }
+  } else {
+    if (!(await option.isVisible())) {
+      await page
+        .getByTestId("workspace-switcher")
+        .first()
+        .click()
+        .catch(() => {});
+    }
+    await option.click({ timeout: 15_000 });
+  }
+  // The pinned behaviour: the switcher really switched. Unchanged on purpose —
+  // an app that lists the workspace but does not activate it still fails here.
   await expect(page.getByTestId("workspace-current-name")).toContainText(name, {
     timeout: 15_000,
   });
@@ -432,13 +517,11 @@ export class World {
     await acceptInvite(persona.page, owner.workspaceName);
     // Wait on the switcher option — the surface the joining CUJs score — not on
     // /api/me. Several of these tests are pure-UI and never required the API to
-    // list the joined workspace by name.
-    await expect(
-      persona.page
-        .getByTestId("workspace-switcher-option")
-        .filter({ hasText: owner.workspaceName })
-        .first(),
-    ).toBeAttached({ timeout: 20_000 });
+    // list the joined workspace by name. `workspaceOption` opens a
+    // click-to-reveal switcher first, so this no longer assumes the options are
+    // already mounted (they are not in a dropdown, and are never "visible" in a
+    // native <select>).
+    await workspaceOption(persona.page, owner.workspaceName);
     await switchWorkspace(persona.page, owner.workspaceName);
     const me = await getMe(persona.context);
     persona.id = String(me.id ?? "");

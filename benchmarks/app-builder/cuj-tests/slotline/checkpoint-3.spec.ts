@@ -256,6 +256,10 @@ test.describe("slotline checkpoint 3", () => {
     clinic,
   }) => {
     const a = await clinic.patient();
+    // M1 pins that sign-up signs in immediately and that `/` goes to /bookings
+    // when signed in; it never pins where the sign-up submit itself lands. Ask
+    // for `/` and assert the pinned redirect instead of the unpinned landing.
+    await a.page.goto("/");
     await expect(a.page).toHaveURL(/\/bookings\/?$/, { timeout: 15_000 });
     await expectSignedIn(a.page, a.who.email);
     const me = await getMe(a.ctx);
@@ -729,14 +733,16 @@ test.describe("slotline checkpoint 3", () => {
         )
         .toBe(status);
 
-      // The list row never carried a cancel control, so the absence is only
-      // meaningful on the detail page.
+      // M3 pins hiding the patient's cancel control only "once the booking is
+      // inside the window", and these bookings are ~2 weeks out, so a live
+      // control here is conformant. What the detail page must show is the
+      // terminal status; what must not happen is the cancel succeeding, and the
+      // server is what decides that (asserted immediately below).
       await patient.page.goto(`/bookings/${bookingId}`);
-      await expectAbsentOrDisabled(
-        patient.page,
-        "booking-cancel-button",
-        `the cancel control on a ${status} booking`,
-      );
+      await expect(
+        patient.page.getByTestId("booking-detail-status"),
+        `the detail page reports the booking as ${status}`,
+      ).toContainText(status, { timeout: 15_000 });
       const resp = await patient.ctx.request.post(
         `/api/bookings/${bookingId}/cancel`,
         { maxRedirects: 0 },
@@ -785,10 +791,33 @@ test.describe("slotline checkpoint 3", () => {
     await w.staff.page.getByTestId("service-form-name").fill(zeroName);
     await w.staff.page.getByTestId("service-form-duration").fill("0");
     await w.staff.page.getByTestId("service-form-submit").click();
-    await expect(w.staff.page.getByTestId("service-form-error")).toHaveText(
-      /\S/,
-      { timeout: 15_000 },
-    );
+    // Two conforming readings: the server answers 400 and the form shows the
+    // message, or a conforming `<input type="number" min="1">` refuses the
+    // submit natively so no server message is ever produced. Either proves the
+    // duration was refused; that nothing was created is asserted below and is
+    // what actually fails an app that accepts a zero duration.
+    await expect
+      .poll(
+        async () => {
+          const err = w.staff.page.getByTestId("service-form-error");
+          const shown =
+            (await err.count()) > 0 &&
+            (await err.first().isVisible()) &&
+            /\S/.test(await err.first().innerText());
+          const created = await findIdByName(
+            w.staff.ctx,
+            "/api/services",
+            zeroName,
+          );
+          return shown || created === null;
+        },
+        {
+          timeout: 15_000,
+          message:
+            "the zero-duration service was refused: service-form-error shows a message, or nothing was created",
+        },
+      )
+      .toBe(true);
 
     await w.staff.page.goto(`/practitioners/${w.practitionerId}/availability`);
     await expect(w.staff.page.getByTestId("availability-row")).toHaveCount(0, {
@@ -867,31 +896,48 @@ test.describe("slotline checkpoint 3", () => {
     const before = await getBooking(a.ctx, nearId);
 
     const path = `/api/bookings/${nearId}`;
-    const legs: Array<[string, () => Promise<APIResponse>, number[]]> = [
+    // `ignorable` marks the leg whose conforming outcome may be a 2xx: M3 pins
+    // `status` as IGNORED on update and applies the 48-hour window to cancel,
+    // reschedule and delete — never to PATCH. An app that does exactly that
+    // answers 2xx and drops the field, which is only admissible if the booking
+    // really is still `booked` when re-read.
+    const legs: Array<[string, () => Promise<APIResponse>, number[], boolean]> =
       [
-        `POST ${path}/cancel`,
-        () => a.ctx.request.post(`${path}/cancel`, { maxRedirects: 0 }),
-        [403, 409],
-      ],
-      [
-        `PATCH ${path} {status:'cancelled'}`,
-        () =>
-          a.ctx.request.patch(path, {
-            data: { status: "cancelled" },
-            maxRedirects: 0,
-          }),
-        [403, 409],
-      ],
-      // M3 pins delete as obeying the cancellation window, so 405 (never
-      // implemented) is admissible too.
-      [
-        `DELETE ${path}`,
-        () => a.ctx.request.delete(path, { maxRedirects: 0 }),
-        [403, 409, 405],
-      ],
-    ];
-    for (const [label, attack, codes] of legs) {
-      expectStatusIn(await attack(), codes, label);
+        [
+          `POST ${path}/cancel`,
+          () => a.ctx.request.post(`${path}/cancel`, { maxRedirects: 0 }),
+          [403, 409],
+          false,
+        ],
+        [
+          `PATCH ${path} {status:'cancelled'}`,
+          () =>
+            a.ctx.request.patch(path, {
+              data: { status: "cancelled" },
+              maxRedirects: 0,
+            }),
+          [403, 409],
+          true,
+        ],
+        // M3 pins delete as obeying the cancellation window, so 405 (never
+        // implemented) is admissible too.
+        [
+          `DELETE ${path}`,
+          () => a.ctx.request.delete(path, { maxRedirects: 0 }),
+          [403, 409, 405],
+          false,
+        ],
+      ];
+    for (const [label, attack, codes, ignorable] of legs) {
+      const resp = await attack();
+      if (ignorable && is2xx(resp)) {
+        expect(
+          (await getBooking(a.ctx, nearId)).status,
+          `${label} answered ${resp.status()}, so the status must have been ignored`,
+        ).toBe("booked");
+        continue;
+      }
+      expectStatusIn(resp, codes, label);
     }
 
     const after = await getBooking(a.ctx, nearId);

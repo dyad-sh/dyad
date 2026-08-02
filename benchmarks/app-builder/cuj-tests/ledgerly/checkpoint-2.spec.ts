@@ -1,5 +1,5 @@
 // Ledgerly — checkpoint 2 CUJ suite (design/app-4-ledgerly.md, M2 CUJ table +
-// M2 security probes). 12 CUJs (4 regression + 8 new) + 8 probes.
+// M2 security probes). 12 CUJs (4 regression + 8 new) + 9 probes.
 //
 // Conventions (design "Test fixtures & conventions"): the suite is NOT serial.
 // Every test provisions its own personas, books, chart and entries through the
@@ -1359,10 +1359,30 @@ test.describe("ledgerly checkpoint 2", () => {
     const b2After = await listEntries(outsider.ctx);
     expect(b2After.length, "B2 gained no entry").toBe(b2CountBefore);
     expect(b2After.map((e) => e.memo)).not.toContain(crossMemo);
+  });
 
-    // (c) A bookkeeper may not add members. The outsider's address is used
-    // precisely because they exist but are NOT a member of B1, so no "already
-    // a member" answer can stand in for the role check.
+  // Split out of led-m2-s08 so that it is scored on its own: Playwright aborts
+  // a test at its first failed assertion, so while this lived as that probe's
+  // last leg, any app that failed one of the earlier legs was never scored on
+  // "only owners add members" at all.
+  test("led-m2-s09 a bookkeeper cannot add a member", async ({ ledger }) => {
+    const owner = await ledger.owner();
+    const b1 = await owner.bookId();
+    const clerk = await ledger.clerk();
+    const clerkId = await clerk.userId();
+    // The owner's own add is the positive control that member-add works at all.
+    await addMember(owner, b1, clerk.who.email, "bookkeeper");
+    const outsider = await ledger.outsider();
+
+    const membersBefore = memberSet(await listMembers(owner.ctx, b1));
+    expect(
+      membersBefore,
+      "the owner's own add of the clerk landed (positive control)",
+    ).toContain(`${clerkId}:bookkeeper`);
+
+    // The outsider's address is used precisely because they exist but are NOT
+    // a member of B1, so no "already a member" answer can stand in for the
+    // role check, and no "unknown user" 404 can either.
     const add = await clerk.ctx.request.post(`/api/books/${b1}/members`, {
       data: { email: outsider.who.email, role: "owner" },
       maxRedirects: 0,
@@ -1379,5 +1399,10 @@ test.describe("ledgerly checkpoint 2", () => {
     expect(clerkMembership?.role, "the clerk is still a bookkeeper in B1").toBe(
       "bookkeeper",
     );
+    const outsiderMe = await getMe(outsider.ctx);
+    expect(
+      (outsiderMe.memberships ?? []).map((m) => String(m.bookId)),
+      "the outsider gained no membership in B1",
+    ).not.toContain(String(b1));
   });
 });

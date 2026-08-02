@@ -498,12 +498,16 @@ test.describe("curbside checkpoint 3", () => {
     await deliverOrder(world.merchant, courier, world.orderId);
     await rateOrderViaUi(world.customer, world.orderId, 5);
     await expectStars(world.customer.page.getByTestId("order-rating"), 5);
-    // Second submission, three stars this time.
-    await rateOrderViaUi(world.customer, world.orderId, 3);
-    await expect(
-      world.customer.page.getByTestId("order-rate-error"),
-      "order-rate-error reports the refused re-rating",
-    ).toBeVisible({ timeout: 15_000 });
+    // Second submission, three stars this time — driven through the pinned
+    // POST /api/orders/[id]/rate rather than through `order-rate-stars`. M3
+    // pins the 409 and pins that the original rating stands, but it never pins
+    // whether the rating control stays rendered once an order has been rated
+    // (unlike `order-cancel-button`, whose persistence it pins explicitly), so
+    // an app that hides it after rating is conformant and must not be failed
+    // here. What this row still measures is the customer-visible outcome: the
+    // duplicate is refused and the five stars they gave are what they keep.
+    const resp = await postRate(world.customer.ctx, world.orderId, 3);
+    expect(resp.status(), "rating an already-rated order").toBe(409);
     await world.customer.page.reload();
     await expectStars(world.customer.page.getByTestId("order-rating"), 5);
     const order = await readOrder(world.customer.ctx, world.orderId);

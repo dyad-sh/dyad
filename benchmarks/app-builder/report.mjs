@@ -41,7 +41,7 @@ const APPS = {
   // two drifted apart once before and the scorer must follow the suite.
   ledgerly: {
     cujs: { 1: 9, 2: 12, 3: 11 },
-    probes: { 1: 3, 2: 8, 3: 11 },
+    probes: { 1: 3, 2: 9, 3: 11 },
     isProbe: (id) => /-s\d/.test(id),
   },
   slotline: {

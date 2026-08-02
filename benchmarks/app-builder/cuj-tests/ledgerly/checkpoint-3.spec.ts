@@ -1341,7 +1341,9 @@ test.describe("ledgerly checkpoint 3", () => {
     const outsiderEntriesBefore = await listEntries(outsider.ctx);
 
     const original = await getEntry(owner.ctx, postedId);
-    const maxBefore = maxEntryNumber(await listEntries(owner.ctx));
+    const ownerEntriesBefore = await listEntries(owner.ctx);
+    const maxBefore = maxEntryNumber(ownerEntriesBefore);
+    const ownerBalancesBefore = balanceMap(await listAccounts(owner.ctx));
 
     const resp = await owner.ctx.request.post(
       `/api/entries/${postedId}/reverse`,
@@ -1355,37 +1357,79 @@ test.describe("ledgerly checkpoint 3", () => {
           status: "draft",
           entryNumber: 1,
         },
+        maxRedirects: 0,
       },
     );
-    expect(resp.ok(), `POST …/reverse → ${resp.status()}`).toBe(true);
 
-    const afterOriginal = await getEntry(owner.ctx, postedId);
-    const reversalId = String(afterOriginal.reversedByEntryId ?? "");
-    expect(reversalId).toBeTruthy();
-    const reversal = await getEntry(owner.ctx, reversalId);
+    // Two readings of the prompts are legitimate here and the probe scores
+    // both. M3 pins that a reverse body's `lines`, amount, `bookId`, `date`,
+    // `status` and `entryNumber` are IGNORED, so the reversal is created and
+    // mirrors the stored original. M2 pins that a book id read from a body
+    // naming a book the caller does not belong to is answered "403 with no
+    // data", so an app that applies that rule uniformly refuses outright. Both
+    // satisfy the property under test — the body must not redirect the write
+    // into another book, nor reshape it — so the refusal branch is held to
+    // "nothing whatsoever was written", and the injected-amount sweep below
+    // runs in both branches. An app that honours the body lands in the success
+    // branch (it wrote something) and fails there.
+    let reversalId = "";
+    if (resp.ok()) {
+      const afterOriginal = await getEntry(owner.ctx, postedId);
+      reversalId = String(afterOriginal.reversedByEntryId ?? "");
+      expect(reversalId).toBeTruthy();
+      const reversal = await getEntry(owner.ctx, reversalId);
 
-    expect(reversal.date, "the body's date is ignored").toBe(original.date);
-    expect(reversal.status, "the body's status is ignored").toBe("posted");
-    expect(Number.isInteger(reversal.entryNumber)).toBe(true);
-    expect(
-      reversal.entryNumber,
-      "the reversal continues B1's own sequence",
-    ).toBe(maxBefore + 1);
+      expect(reversal.date, "the body's date is ignored").toBe(original.date);
+      expect(reversal.status, "the body's status is ignored").toBe("posted");
+      expect(Number.isInteger(reversal.entryNumber)).toBe(true);
+      expect(
+        reversal.entryNumber,
+        "the reversal continues B1's own sequence",
+      ).toBe(maxBefore + 1);
 
-    const mirrored = linesByAccount(reversal);
-    expect(mirrored.size, "the reversal mirrors every original line").toBe(
-      (original.lines ?? []).length,
-    );
-    for (const line of original.lines ?? []) {
-      const mirror = mirrored.get(String(line.accountId));
-      expect(mirror, `a mirrored line for ${line.accountId}`).toBeTruthy();
-      expect(mirror!.debitCents).toBe(line.creditCents);
-      expect(mirror!.creditCents).toBe(line.debitCents);
+      const mirrored = linesByAccount(reversal);
+      expect(mirrored.size, "the reversal mirrors every original line").toBe(
+        (original.lines ?? []).length,
+      );
+      for (const line of original.lines ?? []) {
+        const mirror = mirrored.get(String(line.accountId));
+        expect(mirror, `a mirrored line for ${line.accountId}`).toBeTruthy();
+        expect(mirror!.debitCents).toBe(line.creditCents);
+        expect(mirror!.creditCents).toBe(line.debitCents);
+      }
+    } else {
+      expect(
+        resp.status(),
+        "the only refusal M2 pins for a body naming a foreign book",
+      ).toBe(403);
+      // "403 with no data" has to mean no write at all: no reversal, no burnt
+      // entry number, no balance movement, and E itself untouched.
+      const afterOriginal = await getEntry(owner.ctx, postedId);
+      expect(
+        afterOriginal.reversedByEntryId ?? null,
+        "a refused reversal creates nothing",
+      ).toBeNull();
+      expect(
+        entryFingerprint(afterOriginal),
+        "the original entry is untouched",
+      ).toEqual(entryFingerprint(original));
+      const entriesAfter = await listEntries(owner.ctx);
+      expect(entriesAfter.length, "no entry was created in B1").toBe(
+        ownerEntriesBefore.length,
+      );
+      expect(
+        maxEntryNumber(entriesAfter),
+        "a refusal burns no entry number",
+      ).toBe(maxBefore);
+      expect(
+        balanceMap(await listAccounts(owner.ctx)),
+        "every balanceCents is unchanged",
+      ).toEqual(ownerBalancesBefore);
     }
 
     expect(
       await listEntries(outsider.ctx),
-      "the reversal did not land in the book named by the body",
+      "nothing landed in the book named by the body",
     ).toEqual(outsiderEntriesBefore);
 
     const accounts = await listAccounts(owner.ctx);
@@ -1400,7 +1444,7 @@ test.describe("ledgerly checkpoint 3", () => {
     expect(period.totalCreditCents).not.toBe(9999999);
     for (const path of [
       "/api/entries",
-      `/api/entries/${reversalId}`,
+      ...(reversalId ? [`/api/entries/${reversalId}`] : []),
       "/api/accounts",
       `/api/periods/${periodId}`,
     ]) {

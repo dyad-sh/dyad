@@ -89,6 +89,10 @@ test.describe("slotline checkpoint 1", () => {
     clinic,
   }) => {
     const a = await clinic.patient();
+    // M1 pins that sign-up signs in immediately and that `/` goes to /bookings
+    // when signed in; it never pins where the sign-up submit itself lands. Ask
+    // for `/` and assert the pinned redirect instead of the unpinned landing.
+    await a.page.goto("/");
     await expect(a.page).toHaveURL(/\/bookings\/?$/, { timeout: 15_000 });
     await expectSignedIn(a.page, a.who.email);
     const me = await a.ctx.request.get("/api/me");

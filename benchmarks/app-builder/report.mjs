@@ -43,9 +43,9 @@ const VENDOR_COLOR = {
   dark: { OpenAI: "#3987e5", Anthropic: "#d95926", xAI: "#199e70" },
 };
 
-function scoreCell(slug, app) {
+function scoreCell(slug, app, cellOverride) {
   const cfg = APPS[app];
-  const cell = `${slug}-${app}`;
+  const cell = cellOverride ?? `${slug}-${app}`;
   const sumPath = R("s-cell", `${cell}.summary.json`);
   if (!fs.existsSync(sumPath)) return null;
   const sum = JSON.parse(fs.readFileSync(sumPath));
@@ -197,6 +197,59 @@ const failDetail = rows
   })
   .join("\n");
 
+// ---- reasoning-effort sweep -----------------------------------------------
+// Effort cells are ordinary cells with an `-<effort>` id suffix, so they score
+// through the same scoreCell() as everything else. Emitted only when present.
+const EFFORT_MODELS = ["gpt-5.6-luna", "gpt-5.6-terra"];
+const EFFORTS = ["medium", "high", "xhigh"];
+const effortRows = [];
+for (const m of EFFORT_MODELS) {
+  for (const e of EFFORTS) {
+    const suffix = e === "medium" ? "" : `-${e}`;
+    // Effort suffixes the WHOLE cell id (`<model>-<app>-<effort>`), matching
+    // appbench_cell.eval.ts — it is not part of the model slug.
+    const cells = appNames.map((a) => scoreCell(m, a, `${m}-${a}${suffix}`));
+    if (cells.every((c) => c === null)) continue;
+    const done = cells.filter((c) => c?.composite != null);
+    effortRows.push({
+      model: m,
+      effort: e,
+      cells,
+      overall: done.length
+        ? done.reduce((s, c) => s + c.composite, 0) / done.length
+        : null,
+      cost: cells.filter(Boolean).reduce((s, c) => s + c.cost, 0),
+      minutes: cells.filter(Boolean).reduce((s, c) => s + c.minutes, 0),
+    });
+  }
+}
+const effortSection = effortRows.length
+  ? `## Reasoning-effort sweep (luna + terra)
+
+The main table runs every model at the product default (medium). This sweep
+re-runs the two cheapest models at \`high\` and \`xhigh\` — same harness, same
+controls. Effort is applied at the recording proxy (\`reasoning_effort\` /
+\`reasoning.effort\`) because Dyad's \`thinkingBudget\` setting exposes only
+low/medium/high, so these rows do **not** use a product-reachable configuration
+and are reported separately from the headline matrix.
+
+| Model | Effort | ${appNames.join(" | ")} | Cost | Wall-clock | Overall |
+|---|---|${appNames.map(() => "---").join("|")}|---|---|---|
+${effortRows
+  .map(
+    (r) =>
+      `| ${r.model} | ${r.effort} | ${r.cells.map((c) => (c ? pct(c.composite) : "n/a")).join(" | ")} | $${r.cost.toFixed(2)} | ${Math.round(r.minutes)} min | **${pct(r.overall)}** |`,
+  )
+  .join("\n")}
+
+At N=1 a single build-breaking line moves an app column by 70+ points, which is
+larger than the entire effort effect — read a column as measuring reasoning only
+where every checkpoint in it built. See the PR discussion for the per-cell
+diagnosis of each near-zero.
+
+`
+  : "";
+
 fs.writeFileSync(
   path.join(BENCH, "RESULTS.md"),
   `# App-Builder Benchmark — Results
@@ -219,7 +272,7 @@ ${table}
   <img alt="Overall composite score versus total build cost across all apps" src="scatter-light.svg">
 </picture>
 
-## Per-model failures
+${effortSection}## Per-model failures
 
 ${failDetail}
 

@@ -99,6 +99,9 @@ test.describe("portalis checkpoint 3", () => {
 
     await a.page.goto("/orgs");
     await a.page.getByTestId("sign-out-button").click();
+    // signOut() is a background fetch; navigating before it settles cancels
+    // it and the cached session cookie keeps the server answering signed-in.
+    await a.page.waitForLoadState("networkidle").catch(() => {});
     await a.page.waitForURL("**/auth/sign-in", { timeout: 15_000 });
     await signIn(a.page, a);
     await a.page.waitForURL("**/orgs**", { timeout: 15_000 });
@@ -445,6 +448,7 @@ test.describe("portalis checkpoint 3", () => {
     const dbUrl =
       process.env.APPBENCH_DATABASE_URL || process.env.DATABASE_URL || "";
     let sweptDb = false;
+    const atRestHits: string[] = [];
     if (dbUrl) {
       try {
         const pg: any = await import("pg");
@@ -477,10 +481,12 @@ test.describe("portalis checkpoint 3", () => {
               `SELECT 1 FROM ${table} WHERE ${where} LIMIT 1`,
               [`%${key.secret}%`],
             );
-            expect(
-              hit.rowCount,
-              `api key secret found at rest in ${table}`,
-            ).toBe(0);
+            // Collect, do NOT assert here: expect() throws, and the enclosing
+            // catch exists to absorb "pg missing / DB unreachable". Asserting
+            // inside it converted a real detection into a skipped-sweep
+            // annotation, so an app storing secrets in plaintext PASSED the
+            // probe meant to catch exactly that. Assert after the catch.
+            if ((hit.rowCount ?? 0) > 0) atRestHits.push(table);
           }
           sweptDb = true;
         } finally {
@@ -493,6 +499,11 @@ test.describe("portalis checkpoint 3", () => {
         });
       }
     }
+    // Outside the catch: a genuine at-rest hit must fail the probe.
+    expect(
+      atRestHits,
+      `api key secret found at rest in: ${atRestHits.join(", ")}`,
+    ).toEqual([]);
     if (!sweptDb) {
       // Never silently downgrade: the HTTP-surface checks above still ran.
       console.warn(

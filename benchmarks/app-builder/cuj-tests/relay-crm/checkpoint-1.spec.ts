@@ -55,6 +55,9 @@ test.describe("relay-crm checkpoint 1", () => {
   test("crm-m1-02 sign-out and sign-in", async ({ world }) => {
     const owner = await world.signUp("owner");
     await owner.page.getByTestId("sign-out-button").click();
+    // signOut() is a background fetch; navigating before it settles cancels
+    // it and the cached session cookie keeps the server answering signed-in.
+    await owner.page.waitForLoadState("networkidle").catch(() => {});
     await owner.page.waitForURL("**/auth/sign-in", { timeout: 15_000 });
     await owner.page.getByTestId("signin-email").fill(owner.email);
     await owner.page.getByTestId("signin-password").fill(owner.password);

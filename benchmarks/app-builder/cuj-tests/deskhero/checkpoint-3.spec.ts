@@ -251,11 +251,20 @@ test.describe("deskhero checkpoint 3", () => {
     const a = await desk.admin();
     const r2 = await desk.requester("req2");
     await toggleActive(a, r2);
+    const subject = uniq("dead");
     const resp = await r2.ctx.request.post("/api/tickets", {
-      data: { subject: uniq("dead"), priority: "low" },
+      data: { subject, priority: "low" },
       maxRedirects: 0,
     });
     expect(resp.status()).toBeGreaterThanOrEqual(400);
+    // A 4xx alone is not proof: an app with no deactivation check that happens
+    // to reject the body for an unrelated reason (missing description) passes.
+    // Prove the write did not land, mirroring m3-p-dead-cookie-read.
+    const all = await a.ctx.request.get("/api/tickets");
+    expect(
+      await all.text(),
+      "a deactivated account's ticket must not exist",
+    ).not.toContain(subject);
   });
 
   test("m3-p-self-promote", async ({ desk }) => {
@@ -368,10 +377,20 @@ test.describe("deskhero checkpoint 3", () => {
       priority: "high",
     });
     const past = new Date(Date.now() - 3_600_000).toISOString();
+    // Read the deadline BEFORE the attack so the write can be proven not to
+    // have happened: a status-only assertion passes an app that performs the
+    // UPDATE and then answers 403.
+    const before = await w.admin.ctx.request.get(`/api/tickets/${w.ticketId}`);
+    const slaBefore = (await before.json())?.sla_due_at ?? null;
     const resp = await w.agent.ctx.request.patch(`/api/tickets/${w.ticketId}`, {
       data: { slaDueAt: past },
       maxRedirects: 0,
     });
     expect([401, 403]).toContain(resp.status());
+    const after = await w.admin.ctx.request.get(`/api/tickets/${w.ticketId}`);
+    const slaAfter = (await after.json())?.sla_due_at ?? null;
+    expect(slaAfter, "sla_due_at must be unchanged by a forbidden PATCH").toBe(
+      slaBefore,
+    );
   });
 });

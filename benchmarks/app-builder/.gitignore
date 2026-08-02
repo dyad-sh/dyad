@@ -18,3 +18,12 @@ neon-sim/certs/
 spikes/s-sql/certs/
 
 *.log
+
+# Oracle reference/broken-twin app trees. Each is its own git repo whose
+# checkpoint-m1/2/3 TAGS are load-bearing (run-suite.sh checks them out to score
+# a checkpoint), so they cannot be flattened into this repo without losing the
+# thing that makes them work. They ship as benchmark artifacts alongside the
+# generated apps; oracle/*.sh and each tree's ORACLE.md are the reproduction
+# recipe. Regenerate or fetch per oracle/README.md.
+oracle/*/reference/
+oracle/*/broken/

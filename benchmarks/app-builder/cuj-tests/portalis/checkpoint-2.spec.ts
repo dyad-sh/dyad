@@ -29,6 +29,7 @@ import {
   switchOrg,
   test,
   tokenFromInviteLink,
+  settleAfterSubmit,
 } from "./fixtures";
 
 test.describe("portalis checkpoint 2", () => {
@@ -125,6 +126,7 @@ test.describe("portalis checkpoint 2", () => {
       { timeout: 15_000 },
     );
     await b.page.getByTestId("accept-invite-submit").click();
+    await settleAfterSubmit(b.page);
     await b.page.goto(`/orgs/${org.id}`);
     await expect(b.page.getByTestId("org-header-name")).toContainText(
       org.name,

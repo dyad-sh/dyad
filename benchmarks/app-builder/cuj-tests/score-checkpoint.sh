@@ -111,6 +111,7 @@ fi
 
 echo "[score] running CUJ suite $SPEC"
 (cd "$CUJ_DIR" && APP_URL="http://localhost:$APP_PORT" CUJ_RESULTS="$CUJ_JSON" \
+  APPBENCH_DATABASE_URL="${DATABASE_URL:-$DBURL}" \
   npx playwright test "$SPEC" > /dev/null 2>&1) || true
 
 if [[ ! -f "$CUJ_JSON" ]]; then

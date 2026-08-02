@@ -150,15 +150,61 @@ The Dyad patch set shrank to two code changes (`DYAD_NEON_API_BASE_URL`,
   `src/paths/paths.ts` dereferenced `electron.app` with no non-Electron
   fallback; patch P5 adds the same fallback `getUserDataPath` already had.)
 
+## 10b. Measurement lessons (why the oracle exists)
+
+Twelve distinct harness defects surfaced during the first full run, and every
+one of them produced a confident, plausible, wrong number. The four worth
+generalising:
+
+1. **Skipped tests counted as passed.** `test.describe.serial` abandons the rest
+   of a file after the first failure, and the scorer read the spec-level `ok`
+   flag, which is true for a skipped test. 860 of 1052 tests never ran and were
+   scored as passing. Fix: read
+   `test.results[0].status` and count `ran` separately from `passed`; every suite
+   restructured so each test provisions its own state.
+2. **A probe that passes everything is worse than no probe.** Three probes were
+   testing weaker properties than they advertised — one asserted inside a
+   `try/catch` that swallowed its own detection, one accepted any 4xx from an app
+   that performed the UPDATE and _then_ answered 403, one accepted a silently
+   ignored 200 where the spec pins 403. None of them could fail. 25% of the
+   quality score rode on that table.
+3. **Infrastructure failure is indistinguishable from model failure unless you
+   make it distinguishable.** A generated app's own Playwright install garbage-
+   collected the suite's browser mid-run; three cells scored 0/54 and looked like
+   models that could not build an app. Fix: `PLAYWRIGHT_SKIP_BROWSER_GC=1`, plus a
+   `harness_error` status the scorer emits when every test dies at browser launch,
+   so the cell is refused rather than scored zero.
+4. **String-matched identifiers rot silently.** The judge resolved a cell's app
+   with `cellId.endsWith("-deskhero")`, which quietly fell through to `relay-crm`
+   the moment cell ids grew an effort suffix — so a whole sweep's deskhero and
+   portalis apps were judged against the wrong spec, and the judge dutifully
+   explained that the app "builds a Deskhero ticketing app rather than Relay CRM".
+   Fix: match the app segment anywhere in the id and **throw** when it does not
+   resolve. Prefer failing loudly over defaulting.
+
+The response to all four is `oracle/` — a reference implementation that must score
+100% and a deliberately broken twin whose every probe must fail, enforced per app
+_and_ per checkpoint by `oracle/preflight.sh` before any model cell is scored. See
+[oracle/README.md](oracle/README.md).
+
+`verify-prompt-extracts.mjs` is the same idea applied to the prompts: it proves
+each design doc's verbatim prompt block is a byte-identical extract of the
+`specs/<app>/m<N>.md` the runner actually sends, so the documented benchmark and
+the executed benchmark cannot drift apart.
+
 ## 11. Doc map
 
-| Document                                                           | Contents                                                                                               |
-| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
-| [design/app-1-relay-crm.md](design/app-1-relay-crm.md)             | App 1 spec: multi-tenant CRM — milestone prompts, CUJ suites, security probes, judge rubric additions  |
-| [design/app-2-deskhero.md](design/app-2-deskhero.md)               | App 2 spec: role-based helpdesk — roles/workflow depth                                                 |
-| [design/app-3-portalis.md](design/app-3-portalis.md)               | App 3 spec: B2B admin portal — tenancy, audit, hardest security checkpoint                             |
-| [design/neon-sim.md](design/neon-sim.md)                           | Offline Neon stand-in: v2 API shim, SQL proxy, better-auth, snapshots, Dyad patch set, spikes          |
-| [design/runner-scoring.md](design/runner-scoring.md)               | Runner, engine recording proxy, scoring pipeline, cost module, results schema, reporting, parity smoke |
-| [design/phase-2-cross-harness.md](design/phase-2-cross-harness.md) | Phase 2: Claude Code / Codex CLI adapters, task bundle, fairness protocol                              |
+| Document                                                           | Contents                                                                                                  |
+| ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| [design/app-1-relay-crm.md](design/app-1-relay-crm.md)             | App 1 spec: multi-tenant CRM — milestone prompts, CUJ suites, security probes, judge rubric additions     |
+| [design/app-2-deskhero.md](design/app-2-deskhero.md)               | App 2 spec: role-based helpdesk — roles/workflow depth                                                    |
+| [design/app-3-portalis.md](design/app-3-portalis.md)               | App 3 spec: B2B admin portal — tenancy, audit, hardest security checkpoint                                |
+| [design/app-4-ledgerly.md](design/app-4-ledgerly.md)               | App 4 spec: double-entry bookkeeping — money arithmetic, immutability, append-only audit                  |
+| [design/app-5-slotline.md](design/app-5-slotline.md)               | App 5 spec: clinic scheduling — derived availability, double-booking, instants                            |
+| [design/app-6-curbside.md](design/app-6-curbside.md)               | App 6 spec: delivery marketplace — three asymmetric actor types, atomic claim, server-authoritative money |
+| [oracle/README.md](oracle/README.md)                               | The controls: reference app (must be 100%) + broken twin (every probe must fail), and the pre-flight gate |
+| [design/neon-sim.md](design/neon-sim.md)                           | Offline Neon stand-in: v2 API shim, SQL proxy, better-auth, snapshots, Dyad patch set, spikes             |
+| [design/runner-scoring.md](design/runner-scoring.md)               | Runner, engine recording proxy, scoring pipeline, cost module, results schema, reporting, parity smoke    |
+| [design/phase-2-cross-harness.md](design/phase-2-cross-harness.md) | Phase 2: Claude Code / Codex CLI adapters, task bundle, fairness protocol                                 |
 
 All six sections were drafted by parallel design agents, reviewed by an adversarial critique pass (7 contradictions, 12 gaps, 7 fairness threats, 7 budget threats found), and revised against the canonical decisions in §2 — the spike plan in §6 carries the residual risk.

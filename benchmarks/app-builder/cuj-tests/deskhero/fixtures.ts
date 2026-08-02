@@ -76,6 +76,16 @@ export async function settleAfterSubmit(page: Page, formPath = "/new") {
   await page.waitForLoadState("networkidle").catch(() => {});
 }
 
+// Playwright auto-dismisses native dialogs, which would fail any app that
+// implements delete confirmation with window.confirm() — a choice the specs
+// permit (they pin an optional confirm control, they do not forbid the dialog).
+// Accept them so the assertion tests the outcome, not the dialog strategy.
+export function acceptDialogs(page: Page) {
+  page.on("dialog", (d) => {
+    d.accept().catch(() => {});
+  });
+}
+
 export async function signUp(page: Page, who: Identity) {
   await page.goto("/auth/sign-up");
   await page.getByTestId("signup-name").fill(who.name);
@@ -130,11 +140,14 @@ export async function findTicketId(
   const resp = await context.request.get("/api/tickets");
   if (!resp.ok()) return null;
   const body = await resp.json();
+  // Shape varies by role: a bare array for requesters/admins, but agents get
+  // { unassigned, mine }. Flatten every array-valued field so this helper works
+  // from any persona's context.
+  const asRows = (v: unknown): Array<Record<string, unknown>> =>
+    Array.isArray(v) ? (v as Array<Record<string, unknown>>) : [];
   const items: Array<Record<string, unknown>> = Array.isArray(body)
     ? body
-    : Array.isArray((body as { tickets?: unknown[] }).tickets)
-      ? (body as { tickets: Array<Record<string, unknown>> }).tickets
-      : [];
+    : Object.values(body as Record<string, unknown>).flatMap(asRows);
   const hit = items.find((it) =>
     Object.values(it).some((v) => typeof v === "string" && v.includes(needle)),
   );
@@ -169,14 +182,23 @@ export async function selectOptionByText(
 ) {
   const select = page.getByTestId(testId).first();
   await expect(select).toBeVisible({ timeout: 15_000 });
-  const value = await select.evaluate((el: HTMLSelectElement, text) => {
-    const opt = Array.from(el.options).find(
-      (o) => o.textContent?.includes(text) || o.value === text,
-    );
-    return opt ? opt.value : null;
-  }, needle);
-  expect(value, `option containing "${needle}" in ${testId}`).not.toBeNull();
-  await select.selectOption(value as string);
+  // Options are often populated by an async fetch AFTER the select renders, so
+  // a single evaluate races the data. Poll until the option appears; a genuinely
+  // missing option still fails, just deterministically instead of flakily.
+  const findValue = async () =>
+    select.evaluate((el: HTMLSelectElement, text) => {
+      const opt = Array.from(el.options).find(
+        (o) => o.textContent?.includes(text) || o.value === text,
+      );
+      return opt ? opt.value : null;
+    }, needle);
+  await expect
+    .poll(findValue, {
+      timeout: 15_000,
+      message: `option containing "${needle}" in ${testId}`,
+    })
+    .not.toBeNull();
+  await select.selectOption((await findValue()) as string);
 }
 
 // Read a due-time from the pinned `sla-due` element, tolerating any renderable
@@ -246,6 +268,7 @@ export class Desk {
     const who = identity(role);
     const ctx = await this.context();
     const page = await ctx.newPage();
+    acceptDialogs(page);
     await signUp(page, who);
     await page.waitForURL(`**${landing}`, { timeout: 20_000 });
     let id: string | null = null;

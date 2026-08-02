@@ -102,7 +102,28 @@ const server = http.createServer((req, res) => {
   const chunks = [];
   req.on("data", (c) => chunks.push(c));
   req.on("end", () => {
-    const body = Buffer.concat(chunks);
+    let body = Buffer.concat(chunks);
+    // Effort override for the reasoning-effort sweep. Dyad's settings expose
+    // only low/medium/high (thinkingBudget), but the engine accepts xhigh, so
+    // the sweep applies effort here instead of patching the product. Disclosed
+    // in the report: these runs do NOT use the product default.
+    const forcedEffort = process.env.APPBENCH_EFFORT || null;
+    if (forcedEffort && body.length) {
+      try {
+        const parsed = JSON.parse(body.toString("utf8"));
+        if (req.url.includes("/responses")) {
+          parsed.reasoning = {
+            ...(parsed.reasoning || {}),
+            effort: forcedEffort,
+          };
+        } else {
+          parsed.reasoning_effort = forcedEffort;
+        }
+        body = Buffer.from(JSON.stringify(parsed));
+      } catch {
+        /* non-JSON bodies pass through untouched */
+      }
+    }
     let requestMeta = {};
     try {
       const parsed = JSON.parse(body.toString("utf8"));

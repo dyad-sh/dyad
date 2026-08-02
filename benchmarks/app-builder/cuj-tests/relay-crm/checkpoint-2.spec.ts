@@ -176,6 +176,7 @@ test.describe("relay-crm checkpoint 2", () => {
     await owner.page.getByTestId("contact-form-name").fill(BEE);
     await owner.page.getByTestId("contact-form-email").fill(world.email("bee"));
     await owner.page.getByTestId("contact-form-submit").click();
+    await settleAfterSubmit(owner.page);
     await switchWorkspace(owner.page, firstWorkspaceName);
     await owner.page.goto("/contacts");
     await expect(
@@ -448,13 +449,18 @@ test.describe("relay-crm checkpoint 2", () => {
       }),
     ];
     for (const attempt of await Promise.all(attempts)) {
-      if (attempt.status() === 200) {
-        const text = await attempt.text();
-        expect(text).not.toContain(ADA);
-        expect(text).not.toContain(DEAL);
-      } else {
-        expect([401, 403]).toContain(attempt.status());
-      }
+      // m2.md pins this exactly: "if one is supplied for a workspace the user
+      // does not belong to, respond 403 and return no data". Accepting a 200
+      // that merely omits the data cannot distinguish REJECTED from IGNORED,
+      // and an app that ignores the id is still trusting client input
+      // elsewhere — verified: a cross-tenant-leaking twin passed the old form.
+      expect(
+        [401, 403],
+        "a foreign workspace id must be rejected, not silently ignored",
+      ).toContain(attempt.status());
+      const text = await attempt.text();
+      expect(text).not.toContain(ADA);
+      expect(text).not.toContain(DEAL);
     }
   });
 

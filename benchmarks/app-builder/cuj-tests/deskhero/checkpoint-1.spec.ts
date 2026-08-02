@@ -16,6 +16,7 @@ import {
   createTicketFor,
   expectSignedIn,
   findTicketId,
+  settleAfterSubmit,
 } from "./fixtures";
 
 const BODY = "It smokes when I print.";
@@ -54,6 +55,7 @@ test.describe("deskhero checkpoint 1", () => {
     await r1.page.getByTestId("new-ticket-link").click();
     await r1.page.getByTestId("ticket-body").fill("no subject here");
     await r1.page.getByTestId("ticket-submit").click();
+    await settleAfterSubmit(r1.page);
     await expect(r1.page.getByTestId("ticket-error")).toBeVisible();
     await r1.page.goto("/tickets");
     expect(await r1.page.getByTestId("ticket-row").count()).toBe(before);
@@ -93,6 +95,7 @@ test.describe("deskhero checkpoint 1", () => {
     await r1.page.getByTestId("ticket-subject").fill(edited);
     await r1.page.getByTestId("ticket-priority").selectOption("medium");
     await r1.page.getByTestId("ticket-submit").click();
+    await settleAfterSubmit(r1.page);
     await r1.page.goto(`/tickets/${t1Id}`);
     await expect(r1.page.getByTestId("ticket-detail-subject")).toContainText(
       edited,
@@ -147,6 +150,9 @@ test.describe("deskhero checkpoint 1", () => {
   test("m1-signout-guard", async ({ desk }) => {
     const r1 = await desk.requester();
     await r1.page.getByTestId("sign-out").click();
+    // signOut() is a background fetch; navigating before it settles cancels
+    // it and the cached session cookie keeps the server answering signed-in.
+    await r1.page.waitForLoadState("networkidle").catch(() => {});
     await r1.page.goto("/tickets");
     await r1.page.waitForURL("**/auth/sign-in", { timeout: 15_000 });
   });

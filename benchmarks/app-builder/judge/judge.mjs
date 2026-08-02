@@ -34,11 +34,14 @@ const argOf = (f) => {
 const CELL = argOf("--cell");
 const M = Number(argOf("--milestone"));
 if (!CELL || !M) throw new Error("--cell and --milestone required");
-const APP = CELL.endsWith("-deskhero")
-  ? "deskhero"
-  : CELL.endsWith("-portalis")
-    ? "portalis"
-    : "relay-crm";
+// Cell ids are `<model>-<app>` and, for the reasoning-effort sweep,
+// `<model>-<app>-<effort>`. Anchoring on endsWith() silently mis-resolved
+// every suffixed cell to relay-crm and judged deskhero/portalis apps against
+// the wrong spec, so match the app segment anywhere in the id.
+const APP = ["deskhero", "portalis", "relay-crm"].find((a) =>
+  new RegExp(`(^|-)${a}(-|$)`).test(CELL),
+);
+if (!APP) throw new Error(`cannot resolve app from cell id "${CELL}"`);
 
 // Single fixed judge for every candidate (user decision 2026-07-29,
 // superseding the cross-vendor pair design). Same-vendor bias toward the

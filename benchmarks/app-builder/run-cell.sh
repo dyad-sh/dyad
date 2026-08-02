@@ -9,7 +9,9 @@ set -euo pipefail
 BENCH="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$BENCH/../.." && pwd)"
 MODEL="${1:-openai/gpt-5.6-luna}"
-CELL="$(echo "${MODEL##*/}" | tr -c 'a-zA-Z0-9.-' '_' | sed 's/_$//')-relay-crm"
+# Must match the cell id appbench_cell.eval.ts composes, or the proxy's
+# per-cell request log lands under a different name than the cell summary.
+CELL="$(echo "${MODEL##*/}" | tr -c 'a-zA-Z0-9.-' '_' | sed 's/_$//')-${APPBENCH_APP:-relay-crm}${APPBENCH_EFFORT:+-$APPBENCH_EFFORT}"
 
 if [[ -f "$REPO/.env" ]]; then
   set -a
@@ -56,7 +58,7 @@ else
 # the new start fail to bind while health checks pass against STALE code —
 # observed live (a day-old sim served pre-fix clone responses). Clear the
 # ports by PID before starting.
-for port in 7788 7789; do
+for port in 7788 "${APPBENCH_PROXY_PORT:-7789}"; do
   stale=$(lsof -ti :$port -sTCP:LISTEN 2>/dev/null || true)
   [[ -n "$stale" ]] && { echo "[run-cell] killing stale listener on :$port (pid $stale)"; kill -9 $stale 2>/dev/null || true; sleep 1; }
 done
@@ -66,13 +68,14 @@ echo "[run-cell] starting neon-sim…"
 SIM_PID=$!
 echo "[run-cell] starting engine proxy (cell=$CELL)…"
 APPBENCH_CELL_CEILING_USD="${APPBENCH_CELL_CEILING_USD:-40}" \
-  node "$BENCH/proxy/engine-proxy.mjs" --cell "$CELL" \
+  APPBENCH_EFFORT="${APPBENCH_EFFORT:-}" \
+  node "$BENCH/proxy/engine-proxy.mjs" --port "${APPBENCH_PROXY_PORT:-7789}" --cell "$CELL" \
   > "$BENCH/proxy/engine-proxy.log" 2>&1 &
 PROXY_PID=$!
 
 for i in $(seq 1 30); do
   curl -sf http://127.0.0.1:7788/__sim/state >/dev/null 2>&1 \
-    && curl -sf http://127.0.0.1:7789/healthz >/dev/null 2>&1 && break
+    && curl -sf "http://127.0.0.1:${APPBENCH_PROXY_PORT:-7789}/healthz" >/dev/null 2>&1 && break
   sleep 1
   [[ $i == 30 ]] && { echo "servers failed to start"; exit 1; }
 done
@@ -87,6 +90,7 @@ echo "[run-cell] Running cell: $MODEL"
 
 cd "$REPO"
 APPBENCH_CELL=1 \
+APPBENCH_EFFORT="${APPBENCH_EFFORT:-}" \
 APPBENCH_MODEL="$MODEL" \
 NODE_EXTRA_CA_CERTS="$BENCH/neon-sim/certs/ca.pem" \
 E2E_TEST_BUILD= \

@@ -50,6 +50,9 @@ test.describe("portalis checkpoint 1", () => {
 
     await a.page.goto("/orgs");
     await a.page.getByTestId("sign-out-button").click();
+    // signOut() is a background fetch; navigating before it settles cancels
+    // it and the cached session cookie keeps the server answering signed-in.
+    await a.page.waitForLoadState("networkidle").catch(() => {});
     await a.page.waitForURL("**/auth/sign-in", { timeout: 15_000 });
     await signIn(a.page, a);
     await a.page.waitForURL("**/orgs**", { timeout: 15_000 });

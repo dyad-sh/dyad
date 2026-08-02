@@ -29,6 +29,16 @@ export const identity = (role: string, scope: string): Identity => ({
   password: PASSWORD,
 });
 
+// Playwright auto-dismisses native dialogs, which would fail any app that
+// implements delete confirmation with window.confirm() — a choice the specs
+// permit (they pin an optional confirm control, they do not forbid the dialog).
+// Accept them so the assertion tests the outcome, not the dialog strategy.
+export function acceptDialogs(page: Page) {
+  page.on("dialog", (d) => {
+    d.accept().catch(() => {});
+  });
+}
+
 export async function signUp(page: Page, who: Identity) {
   await page.goto("/auth/sign-up");
   await page.getByTestId("signup-name").fill(who.name);
@@ -112,8 +122,20 @@ export async function numericText(locator: {
   textContent(): Promise<string | null>;
 }): Promise<number> {
   const text = (await locator.textContent()) ?? "";
-  const match = text.replace(/[,\s]/g, "").match(/\d+(?:\.\d+)?/);
-  return match ? Number(match[0]) : NaN;
+  const flat = text.replace(/[,\s]/g, "");
+  const match = flat.match(/-?\d+(?:\.\d+)?/);
+  if (!match) return NaN;
+  const n = Number(match[0]);
+  // The sign is not always adjacent to the digits: a negative amount renders
+  // as "-$1,250.00", "$-1250" or "($1,250.00)". Reading digits alone would
+  // return a credit-normal balance as its own opposite, so recover the sign
+  // from the punctuation around the number.
+  const at = match.index ?? 0;
+  const lead = flat.slice(0, at).replace(/[^-(]/g, "");
+  const negated =
+    lead.endsWith("-") ||
+    (lead.endsWith("(") && flat.slice(at + match[0].length).startsWith(")"));
+  return negated && n > 0 ? -n : n;
 }
 
 // ---------------------------------------------------------------------------
@@ -377,6 +399,7 @@ export class World {
     const who = this.identity(role);
     const context = await this.newContext();
     const page = await context.newPage();
+    acceptDialogs(page);
     await signUp(page, who);
     await expectSignedIn(page, who.email);
     return {

@@ -59,7 +59,10 @@ const PROXY = `http://127.0.0.1:${process.env.APPBENCH_PROXY_PORT ?? "7789"}`;
 const MODEL_SPEC = process.env.APPBENCH_MODEL ?? "openai/gpt-5.6-luna";
 const [MODEL_PROVIDER, ...rest] = MODEL_SPEC.split("/");
 const MODEL_NAME = rest.join("/");
-const CELL_ID = `${MODEL_NAME.replace(/[^a-z0-9.-]/gi, "_")}-${APP}`;
+// Effort sweep: cells are suffixed so an effort variant never overwrites the
+// product-default run it is being compared against.
+const EFFORT = process.env.APPBENCH_EFFORT ?? "";
+const CELL_ID = `${MODEL_NAME.replace(/[^a-z0-9.-]/gi, "_")}-${APP}${EFFORT ? "-" + EFFORT : ""}`;
 // Distinguishes snapshot DBs across reruns of the same cell.
 const RUN_STAMP = Date.now().toString(36);
 

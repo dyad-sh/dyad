@@ -80,6 +80,16 @@ export async function bearerContext(key: string): Promise<APIRequestContext> {
 
 // ---- auth -----------------------------------------------------------------
 
+// Playwright auto-dismisses native dialogs, which would fail any app that
+// implements delete confirmation with window.confirm() — a choice the specs
+// permit (they pin an optional confirm control, they do not forbid the dialog).
+// Accept them so the assertion tests the outcome, not the dialog strategy.
+export function acceptDialogs(page: Page) {
+  page.on("dialog", (d) => {
+    d.accept().catch(() => {});
+  });
+}
+
 export async function signUp(
   page: Page,
   who: { name: string; email: string; password: string },
@@ -371,8 +381,20 @@ export async function numericText(locator: {
   textContent(): Promise<string | null>;
 }): Promise<number> {
   const text = (await locator.textContent()) ?? "";
-  const match = text.replace(/[,\s]/g, "").match(/\d+(?:\.\d+)?/);
-  return match ? Number(match[0]) : NaN;
+  const flat = text.replace(/[,\s]/g, "");
+  const match = flat.match(/-?\d+(?:\.\d+)?/);
+  if (!match) return NaN;
+  const n = Number(match[0]);
+  // The sign is not always adjacent to the digits: a negative amount renders
+  // as "-$1,250.00", "$-1250" or "($1,250.00)". Reading digits alone would
+  // return a credit-normal balance as its own opposite, so recover the sign
+  // from the punctuation around the number.
+  const at = match.index ?? 0;
+  const lead = flat.slice(0, at).replace(/[^-(]/g, "");
+  const negated =
+    lead.endsWith("-") ||
+    (lead.endsWith("(") && flat.slice(at + match[0].length).startsWith(")"));
+  return negated && n > 0 ? -n : n;
 }
 
 // ---- provisioning ---------------------------------------------------------
@@ -437,6 +459,7 @@ export class World {
     const ident = identity(scope, who);
     const ctx = await this.context();
     const page = await ctx.newPage();
+    acceptDialogs(page);
     await signUpAndLand(page, ident);
     const me = await getMe(ctx);
     const id = String(me.id ?? "");

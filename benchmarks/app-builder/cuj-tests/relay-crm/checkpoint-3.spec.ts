@@ -347,6 +347,7 @@ test.describe("relay-crm checkpoint 3", () => {
       .getByTestId("contact-form-email")
       .fill(world.email("other"));
     await owner.page.getByTestId("contact-form-submit").click();
+    await settleAfterSubmit(owner.page);
     await switchWorkspace(owner.page, workspaceName);
     await owner.page.goto("/contacts");
     await expect(

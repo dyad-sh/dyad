@@ -36,6 +36,24 @@ const APPS = {
     probes: { 1: 2, 2: 7, 3: 9 },
     isProbe: (id) => /^S\d-/.test(id),
   },
+  // Apps 4-6. Counts are the suites' actual table sizes (`npx playwright test
+  // <app>/checkpoint-N.spec.ts --list`), not the design's prose totals — the
+  // two drifted apart once before and the scorer must follow the suite.
+  ledgerly: {
+    cujs: { 1: 9, 2: 12, 3: 11 },
+    probes: { 1: 3, 2: 8, 3: 11 },
+    isProbe: (id) => /-s\d/.test(id),
+  },
+  slotline: {
+    cujs: { 1: 10, 2: 12, 3: 12 },
+    probes: { 1: 3, 2: 8, 3: 10 },
+    isProbe: (id) => /-s\d/.test(id),
+  },
+  curbside: {
+    cujs: { 1: 10, 2: 12, 3: 12 },
+    probes: { 1: 3, 2: 8, 3: 10 },
+    isProbe: (id) => /-s\d/.test(id),
+  },
 };
 // Categorical slots 1-3 (validated via dataviz validate_palette.js both modes).
 const VENDOR_COLOR = {
@@ -184,10 +202,24 @@ const appCol = (r, a) => {
   if (x.composite === null) return `built ($${x.cost.toFixed(2)})`;
   return `${pct(x.composite)} ($${x.cost.toFixed(2)})`;
 };
+// Only columns that actually have results: registering an app in APPS ahead of
+// its first run must not add a column of "n/a" to the headline table.
+const TITLES = {
+  "relay-crm": "Relay CRM",
+  deskhero: "Deskhero",
+  portalis: "Portalis",
+  ledgerly: "Ledgerly",
+  slotline: "Slotline",
+  curbside: "Curbside",
+};
+const liveApps = appNames.filter((a) => rows.some((r) => r.perApp[a]));
+const tableHeader =
+  `| Model | ${liveApps.map((a) => TITLES[a] ?? a).join(" | ")} | Build time | Total cost | Overall |\n` +
+  `|---|${liveApps.map(() => "---").join("|")}|---|---|---|`;
 const table = rows
   .map(
     (r) =>
-      `| ${r.name} | ${appCol(r, "relay-crm")} | ${appCol(r, "deskhero")} | ${appCol(r, "portalis")} | ${r.totalMin} min | $${r.totalCost.toFixed(2)} | **${pct(r.overall)}** |`,
+      `| ${r.name} | ${liveApps.map((a) => appCol(r, a)).join(" | ")} | ${r.totalMin} min | $${r.totalCost.toFixed(2)} | **${pct(r.overall)}** |`,
   )
   .join("\n");
 const failDetail = rows
@@ -202,13 +234,25 @@ const failDetail = rows
 // through the same scoreCell() as everything else. Emitted only when present.
 const EFFORT_MODELS = ["gpt-5.6-luna", "gpt-5.6-terra"];
 const EFFORTS = ["medium", "high", "xhigh"];
+// Effort cells were only run for the apps that existed at the time; scope the
+// sweep's columns to the apps it actually covers rather than to every
+// registered app, or later apps show up as a wall of n/a.
+const effortApps = appNames.filter((a) =>
+  EFFORT_MODELS.some((m) =>
+    EFFORTS.some((e) =>
+      fs.existsSync(
+        R("s-cell", `${m}-${a}${e === "medium" ? "" : `-${e}`}.summary.json`),
+      ),
+    ),
+  ),
+);
 const effortRows = [];
 for (const m of EFFORT_MODELS) {
   for (const e of EFFORTS) {
     const suffix = e === "medium" ? "" : `-${e}`;
     // Effort suffixes the WHOLE cell id (`<model>-<app>-<effort>`), matching
     // appbench_cell.eval.ts — it is not part of the model slug.
-    const cells = appNames.map((a) => scoreCell(m, a, `${m}-${a}${suffix}`));
+    const cells = effortApps.map((a) => scoreCell(m, a, `${m}-${a}${suffix}`));
     if (cells.every((c) => c === null)) continue;
     const done = cells.filter((c) => c?.composite != null);
     effortRows.push({
@@ -233,8 +277,8 @@ controls. Effort is applied at the recording proxy (\`reasoning_effort\` /
 low/medium/high, so these rows do **not** use a product-reachable configuration
 and are reported separately from the headline matrix.
 
-| Model | Effort | ${appNames.join(" | ")} | Cost | Wall-clock | Overall |
-|---|---|${appNames.map(() => "---").join("|")}|---|---|---|
+| Model | Effort | ${effortApps.map((a) => TITLES[a] ?? a).join(" | ")} | Cost | Wall-clock | Overall |
+|---|---|${effortApps.map(() => "---").join("|")}|---|---|---|
 ${effortRows
   .map(
     (r) =>
@@ -263,8 +307,7 @@ judge (gpt-5.6-sol, single judge, input-capped). Composite per app =
 Costs are list-price dollars from exact per-request token counts
 (cached/uncached/cache-write split) captured at the wire.
 
-| Model | Relay CRM | Deskhero | Portalis | Build time | Total cost | Overall |
-|---|---|---|---|---|---|---|
+${tableHeader}
 ${table}
 
 <picture>

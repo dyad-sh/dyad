@@ -33,7 +33,7 @@ controls. Effort is applied at the recording proxy (`reasoning_effort` /
 low/medium/high, so these rows do **not** use a product-reachable configuration
 and are reported separately from the headline matrix.
 
-| Model         | Effort | relay-crm | deskhero | portalis | Cost   | Wall-clock | Overall   |
+| Model         | Effort | Relay CRM | Deskhero | Portalis | Cost   | Wall-clock | Overall   |
 | ------------- | ------ | --------- | -------- | -------- | ------ | ---------- | --------- |
 | gpt-5.6-luna  | medium | 54.9%     | 61.0%    | 7.0%     | $3.18  | 27 min     | **41.0%** |
 | gpt-5.6-luna  | high   | 49.4%     | 68.8%    | 78.1%    | $6.51  | 61 min     | **65.4%** |

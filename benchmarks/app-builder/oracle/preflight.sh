@@ -44,11 +44,14 @@ if [[ -d "$TWIN" ]]; then
   # EVERY probe at this checkpoint must fail against a deliberately vulnerable
   # app. "Some probe tripped" is not enough: a probe nobody has ever seen fire
   # is not evidence of security, and 25% of the quality score rides on them.
+  # Probe-id convention per app. An app missing an entry here silently degrades
+  # the negative control to "some probe tripped somewhere", which is not the
+  # bar — so refuse to run rather than pass on an unenforced gate.
   case "$APP" in
-    relay-crm) PROBE_RE='-s[0-9]' ;;
+    relay-crm|ledgerly|slotline|curbside) PROBE_RE='-s[0-9]' ;;
     deskhero)  PROBE_RE='-p-' ;;
     portalis)  PROBE_RE='^S[0-9]-' ;;
-    *)         PROBE_RE='' ;;
+    *)         fail "no probe-id pattern registered for app '$APP' — add one to preflight.sh rather than scoring with an unenforced negative control" ;;
   esac
   if [[ -n "$PROBE_RE" ]]; then
     ALL_PROBES=$(cd "$BENCH/cuj-tests" && npx playwright test "$APP/checkpoint-$CK.spec.ts" --list 2>/dev/null \

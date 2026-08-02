@@ -44,12 +44,24 @@ trap cleanup EXIT
 # close/reopen, which the M2 transition matrix forbids), so a single tree cannot
 # satisfy every checkpoint. Mirror the real scorer: if the app is a git repo
 # carrying checkpoint tags, score each checkpoint against its own tag.
-if git -C "$APP_DIR" rev-parse --git-dir >/dev/null 2>&1; then
+# The tree must be its OWN repository. Testing "is this path inside any repo"
+# is not the same test: five oracle trees have no .git of their own, so
+# \`git -C "$APP_DIR"\` resolves to the OUTER dyad repo. That silently skipped
+# the checkout (scoring all three checkpoints against one tree, which is exactly
+# what per-checkpoint tags exist to prevent), and had the outer repo ever owned a
+# tag named checkpoint-mN it would have checked that tag out across the whole
+# dyad working tree.
+if [[ -e "$APP_DIR/.git" ]] && git -C "$APP_DIR" rev-parse --git-dir >/dev/null 2>&1; then
   if git -C "$APP_DIR" rev-parse -q --verify "refs/tags/checkpoint-m$CK" >/dev/null; then
     git -C "$APP_DIR" checkout -q "checkpoint-m$CK" 2>/dev/null \
       && echo "[oracle] checked out checkpoint-m$CK" \
       || echo "[oracle] WARNING: could not check out checkpoint-m$CK (dirty tree?)"
+  else
+    echo "[oracle] WARNING: $APP_DIR has no checkpoint-m$CK tag — scoring the working tree as-is"
   fi
+else
+  echo "[oracle] WARNING: $APP_DIR is not its own git repo — every checkpoint is being scored"
+  echo "[oracle]          against this single tree. Milestones may legitimately differ."
 fi
 
 # Fresh, uniquely-named database each run: no state leaks between iterations.

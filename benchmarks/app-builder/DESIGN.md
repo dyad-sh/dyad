@@ -192,6 +192,62 @@ each design doc's verbatim prompt block is a byte-identical extract of the
 `specs/<app>/m<N>.md` the runner actually sends, so the documented benchmark and
 the executed benchmark cannot drift apart.
 
+### What the oracle measures that reading cannot
+
+Apps 4–6 were built as references **from the specs, never from the tests** — the
+reference author may read a test to diagnose a failure but may not implement
+something the spec does not ask for. That constraint turns each reference build
+into a spec-sufficiency audit, and it found eleven cases the three prior review
+rounds had not: tests that required something the milestone prompt never pinned.
+Three of them would have failed a fully correct app (a probe demanding 403 for a
+field the spec says to _ignore_; a CUJ requiring a rating control to stay
+rendered where the spec is silent and says the opposite for its sibling
+control; a probe demanding 2xx where one prompt clause mandates 403). The rest
+were unpinned DOM nesting, an unpinned sign-up landing route, and endpoint fields
+named only by inference.
+
+Each such case is a silent subtraction from a correct app's score, attributed to
+the wrong cause. Reading a design catches wording defects; only an implementation
+built under the same information the models have catches these.
+
+### Known limits of the negative control
+
+The twins prove every probe _trips_. They do not prove every _assertion within_ a
+probe trips, because Playwright abandons a test at its first failed assertion: if
+the twin answers 200 where 403 is pinned, the probe fails there and its trailing
+"and the data is unchanged" re-reads never execute. The probe verdict is still
+correct — an app that returns the right status and mutates anyway does reach
+those re-reads — but the invariant legs have no demonstrated negative control.
+Closing this needs a second twin variant whose handlers write and _then_ answer
+4xx. Recorded rather than fixed.
+
+Two probes are also weaker than they advertise, and are documented as such rather
+than quietly relied on:
+
+- `led-m3-s07` claims to be the unique detector of float money. It is not: the
+  naive `sum(cents/100) × 100` implementation it targets also breaks the exact
+  integers pinned by CUJs `led-m3-01` and `led-m3-08`, so a float-money app fails
+  those first. Its money legs are a strictly-less-sensitive duplicate of CUJ
+  coverage.
+- `curb-m3-s02` (six concurrent claims) is validated as "an app with no claim
+  exclusivity at all is caught", not as "a check-then-write race is caught" — a
+  deterministic twin cannot demonstrate the latter, since its negative control
+  would itself be a race.
+
+### One unpinned requirement, deliberately left unpinned
+
+`@neondatabase/auth`'s Next.js client needs a route handler at
+`src/app/api/auth/[...path]/route.ts` exporting `auth.handler()`. Without it every
+client call 404s, no session is ever established, and the app scores zero with
+nothing logged server-side — it cost one reference build a whole checkpoint. The
+shared `AI_RULES.md` note documents the client calls and the server helper but
+never mentions the mount.
+
+It stays undocumented, because **all 21 shipped cells mounted it unaided**. Adding
+the sentence would remove a hurdle no model actually tripped on, while changing
+the shared task bundle midway through the benchmark. The gap is recorded here
+instead.
+
 ## 11. Doc map
 
 | Document                                                           | Contents                                                                                                  |

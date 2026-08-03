@@ -37,6 +37,15 @@ export {
 } from "./connection_flow";
 export { mcpContracts } from "./mcp";
 export { vercelContracts } from "./vercel";
+export { coolifyContracts, coolifyEvents, coolifyEventClient } from "./coolify";
+export type {
+  CoolifyConnection,
+  CoolifyDeploySnapshot,
+  CoolifyStatus,
+  CoolifyDiscovery,
+  CoolifyServerInfo,
+  CoolifyProjectInfo,
+} from "./coolify";
 export { supabaseContracts, supabaseEvents } from "./supabase";
 export { neonContracts } from "./neon";
 export { migrationContracts } from "./migration";
@@ -483,6 +492,7 @@ import {
 } from "./connection_flow";
 import { mcpClient } from "./mcp";
 import { vercelClient } from "./vercel";
+import { coolifyClient, coolifyEventClient } from "./coolify";
 import { supabaseClient, supabaseEventClient } from "./supabase";
 import { neonClient } from "./neon";
 import { migrationClient } from "./migration";
@@ -560,6 +570,7 @@ export const ipc = {
   connectionFlow: connectionFlowClient,
   mcp: mcpClient,
   vercel: vercelClient,
+  coolify: coolifyClient,
   supabase: supabaseClient,
   neon: neonClient,
   migration: migrationClient,
@@ -604,6 +615,7 @@ export const ipc = {
     appBlueprint: appBlueprintEventClient,
     tests: testsEventClient,
     userInput: userInputEventClient,
+    coolify: coolifyEventClient,
     imageGeneration: imageGenerationEventClient,
     windowInfrastructure: windowInfrastructureEventClient,
     distributedMachine: distributedMachineEventClient,

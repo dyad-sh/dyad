@@ -8,6 +8,7 @@ const MACHINE_DIRECTORIES = [
   "app_run",
   "chat_stream",
   "connection_flow",
+  "coolify_deploy",
   "deep_link_window_readiness",
   "first_prompt",
   "github_ops",

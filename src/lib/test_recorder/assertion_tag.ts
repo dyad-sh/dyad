@@ -19,15 +19,24 @@ export type AssertionProposalStatus = "proposed" | "approved";
 
 export function buildAssertionsTagContent({
   proposalId,
+  requestId,
   status,
   payload,
 }: {
   proposalId: string;
+  /**
+   * The parked user-input request the agent is waiting on. Present only while
+   * the plan is up for review — answering it is what resumes the turn. The
+   * approved rewrite drops it, so a reloaded card can't try to answer a request
+   * whose stream is long gone.
+   */
+  requestId?: string;
   status: AssertionProposalStatus;
   payload: AssertionProposalPayload;
 }): string {
   const attrs = [
     `proposal-id="${escapeXmlAttr(proposalId)}"`,
+    ...(requestId ? [`request-id="${escapeXmlAttr(requestId)}"`] : []),
     `status="${status}"`,
     // Empty until the spec is generated on approve; the card falls back to the title.
     `spec-path="${escapeXmlAttr(payload.specPath ?? "")}"`,

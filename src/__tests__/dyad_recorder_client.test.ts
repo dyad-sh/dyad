@@ -363,6 +363,21 @@ describe("dyad recorder client", () => {
     ]);
   });
 
+  it("falls back to a CSS path rather than a data-dyad-id", () => {
+    const r = setup();
+    // The attribute is a source location injected only by Dyad's dev plugin, so
+    // a locator built from it points at a moving target the replayed build
+    // doesn't even carry.
+    r.setHtml(`<div data-dyad-id="src/App.tsx:12:4"><span></span></div>`);
+    r.activate();
+    r.click(r.doc.querySelector("span"));
+    r.settleClick();
+
+    expect(r.actions).toEqual([
+      { kind: "click", locator: { kind: "css", value: "div > span" } },
+    ]);
+  });
+
   it("disambiguates duplicate elements with an nth index", () => {
     const r = setup();
     r.setHtml(`<button>Item</button><button>Item</button>`);

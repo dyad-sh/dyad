@@ -20,6 +20,7 @@ import {
 import {
   matchAssertionCodePayload,
   matchAssertionsAgentTurn,
+  matchAssertionsResumedTurn,
   matchAssertionsVerifyTurn,
 } from "./testAssertionsFixtures";
 
@@ -606,9 +607,16 @@ export default Index;
     if (assertionsMatch) {
       messageContent = assertionsMatch;
     }
-    // ...and the post-approval "run the spec you just generated" hand-off,
-    // answered without spawning a real Playwright run. Keyed off the last USER
-    // message: this one arrives as an agent turn, not a one-off model call.
+    // ...and the "run the spec you just generated" hand-off, answered without
+    // spawning a real Playwright run. Normally it comes back as the parked
+    // tool's result inside the same turn, so it's found by scanning every
+    // message; the fallback path sends it as a user message instead.
+    const assertionsResumedMatch = matchAssertionsResumedTurn(
+      messages.map(getTextContent),
+    );
+    if (assertionsResumedMatch) {
+      messageContent = assertionsResumedMatch;
+    }
     const assertionsVerifyMatch = matchAssertionsVerifyTurn(userTextContent);
     if (assertionsVerifyMatch) {
       messageContent = assertionsVerifyMatch;

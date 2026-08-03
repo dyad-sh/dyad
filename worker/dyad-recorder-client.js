@@ -485,12 +485,6 @@
             normalize(e.textContent) === descriptor.value &&
             !hasDescendantWithText(e, descriptor.value),
         );
-      case "dyadId":
-        return Array.prototype.slice.call(
-          document.querySelectorAll(
-            `[data-dyad-id="${cssEscape(descriptor.value)}"]`,
-          ),
-        );
       case "css":
         try {
           return Array.prototype.slice.call(
@@ -535,8 +529,10 @@
       candidates.push({ kind: "text", value: text, exact: true });
     }
 
-    const dyadId = el.getAttribute && el.getAttribute("data-dyad-id");
-    if (dyadId) candidates.push({ kind: "dyadId", value: dyadId });
+    // `data-dyad-id` is deliberately NOT a candidate: it encodes a source
+    // location, so it moves whenever the file it points into is edited, and the
+    // Dyad plugin that injects it doesn't run in the build the test replays
+    // against. An element with no better locator falls through to the CSS path.
 
     return candidates;
   }

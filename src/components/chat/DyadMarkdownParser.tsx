@@ -1208,6 +1208,7 @@ function renderCustomTag(
           node={{
             properties: {
               "proposal-id": attributes["proposal-id"] || "",
+              "request-id": attributes["request-id"] || "",
               status: attributes.status || "proposed",
               "spec-path": attributes["spec-path"] || "",
               state: getState({ isStreaming, inProgress }),

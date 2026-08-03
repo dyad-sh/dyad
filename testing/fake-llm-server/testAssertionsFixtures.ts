@@ -16,9 +16,12 @@
  *    chat-completions and responses fake routes so it works regardless of which
  *    protocol the selected fake model uses.
  *
- * 3. The VERIFICATION turn the card sends after approval, asking the agent to
- *    run the generated spec. Answered with plain text so E2E exercises the
- *    hand-off without spawning a real Playwright run.
+ * 3. The rest of the turn after the user answers the card. `generate_test_assertions`
+ *    blocks until then, so the approval comes back as its TOOL RESULT and the
+ *    same turn continues — there is no new user message to key off. A card whose
+ *    turn is gone (reload, stopped stream) falls back to sending a real user
+ *    message instead, so both are matched. Answered with plain text so E2E
+ *    exercises the hand-off without spawning a real Playwright run.
  *
  * The matchers key off exact line-anchored labels, not bare substrings — an
  * ordinary chat prompt that happens to mention "Statements:" must not be
@@ -29,16 +32,22 @@
 const ASSERTIONS_REQUEST_RE =
   /^Add assertions to the test I just recorded: "(.+)"\s*$/m;
 
-/** Matches the run request the assertions card sends after approval. */
+/**
+ * Matches the run request the assertions card sends after approval, on the
+ * fallback path where the agent is no longer parked on the card.
+ */
 const VERIFY_REQUEST_RE =
   /^I approved the assertions\. Dyad generated (\S+) from my recording\.\s*$/m;
 
 /**
- * Marker from the `generate_test_assertions` tool result (see
+ * Markers from the `generate_test_assertions` tool result (see
  * src/pro/main/ipc/handlers/local_agent/tools/generate_test_assertions.ts).
- * Keep the two in sync — it's how this fixture knows the card already exists.
+ * Keep these in sync — they're how this fixture knows the card has been
+ * answered and the tool call must not be repeated.
  */
-const ASSERTIONS_TOOL_DONE_MARKER = "review card for";
+const APPROVED_RESULT_RE =
+  /^The user approved the plan\. Dyad generated (\S+) from the recording/m;
+const CLOSED_RESULT_RE = /^The user closed the review card without approving/m;
 
 /** Derive a plain-English sentence for a recorded Playwright statement. */
 function describeStatement(statement: string): string {
@@ -123,14 +132,10 @@ export function matchAssertionsAgentTurn(
 ): AssertionsToolCall | null {
   if (!ASSERTIONS_REQUEST_RE.test(lastUserText)) return null;
 
-  // The card is already up (the tool said so), so the turn is over. Falling
-  // through to the canned text response is what ends it — answering with the
-  // tool call again would loop, since the triggering user message never
-  // changes.
-  const plainTexts = messageTexts.map(toPlainText);
-  if (plainTexts.some((text) => text.includes(ASSERTIONS_TOOL_DONE_MARKER))) {
-    return null;
-  }
+  // The card has been answered, so the rest of this turn is text. Answering with
+  // the tool call again would loop: the triggering user message never changes,
+  // and the tool would park on a second card.
+  if (matchAssertionsResumedTurn(messageTexts)) return null;
 
   const statements = parseNumberedStatements(lastUserText);
   if (statements.length === 0) return null;
@@ -157,9 +162,28 @@ export function matchAssertionsAgentTurn(
 }
 
 /**
- * The post-approval turn: the card asks the agent to run the spec it just
- * generated. Answered as plain text so E2E can assert the hand-off happened
- * without paying for a real Playwright run.
+ * The rest of the turn once the card has been answered, recognized from the
+ * `generate_test_assertions` tool result rather than a user message — the tool
+ * parked, so the approval comes back to the same turn. Answered as plain text so
+ * E2E can assert the hand-off happened without paying for a real Playwright run.
+ * Returns null when this conversation has no answered card in it.
+ */
+export function matchAssertionsResumedTurn(
+  messageTexts: string[],
+): string | null {
+  for (const text of messageTexts.map(toPlainText)) {
+    const approved = APPROVED_RESULT_RE.exec(text);
+    if (approved) return `Running ${approved[1]} to check the recorded flow.`;
+    if (CLOSED_RESULT_RE.test(text)) {
+      return "Okay — I left the recording alone. Tell me what you'd like to do with it.";
+    }
+  }
+  return null;
+}
+
+/**
+ * The fallback path's post-approval turn: a card whose agent had already moved
+ * on sends a real user message asking for the run.
  */
 export function matchAssertionsVerifyTurn(text: string): string | null {
   const match = VERIFY_REQUEST_RE.exec(text);

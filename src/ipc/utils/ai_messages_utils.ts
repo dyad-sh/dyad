@@ -116,6 +116,61 @@ export function cleanMessage<T extends ModelMessage>(message: T): T {
 }
 
 /**
+ * Providers validate tool-call ids and reject the entire request over a single
+ * bad one: Anthropic requires `^[A-Za-z0-9_-]+$`, and the OpenAI Responses API
+ * caps `call_id` at 64 characters. This is not a transient failure — once a
+ * malformed id reaches the persisted transcript, every later turn in that chat
+ * replays it and fails identically, so the chat is stuck until the id is
+ * replaced.
+ */
+const MAX_TOOL_CALL_ID_LENGTH = 64;
+const USABLE_TOOL_CALL_ID = /^[A-Za-z0-9_-]+$/;
+
+function isUsableToolCallId(id: string): boolean {
+  return (
+    id.length > 0 &&
+    id.length <= MAX_TOOL_CALL_ID_LENGTH &&
+    USABLE_TOOL_CALL_ID.test(id)
+  );
+}
+
+/**
+ * Replacement ids for every unusable id in the transcript, in encounter order.
+ * Built over the whole array up front so a tool-call and its result are given
+ * the SAME replacement — renaming them independently would unpair them, which
+ * providers reject just as hard as the id we're fixing.
+ */
+function buildToolCallIdRenames(messages: ModelMessage[]): Map<string, string> {
+  const renames = new Map<string, string>();
+  for (const message of messages) {
+    if (!Array.isArray(message.content)) continue;
+    for (const part of message.content) {
+      if (!isToolCallPart(part) && !isToolResultPart(part)) continue;
+      const id = part.toolCallId;
+      if (renames.has(id) || isUsableToolCallId(id)) continue;
+      renames.set(id, `dyad_call_${renames.size}`);
+    }
+  }
+  return renames;
+}
+
+function renameToolCallIds<T extends ModelMessage>(
+  message: T,
+  renames: Map<string, string>,
+): T {
+  if (!Array.isArray(message.content)) return message;
+  let didModify = false;
+  const content = message.content.map((part) => {
+    if (!isToolCallPart(part) && !isToolResultPart(part)) return part;
+    const replacement = renames.get(part.toolCallId);
+    if (!replacement) return part;
+    didModify = true;
+    return { ...part, toolCallId: replacement };
+  });
+  return didModify ? ({ ...message, content } as T) : message;
+}
+
+/**
  * Anthropic requires every assistant tool-call to be followed immediately by a
  * tool message containing the matching results. Persisted or dynamically
  * injected local-agent messages can occasionally violate that shape after
@@ -125,7 +180,19 @@ export function cleanMessage<T extends ModelMessage>(message: T): T {
 export function sanitizeToolCallTranscript(
   messages: ModelMessage[],
 ): ModelMessage[] {
-  const cleaned = messages.map(cleanMessage);
+  const renames = buildToolCallIdRenames(messages);
+  if (renames.size > 0) {
+    logger.warn(
+      `Rewrote ${renames.size} tool-call id(s) no provider would accept (longest was ${Math.max(
+        ...[...renames.keys()].map((id) => id.length),
+      )} chars)`,
+    );
+  }
+  const cleaned = messages.map((message) =>
+    cleanMessage(
+      renames.size > 0 ? renameToolCallIds(message, renames) : message,
+    ),
+  );
   const sanitized: ModelMessage[] = [];
 
   for (let i = 0; i < cleaned.length; i++) {

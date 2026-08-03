@@ -7,15 +7,6 @@ function q(value: string): string {
 }
 
 /**
- * `q()` alone only makes the result a valid *JavaScript* string; a `"` or `\` in
- * the attribute value would still mangle the CSS selector Playwright parses.
- * Mirrors what the recorder client's `cssEscape` does in-page.
- */
-function cssAttrValue(value: string): string {
-  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-}
-
-/**
  * Render a locator descriptor as a Playwright locator chain WITHOUT the leading
  * `page.` (the caller prepends it).
  *
@@ -51,9 +42,6 @@ export function locatorToCode(locator: LocatorDescriptor): string {
       call = locator.exact
         ? `getByText(${q(locator.value)}, { exact: true })`
         : `getByText(${q(locator.value)})`;
-      break;
-    case "dyadId":
-      call = `locator(${q(`[data-dyad-id="${cssAttrValue(locator.value)}"]`)})`;
       break;
     case "css":
     default:

@@ -785,6 +785,19 @@ export async function handleLocalAgentStream(
         // Commit final XML to fullResponse and clear the preview overlay.
         commitToolXml(finalXml);
       },
+      resyncResponseFromDb: async () => {
+        const row = await db.query.messages.findFirst({
+          where: eq(messages.id, placeholderMessageId),
+        });
+        if (typeof row?.content !== "string" || row.content === fullResponse) {
+          return;
+        }
+        fullResponse = row.content;
+        // The rewrite diverges inside the tail rather than appending, so this
+        // escalates to a full-messages send — which is what the renderer needs
+        // to pick up the card's new state mid-stream.
+        sendChunk(fullResponse);
+      },
       requireConsent: async (params: {
         toolName: string;
         toolDescription?: string | null;

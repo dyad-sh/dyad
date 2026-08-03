@@ -287,7 +287,10 @@ export function useNotificationHandler() {
     for (const [requestId, request] of projectedUserInputRequests) {
       if (request.status === "settled") continue;
       const descriptor = request.descriptor;
-      if (descriptor.kind === "integration") {
+      if (
+        descriptor.kind === "integration" ||
+        descriptor.kind === "test-assertions"
+      ) {
         continue;
       }
       userInputNotificationDescriptorsRef.current.set(requestId, descriptor);
@@ -406,7 +409,14 @@ export function useNotificationHandler() {
   // Actionable user-input notifications arrive through the generic protocol.
   useEffect(() => {
     const unsubscribe = ipc.events.userInput.onRequested((descriptor) => {
-      if (descriptor.kind === "integration") return;
+      // Neither is a consent prompt: an integration is finished in its own
+      // panel, and an assertion plan is reviewed in the chat card itself.
+      if (
+        descriptor.kind === "integration" ||
+        descriptor.kind === "test-assertions"
+      ) {
+        return;
+      }
       userInputNotificationDescriptorsRef.current.set(
         descriptor.requestId,
         descriptor,

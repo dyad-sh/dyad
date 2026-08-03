@@ -49,6 +49,54 @@ describe("user-input registry", () => {
     });
   });
 
+  it("gives an assertion review the long deadline, not the consent one", async () => {
+    const { registry, clock } = setup();
+    const requestId = registry.request({
+      kind: "test-assertions",
+      chatId: 1,
+      appId: 4,
+      proposalId: "proposal-1",
+      testTitle: "add an item",
+      classifier: "none",
+    });
+
+    // Reviewing a plan is an editing session; a five-minute consent deadline
+    // would cut it off mid-edit.
+    expect(registry.getPending()[0].deadlineAt).toBe(1_801_000);
+    const park = registry.park(requestId);
+    clock.advanceBy(300_000);
+    expect(registry.getPending()).toHaveLength(1);
+
+    clock.advanceBy(1_500_000);
+    await expect(park).resolves.toBeNull();
+  });
+
+  it("resumes a parked assertion review with the generated spec", async () => {
+    const { registry } = setup();
+    const requestId = registry.request({
+      kind: "test-assertions",
+      chatId: 1,
+      appId: 4,
+      proposalId: "proposal-1",
+      testTitle: "add an item",
+      classifier: "none",
+    });
+    const park = registry.park(requestId);
+
+    await registry.respond(requestId, {
+      kind: "test-assertions",
+      specPath: "e2e-tests/recorded-add-an-item.spec.ts",
+      appliedCount: 2,
+    });
+
+    await expect(park).resolves.toEqual({
+      kind: "test-assertions",
+      specPath: "e2e-tests/recorded-add-an-item.spec.ts",
+      appliedCount: 2,
+    });
+    expect(registry.getPending()).toEqual([]);
+  });
+
   it("sweeps a consent and questionnaire in one chat", async () => {
     const { registry, recording } = setup();
     const consent = registry.request({

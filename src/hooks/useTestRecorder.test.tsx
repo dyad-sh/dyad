@@ -197,6 +197,27 @@ describe("useTestRecorder", () => {
     });
   });
 
+  it("starts one session for a record request replayed by StrictMode", async () => {
+    const { store, Wrapper } = makeWrapper();
+    store.set(selectedAppIdAtom, 1);
+    store.set(recordingStartRequestAtom, { appId: 1, requestedAt: Date.now() });
+
+    // The Tests panel's Record button switches to the preview tab, so the hook
+    // mounts with the request already parked and StrictMode replays the effect
+    // that consumes it with the same render's (still non-null) value.
+    const { result } = renderHook(
+      () => useTestRecorder({ reloadPreview: () => {} }),
+      { wrapper: Wrapper, reactStrictMode: true },
+    );
+
+    await waitFor(() => {
+      expect(result.current.isRecording).toBe(true);
+    });
+    // A second ask is rejected by the main process ("a recording session is
+    // already in progress"), which toasted an error over a healthy session.
+    expect(startRecordingMock).toHaveBeenCalledTimes(1);
+  });
+
   it("stops into a review phase without writing anything", async () => {
     const { result } = await recordingSession();
 
@@ -239,6 +260,30 @@ describe("useTestRecorder", () => {
 
     expect(result.current.phase).toBe("idle");
     expect(result.current.draft).toBeUndefined();
+  });
+
+  it("stops waiting on the AI once the assertion turn has ended", async () => {
+    const { result } = await recordingSession({ appUrl: true });
+    await act(async () => {
+      await result.current.stopAndReview("my flow");
+    });
+    act(() => {
+      result.current.markAwaitingAssertions();
+    });
+    expect(result.current.awaitingAssertions).toBe(true);
+
+    // A turn can end with no card at all — stopped by the user, errored, or a
+    // reply that never called the tool. Only approval closes the bar on its
+    // own, so without this it went on claiming the AI was still working.
+    act(() => {
+      result.current.clearAwaitingAssertions(1);
+    });
+
+    expect(result.current.awaitingAssertions).toBe(false);
+    // The draft is untouched: saving it as-is, discarding it and asking again
+    // are exactly what the user needs once the request came back empty.
+    expect(result.current.phase).toBe("reviewing");
+    expect(result.current.draft?.testName).toBe("my flow");
   });
 
   it("keeps the review when the stop we asked for reports back late", async () => {

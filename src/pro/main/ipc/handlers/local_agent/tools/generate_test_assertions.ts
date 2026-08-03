@@ -4,6 +4,7 @@ import log from "electron-log";
 
 import { ToolDefinition, AgentContext } from "./types";
 import { completeWarning } from "./run_tests_utils";
+import { userInputRegistry } from "@/user_input/main";
 import { getRecordedTestDraft } from "@/ipc/services/recorded_test_drafts";
 import { recordedBodyStatements } from "@/lib/test_recorder/codegen";
 import { isSingleAssertionStatement } from "@/lib/test_recorder/assertion_code";
@@ -76,6 +77,8 @@ This tool only works right after the user stops a recording and clicks "Generate
 
 const DESCRIPTION = `Turn a just-finished recording into a reviewable plan: describe each recorded step in plain English and propose the assertions that should check it. The user reviews the plan in a chat card — editing, deleting, reordering — and Dyad generates the test file from it when they approve. You never write the spec.
 
+This tool BLOCKS until the user answers the card, then tells you what happened. The turn is not over when you call it.
+
 <when_to_use>
 Use this when the user asks for assertions for a flow they just recorded with Dyad's recorder. The recorded statements are given to you in the request — the test does NOT exist as a file yet, and there is nothing to read_file. Do NOT use it to write a new test from scratch (write the spec with write_file instead), and do NOT use it on a spec that already exists on disk (edit that with search_replace).
 </when_to_use>
@@ -83,7 +86,8 @@ Use this when the user asks for assertions for a flow they just recorded with Dy
 <how_to_use>
 1. Read the numbered statements in the user's message. Those indices are the ones this tool expects — don't renumber them.
 2. Send one \`steps\` entry per statement, translating it into one plain-English sentence, plus the assertions you want to propose.
-3. Stop after the call. The file does not exist yet: there is nothing to edit and nothing to run. The user reviews the card, and Dyad generates the spec when they approve. Just tell them the plan is ready.
+3. Wait. The call does not come back until the user approves the card or closes it, and the tool result tells you which. Do NOT call it a second time, and do NOT try to write or run anything while it is open — the spec does not exist yet.
+4. Do what the tool result says: run the spec it names, or stop if the user closed the card.
 </how_to_use>
 
 <assertions>
@@ -249,9 +253,21 @@ export const generateTestAssertionsTool: ToolDefinition<GenerateTestAssertionsAr
         items,
       };
 
+      // Requested before the card is committed: the card carries this id, and
+      // answering it is the only thing that resumes this call.
+      const requestId = userInputRegistry.request({
+        kind: "test-assertions",
+        chatId: ctx.chatId,
+        appId: ctx.appId,
+        proposalId,
+        testTitle: draft.testName,
+        classifier: "none",
+      });
+
       ctx.onXmlComplete(
         buildAssertionsTagContent({
           proposalId,
+          requestId,
           status: "proposed",
           payload,
         }),
@@ -259,12 +275,31 @@ export const generateTestAssertionsTool: ToolDefinition<GenerateTestAssertionsAr
 
       const assertionCount = countAssertions(items);
       logger.info(
-        `Proposed ${assertionCount} assertion(s) for recorded test "${draft.testName}" (chat ${ctx.chatId})`,
+        `Proposed ${assertionCount} assertion(s) for recorded test "${draft.testName}" (chat ${ctx.chatId}), awaiting review as ${requestId}`,
       );
-      return `Showed the user a review card for the recorded test "${draft.testName}" with ${bodyStatements.length} step(s) and ${assertionCount} proposed assertion(s).
 
-The card is now theirs to work with: they can edit the wording, delete assertions, add their own, reorder them, and approve. Dyad generates the spec file — steps and approved assertions — when they hit Approve. NOTHING is on disk until then.
+      const result = await userInputRegistry.park(requestId, ctx.abortSignal);
+      const review = result?.kind === "test-assertions" ? result : null;
 
-You are done with this request. There is no file to edit and no test to run yet. Do NOT propose the same assertions again, and do NOT call run_tests. Reply with one short sentence telling the user the plan is ready for review.`;
+      // Approving rewrote this card's tag in the message row to latch it
+      // approved. That row is the same one this turn keeps appending to, so
+      // adopt the rewrite before writing anything else over it.
+      await ctx.resyncResponseFromDb?.();
+
+      if (!review?.specPath) {
+        logger.info(
+          `Assertion review ${requestId} ended without a spec for "${draft.testName}"`,
+        );
+        return `The user closed the review card without approving it, so no test file was written.
+
+Do NOT call generate_test_assertions again for this recording and do NOT call run_tests — there is nothing on disk to run. The recording is still parked, so they can save it as-is from the recorder bar. Ask them what they'd like to do instead, in one short sentence.`;
+      }
+
+      logger.info(
+        `Assertion review ${requestId} approved: generated ${review.specPath}`,
+      );
+      return `The user approved the plan. Dyad generated ${review.specPath} from the recording, with ${review.appliedCount} assertion(s). It is on disk now.
+
+A recorded test nobody has run is a guess — replay can behave differently from the hand-performed flow. Run ${review.specPath} with run_tests. If it fails, read the failure, decide whether the test or the app is wrong, fix it, and run it again until it passes — or tell the user what's blocking it.`;
     },
   };

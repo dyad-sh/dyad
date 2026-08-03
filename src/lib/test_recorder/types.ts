@@ -13,7 +13,6 @@ export const LocatorKindSchema = z.enum([
   "placeholder",
   "label",
   "text",
-  "dyadId",
   "css",
 ]);
 export type LocatorKind = z.infer<typeof LocatorKindSchema>;

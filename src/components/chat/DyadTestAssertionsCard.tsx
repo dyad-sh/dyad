@@ -31,6 +31,10 @@ import {
   type AssertionPlanItem,
 } from "@/lib/test_recorder/assertion_proposal";
 import { parseAssertionsPayload } from "@/lib/test_recorder/assertion_tag";
+import {
+  getUserInputProjectionAdapter,
+  userInputRequestsAtom,
+} from "@/user_input/projection";
 import type { CustomTagState } from "./stateTypes";
 
 /**
@@ -64,6 +68,7 @@ interface DyadTestAssertionsCardProps {
   node: {
     properties: {
       "proposal-id"?: string;
+      "request-id"?: string;
       status?: string;
       "spec-path"?: string;
       state?: CustomTagState;
@@ -114,6 +119,7 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
   children,
 }) => {
   const proposalId = node.properties["proposal-id"] ?? "";
+  const requestId = node.properties["request-id"] ?? "";
   const approvedOnServer = node.properties.status === "approved";
 
   const rawPayload = useMemo(() => toText(children), [children]);
@@ -130,6 +136,17 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
   const queryClient = useQueryClient();
   const store = useStore();
   const { streamMessage } = useStreamChat();
+  // The agent is parked on this card's request for as long as it's live, so
+  // answering it resumes that turn. It won't be live for a card reloaded after
+  // a restart, or one whose turn was stopped — those fall back to handing the
+  // spec over as a fresh chat turn.
+  const userInputProjection = getUserInputProjectionAdapter({ store });
+  const userInputRequests = useAtomValue(userInputRequestsAtom);
+  const parkedRequest = requestId
+    ? userInputRequests.get(requestId)
+    : undefined;
+  const isAgentWaiting =
+    parkedRequest !== undefined && parkedRequest.status !== "settled";
 
   const [items, setItems] = useState<AssertionPlanItem[]>(
     () => payload?.items ?? [],
@@ -144,6 +161,7 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
   const [dragId, setDragId] = useState<string | null>(null);
   const [expandedCodeId, setExpandedCodeId] = useState<string | null>(null);
   const [optimisticApproved, setOptimisticApproved] = useState(false);
+  const [discarded, setDiscarded] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
   const [liveMessage, setLiveMessage] = useState("");
   // Synchronous guard: state updates are async, so a fast double-click would
@@ -160,6 +178,9 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
   }, [payload]);
 
   const isApproved = approvedOnServer || optimisticApproved;
+  // Discarding freezes the plan too: nothing was written, but there is nothing
+  // left to answer either.
+  const isLocked = isApproved || discarded;
   const assertions = items.filter(isAssertionItem);
   const hasBlankAssertion = assertions.some((item) => !item.text.trim());
   const checkCountLabel =
@@ -188,13 +209,13 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
   }, [draftText, editingId, updateAssertion]);
 
   const startEdit = (id: string, text: string) => {
-    if (isApproved) return;
+    if (isLocked) return;
     setEditingId(id);
     setDraftText(text);
   };
 
   const removeAssertion = (id: string) => {
-    if (isApproved) return;
+    if (isLocked) return;
     if (editingId === id) setEditingId(null);
     setItems((prev) =>
       prev.filter((item) => !isAssertionItem(item) || item.id !== id),
@@ -203,7 +224,7 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
   };
 
   const addAssertionAfter = (index: number) => {
-    if (isApproved) return;
+    if (isLocked) return;
     const id = crypto.randomUUID();
     setItems((prev) => {
       const next = [...prev];
@@ -222,7 +243,7 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
   };
 
   const moveByOffset = (index: number, offset: number) => {
-    if (isApproved) return;
+    if (isLocked) return;
     // Compute outside setItems: a state updater must stay pure.
     const next = moveAssertion(items, index, index + offset);
     if (next === items) return;
@@ -249,9 +270,10 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
   };
 
   /**
-   * Ask the agent to run the spec the approval just generated. Sent as a normal
-   * chat turn (Agent mode, where run_tests lives) so the run and any fix are
-   * visible in the conversation rather than hidden behind the card.
+   * Ask the agent to run the spec the approval just generated. Only for a card
+   * whose turn is no longer parked on it — a reload or a stopped stream. Sent as
+   * a normal chat turn (Agent mode, where run_tests lives) so the run and any
+   * fix are visible in the conversation.
    */
   const requestVerificationRun = (generatedSpecPath: string) => {
     if (chatId == null || !generatedSpecPath) return;
@@ -267,7 +289,7 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
   };
 
   const handleApprove = async () => {
-    if (approvingRef.current || isApproved) return;
+    if (approvingRef.current || isLocked) return;
     if (!proposalId || chatId == null || appId == null) return;
     approvingRef.current = true;
     setIsApproving(true);
@@ -280,11 +302,6 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
         items,
       });
       setApprovedSpecPath(result.specPath || null);
-      // The Provider-bound store, not `getDefaultStore()`: under a Jotai
-      // `Provider` the default store has none of this chat's state, so
-      // `syncChatFromDb` would miss the `isStreaming` guard and overwrite live
-      // messages with the DB snapshot.
-      syncChatFromDb(chatId, setMessagesById, "[TEST-ASSERTIONS]", store);
       queryClient.invalidateQueries({ queryKey: queryKeys.appFiles.all });
       queryClient.invalidateQueries({
         queryKey: queryKeys.tests.list({ appId }),
@@ -299,9 +316,26 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
         showError(result.warning);
       }
       // A recorded test nobody has run is a guess: replay can behave differently
-      // from the hand-performed flow. Hand the spec back so the agent verifies —
-      // and can fix — what was just approved.
-      requestVerificationRun(result.specPath);
+      // from the hand-performed flow, so the agent gets the spec back either
+      // way. The parked turn picks it up as its tool result and carries on
+      // without a visible message; a card whose turn is gone — or whose request
+      // expired between render and click — needs a new turn instead.
+      const handedToParkedTurn =
+        isAgentWaiting &&
+        (await userInputProjection.respond(requestId, {
+          kind: "test-assertions",
+          specPath: result.specPath || null,
+          appliedCount: result.appliedCount,
+        }));
+      if (!handedToParkedTurn) {
+        // The Provider-bound store, not `getDefaultStore()`: under a Jotai
+        // `Provider` the default store has none of this chat's state, so
+        // `syncChatFromDb` would miss the `isStreaming` guard and overwrite
+        // live messages with the DB snapshot. The parked path skips it — the
+        // resumed turn streams the approved card down itself.
+        syncChatFromDb(chatId, setMessagesById, "[TEST-ASSERTIONS]", store);
+        requestVerificationRun(result.specPath);
+      }
     } catch (error) {
       setOptimisticApproved(false);
       setApprovedSpecPath(null);
@@ -310,6 +344,30 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
           ? error.message
           : "Couldn't generate the test file.",
       );
+    } finally {
+      approvingRef.current = false;
+      setIsApproving(false);
+    }
+  };
+
+  /**
+   * Close the plan without writing anything. Only offered while the agent is
+   * parked on it: it exists so a turn waiting on this card has an exit that
+   * isn't the 30-minute deadline.
+   */
+  const handleDiscard = async () => {
+    if (approvingRef.current || isLocked || !isAgentWaiting) return;
+    approvingRef.current = true;
+    setIsApproving(true);
+    try {
+      // Only lock the card if the agent actually got the answer; a failed
+      // respond leaves the plan exactly as it was, still approvable.
+      const answered = await userInputProjection.respond(requestId, {
+        kind: "test-assertions",
+        specPath: null,
+        appliedCount: 0,
+      });
+      if (answered) setDiscarded(true);
     } finally {
       approvingRef.current = false;
       setIsApproving(false);
@@ -374,7 +432,7 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
         {items.map((item, index) => {
           const isFirst = index === 0;
           const isLast = index === items.length - 1;
-          const isDropTarget = dragId !== null && !isApproved;
+          const isDropTarget = dragId !== null && !isLocked;
           const dropProps = isDropTarget
             ? {
                 onDragOver: (e: React.DragEvent) => {
@@ -407,7 +465,7 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
                   <span className="min-w-0 flex-1 truncate text-xs leading-4 text-muted-foreground">
                     {item.text}
                   </span>
-                  {!isApproved && (
+                  {!isLocked && (
                     <button
                       type="button"
                       onClick={() => addAssertionAfter(index)}
@@ -429,10 +487,10 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
             <li
               key={item.id}
               data-testid={`dyad-test-assertions-assertion-${item.id}`}
-              draggable={!isApproved && !isEditing}
-              tabIndex={isApproved ? undefined : 0}
+              draggable={!isLocked && !isEditing}
+              tabIndex={isLocked ? undefined : 0}
               aria-label={
-                isApproved
+                isLocked
                   ? undefined
                   : `Assertion: ${item.text || "not described yet"}. Alt with arrow keys to reorder.`
               }
@@ -502,8 +560,8 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
                     <button
                       type="button"
                       onClick={() => startEdit(item.id, item.text)}
-                      disabled={isApproved}
-                      title={isApproved ? undefined : "Click to edit"}
+                      disabled={isLocked}
+                      title={isLocked ? undefined : "Click to edit"}
                       data-testid={`dyad-test-assertions-text-${item.id}`}
                       className={cn(
                         "w-full rounded-sm text-left text-[13px] leading-5 text-foreground",
@@ -522,7 +580,7 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
                     </button>
                   )}
 
-                  {(item.code || (item.needsCode && !isApproved)) && (
+                  {(item.code || (item.needsCode && !isLocked)) && (
                     <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-1">
                       {item.code && (
                         <button
@@ -545,7 +603,7 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
                           {isCodeOpen ? "Hide code" : "Show code"}
                         </button>
                       )}
-                      {item.needsCode && !isApproved && (
+                      {item.needsCode && !isLocked && (
                         <span className={cn("text-[11px]", ACCENT_TEXT)}>
                           Code written on approve
                         </span>
@@ -560,7 +618,7 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
                   )}
                 </div>
 
-                {!isApproved && !isEditing && (
+                {!isLocked && !isEditing && (
                   <>
                     <span
                       aria-hidden
@@ -598,7 +656,9 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
         <p className="px-3.5 pb-2.5 text-xs text-muted-foreground">
           {isApproved
             ? "No checks were added — the test replays the recorded steps only."
-            : "No checks proposed. Point at a step to add your own."}
+            : discarded
+              ? "No checks were added."
+              : "No checks proposed. Point at a step to add your own."}
         </p>
       )}
 
@@ -618,19 +678,44 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
               Open test file
             </button>
           </>
+        ) : discarded ? (
+          <span
+            className="text-xs text-muted-foreground"
+            data-testid="dyad-test-assertions-discarded-note"
+          >
+            Closed without generating a test.
+          </span>
         ) : (
           <>
             <span className="text-xs text-muted-foreground">
               {hasBlankAssertion
                 ? "Describe every check before approving."
-                : "Approving generates the test file and runs it."}
+                : isAgentWaiting
+                  ? "Dyad is waiting on this before it continues."
+                  : "Approving generates the test file and runs it."}
             </span>
+            {/* Only while the turn is parked on this card: otherwise there is
+                nothing waiting, and "close" would just hide a usable plan. */}
+            {isAgentWaiting && (
+              <button
+                type="button"
+                onClick={() => void handleDiscard()}
+                disabled={isApproving}
+                data-testid="dyad-test-assertions-discard-button"
+                className="ml-auto rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors duration-150 hover:bg-(--background-darker) hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Close without generating
+              </button>
+            )}
             <button
               type="button"
               onClick={() => void handleApprove()}
               disabled={isApproving || hasBlankAssertion || !proposalId}
               data-testid="dyad-test-assertions-approve-button"
-              className="ml-auto inline-flex items-center gap-1.5 rounded-md bg-purple-600 px-2.5 py-1 text-xs font-medium text-white transition-colors duration-150 hover:bg-purple-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-600 focus-visible:ring-offset-2 focus-visible:ring-offset-(--background-lightest) disabled:cursor-not-allowed disabled:opacity-50 dark:bg-purple-600 dark:hover:bg-purple-500"
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-md bg-purple-600 px-2.5 py-1 text-xs font-medium text-white transition-colors duration-150 hover:bg-purple-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-600 focus-visible:ring-offset-2 focus-visible:ring-offset-(--background-lightest) disabled:cursor-not-allowed disabled:opacity-50 dark:bg-purple-600 dark:hover:bg-purple-500",
+                !isAgentWaiting && "ml-auto",
+              )}
             >
               {isApproving && (
                 <Loader2

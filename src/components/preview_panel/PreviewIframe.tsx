@@ -345,16 +345,32 @@ export const PreviewIframe = ({
       showInfo("Open a chat to generate assertions for the recorded test.");
       return;
     }
-    streamMessage({
-      prompt: buildAssertionsPrompt(draft.testName, recorder.draftSteps),
-      chatId: selectedChatId,
-      requestedChatMode: "local-agent",
-    });
-    showInfo("Sent to chat — asking the AI for assertions…");
+    const requestAppId = selectedAppId;
+    // Marked before the send: a submission that lands on the prompt queue
+    // settles synchronously, and the clear below must not be overwritten by a
+    // mark that runs after it.
+    //
     // The review stays up until the user closes it. The request can fail, be
     // cancelled, or finish without ever calling the tool, and this bar is the
     // only UI that can save the parked draft as-is, discard it, or ask again.
     recorder.markAwaitingAssertions();
+    streamMessage({
+      prompt: buildAssertionsPrompt(draft.testName, recorder.draftSteps),
+      chatId: selectedChatId,
+      requestedChatMode: "local-agent",
+      // Every way this turn can end arrives here: a card posted and answered, a
+      // reply that never called the tool, an error, or the user stopping the
+      // chat. Only the approval closes the bar on its own, so without this the
+      // "asking the AI" spinner outlives the request it describes. A submission
+      // queued behind an active stream settles here straight away and its
+      // callback is not carried through the queue, so it stops the spinner too —
+      // the card still arrives when the queued turn runs.
+      onSettled: () => {
+        if (requestAppId != null)
+          recorder.clearAwaitingAssertions(requestAppId);
+      },
+    });
+    showInfo("Sent to chat — asking the AI for assertions…");
   };
 
   // Confirm the switch to Agent mode first when the chat is in another mode,

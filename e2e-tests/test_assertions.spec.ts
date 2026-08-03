@@ -5,9 +5,10 @@ import { testSkipIfWindows, Timeout } from "./helpers/test_helper";
 // LLM server answers the agent turn with a generate_test_assertions tool call
 // and answers the approve-time code prompt (see
 // testing/fake-llm-server/testAssertionsFixtures.ts), so this drives the real
-// agent tool, the real deterministic codegen, and the real chat card. The
-// post-approval "run it" hand-off is answered as plain text — it does NOT spawn
-// a Playwright run of the generated spec.
+// agent tool, the real deterministic codegen, and the real chat card. The tool
+// parks on the card, so approving resumes that same turn rather than starting a
+// new one. The "run it" hand-off is answered as plain text — it does NOT spawn a
+// Playwright run of the generated spec.
 testSkipIfWindows(
   "reviews a recording as steps, then generates the test file on approval",
   async ({ po }) => {
@@ -67,6 +68,12 @@ testSkipIfWindows(
     );
     await expect(assertions.first()).toBeVisible();
 
+    // The turn is parked on the card rather than finished: the way out that
+    // only exists while something is waiting is offered.
+    await expect(
+      po.page.getByTestId("dyad-test-assertions-discard-button"),
+    ).toBeVisible();
+
     // Editing an assertion marks it for code regeneration on approve.
     await card
       .locator('[data-testid^="dyad-test-assertions-text-"]')
@@ -99,10 +106,15 @@ testSkipIfWindows(
       { timeout: Timeout.LONG },
     );
 
-    // Approving also hands the fresh spec back to the agent to run.
+    // Approving also hands the fresh spec back to the agent to run — as the
+    // parked tool's result, so the same turn continues...
     await expect(po.page.getByTestId("messages-list")).toContainText(
       "Running e2e-tests/recorded-assert-item.spec.ts",
       { timeout: Timeout.LONG },
+    );
+    // ...and nothing about the hand-off shows up as a message of the user's.
+    await expect(po.page.getByTestId("messages-list")).not.toContainText(
+      "I approved the assertions",
     );
 
     // The card is a persisted message, so it survives leaving and returning to
@@ -111,6 +123,73 @@ testSkipIfWindows(
     await po.previewPanel.selectPreviewMode("tests");
     await expect(
       po.page.getByTestId("dyad-test-assertions-approved-badge"),
+    ).toBeVisible();
+  },
+);
+
+// The recording bar has to survive an assertion pass that produces no test. The
+// turn ending is the only signal that the wait is over — approval is what closes
+// the bar, and a closed card never gets there — so the bar used to spin on
+// "Asking the AI for assertions…" for the rest of the session, with the draft
+// sitting behind a spinner that would never resolve.
+testSkipIfWindows(
+  "returns the recording bar to the review when the assertion turn ends without a test",
+  async ({ po }) => {
+    await po.setUp({ autoApprove: true });
+    await po.importApp("recorder");
+
+    await po.previewPanel.selectPreviewMode("tests");
+    await po.previewPanel.clickEnableTesting();
+
+    await po.previewPanel.selectPreviewMode("preview");
+    await po.clickRestart();
+    await po.previewPanel.expectPreviewIframeIsVisible();
+
+    await po.page.getByTestId("preview-record-button").click();
+    await expect(po.page.getByTestId("preview-recording-bar")).toBeVisible({
+      timeout: Timeout.LONG,
+    });
+
+    const frame = po.previewPanel.getPreviewIframeElement().contentFrame();
+    await frame.getByRole("button", { name: "Increment" }).click();
+    await expect(
+      po.page.getByTestId("preview-recording-step-count"),
+    ).not.toHaveText("0 steps");
+
+    await po.page
+      .getByTestId("preview-recording-name-input")
+      .fill("abandoned flow");
+    await po.page.getByTestId("preview-recording-stop-button").click();
+
+    const status = po.page.getByTestId("preview-recording-review-status");
+    await expect(status).toContainText("not saved yet", {
+      timeout: Timeout.LONG,
+    });
+
+    await po.page
+      .getByTestId("preview-recording-generate-assertions-button")
+      .click();
+    await po.page.getByTestId("agent-mode-continue").click();
+    await expect(status).toContainText("Asking the AI for assertions");
+
+    // Close the card without generating anything. The tool is parked on it, so
+    // this resumes the turn, which says its piece and ends — no test file, and
+    // nothing left to wait for.
+    await expect(po.page.getByTestId("dyad-test-assertions-card")).toBeVisible({
+      timeout: Timeout.LONG,
+    });
+    await po.page.getByTestId("dyad-test-assertions-discard-button").click();
+    await expect(
+      po.page.getByTestId("dyad-test-assertions-discarded-note"),
+    ).toBeVisible({ timeout: Timeout.LONG });
+
+    // The bar drops back to the review, where the recording can still be saved
+    // as-is, discarded, or asked about again.
+    await expect(status).toContainText("not saved yet", {
+      timeout: Timeout.LONG,
+    });
+    await expect(
+      po.page.getByTestId("preview-recording-save-plain-button"),
     ).toBeVisible();
   },
 );

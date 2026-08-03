@@ -59,23 +59,12 @@ describe("locatorToCode", () => {
     expect(locatorToCode({ kind: "text", value: "Row", exact: true })).toBe(
       `getByText("Row", { exact: true })`,
     );
-    expect(locatorToCode({ kind: "dyadId", value: "src/App.tsx:12:4" })).toBe(
-      `locator("[data-dyad-id=\\"src/App.tsx:12:4\\"]")`,
-    );
     expect(locatorToCode({ kind: "css", value: ".foo > .bar" })).toBe(
       `locator(".foo > .bar")`,
     );
     expect(
       locatorToCode({ kind: "role", value: "button", name: "Item", nth: 1 }),
     ).toBe(`getByRole("button", { name: "Item" }).nth(1)`);
-  });
-
-  it("escapes CSS-significant characters in a dyad id", () => {
-    // A raw `"` would close the attribute selector, producing a locator that
-    // throws at replay rather than the one that was recorded.
-    expect(locatorToCode({ kind: "dyadId", value: 'a"b\\c' })).toBe(
-      `locator("[data-dyad-id=\\"a\\\\\\"b\\\\\\\\c\\"]")`,
-    );
   });
 
   it("carries exact through every name-matching builder", () => {

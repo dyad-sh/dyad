@@ -101,6 +101,9 @@ export function useTestRecorder({
   // session outlives the renderer's state (it holds an isolated database and the
   // per-app lock), so every path that walks away has to hand it back explicitly.
   const ownedSessionsRef = useRef(new Set<number>());
+  // Apps with a start in flight but no session handed back yet — the window
+  // `ownedSessionsRef` can't cover, since isolation setup takes seconds.
+  const startingAppsRef = useRef(new Set<number>());
   // Distinguishes a real unmount from the app-change re-run of the release effect
   // below; refs survive unmount, so an app-id comparison alone still looks
   // satisfied. Re-armed in the effect body because StrictMode's dev
@@ -400,100 +403,121 @@ export function useTestRecorder({
     [postToIframe, previewOrigin, reloadPreview],
   );
 
-  const startRecording = useCallback(async () => {
-    const targetAppId = appId;
-    if (targetAppId == null) return;
-
-    clearEntries(targetAppId);
-    patchState(targetAppId, {
-      phase: "starting",
-      progress: "Setting up an isolated recording environment…",
-    });
-
-    let result;
-    try {
-      result = await ipc.recording.startRecording({ appId: targetAppId });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      patchState(targetAppId, { phase: "idle", error: message });
-      showError(message);
-      return;
-    }
-
-    if (result.infraError) {
+  const beginRecording = useCallback(
+    async (targetAppId: number) => {
+      clearEntries(targetAppId);
       patchState(targetAppId, {
-        phase: "idle",
-        isolation: result.isolation,
-        error: result.infraError.message,
+        phase: "starting",
+        progress: "Setting up an isolated recording environment…",
       });
-      showError(result.infraError.message);
-      return;
-    }
 
-    ownedSessionsRef.current.add(targetAppId);
-    // Everything below reaches the preview through refs tracking the *selected*
-    // app. If the user switched apps during isolation setup, continuing would
-    // sign the wrong preview in with this app's test credentials while this
-    // app's session stayed alive, locked, and invisible.
-    if (!mountedRef.current || appIdRef.current !== targetAppId) {
-      releaseSession(targetAppId);
-      return;
-    }
+      let result;
+      try {
+        result = await ipc.recording.startRecording({ appId: targetAppId });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        patchState(targetAppId, { phase: "idle", error: message });
+        showError(message);
+        return;
+      }
 
-    let auth = result.auth;
-    patchState(targetAppId, (prev) => ({
-      ...prev,
-      isolation: result.isolation,
-      warning: result.isolation.reason,
-      auth,
-      progress: undefined,
-    }));
+      if (result.infraError) {
+        patchState(targetAppId, {
+          phase: "idle",
+          isolation: result.isolation,
+          error: result.infraError.message,
+        });
+        showError(result.infraError.message);
+        return;
+      }
 
-    if (auth.mode !== "none") {
-      patchState(targetAppId, (prev) => ({
-        ...prev,
-        phase: "authenticating",
-        progress: "Signing in the test user…",
-      }));
-      const signIn = await authenticate(targetAppId, auth);
-      // Sign-in waits up to 30s — plenty of room for the selection to move on.
+      ownedSessionsRef.current.add(targetAppId);
+      // Everything below reaches the preview through refs tracking the *selected*
+      // app. If the user switched apps during isolation setup, continuing would
+      // sign the wrong preview in with this app's test credentials while this
+      // app's session stayed alive, locked, and invisible.
       if (!mountedRef.current || appIdRef.current !== targetAppId) {
         releaseSession(targetAppId);
         return;
       }
-      if (!signIn.ok) {
-        // Degrade to recording unauthenticated rather than dead-ending.
-        auth = { mode: "none" };
+
+      let auth = result.auth;
+      patchState(targetAppId, (prev) => ({
+        ...prev,
+        isolation: result.isolation,
+        warning: result.isolation.reason,
+        auth,
+        progress: undefined,
+      }));
+
+      if (auth.mode !== "none") {
         patchState(targetAppId, (prev) => ({
           ...prev,
-          auth,
-          warning: `Couldn't sign in automatically${
-            signIn.error ? ` (${signIn.error})` : ""
-          } — recording without authentication.`,
+          phase: "authenticating",
+          progress: "Signing in the test user…",
         }));
+        const signIn = await authenticate(targetAppId, auth);
+        // Sign-in waits up to 30s — plenty of room for the selection to move on.
+        if (!mountedRef.current || appIdRef.current !== targetAppId) {
+          releaseSession(targetAppId);
+          return;
+        }
+        if (!signIn.ok) {
+          // Degrade to recording unauthenticated rather than dead-ending.
+          auth = { mode: "none" };
+          patchState(targetAppId, (prev) => ({
+            ...prev,
+            auth,
+            warning: `Couldn't sign in automatically${
+              signIn.error ? ` (${signIn.error})` : ""
+            } — recording without authentication.`,
+          }));
+        }
+      } else {
+        // Still start from a fresh load so the preview reflects the isolated
+        // database and cleared storage, and isn't stuck on a dead page.
+        reloadPreview();
       }
-    } else {
-      // Still start from a fresh load so the preview reflects the isolated
-      // database and cleared storage, and isn't stuck on a dead page.
-      reloadPreview();
-    }
 
-    postToIframe({ type: "activate-dyad-recorder" });
-    patchState(targetAppId, (prev) => ({
-      ...prev,
-      phase: "recording",
-      progress: undefined,
-      startedAt: Date.now(),
-    }));
-  }, [
-    appId,
-    authenticate,
-    clearEntries,
-    patchState,
-    postToIframe,
-    releaseSession,
-    reloadPreview,
-  ]);
+      postToIframe({ type: "activate-dyad-recorder" });
+      patchState(targetAppId, (prev) => ({
+        ...prev,
+        phase: "recording",
+        progress: undefined,
+        startedAt: Date.now(),
+      }));
+    },
+    [
+      authenticate,
+      clearEntries,
+      patchState,
+      postToIframe,
+      releaseSession,
+      reloadPreview,
+    ],
+  );
+
+  // The main process allows one session per app and rejects the second ask
+  // outright, so a doubled call surfaces as an error toast over a session that
+  // is starting perfectly well. The phase state can't stand in for this guard:
+  // it isn't committed until a re-render, and StrictMode replays the
+  // start-request effect below within the same commit.
+  const startRecording = useCallback(async () => {
+    const targetAppId = appId;
+    if (targetAppId == null) return;
+    if (
+      startingAppsRef.current.has(targetAppId) ||
+      ownedSessionsRef.current.has(targetAppId)
+    ) {
+      return;
+    }
+    startingAppsRef.current.add(targetAppId);
+    try {
+      await beginRecording(targetAppId);
+    } finally {
+      startingAppsRef.current.delete(targetAppId);
+    }
+  }, [appId, beginRecording]);
 
   /**
    * End the session and capture what was recorded as a draft — no file is
@@ -597,6 +621,23 @@ export function useTestRecorder({
     patchState(appId, (prev) => ({ ...prev, awaitingAssertions: true }));
   }, [appId, patchState]);
 
+  /**
+   * The assertion request is over — its turn completed, errored, or was stopped.
+   * Whether or not a card came back, nothing is being waited on any more, so the
+   * review has to stop saying otherwise: it is the only thing that clears this,
+   * and a stopped chat would otherwise leave the bar spinning forever. Takes the
+   * app the request was made for, since a turn can settle after the selection
+   * has moved on.
+   */
+  const clearAwaitingAssertions = useCallback(
+    (targetAppId: number) => {
+      patchState(targetAppId, (prev) =>
+        prev.awaitingAssertions ? { ...prev, awaitingAssertions: false } : prev,
+      );
+    },
+    [patchState],
+  );
+
   /** Throw the recording away without generating anything. */
   const discardDraft = useCallback(async () => {
     const targetAppId = appId;
@@ -674,6 +715,7 @@ export function useTestRecorder({
     cancelRecording,
     dismissReview,
     markAwaitingAssertions,
+    clearAwaitingAssertions,
     discardDraft,
   };
 }

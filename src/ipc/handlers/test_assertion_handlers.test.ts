@@ -185,6 +185,8 @@ describe("registerTestAssertionHandlers", () => {
           MESSAGE_PREFIX +
           buildAssertionsTagContent({
             proposalId,
+            // The parked turn the card would resume; the tool always writes one.
+            requestId: "user-input-1",
             status: "proposed",
             payload: {
               version: ASSERTION_PROPOSAL_VERSION,
@@ -384,6 +386,9 @@ describe("registerTestAssertionHandlers", () => {
       expect(latched).toContain(`status="approved"`);
       expect(latched).not.toContain(`status="proposed"`);
       expect(latched).toContain(`spec-path="${SPEC_PATH}"`);
+      // The request is answered, so the latched card carries nothing to answer.
+      // A card reloaded from here must not try to resume a dead turn.
+      expect(latched).not.toContain("request-id");
       expect(latched.startsWith(MESSAGE_PREFIX)).toBe(true);
       expect(latched.endsWith(MESSAGE_SUFFIX)).toBe(true);
     });

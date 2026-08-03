@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => ({
     appliedCount: 1,
     warning: undefined as string | undefined,
   })),
+  discardTestAssertions: vi.fn(async () => ({ ok: true as const })),
   syncChatFromDb: vi.fn(),
 }));
 
@@ -70,7 +71,12 @@ vi.mock("@/hooks/useStreamChat", () => ({
 }));
 
 vi.mock("@/ipc/types", () => ({
-  ipc: { tests: { applyTestAssertions: mocks.applyTestAssertions } },
+  ipc: {
+    tests: {
+      applyTestAssertions: mocks.applyTestAssertions,
+      discardTestAssertions: mocks.discardTestAssertions,
+    },
+  },
 }));
 
 vi.mock("@/lib/resyncChat", () => ({ syncChatFromDb: mocks.syncChatFromDb }));
@@ -138,6 +144,7 @@ describe("DyadTestAssertionsCard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.respond.mockResolvedValue(true);
+    mocks.discardTestAssertions.mockResolvedValue({ ok: true as const });
     setLiveRequests(new Map());
   });
 
@@ -175,6 +182,45 @@ describe("DyadTestAssertionsCard", () => {
     );
     expect(mocks.applyTestAssertions).not.toHaveBeenCalled();
     await screen.findByTestId("dyad-test-assertions-discarded-note");
+  });
+
+  it("latches the discard before answering the parked turn", async () => {
+    // Answering resumes the agent, which re-reads this message row and keeps
+    // streaming into it. A discard written after that read is overwritten by
+    // the turn's own copy, and the closed plan comes back approvable.
+    const order: string[] = [];
+    mocks.discardTestAssertions.mockImplementationOnce(async () => {
+      order.push("discard");
+      return { ok: true as const };
+    });
+    mocks.respond.mockImplementationOnce(async () => {
+      order.push("respond");
+      return true;
+    });
+    setLiveRequests(new Map([[REQUEST_ID, { status: "awaiting" }]]));
+    renderCard();
+
+    screen.getByTestId("dyad-test-assertions-discard-button").click();
+
+    await waitFor(() => expect(order).toEqual(["discard", "respond"]));
+  });
+
+  it("leaves the plan approvable when the discard can't be recorded", async () => {
+    // Answering the turn against a card that still reads as approvable would
+    // end the turn and leave the plan live with nothing waiting on it.
+    mocks.discardTestAssertions.mockRejectedValueOnce(new Error("db down"));
+    setLiveRequests(new Map([[REQUEST_ID, { status: "awaiting" }]]));
+    renderCard();
+
+    screen.getByTestId("dyad-test-assertions-discard-button").click();
+
+    await waitFor(() =>
+      expect(mocks.discardTestAssertions).toHaveBeenCalledTimes(1),
+    );
+    expect(mocks.respond).not.toHaveBeenCalled();
+    expect(
+      screen.queryByTestId("dyad-test-assertions-discarded-note"),
+    ).toBeNull();
   });
 
   it("hands the spec over as a new turn when nothing is waiting on the card", async () => {

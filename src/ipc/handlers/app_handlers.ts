@@ -404,6 +404,12 @@ async function deleteAppById(
   appId: number,
   options: DeleteAppByIdOptions = {},
 ): Promise<void> {
+  // A recording session holds this app's lock until it ends, so the deletion
+  // below would sit behind it for up to 30 minutes with the delete dialog
+  // spinning. The renderer's own recorder cleanup can't help: it runs only
+  // after this call returns. Same end-before-lock step as stop and restart;
+  // nothing here needs the dev server back, and the app is about to be gone.
+  await endRecordingForApp(appId, "app-stopped", { skipRestart: true });
   const appRunDeletion = appRunActorService.beginAppDeletion(appId);
   let appRunDeletionCommitted = false;
   try {
@@ -963,8 +969,10 @@ export function registerAppHandlers() {
   createTypedHandler(appContracts.stopApp, async (_, { appId }) => {
     // A recording session holds this app's lock until it ends, so stopping
     // would sit behind it for up to 30 minutes. The recording exists to observe
-    // the running app; the app stopping ends it.
-    await endRecordingForApp(appId, "app-stopped");
+    // the running app; the app stopping ends it. `skipRestart` because the app
+    // is on its way down — teardown still restores `.env.local`, it just
+    // doesn't bring the dev server back up for us to stop again.
+    await endRecordingForApp(appId, "app-stopped", { skipRestart: true });
     const snapshot = await appRunActorService.getRunState(appId);
     if (snapshot.type === "idle") return;
     await appRunActorService.dispatchStop(appId, {
@@ -1072,7 +1080,22 @@ export function registerAppHandlers() {
     // recording is observing, and the session would otherwise hold the app's
     // lock until the 30-minute cap. Isolation setup restarts the server through
     // `executeApp` directly, so it doesn't end the session it is preparing.
-    await endRecordingForApp(params.appId, "app-stopped");
+    // `skipRestart` because this handler is itself the restart; without it
+    // teardown brings the dev server back and then so do we.
+    const { envRestored } = await endRecordingForApp(
+      params.appId,
+      "app-stopped",
+      { skipRestart: true },
+    );
+    if (!envRestored) {
+      // Restarting now would bring the app up against the temporary test branch
+      // the recording created. Better to say so than to serve isolated data
+      // under the user's own app.
+      throw new DyadError(
+        "Dyad couldn't restore this app's real database settings after recording. Restore .env.local, then restart.",
+        DyadErrorKind.Precondition,
+      );
+    }
     await appRunActorService.dispatchRestart(params.appId, {
       operationId: params.invocationRef?.operationId ?? randomUUID(),
       startedAt: Date.now(),

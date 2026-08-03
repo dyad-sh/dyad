@@ -65,6 +65,18 @@
 
   let active = false;
   let lastEmit = { key: "", at: 0 };
+  /**
+   * The last Enter press this recorder actually recorded, and where.
+   *
+   * Enter in a text field inside a form submits it implicitly, and the browser
+   * delivers that submission as a trusted `click` on the form's default submit
+   * button. Recording both replays the submission twice — and since the press
+   * navigates first, the duplicate click usually lands on the destination
+   * document and fails. `onClick` uses this to recognise that click.
+   */
+  let lastEnterPress = { target: null, at: 0 };
+  /** How long after an Enter press a click may still be its implicit submit. */
+  const IMPLICIT_SUBMIT_MS = 100;
   let hoverBox = null;
   let passwordObserver = null;
 
@@ -302,7 +314,26 @@
         // Playwright exposes number inputs as `spinbutton`; calling them
         // textboxes would generate a locator that matches nothing at replay.
         if (type === "number") return "spinbutton";
-        if (["text", "email", "tel", "url"].includes(type)) return "textbox";
+        // No ARIA role Playwright can match. Falling through to `textbox` would
+        // let a unique-looking `getByRole("textbox", { name })` win over
+        // `getByLabel` and generate a locator that resolves to nothing every
+        // time the test runs.
+        if (
+          [
+            "date",
+            "datetime-local",
+            "month",
+            "week",
+            "time",
+            "color",
+            "file",
+            "hidden",
+          ].includes(type)
+        ) {
+          return null;
+        }
+        // An unknown or missing type behaves as `text`, so textbox is right for
+        // everything left.
         return "textbox";
       }
       default:
@@ -765,8 +796,21 @@
     // — which is what lets `collapseActions` merge without guessing from
     // timestamps it only sees after a postMessage hop.
     if (typeof e.detail === "number" && e.detail >= 2) return;
-    clearFillLocator();
     const raw = deepTarget(e);
+    // The implicit submit an Enter press just triggered. A click the browser
+    // synthesises carries `detail === 0`, and this one lands somewhere other
+    // than where Enter was pressed — that pair is what tells it apart from
+    // Enter pressed directly on a button, whose press is suppressed instead so
+    // that click is the only record of the action.
+    if (
+      e.detail === 0 &&
+      lastEnterPress.target &&
+      lastEnterPress.target !== raw &&
+      Date.now() - lastEnterPress.at < IMPLICIT_SUBMIT_MS
+    ) {
+      return;
+    }
+    clearFillLocator();
 
     const control = resolveControl(raw);
     if (control) {
@@ -857,7 +901,12 @@
     if (isOverlayEvent(e)) return;
     if (!shouldRecordPress(e)) return;
     clearFillLocator();
-    const target = retarget(deepTarget(e));
+    const raw = deepTarget(e);
+    // Noted before emitting, so the implicit-submit click this may be about to
+    // trigger can recognise itself as already recorded. Only Enter submits a
+    // form implicitly.
+    if (e.key === "Enter") lastEnterPress = { target: raw, at: Date.now() };
+    const target = retarget(raw);
     // Keys fired with nothing focused target <body>, which has no meaningful
     // locator; record those as a page-level `page.keyboard.press`.
     if (

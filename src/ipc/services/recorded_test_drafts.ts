@@ -24,16 +24,18 @@ const draftsByAppId = new Map<number, RecordedTestDraft>();
  * here. Without this, saving from the bar and then approving a card built from
  * the same recording writes two near-identical specs.
  *
- * Not app-scoped, because `draftId` already is: a draft carries its identity
- * into the chat message, and matching on it alone keeps a deliberate
- * re-recording of the same flow — identical in every field but this one — a
- * recording of its own, entitled to its own file.
+ * `draftId` alone identifies the recording — that is what keeps a deliberate
+ * re-recording of the same flow, identical in every field but this one, a
+ * recording of its own entitled to its own file. The outer map exists only so
+ * the eviction bound below is per app: a shared budget would let a busy app
+ * evict another's marker and quietly reintroduce the duplicate spec.
  */
-const writtenByDraftId = new Map<string, string>();
+const writtenByAppId = new Map<number, Map<string, string>>();
 
 /**
  * How many written recordings to remember per app. Only the most recent matter —
- * a card can be approved long after its recording, but not after twenty more.
+ * a card can be approved long after its recording, but not after twenty more of
+ * that app's own.
  */
 const MAX_REMEMBERED_WRITES = 20;
 
@@ -63,23 +65,30 @@ export function clearRecordedTestDraft(
 
 /** Remember the spec file this recording produced. */
 export function markRecordedDraftWritten(
+  appId: number,
   draft: RecordedTestDraft,
   specPath: string,
 ): void {
-  writtenByDraftId.set(draft.draftId, specPath);
+  let written = writtenByAppId.get(appId);
+  if (!written) {
+    written = new Map();
+    writtenByAppId.set(appId, written);
+  }
+  written.set(draft.draftId, specPath);
   // Maps iterate in insertion order, so the first entry is the oldest.
-  while (writtenByDraftId.size > MAX_REMEMBERED_WRITES) {
-    const oldest = writtenByDraftId.keys().next().value;
+  while (written.size > MAX_REMEMBERED_WRITES) {
+    const oldest = written.keys().next().value;
     if (oldest === undefined) break;
-    writtenByDraftId.delete(oldest);
+    written.delete(oldest);
   }
 }
 
 /** The spec this recording already produced, or null if it hasn't been written. */
 export function getWrittenSpecForDraft(
+  appId: number,
   draft: RecordedTestDraft,
 ): string | null {
-  return writtenByDraftId.get(draft.draftId) ?? null;
+  return writtenByAppId.get(appId)?.get(draft.draftId) ?? null;
 }
 
 /**
@@ -87,12 +96,15 @@ export function getWrittenSpecForDraft(
  * this a retry would find the marker, latch approval against the deleted file,
  * and leave the user with a card pointing at a spec that isn't there.
  */
-export function forgetRecordedDraftWrite(draft: RecordedTestDraft): void {
-  writtenByDraftId.delete(draft.draftId);
+export function forgetRecordedDraftWrite(
+  appId: number,
+  draft: RecordedTestDraft,
+): void {
+  writtenByAppId.get(appId)?.delete(draft.draftId);
 }
 
 /** Drop everything. For tests: these maps outlive a single handler harness. */
 export function resetRecordedTestDrafts(): void {
   draftsByAppId.clear();
-  writtenByDraftId.clear();
+  writtenByAppId.clear();
 }

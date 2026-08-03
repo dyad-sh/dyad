@@ -265,7 +265,7 @@ async function writeRecordedSpec({
   // The recording has produced its file. Remembered so the *other* write path —
   // which generates from its own copy of the draft and can't see what's parked
   // here — returns the idempotent answer instead of a second, suffixed spec.
-  markRecordedDraftWritten(draft, relativePath);
+  markRecordedDraftWritten(appId, draft, relativePath);
   // A stale draft would otherwise let a later agent turn propose assertions for
   // a test that's already written. Scoped to this recording: a card approved
   // after a newer recording was parked must not discard that newer draft.
@@ -604,71 +604,79 @@ export function registerTestAssertionHandlers() {
 
   createTypedHandler(
     testsContracts.discardTestAssertions,
-    async (_event, params) => {
-      const { appId, chatId, proposalId } = params;
-      await assertChatOwnsApp(chatId, appId);
+    // The same critical section approval uses. Both are read-modify-writes of
+    // one tag, so without a shared lock a discard that read the row before an
+    // approval started would write its stale copy over the approved one — and
+    // latch a spec that exists on disk as declined.
+    async (_event, params) =>
+      withLock(`assertion-approval:${params.proposalId}`, async () => {
+        const { appId, chatId, proposalId } = params;
+        await assertChatOwnsApp(chatId, appId);
 
-      const chatMessages = await db.query.messages.findMany({
-        where: eq(messages.chatId, chatId),
-      });
-      const row = chatMessages.find((message) =>
-        messageHasAssertionsProposal(message.content, proposalId),
-      );
-      if (!row) {
-        throw new DyadError(
-          "This assertion proposal no longer exists.",
-          DyadErrorKind.NotFound,
+        const chatMessages = await db.query.messages.findMany({
+          where: eq(messages.chatId, chatId),
+        });
+        const row = chatMessages.find((message) =>
+          messageHasAssertionsProposal(message.content, proposalId),
         );
-      }
-      const status = readAssertionsTagAttribute(
-        row.content,
-        "status",
-        proposalId,
-      );
-      // Approving already wrote a file; declining afterwards would claim
-      // nothing happened. Idempotent for a repeated discard.
-      if (status === "approved" || status === "discarded") {
-        return { ok: true as const };
-      }
-
-      const stored = parseAssertionsPayloadFromMessage(row.content, proposalId);
-      if (!stored) {
-        throw new DyadError(
-          "This assertion proposal is corrupted and can't be discarded.",
-          DyadErrorKind.Validation,
-        );
-      }
-      if (stored.appId !== appId) {
-        throw new DyadError(
-          "This assertion proposal belongs to a different app.",
-          DyadErrorKind.Validation,
-        );
-      }
-
-      const discardedContent = replaceAssertionsTagInMessage(
-        row.content,
-        buildAssertionsTagContent({
+        if (!row) {
+          throw new DyadError(
+            "This assertion proposal no longer exists.",
+            DyadErrorKind.NotFound,
+          );
+        }
+        const status = readAssertionsTagAttribute(
+          row.content,
+          "status",
           proposalId,
-          status: "discarded",
-          payload: stored,
-        }),
-        proposalId,
-      );
-      if (discardedContent === null) {
-        throw new DyadError(
-          "This assertion proposal is corrupted and can't be discarded.",
-          DyadErrorKind.Validation,
         );
-      }
-      await db
-        .update(messages)
-        .set({ content: discardedContent })
-        .where(eq(messages.id, row.id));
-      logger.info(
-        `Discarded assertion proposal ${proposalId} (chat ${chatId})`,
-      );
-      return { ok: true as const };
-    },
+        // Approving already wrote a file; declining afterwards would claim
+        // nothing happened. Idempotent for a repeated discard.
+        if (status === "approved" || status === "discarded") {
+          return { ok: true as const };
+        }
+
+        const stored = parseAssertionsPayloadFromMessage(
+          row.content,
+          proposalId,
+        );
+        if (!stored) {
+          throw new DyadError(
+            "This assertion proposal is corrupted and can't be discarded.",
+            DyadErrorKind.Validation,
+          );
+        }
+        if (stored.appId !== appId) {
+          throw new DyadError(
+            "This assertion proposal belongs to a different app.",
+            DyadErrorKind.Validation,
+          );
+        }
+
+        const discardedContent = replaceAssertionsTagInMessage(
+          row.content,
+          buildAssertionsTagContent({
+            proposalId,
+            status: "discarded",
+            payload: stored,
+          }),
+          proposalId,
+        );
+        if (discardedContent === null) {
+          throw new DyadError(
+            "This assertion proposal is corrupted and can't be discarded.",
+            DyadErrorKind.Validation,
+          );
+        }
+        await db
+          .update(messages)
+          .set({ content: discardedContent })
+          .where(eq(messages.id, row.id));
+        logger.info(
+          `Discarded assertion proposal ${proposalId} (chat ${chatId})`,
+        );
+        return { ok: true as const };
+      }),
   );
 
   createTypedHandler(
@@ -715,17 +723,29 @@ export function registerTestAssertionHandlers() {
           );
         }
 
+        const status = readAssertionsTagAttribute(
+          row.content,
+          "status",
+          proposalId,
+        );
         // Idempotent: a second approve (double click, stale card) must not write
         // a second spec file.
-        if (
-          readAssertionsTagAttribute(row.content, "status", proposalId) ===
-          "approved"
-        ) {
+        if (status === "approved") {
           return {
             specPath: stored.specPath ?? "",
             appliedCount: countAssertions(stored.items),
             warning: "This test was already generated.",
           };
+        }
+        // Declining is as final as approving. A stale card left open in another
+        // window would otherwise generate the very test the user closed —
+        // possible because the discard is durable but the card that wrote it
+        // isn't the only copy on screen.
+        if (status === "discarded") {
+          throw new DyadError(
+            "This assertion plan was closed, so it can't be applied. Ask for assertions again to get a fresh one.",
+            DyadErrorKind.Precondition,
+          );
         }
 
         assertStepsMatch(items, stored.items);
@@ -735,7 +755,7 @@ export function registerTestAssertionHandlers() {
         // generates from the card's own copy so approving survives a restart.
         // Without this check, saving from the bar and then approving the card
         // leaves two near-identical specs behind.
-        const savedFromBar = getWrittenSpecForDraft(stored.draft);
+        const savedFromBar = getWrittenSpecForDraft(appId, stored.draft);
         if (savedFromBar) {
           await persistApproval({
             row,
@@ -799,7 +819,7 @@ export function registerTestAssertionHandlers() {
         const { specPath, wroteIt } = await withLock(
           specWriteKey(appId),
           async () => {
-            const raced = getWrittenSpecForDraft(stored.draft);
+            const raced = getWrittenSpecForDraft(appId, stored.draft);
             if (raced) return { specPath: raced, wroteIt: false };
             const written = await writeRecordedSpec({
               appId,
@@ -842,7 +862,7 @@ export function registerTestAssertionHandlers() {
           // filename and leave two copies behind. Undo the write, marker
           // included — a retry that found the marker would approve against a
           // file this just deleted.
-          forgetRecordedDraftWrite(stored.draft);
+          forgetRecordedDraftWrite(appId, stored.draft);
           await discardGeneratedSpec(appId, specPath);
           throw error;
         }

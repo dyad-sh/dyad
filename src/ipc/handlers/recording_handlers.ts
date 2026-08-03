@@ -18,11 +18,14 @@ import {
   prepareIsolatedTestDatabase,
   type IsolationAuthSetup,
   type PreparedIsolation,
+  type TeardownOptions,
 } from "../services/isolated_test_db";
 import {
   activeRecordings,
   isRecordingActive,
+  type EndRecordingOptions,
   type RecordingEndReason,
+  type RecordingEndSummary,
 } from "../services/recording_registry";
 import {
   clearRecordedTestDraft,
@@ -124,9 +127,15 @@ export function registerRecordingHandlers() {
       const stopped = deferred<RecordingEndReason>();
       const controller = new AbortController();
       let settled = false;
-      const stop = (reason: RecordingEndReason) => {
+      // Set by whoever ends the session, read by teardown below.
+      let teardownOptions: TeardownOptions = {};
+      const stop = (
+        reason: RecordingEndReason,
+        options?: EndRecordingOptions,
+      ) => {
         if (settled) return;
         settled = true;
+        if (options?.skipRestart) teardownOptions = { skipRestart: true };
         controller.abort();
         stopped.resolve(reason);
       };
@@ -138,6 +147,10 @@ export function registerRecordingHandlers() {
 
       // Hold the per-app lock across the whole session. The handler resolves on
       // `ready`; the lock is released only when the session is stopped.
+      // Filled in by the session's teardown and read by whoever ended it. A
+      // shared object rather than the callback's return value so the early
+      // setup-failure exits below don't each have to invent one.
+      const summary: RecordingEndSummary = { envRestored: true };
       const done = withLock(appId, async () => {
         let prepared: PreparedIsolation | undefined;
         let started = false;
@@ -240,12 +253,23 @@ export function registerRecordingHandlers() {
         } finally {
           if (prepared) {
             try {
-              await prepared.teardown();
+              summary.envRestored = (
+                await prepared.teardown(teardownOptions)
+              ).envRestored;
             } catch (error) {
               logger.error(
                 `Recording teardown failed for app ${appId}: ${error}`,
               );
             }
+          }
+          if (!summary.envRestored) {
+            // The app is still pointed at the temporary test branch. The
+            // recorder bar is the only surface still listening, and this
+            // reaches the user as an error toast — the alternative is their app
+            // quietly serving isolated data from here on.
+            endReason = "error";
+            endMessage =
+              "Dyad couldn't restore your app's real database settings after recording. Restore .env.local before running the app again.";
           }
           // Only retire our own entry: teardown runs for seconds, so a
           // registration made meanwhile must survive. The per-session `stop`
@@ -264,7 +288,7 @@ export function registerRecordingHandlers() {
             });
           }
         }
-      });
+      }).then(() => summary);
 
       activeRecordings.set(appId, { appId, stop, done });
 

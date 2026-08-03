@@ -64,6 +64,9 @@ function startsRegex(line: string, at: number): boolean {
   for (let i = at - 1; i >= 0; i--) {
     const ch = line[i];
     if (ch === " " || ch === "\t") continue;
+    // `+` and `-` are in the set as unary/binary operators, but doubled they
+    // are a postfix increment — an operand, so what follows is division.
+    if ((ch === "+" || ch === "-") && line[i - 1] === ch) return false;
     return REGEX_PRECEDERS.has(ch);
   }
   return false; // an assertion never opens with a regex

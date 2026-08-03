@@ -58,6 +58,24 @@ export type IsolationAuthSetup =
       anonKey: string;
     };
 
+export interface TeardownOptions {
+  /**
+   * Don't restart the dev server after restoring `.env.local`. For a caller
+   * that is about to stop or restart the app itself — otherwise the app is
+   * restarted twice, once here and once by them.
+   */
+  skipRestart?: boolean;
+}
+
+export interface TeardownResult {
+  /**
+   * False when `.env.local` couldn't be put back. The app is still pointed at
+   * the temporary test branch, so anything that would relaunch it has to say so
+   * rather than quietly starting the user's app against isolated data.
+   */
+  envRestored: boolean;
+}
+
 export interface PreparedIsolation {
   isolation: TestIsolation;
   infraError?: { message: string };
@@ -74,13 +92,14 @@ export interface PreparedIsolation {
    * failed. Never contains privileged keys.
    */
   authSetup?: IsolationAuthSetup;
-  teardown: () => Promise<void>;
+  teardown: (options?: TeardownOptions) => Promise<TeardownResult>;
 }
 
 type EmitOutput = (chunk: string, phase: "setup" | "running") => void;
 
 const NOOP_TEARDOWN = async () => {
   // No isolation was set up, so there is nothing to restore.
+  return { envRestored: true };
 };
 
 /**
@@ -138,7 +157,9 @@ export async function prepareIsolatedTestDatabase({
 
   // Build a teardown that restores whatever we changed. Captured branchId/env
   // are read at call time so a partial failure still restores correctly.
-  const teardown = async () => {
+  const teardown = async (
+    options: TeardownOptions = {},
+  ): Promise<TeardownResult> => {
     let envRestored = true;
     // Only touch the env file / restart the dev server if we actually swapped
     // the env. If setup failed before the env swap (e.g. during branch
@@ -157,7 +178,7 @@ export async function prepareIsolatedTestDatabase({
           "setup",
         );
       }
-      if (envRestored) {
+      if (envRestored && !options.skipRestart) {
         try {
           await restartAppInPlace({ app, appPath });
         } catch (error) {
@@ -171,10 +192,7 @@ export async function prepareIsolatedTestDatabase({
         }
       }
     }
-    if (branchId) {
-      if (!envRestored) {
-        return;
-      }
+    if (branchId && envRestored) {
       // deleteTempTestBranch reads neonTestBranchId off the row; our in-memory
       // `app` is stale, so pass the branch we actually created.
       try {
@@ -185,6 +203,7 @@ export async function prepareIsolatedTestDatabase({
         );
       }
     }
+    return { envRestored };
   };
 
   try {
@@ -335,7 +354,9 @@ async function prepareSupabaseTestUserIsolation({
   }
 
   let testUser: TempTestUser | undefined;
-  const teardown = async () => {
+  // Nothing here touches `.env.local` — the Supabase path isolates by test user,
+  // not by swapping the app's database — so the environment is never at risk.
+  const teardown = async (): Promise<TeardownResult> => {
     if (testUser) {
       try {
         await deleteTempTestUser({
@@ -348,6 +369,7 @@ async function prepareSupabaseTestUserIsolation({
         );
       }
     }
+    return { envRestored: true };
   };
 
   try {

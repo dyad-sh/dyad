@@ -13,12 +13,31 @@ export type RecordingEndReason =
   | "error"
   | "timed-out";
 
+/** What ending a session left behind. */
+export interface RecordingEndSummary {
+  /**
+   * False when isolation teardown couldn't restore the app's `.env.local`, so
+   * it is still pointed at the temporary test branch. A caller about to
+   * relaunch the app has to refuse rather than start it on isolated data.
+   */
+  envRestored: boolean;
+}
+
 export interface ActiveRecording {
   appId: number;
   /** Ends the session (restores isolation, releases the lock). Idempotent. */
-  stop: (reason: RecordingEndReason) => void;
+  stop: (reason: RecordingEndReason, options?: EndRecordingOptions) => void;
   /** Resolves once the session's full lifecycle (incl. teardown) has finished. */
-  done: Promise<void>;
+  done: Promise<RecordingEndSummary>;
+}
+
+export interface EndRecordingOptions {
+  /**
+   * The caller will restart or stop the app itself, so teardown shouldn't also
+   * restart the dev server. Without it a restart-during-recording restarts
+   * twice: once putting the real `.env.local` back, once for the actual restart.
+   */
+  skipRestart?: boolean;
 }
 
 export const activeRecordings = new Map<number, ActiveRecording>();
@@ -39,9 +58,10 @@ export function isRecordingActive(appId: number): boolean {
 export async function endRecordingForApp(
   appId: number,
   reason: RecordingEndReason,
-): Promise<void> {
+  options?: EndRecordingOptions,
+): Promise<RecordingEndSummary> {
   const recording = activeRecordings.get(appId);
-  if (!recording) return;
-  recording.stop(reason);
-  await recording.done.catch(() => {});
+  if (!recording) return { envRestored: true };
+  recording.stop(reason, options);
+  return recording.done.catch(() => ({ envRestored: true }));
 }

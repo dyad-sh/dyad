@@ -363,31 +363,28 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
     approvingRef.current = true;
     setIsApproving(true);
     try {
-      // Only lock the card if the agent actually got the answer; a failed
-      // respond leaves the plan exactly as it was, still approvable.
-      const answered = await userInputProjection.respond(requestId, {
+      // Latched BEFORE the parked request is answered. Answering resumes the
+      // agent's turn, which immediately re-reads this message row and keeps
+      // streaming into it — a discard written after that read is overwritten by
+      // the turn's own copy, and the closed plan comes back approvable on
+      // reload. Ordering it first means the turn resumes reading a row that
+      // already says "discarded".
+      if (chatId != null && appId != null && proposalId) {
+        try {
+          await ipc.tests.discardTestAssertions({ appId, chatId, proposalId });
+        } catch (error) {
+          // Leave the plan exactly as it was rather than answering the turn
+          // against a card that still reads as approvable.
+          console.warn("Couldn't record the discarded assertion plan", error);
+          return;
+        }
+      }
+      setOptimisticDiscarded(true);
+      await userInputProjection.respond(requestId, {
         kind: "test-assertions",
         specPath: null,
         appliedCount: 0,
       });
-      if (!answered) return;
-      setOptimisticDiscarded(true);
-      // Latch it in the message too. Answering the parked request only ends
-      // this turn; the card outlives the turn, and without this a reload
-      // re-hydrates it approvable and can still generate the declined test.
-      if (chatId != null && appId != null && proposalId) {
-        try {
-          await ipc.tests.discardTestAssertions({
-            appId,
-            chatId,
-            proposalId,
-          });
-        } catch (error) {
-          // The turn is already answered and the card is closed for this
-          // session; a failed latch only costs durability.
-          console.warn("Couldn't record the discarded assertion plan", error);
-        }
-      }
     } finally {
       approvingRef.current = false;
       setIsApproving(false);

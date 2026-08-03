@@ -138,6 +138,46 @@ describe("detectLegacyAppKey", () => {
     await expect(detectLegacyAppKey(args(appPath))).resolves.toBeUndefined();
     expect(getProjectApiKeysMock).not.toHaveBeenCalled();
   });
+
+  // A block-commented example starts at a line boundary just like the real
+  // declaration, so the line anchor alone can't tell them apart.
+  it("reads past a block-commented example to the live declaration", async () => {
+    const appPath = makeApp(LEGACY_ANON);
+    fs.writeFileSync(
+      clientPathFor(appPath),
+      `/*\nconst SUPABASE_PUBLISHABLE_KEY = "sb_publishable_example";\n*/\nconst SUPABASE_PUBLISHABLE_KEY = "${LEGACY_ANON}";\n`,
+    );
+
+    // Without masking, the commented sb_publishable_ line would match first and
+    // detection would report the app as already migrated.
+    await expect(detectLegacyAppKey(args(appPath))).resolves.toMatchObject({
+      legacyKey: LEGACY_ANON,
+    });
+  });
+
+  it("does not mistake a URL inside a string for a comment", async () => {
+    const appPath = makeApp(LEGACY_ANON);
+    fs.writeFileSync(
+      clientPathFor(appPath),
+      `const SUPABASE_URL = "https://proj-1.supabase.co";\nconst SUPABASE_PUBLISHABLE_KEY = "${LEGACY_ANON}";\n`,
+    );
+
+    await expect(detectLegacyAppKey(args(appPath))).resolves.toMatchObject({
+      legacyKey: LEGACY_ANON,
+    });
+  });
+
+  it("finds a declaration whose value Prettier wrapped onto the next line", async () => {
+    const appPath = makeApp(LEGACY_ANON);
+    fs.writeFileSync(
+      clientPathFor(appPath),
+      `const SUPABASE_PUBLISHABLE_KEY =\n  "${LEGACY_ANON}";\n`,
+    );
+
+    await expect(detectLegacyAppKey(args(appPath))).resolves.toMatchObject({
+      legacyKey: LEGACY_ANON,
+    });
+  });
 });
 
 describe("switchAppToPublishableKey", () => {
@@ -194,7 +234,40 @@ describe("switchAppToPublishableKey", () => {
     ).rejects.toThrow(/management API down/);
   });
 
-  it("refuses to rewrite through a symlink pointing outside the app", async () => {
+  it("rewrites a declaration whose value Prettier wrapped onto the next line", async () => {
+    const appPath = makeApp(LEGACY_ANON);
+    const clientPath = clientPathFor(appPath);
+    fs.writeFileSync(
+      clientPath,
+      `const SUPABASE_PUBLISHABLE_KEY =\n  "${LEGACY_ANON}";\n`,
+    );
+
+    await expect(switchAppToPublishableKey(args(appPath))).resolves.toBe(true);
+
+    // The line break and indentation are part of the declaration, not the key.
+    expect(fs.readFileSync(clientPath, "utf8")).toBe(
+      `const SUPABASE_PUBLISHABLE_KEY =\n  "${PUBLISHABLE}";\n`,
+    );
+  });
+
+  // Rewriting the comment instead would leave the live key legacy AND silence
+  // future warnings, since the rewritten comment would then match first.
+  it("rewrites the live declaration, not a block-commented example above it", async () => {
+    const appPath = makeApp(LEGACY_ANON);
+    const clientPath = clientPathFor(appPath);
+    fs.writeFileSync(
+      clientPath,
+      `/*\nconst SUPABASE_PUBLISHABLE_KEY = "${LEGACY_ANON}";\n*/\nconst SUPABASE_PUBLISHABLE_KEY = "${LEGACY_ANON}";\n`,
+    );
+
+    await expect(switchAppToPublishableKey(args(appPath))).resolves.toBe(true);
+
+    expect(fs.readFileSync(clientPath, "utf8")).toBe(
+      `/*\nconst SUPABASE_PUBLISHABLE_KEY = "${LEGACY_ANON}";\n*/\nconst SUPABASE_PUBLISHABLE_KEY = "${PUBLISHABLE}";\n`,
+    );
+  });
+
+  it("leaves a client.ts that symlinks outside the app alone", async () => {
     const appPath = makeApp(LEGACY_ANON);
     // An imported app can carry a symlinked client.ts; following it would land
     // the rewrite on a file outside the app directory.
@@ -209,9 +282,9 @@ describe("switchAppToPublishableKey", () => {
     fs.rmSync(clientPath);
     fs.symlinkSync(outside, clientPath);
 
-    await expect(switchAppToPublishableKey(args(appPath))).rejects.toThrow(
-      /outside the app/,
-    );
+    // Detection and the switch agree: no offer is made, and nothing is written.
+    await expect(detectLegacyAppKey(args(appPath))).resolves.toBeUndefined();
+    await expect(switchAppToPublishableKey(args(appPath))).resolves.toBe(false);
     expect(fs.readFileSync(outside, "utf8")).toBe(original);
   });
 });

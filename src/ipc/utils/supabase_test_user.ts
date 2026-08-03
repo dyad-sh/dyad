@@ -248,6 +248,19 @@ export async function createTempTestUser(
         DyadErrorKind.Precondition,
       );
     }
+    // `bad_jwt` means Supabase tried to read a JWT it couldn't parse. With a
+    // new-format secret key that points at the key itself rather than at
+    // anything the user did, so say which key was used instead of surfacing an
+    // opaque 403 (see adminHeaders for why it travels on `apikey` alone).
+    if (
+      (response.status === 401 || response.status === 403) &&
+      /bad_jwt|invalid jwt/i.test(detail)
+    ) {
+      throw new DyadError(
+        `Supabase rejected the ${adminKey.isLegacyJwt ? "legacy service_role" : "secret"} key Dyad used to create the test user (${response.status}). ${detail}`,
+        DyadErrorKind.External,
+      );
+    }
     throw new DyadError(
       `Supabase rejected the test-user creation (${response.status}). ${detail}`,
       DyadErrorKind.External,

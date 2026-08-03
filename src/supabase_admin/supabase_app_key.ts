@@ -28,14 +28,17 @@ const PUBLISHABLE_KEY_PREFIX = "sb_publishable_";
  * (`const SUPABASE_PUBLISHABLE_KEY = "…"`) or an object property
  * (`SUPABASE_PUBLISHABLE_KEY: "…"`).
  *
- * Anchored to the start of a line so a commented-out or documented mention of
- * the constant can't be mistaken for the live declaration — matching one of
- * those would rewrite the prose and leave the real legacy key in place. Group 1
- * spans everything up to the opening quote so a rewrite can restore it
- * verbatim, keyword and indentation included.
+ * Anchored to the start of a line so prose that merely mentions the constant
+ * can't be taken for the live declaration. The value is allowed to sit on a
+ * following line, because Prettier wraps exactly that way once the key pushes
+ * the declaration past the print width — a formatting choice must not decide
+ * whether an app gets migrated.
+ *
+ * Group 1 spans everything up to the opening quote, so a rewrite restores the
+ * keyword, indentation and any line break verbatim.
  */
 const APP_KEY_RE =
-  /^([^\S\r\n]*(?:export[^\S\r\n]+)?(?:(?:const|let|var)[^\S\r\n]+)?SUPABASE_PUBLISHABLE_KEY[^\S\r\n]*[:=][^\S\r\n]*)(["'`])([^"'`]+)\2/m;
+  /^([^\S\r\n]*(?:export[^\S\r\n]+)?(?:(?:const|let|var)[^\S\r\n]+)?SUPABASE_PUBLISHABLE_KEY[^\S\r\n]*[:=](?:(?:[^\S\r\n]*\r?\n)*[^\S\r\n]*))(["'`])([^"'`]+)\2/m;
 
 /** An app running on a legacy key, with the publishable key that replaces it. */
 export interface LegacyAppKey {
@@ -47,14 +50,100 @@ export interface LegacyAppKey {
   publishableKey: string;
 }
 
-/** Read the key the generated app authenticates with. */
-function readAppKey(appPath: string): string | undefined {
+/**
+ * Blank out comment bodies, preserving every byte offset (and every newline),
+ * so a match found in the result indexes straight back into the original.
+ *
+ * The anchor in `APP_KEY_RE` alone isn't enough: a block-commented example can
+ * start at a line boundary just like the real declaration. Matching one would
+ * rewrite the documentation and leave the live key legacy — and worse, silently,
+ * because the rewritten comment then matches first and reads as `sb_publishable_`,
+ * so detection goes quiet and never offers the fix again.
+ *
+ * Deliberately a scanner rather than a parser: it only needs to tell code from
+ * comments (string literals are tracked so a `//` inside one isn't mistaken for
+ * a comment), and the rewrite still splices into the untouched original.
+ */
+function maskComments(source: string): string {
+  let out = "";
+  let i = 0;
+  while (i < source.length) {
+    const char = source[i];
+    const next = source[i + 1];
+
+    if (char === "/" && next === "/") {
+      while (i < source.length && source[i] !== "\n") {
+        out += " ";
+        i++;
+      }
+      continue;
+    }
+
+    if (char === "/" && next === "*") {
+      const closing = source.indexOf("*/", i + 2);
+      const stop = closing === -1 ? source.length : closing + 2;
+      while (i < stop) {
+        out += source[i] === "\n" ? "\n" : " ";
+        i++;
+      }
+      continue;
+    }
+
+    if (char === '"' || char === "'" || char === "`") {
+      out += char;
+      i++;
+      while (i < source.length) {
+        if (source[i] === "\\") {
+          out += source.slice(i, i + 2);
+          i += 2;
+          continue;
+        }
+        out += source[i];
+        i++;
+        if (source[i - 1] === char) {
+          break;
+        }
+      }
+      continue;
+    }
+
+    out += char;
+    i++;
+  }
+  return out;
+}
+
+/**
+ * The generated client's path, canonicalized and confirmed to stay inside the
+ * app, or undefined when it doesn't.
+ *
+ * Detection and the rewrite share this so they can never disagree: an app whose
+ * `client.ts` is a symlink out of the app tree is not one we can rewrite, so it
+ * must not be reported as having a legacy key either — otherwise the UI offers
+ * an "Update key" button whose only possible outcome is a refusal.
+ */
+async function resolveClientFilePath(
+  appPath: string,
+): Promise<string | undefined> {
   try {
-    const contents = fs.readFileSync(
-      path.join(appPath, CLIENT_FILE_RELATIVE_PATH),
-      "utf8",
+    const relativePath = await assertMutationPathAllowed({
+      appPath,
+      relativePath: CLIENT_FILE_RELATIVE_PATH,
+    });
+    return safeJoin(appPath, relativePath);
+  } catch (error) {
+    logger.warn(
+      `Not checking the Supabase key for ${appPath}: its generated client does not resolve inside the app (${error})`,
     );
-    return APP_KEY_RE.exec(contents)?.[3];
+    return undefined;
+  }
+}
+
+/** Read the key the generated app authenticates with. */
+function readAppKey(clientFilePath: string): string | undefined {
+  try {
+    const contents = fs.readFileSync(clientFilePath, "utf8");
+    return APP_KEY_RE.exec(maskComments(contents))?.[3];
   } catch {
     // No generated client (or an unreadable one) is normal — the app may not
     // use Supabase auth, or may keep its client somewhere else.
@@ -90,7 +179,12 @@ async function resolveLegacyAppKey({
     return undefined;
   }
 
-  const appKey = readAppKey(appPath);
+  const clientFilePath = await resolveClientFilePath(appPath);
+  if (!clientFilePath) {
+    return undefined;
+  }
+
+  const appKey = readAppKey(clientFilePath);
   if (!appKey) {
     return undefined;
   }
@@ -121,7 +215,7 @@ async function resolveLegacyAppKey({
     return undefined;
   }
   return {
-    clientFilePath: path.join(appPath, CLIENT_FILE_RELATIVE_PATH),
+    clientFilePath,
     legacyKey: appKey,
     publishableKey: publishable.api_key,
   };
@@ -181,25 +275,28 @@ export async function switchAppToPublishableKey({
     return false;
   }
 
-  // Canonicalize before writing: an imported or crafted app can have a symlink
-  // at client.ts, and following it would land this rewrite outside the app.
-  const relativePath = await assertMutationPathAllowed({
-    appPath,
-    relativePath: CLIENT_FILE_RELATIVE_PATH,
-  });
-  const clientFilePath = safeJoin(appPath, relativePath);
+  // `legacy.clientFilePath` is already canonicalized and confirmed inside the
+  // app by resolveClientFilePath, so this write cannot escape the app tree.
+  const { clientFilePath } = legacy;
 
   // The same lock the agent's file-writing tools take, so this read-modify-write
   // can neither clobber nor be clobbered by a concurrent write to this file.
   return withLock(getFileWriteKey(clientFilePath), async () => {
     const contents = await fs.promises.readFile(clientFilePath, "utf8");
-    const updated = contents.replace(
-      APP_KEY_RE,
-      (match, assignment: string, quote: string, key: string) =>
-        key === legacy.legacyKey
-          ? `${assignment}${quote}${legacy.publishableKey}${quote}`
-          : match,
-    );
+    // Match against the comment-masked copy, then splice into the original by
+    // offset — maskComments preserves them, so the two line up exactly.
+    const match = APP_KEY_RE.exec(maskComments(contents));
+    if (!match || match[3] !== legacy.legacyKey) {
+      return false;
+    }
+
+    const start = match.index;
+    const quote = match[2];
+    const assignment = contents.slice(start, start + match[1].length);
+    const updated =
+      contents.slice(0, start) +
+      `${assignment}${quote}${legacy.publishableKey}${quote}` +
+      contents.slice(start + match[0].length);
     if (updated === contents) {
       return false;
     }

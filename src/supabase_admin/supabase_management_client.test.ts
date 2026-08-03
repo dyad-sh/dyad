@@ -1,9 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { SupabaseManagementAPIError } from "@dyad-sh/supabase-management-js";
 import {
+  classifyManagementApiError,
   getProjectApiKeys,
   listSupabaseOrganizations,
   refreshSupabaseToken,
 } from "./supabase_management_client";
+import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { readSettings } from "@/main/settings";
 
 vi.mock("@/main/settings", () => ({
@@ -142,5 +145,36 @@ describe("getProjectApiKeys", () => {
     expect(vi.mocked(fetch).mock.calls[1][0]).toBe(
       "https://api.supabase.com/v1/projects/proj-1/api-keys",
     );
+  });
+});
+
+describe("classifyManagementApiError", () => {
+  it("maps a Management API 401/403 to an Auth DyadError", () => {
+    for (const status of [401, 403]) {
+      const error = classifyManagementApiError(
+        new SupabaseManagementAPIError(
+          "Failed to get project api keys: Forbidden (403)",
+          new Response(null, { status }),
+        ),
+        "update this app's API key",
+      );
+
+      expect(isDyadError(error)).toBe(true);
+      // Auth is telemetry-filtered and drives the reconnect path; an
+      // unclassified error would be reported as a product exception instead.
+      expect((error as DyadError).kind).toBe(DyadErrorKind.Auth);
+    }
+  });
+
+  it("preserves an already-classified DyadError", () => {
+    const original = new DyadError("nope", DyadErrorKind.Precondition);
+
+    expect(classifyManagementApiError(original, "do a thing")).toBe(original);
+  });
+
+  it("leaves unrelated failures alone", () => {
+    const original = new Error("socket hang up");
+
+    expect(classifyManagementApiError(original, "do a thing")).toBe(original);
   });
 });

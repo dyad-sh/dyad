@@ -8,6 +8,7 @@ import {
   getSupabaseProjectLogs,
   getOrganizationDetails,
   getOrganizationMembers,
+  classifyManagementApiError,
   type SupabaseProjectLog,
 } from "../../supabase_admin/supabase_management_client";
 import { extractFunctionName } from "../../supabase_admin/supabase_utils";
@@ -279,12 +280,19 @@ export function registerSupabaseHandlers() {
           DyadErrorKind.Precondition,
         );
       }
-      const updated = await switchAppToPublishableKey({
-        appPath: getDyadAppPath(app.path),
-        projectId: app.supabaseProjectId,
-        organizationSlug: app.supabaseOrganizationSlug,
-      });
-      return { updated };
+      try {
+        const updated = await switchAppToPublishableKey({
+          appPath: getDyadAppPath(app.path),
+          projectId: app.supabaseProjectId,
+          organizationSlug: app.supabaseOrganizationSlug,
+        });
+        return { updated };
+      } catch (error) {
+        // The switch re-checks the key against the Management API, so a revoked
+        // org token surfaces here. Classify it before it crosses IPC, or the
+        // renderer sees an auth problem as an unclassified product exception.
+        throw classifyManagementApiError(error, "update this app's API key");
+      }
     }),
   );
 

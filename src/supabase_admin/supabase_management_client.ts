@@ -14,7 +14,7 @@ import {
   RateLimitError,
   retryWithRateLimit,
 } from "../ipc/utils/retryWithRateLimit";
-import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { enqueueSupabaseDeploy } from "./supabase_deploy_queue";
 
 const fsPromises = fs.promises;
@@ -1241,6 +1241,35 @@ function guessMimeType(filePath: string): string {
 // ─────────────────────────────────────────────────────────────────────
 // Error handling helpers
 // ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Classify a Management API failure before it crosses the IPC boundary.
+ *
+ * Existing `DyadError`s pass through with their kind intact. A 401/403 means the
+ * organization's token was revoked or no longer has access to the project — an
+ * auth/setup problem the user fixes by reconnecting, so it must reach the
+ * renderer as `Auth` rather than as an unclassified product exception (see
+ * `rules/dyad-errors.md`).
+ */
+export function classifyManagementApiError(
+  error: unknown,
+  action: string,
+): unknown {
+  if (isDyadError(error)) {
+    return error;
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  if (
+    error instanceof SupabaseManagementAPIError &&
+    (error.response.status === 401 || error.response.status === 403)
+  ) {
+    return new DyadError(
+      `Supabase would not authorize Dyad to ${action}. Reconnect your Supabase account in Settings, or check that this organization still has access to the project. Original error: ${message}`,
+      DyadErrorKind.Auth,
+    );
+  }
+  return error;
+}
 
 async function createResponseError(response: Response, action: string) {
   const errorBody = await safeParseErrorResponseBody(response);

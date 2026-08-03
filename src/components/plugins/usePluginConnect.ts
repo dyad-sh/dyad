@@ -15,10 +15,15 @@ export type ConnectFeedback = {
   message: string;
 };
 
+// Only an OAuth flow outcome is stored: the flow drops its terminal
+// state when it settles, so this is the sole copy. Auth status has a
+// live owner in `statusByServer` and is read from there.
+type StoredConnectFeedback = ConnectFeedback & { kind: "discovery_failed" };
+
 // Connect state survives navigation between the plugins list and a
 // plugin detail page, so a failure raised on one is visible on the
 // other and an in-flight flow can't be started twice.
-const connectFeedbackAtom = atom<ConnectFeedback | null>(null);
+const connectFeedbackAtom = atom<StoredConnectFeedback | null>(null);
 const connectingServerIdAtom = atom<number | null>(null);
 const disconnectingServerIdAtom = atom<number | null>(null);
 
@@ -117,23 +122,15 @@ export function usePluginConnect() {
     opts?: { showToast?: boolean; callbackPort?: number },
   ) => withConnectSlot(serverId, () => autoConnect(serverId, opts));
 
-  const runProbe = async (serverId: number, opts?: { showToast?: boolean }) => {
+  // Reports a 401 right after an add, ahead of the tool discovery that
+  // the new row triggers. The alert itself comes from that discovery.
+  const runProbe = async (serverId: number) => {
     try {
       const result = await ipc.mcp.probeConnection(serverId);
       if (result.status === "unauthorized") {
-        setConnectFeedback({
-          serverId,
-          kind: "unauthorized",
-          message:
-            "This server requires authentication. Enable OAuth and try again.",
-        });
-        if (opts?.showToast) {
-          showError(
-            "Server connection failed. This server requires authentication. Try enabling OAuth.",
-          );
-        }
-      } else {
-        setConnectFeedback(null);
+        showError(
+          "Server connection failed. This server requires authentication. Try enabling OAuth.",
+        );
       }
     } catch {
       // Best-effort probe; swallow on failure.
@@ -155,7 +152,7 @@ export function usePluginConnect() {
           typeof callbackPort === "number" ? callbackPort : undefined,
       });
     } else {
-      await runProbe(created.id, { showToast: true });
+      await runProbe(created.id);
     }
   };
 
@@ -193,9 +190,9 @@ export function usePluginConnect() {
 
   const onDisableOAuthAndRetry = async (serverId: number) =>
     withConnectSlot(serverId, async () => {
+      // The update re-runs discovery, which is what the alert reads.
       await updateServer({ id: serverId, oauthEnabled: false });
       setConnectFeedback(null);
-      await runProbe(serverId);
     });
 
   const onDisconnect = async (serverId: number) => {
@@ -213,7 +210,8 @@ export function usePluginConnect() {
   };
 
   // An OAuth-off server that returns 401 needs auth; surface that from
-  // the live probe status so the alert stays put.
+  // the live probe status so the alert stays put. Auth kinds are built
+  // on each read, so they clear as soon as discovery stops seeing a 401.
   const feedbackFor = (server: McpServer): ConnectFeedback | null => {
     if (connectFeedback && connectFeedback.serverId === server.id) {
       return connectFeedback;

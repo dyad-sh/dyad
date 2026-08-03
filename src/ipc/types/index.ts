@@ -136,7 +136,12 @@ export {
   distributedMachineClient,
   distributedMachineEventClient,
 } from "./distributed_machines";
-export { recordingClient, recordingEventClient } from "./recording";
+export {
+  recordingClient,
+  recordingContracts,
+  recordingEventClient,
+  recordingEvents,
+} from "./recording";
 
 // =============================================================================
 // Type Exports

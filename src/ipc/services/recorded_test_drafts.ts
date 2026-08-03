@@ -16,7 +16,7 @@ import type { RecordedTestDraft } from "@/lib/test_recorder/draft";
 const draftsByAppId = new Map<number, RecordedTestDraft>();
 
 /**
- * Recordings that have already produced a spec file, per app.
+ * Recordings that have already produced a spec file, keyed by `draftId`.
  *
  * The two write paths can't see each other's parked draft: approving the
  * assertions card generates from the card's own copy (that copy is what makes
@@ -24,21 +24,18 @@ const draftsByAppId = new Map<number, RecordedTestDraft>();
  * here. Without this, saving from the bar and then approving a card built from
  * the same recording writes two near-identical specs.
  *
- * Keyed by the draft's contents rather than an id: two drafts that serialize
- * identically describe the same recording and would generate the same file, so
- * treating them as one is the behaviour we want.
+ * Not app-scoped, because `draftId` already is: a draft carries its identity
+ * into the chat message, and matching on it alone keeps a deliberate
+ * re-recording of the same flow — identical in every field but this one — a
+ * recording of its own, entitled to its own file.
  */
-const writtenByAppId = new Map<number, Map<string, string>>();
+const writtenByDraftId = new Map<string, string>();
 
 /**
  * How many written recordings to remember per app. Only the most recent matter —
  * a card can be approved long after its recording, but not after twenty more.
  */
 const MAX_REMEMBERED_WRITES = 20;
-
-function draftKey(draft: RecordedTestDraft): string {
-  return JSON.stringify(draft);
-}
 
 export function setRecordedTestDraft(
   appId: number,
@@ -60,43 +57,42 @@ export function clearRecordedTestDraft(
   appId: number,
   only?: RecordedTestDraft,
 ): void {
-  if (only) {
-    const parked = draftsByAppId.get(appId);
-    if (!parked || draftKey(parked) !== draftKey(only)) return;
-  }
+  if (only && draftsByAppId.get(appId)?.draftId !== only.draftId) return;
   draftsByAppId.delete(appId);
 }
 
 /** Remember the spec file this recording produced. */
 export function markRecordedDraftWritten(
-  appId: number,
   draft: RecordedTestDraft,
   specPath: string,
 ): void {
-  let written = writtenByAppId.get(appId);
-  if (!written) {
-    written = new Map();
-    writtenByAppId.set(appId, written);
-  }
-  written.set(draftKey(draft), specPath);
+  writtenByDraftId.set(draft.draftId, specPath);
   // Maps iterate in insertion order, so the first entry is the oldest.
-  while (written.size > MAX_REMEMBERED_WRITES) {
-    const oldest = written.keys().next().value;
+  while (writtenByDraftId.size > MAX_REMEMBERED_WRITES) {
+    const oldest = writtenByDraftId.keys().next().value;
     if (oldest === undefined) break;
-    written.delete(oldest);
+    writtenByDraftId.delete(oldest);
   }
 }
 
 /** The spec this recording already produced, or null if it hasn't been written. */
 export function getWrittenSpecForDraft(
-  appId: number,
   draft: RecordedTestDraft,
 ): string | null {
-  return writtenByAppId.get(appId)?.get(draftKey(draft)) ?? null;
+  return writtenByDraftId.get(draft.draftId) ?? null;
+}
+
+/**
+ * Undo `markRecordedDraftWritten`, for a write that was rolled back. Without
+ * this a retry would find the marker, latch approval against the deleted file,
+ * and leave the user with a card pointing at a spec that isn't there.
+ */
+export function forgetRecordedDraftWrite(draft: RecordedTestDraft): void {
+  writtenByDraftId.delete(draft.draftId);
 }
 
 /** Drop everything. For tests: these maps outlive a single handler harness. */
 export function resetRecordedTestDrafts(): void {
   draftsByAppId.clear();
-  writtenByAppId.clear();
+  writtenByDraftId.clear();
 }

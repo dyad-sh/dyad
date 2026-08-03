@@ -174,6 +174,13 @@ function RendererServices() {
       // a deleted app must not leave them (or its draft) resident for the rest
       // of the renderer's life.
       store.set(clearRecorderForAppAtom, appId);
+      // The main process holds its own copies: a parked draft, and possibly a
+      // live session still serving an isolated database and holding the app's
+      // lock. Clearing the atoms only takes away the UI that could have ended
+      // them. (`stopApp` during deletion ends the session too, but deletion
+      // paths that never started the app wouldn't have.)
+      void ipc.recording.discardRecordedTestDraft({ appId }).catch(() => {});
+      void ipc.recording.stopRecording({ appId }).catch(() => {});
     },
     [store],
   );

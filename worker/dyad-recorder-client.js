@@ -10,8 +10,9 @@
  * text entry becomes a single `fill` with the full value, form-control toggles
  * come from `change`, and selectors prefer stable, human-readable locators.
  * Clicks are reported immediately — a click that navigates would otherwise be
- * lost with the unloading document — and the renderer's `collapseActions` folds
- * the clicks preceding a double-click into it.
+ * lost with the unloading document — and only the first click of a multi-click
+ * gesture is reported, so the renderer's `collapseActions` folds exactly one
+ * click into the `dblclick` that follows it.
  *
  * Plain, dependency-free IIFE JS: it is read verbatim and injected into every
  * previewed HTML document. See `src/lib/test_recorder/types.ts` for the schemas
@@ -107,6 +108,16 @@
     if (!el || el.tagName !== "INPUT") return false;
     const type = (el.getAttribute("type") || "text").toLowerCase();
     return type === "checkbox" || type === "radio";
+  }
+
+  /**
+   * A colour picker: not typed into, so `isEditable` excludes it, but its value
+   * is still a value the user chose and `fill("#rrggbb")` replays it exactly.
+   * Captured from `change` (the commit) rather than `input` (every drag frame).
+   */
+  function isColorInput(el) {
+    if (!el || el.tagName !== "INPUT") return false;
+    return (el.getAttribute("type") || "").toLowerCase() === "color";
   }
 
   function isPasswordField(el) {
@@ -331,7 +342,12 @@
       if (node.nodeType !== 1) continue;
       if (node.getAttribute && node.getAttribute("aria-hidden") === "true")
         continue;
-      if (node.hidden) continue;
+      // The same visibility rule `getByRole` matching uses, so a name built
+      // here is one Playwright can actually match. `display: none` and
+      // `visibility: hidden` descendants contribute nothing to a name — a
+      // screen-reader-only label or a collapsed tooltip would otherwise be
+      // baked into a locator that matches nothing at replay.
+      if (!isAriaVisible(node)) continue;
       out += accessibleTextContent(node);
     }
     return out;
@@ -435,6 +451,21 @@
   }
 
   /**
+   * The next element up, crossing out of a shadow root to its host.
+   *
+   * `parentElement` returns null at a shadow boundary, so without this a
+   * component whose host is `aria-hidden` or `display: none` would have its
+   * shadow content counted as visible — and now that uniqueness scans include
+   * shadow descendants, that is a locator claiming to be unique against
+   * elements Playwright can't see.
+   */
+  function ariaParent(el) {
+    if (el.parentElement) return el.parentElement;
+    const root = el.getRootNode && el.getRootNode();
+    return root && root.host ? root.host : null;
+  }
+
+  /**
    * Whether an element is exposed to the a11y tree the way Playwright's
    * `getByRole` sees it (`includeHidden: false`). Uniqueness and `nth` are
    * computed from these matches, so counting a hidden duplicate — a closed
@@ -443,11 +474,7 @@
    */
   function isAriaVisible(el) {
     if (!el || el.nodeType !== 1) return false;
-    for (
-      let node = el;
-      node && node.nodeType === 1;
-      node = node.parentElement
-    ) {
+    for (let node = el; node && node.nodeType === 1; node = ariaParent(node)) {
       if (node.getAttribute && node.getAttribute("aria-hidden") === "true") {
         return false;
       }
@@ -475,11 +502,7 @@
       (el.ownerDocument && el.ownerDocument.defaultView) ||
       (typeof window !== "undefined" ? window : null);
     if (!view || typeof view.getComputedStyle !== "function") return true;
-    for (
-      let node = el;
-      node && node.nodeType === 1;
-      node = node.parentElement
-    ) {
+    for (let node = el; node && node.nodeType === 1; node = ariaParent(node)) {
       let style;
       try {
         style = view.getComputedStyle(node);
@@ -698,6 +721,11 @@
    * press as well replays the action twice — and for a link or a submit button
    * the press navigates first, leaving the duplicate click to run against the
    * destination document, where it usually fails outright.
+   *
+   * NATIVE elements only. `role="button"` is a promise about semantics, not
+   * behaviour: nothing dispatches a click for it, so the page's own keydown
+   * handler is the whole interaction. Suppressing the press there would drop
+   * the action from the recording entirely rather than deduplicate it.
    */
   function activatesOnEnter(el) {
     if (!el || el.nodeType !== 1) return false;
@@ -707,8 +735,7 @@
       const type = (el.getAttribute("type") || "text").toLowerCase();
       return ["submit", "button", "reset", "image"].includes(type);
     }
-    const role = (el.getAttribute("role") || "").toLowerCase();
-    return role === "button" || role === "link";
+    return false;
   }
 
   function shouldRecordPress(e) {
@@ -732,6 +759,12 @@
   /* ---------- event handlers ------------------------------------------- */
   function onClick(e) {
     if (!active || !trustedOk(e) || isOverlayEvent(e)) return;
+    // `detail` is the browser's own click counter for the gesture in progress.
+    // The 2nd (and later) click of a double-click is reported by the `dblclick`
+    // that follows, so dropping them here leaves exactly one click ahead of it
+    // — which is what lets `collapseActions` merge without guessing from
+    // timestamps it only sees after a postMessage hop.
+    if (typeof e.detail === "number" && e.detail >= 2) return;
     clearFillLocator();
     const raw = deepTarget(e);
 
@@ -743,6 +776,7 @@
       // (text); skip the click so we don't double-record.
       if (
         isCheckboxOrRadio(control) ||
+        isColorInput(control) ||
         control.tagName === "SELECT" ||
         isEditable(control)
       ) {
@@ -751,8 +785,8 @@
     }
 
     // Emitted now, not after a debounce: a click on a link unloads this document
-    // within milliseconds and a stalled click would go with it. The clicks
-    // preceding a double-click are folded in by the renderer's `collapseActions`.
+    // within milliseconds and a stalled click would go with it. The click
+    // preceding a double-click is folded in by the renderer's `collapseActions`.
     const target = retarget(raw);
     emit({ kind: "click", locator: selectorFor(target) });
   }
@@ -799,6 +833,15 @@
         if (options[i].selected) values.push(options[i].value);
       }
       emit({ kind: "select", locator: selectorFor(t), values });
+      return;
+    }
+
+    if (isColorInput(t)) {
+      emit({
+        kind: "fill",
+        locator: fillLocatorFor(t),
+        value: t.value == null ? "" : t.value,
+      });
       return;
     }
 

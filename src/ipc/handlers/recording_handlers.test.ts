@@ -25,11 +25,13 @@ vi.mock("electron", () => ({
   session: { defaultSession: { clearStorageData: mocks.clearStorageData } },
 }));
 vi.mock("../utils/process_manager", () => ({ runningApps: mocks.runningApps }));
-vi.mock("../utils/lock_utils", () => ({
-  isLockHeld: mocks.isLockHeld,
-  // Run the callback immediately; it holds the "lock" until it resolves.
-  withLock: (_id: number, fn: () => Promise<unknown>) => fn(),
-}));
+// The real lock, deliberately: a session holds the app's lock for its whole
+// lifetime, and a stub that just invokes the callback can't tell serialized
+// from concurrent — which is the property these tests exist to protect.
+vi.mock("../utils/lock_utils", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../utils/lock_utils")>();
+  return { ...actual, isLockHeld: mocks.isLockHeld };
+});
 vi.mock("../utils/safe_sender", () => ({ safeSend: mocks.safeSend }));
 vi.mock("../services/isolated_test_db", () => ({
   prepareIsolatedTestDatabase: mocks.prepareIsolatedTestDatabase,
@@ -49,6 +51,7 @@ vi.mock("electron-log", () => ({
 
 import { registerRecordingHandlers } from "./recording_handlers";
 import { activeRecordings } from "../services/recording_registry";
+import { withLock } from "../utils/lock_utils";
 
 registerRecordingHandlers();
 const startHandler = mocks.handlers.get("recording:start")!;
@@ -127,7 +130,7 @@ describe("recording:start / recording:stop", () => {
     );
   });
 
-  it("refuses a second concurrent recording for the same app", async () => {
+  it("refuses a second recording started after the first", async () => {
     mocks.prepareIsolatedTestDatabase.mockResolvedValue(makePrepared());
     const { event } = makeEvent();
 
@@ -138,6 +141,43 @@ describe("recording:start / recording:stop", () => {
     expect(mocks.prepareIsolatedTestDatabase).toHaveBeenCalledTimes(1);
 
     await stopHandler(event, { appId: 1 });
+  });
+
+  it("refuses two recordings issued at once", async () => {
+    mocks.prepareIsolatedTestDatabase.mockResolvedValue(makePrepared());
+    const { event } = makeEvent();
+
+    const [first, second] = await Promise.all([
+      startHandler(event, { appId: 1 }),
+      startHandler(event, { appId: 1 }),
+    ]);
+
+    const refused = [first, second].filter((r) => r.infraError);
+    expect(refused).toHaveLength(1);
+    expect(refused[0].infraError?.message).toMatch(/already in progress/i);
+    expect(mocks.prepareIsolatedTestDatabase).toHaveBeenCalledTimes(1);
+
+    await stopHandler(event, { appId: 1 });
+    expect(activeRecordings.has(1)).toBe(false);
+  });
+
+  it("serializes a queued app operation behind the session's lock", async () => {
+    mocks.prepareIsolatedTestDatabase.mockResolvedValue(makePrepared());
+    const { event } = makeEvent();
+    await startHandler(event, { appId: 1 });
+
+    // The session holds the app's lock for its whole lifetime — that is what
+    // keeps a test run or a rebuild from touching the app mid-recording.
+    let ranWhileRecording = false;
+    const queued = withLock(1, async () => {
+      ranWhileRecording = true;
+    });
+    await Promise.resolve();
+    expect(ranWhileRecording).toBe(false);
+
+    await stopHandler(event, { appId: 1 });
+    await queued;
+    expect(ranWhileRecording).toBe(true);
   });
 
   it("returns the infra error and does not start when isolation fails", async () => {

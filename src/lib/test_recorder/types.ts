@@ -63,6 +63,12 @@ const NAVIGATE_BASE = "http://dyad.invalid";
  */
 function isAppRelativePath(value: string): boolean {
   if (!value.startsWith("/")) return false;
+  // An authority-relative path is off-origin by construction, and comparing
+  // resolved origins can't see it: `//dyad.invalid/x` resolves *onto* the
+  // sentinel base and compares equal, while Playwright would resolve it against
+  // the real preview and leave the app. Both separators, since WHATWG URL
+  // treats them alike for special schemes.
+  if (value[1] === "/" || value[1] === "\\") return false;
   try {
     return new URL(value, NAVIGATE_BASE).origin === NAVIGATE_BASE;
   } catch {

@@ -26,14 +26,41 @@ interface Scan {
 }
 
 /**
- * Characters a `/` may follow when it opens a regex literal. In an assertion a
- * regex is only ever an argument or a member of one — `toHaveURL(/x/)`,
- * `toHaveText([/a/, /b/])`, `{ hasText: /x/ }` — so this is the whole set, and
- * leaving `;` out of it keeps a trailing `// note` reading as a comment.
+ * Characters a `/` may follow when it opens a regex literal — every position
+ * where an expression may begin: after an opener, a separator, or an operator.
+ *
+ * The complement is what matters: a `/` after an identifier, a digit, `)` or
+ * `]` is division, and division never appears in these one-line assertions.
+ * Erring toward "regex" is therefore safe here, and erring the other way is
+ * not — a rejected assertion silently disappears from the generated spec.
  */
-const REGEX_PRECEDERS = new Set(["(", ",", "[", ":"]);
+const REGEX_PRECEDERS = new Set([
+  "(",
+  ",",
+  "[",
+  "{",
+  ":",
+  ";",
+  "=",
+  ">",
+  "<",
+  "!",
+  "&",
+  "|",
+  "?",
+  "+",
+  "-",
+  "*",
+  "%",
+  "^",
+  "~",
+]);
 
 function startsRegex(line: string, at: number): boolean {
+  // `//` and `/*` are comments wherever they appear. Checked before the
+  // preceding character so `toHaveText(//)` can't slip through as an empty
+  // regex literal, which is not valid JavaScript in the first place.
+  if (line[at + 1] === "/" || line[at + 1] === "*") return false;
   for (let i = at - 1; i >= 0; i--) {
     const ch = line[i];
     if (ch === " " || ch === "\t") continue;

@@ -21,6 +21,7 @@ const REQUEST_ID = "user-input-1";
 const registry = vi.hoisted(() => ({
   requests: [] as Record<string, unknown>[],
   parkValue: null as UserInputParkValue | null,
+  parked: [] as Array<{ requestId: string; signal?: AbortSignal }>,
   requestId: "user-input-1",
 }));
 
@@ -30,7 +31,14 @@ vi.mock("@/user_input/main", () => ({
       registry.requests.push(descriptor);
       return registry.requestId;
     },
-    park: async () => registry.parkValue,
+    park: async (requestId: string, signal?: AbortSignal) => {
+      registry.parked.push({ requestId, signal });
+      // A park that resolves regardless of its abort signal can't tell a real
+      // cancellation from a plain close, so honor the signal the way the
+      // registry does: an already-aborted turn resolves to nothing.
+      if (signal?.aborted) return null;
+      return registry.parkValue;
+    },
   },
 }));
 
@@ -40,6 +48,7 @@ vi.mock("@/user_input/main", () => ({
  */
 const DRAFT: RecordedTestDraft = {
   version: RECORDED_TEST_DRAFT_VERSION,
+  draftId: "draft-test",
   testName: "add an item",
   authMode: "none",
   actions: [
@@ -84,6 +93,7 @@ describe("generate_test_assertions", () => {
   beforeEach(() => {
     setRecordedTestDraft(APP_ID, DRAFT);
     registry.requests = [];
+    registry.parked = [];
     registry.parkValue = {
       kind: "test-assertions",
       specPath: "e2e-tests/recorded-add-an-item.spec.ts",
@@ -132,6 +142,20 @@ describe("generate_test_assertions", () => {
         (item) => item.kind !== "assertion" || !item.needsCode,
       ),
     ).toBe(true);
+    // The code, not just the sentence: this payload is what the approval
+    // handler writes into the spec, so an assertion that arrives with its code
+    // dropped or rewritten would generate a different test than the one the
+    // model proposed and the user read.
+    expect(
+      payload.items.filter((item) => item.kind === "assertion"),
+    ).toMatchObject([
+      {
+        text: "The item list shows one row",
+        code: `await expect(page.getByTestId("row")).toBeVisible();`,
+        origin: "model",
+        needsCode: false,
+      },
+    ]);
 
     // The call only comes back once the card is answered, and the answer is
     // what the model is told about.
@@ -160,13 +184,29 @@ describe("generate_test_assertions", () => {
   });
 
   it("treats a swept or timed-out review as a close", async () => {
-    // What `park` resolves to when the stream is aborted or the deadline fires.
+    // What `park` resolves to when the deadline fires with nobody answering.
     registry.parkValue = null;
     const ctx = makeCtx();
 
     const result = await generateTestAssertionsTool.execute(VALID_ARGS, ctx);
 
     expect(result).toContain("closed the review card without approving");
+    // Parked against the card it just wrote, and handed the turn's signal —
+    // without both, a stopped turn would sit on a card nothing can cancel.
+    expect(registry.parked).toEqual([
+      { requestId: registry.requestId, signal: ctx.abortSignal },
+    ]);
+  });
+
+  it("gives up on the card when the turn is already aborted", async () => {
+    // A stopped stream must not leave the tool waiting on a review the user
+    // can no longer be shown.
+    const ctx = makeCtx({ abortSignal: AbortSignal.abort() });
+
+    const result = await generateTestAssertionsTool.execute(VALID_ARGS, ctx);
+
+    expect(result).toContain("closed the review card without approving");
+    expect(registry.parked[0]?.signal?.aborted).toBe(true);
   });
 
   it("rejects a plan whose indices don't match the recording, and shows the real statements", async () => {

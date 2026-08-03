@@ -121,6 +121,7 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
   const proposalId = node.properties["proposal-id"] ?? "";
   const requestId = node.properties["request-id"] ?? "";
   const approvedOnServer = node.properties.status === "approved";
+  const discardedOnServer = node.properties.status === "discarded";
 
   const rawPayload = useMemo(() => toText(children), [children]);
   const payload = useMemo(
@@ -161,7 +162,7 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
   const [dragId, setDragId] = useState<string | null>(null);
   const [expandedCodeId, setExpandedCodeId] = useState<string | null>(null);
   const [optimisticApproved, setOptimisticApproved] = useState(false);
-  const [discarded, setDiscarded] = useState(false);
+  const [optimisticDiscarded, setOptimisticDiscarded] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
   const [liveMessage, setLiveMessage] = useState("");
   // Synchronous guard: state updates are async, so a fast double-click would
@@ -179,7 +180,9 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
 
   const isApproved = approvedOnServer || optimisticApproved;
   // Discarding freezes the plan too: nothing was written, but there is nothing
-  // left to answer either.
+  // left to answer either. Persisted alongside the approval, so a reload can't
+  // hand back a plan the user already declined.
+  const discarded = discardedOnServer || optimisticDiscarded;
   const isLocked = isApproved || discarded;
   const assertions = items.filter(isAssertionItem);
   const hasBlankAssertion = assertions.some((item) => !item.text.trim());
@@ -367,7 +370,24 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
         specPath: null,
         appliedCount: 0,
       });
-      if (answered) setDiscarded(true);
+      if (!answered) return;
+      setOptimisticDiscarded(true);
+      // Latch it in the message too. Answering the parked request only ends
+      // this turn; the card outlives the turn, and without this a reload
+      // re-hydrates it approvable and can still generate the declined test.
+      if (chatId != null && appId != null && proposalId) {
+        try {
+          await ipc.tests.discardTestAssertions({
+            appId,
+            chatId,
+            proposalId,
+          });
+        } catch (error) {
+          // The turn is already answered and the card is closed for this
+          // session; a failed latch only costs durability.
+          console.warn("Couldn't record the discarded assertion plan", error);
+        }
+      }
     } finally {
       approvingRef.current = false;
       setIsApproving(false);

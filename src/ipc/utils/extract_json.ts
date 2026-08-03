@@ -1,4 +1,15 @@
 /**
+ * Total characters the fallback may scan, as a multiple of the response length.
+ *
+ * Each candidate scan is O(n), so a response built of nothing but `{"` would
+ * make the fallback quadratic and freeze the main process. Budgeting the work
+ * rather than capping the candidate count keeps "the first candidate that
+ * parses wins" true for any response whose candidates are mostly short — which
+ * is every real one — instead of abandoning the search at a fixed candidate.
+ */
+const SCAN_BUDGET_FACTOR = 8;
+
+/**
  * Slice a JSON object out of a model response.
  *
  * Models routinely wrap JSON in prose or markdown fences even when told not to,
@@ -11,14 +22,6 @@
  * garbage, so fall back to scanning each `{` for the balanced object it opens
  * and returning the first one that actually parses.
  */
-/**
- * How many candidate objects the fallback will scan. Each scan is O(n), so a
- * response built of nothing but `{"` would otherwise make this quadratic and
- * freeze the main process. A real response has its object within the first few
- * candidates; past that, there is nothing to find.
- */
-const MAX_CANDIDATE_SCANS = 64;
-
 export function extractJson(text: string): string | null {
   const start = text.indexOf("{");
   const end = text.lastIndexOf("}");
@@ -27,14 +30,14 @@ export function extractJson(text: string): string | null {
   const widest = text.slice(start, end + 1);
   if (isParseable(widest)) return widest;
 
-  let scans = 0;
-  for (let i = start; i < text.length && scans < MAX_CANDIDATE_SCANS; i++) {
+  let budget = text.length * SCAN_BUDGET_FACTOR;
+  for (let i = start; i < text.length && budget > 0; i++) {
     // Only `{` that could actually open a JSON object is worth a scan. A JSON
     // object is `{}` or `{"…`, so this rejects prose like `{foo}` on one
     // character.
     if (text[i] !== "{" || !opensJsonObject(text, i)) continue;
-    scans++;
     const candidate = balancedObjectAt(text, i);
+    budget -= candidate ? candidate.length : text.length - i;
     if (candidate && isParseable(candidate)) return candidate;
   }
   // Nothing parsed. Return the widest span anyway so the caller's own

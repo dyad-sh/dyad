@@ -19,6 +19,7 @@ function makeRecorder(
     error: undefined,
     draft: {
       version: RECORDED_TEST_DRAFT_VERSION,
+      draftId: "draft-test",
       testName: "add item",
       authMode: "none",
       actions: [],

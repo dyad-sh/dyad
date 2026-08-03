@@ -27,17 +27,14 @@ describe("collapseActions", () => {
     ]);
   });
 
-  it("absorbs both clicks the browser dispatches before a double-click", () => {
-    // The in-page recorder reports every click as it happens (a stalled click
-    // is lost when the click navigates), so a real double-click arrives as
-    // click, click, dblclick — and all three must collapse to one step.
+  it("absorbs the click the browser dispatches before a double-click", () => {
+    // The in-page recorder reports the first click as it happens (a stalled
+    // click is lost when the click navigates) and drops the rest of the
+    // gesture, so a real double-click arrives as click, dblclick.
     const loc = { kind: "role", value: "button", name: "Open" } as const;
     const entries: RecordedEntry[] = [
-      { at: 100, action: { kind: "click", locator: loc } },
-      // The browser dispatches the second click and the `dblclick` back to
-      // back, so they reach the recorder in the same frame.
       { at: 220, action: { kind: "click", locator: loc } },
-      { at: 221, action: { kind: "dblclick", locator: loc } },
+      { at: 260, action: { kind: "dblclick", locator: loc } },
     ];
     expect(collapseActions(entries)).toEqual([
       { kind: "dblclick", locator: loc },
@@ -45,9 +42,9 @@ describe("collapseActions", () => {
   });
 
   it("keeps a standalone click made just before a double-click", () => {
-    // When the two clicks composing the double-click land inside the recorder's
-    // 50ms dedupe window, only one of them is reported — so the click before it
-    // is the user's own, and absorbing two here would delete a real step.
+    // Each gesture contributes exactly one click, so the earlier one is a step
+    // the user performed — absorbing it would silently delete it from the test,
+    // however close together the two gestures were.
     const loc = { kind: "role", value: "button", name: "Open" } as const;
     const entries: RecordedEntry[] = [
       { at: 100, action: { kind: "click", locator: loc } },

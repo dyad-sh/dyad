@@ -33,16 +33,29 @@ import type { RecordingAuth } from "@/ipc/types";
 
 const AUTH_READY_TIMEOUT_MS = 30_000;
 
-/** Convert a preview URL/path to an app-relative path (`/foo?x`). */
+/**
+ * Convert a preview URL/path to an app-relative path (`/foo?x`).
+ *
+ * Rejections are logged, not just dropped. This is a trust boundary — the
+ * previewed app supplies these — and a recording that silently omits a
+ * navigation the user watched happen is otherwise impossible to explain.
+ */
 function toAppPath(raw: unknown): string | null {
   if (typeof raw !== "string" || !raw) return null;
   try {
     const url = new URL(raw, "http://dyad.preview");
     // A `javascript:`/`data:` history entry has no app path to replay, and its
     // opaque body would otherwise be handed to `page.goto` as if it were one.
-    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      // The protocol only — the rest can carry whatever the page put there.
+      console.warn(
+        `Recorder ignored a navigation with an unsupported protocol: ${url.protocol}`,
+      );
+      return null;
+    }
     return `${url.pathname}${url.search}` || "/";
   } catch {
+    console.warn("Recorder ignored a navigation to an unparseable URL");
     return null;
   }
 }
@@ -266,6 +279,11 @@ export function useTestRecorder({
           const navigate = path
             ? parseRecorderAction({ kind: "navigate", path })
             : null;
+          if (path && !navigate) {
+            console.warn(
+              "Recorder ignored a navigation that resolves outside the app",
+            );
+          }
           if (navigate) {
             appendEntry({
               appId: currentAppId,
@@ -567,6 +585,10 @@ export function useTestRecorder({
       const auth = stateRef.current.auth ?? { mode: "none" };
       const draft: RecordedTestDraft = {
         version: RECORDED_TEST_DRAFT_VERSION,
+        // Minted once, here, and carried by every copy of this recording from
+        // now on: the parked draft, the assertion card's payload, and whatever
+        // either of them writes.
+        draftId: crypto.randomUUID(),
         testName: testName.trim() || "recorded test",
         authMode: auth.mode,
         actions: collapseActions(entriesRef.current),
@@ -592,9 +614,15 @@ export function useTestRecorder({
       // the review UI doesn't appear over a half-torn-down session.
       await ipc.recording.stopRecording({ appId: targetAppId }).catch(() => {});
 
-      // The draft owns the actions from here on.
+      // The draft owns the actions from here on. `limitReached` is carried
+      // across: the review is where a truncated recording most needs to say so,
+      // since it's the last thing the user sees before the spec is written.
       clearEntries(targetAppId);
-      patchState(targetAppId, { phase: "reviewing", draft });
+      patchState(targetAppId, (prev) => ({
+        phase: "reviewing",
+        draft,
+        limitReached: prev.limitReached,
+      }));
       return draft;
     },
     [appId, clearEntries, patchState, postToIframe],
@@ -621,7 +649,11 @@ export function useTestRecorder({
         queryKey: queryKeys.tests.list({ appId: targetAppId }),
       });
       queryClient.invalidateQueries({ queryKey: queryKeys.appFiles.all });
-      patchState(targetAppId, { phase: "saved", savedSpecPath: specPath });
+      patchState(targetAppId, (prev) => ({
+        phase: "saved",
+        savedSpecPath: specPath,
+        limitReached: prev.limitReached,
+      }));
       showSuccess(`Saved ${specPath}`);
       return specPath;
     } catch (error) {

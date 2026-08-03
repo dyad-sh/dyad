@@ -15,7 +15,12 @@ import {
 
 export const ASSERTIONS_TAG = "dyad-test-assertions";
 
-export type AssertionProposalStatus = "proposed" | "approved";
+/**
+ * `discarded` is as durable as `approved` deliberately. Both are answers, and a
+ * plan the user declined must not come back approvable after a reload — the
+ * recording it would generate is one they already said no to.
+ */
+export type AssertionProposalStatus = "proposed" | "approved" | "discarded";
 
 export function buildAssertionsTagContent({
   proposalId,

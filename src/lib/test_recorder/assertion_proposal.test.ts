@@ -92,6 +92,23 @@ describe("moveAssertion", () => {
     ).toEqual(["s0", "s1", "s2", "x"]);
   });
 
+  const layout = (items: AssertionPlanItem[]) =>
+    items.map((i) => (i.kind === "step" ? `s${i.stepIndex}` : i.id));
+
+  it("moves an assertion up past a step", () => {
+    expect(layout(moveAssertion(plan, 1, 0))).toEqual(["x", "s0", "s1", "s2"]);
+  });
+
+  it("leaves the plan alone for a move it can't make", () => {
+    // The arrows and drag-and-drop both call this with whatever index the DOM
+    // handed them, so every rejected case has to be a no-op rather than a
+    // silent reshuffle of the steps.
+    expect(moveAssertion(plan, 1, 1)).toBe(plan); // nowhere to go
+    expect(moveAssertion(plan, 0, 2)).toBe(plan); // a step, not an assertion
+    expect(moveAssertion(plan, -1, 2)).toBe(plan);
+    expect(moveAssertion(plan, 1, plan.length)).toBe(plan);
+  });
+
   it("never reorders the steps, for any (from, to) pair", () => {
     const bigPlan: AssertionPlanItem[] = [
       { kind: "step", stepIndex: 0, text: "a" },
@@ -130,6 +147,7 @@ describe("moveAssertion", () => {
 describe("AssertionProposalPayloadSchema", () => {
   const draft = {
     version: RECORDED_TEST_DRAFT_VERSION,
+    draftId: "draft-test",
     testName: "add an item",
     authMode: "none" as const,
     actions: [
@@ -158,6 +176,17 @@ describe("AssertionProposalPayloadSchema", () => {
           code: `await expect(page.getByTestId("count")).toHaveText("1");`,
           needsCode: false,
           origin: "model" as const,
+        },
+        // What the card writes when the user adds a blank assertion of their
+        // own: no code yet, flagged for synthesis on approve. A reloaded card
+        // has to survive this shape, so the schema has to accept it.
+        {
+          kind: "assertion" as const,
+          id: "y",
+          text: "",
+          code: null,
+          needsCode: true,
+          origin: "user" as const,
         },
       ],
     };

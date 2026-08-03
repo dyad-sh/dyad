@@ -23,6 +23,7 @@ const PAYLOAD: AssertionProposalPayload = {
   appId: 3,
   draft: {
     version: RECORDED_TEST_DRAFT_VERSION,
+    draftId: "draft-test",
     testName: "add <an> item",
     authMode: "none",
     actions: [

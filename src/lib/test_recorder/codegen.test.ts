@@ -24,6 +24,7 @@ function draft(
 ): RecordedTestDraft {
   return {
     version: RECORDED_TEST_DRAFT_VERSION,
+    draftId: "draft-test",
     testName,
     authMode,
     actions,
@@ -155,6 +156,36 @@ describe("recordedBodyStatements", () => {
       }),
     ).toBe(
       `await page.getByPlaceholder("Bio").fill("he said \\"hi\\"\\nbye");`,
+    );
+    // A press with a locator targets the control rather than the page — a
+    // different statement from the page-level shortcut above.
+    expect(
+      actionToCodeLine({
+        kind: "press",
+        locator: { kind: "label", value: "Search" },
+        key: "Enter",
+      }),
+    ).toBe(`await page.getByLabel("Search").press("Enter");`);
+    expect(
+      actionToCodeLine({
+        kind: "check",
+        locator: { kind: "testid", value: "agree" },
+      }),
+    ).toBe(`await page.getByTestId("agree").check();`);
+    expect(
+      actionToCodeLine({
+        kind: "uncheck",
+        locator: { kind: "testid", value: "agree" },
+      }),
+    ).toBe(`await page.getByTestId("agree").uncheck();`);
+    expect(
+      actionToCodeLine({
+        kind: "dblclick",
+        locator: { kind: "text", value: "Open" },
+      }),
+    ).toBe(`await page.getByText("Open").dblclick();`);
+    expect(actionToCodeLine({ kind: "navigate", path: "/items?page=2" })).toBe(
+      `await page.goto("/items?page=2");`,
     );
   });
 });

@@ -84,6 +84,14 @@ describe("isSingleAssertionStatement", () => {
     expect(
       isSingleAssertionStatement(`await expect(page).toHaveURL(/items);`),
     ).toBe(false);
+    // `//` is a comment wherever it appears — an empty regex literal isn't
+    // valid JavaScript, so this must not be read as one.
+    expect(isSingleAssertionStatement(`await expect(a).toHaveText(//);`)).toBe(
+      false,
+    );
+    expect(
+      isSingleAssertionStatement(`await expect(a).toHaveText(/* x */ "b");`),
+    ).toBe(false);
   });
 
   it("rejects anything chained after the matcher call", () => {

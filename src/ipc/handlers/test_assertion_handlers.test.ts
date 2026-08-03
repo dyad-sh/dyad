@@ -86,6 +86,7 @@ const SPEC_PATH = "e2e-tests/recorded-add-an-item.spec.ts";
 
 const DRAFT: RecordedTestDraft = {
   version: RECORDED_TEST_DRAFT_VERSION,
+  draftId: "draft-test",
   testName: "add an item",
   authMode: "none",
   actions: [
@@ -650,7 +651,11 @@ describe("registerTestAssertionHandlers", () => {
       // The user hid the review, recorded something else, and only then went
       // back to the old card. Clearing by appId alone would take the newer
       // recording down with it, leaving nothing able to save it.
-      const newer: RecordedTestDraft = { ...DRAFT, testName: "a newer flow" };
+      const newer: RecordedTestDraft = {
+        ...DRAFT,
+        draftId: "draft-newer",
+        testName: "a newer flow",
+      };
       setRecordedTestDraft(appId, newer);
 
       await harness.invokeHandler("tests:apply-assertions", {

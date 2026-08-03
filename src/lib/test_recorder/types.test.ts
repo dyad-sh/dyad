@@ -32,6 +32,11 @@ describe("parseRecorderAction", () => {
     expect(
       parseRecorderAction({ kind: "navigate", path: "javascript:alert(1)" }),
     ).toBeNull();
+    // Naming the sentinel base the validator resolves against doesn't help:
+    // Playwright resolves this against the real preview, not that base.
+    expect(
+      parseRecorderAction({ kind: "navigate", path: "//dyad.invalid/x" }),
+    ).toBeNull();
   });
 
   it("accepts a path whose backslash isn't leading", () => {

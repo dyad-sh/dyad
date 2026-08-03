@@ -323,6 +323,16 @@ export type ApplyTestAssertionsParams = z.infer<
   typeof ApplyTestAssertionsParamsSchema
 >;
 
+/** Mark a proposal declined, so a reloaded card can't offer it for approval. */
+export const DiscardTestAssertionsParamsSchema = z.object({
+  appId: z.number(),
+  chatId: z.number(),
+  proposalId: z.string(),
+});
+export type DiscardTestAssertionsParams = z.infer<
+  typeof DiscardTestAssertionsParamsSchema
+>;
+
 export const ApplyTestAssertionsResultSchema = z.object({
   /** App-relative path of the spec this approval generated. */
   specPath: z.string(),
@@ -349,6 +359,12 @@ export const testsContracts = {
     channel: "tests:apply-assertions",
     input: ApplyTestAssertionsParamsSchema,
     output: ApplyTestAssertionsResultSchema,
+  }),
+
+  discardTestAssertions: defineContract({
+    channel: "tests:discard-assertions",
+    input: DiscardTestAssertionsParamsSchema,
+    output: z.object({ ok: z.literal(true) }),
   }),
 
   listAppTests: defineContract({

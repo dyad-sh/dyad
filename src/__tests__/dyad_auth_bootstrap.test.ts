@@ -49,7 +49,6 @@ function setup({
         }
       : {},
   );
-  const reload = vi.fn();
   let currentPathname = pathname;
   const location = {
     get href() {
@@ -99,7 +98,6 @@ function setup({
   return {
     posts,
     parent,
-    reload,
     replace: location.replace,
     fetchMock,
     localStorage,

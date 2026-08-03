@@ -1068,6 +1068,11 @@ export function registerAppHandlers() {
   );
 
   createTypedHandler(appContracts.restartApp, async (_, params) => {
+    // Same reasoning as stopApp: the restart tears down the dev server the
+    // recording is observing, and the session would otherwise hold the app's
+    // lock until the 30-minute cap. Isolation setup restarts the server through
+    // `executeApp` directly, so it doesn't end the session it is preparing.
+    await endRecordingForApp(params.appId, "app-stopped");
     await appRunActorService.dispatchRestart(params.appId, {
       operationId: params.invocationRef?.operationId ?? randomUUID(),
       startedAt: Date.now(),

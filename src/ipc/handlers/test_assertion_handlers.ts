@@ -25,6 +25,7 @@ import { fastTextOutput } from "../utils/stream_text_utils";
 import { getAiHeaders, getProviderOptions } from "../utils/provider_options";
 import {
   clearRecordedTestDraft,
+  forgetRecordedDraftWrite,
   getRecordedTestDraft,
   getWrittenSpecForDraft,
   markRecordedDraftWritten,
@@ -157,7 +158,16 @@ async function ensureSignInFixture(
     const existing = await fs.promises.readFile(absolutePath, "utf-8");
     const existingMode = readFixtureMode(existing);
 
-    if (existingMode === draft.authMode) return;
+    // The marker says we wrote it; the export is what the generated spec
+    // actually imports. A file edited down to nothing but its marker would
+    // otherwise be reused and the spec would fail to compile.
+    if (existingMode === draft.authMode) {
+      if (EXPORTS_SIGN_IN_RE.test(existing)) return;
+      throw new DyadError(
+        `${relativePath} carries Dyad's ${existingMode} fixture marker but no longer exports a \`signIn\` helper, and the generated test imports one from there. Restore the export (or delete the file) and generate the test again.`,
+        DyadErrorKind.Precondition,
+      );
+    }
 
     if (existingMode) {
       if (existing !== generateTestUserFixtureSource(existingMode)) {
@@ -255,7 +265,7 @@ async function writeRecordedSpec({
   // The recording has produced its file. Remembered so the *other* write path —
   // which generates from its own copy of the draft and can't see what's parked
   // here — returns the idempotent answer instead of a second, suffixed spec.
-  markRecordedDraftWritten(appId, draft, relativePath);
+  markRecordedDraftWritten(draft, relativePath);
   // A stale draft would otherwise let a later agent turn propose assertions for
   // a test that's already written. Scoped to this recording: a card approved
   // after a newer recording was parked must not discard that newer draft.
@@ -567,16 +577,21 @@ export function registerTestAssertionHandlers() {
       // Check, write and clear as one critical section: two saves that both read
       // the parked draft before either cleared it would each claim a filename.
       withLock(specWriteKey(params.appId), async () => {
-        const { appId, draft } = params;
+        const { appId } = params;
         // The parked draft says "this recording hasn't been written yet". Both
         // write paths clear it, so its absence means a second call would write a
         // suffixed duplicate of the same test.
-        if (!getRecordedTestDraft(appId)) {
+        const draft = getRecordedTestDraft(appId);
+        if (!draft) {
           throw new DyadError(
             "This recording has already been saved.",
             DyadErrorKind.Precondition,
           );
         }
+        // The parked draft is the source, not the renderer's copy. They are
+        // the same recording in every real flow, but only this one was checked
+        // against the latch — writing the other would let a stale or forged
+        // payload be saved under the current recording's claim on the name.
         const { specPath } = await writeRecordedSpec({
           appId,
           draft,
@@ -585,6 +600,75 @@ export function registerTestAssertionHandlers() {
         logger.info(`Wrote recorded spec ${specPath} with no assertions`);
         return { specPath };
       }),
+  );
+
+  createTypedHandler(
+    testsContracts.discardTestAssertions,
+    async (_event, params) => {
+      const { appId, chatId, proposalId } = params;
+      await assertChatOwnsApp(chatId, appId);
+
+      const chatMessages = await db.query.messages.findMany({
+        where: eq(messages.chatId, chatId),
+      });
+      const row = chatMessages.find((message) =>
+        messageHasAssertionsProposal(message.content, proposalId),
+      );
+      if (!row) {
+        throw new DyadError(
+          "This assertion proposal no longer exists.",
+          DyadErrorKind.NotFound,
+        );
+      }
+      const status = readAssertionsTagAttribute(
+        row.content,
+        "status",
+        proposalId,
+      );
+      // Approving already wrote a file; declining afterwards would claim
+      // nothing happened. Idempotent for a repeated discard.
+      if (status === "approved" || status === "discarded") {
+        return { ok: true as const };
+      }
+
+      const stored = parseAssertionsPayloadFromMessage(row.content, proposalId);
+      if (!stored) {
+        throw new DyadError(
+          "This assertion proposal is corrupted and can't be discarded.",
+          DyadErrorKind.Validation,
+        );
+      }
+      if (stored.appId !== appId) {
+        throw new DyadError(
+          "This assertion proposal belongs to a different app.",
+          DyadErrorKind.Validation,
+        );
+      }
+
+      const discardedContent = replaceAssertionsTagInMessage(
+        row.content,
+        buildAssertionsTagContent({
+          proposalId,
+          status: "discarded",
+          payload: stored,
+        }),
+        proposalId,
+      );
+      if (discardedContent === null) {
+        throw new DyadError(
+          "This assertion proposal is corrupted and can't be discarded.",
+          DyadErrorKind.Validation,
+        );
+      }
+      await db
+        .update(messages)
+        .set({ content: discardedContent })
+        .where(eq(messages.id, row.id));
+      logger.info(
+        `Discarded assertion proposal ${proposalId} (chat ${chatId})`,
+      );
+      return { ok: true as const };
+    },
   );
 
   createTypedHandler(
@@ -651,7 +735,7 @@ export function registerTestAssertionHandlers() {
         // generates from the card's own copy so approving survives a restart.
         // Without this check, saving from the bar and then approving the card
         // leaves two near-identical specs behind.
-        const savedFromBar = getWrittenSpecForDraft(appId, stored.draft);
+        const savedFromBar = getWrittenSpecForDraft(stored.draft);
         if (savedFromBar) {
           await persistApproval({
             row,
@@ -715,7 +799,7 @@ export function registerTestAssertionHandlers() {
         const { specPath, wroteIt } = await withLock(
           specWriteKey(appId),
           async () => {
-            const raced = getWrittenSpecForDraft(appId, stored.draft);
+            const raced = getWrittenSpecForDraft(stored.draft);
             if (raced) return { specPath: raced, wroteIt: false };
             const written = await writeRecordedSpec({
               appId,
@@ -725,6 +809,25 @@ export function registerTestAssertionHandlers() {
             return { specPath: written.specPath, wroteIt: true };
           },
         );
+
+        // The bar saved this recording while synthesis was in the model. That
+        // file has no assertions in it, so reporting these as applied would
+        // describe a spec that doesn't exist. Latch the card against what is
+        // actually on disk and say so.
+        if (!wroteIt) {
+          await persistApproval({
+            row,
+            proposalId,
+            stored,
+            items: stored.items,
+            specPath,
+          });
+          return {
+            specPath,
+            appliedCount: 0,
+            warning: `This recording was already saved as ${specPath}, so no assertions were added.`,
+          };
+        }
 
         try {
           await persistApproval({
@@ -736,9 +839,11 @@ export function registerTestAssertionHandlers() {
           });
         } catch (error) {
           // The card is still approvable, so a retry would claim the next free
-          // filename and leave two copies behind. Undo the write — but only our
-          // own: a spec the bar wrote is the user's saved test, not ours to bin.
-          if (wroteIt) await discardGeneratedSpec(appId, specPath);
+          // filename and leave two copies behind. Undo the write, marker
+          // included — a retry that found the marker would approve against a
+          // file this just deleted.
+          forgetRecordedDraftWrite(stored.draft);
+          await discardGeneratedSpec(appId, specPath);
           throw error;
         }
 

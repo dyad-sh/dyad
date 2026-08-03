@@ -26,6 +26,7 @@ import {
 } from "../types/connection_flow";
 import { mcpContracts } from "../types/mcp";
 import { vercelContracts } from "../types/vercel";
+import { coolifyContracts, coolifyEvents } from "../types/coolify";
 import { supabaseContracts } from "../types/supabase";
 import { neonContracts } from "../types/neon";
 import { migrationContracts } from "../types/migration";
@@ -105,6 +106,7 @@ export const VALID_INVOKE_CHANNELS = [
   ...getInvokeChannels(gitContracts),
   ...getInvokeChannels(mcpContracts),
   ...getInvokeChannels(vercelContracts),
+  ...getInvokeChannels(coolifyContracts),
   ...getInvokeChannels(supabaseContracts),
   ...getInvokeChannels(neonContracts),
   ...getInvokeChannels(migrationContracts),
@@ -169,6 +171,7 @@ export const VALID_RECEIVE_CHANNELS = [
 
   // Event channels
   ...getReceiveChannels(agentEvents),
+  ...getReceiveChannels(coolifyEvents),
   ...getReceiveChannels(connectionFlowEvents),
   ...getReceiveChannels(systemEvents),
   ...getReceiveChannels(versionEvents),

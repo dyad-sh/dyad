@@ -140,6 +140,7 @@ import {
   type ImageGenerationDeletionFence,
 } from "../services/image_generation_actor_service";
 import { imageGenerationService } from "../services/image_generation_service";
+import { coolifyDeployRegistry } from "@/coolify_deploy/controller";
 import { githubOpsService } from "../services/github_ops_service";
 import { versionPreviewActorService } from "../services/version_preview_actor_service";
 import { appDeletionQueue } from "../services/app_deletion_queue";
@@ -442,6 +443,7 @@ async function deleteAppByIdExclusive(
     releaseStreamAdmissionBlock = blockNewStreamsForApp(appId);
     githubOpsService.beginAppDeletion(appId);
     githubDeletionStarted = true;
+    coolifyDeployRegistry.dispose(appId);
     imageGenerationDeletion =
       imageGenerationActorService.beginAppDeletion(appId);
     releaseChatCreation = beginAppChatDeletion(appId);
@@ -1547,6 +1549,8 @@ export function registerAppHandlers() {
       await githubOpsActorService.disposeAllApps();
       logger.log("all GitHub operation actors disposed.");
       await imageGenerationActorService.disposeAllApps();
+      coolifyDeployRegistry.disposeAll();
+      logger.log("all Coolify deployment machines disposed.");
       logger.log("all image generation actors disposed.");
       await versionPreviewActorService.disposeAllApps();
       logger.log("all version preview actors disposed.");

@@ -64,6 +64,12 @@ async function getPublishableKey({
     // revealing would expose the project's secret keys for nothing.
     keys = await getProjectApiKeys({ projectId, organizationSlug });
   } catch (error) {
+    // getProjectApiKeys acquires the Management client itself, so an expired
+    // Supabase login arrives here as a DyadErrorKind.Auth. Re-wrapping it as
+    // External would drop the classification that drives the re-auth prompt.
+    if (isDyadError(error)) {
+      throw error;
+    }
     throw new DyadError(
       `Failed to fetch API keys for Supabase project "${projectId}". This could be due to: 1) Invalid project ID, 2) Network connectivity issues, or 3) Supabase API unavailability. Original error: ${error instanceof Error ? error.message : String(error)}`,
       DyadErrorKind.External,

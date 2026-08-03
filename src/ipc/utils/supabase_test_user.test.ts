@@ -122,7 +122,7 @@ describe("createTempTestUser", () => {
     const [url, init] = fetchSpy.mock.calls[0];
     expect(url).toBe("https://proj-1.supabase.co/auth/v1/admin/users");
     expect(init.method).toBe("POST");
-    expect(init.headers.Authorization).toBe(`Bearer ${SECRET_KEY}`);
+    expect(init.headers.apikey).toBe(SECRET_KEY);
     const body = JSON.parse(init.body);
     expect(body.email_confirm).toBe(true);
     expect(body.app_metadata).toMatchObject({ dyad_test: true });
@@ -211,8 +211,11 @@ describe("createTempTestUser", () => {
       await createTempTestUser(makeApp());
 
       const [, init] = fetchSpy.mock.calls[0];
-      expect(init.headers.Authorization).toBe(`Bearer ${SECRET_KEY}`);
       expect(init.headers.apikey).toBe(SECRET_KEY);
+      // A new-format secret key is not a JWT. Supabase parses whatever is on
+      // Authorization: Bearer as one and rejects the call with "Invalid JWT",
+      // so the key has to travel on `apikey` alone.
+      expect(init.headers.Authorization).toBeUndefined();
     },
   );
 
@@ -243,12 +246,27 @@ describe("createTempTestUser", () => {
 
     await createTempTestUser(makeApp());
 
+    // The legacy service_role key IS a JWT, so it still needs the bearer
+    // header — that's what authorizes the admin call on an unmigrated project.
     const [, init] = fetchSpy.mock.calls[0];
     expect(init.headers.Authorization).toBe("Bearer eyJ.legacy-service-role");
+    expect(init.headers.apikey).toBe("eyJ.legacy-service-role");
   });
 
   it("explains how to fix a project whose legacy keys are disabled", async () => {
-    mockFetch(
+    // Reproduce the precondition the 401 actually needs: the project has no
+    // new-format secret key, so pickSecretKey falls back to the legacy
+    // service_role JWT — which the project has since disabled. With the
+    // default sb_secret_ fixture in place this branch could never fire.
+    mocks.getProjectApiKeys.mockResolvedValue([
+      { name: "anon", type: "legacy", api_key: "eyJ.legacy-anon" },
+      {
+        name: "service_role",
+        type: "legacy",
+        api_key: "eyJ.legacy-service-role",
+      },
+    ]);
+    const fetchSpy = mockFetch(
       () =>
         new Response(
           JSON.stringify({
@@ -260,6 +278,9 @@ describe("createTempTestUser", () => {
     );
 
     const error = await createTempTestUser(makeApp()).catch((e) => e);
+
+    const [, init] = fetchSpy.mock.calls[0];
+    expect(init.headers.apikey).toBe("eyJ.legacy-service-role");
 
     expect(error.message).toMatch(/Create a secret key in Supabase/);
     // User-fixable setup problem, not a Dyad failure worth reporting.

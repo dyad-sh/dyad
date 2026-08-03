@@ -268,24 +268,6 @@ async function prepareSupabaseTestUserIsolation({
     };
   }
 
-  // RLS gate (warn, don't refuse): surface unprotected tables to the user.
-  const rls = await checkRls({ projectId, organizationSlug });
-  // The test signs the isolated user in through the app's OWN login UI, so a
-  // legacy key in the app's generated client is a test failure waiting to
-  // happen — and one that reads as "my login is broken" rather than "my key was
-  // retired". Warn (never block) and let the panel offer the switch.
-  const legacyKey = await detectLegacyAppKey({
-    appPath: getDyadAppPath(app.path),
-    projectId,
-    organizationSlug,
-  });
-  const warning = joinWarnings(
-    buildRlsWarning(rls),
-    legacyKey
-      ? "This app's Supabase client still uses the project's legacy API key, which Supabase is retiring — sign-in will start failing once legacy keys are disabled."
-      : undefined,
-  );
-
   let testUser: TempTestUser | undefined;
   const teardown = async () => {
     if (testUser) {
@@ -303,9 +285,35 @@ async function prepareSupabaseTestUserIsolation({
   };
 
   try {
-    // checkRls and createTempTestUser each make network requests that can take
-    // several seconds; honor a Stop pressed in between them so cancellation
-    // takes effect promptly instead of only after they complete.
+    // checkRls, detectLegacyAppKey and createTempTestUser each make network
+    // requests that can take several seconds; honor a Stop pressed between any
+    // two of them so cancellation takes effect promptly instead of only after
+    // the whole setup completes.
+    if (signal?.aborted) {
+      throw new Error("Test run stopped.");
+    }
+    // RLS gate (warn, don't refuse): surface unprotected tables to the user.
+    const rls = await checkRls({ projectId, organizationSlug });
+
+    if (signal?.aborted) {
+      throw new Error("Test run stopped.");
+    }
+    // The test signs the isolated user in through the app's OWN login UI, so a
+    // legacy key in the app's generated client is a test failure waiting to
+    // happen — and one that reads as "my login is broken" rather than "my key
+    // was retired". Warn (never block) and let the panel offer the switch.
+    const legacyKey = await detectLegacyAppKey({
+      appPath: getDyadAppPath(app.path),
+      projectId,
+      organizationSlug,
+    });
+    const warning = joinWarnings(
+      buildRlsWarning(rls),
+      legacyKey
+        ? "This app's Supabase client still uses the project's legacy API key, which Supabase is retiring — sign-in will start failing once legacy keys are disabled."
+        : undefined,
+    );
+
     if (signal?.aborted) {
       throw new Error("Test run stopped.");
     }

@@ -71,10 +71,11 @@ export function SupabaseConnector({ appId }: { appId: number }) {
   // Gates the update offer: true only when the app's generated client is
   // holding this project's legacy key and a publishable key exists to replace
   // it.
-  const legacyKeyQuery = useLegacySupabaseKey(
+  const legacyKeyQuery = useLegacySupabaseKey({
     appId,
-    isConnected && !!app?.supabaseProjectId,
-  );
+    projectId: app?.supabaseProjectId ?? null,
+    enabled: isConnected && !!app?.supabaseProjectId,
+  });
   const hasLegacyKey = legacyKeyQuery.data?.hasLegacyKey ?? false;
   const switchKey = useSwitchToPublishableKey();
 

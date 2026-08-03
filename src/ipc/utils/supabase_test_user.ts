@@ -86,6 +86,20 @@ function pickSecretKey(
 }
 
 /**
+ * The key the Auth Admin calls authenticate with, and which format it is.
+ * The format decides the headers it may be sent on (see `adminHeaders`).
+ */
+interface AdminKey {
+  apiKey: string;
+  /**
+   * True for the legacy `service_role` JWT, false for a new-format
+   * (`sb_secret_…`) key. Classified from the Management API's own `type`, with
+   * the key prefix as a second signal.
+   */
+  isLegacyJwt: boolean;
+}
+
+/**
  * Fetch a project's secret (`sb_secret_…`, formerly `service_role`) key. Used
  * ONLY by the main process for test-user setup/teardown — it must NEVER be
  * injected into the app under test (which runs with the publishable key).
@@ -96,7 +110,7 @@ async function getServiceRoleKey({
 }: {
   projectId: string;
   organizationSlug: string;
-}): Promise<string> {
+}): Promise<AdminKey> {
   // reveal: without it Supabase redacts secret key values, which would leave
   // the legacy service_role JWT as the only usable key on the project.
   const keys = await getProjectApiKeys({
@@ -117,14 +131,28 @@ async function getServiceRoleKey({
       DyadErrorKind.NotFound,
     );
   }
-  return secret.api_key;
+  return {
+    apiKey: secret.api_key,
+    isLegacyJwt:
+      secret.type !== "secret" && !secret.api_key.startsWith(SECRET_KEY_PREFIX),
+  };
 }
 
-/** Authorization headers for the project's Auth Admin REST API. */
-function adminHeaders(serviceRole: string): Record<string, string> {
+/**
+ * Authorization headers for the project's Auth Admin REST API.
+ *
+ * A new-format secret key goes on `apikey` ALONE. It isn't a JWT, and Supabase
+ * documents that passing it on `Authorization: Bearer` — which many Supabase
+ * clients still do by default — makes the platform try to parse it as one and
+ * reject the request with "Invalid JWT". The legacy `service_role` key IS a
+ * JWT and still needs the bearer header, so unmigrated projects keep working.
+ *
+ * https://supabase.com/docs/guides/getting-started/migrating-to-new-api-keys
+ */
+function adminHeaders(key: AdminKey): Record<string, string> {
   return {
-    apikey: serviceRole,
-    Authorization: `Bearer ${serviceRole}`,
+    apikey: key.apiKey,
+    ...(key.isLegacyJwt ? { Authorization: `Bearer ${key.apiKey}` } : {}),
     "Content-Type": "application/json",
   };
 }
@@ -188,7 +216,7 @@ export async function createTempTestUser(
     }
   }
 
-  const serviceRole = await getServiceRoleKey({ projectId, organizationSlug });
+  const adminKey = await getServiceRoleKey({ projectId, organizationSlug });
   // fetchWithRetry (not a bare fetch in retryWithRateLimit): fetch resolves on
   // a 429 rather than throwing, so only the throwing wrapper actually retries
   // when back-to-back runs hit the Auth Admin rate limit.
@@ -196,7 +224,7 @@ export async function createTempTestUser(
     `${projectUrl}/auth/v1/admin/users`,
     {
       method: "POST",
-      headers: adminHeaders(serviceRole),
+      headers: adminHeaders(adminKey),
       body: JSON.stringify({
         email,
         password,
@@ -474,7 +502,7 @@ async function deleteUserBestEffort({
     return false;
   }
   try {
-    const serviceRole = await getServiceRoleKey({
+    const adminKey = await getServiceRoleKey({
       projectId,
       organizationSlug,
     });
@@ -482,7 +510,7 @@ async function deleteUserBestEffort({
       `${projectUrl}/auth/v1/admin/users/${userId}`,
       {
         method: "DELETE",
-        headers: adminHeaders(serviceRole),
+        headers: adminHeaders(adminKey),
       },
       `Delete test user ${userId}`,
     );

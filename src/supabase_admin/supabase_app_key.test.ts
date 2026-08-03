@@ -49,11 +49,12 @@ function makeApp(key: string | null): string {
   return appPath;
 }
 
+function clientPathFor(appPath: string): string {
+  return path.join(appPath, "src", "integrations", "supabase", "client.ts");
+}
+
 function readClient(appPath: string): string {
-  return fs.readFileSync(
-    path.join(appPath, "src", "integrations", "supabase", "client.ts"),
-    "utf8",
-  );
+  return fs.readFileSync(clientPathFor(appPath), "utf8");
 }
 
 const args = (appPath: string) => ({
@@ -122,6 +123,21 @@ describe("detectLegacyAppKey", () => {
       detectLegacyAppKey(args(makeApp(LEGACY_ANON))),
     ).resolves.toBeUndefined();
   });
+
+  // A mention of the constant in prose is not the key the app authenticates
+  // with; treating it as one would rewrite the comment and leave the live
+  // legacy key in place.
+  it("ignores the constant when it appears in a comment", async () => {
+    const appPath = makeApp(PUBLISHABLE);
+    const clientPath = clientPathFor(appPath);
+    fs.writeFileSync(
+      clientPath,
+      `// Was: const SUPABASE_PUBLISHABLE_KEY = "${LEGACY_ANON}";\nconst SUPABASE_PUBLISHABLE_KEY = "${PUBLISHABLE}";\n`,
+    );
+
+    await expect(detectLegacyAppKey(args(appPath))).resolves.toBeUndefined();
+    expect(getProjectApiKeysMock).not.toHaveBeenCalled();
+  });
 });
 
 describe("switchAppToPublishableKey", () => {
@@ -140,13 +156,7 @@ describe("switchAppToPublishableKey", () => {
 
   it("preserves surrounding customizations", async () => {
     const appPath = makeApp(LEGACY_ANON);
-    const clientPath = path.join(
-      appPath,
-      "src",
-      "integrations",
-      "supabase",
-      "client.ts",
-    );
+    const clientPath = clientPathFor(appPath);
     fs.writeFileSync(
       clientPath,
       `const SUPABASE_PUBLISHABLE_KEY = "${LEGACY_ANON}";\nexport const supabase = createClient(URL, SUPABASE_PUBLISHABLE_KEY, {\n  auth: { persistSession: false },\n});\n`,
@@ -171,5 +181,37 @@ describe("switchAppToPublishableKey", () => {
     await expect(switchAppToPublishableKey(args(makeApp(null)))).resolves.toBe(
       false,
     );
+  });
+
+  // Detection swallowing errors is right — the offer just doesn't appear. An
+  // explicit switch swallowing them is not: "already up to date" would leave
+  // the legacy key baked in with no retry affordance.
+  it("propagates a failed re-check instead of reporting a no-op", async () => {
+    getProjectApiKeysMock.mockRejectedValue(new Error("management API down"));
+
+    await expect(
+      switchAppToPublishableKey(args(makeApp(LEGACY_ANON))),
+    ).rejects.toThrow(/management API down/);
+  });
+
+  it("refuses to rewrite through a symlink pointing outside the app", async () => {
+    const appPath = makeApp(LEGACY_ANON);
+    // An imported app can carry a symlinked client.ts; following it would land
+    // the rewrite on a file outside the app directory.
+    const outside = path.join(
+      fs.mkdtempSync(path.join(os.tmpdir(), "dyad-outside-")),
+      "client.ts",
+    );
+    appDirs.push(path.dirname(outside));
+    const original = `const SUPABASE_PUBLISHABLE_KEY = "${LEGACY_ANON}";\n`;
+    fs.writeFileSync(outside, original);
+    const clientPath = clientPathFor(appPath);
+    fs.rmSync(clientPath);
+    fs.symlinkSync(outside, clientPath);
+
+    await expect(switchAppToPublishableKey(args(appPath))).rejects.toThrow(
+      /outside the app/,
+    );
+    expect(fs.readFileSync(outside, "utf8")).toBe(original);
   });
 });

@@ -17,6 +17,7 @@ import {
 } from "../../supabase_admin/supabase_app_key";
 import { getDyadAppPath } from "../../paths/paths";
 import { createTypedHandler } from "./base";
+import { createAppMutationLock } from "../utils/app_mutation_lock";
 import { createTestOnlyLoggedHandler } from "./safe_handle";
 import { readSettings, writeSettings } from "../../main/settings";
 import { supabaseContracts } from "../types/supabase";
@@ -263,9 +264,11 @@ export function registerSupabaseHandlers() {
   );
 
   // Swap an app's generated client off the legacy anon key it was created with.
+  // Under the per-app mutation lock: this is a read-modify-write of the app's
+  // source, so it has to serialize with the other operations that write there.
   createTypedHandler(
     supabaseContracts.switchAppToPublishableKey,
-    async (_, { appId }) => {
+    createAppMutationLock(async (_, { appId }) => {
       const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
       if (!app) {
         throw new DyadError(`App ${appId} not found.`, DyadErrorKind.NotFound);
@@ -282,7 +285,7 @@ export function registerSupabaseHandlers() {
         organizationSlug: app.supabaseOrganizationSlug,
       });
       return { updated };
-    },
+    }),
   );
 
   testOnlyHandle(

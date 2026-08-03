@@ -1,4 +1,5 @@
 import { useAtomValue, useSetAtom, useStore } from "jotai";
+import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   memo,
@@ -48,6 +49,7 @@ import type { TestCase, TestCaseResult, FileAttachment } from "@/ipc/types";
 import { ipc } from "@/ipc/types";
 import { useDeleteAppTest } from "@/hooks/useDeleteAppTest";
 import { useLoadApp } from "@/hooks/useLoadApp";
+import { useSwitchToPublishableKey } from "@/hooks/useLegacySupabaseKey";
 import { runAppLifecycleInBackground, useRunApp } from "@/hooks/useRunApp";
 import { useSetTestingEnabled } from "@/hooks/useSetTestingEnabled";
 import { useSettings } from "@/hooks/useSettings";
@@ -609,6 +611,7 @@ function FileRow({
 }
 
 export function TestsPanel() {
+  const { t } = useTranslation("home");
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const specs = useAtomValue(currentTestSpecsAtom);
   const runState = useAtomValue(currentTestRunStateAtom);
@@ -754,32 +757,37 @@ export function TestsPanel() {
 
   // One-click swap of an app's generated Supabase client off the legacy anon
   // key it was created with. Offered beside the setup warning that detected it.
-  const [isSwitchingKey, setIsSwitchingKey] = useState(false);
-  const [keySwitched, setKeySwitched] = useState(false);
+  // Shares the connector card's mutation so both surfaces stay on one code path
+  // and a switch here also invalidates the connector's legacy-key query.
+  const switchKey = useSwitchToPublishableKey();
+  // Scoped to the app that was switched: a pending switch resolving after the
+  // user selects another app must not mark that app's key as updated.
+  const [switchedKeyAppId, setSwitchedKeyAppId] = useState<number | null>(null);
   // A fresh run re-detects the key, so let its verdict govern the button again.
-  useEffect(() => setKeySwitched(false), [runState.isolation]);
+  useEffect(() => setSwitchedKeyAppId(null), [runState.isolation]);
+  const keySwitched =
+    selectedAppId != null && switchedKeyAppId === selectedAppId;
+  const isSwitchingKey =
+    switchKey.isPending && switchKey.variables?.appId === selectedAppId;
 
+  // Depends on mutateAsync, not the mutation object: useMutation returns a new
+  // object every render, which would rebuild this callback each time.
+  const switchKeyAsync = switchKey.mutateAsync;
   const switchToPublishableKey = useCallback(async () => {
     if (selectedAppId == null) return;
-    setIsSwitchingKey(true);
+    const appId = selectedAppId;
     try {
-      const { updated } = await ipc.supabase.switchAppToPublishableKey({
-        appId: selectedAppId,
-      });
-      setKeySwitched(true);
+      const { updated } = await switchKeyAsync({ appId });
+      setSwitchedKeyAppId(appId);
       if (updated) {
-        showSuccess(
-          "Updated the app's Supabase key. Restart the app to pick it up.",
-        );
+        showSuccess(t("integrations.supabase.apiKeyUpdated"));
       } else {
-        showInfo("The app's Supabase key was already up to date.");
+        showInfo(t("integrations.supabase.apiKeyAlreadyCurrent"));
       }
     } catch (error) {
       showError(error);
-    } finally {
-      setIsSwitchingKey(false);
     }
-  }, [selectedAppId]);
+  }, [selectedAppId, switchKeyAsync, t]);
 
   const runTests = useCallback(
     async (file?: string, line?: number) => {
@@ -1291,10 +1299,10 @@ export function TestsPanel() {
                     className="shrink-0 px-2 py-1 rounded-md bg-amber-200 dark:bg-amber-800 hover:bg-amber-300 dark:hover:bg-amber-700 disabled:opacity-60 disabled:cursor-default cursor-pointer text-xs font-medium"
                   >
                     {keySwitched
-                      ? "Updated"
+                      ? t("integrations.supabase.apiKeyUpdatedShort")
                       : isSwitchingKey
-                        ? "Updating…"
-                        : "Update key"}
+                        ? t("integrations.supabase.updatingApiKey")
+                        : t("integrations.supabase.updateApiKeyShort")}
                   </button>
                 )}
               </div>

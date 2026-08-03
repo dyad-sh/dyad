@@ -23,9 +23,10 @@ export interface NeonTestAccount {
  * Auth's own signup endpoint — never by inserting into auth tables, which
  * commonly produces a user that exists but cannot log in.
  *
- * Throws `DyadError` when signup is rejected (e.g. email verification is
- * required); callers treat that as "auth unavailable" and record/run
- * unauthenticated rather than failing the whole flow.
+ * Throws `DyadError` when signup is rejected, and when it succeeds but produces
+ * an account that can't sign in (email verification required); callers treat
+ * either as "auth unavailable" and record/run unauthenticated rather than
+ * failing the whole flow.
  */
 export async function createNeonTestAccount({
   neonAuthBaseUrl,
@@ -77,6 +78,37 @@ export async function createNeonTestAccount({
       DyadErrorKind.External,
     );
   }
+  await assertAccountCanSignIn(response);
   logger.info(`Created Neon Better Auth test account for app ${appId}`);
   return { email, password };
+}
+
+/**
+ * A 2xx signup isn't the same as a usable account. With email verification
+ * required, Better Auth answers 200 with the new user and no session token —
+ * handing those credentials back would produce a recording that silently fails
+ * to sign in, and a generated test that fails the same way on every run.
+ *
+ * Only a positively-identified unverified account is rejected: an unfamiliar
+ * response shape is left alone rather than turned into a spurious failure.
+ */
+async function assertAccountCanSignIn(response: Response): Promise<void> {
+  let body: unknown;
+  try {
+    body = await response.clone().json();
+  } catch {
+    return;
+  }
+  const payload = body as {
+    token?: unknown;
+    user?: { emailVerified?: unknown };
+  } | null;
+  if (!payload || typeof payload !== "object") return;
+  if (payload.token) return;
+  if (payload.user?.emailVerified !== false) return;
+
+  throw new DyadError(
+    "Neon Auth requires email verification, so the throwaway test account can't sign in. Recording and generated tests will run signed out.",
+    DyadErrorKind.External,
+  );
 }

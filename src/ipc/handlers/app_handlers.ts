@@ -58,6 +58,7 @@ import {
   registerCloudSandboxSyncUpdateListener,
 } from "../services/app_runtime_service";
 import { getIpcAppRuntimeOutput } from "../services/app_runtime_transport";
+import { endRecordingForApp } from "../services/recording_registry";
 import { getPtySessionManager } from "../utils/pty_session_manager";
 import { sameInvocationRef } from "@/state_machines/invocation_ref";
 import { userInputRegistry } from "@/user_input/main";
@@ -960,6 +961,10 @@ export function registerAppHandlers() {
   });
 
   createTypedHandler(appContracts.stopApp, async (_, { appId }) => {
+    // A recording session holds this app's lock until it ends, so stopping
+    // would sit behind it for up to 30 minutes. The recording exists to observe
+    // the running app; the app stopping ends it.
+    await endRecordingForApp(appId, "app-stopped");
     const snapshot = await appRunActorService.getRunState(appId);
     if (snapshot.type === "idle") return;
     await appRunActorService.dispatchStop(appId, {

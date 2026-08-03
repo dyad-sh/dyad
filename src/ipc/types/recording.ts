@@ -49,6 +49,18 @@ export const StartRecordingResultSchema = z.object({
   /** Auth to establish before recording (`{ mode: "none" }` when unavailable). */
   auth: RecordingAuthSchema,
   /**
+   * Names this session. `recording:ended` carries it back so a late ending from
+   * a session the renderer has already replaced can be ignored instead of
+   * tearing down its successor. Absent when the session never started.
+   */
+  sessionId: z.string().optional(),
+  /**
+   * Non-fatal notice about the session itself (e.g. the preview's stored data
+   * couldn't be cleared, so the recording may not start from a clean slate).
+   * Recording started; this is shown alongside it.
+   */
+  warning: z.string().optional(),
+  /**
    * Set when the session couldn't be set up (isolation failed, or another
    * operation is in progress). Recording did not start; nothing to tear down.
    */
@@ -116,6 +128,13 @@ export type RecordingSetupProgressPayload = z.infer<
 
 export const RecordingEndedPayloadSchema = z.object({
   appId: z.number(),
+  /**
+   * The session this ending belongs to (see `StartRecordingResult.sessionId`).
+   * Teardown takes seconds, so an ending can land after a *new* session for the
+   * same app is already recording; without this the renderer would reset the UI
+   * out from under it.
+   */
+  sessionId: z.string().optional(),
   reason: z.enum(["stopped", "app-stopped", "error", "timed-out"]),
   message: z.string().optional(),
 });

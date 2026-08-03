@@ -26,6 +26,8 @@ import { getAiHeaders, getProviderOptions } from "../utils/provider_options";
 import {
   clearRecordedTestDraft,
   getRecordedTestDraft,
+  getWrittenSpecForDraft,
+  markRecordedDraftWritten,
 } from "../services/recorded_test_drafts";
 import { readSettings } from "@/main/settings";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
@@ -33,6 +35,7 @@ import {
   countAssertions,
   isAssertionItem,
   type AssertionPlanItem,
+  type AssertionProposalPayload,
 } from "@/lib/test_recorder/assertion_proposal";
 import {
   draftIncludesSignIn,
@@ -75,6 +78,16 @@ const FIXTURE_PATH = `${E2E_TEST_DIR}/fixtures/test-user.ts`;
 
 /** How many `recorded-<slug>-N.spec.ts` variants to try before giving up. */
 const MAX_SPEC_NAME_ATTEMPTS = 100;
+
+/**
+ * Serializes every path that turns a recording into a file for one app.
+ *
+ * "Has this recording been written yet?" and the write itself have to be one
+ * critical section, or two saves — two clicks of "Save without assertions", or a
+ * bar save racing a card approval — both pass the check and
+ * `writeSpecToFreePath` dutifully claims the next free suffix for each.
+ */
+const specWriteKey = (appId: number) => `recorded-spec:${appId}`;
 
 /**
  * A user-written fixture providing the `signIn` the generated spec imports. All
@@ -239,9 +252,14 @@ async function writeRecordedSpec({
   );
   await stage(appPath, relativePath);
 
-  // The recording has produced its file; a stale draft would otherwise let a
-  // later agent turn propose assertions for a test that's already written.
-  clearRecordedTestDraft(appId);
+  // The recording has produced its file. Remembered so the *other* write path —
+  // which generates from its own copy of the draft and can't see what's parked
+  // here — returns the idempotent answer instead of a second, suffixed spec.
+  markRecordedDraftWritten(appId, draft, relativePath);
+  // A stale draft would otherwise let a later agent turn propose assertions for
+  // a test that's already written. Scoped to this recording: a card approved
+  // after a newer recording was parked must not discard that newer draft.
+  clearRecordedTestDraft(appId, draft);
   return { specPath: relativePath };
 }
 
@@ -488,6 +506,47 @@ function needsSynthesis(
   return original.text.trim() !== item.text.trim();
 }
 
+/**
+ * Rewrite the proposal's tag to "approved" and persist it. This is the durable
+ * approval latch: it survives a reload and re-hydrates the card approved. The tag
+ * is spliced in place so the agent's surrounding prose and sibling tool cards
+ * survive untouched.
+ */
+async function persistApproval({
+  row,
+  proposalId,
+  stored,
+  items,
+  specPath,
+}: {
+  row: { id: number; content: string };
+  proposalId: string;
+  stored: AssertionProposalPayload;
+  items: AssertionPlanItem[];
+  specPath: string;
+}): Promise<void> {
+  const approvedContent = replaceAssertionsTagInMessage(
+    row.content,
+    buildAssertionsTagContent({
+      proposalId,
+      status: "approved",
+      payload: { ...stored, items, specPath },
+    }),
+    proposalId,
+  );
+  if (approvedContent === null) {
+    // The message matched on proposal-id, so the tag must be there.
+    throw new DyadError(
+      "This assertion proposal is corrupted and can't be applied.",
+      DyadErrorKind.Validation,
+    );
+  }
+  await db
+    .update(messages)
+    .set({ content: approvedContent })
+    .where(eq(messages.id, row.id));
+}
+
 async function assertChatOwnsApp(chatId: number, appId: number): Promise<void> {
   const chat = await db.query.chats.findFirst({ where: eq(chats.id, chatId) });
   if (!chat) {
@@ -504,25 +563,28 @@ async function assertChatOwnsApp(chatId: number, appId: number): Promise<void> {
 export function registerTestAssertionHandlers() {
   createTypedHandler(
     testsContracts.createRecordedSpec,
-    async (_event, params): Promise<CreateRecordedSpecResult> => {
-      const { appId, draft } = params;
-      // The parked draft says "this recording hasn't been written yet". Both
-      // write paths clear it, so its absence means a second call would write a
-      // suffixed duplicate of the same test.
-      if (!getRecordedTestDraft(appId)) {
-        throw new DyadError(
-          "This recording has already been saved.",
-          DyadErrorKind.Precondition,
-        );
-      }
-      const { specPath } = await writeRecordedSpec({
-        appId,
-        draft,
-        bodyStatements: recordedBodyStatements(draft),
-      });
-      logger.info(`Wrote recorded spec ${specPath} with no assertions`);
-      return { specPath };
-    },
+    async (_event, params): Promise<CreateRecordedSpecResult> =>
+      // Check, write and clear as one critical section: two saves that both read
+      // the parked draft before either cleared it would each claim a filename.
+      withLock(specWriteKey(params.appId), async () => {
+        const { appId, draft } = params;
+        // The parked draft says "this recording hasn't been written yet". Both
+        // write paths clear it, so its absence means a second call would write a
+        // suffixed duplicate of the same test.
+        if (!getRecordedTestDraft(appId)) {
+          throw new DyadError(
+            "This recording has already been saved.",
+            DyadErrorKind.Precondition,
+          );
+        }
+        const { specPath } = await writeRecordedSpec({
+          appId,
+          draft,
+          bodyStatements: recordedBodyStatements(draft),
+        });
+        logger.info(`Wrote recorded spec ${specPath} with no assertions`);
+        return { specPath };
+      }),
   );
 
   createTypedHandler(
@@ -584,6 +646,27 @@ export function registerTestAssertionHandlers() {
 
         assertStepsMatch(items, stored.items);
 
+        // "Save without assertions" in the recorder bar writes the same
+        // recording from the parked draft, which this path can't see — it
+        // generates from the card's own copy so approving survives a restart.
+        // Without this check, saving from the bar and then approving the card
+        // leaves two near-identical specs behind.
+        const savedFromBar = getWrittenSpecForDraft(appId, stored.draft);
+        if (savedFromBar) {
+          await persistApproval({
+            row,
+            proposalId,
+            stored,
+            items: stored.items,
+            specPath: savedFromBar,
+          });
+          return {
+            specPath: savedFromBar,
+            appliedCount: 0,
+            warning: `This recording was already saved as ${savedFromBar}, so no assertions were added.`,
+          };
+        }
+
         const bodyStatements = recordedBodyStatements(stored.draft);
         const withText = items.filter(
           (item) => item.kind === "step" || item.text.trim().length > 0,
@@ -626,41 +709,36 @@ export function registerTestAssertionHandlers() {
           finalStatements.push(code);
         }
 
-        const { specPath } = await writeRecordedSpec({
-          appId,
-          draft: stored.draft,
-          bodyStatements: finalStatements,
-        });
-
-        // Rewriting the tag is the durable approval latch: it survives a reload
-        // and re-hydrates the card approved. Splice it in place so the agent's
-        // surrounding prose and sibling tool cards survive untouched.
-        const approvedContent = replaceAssertionsTagInMessage(
-          row.content,
-          buildAssertionsTagContent({
-            proposalId,
-            status: "approved",
-            payload: { ...stored, items: finalItems, specPath },
-          }),
-          proposalId,
+        // Synthesis above spent up to a minute in the model, so re-check under
+        // the same lock the bar's save takes: it may have written this very
+        // recording while we waited.
+        const { specPath, wroteIt } = await withLock(
+          specWriteKey(appId),
+          async () => {
+            const raced = getWrittenSpecForDraft(appId, stored.draft);
+            if (raced) return { specPath: raced, wroteIt: false };
+            const written = await writeRecordedSpec({
+              appId,
+              draft: stored.draft,
+              bodyStatements: finalStatements,
+            });
+            return { specPath: written.specPath, wroteIt: true };
+          },
         );
-        if (approvedContent === null) {
-          // The message matched on proposal-id above, so the tag must be there.
-          await discardGeneratedSpec(appId, specPath);
-          throw new DyadError(
-            "This assertion proposal is corrupted and can't be applied.",
-            DyadErrorKind.Validation,
-          );
-        }
+
         try {
-          await db
-            .update(messages)
-            .set({ content: approvedContent })
-            .where(eq(messages.id, row.id));
+          await persistApproval({
+            row,
+            proposalId,
+            stored,
+            items: finalItems,
+            specPath,
+          });
         } catch (error) {
           // The card is still approvable, so a retry would claim the next free
-          // filename and leave two copies behind. Undo the write.
-          await discardGeneratedSpec(appId, specPath);
+          // filename and leave two copies behind. Undo the write — but only our
+          // own: a spec the bar wrote is the user's saved test, not ours to bin.
+          if (wroteIt) await discardGeneratedSpec(appId, specPath);
           throw error;
         }
 

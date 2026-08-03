@@ -34,10 +34,28 @@ describe("collapseActions", () => {
     const loc = { kind: "role", value: "button", name: "Open" } as const;
     const entries: RecordedEntry[] = [
       { at: 100, action: { kind: "click", locator: loc } },
+      // The browser dispatches the second click and the `dblclick` back to
+      // back, so they reach the recorder in the same frame.
       { at: 220, action: { kind: "click", locator: loc } },
-      { at: 240, action: { kind: "dblclick", locator: loc } },
+      { at: 221, action: { kind: "dblclick", locator: loc } },
     ];
     expect(collapseActions(entries)).toEqual([
+      { kind: "dblclick", locator: loc },
+    ]);
+  });
+
+  it("keeps a standalone click made just before a double-click", () => {
+    // When the two clicks composing the double-click land inside the recorder's
+    // 50ms dedupe window, only one of them is reported — so the click before it
+    // is the user's own, and absorbing two here would delete a real step.
+    const loc = { kind: "role", value: "button", name: "Open" } as const;
+    const entries: RecordedEntry[] = [
+      { at: 100, action: { kind: "click", locator: loc } },
+      { at: 300, action: { kind: "click", locator: loc } },
+      { at: 330, action: { kind: "dblclick", locator: loc } },
+    ];
+    expect(collapseActions(entries)).toEqual([
+      { kind: "click", locator: loc },
       { kind: "dblclick", locator: loc },
     ]);
   });

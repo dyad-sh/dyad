@@ -46,15 +46,38 @@ export const LocatorDescriptorSchema = z.object({
 export type LocatorDescriptor = z.infer<typeof LocatorDescriptorSchema>;
 
 /**
+ * A host that cannot be reached, so resolving against it proves whether a
+ * candidate path stays on whatever origin Playwright resolves it against.
+ */
+const NAVIGATE_BASE = "http://dyad.invalid";
+
+/**
+ * Whether `page.goto(value)` would stay inside the recorded app.
+ *
+ * Decided by resolution rather than by inspecting the string: `//host` and
+ * `/\host` both open with a `/` and look app-relative, but WHATWG URL treats a
+ * backslash as a separator for special schemes, so `/\evil.example` resolves to
+ * `http://evil.example/` just as the protocol-relative form does. Resolving
+ * against a known base and comparing origins catches both, and anything else
+ * that normalizes off-origin.
+ */
+function isAppRelativePath(value: string): boolean {
+  if (!value.startsWith("/")) return false;
+  try {
+    return new URL(value, NAVIGATE_BASE).origin === NAVIGATE_BASE;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Constrained to an app-relative path so the previewed app can't inject
- * `page.goto("https://…")` into the spec written to the user's repo. `//host` is
- * rejected alongside absolute URLs: a protocol-relative path is off-origin too
- * once Playwright resolves it against the base URL.
+ * `page.goto("https://…")` into the spec written to the user's repo.
  */
 const NavigatePathSchema = z
   .string()
   .max(MAX_PATH_LEN)
-  .refine((value) => value.startsWith("/") && !value.startsWith("//"), {
+  .refine(isAppRelativePath, {
     message: "navigate path must be app-relative",
   });
 

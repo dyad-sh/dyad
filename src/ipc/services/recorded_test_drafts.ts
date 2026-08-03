@@ -15,6 +15,31 @@ import type { RecordedTestDraft } from "@/lib/test_recorder/draft";
  */
 const draftsByAppId = new Map<number, RecordedTestDraft>();
 
+/**
+ * Recordings that have already produced a spec file, per app.
+ *
+ * The two write paths can't see each other's parked draft: approving the
+ * assertions card generates from the card's own copy (that copy is what makes
+ * approval survive a restart), while the bar generates from the draft parked
+ * here. Without this, saving from the bar and then approving a card built from
+ * the same recording writes two near-identical specs.
+ *
+ * Keyed by the draft's contents rather than an id: two drafts that serialize
+ * identically describe the same recording and would generate the same file, so
+ * treating them as one is the behaviour we want.
+ */
+const writtenByAppId = new Map<number, Map<string, string>>();
+
+/**
+ * How many written recordings to remember per app. Only the most recent matter —
+ * a card can be approved long after its recording, but not after twenty more.
+ */
+const MAX_REMEMBERED_WRITES = 20;
+
+function draftKey(draft: RecordedTestDraft): string {
+  return JSON.stringify(draft);
+}
+
 export function setRecordedTestDraft(
   appId: number,
   draft: RecordedTestDraft,
@@ -26,6 +51,52 @@ export function getRecordedTestDraft(appId: number): RecordedTestDraft | null {
   return draftsByAppId.get(appId) ?? null;
 }
 
-export function clearRecordedTestDraft(appId: number): void {
+/**
+ * Drop the parked draft. `only` scopes the clear to a specific recording: a card
+ * hidden and approved after a *newer* recording was parked must not take that
+ * newer draft down with it, leaving a recording the user can no longer save.
+ */
+export function clearRecordedTestDraft(
+  appId: number,
+  only?: RecordedTestDraft,
+): void {
+  if (only) {
+    const parked = draftsByAppId.get(appId);
+    if (!parked || draftKey(parked) !== draftKey(only)) return;
+  }
   draftsByAppId.delete(appId);
+}
+
+/** Remember the spec file this recording produced. */
+export function markRecordedDraftWritten(
+  appId: number,
+  draft: RecordedTestDraft,
+  specPath: string,
+): void {
+  let written = writtenByAppId.get(appId);
+  if (!written) {
+    written = new Map();
+    writtenByAppId.set(appId, written);
+  }
+  written.set(draftKey(draft), specPath);
+  // Maps iterate in insertion order, so the first entry is the oldest.
+  while (written.size > MAX_REMEMBERED_WRITES) {
+    const oldest = written.keys().next().value;
+    if (oldest === undefined) break;
+    written.delete(oldest);
+  }
+}
+
+/** The spec this recording already produced, or null if it hasn't been written. */
+export function getWrittenSpecForDraft(
+  appId: number,
+  draft: RecordedTestDraft,
+): string | null {
+  return writtenByAppId.get(appId)?.get(draftKey(draft)) ?? null;
+}
+
+/** Drop everything. For tests: these maps outlive a single handler harness. */
+export function resetRecordedTestDrafts(): void {
+  draftsByAppId.clear();
+  writtenByAppId.clear();
 }

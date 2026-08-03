@@ -65,4 +65,39 @@ describe("isSingleAssertionStatement", () => {
     // A bare `expect(...)` with no matcher asserts nothing.
     expect(isSingleAssertionStatement(`await expect(a);`)).toBe(false);
   });
+
+  it("accepts regex arguments", () => {
+    // Rejecting these silently dropped a perfectly good assertion from the
+    // spec: the delimiters and parens inside a regex aren't syntax.
+    expect(
+      isSingleAssertionStatement(`await expect(page).toHaveURL(/\\/items/);`),
+    ).toBe(true);
+    expect(
+      isSingleAssertionStatement(
+        `await expect(page.getByText(/\\(\\d+\\)/)).toBeVisible();`,
+      ),
+    ).toBe(true);
+    expect(
+      isSingleAssertionStatement(`await expect(page).toHaveURL(/[^/]+$/i);`),
+    ).toBe(true);
+    // An unterminated literal is still nonsense.
+    expect(
+      isSingleAssertionStatement(`await expect(page).toHaveURL(/items);`),
+    ).toBe(false);
+  });
+
+  it("rejects anything chained after the matcher call", () => {
+    // `.catch` swallows the failure the assertion exists to report, leaving a
+    // test that passes without ever checking its condition.
+    expect(
+      isSingleAssertionStatement(
+        `await expect(a).toBeVisible().catch(() => {});`,
+      ),
+    ).toBe(false);
+    expect(
+      isSingleAssertionStatement(
+        `await expect(a).toBeVisible().then(() => steal(document.cookie));`,
+      ),
+    ).toBe(false);
+  });
 });

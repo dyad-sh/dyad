@@ -13,6 +13,7 @@ import {
   clearRecordedEntriesForAppAtom,
   currentRecordedEntriesAtom,
   currentRecordingStateAtom,
+  MAX_RECORDED_ENTRIES,
   recordingStartRequestAtom,
   RECORDING_REQUEST_TTL_MS,
   setRecordingStateForAppAtom,
@@ -37,6 +38,9 @@ function toAppPath(raw: unknown): string | null {
   if (typeof raw !== "string" || !raw) return null;
   try {
     const url = new URL(raw, "http://dyad.preview");
+    // A `javascript:`/`data:` history entry has no app path to replay, and its
+    // opaque body would otherwise be handed to `page.goto` as if it were one.
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
     return `${url.pathname}${url.search}` || "/";
   } catch {
     return null;
@@ -101,6 +105,11 @@ export function useTestRecorder({
   // session outlives the renderer's state (it holds an isolated database and the
   // per-app lock), so every path that walks away has to hand it back explicitly.
   const ownedSessionsRef = useRef(new Set<number>());
+  // The main-process session id per app, so an ending that belongs to a session
+  // this hook has already replaced can be told apart from its successor's.
+  // Teardown takes seconds, which is long enough for the next session to be
+  // recording by the time the previous one reports back.
+  const sessionIdsRef = useRef(new Map<number, string>());
   // Apps with a start in flight but no session handed back yet — the window
   // `ownedSessionsRef` can't cover, since isolation setup takes seconds.
   const startingAppsRef = useRef(new Set<number>());
@@ -251,10 +260,16 @@ export function useTestRecorder({
           // `payload`, unlike every other message this handler consumes.
           const payload = data.payload as { newUrl?: unknown } | undefined;
           const path = toAppPath(payload?.newUrl);
-          if (path) {
+          // Through the same schema as every other recorded action, so the
+          // trust boundary stays in one place: a synthesized navigate is no
+          // more trustworthy than one the preview posted directly.
+          const navigate = path
+            ? parseRecorderAction({ kind: "navigate", path })
+            : null;
+          if (navigate) {
             appendEntry({
               appId: currentAppId,
-              entry: { action: { kind: "navigate", path }, at: Date.now() },
+              entry: { action: navigate, at: Date.now() },
             });
           }
           break;
@@ -270,8 +285,15 @@ export function useTestRecorder({
   // unmounts on idle, so a state field alone would go unseen.
   useEffect(() => {
     const unsub = ipc.events.recording.onEnded(
-      ({ appId: endedAppId, reason, message }) => {
+      ({ appId: endedAppId, sessionId, reason, message }) => {
         if (endedAppId == null) return;
+        // Endings are delivered per app, but teardown is slow enough that a
+        // *new* session for the same app can already be recording by the time
+        // the old one reports. Only the current session may reset the UI.
+        const currentSessionId = sessionIdsRef.current.get(endedAppId);
+        if (sessionId && currentSessionId && sessionId !== currentSessionId) {
+          return;
+        }
         // "stopped" is only reported for a stop we asked for, and whichever path
         // asked already owns what comes next. This event travels a different IPC
         // interface than the stopRecording reply, so it can land *after* the
@@ -282,6 +304,7 @@ export function useTestRecorder({
         // session's ownership would leave nothing to stop it on unmount.
         if (reason === "stopped") return;
         ownedSessionsRef.current.delete(endedAppId);
+        sessionIdsRef.current.delete(endedAppId);
         const failureMessage =
           reason === "error" || reason === "timed-out"
             ? (message ?? "The recording session ended unexpectedly.")
@@ -311,6 +334,7 @@ export function useTestRecorder({
   const releaseSession = useCallback(
     (targetAppId: number) => {
       if (!ownedSessionsRef.current.delete(targetAppId)) return;
+      sessionIdsRef.current.delete(targetAppId);
       if (pendingAuthRef.current?.appId === targetAppId) {
         pendingAuthRef.current = null;
         authReadyRef.current = null;
@@ -432,6 +456,9 @@ export function useTestRecorder({
       }
 
       ownedSessionsRef.current.add(targetAppId);
+      if (result.sessionId) {
+        sessionIdsRef.current.set(targetAppId, result.sessionId);
+      }
       // Everything below reaches the preview through refs tracking the *selected*
       // app. If the user switched apps during isolation setup, continuing would
       // sign the wrong preview in with this app's test credentials while this
@@ -445,7 +472,9 @@ export function useTestRecorder({
       patchState(targetAppId, (prev) => ({
         ...prev,
         isolation: result.isolation,
-        warning: result.isolation.reason,
+        warning:
+          [result.isolation.reason, result.warning].filter(Boolean).join(" ") ||
+          undefined,
         auth,
         progress: undefined,
       }));
@@ -689,11 +718,17 @@ export function useTestRecorder({
     [draft],
   );
 
+  const limitWarning = recordingState.limitReached
+    ? `This recording reached the ${MAX_RECORDED_ENTRIES.toLocaleString()}-action limit — anything after that wasn't captured.`
+    : undefined;
+
   return {
     phase: recordingState.phase,
     isolation: recordingState.isolation,
     auth: recordingState.auth,
-    warning: recordingState.warning,
+    warning:
+      [recordingState.warning, limitWarning].filter(Boolean).join(" ") ||
+      undefined,
     progress: recordingState.progress,
     error: recordingState.error,
     draft,

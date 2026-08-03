@@ -50,6 +50,12 @@ export interface RecordingState {
   awaitingAssertions?: boolean;
   /** Path of the just-written spec, while phase is "saved". */
   savedSpecPath?: string;
+  /**
+   * The recording filled its action buffer and stopped capturing. Surfaced
+   * rather than left implicit: the review would otherwise show a complete-looking
+   * list of steps that quietly stops partway through what the user did.
+   */
+  limitReached?: boolean;
   startedAt?: number;
 }
 
@@ -128,10 +134,22 @@ export const MAX_RECORDED_ENTRIES = 5_000;
 
 export const appendRecordedEntryAtom = atom(
   null,
-  (_get, set, { appId, entry }: { appId: number; entry: RecordedEntry }) => {
+  (get, set, { appId, entry }: { appId: number; entry: RecordedEntry }) => {
+    if (
+      (get(recordedEntriesByAppIdAtom).get(appId)?.length ?? 0) >=
+      MAX_RECORDED_ENTRIES
+    ) {
+      // Dropped, but not silently: a spec generated from a truncated recording
+      // replays part of a flow and fails for reasons the user can't see.
+      set(setRecordingStateForAppAtom, {
+        appId,
+        update: (prev) =>
+          prev.limitReached ? prev : { ...prev, limitReached: true },
+      });
+      return;
+    }
     set(recordedEntriesByAppIdAtom, (prev) => {
       const current = prev.get(appId) ?? [];
-      if (current.length >= MAX_RECORDED_ENTRIES) return prev;
       const next = new Map(prev);
       next.set(appId, [...current, entry]);
       return next;

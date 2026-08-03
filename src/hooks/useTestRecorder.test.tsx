@@ -444,20 +444,38 @@ describe("useTestRecorder", () => {
     store.set(selectedAppIdAtom, 1);
     store.set(previewIframeRefAtom, makeIframe().el);
     setAppUrl(store, 1);
+    // Started from the parked request, and held mid-setup, so the session is
+    // genuinely in flight *across* the replay. Starting afterwards would leave
+    // nothing for the cleanup to hand back, and the test would pass either way.
+    store.set(recordingStartRequestAtom, { appId: 1, requestedAt: Date.now() });
+    let releaseStart: (() => void) | undefined;
+    startRecordingMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releaseStart = () =>
+            resolve({
+              appId: 1,
+              isolation: { mode: "none" },
+              auth: { mode: "none" },
+            });
+        }),
+    );
 
     const { result } = renderHook(
       () => useTestRecorder({ reloadPreview: () => {} }),
       { wrapper: Wrapper, reactStrictMode: true },
     );
+
+    await waitFor(() => expect(releaseStart).toBeDefined());
     await act(async () => {
-      await result.current.startRecording();
+      releaseStart!();
     });
 
     // StrictMode runs the mount effect's cleanup on a hook that is still very
     // much mounted. Treating that as a real unmount handed the freshly prepared
     // session straight back — in dev, recording could never start.
+    await waitFor(() => expect(result.current.isRecording).toBe(true));
     expect(stopRecordingMock).not.toHaveBeenCalled();
-    expect(result.current.isRecording).toBe(true);
   });
 
   it("disarms the in-page recorder when a session ends abnormally", async () => {

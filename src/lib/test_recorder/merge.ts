@@ -3,6 +3,19 @@ import type { LocatorDescriptor, RecordedAction, RecordedEntry } from "./types";
 /** Max gap for a click to be absorbed into a following double-click. */
 const DBLCLICK_MERGE_MS = 500;
 
+/**
+ * How close the click nearest the `dblclick` has to be before a *second* one is
+ * absorbed too.
+ *
+ * The browser dispatches the second click and the `dblclick` back to back, so a
+ * genuine pair reaches the recorder within a frame. A wider gap means the
+ * recorder's own 50ms deduplication already dropped the second click, and what
+ * sits before the remaining one is a separate interaction the user made —
+ * absorbing it would silently delete a step from their test. Erring the other
+ * way only replays one harmless extra click.
+ */
+const SAME_TASK_MS = 16;
+
 function sameLocator(a: LocatorDescriptor, b: LocatorDescriptor): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
@@ -23,6 +36,7 @@ export function collapseActions(entries: RecordedEntry[]): RecordedAction[] {
     // or two clicks that compose it. Drop those, not just the last one, or the
     // spec replays a stray single click before the double-click.
     if (action.kind === "dblclick") {
+      let nearestGap = 0;
       for (let absorbed = 0; absorbed < 2; absorbed++) {
         const last = out[out.length - 1];
         if (
@@ -33,6 +47,8 @@ export function collapseActions(entries: RecordedEntry[]): RecordedAction[] {
         ) {
           break;
         }
+        if (absorbed === 1 && nearestGap > SAME_TASK_MS) break;
+        nearestGap = entry.at - last.at;
         out.pop();
       }
       out.push(entry);

@@ -310,6 +310,33 @@
     return null;
   }
 
+  /**
+   * Text as an accessible-name computation reads it: `aria-hidden` and `hidden`
+   * subtrees contribute nothing.
+   *
+   * Raw `textContent` would name `<button><span aria-hidden="true">×</span>Close
+   * </button>` "×Close", and the `getByRole("button", { name: "×Close" })` that
+   * produced would match nothing when the test replays — Playwright computes the
+   * name the same way this does, and gets "Close".
+   */
+  function accessibleTextContent(el) {
+    let out = "";
+    const children = el.childNodes || [];
+    for (let i = 0; i < children.length; i++) {
+      const node = children[i];
+      if (node.nodeType === 3) {
+        out += node.nodeValue || "";
+        continue;
+      }
+      if (node.nodeType !== 1) continue;
+      if (node.getAttribute && node.getAttribute("aria-hidden") === "true")
+        continue;
+      if (node.hidden) continue;
+      out += accessibleTextContent(node);
+    }
+    return out;
+  }
+
   function computeAccName(el) {
     if (!el || el.nodeType !== 1) return null;
     const aria = el.getAttribute && el.getAttribute("aria-label");
@@ -339,7 +366,7 @@
     if (
       ["button", "link", "heading", "tab", "menuitem", "option"].includes(role)
     ) {
-      const text = normalize(el.textContent);
+      const text = normalize(accessibleTextContent(el));
       if (text) return text;
     }
 
@@ -369,14 +396,30 @@
     scan = null;
   }
 
+  /**
+   * Every element the locator has to be unique among — open shadow roots
+   * included.
+   *
+   * Playwright's locators pierce open shadow roots, so uniqueness judged from
+   * `document.querySelectorAll` alone can call a locator unique while replay
+   * finds a second match inside a web component and fails on strict mode.
+   */
+  function collectElements(root, into) {
+    const found = root.querySelectorAll("*");
+    for (let i = 0; i < found.length; i++) {
+      const el = found[i];
+      into.push(el);
+      if (el.shadowRoot) collectElements(el.shadowRoot, into);
+    }
+    return into;
+  }
+
   function allElements() {
     if (scan) {
-      if (!scan.all) {
-        scan.all = Array.prototype.slice.call(document.querySelectorAll("*"));
-      }
+      if (!scan.all) scan.all = collectElements(document, []);
       return scan.all;
     }
-    return Array.prototype.slice.call(document.querySelectorAll("*"));
+    return collectElements(document, []);
   }
 
   function roleOf(el) {
@@ -649,17 +692,37 @@
     return [...mods, key].join("+");
   }
 
+  /**
+   * Controls the browser activates by dispatching its own trusted `click` when
+   * Enter is pressed on them. `onClick` records that click, so recording the
+   * press as well replays the action twice — and for a link or a submit button
+   * the press navigates first, leaving the duplicate click to run against the
+   * destination document, where it usually fails outright.
+   */
+  function activatesOnEnter(el) {
+    if (!el || el.nodeType !== 1) return false;
+    if (el.tagName === "BUTTON" || el.tagName === "SUMMARY") return true;
+    if (el.tagName === "A") return el.hasAttribute("href");
+    if (el.tagName === "INPUT") {
+      const type = (el.getAttribute("type") || "text").toLowerCase();
+      return ["submit", "button", "reset", "image"].includes(type);
+    }
+    const role = (el.getAttribute("role") || "").toLowerCase();
+    return role === "button" || role === "link";
+  }
+
   function shouldRecordPress(e) {
     if (["Control", "Meta", "Alt", "Shift"].includes(e.key)) return false;
     const hasNonShiftModifier = e.ctrlKey || e.metaKey || e.altKey;
     if (hasNonShiftModifier) return true;
     if (NAV_KEYS.has(e.key)) {
-      // Enter inside multi-line editors inserts a newline — that is captured by
-      // the resulting `fill`, so don't also record it as a press.
       if (e.key === "Enter") {
         const t = deepTarget(e);
+        // Enter inside multi-line editors inserts a newline — that is captured
+        // by the resulting `fill`, so don't also record it as a press.
         if (t && (t.tagName === "TEXTAREA" || t.isContentEditable))
           return false;
+        if (activatesOnEnter(t)) return false;
       }
       return true;
     }

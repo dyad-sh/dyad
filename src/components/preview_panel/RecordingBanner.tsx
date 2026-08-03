@@ -157,9 +157,11 @@ export function RecordingBanner({
               ? "text-purple-700 dark:text-purple-300"
               : "text-muted-foreground",
           )}
-          // The wait for the agent's card is the one thing here that changes on
-          // its own, so it announces itself.
-          role={recorder.awaitingAssertions ? "status" : undefined}
+          // This line changes on its own when the agent's card arrives, fails,
+          // or is cancelled. The region has to be present *before* it changes,
+          // or a screen reader announces the wait starting and nothing after —
+          // never that it finished.
+          role="status"
           data-testid="preview-recording-review-status"
         >
           {recorder.awaitingAssertions ? (

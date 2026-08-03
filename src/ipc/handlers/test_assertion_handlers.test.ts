@@ -76,7 +76,11 @@ import {
   type RecordedTestDraft,
 } from "@/lib/test_recorder/draft";
 import { recordedBodyStatements } from "@/lib/test_recorder/codegen";
-import { setRecordedTestDraft } from "@/ipc/services/recorded_test_drafts";
+import {
+  getRecordedTestDraft,
+  resetRecordedTestDrafts,
+  setRecordedTestDraft,
+} from "@/ipc/services/recorded_test_drafts";
 
 const SPEC_PATH = "e2e-tests/recorded-add-an-item.spec.ts";
 
@@ -104,6 +108,9 @@ describe("registerTestAssertionHandlers", () => {
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-assertions-"));
     appRoots.set("test-app", tmpDir);
+    // Module-level, so without this each test inherits the previous one's
+    // parked and already-written recordings.
+    resetRecordedTestDrafts();
 
     harness = setupHandlerTestHarness();
     registerTestAssertionHandlers();
@@ -337,6 +344,31 @@ describe("registerTestAssertionHandlers", () => {
           draft: DRAFT,
         }),
       ).rejects.toThrow(/already been saved/);
+      expect(specExists("e2e-tests/recorded-add-an-item-2.spec.ts")).toBe(
+        false,
+      );
+    });
+
+    it("writes one spec when two saves race", async () => {
+      const { appId } = seed();
+      setRecordedTestDraft(appId, DRAFT);
+
+      // Both read the parked draft before either clears it. Without the write
+      // being serialized, each claims its own filename.
+      const [first, second] = await Promise.allSettled([
+        harness.invokeHandler<{ specPath: string }>(
+          "tests:create-recorded-spec",
+          { appId, draft: DRAFT },
+        ),
+        harness.invokeHandler<{ specPath: string }>(
+          "tests:create-recorded-spec",
+          { appId, draft: DRAFT },
+        ),
+      ]);
+
+      const written = [first, second].filter((r) => r.status === "fulfilled");
+      expect(written).toHaveLength(1);
+      expect(specExists(SPEC_PATH)).toBe(true);
       expect(specExists("e2e-tests/recorded-add-an-item-2.spec.ts")).toBe(
         false,
       );
@@ -580,6 +612,55 @@ describe("registerTestAssertionHandlers", () => {
         false,
       );
       expect(mockGitAdd).not.toHaveBeenCalled();
+    });
+
+    it("doesn't write a second spec for a recording the bar already saved", async () => {
+      const { appId, chatId } = seed();
+      const { proposalId } = propose(appId, chatId);
+      const items = planFromMessage(storedMessages()[0].content);
+
+      // The bar keeps offering "Save without assertions" while the card is on
+      // screen. It writes from the parked draft; this path writes from the
+      // card's own copy, so nothing else connects the two.
+      setRecordedTestDraft(appId, DRAFT);
+      await harness.invokeHandler("tests:create-recorded-spec", {
+        appId,
+        draft: DRAFT,
+      });
+
+      const approved = await harness.invokeHandler<{
+        specPath: string;
+        warning?: string;
+      }>("tests:apply-assertions", { appId, chatId, proposalId, items });
+
+      expect(approved.specPath).toBe(SPEC_PATH);
+      expect(approved.warning).toMatch(/already saved/i);
+      expect(specExists("e2e-tests/recorded-add-an-item-2.spec.ts")).toBe(
+        false,
+      );
+      // The card settles instead of staying approvable forever.
+      expect(storedMessages()[0].content).toContain('status="approved"');
+    });
+
+    it("leaves a newer recording's draft parked when an older card is approved", async () => {
+      const { appId, chatId } = seed();
+      const { proposalId } = propose(appId, chatId);
+      const items = planFromMessage(storedMessages()[0].content);
+
+      // The user hid the review, recorded something else, and only then went
+      // back to the old card. Clearing by appId alone would take the newer
+      // recording down with it, leaving nothing able to save it.
+      const newer: RecordedTestDraft = { ...DRAFT, testName: "a newer flow" };
+      setRecordedTestDraft(appId, newer);
+
+      await harness.invokeHandler("tests:apply-assertions", {
+        appId,
+        chatId,
+        proposalId,
+        items,
+      });
+
+      expect(getRecordedTestDraft(appId)).toEqual(newer);
     });
 
     it("rejects a chat that belongs to a different app", async () => {

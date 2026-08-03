@@ -11,6 +11,14 @@
  * garbage, so fall back to scanning each `{` for the balanced object it opens
  * and returning the first one that actually parses.
  */
+/**
+ * How many candidate objects the fallback will scan. Each scan is O(n), so a
+ * response built of nothing but `{"` would otherwise make this quadratic and
+ * freeze the main process. A real response has its object within the first few
+ * candidates; past that, there is nothing to find.
+ */
+const MAX_CANDIDATE_SCANS = 64;
+
 export function extractJson(text: string): string | null {
   const start = text.indexOf("{");
   const end = text.lastIndexOf("}");
@@ -19,12 +27,13 @@ export function extractJson(text: string): string | null {
   const widest = text.slice(start, end + 1);
   if (isParseable(widest)) return widest;
 
-  for (let i = start; i < text.length; i++) {
+  let scans = 0;
+  for (let i = start; i < text.length && scans < MAX_CANDIDATE_SCANS; i++) {
     // Only `{` that could actually open a JSON object is worth a scan. A JSON
     // object is `{}` or `{"…`, so this rejects prose like `{foo}` on one
-    // character — and keeps a pathological response (a long run of `{`) from
-    // turning this fallback into an O(n^2) walk of the whole text per brace.
+    // character.
     if (text[i] !== "{" || !opensJsonObject(text, i)) continue;
+    scans++;
     const candidate = balancedObjectAt(text, i);
     if (candidate && isParseable(candidate)) return candidate;
   }

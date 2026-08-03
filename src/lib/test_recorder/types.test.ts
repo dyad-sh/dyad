@@ -21,9 +21,25 @@ describe("parseRecorderAction", () => {
     expect(
       parseRecorderAction({ kind: "navigate", path: "//evil.example/x" }),
     ).toBeNull();
+    // A backslash is a separator for special schemes, so this normalizes to
+    // `http://evil.example/x` despite opening with a single `/`.
+    expect(
+      parseRecorderAction({ kind: "navigate", path: "/\\evil.example/x" }),
+    ).toBeNull();
+    expect(
+      parseRecorderAction({ kind: "navigate", path: "/\\\\evil.example/x" }),
+    ).toBeNull();
     expect(
       parseRecorderAction({ kind: "navigate", path: "javascript:alert(1)" }),
     ).toBeNull();
+  });
+
+  it("accepts a path whose backslash isn't leading", () => {
+    // Resolution only turns `/\` at the front into an authority, so a backslash
+    // deeper in the path is an ordinary character and stays on-origin.
+    expect(
+      parseRecorderAction({ kind: "navigate", path: "/docs/a\\b" }),
+    ).toEqual({ kind: "navigate", path: "/docs/a\\b" });
   });
 
   it("rejects oversized payloads", () => {

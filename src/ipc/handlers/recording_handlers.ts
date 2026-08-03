@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import log from "electron-log";
 import { session } from "electron";
 import { eq } from "drizzle-orm";
@@ -109,6 +110,7 @@ export function registerRecordingHandlers() {
         );
       }
 
+      const sessionId = crypto.randomUUID();
       const emit = (message: string) =>
         safeSend(event.sender, "recording:setup-progress", { appId, message });
 
@@ -177,6 +179,15 @@ export function registerRecordingHandlers() {
           // Start from the same pristine, logged-out state the generated test
           // replays from: the CoW branch copied the real users, so a stale
           // cookie could still look valid.
+          //
+          // The preview shares the app's normal browser session, so this also
+          // signs the user out of their own preview and drops whatever it had in
+          // localStorage. Announced rather than done quietly — it is the one
+          // thing here that touches state the user didn't hand us.
+          let warning: string | undefined;
+          emit(
+            "Clearing the preview's cookies and local storage so the recording starts signed out…\n",
+          );
           try {
             const origin = new URL(proxyUrl).origin;
             await session.defaultSession.clearStorageData({
@@ -193,13 +204,20 @@ export function registerRecordingHandlers() {
             logger.warn(
               `Couldn't clear preview storage for app ${appId}: ${error}`,
             );
+            // Not fatal — the recording is still usable — but a leftover session
+            // means what gets recorded may not be reproducible from a clean
+            // start, and only the user can judge that.
+            warning =
+              "Couldn't clear the preview's stored session, so this recording may start already signed in. The generated test replays from a clean browser.";
           }
 
           started = true;
           ready.resolve({
             appId,
+            sessionId,
             isolation: prepared.isolation,
             auth: toRecordingAuth(prepared.authSetup),
+            warning,
           });
 
           // Hold the lock and isolation until the session is stopped.
@@ -240,6 +258,7 @@ export function registerRecordingHandlers() {
           if (started) {
             safeSend(event.sender, "recording:ended", {
               appId,
+              sessionId,
               reason: endReason,
               message: endMessage,
             });

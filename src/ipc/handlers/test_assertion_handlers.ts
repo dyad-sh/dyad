@@ -91,6 +91,17 @@ const MAX_SPEC_NAME_ATTEMPTS = 100;
 const specWriteKey = (appId: number) => `recorded-spec:${appId}`;
 
 /**
+ * Serializes every rewrite of an assertion card's tag in a chat.
+ *
+ * Keyed by chat rather than by proposal because both handlers write the whole
+ * `messages.content` blob: one agent message can carry more than one card, so
+ * two proposals rewriting "their own" tag concurrently would each save a copy
+ * of the row read before the other's write, and one of the two updates would be
+ * lost. Approvals are rare enough that a chat-wide latch costs nothing.
+ */
+const proposalWriteKey = (chatId: number) => `assertion-proposal:${chatId}`;
+
+/**
  * A user-written fixture providing the `signIn` the generated spec imports. All
  * three declaration forms count — `export function`, `export const/let/var`, and
  * a re-export list — since all that matters is whether `import { signIn }`
@@ -605,11 +616,11 @@ export function registerTestAssertionHandlers() {
   createTypedHandler(
     testsContracts.discardTestAssertions,
     // The same critical section approval uses. Both are read-modify-writes of
-    // one tag, so without a shared lock a discard that read the row before an
-    // approval started would write its stale copy over the approved one — and
-    // latch a spec that exists on disk as declined.
+    // one message row, so without a shared lock a discard that read the row
+    // before an approval started would write its stale copy over the approved
+    // one — and latch a spec that exists on disk as declined.
     async (_event, params) =>
-      withLock(`assertion-approval:${params.proposalId}`, async () => {
+      withLock(proposalWriteKey(params.chatId), async () => {
         const { appId, chatId, proposalId } = params;
         await assertChatOwnsApp(chatId, appId);
 
@@ -682,11 +693,11 @@ export function registerTestAssertionHandlers() {
   createTypedHandler(
     testsContracts.applyTestAssertions,
     // The approval reads the proposal's status, spends up to a minute in the
-    // model, then writes "approved" back. Serializing per proposal makes that
+    // model, then writes "approved" back. Serializing makes that
     // read-modify-write an actual latch; the loser re-reads the now-approved tag
     // and returns the idempotent answer.
     async (event, params): Promise<ApplyTestAssertionsResult> =>
-      withLock(`assertion-approval:${params.proposalId}`, async () => {
+      withLock(proposalWriteKey(params.chatId), async () => {
         const { appId, chatId, proposalId, items } = params;
 
         await assertChatOwnsApp(chatId, appId);

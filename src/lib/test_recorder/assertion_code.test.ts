@@ -94,6 +94,22 @@ describe("isSingleAssertionStatement", () => {
     ).toBe(false);
   });
 
+  it("reads a slash after a postfix operator as division, not a regex", () => {
+    // `+`/`-` open an expression, so a `/` after them is a regex — but doubled
+    // they are a postfix increment, which makes the slash division. Reading it
+    // as an unterminated regex would drop the assertion from the spec.
+    expect(
+      isSingleAssertionStatement(`await expect(a++ / 2).toBeGreaterThan(1);`),
+    ).toBe(true);
+    expect(
+      isSingleAssertionStatement(`await expect(a-- / 2).toBeGreaterThan(1);`),
+    ).toBe(true);
+    // Still a regex when the operator really is unary.
+    expect(
+      isSingleAssertionStatement(`await expect(page).toHaveURL(-/x/ ? 1 : 2);`),
+    ).toBe(true);
+  });
+
   it("rejects anything chained after the matcher call", () => {
     // `.catch` swallows the failure the assertion exists to report, leaving a
     // test that passes without ever checking its condition.

@@ -123,13 +123,22 @@
   }
 
   /**
-   * A colour picker: not typed into, so `isEditable` excludes it, but its value
-   * is still a value the user chose and `fill("#rrggbb")` replays it exactly.
-   * Captured from `change` (the commit) rather than `input` (every drag frame).
+   * Controls whose value is chosen rather than typed — a colour picker, a
+   * slider. `isEditable` excludes them because there is no text to type, but
+   * the value is still the user's choice, and Playwright's `fill` sets these
+   * directly instead of typing (its `kInputTypesToSetValue`), so `fill("42")`
+   * replays exactly what was picked.
+   *
+   * Captured from `change` (the commit) rather than `input`, which fires for
+   * every frame of a drag.
    */
-  function isColorInput(el) {
+  const VALUE_PICKER_TYPES = ["color", "range"];
+
+  function isValuePicker(el) {
     if (!el || el.tagName !== "INPUT") return false;
-    return (el.getAttribute("type") || "").toLowerCase() === "color";
+    return VALUE_PICKER_TYPES.includes(
+      (el.getAttribute("type") || "").toLowerCase(),
+    );
   }
 
   function isPasswordField(el) {
@@ -288,7 +297,14 @@
       case "a":
         return el.hasAttribute("href") ? "link" : null;
       case "select":
-        return el.hasAttribute("multiple") ? "listbox" : "combobox";
+        // A select is a combobox only while it presents one row at a time.
+        // `multiple`, or a `size` above 1, makes it a list — and Playwright
+        // matches it as `listbox`, so calling it a combobox generates a locator
+        // that never resolves.
+        return el.hasAttribute("multiple") ||
+          Number(el.getAttribute("size")) > 1
+          ? "listbox"
+          : "combobox";
       case "textarea":
         return "textbox";
       case "nav":
@@ -653,18 +669,22 @@
         parts.unshift(`#${cssEscape(node.id)}`);
         break;
       }
-      const parent = node.parentElement;
-      if (parent) {
-        const sameTag = Array.prototype.filter.call(
-          parent.children,
-          (c) => c.tagName === node.tagName,
-        );
-        if (sameTag.length > 1) {
-          part += `:nth-of-type(${sameTag.indexOf(node) + 1})`;
-        }
+      // The nodes `node` is indexed among. Inside a shadow root that's the root
+      // itself, not an element — `parentElement` is null there.
+      const siblingRoot = node.parentElement ?? node.getRootNode();
+      const sameTag = Array.prototype.filter.call(
+        siblingRoot?.children ?? [],
+        (c) => c.tagName === node.tagName,
+      );
+      if (sameTag.length > 1) {
+        part += `:nth-of-type(${sameTag.indexOf(node) + 1})`;
       }
       parts.unshift(part);
-      node = parent;
+      // `parentElement` is null at a shadow boundary, which would end the walk
+      // there and emit a path rooted inside the component — `div`, say, which
+      // Playwright's shadow-piercing CSS then matches all over the page.
+      // Continuing through the host keeps the path anchored in the light DOM.
+      node = ariaParent(node);
     }
     // The walk stops before <body>, so an element that *is* body produces no
     // segments — and `locator("")` throws at replay. Name the element instead.
@@ -820,7 +840,7 @@
       // (text); skip the click so we don't double-record.
       if (
         isCheckboxOrRadio(control) ||
-        isColorInput(control) ||
+        isValuePicker(control) ||
         control.tagName === "SELECT" ||
         isEditable(control)
       ) {
@@ -880,7 +900,7 @@
       return;
     }
 
-    if (isColorInput(t)) {
+    if (isValuePicker(t)) {
       emit({
         kind: "fill",
         locator: fillLocatorFor(t),

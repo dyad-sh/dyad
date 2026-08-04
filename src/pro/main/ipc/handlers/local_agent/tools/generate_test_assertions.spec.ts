@@ -57,6 +57,7 @@ const DRAFT: RecordedTestDraft = {
 };
 
 const VALID_ARGS = {
+  recordingId: DRAFT.draftId,
   steps: [
     { index: 0, text: "Open the home page" },
     { index: 1, text: "Click the Add button" },
@@ -207,6 +208,21 @@ describe("generate_test_assertions", () => {
 
     expect(result).toContain("closed the review card without approving");
     expect(registry.parked[0]?.signal?.aborted).toBe(true);
+  });
+
+  it("rejects a plan for a recording that has since been replaced", async () => {
+    // The call sat queued behind another turn while the user dismissed the
+    // review and recorded something new. Same statement count, so the index
+    // checks would wave it through and annotate the wrong flow.
+    setRecordedTestDraft(APP_ID, { ...DRAFT, draftId: "draft-newer" });
+    const ctx = makeCtx();
+
+    const result = await generateTestAssertionsTool.execute(VALID_ARGS, ctx);
+
+    expect(result).toContain("doesn't match the recording");
+    expect(result).toContain("draft-newer");
+    expect(committedXml(ctx)).toContain("dyad-output");
+    expect(registry.requests).toEqual([]);
   });
 
   it("rejects a plan whose indices don't match the recording, and shows the real statements", async () => {

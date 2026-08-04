@@ -47,15 +47,16 @@ interface ConsoleHeaderProps {
   latestMessage?: string;
 }
 
-function RecorderPreview({
-  loading,
-  appId,
-  reloadKey,
-}: {
-  loading: boolean;
-  appId: number | null;
-  reloadKey: number;
-}) {
+/**
+ * The recorder's state and IPC subscriptions, hoisted out of the preview tab.
+ *
+ * A recording session lives in the main process and holds the app's lock; the
+ * hook that can end it, and the `recording:*` subscriptions that keep the bar
+ * truthful, only exist while this is mounted. Mounted inside the preview tab it
+ * would be torn down by a trip to Code or Problems — stopping a recording in
+ * progress, and missing the `draft-consumed` event that retires a review.
+ */
+function useHoistedRecorder() {
   // The recorder handshake must outlive PreviewIframe's keyed remount. Neon
   // isolation restarts the dev server, which bumps reloadKey while
   // startRecording is awaiting the iframe's authentication acknowledgement.
@@ -65,13 +66,7 @@ function RecorderPreview({
     [],
   );
   const recorder = useTestRecorder({ reloadPreview });
-  return (
-    <PreviewIframe
-      key={`${appId}-${reloadKey}:${recorderReloadKey}`}
-      loading={loading}
-      recorder={recorder}
-    />
-  );
+  return { recorder, recorderReloadKey };
 }
 
 // Console header component
@@ -114,6 +109,9 @@ export function PreviewPanel() {
   const queryClient = useQueryClient();
   const key = usePreviewReloadToken(selectedAppId);
   const latestConsoleEntry = useLatestConsoleEntry(selectedAppId);
+  // Above the previewMode switch below, so a tab change doesn't end a recording
+  // or drop the events that keep the review bar honest.
+  const { recorder, recorderReloadKey } = useHoistedRecorder();
   const {
     data: nodeSystemInfo,
     isLoading: isCheckingNode,
@@ -249,10 +247,10 @@ export function PreviewPanel() {
                     }}
                   />
                 ) : previewMode === "preview" ? (
-                  <RecorderPreview
+                  <PreviewIframe
+                    key={`${selectedAppId}-${key}:${recorderReloadKey}`}
                     loading={loading}
-                    appId={selectedAppId}
-                    reloadKey={key}
+                    recorder={recorder}
                   />
                 ) : previewMode === "code" ? (
                   <CodeView loading={loading} app={app ?? null} />

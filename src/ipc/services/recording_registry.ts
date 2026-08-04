@@ -61,7 +61,12 @@ export async function endRecordingForApp(
   options?: EndRecordingOptions,
 ): Promise<RecordingEndSummary> {
   const recording = activeRecordings.get(appId);
+  // Nothing was ever swapped, so nothing needs restoring.
   if (!recording) return { envRestored: true };
   recording.stop(reason, options);
-  return recording.done.catch(() => ({ envRestored: true }));
+  // A session that ended by throwing never reported on its own teardown, so
+  // whether `.env.local` came back is unknown. The gate this feeds exists to
+  // stop the app relaunching against isolated data, and "unknown" has to fail
+  // the same way "no" does or the gate is decorative.
+  return recording.done.catch(() => ({ envRestored: false }));
 }

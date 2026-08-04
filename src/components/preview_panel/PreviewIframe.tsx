@@ -226,14 +226,23 @@ const PREVIEW_TOOLBAR_BUTTON_CLASSES =
  * checks, and its `generate_test_assertions` tool validates what it sends back
  * against the draft Dyad parked when recording stopped.
  */
-function buildAssertionsPrompt(testName: string, steps: string[]): string {
+function buildAssertionsPrompt(
+  testName: string,
+  recordingId: string,
+  steps: string[],
+): string {
   return [
     `Add assertions to the test I just recorded: "${testName}"`,
+    "",
+    // Named in the prompt and echoed back through the tool, so a request that
+    // sat queued while a *newer* recording replaced this one is rejected
+    // instead of annotating the wrong flow.
+    `Recording id: ${recordingId}`,
     "",
     "It isn't a file yet — here are its statements, numbered the way your generate_test_assertions tool counts them:",
     ...steps.map((step, index) => `${index}: ${step}`),
     "",
-    "Call generate_test_assertions with one plain-English step description per statement plus the assertions you'd propose. There's nothing to read and nothing to run — I'll review the plan, and Dyad generates the test file when I approve it.",
+    "Call generate_test_assertions with that recording id, one plain-English step description per statement, plus the assertions you'd propose. There's nothing to read and nothing to run — I'll review the plan, and Dyad generates the test file when I approve it.",
   ].join("\n");
 }
 
@@ -355,7 +364,11 @@ export const PreviewIframe = ({
     // only UI that can save the parked draft as-is, discard it, or ask again.
     recorder.markAwaitingAssertions();
     streamMessage({
-      prompt: buildAssertionsPrompt(draft.testName, recorder.draftSteps),
+      prompt: buildAssertionsPrompt(
+        draft.testName,
+        draft.draftId,
+        recorder.draftSteps,
+      ),
       chatId: selectedChatId,
       requestedChatMode: "local-agent",
       // Every way this turn can end arrives here: a card posted and answered, a

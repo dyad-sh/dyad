@@ -19,6 +19,12 @@ import { buildAssertionsTagContent } from "@/lib/test_recorder/assertion_tag";
 const logger = log.scope("generate_test_assertions");
 
 const generateTestAssertionsSchema = z.object({
+  recordingId: z
+    .string()
+    .min(1)
+    .describe(
+      "The recording id given in the request, copied exactly. It names which recording these steps describe.",
+    ),
   steps: z
     .array(
       z.object({
@@ -75,6 +81,12 @@ const NO_DRAFT_MESSAGE = `There is no finished recording waiting for assertions,
 
 This tool only works right after the user stops a recording and clicks "Generate assertions" in the recorder bar — it reads the recording Dyad parked at that moment. Tell the user to record the flow in the preview and click "Generate assertions"; to add assertions to a spec that already exists on disk, edit it with search_replace instead.`;
 
+const STALE_DRAFT_MESSAGE = (
+  currentId: string,
+) => `The recording id you sent doesn't match the recording waiting for assertions, so nothing was shown to the user and no file was touched. The user recorded something else while this request was queued.
+
+Do NOT resend the same steps against the new id — they describe a flow that is no longer the one waiting. Ask the user whether they want assertions for the recording they just finished (id \`${currentId}\`); if they do, they should ask again so you get its statements.`;
+
 const DESCRIPTION = `Turn a just-finished recording into a reviewable plan: describe each recorded step in plain English and propose the assertions that should check it. The user reviews the plan in a chat card — editing, deleting, reordering — and Dyad generates the test file from it when they approve. You never write the spec.
 
 This tool BLOCKS until the user answers the card, then tells you what happened. The turn is not over when you call it.
@@ -85,7 +97,7 @@ Use this when the user asks for assertions for a flow they just recorded with Dy
 
 <how_to_use>
 1. Read the numbered statements in the user's message. Those indices are the ones this tool expects — don't renumber them.
-2. Send one \`steps\` entry per statement, translating it into one plain-English sentence, plus the assertions you want to propose.
+2. Send one \`steps\` entry per statement, translating it into one plain-English sentence, plus the assertions you want to propose. Copy the recording id from the request into \`recordingId\` exactly — it is what ties your plan to the recording it describes.
 3. Wait. The call does not come back until the user approves the card or closes it, and the tool result tells you which. Do NOT call it a second time, and do NOT try to write or run anything while it is open — the spec does not exist yet.
 4. Do what the tool result says: run the spec it names, or stop if the user closed the card.
 </how_to_use>
@@ -209,6 +221,17 @@ export const generateTestAssertionsTool: ToolDefinition<GenerateTestAssertionsAr
       if (!draft) {
         completeWarning(ctx, "No recording to annotate", NO_DRAFT_MESSAGE);
         return NO_DRAFT_MESSAGE;
+      }
+      // The parked draft is whatever the app recorded *most recently*, and this
+      // call can be queued behind another turn: long enough for the user to
+      // dismiss this review, record something else, and have that replace it.
+      // Annotating the newer recording with these descriptions would generate a
+      // test that describes one flow and replays another — and a matching
+      // statement count is all it takes for the checks below to wave it through.
+      if (args.recordingId !== draft.draftId) {
+        const body = STALE_DRAFT_MESSAGE(draft.draftId);
+        completeWarning(ctx, "Assertion plan rejected", body);
+        return body;
       }
 
       const bodyStatements = recordedBodyStatements(draft);

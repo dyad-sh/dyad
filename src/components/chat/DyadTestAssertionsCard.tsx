@@ -380,11 +380,22 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
         }
       }
       setOptimisticDiscarded(true);
-      await userInputProjection.respond(requestId, {
+      const answered = await userInputProjection.respond(requestId, {
         kind: "test-assertions",
         specPath: null,
         appliedCount: 0,
       });
+      if (!answered) {
+        // The card stays discarded rather than reverting: the latch above
+        // already succeeded, so the stored plan *is* declined and showing it as
+        // approvable again would only lead to "this plan was closed" on the
+        // next approve. `respond` has surfaced its own error, and a turn left
+        // parked converges on the same outcome at its deadline — a park that
+        // resolves to nothing is read as a close.
+        console.warn(
+          `Discarded assertion plan ${proposalId}, but couldn't notify the parked turn`,
+        );
+      }
     } finally {
       approvingRef.current = false;
       setIsApproving(false);

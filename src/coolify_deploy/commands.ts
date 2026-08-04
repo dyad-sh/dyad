@@ -20,8 +20,11 @@ import {
   repoKeyName,
 } from "@/ipc/utils/coolify_deploy_key";
 import { getGitHubApiBase } from "@/ipc/handlers/github_handlers";
-import { getProductionBranchId } from "@/ipc/utils/neon_utils";
-import { getConnectionUri } from "@/neon_admin/neon_context";
+import {
+  ensureNeonAuthTrustedDomain,
+  getSelectedDeployBranchType,
+  resolveNeonBranchEnvVars,
+} from "@/ipc/utils/neon_utils";
 import { systemClock, type Clock } from "@/state_machines/clock";
 import type { CoolifyDeployStage } from "./state";
 
@@ -232,13 +235,41 @@ async function resolveApplication({
   return create();
 }
 
-/** Resolves the connection string for an app that already has a database. */
-async function resolveDatabaseUrl(app: {
-  neonProjectId: string | null;
-}): Promise<string | null> {
-  if (!app.neonProjectId) return null;
-  const { branchId } = await getProductionBranchId(app.neonProjectId);
-  return getConnectionUri({ projectId: app.neonProjectId, branchId });
+/**
+ * The env vars a deployed app needs to reach its existing database.
+ *
+ * Resolved through the same helpers the Vercel sync uses, so both targets
+ * honour the branch the user picked and carry the same set of variables. An
+ * app whose auth base URL is missing builds and starts, then answers every
+ * request that touches a session with a 500.
+ */
+async function resolveDatabaseEnv(app: typeof apps.$inferSelect): Promise<{
+  vars: Array<{ key: string; value: string }>;
+  /** Set only when Neon Auth is active, which is when trusted domains matter. */
+  auth: { projectId: string; branchId: string } | null;
+}> {
+  if (!app.neonProjectId) return { vars: [], auth: null };
+  const branchType = getSelectedDeployBranchType(app);
+  const resolved = await resolveNeonBranchEnvVars({ appData: app, branchType });
+
+  const vars = [{ key: "DATABASE_URL", value: resolved.databaseUrl }];
+  if (resolved.neonAuthBaseUrl) {
+    vars.push({ key: "NEON_AUTH_BASE_URL", value: resolved.neonAuthBaseUrl });
+    // Only Next.js signs its own cookies; other frameworks forward them to
+    // Neon Auth, which is why the resolver leaves this unset for them.
+    if (resolved.isNextJs && resolved.neonAuthCookieSecret) {
+      vars.push({
+        key: "NEON_AUTH_COOKIE_SECRET",
+        value: resolved.neonAuthCookieSecret,
+      });
+    }
+  }
+  return {
+    vars,
+    auth: resolved.neonAuthBaseUrl
+      ? { projectId: app.neonProjectId, branchId: resolved.branchId }
+      : null,
+  };
 }
 
 export async function runDeployPipeline({
@@ -345,17 +376,23 @@ export async function runDeployPipeline({
 
   // A deploy that silently lacks its database reports success and then fails
   // on the first query, so a failure here fails the whole deployment.
-  const databaseUrl = await resolveDatabaseUrl(app).catch((error) => {
+  const database = await resolveDatabaseEnv(app).catch((error) => {
     throw new DyadError(
-      `Could not resolve this app's database connection string: ${
+      `Could not resolve this app's database connection details: ${
         error instanceof Error ? error.message : String(error)
       }`,
       DyadErrorKind.External,
     );
   });
-  if (databaseUrl) {
-    await client.setEnv(applicationUuid, "DATABASE_URL", databaseUrl);
-    report.log("DATABASE_URL wired to the app's existing database.\n");
+  for (const { key, value } of database.vars) {
+    await client.setEnv(applicationUuid, key, value);
+  }
+  if (database.vars.length > 0) {
+    report.log(
+      `Wired to the app's existing database: ${database.vars
+        .map((v) => v.key)
+        .join(", ")}.\n`,
+    );
   }
   throwIfAborted(signal);
 
@@ -447,6 +484,30 @@ export async function runDeployPipeline({
 
   const application = await client.getApplication(applicationUuid);
   const url = (application.fqdn ?? "").split(",")[0] || null;
+
+  // Neon Auth rejects sign-in from an origin it does not know, which reaches
+  // the user as "Invalid origin" — a working deployment that cannot log in.
+  // Best-effort: the app is already live, so a failure here is a warning
+  // rather than a failed deploy.
+  if (url && database.auth) {
+    try {
+      const added = await ensureNeonAuthTrustedDomain({
+        ...database.auth,
+        origin: url,
+      });
+      if (added) {
+        report.log(`Allowed sign-in from ${added} in Neon Auth.\n`);
+      }
+    } catch (error) {
+      report.log(
+        `Could not register ${url} as a Neon Auth trusted domain, so signing ` +
+          `in may fail with "Invalid origin": ${
+            error instanceof Error ? error.message : String(error)
+          }\n`,
+      );
+    }
+  }
+
   throwIfAborted(signal);
   await db
     .update(apps)

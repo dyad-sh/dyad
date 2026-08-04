@@ -34,12 +34,44 @@ vi.mock("@/ipc/utils/framework_utils", () => ({
   detectFrameworkType: () => framework.type,
 }));
 
-// Only reached for apps with a Neon project; kept out of the import graph.
-vi.mock("@/ipc/utils/neon_utils", () => ({
-  getProductionBranchId: vi.fn(),
+// The real resolver talks to Neon; the pipeline's job is to pass the branch the
+// user picked and set every var it gets back.
+const neon = vi.hoisted(() => ({
+  resolved: {
+    databaseUrl: "postgres://prod",
+    neonAuthBaseUrl: "https://auth.neon.test/db/auth",
+    neonAuthCookieSecret: "cookie-secret",
+    branchId: "br-prod",
+    isNextJs: false,
+  } as Record<string, unknown>,
+  branchTypes: [] as string[],
+  trustedDomains: [] as Array<{
+    projectId: string;
+    branchId: string;
+    origin: string;
+  }>,
+  trustedDomainError: null as Error | null,
 }));
-vi.mock("@/neon_admin/neon_context", () => ({
-  getConnectionUri: vi.fn(),
+vi.mock("@/ipc/utils/neon_utils", () => ({
+  getSelectedDeployBranchType: (app: {
+    selectedDatabaseBranchType?: unknown;
+  }) =>
+    app.selectedDatabaseBranchType === "development"
+      ? "development"
+      : "production",
+  resolveNeonBranchEnvVars: vi.fn(
+    async ({ branchType }: { branchType: string }) => {
+      neon.branchTypes.push(branchType);
+      return neon.resolved;
+    },
+  ),
+  ensureNeonAuthTrustedDomain: vi.fn(
+    async (args: { projectId: string; branchId: string; origin: string }) => {
+      if (neon.trustedDomainError) throw neon.trustedDomainError;
+      neon.trustedDomains.push(args);
+      return args.origin;
+    },
+  ),
 }));
 
 import { apps } from "@/db/schema";
@@ -204,6 +236,16 @@ beforeEach(() => {
   routes = new Map();
   sideEffects = new Map();
   framework.type = "vite";
+  neon.branchTypes = [];
+  neon.trustedDomains = [];
+  neon.trustedDomainError = null;
+  neon.resolved = {
+    databaseUrl: "postgres://prod",
+    neonAuthBaseUrl: "https://auth.neon.test/db/auth",
+    neonAuthCookieSecret: "cookie-secret",
+    branchId: "br-prod",
+    isNextJs: false,
+  };
   harness = setupHandlerTestHarness();
   installFetch();
 });
@@ -546,6 +588,50 @@ describe("polling", () => {
 });
 
 describe("build configuration", () => {
+  it("gives a Nitro-backed Vite app a start command and its own port", async () => {
+    // Adding a Neon database turns a Vite app into this shape.
+    framework.type = "vite-nitro";
+    const app = await seedApp();
+    happyPathRoutes();
+    const clock = createFakeClock();
+
+    await drive(
+      clock,
+      runDeployPipeline({
+        appId: app.id,
+        signal: new AbortController().signal,
+        report: recorder(),
+        clock,
+      }),
+    );
+
+    const created = bodyOf("POST /applications/private-deploy-key");
+    expect(created.build_pack).toBe("railpack");
+    expect(created.ports_exposes).toBe("3000");
+    expect(created.is_static).toBe(false);
+    expect(created.start_command).toBe("node .output/server/index.mjs");
+  });
+
+  it("leaves a static Vite app with no start command", async () => {
+    const app = await seedApp();
+    happyPathRoutes();
+    const clock = createFakeClock();
+
+    await drive(
+      clock,
+      runDeployPipeline({
+        appId: app.id,
+        signal: new AbortController().signal,
+        report: recorder(),
+        clock,
+      }),
+    );
+
+    expect(
+      bodyOf("POST /applications/private-deploy-key").start_command,
+    ).toBeUndefined();
+  });
+
   it("builds a non-Vite app as a server on port 3000", async () => {
     framework.type = "nextjs";
     const app = await seedApp();
@@ -670,5 +756,188 @@ describe("recreating an application", () => {
 
     const saved = await readApp(app.id);
     expect(saved?.coolifyApplicationUuid).toBe("stale-uuid");
+  });
+});
+
+describe("database env vars", () => {
+  /** Env vars the pipeline pushed, in the order it set them. */
+  function envCalls(): Array<{ key: string; value: string }> {
+    return calls
+      .filter((c) => keyFor(c.method, c.url).endsWith("/envs"))
+      .map((c) => ({ key: c.body.key, value: c.body.value }));
+  }
+
+  it("wires the auth base URL too, not just the connection string", async () => {
+    // Without NEON_AUTH_BASE_URL the app builds and starts, then answers every
+    // request that touches a session with a 500.
+    const app = await seedApp({ neonProjectId: "proj-1" });
+    happyPathRoutes();
+    const clock = createFakeClock();
+
+    await drive(
+      clock,
+      runDeployPipeline({
+        appId: app.id,
+        signal: new AbortController().signal,
+        report: recorder(),
+        clock,
+      }),
+    );
+
+    expect(envCalls()).toEqual([
+      { key: "DATABASE_URL", value: "postgres://prod" },
+      { key: "NEON_AUTH_BASE_URL", value: "https://auth.neon.test/db/auth" },
+    ]);
+  });
+
+  it("honours the branch the user picked for deployment", async () => {
+    const app = await seedApp({
+      neonProjectId: "proj-1",
+      selectedDatabaseBranchType: "development",
+    });
+    happyPathRoutes();
+    const clock = createFakeClock();
+
+    await drive(
+      clock,
+      runDeployPipeline({
+        appId: app.id,
+        signal: new AbortController().signal,
+        report: recorder(),
+        clock,
+      }),
+    );
+
+    // Deploying production when the user asked for the development branch
+    // fails in the dangerous direction.
+    expect(neon.branchTypes).toEqual(["development"]);
+  });
+
+  it("defaults to the production branch when nothing was picked", async () => {
+    const app = await seedApp({ neonProjectId: "proj-1" });
+    happyPathRoutes();
+    const clock = createFakeClock();
+
+    await drive(
+      clock,
+      runDeployPipeline({
+        appId: app.id,
+        signal: new AbortController().signal,
+        report: recorder(),
+        clock,
+      }),
+    );
+
+    expect(neon.branchTypes).toEqual(["production"]);
+  });
+
+  it("sets a cookie secret only for Next.js, which signs its own cookies", async () => {
+    framework.type = "nextjs";
+    neon.resolved = { ...neon.resolved, isNextJs: true };
+    const app = await seedApp({ neonProjectId: "proj-1" });
+    happyPathRoutes();
+    const clock = createFakeClock();
+
+    await drive(
+      clock,
+      runDeployPipeline({
+        appId: app.id,
+        signal: new AbortController().signal,
+        report: recorder(),
+        clock,
+      }),
+    );
+
+    expect(envCalls().map((e) => e.key)).toEqual([
+      "DATABASE_URL",
+      "NEON_AUTH_BASE_URL",
+      "NEON_AUTH_COOKIE_SECRET",
+    ]);
+  });
+
+  it("sets nothing for an app with no database", async () => {
+    const app = await seedApp();
+    happyPathRoutes();
+    const clock = createFakeClock();
+
+    await drive(
+      clock,
+      runDeployPipeline({
+        appId: app.id,
+        signal: new AbortController().signal,
+        report: recorder(),
+        clock,
+      }),
+    );
+
+    expect(envCalls()).toEqual([]);
+  });
+});
+
+describe("Neon Auth trusted domains", () => {
+  it("allows sign-in from the deployed URL", async () => {
+    // Without this Neon Auth answers "Invalid origin" and the app deploys
+    // successfully but nobody can log in.
+    const app = await seedApp({ neonProjectId: "proj-1" });
+    happyPathRoutes();
+    const clock = createFakeClock();
+
+    await drive(
+      clock,
+      runDeployPipeline({
+        appId: app.id,
+        signal: new AbortController().signal,
+        report: recorder(),
+        clock,
+      }),
+    );
+
+    expect(neon.trustedDomains).toEqual([
+      {
+        projectId: "proj-1",
+        branchId: "br-prod",
+        origin: "https://demo.sslip.io",
+      },
+    ]);
+  });
+
+  it("does not register anything when the app has no auth", async () => {
+    neon.resolved = { ...neon.resolved, neonAuthBaseUrl: undefined };
+    const app = await seedApp({ neonProjectId: "proj-1" });
+    happyPathRoutes();
+    const clock = createFakeClock();
+
+    await drive(
+      clock,
+      runDeployPipeline({
+        appId: app.id,
+        signal: new AbortController().signal,
+        report: recorder(),
+        clock,
+      }),
+    );
+
+    expect(neon.trustedDomains).toEqual([]);
+  });
+
+  it("still reports success when Neon rejects the registration", async () => {
+    // The app is already live by this point; failing the deploy would be worse
+    // than a deploy that logs why sign-in might not work.
+    neon.trustedDomainError = new Error("neon is down");
+    const app = await seedApp({ neonProjectId: "proj-1" });
+    happyPathRoutes();
+    const clock = createFakeClock();
+
+    const result = await drive(
+      clock,
+      runDeployPipeline({
+        appId: app.id,
+        signal: new AbortController().signal,
+        report: recorder(),
+        clock,
+      }),
+    );
+
+    expect(result.url).toBe("https://demo.sslip.io");
   });
 });

@@ -12,6 +12,7 @@ import {
   updateNeonEnvVars,
 } from "../utils/app_env_var_utils";
 import { detectFrameworkType } from "./framework_utils";
+import { reconcileTrustedDomains } from "./vercel_neon_sync_helpers";
 import { getDyadAppPath } from "@/paths/paths";
 
 export type NeonBranchType = "production" | "development";
@@ -355,6 +356,41 @@ export async function getProductionBranchId(
  * Null (e.g. the user never opened the section, or before first deploy) is
  * treated as production.
  */
+/**
+ * Registers a deployed origin as a Neon Auth trusted domain.
+ *
+ * Neon Auth refuses sign-in requests from origins it does not know, which the
+ * app surfaces as an "Invalid origin" error. Vercel deployments get this from
+ * the Vercel sync; every other host needs the same registration or auth is
+ * broken even with the right environment variables in place.
+ *
+ * Returns the origin it added, or null when Neon already knew about it.
+ */
+export async function ensureNeonAuthTrustedDomain({
+  projectId,
+  branchId,
+  origin,
+}: {
+  projectId: string;
+  branchId: string;
+  origin: string;
+}): Promise<string | null> {
+  const neonClient = await getNeonClient();
+  const existing = await neonClient.listBranchNeonAuthTrustedDomains(
+    projectId,
+    branchId,
+  );
+  const existingDomains = (existing.data?.domains ?? []).map((d) => d.domain);
+  // Shared with the Vercel sync so both hosts normalise an origin the same way.
+  const [toAdd] = reconcileTrustedDomains(existingDomains, [origin]);
+  if (!toAdd) return null;
+  await neonClient.addBranchNeonAuthTrustedDomain(projectId, branchId, {
+    domain: toAdd,
+    auth_provider: NeonAuthSupportedAuthProvider.BetterAuth,
+  });
+  return toAdd;
+}
+
 export function getSelectedDeployBranchType(appData: AppRow): NeonBranchType {
   return appData.selectedDatabaseBranchType === "development"
     ? "development"

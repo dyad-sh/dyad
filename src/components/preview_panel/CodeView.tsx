@@ -91,6 +91,12 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
   // async, so the user can switch apps mid-flight; the continuation compares
   // against this to avoid applying the edit to whatever app took its place.
   const displayedAppIdRef = useRef(app?.id ?? null);
+  // Whether the app owned a historical checkout as of the last settled render,
+  // so the effect below can tell "the checkout was released" apart from "the
+  // flag was just raised against a checkout React has not rendered yet".
+  const ownedHistoricalCheckoutRef = useRef(
+    ownsHistoricalCheckout(previewState),
+  );
   // Leaving Code mode tears the panel down without running the app-id effect,
   // so displayedAppIdRef would keep answering for an app that is no longer
   // displayed. The file selection it writes is global, so an unmounted panel
@@ -114,6 +120,23 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
     setEditLeftAppDetached(false);
     setIsLeavingHistoricalCheckout(false);
   }, [app?.id]);
+
+  // The flag describes one specific detached checkout - the one the edit
+  // attempt could not get the app off. Once that checkout is released (the
+  // other window closed its preview, or a recovery retry succeeded) the
+  // statement is no longer true, and a later preview of the same app would
+  // otherwise inherit it and claim another window is holding a checkout this
+  // window owns. Clear on the falling edge of ownership rather than on every
+  // unowned render: the second guard in the edit continuation raises the flag
+  // against a checkout another window has just started, which React may not
+  // have rendered yet, and that flag must survive.
+  useEffect(() => {
+    const ownsCheckout = ownsHistoricalCheckout(previewState);
+    if (ownedHistoricalCheckoutRef.current && !ownsCheckout) {
+      setEditLeftAppDetached(false);
+    }
+    ownedHistoricalCheckoutRef.current = ownsCheckout;
+  }, [previewState]);
 
   useEffect(() => {
     if (!isFullscreen) return;

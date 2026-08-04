@@ -33,7 +33,10 @@ vi.mock("react-i18next", () => ({
 
 vi.mock("@/hooks/useVersionPreview", () => ({
   useVersionPreview: () => ({
-    state: mocks.previewState,
+    // The real hook recombines the machine state with the presentation store on
+    // every render, so callers see a fresh object each time. Mirror that: a
+    // stable reference here would silently skip effects keyed on the state.
+    state: { ...mocks.previewState },
     send: mocks.sendPreviewEvent,
     sendAndWaitForMutation: mocks.sendPreviewEventAndWait,
     getState: () => mocks.stateAfterClose,
@@ -67,7 +70,9 @@ vi.mock("./StagedDiffView", () => ({
   StagedDiffView: () => <div data-testid="staged-diff-view" />,
 }));
 
-vi.mock("./FileTree", () => ({ FileTree: () => <div /> }));
+vi.mock("./FileTree", () => ({
+  FileTree: () => <div data-testid="file-tree" />,
+}));
 vi.mock("./FileEditor", () => ({
   FileEditor: ({ filePath }: { filePath: string }) => (
     <div data-testid="file-editor">{filePath}</div>
@@ -540,6 +545,83 @@ describe("CodeView diff editing", () => {
       screen.getByTestId("historical-checkout-not-released").textContent,
     ).toBe("preview.historicalCheckoutHeldElsewhere");
     expect(screen.queryByTestId("file-editor")).toBeNull();
+  });
+
+  it("stops blaming another window once the checkout is released", async () => {
+    const store = createStore();
+    mocks.previewState = previewingState("src/selected.ts");
+    mocks.versionChanges = [{ path: "src/selected.ts" }];
+    mocks.stateAfterClose = previewingState("src/selected.ts");
+    const { rerenderCodeView } = renderCodeView(store, ["src/selected.ts"]);
+
+    fireEvent.click(editButton());
+
+    await waitFor(() => {
+      expect(mocks.showWarning).toHaveBeenCalled();
+    });
+    mocks.previewState = previewingWithHiddenDiffState();
+    rerenderCodeView();
+    expect(
+      screen.getByTestId("historical-checkout-not-released"),
+    ).not.toBeNull();
+
+    // The other window closes its preview, so the app is back on its branch
+    // and nothing is holding it on the previewed commit any more.
+    mocks.previewState = { type: "closed" };
+    rerenderCodeView();
+    expect(screen.queryByTestId("historical-checkout-not-released")).toBeNull();
+
+    // This window now previews a version itself and hides the diff. It owns
+    // that checkout, so saying another window is holding one would be a false
+    // statement - and it would hide the file tree behind it.
+    mocks.previewState = previewingWithHiddenDiffState();
+    rerenderCodeView();
+
+    expect(screen.queryByTestId("historical-checkout-not-released")).toBeNull();
+    expect(screen.getByTestId("file-tree")).not.toBeNull();
+  });
+
+  it("keeps the file tree closed when a checkout starts during the re-list", async () => {
+    const store = createStore();
+    mocks.previewState = previewingState("src/selected.ts");
+    mocks.versionChanges = [{ path: "src/selected.ts" }];
+    let finishRefresh: () => void = () => undefined;
+    mocks.refreshApp.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          // Another window starts previewing while the re-list is in flight.
+          mocks.stateAfterClose = previewingState("src/selected.ts");
+          finishRefresh = () =>
+            resolve({
+              isError: false,
+              data: { id: 1, files: ["src/selected.ts"] },
+            });
+        }),
+    );
+    const { rerenderCodeView } = renderCodeView(store, ["src/selected.ts"]);
+
+    fireEvent.click(editButton());
+
+    await waitFor(() => {
+      expect(mocks.refreshApp).toHaveBeenCalled();
+    });
+    // The return did release the checkout, so this window renders the released
+    // state before the new one reaches it.
+    mocks.previewState = { type: "closed" };
+    rerenderCodeView();
+
+    finishRefresh();
+    await flushPendingEdit();
+
+    // The edit gave up against a checkout React had not rendered yet, so the
+    // file tree must stay closed once that checkout does show up.
+    mocks.previewState = previewingWithHiddenDiffState();
+    rerenderCodeView();
+
+    expect(
+      screen.getByTestId("historical-checkout-not-released").textContent,
+    ).toBe("preview.historicalCheckoutHeldElsewhere");
+    expect(screen.queryByTestId("file-tree")).toBeNull();
   });
 
   it("keeps the file tree closed after an interrupted restore", () => {

@@ -1,0 +1,1 @@
+ALTER TABLE `chats` ADD `referenced_app_ids` text;

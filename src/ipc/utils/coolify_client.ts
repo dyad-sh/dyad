@@ -68,6 +68,12 @@ export interface CoolifyBuildConfig {
   /** Rewrites unknown paths to index.html so client-side routes resolve. */
   isSpa: boolean;
   publishDirectory?: string;
+  /**
+   * How to run the built app, for frameworks whose build output is not
+   * runnable through a package.json script. Omitted for static sites, which
+   * nginx serves with no process at all.
+   */
+  startCommand?: string;
 }
 
 export class CoolifyClient {
@@ -290,6 +296,7 @@ export class CoolifyClient {
       is_static: params.build.isStatic,
       is_spa: params.build.isSpa,
       publish_directory: params.build.publishDirectory,
+      start_command: params.build.startCommand,
       domains: params.domains ?? undefined,
       // Without a domain Coolify generates an sslip.io address from the
       // server's IP, which needs no DNS setup but is HTTP only.
@@ -321,6 +328,9 @@ export class CoolifyClient {
       body.is_static = patch.build.isStatic;
       body.is_spa = patch.build.isSpa;
       body.publish_directory = patch.build.publishDirectory;
+      // Sent even when undefined, so switching a framework back to a static
+      // build clears a start command left over from the previous shape.
+      body.start_command = patch.build.startCommand ?? "";
     }
     await this.request("PATCH", `/applications/${uuid}`, body);
   }

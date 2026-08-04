@@ -405,7 +405,13 @@ export async function runDeployPipeline({
   // recreate would report on an application that no longer exists.
   let deploymentUuid = (recreated ? null : resumeDeploymentUuid) ?? undefined;
   if (deploymentUuid) {
-    const prior = await client.getDeployment(deploymentUuid).catch(() => null);
+    // Only a 404 means the deployment is genuinely gone. Reading any other
+    // failure as "not running" would start a second build alongside the one
+    // this retry exists to adopt, on a server already busy with it.
+    const prior = await client.getDeployment(deploymentUuid).catch((error) => {
+      if (isCoolifyStatus(error, 404)) return null;
+      throw error;
+    });
     if (prior && !TERMINAL_STATUSES.includes(prior.status ?? "")) {
       report.log("A previous deployment is still running; following it.\n");
     } else {
@@ -414,9 +420,22 @@ export async function runDeployPipeline({
   }
   if (!deploymentUuid) {
     const deployment = await client.startApplication(applicationUuid);
-    deploymentUuid = deployment.deployment_uuid;
+    deploymentUuid = deployment?.deployment_uuid;
+    if (!deploymentUuid) {
+      // Coolify answers 2xx with only a message when it declines to queue the
+      // build, typically because one is already running for this application.
+      // There is nothing to poll, and falling through would report "last
+      // status: unknown" — a status never actually asked for — for a build
+      // that is in fact running.
+      throw new DyadError(
+        "Coolify accepted the deploy but returned no deployment to follow, " +
+          "which usually means one is already running for this application. " +
+          "Wait for it to finish, then deploy again.",
+        DyadErrorKind.External,
+      );
+    }
   }
-  if (deploymentUuid) report.deploymentStarted(deploymentUuid);
+  report.deploymentStarted(deploymentUuid);
 
   let status = "unknown";
   const pollStart = clock.now();
@@ -424,7 +443,7 @@ export async function runDeployPipeline({
   // unreachable should say so rather than look like a build that never ends.
   let consecutiveFailures = 0;
   let lastPollError: unknown = null;
-  while (deploymentUuid && clock.now() - pollStart < POLL_TIMEOUT_MS) {
+  while (clock.now() - pollStart < POLL_TIMEOUT_MS) {
     await sleep(clock, POLL_INTERVAL_MS);
     throwIfAborted(signal);
     const entry = await client.getDeployment(deploymentUuid).catch((error) => {
@@ -452,7 +471,7 @@ export async function runDeployPipeline({
 
   if (status !== "finished") {
     let detail = "";
-    if (deploymentUuid) {
+    {
       const entry = await client
         .getDeployment(deploymentUuid)
         .catch(() => null);

@@ -941,3 +941,95 @@ describe("Neon Auth trusted domains", () => {
     expect(result.url).toBe("https://demo.sslip.io");
   });
 });
+
+describe("starting the build", () => {
+  it("fails clearly when Coolify returns no deployment to follow", async () => {
+    // A 2xx with only a message means Coolify declined to queue the build.
+    // Falling through the poll loop would report a status never asked for.
+    const app = await seedApp({ coolifyApplicationUuid: APP_UUID });
+    happyPathRoutes();
+    route(`POST /applications/${APP_UUID}/start`, {
+      message: "already queued",
+    });
+    const clock = createFakeClock();
+
+    await expect(
+      drive(
+        clock,
+        runDeployPipeline({
+          appId: app.id,
+          signal: new AbortController().signal,
+          report: recorder(),
+          clock,
+        }),
+      ),
+    ).rejects.toThrow(/returned no deployment to follow/);
+  });
+
+  it("does not claim a status it never asked for", async () => {
+    const app = await seedApp({ coolifyApplicationUuid: APP_UUID });
+    happyPathRoutes();
+    route(`POST /applications/${APP_UUID}/start`, {});
+    const clock = createFakeClock();
+
+    await expect(
+      drive(
+        clock,
+        runDeployPipeline({
+          appId: app.id,
+          signal: new AbortController().signal,
+          report: recorder(),
+          clock,
+        }),
+      ),
+    ).rejects.not.toThrow(/last status: unknown/);
+  });
+});
+
+describe("adopting a previous deployment", () => {
+  it("does not start a second build when the status lookup fails", async () => {
+    // The retry exists because the earlier build may still be running; reading
+    // a transient failure as "not running" queues a second one beside it.
+    const app = await seedApp({ coolifyApplicationUuid: APP_UUID });
+    happyPathRoutes();
+    route("GET /deployments/dep-earlier", { message: "gateway" }, 502);
+    const clock = createFakeClock();
+
+    await expect(
+      drive(
+        clock,
+        runDeployPipeline({
+          appId: app.id,
+          signal: new AbortController().signal,
+          report: recorder(),
+          resumeDeploymentUuid: "dep-earlier",
+          clock,
+        }),
+      ),
+    ).rejects.toThrow();
+
+    expect(coolifyCalls()).not.toContain(
+      `POST /applications/${APP_UUID}/start`,
+    );
+  });
+
+  it("starts fresh when the deployment is genuinely gone", async () => {
+    const app = await seedApp({ coolifyApplicationUuid: APP_UUID });
+    happyPathRoutes();
+    route("GET /deployments/dep-earlier", { message: "not found" }, 404);
+    const clock = createFakeClock();
+
+    await drive(
+      clock,
+      runDeployPipeline({
+        appId: app.id,
+        signal: new AbortController().signal,
+        report: recorder(),
+        resumeDeploymentUuid: "dep-earlier",
+        clock,
+      }),
+    );
+
+    expect(coolifyCalls()).toContain(`POST /applications/${APP_UUID}/start`);
+  });
+});

@@ -570,6 +570,7 @@
       "updateApiKey": "Update app's API key",
       "updateApiKeyDescription": "Rewrite this app's Supabase client to use the project's current publishable key.",
       "legacyApiKeyWarning": "This app uses Supabase's legacy API key, which Supabase is retiring. Sign-in and data requests will fail once it's disabled.",
+      "legacyApiKeyBanner": "This app still uses Supabase's legacy API key. Sign-in and data requests will fail once Supabase disables it.",
       "apiKeyUpdated": "Updated the app's Supabase key. Restart the app to pick it up.",
       "apiKeyAlreadyCurrent": "The app's Supabase key is already up to date.",
       "failedUpdateApiKey": "Failed to update the app's Supabase key: {{error}}",

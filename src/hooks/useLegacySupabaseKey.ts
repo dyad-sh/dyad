@@ -50,6 +50,16 @@ export function useSwitchToPublishableKey() {
       void queryClient.invalidateQueries({
         queryKey: queryKeys.supabase.legacyAppKeyForApp({ appId }),
       });
+      // The main process commits the rewritten client itself, so the file is
+      // already out of the uncommitted set and there's a new version to show.
+      // Both are refetched on their own eventually; invalidating just avoids a
+      // window where the UI reports a change the user can no longer act on.
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.uncommittedFiles.byApp({ appId }),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.versions.list({ appId }),
+      });
     },
   });
 }

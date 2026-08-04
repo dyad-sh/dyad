@@ -542,6 +542,7 @@
       "updateApiKey": "更新应用的 API 密钥",
       "updateApiKeyDescription": "重写此应用的 Supabase 客户端，改用项目当前的可发布密钥。",
       "legacyApiKeyWarning": "此应用使用 Supabase 的旧版 API 密钥，该密钥即将停用。一旦停用，登录和数据请求都会失败。",
+      "legacyApiKeyBanner": "此应用仍在使用 Supabase 的旧版 API 密钥。一旦 Supabase 停用该密钥，登录和数据请求都会失败。",
       "apiKeyUpdated": "已更新应用的 Supabase 密钥。请重启应用以生效。",
       "apiKeyAlreadyCurrent": "应用的 Supabase 密钥已是最新。",
       "failedUpdateApiKey": "更新应用的 Supabase 密钥失败：{{error}}",

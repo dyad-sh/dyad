@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getProjectApiKeys } from "./supabase_management_client";
+import { gitAdd, gitCommit } from "@/ipc/utils/git_utils";
 import {
   detectLegacyAppKey,
   switchAppToPublishableKey,
@@ -12,11 +13,17 @@ import {
 vi.mock("./supabase_management_client", () => ({
   getProjectApiKeys: vi.fn(),
 }));
+vi.mock("@/ipc/utils/git_utils", () => ({
+  gitAdd: vi.fn(),
+  gitCommit: vi.fn(),
+}));
 vi.mock("electron-log", () => ({
   default: { scope: () => ({ warn: vi.fn(), info: vi.fn(), error: vi.fn() }) },
 }));
 
 const getProjectApiKeysMock = vi.mocked(getProjectApiKeys);
+const gitAddMock = vi.mocked(gitAdd);
+const gitCommitMock = vi.mocked(gitCommit);
 
 const LEGACY_ANON = "eyJhbGciOiJIUzI1NiJ9.legacy-anon";
 const PUBLISHABLE = "sb_publishable_abc123";
@@ -66,6 +73,8 @@ const args = (appPath: string) => ({
 beforeEach(() => {
   vi.clearAllMocks();
   getProjectApiKeysMock.mockResolvedValue(PROJECT_API_KEYS);
+  gitAddMock.mockResolvedValue(undefined);
+  gitCommitMock.mockResolvedValue("commit-hash");
 });
 
 afterEach(() => {
@@ -207,6 +216,50 @@ describe("switchAppToPublishableKey", () => {
     const after = fs.readFileSync(clientPath, "utf8");
     expect(after).toContain("persistSession: false");
     expect(after).toContain(`"${PUBLISHABLE}"`);
+  });
+
+  // Dyad's own one-line edit shouldn't land the user in the "uncommitted
+  // changes" banner over a change they didn't make.
+  it("commits the rewritten client, scoped to that file alone", async () => {
+    const appPath = makeApp(LEGACY_ANON);
+    const relativePath = path.join(
+      "src",
+      "integrations",
+      "supabase",
+      "client.ts",
+    );
+
+    await expect(switchAppToPublishableKey(args(appPath))).resolves.toBe(true);
+
+    expect(gitAddMock).toHaveBeenCalledWith({
+      path: appPath,
+      filepath: relativePath,
+    });
+    // A pathspec, so a user editing elsewhere in the app keeps their other
+    // changes (and their staged index) out of this commit.
+    expect(gitCommitMock).toHaveBeenCalledWith({
+      path: appPath,
+      message: expect.stringContaining("[dyad]"),
+      paths: [relativePath],
+    });
+  });
+
+  // The key is already switched by the time the commit runs, so a repo-less app
+  // must still be reported as migrated.
+  it("still reports success when the app has no git repo to commit to", async () => {
+    const appPath = makeApp(LEGACY_ANON);
+    gitCommitMock.mockRejectedValue(new Error("not a git repository"));
+
+    await expect(switchAppToPublishableKey(args(appPath))).resolves.toBe(true);
+    expect(readClient(appPath)).toContain(`"${PUBLISHABLE}"`);
+  });
+
+  it("does not commit when there was nothing to switch", async () => {
+    await expect(
+      switchAppToPublishableKey(args(makeApp(PUBLISHABLE))),
+    ).resolves.toBe(false);
+
+    expect(gitCommitMock).not.toHaveBeenCalled();
   });
 
   it("is a no-op for an app already on a publishable key", async () => {

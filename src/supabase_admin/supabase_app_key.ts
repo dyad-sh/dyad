@@ -5,6 +5,7 @@ import log from "electron-log";
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
 import { getFileWriteKey, withLock } from "@/ipc/utils/lock_utils";
 import { assertMutationPathAllowed, safeJoin } from "@/ipc/utils/path_utils";
+import { gitAdd, gitCommit } from "@/ipc/utils/git_utils";
 import { getProjectApiKeys } from "./supabase_management_client";
 
 const logger = log.scope("supabase_app_key");
@@ -245,6 +246,43 @@ export async function detectLegacyAppKey(params: {
 }
 
 /**
+ * Commit the rewritten client on the app's behalf.
+ *
+ * Dyad's own edit is not something the user needs to review: leaving it in the
+ * working tree only greets them with the "uncommitted changes" banner over a
+ * one-line key swap they didn't type and can't meaningfully judge. Committing
+ * it also gives the change a version to revert to, which an unstaged edit has.
+ *
+ * Scoped to the client file by pathspec, so a user mid-edit elsewhere in the
+ * app keeps their other changes uncommitted and their staged index intact.
+ *
+ * Never throws: the key is already switched by the time this runs, and an app
+ * that isn't a git repo (or a client file that's gitignored) is not a reason to
+ * report the switch as failed.
+ */
+async function commitKeySwitch({
+  appPath,
+  clientFilePath,
+}: {
+  appPath: string;
+  clientFilePath: string;
+}): Promise<void> {
+  const relativePath = path.relative(appPath, clientFilePath);
+  try {
+    await gitAdd({ path: appPath, filepath: relativePath });
+    await gitCommit({
+      path: appPath,
+      message: "[dyad] switch Supabase client to publishable API key",
+      paths: [relativePath],
+    });
+  } catch (error) {
+    logger.warn(
+      `Switched the Supabase key for ${appPath} but could not commit ${relativePath}: ${error}`,
+    );
+  }
+}
+
+/**
  * Swap an app's generated client from its legacy key to the project's
  * publishable key.
  *
@@ -305,6 +343,9 @@ export async function switchAppToPublishableKey({
     logger.info(
       `Switched app at ${appPath} to the publishable key for project ${projectId}`,
     );
+    // Inside the file lock: the commit has to capture the key we just wrote,
+    // not whatever a concurrent writer might put there next.
+    await commitKeySwitch({ appPath, clientFilePath });
     return true;
   });
 }

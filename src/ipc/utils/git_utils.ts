@@ -499,7 +499,7 @@ export async function gitCommit({
   if (paths?.length) {
     // `--` scopes the commit to these paths, so unrelated staged changes stay
     // in the index instead of being swept into this commit.
-    commitArgs.push("--", ...paths);
+    commitArgs.push("--", ...paths.map(normalizePath));
   }
   const args = await withGitAuthor(commitArgs);
   await execOrThrow(args, path, "Failed to create commit");

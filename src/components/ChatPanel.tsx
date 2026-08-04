@@ -23,6 +23,7 @@ import { ChatInput } from "./chat/ChatInput";
 import { VersionPane } from "./chat/VersionPane";
 import { FreeAgentQuotaBanner } from "./chat/FreeAgentQuotaBanner";
 import { NotificationBanner } from "./chat/NotificationBanner";
+import { SupabaseLegacyKeyBanner } from "./chat/SupabaseLegacyKeyBanner";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -464,6 +465,7 @@ export function ChatPanel({
                       }
                     />
                   )}
+                  <SupabaseLegacyKeyBanner appId={selectedAppId} />
                   <NotificationBanner />
                   <ChatInput chatId={chatId} />
                 </motion.div>

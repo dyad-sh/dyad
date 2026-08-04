@@ -134,6 +134,27 @@ describe("useSwitchToPublishableKey", () => {
     );
   });
 
+  // The main process commits the rewritten client itself, so the "uncommitted
+  // changes" banner and the version list are both stale the moment it returns.
+  it("refreshes the app's git views after the switch is committed", async () => {
+    const { queryClient, wrapper } = makeWrapper();
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+
+    const { result } = renderHook(() => useSwitchToPublishableKey(), {
+      wrapper,
+    });
+    await result.current.mutateAsync({ appId: 7 });
+
+    await waitFor(() => {
+      expect(invalidate).toHaveBeenCalledWith({
+        queryKey: queryKeys.uncommittedFiles.byApp({ appId: 7 }),
+      });
+      expect(invalidate).toHaveBeenCalledWith({
+        queryKey: queryKeys.versions.list({ appId: 7 }),
+      });
+    });
+  });
+
   it("surfaces a failed switch to the caller", async () => {
     const { wrapper } = makeWrapper();
     switchAppToPublishableKeyMock.mockRejectedValue(new Error("boom"));

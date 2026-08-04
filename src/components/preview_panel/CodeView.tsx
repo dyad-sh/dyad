@@ -1,6 +1,6 @@
 import { FileEditor } from "./FileEditor";
 import { FileTree } from "./FileTree";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import {
   RefreshCw,
@@ -104,14 +104,22 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
   // path and overwrite the wrong file on save.
   const isMountedRef = useRef(true);
 
-  useEffect(() => {
+  // Layout, not passive: both bookkeeping effects answer for "what is displayed
+  // right now" on behalf of an in-flight edit, and a passive effect is flushed
+  // in a separate task after the commit. An awaited step of the edit can settle
+  // inside that window - the new app (or nothing) is already on screen, yet the
+  // refs still describe the old one, so isEditStillDisplayed says yes and the
+  // continuation writes the previous app's path into the global selection.
+  // Layout effects run synchronously inside the commit, which no promise
+  // continuation can interleave with, so the window does not exist.
+  useLayoutEffect(() => {
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
     };
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     displayedAppIdRef.current = app?.id ?? null;
     // Both flags describe the app that was displayed when the edit was
     // attempted, so they say nothing about the one that replaced it. Without

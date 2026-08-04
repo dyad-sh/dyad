@@ -18,6 +18,7 @@ import { useCoolifyDeploy } from "@/hooks/useCoolifyDeploy";
 import { selectCoolifyDeployCapabilities } from "@/coolify_deploy/capabilities";
 import { getErrorMessage } from "@/lib/errors";
 import { COOLIFY_REQUIRED_SCOPES } from "@/shared/coolify_scopes";
+import { coolifyInsecureWarning } from "@/shared/coolify_insecure_warning";
 import {
   isSecureInstanceUrl,
   type CoolifyDeployStage,
@@ -103,6 +104,11 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
 
   const can = selectCoolifyDeployCapabilities(snapshot);
   const hasGithubRepo = Boolean(app?.githubOrg && app?.githubRepo);
+  const insecureWarning = coolifyInsecureWarning({
+    hasDomain: Boolean(domain.trim()),
+    hasNeon: Boolean(app?.neonProjectId),
+    hasSupabase: Boolean(app?.supabaseProjectId),
+  });
 
   // --- Step 1: instance URL + API token ---
   if (!status.hasToken) {
@@ -352,6 +358,33 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
             Point an A record at your server first. Left empty, Coolify
             generates an address for you over plain HTTP.
           </p>
+          {insecureWarning !== "none" && (
+            <div
+              className={
+                insecureWarning === "breaks"
+                  ? "mt-2 rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200"
+                  : "mt-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+              }
+              data-testid="coolify-insecure-auth-warning"
+            >
+              {insecureWarning === "breaks" ? (
+                <p>
+                  <strong>
+                    Without a domain, this app will not work once deployed.
+                  </strong>{" "}
+                  Neon Auth needs an encrypted connection, and the generated
+                  address is plain HTTP — the page will fail to load rather than
+                  degrade. Add a domain with HTTPS.
+                </p>
+              ) : (
+                <p>
+                  Without a domain the app is served over plain HTTP, so
+                  anything your users type — including passwords — can be read
+                  by anything on the network between them and the server.
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         <Button

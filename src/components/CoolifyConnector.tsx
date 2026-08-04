@@ -18,7 +18,7 @@ import { useCoolifyDeploy } from "@/hooks/useCoolifyDeploy";
 import { selectCoolifyDeployCapabilities } from "@/coolify_deploy/capabilities";
 import { getErrorMessage } from "@/lib/errors";
 import { COOLIFY_REQUIRED_SCOPES } from "@/shared/coolify_scopes";
-import { coolifyInsecureWarning } from "@/shared/coolify_insecure_warning";
+import { coolifyInsecureWarning } from "@/components/coolify_insecure_warning";
 import {
   isSecureInstanceUrl,
   type CoolifyDeployStage,

@@ -45,6 +45,16 @@ See `src/atoms/githubSyncAtoms.test.tsx` for a complete example covering unmount
 
 The vitest setup does not register `@testing-library/jest-dom`, so matchers like `toBeInTheDocument()` or `toBeDisabled()` fail with `Invalid Chai property: toBeInTheDocument`. Use plain assertions instead: `expect(screen.queryByTestId(...)).toBeNull()` / `.not.toBeNull()` for presence, and `expect((button as HTMLButtonElement).disabled).toBe(false)` for disabled state.
 
+## `act()` hides passive-effect timing windows
+
+React Testing Library wraps `render`/`rerender`/`fireEvent` in `act()`, which
+flushes passive effects synchronously before yielding to the microtask queue. A
+promise continuation therefore always runs _after_ effects in tests, so bugs that
+live in the window between commit and passive-effect flush cannot be reproduced
+with RTL. Don't burn time writing a failing test for one — fix it (usually by
+moving the bookkeeping to `useLayoutEffect`) and say in the PR why coverage stops
+at the app-switch behavior.
+
 ## Hooks That Indirectly Use React Query
 
 If a `renderHook` test starts failing with `No QueryClient set, use QueryClientProvider to set one`, check whether the hook now calls another hook such as `useSettings()` or `useAppVersion()` that uses TanStack Query internally. Either wrap the test in a `QueryClientProvider` or mock the indirect hook when the test is only exercising Jotai/event behavior.

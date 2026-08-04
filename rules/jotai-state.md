@@ -111,6 +111,16 @@ start external subscriptions only after the provider commits. React StrictMode
 replays effect setup/cleanup while retaining hook state, so cleanup must not
 permanently dispose an instance that the replayed setup will reuse.
 
+## Guarding async writes to global atoms
+
+When an async continuation decides whether to write a global atom by comparing
+against a ref holding "what is displayed now" (current app/entity id, mounted
+flag), update that ref in `useLayoutEffect`, not `useEffect`. Passive effects are
+flushed in a separate task after the commit, so a promise settling in that window
+still sees the replaced entity as current and writes its value into shared state
+(e.g. `selectedFileAtom` reopening the previous app's file). Layout effects run
+synchronously inside the commit, which no microtask can interleave with.
+
 ## App run-state event identity
 
 Proxy-ready output does not carry an operation generation. Stamping it with the

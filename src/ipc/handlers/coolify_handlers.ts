@@ -13,7 +13,7 @@ import { isSecureInstanceUrl } from "../types/coolify";
 import {
   coolifyDomainHostname,
   normalizeCoolifyDomain,
-} from "@/shared/coolify_domain";
+} from "@/coolify_deploy/domain";
 import { CoolifyClient } from "../utils/coolify_client";
 import { safeSend } from "../utils/safe_sender";
 import { coolifyDeployRegistry } from "@/coolify_deploy/controller";

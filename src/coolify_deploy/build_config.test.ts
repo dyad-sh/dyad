@@ -3,7 +3,7 @@ import {
   APP_FRAMEWORK_TYPES,
   type AppFrameworkType,
 } from "@/lib/framework_constants";
-import { buildConfigForFramework } from "./coolify_build_config";
+import { buildConfigForFramework } from "./build_config";
 
 describe("buildConfigForFramework", () => {
   it("builds a plain Vite app with railpack, then serves the output", () => {

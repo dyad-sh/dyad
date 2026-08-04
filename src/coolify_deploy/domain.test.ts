@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  coolifyDomainHostname,
-  normalizeCoolifyDomain,
-} from "./coolify_domain";
+import { coolifyDomainHostname, normalizeCoolifyDomain } from "./domain";
 
 describe("normalizeCoolifyDomain", () => {
   it("adds https to a bare hostname, which is what people type", () => {

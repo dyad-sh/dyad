@@ -6,7 +6,7 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { readSettings } from "@/main/settings";
 import { getDyadAppPath } from "@/paths/paths";
 import { detectFrameworkType } from "@/ipc/utils/framework_utils";
-import { buildConfigForFramework } from "@/shared/coolify_build_config";
+import { buildConfigForFramework } from "@/coolify_deploy/build_config";
 import {
   CoolifyClient,
   isCoolifyStatus,

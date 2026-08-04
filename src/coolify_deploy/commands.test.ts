@@ -18,6 +18,15 @@ vi.mock("@/ipc/handlers/github_handlers", () => ({
   getGitHubApiBase: () => "https://github.test/api",
 }));
 
+// Real git would shell out to dugite against a directory that does not exist.
+const git = vi.hoisted(() => ({
+  hashes: { HEAD: "abc", remote: "abc" } as Record<string, string>,
+}));
+vi.mock("@/ipc/utils/git_utils", () => ({
+  getCurrentCommitHash: async ({ ref }: { ref: string }) =>
+    ref === "HEAD" ? git.hashes.HEAD : git.hashes.remote,
+}));
+
 // Real key handling spawns ssh-keygen and writes to ~/.ssh.
 vi.mock("@/ipc/utils/coolify_deploy_key", () => ({
   repoKeyName: (owner: string, repo: string) => `dyad_${owner}_${repo}`,
@@ -236,6 +245,7 @@ beforeEach(() => {
   routes = new Map();
   sideEffects = new Map();
   framework.type = "vite";
+  git.hashes = { HEAD: "abc", remote: "abc" };
   neon.branchTypes = [];
   neon.trustedDomains = [];
   neon.trustedDomainError = null;
@@ -1031,5 +1041,105 @@ describe("adopting a previous deployment", () => {
     );
 
     expect(coolifyCalls()).toContain(`POST /applications/${APP_UUID}/start`);
+  });
+});
+
+describe("pre-deploy warnings", () => {
+  function loggingRecorder() {
+    let text = "";
+    return {
+      stage: () => {},
+      log: (chunk: string) => {
+        text += chunk;
+      },
+      deploymentStarted: () => {},
+      text: () => text,
+    };
+  }
+
+  it("warns when the branch has commits that are not on GitHub", async () => {
+    // Coolify clones from GitHub, so unpushed work is silently not deployed.
+    git.hashes = { HEAD: "local-newer", remote: "older" };
+    const app = await seedApp();
+    happyPathRoutes();
+    const report = loggingRecorder();
+    const clock = createFakeClock();
+
+    await drive(
+      clock,
+      runDeployPipeline({
+        appId: app.id,
+        signal: new AbortController().signal,
+        report,
+        clock,
+      }),
+    );
+
+    expect(report.text()).toMatch(/not on origin\/main/);
+  });
+
+  it("says nothing when the branch is pushed", async () => {
+    const app = await seedApp();
+    happyPathRoutes();
+    const report = loggingRecorder();
+    const clock = createFakeClock();
+
+    await drive(
+      clock,
+      runDeployPipeline({
+        appId: app.id,
+        signal: new AbortController().signal,
+        report,
+        clock,
+      }),
+    );
+
+    expect(report.text()).not.toMatch(/not on origin/);
+  });
+
+  it("warns when deploying a Neon branch the app was not built against", async () => {
+    // The publish-panel default is production; the agent builds tables on
+    // whichever branch is active locally, usually development.
+    const app = await seedApp({
+      neonProjectId: "proj-1",
+      neonActiveBranchId: "br-dev",
+    });
+    happyPathRoutes();
+    const report = loggingRecorder();
+    const clock = createFakeClock();
+
+    await drive(
+      clock,
+      runDeployPipeline({
+        appId: app.id,
+        signal: new AbortController().signal,
+        report,
+        clock,
+      }),
+    );
+
+    expect(report.text()).toMatch(/different Neon branch/);
+  });
+
+  it("says nothing when deploying the branch the app develops on", async () => {
+    const app = await seedApp({
+      neonProjectId: "proj-1",
+      neonActiveBranchId: "br-prod",
+    });
+    happyPathRoutes();
+    const report = loggingRecorder();
+    const clock = createFakeClock();
+
+    await drive(
+      clock,
+      runDeployPipeline({
+        appId: app.id,
+        signal: new AbortController().signal,
+        report,
+        clock,
+      }),
+    );
+
+    expect(report.text()).not.toMatch(/different Neon branch/);
   });
 });

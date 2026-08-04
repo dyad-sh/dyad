@@ -20,6 +20,7 @@ import {
   repoKeyName,
 } from "@/ipc/utils/coolify_deploy_key";
 import { getGitHubApiBase } from "@/ipc/handlers/github_handlers";
+import { getCurrentCommitHash } from "@/ipc/utils/git_utils";
 import {
   ensureNeonAuthTrustedDomain,
   getSelectedDeployBranchType,
@@ -236,6 +237,71 @@ async function resolveApplication({
 }
 
 /**
+ * Warns when the deploy would not build the code the user is looking at.
+ *
+ * Coolify clones from GitHub, so anything committed locally but not pushed is
+ * invisible to it — the build succeeds against older code and the failure that
+ * follows looks unrelated to the commits sitting unpushed.
+ */
+async function warnIfBranchNotPushed({
+  appPath,
+  branch,
+  report,
+}: {
+  appPath: string;
+  branch: string;
+  report: DeployReporter;
+}): Promise<void> {
+  try {
+    const [local, remote] = await Promise.all([
+      getCurrentCommitHash({ path: appPath, ref: "HEAD" }),
+      getCurrentCommitHash({
+        path: appPath,
+        ref: `refs/remotes/origin/${branch}`,
+      }),
+    ]);
+    if (local !== remote) {
+      report.log(
+        `Warning: this app has commits that are not on origin/${branch}. ` +
+          `Coolify builds from GitHub, so those changes will not be deployed ` +
+          `until they are pushed.\n`,
+      );
+    }
+  } catch {
+    // No remote ref yet, or git is unhappy — not worth failing a deploy over.
+  }
+}
+
+/**
+ * Warns when the database being deployed is not the one the app was built
+ * against.
+ *
+ * The publish panel's branch choice defaults to production, while an app the
+ * agent built has its tables on whichever branch is active locally — usually
+ * development. Deploying then points the app at a branch that has never seen
+ * its schema, and every query fails with a 500 that looks like a broken
+ * deploy rather than an empty database.
+ */
+function warnIfBranchLacksSchema({
+  app,
+  deployedBranchId,
+  report,
+}: {
+  app: typeof apps.$inferSelect;
+  deployedBranchId: string;
+  report: DeployReporter;
+}): void {
+  const activeBranchId = app.neonActiveBranchId;
+  if (!activeBranchId || activeBranchId === deployedBranchId) return;
+  report.log(
+    `Warning: deploying against a different Neon branch than this app has ` +
+      `been developed on. Tables created while building may not exist there, ` +
+      `and requests that use them will fail. Change the database branch in ` +
+      `the publish panel if that is not what you want.\n`,
+  );
+}
+
+/**
  * The env vars a deployed app needs to reach its existing database.
  *
  * Resolved through the same helpers the Vercel sync uses, so both targets
@@ -245,10 +311,12 @@ async function resolveApplication({
  */
 async function resolveDatabaseEnv(app: typeof apps.$inferSelect): Promise<{
   vars: Array<{ key: string; value: string }>;
+  /** The branch being deployed, whether or not auth is in play. */
+  branchId: string | null;
   /** Set only when Neon Auth is active, which is when trusted domains matter. */
   auth: { projectId: string; branchId: string } | null;
 }> {
-  if (!app.neonProjectId) return { vars: [], auth: null };
+  if (!app.neonProjectId) return { vars: [], branchId: null, auth: null };
   const branchType = getSelectedDeployBranchType(app);
   const resolved = await resolveNeonBranchEnvVars({ appData: app, branchType });
 
@@ -266,6 +334,7 @@ async function resolveDatabaseEnv(app: typeof apps.$inferSelect): Promise<{
   }
   return {
     vars,
+    branchId: resolved.branchId,
     auth: resolved.neonAuthBaseUrl
       ? { projectId: app.neonProjectId, branchId: resolved.branchId }
       : null,
@@ -309,6 +378,12 @@ export async function runDeployPipeline({
       DyadErrorKind.Validation,
     );
   }
+
+  await warnIfBranchNotPushed({
+    appPath: getDyadAppPath(app.path),
+    branch: app.githubBranch ?? "main",
+    report,
+  });
 
   const client = getClient(signal);
   const build: CoolifyBuildConfig = buildConfigForFramework(
@@ -384,6 +459,13 @@ export async function runDeployPipeline({
       DyadErrorKind.External,
     );
   });
+  if (database.branchId) {
+    warnIfBranchLacksSchema({
+      app,
+      deployedBranchId: database.branchId,
+      report,
+    });
+  }
   for (const { key, value } of database.vars) {
     await client.setEnv(applicationUuid, key, value);
   }

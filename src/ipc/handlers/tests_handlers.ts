@@ -612,6 +612,11 @@ export async function runAppTestsWithIsolation({
     emitOutput(event, appId, chunk, phase);
 
   let finalResult: RunAppTestsResult = { appId, results: [] };
+  // Set by isolation teardown below when `.env.local` couldn't be put back. The
+  // run may have produced perfectly good results, but the app is still pointed
+  // at the temporary branch, so the caller has to be told rather than left to
+  // relaunch it against isolated data.
+  let envRestoreFailed = false;
   try {
     // Wait for the prior run's full lifecycle (prepare → run → teardown) to
     // finish before swapping env. Otherwise a Stop-then-Run could race the
@@ -727,7 +732,11 @@ export async function runAppTestsWithIsolation({
           // already restored).
           if (prepared) {
             try {
-              await prepared.teardown();
+              // Fail closed across the await: a teardown that throws has said
+              // nothing about whether the env came back, and "unknown" has to
+              // read the same as "no".
+              envRestoreFailed = true;
+              envRestoreFailed = !(await prepared.teardown()).envRestored;
             } catch (error) {
               logger.error(
                 `Failed to tear down isolated test environment for app ${appId}: ${error}`,
@@ -737,6 +746,20 @@ export async function runAppTestsWithIsolation({
         }
       },
     );
+    if (envRestoreFailed) {
+      const restoreMessage =
+        "Dyad couldn't restore your app's real database settings after the test run. Restore .env.local before running the app again.";
+      finalResult = {
+        ...finalResult,
+        // Appended rather than substituted: an isolation-setup failure explains
+        // why the run produced nothing, and replacing it would hide that.
+        infraError: {
+          message: finalResult.infraError
+            ? `${finalResult.infraError.message}\n\n${restoreMessage}`
+            : restoreMessage,
+        },
+      };
+    }
     return finalResult;
   } catch (error) {
     // Surface an unexpected failure as an infra error on the run-state event so

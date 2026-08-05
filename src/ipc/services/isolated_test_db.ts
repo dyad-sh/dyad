@@ -65,6 +65,18 @@ export interface TeardownOptions {
    * restarted twice, once here and once by them.
    */
   skipRestart?: boolean;
+  /**
+   * The app itself is going away, so delete the temporary Neon branch even if
+   * `.env.local` couldn't be restored.
+   *
+   * Normally a failed restore deliberately KEEPS the branch: the app is still
+   * pointed at it, and deleting it would leave the app aimed at a dead
+   * database, with the row's branch id the only thing reconciliation could use
+   * to retry. Neither applies once the app row is about to be deleted — that
+   * row is where the branch id lives, so leaving the branch behind orphans it
+   * for good.
+   */
+  discardEnvironment?: boolean;
 }
 
 export interface TeardownResult {
@@ -192,7 +204,7 @@ export async function prepareIsolatedTestDatabase({
         }
       }
     }
-    if (branchId && envRestored) {
+    if (branchId && (envRestored || options.discardEnvironment)) {
       // deleteTempTestBranch reads neonTestBranchId off the row; our in-memory
       // `app` is stale, so pass the branch we actually created.
       try {
@@ -290,13 +302,24 @@ export async function prepareIsolatedTestDatabase({
     // Dead-end: restore real data, never run against it. Guard the teardown so a
     // failure here (e.g. restoreEnvFile) can't replace the original error and
     // hide the real failure reason (e.g. "branch creation failed") from callers.
+    //
+    // Whether `.env.local` came back is the one part of this that outlives the
+    // error: setup may already have swapped it. Fail closed on a throw, then
+    // hand the caller a teardown that REPORTS that outcome instead of
+    // `NOOP_TEARDOWN` — a no-op answers "restored" and would let the app be
+    // relaunched against the temporary branch.
+    let envRestored = false;
     try {
-      await teardown();
+      envRestored = (await teardown()).envRestored;
     } catch (teardownError) {
       logger.error(
         `Teardown failed during error recovery for app ${app.id}: ${teardownError}`,
       );
     }
+    // Already torn down; this only carries the verdict to whoever asks later.
+    const settledTeardown = async (): Promise<TeardownResult> => ({
+      envRestored,
+    });
     // A user Stop surfaces here too (waitForServerReady & co. throw on abort).
     // That's a deliberate cancellation, not an infra failure — don't show the
     // misleading "couldn't set up" banner for it.
@@ -304,7 +327,7 @@ export async function prepareIsolatedTestDatabase({
       return {
         isolation: { mode: "none", reason: "Test run stopped." },
         infraError: { message: "Test run stopped." },
-        teardown: NOOP_TEARDOWN,
+        teardown: settledTeardown,
       };
     }
     const message = error instanceof Error ? error.message : String(error);
@@ -319,7 +342,7 @@ export async function prepareIsolatedTestDatabase({
       infraError: {
         message: `Couldn't set up an isolated test database, so the run was stopped. Your real data was not touched. Reason: ${message}`,
       },
-      teardown: NOOP_TEARDOWN,
+      teardown: settledTeardown,
     };
   }
 }

@@ -36,6 +36,15 @@ const ASSERTIONS_REQUEST_RE =
   /^Add assertions to the test I just recorded(: "(.+)")?\s*$/m;
 
 /**
+ * The recording the request is about, as `buildAssertionsPrompt` writes it.
+ *
+ * `generate_test_assertions` requires `recordingId` and matches it against the
+ * parked draft, so a tool call without it never reaches `execute()` at all —
+ * the AI SDK rejects it against the tool's input schema first.
+ */
+const RECORDING_ID_RE = /^Recording id: (\S+)\s*$/m;
+
+/**
  * Matches the run request the assertions card sends after approval, on the
  * fallback path where the agent is no longer parked on the card.
  */
@@ -143,6 +152,13 @@ export function matchAssertionsAgentTurn(
   const statements = parseNumberedStatements(lastUserText);
   if (statements.length === 0) return null;
 
+  // Bail rather than send a call the tool must reject: without this the schema
+  // check fails, `execute()` never runs, no card is emitted, and the E2E waits
+  // out its timeout on a missing `dyad-test-assertions-card` with nothing
+  // pointing at the fixture as the cause.
+  const recordingId = RECORDING_ID_RE.exec(lastUserText)?.[1];
+  if (!recordingId) return null;
+
   const locator = reusableLocator(statements);
   const steps = statements.map((statement, index) => ({
     index,
@@ -151,6 +167,9 @@ export function matchAssertionsAgentTurn(
   return {
     name: "generate_test_assertions",
     args: {
+      // Copied from the request verbatim: the tool compares it against the
+      // parked draft and rejects a plan that describes a different recording.
+      recordingId,
       // The model names the test. Dyad only uses this when the user left the
       // recording unnamed, but the tool always asks for it, so always send one.
       testName: steps.at(-1)?.text ?? "Recorded flow",

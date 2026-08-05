@@ -31,7 +31,6 @@ import {
   MoreVertical,
   Trash2,
   CircleDot,
-  Square,
   Loader2,
 } from "lucide-react";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
@@ -247,6 +246,10 @@ function buildAssertionsPrompt(
     "It isn't a file yet — here are its statements, numbered the way your generate_test_assertions tool counts them:",
     ...steps.map((step, index) => `${index}: ${step}`),
     "",
+    // The recorder bar and the assertion card both number these from 1, so a
+    // user who says "step 3" means the statement listed as 2 here.
+    'Note: I see these numbered from 1, not 0 — if I ask for a check after "step N", that\'s the statement you see as N-1.',
+    "",
     "Call generate_test_assertions with that recording id, a test name, one plain-English step description per statement, plus the assertions you'd propose. There's nothing to read and nothing to run — I'll review the proposal, and Dyad generates the test file when I approve it.",
   ].join("\n");
 }
@@ -334,7 +337,10 @@ export const PreviewIframe = ({
 
   const handleRecordClick = () => {
     if (recorder.phase !== "idle") return;
-    void recorder.startRecording();
+    // The route the preview is on right now. An unauthenticated recording keeps
+    // it across the remount, while every generated spec opens with
+    // `page.goto("/")` — so the recorder needs to know when those differ.
+    void recorder.startRecording(currentAddressPath || undefined);
   };
 
   // Hand the recorded steps to the agent for the test proposal. Its
@@ -1300,7 +1306,9 @@ export const PreviewIframe = ({
                     <button
                       onClick={handleRecordClick}
                       aria-label={
-                        recorder.isRecording ? "Recording test" : "Record test"
+                        recorder.isRecording
+                          ? "Recording — stop it from the recording bar below"
+                          : "Record test"
                       }
                       aria-pressed={recorder.phase !== "idle"}
                       className={cn(
@@ -1322,10 +1330,17 @@ export const PreviewIframe = ({
                     />
                   }
                 >
+                  {/* Never a Stop square: this button is disabled for every
+                      non-idle phase, and a stop glyph is the one affordance
+                      users are certain means "click to stop" — offering it on
+                      an inert control strands them, with only a tooltip a
+                      disabled button may never fire to explain it. A pulsing
+                      record dot says "recording, in progress" without
+                      promising an action that lives in the bar below. */}
                   {recorder.isBusy ? (
                     <Loader2 size={16} className="animate-spin" />
                   ) : recorder.isRecording ? (
-                    <Square size={16} />
+                    <CircleDot size={16} className="animate-pulse" />
                   ) : (
                     <CircleDot size={16} />
                   )}

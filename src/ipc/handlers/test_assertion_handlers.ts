@@ -716,7 +716,11 @@ export function registerTestAssertionHandlers() {
             row,
             proposalId,
             stored,
-            items: stored.items,
+            // Steps only. This card's checks were NOT written — the spec on
+            // disk carries whichever plan got there first — so latching them as
+            // approved would render a card claiming checks, and showing their
+            // code, that the file the button opens does not contain.
+            items: stored.items.filter((item) => item.kind === "step"),
             specPath: alreadyWritten,
           });
           return {
@@ -794,7 +798,9 @@ export function registerTestAssertionHandlers() {
             row,
             proposalId,
             stored,
-            items: stored.items,
+            // Steps only, for the same reason as the branch above: the file was
+            // written from the other card's plan, so these checks are not in it.
+            items: stored.items.filter((item) => item.kind === "step"),
             specPath,
           });
           return {

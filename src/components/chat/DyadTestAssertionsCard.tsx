@@ -405,16 +405,29 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
   };
 
   if (!payload) {
+    // The tag arrives a character at a time, so incomplete JSON is the normal
+    // state for most of a turn — telling the user to start over while the model
+    // is still writing the plan is both wrong and unrecoverable-sounding. The
+    // parser hands us exactly the signal needed to tell the two apart.
+    const isPending = node.properties.state !== "finished";
     return (
       <div
         className="my-1.5 rounded-xl border border-border/60 bg-(--background-lightest) px-3.5 py-3"
         data-testid="dyad-test-assertions-card"
       >
-        <p className="text-sm font-medium text-foreground">Test assertions</p>
+        <p className="text-sm font-medium text-foreground">
+          {isPending ? "Preparing the test proposal…" : "Test assertions"}
+        </p>
         <p className="mt-1 text-xs text-muted-foreground">
-          This proposal couldn&apos;t be read
-          {specPath ? ` for ${specPath}` : ""}. Ask for assertions again to get
-          a fresh one.
+          {isPending ? (
+            "Naming the test, describing your recorded steps and proposing the checks."
+          ) : (
+            <>
+              This proposal couldn&apos;t be read
+              {specPath ? ` for ${specPath}` : ""}. Ask for assertions again to
+              get a fresh one.
+            </>
+          )}
         </p>
       </div>
     );

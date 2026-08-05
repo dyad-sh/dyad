@@ -62,7 +62,11 @@ testSkipIfWindows(
     await expect(
       po.page.getByTestId("preview-recording-generate-assertions-button"),
     ).toHaveText("Generate test proposal");
+    // Two-step: the recording exists nowhere else, so discarding confirms first.
     await po.page.getByTestId("preview-recording-discard-button").click();
+    await po.page
+      .getByTestId("preview-recording-discard-confirm-button")
+      .click();
     await expect(po.page.getByTestId("preview-recording-bar")).toBeHidden({
       timeout: Timeout.LONG,
     });

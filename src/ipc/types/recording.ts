@@ -156,7 +156,30 @@ export type RecordingDraftConsumedPayload = z.infer<
   typeof RecordingDraftConsumedPayloadSchema
 >;
 
+/**
+ * The AI named the recording while proposing a test for it.
+ *
+ * The recorder bar holds its own copy of the draft, minted when the session
+ * stopped — and for the common case (the user didn't name it) that copy has no
+ * name at all. Without this the review sits there labelled "Untitled recording"
+ * while the assertion card right next to it shows the name the test will
+ * actually be written under.
+ */
+export const RecordingDraftNamedPayloadSchema = z.object({
+  appId: z.number(),
+  /** Scoped to one recording: a newer draft must not be renamed by an old card. */
+  draftId: z.string(),
+  testName: z.string(),
+});
+export type RecordingDraftNamedPayload = z.infer<
+  typeof RecordingDraftNamedPayloadSchema
+>;
+
 export const recordingEvents = {
+  draftNamed: defineEvent({
+    channel: "recording:draft-named",
+    payload: RecordingDraftNamedPayloadSchema,
+  }),
   setupProgress: defineEvent({
     channel: "recording:setup-progress",
     payload: RecordingSetupProgressPayloadSchema,

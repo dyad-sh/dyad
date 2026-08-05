@@ -135,7 +135,12 @@ export function registerRecordingHandlers() {
       ) => {
         if (settled) return;
         settled = true;
-        if (options?.skipRestart) teardownOptions = { skipRestart: true };
+        if (options?.skipRestart) {
+          teardownOptions = { ...teardownOptions, skipRestart: true };
+        }
+        if (options?.discardEnvironment) {
+          teardownOptions = { ...teardownOptions, discardEnvironment: true };
+        }
         controller.abort();
         stopped.resolve(reason);
       };
@@ -159,7 +164,9 @@ export function registerRecordingHandlers() {
         try {
           prepared = await prepareIsolatedTestDatabase({
             app,
-            event,
+            // No `event`: the local `emit` already closes over `event.sender`,
+            // and the parameter doesn't exist on this function (the tests
+            // handler calls it the same way).
             emit: (chunk) => emit(chunk),
             runtimeMode,
             signal: controller.signal,
@@ -252,6 +259,12 @@ export function registerRecordingHandlers() {
           );
         } finally {
           if (prepared) {
+            // Fail closed for the duration of the call: a teardown that THROWS
+            // has told us nothing about whether `.env.local` came back, and
+            // "unknown" has to fail the same way "no" does or the gate below is
+            // decorative (see `recording_registry`). Only a teardown that
+            // returns gets to say the environment is restored.
+            summary.envRestored = false;
             try {
               summary.envRestored = (
                 await prepared.teardown(teardownOptions)

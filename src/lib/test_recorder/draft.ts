@@ -79,7 +79,11 @@ export const RecordedTestDraftSchema = z.object({
    * proposing the test, and that name is what the approved copy of this draft
    * carries, so nothing downstream has to invent one.
    */
-  testName: z.string().min(1).max(MAX_TEST_NAME_LENGTH).optional(),
+  // Trimmed before the non-empty check, so "   " can't arrive as a "named"
+  // recording that every reader then renders as `Untitled recording` —
+  // `normalizeTestName` treats whitespace-only as unnamed, and this schema is
+  // the contract that has to agree with it.
+  testName: z.string().trim().min(1).max(MAX_TEST_NAME_LENGTH).optional(),
   /** `none` means the spec is emitted without `signIn(page)`. */
   authMode: RecordedTestAuthModeSchema,
   /** The collapsed interactions, in the order they will be replayed. */

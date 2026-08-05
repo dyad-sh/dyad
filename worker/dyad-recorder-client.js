@@ -694,6 +694,11 @@
         value: el === document.documentElement ? "html" : "body",
       };
     }
+    // Anchored at <body> unless the walk already terminated on an id. A bare
+    // `div:nth-of-type(1) > div` is a pattern, not a path: it matches anywhere
+    // that shape recurs, so Playwright's strict mode fails the step or picks
+    // the wrong element. `>` from body keeps it a single rooted chain.
+    if (!parts[0].startsWith("#")) parts.unshift("body");
     return { kind: "css", value: parts.join(" > ") };
   }
 
@@ -1023,7 +1028,15 @@
   }
 
   /* ---------- message bridge ------------------------------------------- */
+  // Same reasoning as the auth bootstrap's guard: `e.source === window.parent`
+  // is trivially true for a page's own scripts when this document is top-level
+  // (opening the preview URL in a real browser), and arming the recorder there
+  // would stream everything the user types — `fill` values included — to
+  // whoever asked. This script only has a job inside Dyad's preview frame.
+  const isFramed = window.parent !== window;
+
   window.addEventListener("message", (e) => {
+    if (!isFramed) return;
     if (e.source !== window.parent) return;
     const type = e.data && e.data.type;
     if (type === "activate-dyad-recorder") activate();

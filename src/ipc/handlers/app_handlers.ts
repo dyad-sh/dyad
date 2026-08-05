@@ -409,7 +409,23 @@ async function deleteAppById(
   // spinning. The renderer's own recorder cleanup can't help: it runs only
   // after this call returns. Same end-before-lock step as stop and restart;
   // nothing here needs the dev server back, and the app is about to be gone.
-  await endRecordingForApp(appId, "app-stopped", { skipRestart: true });
+  //
+  // `discardEnvironment` because that last part changes what teardown owes us:
+  // a failed `.env.local` restore normally keeps the temporary Neon branch, on
+  // the assumption the app row still records it and can be reconciled later.
+  // That row is about to be deleted, so the branch has to go now or it is
+  // orphaned with nothing left pointing at it.
+  const { envRestored } = await endRecordingForApp(appId, "app-stopped", {
+    skipRestart: true,
+    discardEnvironment: true,
+  });
+  if (!envRestored) {
+    // The app directory is about to be removed, so a stale `.env.local` inside
+    // it goes with it — this is worth a log line for diagnosis, not a refusal.
+    logger.warn(
+      `App ${appId}: isolation teardown couldn't restore .env.local before deletion; the temporary branch was discarded anyway`,
+    );
+  }
   const appRunDeletion = appRunActorService.beginAppDeletion(appId);
   let appRunDeletionCommitted = false;
   try {
@@ -972,7 +988,18 @@ export function registerAppHandlers() {
     // the running app; the app stopping ends it. `skipRestart` because the app
     // is on its way down — teardown still restores `.env.local`, it just
     // doesn't bring the dev server back up for us to stop again.
-    await endRecordingForApp(appId, "app-stopped", { skipRestart: true });
+    const { envRestored } = await endRecordingForApp(appId, "app-stopped", {
+      skipRestart: true,
+    });
+    if (!envRestored) {
+      // Not a refusal — the app is going down either way, and refusing would
+      // leave it running. The user already gets this as an error toast via
+      // `recording:ended`; this is the main-process trail for diagnosing why a
+      // later Run comes up on the wrong database.
+      logger.error(
+        `App ${appId}: isolation teardown couldn't restore .env.local while stopping; the app is still pointed at the temporary test branch`,
+      );
+    }
     const snapshot = await appRunActorService.getRunState(appId);
     if (snapshot.type === "idle") return;
     await appRunActorService.dispatchStop(appId, {
@@ -2319,7 +2346,20 @@ export function registerAppHandlers() {
     registerTrustedIpcHandler(
       "test:set-neon-auth-fixture",
       async (_event, { appName }: { appName: string }) => {
-        const result = await db
+        // apps.name is not unique, so resolve and assert BEFORE writing: an
+        // update-then-check has already overwritten every matching row's Neon
+        // columns by the time it throws, and nothing rolls that back.
+        const matches = await db
+          .select({ id: apps.id })
+          .from(apps)
+          .where(eq(apps.name, appName));
+        if (matches.length !== 1) {
+          throw new DyadError(
+            `Expected exactly one app named ${appName}, but matched ${matches.length}`,
+            DyadErrorKind.Validation,
+          );
+        }
+        await db
           .update(apps)
           .set({
             neonProjectId: "test-project-id",
@@ -2327,15 +2367,7 @@ export function registerAppHandlers() {
             neonActiveBranchId: "test-development-branch-id",
             neonDevelopmentAuthCookieSecret: "test-cookie-secret",
           })
-          .where(eq(apps.name, appName))
-          .returning({ id: apps.id });
-        // apps.name is not unique — insist on exactly one match so a duplicate
-        // name can't silently mutate the wrong (or multiple) apps.
-        if (result.length !== 1) {
-          throw new Error(
-            `Expected exactly one app named ${appName}, but matched ${result.length}`,
-          );
-        }
+          .where(eq(apps.id, matches[0].id));
       },
     );
   }

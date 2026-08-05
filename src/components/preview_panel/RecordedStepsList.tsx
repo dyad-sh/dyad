@@ -4,9 +4,14 @@ import { highlightPlaywrightLine } from "./playwrightHighlight";
  * The recorded flow, as the list of Playwright statements it will replay.
  *
  * Shown once recording stops, before anything is written: this list IS the
- * recording at that point, and it is numbered exactly the way the assertion
- * pass numbers it, so a user reading "step 3" here and the agent describing
- * step 3 are looking at the same line.
+ * recording at that point, in the order and at the granularity the spec will
+ * replay it.
+ *
+ * Numbered from 1, matching the assertion card's "Add a check after step N".
+ * The prompt and `generate_test_assertions` count the same statements from 0 —
+ * that numbering is internal to the tool call and never shown, and
+ * `buildAssertionsPrompt` tells the model about this offset so a user asking
+ * for a check "after step 3" and the model agree on which line that is.
  *
  * Deliberately quiet — it's context for the decision in the bar above it
  * ("generate a test proposal?"), not the decision itself. It renders flush on the

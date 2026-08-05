@@ -99,12 +99,38 @@ describe("RecordingBanner", () => {
     expect(screen.getByTestId("preview-recording-discard-button")).toBeTruthy();
   });
 
-  it("throws the recording away when the review is closed", () => {
+  it("confirms before throwing the recording away", () => {
     const recorder = makeRecorder("reviewing");
     renderBanner(recorder);
 
+    // The steps exist nowhere else at this point — nothing is on disk and the
+    // entries buffer was dropped when the session stopped — so the first click
+    // must only arm the decision.
     fireEvent.click(screen.getByTestId("preview-recording-discard-button"));
+    expect(recorder.discardDraft).not.toHaveBeenCalled();
+
+    const confirm = screen.getByTestId(
+      "preview-recording-discard-confirm-button",
+    );
+    // Says what is being thrown away, not just "are you sure".
+    expect(confirm.textContent).toContain("1 step");
+    fireEvent.click(confirm);
 
     expect(recorder.discardDraft).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers a way out of a setup that is taking too long", () => {
+    // `startRecording` resolves only once it holds the app's lock, so this phase
+    // can wait indefinitely behind another app operation — with the preview
+    // dimmed and click-swallowing and the toolbar record button disabled, this
+    // is the only exit short of the 30-minute session cap.
+    const recorder = makeRecorder("starting", { isBusy: true });
+    renderBanner(recorder);
+
+    fireEvent.click(
+      screen.getByTestId("preview-recording-setup-cancel-button"),
+    );
+
+    expect(recorder.cancelRecording).toHaveBeenCalledTimes(1);
   });
 });

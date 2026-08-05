@@ -259,7 +259,17 @@
     login(auth, nonce);
   }
 
+  // `e.source !== window.parent` is the whole guard on a message that drives
+  // sign-in — it POSTs credentials to the app's auth endpoint, and on the
+  // Supabase path fetches an attacker-suppliable `auth.projectUrl` and writes
+  // its answer into localStorage. That guard means something only inside a
+  // frame. The proxy injects this script into EVERY previewed document, and
+  // opening the preview URL top-level in a browser makes `window.parent ===
+  // window`, at which point any script already on the page satisfies it.
+  const isFramed = window.parent !== window;
+
   window.addEventListener("message", (e) => {
+    if (!isFramed) return;
     if (e.source !== window.parent) return;
     const data = e.data;
     if (data && data.type === "dyad-auth-login" && data.auth) {

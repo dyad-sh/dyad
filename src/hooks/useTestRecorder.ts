@@ -106,6 +106,12 @@ export function useTestRecorder({
   // something to hand back; the attempt object is its identity, and marking it
   // cancelled is what tells the start to walk away when it finally returns.
   const startingAppsRef = useRef(new Map<number, StartAttempt>());
+  // Apps whose session ended in a failure the user has already been shown.
+  // `recording:ended` and the `stopRecording` reply travel different IPC
+  // interfaces, so the error can land first and be overwritten by the review
+  // that follows — leaving the user in front of a recording to approve with no
+  // sign that isolation teardown left their environment broken.
+  const failedSessionsRef = useRef(new Set<number>());
   // Distinguishes a real unmount from the app-change re-run of the release effect
   // below; refs survive unmount, so an app-id comparison alone still looks
   // satisfied. Re-armed in the effect body because StrictMode's dev
@@ -343,11 +349,34 @@ export function useTestRecorder({
             ? prev
             : { phase: "idle", error: failureMessage },
         );
-        if (failureMessage) showError(failureMessage);
+        if (failureMessage) {
+          failedSessionsRef.current.add(endedAppId);
+          showError(failureMessage);
+        }
       },
     );
     return unsub;
   }, [patchState, postToIframe]);
+
+  /**
+   * Settle a sign-in this app is still waiting on, rather than just forgetting
+   * it.
+   *
+   * `authenticate` otherwise resolves only on its 30-second timeout, and
+   * `beginRecording` stays parked on that await — holding the app's entry in
+   * `startingAppsRef`, which is what refuses a fresh start. Walking away from a
+   * recording has to release the next one immediately.
+   */
+  const settlePendingAuth = useCallback(
+    (targetAppId: number, error: string) => {
+      if (pendingAuthRef.current?.appId !== targetAppId) return;
+      pendingAuthRef.current = null;
+      const pendingAuthReady = authReadyRef.current;
+      authReadyRef.current = null;
+      pendingAuthReady?.({ ok: false, error });
+    },
+    [],
+  );
 
   /**
    * Ask the main process to end this app's session and reset the app's recorder
@@ -358,10 +387,7 @@ export function useTestRecorder({
   const endSession = useCallback(
     (targetAppId: number) => {
       sessionIdsRef.current.delete(targetAppId);
-      if (pendingAuthRef.current?.appId === targetAppId) {
-        pendingAuthRef.current = null;
-        authReadyRef.current = null;
-      }
+      settlePendingAuth(targetAppId, "the session ended");
       if (targetAppId === appIdRef.current) {
         postToIframe({ type: "deactivate-dyad-recorder" });
       }
@@ -369,7 +395,7 @@ export function useTestRecorder({
       clearEntries(targetAppId);
       patchState(targetAppId, { phase: "idle" });
     },
-    [clearEntries, patchState, postToIframe],
+    [clearEntries, patchState, postToIframe, settlePendingAuth],
   );
 
   /**
@@ -453,6 +479,24 @@ export function useTestRecorder({
     return unsub;
   }, [patchState]);
 
+  // The AI named this recording while proposing a test for it. Adopt the name
+  // so the review stops calling it "Untitled recording" while the card beside
+  // it shows the name the spec will be written under. Scoped by draft id: an
+  // older card settling after a newer recording was parked must not rename it.
+  useEffect(() => {
+    const unsub = ipc.events.recording.onDraftNamed(
+      ({ appId: namedAppId, draftId, testName }) => {
+        if (namedAppId == null || !testName) return;
+        patchState(namedAppId, (prev) =>
+          prev.draft && prev.draft.draftId === draftId
+            ? { ...prev, draft: { ...prev.draft, testName } }
+            : prev,
+        );
+      },
+    );
+    return unsub;
+  }, [patchState]);
+
   // Surface isolation/sign-in setup progress.
   useEffect(() => {
     const unsub = ipc.events.recording.onSetupProgress(
@@ -493,9 +537,9 @@ export function useTestRecorder({
         // Fails closed on an unknown origin, exactly as the inbound handler
         // does. This is the one message carrying the test user's credentials,
         // and "*" would hand them to whatever origin the preview happens to be
-        // showing. Nothing is lost by holding off: the registration above
-        // stands, so the fresh load's `dyad-auth-bootstrap-ready` — which is
-        // itself only accepted from the app's own origin — resends them.
+        // showing. The registration above stands, and the effect below replays
+        // it as soon as an origin exists — the bootstrap's own announce can't
+        // be relied on for that, since it is refused by this same check.
         const origin = previewOrigin();
         if (origin !== "*") {
           postToIframe({ type: "dyad-auth-login", auth, nonce }, origin);
@@ -504,8 +548,33 @@ export function useTestRecorder({
     [postToIframe, previewOrigin, reloadPreview],
   );
 
+  // Deliver a sign-in that was registered while the preview's origin was still
+  // unknown. `authenticate` withholds the credential post in that window, and
+  // the bootstrap's `dyad-auth-bootstrap-ready` announce is no rescue: the
+  // inbound handler refuses it on the very same unknown origin, so an announce
+  // that lands first is dropped and nothing else would ever replay the
+  // handshake — the attempt would sit out its 30s timeout and degrade to
+  // recording signed out. The app URL arriving is the signal.
+  useEffect(() => {
+    const pending = pendingAuthRef.current;
+    if (!pending || pending.appId !== appId) return;
+    const origin = previewOrigin();
+    if (origin === "*") return;
+    // Safe to repeat: the bootstrap ignores a login for an attempt it is
+    // already working on, and matches the nonce before settling either way.
+    postToIframe(
+      { type: "dyad-auth-login", auth: pending.auth, nonce: pending.nonce },
+      origin,
+    );
+  }, [appId, appUrl, postToIframe, previewOrigin]);
+
   const beginRecording = useCallback(
-    async (targetAppId: number, attempt: StartAttempt) => {
+    async (
+      targetAppId: number,
+      attempt: StartAttempt,
+      /** The preview route recording started on, when it wasn't the root. */
+      startPath?: string,
+    ) => {
       // Everything after an await here reaches the preview through refs tracking
       // the *selected* app. Continuing past a switch would sign the wrong
       // preview in with this app's test credentials while this app's session
@@ -516,6 +585,8 @@ export function useTestRecorder({
         appIdRef.current !== targetAppId;
 
       clearEntries(targetAppId);
+      // A previous session's failure belongs to that session.
+      failedSessionsRef.current.delete(targetAppId);
       patchState(targetAppId, {
         phase: "starting",
         progress: "Setting up an isolated recording environment…",
@@ -577,6 +648,14 @@ export function useTestRecorder({
           releaseSession(targetAppId);
           return;
         }
+        // The session can also end *underneath* us in that window: Stop,
+        // Restart and Delete all end it in the main process, and the
+        // `recording:ended` that follows drops our ownership. None of that
+        // touches `attempt`, so the checks above still read as healthy —
+        // continuing would arm the recorder over a session that no longer
+        // exists, capturing against the app's real database with a bar that
+        // says "Recording". The ending already reset the UI; just stop.
+        if (!ownedSessionsRef.current.has(targetAppId)) return;
         if (!signIn.ok) {
           // Degrade to recording unauthenticated rather than dead-ending.
           auth = { mode: "none" };
@@ -588,10 +667,29 @@ export function useTestRecorder({
             } — recording without authentication.`,
           }));
         }
+        // The sign-in path lands the preview on "/" itself (the bootstrap's
+        // `goHome`), so a recording that authenticated always starts where the
+        // spec replays from.
       } else {
         // Still start from a fresh load so the preview reflects the isolated
         // database and cleared storage, and isn't stuck on a dead page.
         reloadPreview();
+        // ...but a bare remount keeps whatever route the user was on, while
+        // `recordedBodyStatements` opens every spec with `page.goto("/")`.
+        // Replay would begin on "/" and run the first captured action against
+        // the wrong page. Record the route as the navigation it effectively is,
+        // rather than pretending the flow started at the root. "/" needs
+        // nothing — that is already the opening statement.
+        const action =
+          startPath && startPath !== "/"
+            ? parseRecorderAction({ kind: "navigate", path: startPath })
+            : null;
+        if (action) {
+          appendEntry({
+            appId: targetAppId,
+            entry: { action, at: Date.now() },
+          });
+        }
       }
 
       postToIframe({ type: "activate-dyad-recorder" });
@@ -603,6 +701,7 @@ export function useTestRecorder({
       }));
     },
     [
+      appendEntry,
       authenticate,
       clearEntries,
       endSession,
@@ -618,27 +717,30 @@ export function useTestRecorder({
   // is starting perfectly well. The phase state can't stand in for this guard:
   // it isn't committed until a re-render, and StrictMode replays the
   // start-request effect below within the same commit.
-  const startRecording = useCallback(async () => {
-    const targetAppId = appId;
-    if (targetAppId == null) return;
-    if (
-      startingAppsRef.current.has(targetAppId) ||
-      ownedSessionsRef.current.has(targetAppId)
-    ) {
-      return;
-    }
-    const attempt: StartAttempt = { cancelled: false };
-    startingAppsRef.current.set(targetAppId, attempt);
-    try {
-      await beginRecording(targetAppId, attempt);
-    } finally {
-      // Only our own attempt: a cancelled start can be followed by a new one for
-      // the same app, and clearing blindly would drop its entry instead.
-      if (startingAppsRef.current.get(targetAppId) === attempt) {
-        startingAppsRef.current.delete(targetAppId);
+  const startRecording = useCallback(
+    async (startPath?: string) => {
+      const targetAppId = appId;
+      if (targetAppId == null) return;
+      if (
+        startingAppsRef.current.has(targetAppId) ||
+        ownedSessionsRef.current.has(targetAppId)
+      ) {
+        return;
       }
-    }
-  }, [appId, beginRecording]);
+      const attempt: StartAttempt = { cancelled: false };
+      startingAppsRef.current.set(targetAppId, attempt);
+      try {
+        await beginRecording(targetAppId, attempt, startPath);
+      } finally {
+        // Only our own attempt: a cancelled start can be followed by a new one for
+        // the same app, and clearing blindly would drop its entry instead.
+        if (startingAppsRef.current.get(targetAppId) === attempt) {
+          startingAppsRef.current.delete(targetAppId);
+        }
+      }
+    },
+    [appId, beginRecording],
+  );
 
   /**
    * End the session and capture what was recorded as a draft — no file is
@@ -691,14 +793,37 @@ export function useTestRecorder({
       // the review UI doesn't appear over a half-torn-down session.
       await ipc.recording.stopRecording({ appId: targetAppId }).catch(() => {});
 
-      // The draft owns the actions from here on. `limitReached` is carried
-      // across: the review is where a truncated recording most needs to say so,
-      // since it's the last thing the user sees before the spec is written.
+      // That teardown may have failed — most consequentially by not restoring
+      // `.env.local`, leaving the app on the temporary test branch. The user has
+      // been told (the ending arrived as an error toast and reset the bar);
+      // opening the review over it would invite generating a spec from a
+      // session whose environment is in an unknown state.
+      if (failedSessionsRef.current.delete(targetAppId)) {
+        void ipc.recording
+          .discardRecordedTestDraft({ appId: targetAppId })
+          .catch(() => {});
+        clearEntries(targetAppId);
+        patchState(targetAppId, (prev) =>
+          prev.phase === "idle" ? prev : { phase: "idle" },
+        );
+        return null;
+      }
+
+      // The draft owns the actions from here on, but everything that qualifies
+      // what was captured is carried across — the review is the last thing the
+      // user sees before the recording becomes a spec, so it is exactly where a
+      // truncated recording, a weak isolation mode, or a sign-in that silently
+      // fell back to signed-out most needs to say so. A flow recorded logged
+      // out but generated with a `signIn(page)` fixture is the case this exists
+      // for.
       clearEntries(targetAppId);
       patchState(targetAppId, (prev) => ({
         phase: "reviewing",
         draft,
         limitReached: prev.limitReached,
+        isolation: prev.isolation,
+        auth: prev.auth,
+        warning: prev.warning,
       }));
       return draft;
     },
@@ -747,6 +872,10 @@ export function useTestRecorder({
     const targetAppId = appId;
     if (targetAppId == null) return;
     ownedSessionsRef.current.delete(targetAppId);
+    // Reachable from the setup phases too, where a sign-in may still be in
+    // flight; leaving it to time out would keep the app's start entry parked
+    // for 30 seconds after the user asked to stop.
+    settlePendingAuth(targetAppId, "the recording was cancelled");
     postToIframe({ type: "deactivate-dyad-recorder" });
     void ipc.recording
       .discardRecordedTestDraft({ appId: targetAppId })
@@ -757,7 +886,7 @@ export function useTestRecorder({
     await ipc.recording.stopRecording({ appId: targetAppId }).catch(() => {});
     clearEntries(targetAppId);
     patchState(targetAppId, { phase: "idle" });
-  }, [appId, clearEntries, patchState, postToIframe]);
+  }, [appId, clearEntries, patchState, postToIframe, settlePendingAuth]);
 
   // Honor a "record" click made outside the preview (the Tests panel), which
   // leaves the request behind for this hook to consume once it mounts.

@@ -63,11 +63,14 @@ export function RecordingBanner({
 }) {
   const [recordName, setRecordName] = useState("");
   const [isExpanded, setIsExpanded] = useState(true);
+  const [confirmingDiscard, setConfirmingDiscard] = useState(false);
 
   // Each phase opens showing its details: a bar collapsed while recording still
   // opens on the review, the one part the user is asked to actually read.
   useEffect(() => {
     setIsExpanded(true);
+    // A confirm armed in one phase must not still be armed in the next.
+    setConfirmingDiscard(false);
   }, [recorder.phase]);
 
   const details: ReactNode = recorder.isRecording ? (
@@ -196,15 +199,36 @@ export function RecordingBanner({
           <Sparkles size={12} />{" "}
           {recorder.awaitingAssertions ? "Ask again" : "Generate test proposal"}
         </button>
-        <button
-          onClick={() => void recorder.discardDraft()}
-          aria-label="Discard this recording"
-          title="Discard this recording"
-          data-testid="preview-recording-discard-button"
-          className={cn(SECONDARY_BUTTON_CLASSES, "flex items-center px-1.5")}
-        >
-          <X size={14} />
-        </button>
+        {/* Two-step, because this is the only copy: nothing has been written to
+            disk, the entries buffer was dropped when the session stopped, and
+            the parked draft dies with it — a mis-click throws away a flow the
+            user may have spent minutes performing, with no undo. An inline
+            confirm rather than a dialog: the bar is already the decision
+            surface, and a modal over the preview for one button is heavier than
+            the action deserves. */}
+        {confirmingDiscard ? (
+          <button
+            onClick={() => void recorder.discardDraft()}
+            data-testid="preview-recording-discard-confirm-button"
+            className={cn(
+              SECONDARY_BUTTON_CLASSES,
+              "font-medium text-red-700 hover:bg-red-100 hover:text-red-800 dark:text-red-300 dark:hover:bg-red-900/40",
+            )}
+          >
+            Discard {recorder.draftSteps.length} step
+            {recorder.draftSteps.length === 1 ? "" : "s"}?
+          </button>
+        ) : (
+          <button
+            onClick={() => setConfirmingDiscard(true)}
+            aria-label="Discard this recording"
+            title="Discard this recording"
+            data-testid="preview-recording-discard-button"
+            className={cn(SECONDARY_BUTTON_CLASSES, "flex items-center px-1.5")}
+          >
+            <X size={14} />
+          </button>
+        )}
       </>
     );
   } else {
@@ -217,6 +241,23 @@ export function RecordingBanner({
         {recordingStatusMessage(recorder)}
       </span>
     );
+    // Setup can legitimately wait indefinitely: `startRecording` only resolves
+    // once it holds the app's lock, and the handler itself reports "waiting for
+    // a previous app operation to finish". Without this the user is left with a
+    // dimmed, click-swallowing preview, a disabled record button and no way out
+    // short of the 30-minute session cap. Not offered for the teardown phases —
+    // they are already ending, and a second stop has nothing to act on.
+    if (recorder.phase === "starting" || recorder.phase === "authenticating") {
+      rest = (
+        <button
+          onClick={() => void recorder.cancelRecording()}
+          data-testid="preview-recording-setup-cancel-button"
+          className={cn(SECONDARY_BUTTON_CLASSES, "ml-auto")}
+        >
+          Cancel
+        </button>
+      );
+    }
   }
 
   return (

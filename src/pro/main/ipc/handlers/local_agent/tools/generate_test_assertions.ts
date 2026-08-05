@@ -5,7 +5,11 @@ import log from "electron-log";
 import { ToolDefinition, AgentContext } from "./types";
 import { completeWarning } from "./run_tests_utils";
 import { userInputRegistry } from "@/user_input/main";
-import { getRecordedTestDraft } from "@/ipc/services/recorded_test_drafts";
+import { broadcastToAllWindows } from "@/ipc/utils/window_broadcast";
+import {
+  getRecordedTestDraft,
+  setRecordedTestDraft,
+} from "@/ipc/services/recorded_test_drafts";
 import { recordedBodyStatements } from "@/lib/test_recorder/codegen";
 import {
   MAX_TEST_NAME_LENGTH,
@@ -297,6 +301,19 @@ export const generateTestAssertionsTool: ToolDefinition<GenerateTestAssertionsAr
       const testName =
         userName || normalizeTestName(args.testName) || "recorded test";
       const namedDraft: RecordedTestDraft = { ...draft, testName };
+
+      // The recorder bar is still showing this recording, under the name it had
+      // when the session stopped — which for an unnamed one is "Untitled
+      // recording". Tell it the name the test is actually being proposed under,
+      // so the bar and the card below it don't disagree about what this is.
+      // Broadcast rather than replied: this tool has no originating sender, and
+      // the bar can be in any window.
+      setRecordedTestDraft(ctx.appId, namedDraft);
+      broadcastToAllWindows("recording:draft-named", {
+        appId: ctx.appId,
+        draftId: namedDraft.draftId,
+        testName,
+      });
 
       const proposalId = crypto.randomUUID();
       const payload: AssertionProposalPayload = {

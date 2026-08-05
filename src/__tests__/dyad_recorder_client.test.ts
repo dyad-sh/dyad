@@ -499,8 +499,28 @@ describe("dyad recorder client", () => {
     r.click(r.doc.querySelector("span"));
     r.settleClick();
 
+    // Anchored at body: `div > span` on its own is a shape, not a path, and
+    // matches anywhere that shape recurs — which fails Playwright's strict mode
+    // at replay or picks a different element than the one clicked.
     expect(r.actions).toEqual([
-      { kind: "click", locator: { kind: "css", value: "div > span" } },
+      { kind: "click", locator: { kind: "css", value: "body > div > span" } },
+    ]);
+  });
+
+  it("anchors a CSS fallback at the nearest id instead of body", () => {
+    const r = setup();
+    // An id is already unique, so it is the better root — and prefixing `body`
+    // past it would only make the chain longer and more brittle.
+    r.setHtml(`<div id="panel"><section><span></span></section></div>`);
+    r.activate();
+    r.click(r.doc.querySelector("span"));
+    r.settleClick();
+
+    expect(r.actions).toEqual([
+      {
+        kind: "click",
+        locator: { kind: "css", value: "#panel > section > span" },
+      },
     ]);
   });
 

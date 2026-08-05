@@ -33,6 +33,7 @@ const {
   discardDraftMock,
   onEndedMock,
   onDraftConsumedMock,
+  onDraftNamedMock,
 } = vi.hoisted(() => ({
   startRecordingMock: vi.fn(),
   stopRecordingMock: vi.fn(),
@@ -40,6 +41,7 @@ const {
   discardDraftMock: vi.fn(),
   onEndedMock: vi.fn(),
   onDraftConsumedMock: vi.fn(),
+  onDraftNamedMock: vi.fn(),
 }));
 
 vi.mock("@/ipc/types", () => ({
@@ -55,6 +57,7 @@ vi.mock("@/ipc/types", () => ({
         onEnded: onEndedMock,
         onSetupProgress: () => () => {},
         onDraftConsumed: onDraftConsumedMock,
+        onDraftNamed: onDraftNamedMock,
       },
     },
   },
@@ -184,6 +187,8 @@ describe("useTestRecorder", () => {
     onEndedMock.mockReturnValue(() => {});
     onDraftConsumedMock.mockReset();
     onDraftConsumedMock.mockReturnValue(() => {});
+    onDraftNamedMock.mockReset();
+    onDraftNamedMock.mockReturnValue(() => {});
     startRecordingMock.mockResolvedValue({
       appId: 1,
       isolation: { mode: "none" },
@@ -774,6 +779,94 @@ describe("useTestRecorder", () => {
     });
 
     expect(result.current.phase).toBe("authenticating");
+  });
+
+  it("never arms the recorder when the session ended during sign-in", async () => {
+    authenticatedStart();
+    const iframe = makeIframe();
+    const { result } = mountRecorder({ iframe, appUrl: true });
+
+    let started!: Promise<void>;
+    act(() => {
+      started = result.current.startRecording();
+    });
+    await waitFor(() => expect(findLogin(iframe)).not.toBeNull());
+    const login = findLogin(iframe)!;
+
+    // Stop / Restart / Delete all end the session in main, and the ending that
+    // follows drops our ownership. None of that touches the start attempt, so
+    // the app-selection guard still reads as healthy.
+    const onEnded = onEndedMock.mock.calls.at(-1)![0];
+    act(() => {
+      onEnded({ appId: 1, sessionId: "session-1", reason: "app-stopped" });
+    });
+
+    await act(async () => {
+      iframe.send({
+        type: "dyad-auth-ready",
+        ok: true,
+        nonce: login.message.nonce,
+      });
+      await started;
+    });
+
+    // Otherwise: a bar reading "Recording", an armed in-page client, and every
+    // captured action landing against the app's restored real database.
+    expect(result.current.isRecording).toBe(false);
+    expect(result.current.phase).toBe("idle");
+  });
+
+  it("replays the route recording started on, so the spec doesn't open elsewhere", async () => {
+    const iframe = makeIframe();
+    const { result } = mountRecorder({ iframe, appUrl: true });
+
+    // No managed auth, so nothing navigates the preview home — but every
+    // generated spec opens with `page.goto("/")`.
+    await act(async () => {
+      await result.current.startRecording("/items?q=x");
+    });
+
+    await waitFor(() => {
+      expect(result.current.steps).toEqual([`await page.goto("/items?q=x");`]);
+    });
+  });
+
+  it("adds nothing when recording already starts at the root", async () => {
+    const iframe = makeIframe();
+    const { result } = mountRecorder({ iframe, appUrl: true });
+
+    await act(async () => {
+      await result.current.startRecording("/");
+    });
+
+    // `page.goto("/")` is already the opening statement; a second one is noise.
+    expect(result.current.steps).toEqual([]);
+  });
+
+  it("refuses the review when teardown reported the environment broken", async () => {
+    const iframe = makeIframe();
+    const { result } = await recordingSession({ iframe, appUrl: true });
+
+    // The ending and the `stopRecording` reply travel different IPC interfaces,
+    // so the error lands first and the review would overwrite it — offering a
+    // recording to approve with no sign the app is still on the test branch.
+    const onEnded = onEndedMock.mock.calls.at(-1)![0];
+    act(() => {
+      onEnded({
+        appId: 1,
+        reason: "error",
+        message: "Dyad couldn't restore your app's real database settings",
+      });
+    });
+
+    let draft: unknown;
+    await act(async () => {
+      draft = await result.current.stopAndReview("my flow");
+    });
+
+    expect(draft).toBeNull();
+    expect(result.current.phase).toBe("idle");
+    expect(discardDraftMock).toHaveBeenCalledWith({ appId: 1 });
   });
 
   it("abandons setup when the selected app changes mid-start", async () => {

@@ -18,6 +18,11 @@ import {
   domainCheckVerdict,
   expectedServerAddress,
 } from "@/coolify_deploy/domain_check";
+import {
+  applyCoolifyConnectionChange,
+  coolifyConnectionColumns,
+  coolifyConnectionFromColumns,
+} from "@/coolify_deploy/connection";
 import { CoolifyClient } from "../utils/coolify_client";
 import { safeSend } from "../utils/safe_sender";
 import { coolifyDeployRegistry } from "@/coolify_deploy/controller";
@@ -155,15 +160,7 @@ export function registerCoolifyHandlers() {
       // would otherwise be shown against the new one.
       if (previous && previous !== normalized) {
         coolifyDeployRegistry.cancelAll();
-        await db.update(apps).set({
-          coolifyServerUuid: null,
-          coolifyProjectUuid: null,
-          coolifyEnvironmentName: null,
-          coolifyApplicationUuid: null,
-          coolifyDomain: null,
-          coolifyAppUrl: null,
-          coolifyLastDeployedAt: null,
-        });
+        await db.update(apps).set(coolifyConnectionColumns({ kind: "none" }));
       }
     },
   );
@@ -223,36 +220,25 @@ export function registerCoolifyHandlers() {
           DyadErrorKind.Validation,
         );
       }
-      // An application belongs to the server and project it was created
-      // under, and Coolify cannot move one. Keeping its id after the user
-      // picks somewhere else would send the next deploy back to the old
-      // server while the panel showed the new one, so let it be recreated.
       const app = await getApp(appId);
-      const movedHost =
-        app.coolifyServerUuid !== connection.serverUuid ||
-        app.coolifyProjectUuid !== connection.projectUuid;
-
-      if (movedHost) {
-        // Nothing has been deployed where the app is going, so a finished
-        // result and a deploy time from where it came from would be shown
-        // against it. disconnect and the token repoint both clear these.
+      const current = coolifyConnectionFromColumns(app);
+      const next = applyCoolifyConnectionChange(current, {
+        type: "CONFIGURED",
+        serverUuid: connection.serverUuid,
+        projectUuid: connection.projectUuid,
+        environmentName: connection.environmentName,
+        domain,
+      });
+      // Coolify cannot move an application between hosts, so the reducer
+      // releases it and the app drops back to configured. Nothing has been
+      // deployed where it is going, so the machine's finished result would be
+      // shown against a place it never ran.
+      if (current.kind !== "none" && next.kind === "configured") {
         coolifyDeployRegistry.cancelDeploy(appId);
       }
       await db
         .update(apps)
-        .set({
-          coolifyServerUuid: connection.serverUuid,
-          coolifyProjectUuid: connection.projectUuid,
-          coolifyEnvironmentName: connection.environmentName,
-          coolifyDomain: domain,
-          ...(movedHost
-            ? {
-                coolifyApplicationUuid: null,
-                coolifyAppUrl: null,
-                coolifyLastDeployedAt: null,
-              }
-            : {}),
-        })
+        .set(coolifyConnectionColumns(next))
         .where(eq(apps.id, appId));
     },
   );
@@ -324,17 +310,14 @@ export function registerCoolifyHandlers() {
     // Abandon anything running first, so it cannot write its result over the
     // cleared connection afterwards.
     coolifyDeployRegistry.cancelDeploy(appId);
+    const app = await getApp(appId);
+    const next = applyCoolifyConnectionChange(
+      coolifyConnectionFromColumns(app),
+      { type: "DETACHED" },
+    );
     await db
       .update(apps)
-      .set({
-        coolifyServerUuid: null,
-        coolifyProjectUuid: null,
-        coolifyEnvironmentName: null,
-        coolifyApplicationUuid: null,
-        coolifyDomain: null,
-        coolifyAppUrl: null,
-        coolifyLastDeployedAt: null,
-      })
+      .set(coolifyConnectionColumns(next))
       .where(eq(apps.id, appId));
   });
 

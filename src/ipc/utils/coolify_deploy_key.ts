@@ -20,7 +20,7 @@ function keyDir(): string {
   return path.join(os.homedir(), ".ssh");
 }
 
-export function keyFilePath(keyName: string): string {
+function keyFilePath(keyName: string): string {
   return path.join(keyDir(), keyName);
 }
 

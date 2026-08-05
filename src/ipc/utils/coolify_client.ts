@@ -40,7 +40,7 @@ export interface CoolifyProject {
 }
 
 /** Carries the HTTP status so callers can branch on 404 and 409. */
-export class CoolifyRequestError extends DyadError {
+class CoolifyRequestError extends DyadError {
   readonly status: number;
 
   constructor(message: string, kind: DyadErrorKind, status: number) {

@@ -29,6 +29,16 @@ describe("domainCheckVerdict", () => {
     );
   });
 
+  it("accepts an IPv6 server address", () => {
+    // An AAAA-only domain is configured, not misconfigured.
+    expect(
+      domainCheckVerdict({
+        expectedIp: "2606:4700::1",
+        actualIps: ["2606:4700::1"],
+      }),
+    ).toBe("ok");
+  });
+
   it("stays silent when there is nothing to compare against", () => {
     // Saying "could not confirm" here would fire for every user on Coolify's
     // own server, which teaches people to ignore the one that matters.

@@ -28,6 +28,7 @@ import {
 function ExternalLinkText({ url }: { url: string }) {
   return (
     <a
+      href={url}
       onClick={(e) => {
         e.preventDefault();
         ipc.system.openExternalUrl(url);

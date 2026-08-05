@@ -45,6 +45,15 @@ async function getApp(appId: number) {
   return app;
 }
 
+/** Both families: an AAAA-only domain is configured, not misconfigured. */
+async function resolveBoth(hostname: string): Promise<string[]> {
+  const [v4, v6] = await Promise.all([
+    dns.resolve4(hostname).catch(() => [] as string[]),
+    dns.resolve6(hostname).catch(() => [] as string[]),
+  ]);
+  return [...v4, ...v6];
+}
+
 function readConnection(app: {
   coolifyServerUuid: string | null;
   coolifyProjectUuid: string | null;
@@ -214,8 +223,7 @@ export function registerCoolifyHandlers() {
       if (address?.kind === "ip") {
         expectedIp = address.ip;
       } else if (address?.kind === "resolve") {
-        expectedIp =
-          (await dns.resolve4(address.hostname).catch(() => []))[0] ?? null;
+        expectedIp = (await resolveBoth(address.hostname))[0] ?? null;
       }
 
       const hostname = coolifyDomainHostname(domain);
@@ -228,9 +236,7 @@ export function registerCoolifyHandlers() {
         };
       }
 
-      const actualIps = await dns
-        .resolve4(hostname)
-        .catch(() => [] as string[]);
+      const actualIps = await resolveBoth(hostname);
       return {
         verdict: domainCheckVerdict({ expectedIp, actualIps }),
         hostname,

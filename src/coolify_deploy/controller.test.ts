@@ -211,3 +211,39 @@ describe("draining on disposal", () => {
     expect(harness.calls).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("draining work the machine no longer points at", () => {
+  it("waits for a cancelled pipeline that is still unwinding", async () => {
+    // Cancelling moves the machine to idle while the pipeline keeps running,
+    // so a disconnect followed by a delete must still wait for it: deletion
+    // removes the app's files and row the moment dispose returns.
+    let settled = false;
+    const run = vi.fn(async (args: Parameters<RunDeployPipeline>[0]) => {
+      await new Promise<void>((resolve) =>
+        args.signal.addEventListener("abort", () => setTimeout(resolve, 25)),
+      );
+      settled = true;
+      return { url: null };
+    });
+    const registry = makeRegistry(run as unknown as RunDeployPipeline);
+    registry.requestDeploy(1);
+    await flush();
+
+    registry.cancelDeploy(1);
+    await flush();
+    await registry.dispose(1);
+
+    expect(settled).toBe(true);
+  });
+
+  it("gives up on a pipeline that ignores its abort rather than hanging", async () => {
+    // resetAll closes the database next, so a pipeline parked somewhere with
+    // no abort signal must not block it forever.
+    const run = vi.fn(() => new Promise<{ url: string | null }>(() => {}));
+    const registry = makeRegistry(run as unknown as RunDeployPipeline);
+    registry.requestDeploy(1);
+    await flush();
+
+    await expect(registry.disposeAll()).resolves.toBeUndefined();
+  }, 15_000);
+});

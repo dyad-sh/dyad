@@ -141,6 +141,10 @@ describe("getCompactionThreshold", () => {
       expect(getCompactionThreshold(400_000, "vertex")).toBe(250_000);
       expect(getCompactionThreshold(400_000, "openrouter")).toBe(250_000);
     });
+
+    it("leaves 25k headroom for the Auto model's configured context", () => {
+      expect(getCompactionThreshold(250_000, "auto")).toBe(225_000);
+    });
   });
 
   describe("google provider", () => {

@@ -340,7 +340,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       tagColor: "bg-primary text-primary-foreground",
       // The following is reasonable defaults.
       maxOutputTokens: 32_000,
-      contextWindow: 200_000,
+      contextWindow: 250_000,
       temperature: 0,
     },
     {

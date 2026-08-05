@@ -159,35 +159,59 @@ export function useTestRecorder({
   }, []);
 
   /**
-   * Record a `page.goto` for a navigation the user made in Dyad's own chrome —
-   * typing in the preview address bar or picking a route from its dropdown.
+   * Append one action while recording, or drop it. Everything the recorder
+   * captures goes through `parseRecorderAction` — including what the renderer
+   * synthesizes — so what may become a statement in the user's repo is decided
+   * in one place.
+   */
+  const record = useCallback(
+    (candidate: unknown): "recorded" | "rejected" | "not-recording" => {
+      const targetAppId = appIdRef.current;
+      if (phaseRef.current !== "recording" || targetAppId == null) {
+        return "not-recording";
+      }
+      const action = parseRecorderAction(candidate);
+      if (!action) return "rejected";
+      appendEntry({
+        appId: targetAppId,
+        entry: { action, at: Date.now() },
+      });
+      return "recorded";
+    },
+    [appendEntry],
+  );
+
+  /**
+   * Record a `page.goto` for a navigation the user made in Dyad's own chrome:
+   * an app-relative path typed into the preview address bar or picked from its
+   * routes dropdown.
    *
-   * This is the ONLY thing that produces a navigate step. The app routing itself
-   * doesn't: a click that navigates is already in the spec as the click, and
-   * following it with `page.goto` would send the test to the destination whether
-   * or not the click ever got there — masking the exact regression the test
-   * exists to catch. A jump the user made *around* the app has no such step to
-   * hang off, so it has to be replayed as a navigation of its own.
+   * This and `recordHistoryMove` are the ONLY things that produce a navigation
+   * step. The app routing itself doesn't: a click that navigates is already in
+   * the spec as the click, and following it with `page.goto` would send the test
+   * to the destination whether or not the click ever got there — masking the
+   * exact regression the test exists to catch. A jump the user made *around* the
+   * app has no such step to hang off, so it has to be replayed as one.
    */
   const recordNavigation = useCallback(
     (path: string) => {
-      const targetAppId = appIdRef.current;
-      if (phaseRef.current !== "recording" || targetAppId == null) return;
-      // Through the same schema as every action the preview posts up, so what
-      // may become a `page.goto` in the user's repo is decided in one place.
-      const navigate = parseRecorderAction({ kind: "navigate", path });
-      if (!navigate) {
+      // Only a rejection is worth saying out loud: a navigation made while
+      // nothing is recording is just the user browsing their app.
+      if (record({ kind: "navigate", path }) === "rejected") {
         console.warn(
           "Recorder ignored a navigation that resolves outside the app",
         );
-        return;
       }
-      appendEntry({
-        appId: targetAppId,
-        entry: { action: navigate, at: Date.now() },
-      });
     },
-    [appendEntry],
+    [record],
+  );
+
+  /** Record the preview's back/forward buttons as the history moves they are. */
+  const recordHistoryMove = useCallback(
+    (direction: "back" | "forward") => {
+      record({ kind: direction });
+    },
+    [record],
   );
 
   // Credentials must only reach the running app's own origin: a preview that has
@@ -231,14 +255,7 @@ export function useTestRecorder({
 
       switch (data.type) {
         case "dyad-recorder-action": {
-          if (phaseRef.current !== "recording" || currentAppId == null) return;
-          const action = parseRecorderAction(data.action);
-          if (action) {
-            appendEntry({
-              appId: currentAppId,
-              entry: { action, at: Date.now() },
-            });
-          }
+          record(data.action);
           break;
         }
         case "dyad-recorder-initialized": {
@@ -284,7 +301,7 @@ export function useTestRecorder({
     };
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
-  }, [appendEntry, postToIframe, previewOrigin]);
+  }, [postToIframe, previewOrigin, record]);
 
   // Reset the UI if a session ends outside our control (app stopped / crash /
   // session cap) — and only then. Failures are toasted: the recording bar
@@ -389,25 +406,26 @@ export function useTestRecorder({
   // Otherwise the main-process session stays alive until the 30-minute cap,
   // serving the isolated test database and rejecting runs, with no UI to end it.
   useEffect(() => {
-    const startedAppId = appId;
     return () => {
       // Snapshot: releaseSession removes from the set as it goes.
       for (const owned of Array.from(ownedSessionsRef.current)) {
         releaseSession(owned);
       }
-      if (startedAppId == null) return;
-      const attempt = startingAppsRef.current.get(startedAppId);
-      if (!attempt) return;
       // A start in flight owns nothing yet, so the loop above can't see it — but
-      // the session it is preparing is just as real. Decided a task later
-      // because this same cleanup runs on StrictMode's dev
+      // the session it is preparing is just as real. Every in-flight start is
+      // considered, not just the selected app's: the one being walked away from
+      // is whichever app is no longer selected.
+      //
+      // Decided a task later because this same cleanup runs on StrictMode's dev
       // mount/unmount/remount replay, where nothing is being walked away from:
       // by then the remount has re-armed `mountedRef` and an app switch has
       // moved `appIdRef` on, which is what tells the two apart.
-      queueMicrotask(() => {
-        if (mountedRef.current && appIdRef.current === startedAppId) return;
-        cancelStart(startedAppId, attempt);
-      });
+      for (const [startingAppId, attempt] of startingAppsRef.current) {
+        queueMicrotask(() => {
+          if (mountedRef.current && appIdRef.current === startingAppId) return;
+          cancelStart(startingAppId, attempt);
+        });
+      }
     };
   }, [appId, cancelStart, releaseSession]);
 
@@ -784,6 +802,7 @@ export function useTestRecorder({
     startRecording,
     stopAndReview,
     recordNavigation,
+    recordHistoryMove,
     cancelRecording,
     markAwaitingAssertions,
     clearAwaitingAssertions,

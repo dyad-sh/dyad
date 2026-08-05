@@ -60,6 +60,11 @@ export function actionToCodeLine(action: RecordedAction): string {
   if (action.kind === "navigate") {
     return `await page.goto(${q(action.path)});`;
   }
+  // Replayed as history moves rather than as a `goto` to where the user landed:
+  // going back IS the thing being tested, and a `goto` would arrive there even
+  // when the app's history handling is broken.
+  if (action.kind === "back") return `await page.goBack();`;
+  if (action.kind === "forward") return `await page.goForward();`;
   // A shortcut pressed with nothing focused has no element to hang off; replay
   // it against the page rather than inventing a locator for <body>.
   if (action.kind === "press") {

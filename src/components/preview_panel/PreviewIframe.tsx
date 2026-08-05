@@ -1078,6 +1078,9 @@ export const PreviewIframe = ({
   const handleNavigateBack = () => {
     if (canGoBack && iframeRef.current?.contentWindow) {
       sendIframeEvent({ type: "GO_BACK" });
+      // Replayed as `page.goBack()`, not as a jump to where it landed: the
+      // history move is what the user performed, and what the test should check.
+      recorder.recordHistoryMove("back");
     }
   };
 
@@ -1085,6 +1088,7 @@ export const PreviewIframe = ({
   const handleNavigateForward = () => {
     if (canGoForward && iframeRef.current?.contentWindow) {
       sendIframeEvent({ type: "GO_FORWARD" });
+      recorder.recordHistoryMove("forward");
     }
   };
 

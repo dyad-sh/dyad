@@ -155,12 +155,23 @@ For a recording whose statements are:
 function collectProblems({
   args,
   statementCount,
+  needsName,
 }: {
   args: GenerateTestAssertionsArgs;
   statementCount: number;
+  /** The user left the recording unnamed, so this plan's name is the only one. */
+  needsName: boolean;
 }): string[] {
   const problems: string[] = [];
   const lastIndex = statementCount - 1;
+
+  // Asking again costs one call; accepting it would name the user's test — and
+  // its file — "recorded test", which is the whole reason the model is asked.
+  if (needsName && !normalizeTestName(args.testName)) {
+    problems.push(
+      `testName is empty. The user didn't name this recording, so your name is the one the test and its file get — send a short phrase describing what the steps do.`,
+    );
+  }
 
   const badStepIndexes = args.steps
     .map((step) => step.index)
@@ -248,9 +259,11 @@ export const generateTestAssertionsTool: ToolDefinition<GenerateTestAssertionsAr
       }
 
       const bodyStatements = recordedBodyStatements(draft);
+      const userName = normalizeTestName(draft.testName);
       const problems = collectProblems({
         args,
         statementCount: bodyStatements.length,
+        needsName: !userName,
       });
       if (problems.length > 0) {
         const body = [
@@ -278,12 +291,11 @@ export const generateTestAssertionsTool: ToolDefinition<GenerateTestAssertionsAr
       });
 
       // The user's own name always wins; the model's is what names the test
-      // when they left it to us, which is the usual case. Falls back only if
-      // both are somehow unusable, so nothing downstream is ever unnamed.
+      // when they left it to us, which is the usual case. The fallback is
+      // unreachable — an empty name for an unnamed recording was rejected
+      // above — and exists so nothing downstream can be handed an unnamed test.
       const testName =
-        normalizeTestName(draft.testName) ||
-        normalizeTestName(args.testName) ||
-        "recorded test";
+        userName || normalizeTestName(args.testName) || "recorded test";
       const namedDraft: RecordedTestDraft = { ...draft, testName };
 
       const proposalId = crypto.randomUUID();

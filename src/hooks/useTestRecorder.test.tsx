@@ -355,6 +355,28 @@ describe("useTestRecorder", () => {
     });
   });
 
+  it("records the preview's history buttons as history moves", async () => {
+    const { result } = await recordingSession({
+      iframe: makeIframe(),
+      appUrl: true,
+    });
+
+    act(() => {
+      result.current.recordHistoryMove("back");
+      result.current.recordHistoryMove("forward");
+    });
+
+    // Not a `goto` to wherever the user landed: going back is the thing being
+    // performed, and a `goto` would arrive there even if the app's history
+    // handling were broken.
+    await waitFor(() => {
+      expect(result.current.steps).toEqual([
+        `await page.goBack();`,
+        `await page.goForward();`,
+      ]);
+    });
+  });
+
   it("ignores a manual navigation that would leave the app", async () => {
     const { result } = await recordingSession({
       iframe: makeIframe(),

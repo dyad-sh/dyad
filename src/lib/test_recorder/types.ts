@@ -108,8 +108,13 @@ export const RecordedActionSchema = z.discriminatedUnion("kind", [
     locator: LocatorDescriptorSchema,
     values: z.array(z.string().max(MAX_VALUE_LEN)).max(MAX_SELECT_VALUES),
   }),
-  // Synthesized in the renderer from the preview's pushState/replaceState.
+  // Synthesized in the renderer when the user navigates from Dyad's own chrome:
+  // the preview address bar and routes dropdown for `navigate`, its back and
+  // forward buttons for the other two. Routing the app does on its own is not
+  // recorded — the step that triggered it already is.
   z.object({ kind: z.literal("navigate"), path: NavigatePathSchema }),
+  z.object({ kind: z.literal("back") }),
+  z.object({ kind: z.literal("forward") }),
 ]);
 export type RecordedAction = z.infer<typeof RecordedActionSchema>;
 

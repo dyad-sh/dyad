@@ -187,6 +187,22 @@ describe("generate_test_assertions", () => {
     expect(registry.requests[0].testTitle).toBe("Add an item to the list");
   });
 
+  it("asks again when an unnamed recording gets no usable name", async () => {
+    // Accepting it would name the test — and its file — "recorded test", which
+    // is exactly what asking the model for a name is meant to avoid.
+    setRecordedTestDraft(APP_ID, { ...DRAFT, testName: undefined });
+    const ctx = makeCtx();
+
+    const result = await generateTestAssertionsTool.execute(
+      { ...VALID_ARGS, testName: "   " },
+      ctx,
+    );
+
+    expect(result).toContain("testName is empty");
+    // A rejected plan shows a warning, never a card.
+    expect(registry.requests).toEqual([]);
+  });
+
   it("keeps the user's own name over the model's", async () => {
     const ctx = makeCtx();
 

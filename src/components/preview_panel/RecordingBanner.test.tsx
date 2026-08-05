@@ -35,6 +35,7 @@ function makeRecorder(
     startRecording: vi.fn(),
     stopAndReview: vi.fn(),
     recordNavigation: vi.fn(),
+    recordHistoryMove: vi.fn(),
     cancelRecording: vi.fn(),
     markAwaitingAssertions: vi.fn(),
     discardDraft: vi.fn(),

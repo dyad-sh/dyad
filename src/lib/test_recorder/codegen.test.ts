@@ -141,6 +141,15 @@ describe("recordedBodyStatements", () => {
     expect(actionToCodeLine({ kind: "press", key: "Escape" })).toBe(
       `await page.keyboard.press("Escape");`,
     );
+    expect(actionToCodeLine({ kind: "navigate", path: "/items?q=x" })).toBe(
+      `await page.goto("/items?q=x");`,
+    );
+    // The preview's history buttons replay as history moves, so a broken
+    // back-navigation fails the test instead of being jumped over.
+    expect(actionToCodeLine({ kind: "back" })).toBe(`await page.goBack();`);
+    expect(actionToCodeLine({ kind: "forward" })).toBe(
+      `await page.goForward();`,
+    );
     expect(
       actionToCodeLine({
         kind: "select",

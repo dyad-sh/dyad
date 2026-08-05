@@ -225,7 +225,10 @@ export const coolifyContracts = {
   createProject: defineContract({
     channel: "coolify:create-project",
     input: z.object({ name: z.string().min(1) }),
-    output: CoolifyProjectSchema,
+    // Coolify's create response carries only a uuid, so echoing back the name
+    // that was sent would hide any normalisation it applied. The refreshed
+    // project list is the authority on what it is actually called.
+    output: z.object({ uuid: z.string() }),
   }),
 
   disconnect: defineContract({

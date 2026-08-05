@@ -1895,9 +1895,9 @@ export function registerAppHandlers() {
       await githubOpsActorService.disposeAllApps();
       logger.log("all GitHub operation actors disposed.");
       await imageGenerationActorService.disposeAllApps();
+      logger.log("all image generation actors disposed.");
       coolifyDeployRegistry.disposeAll();
       logger.log("all Coolify deployment machines disposed.");
-      logger.log("all image generation actors disposed.");
       await versionPreviewActorService.disposeAllApps();
       logger.log("all version preview actors disposed.");
       // Determine the paths of all apps in the database so that we can delete them.

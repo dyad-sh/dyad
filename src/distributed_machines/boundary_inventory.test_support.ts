@@ -275,6 +275,9 @@ export const migratedSurfaceBoundaryInventory = {
  * wildcard.
  */
 export const nonRemoteDispatchOrEnqueueInventory = [
+  // A local main-process machine: dispatch here is its own transition, not
+  // distributed-machine transport.
+  owned("coolify_deploy/controller.ts", 7),
   owned("hooks/useRunApp.ts", 1),
   owned("ipc/services/app_runtime_service.ts", 2),
   owned("ipc/services/app_runtime_transport.ts", 1),

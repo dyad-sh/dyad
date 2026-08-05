@@ -73,6 +73,8 @@ export type CoolifyConnection = z.infer<typeof CoolifyConnectionSchema>;
 
 export const CoolifyStatusSchema = z.object({
   hasToken: z.boolean(),
+  /** Remembered across a token clear, so re-entering a token does not retype it. */
+  instanceUrl: z.string().nullable(),
   connection: CoolifyConnectionSchema.nullable(),
   appUrl: z.string().nullable(),
   /** Epoch millis of the last successful deploy, or null if never deployed. */

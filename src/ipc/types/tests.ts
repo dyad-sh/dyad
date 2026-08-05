@@ -134,6 +134,12 @@ export const RunAppTestsParamsSchema = z.object({
    * with many independent tests, at the cost of them sharing one dev server.
    */
   parallel: z.boolean().optional(),
+  /**
+   * Experimental: drive the app inside the preview panel's native
+   * WebContentsView over CDP instead of launching a browser, so the user
+   * watches the run in place. Forces serial execution and ignores `headed`.
+   */
+  preview: z.boolean().optional(),
 });
 
 /**

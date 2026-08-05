@@ -46,6 +46,7 @@ export const SETTING_IDS = {
   enableMcpToolSearch: "setting-enable-mcp-tool-search",
   enableCodeExplorer: "setting-enable-code-explorer",
   enableMultiWindow: "setting-enable-multi-window",
+  enableTestRunInPreview: "setting-enable-test-run-in-preview",
   enableSelectAppFromHomeChatInput:
     "setting-enable-select-app-from-home-chat-input",
   reset: "setting-reset",
@@ -531,6 +532,25 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
       "multi-window",
       "app",
       "context menu",
+      "experiment",
+    ],
+    sectionId: SECTION_IDS.experiments,
+    sectionLabel: "Experiments",
+  },
+
+  {
+    id: SETTING_IDS.enableTestRunInPreview,
+    label: "Run tests in preview panel",
+    description:
+      "Add a Tests panel action that runs your app's tests in a native browser view inside the preview panel so you can watch them",
+    keywords: [
+      "tests",
+      "preview",
+      "playwright",
+      "cdp",
+      "debugging",
+      "native",
+      "webcontentsview",
       "experiment",
     ],
     sectionId: SECTION_IDS.experiments,

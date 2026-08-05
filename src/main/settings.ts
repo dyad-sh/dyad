@@ -68,6 +68,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   enableMcpToolSearch: true,
   enableCodeExplorer: true,
   enableMultiWindow: false,
+  enableTestRunInPreview: false,
   autoApproveNonSchemaSql: true,
   autoExpandPreviewPanel: true,
   enableContextCompaction: true,

@@ -364,6 +364,7 @@ ${emitInstruction}
 - Make sure \`@playwright/test\` is installed as a dev dependency. If it isn't already in \`package.json\`, install it (Playwright is required to run the test).
 - Import from \`@playwright/test\`: \`import { test, expect } from "@playwright/test";\`.
 - Do NOT create or edit \`playwright-dyad.config.ts\`. Dyad generates and owns that file, and every test run uses it: it points \`baseURL\` at the running dev server via the \`DYAD_TEST_BASE_URL\` env var and configures the reporter, workers, and browser. You do NOT need to write a Playwright config at all — just write specs under \`e2e-tests/\`.
+- Do NOT create or edit \`e2e-tests/tsconfig.json\` or anything under \`e2e-tests/fixtures/dyad/\` either. Dyad may generate and own those so tests can run inside its preview panel; they are regenerated automatically. Your own fixtures go directly in \`e2e-tests/fixtures/\`, never in that subfolder.
 - Navigate with \`await page.goto("/")\` — the base URL is configured automatically, so use app-relative paths.
 - Prefer role- and text-based locators (\`page.getByRole\`, \`page.getByText\`, \`page.getByLabel\`, \`page.getByPlaceholder\`) over CSS/XPath selectors. They are far more robust.
 - Rely on \`await expect(locator).toBeVisible()\` / \`toHaveText()\` etc. — these auto-wait, so you do NOT need manual sleeps or \`waitForTimeout\`.

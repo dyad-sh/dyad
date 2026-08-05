@@ -157,6 +157,11 @@ export const queryKeys = {
       ["tests", "legacy", appId] as const,
   },
 
+  previewView: {
+    all: ["preview-view"] as const,
+    automationStatus: ["preview-view", "automation-status"] as const,
+  },
+
   // ─────────────────────────────────────────────────────────────────────────────
   // Context Paths
   // ─────────────────────────────────────────────────────────────────────────────

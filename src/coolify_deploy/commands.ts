@@ -1,4 +1,4 @@
-import { and, eq, isNotNull } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import log from "electron-log";
 import { db } from "@/db";
 import { apps } from "@/db/schema";
@@ -115,8 +115,12 @@ function sleep(clock: Clock, ms: number): Promise<void> {
  * abort check would otherwise write an application id or URL back onto an app
  * the user has just cleared.
  */
-function stillConnected(appId: number) {
-  return and(eq(apps.id, appId), isNotNull(apps.coolifyServerUuid));
+function stillConnected(appId: number, serverUuid: string) {
+  // The same server, not merely some server. A deploy can run for fifteen
+  // minutes, and an app disconnected and pointed at a different Coolify
+  // meanwhile must not receive an application id and URL that exist only on
+  // the one this pipeline was talking to.
+  return and(eq(apps.id, appId), eq(apps.coolifyServerUuid, serverUuid));
 }
 
 /**
@@ -230,6 +234,7 @@ async function resolveApplication({
   appId,
   savedUuid,
   privateKeyId,
+  serverUuid,
   create,
   report,
   signal,
@@ -238,6 +243,7 @@ async function resolveApplication({
   appId: number;
   savedUuid: string | null;
   privateKeyId: number | null;
+  serverUuid: string;
   create: () => Promise<string>;
   report: DeployReporter;
   signal: AbortSignal;
@@ -275,7 +281,7 @@ async function resolveApplication({
     await db
       .update(apps)
       .set({ coolifyApplicationUuid: null })
-      .where(stillConnected(appId));
+      .where(stillConnected(appId, serverUuid));
   }
   return create();
 }
@@ -454,6 +460,9 @@ export async function runDeployPipeline({
 
   const gitRepository = `git@github.com:${app.githubOrg}/${app.githubRepo}.git`;
   const gitBranch = app.githubBranch ?? "main";
+  // Captured at the start: every write below is fenced against this exact
+  // server, so a repoint mid-deploy leaves the stale result unwritten.
+  const serverUuid = app.coolifyServerUuid;
 
   report.stage("configuring");
   const applicationUuid = await resolveApplication({
@@ -461,6 +470,7 @@ export async function runDeployPipeline({
     appId,
     signal,
     savedUuid: app.coolifyApplicationUuid,
+    serverUuid,
     privateKeyId: key.id,
     report,
     create: async () => {
@@ -485,7 +495,7 @@ export async function runDeployPipeline({
     await db
       .update(apps)
       .set({ coolifyApplicationUuid: applicationUuid })
-      .where(stillConnected(appId));
+      .where(stillConnected(appId, serverUuid));
   } else {
     // Framework or domain may have changed since the application was created.
     // Only send a domain we actually have: passing null would clear the
@@ -672,7 +682,7 @@ export async function runDeployPipeline({
   await db
     .update(apps)
     .set({ coolifyAppUrl: url, coolifyLastDeployedAt: new Date() })
-    .where(stillConnected(appId));
+    .where(stillConnected(appId, serverUuid));
   logger.info(`Coolify deploy succeeded for app ${appId}`);
   return { url };
 }

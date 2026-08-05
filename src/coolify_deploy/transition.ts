@@ -50,6 +50,12 @@ export function transition(
       if (state.type === "running") {
         return ignore(state, "already-running");
       }
+      // A terminal state belonging to another app would otherwise hand this
+      // one its deployment id below, and the retry would adopt a build that
+      // was never for it. CANCELLED guards the same way.
+      if (state.type !== "idle" && stateAppId(state) !== event.appId) {
+        return ignore(state, "other-app");
+      }
       return change(
         {
           type: "running",

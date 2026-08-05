@@ -174,7 +174,7 @@ export class CoolifyClient {
     if (status === 401) {
       return new CoolifyRequestError(
         "Coolify rejected the API token. Check that it is correct and has not been revoked.",
-        DyadErrorKind.Validation,
+        DyadErrorKind.Auth,
         status,
       );
     }
@@ -193,7 +193,7 @@ export class CoolifyClient {
         `Coolify rejected the request for lack of permissions. The API token ` +
           `needs all of: ${COOLIFY_REQUIRED_SCOPES}. Scopes are fixed when a token is ` +
           `created, so create a new token with all of them.`,
-        DyadErrorKind.Validation,
+        DyadErrorKind.Auth,
         status,
       );
     }

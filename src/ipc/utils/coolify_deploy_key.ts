@@ -84,7 +84,7 @@ function runKeygen(keyPath: string): Promise<void> {
     const child = spawn(
       findKeygenBinary(),
       ["-t", "ed25519", "-N", "", "-C", "dyad-deploy", "-f", keyPath],
-      { stdio: ["ignore", "pipe", "pipe"] },
+      { stdio: ["ignore", "pipe", "pipe"], windowsHide: true },
     );
     let stderr = "";
     let timedOut = false;
@@ -95,7 +95,14 @@ function runKeygen(keyPath: string): Promise<void> {
     child.stderr.on("data", (chunk) => (stderr += chunk.toString()));
     child.on("error", (err) => {
       clearTimeout(timeout);
-      reject(err);
+      // A missing ssh-keygen arrives here rather than as a non-zero exit, and
+      // an unclassified error would be reported as a crash.
+      reject(
+        new DyadError(
+          `Could not run ssh-keygen: ${err.message}`,
+          DyadErrorKind.External,
+        ),
+      );
     });
     child.on("close", (code) => {
       clearTimeout(timeout);

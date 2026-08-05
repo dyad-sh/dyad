@@ -73,13 +73,18 @@ describe("coolify_deploy capabilities", () => {
   });
 
   it("blocks deploying and editing the connection only while one is running", () => {
-    expect(selectCoolifyDeployCapabilities(states[1])).toEqual({
+    const running = states.find((s) => s.type === "running")!;
+    expect(selectCoolifyDeployCapabilities(running)).toEqual({
       canDeploy: false,
       canEditConnection: false,
     });
-    expect(selectCoolifyDeployCapabilities({ type: "idle" })).toEqual({
-      canDeploy: true,
-      canEditConnection: true,
-    });
+    // Every other state allows both, including the two terminal ones — which
+    // is what "only while one is running" claims.
+    for (const state of states.filter((s) => s.type !== "running")) {
+      expect(selectCoolifyDeployCapabilities(state)).toEqual({
+        canDeploy: true,
+        canEditConnection: true,
+      });
+    }
   });
 });

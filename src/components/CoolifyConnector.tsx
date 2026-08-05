@@ -97,11 +97,11 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
   // form whose Save button would then attach them to the wrong app.
   useEffect(() => {
     const connection = status?.connection;
-    setInstanceUrl(connection?.instanceUrl ?? "");
+    setInstanceUrl(connection?.instanceUrl ?? status?.instanceUrl ?? "");
     setServerUuid(connection?.serverUuid ?? "");
     setProjectUuid(connection?.projectUuid ?? "");
     setDomain(connection?.domain ?? "");
-  }, [appId, status?.connection]);
+  }, [appId, status?.connection, status?.instanceUrl]);
 
   if (appId === null || isStatusLoading) {
     return (
@@ -232,14 +232,14 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
           try {
             await clearToken.mutateAsync();
             toast.success(
-              "Coolify disconnected from every app. Enter a token to start again.",
+              "Signed out of Coolify. Your apps keep their settings; enter a token to use them again.",
             );
           } catch (error) {
             toast.error(getErrorMessage(error));
           }
         }}
       >
-        Disconnect Coolify from all apps
+        Sign out of Coolify
       </Button>
     );
     const duplicateProjectName = projects.some(

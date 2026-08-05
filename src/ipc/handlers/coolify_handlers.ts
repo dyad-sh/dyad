@@ -86,6 +86,7 @@ function readConnection(app: {
 }): CoolifyConnection | null {
   const settings = readSettings();
   if (
+    !settings.coolifyAccessToken?.value ||
     !settings.coolifyInstanceUrl ||
     !app.coolifyServerUuid ||
     !app.coolifyProjectUuid
@@ -118,6 +119,7 @@ export function registerCoolifyHandlers() {
     const settings = readSettings();
     return {
       hasToken: Boolean(settings.coolifyAccessToken?.value),
+      instanceUrl: settings.coolifyInstanceUrl ?? null,
       connection: readConnection(app),
       appUrl: app.coolifyAppUrl,
       lastDeployedAt: app.coolifyLastDeployedAt?.getTime() ?? null,
@@ -176,24 +178,17 @@ export function registerCoolifyHandlers() {
   });
 
   createTypedHandler(coolifyContracts.clearToken, async () => {
-    // Clearing the token also forgets which instance the apps were pointed at,
-    // so saveToken can no longer tell that a later connection is a different
-    // one. Start every app over here instead, or they keep server, project and
-    // application ids that mean nothing on whatever instance comes next.
+    // Only the token. Every app reads as disconnected without one, so there is
+    // nothing to gain by clearing their rows — and doing so would throw away
+    // each app's Coolify application id, which is the one value that cannot be
+    // re-entered. The next deploy would then build a second application beside
+    // the one already running and lose a fight with it over the domain.
+    //
+    // The instance URL stays so that saveToken can still tell whether the next
+    // token points somewhere else; that is the case where the ids really are
+    // meaningless, and it clears them itself.
     coolifyDeployRegistry.cancelAll();
-    writeSettings({
-      coolifyInstanceUrl: undefined,
-      coolifyAccessToken: undefined,
-    });
-    await db.update(apps).set({
-      coolifyServerUuid: null,
-      coolifyProjectUuid: null,
-      coolifyEnvironmentName: null,
-      coolifyApplicationUuid: null,
-      coolifyDomain: null,
-      coolifyAppUrl: null,
-      coolifyLastDeployedAt: null,
-    });
+    writeSettings({ coolifyAccessToken: undefined });
   });
 
   createTypedHandler(coolifyContracts.createProject, async (_, { name }) => {

@@ -1334,3 +1334,36 @@ describe("writing only to the server the deploy started against", () => {
     expect(row?.coolifyAppUrl).toBeNull();
   });
 });
+
+describe("replacing an application", () => {
+  it("clears the URL the replaced application was reachable at", async () => {
+    // The old address belonged to the application Coolify no longer has, so
+    // the panel must not keep offering a link to it.
+    const app = await seedApp({
+      coolifyApplicationUuid: "gone-1",
+      coolifyAppUrl: "https://old.example.com",
+    });
+    happyPathRoutes();
+    route("GET /applications/gone-1", { message: "not found" }, 404);
+    // Stop before the deploy can write a fresh URL, so the assertion is about
+    // the recreate having cleared the old one rather than about the deploy.
+    route(`POST /applications/${APP_UUID}/start`, { message: "boom" }, 500);
+    const clock = createFakeClock();
+
+    await expect(
+      drive(
+        clock,
+        runDeployPipeline({
+          appId: app.id,
+          signal: new AbortController().signal,
+          report: recorder(),
+          clock,
+        }),
+      ),
+    ).rejects.toThrow();
+
+    const row = await readApp(app.id);
+    expect(row?.coolifyApplicationUuid).toBe(APP_UUID);
+    expect(row?.coolifyAppUrl).toBeNull();
+  });
+});

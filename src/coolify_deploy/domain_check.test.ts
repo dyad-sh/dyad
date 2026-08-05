@@ -129,3 +129,37 @@ describe("domainCheckVerdict with several addresses", () => {
     ).toBe("points-elsewhere");
   });
 });
+
+describe("expectedServerAddress for a named remote server", () => {
+  it("resolves the server's own hostname rather than the instance", () => {
+    // A remote server Coolify reports by name is still a different machine
+    // from the instance, so checking the domain against the instance would
+    // compare against the wrong host.
+    expect(
+      expectedServerAddress({
+        serverIp: "node-3.example.com",
+        instanceUrl: "https://coolify.example.com",
+      }),
+    ).toEqual({ kind: "resolve", hostname: "node-3.example.com" });
+  });
+
+  it("still stands in for Coolify's own server", () => {
+    expect(
+      expectedServerAddress({
+        serverIp: "host.docker.internal",
+        instanceUrl: "http://143.244.162.54:8000",
+      }),
+    ).toEqual({ kind: "ip", ip: "143.244.162.54" });
+  });
+});
+
+describe("expectedServerAddress and unusable server names", () => {
+  it("does not resolve a loopback name, which would name the user's own machine", () => {
+    expect(
+      expectedServerAddress({
+        serverIp: "localhost",
+        instanceUrl: "http://143.244.162.54:8000",
+      }),
+    ).toEqual({ kind: "ip", ip: "143.244.162.54" });
+  });
+});

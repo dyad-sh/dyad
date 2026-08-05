@@ -1,5 +1,18 @@
 import { isIP } from "node:net";
 
+/** What Coolify reports as the address of the machine it runs on. */
+const DOCKER_HOST_ALIAS = "host.docker.internal";
+
+/**
+ * Names that resolve to the machine asking, not to a reachable server.
+ *
+ * Answering with one would have us tell the user to point a public domain at
+ * their own loopback address.
+ */
+function isLoopbackName(value: string): boolean {
+  return /^(localhost|.*\.localhost)$/i.test(value.trim());
+}
+
 /**
  * What a DNS pre-check concluded about a domain.
  *
@@ -62,7 +75,8 @@ function canonicalAddress(value: string): string {
  * Coolify's built-in server is the machine Coolify itself runs on, and it
  * reports that machine as `host.docker.internal` — a container naming its own
  * host, not an address DNS can match. The instance URL points at the same
- * machine, so it stands in when the reported value is not an address.
+ * machine, so it stands in for that value alone. Any other name belongs to a
+ * different machine and is resolved on its own.
  */
 export function expectedServerAddress({
   serverIp,
@@ -72,6 +86,12 @@ export function expectedServerAddress({
   instanceUrl: string;
 }): { kind: "ip"; ip: string } | { kind: "resolve"; hostname: string } | null {
   if (serverIp && isIP(serverIp)) return { kind: "ip", ip: serverIp };
+  // A server named rather than numbered is still that server, and it is not
+  // the instance. Only Coolify's own built-in server may stand in for the
+  // instance, because that is literally the machine Coolify runs on.
+  if (serverIp && serverIp !== DOCKER_HOST_ALIAS && !isLoopbackName(serverIp)) {
+    return { kind: "resolve", hostname: serverIp };
+  }
   let host: string;
   try {
     // URL wraps an IPv6 literal in brackets, which is not what isIP accepts.

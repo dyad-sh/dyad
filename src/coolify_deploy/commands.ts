@@ -494,7 +494,9 @@ export async function runDeployPipeline({
     throwIfAborted(signal);
     await db
       .update(apps)
-      .set({ coolifyApplicationUuid: applicationUuid })
+      // The old URL belonged to the application just replaced, so leave
+      // nothing behind pointing at something that is gone.
+      .set({ coolifyApplicationUuid: applicationUuid, coolifyAppUrl: null })
       .where(stillConnected(appId, serverUuid));
   } else {
     // Framework or domain may have changed since the application was created.

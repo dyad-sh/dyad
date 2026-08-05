@@ -591,6 +591,7 @@ async function deleteAppByIdExclusive(
 ): Promise<typeof apps.$inferSelect | null> {
   let versionPreviewDeletionStarted = false;
   let githubDeletionStarted = false;
+  let coolifyDeletionStarted = false;
   let releaseStreamAdmissionBlock: (() => void) | undefined;
   let imageGenerationDeletion: ImageGenerationDeletionFence | undefined;
   let releaseChatCreation: (() => void) | undefined;
@@ -606,7 +607,9 @@ async function deleteAppByIdExclusive(
     releaseStreamAdmissionBlock = blockNewStreamsForApp(appId);
     githubOpsService.beginAppDeletion(appId);
     githubDeletionStarted = true;
-    coolifyDeployRegistry.dispose(appId);
+    coolifyDeployRegistry.beginAppDeletion(appId);
+    coolifyDeletionStarted = true;
+    await coolifyDeployRegistry.dispose(appId);
     imageGenerationDeletion =
       imageGenerationActorService.beginAppDeletion(appId);
     releaseChatCreation = beginAppChatDeletion(appId);
@@ -772,6 +775,7 @@ async function deleteAppByIdExclusive(
     } finally {
       try {
         if (githubDeletionStarted) githubOpsService.endAppDeletion(appId);
+        if (coolifyDeletionStarted) coolifyDeployRegistry.endAppDeletion(appId);
       } finally {
         try {
           if (versionPreviewDeletionStarted) {
@@ -1896,7 +1900,7 @@ export function registerAppHandlers() {
       logger.log("all GitHub operation actors disposed.");
       await imageGenerationActorService.disposeAllApps();
       logger.log("all image generation actors disposed.");
-      coolifyDeployRegistry.disposeAll();
+      await coolifyDeployRegistry.disposeAll();
       logger.log("all Coolify deployment machines disposed.");
       await versionPreviewActorService.disposeAllApps();
       logger.log("all version preview actors disposed.");

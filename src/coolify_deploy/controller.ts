@@ -21,6 +21,15 @@ const logger = log.scope("coolify_deploy_controller");
 
 const IDLE: CoolifyDeployState = { type: "idle" };
 
+/**
+ * How long disposal waits for an aborted pipeline to unwind.
+ *
+ * Every remote call carries the abort signal, so unwinding is normally
+ * immediate. The bound exists so a pipeline stuck somewhere that cannot be
+ * aborted still cannot block deleting an app or resetting the whole app.
+ */
+const DRAIN_TIMEOUT_MS = 5_000;
+
 export type RunDeployPipeline = typeof runDeployPipeline;
 
 export interface CoolifyDeployRegistryDeps {
@@ -40,12 +49,31 @@ export interface CoolifyDeployRegistryDeps {
  * Constructed rather than module-global so tests own an isolated instance with
  * a fake clock and sequential ids instead of resetting shared state.
  */
+/** Resolves when the work settles, or when the bound elapses. */
+async function drain(work: Promise<void>): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      work.catch(() => undefined),
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, DRAIN_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export class CoolifyDeployRegistry {
   private readonly stores = new Map<
     number,
     SnapshotStore<CoolifyDeployState>
   >();
   private readonly aborts = new Map<string, AbortController>();
+  /** In-flight pipelines, so disposal can wait rather than abandon them. */
+  private readonly running = new Map<string, Promise<void>>();
+  /** Apps mid-deletion: a deploy admitted now would outlive the app row. */
+  private readonly deleting = new Set<number>();
   private readonly listeners = new Set<
     (appId: number, state: CoolifyDeployState) => void
   >();
@@ -81,6 +109,10 @@ export class CoolifyDeployRegistry {
   }
 
   requestDeploy(appId: number): void {
+    if (this.deleting.has(appId)) {
+      logger.debug(`Ignored deploy for app ${appId}: deletion in progress`);
+      return;
+    }
     this.dispatch(appId, {
       type: "DEPLOY_REQUESTED",
       appId,
@@ -113,22 +145,49 @@ export class CoolifyDeployRegistry {
    * Call when the app is deleted: without this its store and any running
    * pipeline outlive the entity they belong to.
    */
-  dispose(appId: number): void {
-    const store = this.stores.get(appId);
-    const state = store?.getSnapshot();
-    if (state?.type === "running") {
-      this.aborts.get(state.invocationRef.operationId)?.abort();
-      this.aborts.delete(state.invocationRef.operationId);
+  /**
+   * Refuses new deployments for an app until endAppDeletion.
+   *
+   * Disposal alone is not enough: deletion continues after it returns, and a
+   * deploy admitted in that window would keep talking to Coolify about an app
+   * whose row and files are being removed.
+   */
+  beginAppDeletion(appId: number): void {
+    this.deleting.add(appId);
+  }
+
+  endAppDeletion(appId: number): void {
+    this.deleting.delete(appId);
+  }
+
+  async dispose(appId: number): Promise<void> {
+    {
+      const store = this.stores.get(appId);
+      const state = store?.getSnapshot();
+      let inFlight: Promise<void> | undefined;
+      if (state?.type === "running") {
+        const { operationId } = state.invocationRef;
+        this.aborts.get(operationId)?.abort();
+        this.aborts.delete(operationId);
+        inFlight = this.running.get(operationId);
+      }
+      store?.dispose();
+      this.stores.delete(appId);
+      // Aborting only makes the pipeline throw on its next checkpoint, so wait
+      // for it to unwind before the caller deletes rows or closes the database.
+      if (inFlight) await drain(inFlight);
     }
-    store?.dispose();
-    this.stores.delete(appId);
   }
 
   /** Call when every app is going away, as a reset does. */
-  disposeAll(): void {
-    for (const appId of [...this.stores.keys()]) this.dispose(appId);
+  async disposeAll(): Promise<void> {
     for (const controller of this.aborts.values()) controller.abort();
+    await Promise.allSettled(
+      [...this.stores.keys()].map((id) => this.dispose(id)),
+    );
+    await Promise.allSettled(this.running.values());
     this.aborts.clear();
+    this.running.clear();
   }
 
   private dispatch(appId: number, event: CoolifyDeployEvent): void {
@@ -162,13 +221,18 @@ export class CoolifyDeployRegistry {
 
   private execute(appId: number, command: CoolifyDeployCommand): void {
     switch (command.type) {
-      case "RUN_DEPLOY":
-        void this.startPipeline(
+      case "RUN_DEPLOY": {
+        const work = this.startPipeline(
           appId,
           command.invocationRef,
           command.resumeDeploymentUuid,
         );
+        this.running.set(command.invocationRef.operationId, work);
+        void work.finally(() =>
+          this.running.delete(command.invocationRef.operationId),
+        );
         return;
+      }
       case "ABORT_DEPLOY": {
         this.aborts.get(command.invocationRef.operationId)?.abort();
         this.aborts.delete(command.invocationRef.operationId);

@@ -12,8 +12,13 @@ function pendingPipeline() {
   let signal!: AbortSignal;
   const run = vi.fn(async (args: Parameters<RunDeployPipeline>[0]) => {
     signal = args.signal;
-    return new Promise<{ url: string | null }>((r) => {
-      release = r;
+    return new Promise<{ url: string | null }>((resolve, reject) => {
+      release = resolve;
+      // The real pipeline checks the signal at every step and throws, so a
+      // double that ignored it would let disposal look faster than it is.
+      args.signal.addEventListener("abort", () =>
+        reject(new Error("Deployment cancelled.")),
+      );
     });
   });
   return {
@@ -127,7 +132,7 @@ describe("disposal", () => {
     registry.requestDeploy(1);
     await flush();
 
-    registry.dispose(1);
+    await registry.dispose(1);
 
     expect(harness.signal().aborted).toBe(true);
     expect(registry.getSnapshot(1)).toEqual({ type: "idle" });
@@ -140,7 +145,7 @@ describe("disposal", () => {
     await flush();
     const report = harness.calls.mock.calls[0][0].report;
 
-    registry.dispose(1);
+    await registry.dispose(1);
     report.log("still chattering\n");
     harness.release({ url: "https://late.example.com" });
     await flush();
@@ -156,9 +161,53 @@ describe("disposal", () => {
     registry.requestDeploy(2);
     await flush();
 
-    registry.disposeAll();
+    await registry.disposeAll();
 
     expect(registry.hasMachine(1)).toBe(false);
     expect(registry.hasMachine(2)).toBe(false);
+  });
+});
+
+describe("draining on disposal", () => {
+  it("waits for the pipeline to unwind before returning", async () => {
+    // resetAll closes and deletes the database straight after; returning early
+    // would leave the pipeline running against a closed handle.
+    let settled = false;
+    // Unwinding takes a real tick, as it does in production where the abort has
+    // to propagate out of an in-flight fetch. Without the drain, dispose
+    // returns before this runs.
+    const run = vi.fn(async (args: Parameters<RunDeployPipeline>[0]) => {
+      await new Promise<void>((resolve) =>
+        args.signal.addEventListener("abort", () => setTimeout(resolve, 25)),
+      );
+      settled = true;
+      return { url: null };
+    });
+    const registry = makeRegistry(run as unknown as RunDeployPipeline);
+    registry.requestDeploy(1);
+    await flush();
+
+    await registry.dispose(1);
+
+    expect(settled).toBe(true);
+  });
+
+  it("refuses a deploy admitted while the app is being deleted", async () => {
+    const harness = pendingPipeline();
+    const registry = makeRegistry(harness.run);
+    // Deletion holds the fence across everything it does, not just disposal.
+    registry.beginAppDeletion(1);
+    await registry.dispose(1);
+
+    registry.requestDeploy(1);
+    await flush();
+
+    expect(harness.calls).not.toHaveBeenCalled();
+    expect(registry.hasMachine(1)).toBe(false);
+
+    registry.endAppDeletion(1);
+    registry.requestDeploy(1);
+    await flush();
+    expect(harness.calls).toHaveBeenCalledTimes(1);
   });
 });

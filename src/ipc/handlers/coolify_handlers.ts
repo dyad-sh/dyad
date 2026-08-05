@@ -233,7 +233,16 @@ export function registerCoolifyHandlers() {
       // releases it and the app drops back to configured. Nothing has been
       // deployed where it is going, so the machine's finished result would be
       // shown against a place it never ran.
-      if (current.kind !== "none" && next.kind === "configured") {
+      //
+      // Asked of the record rather than of the resulting kind: an app that
+      // never had an application is configured before and after an ordinary
+      // domain edit, and clearing a failed deploy's error and log there would
+      // throw away the only account of what went wrong.
+      const releasedApplication =
+        current.kind !== "configured" &&
+        current.kind !== "none" &&
+        next.kind === "configured";
+      if (releasedApplication) {
         coolifyDeployRegistry.cancelDeploy(appId);
       }
       await db

@@ -187,4 +187,26 @@ describe("moving an app to a different server or project", () => {
     expect(rows[0].coolifyLastDeployedAt).not.toBeNull();
     expect(cancelDeploy).not.toHaveBeenCalled();
   });
+
+  it("leaves a failed deploy's account alone when nothing was released", async () => {
+    // An app that never had an application is configured before and after an
+    // ordinary domain edit. Cancelling there would clear the error and log
+    // that say why the last attempt failed.
+    rows[0].coolifyApplicationUuid = null;
+    rows[0].coolifyAppUrl = null;
+    rows[0].coolifyLastDeployedAt = null;
+
+    await call("coolify:save-connection", {
+      appId: 1,
+      connection: {
+        serverUuid: "srv-1",
+        projectUuid: "prj-1",
+        environmentName: "production",
+        domain: "https://new.example.com",
+      },
+    });
+
+    expect(cancelDeploy).not.toHaveBeenCalled();
+    expect(rows[0].coolifyDomain).toBe("https://new.example.com");
+  });
 });

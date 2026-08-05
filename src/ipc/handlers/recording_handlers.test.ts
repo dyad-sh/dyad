@@ -75,7 +75,10 @@ function makeEvent() {
 function makePrepared(overrides: Record<string, unknown> = {}) {
   return {
     isolation: { mode: "neon-branch" },
-    teardown: vi.fn().mockResolvedValue(undefined),
+    // Must be the real `TeardownResult` shape: the handler reads `.envRestored`
+    // off it, so a mock resolving to `undefined` throws into the teardown catch
+    // and every assertion below would be checking the failure path by accident.
+    teardown: vi.fn().mockResolvedValue({ envRestored: true }),
     ...overrides,
   };
 }
@@ -213,6 +216,46 @@ describe("recording:start / recording:stop", () => {
     await activeRecordings.get(1)?.done;
     expect(prepared.teardown).toHaveBeenCalledTimes(1);
     expect(activeRecordings.has(1)).toBe(false);
+  });
+
+  it("reports an unrestored .env.local as an error, not a clean stop", async () => {
+    // The app is still pointed at the temporary test branch. The recorder bar is
+    // the only surface still listening, and this is what reaches the user as an
+    // error toast — the alternative is their app quietly serving isolated data.
+    const prepared = makePrepared({
+      teardown: vi.fn().mockResolvedValue({ envRestored: false }),
+    });
+    mocks.prepareIsolatedTestDatabase.mockResolvedValue(prepared);
+    const { event } = makeEvent();
+
+    await startHandler(event, { appId: 1 });
+    await stopHandler(event, { appId: 1 });
+
+    expect(mocks.safeSend).toHaveBeenCalledWith(
+      event.sender,
+      "recording:ended",
+      expect.objectContaining({
+        appId: 1,
+        reason: "error",
+        message: expect.stringMatching(/restore your app's real database/i),
+      }),
+    );
+  });
+
+  it("hands the caller's teardown options through to isolation", async () => {
+    // `endRecordingForApp(..., { skipRestart: true })` is how stopApp/restartApp/
+    // delete avoid restarting the dev server twice; the option has to survive the
+    // trip from `stop` to the teardown that acts on it.
+    const prepared = makePrepared();
+    mocks.prepareIsolatedTestDatabase.mockResolvedValue(prepared);
+    const { event } = makeEvent();
+
+    await startHandler(event, { appId: 1 });
+    const recording = activeRecordings.get(1)!;
+    recording.stop("app-stopped", { skipRestart: true });
+    await recording.done;
+
+    expect(prepared.teardown).toHaveBeenCalledWith({ skipRestart: true });
   });
 
   it("tears down and ends the session when the renderer is destroyed", async () => {

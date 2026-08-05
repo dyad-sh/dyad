@@ -87,29 +87,40 @@ If a `renderHook` test starts failing with `No QueryClient set, use QueryClientP
 
 ## Preview `postMessage` Tests Need an App URL
 
-Hooks that consume preview-iframe messages (e.g. `useTestRecorder`) validate `event.origin` against the running app's origin and **fail closed** when it isn't known. A `renderHook` test that only sets `previewIframeRefAtom` will therefore see every message silently dropped. Set `appUrlByAppIdAtom` too, and dispatch the `MessageEvent` with a matching `origin`:
+Hooks that consume preview-iframe messages (e.g. `useTestRecorder`) validate `event.origin` against the running app's origin and **fail closed** when it isn't known. A `renderHook` test that only sets `previewIframeRefAtom` will therefore see every message silently dropped — with no error, because dropping a foreign message is the correct behavior.
+
+The app URL is **not** a Jotai atom: `appUrlByAppIdAtom` was retired (see `rules/jotai-state.md`, and the retired-name guard in `src/state_machines/boundaries.test.ts`), and the URL now comes from `useCurrentAppUrl` in `@/hooks/useAppRun`. Mock that hook, backing it with an atom of your own so a test can also take the URL away mid-session — which is what the dev-server restart during isolation setup does:
 
 ```tsx
-store.set(
-  appUrlByAppIdAtom,
-  new Map([
-    [
-      1,
-      {
-        appUrl: "https://preview.test/",
-        appId: 1,
-        originalUrl: "https://preview.test/",
-        mode: "host",
-      },
-    ],
-  ]),
-);
+const testAppUrlAtom = atom<AppUrlState>({
+  appUrl: null,
+  appId: null,
+  originalUrl: null,
+  mode: null,
+});
+vi.mock("@/hooks/useAppRun", () => ({
+  useCurrentAppUrl: () => useAtomValue(testAppUrlAtom),
+}));
+
+store.set(testAppUrlAtom, {
+  appUrl: "https://preview.test/",
+  appId: 1,
+  originalUrl: "https://preview.test/",
+  mode: "host",
+});
+```
+
+Then dispatch the `MessageEvent` with a matching origin:
+
+```tsx
 const event = new MessageEvent("message", {
   data,
   origin: "https://preview.test",
 });
 Object.defineProperty(event, "source", { value: iframe.contentWindow }); // read-only on the prototype
 ```
+
+Have the iframe stand-in record the **target origin** each outgoing `postMessage` was given, not just the payload — a hook that sends credentials into the preview pins them to the app's origin, and a fake with a one-argument `postMessage` cannot tell that apart from a wide-open `"*"`. See `src/hooks/useTestRecorder.test.tsx` for the whole harness.
 
 ## Partial `jotai` Mocks
 

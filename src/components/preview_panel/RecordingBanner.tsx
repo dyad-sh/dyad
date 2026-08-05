@@ -209,13 +209,10 @@ export function RecordingBanner({
     );
   } else {
     label = (
-      // The spinner phases only say what they're doing in this line, and it
-      // changes in place — a live region is what makes that reach a screen
-      // reader at all.
-      <span
-        role="status"
-        className="flex items-center gap-1.5 text-muted-foreground"
-      >
+      // Deliberately NOT a live region. The setup overlay covers exactly these
+      // phases and announces this same line, followed by what to do about it —
+      // two live regions carrying identical text announce it twice.
+      <span className="flex items-center gap-1.5 text-muted-foreground">
         <Loader2 size={14} className="animate-spin" />
         {recordingStatusMessage(recorder)}
       </span>

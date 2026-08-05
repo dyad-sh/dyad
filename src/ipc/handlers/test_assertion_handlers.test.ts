@@ -749,4 +749,98 @@ describe("registerTestAssertionHandlers", () => {
       expect(specExists()).toBe(false);
     });
   });
+
+  // Declining is as durable as approving, and for the same reason: the card is
+  // not the only copy on screen. A plan closed in one window must not come back
+  // approvable in another, or after a reload.
+  describe("tests:discard-assertions", () => {
+    function discard(appId: number, chatId: number, proposalId = "proposal-1") {
+      return harness.invokeHandler<{ ok: true }>("tests:discard-assertions", {
+        appId,
+        chatId,
+        proposalId,
+      });
+    }
+
+    function status(proposalId = "proposal-1"): string | null {
+      return readAssertionsTagAttribute(
+        storedMessages()[0].content,
+        "status",
+        proposalId,
+      );
+    }
+
+    it("latches the plan declined without writing anything", async () => {
+      const { appId, chatId } = seed();
+      propose(appId, chatId);
+
+      await discard(appId, chatId);
+
+      expect(status()).toBe("discarded");
+      expect(specExists()).toBe(false);
+      expect(mockGitAdd).not.toHaveBeenCalled();
+      // Spliced in place: the agent's prose around the card survives.
+      const content = storedMessages()[0].content;
+      expect(content.startsWith(MESSAGE_PREFIX)).toBe(true);
+      expect(content.endsWith(MESSAGE_SUFFIX)).toBe(true);
+    });
+
+    it("refuses to approve a plan that was closed", async () => {
+      const { appId, chatId } = seed();
+      const { proposalId } = propose(appId, chatId);
+      const items = planFromMessage(storedMessages()[0].content);
+
+      await discard(appId, chatId);
+
+      // A stale card left open in another window would otherwise generate the
+      // very test the user closed.
+      await expect(
+        harness.invokeHandler("tests:apply-assertions", {
+          appId,
+          chatId,
+          proposalId,
+          items,
+        }),
+      ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
+      expect(specExists()).toBe(false);
+      expect(status()).toBe("discarded");
+    });
+
+    it("leaves an approved plan approved", async () => {
+      const { appId, chatId } = seed();
+      propose(appId, chatId);
+      await approve(appId, chatId);
+
+      // Approving already wrote a file; declining afterwards would latch a spec
+      // that exists on disk as declined, and the card would stop offering to
+      // open it.
+      await discard(appId, chatId);
+
+      expect(status()).toBe("approved");
+      expect(specExists()).toBe(true);
+    });
+
+    it("is idempotent when the same plan is closed twice", async () => {
+      const { appId, chatId } = seed();
+      propose(appId, chatId);
+
+      await expect(discard(appId, chatId)).resolves.toEqual({ ok: true });
+      await expect(discard(appId, chatId)).resolves.toEqual({ ok: true });
+      expect(status()).toBe("discarded");
+    });
+
+    it("rejects a chat that belongs to a different app", async () => {
+      const { appId, chatId } = seed();
+      propose(appId, chatId);
+      const otherAppId = Number(
+        harness.db.insert(apps).values({ name: "other", path: "other" }).run()
+          .lastInsertRowid,
+      );
+
+      await expect(discard(otherAppId, chatId)).rejects.toMatchObject({
+        kind: DyadErrorKind.Validation,
+      });
+      expect(status()).toBe("proposed");
+    });
+  });
 });

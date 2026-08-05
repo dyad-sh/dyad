@@ -94,6 +94,9 @@ function setup({ allowUntrusted = true }: { allowUntrusted?: boolean } = {}) {
     el.dispatchEvent(
       new hw.KeyboardEvent("keydown", { bubbles: true, ...init }),
     );
+  const mousemove = (el: AnyEl) =>
+    el.dispatchEvent(new hw.MouseEvent("mousemove", { bubbles: true }));
+  const overlays = () => doc.querySelectorAll(".__dyad_recorder_overlay__");
 
   return {
     hw,
@@ -109,6 +112,8 @@ function setup({ allowUntrusted = true }: { allowUntrusted?: boolean } = {}) {
     typeInto,
     change,
     keydown,
+    mousemove,
+    overlays,
     settleClick: () => vi.advanceTimersByTime(CLICK_DEBOUNCE_MS),
   };
 }
@@ -349,6 +354,127 @@ describe("dyad recorder client", () => {
         locator: { kind: "role", value: "radio", name: "Plan", exact: true },
       },
     ]);
+  });
+
+  it("records a dropdown choice as a select with the chosen value", () => {
+    const r = setup();
+    r.setHtml(
+      `<label for="colour">Colour</label>` +
+        `<select id="colour">` +
+        `<option value="red">Red</option><option value="blue">Blue</option>` +
+        `</select>`,
+    );
+    r.activate();
+    const select = r.doc.querySelector("select");
+    select.value = "blue";
+    r.change(select);
+
+    // A select is a combobox only while it presents one row at a time — that is
+    // what Playwright matches it as, so anything else generates a locator that
+    // never resolves.
+    expect(r.actions).toEqual([
+      {
+        kind: "select",
+        locator: {
+          kind: "role",
+          value: "combobox",
+          name: "Colour",
+          exact: true,
+        },
+        values: ["blue"],
+      },
+    ]);
+  });
+
+  it("records a multi-select as a listbox with every chosen value", () => {
+    const r = setup();
+    r.setHtml(
+      `<select multiple aria-label="Toppings">` +
+        `<option value="ham">Ham</option>` +
+        `<option value="olives">Olives</option>` +
+        `<option value="basil">Basil</option>` +
+        `</select>`,
+    );
+    r.activate();
+    const select = r.doc.querySelector("select");
+    select.options[0].selected = true;
+    select.options[2].selected = true;
+    r.change(select);
+
+    // `multiple` makes it a list, and Playwright matches it as `listbox`.
+    expect(r.actions).toEqual([
+      {
+        kind: "select",
+        locator: {
+          kind: "role",
+          value: "listbox",
+          name: "Toppings",
+          exact: true,
+        },
+        values: ["ham", "basil"],
+      },
+    ]);
+  });
+
+  // Enter in a text field inside a form submits it, and the browser delivers
+  // that submission as its own trusted click on the default submit button.
+  // Recording both replays the submission twice — and since the press navigates
+  // first, the duplicate click usually lands on the destination document.
+  it("records an implicit form submit once, not as a press and a click", () => {
+    const r = setup();
+    r.setHtml(
+      `<form><input aria-label="Search" /><button type="submit">Go</button></form>`,
+    );
+    r.activate();
+
+    r.keydown(r.doc.querySelector("input"), { key: "Enter" });
+    r.click(r.doc.querySelector("button"));
+
+    expect(r.actions.map((a: any) => a.kind)).toEqual(["press"]);
+  });
+
+  it("records Enter pressed on a button as the click it dispatches", () => {
+    const r = setup();
+    r.setHtml(`<button>Go</button>`);
+    r.activate();
+    const button = r.doc.querySelector("button");
+
+    // The press is suppressed instead, so the browser's own click is the single
+    // record of the action. Suppressing the click here would drop it entirely.
+    r.keydown(button, { key: "Enter" });
+    r.click(button);
+
+    expect(r.actions.map((a: any) => a.kind)).toEqual(["click"]);
+  });
+
+  it("keeps recording a click made after the implicit-submit window", () => {
+    const r = setup();
+    r.setHtml(
+      `<form><input aria-label="Search" /><button type="submit">Go</button></form>`,
+    );
+    r.activate();
+
+    r.keydown(r.doc.querySelector("input"), { key: "Enter" });
+    // Long enough that this can no longer be the submission that press caused;
+    // it is the user clicking the button themselves.
+    vi.advanceTimersByTime(200);
+    r.click(r.doc.querySelector("button"));
+
+    expect(r.actions.map((a: any) => a.kind)).toEqual(["press", "click"]);
+  });
+
+  it("takes its hover highlight out of the document when recording stops", () => {
+    const r = setup();
+    r.setHtml(`<button>Go</button>`);
+    r.activate();
+    r.mousemove(r.doc.querySelector("button"));
+    expect(r.overlays()).toHaveLength(1);
+
+    r.deactivate();
+
+    // Observe-only cuts both ways: once recording is over the app's DOM has to
+    // look exactly as it would have without the recorder in it.
+    expect(r.overlays()).toHaveLength(0);
   });
 
   it("prefers a data-testid locator over other strategies", () => {

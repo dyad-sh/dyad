@@ -490,7 +490,16 @@ export function useTestRecorder({
         authReadyRef.current = (result) =>
           finish(Boolean(result.ok), result.error);
         reloadPreview();
-        postToIframe({ type: "dyad-auth-login", auth, nonce }, previewOrigin());
+        // Fails closed on an unknown origin, exactly as the inbound handler
+        // does. This is the one message carrying the test user's credentials,
+        // and "*" would hand them to whatever origin the preview happens to be
+        // showing. Nothing is lost by holding off: the registration above
+        // stands, so the fresh load's `dyad-auth-bootstrap-ready` — which is
+        // itself only accepted from the app's own origin — resends them.
+        const origin = previewOrigin();
+        if (origin !== "*") {
+          postToIframe({ type: "dyad-auth-login", auth, nonce }, origin);
+        }
       }),
     [postToIframe, previewOrigin, reloadPreview],
   );

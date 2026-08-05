@@ -93,11 +93,19 @@ function makeWrapper() {
  */
 function makeIframe() {
   const posted: any[] = [];
+  // The target origin each message was posted with, positionally aligned with
+  // `posted`. What `postMessage` is *told* matters as much as what it sends:
+  // one of these messages carries the isolated test user's password.
+  const postedOrigins: (string | undefined)[] = [];
   const contentWindow = {
-    postMessage: (message: unknown) => posted.push(message),
+    postMessage: (message: unknown, targetOrigin?: string) => {
+      posted.push(message);
+      postedOrigins.push(targetOrigin);
+    },
   };
   return {
     posted,
+    postedOrigins,
     contentWindow,
     el: { contentWindow } as unknown as HTMLIFrameElement,
     /** Deliver a message as if the preview had posted it up. */
@@ -615,6 +623,157 @@ describe("useTestRecorder", () => {
       type: "deactivate-dyad-recorder",
     });
     expect(result.current.phase).toBe("idle");
+  });
+
+  /** A start that comes back with credentials to establish before recording. */
+  function authenticatedStart() {
+    startRecordingMock.mockResolvedValue({
+      appId: 1,
+      sessionId: "session-1",
+      isolation: { mode: "none" },
+      auth: {
+        mode: "neon-better-auth",
+        email: "t@dyad.test",
+        password: "s3cret",
+      },
+    });
+  }
+
+  function findLogin(iframe: ReturnType<typeof makeIframe>) {
+    const index = iframe.posted.findIndex(
+      (message: any) => message?.type === "dyad-auth-login",
+    );
+    return index === -1
+      ? null
+      : { message: iframe.posted[index], origin: iframe.postedOrigins[index] };
+  }
+
+  it("signs the preview in at the app's own origin", async () => {
+    authenticatedStart();
+    const iframe = makeIframe();
+    const { result } = mountRecorder({ iframe, appUrl: true });
+
+    let started!: Promise<void>;
+    act(() => {
+      started = result.current.startRecording();
+    });
+
+    await waitFor(() => expect(findLogin(iframe)).not.toBeNull());
+    const login = findLogin(iframe)!;
+    // Pinned to the app's own origin. `postMessage` delivers to whoever the
+    // frame is currently showing, so "*" here would hand the test user's
+    // password to a preview that had followed a link off-origin.
+    expect(login.origin).toBe(PREVIEW_ORIGIN);
+    expect(login.message.auth).toEqual({
+      mode: "neon-better-auth",
+      email: "t@dyad.test",
+      password: "s3cret",
+    });
+
+    await act(async () => {
+      iframe.send({
+        type: "dyad-auth-ready",
+        ok: true,
+        nonce: login.message.nonce,
+      });
+      await started;
+    });
+
+    expect(result.current.isRecording).toBe(true);
+    expect(result.current.auth?.mode).toBe("neon-better-auth");
+  });
+
+  it("withholds credentials until the preview's origin is known", async () => {
+    authenticatedStart();
+    const iframe = makeIframe();
+    // No app URL yet: isolation setup restarts the dev server, and the run
+    // command empties the URL until the new one arrives.
+    const { store, result } = mountRecorder({ iframe });
+
+    let started!: Promise<void>;
+    act(() => {
+      started = result.current.startRecording();
+    });
+
+    await waitFor(() => expect(result.current.phase).toBe("authenticating"));
+    // Nothing goes out while the only available target would be "*".
+    expect(findLogin(iframe)).toBeNull();
+
+    // Nothing is lost by waiting: the fresh load announces itself, and that
+    // announce — accepted only from the app's own origin — triggers the resend.
+    act(() => {
+      setAppUrl(store, 1);
+    });
+    act(() => {
+      iframe.send({ type: "dyad-auth-bootstrap-ready" });
+    });
+
+    await waitFor(() => expect(findLogin(iframe)).not.toBeNull());
+    const login = findLogin(iframe)!;
+    expect(login.origin).toBe(PREVIEW_ORIGIN);
+
+    await act(async () => {
+      iframe.send({
+        type: "dyad-auth-ready",
+        ok: true,
+        nonce: login.message.nonce,
+      });
+      await started;
+    });
+
+    expect(result.current.isRecording).toBe(true);
+  });
+
+  it("records unauthenticated rather than dead-ending on a failed sign-in", async () => {
+    authenticatedStart();
+    const iframe = makeIframe();
+    const { result } = mountRecorder({ iframe, appUrl: true });
+
+    let started!: Promise<void>;
+    act(() => {
+      started = result.current.startRecording();
+    });
+    await waitFor(() => expect(findLogin(iframe)).not.toBeNull());
+    const login = findLogin(iframe)!;
+
+    await act(async () => {
+      iframe.send({
+        type: "dyad-auth-ready",
+        ok: false,
+        error: "no session after sign-in",
+        nonce: login.message.nonce,
+      });
+      await started;
+    });
+
+    // The flow degrades instead of stopping: plenty of recordings don't need a
+    // signed-in user, and the warning is what tells the user which one this is.
+    expect(result.current.isRecording).toBe(true);
+    expect(result.current.auth).toEqual({ mode: "none" });
+    expect(result.current.warning).toMatch(/without authentication/i);
+  });
+
+  it("ignores a sign-in result from an attempt that already timed out", async () => {
+    authenticatedStart();
+    const iframe = makeIframe();
+    const { result } = mountRecorder({ iframe, appUrl: true });
+
+    act(() => {
+      void result.current.startRecording();
+    });
+    await waitFor(() => expect(findLogin(iframe)).not.toBeNull());
+
+    // Without the nonce check a stale completion would advance whatever attempt
+    // is current to "recording" on credentials that were never established.
+    act(() => {
+      iframe.send({
+        type: "dyad-auth-ready",
+        ok: true,
+        nonce: "some-other-attempt",
+      });
+    });
+
+    expect(result.current.phase).toBe("authenticating");
   });
 
   it("abandons setup when the selected app changes mid-start", async () => {

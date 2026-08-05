@@ -962,6 +962,19 @@
     if (hoverBox) hoverBox.style.display = "none";
   }
 
+  /**
+   * Take the highlight out of the document entirely, rather than just hiding
+   * it. Hiding is right between pointer moves; this runs when recording stops,
+   * and this script's whole contract is that the app is left exactly as it
+   * would have been without it.
+   */
+  function removeHoverBox() {
+    if (hoverBox && hoverBox.parentNode) {
+      hoverBox.parentNode.removeChild(hoverBox);
+    }
+    hoverBox = null;
+  }
+
   function onMouseMove(e) {
     if (!active || isOverlayEvent(e)) return;
     const raw = deepTarget(e);
@@ -1006,7 +1019,7 @@
     document.removeEventListener("change", onChange, true);
     document.removeEventListener("keydown", onKeyDown, true);
     document.removeEventListener("mousemove", onMouseMove, true);
-    hideHover();
+    removeHoverBox();
   }
 
   /* ---------- message bridge ------------------------------------------- */

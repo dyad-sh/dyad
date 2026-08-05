@@ -18,6 +18,7 @@ import {
   MoreHorizontal,
   Shield,
   Wrench,
+  X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -36,7 +37,13 @@ import {
 import { cn } from "@/lib/utils";
 import { useReducedMotionPref } from "@/hooks/useReducedMotion";
 import { useVersionPreview } from "@/hooks/useVersionPreview";
-import { diffVersionIdForState } from "@/version_preview/state";
+import { useVersions } from "@/hooks/useVersions";
+import {
+  diffVersionIdForState,
+  type PreviewEvent,
+  type PreviewState,
+} from "@/version_preview/state";
+import type { Version } from "@/ipc/types";
 
 type ToolbarMode = Exclude<PreviewMode, "plan">;
 
@@ -69,6 +76,58 @@ const TAB_BASE_CLASSES =
 
 const problemBadgeClasses =
   "px-1 py-0.5 text-[10px] font-medium bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-full min-w-[16px] text-center";
+
+export function getVersionDisplayId(
+  versionId: string,
+  versions: readonly Version[],
+): string {
+  const versionIndex = versions.findIndex(
+    (version) =>
+      version.oid === versionId ||
+      version.oid.startsWith(versionId) ||
+      versionId.startsWith(version.oid),
+  );
+  return versionIndex === -1
+    ? versionId.slice(0, 7)
+    : String(versions.length - versionIndex);
+}
+
+export function exitVersionEventForState(state: PreviewState): PreviewEvent {
+  return state.type === "viewing-diff"
+    ? { type: "CLOSE_VERSION_DIFF" }
+    : { type: "CLOSE" };
+}
+
+export function VersionDiffContext({
+  versionLabel,
+  exitLabel,
+  exitAriaLabel,
+  onExit,
+}: {
+  versionLabel: string;
+  exitLabel: string;
+  exitAriaLabel: string;
+  onExit: () => void;
+}) {
+  return (
+    <div
+      data-testid="version-diff-context"
+      className="no-app-region-drag flex min-w-0 shrink items-center overflow-hidden rounded-md border border-primary/20 bg-primary/5 text-xs text-muted-foreground"
+    >
+      <span className="truncate px-2 py-1.5">{versionLabel}</span>
+      <button
+        type="button"
+        data-testid="exit-version-view-button"
+        onClick={onExit}
+        aria-label={exitAriaLabel}
+        className="flex shrink-0 cursor-pointer items-center gap-1 self-stretch border-l border-primary/20 px-2 font-medium text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+      >
+        <X size={13} aria-hidden="true" />
+        <span>{exitLabel}</span>
+      </button>
+    </div>
+  );
+}
 
 /**
  * Decides which tabs fit in the row. Tabs keep canonical order; when space
@@ -137,9 +196,14 @@ export const PreviewToolbar = () => {
     isChatPanelHiddenAtom,
   );
   const selectedAppId = useAtomValue(selectedAppIdAtom);
-  const { state: previewState } = useVersionPreview(selectedAppId);
+  const { state: previewState, send: sendPreviewEvent } =
+    useVersionPreview(selectedAppId);
+  const { versions } = useVersions(selectedAppId);
   const selectedVersionId = diffVersionIdForState(previewState);
   const isVersionSelected = selectedVersionId != null;
+  const versionDisplayId = selectedVersionId
+    ? getVersionDisplayId(selectedVersionId, versions)
+    : null;
   const { problemReport } = useCheckProblems(selectedAppId);
 
   // When a version is selected, only the preview/diff panels are available.
@@ -411,6 +475,18 @@ export const PreviewToolbar = () => {
           </div>
         </div>
       </div>
+      {versionDisplayId && (
+        <VersionDiffContext
+          versionLabel={t("preview.viewingVersion", {
+            version: versionDisplayId,
+          })}
+          exitLabel={t("preview.exit")}
+          exitAriaLabel={t("preview.exitVersionView")}
+          onExit={() =>
+            sendPreviewEvent(exitVersionEventForState(previewState))
+          }
+        />
+      )}
       <div className="flex shrink-0 items-center border-l border-border pl-2">
         <Tooltip>
           <TooltipTrigger

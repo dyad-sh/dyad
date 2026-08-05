@@ -27,6 +27,10 @@ Use `MoreHorizontal` for compact preview-mode overflow and `MoreVertical` for
 the right-most preview utility/actions menu. This keeps two ellipsis controls in
 the same preview header visually distinct.
 
+Version-diff mode replaces the normal preview modes with Preview and Diff.
+Keep its current-version context and exit action in shared preview chrome so
+users can leave the mode without first navigating to the Diff panel.
+
 ## Preview screenshot viewport offsets
 
 When using `html-to-image` to capture a scrolled viewport, do not translate or

@@ -58,8 +58,10 @@ export function isCoolifyStatus(error: unknown, status: number): boolean {
  * How an application should be built and served.
  *
  * A Vite app without a Nitro server layer compiles to static files with no
- * process to run, so nixpacks has nothing to start and the container exits.
- * Those need Coolify's static build pack instead, served by nginx on port 80.
+ * process to run, so a build pack alone has nothing to start and the container
+ * exits. Those pair a build pack with `isStatic`, which serves the built output
+ * with nginx — not Coolify's `static` build pack, which skips the build. See
+ * buildConfigForFramework.
  */
 export interface CoolifyBuildConfig {
   buildPack: "nixpacks" | "railpack";
@@ -254,12 +256,6 @@ export class CoolifyClient {
 
   async createProject(name: string): Promise<{ uuid: string }> {
     return this.request("POST", "/projects", { name });
-  }
-
-  async getProject(
-    uuid: string,
-  ): Promise<{ uuid: string; environments?: Array<{ name: string }> }> {
-    return this.request("GET", `/projects/${uuid}`);
   }
 
   /**

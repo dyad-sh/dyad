@@ -118,8 +118,8 @@ export function registerCoolifyHandlers() {
     return {
       hasToken: Boolean(settings.coolifyAccessToken?.value),
       connection: readConnection(app),
-      appUuid: app.coolifyApplicationUuid,
       appUrl: app.coolifyAppUrl,
+      lastDeployedAt: app.coolifyLastDeployedAt?.getTime() ?? null,
     };
   });
 
@@ -159,6 +159,7 @@ export function registerCoolifyHandlers() {
           coolifyApplicationUuid: null,
           coolifyDomain: null,
           coolifyAppUrl: null,
+          coolifyLastDeployedAt: null,
         });
       }
     },
@@ -190,6 +191,7 @@ export function registerCoolifyHandlers() {
       coolifyApplicationUuid: null,
       coolifyDomain: null,
       coolifyAppUrl: null,
+      coolifyLastDeployedAt: null,
     });
   });
 
@@ -301,6 +303,7 @@ export function registerCoolifyHandlers() {
         coolifyApplicationUuid: null,
         coolifyDomain: null,
         coolifyAppUrl: null,
+        coolifyLastDeployedAt: null,
       })
       .where(eq(apps.id, appId));
   });

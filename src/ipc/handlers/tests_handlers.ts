@@ -3,7 +3,13 @@ import os from "node:os";
 import path from "node:path";
 import { glob } from "glob";
 import log from "electron-log";
+import { BrowserWindow } from "electron";
 import type { IpcMainInvokeEvent } from "electron";
+import { resolveRemoteDebuggingEndpoint } from "@/main/remote_debugging";
+import {
+  beginPreviewAutomation,
+  waitForPreviewView,
+} from "@/main/preview_web_contents_view";
 import { eq } from "drizzle-orm";
 import { db } from "../../db";
 import { apps } from "../../db/schema";
@@ -42,6 +48,7 @@ import { spawnStreaming } from "../utils/spawn_streaming";
 import {
   ensurePlaywrightBootstrap,
   DYAD_CONFIG_FILENAME,
+  PREVIEW_CDP_ENDPOINT_ENV,
   TEST_BASE_URL_ENV,
   TEST_RESULTS_JSON,
 } from "../utils/playwright_bootstrap";
@@ -250,6 +257,14 @@ export interface RunAppTestsCoreOptions {
    * keys.
    */
   testEnv?: Record<string, string>;
+  /**
+   * Experimental: CDP endpoint of this Dyad instance. When set, the generated
+   * fixture shim connects to it and drives the page already loaded in the
+   * preview panel's native view instead of launching a browser, so the user
+   * watches the run in place. Implies serial execution (one shared page) and
+   * makes `headed` meaningless.
+   */
+  previewCdpEndpoint?: string;
 }
 
 /**
@@ -268,6 +283,7 @@ export async function runAppTestsCore({
   timeoutMs,
   onOutput,
   testEnv,
+  previewCdpEndpoint,
 }: RunAppTestsCoreOptions): Promise<RunAppTestsResult> {
   const app = await getApp(appId);
   const appPath = getDyadAppPath(app.path);
@@ -306,6 +322,7 @@ export async function runAppTestsCore({
       appPath,
       signal,
       onOutput: (chunk) => emit(chunk, "setup"),
+      ensurePreviewShim: !!previewCdpEndpoint,
     });
     installed = result.installed;
   } catch (error) {
@@ -361,13 +378,17 @@ export async function runAppTestsCore({
   // `playwright test` has no `--base-url` option.
   // `--headed` opens a visible browser window so the user can watch the run.
   // It overrides the headless default (and the CI=true env set below).
-  if (headed) {
+  // A preview run is already visible — it drives Dyad's own window — and has no
+  // browser of its own to make headed.
+  if (headed && !previewCdpEndpoint) {
     args.push("--headed");
   }
   // Override the generated config's serial defaults (`workers: 1`,
   // `fullyParallel: false`) so a file's independent tests run concurrently.
   // `--fully-parallel` is what parallelizes tests *within* a single file.
-  if (parallel) {
+  // Preview runs share the single page inside the preview panel, so they can
+  // only ever be serial.
+  if (parallel && !previewCdpEndpoint) {
     args.push("--fully-parallel", `--workers=${parallelWorkerCount()}`);
   }
 
@@ -381,6 +402,11 @@ export async function runAppTestsCore({
         ...process.env,
         ...testEnv,
         [TEST_BASE_URL_ENV]: baseUrl,
+        // Only set for preview runs; the generated fixture shim is inert
+        // without it, so every other run keeps launching its own browser.
+        ...(previewCdpEndpoint
+          ? { [PREVIEW_CDP_ENDPOINT_ENV]: previewCdpEndpoint }
+          : {}),
         PLAYWRIGHT_JSON_OUTPUT_NAME: TEST_RESULTS_JSON,
         // Non-interactive: never try to open/serve an HTML report.
         CI: "true",
@@ -538,6 +564,14 @@ export interface RunTestsWithIsolationOptions {
    * either can cancel the run.
    */
   externalSignal?: AbortSignal;
+  /**
+   * Experimental: run inside the preview panel's native view instead of a
+   * separate browser. Requires the `enableTestRunInPreview` experiment (which
+   * opens the CDP endpoint at boot) and the preview showing this app — the
+   * Tests panel's "Run in preview" action is the only thing that opens that
+   * view.
+   */
+  preview?: boolean;
 }
 
 /**
@@ -560,6 +594,7 @@ export async function runAppTestsWithIsolation({
   timeoutMs,
   source,
   externalSignal,
+  preview,
 }: RunTestsWithIsolationOptions): Promise<RunAppTestsResult> {
   const normalizedTestFile =
     testFile === undefined ? undefined : normalizeRunTestFile(testFile);
@@ -585,6 +620,35 @@ export async function runAppTestsWithIsolation({
         message: "Stop the recording session before running tests.",
       },
     };
+  }
+
+  // Resolve the preview target before the expensive isolation setup too: a
+  // missing experiment flag or window is a dead end, and the user shouldn't pay
+  // for a Neon branch to find out.
+  let previewWindow: BrowserWindow | undefined;
+  let previewCdpEndpoint: string | undefined;
+  if (preview) {
+    previewWindow = BrowserWindow.fromWebContents(event.sender) ?? undefined;
+    if (!previewWindow) {
+      return {
+        appId,
+        results: [],
+        infraError: { message: "Couldn't find the window to preview in." },
+      };
+    }
+
+    const endpoint = await resolveRemoteDebuggingEndpoint();
+    if (!endpoint) {
+      return {
+        appId,
+        results: [],
+        infraError: {
+          message:
+            'Running tests in the preview panel needs the "Run tests in preview panel" experiment. Enable it in Settings → Experiments, then restart Dyad.',
+        },
+      };
+    }
+    previewCdpEndpoint = endpoint.httpEndpoint;
   }
 
   // Register this run's controller SYNCHRONOUSLY — before awaiting the prior
@@ -796,8 +860,39 @@ export async function runAppTestsWithIsolation({
             };
           }
 
-          const result = await runAppTestsCore({
-            appId,
+          // Isolation may have restarted the dev server, so only now is the
+          // preview guaranteed to be settled on the URL the run will target.
+          if (previewWindow && previewCdpEndpoint) {
+            const baseUrl = getRunningTestBaseUrl(appId);
+            const ready = baseUrl
+              ? await waitForPreviewView(previewWindow, { url: baseUrl })
+              : ({ ok: false, reason: "the app isn't running" } as const);
+
+            if (!ready.ok) {
+              return {
+                appId,
+                results: [],
+                infraError: {
+                  message: `The preview panel isn't showing this app (${ready.reason}). Start the run with "Run in preview" from the Tests panel and stay on the Preview tab, then try again.`,
+                },
+                isolation: prepared.isolation,
+              };
+            }
+          }
+
+          let previewViewClosed = false;
+          const automation = previewWindow
+            ? beginPreviewAutomation(previewWindow, {
+                onViewDestroyed: () => {
+                  previewViewClosed = true;
+                },
+              })
+            : null;
+
+          let result: RunAppTestsResult;
+          try {
+            result = await runAppTestsCore({
+              appId,
             testFile: normalizedTestFile ?? undefined,
             testLine,
             grep,
@@ -807,7 +902,23 @@ export async function runAppTestsWithIsolation({
             timeoutMs,
             onOutput: emit,
             testEnv: prepared.testCredentials,
-          });
+              previewCdpEndpoint,
+            });
+          } finally {
+            automation?.end();
+          }
+
+          if (previewViewClosed && result.infraError) {
+            // The CDP target vanished mid-run; the raw disconnect error tells the
+            // user nothing about why.
+            result = {
+              ...result,
+              infraError: {
+                message:
+                  "The preview was closed while tests were running, so the run was interrupted.",
+              },
+            };
+          }
           return { ...result, isolation: prepared.isolation };
         } finally {
           // Always restore the app to its real database, even on the

@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { recordingStartRequestAtom } from "@/atoms/recorderAtoms";
+import { previewNativeViewAtom } from "@/atoms/previewAtoms";
 import {
   EMPTY_TEST_RUN_STATE,
   testRunStateByAppIdAtom,
@@ -31,6 +32,8 @@ const mocks = vi.hoisted(() => ({
   appUrl: "http://localhost:32100" as string | null,
   previewUrl: "http://localhost:32100/" as string | null,
   previewUrlSource: "dyad" as "none" | "dyad" | "app",
+  getAutomationStatus: vi.fn(),
+  settings: {} as Record<string, unknown>,
 }));
 
 vi.mock("@/ipc/types", () => ({
@@ -41,6 +44,9 @@ vi.mock("@/ipc/types", () => ({
       runAppTests: mocks.runAppTests,
       stopAppTests: mocks.stopAppTests,
       getTestScreenshot: mocks.getTestScreenshot,
+    },
+    previewView: {
+      getAutomationStatus: mocks.getAutomationStatus,
     },
   },
 }));
@@ -56,7 +62,7 @@ vi.mock("@/hooks/useLoadApp", () => ({
 }));
 
 vi.mock("@/hooks/useSettings", () => ({
-  useSettings: () => ({ settings: {}, updateSettings: vi.fn() }),
+  useSettings: () => ({ settings: mocks.settings, updateSettings: vi.fn() }),
 }));
 
 vi.mock("@/hooks/useRunApp", () => ({
@@ -146,6 +152,73 @@ describe("TestsPanel", () => {
       file: SPEC_FILE,
       committed: true,
       uncommittedReason: null,
+    });
+    mocks.settings = {};
+    mocks.getAutomationStatus.mockResolvedValue({ cdpReady: true });
+  });
+
+  describe("run in preview", () => {
+    const experimentOn = {
+      enableTestRunInPreview: true,
+    };
+
+    it("stays hidden until the experiment is on", async () => {
+      mocks.settings = {};
+      renderPanel();
+
+      expect(await screen.findByText("Run all")).toBeTruthy();
+      expect(screen.queryByTestId("tests-run-in-preview-button")).toBeNull();
+    });
+
+    it("runs in the preview and brings the native view forward", async () => {
+      mocks.settings = experimentOn;
+      mocks.runAppTests.mockResolvedValue({ appId: 1, results: [] });
+      const { store } = renderPanel();
+
+      const button = await screen.findByTestId("tests-run-in-preview-button");
+      await act(async () => {
+        fireEvent.click(button);
+      });
+
+      expect(store.get(previewNativeViewAtom)).toBe(true);
+      expect(store.get(previewModeAtom)).toBe("preview");
+      await waitFor(() => {
+        expect(mocks.runAppTests).toHaveBeenCalledWith(
+          expect.objectContaining({ appId: 1, preview: true, parallel: false }),
+        );
+      });
+    });
+
+    it("is disabled until Dyad has been restarted", async () => {
+      mocks.settings = experimentOn;
+      mocks.getAutomationStatus.mockResolvedValue({ cdpReady: false });
+      renderPanel();
+
+      const button = await screen.findByTestId("tests-run-in-preview-button");
+      await waitFor(() => {
+        expect(button.getAttribute("disabled")).not.toBeNull();
+      });
+      expect(button.getAttribute("title")).toContain("Restart Dyad");
+
+      fireEvent.click(button);
+      expect(mocks.runAppTests).not.toHaveBeenCalled();
+    });
+
+    it("leaves the ordinary Run all button alone", async () => {
+      mocks.settings = experimentOn;
+      mocks.runAppTests.mockResolvedValue({ appId: 1, results: [] });
+      renderPanel();
+
+      const runAll = await screen.findByText("Run all");
+      await act(async () => {
+        fireEvent.click(runAll);
+      });
+
+      await waitFor(() => {
+        expect(mocks.runAppTests).toHaveBeenCalledWith(
+          expect.objectContaining({ preview: false }),
+        );
+      });
     });
   });
 

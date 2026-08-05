@@ -455,6 +455,7 @@ const BaseUserSettingsFields = {
   // still changing, and with it off the Publish panel keeps the Vercel card
   // it has always had.
   enableOwnServerDeployment: z.boolean().optional(),
+  enableTestRunInPreview: z.boolean().optional(),
   enableAutoUpdate: z.boolean(),
   releaseChannel: ReleaseChannelSchema,
   runtimeMode2: RuntimeMode2Schema.optional(),

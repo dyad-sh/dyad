@@ -229,12 +229,34 @@ describe("validating list responses", () => {
     });
   });
 
-  it("rejects entries missing the fields the picker needs", async () => {
+  it("rejects a list with nothing usable in it", async () => {
     mockFetch([{ status: 200, body: JSON.stringify([{ uuid: "srv-1" }]) }]);
     await expect(client().listServers()).rejects.toMatchObject({
       kind: DyadErrorKind.External,
       message: expect.stringContaining("unexpected shape"),
     });
+  });
+
+  it("keeps the servers it can read when one entry is odd", async () => {
+    // Coolify is self-hosted and versions vary; one strange server must not
+    // cost the user every other server they could have deployed to.
+    mockFetch([
+      {
+        status: 200,
+        body: JSON.stringify([
+          { uuid: "srv-1", name: "prod" },
+          { uuid: "srv-2" },
+        ]),
+      },
+    ]);
+    await expect(client().listServers()).resolves.toEqual([
+      { uuid: "srv-1", name: "prod" },
+    ]);
+  });
+
+  it("returns an empty list when Coolify genuinely has none", async () => {
+    mockFetch([{ status: 200, body: "[]" }]);
+    await expect(client().listServers()).resolves.toEqual([]);
   });
 
   it("accepts a well-formed list", async () => {

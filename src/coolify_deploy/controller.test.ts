@@ -3,7 +3,11 @@ import {
   createFakeClock,
   createSequentialIdSource,
 } from "@/state_machines/testing";
-import { CoolifyDeployRegistry, type RunDeployPipeline } from "./controller";
+import {
+  CoolifyDeployRegistry,
+  DRAIN_TIMEOUT_MS,
+  type RunDeployPipeline,
+} from "./controller";
 import type { CoolifyDeployState } from "./state";
 
 /** A pipeline that never settles until the test releases it. */
@@ -246,4 +250,38 @@ describe("draining work the machine no longer points at", () => {
 
     await expect(registry.disposeAll()).resolves.toBeUndefined();
   }, 15_000);
+});
+
+describe("disposeAll's own wait", () => {
+  it("waits for a pipeline whose machine it has already forgotten", async () => {
+    // A per-app dispose that times out deletes the store but leaves the
+    // pipeline running, so disposeAll's second wait is the only thing left
+    // holding the database open for it. Asserting that it merely resolves
+    // cannot tell a five second wait from no wait at all, so this measures.
+    vi.useFakeTimers();
+    try {
+      const run = vi.fn(() => new Promise<{ url: string | null }>(() => {}));
+      const registry = makeRegistry(run as unknown as RunDeployPipeline);
+      registry.requestDeploy(1);
+      await flush();
+
+      const first = registry.dispose(1);
+      await vi.advanceTimersByTimeAsync(DRAIN_TIMEOUT_MS);
+      await first;
+      expect(registry.hasMachine(1)).toBe(false);
+
+      let finished = false;
+      const second = registry.disposeAll().then(() => {
+        finished = true;
+      });
+      await vi.advanceTimersByTimeAsync(DRAIN_TIMEOUT_MS - 1);
+      expect(finished).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(1);
+      await second;
+      expect(finished).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

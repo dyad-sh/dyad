@@ -28,7 +28,7 @@ const IDLE: CoolifyDeployState = { type: "idle" };
  * immediate. The bound exists so a pipeline stuck somewhere that cannot be
  * aborted still cannot block deleting an app or resetting the whole app.
  */
-const DRAIN_TIMEOUT_MS = 5_000;
+export const DRAIN_TIMEOUT_MS = 5_000;
 
 export type RunDeployPipeline = typeof runDeployPipeline;
 
@@ -192,7 +192,9 @@ export class CoolifyDeployRegistry {
     // Bounded like the per-app wait above: anything still here has already
     // outlived its drain, so waiting on it unbounded would undo that bound.
     await drain(
-      Promise.allSettled(this.running.values()).then(() => undefined),
+      Promise.allSettled(
+        [...this.running.values()].map((entry) => entry.work),
+      ).then(() => undefined),
     );
     this.aborts.clear();
     this.running.clear();

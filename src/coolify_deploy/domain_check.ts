@@ -4,13 +4,20 @@ import { isIP } from "node:net";
 const DOCKER_HOST_ALIAS = "host.docker.internal";
 
 /**
- * Names that resolve to the machine asking, not to a reachable server.
+ * Whether a value names the machine asking rather than a reachable server.
  *
- * Answering with one would have us tell the user to point a public domain at
- * their own loopback address.
+ * Covers both spellings, because answering with either would have us tell the
+ * user to point a public domain at a loopback address.
  */
-function isLoopbackName(value: string): boolean {
-  return /^(localhost|.*\.localhost)$/i.test(value.trim());
+function isLoopbackAddress(value: string | null | undefined): boolean {
+  if (!value) return false;
+  const bare = value
+    .trim()
+    .replace(/^\[|\]$/g, "")
+    .toLowerCase();
+  if (/^(localhost|.*\.localhost)$/.test(bare)) return true;
+  if (isIP(bare) === 4) return bare.startsWith("127.");
+  return isIP(bare) === 6 && (bare === "::1" || bare === "0:0:0:0:0:0:0:1");
 }
 
 /**
@@ -85,13 +92,23 @@ export function expectedServerAddress({
   serverIp: string | null | undefined;
   instanceUrl: string;
 }): { kind: "ip"; ip: string } | { kind: "resolve"; hostname: string } | null {
-  if (serverIp && isIP(serverIp)) return { kind: "ip", ip: serverIp };
-  // A server named rather than numbered is still that server, and it is not
-  // the instance. Only Coolify's own built-in server may stand in for the
-  // instance, because that is literally the machine Coolify runs on.
-  if (serverIp && serverIp !== DOCKER_HOST_ALIAS && !isLoopbackName(serverIp)) {
-    return { kind: "resolve", hostname: serverIp };
+  // Names for the machine Coolify itself runs on. A loopback address means
+  // the same thing as host.docker.internal does — the server is wherever
+  // Coolify is — and neither can be matched against a DNS record, so the
+  // instance URL stands in for both.
+  const namesCoolifysOwnHost =
+    serverIp === DOCKER_HOST_ALIAS || isLoopbackAddress(serverIp);
+
+  if (serverIp && !namesCoolifysOwnHost) {
+    return isIP(serverIp)
+      ? { kind: "ip", ip: serverIp }
+      : { kind: "resolve", hostname: serverIp };
   }
+  // No address at all is not the same as naming Coolify's own host: Coolify
+  // can omit one, and the picker can hold a server the current list no longer
+  // has. Guessing the instance there would fail a correctly pointed domain.
+  if (!namesCoolifysOwnHost) return null;
+
   let host: string;
   try {
     // URL wraps an IPv6 literal in brackets, which is not what isIP accepts.

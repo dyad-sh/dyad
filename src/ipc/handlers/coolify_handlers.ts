@@ -232,6 +232,12 @@ export function registerCoolifyHandlers() {
         app.coolifyServerUuid !== connection.serverUuid ||
         app.coolifyProjectUuid !== connection.projectUuid;
 
+      if (movedHost) {
+        // Nothing has been deployed where the app is going, so a finished
+        // result and a deploy time from where it came from would be shown
+        // against it. disconnect and the token repoint both clear these.
+        coolifyDeployRegistry.cancelDeploy(appId);
+      }
       await db
         .update(apps)
         .set({
@@ -240,7 +246,11 @@ export function registerCoolifyHandlers() {
           coolifyEnvironmentName: connection.environmentName,
           coolifyDomain: domain,
           ...(movedHost
-            ? { coolifyApplicationUuid: null, coolifyAppUrl: null }
+            ? {
+                coolifyApplicationUuid: null,
+                coolifyAppUrl: null,
+                coolifyLastDeployedAt: null,
+              }
             : {}),
         })
         .where(eq(apps.id, appId));

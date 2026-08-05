@@ -68,10 +68,22 @@ describe("expectedServerAddress", () => {
     ).toEqual({ kind: "ip", ip: "143.244.162.54" });
   });
 
-  it("asks for a lookup when the instance is named rather than numbered", () => {
+  it("says nothing when Coolify reports no address for the server", () => {
+    // Coolify can omit the address, and the picker can hold a server the
+    // current list no longer has. Neither means the app runs where Coolify
+    // does, and guessing would fail a correctly pointed domain.
     expect(
       expectedServerAddress({
         serverIp: null,
+        instanceUrl: "https://coolify.example.com",
+      }),
+    ).toBeNull();
+  });
+
+  it("asks for a lookup when Coolify's own host is named rather than numbered", () => {
+    expect(
+      expectedServerAddress({
+        serverIp: "host.docker.internal",
         instanceUrl: "https://coolify.example.com",
       }),
     ).toEqual({ kind: "resolve", hostname: "coolify.example.com" });
@@ -87,13 +99,16 @@ describe("expectedServerAddress", () => {
   });
 
   it("handles IPv6 on both sides", () => {
-    expect(expectedServerAddress({ serverIp: "::1", instanceUrl })).toEqual({
+    // A routable v6 address, since ::1 is loopback and is handled elsewhere.
+    expect(
+      expectedServerAddress({ serverIp: "2606:4700::1", instanceUrl }),
+    ).toEqual({
       kind: "ip",
-      ip: "::1",
+      ip: "2606:4700::1",
     });
     expect(
       expectedServerAddress({
-        serverIp: null,
+        serverIp: "host.docker.internal",
         instanceUrl: "http://[::1]:8000",
       }),
     ).toEqual({ kind: "ip", ip: "::1" });
@@ -158,6 +173,25 @@ describe("expectedServerAddress and unusable server names", () => {
     expect(
       expectedServerAddress({
         serverIp: "localhost",
+        instanceUrl: "http://143.244.162.54:8000",
+      }),
+    ).toEqual({ kind: "ip", ip: "143.244.162.54" });
+  });
+});
+
+describe("expectedServerAddress and loopback servers", () => {
+  it("treats a loopback literal like Coolify's own host, not as an answer", () => {
+    // Telling someone to point a public domain at 127.0.0.1 is the one
+    // instruction guaranteed to be wrong.
+    expect(
+      expectedServerAddress({
+        serverIp: "127.0.0.1",
+        instanceUrl: "http://143.244.162.54:8000",
+      }),
+    ).toEqual({ kind: "ip", ip: "143.244.162.54" });
+    expect(
+      expectedServerAddress({
+        serverIp: "::1",
         instanceUrl: "http://143.244.162.54:8000",
       }),
     ).toEqual({ kind: "ip", ip: "143.244.162.54" });

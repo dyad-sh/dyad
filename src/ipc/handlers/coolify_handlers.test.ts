@@ -40,11 +40,12 @@ vi.mock("@/coolify_deploy/controller", () => ({
   coolifyDeployRegistry: {
     onSnapshot: () => () => {},
     cancelAll: vi.fn(),
-    cancelDeploy: vi.fn(),
+    cancelDeploy,
     getSnapshot: () => ({ type: "idle" }),
   },
 }));
 
+const cancelDeploy = vi.hoisted(() => vi.fn());
 const listServers = vi.fn(async () => []);
 vi.mock("../utils/coolify_client", () => ({
   CoolifyClient: class {
@@ -82,6 +83,7 @@ const CONNECTED_ROW = {
 beforeEach(() => {
   handlers.clear();
   updateSet.mockClear();
+  cancelDeploy.mockClear();
   rows.length = 0;
   rows.push({ ...CONNECTED_ROW });
   for (const key of Object.keys(settings)) delete settings[key];
@@ -163,6 +165,10 @@ describe("moving an app to a different server or project", () => {
     expect(rows[0].coolifyServerUuid).toBe("srv-2");
     expect(rows[0].coolifyApplicationUuid).toBeNull();
     expect(rows[0].coolifyAppUrl).toBeNull();
+    // Nothing has been deployed where it is going, so the old result must not
+    // be shown against it.
+    expect(rows[0].coolifyLastDeployedAt).toBeNull();
+    expect(cancelDeploy).toHaveBeenCalledWith(1);
   });
 
   it("keeps the application when only the domain changes", async () => {
@@ -178,5 +184,7 @@ describe("moving an app to a different server or project", () => {
 
     expect(rows[0].coolifyApplicationUuid).toBe("app-1");
     expect(rows[0].coolifyDomain).toBe("https://new.example.com");
+    expect(rows[0].coolifyLastDeployedAt).not.toBeNull();
+    expect(cancelDeploy).not.toHaveBeenCalled();
   });
 });

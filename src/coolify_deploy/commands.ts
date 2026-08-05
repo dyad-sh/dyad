@@ -359,7 +359,10 @@ function warnIfBranchLacksSchema({
  * app whose auth base URL is missing builds and starts, then answers every
  * request that touches a session with a 500.
  */
-async function resolveDatabaseEnv(app: typeof apps.$inferSelect): Promise<{
+async function resolveDatabaseEnv(
+  app: typeof apps.$inferSelect,
+  report: DeployReporter,
+): Promise<{
   vars: Array<{ key: string; value: string }>;
   /** The branch being deployed, whether or not auth is in play. */
   branchId: string | null;
@@ -371,6 +374,18 @@ async function resolveDatabaseEnv(app: typeof apps.$inferSelect): Promise<{
   const resolved = await resolveNeonBranchEnvVars({ appData: app, branchType });
 
   const vars = [{ key: "DATABASE_URL", value: resolved.databaseUrl }];
+  if (!resolved.neonAuthBaseUrl) {
+    // The resolver swallows a Neon Auth failure so a transient outage still
+    // yields DATABASE_URL, which suits an incremental sync. Deploying is not
+    // incremental: without this variable the app builds, starts, serves its
+    // pages, and answers 500 on everything that touches a session — a
+    // symptom that looks nothing like its cause.
+    report.log(
+      "Warning: Neon Auth could not be resolved for this branch, so the app " +
+        "will deploy without NEON_AUTH_BASE_URL. Pages load, but anything " +
+        "that reads a session fails. Deploy again once Neon is reachable.\n",
+    );
+  }
   if (resolved.neonAuthBaseUrl) {
     vars.push({ key: "NEON_AUTH_BASE_URL", value: resolved.neonAuthBaseUrl });
     // Only Next.js signs its own cookies; other frameworks forward them to
@@ -512,7 +527,7 @@ export async function runDeployPipeline({
 
   // A deploy that silently lacks its database reports success and then fails
   // on the first query, so a failure here fails the whole deployment.
-  const database = await resolveDatabaseEnv(app).catch((error) => {
+  const database = await resolveDatabaseEnv(app, report).catch((error) => {
     // Neon classifies its own failures — a missing development branch is a
     // Precondition, an expired token is Auth — and rules/dyad-errors.md keeps
     // those out of telemetry. Rewrapping them as External would report every

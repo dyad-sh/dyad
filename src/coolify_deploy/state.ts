@@ -103,7 +103,7 @@ export type CoolifyDeployCommand =
 
 export type CoolifyDeployIgnoreReason =
   | StaleOperationIgnoreReason
-  | "duplicate-stage"
+  | "no-change"
   | "nothing-to-cancel"
   | "other-app"
   | "already-running";

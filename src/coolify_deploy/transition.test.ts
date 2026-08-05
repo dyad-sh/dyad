@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
+import {
+  assertAllCommandsProducible,
+  assertAllStatesReachable,
+  assertReferenceStability,
+  exploreReachableStates,
+} from "@/state_machines/testing";
 import { transition } from "./transition";
 import {
   MAX_LOG_CHARS,
+  type CoolifyDeployCommand,
+  type CoolifyDeployEvent,
   type CoolifyDeployInvocationRef,
   type CoolifyDeployState,
 } from "./state";
@@ -296,5 +304,98 @@ describe("CANCELLED", () => {
     });
     expect(late.kind).toBe("ignored");
     expect(late.state).toEqual(IDLE);
+  });
+});
+
+// The rules require every reachable state to meet every event type. Driven off
+// the declared unions rather than a hand-written list, so a new state, command
+// or event fails here until it has been reasoned about.
+const STATE_KINDS = [
+  "idle",
+  "running",
+  "succeeded",
+  "failed",
+] as const satisfies readonly CoolifyDeployState["type"][];
+
+const COMMAND_KINDS = [
+  "RUN_DEPLOY",
+  "ABORT_DEPLOY",
+] as const satisfies readonly CoolifyDeployCommand["type"][];
+
+/**
+ * Both a matching and a mismatched invocation ref for every ref-carrying
+ * event, so exploration covers the stale-operation branches as well as the
+ * live ones.
+ */
+const events: readonly CoolifyDeployEvent[] = [
+  { type: "DEPLOY_REQUESTED", appId: 1, invocationRef: REF_A, startedAt: 100 },
+  {
+    type: "DEPLOY_REQUESTED",
+    appId: 2,
+    invocationRef: ref("c", 2),
+    startedAt: 100,
+  },
+  ...[REF_A, REF_B].flatMap((r): CoolifyDeployEvent[] => [
+    { type: "STAGE_CHANGED", invocationRef: r, stage: "configuring" },
+    { type: "STAGE_CHANGED", invocationRef: r, stage: "building" },
+    { type: "LOG_APPENDED", invocationRef: r, chunk: "line\n" },
+    // An empty chunk must not produce a fresh snapshot identical to the old.
+    { type: "LOG_APPENDED", invocationRef: r, chunk: "" },
+    { type: "DEPLOYMENT_STARTED", invocationRef: r, deploymentUuid: "dep-1" },
+    {
+      type: "SUCCEEDED",
+      invocationRef: r,
+      url: "https://app.example.com",
+      finishedAt: 200,
+    },
+    { type: "FAILED", invocationRef: r, error: "boom", finishedAt: 200 },
+  ]),
+  { type: "CANCELLED", appId: 1, finishedAt: 300 },
+  { type: "CANCELLED", appId: 2, finishedAt: 300 },
+];
+
+describe("totality", () => {
+  // The log is an unbounded accumulator: every chunk yields a distinct value,
+  // so including it would make exploration diverge instead of converging on
+  // the structural states. Its emptiness is what the machine branches on.
+  const stateKey = (state: CoolifyDeployState) =>
+    JSON.stringify(state, (key, value) =>
+      key === "log" ? (value === "" ? "empty" : "nonempty") : value,
+    );
+
+  const options = { initialState: IDLE, events, transition, stateKey };
+
+  it("reaches every state and produces every command kind", () => {
+    assertAllStatesReachable({
+      ...options,
+      inventory: STATE_KINDS,
+      stateKind: (state) => state.type,
+    });
+    assertAllCommandsProducible({
+      ...options,
+      inventory: COMMAND_KINDS,
+      commandKind: (command) => command.type,
+    });
+  });
+
+  it("answers every event from every reachable state without losing reference stability", () => {
+    const graph = exploreReachableStates(options);
+    const states = graph.nodes.map(({ state }) => state);
+
+    expect([...new Set(states.map((s) => s.type))].sort()).toEqual(
+      [...STATE_KINDS].sort(),
+    );
+
+    for (const state of states) {
+      for (const event of events) {
+        const result = transition(state, event);
+        expect(result).toBeDefined();
+        // An ignored event keeps the same reference; a change must not return
+        // a new reference for a value-equal state.
+        assertReferenceStability(state, result, (left, right) =>
+          Object.is(JSON.stringify(left), JSON.stringify(right)),
+        );
+      }
+    }
   });
 });

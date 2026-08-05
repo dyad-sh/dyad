@@ -79,24 +79,26 @@ export function transition(
       if (!running) return ignore(state, STALE_OPERATION_IGNORE_REASON);
       // Re-reporting the stage it is already on is a no-op, not a stale event
       // from a superseded deployment; the two are worth telling apart in a log.
-      if (running.stage === event.stage) {
-        return ignore(state, "duplicate-stage");
-      }
+      if (running.stage === event.stage) return ignore(state, "no-change");
       return change({ ...running, stage: event.stage });
     }
 
     case "LOG_APPENDED": {
       const running = runningFor(state, event.invocationRef);
       if (!running) return ignore(state, STALE_OPERATION_IGNORE_REASON);
-      return change({
-        ...running,
-        log: appendLog(running.log, event.chunk),
-      });
+      const log = appendLog(running.log, event.chunk);
+      // An empty chunk would otherwise return a new snapshot identical to the
+      // old one, which subscribers cannot tell from real progress.
+      if (log === running.log) return ignore(state, "no-change");
+      return change({ ...running, log });
     }
 
     case "DEPLOYMENT_STARTED": {
       const running = runningFor(state, event.invocationRef);
       if (!running) return ignore(state, STALE_OPERATION_IGNORE_REASON);
+      if (running.deploymentUuid === event.deploymentUuid) {
+        return ignore(state, "no-change");
+      }
       return change({ ...running, deploymentUuid: event.deploymentUuid });
     }
 

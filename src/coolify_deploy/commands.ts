@@ -73,6 +73,37 @@ function githubSignal(signal: AbortSignal): AbortSignal {
   return AbortSignal.any([signal, AbortSignal.timeout(GITHUB_TIMEOUT_MS)]);
 }
 
+/**
+ * Runs a GitHub call with the same error shape the Coolify client produces.
+ *
+ * Left bare, a timeout reaches the user as "signal timed out" — the whole
+ * explanation for a failed deploy, with no mention of GitHub or the key.
+ */
+async function githubFetch(
+  url: string,
+  init: RequestInit,
+  signal: AbortSignal,
+): Promise<Response> {
+  try {
+    return await fetch(url, { ...init, signal: githubSignal(signal) });
+  } catch (err) {
+    if (signal.aborted) {
+      throw new DyadError("Deployment cancelled.", DyadErrorKind.UserCancelled);
+    }
+    const timedOut = err instanceof Error && err.name === "TimeoutError";
+    throw new DyadError(
+      `Could not reach GitHub to register the deploy key: ${
+        timedOut
+          ? `no response within ${GITHUB_TIMEOUT_MS / 1000}s`
+          : err instanceof Error
+            ? err.message
+            : String(err)
+      }`,
+      DyadErrorKind.External,
+    );
+  }
+}
+
 function sleep(clock: Clock, ms: number): Promise<void> {
   return new Promise((resolve) => clock.schedule(resolve, ms));
 }
@@ -124,20 +155,23 @@ async function ensureGithubDeployKey({
     );
   }
 
-  const res = await fetch(`${getGitHubApiBase()}/repos/${owner}/${repo}/keys`, {
-    method: "POST",
-    signal: githubSignal(signal),
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      Accept: "application/vnd.github+json",
-      "Content-Type": "application/json",
+  const res = await githubFetch(
+    `${getGitHubApiBase()}/repos/${owner}/${repo}/keys`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/vnd.github+json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        title: "Dyad deploy key (Coolify)",
+        key: publicKey,
+        read_only: true,
+      }),
     },
-    body: JSON.stringify({
-      title: "Dyad deploy key (Coolify)",
-      key: publicKey,
-      read_only: true,
-    }),
-  });
+    signal,
+  );
 
   if (res.ok) {
     report.log(`Added the deploy key to ${owner}/${repo}.\n`);
@@ -145,15 +179,15 @@ async function ensureGithubDeployKey({
   }
   const body = await res.text();
   if (res.status === 422 && /already in use/i.test(body)) {
-    const listed = await fetch(
+    const listed = await githubFetch(
       `${getGitHubApiBase()}/repos/${owner}/${repo}/keys`,
       {
-        signal: githubSignal(signal),
         headers: {
           Authorization: `Bearer ${accessToken}`,
           Accept: "application/vnd.github+json",
         },
       },
+      signal,
     );
     // A failed lookup is not evidence the key belongs elsewhere; saying so would
     // send the user to delete a key that is very likely already correct.

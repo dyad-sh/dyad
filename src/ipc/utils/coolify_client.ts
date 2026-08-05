@@ -89,6 +89,7 @@ export class CoolifyClient {
     body?: unknown,
   ): Promise<T> {
     let res: Response;
+    let text: string;
     // Chromium's fetch has no default timeout, so an instance that accepts the
     // connection and then goes quiet would otherwise park the deploy forever.
     const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
@@ -113,26 +114,18 @@ export class CoolifyClient {
         body: body === undefined ? undefined : JSON.stringify(body),
       });
     } catch (err) {
-      if (this.options.signal?.aborted) {
-        throw new DyadError(
-          "Deployment cancelled.",
-          DyadErrorKind.UserCancelled,
-        );
-      }
-      const timedOut = err instanceof Error && err.name === "TimeoutError";
-      throw new DyadError(
-        `Could not reach Coolify at ${this.base}: ${
-          timedOut
-            ? `no response within ${REQUEST_TIMEOUT_MS / 1000}s`
-            : err instanceof Error
-              ? err.message
-              : String(err)
-        }`,
-        DyadErrorKind.External,
-      );
+      throw this.transportError(err);
     }
 
-    const text = await res.text();
+    // Reading the body can stall after the headers arrive, so it shares the
+    // request's cancellation and timeout handling rather than surfacing a bare
+    // AbortError.
+    try {
+      text = await res.text();
+    } catch (err) {
+      throw this.transportError(err);
+    }
+
     if (!res.ok) {
       throw this.toError(method, path, res.status, text);
     }
@@ -140,8 +133,36 @@ export class CoolifyClient {
     try {
       return JSON.parse(text) as T;
     } catch {
-      return text as T;
+      // A proxy or login page answering 200 with HTML would otherwise be cast
+      // to the expected type, and the caller would read undefined fields
+      // instead of learning the instance is not answering as Coolify.
+      throw new DyadError(
+        `Coolify returned a response that is not JSON for ${path}. The address ` +
+          `may be reaching something else, such as a proxy or a login page.`,
+        DyadErrorKind.External,
+      );
     }
+  }
+
+  /** Cancellation, timeout and unreachable-host failures, classified alike. */
+  private transportError(err: unknown): DyadError {
+    if (this.options.signal?.aborted) {
+      return new DyadError(
+        "Deployment cancelled.",
+        DyadErrorKind.UserCancelled,
+      );
+    }
+    const timedOut = err instanceof Error && err.name === "TimeoutError";
+    return new DyadError(
+      `Could not reach Coolify at ${this.base}: ${
+        timedOut
+          ? `no response within ${REQUEST_TIMEOUT_MS / 1000}s`
+          : err instanceof Error
+            ? err.message
+            : String(err)
+      }`,
+      DyadErrorKind.External,
+    );
   }
 
   /** Bearer tokens are short; anything long means we are sending the wrong value. */
@@ -201,6 +222,14 @@ export class CoolifyClient {
       return new CoolifyRequestError(
         `Coolify could not find the requested resource (${path}).`,
         DyadErrorKind.NotFound,
+        status,
+      );
+    }
+    if (status === 429) {
+      // Throttling is the user's instance asking for a pause, not a crash.
+      return new CoolifyRequestError(
+        "Coolify is rate limiting requests. Wait a moment and try again.",
+        DyadErrorKind.RateLimited,
         status,
       );
     }

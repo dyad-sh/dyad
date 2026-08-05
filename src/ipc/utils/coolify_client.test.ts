@@ -181,3 +181,40 @@ describe("auth failures are classified as Auth", () => {
     });
   });
 });
+
+describe("transport and response robustness", () => {
+  it("rejects a 200 that is not JSON rather than casting it", async () => {
+    // A proxy or login page answering 200 with HTML would otherwise be handed
+    // back as the expected type and read as undefined fields downstream.
+    mockFetch([{ status: 200, body: "<html>login</html>" }]);
+    await expect(client().listServers()).rejects.toMatchObject({
+      kind: DyadErrorKind.External,
+      message: expect.stringContaining("not JSON"),
+    });
+  });
+
+  it("classifies throttling as rate limiting, not a crash", async () => {
+    mockFetch([{ status: 429, body: "slow down" }]);
+    await expect(client().listServers()).rejects.toMatchObject({
+      kind: DyadErrorKind.RateLimited,
+    });
+  });
+
+  it("reports a stalled response body like any other transport failure", async () => {
+    // The body arrives separately from the headers and can stall on its own.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        text: async () => {
+          throw Object.assign(new Error("timed out"), { name: "TimeoutError" });
+        },
+      })),
+    );
+    await expect(client().listServers()).rejects.toMatchObject({
+      kind: DyadErrorKind.External,
+      message: expect.stringContaining("no response within"),
+    });
+  });
+});

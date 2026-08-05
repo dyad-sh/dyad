@@ -127,17 +127,19 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
     const trimmedUrl = instanceUrl.trim();
     // A stock Coolify serves plain HTTP until it has a domain and certificate,
     // so this is the common case rather than an unusual one.
-    // A bare hostname makes isSecureInstanceUrl return false from its catch,
-    // which is a missing scheme rather than an unencrypted address — saying
-    // "not encrypted" there diagnoses the wrong problem.
-    let parsedUrl: URL | null = null;
+    // A missing scheme is not an unencrypted address, and saying "not
+    // encrypted" for one diagnoses the wrong problem. Note "host:8000" parses
+    // with "host:" as its scheme, so parsing successfully is not enough — the
+    // scheme has to be one we can actually talk to.
+    let scheme: string | null = null;
     try {
-      parsedUrl = trimmedUrl ? new URL(trimmedUrl) : null;
+      scheme = trimmedUrl ? new URL(trimmedUrl).protocol : null;
     } catch {
-      parsedUrl = null;
+      scheme = null;
     }
-    const needsScheme = Boolean(trimmedUrl) && !parsedUrl;
-    const isInsecure = Boolean(parsedUrl) && !isSecureInstanceUrl(trimmedUrl);
+    const hasUsableScheme = scheme === "http:" || scheme === "https:";
+    const needsScheme = Boolean(trimmedUrl) && !hasUsableScheme;
+    const isInsecure = hasUsableScheme && !isSecureInstanceUrl(trimmedUrl);
     return (
       <div className="space-y-3" data-testid="coolify-connector">
         <p className="text-sm text-muted-foreground">
@@ -260,7 +262,6 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
               >
                 Try again
               </Button>
-              {disconnectEverything}
             </div>
           </div>
         )}

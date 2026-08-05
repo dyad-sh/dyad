@@ -64,6 +64,11 @@ import { recordingContracts, recordingEvents } from "../types/recording";
 import { userInputContracts, userInputEvents } from "../types/user_input";
 import { firstPromptSendContracts } from "../types/first_prompt";
 import {
+  previewViewContracts,
+  previewViewEvents,
+  previewViewSendContracts,
+} from "../types/preview_view";
+import {
   windowInfrastructureContracts,
   windowInfrastructureEvents,
 } from "../types/window_infrastructure";
@@ -142,6 +147,7 @@ export const VALID_INVOKE_CHANNELS = [
   ...getInvokeChannels(windowInfrastructureContracts),
   ...getInvokeChannels(distributedMachineContracts),
   ...getInvokeChannels(imageGenerationContracts),
+  ...getInvokeChannels(previewViewContracts),
 
   // Test-only channels
   ...TEST_INVOKE_CHANNELS,
@@ -157,6 +163,7 @@ export const VALID_INVOKE_CHANNELS = [
  */
 export const VALID_SEND_CHANNELS = [
   ...getSendChannels(firstPromptSendContracts),
+  ...getSendChannels(previewViewSendContracts),
 ] as const;
 
 // =============================================================================
@@ -188,6 +195,7 @@ export const VALID_RECEIVE_CHANNELS = [
   ...getReceiveChannels(windowInfrastructureEvents),
   ...getReceiveChannels(distributedMachineEvents),
   ...getReceiveChannels(recordingEvents),
+  ...getReceiveChannels(previewViewEvents),
 ] as const;
 
 // =============================================================================

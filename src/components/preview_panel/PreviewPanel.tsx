@@ -1,10 +1,13 @@
-import { useAtomValue } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
 import { previewModeAtom, selectedAppIdAtom } from "../../atoms/appAtoms";
+import { previewNativeViewAtom } from "@/atoms/previewAtoms";
+import { currentTestRunStateAtom } from "@/atoms/testRuntimeAtoms";
 import { usePreviewReloadToken } from "@/hooks/useAppRun";
 import { usePreviewIframeManager } from "@/preview_iframe/PreviewIframeProvider";
 
 import { CodeView } from "./CodeView";
 import { PreviewIframe } from "./PreviewIframe";
+import { PreviewWebContentsView } from "./PreviewWebContentsView";
 import { PreviewToolbar } from "./PreviewToolbar";
 import { Problems } from "./Problems";
 import { ConfigurePanel } from "./ConfigurePanel";
@@ -125,6 +128,12 @@ export function PreviewPanel() {
   // Above the previewMode switch below, so a tab change doesn't end a recording
   // or drop the events that keep the review bar honest.
   const { recorder, recorderReloadKey } = useHoistedRecorder();
+  // Only a preview-driven test run turns this on; there is no user-facing way
+  // to enter the native view.
+  const useNativePreview = useAtomValue(previewNativeViewAtom);
+  const setPreviewNativeView = useSetAtom(previewNativeViewAtom);
+  const setPreviewMode = useSetAtom(previewModeAtom);
+  const testRunPhase = useAtomValue(currentTestRunStateAtom).phase;
   const {
     data: nodeSystemInfo,
     isLoading: isCheckingNode,
@@ -143,6 +152,27 @@ export function PreviewPanel() {
     !nodeVersion;
 
   const latestMessage = latestConsoleEntry?.message;
+
+  // The native view exists only to give a test run a real page to drive, so
+  // close it as soon as no run is in flight and hand the user back to the Tests
+  // panel with the results. Stated as "flag on, run not running" rather than as
+  // a transition, so it also cleans up a run that ended while this panel was
+  // unmounted — otherwise returning to the Preview tab would reopen a dead test
+  // view. Users who already navigated elsewhere keep their place; clearing the
+  // flag is enough for them.
+  useEffect(() => {
+    if (!useNativePreview || testRunPhase !== "idle") return;
+    setPreviewNativeView(false);
+    if (previewMode === "preview") {
+      setPreviewMode("tests");
+    }
+  }, [
+    useNativePreview,
+    testRunPhase,
+    previewMode,
+    setPreviewNativeView,
+    setPreviewMode,
+  ]);
 
   // Notify backend about app selection changes (for garbage collection tracking)
   const notifyAppSelected = useCallback(async (appId: number | null) => {
@@ -272,11 +302,18 @@ export function PreviewPanel() {
                     }}
                   />
                 ) : previewMode === "preview" ? (
-                  <PreviewIframe
-                    key={`${selectedAppId}-${key}:${recorderReloadKey}`}
-                    loading={loading}
-                    recorder={recorder}
-                  />
+                  useNativePreview ? (
+                    <PreviewWebContentsView
+                      key={`${selectedAppId}-${key}`}
+                      loading={loading}
+                    />
+                  ) : (
+                    <PreviewIframe
+                      key={`${selectedAppId}-${key}:${recorderReloadKey}`}
+                      loading={loading}
+                      recorder={recorder}
+                    />
+                  )
                 ) : previewMode === "code" ? (
                   <CodeView loading={loading} app={app ?? null} />
                 ) : previewMode === "configure" ? (

@@ -30,8 +30,10 @@ import {
   CircleDot,
   Code,
   Trash2,
+  MonitorPlay,
 } from "lucide-react";
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
+import { previewNativeViewAtom } from "@/atoms/previewAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useCurrentAppUrl } from "@/hooks/useAppRun";
 import { selectedFileAtom } from "@/atoms/viewAtoms";
@@ -629,6 +631,7 @@ export function TestsPanel() {
   const setSpecs = useSetAtom(setTestSpecsForAppAtom);
   const setRunState = useSetAtom(setTestRunStateForAppAtom);
   const setPreviewMode = useSetAtom(previewModeAtom);
+  const setPreviewNativeView = useSetAtom(previewNativeViewAtom);
   const setSelectedFile = useSetAtom(selectedFileAtom);
   const clearStagedDiff = useSetAtom(clearStagedDiffAtom);
   // For lazy, subscription-free reads of the streamed output (askAiToFix runs
@@ -701,6 +704,17 @@ export function TestsPanel() {
 
   const devServerRunning = appUrl.appUrl !== null;
   const isRunning = runState.phase !== "idle";
+
+  // Experimental: run the tests inside the preview panel's native view so the
+  // user watches them in place. This is the only thing that opens that view,
+  // and it needs the debugging endpoint that only exists after a restart.
+  const previewRunEnabled = !!settings?.enableTestRunInPreview;
+  const { data: automationStatus } = useQuery({
+    queryKey: queryKeys.previewView.automationStatus,
+    queryFn: () => ipc.previewView.getAutomationStatus(),
+    enabled: previewRunEnabled,
+  });
+  const canRunInPreview = previewRunEnabled && !!automationStatus?.cdpReady;
   const specsQuery = useQuery({
     queryKey: queryKeys.tests.list({ appId: selectedAppId }),
     queryFn: async () => {
@@ -829,10 +843,11 @@ export function TestsPanel() {
   }, [selectedAppId, switchKeyAsync, switchedIsolation, t]);
 
   const runTests = useCallback(
-    async (file?: string, line?: number) => {
+    async (file?: string, line?: number, opts?: { preview?: boolean }) => {
       if (selectedAppId == null) return;
       const appId = selectedAppId;
       const isSingleTest = file != null && line != null;
+      const preview = opts?.preview ?? false;
       const startedAt = Date.now();
 
       applyRunStarted({ appId, testFile: file, testLine: line, startedAt });
@@ -844,8 +859,9 @@ export function TestsPanel() {
           testLine: line,
           headed,
           // A single targeted test can't parallelize, so only opt in for
-          // file/all runs.
-          parallel: parallel && !isSingleTest,
+          // file/all runs. Preview runs share one page, so never.
+          parallel: parallel && !isSingleTest && !preview,
+          preview,
         });
         applyRunFinished({
           appId,
@@ -1313,20 +1329,48 @@ export function TestsPanel() {
         ) : (
           testingEnabled &&
           specs.length > 0 && (
-            <button
-              onClick={() => runTests()}
-              disabled={!devServerRunning}
-              title="During database-isolated runs, other app operations may wait until the run finishes."
-              aria-label="Run all tests"
-              className={cn(
-                "flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md cursor-pointer",
-                "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-900/60",
-                !devServerRunning && "opacity-40 cursor-not-allowed",
+            <>
+              {previewRunEnabled && (
+                <button
+                  onClick={() => {
+                    setPreviewNativeView(true);
+                    setPreviewMode("preview");
+                    void runTests(undefined, undefined, { preview: true });
+                  }}
+                  disabled={!devServerRunning || !canRunInPreview}
+                  title={
+                    canRunInPreview
+                      ? "Runs the tests inside the preview panel so you can watch them."
+                      : "Restart Dyad to run tests in the preview panel."
+                  }
+                  aria-label="Run all tests in the preview panel"
+                  data-testid="tests-run-in-preview-button"
+                  className={cn(
+                    "flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md cursor-pointer",
+                    "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-900/60",
+                    (!devServerRunning || !canRunInPreview) &&
+                      "opacity-40 cursor-not-allowed",
+                  )}
+                >
+                  <MonitorPlay size={14} />
+                  Run in preview
+                </button>
               )}
-            >
-              <Play size={14} />
-              Run all
-            </button>
+              <button
+                onClick={() => runTests()}
+                disabled={!devServerRunning}
+                title="During database-isolated runs, other app operations may wait until the run finishes."
+                aria-label="Run all tests"
+                className={cn(
+                  "flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md cursor-pointer",
+                  "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-900/60",
+                  !devServerRunning && "opacity-40 cursor-not-allowed",
+                )}
+              >
+                <Play size={14} />
+                Run all
+              </button>
+            </>
           )
         )}
       </div>

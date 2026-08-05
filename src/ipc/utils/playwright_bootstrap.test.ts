@@ -4,10 +4,16 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   buildPlaywrightConfig,
+  buildPreviewShimSource,
   detectSystemBrowserChannel,
   DYAD_CONFIG_FILENAME,
+  E2E_TSCONFIG_RELATIVE_PATH,
   ensurePlaywrightBootstrap,
+  ensurePreviewShim,
   isPlaywrightBrowserInstalled,
+  PREVIEW_CDP_ENDPOINT_ENV,
+  PREVIEW_SHIM_RELATIVE_PATH,
+  SHIM_TSCONFIG_RELATIVE_PATH,
   TEST_BASE_URL_ENV,
   TEST_RESULTS_JSON,
 } from "./playwright_bootstrap";
@@ -57,6 +63,296 @@ afterEach(() => {
   for (const dir of tempDirs.splice(0)) {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+describe("buildPreviewShimSource", () => {
+  const source = buildPreviewShimSource();
+
+  it("re-exports the real runner from the app's direct dependency", () => {
+    // NOT `playwright/test`: that package is only a transitive dependency, so
+    // pnpm/Yarn keep it out of the app's top-level node_modules and the import
+    // fails to resolve. The sibling tsconfig is what stops "@playwright/test"
+    // from mapping back to this file.
+    expect(source).toContain('from "@playwright/test"');
+    expect(source).not.toContain('from "playwright/test"');
+  });
+
+  it("stays inert unless Dyad hands it an endpoint", () => {
+    expect(source).toContain(`process.env.${PREVIEW_CDP_ENDPOINT_ENV}`);
+    expect(source).toContain("!endpoint\n  ? pw.test");
+  });
+
+  it("attaches to the existing page instead of opening one", () => {
+    expect(source).toContain("connectOverCDP");
+    expect(source).toContain("browser.contexts()[0]");
+    expect(source).toContain("context.pages().find");
+    // Closing the context or page would take the user's preview down with it.
+    expect(source).not.toContain("context.close()");
+    expect(source).not.toContain("page.close()");
+  });
+
+  it("supplies the baseURL the borrowed context never got", () => {
+    // Playwright only applies `use.baseURL` to contexts it creates itself, so
+    // without both of these `page.goto("/")` reaches Chromium as "/" and fails
+    // with "Cannot navigate to invalid URL".
+    expect(source).toContain("_options.baseURL = requireBaseUrl()");
+    expect(source).toContain("new URL(url, baseUrl).href");
+    // The page outlives the run, so the patch must come back off.
+    expect(source).toContain("page.goto = originalGoto");
+  });
+});
+
+describe("preview shim fixtures", () => {
+  // Exercises the generated source for real: same shape as the shim, with the
+  // Playwright bits stubbed. Guards the two halves of baseURL handling, which
+  // string assertions alone can't tell apart.
+  async function runPageFixture({
+    initialUrl,
+    contextOptions,
+  }: {
+    initialUrl: string;
+    contextOptions?: { baseURL?: string };
+  }) {
+    const baseUrl = "http://localhost:32100";
+    const navigations: string[] = [];
+    const gotoOnPrototype = function (this: unknown, url: string) {
+      navigations.push(url);
+      return Promise.resolve(null);
+    };
+    const page = Object.create({ goto: gotoOnPrototype }) as {
+      goto: (url: string) => Promise<null>;
+      url: () => string;
+    };
+    page.url = () => initialUrl;
+    const context = { pages: () => [page], _options: contextOptions };
+
+    // --- context fixture ---
+    const contextInternals = context as unknown as {
+      _options?: { baseURL?: string };
+    };
+    if (contextInternals._options) {
+      contextInternals._options.baseURL = baseUrl;
+    }
+
+    // --- page fixture ---
+    const origin = new URL(baseUrl).origin;
+    const found = context.pages().find((candidate) => {
+      try {
+        return new URL(candidate.url()).origin === origin;
+      } catch {
+        return false;
+      }
+    });
+    if (!found) {
+      throw new Error(`Dyad preview: no page serving ${origin}`);
+    }
+    const originalGoto = found.goto;
+    found.goto = (url: string) =>
+      originalGoto.call(found, new URL(url, baseUrl).href);
+    try {
+      await found.goto("/");
+      await found.goto("/todos?done=1");
+      await found.goto("https://example.com/elsewhere");
+    } finally {
+      found.goto = originalGoto;
+    }
+    return { navigations, context, page: found, gotoOnPrototype };
+  }
+
+  it("resolves relative navigations and leaves absolute ones alone", async () => {
+    const { navigations } = await runPageFixture({
+      initialUrl: "http://localhost:32100/",
+      contextOptions: {},
+    });
+
+    expect(navigations).toEqual([
+      "http://localhost:32100/",
+      "http://localhost:32100/todos?done=1",
+      "https://example.com/elsewhere",
+    ]);
+  });
+
+  it("fills in the context baseURL that toHaveURL and waitForURL read", async () => {
+    const { context } = await runPageFixture({
+      initialUrl: "http://localhost:32100/",
+      contextOptions: {},
+    });
+
+    expect(context._options).toEqual({ baseURL: "http://localhost:32100" });
+  });
+
+  it("still navigates when the internal options field is gone", async () => {
+    // A Playwright rename should cost the client-side extras, not the run.
+    const { navigations } = await runPageFixture({
+      initialUrl: "http://localhost:32100/",
+      contextOptions: undefined,
+    });
+
+    expect(navigations[0]).toBe("http://localhost:32100/");
+  });
+
+  it("hands the page back unpatched", async () => {
+    const { page, gotoOnPrototype } = await runPageFixture({
+      initialUrl: "http://localhost:32100/",
+      contextOptions: {},
+    });
+
+    // The preview page outlives the run; a leftover wrapper would nest one
+    // deeper on every test and follow the user's page around after the run.
+    expect(page.goto).toBe(gotoOnPrototype);
+  });
+});
+
+describe("ensurePreviewShim", () => {
+  function makeApp(): string {
+    const appPath = fs.mkdtempSync(path.join(os.tmpdir(), "dyad-pw-shim-"));
+    tempDirs.push(appPath);
+    return appPath;
+  }
+
+  const shimAt = (appPath: string) =>
+    path.join(appPath, PREVIEW_SHIM_RELATIVE_PATH);
+  const tsconfigAt = (appPath: string) =>
+    path.join(appPath, E2E_TSCONFIG_RELATIVE_PATH);
+  const shimTsconfigAt = (appPath: string) =>
+    path.join(appPath, SHIM_TSCONFIG_RELATIVE_PATH);
+
+  it("writes the shim and the path mapping that reaches it", () => {
+    const appPath = makeApp();
+
+    expect(ensurePreviewShim(appPath)).toEqual({});
+
+    expect(fs.readFileSync(shimAt(appPath), "utf8")).toContain(
+      "connectOverCDP",
+    );
+    const tsconfig = JSON.parse(fs.readFileSync(tsconfigAt(appPath), "utf8"));
+    expect(tsconfig.compilerOptions.paths["@playwright/test"]).toEqual([
+      "./fixtures/dyad/dyad-test.ts",
+    ]);
+    // The mapping has to resolve to the file we actually wrote.
+    expect(
+      fs.existsSync(
+        path.resolve(
+          path.dirname(tsconfigAt(appPath)),
+          tsconfig.compilerOptions.paths["@playwright/test"][0],
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it("shadows the mapping in the shim's own directory", () => {
+    const appPath = makeApp();
+
+    ensurePreviewShim(appPath);
+
+    // Playwright reads the closest tsconfig above a file and ignores parents,
+    // so an empty `paths` beside the shim is what lets the shim's own
+    // `@playwright/test` import reach the real package instead of itself.
+    const shimTsconfig = JSON.parse(
+      fs.readFileSync(shimTsconfigAt(appPath), "utf8"),
+    );
+    expect(shimTsconfig.compilerOptions.paths).toEqual({});
+    // A `baseUrl` would make Playwright add a catch-all `*` -> `*` mapping.
+    expect(shimTsconfig.compilerOptions.baseUrl).toBeUndefined();
+    // It must sit in the shim's directory to shadow anything.
+    expect(path.dirname(shimTsconfigAt(appPath))).toBe(
+      path.dirname(shimAt(appPath)),
+    );
+  });
+
+  it("restores the shadowing tsconfig even when the shim is hand-edited", () => {
+    const appPath = makeApp();
+    fs.mkdirSync(path.dirname(shimAt(appPath)), { recursive: true });
+    fs.writeFileSync(shimAt(appPath), "export const mine = true;\n");
+
+    ensurePreviewShim(appPath);
+
+    expect(fs.existsSync(shimTsconfigAt(appPath))).toBe(true);
+  });
+
+  it("removes the shim an older Dyad left at the fixtures root", () => {
+    const appPath = makeApp();
+    const legacyShimPath = path.join(
+      appPath,
+      "e2e-tests",
+      "fixtures",
+      "dyad-test.ts",
+    );
+    fs.mkdirSync(path.dirname(legacyShimPath), { recursive: true });
+    fs.writeFileSync(legacyShimPath, "// Generated by Dyad. old shim\n");
+    // A fixture the app owns, right beside it.
+    const userFixturePath = path.join(path.dirname(legacyShimPath), "todos.ts");
+    fs.writeFileSync(userFixturePath, "export const seed = 1;\n");
+
+    ensurePreviewShim(appPath);
+
+    expect(fs.existsSync(legacyShimPath)).toBe(false);
+    expect(fs.existsSync(userFixturePath)).toBe(true);
+  });
+
+  it("keeps a hand-written file at the old shim path", () => {
+    const appPath = makeApp();
+    const legacyShimPath = path.join(
+      appPath,
+      "e2e-tests",
+      "fixtures",
+      "dyad-test.ts",
+    );
+    fs.mkdirSync(path.dirname(legacyShimPath), { recursive: true });
+    fs.writeFileSync(legacyShimPath, "export const mine = true;\n");
+
+    ensurePreviewShim(appPath);
+
+    expect(fs.existsSync(legacyShimPath)).toBe(true);
+  });
+
+  it("refreshes its own files without asking", () => {
+    const appPath = makeApp();
+    ensurePreviewShim(appPath);
+    fs.writeFileSync(shimAt(appPath), "// Generated by Dyad. stale contents\n");
+
+    ensurePreviewShim(appPath);
+
+    expect(fs.readFileSync(shimAt(appPath), "utf8")).toContain(
+      "connectOverCDP",
+    );
+  });
+
+  it("leaves a hand-written shim alone", () => {
+    const appPath = makeApp();
+    fs.mkdirSync(path.dirname(shimAt(appPath)), { recursive: true });
+    fs.writeFileSync(shimAt(appPath), "export const mine = true;\n");
+
+    ensurePreviewShim(appPath);
+
+    expect(fs.readFileSync(shimAt(appPath), "utf8")).toBe(
+      "export const mine = true;\n",
+    );
+  });
+
+  it("warns instead of hijacking a tsconfig the app owns", () => {
+    const appPath = makeApp();
+    fs.mkdirSync(path.dirname(tsconfigAt(appPath)), { recursive: true });
+    fs.writeFileSync(tsconfigAt(appPath), '{ "compilerOptions": {} }');
+
+    const { warning } = ensurePreviewShim(appPath);
+
+    expect(warning).toContain("separate browser");
+    expect(fs.readFileSync(tsconfigAt(appPath), "utf8")).toBe(
+      '{ "compilerOptions": {} }',
+    );
+  });
+
+  it("stays quiet when the app's own tsconfig already routes to the shim", () => {
+    const appPath = makeApp();
+    fs.mkdirSync(path.dirname(tsconfigAt(appPath)), { recursive: true });
+    fs.writeFileSync(
+      tsconfigAt(appPath),
+      '{ "compilerOptions": { "paths": { "@playwright/test": ["./fixtures/dyad/dyad-test.ts"] } } }',
+    );
+
+    expect(ensurePreviewShim(appPath)).toEqual({});
+  });
 });
 
 describe("buildPlaywrightConfig", () => {

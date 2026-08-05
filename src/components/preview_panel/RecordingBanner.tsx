@@ -2,13 +2,14 @@ import { useEffect, useState, type ReactNode } from "react";
 import {
   ChevronRight,
   CircleDot,
-  FileCode2,
   Loader2,
   Sparkles,
   Square,
+  X,
 } from "lucide-react";
 
 import type { TestRecorderController } from "@/hooks/useTestRecorder";
+import { draftTitle } from "@/lib/test_recorder/draft";
 import { cn } from "@/lib/utils";
 import { RecordedStepsList } from "./RecordedStepsList";
 import { RecordingCodePreview } from "./RecordingCodePreview";
@@ -34,8 +35,6 @@ export function recordingStatusMessage(
   switch (recorder.phase) {
     case "finishing":
       return "Wrapping up the recording…";
-    case "saving":
-      return "Generating the test file…";
     case "stopping":
       return "Cleaning up the test environment…";
     case "authenticating":
@@ -57,13 +56,10 @@ export function recordingStatusMessage(
 export function RecordingBanner({
   recorder,
   onGenerateAssertions,
-  onOpenSavedSpec,
 }: {
   recorder: TestRecorderController;
-  /** Hand the recorded steps to the agent for the assertion pass. */
+  /** Hand the recorded steps to the agent for the test proposal. */
   onGenerateAssertions: () => void;
-  /** Open the generated spec in the Code tab. */
-  onOpenSavedSpec: (specPath: string) => void;
 }) {
   const [recordName, setRecordName] = useState("");
   const [isExpanded, setIsExpanded] = useState(true);
@@ -118,11 +114,14 @@ export function RecordingBanner({
               signed out
             </span>
           )}
+        {/* Optional: left empty, the AI names the test from what was recorded,
+            which it can do knowing how the flow actually went. */}
         <input
           value={recordName}
           onChange={(e) => setRecordName(e.target.value)}
-          placeholder="Test name"
-          aria-label="Test name"
+          placeholder="Test name (optional)"
+          aria-label="Test name (optional)"
+          title="Leave empty and the AI names the test from the recorded steps"
           data-testid="preview-recording-name-input"
           className="ml-auto min-w-0 max-w-48 flex-1 rounded-sm border border-border bg-(--background-lightest) px-2 py-1 text-xs outline-none"
         />
@@ -143,9 +142,18 @@ export function RecordingBanner({
       </>
     );
   } else if (recorder.phase === "reviewing") {
+    // Unnamed until the AI proposes a name, which is the usual case — the name
+    // input while recording is there for users who want to insist on one.
+    const named = Boolean(recorder.draft?.testName);
     label = (
-      <span className="min-w-0 truncate font-medium text-foreground">
-        {recorder.draft?.testName}
+      <span
+        className={cn(
+          "min-w-0 truncate font-medium",
+          named ? "text-foreground" : "text-muted-foreground italic",
+        )}
+        data-testid="preview-recording-review-title"
+      >
+        {recorder.draft ? draftTitle(recorder.draft) : ""}
       </span>
     );
     rest = (
@@ -177,66 +185,25 @@ export function RecordingBanner({
             </>
           )}
         </span>
+        {/* The one way forward: the AI turns the recording into a proposed test
+            — a name, the steps, and the assertions — which the user approves in
+            the chat card. That approval is what writes the file. */}
         <button
           onClick={onGenerateAssertions}
           data-testid="preview-recording-generate-assertions-button"
           className={cn(PRIMARY_BUTTON_CLASSES, "ml-auto")}
         >
           <Sparkles size={12} />{" "}
-          {recorder.awaitingAssertions ? "Ask again" : "Generate assertions"}
-        </button>
-        <button
-          onClick={() => void recorder.saveWithoutAssertions()}
-          data-testid="preview-recording-save-plain-button"
-          className={cn(SECONDARY_BUTTON_CLASSES, "flex items-center gap-1")}
-        >
-          <FileCode2 size={12} /> Save without assertions
+          {recorder.awaitingAssertions ? "Ask again" : "Generate test proposal"}
         </button>
         <button
           onClick={() => void recorder.discardDraft()}
+          aria-label="Discard this recording"
+          title="Discard this recording"
           data-testid="preview-recording-discard-button"
-          className={SECONDARY_BUTTON_CLASSES}
+          className={cn(SECONDARY_BUTTON_CLASSES, "flex items-center px-1.5")}
         >
-          Discard
-        </button>
-        {/* The draft outlives this bar — the chat card owns it from here — so
-            closing is only ever hiding, never discarding. */}
-        <button
-          onClick={() => recorder.dismissReview()}
-          title="Hide this bar — the recording stays available in the chat card"
-          data-testid="preview-recording-hide-review-button"
-          className={SECONDARY_BUTTON_CLASSES}
-        >
-          Hide
-        </button>
-      </>
-    );
-  } else if (recorder.phase === "saved") {
-    label = (
-      <span className="min-w-0 truncate font-medium text-emerald-700 dark:text-emerald-300">
-        Saved {recorder.savedSpecPath}
-      </span>
-    );
-    rest = (
-      <>
-        <button
-          onClick={() =>
-            recorder.savedSpecPath && onOpenSavedSpec(recorder.savedSpecPath)
-          }
-          data-testid="preview-recording-open-file-button"
-          className={cn(
-            SECONDARY_BUTTON_CLASSES,
-            "ml-auto flex items-center gap-1",
-          )}
-        >
-          <FileCode2 size={12} /> Open test file
-        </button>
-        <button
-          onClick={() => recorder.dismissReview()}
-          data-testid="preview-recording-done-button"
-          className={SECONDARY_BUTTON_CLASSES}
-        >
-          Done
+          <X size={14} />
         </button>
       </>
     );

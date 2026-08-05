@@ -58,6 +58,7 @@ const DRAFT: RecordedTestDraft = {
 
 const VALID_ARGS = {
   recordingId: DRAFT.draftId,
+  testName: "Add an item to the list",
   steps: [
     { index: 0, text: "Open the home page" },
     { index: 1, text: "Click the Add button" },
@@ -167,6 +168,33 @@ describe("generate_test_assertions", () => {
     // Approving rewrote this card's tag in the message row; the turn has to
     // adopt that before it appends anything else.
     expect(ctx.resyncResponseFromDb).toHaveBeenCalledTimes(1);
+  });
+
+  it("names the test from the model when the user didn't name the recording", async () => {
+    // Naming a flow before performing it is guesswork, so the recorder's name
+    // field is optional and this is the usual case: the model names it from the
+    // steps, and that name is what the file is written under.
+    setRecordedTestDraft(APP_ID, { ...DRAFT, testName: undefined });
+    const ctx = makeCtx();
+
+    await generateTestAssertionsTool.execute(VALID_ARGS, ctx);
+
+    const payload = parseAssertionsPayloadFromMessage(committedXml(ctx))!;
+    expect(payload.testTitle).toBe("Add an item to the list");
+    // Carried on the card's own copy of the recording, which is what the
+    // approval generates from — nothing downstream has to invent a name.
+    expect(payload.draft.testName).toBe("Add an item to the list");
+    expect(registry.requests[0].testTitle).toBe("Add an item to the list");
+  });
+
+  it("keeps the user's own name over the model's", async () => {
+    const ctx = makeCtx();
+
+    await generateTestAssertionsTool.execute(VALID_ARGS, ctx);
+
+    const payload = parseAssertionsPayloadFromMessage(committedXml(ctx))!;
+    expect(payload.testTitle).toBe("add an item");
+    expect(payload.draft.testName).toBe("add an item");
   });
 
   it("tells the model to stop when the user closes the card", async () => {

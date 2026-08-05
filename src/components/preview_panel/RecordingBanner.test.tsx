@@ -27,7 +27,6 @@ function makeRecorder(
     draftSteps: [
       'await page.getByRole("button", { name: "Increment" }).click();',
     ],
-    savedSpecPath: undefined,
     entryCount: 1,
     steps: ['await page.getByRole("button", { name: "Increment" }).click();'],
     isRecording: phase === "recording",
@@ -35,9 +34,8 @@ function makeRecorder(
     awaitingAssertions: false,
     startRecording: vi.fn(),
     stopAndReview: vi.fn(),
-    saveWithoutAssertions: vi.fn(),
+    recordNavigation: vi.fn(),
     cancelRecording: vi.fn(),
-    dismissReview: vi.fn(),
     markAwaitingAssertions: vi.fn(),
     discardDraft: vi.fn(),
     ...overrides,
@@ -46,11 +44,7 @@ function makeRecorder(
 
 function renderBanner(recorder: TestRecorderController) {
   return render(
-    <RecordingBanner
-      recorder={recorder}
-      onGenerateAssertions={vi.fn()}
-      onOpenSavedSpec={vi.fn()}
-    />,
+    <RecordingBanner recorder={recorder} onGenerateAssertions={vi.fn()} />,
   );
 }
 
@@ -72,11 +66,26 @@ describe("RecordingBanner", () => {
     expect(list.getAttribute("aria-label")).toBe("Recorded steps");
   });
 
-  it("keeps every recovery action reachable while the AI is asked for assertions", () => {
+  it("offers exactly one way forward and one way out", () => {
+    // A recording becomes a test by being proposed and approved, so the review
+    // has one action and one dismissal — nothing here can write a spec that
+    // nobody has checked.
+    const { container } = renderBanner(makeRecorder("reviewing"));
+
+    expect(
+      screen.getByTestId("preview-recording-generate-assertions-button")
+        .textContent,
+    ).toContain("Generate test proposal");
+    expect(screen.getByTestId("preview-recording-discard-button")).toBeTruthy();
+    // The details toggle plus those two.
+    expect(container.querySelectorAll("button")).toHaveLength(3);
+  });
+
+  it("keeps both actions reachable while the AI is asked for a proposal", () => {
     // The request can fail, be cancelled, or end without the tool ever being
-    // called. This bar is the only place the parked draft can still be saved
-    // as-is, discarded, or asked again, so none of that may disappear on
-    // dispatch — and the wait itself has to be visible.
+    // called. This bar is the only place the parked draft can still be asked
+    // about again or thrown away, so neither may disappear on dispatch — and
+    // the wait itself has to be visible.
     renderBanner(makeRecorder("reviewing", { awaitingAssertions: true }));
 
     const status = screen.getByTestId("preview-recording-review-status");
@@ -86,21 +95,15 @@ describe("RecordingBanner", () => {
       screen.getByTestId("preview-recording-generate-assertions-button")
         .textContent,
     ).toContain("Ask again");
-    expect(
-      screen.getByTestId("preview-recording-save-plain-button"),
-    ).toBeTruthy();
     expect(screen.getByTestId("preview-recording-discard-button")).toBeTruthy();
   });
 
-  it("hides the review on request without discarding the recording", () => {
-    // The draft outlives the bar — the chat card owns it from here — so closing
-    // must not be wired to discardDraft.
+  it("throws the recording away when the review is closed", () => {
     const recorder = makeRecorder("reviewing");
     renderBanner(recorder);
 
-    fireEvent.click(screen.getByTestId("preview-recording-hide-review-button"));
+    fireEvent.click(screen.getByTestId("preview-recording-discard-button"));
 
-    expect(recorder.dismissReview).toHaveBeenCalledTimes(1);
-    expect(recorder.discardDraft).not.toHaveBeenCalled();
+    expect(recorder.discardDraft).toHaveBeenCalledTimes(1);
   });
 });

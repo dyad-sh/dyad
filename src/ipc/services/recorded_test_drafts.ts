@@ -4,7 +4,7 @@ import type { RecordedTestDraft } from "@/lib/test_recorder/draft";
  * The recording a user just finished and hasn't turned into a file yet, per app.
  *
  * Deliberately in-memory and short-lived: the draft only has to survive from
- * "Generate assertions" in the recorder bar until the agent's
+ * "Generate test proposal" in the recorder bar until the agent's
  * `generate_test_assertions` tool runs, seconds later. From that point the
  * proposal's payload carries its own copy of the draft inside the chat message,
  * which is what makes approving durable — a restart loses the pending draft, not

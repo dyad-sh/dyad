@@ -4,13 +4,14 @@ import { testSkipIfWindows, Timeout } from "./helpers/test_helper";
 // End-to-end coverage for the preview test recorder. The imported app has no
 // database, so recording runs with isolation mode "none" (no branch/user, no
 // auth) — the fast, network-free path. Like ai_e2e_testing, this drives the UI
-// orchestration and asserts the generated spec is written and discovered; it
-// does NOT spawn a real Playwright run (that would be Playwright-in-Playwright).
+// orchestration; it does NOT spawn a real Playwright run (that would be
+// Playwright-in-Playwright).
 //
-// This covers the no-AI path: stop, review the steps, save them as they are.
-// The assertion pass is covered by test_assertions.spec.ts.
+// This covers capture and review: what the recorder catches, and what the review
+// then offers. Turning that review into a file goes through the AI proposal, and
+// is covered by test_assertions.spec.ts.
 testSkipIfWindows(
-  "records interactions in the preview and saves a runnable spec",
+  "records interactions in the preview and reviews them without writing a file",
   async ({ po }) => {
     await po.setUp({ autoApprove: true });
     await po.importApp("recorder");
@@ -42,35 +43,35 @@ testSkipIfWindows(
       po.page.getByTestId("preview-recording-step-count"),
     ).not.toHaveText("0 steps");
 
-    // Name the recording and stop.
-    await po.page.getByTestId("preview-recording-name-input").fill("add item");
+    // Stop without naming it — naming is optional, and the AI names the test as
+    // part of proposing it.
     await po.page.getByTestId("preview-recording-stop-button").click();
 
     // Stopping reviews the recording rather than writing it: the steps are
-    // listed, and the file only appears once the user chooses to generate it.
+    // listed, and the file only appears once the user approves a proposal.
     const steps = po.page.getByTestId("preview-recorded-steps");
     await expect(steps).toBeVisible({ timeout: Timeout.LONG });
     await expect(steps).toContainText("Increment");
     await expect(steps).toContainText("Subscribe");
+    await expect(
+      po.page.getByTestId("preview-recording-review-title"),
+    ).toHaveText("Untitled recording");
 
-    await po.page.getByTestId("preview-recording-save-plain-button").click();
-
-    // The saved banner links straight to the generated spec in the Code tab.
-    await po.page.getByTestId("preview-recording-open-file-button").click({
+    // The review offers one way forward and one way out. Nothing here writes a
+    // test nobody has checked.
+    await expect(
+      po.page.getByTestId("preview-recording-generate-assertions-button"),
+    ).toHaveText("Generate test proposal");
+    await po.page.getByTestId("preview-recording-discard-button").click();
+    await expect(po.page.getByTestId("preview-recording-bar")).toBeHidden({
       timeout: Timeout.LONG,
     });
-    await expect(
-      po.page.locator("#preview-panel").getByText("recorded-add-item.spec.ts"),
-    ).toBeVisible({ timeout: Timeout.LONG });
-    await expect(po.page.getByTestId("save-file-button")).toBeVisible({
-      timeout: Timeout.MEDIUM,
-    });
 
-    // The spec is written under e2e-tests/ and auto-discovered into the panel.
+    // Nothing was written: the Tests panel has no recorded spec in it.
     await po.previewPanel.selectPreviewMode("tests");
     await expect(
-      po.page.locator("#preview-panel").getByText("recorded-add-item.spec.ts"),
-    ).toBeVisible({ timeout: Timeout.LONG });
+      po.page.locator("#preview-panel").getByText(/recorded-.*\.spec\.ts/),
+    ).toHaveCount(0);
   },
 );
 

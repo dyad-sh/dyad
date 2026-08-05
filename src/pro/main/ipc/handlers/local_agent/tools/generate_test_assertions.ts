@@ -7,6 +7,11 @@ import { completeWarning } from "./run_tests_utils";
 import { userInputRegistry } from "@/user_input/main";
 import { getRecordedTestDraft } from "@/ipc/services/recorded_test_drafts";
 import { recordedBodyStatements } from "@/lib/test_recorder/codegen";
+import {
+  MAX_TEST_NAME_LENGTH,
+  normalizeTestName,
+  type RecordedTestDraft,
+} from "@/lib/test_recorder/draft";
 import { isSingleAssertionStatement } from "@/lib/test_recorder/assertion_code";
 import {
   ASSERTION_PROPOSAL_VERSION,
@@ -24,6 +29,13 @@ const generateTestAssertionsSchema = z.object({
     .min(1)
     .describe(
       "The recording id given in the request, copied exactly. It names which recording these steps describe.",
+    ),
+  testName: z
+    .string()
+    .min(1)
+    .max(MAX_TEST_NAME_LENGTH)
+    .describe(
+      'What this test should be called: a short sentence-case phrase naming the flow it exercises, from what the steps actually do — "Add an item to the list", "Sign in and open settings". No file extension, no "test" or "spec" in it. It becomes the Playwright test title and, slugified, the file name. If the request says the user chose a name, send that name exactly.',
     ),
   steps: z
     .array(
@@ -77,9 +89,9 @@ const generateTestAssertionsSchema = z.object({
 
 type GenerateTestAssertionsArgs = z.infer<typeof generateTestAssertionsSchema>;
 
-const NO_DRAFT_MESSAGE = `There is no finished recording waiting for assertions, so nothing was shown to the user and no file was touched.
+const NO_DRAFT_MESSAGE = `There is no finished recording waiting to become a test, so nothing was shown to the user and no file was touched.
 
-This tool only works right after the user stops a recording and clicks "Generate assertions" in the recorder bar — it reads the recording Dyad parked at that moment. Tell the user to record the flow in the preview and click "Generate assertions"; to add assertions to a spec that already exists on disk, edit it with search_replace instead.`;
+This tool only works right after the user stops a recording and clicks "Generate test proposal" in the recorder bar — it reads the recording Dyad parked at that moment. Tell the user to record the flow in the preview and click "Generate test proposal"; to add assertions to a spec that already exists on disk, edit it with search_replace instead.`;
 
 const STALE_DRAFT_MESSAGE = (
   currentId: string,
@@ -87,7 +99,7 @@ const STALE_DRAFT_MESSAGE = (
 
 Do NOT resend the same steps against the new id — they describe a flow that is no longer the one waiting. Ask the user whether they want assertions for the recording they just finished (id \`${currentId}\`); if they do, they should ask again so you get its statements.`;
 
-const DESCRIPTION = `Turn a just-finished recording into a reviewable plan: describe each recorded step in plain English and propose the assertions that should check it. The user reviews the plan in a chat card — editing, deleting, reordering — and Dyad generates the test file from it when they approve. You never write the spec.
+const DESCRIPTION = `Turn a just-finished recording into a reviewable test proposal: name the test, describe each recorded step in plain English, and propose the assertions that should check it. The user reviews the proposal in a chat card — editing, deleting, reordering — and Dyad generates the test file from it when they approve. You never write the spec.
 
 This tool BLOCKS until the user answers the card, then tells you what happened. The turn is not over when you call it.
 
@@ -97,7 +109,7 @@ Use this when the user asks for assertions for a flow they just recorded with Dy
 
 <how_to_use>
 1. Read the numbered statements in the user's message. Those indices are the ones this tool expects — don't renumber them.
-2. Send one \`steps\` entry per statement, translating it into one plain-English sentence, plus the assertions you want to propose. Copy the recording id from the request into \`recordingId\` exactly — it is what ties your plan to the recording it describes.
+2. Send a \`testName\` for the flow, one \`steps\` entry per statement translating it into one plain-English sentence, plus the assertions you want to propose. Copy the recording id from the request into \`recordingId\` exactly — it is what ties your plan to the recording it describes.
 3. Wait. The call does not come back until the user approves the card or closes it, and the tool result tells you which. Do NOT call it a second time, and do NOT try to write or run anything while it is open — the spec does not exist yet.
 4. Do what the tool result says: run the spec it names, or stop if the user closed the card.
 </how_to_use>
@@ -119,6 +131,7 @@ For a recording whose statements are:
   1: await page.getByRole("button", { name: "Increment" }).click();
 
 {
+  "testName": "Increment the counter",
   "steps": [
     { "index": 0, "text": "Open the home page" },
     { "index": 1, "text": "Click the Increment button" }
@@ -214,7 +227,7 @@ export const generateTestAssertionsTool: ToolDefinition<GenerateTestAssertionsAr
     isEnabled: (ctx) => ctx.testingEnabled,
 
     getConsentPreview: (args) =>
-      `Propose ${args.assertions.length} assertion(s) for the recorded test`,
+      `Propose "${normalizeTestName(args.testName)}" with ${args.assertions.length} assertion(s)`,
 
     execute: async (args, ctx: AgentContext) => {
       const draft = getRecordedTestDraft(ctx.appId);
@@ -264,14 +277,24 @@ export const generateTestAssertionsTool: ToolDefinition<GenerateTestAssertionsAr
         newId: () => crypto.randomUUID(),
       });
 
+      // The user's own name always wins; the model's is what names the test
+      // when they left it to us, which is the usual case. Falls back only if
+      // both are somehow unusable, so nothing downstream is ever unnamed.
+      const testName =
+        normalizeTestName(draft.testName) ||
+        normalizeTestName(args.testName) ||
+        "recorded test";
+      const namedDraft: RecordedTestDraft = { ...draft, testName };
+
       const proposalId = crypto.randomUUID();
       const payload: AssertionProposalPayload = {
         version: ASSERTION_PROPOSAL_VERSION,
         appId: ctx.appId,
-        // The whole recording rides along, so approving still works after a
-        // restart and never depends on a file that doesn't exist yet.
-        draft,
-        testTitle: draft.testName,
+        // The whole recording rides along — under the name it will be written
+        // with — so approving still works after a restart and never depends on
+        // a file that doesn't exist yet.
+        draft: namedDraft,
+        testTitle: testName,
         specPath: null,
         items,
       };
@@ -283,7 +306,7 @@ export const generateTestAssertionsTool: ToolDefinition<GenerateTestAssertionsAr
         chatId: ctx.chatId,
         appId: ctx.appId,
         proposalId,
-        testTitle: draft.testName,
+        testTitle: testName,
         classifier: "none",
       });
 
@@ -298,7 +321,7 @@ export const generateTestAssertionsTool: ToolDefinition<GenerateTestAssertionsAr
 
       const assertionCount = countAssertions(items);
       logger.info(
-        `Proposed ${assertionCount} assertion(s) for recorded test "${draft.testName}" (chat ${ctx.chatId}), awaiting review as ${requestId}`,
+        `Proposed ${assertionCount} assertion(s) for recorded test "${testName}" (chat ${ctx.chatId}), awaiting review as ${requestId}`,
       );
 
       const result = await userInputRegistry.park(requestId, ctx.abortSignal);
@@ -311,11 +334,11 @@ export const generateTestAssertionsTool: ToolDefinition<GenerateTestAssertionsAr
 
       if (!review?.specPath) {
         logger.info(
-          `Assertion review ${requestId} ended without a spec for "${draft.testName}"`,
+          `Assertion review ${requestId} ended without a spec for "${testName}"`,
         );
         return `The user closed the review card without approving it, so no test file was written.
 
-Do NOT call generate_test_assertions again for this recording and do NOT call run_tests — there is nothing on disk to run. The recording is still parked, so they can save it as-is from the recorder bar. Ask them what they'd like to do instead, in one short sentence.`;
+Do NOT call generate_test_assertions again for this recording and do NOT call run_tests — there is nothing on disk to run, and approving a proposal is the only thing that writes one. Ask them what they'd like to do instead, in one short sentence.`;
       }
 
       logger.info(

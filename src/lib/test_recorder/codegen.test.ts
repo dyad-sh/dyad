@@ -31,10 +31,10 @@ function draft(
   };
 }
 
-/** The no-assertions save path, as `createRecordedSpec` composes it. */
+/** A draft's spec with no assertions in it, as the approval composes one. */
 function specForDraft(value: RecordedTestDraft): string {
   return generateSpecSource({
-    testName: value.testName,
+    testName: value.testName ?? "recorded test",
     includeSignIn: draftIncludesSignIn(value),
     bodyStatements: recordedBodyStatements(value),
   });

@@ -165,7 +165,10 @@ describe("registerTestAssertionHandlers", () => {
   function propose(
     appId: number,
     chatId: number,
-    { draft = DRAFT }: { draft?: RecordedTestDraft } = {},
+    {
+      draft = DRAFT,
+      proposalId = "proposal-1",
+    }: { draft?: RecordedTestDraft; proposalId?: string } = {},
   ): { proposalId: string } {
     let nextAssertionId = 0;
     const { items } = buildPlanItems({
@@ -181,9 +184,8 @@ describe("registerTestAssertionHandlers", () => {
           code: `await expect(page.getByTestId("row")).toBeVisible();`,
         },
       ],
-      newId: () => `assertion-${nextAssertionId++}`,
+      newId: () => `${proposalId}-assertion-${nextAssertionId++}`,
     });
-    const proposalId = "proposal-1";
     harness.db
       .insert(messages)
       .values({
@@ -200,7 +202,7 @@ describe("registerTestAssertionHandlers", () => {
               version: ASSERTION_PROPOSAL_VERSION,
               appId,
               draft,
-              testTitle: draft.testName,
+              testTitle: draft.testName ?? "recorded test",
               specPath: null,
               items,
             },
@@ -222,41 +224,45 @@ describe("registerTestAssertionHandlers", () => {
     return JSON.parse(json).items;
   }
 
-  describe("tests:create-recorded-spec", () => {
-    /**
-     * Save a recording the way the recorder bar does: the draft is parked in the
-     * main process when recording stops, and its presence is what says this
-     * recording hasn't been written yet.
-     */
-    function createSpec(appId: number, draft: RecordedTestDraft = DRAFT) {
-      setRecordedTestDraft(appId, draft);
-      return harness.invokeHandler<{ specPath: string }>(
-        "tests:create-recorded-spec",
-        { appId, draft },
-      );
+  /** Approve a card the way the renderer does: with its own stored plan. */
+  function approve(appId: number, chatId: number, proposalId = "proposal-1") {
+    const row = storedMessages().find((message) =>
+      message.content.includes(`proposal-id="${proposalId}"`),
+    )!;
+    return harness.invokeHandler<{
+      specPath: string;
+      appliedCount: number;
+      warning?: string;
+    }>("tests:apply-assertions", {
+      appId,
+      chatId,
+      proposalId,
+      items: planFromMessage(row.content),
+    });
+  }
+
+  // The spec file the approval writes: its name, and the sign-in fixture it
+  // imports. Approving a card is the only thing that turns a recording into a
+  // file, so this is where that file's shape is pinned down.
+  describe("the generated spec file", () => {
+    function writeFixture(source: string): string {
+      const fixturePath = path.join(tmpDir, "e2e-tests/fixtures/test-user.ts");
+      fs.mkdirSync(path.dirname(fixturePath), { recursive: true });
+      fs.writeFileSync(fixturePath, source, "utf-8");
+      return fixturePath;
     }
 
-    it("writes the recording as-is, with no assertions", async () => {
-      const { appId } = seed();
-
-      const result = await createSpec(appId);
-
-      expect(result.specPath).toBe(SPEC_PATH);
-      expect(bodyLines()).toEqual([
-        `  await page.goto("/");`,
-        `  await page.getByRole("button", { name: "Add" }).click();`,
-      ]);
-      expect(readSpec()).not.toContain("await expect(");
-      expect(mockGitAdd).toHaveBeenCalledWith({
-        path: tmpDir,
-        filepath: SPEC_PATH,
+    /** Approve a recording that signed in, so the fixture is written. */
+    async function approveAuthenticated(): Promise<void> {
+      const { appId, chatId } = seed();
+      propose(appId, chatId, {
+        draft: { ...DRAFT, authMode: "neon-better-auth" },
       });
-    });
+      await approve(appId, chatId);
+    }
 
     it("generates the signIn fixture for an authenticated recording", async () => {
-      const { appId } = seed();
-
-      await createSpec(appId, { ...DRAFT, authMode: "neon-better-auth" });
+      await approveAuthenticated();
 
       expect(readSpec()).toContain(
         `import { signIn } from "./fixtures/test-user";`,
@@ -265,123 +271,62 @@ describe("registerTestAssertionHandlers", () => {
       expect(specExists("e2e-tests/fixtures/test-user.ts")).toBe(true);
     });
 
-    function writeFixture(source: string): string {
-      const fixturePath = path.join(tmpDir, "e2e-tests/fixtures/test-user.ts");
-      fs.mkdirSync(path.dirname(fixturePath), { recursive: true });
-      fs.writeFileSync(fixturePath, source, "utf-8");
-      return fixturePath;
-    }
+    // Whether a file at this path really provides `signIn` isn't decidable from
+    // here, and a wrong guess blocks the user behind an error. The recording
+    // becomes a test either way; a fixture that doesn't work fails when the
+    // test runs, which is where it can actually be fixed.
+    it.each([
+      ["the user's own helper", `export async function signIn(page) {}\n`],
+      ["a file that has nothing to do with us", `// mine\n`],
+      [
+        "our fixture with their edits in it",
+        `${generateTestUserFixtureSource("supabase-password")}\n// my tweak\n`,
+      ],
+    ])("leaves %s at the fixture path alone", async (_label, existing) => {
+      const fixturePath = writeFixture(existing);
 
-    it("reuses the user's own signIn helper without touching it", async () => {
-      const { appId } = seed();
-      const mine = `export async function signIn(page) {\n  // mine\n}\n`;
-      const fixturePath = writeFixture(mine);
+      await approveAuthenticated();
 
-      await createSpec(appId, { ...DRAFT, authMode: "neon-better-auth" });
-
-      expect(fs.readFileSync(fixturePath, "utf-8")).toBe(mine);
+      expect(fs.readFileSync(fixturePath, "utf-8")).toBe(existing);
+      expect(specExists(SPEC_PATH)).toBe(true);
     });
 
-    it("refuses when the fixture path is taken by a file with no signIn", async () => {
-      const { appId } = seed();
-      // The generated spec imports `signIn` from here, so silently reusing this
-      // would report success and leave the user with a spec that can't compile.
-      const fixturePath = writeFixture("// mine\n");
-
-      await expect(
-        createSpec(appId, { ...DRAFT, authMode: "neon-better-auth" }),
-      ).rejects.toThrow(/doesn't export a `signIn` helper/);
-      expect(fs.readFileSync(fixturePath, "utf-8")).toBe("// mine\n");
-      expect(specExists(SPEC_PATH)).toBe(false);
-    });
-
-    it("regenerates a fixture that was generated for the other auth backend", async () => {
-      const { appId } = seed();
+    it("regenerates an untouched fixture written for the other auth backend", async () => {
       const fixturePath = writeFixture(
         generateTestUserFixtureSource("supabase-password"),
       );
 
       // The app moved from Supabase to Neon auth. The helper's signature is the
-      // same but its body isn't, so the stale one guarantees a failing sign-in.
-      await createSpec(appId, { ...DRAFT, authMode: "neon-better-auth" });
+      // same but its body isn't, so the stale one guarantees a failing sign-in —
+      // and byte equality with our own template says nobody has touched it.
+      await approveAuthenticated();
 
       expect(fs.readFileSync(fixturePath, "utf-8")).toBe(
         generateTestUserFixtureSource("neon-better-auth"),
       );
     });
 
-    it("refuses to discard edits made to a fixture for the other backend", async () => {
-      const { appId } = seed();
-      const edited = `${generateTestUserFixtureSource("supabase-password")}\n// my tweak\n`;
-      const fixturePath = writeFixture(edited);
-
-      await expect(
-        createSpec(appId, { ...DRAFT, authMode: "neon-better-auth" }),
-      ).rejects.toThrow(/has been edited/);
-      expect(fs.readFileSync(fixturePath, "utf-8")).toBe(edited);
-    });
-
     it("suffixes rather than clobbering a spec that already exists", async () => {
-      const { appId } = seed();
-
+      const { appId, chatId } = seed();
       // Two separate recordings whose names slugify the same.
-      const first = await createSpec(appId);
-      const second = await createSpec(appId);
+      propose(appId, chatId, { proposalId: "proposal-1" });
+      propose(appId, chatId, {
+        proposalId: "proposal-2",
+        draft: { ...DRAFT, draftId: "draft-second" },
+      });
+
+      const first = await approve(appId, chatId, "proposal-1");
+      const second = await approve(appId, chatId, "proposal-2");
 
       expect(first.specPath).toBe(SPEC_PATH);
       expect(second.specPath).toBe("e2e-tests/recorded-add-an-item-2.spec.ts");
     });
 
-    it("refuses a recording that has already been written", async () => {
-      const { appId } = seed();
-      await createSpec(appId);
-
-      // The bar can still be on screen after the assertions card generated the
-      // spec (or after a double click). Writing again would leave the user with
-      // two copies of the same recording under different names.
-      await expect(
-        harness.invokeHandler("tests:create-recorded-spec", {
-          appId,
-          draft: DRAFT,
-        }),
-      ).rejects.toThrow(/already been saved/);
-      expect(specExists("e2e-tests/recorded-add-an-item-2.spec.ts")).toBe(
-        false,
-      );
-    });
-
-    it("writes one spec when two saves race", async () => {
-      const { appId } = seed();
-      setRecordedTestDraft(appId, DRAFT);
-
-      // Both read the parked draft before either clears it. Without the write
-      // being serialized, each claims its own filename.
-      const [first, second] = await Promise.allSettled([
-        harness.invokeHandler<{ specPath: string }>(
-          "tests:create-recorded-spec",
-          { appId, draft: DRAFT },
-        ),
-        harness.invokeHandler<{ specPath: string }>(
-          "tests:create-recorded-spec",
-          { appId, draft: DRAFT },
-        ),
-      ]);
-
-      const written = [first, second].filter((r) => r.status === "fulfilled");
-      expect(written).toHaveLength(1);
-      expect(specExists(SPEC_PATH)).toBe(true);
-      expect(specExists("e2e-tests/recorded-add-an-item-2.spec.ts")).toBe(
-        false,
-      );
-    });
-
     it("keeps a hostile test name inside e2e-tests/", async () => {
-      const { appId } = seed();
+      const { appId, chatId } = seed();
+      propose(appId, chatId, { draft: { ...DRAFT, testName: "../../evil" } });
 
-      const result = await createSpec(appId, {
-        ...DRAFT,
-        testName: "../../evil",
-      });
+      const result = await approve(appId, chatId);
 
       expect(result.specPath).toBe("e2e-tests/recorded-evil.spec.ts");
       expect(specExists("e2e-tests/recorded-evil.spec.ts")).toBe(true);
@@ -456,7 +401,7 @@ describe("registerTestAssertionHandlers", () => {
           version: ASSERTION_PROPOSAL_VERSION,
           appId,
           draft: secondDraft,
-          testTitle: secondDraft.testName,
+          testTitle: secondDraft.testName ?? "recorded test",
           specPath: null,
           items: secondItems,
         },
@@ -615,32 +560,55 @@ describe("registerTestAssertionHandlers", () => {
       expect(mockGitAdd).not.toHaveBeenCalled();
     });
 
-    it("doesn't write a second spec for a recording the bar already saved", async () => {
+    it("doesn't write a second spec for a recording proposed twice", async () => {
       const { appId, chatId } = seed();
-      const { proposalId } = propose(appId, chatId);
-      const items = planFromMessage(storedMessages()[0].content);
+      // "Ask again" in the recorder bar proposes the same parked recording
+      // afresh, so two cards can describe one recording. Each generates from its
+      // own copy of the draft, and nothing else connects them.
+      propose(appId, chatId, { proposalId: "proposal-1" });
+      propose(appId, chatId, { proposalId: "proposal-2" });
 
-      // The bar keeps offering "Save without assertions" while the card is on
-      // screen. It writes from the parked draft; this path writes from the
-      // card's own copy, so nothing else connects the two.
-      setRecordedTestDraft(appId, DRAFT);
-      await harness.invokeHandler("tests:create-recorded-spec", {
-        appId,
-        draft: DRAFT,
-      });
+      const first = await approve(appId, chatId, "proposal-1");
+      const second = await approve(appId, chatId, "proposal-2");
 
-      const approved = await harness.invokeHandler<{
-        specPath: string;
-        warning?: string;
-      }>("tests:apply-assertions", { appId, chatId, proposalId, items });
-
-      expect(approved.specPath).toBe(SPEC_PATH);
-      expect(approved.warning).toMatch(/already saved/i);
+      expect(first.specPath).toBe(SPEC_PATH);
+      expect(second.specPath).toBe(SPEC_PATH);
+      expect(second.warning).toMatch(/already saved/i);
       expect(specExists("e2e-tests/recorded-add-an-item-2.spec.ts")).toBe(
         false,
       );
-      // The card settles instead of staying approvable forever.
-      expect(storedMessages()[0].content).toContain('status="approved"');
+      // The second card settles instead of staying approvable forever.
+      expect(
+        readAssertionsTagAttribute(
+          storedMessages()[1].content,
+          "status",
+          "proposal-2",
+        ),
+      ).toBe("approved");
+    });
+
+    it("writes one spec when two cards for a recording are approved at once", async () => {
+      const { appId, chatId } = seed();
+      const otherChatId = Number(
+        harness.db.insert(chats).values({ appId, title: "Other" }).run()
+          .lastInsertRowid,
+      );
+      // Different chats, so the per-chat proposal lock doesn't serialize them:
+      // both read "not written yet" before either writes, and without the write
+      // itself being serialized each claims its own filename.
+      propose(appId, chatId, { proposalId: "proposal-1" });
+      propose(appId, otherChatId, { proposalId: "proposal-2" });
+
+      const [first, second] = await Promise.all([
+        approve(appId, chatId, "proposal-1"),
+        approve(appId, otherChatId, "proposal-2"),
+      ]);
+
+      expect(first.specPath).toBe(SPEC_PATH);
+      expect(second.specPath).toBe(SPEC_PATH);
+      expect(specExists("e2e-tests/recorded-add-an-item-2.spec.ts")).toBe(
+        false,
+      );
     });
 
     it("leaves a newer recording's draft parked when an older card is approved", async () => {

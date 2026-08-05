@@ -1,14 +1,14 @@
 /**
- * Fake responses for the recorder's "Generate assertions" flow.
+ * Fake responses for the recorder's "Generate test proposal" flow.
  *
  * Three different things are faked here, because three different prompts are
  * involved:
  *
- * 1. The AGENT turn. The recorder's "Generate assertions" button sends a chat
+ * 1. The AGENT turn. The recorder's "Generate test proposal" button sends a chat
  *    prompt containing the recorded statements — the test is NOT a file yet, so
  *    there is nothing to read_file. We answer with a single
- *    `generate_test_assertions` tool call, deriving the steps/assertions from
- *    the statements in the prompt.
+ *    `generate_test_assertions` tool call, deriving the name, steps and
+ *    assertions from the statements in the prompt.
  *
  * 2. The approve-time CODE SYNTHESIS pass
  *    (src/prompts/test_assertions_prompt.ts buildAssertionCodePayload), a plain
@@ -28,9 +28,12 @@
  * hijacked into a JSON assertion plan.
  */
 
-/** Matches the prompt the recorder's "Generate assertions" button sends. */
+/**
+ * Matches the prompt the recorder's "Generate test proposal" button sends. The
+ * title is optional: an unnamed recording asks the model to name it instead.
+ */
 const ASSERTIONS_REQUEST_RE =
-  /^Add assertions to the test I just recorded: "(.+)"\s*$/m;
+  /^Add assertions to the test I just recorded(: "(.+)")?\s*$/m;
 
 /**
  * Matches the run request the assertions card sends after approval, on the
@@ -120,7 +123,7 @@ export interface AssertionsToolCall {
 }
 
 /**
- * Answer the agent turn for a "Generate assertions" request, or null when this
+ * Answer the agent turn for a "Generate test proposal" request, or null when this
  * conversation isn't one.
  *
  * `messageTexts` is every message's text in order, so a turn that already
@@ -141,13 +144,17 @@ export function matchAssertionsAgentTurn(
   if (statements.length === 0) return null;
 
   const locator = reusableLocator(statements);
+  const steps = statements.map((statement, index) => ({
+    index,
+    text: describeStatement(statement),
+  }));
   return {
     name: "generate_test_assertions",
     args: {
-      steps: statements.map((statement, index) => ({
-        index,
-        text: describeStatement(statement),
-      })),
+      // The model names the test. Dyad only uses this when the user left the
+      // recording unnamed, but the tool always asks for it, so always send one.
+      testName: steps.at(-1)?.text ?? "Recorded flow",
+      steps,
       assertions: locator
         ? [
             {

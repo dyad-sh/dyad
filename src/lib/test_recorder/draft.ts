@@ -30,6 +30,34 @@ export type RecordedTestAuthMode = z.infer<typeof RecordedTestAuthModeSchema>;
  */
 const MAX_DRAFT_ACTIONS = 5_000;
 
+/**
+ * Ceiling on a test's name. It becomes a Playwright title and, slugified, a
+ * filename — and it can come from a model, so it needs a bound that isn't
+ * "whatever it felt like writing".
+ */
+export const MAX_TEST_NAME_LENGTH = 120;
+
+/** Stands in wherever an unnamed recording needs a label before the AI names it. */
+export const UNNAMED_RECORDING_TITLE = "Untitled recording";
+
+/** What to call this recording on screen, named or not. */
+export function draftTitle(draft: { testName?: string }): string {
+  return draft.testName?.trim() || UNNAMED_RECORDING_TITLE;
+}
+
+/**
+ * Normalize a test name from the user or the model into something that can be a
+ * Playwright title and a filename: one line, trimmed, bounded. Empty when
+ * nothing usable is left, so callers can tell "unnamed" from "named".
+ */
+export function normalizeTestName(raw: string | undefined): string {
+  return (raw ?? "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, MAX_TEST_NAME_LENGTH)
+    .trim();
+}
+
 export const RecordedTestDraftSchema = z.object({
   version: z.literal(RECORDED_TEST_DRAFT_VERSION),
   /**
@@ -43,8 +71,15 @@ export const RecordedTestDraftSchema = z.object({
    * first and refused a file of its own.
    */
   draftId: z.string().min(1).max(128),
-  /** The Playwright test title, and the basis for the generated filename. */
-  testName: z.string().min(1),
+  /**
+   * The Playwright test title, and the basis for the generated filename.
+   *
+   * Absent when the user didn't name the recording, which is the common case —
+   * naming a flow before performing it is guesswork. The AI names it as part of
+   * proposing the test, and that name is what the approved copy of this draft
+   * carries, so nothing downstream has to invent one.
+   */
+  testName: z.string().min(1).max(MAX_TEST_NAME_LENGTH).optional(),
   /** `none` means the spec is emitted without `signIn(page)`. */
   authMode: RecordedTestAuthModeSchema,
   /** The collapsed interactions, in the order they will be replayed. */

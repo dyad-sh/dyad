@@ -2,7 +2,7 @@ import { z } from "zod";
 import { RecordedTestDraftSchema } from "./draft";
 
 /**
- * Data model for the reviewable "Generate assertions" flow: a flat, ordered list
+ * Data model for the reviewable test proposal: a flat, ordered list
  * of the recorded test's steps and the proposed assertions interleaved.
  *
  * NOTE: reachable from `src/ipc/types/tests.ts`, which the preload bundle

@@ -15,7 +15,6 @@ const {
   stopRecordingMock,
   saveDraftMock,
   discardDraftMock,
-  createRecordedSpecMock,
   onEndedMock,
   onDraftConsumedMock,
 } = vi.hoisted(() => ({
@@ -23,7 +22,6 @@ const {
   stopRecordingMock: vi.fn(),
   saveDraftMock: vi.fn(),
   discardDraftMock: vi.fn(),
-  createRecordedSpecMock: vi.fn(),
   onEndedMock: vi.fn(),
   onDraftConsumedMock: vi.fn(),
 }));
@@ -35,9 +33,6 @@ vi.mock("@/ipc/types", () => ({
       stopRecording: stopRecordingMock,
       saveRecordedTestDraft: saveDraftMock,
       discardRecordedTestDraft: discardDraftMock,
-    },
-    tests: {
-      createRecordedSpec: createRecordedSpecMock,
     },
     events: {
       recording: {
@@ -159,7 +154,6 @@ describe("useTestRecorder", () => {
     stopRecordingMock.mockReset();
     saveDraftMock.mockReset();
     discardDraftMock.mockReset();
-    createRecordedSpecMock.mockReset();
     onEndedMock.mockReset();
     onEndedMock.mockReturnValue(() => {});
     onDraftConsumedMock.mockReset();
@@ -172,9 +166,6 @@ describe("useTestRecorder", () => {
     stopRecordingMock.mockResolvedValue({ ok: true });
     saveDraftMock.mockResolvedValue({ ok: true });
     discardDraftMock.mockResolvedValue({ ok: true });
-    createRecordedSpecMock.mockResolvedValue({
-      specPath: "e2e-tests/recorded-my-flow.spec.ts",
-    });
   });
 
   it("starts a session for a record request made outside the preview", async () => {
@@ -225,14 +216,11 @@ describe("useTestRecorder", () => {
       await result.current.stopAndReview("  My Flow  ");
     });
 
-    // The draft is parked in the main process for the assertion pass...
+    // The draft is parked in the main process for the test proposal...
     expect(saveDraftMock).toHaveBeenCalledWith({
       appId: 1,
       draft: expect.objectContaining({ testName: "My Flow", authMode: "none" }),
     });
-    // ...and NOTHING was written: the spec only exists once the user approves
-    // a plan (or asks to save without assertions).
-    expect(createRecordedSpecMock).not.toHaveBeenCalled();
     expect(result.current.phase).toBe("reviewing");
     expect(result.current.draft?.testName).toBe("My Flow");
     // The review list is the spec body, numbered as the assertion pass sees it.
@@ -248,8 +236,8 @@ describe("useTestRecorder", () => {
     expect(result.current.phase).toBe("reviewing");
 
     // Approval happens entirely in the chat card, so this event is the only
-    // thing that tells the bar its draft is now a file. Left up, its "Save
-    // without assertions" would write a second, suffixed copy of the same test.
+    // thing that tells the bar its draft is now a file. Left up, it would go on
+    // offering to propose a recording that has already been written.
     const onDraftConsumed = onDraftConsumedMock.mock.calls[0][0];
     act(() => {
       onDraftConsumed({
@@ -280,8 +268,8 @@ describe("useTestRecorder", () => {
     });
 
     expect(result.current.awaitingAssertions).toBe(false);
-    // The draft is untouched: saving it as-is, discarding it and asking again
-    // are exactly what the user needs once the request came back empty.
+    // The draft is untouched: asking again and discarding it are exactly what
+    // the user needs once the request came back empty.
     expect(result.current.phase).toBe("reviewing");
     expect(result.current.draft?.testName).toBe("my flow");
   });
@@ -310,49 +298,32 @@ describe("useTestRecorder", () => {
     expect(result.current.draft?.testName).toBe("my flow");
   });
 
-  it("generates the spec from the draft when saving without assertions", async () => {
+  it("throws the recording away when the review is discarded", async () => {
     const { result } = await recordingSession();
     await act(async () => {
       await result.current.stopAndReview("my flow");
     });
 
     await act(async () => {
-      await result.current.saveWithoutAssertions();
+      await result.current.discardDraft();
     });
 
-    expect(createRecordedSpecMock).toHaveBeenCalledWith({
-      appId: 1,
-      draft: expect.objectContaining({ testName: "my flow" }),
-    });
-    expect(result.current.phase).toBe("saved");
-    expect(result.current.savedSpecPath).toBe(
-      "e2e-tests/recorded-my-flow.spec.ts",
-    );
+    // The parked draft goes with it, so a queued assertion turn can't annotate
+    // a recording the user threw away.
+    expect(discardDraftMock).toHaveBeenCalledWith({ appId: 1 });
+    expect(result.current.phase).toBe("idle");
+    expect(result.current.draft).toBeUndefined();
   });
 
-  it("keeps the recording reviewable when generating the spec fails", async () => {
-    createRecordedSpecMock.mockRejectedValue(new Error("disk full"));
-
-    const { result } = await recordingSession();
-    await act(async () => {
-      await result.current.stopAndReview("my flow");
-    });
-
-    await act(async () => {
-      await result.current.saveWithoutAssertions();
-    });
-
-    // A failed write must not throw the session away.
-    expect(result.current.phase).toBe("reviewing");
-    expect(result.current.draft?.testName).toBe("my flow");
-  });
-
-  it("records SPA navigations from the shim's message envelope", async () => {
+  it("ignores navigations the app makes on its own", async () => {
     const iframe = makeIframe();
     const { result } = await recordingSession({ iframe, appUrl: true });
 
-    // The shim (worker/dyad-shim.js) nests the URL under `payload`, unlike every
-    // other message the hook consumes.
+    // The shim (worker/dyad-shim.js) reports every history change the app makes,
+    // which is almost always the app routing in response to the click that is
+    // already recorded. Following that click with `page.goto` would take the
+    // test to the destination even when the click stops navigating — hiding the
+    // regression instead of failing on it.
     act(() => {
       iframe.send({
         type: "pushState",
@@ -361,8 +332,57 @@ describe("useTestRecorder", () => {
     });
 
     await waitFor(() => {
-      expect(result.current.steps).toContain(`await page.goto("/items?q=x");`);
+      expect(result.current.entryCount).toBe(0);
     });
+    expect(result.current.steps).toEqual([]);
+  });
+
+  it("records a navigation made from Dyad's own address bar", async () => {
+    const { result } = await recordingSession({
+      iframe: makeIframe(),
+      appUrl: true,
+    });
+
+    // Typing a path (or picking one from the routes dropdown) is a jump around
+    // the app rather than through it: nothing else in the recording would take
+    // the test there.
+    act(() => {
+      result.current.recordNavigation("/items?q=x");
+    });
+
+    await waitFor(() => {
+      expect(result.current.steps).toEqual([`await page.goto("/items?q=x");`]);
+    });
+  });
+
+  it("ignores a manual navigation that would leave the app", async () => {
+    const { result } = await recordingSession({
+      iframe: makeIframe(),
+      appUrl: true,
+    });
+
+    act(() => {
+      result.current.recordNavigation("//evil.example/steal");
+    });
+
+    await waitFor(() => {
+      expect(result.current.entryCount).toBe(0);
+    });
+  });
+
+  it("records nothing once the recording has stopped", async () => {
+    const { result } = await recordingSession({ appUrl: true });
+    await act(async () => {
+      await result.current.stopAndReview("my flow");
+    });
+
+    act(() => {
+      result.current.recordNavigation("/late");
+    });
+
+    // The draft is closed; a navigation made while reviewing it belongs to
+    // whatever the user is doing next, not to the recording.
+    expect(result.current.draftSteps).toEqual([`await page.goto("/");`]);
   });
 
   it("ignores messages from a preview that navigated off the app's origin", async () => {
@@ -438,6 +458,67 @@ describe("useTestRecorder", () => {
       type: "deactivate-dyad-recorder",
     });
   });
+
+  /** A start held mid-setup, plus the lever that lets it finish. */
+  function holdStart() {
+    let finishStart!: () => void;
+    startRecordingMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishStart = () =>
+            resolve({
+              appId: 1,
+              sessionId: "session-1",
+              isolation: { mode: "none" },
+              auth: { mode: "none" },
+            });
+        }),
+    );
+    return () => finishStart();
+  }
+
+  it.each([
+    [
+      "the app changes",
+      (mounted: ReturnType<typeof mountRecorder>) =>
+        mounted.store.set(selectedAppIdAtom, 2),
+    ],
+    [
+      "the preview unmounts",
+      (mounted: ReturnType<typeof mountRecorder>) => mounted.unmount(),
+    ],
+  ])(
+    "hands back a session that is still being prepared when %s",
+    async (_label, walkAway) => {
+      const finishStart = holdStart();
+      const mounted = mountRecorder();
+
+      let started!: Promise<void>;
+      act(() => {
+        started = mounted.result.current.startRecording();
+      });
+
+      // Isolation setup takes seconds, and the main process registers the
+      // session — per-app lock and temporary database environment — as soon as
+      // the request arrives. Waiting for the start to return would leave that
+      // session serving an app with no recorder UI left to end it.
+      await act(async () => {
+        walkAway(mounted);
+      });
+
+      expect(stopRecordingMock).toHaveBeenCalledWith({ appId: 1 });
+
+      // The stop can also land before the main process has registered the
+      // session, so the start that eventually returns must hand it back too
+      // rather than adopting it.
+      stopRecordingMock.mockClear();
+      await act(async () => {
+        finishStart();
+        await started;
+      });
+      expect(stopRecordingMock).toHaveBeenCalledWith({ appId: 1 });
+    },
+  );
 
   it("keeps the session after StrictMode's mount/unmount/remount replay", async () => {
     const { store, Wrapper } = makeWrapper();

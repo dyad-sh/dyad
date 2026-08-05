@@ -1,5 +1,4 @@
-import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
-import { selectedFileAtom } from "@/atoms/viewAtoms";
+import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useCurrentAppUrl } from "@/hooks/useAppRun";
 import { useAtomValue, useSetAtom, useAtom } from "jotai";
 import {
@@ -221,28 +220,34 @@ const PREVIEW_TOOLBAR_BUTTON_CLASSES =
   "flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-40";
 
 /**
- * The prompt that starts the assertion pass. The recording isn't a file yet, so
- * the statements travel in the message — the agent describes them and proposes
- * checks, and its `generate_test_assertions` tool validates what it sends back
- * against the draft Dyad parked when recording stopped.
+ * The prompt that starts the test proposal. The recording isn't a file yet, so
+ * the statements travel in the message — the agent names the test, describes the
+ * steps and proposes checks, and its `generate_test_assertions` tool validates
+ * what it sends back against the draft Dyad parked when recording stopped.
  */
 function buildAssertionsPrompt(
-  testName: string,
+  testName: string | undefined,
   recordingId: string,
   steps: string[],
 ): string {
   return [
-    `Add assertions to the test I just recorded: "${testName}"`,
+    `Add assertions to the test I just recorded${testName ? `: "${testName}"` : ""}`,
     "",
     // Named in the prompt and echoed back through the tool, so a request that
     // sat queued while a *newer* recording replaced this one is rejected
     // instead of annotating the wrong flow.
     `Recording id: ${recordingId}`,
     "",
+    // The steps are all there is to name it from, which is why the naming
+    // happens here rather than being guessed before the flow was performed.
+    testName
+      ? `Use "${testName}" as the test name — I chose it.`
+      : "I didn't name it, so name it yourself from what the steps actually do.",
+    "",
     "It isn't a file yet — here are its statements, numbered the way your generate_test_assertions tool counts them:",
     ...steps.map((step, index) => `${index}: ${step}`),
     "",
-    "Call generate_test_assertions with that recording id, one plain-English step description per statement, plus the assertions you'd propose. There's nothing to read and nothing to run — I'll review the plan, and Dyad generates the test file when I approve it.",
+    "Call generate_test_assertions with that recording id, a test name, one plain-English step description per statement, plus the assertions you'd propose. There's nothing to read and nothing to run — I'll review the proposal, and Dyad generates the test file when I approve it.",
   ].join("\n");
 }
 
@@ -323,8 +328,6 @@ export const PreviewIframe = ({
   const canGoForward = selectCanGoForward(iframeState);
   const [annotatorMode, setAnnotatorMode] = useAtom(annotatorModeAtom);
   const { app: loadedApp } = useLoadApp(selectedAppId);
-  const setSelectedFile = useSetAtom(selectedFileAtom);
-  const setPreviewMode = useSetAtom(previewModeAtom);
   // Recording is part of the testing feature, so the entry point only exists
   // for apps that opted into testing (the Tests panel owns that opt-in).
   const canRecordTests = !!loadedApp?.testingEnabled;
@@ -334,24 +337,15 @@ export const PreviewIframe = ({
     void recorder.startRecording();
   };
 
-  // Jump straight to the generated spec in the Code tab — the file is what the
-  // user wants to read once it exists, and hunting for it in the file tree is
-  // the slowest part of the flow.
-  const handleOpenSavedSpec = (specPath: string) => {
-    setSelectedFile({ path: specPath });
-    setPreviewMode("code");
-    recorder.dismissReview();
-  };
-
-  // Hand the recorded steps to the agent for the assertion pass. Its
+  // Hand the recorded steps to the agent for the test proposal. Its
   // `generate_test_assertions` tool posts a reviewable card into the chat, and
   // approving that card is what generates the spec — so nothing is written
-  // until the user has seen both the steps and the checks.
+  // until the user has seen the name, the steps and the checks.
   const doGenerateAssertions = () => {
     const draft = recorder.draft;
     if (!draft) return;
     if (!selectedChatId) {
-      showInfo("Open a chat to generate assertions for the recorded test.");
+      showInfo("Open a chat to generate a test from the recording.");
       return;
     }
     const requestAppId = selectedAppId;
@@ -361,7 +355,7 @@ export const PreviewIframe = ({
     //
     // The review stays up until the user closes it. The request can fail, be
     // cancelled, or finish without ever calling the tool, and this bar is the
-    // only UI that can save the parked draft as-is, discard it, or ask again.
+    // only UI that can ask again or discard the parked draft.
     recorder.markAwaitingAssertions();
     streamMessage({
       prompt: buildAssertionsPrompt(
@@ -1124,6 +1118,10 @@ export const PreviewIframe = ({
     const newUrl = new URL(normalized.path, baseUrl).href;
 
     sendIframeEvent({ type: "NAVIGATE", path: newUrl });
+    // A jump the user made around the app, rather than through it: this is the
+    // one navigation a recording replays as `page.goto`. Routing the app does
+    // on its own belongs to the step that triggered it.
+    recorder.recordNavigation(normalized.path);
 
     return true;
   };
@@ -1672,7 +1670,6 @@ export const PreviewIframe = ({
         <RecordingBanner
           recorder={recorder}
           onGenerateAssertions={handleGenerateAssertions}
-          onOpenSavedSpec={handleOpenSavedSpec}
         />
       )}
 

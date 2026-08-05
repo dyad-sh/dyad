@@ -11,10 +11,7 @@ import { apps, chats, messages } from "../../db/schema";
 import { getDyadAppPath } from "../../paths/paths";
 import { createTypedHandler } from "./base";
 import { E2E_TEST_DIR, testsContracts } from "../types/tests";
-import type {
-  ApplyTestAssertionsResult,
-  CreateRecordedSpecResult,
-} from "../types/tests";
+import type { ApplyTestAssertionsResult } from "../types/tests";
 import { assertMutationPathAllowed } from "../utils/path_utils";
 import { withLock } from "../utils/lock_utils";
 import { safeSend } from "../utils/safe_sender";
@@ -26,7 +23,6 @@ import { getAiHeaders, getProviderOptions } from "../utils/provider_options";
 import {
   clearRecordedTestDraft,
   forgetRecordedDraftWrite,
-  getRecordedTestDraft,
   getWrittenSpecForDraft,
   markRecordedDraftWritten,
 } from "../services/recorded_test_drafts";
@@ -40,6 +36,7 @@ import {
 } from "@/lib/test_recorder/assertion_proposal";
 import {
   draftIncludesSignIn,
+  normalizeTestName,
   type RecordedTestDraft,
 } from "@/lib/test_recorder/draft";
 import {
@@ -65,10 +62,10 @@ import {
 } from "@/prompts/test_assertions_prompt";
 
 /**
- * Writing a recorded test to disk. Both ways of turning a draft into a spec —
- * approving the assertion card, or saving as-is — go through the same
- * deterministic codegen, so what the user reviewed is what gets written. A model
- * is only ever asked for the text of an assertion, never for the file.
+ * Writing a recorded test to disk. Approving the assertion card is the only way
+ * a recording becomes a file, and it goes through deterministic codegen, so what
+ * the user reviewed is what gets written. A model is only ever asked for the
+ * text of an assertion and the test's name, never for the file.
  */
 
 const logger = log.scope("test_assertion_handlers");
@@ -84,9 +81,9 @@ const MAX_SPEC_NAME_ATTEMPTS = 100;
  * Serializes every path that turns a recording into a file for one app.
  *
  * "Has this recording been written yet?" and the write itself have to be one
- * critical section, or two saves — two clicks of "Save without assertions", or a
- * bar save racing a card approval — both pass the check and
- * `writeSpecToFreePath` dutifully claims the next free suffix for each.
+ * critical section, or two approvals of the same recording — the user asked
+ * again and answered both cards — both pass the check and `writeSpecToFreePath`
+ * dutifully claims the next free suffix for each.
  */
 const specWriteKey = (appId: number) => `recorded-spec:${appId}`;
 
@@ -100,15 +97,6 @@ const specWriteKey = (appId: number) => `recorded-spec:${appId}`;
  * lost. Approvals are rare enough that a chat-wide latch costs nothing.
  */
 const proposalWriteKey = (chatId: number) => `assertion-proposal:${chatId}`;
-
-/**
- * A user-written fixture providing the `signIn` the generated spec imports. All
- * three declaration forms count — `export function`, `export const/let/var`, and
- * a re-export list — since all that matters is whether `import { signIn }`
- * resolves.
- */
-const EXPORTS_SIGN_IN_RE =
-  /export\s+(async\s+)?function\s+signIn\b|export\s+(const|let|var)\s+signIn\b|export\s*{[^}]*\bsignIn\b/;
 
 const rawCodeSchema = z.object({
   assertions: z
@@ -143,15 +131,18 @@ async function stage(appPath: string, relativePath: string): Promise<void> {
 }
 
 /**
- * Write the `signIn` helper the generated spec imports. An existing file is never
- * blindly reused — a fixture built for the other auth backend, or a user's own
- * file at this path, produces a spec that fails to compile:
+ * Write the `signIn` helper the generated spec imports, if nothing is there yet.
  *
- * - ours, same auth mode → reuse it (edits included; the contract still holds)
- * - ours, other auth mode, unedited → rewrite for the mode just recorded
- * - ours, other auth mode, edited → refuse; the user's edits are theirs to move
- * - not ours, exports `signIn` → reuse; the user's helper wins
- * - not ours, no `signIn` → refuse; naming the file the user has to reconcile
+ * An existing file is left exactly as it is — it may be the user's own helper,
+ * or ours with their edits in it, and neither is ours to judge from here. The one
+ * exception is a fixture we wrote for the *other* auth backend and nobody has
+ * touched since (byte-identical to what we generate for that mode): reusing it
+ * guarantees a failing sign-in, and rewriting it discards nothing.
+ *
+ * Deliberately never throws. Whether a given file really provides `signIn` can't
+ * be decided by reading it here, and guessing wrong blocks the user behind an
+ * error toast; a fixture that doesn't work fails when the test runs, which is
+ * where the agent already fixes it.
  */
 async function ensureSignInFixture(
   appPath: string,
@@ -163,46 +154,26 @@ async function ensureSignInFixture(
     relativePath: FIXTURE_PATH,
   });
   const absolutePath = path.join(appPath, relativePath);
-  const source = generateTestUserFixtureSource(draft.authMode);
 
   if (await fileExists(absolutePath)) {
     const existing = await fs.promises.readFile(absolutePath, "utf-8");
     const existingMode = readFixtureMode(existing);
-
-    // The marker says we wrote it; the export is what the generated spec
-    // actually imports. A file edited down to nothing but its marker would
-    // otherwise be reused and the spec would fail to compile.
-    if (existingMode === draft.authMode) {
-      if (EXPORTS_SIGN_IN_RE.test(existing)) return;
-      throw new DyadError(
-        `${relativePath} carries Dyad's ${existingMode} fixture marker but no longer exports a \`signIn\` helper, and the generated test imports one from there. Restore the export (or delete the file) and generate the test again.`,
-        DyadErrorKind.Precondition,
-      );
-    }
-
-    if (existingMode) {
-      if (existing !== generateTestUserFixtureSource(existingMode)) {
-        throw new DyadError(
-          `${relativePath} was generated for ${existingMode} auth and has been edited, but this recording signs in with ${draft.authMode}. Move your changes into a helper of your own (or delete the file) and generate the test again.`,
-          DyadErrorKind.Precondition,
-        );
-      }
-      logger.info(
-        `Regenerating ${relativePath}: was ${existingMode}, recording used ${draft.authMode}`,
-      );
-    } else if (EXPORTS_SIGN_IN_RE.test(existing)) {
-      // The user's own helper. Same import, same call — leave it alone.
-      return;
-    } else {
-      throw new DyadError(
-        `${relativePath} already exists but doesn't export a \`signIn\` helper, and the generated test imports one from there. Rename or remove that file, then generate the test again.`,
-        DyadErrorKind.Precondition,
-      );
-    }
+    const isStaleOurs =
+      existingMode !== null &&
+      existingMode !== draft.authMode &&
+      existing === generateTestUserFixtureSource(existingMode);
+    if (!isStaleOurs) return;
+    logger.info(
+      `Regenerating ${relativePath}: was ${existingMode}, recording used ${draft.authMode}`,
+    );
   }
 
   await fs.promises.mkdir(path.dirname(absolutePath), { recursive: true });
-  await fs.promises.writeFile(absolutePath, source, "utf-8");
+  await fs.promises.writeFile(
+    absolutePath,
+    generateTestUserFixtureSource(draft.authMode),
+    "utf-8",
+  );
   await stage(appPath, relativePath);
 }
 
@@ -262,20 +233,25 @@ async function writeRecordedSpec({
   const appPath = await getAppPath(appId);
   await ensureSignInFixture(appPath, draft);
 
+  // The name comes from the user or, far more often, from the model that
+  // proposed this test — both by way of the renderer, so a last-resort default
+  // rather than an assumption that one arrived.
+  const testName = normalizeTestName(draft.testName) || "recorded test";
   const { relativePath } = await writeSpecToFreePath(
     appPath,
-    draft.testName,
+    testName,
     generateSpecSource({
-      testName: draft.testName,
+      testName,
       includeSignIn: draftIncludesSignIn(draft),
       bodyStatements,
     }),
   );
   await stage(appPath, relativePath);
 
-  // The recording has produced its file. Remembered so the *other* write path —
-  // which generates from its own copy of the draft and can't see what's parked
-  // here — returns the idempotent answer instead of a second, suffixed spec.
+  // The recording has produced its file. Remembered because a recording can
+  // have more than one card — "Ask again" proposes the same draft afresh — and
+  // each card generates from its own copy, so nothing else connects them: the
+  // second approval returns the idempotent answer instead of a suffixed twin.
   markRecordedDraftWritten(appId, draft, relativePath);
   // A stale draft would otherwise let a later agent turn propose assertions for
   // a test that's already written. Scoped to this recording: a card approved
@@ -583,37 +559,6 @@ async function assertChatOwnsApp(chatId: number, appId: number): Promise<void> {
 
 export function registerTestAssertionHandlers() {
   createTypedHandler(
-    testsContracts.createRecordedSpec,
-    async (_event, params): Promise<CreateRecordedSpecResult> =>
-      // Check, write and clear as one critical section: two saves that both read
-      // the parked draft before either cleared it would each claim a filename.
-      withLock(specWriteKey(params.appId), async () => {
-        const { appId } = params;
-        // The parked draft says "this recording hasn't been written yet". Both
-        // write paths clear it, so its absence means a second call would write a
-        // suffixed duplicate of the same test.
-        const draft = getRecordedTestDraft(appId);
-        if (!draft) {
-          throw new DyadError(
-            "This recording has already been saved.",
-            DyadErrorKind.Precondition,
-          );
-        }
-        // The parked draft is the source, not the renderer's copy. They are
-        // the same recording in every real flow, but only this one was checked
-        // against the latch — writing the other would let a stale or forged
-        // payload be saved under the current recording's claim on the name.
-        const { specPath } = await writeRecordedSpec({
-          appId,
-          draft,
-          bodyStatements: recordedBodyStatements(draft),
-        });
-        logger.info(`Wrote recorded spec ${specPath} with no assertions`);
-        return { specPath };
-      }),
-  );
-
-  createTypedHandler(
     testsContracts.discardTestAssertions,
     // The same critical section approval uses. Both are read-modify-writes of
     // one message row, so without a shared lock a discard that read the row
@@ -761,24 +706,23 @@ export function registerTestAssertionHandlers() {
 
         assertStepsMatch(items, stored.items);
 
-        // "Save without assertions" in the recorder bar writes the same
-        // recording from the parked draft, which this path can't see — it
-        // generates from the card's own copy so approving survives a restart.
-        // Without this check, saving from the bar and then approving the card
-        // leaves two near-identical specs behind.
-        const savedFromBar = getWrittenSpecForDraft(appId, stored.draft);
-        if (savedFromBar) {
+        // One recording can have more than one card: "Ask again" proposes the
+        // same draft afresh, and each card carries its own copy of it — which is
+        // what makes approving survive a restart, and also what leaves nothing
+        // else to notice that the recording is already a file.
+        const alreadyWritten = getWrittenSpecForDraft(appId, stored.draft);
+        if (alreadyWritten) {
           await persistApproval({
             row,
             proposalId,
             stored,
             items: stored.items,
-            specPath: savedFromBar,
+            specPath: alreadyWritten,
           });
           return {
-            specPath: savedFromBar,
+            specPath: alreadyWritten,
             appliedCount: 0,
-            warning: `This recording was already saved as ${savedFromBar}, so no assertions were added.`,
+            warning: `This recording was already saved as ${alreadyWritten}, so no assertions were added.`,
           };
         }
 
@@ -825,8 +769,8 @@ export function registerTestAssertionHandlers() {
         }
 
         // Synthesis above spent up to a minute in the model, so re-check under
-        // the same lock the bar's save takes: it may have written this very
-        // recording while we waited.
+        // the write lock: another card for this same recording may have been
+        // approved while we waited.
         const { specPath, wroteIt } = await withLock(
           specWriteKey(appId),
           async () => {
@@ -841,10 +785,10 @@ export function registerTestAssertionHandlers() {
           },
         );
 
-        // The bar saved this recording while synthesis was in the model. That
-        // file has no assertions in it, so reporting these as applied would
-        // describe a spec that doesn't exist. Latch the card against what is
-        // actually on disk and say so.
+        // Another card for this recording was approved while synthesis was in
+        // the model. That file carries its plan, not this one's, so reporting
+        // these assertions as applied would describe a spec that doesn't exist.
+        // Latch the card against what is actually on disk and say so.
         if (!wroteIt) {
           await persistApproval({
             row,
@@ -879,8 +823,8 @@ export function registerTestAssertionHandlers() {
         }
 
         // Approval happens entirely in the chat, so nothing else tells the
-        // recording bar its draft is now a file. Without this it keeps offering
-        // "Save without assertions", writing a second copy.
+        // recording bar its draft is now a file. Without this it stays up
+        // offering to propose the recording that has already been written.
         safeSend(event.sender, "recording:draft-consumed", { appId, specPath });
 
         const appliedCount = countAssertions(finalItems);

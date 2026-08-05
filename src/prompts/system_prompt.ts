@@ -462,18 +462,18 @@ After writing or updating a spec, VERIFY it with \`run_tests\` and fix any failu
 If you're genuinely unsure whether a change warrants a test, lean toward covering real user-facing behavior; skip it (and say so) for trivial changes.`;
 
 /**
- * Guidance for the recorder's assertion pass, which goes through the
+ * Guidance for the recorder's test proposal, which goes through the
  * `generate_test_assertions` tool's review card instead of a file write.
  */
-const AGENT_RECORDED_TEST_GUIDANCE = `## Assertions for a just-recorded test
+const AGENT_RECORDED_TEST_GUIDANCE = `## A test proposal for a just-recorded flow
 
 Dyad's recorder captures a flat list of interactions and does NOT write a file. When the user asks for assertions on a flow they just recorded, their message contains the recorded statements, numbered. There is nothing to \`read_file\` — the spec does not exist yet.
 
-Call \`generate_test_assertions\` with one plain-English step description per statement plus the assertions you'd propose, then STOP. It shows the user a card where they can reword, delete, add, and reorder assertions. Approving that card is what generates the spec file, so there is nothing to edit and nothing to run at this point — do not call \`run_tests\`.
+Call \`generate_test_assertions\` with a name for the test, one plain-English step description per statement, plus the assertions you'd propose, then STOP. Name it from what the steps actually do, unless the user already named it, in which case use theirs exactly. It shows the user a card where they can reword, delete, add, and reorder assertions. Approving that card is what generates the spec file, so there is nothing to edit and nothing to run at this point — do not call \`run_tests\`.
 
 The user will come back afterwards asking you to run the generated spec. That's when you verify it with \`run_tests\` and fix any failures as usual.
 
-This applies only to a recording that hasn't been saved yet. Write and edit specs that exist on disk normally with \`write_file\` / \`search_replace\`.`;
+This applies only to a recording that hasn't become a file yet. Write and edit specs that exist on disk normally with \`write_file\` / \`search_replace\`.`;
 
 /**
  * Local-agent test-writing guidance: proactively keep tests in sync, write the

@@ -12,9 +12,8 @@ import type { RecordedEntry } from "@/lib/test_recorder/types";
  * - "recording": capturing interactions.
  * - "finishing": closing the session; waiting on isolation teardown.
  * - "reviewing": recording captured as a draft — the steps are listed and the
- *   assertion pass is offered. NOTHING has been written to disk yet.
- * - "saving": generating the spec from the draft (the no-assertions path).
- * - "saved": spec written; offering to open it until dismissed.
+ *   test proposal is offered. NOTHING has been written to disk yet, and the
+ *   only way forward is the proposal the user approves in the chat.
  * - "stopping": discarding the session; waiting on isolation teardown.
  */
 export type RecordingPhase =
@@ -24,8 +23,6 @@ export type RecordingPhase =
   | "recording"
   | "finishing"
   | "reviewing"
-  | "saving"
-  | "saved"
   | "stopping";
 
 export interface RecordingState {
@@ -40,16 +37,14 @@ export interface RecordingState {
   progress?: string;
   /** Fatal setup error (recording didn't start). */
   error?: string;
-  /** The captured recording, while phase is "reviewing" (or being saved). */
+  /** The captured recording, while phase is "reviewing". */
   draft?: RecordedTestDraft;
   /**
-   * The assertion pass is with the agent and we're waiting for its card. The
+   * The test proposal is with the agent and we're waiting for its card. The
    * review stays up meanwhile: the request can fail, be cancelled, or never
    * reach the tool, and the draft has no other recovery UI.
    */
   awaitingAssertions?: boolean;
-  /** Path of the just-written spec, while phase is "saved". */
-  savedSpecPath?: string;
   /**
    * The recording filled its action buffer and stopped capturing. Surfaced
    * rather than left implicit: the review would otherwise show a complete-looking

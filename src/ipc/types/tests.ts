@@ -8,7 +8,6 @@ import {
 // Relative imports: this module is pulled into the preload bundle, which cannot
 // resolve the "@/" alias.
 import { AssertionPlanItemSchema } from "../../lib/test_recorder/assertion_proposal";
-import { RecordedTestDraftSchema } from "../../lib/test_recorder/draft";
 
 // =============================================================================
 // E2E spec-file identity
@@ -286,23 +285,10 @@ export const MigrateLegacyTestsResultSchema = z.object({
 // =============================================================================
 // Recorded tests
 //
-// A recording is a draft until something writes it: approving the assertion
-// card (below) or saving it as-is generates the spec from the draft, always
-// through the same deterministic codegen.
+// A recording is a draft until the user approves the proposal the agent makes
+// from it — that approval is the only thing that writes a spec, and it goes
+// through deterministic codegen.
 // =============================================================================
-
-export const CreateRecordedSpecParamsSchema = z.object({
-  appId: z.number(),
-  draft: RecordedTestDraftSchema,
-});
-
-export const CreateRecordedSpecResultSchema = z.object({
-  /** App-relative path of the generated spec. */
-  specPath: z.string(),
-});
-export type CreateRecordedSpecResult = z.infer<
-  typeof CreateRecordedSpecResultSchema
->;
 
 // =============================================================================
 // AI-proposed assertions
@@ -349,12 +335,6 @@ export type ApplyTestAssertionsResult = z.infer<
 // =============================================================================
 
 export const testsContracts = {
-  createRecordedSpec: defineContract({
-    channel: "tests:create-recorded-spec",
-    input: CreateRecordedSpecParamsSchema,
-    output: CreateRecordedSpecResultSchema,
-  }),
-
   applyTestAssertions: defineContract({
     channel: "tests:apply-assertions",
     input: ApplyTestAssertionsParamsSchema,

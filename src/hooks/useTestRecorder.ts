@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
-import { useQueryClient } from "@tanstack/react-query";
 
 import { ipc } from "@/ipc/types";
-import { queryKeys } from "@/lib/queryKeys";
-import { showError, showSuccess } from "@/lib/toast";
+import { showError } from "@/lib/toast";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { previewIframeRefAtom } from "@/atoms/previewAtoms";
 import { currentAppUrlAtom } from "@/atoms/previewRuntimeAtoms";
@@ -25,6 +23,7 @@ import {
   recordedBodyStatements,
 } from "@/lib/test_recorder/codegen";
 import {
+  normalizeTestName,
   RECORDED_TEST_DRAFT_VERSION,
   type RecordedTestDraft,
 } from "@/lib/test_recorder/draft";
@@ -33,31 +32,9 @@ import type { RecordingAuth } from "@/ipc/types";
 
 const AUTH_READY_TIMEOUT_MS = 30_000;
 
-/**
- * Convert a preview URL/path to an app-relative path (`/foo?x`).
- *
- * Rejections are logged, not just dropped. This is a trust boundary — the
- * previewed app supplies these — and a recording that silently omits a
- * navigation the user watched happen is otherwise impossible to explain.
- */
-function toAppPath(raw: unknown): string | null {
-  if (typeof raw !== "string" || !raw) return null;
-  try {
-    const url = new URL(raw, "http://dyad.preview");
-    // A `javascript:`/`data:` history entry has no app path to replay, and its
-    // opaque body would otherwise be handed to `page.goto` as if it were one.
-    if (url.protocol !== "http:" && url.protocol !== "https:") {
-      // The protocol only — the rest can carry whatever the page put there.
-      console.warn(
-        `Recorder ignored a navigation with an unsupported protocol: ${url.protocol}`,
-      );
-      return null;
-    }
-    return `${url.pathname}${url.search}` || "/";
-  } catch {
-    console.warn("Recorder ignored a navigation to an unparseable URL");
-    return null;
-  }
+/** One `startRecording` in flight. Cancelled when the recorder walks away. */
+interface StartAttempt {
+  cancelled: boolean;
 }
 
 /**
@@ -67,7 +44,7 @@ function toAppPath(raw: unknown): string | null {
  *
  * Stopping does NOT write a file — it parks the collapsed actions as a draft and
  * moves to the review phase. The spec is generated later from that same draft,
- * either by approving the assertion card or by saving as-is.
+ * by approving the test proposal the agent puts in the chat.
  */
 export function useTestRecorder({
   reloadPreview,
@@ -86,7 +63,6 @@ export function useTestRecorder({
   const setRecordingState = useSetAtom(setRecordingStateForAppAtom);
   const appendEntry = useSetAtom(appendRecordedEntryAtom);
   const clearEntries = useSetAtom(clearRecordedEntriesForAppAtom);
-  const queryClient = useQueryClient();
 
   // Refs so the stable message listener/callbacks read live values.
   const iframeElRef = useRef(iframeEl);
@@ -124,8 +100,12 @@ export function useTestRecorder({
   // recording by the time the previous one reports back.
   const sessionIdsRef = useRef(new Map<number, string>());
   // Apps with a start in flight but no session handed back yet — the window
-  // `ownedSessionsRef` can't cover, since isolation setup takes seconds.
-  const startingAppsRef = useRef(new Set<number>());
+  // `ownedSessionsRef` can't cover, since isolation setup takes seconds. The
+  // main process registers the session (per-app lock, temporary database
+  // environment) as soon as the request arrives, so this window still has
+  // something to hand back; the attempt object is its identity, and marking it
+  // cancelled is what tells the start to walk away when it finally returns.
+  const startingAppsRef = useRef(new Map<number, StartAttempt>());
   // Distinguishes a real unmount from the app-change re-run of the release effect
   // below; refs survive unmount, so an app-id comparison alone still looks
   // satisfied. Re-armed in the effect body because StrictMode's dev
@@ -177,6 +157,38 @@ export function useTestRecorder({
   const postToIframe = useCallback((message: unknown, targetOrigin = "*") => {
     iframeElRef.current?.contentWindow?.postMessage(message, targetOrigin);
   }, []);
+
+  /**
+   * Record a `page.goto` for a navigation the user made in Dyad's own chrome —
+   * typing in the preview address bar or picking a route from its dropdown.
+   *
+   * This is the ONLY thing that produces a navigate step. The app routing itself
+   * doesn't: a click that navigates is already in the spec as the click, and
+   * following it with `page.goto` would send the test to the destination whether
+   * or not the click ever got there — masking the exact regression the test
+   * exists to catch. A jump the user made *around* the app has no such step to
+   * hang off, so it has to be replayed as a navigation of its own.
+   */
+  const recordNavigation = useCallback(
+    (path: string) => {
+      const targetAppId = appIdRef.current;
+      if (phaseRef.current !== "recording" || targetAppId == null) return;
+      // Through the same schema as every action the preview posts up, so what
+      // may become a `page.goto` in the user's repo is decided in one place.
+      const navigate = parseRecorderAction({ kind: "navigate", path });
+      if (!navigate) {
+        console.warn(
+          "Recorder ignored a navigation that resolves outside the app",
+        );
+        return;
+      }
+      appendEntry({
+        appId: targetAppId,
+        entry: { action: navigate, at: Date.now() },
+      });
+    },
+    [appendEntry],
+  );
 
   // Credentials must only reach the running app's own origin: a preview that has
   // navigated cross-origin (an external link, an OAuth redirect) can never
@@ -266,32 +278,8 @@ export function useTestRecorder({
           });
           break;
         }
-        case "pushState":
-        case "replaceState": {
-          if (phaseRef.current !== "recording" || currentAppId == null) return;
-          // The shim (and the auth bootstrap) nest history changes under
-          // `payload`, unlike every other message this handler consumes.
-          const payload = data.payload as { newUrl?: unknown } | undefined;
-          const path = toAppPath(payload?.newUrl);
-          // Through the same schema as every other recorded action, so the
-          // trust boundary stays in one place: a synthesized navigate is no
-          // more trustworthy than one the preview posted directly.
-          const navigate = path
-            ? parseRecorderAction({ kind: "navigate", path })
-            : null;
-          if (path && !navigate) {
-            console.warn(
-              "Recorder ignored a navigation that resolves outside the app",
-            );
-          }
-          if (navigate) {
-            appendEntry({
-              appId: currentAppId,
-              entry: { action: navigate, at: Date.now() },
-            });
-          }
-          break;
-        }
+        // The app's own routing (`pushState`/`replaceState` from the shim) is
+        // deliberately NOT recorded — see `recordNavigation`.
       }
     };
     window.addEventListener("message", handler);
@@ -345,13 +333,13 @@ export function useTestRecorder({
   }, [patchState, postToIframe]);
 
   /**
-   * Hand a still-running session back and reset the app's recorder state, for
-   * when we're walking away rather than finishing. Only apps in
-   * `ownedSessionsRef` are touched, so a draft in review is never disturbed.
+   * Ask the main process to end this app's session and reset the app's recorder
+   * state. Safe to call for a session we were never handed: stopping one that
+   * doesn't exist is a no-op, and a start still preparing isolation has already
+   * registered one.
    */
-  const releaseSession = useCallback(
+  const endSession = useCallback(
     (targetAppId: number) => {
-      if (!ownedSessionsRef.current.delete(targetAppId)) return;
       sessionIdsRef.current.delete(targetAppId);
       if (pendingAuthRef.current?.appId === targetAppId) {
         pendingAuthRef.current = null;
@@ -367,17 +355,61 @@ export function useTestRecorder({
     [clearEntries, patchState, postToIframe],
   );
 
+  /**
+   * Hand a still-running session back, for when we're walking away rather than
+   * finishing. Only apps in `ownedSessionsRef` are touched, so a draft in review
+   * is never disturbed.
+   */
+  const releaseSession = useCallback(
+    (targetAppId: number) => {
+      if (!ownedSessionsRef.current.delete(targetAppId)) return;
+      endSession(targetAppId);
+    },
+    [endSession],
+  );
+
+  /**
+   * Abandon a start that hasn't handed its session back yet. The request is in
+   * flight, but the main process registered the session — lock, temporary
+   * database environment and all — the moment it arrived, so stopping now is
+   * what keeps it from outliving the UI that could have ended it.
+   */
+  const cancelStart = useCallback(
+    (targetAppId: number, attempt: StartAttempt) => {
+      if (attempt.cancelled) return;
+      // Read by `beginRecording` when the request finally returns: whatever it
+      // is handed by then belongs to a session that is already being torn down.
+      attempt.cancelled = true;
+      endSession(targetAppId);
+    },
+    [endSession],
+  );
+
   // A recording only exists while the preview that can stop it is on screen.
   // Otherwise the main-process session stays alive until the 30-minute cap,
   // serving the isolated test database and rejecting runs, with no UI to end it.
   useEffect(() => {
+    const startedAppId = appId;
     return () => {
       // Snapshot: releaseSession removes from the set as it goes.
       for (const owned of Array.from(ownedSessionsRef.current)) {
         releaseSession(owned);
       }
+      if (startedAppId == null) return;
+      const attempt = startingAppsRef.current.get(startedAppId);
+      if (!attempt) return;
+      // A start in flight owns nothing yet, so the loop above can't see it — but
+      // the session it is preparing is just as real. Decided a task later
+      // because this same cleanup runs on StrictMode's dev
+      // mount/unmount/remount replay, where nothing is being walked away from:
+      // by then the remount has re-armed `mountedRef` and an app switch has
+      // moved `appIdRef` on, which is what tells the two apart.
+      queueMicrotask(() => {
+        if (mountedRef.current && appIdRef.current === startedAppId) return;
+        cancelStart(startedAppId, attempt);
+      });
     };
-  }, [appId, releaseSession]);
+  }, [appId, cancelStart, releaseSession]);
 
   // The activate posted inside startRecording can be lost if the iframe is
   // mid-load; this effect plus the re-arm on `dyad-recorder-initialized` make
@@ -446,7 +478,16 @@ export function useTestRecorder({
   );
 
   const beginRecording = useCallback(
-    async (targetAppId: number) => {
+    async (targetAppId: number, attempt: StartAttempt) => {
+      // Everything after an await here reaches the preview through refs tracking
+      // the *selected* app. Continuing past a switch would sign the wrong
+      // preview in with this app's test credentials while this app's session
+      // stayed alive, locked, and invisible.
+      const isAbandoned = () =>
+        attempt.cancelled ||
+        !mountedRef.current ||
+        appIdRef.current !== targetAppId;
+
       clearEntries(targetAppId);
       patchState(targetAppId, {
         phase: "starting",
@@ -463,6 +504,14 @@ export function useTestRecorder({
         return;
       }
 
+      // Checked before the infra error below: a user who has moved on is owed
+      // no toast about the app they left, and a session that came up after the
+      // cancel still has to be handed back.
+      if (isAbandoned()) {
+        endSession(targetAppId);
+        return;
+      }
+
       if (result.infraError) {
         patchState(targetAppId, {
           phase: "idle",
@@ -476,14 +525,6 @@ export function useTestRecorder({
       ownedSessionsRef.current.add(targetAppId);
       if (result.sessionId) {
         sessionIdsRef.current.set(targetAppId, result.sessionId);
-      }
-      // Everything below reaches the preview through refs tracking the *selected*
-      // app. If the user switched apps during isolation setup, continuing would
-      // sign the wrong preview in with this app's test credentials while this
-      // app's session stayed alive, locked, and invisible.
-      if (!mountedRef.current || appIdRef.current !== targetAppId) {
-        releaseSession(targetAppId);
-        return;
       }
 
       let auth = result.auth;
@@ -505,7 +546,7 @@ export function useTestRecorder({
         }));
         const signIn = await authenticate(targetAppId, auth);
         // Sign-in waits up to 30s — plenty of room for the selection to move on.
-        if (!mountedRef.current || appIdRef.current !== targetAppId) {
+        if (isAbandoned()) {
           releaseSession(targetAppId);
           return;
         }
@@ -537,6 +578,7 @@ export function useTestRecorder({
     [
       authenticate,
       clearEntries,
+      endSession,
       patchState,
       postToIframe,
       releaseSession,
@@ -558,11 +600,16 @@ export function useTestRecorder({
     ) {
       return;
     }
-    startingAppsRef.current.add(targetAppId);
+    const attempt: StartAttempt = { cancelled: false };
+    startingAppsRef.current.set(targetAppId, attempt);
     try {
-      await beginRecording(targetAppId);
+      await beginRecording(targetAppId, attempt);
     } finally {
-      startingAppsRef.current.delete(targetAppId);
+      // Only our own attempt: a cancelled start can be followed by a new one for
+      // the same app, and clearing blindly would drop its entry instead.
+      if (startingAppsRef.current.get(targetAppId) === attempt) {
+        startingAppsRef.current.delete(targetAppId);
+      }
     }
   }, [appId, beginRecording]);
 
@@ -589,7 +636,10 @@ export function useTestRecorder({
         // now on: the parked draft, the assertion card's payload, and whatever
         // either of them writes.
         draftId: crypto.randomUUID(),
-        testName: testName.trim() || "recorded test",
+        // Left unset when the user didn't name it: the AI names it as part of
+        // proposing the test, rather than everything downstream carrying a
+        // "recorded test" placeholder the user never asked for.
+        testName: normalizeTestName(testName) || undefined,
         authMode: auth.mode,
         actions: collapseActions(entriesRef.current),
       };
@@ -629,53 +679,10 @@ export function useTestRecorder({
   );
 
   /**
-   * Generate the spec from the draft as recorded, skipping the assertion pass —
-   * same deterministic codegen the approval path uses.
-   */
-  const saveWithoutAssertions = useCallback(async (): Promise<
-    string | null
-  > => {
-    const targetAppId = appId;
-    const draft = stateRef.current.draft;
-    if (targetAppId == null || !draft) return null;
-
-    patchState(targetAppId, (prev) => ({ ...prev, phase: "saving" }));
-    try {
-      const { specPath } = await ipc.tests.createRecordedSpec({
-        appId: targetAppId,
-        draft,
-      });
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.tests.list({ appId: targetAppId }),
-      });
-      queryClient.invalidateQueries({ queryKey: queryKeys.appFiles.all });
-      patchState(targetAppId, (prev) => ({
-        phase: "saved",
-        savedSpecPath: specPath,
-        limitReached: prev.limitReached,
-      }));
-      showSuccess(`Saved ${specPath}`);
-      return specPath;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      showError(`Couldn't save the recorded test: ${message}`);
-      // Back to review so the recording isn't lost to a failed write.
-      patchState(targetAppId, (prev) => ({ ...prev, phase: "reviewing" }));
-      return null;
-    }
-  }, [appId, patchState, queryClient]);
-
-  /** Close the bar, keeping the parked draft (the chat card still needs it). */
-  const dismissReview = useCallback(() => {
-    if (appId == null) return;
-    patchState(appId, { phase: "idle" });
-  }, [appId, patchState]);
-
-  /**
-   * The assertion pass has been sent to the agent. Deliberately does NOT close
+   * The test proposal has been sent to the agent. Deliberately does NOT close
    * the review: the request can fail, be cancelled, or end without the tool ever
-   * being called, and this bar is the only place the parked draft can be saved
-   * as-is, discarded, or asked again.
+   * being called, and this bar is the only place the parked draft can be asked
+   * about again or thrown away.
    */
   const markAwaitingAssertions = useCallback(() => {
     if (appId == null) return;
@@ -766,7 +773,6 @@ export function useTestRecorder({
     draft,
     draftSteps,
     awaitingAssertions: Boolean(recordingState.awaitingAssertions),
-    savedSpecPath: recordingState.savedSpecPath,
     entryCount,
     steps,
     isRecording: recordingState.phase === "recording",
@@ -774,13 +780,11 @@ export function useTestRecorder({
       recordingState.phase === "starting" ||
       recordingState.phase === "authenticating" ||
       recordingState.phase === "finishing" ||
-      recordingState.phase === "saving" ||
       recordingState.phase === "stopping",
     startRecording,
     stopAndReview,
-    saveWithoutAssertions,
+    recordNavigation,
     cancelRecording,
-    dismissReview,
     markAwaitingAssertions,
     clearAwaitingAssertions,
     discardDraft,

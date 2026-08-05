@@ -145,9 +145,8 @@ export type RecordingEndedPayload = z.infer<typeof RecordingEndedPayloadSchema>;
  *
  * Emitted when the assertions card generates the test — a path that runs
  * entirely in the chat, with nothing telling the recording bar its draft is
- * spent. Without it the bar keeps offering "Save without assertions" for a
- * recording that has already been written, and taking it up produces a second,
- * suffixed copy of the same test.
+ * spent. Without it the bar stays up offering to propose a recording that has
+ * already been written, and taking it up produces a second, suffixed copy.
  */
 export const RecordingDraftConsumedPayloadSchema = z.object({
   appId: z.number(),

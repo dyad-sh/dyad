@@ -9,7 +9,7 @@ import { highlightPlaywrightLine } from "./playwrightHighlight";
  * step 3 are looking at the same line.
  *
  * Deliberately quiet — it's context for the decision in the bar above it
- * ("generate assertions?"), not the decision itself. It renders flush on the
+ * ("generate a test proposal?"), not the decision itself. It renders flush on the
  * recording banner's own surface: the banner draws the hairline above it, so
  * this is a section of that banner rather than a second one.
  *

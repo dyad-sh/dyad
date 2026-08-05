@@ -154,3 +154,30 @@ describe("isSecureInstanceUrl", () => {
     expect(isSecureInstanceUrl("not a url")).toBe(false);
   });
 });
+
+describe("auth failures are classified as Auth", () => {
+  it("treats a rejected token as an auth failure, not bad input", async () => {
+    // rules/dyad-errors.md: Auth is "not signed in, missing token"; Validation
+    // is for malformed input. A revoked token is the former.
+    mockFetch([{ status: 401, body: "" }]);
+    await expect(client().listServers()).rejects.toMatchObject({
+      kind: DyadErrorKind.Auth,
+    });
+  });
+
+  it("treats missing scopes as an auth failure", async () => {
+    mockFetch([{ status: 403, body: '{"message":"Forbidden"}' }]);
+    await expect(client().listServers()).rejects.toMatchObject({
+      kind: DyadErrorKind.Auth,
+    });
+  });
+
+  it("keeps the disabled-API case a precondition, which the user fixes elsewhere", async () => {
+    mockFetch([
+      { status: 403, body: '{"success":true,"message":"API is disabled."}' },
+    ]);
+    await expect(client().listServers()).rejects.toMatchObject({
+      kind: DyadErrorKind.Precondition,
+    });
+  });
+});

@@ -4,14 +4,14 @@ import { domainCheckVerdict, expectedServerAddress } from "./domain_check";
 describe("domainCheckVerdict", () => {
   it("confirms a domain pointing at the server", () => {
     expect(
-      domainCheckVerdict({ expectedIp: "1.2.3.4", actualIps: ["1.2.3.4"] }),
+      domainCheckVerdict({ expectedIps: ["1.2.3.4"], actualIps: ["1.2.3.4"] }),
     ).toBe("ok");
   });
 
   it("accepts a server among several addresses", () => {
     expect(
       domainCheckVerdict({
-        expectedIp: "1.2.3.4",
+        expectedIps: ["1.2.3.4"],
         actualIps: ["5.6.7.8", "1.2.3.4"],
       }),
     ).toBe("ok");
@@ -19,21 +19,21 @@ describe("domainCheckVerdict", () => {
 
   it("reports a domain pointing somewhere else", () => {
     expect(
-      domainCheckVerdict({ expectedIp: "1.2.3.4", actualIps: ["5.6.7.8"] }),
+      domainCheckVerdict({ expectedIps: ["1.2.3.4"], actualIps: ["5.6.7.8"] }),
     ).toBe("points-elsewhere");
   });
 
   it("reports a domain with no records, which can never pass a challenge", () => {
-    expect(domainCheckVerdict({ expectedIp: "1.2.3.4", actualIps: [] })).toBe(
-      "no-records",
-    );
+    expect(
+      domainCheckVerdict({ expectedIps: ["1.2.3.4"], actualIps: [] }),
+    ).toBe("no-records");
   });
 
   it("accepts an IPv6 server address", () => {
     // An AAAA-only domain is configured, not misconfigured.
     expect(
       domainCheckVerdict({
-        expectedIp: "2606:4700::1",
+        expectedIps: ["2606:4700::1"],
         actualIps: ["2606:4700::1"],
       }),
     ).toBe("ok");
@@ -42,11 +42,11 @@ describe("domainCheckVerdict", () => {
   it("stays silent when there is nothing to compare against", () => {
     // Saying "could not confirm" here would fire for every user on Coolify's
     // own server, which teaches people to ignore the one that matters.
-    expect(domainCheckVerdict({ expectedIp: null, actualIps: [] })).toBe(
+    expect(domainCheckVerdict({ expectedIps: [], actualIps: [] })).toBe(
       "unknown",
     );
     expect(
-      domainCheckVerdict({ expectedIp: null, actualIps: ["1.2.3.4"] }),
+      domainCheckVerdict({ expectedIps: [], actualIps: ["1.2.3.4"] }),
     ).toBe("unknown");
   });
 });
@@ -97,5 +97,35 @@ describe("expectedServerAddress", () => {
         instanceUrl: "http://[::1]:8000",
       }),
     ).toEqual({ kind: "ip", ip: "::1" });
+  });
+});
+
+describe("domainCheckVerdict with several addresses", () => {
+  it("accepts a dual-stack host answering on one family", () => {
+    // The instance resolves to both; the app domain has only the v6 record.
+    expect(
+      domainCheckVerdict({
+        expectedIps: ["1.2.3.4", "2606:4700::1"],
+        actualIps: ["2606:4700::1"],
+      }),
+    ).toBe("ok");
+  });
+
+  it("treats the compressed and expanded spellings of one address as equal", () => {
+    expect(
+      domainCheckVerdict({
+        expectedIps: ["2606:4700:0000:0000:0000:0000:0000:0001"],
+        actualIps: ["2606:4700::1"],
+      }),
+    ).toBe("ok");
+  });
+
+  it("still reports a genuinely different address", () => {
+    expect(
+      domainCheckVerdict({
+        expectedIps: ["1.2.3.4", "2606:4700::1"],
+        actualIps: ["9.9.9.9"],
+      }),
+    ).toBe("points-elsewhere");
   });
 });

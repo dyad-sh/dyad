@@ -34,7 +34,8 @@ export function coolifyDomainHostname(input: string): string | null {
   const normalized = normalizeCoolifyDomain(input);
   if (!normalized) return null;
   try {
-    return new URL(normalized).hostname;
+    // URL wraps an IPv6 literal in brackets, which no resolver accepts.
+    return new URL(normalized).hostname.replace(/^\[|\]$/g, "");
   } catch {
     return null;
   }

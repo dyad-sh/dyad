@@ -18,16 +18,42 @@ export type DomainCheckVerdict =
   | "unknown";
 
 export function domainCheckVerdict({
-  expectedIp,
+  expectedIps,
   actualIps,
 }: {
-  expectedIp: string | null;
+  /** Every address the server is known by; a host can have several. */
+  expectedIps: string[];
   actualIps: string[];
 }): DomainCheckVerdict {
   // Nothing to compare against: we know nothing, so we claim nothing.
-  if (!expectedIp) return "unknown";
+  if (expectedIps.length === 0) return "unknown";
   if (actualIps.length === 0) return "no-records";
-  return actualIps.includes(expectedIp) ? "ok" : "points-elsewhere";
+  const expected = new Set(expectedIps.map(canonicalAddress));
+  // Any overlap is enough: a dual-stack host answering on one family is
+  // correctly configured, not pointed somewhere else.
+  return actualIps.some((ip) => expected.has(canonicalAddress(ip)))
+    ? "ok"
+    : "points-elsewhere";
+}
+
+/**
+ * One spelling per address, so the two sides compare equal.
+ *
+ * DNS returns IPv6 compressed while other sources may expand it, and the two
+ * forms of the same address must not read as a mismatch.
+ */
+function canonicalAddress(value: string): string {
+  const bare = value
+    .trim()
+    .replace(/^\[|\]$/g, "")
+    .toLowerCase();
+  if (isIP(bare) !== 6) return bare;
+  try {
+    // The URL parser emits the canonical compressed form.
+    return new URL(`http://[${bare}]`).hostname.replace(/^\[|\]$/g, "");
+  } catch {
+    return bare;
+  }
 }
 
 /**

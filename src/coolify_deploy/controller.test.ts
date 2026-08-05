@@ -341,3 +341,42 @@ describe("the registry's one book of work", () => {
     expect(registry.getSnapshot(1).type).toBe("running");
   });
 });
+
+describe("a pipeline that outlives the deploy replacing it", () => {
+  it("is still drained when the app is disposed", async () => {
+    // Cancelling leaves the machine idle while the work unwinds, and a retry
+    // is accepted from idle. The cancelled pipeline is still running against
+    // this app's files and rows, so disposal has to wait for it too — the
+    // registry keeping only the newest is what this pins.
+    vi.useFakeTimers();
+    try {
+      let started = 0;
+      const run = vi.fn(() => {
+        started += 1;
+        return started === 1
+          ? new Promise<{ url: string | null }>(() => {})
+          : Promise.resolve({ url: null });
+      });
+      const registry = makeRegistry(run as unknown as RunDeployPipeline);
+      registry.requestDeploy(1);
+      await flush();
+      registry.cancelDeploy(1);
+      await flush();
+      registry.requestDeploy(1);
+      await flush();
+      expect(run).toHaveBeenCalledTimes(2);
+
+      let finished = false;
+      const disposal = registry.dispose(1).then(() => {
+        finished = true;
+      });
+      await vi.advanceTimersByTimeAsync(DRAIN_TIMEOUT_MS - 1);
+      expect(finished).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(1);
+      await disposal;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

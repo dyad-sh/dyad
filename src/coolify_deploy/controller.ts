@@ -64,12 +64,15 @@ async function drain(work: Promise<void>): Promise<void> {
  */
 interface AppMachine {
   store: SnapshotStore<CoolifyDeployState>;
-  /** The pipeline running for this app, absent when nothing is running. */
-  pipeline?: {
-    operationId: string;
-    abort: AbortController;
-    done: Promise<void>;
-  };
+  /**
+   * Every pipeline for this app that has not settled yet.
+   *
+   * Usually one. Cancelling moves the machine to idle while the work is still
+   * unwinding, and a retry is accepted from idle, so a cancelled pipeline can
+   * legitimately outlive the deploy that replaced it — and disposal has to
+   * wait for both before its app's rows and files are removed.
+   */
+  pipelines: Map<string, { abort: AbortController; done: Promise<void> }>;
 }
 
 /**
@@ -185,14 +188,16 @@ export class CoolifyDeployRegistry {
     this.machines.delete(appId);
     if (!machine) return;
     machine.store.dispose();
-    if (!machine.pipeline) return;
-    // The pipeline is reached through the machine rather than through the
-    // snapshot: cancelling moves the state to idle while the work is still
-    // unwinding, so looking at the state would find nothing to wait for.
-    machine.pipeline.abort.abort();
-    // Aborting only makes it throw at its next checkpoint, so wait for it to
-    // unwind before the caller deletes rows or closes the database.
-    await drain(machine.pipeline.done);
+    // Every pipeline still attributed to this app, not only the newest: a
+    // cancelled one lingers beside the retry that replaced it, and looking at
+    // the machine state would find neither, since cancelling left it idle.
+    const pending = [...machine.pipelines.values()];
+    if (pending.length === 0) return;
+    for (const { abort } of pending) abort.abort();
+    // Aborting only makes them throw at their next checkpoint, so wait for
+    // them to unwind before the caller deletes rows or closes the database.
+    // One bound covers them all rather than one bound each.
+    await drain(Promise.all(pending.map((p) => p.done)).then(() => undefined));
   }
 
   /** Call when every app is going away, as a reset does. */
@@ -221,7 +226,10 @@ export class CoolifyDeployRegistry {
     // late callback arriving after dispose cannot resurrect a deleted app.
     let machine = existing;
     if (!machine) {
-      machine = { store: new SnapshotStore<CoolifyDeployState>(IDLE) };
+      machine = {
+        store: new SnapshotStore<CoolifyDeployState>(IDLE),
+        pipelines: new Map(),
+      };
       this.machines.set(appId, machine);
     }
     machine.store.setState(result.state);
@@ -251,26 +259,21 @@ export class CoolifyDeployRegistry {
           command.resumeDeploymentUuid,
           abort.signal,
         );
-        machine.pipeline = { operationId, abort, done };
-        void done.finally(() => {
-          // Only if it is still ours: a retry may have replaced it, and this
-          // machine may itself have been disposed and rebuilt.
-          const current = this.machines.get(appId);
-          if (current?.pipeline?.operationId === operationId) {
-            current.pipeline = undefined;
-          }
-        });
+        machine.pipelines.set(operationId, { abort, done });
+        // Deleting by key is identity-safe on its own: a retry has its own
+        // operation id, and a machine disposed and rebuilt has a fresh map.
+        void done.finally(() =>
+          this.machines.get(appId)?.pipelines.delete(operationId),
+        );
         return;
       }
       case "ABORT_DEPLOY": {
-        const machine = this.machines.get(appId);
-        // Left in place rather than forgotten: aborting only asks the pipeline
+        // Left in place rather than removed: aborting only asks the pipeline
         // to stop, and disposal still has to be able to wait for it.
-        if (
-          machine?.pipeline?.operationId === command.invocationRef.operationId
-        ) {
-          machine.pipeline.abort.abort();
-        }
+        this.machines
+          .get(appId)
+          ?.pipelines.get(command.invocationRef.operationId)
+          ?.abort.abort();
         return;
       }
       default: {

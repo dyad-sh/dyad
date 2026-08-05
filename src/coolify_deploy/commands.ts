@@ -683,7 +683,7 @@ export async function runDeployPipeline({
   throwIfAborted(signal);
   await db
     .update(apps)
-    .set({ coolifyAppUrl: url, coolifyLastDeployedAt: new Date() })
+    .set({ coolifyAppUrl: url, coolifyLastDeployedAt: new Date(clock.now()) })
     .where(stillConnected(appId, serverUuid));
   logger.info(`Coolify deploy succeeded for app ${appId}`);
   return { url };

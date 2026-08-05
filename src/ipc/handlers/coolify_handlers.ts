@@ -45,13 +45,36 @@ async function getApp(appId: number) {
   return app;
 }
 
-/** Both families: an AAAA-only domain is configured, not misconfigured. */
-async function resolveBoth(hostname: string): Promise<string[]> {
+/** A resolver saying "no such record" — anything else is our problem, not DNS's. */
+const NO_RECORD_CODES = new Set(["ENOTFOUND", "ENODATA", "NOTFOUND"]);
+
+/**
+ * Both families, distinguishing "no record" from "could not ask".
+ *
+ * A timeout or an unreachable resolver must not be reported as a missing
+ * record: telling someone to fix DNS that is already correct is exactly the
+ * confident-but-wrong advice the unknown verdict exists to avoid.
+ */
+async function resolveBoth(
+  hostname: string,
+): Promise<{ addresses: string[]; failed: boolean }> {
+  const attempt = async (fn: (h: string) => Promise<string[]>) => {
+    try {
+      return { addresses: await fn(hostname), failed: false };
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code ?? "";
+      return { addresses: [] as string[], failed: !NO_RECORD_CODES.has(code) };
+    }
+  };
   const [v4, v6] = await Promise.all([
-    dns.resolve4(hostname).catch(() => [] as string[]),
-    dns.resolve6(hostname).catch(() => [] as string[]),
+    attempt(dns.resolve4),
+    attempt(dns.resolve6),
   ]);
-  return [...v4, ...v6];
+  return {
+    addresses: [...v4.addresses, ...v6.addresses],
+    // Only a problem if we learned nothing: one family answering is enough.
+    failed: v4.failed && v6.failed,
+  };
 }
 
 function readConnection(app: {
@@ -219,12 +242,13 @@ export function registerCoolifyHandlers() {
         instanceUrl: readSettings().coolifyInstanceUrl ?? "",
       });
 
-      let expectedIp: string | null = null;
+      let expectedIps: string[] = [];
       if (address?.kind === "ip") {
-        expectedIp = address.ip;
+        expectedIps = [address.ip];
       } else if (address?.kind === "resolve") {
-        expectedIp = (await resolveBoth(address.hostname))[0] ?? null;
+        expectedIps = (await resolveBoth(address.hostname)).addresses;
       }
+      const expectedIp = expectedIps[0] ?? null;
 
       const hostname = coolifyDomainHostname(domain);
       if (!hostname) {
@@ -236,12 +260,15 @@ export function registerCoolifyHandlers() {
         };
       }
 
-      const actualIps = await resolveBoth(hostname);
+      const resolved = await resolveBoth(hostname);
       return {
-        verdict: domainCheckVerdict({ expectedIp, actualIps }),
+        // A resolver we could not reach tells us nothing about the domain.
+        verdict: resolved.failed
+          ? ("unknown" as const)
+          : domainCheckVerdict({ expectedIps, actualIps: resolved.addresses }),
         hostname,
         expectedIp,
-        actualIps,
+        actualIps: resolved.addresses,
       };
     },
   );

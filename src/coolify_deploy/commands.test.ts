@@ -1227,3 +1227,52 @@ describe("cancelling during deploy-key setup", () => {
     expect(githubCall!.signal!.aborted).toBe(true);
   });
 });
+
+describe("keeping the Coolify application in step with the repo", () => {
+  it("sends the current branch when reusing an application", async () => {
+    // The application keeps whatever branch it was created with, so a user who
+    // switches branches would otherwise redeploy the old source.
+    const app = await seedApp({
+      coolifyApplicationUuid: APP_UUID,
+      githubBranch: "feature",
+    });
+    happyPathRoutes();
+    const clock = createFakeClock();
+
+    await drive(
+      clock,
+      runDeployPipeline({
+        appId: app.id,
+        signal: new AbortController().signal,
+        report: recorder(),
+        clock,
+      }),
+    );
+
+    const patch = bodyOf(`PATCH /applications/${APP_UUID}`);
+    expect(patch.git_branch).toBe("feature");
+    expect(patch.git_repository).toBe("git@github.com:acme/demo.git");
+  });
+
+  it("clears a publish directory left by a previous framework shape", async () => {
+    // A vite app leaves /dist behind; nextjs must not inherit it.
+    framework.type = "nextjs";
+    const app = await seedApp({ coolifyApplicationUuid: APP_UUID });
+    happyPathRoutes();
+    const clock = createFakeClock();
+
+    await drive(
+      clock,
+      runDeployPipeline({
+        appId: app.id,
+        signal: new AbortController().signal,
+        report: recorder(),
+        clock,
+      }),
+    );
+
+    expect(bodyOf(`PATCH /applications/${APP_UUID}`).publish_directory).toBe(
+      "",
+    );
+  });
+});

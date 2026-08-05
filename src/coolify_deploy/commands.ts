@@ -418,6 +418,9 @@ export async function runDeployPipeline({
   });
   throwIfAborted(signal);
 
+  const gitRepository = `git@github.com:${app.githubOrg}/${app.githubRepo}.git`;
+  const gitBranch = app.githubBranch ?? "main";
+
   report.stage("configuring");
   const applicationUuid = await resolveApplication({
     client,
@@ -432,8 +435,8 @@ export async function runDeployPipeline({
         projectUuid: app.coolifyProjectUuid!,
         environmentName: app.coolifyEnvironmentName ?? "production",
         privateKeyUuid: key.uuid,
-        gitRepository: `git@github.com:${app.githubOrg}/${app.githubRepo}.git`,
-        gitBranch: app.githubBranch ?? "main",
+        gitRepository,
+        gitBranch,
         name: `dyad-${app.name}`.toLowerCase().replace(/[^a-z0-9-]/g, "-"),
         build,
         domains: app.coolifyDomain,
@@ -456,6 +459,7 @@ export async function runDeployPipeline({
     await client.updateApplication(applicationUuid, {
       ...(app.coolifyDomain ? { domains: app.coolifyDomain } : {}),
       build,
+      source: { gitRepository, gitBranch },
     });
   }
   throwIfAborted(signal);

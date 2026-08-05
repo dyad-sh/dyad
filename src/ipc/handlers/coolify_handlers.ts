@@ -14,6 +14,10 @@ import {
   coolifyDomainHostname,
   normalizeCoolifyDomain,
 } from "@/coolify_deploy/domain";
+import {
+  domainCheckVerdict,
+  expectedServerAddress,
+} from "@/coolify_deploy/domain_check";
 import { CoolifyClient } from "../utils/coolify_client";
 import { safeSend } from "../utils/safe_sender";
 import { coolifyDeployRegistry } from "@/coolify_deploy/controller";
@@ -201,18 +205,35 @@ export function registerCoolifyHandlers() {
     async (_, { serverUuid, domain }) => {
       const client = getClient();
       const servers = await client.listServers();
-      const expectedIp = servers.find((s) => s.uuid === serverUuid)?.ip ?? null;
+      const address = expectedServerAddress({
+        serverIp: servers.find((s) => s.uuid === serverUuid)?.ip,
+        instanceUrl: readSettings().coolifyInstanceUrl ?? "",
+      });
+
+      let expectedIp: string | null = null;
+      if (address?.kind === "ip") {
+        expectedIp = address.ip;
+      } else if (address?.kind === "resolve") {
+        expectedIp =
+          (await dns.resolve4(address.hostname).catch(() => []))[0] ?? null;
+      }
 
       const hostname = coolifyDomainHostname(domain);
       if (!hostname) {
-        return { resolves: false, expectedIp, actualIps: [] };
+        return {
+          verdict: "unknown" as const,
+          hostname: null,
+          expectedIp,
+          actualIps: [],
+        };
       }
 
       const actualIps = await dns
         .resolve4(hostname)
         .catch(() => [] as string[]);
       return {
-        resolves: expectedIp !== null && actualIps.includes(expectedIp),
+        verdict: domainCheckVerdict({ expectedIp, actualIps }),
+        hostname,
         expectedIp,
         actualIps,
       };

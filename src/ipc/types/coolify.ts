@@ -192,8 +192,12 @@ export const coolifyContracts = {
       serverUuid: z.string().min(1),
       domain: z.string().min(1),
     }),
+    // A verdict rather than a boolean, so "we could not check" is not
+    // reported as "the domain is wrong".
     output: z.object({
-      resolves: z.boolean(),
+      verdict: z.enum(["ok", "points-elsewhere", "no-records", "unknown"]),
+      /** The hostname actually resolved, which is not always what was typed. */
+      hostname: z.string().nullable(),
       expectedIp: z.string().nullable(),
       actualIps: z.array(z.string()),
     }),

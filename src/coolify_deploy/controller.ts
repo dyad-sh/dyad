@@ -38,17 +38,6 @@ export interface CoolifyDeployRegistryDeps {
   runPipeline: RunDeployPipeline;
 }
 
-/**
- * Main-process registry hosting one deployment machine per app.
- *
- * Commands are data returned by the pure transition and executed here. A
- * running pipeline owns an AbortController keyed by its operation id, so
- * disconnecting cancels the work rather than letting it finish and write its
- * result over state the user has already cleared.
- *
- * Constructed rather than module-global so tests own an isolated instance with
- * a fake clock and sequential ids instead of resetting shared state.
- */
 /** Resolves when the work settles, or when the bound elapses. */
 async function drain(work: Promise<void>): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -64,6 +53,17 @@ async function drain(work: Promise<void>): Promise<void> {
   }
 }
 
+/**
+ * Main-process registry hosting one deployment machine per app.
+ *
+ * Commands are data returned by the pure transition and executed here. A
+ * running pipeline owns an AbortController keyed by its operation id, so
+ * disconnecting cancels the work rather than letting it finish and write its
+ * result over state the user has already cleared.
+ *
+ * Constructed rather than module-global so tests own an isolated instance with
+ * a fake clock and sequential ids instead of resetting shared state.
+ */
 export class CoolifyDeployRegistry {
   private readonly stores = new Map<
     number,
@@ -71,7 +71,10 @@ export class CoolifyDeployRegistry {
   >();
   private readonly aborts = new Map<string, AbortController>();
   /** In-flight pipelines, so disposal can wait rather than abandon them. */
-  private readonly running = new Map<string, Promise<void>>();
+  private readonly running = new Map<
+    string,
+    { appId: number; work: Promise<void> }
+  >();
   /** Apps mid-deletion: a deploy admitted now would outlive the app row. */
   private readonly deleting = new Set<number>();
   private readonly listeners = new Set<
@@ -140,12 +143,6 @@ export class CoolifyDeployRegistry {
   }
 
   /**
-   * Abandons and forgets one app's machine.
-   *
-   * Call when the app is deleted: without this its store and any running
-   * pipeline outlive the entity they belong to.
-   */
-  /**
    * Refuses new deployments for an app until endAppDeletion.
    *
    * Disposal alone is not enough: deletion continues after it returns, and a
@@ -160,22 +157,29 @@ export class CoolifyDeployRegistry {
     this.deleting.delete(appId);
   }
 
+  /**
+   * Abandons and forgets one app's machine.
+   *
+   * Call when the app is deleted: without this its store and any running
+   * pipeline outlive the entity they belong to.
+   */
   async dispose(appId: number): Promise<void> {
-    {
-      const store = this.stores.get(appId);
-      const state = store?.getSnapshot();
-      let inFlight: Promise<void> | undefined;
-      if (state?.type === "running") {
-        const { operationId } = state.invocationRef;
-        this.aborts.get(operationId)?.abort();
-        this.aborts.delete(operationId);
-        inFlight = this.running.get(operationId);
-      }
-      store?.dispose();
-      this.stores.delete(appId);
-      // Aborting only makes the pipeline throw on its next checkpoint, so wait
-      // for it to unwind before the caller deletes rows or closes the database.
-      if (inFlight) await drain(inFlight);
+    // Found by app rather than through the snapshot: cancelling moves the
+    // machine to idle while its pipeline is still unwinding, so a disconnect
+    // followed by a delete would otherwise find nothing to wait for.
+    const pending: Promise<void>[] = [];
+    for (const [operationId, entry] of this.running) {
+      if (entry.appId !== appId) continue;
+      this.aborts.get(operationId)?.abort();
+      this.aborts.delete(operationId);
+      pending.push(entry.work);
+    }
+    this.stores.get(appId)?.dispose();
+    this.stores.delete(appId);
+    // Aborting only makes the pipeline throw on its next checkpoint, so wait
+    // for it to unwind before the caller deletes rows or closes the database.
+    if (pending.length > 0) {
+      await drain(Promise.all(pending).then(() => undefined));
     }
   }
 
@@ -185,7 +189,11 @@ export class CoolifyDeployRegistry {
     await Promise.allSettled(
       [...this.stores.keys()].map((id) => this.dispose(id)),
     );
-    await Promise.allSettled(this.running.values());
+    // Bounded like the per-app wait above: anything still here has already
+    // outlived its drain, so waiting on it unbounded would undo that bound.
+    await drain(
+      Promise.allSettled(this.running.values()).then(() => undefined),
+    );
     this.aborts.clear();
     this.running.clear();
   }
@@ -227,7 +235,7 @@ export class CoolifyDeployRegistry {
           command.invocationRef,
           command.resumeDeploymentUuid,
         );
-        this.running.set(command.invocationRef.operationId, work);
+        this.running.set(command.invocationRef.operationId, { appId, work });
         void work.finally(() =>
           this.running.delete(command.invocationRef.operationId),
         );

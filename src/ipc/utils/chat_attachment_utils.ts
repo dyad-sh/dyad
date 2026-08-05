@@ -131,23 +131,55 @@ export function hasScriptReadableAttachment(
   return attachments.some((attachment) => !isInlineImageAttachment(attachment));
 }
 
+/**
+ * Whether the user attached this image *for the model to look at*.
+ *
+ * Narrower than "is an image attachment" in two ways:
+ *  - `upload-to-codebase` images are project assets bound for `<dyad-copy>` /
+ *    `copy_file`, so a model that cannot see them has lost nothing and should
+ *    not be told to ask the user to switch models.
+ *  - extension, not mime: an `image/svg+xml` is never inlined as an image part
+ *    for *any* model, so the describer cannot read it either. Counting it here
+ *    would only emit the "switch to a vision-capable model" note over an
+ *    attachment that a vision-capable model would not see either.
+ *
+ * Both the vision-fallback gate and the describer's own selection route through
+ * this, so they cannot disagree about what "describable" means.
+ */
+export function isDescribableImageAttachment(
+  attachment: StoredChatAttachment,
+): boolean {
+  return (
+    attachment.attachmentType === "chat-context" &&
+    isInlineImageAttachment(attachment)
+  );
+}
+
+export function hasDescribableImageAttachment(
+  attachments: StoredChatAttachment[],
+): boolean {
+  return attachments.some(isDescribableImageAttachment);
+}
+
 export function resolveAttachmentDeliveryConfig({
   mode,
   settings,
   hasImageAttachments,
   hasUploadedAttachments,
+  modelSupportsVision = true,
 }: {
   mode: ChatMode;
   settings: Pick<UserSettings, "enableSandboxScriptExecution">;
   hasImageAttachments: boolean;
   hasUploadedAttachments: boolean;
+  modelSupportsVision?: boolean;
 }): AttachmentDeliveryConfig {
   const willUseLocalAgentStream = isLocalAgentBackedMode(mode);
   const useOnDiskAttachmentBlock = mode === "local-agent" || mode === "ask";
 
   return {
     inlineTextAttachments: !useOnDiskAttachmentBlock,
-    includeImageParts: true,
+    includeImageParts: modelSupportsVision,
     useOnDiskAttachmentBlock,
     includeSandboxScriptHint:
       useOnDiskAttachmentBlock &&
@@ -158,6 +190,7 @@ export function resolveAttachmentDeliveryConfig({
       !willUseLocalAgentStream && hasUploadedAttachments && mode !== "ask",
     addSystemVisionInstructions:
       hasImageAttachments &&
+      modelSupportsVision &&
       (!willUseLocalAgentStream || mode === "plan") &&
       !(hasUploadedAttachments && mode !== "ask"),
   };

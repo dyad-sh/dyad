@@ -72,7 +72,11 @@ import fs from "node:fs";
 import * as path from "path";
 import * as crypto from "crypto";
 import { readFile, writeFile } from "fs/promises";
-import { getMaxTokens, getTemperature } from "../utils/token_utils";
+import {
+  getMaxTokens,
+  getTemperature,
+  supportsVision,
+} from "../utils/token_utils";
 import { MAX_CHAT_TURNS_IN_CONTEXT } from "@/constants/settings_constants";
 import { validateChatContext } from "../utils/context_paths_utils";
 import { getProviderOptions, getAiHeaders } from "../utils/provider_options";
@@ -154,7 +158,9 @@ import { readSettings, setSentinelActiveChat } from "@/main/settings";
 import {
   buildLocalAgentAttachmentInfo,
   getInlineImageMimeType,
+  hasDescribableImageAttachment,
   hasScriptReadableAttachment,
+  isInlineImageAttachment,
   isTextFile,
   resolveAttachmentDeliveryConfig,
   type PendingStoredChatAttachment,
@@ -162,6 +168,11 @@ import {
 } from "../utils/chat_attachment_utils";
 import { inspectBase64DataUrl } from "../../shared/chatAttachmentLimits";
 import { toRendererMessage } from "../utils/renderer_chat_message";
+import {
+  describeImageAttachments,
+  VISION_DISABLED_NOTE,
+  VISION_UNAVAILABLE_NOTE,
+} from "../utils/vision_fallback";
 
 type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
 
@@ -381,6 +392,89 @@ function executionObserver(
   return executionObservers.get(
     request.intentId ?? request.invocationRef?.operationId ?? "",
   );
+}
+
+const IMAGE_INPUT_UNSUPPORTED_MESSAGE =
+  "This model cannot read images. Switch to a vision-capable model " +
+  "(for example Gemini, Claude or GPT-5), or remove the image attachment.";
+
+/**
+ * Provider errors about the attachment ITSELF - wrong format, or bytes the
+ * provider could not decode or fetch - rather than a missing model capability.
+ 
+ */
+const IMAGE_FORMAT_ERROR_PATTERN =
+  /image[\s_/-]*(media\s*type|mime|format|file\s*type)|(content\s*type|media\s*type|mime)\s*[:.]?\s*image\/|(could\s*not|couldn't|unable\s*to|failed\s*to)\s*(be\s*)?(decode|process|read|download|fetch|load|open)|(invalid|malformed|corrupt(ed)?|truncated|empty)\s*(image|base64|data\s*url|attachment)/;
+
+/**
+ * BEST-EFFORT LIST - expected to need follow-up.
+ *
+ * This is the backstop, not the fix. Models tagged `supportsVision: false`
+ * never send image parts in the first place, so this only ever sees models the
+ * catalog has not tagged yet.
+ */
+const IMAGE_INPUT_ERROR_PATTERNS = [
+  "image input",
+  "does not support image",
+  "doesn't support image",
+  "not support image",
+  "cannot accept image",
+  "can't accept image",
+  "does not accept image",
+  "image is not supported",
+  "images are not supported",
+  "no vision",
+  "not a vision",
+  "vision-capable",
+  "multimodal input",
+];
+
+/**
+ * Whether the error is about the attachment's format rather than the model's
+ * capabilities.
+ */
+export function isImageFormatError(message: string): boolean {
+  return IMAGE_FORMAT_ERROR_PATTERN.test(message.toLowerCase());
+}
+
+/**
+ * `image_url` is the name of the request field, so providers reuse it for
+ * unreachable URLs and bad schemes as readily as for missing vision support.
+ * Bare presence proves nothing; only a capability claim about the field does.
+ */
+const IMAGE_URL_CAPABILITY_PATTERN =
+  /image_url\s+is\s+(only\s+support|not\s+support)/;
+
+/**
+ * Whether the error means the selected model cannot accept image input at all.
+ */
+export function isImageInputUnsupportedError(message: string): boolean {
+  if (isImageFormatError(message)) {
+    return false;
+  }
+  const lowered = message.toLowerCase();
+  return (
+    IMAGE_URL_CAPABILITY_PATTERN.test(lowered) ||
+    IMAGE_INPUT_ERROR_PATTERNS.some((pattern) => lowered.includes(pattern))
+  );
+}
+
+function stringifyError(error: unknown): string {
+  if (typeof error === "string") {
+    return error;
+  }
+  if (error instanceof Error) {
+    return error.message || error.name;
+  }
+  try {
+    const json = JSON.stringify(error);
+    if (json && json !== "{}") {
+      return json;
+    }
+  } catch {
+    // Circular reference (common on Axios-style errors) - fall through.
+  }
+  return String(error ?? "Unknown error");
 }
 
 // PROTOCOL-GROUNDED REGION: tracking/completion abstraction. Keep in sync with
@@ -1428,17 +1522,36 @@ ${componentSnippet}
         selectedChatMode,
       };
       const freeModelMode = isFreeProModel(settings.selectedModel);
-      const hasImageAttachments = storedAttachments.some((attachment) =>
-        attachment.mimeType.startsWith("image/"),
+      // Mime OR extension: `includeImageParts` below inlines whatever
+      // `isInlineImageAttachment` matches, which is extension-based. A `.png`
+      // recorded with a generic mime type would otherwise skip the vision gate
+      // entirely and still reach a text-only model as a raw image part.
+      const hasImageAttachments = storedAttachments.some(
+        (attachment) =>
+          attachment.mimeType.startsWith("image/") ||
+          isInlineImageAttachment(attachment),
       );
       const hasUploadedAttachments = storedAttachments.some(
         (attachment) => attachment.attachmentType === "upload-to-codebase",
       );
+      // Narrower than `hasImageAttachments`: only images the user attached for
+      // the model to look at are worth describing or apologizing for.
+      const hasDescribableImages =
+        hasDescribableImageAttachment(storedAttachments);
+      // Only pay for the metadata lookup when there is actually an image.
+      const modelSupportsVision =
+        !hasImageAttachments || (await supportsVision(settings.selectedModel));
+      if (hasImageAttachments) {
+        logger.info(
+          `vision gate: model=${settings.selectedModel.provider}/${settings.selectedModel.name} supportsVision=${modelSupportsVision}`,
+        );
+      }
       const attachmentDeliveryConfig = resolveAttachmentDeliveryConfig({
         mode: selectedChatMode,
         settings,
         hasImageAttachments,
         hasUploadedAttachments,
+        modelSupportsVision,
       });
       const localAgentAiUserPrompt =
         userPrompt +
@@ -1934,8 +2047,31 @@ This conversation includes one or more image attachments. When the user uploads 
         // Check if the last message should include attachments
         if (chatMessages.length >= 2) {
           const lastUserIndex = chatMessages.length - 2;
-          const lastUserMessage = chatMessages[lastUserIndex];
+          let lastUserMessage = chatMessages[lastUserIndex];
           if (lastUserMessage.role === "user") {
+            if (hasDescribableImages && !modelSupportsVision) {
+              if (typeof lastUserMessage.content !== "string") {
+                logger.warn(
+                  "Last user message content is not a string - shouldn't happen, skipping vision fallback injection",
+                );
+              } else {
+                // "The setting is off" and "no describer exists" need different
+                // copy: the disabled note must not tell the user to go switch
+                // models over a setting they can just turn on.
+                const description = !settings.enableVisionFallback
+                  ? VISION_DISABLED_NOTE
+                  : ((await describeImageAttachments({
+                      attachments: storedAttachments,
+                      settings,
+                      abortSignal: abortController.signal,
+                    })) ?? VISION_UNAVAILABLE_NOTE);
+                lastUserMessage = {
+                  ...lastUserMessage,
+                  content: lastUserMessage.content + description,
+                };
+                chatMessages[lastUserIndex] = lastUserMessage;
+              }
+            }
             if (attachmentPaths.length > 0) {
               // Replace the last message with one that includes attachments
               chatMessages[lastUserIndex] = await prepareMessageWithAttachments(
@@ -2084,17 +2220,34 @@ This conversation includes one or more image attachments. When the user uploads 
               }
             },
             onError: (error: any) => {
-              let errorMessage = (error as any)?.error?.message;
+              let errorMessage =
+                (error as any)?.error?.message ?? (error as any)?.message;
               const responseBody = error?.error?.responseBody;
               if (errorMessage && responseBody) {
                 errorMessage += "\n\nDetails: " + responseBody;
               }
-              const message = errorMessage || JSON.stringify(error);
-              const requestIdPrefix = isEngineEnabled
-                ? `[Request ID: ${dyadRequestId}] `
-                : "";
+              const rawMessage = errorMessage || stringifyError(error);
+              const requestIdPrefix =
+                isEngineEnabled && dyadRequestId
+                  ? `[Request ID: ${dyadRequestId}] `
+                  : "";
+
+              let message = rawMessage;
+              if (hasImageAttachments) {
+                if (isImageInputUnsupportedError(rawMessage)) {
+                  message = `${IMAGE_INPUT_UNSUPPORTED_MESSAGE}\n\nDetails: ${rawMessage}`;
+                } else if (isImageFormatError(rawMessage)) {
+                  logger.debug(
+                    `image attachment error is a format/media-type rejection, not a capability error: ${rawMessage.slice(0, 500)}`,
+                  );
+                } else {
+                  logger.warn(
+                    `image attachment error did not match any known pattern: ${rawMessage.slice(0, 500)}`,
+                  );
+                }
+              }
               logger.error(
-                `AI stream text error for request: ${requestIdPrefix} errorMessage=${errorMessage} error=`,
+                `AI stream text error for request: ${requestIdPrefix} errorMessage=${rawMessage} error=`,
                 error,
               );
               event.sender.send("chat:response:error", {

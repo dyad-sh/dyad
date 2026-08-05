@@ -165,6 +165,7 @@ export async function getLanguageModels({
         maxOutputTokens: model.maxOutputTokens,
         contextWindow: model.contextWindow,
         temperature: model.temperature,
+        supportsVision: model.supportsVision,
         dollarSigns: model.dollarSigns,
         type: "cloud" as const,
       }));

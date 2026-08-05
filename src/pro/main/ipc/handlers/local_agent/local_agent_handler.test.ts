@@ -257,6 +257,7 @@ vi.mock("@/ipc/utils/get_model_client", () => ({
 vi.mock("@/ipc/utils/token_utils", () => ({
   getMaxTokens: vi.fn(async () => 4096),
   getTemperature: vi.fn(async () => 0.7),
+  supportsVision: vi.fn(async () => true),
 }));
 
 vi.mock("@/ipc/utils/provider_options", () => ({

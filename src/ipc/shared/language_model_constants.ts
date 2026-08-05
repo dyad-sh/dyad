@@ -13,6 +13,7 @@ export interface ModelOption {
   tagColor?: string;
   maxOutputTokens?: number;
   contextWindow?: number;
+  supportsVision?: boolean;
 }
 
 export const GPT_5_2_MODEL_NAME = "gpt-5.2";
@@ -253,6 +254,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       contextWindow: 200_000,
       temperature: 0,
       dollarSigns: 0,
+      supportsVision: false,
     },
     // https://openrouter.ai/nvidia/nemotron-3-super-120b-a12b:free
     {
@@ -263,6 +265,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       contextWindow: 1_000_000,
       temperature: 0,
       dollarSigns: 0,
+      supportsVision: false,
     },
     // https://openrouter.ai/moonshotai/kimi-k2.5
     {
@@ -283,6 +286,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       contextWindow: 204_800,
       temperature: 0,
       dollarSigns: 1,
+      supportsVision: false,
     },
     // https://openrouter.ai/minimax/minimax-m2.5
     {
@@ -293,15 +297,27 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       contextWindow: 196_608,
       temperature: 0,
       dollarSigns: 1,
+      supportsVision: false,
     },
     {
-      name: "z-ai/glm-5",
-      displayName: "GLM 5",
+      name: "z-ai/glm-5.2",
+      displayName: "GLM 5.2",
       description: "Z-AI's best coding model",
       maxOutputTokens: 32_000,
       contextWindow: 200_000,
       temperature: 0.7,
       dollarSigns: 2,
+      supportsVision: false,
+    },
+    {
+      name: "z-ai/glm-5",
+      displayName: "GLM 5",
+      description: "Z-AI's coding model",
+      maxOutputTokens: 32_000,
+      contextWindow: 200_000,
+      temperature: 0.7,
+      dollarSigns: 2,
+      supportsVision: false,
     },
     {
       name: "z-ai/glm-4.7",
@@ -311,6 +327,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       contextWindow: 200_000,
       temperature: 0.7,
       dollarSigns: 2,
+      supportsVision: false,
     },
     {
       name: "qwen/qwen3-coder",
@@ -320,6 +337,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       contextWindow: 262_000,
       temperature: 0,
       dollarSigns: 2,
+      supportsVision: false,
     },
     {
       name: "deepseek/deepseek-chat-v3.1",
@@ -329,6 +347,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       contextWindow: 128_000,
       temperature: 0,
       dollarSigns: 2,
+      supportsVision: false,
     },
   ],
   auto: [
@@ -355,6 +374,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       maxOutputTokens: 32_000,
       contextWindow: 128_000,
       temperature: 0,
+      supportsVision: false,
     },
     {
       name: "free-pro",
@@ -504,6 +524,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       contextWindow: 204_800,
       temperature: 1.0,
       dollarSigns: 1,
+      supportsVision: false,
     },
     {
       name: "MiniMax-M2.7-highspeed",
@@ -513,6 +534,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       contextWindow: 204_800,
       temperature: 1.0,
       dollarSigns: 1,
+      supportsVision: false,
     },
     {
       name: "MiniMax-M2.5",
@@ -522,6 +544,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       contextWindow: 204_800,
       temperature: 1.0,
       dollarSigns: 1,
+      supportsVision: false,
     },
     {
       name: "MiniMax-M2.5-highspeed",
@@ -531,6 +554,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       contextWindow: 204_800,
       temperature: 1.0,
       dollarSigns: 1,
+      supportsVision: false,
     },
   ],
 };

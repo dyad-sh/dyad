@@ -390,6 +390,7 @@ const BaseUserSettingsFields = {
   enableProLazyEditsMode: z.boolean().optional(),
   proLazyEditsMode: z.enum(["off", "v1", "v2"]).optional(),
   enableProSmartFilesContextMode: z.boolean().optional(),
+  enableVisionFallback: z.boolean().optional(),
   enableProWebSearch: z.boolean().optional(),
   proSmartContextOption: SmartContextModeSchema.optional(),
   selectedTemplateId: z.string(),

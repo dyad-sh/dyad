@@ -43,7 +43,12 @@ import {
   cancelOrphanedBaseStream,
   fastTextOutput,
 } from "@/ipc/utils/stream_text_utils";
-import { getMaxTokens, getTemperature } from "@/ipc/utils/token_utils";
+import {
+  getMaxTokens,
+  getTemperature,
+  supportsVision,
+} from "@/ipc/utils/token_utils";
+import { stripImageParts } from "@/ipc/utils/vision_fallback";
 import {
   getProviderOptions,
   getAiHeaders,
@@ -81,6 +86,7 @@ import {
   hasIncompleteTodos,
   formatTodoSummary,
   sanitizeStepMessages,
+  stripImageContentParts,
   type InjectedMessage,
 } from "./prepare_step_utils";
 import { deleteTodos, loadTodos, saveTodos } from "./todo_persistence";
@@ -714,6 +720,8 @@ export async function handleLocalAgentStream(
   let persistedTodos: Todo[] = [];
 
   try {
+    const modelSupportsVision = await supportsVision(settings.selectedModel);
+
     // Get model client
     const { modelClient } = await getModelClient(
       settings.selectedModel,
@@ -797,7 +805,12 @@ export async function handleLocalAgentStream(
         });
       },
       appendUserMessage: (content: UserMessageContentPart[]) => {
-        pendingUserMessages.push(content);
+        // Tools inject images mid-turn (web_crawl screenshots), long after the
+        // history was stripped above. Gate the injection point itself so every
+        // tool is covered, not just the ones that do it today.
+        pendingUserMessages.push(
+          modelSupportsVision ? content : stripImageContentParts(content),
+        );
       },
       onUpdateTodos: (todos) => {
         broadcastToRegisteredWindows(event.sender, "agent-tool:todos-update", {
@@ -917,9 +930,14 @@ export async function handleLocalAgentStream(
     // Use messageOverride if provided (e.g., for summarization)
     // If a compaction summary exists, only include messages from that point onward
     // (pre-compaction messages are preserved in DB for the user but not sent to LLM)
-    const messageHistory: ModelMessage[] = messageOverride
-      ? messageOverride
-      : buildChatMessageHistory(chat.messages);
+    // History from `aiMessagesJson` can contain image parts persisted when a
+    // vision-capable model was selected. Sending those to a text-only model is
+    // a hard provider error, so strip them here rather than at attach time.
+    const builtMessageHistory =
+      messageOverride ?? buildChatMessageHistory(chat.messages);
+    const messageHistory: ModelMessage[] = modelSupportsVision
+      ? builtMessageHistory
+      : stripImageParts(builtMessageHistory);
     const latestUserMessage = [...messageHistory]
       .reverse()
       .find((message) => message.role === "user");
@@ -1133,7 +1151,7 @@ export async function handleLocalAgentStream(
                   // cause injectMessagesAtPositions to splice at wrong positions.
                   allInjectedMessages.length = 0;
                   const preCompactionBaseCount = baseMessageHistoryCount;
-                  const compactedMessageHistory = buildChatMessageHistory(
+                  const rebuiltMessageHistory = buildChatMessageHistory(
                     chat.messages,
                     {
                       // Keep the structured in-flight assistant/tool messages from
@@ -1141,6 +1159,9 @@ export async function handleLocalAgentStream(
                       excludeMessageIds: new Set([placeholderMessageId]),
                     },
                   );
+                  const compactedMessageHistory = modelSupportsVision
+                    ? rebuiltMessageHistory
+                    : stripImageParts(rebuiltMessageHistory);
                   // The referenced-apps reminder lives only in-memory on the
                   // latest user message and is not persisted, so rebuilding
                   // history from the DB drops it. Re-inject so post-compaction

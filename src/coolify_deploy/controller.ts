@@ -54,28 +54,43 @@ async function drain(work: Promise<void>): Promise<void> {
 }
 
 /**
+ * Everything the registry knows about one app.
+ *
+ * Held together rather than in parallel collections: the store, the abort
+ * handle and the promise all describe one pipeline, and every disposal bug
+ * this machine has had came from two of them disagreeing about whether it
+ * existed. A pipeline cannot be reachable without its store, or aborted
+ * without being drained, because there is only one place to look.
+ */
+interface AppMachine {
+  store: SnapshotStore<CoolifyDeployState>;
+  /** The pipeline running for this app, absent when nothing is running. */
+  pipeline?: {
+    operationId: string;
+    abort: AbortController;
+    done: Promise<void>;
+  };
+}
+
+/**
  * Main-process registry hosting one deployment machine per app.
  *
  * Commands are data returned by the pure transition and executed here. A
- * running pipeline owns an AbortController keyed by its operation id, so
- * disconnecting cancels the work rather than letting it finish and write its
- * result over state the user has already cleared.
+ * running pipeline owns an AbortController, so disconnecting cancels the work
+ * rather than letting it finish and write its result over state the user has
+ * already cleared.
  *
  * Constructed rather than module-global so tests own an isolated instance with
  * a fake clock and sequential ids instead of resetting shared state.
  */
 export class CoolifyDeployRegistry {
-  private readonly stores = new Map<
-    number,
-    SnapshotStore<CoolifyDeployState>
-  >();
-  private readonly aborts = new Map<string, AbortController>();
-  /** In-flight pipelines, so disposal can wait rather than abandon them. */
-  private readonly running = new Map<
-    string,
-    { appId: number; work: Promise<void> }
-  >();
-  /** Apps mid-deletion: a deploy admitted now would outlive the app row. */
+  private readonly machines = new Map<number, AppMachine>();
+  /**
+   * Apps mid-deletion: a deploy admitted now would outlive the app row.
+   *
+   * Separate because it brackets the app's deletion rather than a machine, and
+   * has to outlive the machine that disposal removes.
+   */
   private readonly deleting = new Set<number>();
   private readonly listeners = new Set<
     (appId: number, state: CoolifyDeployState) => void
@@ -91,7 +106,7 @@ export class CoolifyDeployRegistry {
   }
 
   getSnapshot(appId: number): CoolifyDeployState {
-    return this.stores.get(appId)?.getSnapshot() ?? IDLE;
+    return this.machines.get(appId)?.store.getSnapshot() ?? IDLE;
   }
 
   /**
@@ -101,7 +116,7 @@ export class CoolifyDeployRegistry {
    * so disposal is only observable through this.
    */
   hasMachine(appId: number): boolean {
-    return this.stores.has(appId);
+    return this.machines.has(appId);
   }
 
   onSnapshot(
@@ -139,7 +154,7 @@ export class CoolifyDeployRegistry {
 
   /** Abandons every running deployment; the apps themselves survive. */
   cancelAll(): void {
-    for (const appId of [...this.stores.keys()]) this.cancelDeploy(appId);
+    for (const appId of [...this.machines.keys()]) this.cancelDeploy(appId);
   }
 
   /**
@@ -164,59 +179,52 @@ export class CoolifyDeployRegistry {
    * pipeline outlive the entity they belong to.
    */
   async dispose(appId: number): Promise<void> {
-    // Found by app rather than through the snapshot: cancelling moves the
-    // machine to idle while its pipeline is still unwinding, so a disconnect
-    // followed by a delete would otherwise find nothing to wait for.
-    const pending: Promise<void>[] = [];
-    for (const [operationId, entry] of this.running) {
-      if (entry.appId !== appId) continue;
-      this.aborts.get(operationId)?.abort();
-      this.aborts.delete(operationId);
-      pending.push(entry.work);
-    }
-    this.stores.get(appId)?.dispose();
-    this.stores.delete(appId);
-    // Aborting only makes the pipeline throw on its next checkpoint, so wait
-    // for it to unwind before the caller deletes rows or closes the database.
-    if (pending.length > 0) {
-      await drain(Promise.all(pending).then(() => undefined));
-    }
+    const machine = this.machines.get(appId);
+    // Removed first, so a late report cannot find it and a new deploy started
+    // while this drains gets a machine of its own.
+    this.machines.delete(appId);
+    if (!machine) return;
+    machine.store.dispose();
+    if (!machine.pipeline) return;
+    // The pipeline is reached through the machine rather than through the
+    // snapshot: cancelling moves the state to idle while the work is still
+    // unwinding, so looking at the state would find nothing to wait for.
+    machine.pipeline.abort.abort();
+    // Aborting only makes it throw at its next checkpoint, so wait for it to
+    // unwind before the caller deletes rows or closes the database.
+    await drain(machine.pipeline.done);
   }
 
   /** Call when every app is going away, as a reset does. */
   async disposeAll(): Promise<void> {
-    for (const controller of this.aborts.values()) controller.abort();
+    // dispose aborts before its first await, so mapping over every app aborts
+    // them all before any of them starts waiting — they unwind together
+    // rather than one after another, with no separate pass needed.
+    //
+    // Nor a second sweep afterwards: a pipeline is only reachable through its
+    // machine, so nothing survives that dispose did not already wait for.
     await Promise.allSettled(
-      [...this.stores.keys()].map((id) => this.dispose(id)),
+      [...this.machines.keys()].map((id) => this.dispose(id)),
     );
-    // Bounded like the per-app wait above: anything still here has already
-    // outlived its drain, so waiting on it unbounded would undo that bound.
-    await drain(
-      Promise.allSettled(
-        [...this.running.values()].map((entry) => entry.work),
-      ).then(() => undefined),
-    );
-    this.aborts.clear();
-    this.running.clear();
   }
 
   private dispatch(appId: number, event: CoolifyDeployEvent): void {
-    const existing = this.stores.get(appId);
-    const result = transition(existing?.getSnapshot() ?? IDLE, event);
+    const existing = this.machines.get(appId);
+    const result = transition(existing?.store.getSnapshot() ?? IDLE, event);
     if (result.kind === "ignored") {
       logger.debug(
         `Ignored ${event.type} for app ${appId}: ${String(result.reason)}`,
       );
       return;
     }
-    // Only materialise a store once an event actually produces state, so a
+    // Only materialise a machine once an event actually produces state, so a
     // late callback arriving after dispose cannot resurrect a deleted app.
-    let store = existing;
-    if (!store) {
-      store = new SnapshotStore<CoolifyDeployState>(IDLE);
-      this.stores.set(appId, store);
+    let machine = existing;
+    if (!machine) {
+      machine = { store: new SnapshotStore<CoolifyDeployState>(IDLE) };
+      this.machines.set(appId, machine);
     }
-    store.setState(result.state);
+    machine.store.setState(result.state);
     for (const listener of this.listeners) {
       try {
         listener(appId, result.state);
@@ -232,20 +240,37 @@ export class CoolifyDeployRegistry {
   private execute(appId: number, command: CoolifyDeployCommand): void {
     switch (command.type) {
       case "RUN_DEPLOY": {
-        const work = this.startPipeline(
+        const machine = this.machines.get(appId);
+        // The dispatch that produced this command created it.
+        if (!machine) return;
+        const { operationId } = command.invocationRef;
+        const abort = new AbortController();
+        const done = this.startPipeline(
           appId,
           command.invocationRef,
           command.resumeDeploymentUuid,
+          abort.signal,
         );
-        this.running.set(command.invocationRef.operationId, { appId, work });
-        void work.finally(() =>
-          this.running.delete(command.invocationRef.operationId),
-        );
+        machine.pipeline = { operationId, abort, done };
+        void done.finally(() => {
+          // Only if it is still ours: a retry may have replaced it, and this
+          // machine may itself have been disposed and rebuilt.
+          const current = this.machines.get(appId);
+          if (current?.pipeline?.operationId === operationId) {
+            current.pipeline = undefined;
+          }
+        });
         return;
       }
       case "ABORT_DEPLOY": {
-        this.aborts.get(command.invocationRef.operationId)?.abort();
-        this.aborts.delete(command.invocationRef.operationId);
+        const machine = this.machines.get(appId);
+        // Left in place rather than forgotten: aborting only asks the pipeline
+        // to stop, and disposal still has to be able to wait for it.
+        if (
+          machine?.pipeline?.operationId === command.invocationRef.operationId
+        ) {
+          machine.pipeline.abort.abort();
+        }
         return;
       }
       default: {
@@ -259,14 +284,13 @@ export class CoolifyDeployRegistry {
     appId: number,
     invocationRef: CoolifyDeployInvocationRef,
     resumeDeploymentUuid: string | null,
+    signal: AbortSignal,
   ): Promise<void> {
-    const controller = new AbortController();
-    this.aborts.set(invocationRef.operationId, controller);
     try {
       const { url } = await this.deps.runPipeline({
         appId,
         resumeDeploymentUuid,
-        signal: controller.signal,
+        signal,
         clock: this.deps.clock,
         report: {
           stage: (stage) =>
@@ -304,8 +328,6 @@ export class CoolifyDeployRegistry {
         error: message,
         finishedAt: this.deps.clock.now(),
       });
-    } finally {
-      this.aborts.delete(invocationRef.operationId);
     }
   }
 }

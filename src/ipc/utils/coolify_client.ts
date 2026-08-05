@@ -153,14 +153,20 @@ export class CoolifyClient {
       );
     }
     const timedOut = err instanceof Error && err.name === "TimeoutError";
+    const detail = timedOut
+      ? `no response within ${REQUEST_TIMEOUT_MS / 1000}s`
+      : err instanceof Error
+        ? err.message
+        : String(err);
+    // The address stays out of the message. External errors are reported to
+    // telemetry with their message verbatim, and this one is a private
+    // machine the user runs — every other integration here talks to a
+    // first-party API, so the policy had never met a host worth protecting.
+    // It is logged locally instead, where diagnosing a typo still needs it.
+    logger.error(`Coolify unreachable at ${this.base}: ${detail}`);
     return new DyadError(
-      `Could not reach Coolify at ${this.base}: ${
-        timedOut
-          ? `no response within ${REQUEST_TIMEOUT_MS / 1000}s`
-          : err instanceof Error
-            ? err.message
-            : String(err)
-      }`,
+      `Could not reach your Coolify instance: ${detail}. Check the address ` +
+        `and that the instance is running.`,
       DyadErrorKind.External,
     );
   }

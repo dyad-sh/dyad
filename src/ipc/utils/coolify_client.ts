@@ -316,20 +316,30 @@ export class CoolifyClient {
    */
   async updateApplication(
     uuid: string,
-    patch: { domains?: string | null; build?: CoolifyBuildConfig },
+    patch: {
+      domains?: string | null;
+      build?: CoolifyBuildConfig;
+      source?: { gitRepository: string; gitBranch: string };
+    },
   ): Promise<void> {
     const body: Record<string, unknown> = {};
     if (patch.domains !== undefined) {
       body.domains = patch.domains ?? "";
+    }
+    // An application keeps whatever repository and branch it was created with,
+    // so without this a redeploy after switching branches builds the old one.
+    if (patch.source) {
+      body.git_repository = patch.source.gitRepository;
+      body.git_branch = patch.source.gitBranch;
     }
     if (patch.build) {
       body.build_pack = patch.build.buildPack;
       body.ports_exposes = patch.build.portsExposes;
       body.is_static = patch.build.isStatic;
       body.is_spa = patch.build.isSpa;
-      body.publish_directory = patch.build.publishDirectory;
-      // Sent even when undefined, so switching a framework back to a static
-      // build clears a start command left over from the previous shape.
+      // Both sent even when absent, so a framework change clears whichever the
+      // previous shape left behind rather than keeping a stale one.
+      body.publish_directory = patch.build.publishDirectory ?? "";
       body.start_command = patch.build.startCommand ?? "";
     }
     await this.request("PATCH", `/applications/${uuid}`, body);

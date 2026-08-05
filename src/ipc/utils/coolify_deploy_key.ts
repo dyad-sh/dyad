@@ -134,8 +134,15 @@ export async function ensureDeployKey(keyName: string): Promise<string> {
 
   const work = (async () => {
     const keyPath = keyFilePath(keyName);
-    if (!fs.existsSync(keyPath)) {
+    // Both halves, not just the private one. ssh-keygen writes them in
+    // sequence, so a crash or the kill on timeout can leave the private half
+    // alone — and skipping generation then wedges every future deploy on an
+    // unreadable .pub with nothing in the UI to explain it.
+    if (!fs.existsSync(keyPath) || !fs.existsSync(`${keyPath}.pub`)) {
       fs.mkdirSync(keyDir(), { recursive: true, mode: 0o700 });
+      // ssh-keygen will not overwrite, and cannot prompt with stdin ignored.
+      fs.rmSync(keyPath, { force: true });
+      fs.rmSync(`${keyPath}.pub`, { force: true });
       await runKeygen(keyPath);
       logger.info(`Generated deploy key at ${keyPath}`);
     }

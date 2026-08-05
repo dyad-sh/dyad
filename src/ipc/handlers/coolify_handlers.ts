@@ -21,6 +21,7 @@ import {
 import { CoolifyClient } from "../utils/coolify_client";
 import { safeSend } from "../utils/safe_sender";
 import { coolifyDeployRegistry } from "@/coolify_deploy/controller";
+import { selectCoolifyDeployCapabilities } from "@/coolify_deploy/capabilities";
 
 const logger = log.scope("coolify_handlers");
 
@@ -198,12 +199,24 @@ export function registerCoolifyHandlers() {
   createTypedHandler(coolifyContracts.createProject, async (_, { name }) => {
     const client = getClient();
     const created = await client.createProject(name);
-    return { uuid: created.uuid, name };
+    return { uuid: created.uuid };
   });
 
   createTypedHandler(
     coolifyContracts.saveConnection,
     async (_, { appId, connection }) => {
+      // A running pipeline writes its application id and URL when it finishes,
+      // and those mean nothing on a server the app was moved to meanwhile.
+      if (
+        !selectCoolifyDeployCapabilities(
+          coolifyDeployRegistry.getSnapshot(appId),
+        ).canEditConnection
+      ) {
+        throw new DyadError(
+          "This app is deploying. Wait for it to finish, or disconnect to stop it, before changing its server.",
+          DyadErrorKind.Precondition,
+        );
+      }
       // Coolify validates this as a URL and rejects a bare hostname, which is
       // what people type, so normalise before it is ever sent.
       const domain = connection.domain

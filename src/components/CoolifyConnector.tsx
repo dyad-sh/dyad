@@ -79,6 +79,10 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
 
   const serverSelectId = useId();
   const projectSelectId = useId();
+  const instanceUrlId = useId();
+  const tokenId = useId();
+  const newProjectId = useId();
+  const domainId = useId();
   const [instanceUrl, setInstanceUrl] = useState("");
   const [token, setToken] = useState("");
   const [serverUuid, setServerUuid] = useState("");
@@ -144,18 +148,18 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
           is created, so granting all of them now avoids making another later.
         </p>
         <div>
-          <Label htmlFor="coolify-url">Coolify address</Label>
+          <Label htmlFor={instanceUrlId}>Coolify address</Label>
           <Input
-            id="coolify-url"
+            id={instanceUrlId}
             placeholder="https://coolify.example.com"
             value={instanceUrl}
             onChange={(e) => setInstanceUrl(e.target.value)}
           />
         </div>
         <div>
-          <Label htmlFor="coolify-token">API token</Label>
+          <Label htmlFor={tokenId}>API token</Label>
           <Input
-            id="coolify-token"
+            id={tokenId}
             type="password"
             value={token}
             onChange={(e) => setToken(e.target.value)}
@@ -289,9 +293,9 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
             is named and created on its own before anything is picked. */}
         <div className="flex items-end gap-2 rounded-md border p-3">
           <div className="flex-1">
-            <Label htmlFor="coolify-new-project">Create a project</Label>
+            <Label htmlFor={newProjectId}>Create a project</Label>
             <Input
-              id="coolify-new-project"
+              id={newProjectId}
               placeholder="Name for a new project"
               value={newProjectName}
               onChange={(e) => setNewProjectName(e.target.value)}
@@ -329,6 +333,15 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
             Create
           </Button>
         </div>
+
+        {!isDiscovering &&
+          !discoveryError &&
+          (discovery?.servers ?? []).length === 0 && (
+            <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+              This Coolify instance has no servers Dyad can see. Add one in
+              Coolify under Servers, then refresh.
+            </div>
+          )}
 
         <div className="grid grid-cols-2 gap-2">
           <div>
@@ -381,9 +394,9 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
         </div>
 
         <div>
-          <Label htmlFor="coolify-domain">Domain (optional)</Label>
+          <Label htmlFor={domainId}>Domain (optional)</Label>
           <Input
-            id="coolify-domain"
+            id={domainId}
             placeholder="app.example.com"
             value={domain}
             onChange={(e) => setDomain(e.target.value)}

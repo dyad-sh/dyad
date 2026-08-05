@@ -3,16 +3,25 @@ import { coolifyInsecureWarning } from "./coolify_insecure_warning";
 
 const ask = (o: Partial<Parameters<typeof coolifyInsecureWarning>[0]>) =>
   coolifyInsecureWarning({
-    hasDomain: false,
+    isHttps: false,
     hasNeon: false,
     hasSupabase: false,
     ...o,
   });
 
 describe("coolifyInsecureWarning", () => {
-  it("says nothing once a domain is set", () => {
-    expect(ask({ hasDomain: true, hasNeon: true })).toBe("none");
-    expect(ask({ hasDomain: true, hasSupabase: true })).toBe("none");
+  it("says nothing once the app is served over TLS", () => {
+    expect(ask({ isHttps: true, hasNeon: true })).toBe("none");
+    expect(ask({ isHttps: true, hasSupabase: true })).toBe("none");
+  });
+
+  it("still warns for a domain the user typed as http", () => {
+    // Coolify serves an explicit http:// domain without TLS, so this is the
+    // same insecure context as having no domain at all.
+    expect(ask({ isHttps: false, hasNeon: true })).toBe("breaks");
+    expect(ask({ isHttps: false, hasSupabase: true })).toBe(
+      "credentials-in-clear",
+    );
   });
 
   it("says nothing for an app with no database, which has no sign-in", () => {

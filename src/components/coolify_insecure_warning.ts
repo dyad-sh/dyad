@@ -12,15 +12,19 @@ export type CoolifyInsecureWarning = "none" | "credentials-in-clear" | "breaks";
  * are readable in transit.
  */
 export function coolifyInsecureWarning({
-  hasDomain,
+  isHttps,
   hasNeon,
   hasSupabase,
 }: {
-  hasDomain: boolean;
+  /** Whether the app will actually be served over TLS. */
+  isHttps: boolean;
   hasNeon: boolean;
   hasSupabase: boolean;
 }): CoolifyInsecureWarning {
-  if (hasDomain) return "none";
+  // Keyed on the scheme, not on whether a domain was typed: an explicit
+  // http:// domain is accepted and served without TLS, which is the same
+  // insecure context as the generated address.
+  if (isHttps) return "none";
   if (hasNeon) return "breaks";
   if (hasSupabase) return "credentials-in-clear";
   // An app with no database has no sign-in to protect.

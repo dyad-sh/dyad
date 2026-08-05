@@ -1276,3 +1276,30 @@ describe("keeping the Coolify application in step with the repo", () => {
     );
   });
 });
+
+describe("surviving a failed resume", () => {
+  it("still reports the adopted deployment when the probe fails", async () => {
+    // The machine keeps this id into the failed state, so the next retry can
+    // adopt the build that is still running instead of being refused forever.
+    const app = await seedApp({ coolifyApplicationUuid: APP_UUID });
+    happyPathRoutes();
+    route("GET /deployments/dep-earlier", { message: "gateway" }, 502);
+    const report = recorder();
+    const clock = createFakeClock();
+
+    await expect(
+      drive(
+        clock,
+        runDeployPipeline({
+          appId: app.id,
+          signal: new AbortController().signal,
+          report,
+          clock,
+          resumeDeploymentUuid: "dep-earlier",
+        }),
+      ),
+    ).rejects.toThrow();
+
+    expect(report.deploymentUuid).toBe("dep-earlier");
+  });
+});

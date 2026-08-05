@@ -65,6 +65,29 @@ describe("estimateToolResultTokens", () => {
 
     expect(estimateToolResultTokens([], toolErrors)).toBeGreaterThan(10_000);
   });
+
+  it("includes non-enumerable Error messages sent to the next model step", () => {
+    const errorMessage = "x".repeat(40_000);
+    const toolErrors = [
+      {
+        toolCallId: "call-1",
+        toolName: "execute_command",
+        error: new Error(errorMessage),
+      },
+    ];
+    const serializedResult = JSON.stringify([
+      {
+        type: "tool-result",
+        toolCallId: "call-1",
+        toolName: "execute_command",
+        output: { type: "error-text", value: errorMessage },
+      },
+    ]);
+
+    expect(estimateToolResultTokens([], toolErrors)).toBe(
+      Math.ceil(serializedResult.length / 4),
+    );
+  });
 });
 
 describe("getTemperature", () => {

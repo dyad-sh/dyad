@@ -1,6 +1,7 @@
 import { LargeLanguageModel } from "@/lib/schemas";
 import { readSettings } from "../../main/settings";
 import { Message } from "@/ipc/types";
+import { getErrorMessage } from "@ai-sdk/provider";
 
 import { findLanguageModel } from "./findLanguageModel";
 
@@ -46,7 +47,7 @@ export const estimateToolResultTokens = (
         type: "tool-result",
         toolCallId,
         toolName,
-        output: { type: "error-json", value: error },
+        output: { type: "error-text", value: getErrorMessage(error) },
       })),
     ],
     (_key, value) => (typeof value === "bigint" ? value.toString() : value),

@@ -97,6 +97,7 @@ interface Call {
   method: string;
   url: string;
   body: any;
+  signal?: AbortSignal | null;
 }
 
 interface Reply {
@@ -136,6 +137,7 @@ function installFetch() {
       method,
       url,
       body: init.body ? JSON.parse(init.body as string) : undefined,
+      signal: init.signal,
     });
     await sideEffects.get(key)?.();
     const queue = routes.get(key);
@@ -1195,5 +1197,33 @@ describe("database resolution failures", () => {
 
     expect(error.kind).toBe(DyadErrorKind.External);
     expect(error.message).toMatch(/socket hang up/);
+  });
+});
+
+describe("cancelling during deploy-key setup", () => {
+  it("gives the GitHub requests a signal that cancels with the deploy", async () => {
+    // The Coolify client carries the signal; the GitHub calls have to as well,
+    // or cancelling does nothing until the pipeline reaches Coolify.
+    const app = await seedApp();
+    happyPathRoutes();
+    const controller = new AbortController();
+    const clock = createFakeClock();
+
+    await drive(
+      clock,
+      runDeployPipeline({
+        appId: app.id,
+        signal: controller.signal,
+        report: recorder(),
+        clock,
+      }),
+    );
+
+    const githubCall = calls.find((c) => c.url.includes("github.test"));
+    expect(githubCall?.signal).toBeInstanceOf(AbortSignal);
+    expect(githubCall!.signal!.aborted).toBe(false);
+    // Cancelling the deploy aborts the signal that request was given.
+    controller.abort();
+    expect(githubCall!.signal!.aborted).toBe(true);
   });
 });

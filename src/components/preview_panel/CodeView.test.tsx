@@ -216,6 +216,17 @@ describe("CodeView diff editing", () => {
     mocks.showWarning.mockReset();
   });
 
+  it("omits redundant version-diff header navigation and copy", () => {
+    const store = createStore();
+    mocks.previewState = versionDiffState("src/selected.ts");
+    mocks.versionChanges = [{ path: "src/selected.ts" }];
+
+    renderCodeView(store, ["src/selected.ts"]);
+
+    expect(screen.queryByTestId("close-version-diff")).toBeNull();
+    expect(screen.queryByText("preview.viewingVersionChanges")).toBeNull();
+  });
+
   it("opens the displayed version-diff path in the regular editor", () => {
     const store = createStore();
     mocks.previewState = versionDiffState("src/selected.ts");

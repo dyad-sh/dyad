@@ -73,9 +73,6 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
     selectedVersionId,
   );
 
-  // Exits version-diff mode (entered via the version history pane or the chat's
-  // modified-files card) and returns to the live file tree. Without this the
-  // Code tab would stay pinned to a commit diff with no in-context way back.
   const closeVersionDiff = () => {
     sendPreviewEvent({ type: "CLOSE_VERSION_DIFF" });
   };
@@ -392,31 +389,13 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
               <TooltipContent>{t("preview.backToEditor")}</TooltipContent>
             </Tooltip>
           )}
-          {isVersionDiffMode && (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    data-testid="close-version-diff"
-                    onClick={closeVersionDiff}
-                    className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
-                  />
-                }
-              >
-                <ArrowLeft size={16} />
-              </TooltipTrigger>
-              <TooltipContent>
-                {t("preview.closeVersionChanges")}
-              </TooltipContent>
-            </Tooltip>
-          )}
-          <div className="text-sm text-gray-500">
-            {isVersionDiffMode
-              ? t("preview.viewingVersionChanges")
-              : isStagedDiffMode
+          {!isVersionDiffMode && (
+            <div className="text-sm text-gray-500">
+              {isStagedDiffMode
                 ? t("preview.viewingStagedChanges")
                 : `${app.files?.length ?? 0} ${t("preview.files")}`}
-          </div>
+            </div>
+          )}
           <div className="flex-1" />
           {(isVersionDiffMode || isStagedDiffMode) && (
             <Tooltip>

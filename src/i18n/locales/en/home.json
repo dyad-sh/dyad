@@ -243,7 +243,6 @@
     "loadingChanges": "Loading changes...",
     "errorLoadingChanges": "Couldn't load changes for this version.",
     "noChangesInVersion": "No file changes in this version",
-    "viewingVersionChanges": "Viewing changes in this version",
     "noStagedChanges": "No staged changes",
     "failedToLoadChanges": "Couldn't load changes for this file. Select another file or try again.",
     "noChangesToDisplay": "No changes to display",
@@ -269,7 +268,6 @@
     "commitMessage": "Commit message",
     "commitMessagePlaceholder": "Enter commit message...",
     "filesToCommit": "Files to commit ({{count}})",
-    "closeVersionChanges": "Close diff and return to files",
     "sendToChat": "Send to chat",
     "systemMessages": "System Messages",
     "consoleFilters": {

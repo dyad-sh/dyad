@@ -36,7 +36,10 @@ export function useCoolifyDeploy(appId: number | null) {
     });
   }, [appId, queryClient]);
 
-  /** clearToken and repointing the instance rewrite every app's row, not just this one. */
+  /**
+   * Signing out and repointing the instance change every app's status, not
+   * just this one: the token they share is what makes a connection readable.
+   */
   const refreshAllStatuses = useCallback(async () => {
     await queryClient.invalidateQueries({ queryKey: queryKeys.coolify.all });
   }, [queryClient]);

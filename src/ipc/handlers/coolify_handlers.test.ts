@@ -144,3 +144,39 @@ describe("clearing the token", () => {
     expect(rows[0].coolifyServerUuid).toBeNull();
   });
 });
+
+describe("moving an app to a different server or project", () => {
+  it("releases the application, which cannot move with it", async () => {
+    // Coolify cannot move an application between servers, so keeping its id
+    // would send the next deploy back to the old one while the panel showed
+    // the new.
+    await call("coolify:save-connection", {
+      appId: 1,
+      connection: {
+        serverUuid: "srv-2",
+        projectUuid: "prj-1",
+        environmentName: "production",
+        domain: null,
+      },
+    });
+
+    expect(rows[0].coolifyServerUuid).toBe("srv-2");
+    expect(rows[0].coolifyApplicationUuid).toBeNull();
+    expect(rows[0].coolifyAppUrl).toBeNull();
+  });
+
+  it("keeps the application when only the domain changes", async () => {
+    await call("coolify:save-connection", {
+      appId: 1,
+      connection: {
+        serverUuid: "srv-1",
+        projectUuid: "prj-1",
+        environmentName: "production",
+        domain: "https://new.example.com",
+      },
+    });
+
+    expect(rows[0].coolifyApplicationUuid).toBe("app-1");
+    expect(rows[0].coolifyDomain).toBe("https://new.example.com");
+  });
+});

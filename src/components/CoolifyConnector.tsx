@@ -406,12 +406,25 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
                     serverUuid,
                     domain: trimmed,
                   });
-                  if (!dns.resolves) {
+                  // Only speak up about something actually detected: an
+                  // "unknown" verdict means the check could not run, and a
+                  // warning that appears when nothing is wrong gets ignored.
+                  //
+                  // The deploy itself succeeds; it is HTTPS that breaks, so
+                  // say that rather than implying the build fails.
+                  const consequence =
+                    "The app will still deploy, but HTTPS will not work.";
+                  if (dns.verdict === "points-elsewhere") {
                     toast.warning(
-                      dns.expectedIp
-                        ? `${trimmed} does not point at ${dns.expectedIp} yet. Coolify will ask for a certificate as soon as it is saved, which fails until DNS updates.`
-                        : `Could not confirm where ${trimmed} points.`,
+                      `${dns.hostname} points at ${dns.actualIps.join(", ")}, not your server at ${dns.expectedIp}.`,
+                      {
+                        description: `${consequence} Point it at ${dns.expectedIp}, then save.`,
+                      },
                     );
+                  } else if (dns.verdict === "no-records") {
+                    toast.warning(`${dns.hostname} has no DNS record yet.`, {
+                      description: `${consequence} Add an A record pointing at ${dns.expectedIp}, then save.`,
+                    });
                   }
                 } catch {
                   toast.warning(

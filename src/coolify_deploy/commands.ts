@@ -507,6 +507,11 @@ export async function runDeployPipeline({
   // recreate would report on an application that no longer exists.
   let deploymentUuid = (recreated ? null : resumeDeploymentUuid) ?? undefined;
   if (deploymentUuid) {
+    // Tell the machine before probing. Everything below can throw, and the id
+    // only survives a failure if the running state is already holding it —
+    // otherwise the retry that was meant to adopt this build forgets it and
+    // every later attempt is refused for a build that is still going.
+    report.deploymentStarted(deploymentUuid);
     // Only a 404 means the deployment is genuinely gone. Reading any other
     // failure as "not running" would start a second build alongside the one
     // this retry exists to adopt, on a server already busy with it.

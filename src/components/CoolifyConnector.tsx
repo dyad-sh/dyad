@@ -19,6 +19,7 @@ import { selectCoolifyDeployCapabilities } from "@/coolify_deploy/capabilities";
 import { getErrorMessage } from "@/lib/errors";
 import { COOLIFY_REQUIRED_SCOPES } from "@/shared/coolify_scopes";
 import { coolifyInsecureWarning } from "@/components/coolify_insecure_warning";
+import { normalizeCoolifyDomain } from "@/coolify_deploy/domain";
 import {
   isSecureInstanceUrl,
   type CoolifyDeployStage,
@@ -108,7 +109,9 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
   const can = selectCoolifyDeployCapabilities(snapshot);
   const hasGithubRepo = Boolean(app?.githubOrg && app?.githubRepo);
   const insecureWarning = coolifyInsecureWarning({
-    hasDomain: Boolean(domain.trim()),
+    isHttps: Boolean(
+      normalizeCoolifyDomain(domain)?.toLowerCase().startsWith("https:"),
+    ),
     hasNeon: Boolean(app?.neonProjectId),
     hasSupabase: Boolean(app?.supabaseProjectId),
   });
@@ -373,17 +376,19 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
               {insecureWarning === "breaks" ? (
                 <p>
                   <strong>
-                    Without a domain, this app will not work once deployed.
+                    Without HTTPS, this app will not work once deployed.
                   </strong>{" "}
-                  Neon Auth needs an encrypted connection, and the generated
-                  address is plain HTTP — the page will fail to load rather than
-                  degrade. Add a domain with HTTPS.
+                  Neon Auth needs an encrypted connection, and the page will
+                  fail to load rather than degrade. Give this app an https://
+                  domain — the generated address is plain HTTP, and so is a
+                  domain entered as http://.
                 </p>
               ) : (
                 <p>
-                  Without a domain the app is served over plain HTTP, so
-                  anything your users type — including passwords — can be read
-                  by anything on the network between them and the server.
+                  Without HTTPS the app is served in the clear, so anything your
+                  users type — including passwords — can be read by anything on
+                  the network between them and the server. The generated address
+                  is plain HTTP, and so is a domain entered as http://.
                 </p>
               )}
             </div>

@@ -79,7 +79,7 @@ const previewSession: PreviewSession = {
 };
 
 describe("version diff context", () => {
-  it("keeps the selected version and exit action visible together", () => {
+  it("hides the version label in compact layouts while keeping exit available", () => {
     const onExit = vi.fn();
     render(
       createElement(VersionDiffContext, {
@@ -93,6 +93,12 @@ describe("version diff context", () => {
     expect(screen.getByTestId("version-diff-context").textContent).toContain(
       "Viewing Version 2",
     );
+    expect(
+      screen.getByTestId("version-diff-label").className.split(" "),
+    ).toEqual(expect.arrayContaining(["hidden", "@md:inline"]));
+    expect(
+      screen.getByTestId("exit-version-view-button").className.split(" "),
+    ).toContain("py-1.5");
     fireEvent.click(screen.getByRole("button", { name: "Exit version view" }));
     expect(onExit).toHaveBeenCalledOnce();
   });

@@ -114,13 +114,18 @@ export function VersionDiffContext({
       data-testid="version-diff-context"
       className="no-app-region-drag flex min-w-0 shrink items-center overflow-hidden rounded-md border border-primary/20 bg-primary/5 text-xs text-muted-foreground"
     >
-      <span className="truncate px-2 py-1.5">{versionLabel}</span>
+      <span
+        data-testid="version-diff-label"
+        className="hidden truncate px-2 py-1.5 @md:inline"
+      >
+        {versionLabel}
+      </span>
       <button
         type="button"
         data-testid="exit-version-view-button"
         onClick={onExit}
         aria-label={exitAriaLabel}
-        className="flex shrink-0 cursor-pointer items-center gap-1 self-stretch border-l border-primary/20 px-2 font-medium text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+        className="flex shrink-0 cursor-pointer items-center gap-1 self-stretch border-primary/20 px-2 py-1.5 font-medium text-primary transition-colors @md:border-l hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
       >
         <X size={13} aria-hidden="true" />
         <span>{exitLabel}</span>
@@ -388,7 +393,7 @@ export const PreviewToolbar = () => {
     hidden.includes("problems") && !!displayCount;
 
   return (
-    <div className="flex items-center gap-2 border-b p-2">
+    <div className="@container flex items-center gap-2 border-b p-2">
       <div
         ref={tabsAreaRef}
         className="relative flex min-w-0 flex-1 items-center gap-1"

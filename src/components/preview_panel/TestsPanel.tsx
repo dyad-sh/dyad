@@ -760,13 +760,21 @@ export function TestsPanel() {
   // Shares the connector card's mutation so both surfaces stay on one code path
   // and a switch here also invalidates the connector's legacy-key query.
   const switchKey = useSwitchToPublishableKey();
-  // Scoped to the app that was switched: a pending switch resolving after the
-  // user selects another app must not mark that app's key as updated.
-  const [switchedKeyAppId, setSwitchedKeyAppId] = useState<number | null>(null);
-  // A fresh run re-detects the key, so let its verdict govern the button again.
-  useEffect(() => setSwitchedKeyAppId(null), [runState.isolation]);
+  // Keyed by app, and holding the isolation snapshot the switch answered, so
+  // this survives the panel switching between apps: run state is retained per
+  // app, and a single "which app did I just switch?" id would let a migrated
+  // app's warning come back as soon as the user touched another one.
+  //
+  // Storing the snapshot rather than a bare flag is what keeps a FRESH run
+  // authoritative: a new run produces a new isolation object, which no longer
+  // matches, so its own verdict governs the button again.
+  const [switchedKeyRuns, setSwitchedKeyRuns] = useState<
+    ReadonlyMap<number, unknown>
+  >(() => new Map());
   const keySwitched =
-    selectedAppId != null && switchedKeyAppId === selectedAppId;
+    selectedAppId != null &&
+    runState.isolation != null &&
+    switchedKeyRuns.get(selectedAppId) === runState.isolation;
   const isSwitchingKey =
     switchKey.isPending && switchKey.variables?.appId === selectedAppId;
   // Clears as soon as the user takes the fix, so the sentence claiming the key
@@ -777,19 +785,28 @@ export function TestsPanel() {
   // Depends on mutateAsync, not the mutation object: useMutation returns a new
   // object every render, which would rebuild this callback each time.
   const switchKeyAsync = switchKey.mutateAsync;
+  const switchedIsolation = runState.isolation;
   const switchToPublishableKey = useCallback(async () => {
     if (selectedAppId == null) return;
     const appId = selectedAppId;
+    // Captured before the await: a switch resolving after the user selects
+    // another app must record the run it actually answered, not whatever is
+    // on screen by then.
+    const isolation = switchedIsolation;
+    const markSwitched = () =>
+      setSwitchedKeyRuns((current) =>
+        new Map(current).set(appId, isolation ?? null),
+      );
     try {
       const { outcome } = await switchKeyAsync({ appId });
       // Only a real switch (or a key that was already current) may retire the
       // warning. "not-applicable" means the key is still legacy and Dyad
       // couldn't act on it, so the offer has to stay on screen.
       if (outcome === "switched") {
-        setSwitchedKeyAppId(appId);
+        markSwitched();
         showSuccess(t("integrations.supabase.apiKeyUpdated"));
       } else if (outcome === "already-current") {
-        setSwitchedKeyAppId(appId);
+        markSwitched();
         showInfo(t("integrations.supabase.apiKeyAlreadyCurrent"));
       } else {
         showInfo(t("integrations.supabase.apiKeyNotUpdated"));
@@ -797,7 +814,7 @@ export function TestsPanel() {
     } catch (error) {
       showError(error);
     }
-  }, [selectedAppId, switchKeyAsync, t]);
+  }, [selectedAppId, switchKeyAsync, switchedIsolation, t]);
 
   const runTests = useCallback(
     async (file?: string, line?: number) => {

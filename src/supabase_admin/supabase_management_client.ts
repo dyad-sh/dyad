@@ -577,7 +577,13 @@ export async function getSupabaseProjectName(
  */
 export interface SupabaseApiKey {
   name: string;
-  api_key: string;
+  /**
+   * Absent or null for a secret key fetched without `reveal` — Supabase lists
+   * the entry but withholds its value. Every consumer has to guard before using
+   * it; a redacted entry is a key that exists, not a key you can authenticate
+   * with.
+   */
+  api_key?: string | null;
   type?: "publishable" | "secret" | "legacy" | null;
 }
 
@@ -589,13 +595,15 @@ export interface SupabaseApiKey {
  * `keys.find` — and inside `detectLegacyAppKey`, which swallows failures, it
  * would silently suppress the very warning this exists to raise.
  *
- * Loose on purpose: unknown `type` values pass through as-is (Supabase may add
- * more) and only `name`/`api_key` are required, so a new field can't break key
- * selection.
+ * Loose on purpose: only `name` is required, unknown `type` values pass through
+ * as-is (Supabase may add more), and `api_key` may be absent or null — that is
+ * exactly what a secret key looks like on the common no-reveal path, and
+ * rejecting it would fail key loading for a response that is perfectly valid.
+ * Consumers already guard the value before use.
  */
 const SupabaseApiKeySchema = z.object({
   name: z.string(),
-  api_key: z.string(),
+  api_key: z.string().nullish(),
   type: z.string().nullish(),
 });
 const SupabaseApiKeysSchema = z.array(SupabaseApiKeySchema);

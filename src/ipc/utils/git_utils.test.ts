@@ -324,6 +324,19 @@ describe("isGitPathClean", () => {
     ).resolves.toBe(false);
   });
 
+  // "Clean" authorizes an auto-commit, so a user config that merely HIDES
+  // untracked files must not make a wholly untracked file look committed —
+  // that would sweep every line the user wrote into Dyad's commit.
+  it("is dirty for an untracked file even with status.showUntrackedFiles=no", async () => {
+    const repo = await makeRepo();
+    await runGit(repo, ["config", "status.showUntrackedFiles", "no"]);
+    await fs.promises.writeFile(path.join(repo, "new.ts"), "new\n");
+
+    await expect(
+      isGitPathClean({ path: repo, filepath: "new.ts" }),
+    ).resolves.toBe(false);
+  });
+
   // Scoped to the path asked about: unrelated work elsewhere in the app is
   // exactly what the pathspec commit already leaves alone.
   it("ignores changes to other files", async () => {

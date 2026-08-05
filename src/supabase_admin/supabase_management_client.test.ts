@@ -171,6 +171,51 @@ describe("getProjectApiKeys", () => {
     expect((error as DyadError).kind).toBe(DyadErrorKind.External);
   });
 
+  // Without `reveal`, Supabase lists secret keys but withholds their values.
+  // That is the common path (client generation, legacy-key detection), so
+  // rejecting it would fail key loading for a perfectly valid response and
+  // silently suppress the migration warning.
+  it.each([
+    ["null", null],
+    ["omitted", undefined],
+  ])(
+    "accepts a secret entry whose value is redacted (%s)",
+    async (_l, value) => {
+      const secret: Record<string, unknown> = {
+        name: "default",
+        type: "secret",
+      };
+      if (value !== undefined) {
+        secret.api_key = value;
+      }
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          async () =>
+            new Response(
+              JSON.stringify([
+                {
+                  name: "anon",
+                  type: "publishable",
+                  api_key: "sb_publishable_a",
+                },
+                secret,
+              ]),
+              { status: 200 },
+            ),
+        ),
+      );
+
+      const keys = await getProjectApiKeys({
+        projectId: "proj-1",
+        organizationSlug: "org-1",
+      });
+
+      expect(keys).toHaveLength(2);
+      expect(keys[0].api_key).toBe("sb_publishable_a");
+    },
+  );
+
   // Supabase may add key types; an unknown one must not fail the whole request,
   // because the keys around it are still what the app authenticates with.
   it("passes through keys carrying an unfamiliar type", async () => {

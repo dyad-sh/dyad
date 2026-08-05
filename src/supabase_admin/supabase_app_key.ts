@@ -28,14 +28,54 @@ const PUBLISHABLE_KEY_PREFIX = "sb_publishable_";
 /** `{"alg":…` base64url-encoded — the opening of every JWS header. */
 const JWT_PREFIX = "eyJ";
 
+/** The claims a Supabase legacy key carries, as far as we rely on them. */
+interface LegacyKeyClaims {
+  role?: unknown;
+  ref?: unknown;
+}
+
+function decodeJwtClaims(key: string): LegacyKeyClaims | undefined {
+  const segments = key.split(".");
+  if (!key.startsWith(JWT_PREFIX) || segments.length !== 3) {
+    return undefined;
+  }
+  try {
+    const claims: unknown = JSON.parse(
+      Buffer.from(segments[1], "base64url").toString("utf8"),
+    );
+    // A JSON payload that isn't an object tells us nothing; treat it as
+    // undecodable rather than reading properties off a string or number.
+    return claims && typeof claims === "object"
+      ? (claims as LegacyKeyClaims)
+      : undefined;
+  } catch {
+    // Not a decodable JWT — that alone disqualifies it below.
+    return undefined;
+  }
+}
+
 /**
- * Whether a value has the shape of a legacy Supabase key: a JWT with the three
- * dot-separated segments. Only ever a fallback for a key the project no longer
- * lists (see `resolveLegacyAppKey`); a listed key is classified by what
- * Supabase says it is, never by how it looks.
+ * Whether a value is recognisably THIS project's legacy `anon` key, judged from
+ * the key's own claims.
+ *
+ * Only ever a fallback for a key the project no longer lists: a listed key is
+ * classified by what Supabase says it is, never by how it looks. But shape
+ * alone would be far too loose here, because the switch overwrites the value —
+ * a `service_role` JWT is the same shape, and so is another project's `anon`
+ * key, so either could be silently downgraded or repointed. Both claims are
+ * therefore required:
+ *
+ * - `role` must be `anon`, which excludes every secret/service_role key.
+ * - `ref` must be this project's ref, which excludes other projects' keys.
+ *
+ * Supabase issues both claims on legacy keys, so a key missing either is not
+ * one we can vouch for and is left alone. The verification is deliberately
+ * NOT cryptographic: this decides whether to OFFER a replacement, and the
+ * claims are the app's own generated code, not an attacker-supplied token.
  */
-function isLegacyJwtShaped(key: string): boolean {
-  return key.startsWith(JWT_PREFIX) && key.split(".").length === 3;
+function isProjectLegacyAnonKey(key: string, projectId: string): boolean {
+  const claims = decodeJwtClaims(key);
+  return claims?.role === "anon" && claims.ref === projectId;
 }
 /**
  * The key literal the app authenticates with, as an assignment
@@ -271,10 +311,10 @@ async function resolveLegacyAppKey({
     : // Not listed at all. Disabling is only the first half of Supabase's
       // migration — the end state is deletion, and a rotated key leaves the
       // same trace. Going quiet here would drop the warning at exactly the
-      // moment the app is fully broken, so a JWT-shaped key the project no
-      // longer knows about still counts. The shape check matters: it keeps
-      // the offer off values that were never a Supabase legacy key.
-      isLegacyJwtShaped(appKey);
+      // moment the app is fully broken, so a key the project no longer knows
+      // about still counts — but only when its own claims identify it as THIS
+      // project's anon key, since the switch overwrites whatever it matches.
+      isProjectLegacyAnonKey(appKey, projectId);
   if (!isLegacy) {
     return NOT_APPLICABLE;
   }

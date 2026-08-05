@@ -27,10 +27,20 @@ const gitAddMock = vi.mocked(gitAdd);
 const gitCommitMock = vi.mocked(gitCommit);
 const isGitPathCleanMock = vi.mocked(isGitPathClean);
 
-// Three dot-separated segments, like the real thing: the unlisted-key fallback
-// keys off JWT shape, so a two-segment stand-in wouldn't exercise it.
-const LEGACY_ANON =
-  "eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiYW5vbiJ9.legacy-anon-signature";
+/**
+ * A real-shaped legacy key: three base64url segments carrying the `role` and
+ * `ref` claims Supabase issues. The unlisted-key fallback reads those claims,
+ * so a stand-in without them wouldn't exercise it.
+ */
+function legacyJwt(claims: Record<string, string>): string {
+  const encode = (value: object) =>
+    Buffer.from(JSON.stringify(value)).toString("base64url");
+  return `${encode({ alg: "HS256", typ: "JWT" })}.${encode(claims)}.signature`;
+}
+
+const LEGACY_ANON = legacyJwt({ role: "anon", ref: "proj-1" });
+const LEGACY_SERVICE_ROLE = legacyJwt({ role: "service_role", ref: "proj-1" });
+const OTHER_PROJECT_ANON = legacyJwt({ role: "anon", ref: "proj-2" });
 const PUBLISHABLE = "sb_publishable_abc123";
 
 // A migrated project still lists the legacy pair alongside the new keys.
@@ -39,7 +49,7 @@ const PROJECT_API_KEYS = [
   {
     name: "service_role",
     type: "legacy" as const,
-    api_key: "eyJhbGciOiJIUzI1NiJ9.legacy-service-role",
+    api_key: LEGACY_SERVICE_ROLE,
   },
   { name: "default", type: "publishable" as const, api_key: PUBLISHABLE },
   { name: "default", type: "secret" as const, api_key: "sb_secret_xyz789" },
@@ -416,10 +426,15 @@ describe("switchAppToPublishableKey", () => {
     );
   });
 
-  // The unlisted fallback keys off JWT shape, so a hand-written placeholder
-  // that was never a Supabase key doesn't get quietly overwritten.
-  it("leaves an unlisted key alone when it isn't JWT-shaped", async () => {
-    const appPath = makeApp("not-a-real-key");
+  // The switch OVERWRITES whatever the fallback matches, so shape alone is far
+  // too loose: each of these is a three-segment JWT that must be left alone.
+  it.each([
+    ["a value that isn't a JWT at all", "not-a-real-key"],
+    ["a service_role key, which must not be downgraded", LEGACY_SERVICE_ROLE],
+    ["another project's anon key", OTHER_PROJECT_ANON],
+    ["a JWT with no role/ref claims", legacyJwt({ sub: "whoever" })],
+  ])("leaves an unlisted key alone: %s", async (_label, key) => {
+    const appPath = makeApp(key);
     getProjectApiKeysMock.mockResolvedValue([
       { name: "default", type: "publishable" as const, api_key: PUBLISHABLE },
     ]);
@@ -428,7 +443,7 @@ describe("switchAppToPublishableKey", () => {
     await expect(switchAppToPublishableKey(args(appPath))).resolves.toBe(
       "not-applicable",
     );
-    expect(readClient(appPath)).toContain("not-a-real-key");
+    expect(readClient(appPath)).toContain(key);
   });
 
   // Comment masking alone isn't enough: a multiline template literal carries

@@ -478,13 +478,25 @@ export async function isGitStatusClean({
  * the user was already editing must not have those edits folded into Dyad's
  * commit, because `git commit -- <path>` records the whole working-tree version
  * of that path, not just the hunk Dyad changed.
+ *
+ * `--untracked-files=all` is passed explicitly rather than relying on the
+ * default: a user with `status.showUntrackedFiles=no` would otherwise get an
+ * empty result for a wholly untracked file, and "clean" here authorizes a
+ * commit — which would sweep the entire file, all of the user's content in it
+ * included, into a commit labelled as a one-line key swap.
  */
 export async function isGitPathClean({
   path,
   filepath,
 }: GitFileParams): Promise<boolean> {
   const result = await execGit(
-    ["status", "--porcelain", "--", normalizePath(filepath)],
+    [
+      "status",
+      "--porcelain",
+      "--untracked-files=all",
+      "--",
+      normalizePath(filepath),
+    ],
     path,
   );
   if (result.exitCode !== 0) {

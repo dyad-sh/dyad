@@ -159,6 +159,11 @@ change before the underlying Git subprocess finishes. Wait for the expected
 branch and a clean `git status --porcelain` before making follow-up mutations or
 ending the test.
 
+The fake GitHub server records push events when it parses the receive-pack
+request, before `git-receive-pack` finishes. Use them as evidence of a push
+attempt, then wait for the authoritative operation-success UI/state before
+asserting local and remote refs.
+
 When a hybrid surface can temporarily return to a loading state during query
 invalidation, await the exact control with `findByRole` before interacting.
 Finding separate page text first does not guarantee a later `getByRole` is

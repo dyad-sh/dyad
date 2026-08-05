@@ -16,7 +16,6 @@ testSkipIfWindows(
 
     await po.navigation.goToAppsTab();
     await po.sendPrompt("hi");
-    await po.previewPanel.selectPreviewMode("preview");
 
     // Cloud sandbox provisioning can be slow; retry the visibility check to
     // avoid flakes when the iframe takes slightly longer than EXTRA_LONG.

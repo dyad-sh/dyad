@@ -35,6 +35,7 @@ const POLL_INTERVAL_MS = 5_000;
 const POLL_TIMEOUT_MS = 15 * 60 * 1000;
 /** About a minute of unreachable instance before the deploy gives up. */
 const MAX_POLL_FAILURES = 12;
+const GITHUB_TIMEOUT_MS = 30_000;
 const TERMINAL_STATUSES = ["finished", "failed", "error", "cancelled-by-user"];
 
 /** How the pipeline reports progress back to the machine. */
@@ -67,6 +68,11 @@ function throwIfAborted(signal: AbortSignal): void {
   }
 }
 
+/** Cancels with the deployment, and independently if GitHub goes quiet. */
+function githubSignal(signal: AbortSignal): AbortSignal {
+  return AbortSignal.any([signal, AbortSignal.timeout(GITHUB_TIMEOUT_MS)]);
+}
+
 function sleep(clock: Clock, ms: number): Promise<void> {
   return new Promise((resolve) => clock.schedule(resolve, ms));
 }
@@ -93,10 +99,12 @@ async function ensureGithubDeployKey({
   owner,
   repo,
   report,
+  signal,
 }: {
   owner: string;
   repo: string;
   report: DeployReporter;
+  signal: AbortSignal;
 }): Promise<string> {
   const keyName = repoKeyName(owner, repo);
   await ensureDeployKey(keyName);
@@ -118,6 +126,7 @@ async function ensureGithubDeployKey({
 
   const res = await fetch(`${getGitHubApiBase()}/repos/${owner}/${repo}/keys`, {
     method: "POST",
+    signal: githubSignal(signal),
     headers: {
       Authorization: `Bearer ${accessToken}`,
       Accept: "application/vnd.github+json",
@@ -139,6 +148,7 @@ async function ensureGithubDeployKey({
     const listed = await fetch(
       `${getGitHubApiBase()}/repos/${owner}/${repo}/keys`,
       {
+        signal: githubSignal(signal),
         headers: {
           Authorization: `Bearer ${accessToken}`,
           Accept: "application/vnd.github+json",
@@ -395,6 +405,7 @@ export async function runDeployPipeline({
     owner: app.githubOrg,
     repo: app.githubRepo,
     report,
+    signal,
   });
   throwIfAborted(signal);
 

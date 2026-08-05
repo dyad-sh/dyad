@@ -507,6 +507,31 @@ describe("dyad recorder client", () => {
     ]);
   });
 
+  it("names the root element without a body prefix", () => {
+    const r = setup();
+    r.setHtml(`<div></div>`);
+    r.activate();
+    r.click(r.doc.documentElement);
+    r.settleClick();
+
+    // `body > html` is not a selector; the root has to stand alone.
+    expect(r.actions).toEqual([
+      { kind: "click", locator: { kind: "css", value: "html" } },
+    ]);
+  });
+
+  it("records nothing for a file picker, which replay cannot reproduce", () => {
+    const r = setup();
+    r.setHtml(`<input type="file" aria-label="Avatar" />`);
+    r.activate();
+    r.click(r.doc.querySelector("input"));
+    r.settleClick();
+
+    // The chosen file is the user's own and unreadable from here; a bare click
+    // replays as "open the OS file chooser and wait forever".
+    expect(r.actions).toEqual([]);
+  });
+
   it("anchors a CSS fallback at the nearest id instead of body", () => {
     const r = setup();
     // An id is already unique, so it is the better root — and prefixing `body`

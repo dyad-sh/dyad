@@ -617,6 +617,29 @@ export async function runAppTestsWithIsolation({
   // at the temporary branch, so the caller has to be told rather than left to
   // relaunch it against isolated data.
   let envRestoreFailed = false;
+  /**
+   * Fold a failed `.env.local` restore into a result. Applied on BOTH exits —
+   * an unexpected rejection inside the lock must not swallow it, or the run
+   * reports an ordinary infrastructure error while the app is still pointed at
+   * the temporary branch.
+   */
+  const withEnvRestoreWarning = (
+    result: RunAppTestsResult,
+  ): RunAppTestsResult => {
+    if (!envRestoreFailed) return result;
+    const restoreMessage =
+      "Dyad couldn't restore your app's real database settings after the test run. Restore .env.local before running the app again.";
+    return {
+      ...result,
+      // Appended rather than substituted: an isolation-setup failure explains
+      // why the run produced nothing, and replacing it would hide that.
+      infraError: {
+        message: result.infraError
+          ? `${result.infraError.message}\n\n${restoreMessage}`
+          : restoreMessage,
+      },
+    };
+  };
   try {
     // Wait for the prior run's full lifecycle (prepare → run → teardown) to
     // finish before swapping env. Otherwise a Stop-then-Run could race the
@@ -746,31 +769,18 @@ export async function runAppTestsWithIsolation({
         }
       },
     );
-    if (envRestoreFailed) {
-      const restoreMessage =
-        "Dyad couldn't restore your app's real database settings after the test run. Restore .env.local before running the app again.";
-      finalResult = {
-        ...finalResult,
-        // Appended rather than substituted: an isolation-setup failure explains
-        // why the run produced nothing, and replacing it would hide that.
-        infraError: {
-          message: finalResult.infraError
-            ? `${finalResult.infraError.message}\n\n${restoreMessage}`
-            : restoreMessage,
-        },
-      };
-    }
+    finalResult = withEnvRestoreWarning(finalResult);
     return finalResult;
   } catch (error) {
     // Surface an unexpected failure as an infra error on the run-state event so
     // the panel leaves its spinner state, then rethrow for the caller.
-    finalResult = {
+    finalResult = withEnvRestoreWarning({
       appId,
       results: [],
       infraError: {
         message: error instanceof Error ? error.message : String(error),
       },
-    };
+    });
     // Anything reaching here is a test-infrastructure failure (isolation setup,
     // teardown, spawn), not a product exception — classify it so telemetry
     // routes it by kind instead of counting it as unclassified.

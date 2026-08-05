@@ -127,6 +127,7 @@ import {
 } from "@/supabase_admin/supabase_utils";
 import { getVercelTeamSlug } from "../utils/vercel_utils";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
+import { deleteTempTestBranch } from "../utils/neon_test_branch";
 import type { AppSearchResult } from "@/lib/schemas";
 
 import {
@@ -409,23 +410,26 @@ async function deleteAppById(
   // spinning. The renderer's own recorder cleanup can't help: it runs only
   // after this call returns. Same end-before-lock step as stop and restart;
   // nothing here needs the dev server back, and the app is about to be gone.
-  //
-  // `discardEnvironment` because that last part changes what teardown owes us:
-  // a failed `.env.local` restore normally keeps the temporary Neon branch, on
-  // the assumption the app row still records it and can be reconciled later.
-  // That row is about to be deleted, so the branch has to go now or it is
-  // orphaned with nothing left pointing at it.
   const { envRestored } = await endRecordingForApp(appId, "app-stopped", {
     skipRestart: true,
-    discardEnvironment: true,
   });
   if (!envRestored) {
     // The app directory is about to be removed, so a stale `.env.local` inside
     // it goes with it — this is worth a log line for diagnosis, not a refusal.
     logger.warn(
-      `App ${appId}: isolation teardown couldn't restore .env.local before deletion; the temporary branch was discarded anyway`,
+      `App ${appId}: isolation teardown couldn't restore .env.local before deletion`,
     );
   }
+
+  // A teardown that couldn't restore the environment deliberately KEEPS the
+  // temporary Neon branch, because the app row still records its id and the
+  // startup sweep can reconcile it later. Deleting that row is what would
+  // strand it, so read the id now — off the row rather than off the session,
+  // which also covers a recording that ended long before this delete.
+  const appRow = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  const strandedTestBranch =
+    appRow?.neonTestBranchId && appRow.neonProjectId ? appRow : null;
+
   const appRunDeletion = appRunActorService.beginAppDeletion(appId);
   let appRunDeletionCommitted = false;
   try {
@@ -443,6 +447,21 @@ async function deleteAppById(
       appRunDeletion.release();
     } else {
       appRunDeletion.abort();
+    }
+  }
+
+  // Only after the deletion has committed — the throw above skips this. Doing
+  // it earlier means a deletion that then fails leaves a live app pointed at a
+  // database that no longer exists, which is worse than the leak it prevents.
+  if (strandedTestBranch) {
+    try {
+      await deleteTempTestBranch(strandedTestBranch);
+    } catch (error) {
+      // The row is gone, so nothing can reconcile this later. Logged loudly
+      // rather than failing a deletion that has already happened.
+      logger.error(
+        `App ${appId} was deleted but its temporary Neon branch ${strandedTestBranch.neonTestBranchId} could not be removed; it must be deleted manually: ${error}`,
+      );
     }
   }
 }
@@ -2359,7 +2378,7 @@ export function registerAppHandlers() {
             DyadErrorKind.Validation,
           );
         }
-        await db
+        const updated = await db
           .update(apps)
           .set({
             neonProjectId: "test-project-id",
@@ -2367,7 +2386,17 @@ export function registerAppHandlers() {
             neonActiveBranchId: "test-development-branch-id",
             neonDevelopmentAuthCookieSecret: "test-cookie-secret",
           })
-          .where(eq(apps.id, matches[0].id));
+          .where(eq(apps.id, matches[0].id))
+          .returning({ id: apps.id });
+        // The row can be deleted between the lookup and the write; a zero-row
+        // update would otherwise report success and leave the E2E to fail later
+        // on a fixture that was never applied.
+        if (updated.length !== 1) {
+          throw new DyadError(
+            `App ${appName} was deleted before the Neon auth fixture was applied`,
+            DyadErrorKind.NotFound,
+          );
+        }
       },
     );
   }

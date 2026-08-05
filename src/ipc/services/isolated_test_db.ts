@@ -65,18 +65,6 @@ export interface TeardownOptions {
    * restarted twice, once here and once by them.
    */
   skipRestart?: boolean;
-  /**
-   * The app itself is going away, so delete the temporary Neon branch even if
-   * `.env.local` couldn't be restored.
-   *
-   * Normally a failed restore deliberately KEEPS the branch: the app is still
-   * pointed at it, and deleting it would leave the app aimed at a dead
-   * database, with the row's branch id the only thing reconciliation could use
-   * to retry. Neither applies once the app row is about to be deleted — that
-   * row is where the branch id lives, so leaving the branch behind orphans it
-   * for good.
-   */
-  discardEnvironment?: boolean;
 }
 
 export interface TeardownResult {
@@ -204,7 +192,11 @@ export async function prepareIsolatedTestDatabase({
         }
       }
     }
-    if (branchId && (envRestored || options.discardEnvironment)) {
+    // A failed restore keeps the branch on purpose: the app is still pointed at
+    // it, and the row's id is what the startup sweep reconciles from. App
+    // deletion — the one case where that row is about to disappear — handles the
+    // branch itself, after the deletion commits.
+    if (branchId && envRestored) {
       // deleteTempTestBranch reads neonTestBranchId off the row; our in-memory
       // `app` is stale, so pass the branch we actually created.
       try {

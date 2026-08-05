@@ -38,12 +38,6 @@ export interface EndRecordingOptions {
    * twice: once putting the real `.env.local` back, once for the actual restart.
    */
   skipRestart?: boolean;
-  /**
-   * The app is being deleted, so isolation's cloud resources must go even if
-   * the local environment couldn't be restored — the app row about to be
-   * removed is the only place the temporary branch id is recorded.
-   */
-  discardEnvironment?: boolean;
 }
 
 export const activeRecordings = new Map<number, ActiveRecording>();

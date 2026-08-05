@@ -141,6 +141,17 @@
     );
   }
 
+  /**
+   * A file picker. Nothing here can be replayed: the value is a file the user
+   * chose from their own machine, which the page cannot read and this recorder
+   * has no business capturing. A recorded `click()` is worse than no step —
+   * replay opens the OS file chooser and the test hangs there.
+   */
+  function isFileInput(el) {
+    if (!el || el.tagName !== "INPUT") return false;
+    return (el.getAttribute("type") || "").toLowerCase() === "file";
+  }
+
   function isPasswordField(el) {
     if (!el || el.tagName !== "INPUT") return false;
     return (el.getAttribute("type") || "text").toLowerCase() === "password";
@@ -694,11 +705,15 @@
         value: el === document.documentElement ? "html" : "body",
       };
     }
-    // Anchored at <body> unless the walk already terminated on an id. A bare
-    // `div:nth-of-type(1) > div` is a pattern, not a path: it matches anywhere
-    // that shape recurs, so Playwright's strict mode fails the step or picks
-    // the wrong element. `>` from body keeps it a single rooted chain.
-    if (!parts[0].startsWith("#")) parts.unshift("body");
+    // Anchored at <body> unless the walk already terminated on an id, or on
+    // <html> itself — `body > html` is not a thing, and neither is
+    // `body > html > head`. A bare `div:nth-of-type(1) > div` is a pattern, not
+    // a path: it matches anywhere that shape recurs, so Playwright's strict mode
+    // fails the step or picks the wrong element. `>` from body keeps it a single
+    // rooted chain.
+    if (parts[0] !== "html" && !parts[0].startsWith("#")) {
+      parts.unshift("body");
+    }
     return { kind: "css", value: parts.join(" > ") };
   }
 
@@ -846,6 +861,7 @@
       if (
         isCheckboxOrRadio(control) ||
         isValuePicker(control) ||
+        isFileInput(control) ||
         control.tagName === "SELECT" ||
         isEditable(control)
       ) {

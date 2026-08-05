@@ -106,12 +106,18 @@ export function useTestRecorder({
   // something to hand back; the attempt object is its identity, and marking it
   // cancelled is what tells the start to walk away when it finally returns.
   const startingAppsRef = useRef(new Map<number, StartAttempt>());
-  // Apps whose session ended in a failure the user has already been shown.
-  // `recording:ended` and the `stopRecording` reply travel different IPC
-  // interfaces, so the error can land first and be overwritten by the review
-  // that follows — leaving the user in front of a recording to approve with no
-  // sign that isolation teardown left their environment broken.
-  const failedSessionsRef = useRef(new Set<number>());
+  // Sessions that ended in a failure the user has already been shown, keyed by
+  // app and carrying the session it belonged to. `recording:ended` and the
+  // `stopRecording` reply travel different IPC interfaces, so the error can land
+  // first and be overwritten by the review that follows — leaving the user in
+  // front of a recording to approve with no sign that isolation teardown left
+  // their environment broken.
+  //
+  // The session id matters because teardown takes seconds: a late failure from a
+  // session the user has already replaced must not cancel the replacement's
+  // review. `undefined` means the ending didn't name a session, which is
+  // consumed by whoever asks — an unattributable failure fails closed.
+  const failedSessionsRef = useRef(new Map<number, string | undefined>());
   // Distinguishes a real unmount from the app-change re-run of the release effect
   // below; refs survive unmount, so an app-id comparison alone still looks
   // satisfied. Re-armed in the effect body because StrictMode's dev
@@ -244,6 +250,29 @@ export function useTestRecorder({
     [setRecordingState],
   );
 
+  /**
+   * Settle a sign-in this app is still waiting on, rather than just forgetting
+   * it.
+   *
+   * `authenticate` otherwise resolves only on its 30-second timeout, and
+   * `beginRecording` stays parked on that await — holding the app's entry in
+   * `startingAppsRef`, which is what refuses a fresh start. Every path that
+   * walks away from a recording has to release the next one immediately.
+   *
+   * Declared above the `recording:ended` subscription because that effect lists
+   * it as a dependency, and a dependency array is evaluated during render.
+   */
+  const settlePendingAuth = useCallback(
+    (targetAppId: number, error: string) => {
+      if (pendingAuthRef.current?.appId !== targetAppId) return;
+      pendingAuthRef.current = null;
+      const pendingAuthReady = authReadyRef.current;
+      authReadyRef.current = null;
+      pendingAuthReady?.({ ok: false, error });
+    },
+    [],
+  );
+
   // Handle messages coming up from the preview iframe.
   useEffect(() => {
     const handler = (e: MessageEvent) => {
@@ -334,6 +363,11 @@ export function useTestRecorder({
         if (reason === "stopped") return;
         ownedSessionsRef.current.delete(endedAppId);
         sessionIdsRef.current.delete(endedAppId);
+        // The session is gone, so a sign-in still waiting on the iframe will
+        // never be answered. Settle it now rather than letting `beginRecording`
+        // sit on the 30-second timeout — that await is what holds the app's
+        // entry in `startingAppsRef`, which refuses a fresh recording.
+        settlePendingAuth(endedAppId, "the session ended");
         const failureMessage =
           reason === "error" || reason === "timed-out"
             ? (message ?? "The recording session ended unexpectedly.")
@@ -350,33 +384,13 @@ export function useTestRecorder({
             : { phase: "idle", error: failureMessage },
         );
         if (failureMessage) {
-          failedSessionsRef.current.add(endedAppId);
+          failedSessionsRef.current.set(endedAppId, sessionId);
           showError(failureMessage);
         }
       },
     );
     return unsub;
   }, [patchState, postToIframe]);
-
-  /**
-   * Settle a sign-in this app is still waiting on, rather than just forgetting
-   * it.
-   *
-   * `authenticate` otherwise resolves only on its 30-second timeout, and
-   * `beginRecording` stays parked on that await — holding the app's entry in
-   * `startingAppsRef`, which is what refuses a fresh start. Walking away from a
-   * recording has to release the next one immediately.
-   */
-  const settlePendingAuth = useCallback(
-    (targetAppId: number, error: string) => {
-      if (pendingAuthRef.current?.appId !== targetAppId) return;
-      pendingAuthRef.current = null;
-      const pendingAuthReady = authReadyRef.current;
-      authReadyRef.current = null;
-      pendingAuthReady?.({ ok: false, error });
-    },
-    [],
-  );
 
   /**
    * Ask the main process to end this app's session and reset the app's recorder
@@ -752,6 +766,9 @@ export function useTestRecorder({
       const targetAppId = appId;
       if (targetAppId == null) return null;
 
+      // Read before anything can retire it: the failure check after teardown
+      // needs to know which session this stop belongs to.
+      const ourSessionId = sessionIdsRef.current.get(targetAppId);
       // Finishing this session ourselves, so the unmount/app-switch safety net
       // must not also try to stop it.
       ownedSessionsRef.current.delete(targetAppId);
@@ -798,7 +815,17 @@ export function useTestRecorder({
       // been told (the ending arrived as an error toast and reset the bar);
       // opening the review over it would invite generating a spec from a
       // session whose environment is in an unknown state.
-      if (failedSessionsRef.current.delete(targetAppId)) {
+      //
+      // Only OUR session's failure counts. Teardown takes seconds, so a late
+      // ending from a session this app has already replaced would otherwise
+      // throw away the replacement's recording. An ending that named no session
+      // is unattributable and fails closed.
+      const failedSessionId = failedSessionsRef.current.get(targetAppId);
+      const ourSessionFailed =
+        failedSessionsRef.current.has(targetAppId) &&
+        (failedSessionId === undefined || failedSessionId === ourSessionId);
+      if (ourSessionFailed) {
+        failedSessionsRef.current.delete(targetAppId);
         void ipc.recording
           .discardRecordedTestDraft({ appId: targetAppId })
           .catch(() => {});
@@ -872,9 +899,16 @@ export function useTestRecorder({
     const targetAppId = appId;
     if (targetAppId == null) return;
     ownedSessionsRef.current.delete(targetAppId);
-    // Reachable from the setup phases too, where a sign-in may still be in
-    // flight; leaving it to time out would keep the app's start entry parked
-    // for 30 seconds after the user asked to stop.
+    // Now reachable from the setup phases, where a start is still in flight —
+    // and dropping ownership is not enough to stop it. `beginRecording` adds
+    // ownership *after* its request returns, so without cancelling the attempt
+    // it would sail past its abandonment checks, re-adopt the session we just
+    // stopped, and arm the recorder over it. Cancelling is what makes
+    // `isAbandoned()` true when it resumes.
+    const inFlight = startingAppsRef.current.get(targetAppId);
+    if (inFlight) inFlight.cancelled = true;
+    // A sign-in may also be in flight; leaving it to time out would keep the
+    // app's start entry parked for 30 seconds after the user asked to stop.
     settlePendingAuth(targetAppId, "the recording was cancelled");
     postToIframe({ type: "deactivate-dyad-recorder" });
     void ipc.recording

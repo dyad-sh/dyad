@@ -340,7 +340,13 @@ export const PreviewIframe = ({
     // The route the preview is on right now. An unauthenticated recording keeps
     // it across the remount, while every generated spec opens with
     // `page.goto("/")` — so the recorder needs to know when those differ.
-    void recorder.startRecording(currentAddressPath || undefined);
+    //
+    // Only when the preview is still on the app. `formatPreviewAddressPath`
+    // strips the origin unconditionally, so a preview that followed an external
+    // link would hand back a path that reads as app-relative and replay as
+    // `page.goto("/that/path")` against the app — a destination the user never
+    // visited. Unknown or off-origin means no hint at all.
+    void recorder.startRecording(sameOriginStartPath());
   };
 
   // Hand the recorded steps to the agent for the test proposal. Its
@@ -404,6 +410,22 @@ export const PreviewIframe = ({
   );
   const currentHistoryUrl = navigationHistory[currentHistoryPosition] ?? null;
   const currentAddressPath = formatPreviewAddressPath(currentHistoryUrl);
+  /**
+   * The current route, but only while the preview is still on the app's own
+   * origin — otherwise undefined. Used as the recorder's starting-route hint,
+   * where an off-origin path would generate a `page.goto` to somewhere the user
+   * never was.
+   */
+  const sameOriginStartPath = (): string | undefined => {
+    if (!currentHistoryUrl || !appUrl) return undefined;
+    try {
+      return new URL(currentHistoryUrl).origin === new URL(appUrl).origin
+        ? currentAddressPath || undefined
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  };
   const [addressBarValue, setAddressBarValue] = useState(currentAddressPath);
   const [isEditingAddressBar, setIsEditingAddressBar] = useState(false);
   const isEditingAddressBarRef = useRef(false);

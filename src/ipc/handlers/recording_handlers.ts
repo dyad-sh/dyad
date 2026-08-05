@@ -138,9 +138,6 @@ export function registerRecordingHandlers() {
         if (options?.skipRestart) {
           teardownOptions = { ...teardownOptions, skipRestart: true };
         }
-        if (options?.discardEnvironment) {
-          teardownOptions = { ...teardownOptions, discardEnvironment: true };
-        }
         controller.abort();
         stopped.resolve(reason);
       };

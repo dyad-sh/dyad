@@ -781,6 +781,59 @@ describe("useTestRecorder", () => {
     expect(result.current.phase).toBe("authenticating");
   });
 
+  it("stays cancelled when a start returns after Cancel was pressed in setup", async () => {
+    const finishStart = holdStart();
+    const iframe = makeIframe();
+    const { result } = mountRecorder({ iframe, appUrl: true });
+
+    let started!: Promise<void>;
+    act(() => {
+      started = result.current.startRecording();
+    });
+
+    // The Cancel now offered during `starting`/`authenticating`. Dropping
+    // ownership isn't enough on its own: `beginRecording` only *adds* ownership
+    // after its request returns, so an uncancelled attempt sails past its
+    // abandonment checks and re-adopts the session that was just stopped.
+    await act(async () => {
+      await result.current.cancelRecording();
+    });
+    stopRecordingMock.mockClear();
+
+    await act(async () => {
+      finishStart();
+      await started;
+    });
+
+    expect(result.current.isRecording).toBe(false);
+    expect(result.current.phase).toBe("idle");
+    // The session that came up after the cancel still has to be handed back.
+    expect(stopRecordingMock).toHaveBeenCalledWith({ appId: 1 });
+  });
+
+  it("releases the start immediately when a session ends during sign-in", async () => {
+    authenticatedStart();
+    const iframe = makeIframe();
+    const { result } = mountRecorder({ iframe, appUrl: true });
+
+    let started!: Promise<void>;
+    act(() => {
+      started = result.current.startRecording();
+    });
+    await waitFor(() => expect(findLogin(iframe)).not.toBeNull());
+
+    // Without settling the pending sign-in here, `beginRecording` sits on its
+    // 30-second timeout — and that await is what holds the app's entry in
+    // `startingAppsRef`, refusing a fresh recording for the whole window.
+    const onEnded = onEndedMock.mock.calls.at(-1)![0];
+    await act(async () => {
+      onEnded({ appId: 1, sessionId: "session-1", reason: "app-stopped" });
+      await started;
+    });
+
+    expect(result.current.phase).toBe("idle");
+  });
+
   it("never arms the recorder when the session ended during sign-in", async () => {
     authenticatedStart();
     const iframe = makeIframe();

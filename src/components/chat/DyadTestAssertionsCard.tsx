@@ -409,7 +409,11 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
     // state for most of a turn — telling the user to start over while the model
     // is still writing the plan is both wrong and unrecoverable-sounding. The
     // parser hands us exactly the signal needed to tell the two apart.
-    const isPending = node.properties.state !== "finished";
+    // Specifically "pending", not "not finished": `aborted`, `error` and
+    // `warning` all mean the plan is never arriving, and treating them as
+    // pending leaves the card spinning on "Preparing…" forever instead of
+    // saying the proposal can't be read.
+    const isPending = node.properties.state === "pending";
     return (
       <div
         className="my-1.5 rounded-xl border border-border/60 bg-(--background-lightest) px-3.5 py-3"

@@ -488,18 +488,6 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
         </div>
       )}
 
-      {app?.neonProjectId || app?.supabaseProjectId ? (
-        <p className="text-sm text-muted-foreground">
-          Coolify hosts this app only. It keeps using the database it is already
-          connected to.
-        </p>
-      ) : (
-        <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
-          This app has no database connected, so no DATABASE_URL will be
-          provided. If its code expects one, it will fail at runtime.
-        </div>
-      )}
-
       <Button
         size="sm"
         disabled={!can.canDeploy || !hasGithubRepo}

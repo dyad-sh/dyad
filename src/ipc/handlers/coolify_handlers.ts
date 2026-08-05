@@ -223,6 +223,15 @@ export function registerCoolifyHandlers() {
           DyadErrorKind.Validation,
         );
       }
+      // An application belongs to the server and project it was created
+      // under, and Coolify cannot move one. Keeping its id after the user
+      // picks somewhere else would send the next deploy back to the old
+      // server while the panel showed the new one, so let it be recreated.
+      const app = await getApp(appId);
+      const movedHost =
+        app.coolifyServerUuid !== connection.serverUuid ||
+        app.coolifyProjectUuid !== connection.projectUuid;
+
       await db
         .update(apps)
         .set({
@@ -230,6 +239,9 @@ export function registerCoolifyHandlers() {
           coolifyProjectUuid: connection.projectUuid,
           coolifyEnvironmentName: connection.environmentName,
           coolifyDomain: domain,
+          ...(movedHost
+            ? { coolifyApplicationUuid: null, coolifyAppUrl: null }
+            : {}),
         })
         .where(eq(apps.id, appId));
     },

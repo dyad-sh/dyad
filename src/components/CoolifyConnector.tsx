@@ -84,6 +84,9 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
   const newProjectId = useId();
   const domainId = useId();
   const [instanceUrl, setInstanceUrl] = useState("");
+  // A saved connection otherwise hides the only form that can change the
+  // server, project or domain — and the only way to sign out.
+  const [isEditingConnection, setIsEditingConnection] = useState(false);
   const [token, setToken] = useState("");
   const [serverUuid, setServerUuid] = useState("");
   const [projectUuid, setProjectUuid] = useState("");
@@ -102,6 +105,12 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
     setProjectUuid(connection?.projectUuid ?? "");
     setDomain(connection?.domain ?? "");
   }, [appId, status?.connection, status?.instanceUrl]);
+
+  // Only on an app change. Keying this to the connection would close the form
+  // under the user whenever a background refetch handed back a new object.
+  useEffect(() => {
+    setIsEditingConnection(false);
+  }, [appId, status?.hasToken]);
 
   if (appId === null || isStatusLoading) {
     return (
@@ -220,7 +229,7 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
   }
 
   // --- Step 2: server, project, domain ---
-  if (!status.connection) {
+  if (!status.connection || isEditingConnection) {
     const projects = discovery?.projects ?? [];
     // The only control that removes the stored instance URL and token. It used
     // to live solely inside the discovery-error card, so rotating a token or
@@ -288,7 +297,27 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
           </Button>
         </div>
 
-        <div className="flex justify-end">{disconnectEverything}</div>
+        <div className="flex justify-end gap-1">
+          {isEditingConnection && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                // The prefill effect will not re-run, so put the saved values
+                // back here or an abandoned edit sits in the form and the
+                // next Save commits it.
+                const saved = status.connection;
+                setServerUuid(saved?.serverUuid ?? "");
+                setProjectUuid(saved?.projectUuid ?? "");
+                setDomain(saved?.domain ?? "");
+                setIsEditingConnection(false);
+              }}
+            >
+              Cancel
+            </Button>
+          )}
+          {disconnectEverything}
+        </div>
 
         {/* A project belongs to the Coolify instance, not to this app, so it
             is named and created on its own before anything is picked. */}
@@ -356,7 +385,10 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
                 <SelectValue>
                   {(value) =>
                     discovery?.servers.find((s) => s.uuid === value)?.name ??
-                    "Select a server"
+                    // Discovery may be failing or still loading, and reading
+                    // "Select a server" over a saved one looks like the
+                    // connection was forgotten.
+                    (value ? "Server already selected" : "Select a server")
                   }
                 </SelectValue>
               </SelectTrigger>
@@ -379,7 +411,7 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
                 <SelectValue>
                   {(value) =>
                     projects.find((p) => p.uuid === value)?.name ??
-                    "Select a project"
+                    (value ? "Project already selected" : "Select a project")
                   }
                 </SelectValue>
               </SelectTrigger>
@@ -440,6 +472,7 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
         <Button
           disabled={
             saveConnection.isPending ||
+            checkDomain.isPending ||
             !serverUuid ||
             !projectUuid ||
             !can.canEditConnection
@@ -448,6 +481,15 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
           onClick={async () => {
             try {
               const trimmed = domain.trim();
+              if (!trimmed && status.connection?.domain) {
+                // updateApplication deliberately never sends an empty domains
+                // value, because Coolify cannot generate a replacement
+                // address once one has been set.
+                toast.error(
+                  "A domain cannot be removed from Dyad. Change it here, or clear it in Coolify.",
+                );
+                return;
+              }
               if (trimmed) {
                 // Advisory only: if the check itself fails, say so and still
                 // let the user save rather than trapping them behind it.
@@ -488,12 +530,15 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
                 environmentName: "production",
                 domain: trimmed || null,
               });
+              // Only now: a failed save has to leave the form open with the
+              // user's edits still in it.
+              setIsEditingConnection(false);
             } catch (error) {
               toast.error(getErrorMessage(error));
             }
           }}
         >
-          {saveConnection.isPending && (
+          {(saveConnection.isPending || checkDomain.isPending) && (
             <Loader2 className="h-4 w-4 animate-spin mr-2" />
           )}
           Save
@@ -529,19 +574,32 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
             </span>
           )}
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={async () => {
-            try {
-              await disconnect.mutateAsync();
-            } catch (error) {
-              toast.error(getErrorMessage(error));
-            }
-          }}
-        >
-          Disconnect
-        </Button>
+        <div className="flex items-center gap-1">
+          {/* Without this the server, project and domain are write-once, and
+              changing one means disconnecting — which forgets the Coolify
+              application and leaves the running one behind. */}
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={!can.canEditConnection}
+            onClick={() => setIsEditingConnection(true)}
+          >
+            Edit
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={async () => {
+              try {
+                await disconnect.mutateAsync();
+              } catch (error) {
+                toast.error(getErrorMessage(error));
+              }
+            }}
+          >
+            Disconnect
+          </Button>
+        </div>
       </div>
 
       {!hasGithubRepo && (

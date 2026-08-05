@@ -87,6 +87,7 @@ import { apps } from "@/db/schema";
 import { setupHandlerTestHarness } from "@/testing/handler_test_harness";
 import type { HandlerTestHarness } from "@/testing/handler_test_harness";
 import { createFakeClock, type FakeClock } from "@/state_machines/testing";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { runDeployPipeline, type DeployReporter } from "./commands";
 
 const POLL_INTERVAL_MS = 5_000;
@@ -1141,5 +1142,58 @@ describe("pre-deploy warnings", () => {
     );
 
     expect(report.text()).not.toMatch(/different Neon branch/);
+  });
+});
+
+describe("database resolution failures", () => {
+  it("keeps the kind Neon assigned rather than reporting every failure as a crash", async () => {
+    // rules/dyad-errors.md keeps Precondition out of telemetry; rewrapping it
+    // as External would report a missing branch as a crash on every deploy.
+    const { resolveNeonBranchEnvVars } = await import("@/ipc/utils/neon_utils");
+    vi.mocked(resolveNeonBranchEnvVars).mockRejectedValueOnce(
+      new DyadError(
+        "This app has no development branch.",
+        DyadErrorKind.Precondition,
+      ),
+    );
+    const app = await seedApp({ neonProjectId: "proj-1" });
+    happyPathRoutes();
+    const clock = createFakeClock();
+
+    const error = await drive(
+      clock,
+      runDeployPipeline({
+        appId: app.id,
+        signal: new AbortController().signal,
+        report: recorder(),
+        clock,
+      }),
+    ).catch((e) => e);
+
+    expect(error.kind).toBe(DyadErrorKind.Precondition);
+    expect(error.message).toBe("This app has no development branch.");
+  });
+
+  it("still classifies an unrecognised failure as external", async () => {
+    const { resolveNeonBranchEnvVars } = await import("@/ipc/utils/neon_utils");
+    vi.mocked(resolveNeonBranchEnvVars).mockRejectedValueOnce(
+      new Error("socket hang up"),
+    );
+    const app = await seedApp({ neonProjectId: "proj-1" });
+    happyPathRoutes();
+    const clock = createFakeClock();
+
+    const error = await drive(
+      clock,
+      runDeployPipeline({
+        appId: app.id,
+        signal: new AbortController().signal,
+        report: recorder(),
+        clock,
+      }),
+    ).catch((e) => e);
+
+    expect(error.kind).toBe(DyadErrorKind.External);
+    expect(error.message).toMatch(/socket hang up/);
   });
 });

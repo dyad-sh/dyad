@@ -2,7 +2,7 @@ import { and, eq, isNotNull } from "drizzle-orm";
 import log from "electron-log";
 import { db } from "@/db";
 import { apps } from "@/db/schema";
-import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { readSettings } from "@/main/settings";
 import { getDyadAppPath } from "@/paths/paths";
 import { detectFrameworkType } from "@/ipc/utils/framework_utils";
@@ -452,6 +452,11 @@ export async function runDeployPipeline({
   // A deploy that silently lacks its database reports success and then fails
   // on the first query, so a failure here fails the whole deployment.
   const database = await resolveDatabaseEnv(app).catch((error) => {
+    // Neon classifies its own failures — a missing development branch is a
+    // Precondition, an expired token is Auth — and rules/dyad-errors.md keeps
+    // those out of telemetry. Rewrapping them as External would report every
+    // one of them as a crash.
+    if (isDyadError(error)) throw error;
     throw new DyadError(
       `Could not resolve this app's database connection details: ${
         error instanceof Error ? error.message : String(error)

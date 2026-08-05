@@ -252,36 +252,92 @@ describe("draining work the machine no longer points at", () => {
   }, 15_000);
 });
 
-describe("disposeAll's own wait", () => {
-  it("waits for a pipeline whose machine it has already forgotten", async () => {
-    // A per-app dispose that times out deletes the store but leaves the
-    // pipeline running, so disposeAll's second wait is the only thing left
-    // holding the database open for it. Asserting that it merely resolves
-    // cannot tell a five second wait from no wait at all, so this measures.
+describe("the registry's one book of work", () => {
+  it("waits its bound for a stuck pipeline, then leaves nothing behind", async () => {
+    // The orphan this replaces — a pipeline still running after its machine
+    // was forgotten — is no longer expressible: the pipeline lives inside the
+    // machine, so disposal cannot lose track of it. What remains worth
+    // pinning is that disposeAll waits, and that it finishes empty.
     vi.useFakeTimers();
     try {
       const run = vi.fn(() => new Promise<{ url: string | null }>(() => {}));
       const registry = makeRegistry(run as unknown as RunDeployPipeline);
       registry.requestDeploy(1);
+      registry.requestDeploy(2);
       await flush();
 
-      const first = registry.dispose(1);
-      await vi.advanceTimersByTimeAsync(DRAIN_TIMEOUT_MS);
-      await first;
-      expect(registry.hasMachine(1)).toBe(false);
-
       let finished = false;
-      const second = registry.disposeAll().then(() => {
+      const all = registry.disposeAll().then(() => {
         finished = true;
       });
       await vi.advanceTimersByTimeAsync(DRAIN_TIMEOUT_MS - 1);
       expect(finished).toBe(false);
 
       await vi.advanceTimersByTimeAsync(1);
-      await second;
-      expect(finished).toBe(true);
+      await all;
+
+      expect(registry.hasMachine(1)).toBe(false);
+      expect(registry.hasMachine(2)).toBe(false);
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("a late cleanup does not forget the pipeline that replaced it", async () => {
+    // The first pipeline ignores its abort and settles long after a retry has
+    // started. Its cleanup must not clear the retry's work, or disposal would
+    // return without waiting for anything.
+    vi.useFakeTimers();
+    try {
+      let releaseFirst!: () => void;
+      let started = 0;
+      const run = vi.fn(() => {
+        started += 1;
+        return started === 1
+          ? new Promise<{ url: string | null }>((resolve) => {
+              releaseFirst = () => resolve({ url: null });
+            })
+          : new Promise<{ url: string | null }>(() => {});
+      });
+      const registry = makeRegistry(run as unknown as RunDeployPipeline);
+      registry.requestDeploy(1);
+      await flush();
+      registry.cancelDeploy(1);
+      await flush();
+      registry.requestDeploy(1);
+      await flush();
+
+      releaseFirst();
+      await flush();
+
+      // The retry is still the machine's work, so disposal waits its bound.
+      let finished = false;
+      const disposal = registry.dispose(1).then(() => {
+        finished = true;
+      });
+      await vi.advanceTimersByTimeAsync(DRAIN_TIMEOUT_MS - 1);
+      expect(finished).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      await disposal;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a replaced pipeline does not clear the one that replaced it", async () => {
+    // The old pipeline's cleanup runs late; it must not forget the retry's
+    // work, or disposal would stop waiting for the wrong thing.
+    const harness = pendingPipeline();
+    const registry = makeRegistry(harness.run);
+    registry.requestDeploy(1);
+    await flush();
+
+    registry.cancelDeploy(1);
+    await flush();
+    registry.requestDeploy(1);
+    await flush();
+
+    expect(harness.calls).toHaveBeenCalledTimes(2);
+    expect(registry.getSnapshot(1).type).toBe("running");
   });
 });

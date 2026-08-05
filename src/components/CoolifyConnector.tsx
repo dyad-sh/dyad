@@ -32,7 +32,9 @@ function ExternalLinkText({ url }: { url: string }) {
       href={url}
       onClick={(e) => {
         e.preventDefault();
-        ipc.system.openExternalUrl(url);
+        ipc.system
+          .openExternalUrl(url)
+          .catch((error) => toast.error(getErrorMessage(error)));
       }}
       className="cursor-pointer underline inline-flex items-center gap-1"
       target="_blank"
@@ -452,12 +454,12 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
                     toast.warning(
                       `${dns.hostname} points at ${dns.actualIps.join(", ")}, not your server at ${dns.expectedIp}.`,
                       {
-                        description: `${consequence} Point it at ${dns.expectedIp}, then save.`,
+                        description: `${consequence} Saved anyway; point it at ${dns.expectedIp} and redeploy.`,
                       },
                     );
                   } else if (dns.verdict === "no-records") {
                     toast.warning(`${dns.hostname} has no DNS record yet.`, {
-                      description: `${consequence} Add an A record pointing at ${dns.expectedIp}, then save.`,
+                      description: `${consequence} Saved anyway; point a DNS record at ${dns.expectedIp} and redeploy.`,
                     });
                   }
                 } catch {
@@ -560,6 +562,11 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
         )}
       </Button>
 
+      {status.lastDeployedAt !== null && snapshot.type !== "running" && (
+        <p className="text-xs text-muted-foreground">
+          Last deployed {new Date(status.lastDeployedAt).toLocaleString()}
+        </p>
+      )}
       {snapshot.type === "succeeded" && snapshot.url && (
         <p className="text-sm text-green-700 dark:text-green-400">
           Deployed: <ExternalLinkText url={snapshot.url} />

@@ -74,8 +74,9 @@ export type CoolifyConnection = z.infer<typeof CoolifyConnectionSchema>;
 export const CoolifyStatusSchema = z.object({
   hasToken: z.boolean(),
   connection: CoolifyConnectionSchema.nullable(),
-  appUuid: z.string().nullable(),
   appUrl: z.string().nullable(),
+  /** Epoch millis of the last successful deploy, or null if never deployed. */
+  lastDeployedAt: z.number().nullable(),
 });
 
 export type CoolifyStatus = z.infer<typeof CoolifyStatusSchema>;

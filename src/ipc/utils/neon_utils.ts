@@ -356,6 +356,12 @@ export async function getProductionBranchId(
  * Null (e.g. the user never opened the section, or before first deploy) is
  * treated as production.
  */
+export function getSelectedDeployBranchType(appData: AppRow): NeonBranchType {
+  return appData.selectedDatabaseBranchType === "development"
+    ? "development"
+    : "production";
+}
+
 /**
  * Registers a deployed origin as a Neon Auth trusted domain.
  *
@@ -389,12 +395,6 @@ export async function ensureNeonAuthTrustedDomain({
     auth_provider: NeonAuthSupportedAuthProvider.BetterAuth,
   });
   return toAdd;
-}
-
-export function getSelectedDeployBranchType(appData: AppRow): NeonBranchType {
-  return appData.selectedDatabaseBranchType === "development"
-    ? "development"
-    : "production";
 }
 
 export interface ResolvedNeonBranchEnvVars {

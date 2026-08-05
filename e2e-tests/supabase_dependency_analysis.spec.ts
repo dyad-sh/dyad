@@ -59,6 +59,7 @@ Deno.serve(() => new Response(message));
     timeout: Timeout.MEDIUM,
   });
   await po.navigation.clickBackButton();
+  await po.navigation.goToChatTab();
   await po.chatActions.selectLocalAgentMode();
 
   await po.sendPrompt("tc=local-agent/supabase-dependency-fine-grained", {

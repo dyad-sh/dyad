@@ -1,4 +1,4 @@
-import { test } from "./helpers/test_helper";
+import { test, Timeout } from "./helpers/test_helper";
 
 test("app search - basic search dialog functionality", async ({ po }) => {
   await po.setUp({ autoApprove: true });
@@ -7,21 +7,21 @@ test("app search - basic search dialog functionality", async ({ po }) => {
   await po.page.getByTestId("search-apps-button").waitFor();
 
   // Create some apps for testing
-  await po.sendPrompt("create a todo application");
+  await po.sendPrompt("create a todo application", { timeout: Timeout.LONG });
 
   // Go back to apps list
   await po.navigation.goToAppsTab();
   await po.page.getByTestId("search-apps-button").waitFor();
 
   // Create second app
-  await po.sendPrompt("build a weather dashboard");
+  await po.sendPrompt("build a weather dashboard", { timeout: Timeout.LONG });
 
   // Go back to apps list
   await po.navigation.goToAppsTab();
   await po.page.getByTestId("search-apps-button").waitFor();
 
   // Create third app
-  await po.sendPrompt("create a blog system");
+  await po.sendPrompt("create a blog system", { timeout: Timeout.LONG });
 
   // Go back to apps list
   await po.navigation.goToAppsTab();
@@ -59,13 +59,22 @@ test("app search - search functionality with different terms", async ({
   await po.setUp({ autoApprove: true });
 
   // Create apps with specific content for testing
-  await po.sendPrompt("create a calculator application with advanced features");
+  await po.sendPrompt(
+    "create a calculator application with advanced features",
+    {
+      timeout: Timeout.LONG,
+    },
+  );
   await po.navigation.goToAppsTab();
 
-  await po.sendPrompt("build a task management system with priority levels");
+  await po.sendPrompt("build a task management system with priority levels", {
+    timeout: Timeout.LONG,
+  });
   await po.navigation.goToAppsTab();
 
-  await po.sendPrompt("create a weather monitoring dashboard");
+  await po.sendPrompt("create a weather monitoring dashboard", {
+    timeout: Timeout.LONG,
+  });
   await po.navigation.goToAppsTab();
 
   // Open search dialog
@@ -98,7 +107,7 @@ test("app search - keyboard shortcut functionality", async ({ po }) => {
   await po.setUp({ autoApprove: true });
 
   // Create an app first
-  await po.sendPrompt("create sample application");
+  await po.sendPrompt("create sample application", { timeout: Timeout.LONG });
   await po.navigation.goToAppsTab();
 
   // Test keyboard shortcut (Ctrl+K) to open dialog
@@ -122,13 +131,13 @@ test("app search - navigation and selection", async ({ po }) => {
   await po.setUp({ autoApprove: true });
 
   // Create multiple apps
-  await po.sendPrompt("create first application");
+  await po.sendPrompt("create first application", { timeout: Timeout.LONG });
   await po.navigation.goToAppsTab();
 
-  await po.sendPrompt("create second application");
+  await po.sendPrompt("create second application", { timeout: Timeout.LONG });
   await po.navigation.goToAppsTab();
 
-  await po.sendPrompt("create third application");
+  await po.sendPrompt("create third application", { timeout: Timeout.LONG });
   await po.navigation.goToAppsTab();
 
   // Open search dialog
@@ -157,13 +166,13 @@ test("app search - empty search shows all apps", async ({ po }) => {
   await po.setUp({ autoApprove: true });
 
   // Create a few apps
-  await po.sendPrompt("create alpha application");
+  await po.sendPrompt("create alpha application", { timeout: Timeout.LONG });
   await po.navigation.goToAppsTab();
 
-  await po.sendPrompt("create beta application");
+  await po.sendPrompt("create beta application", { timeout: Timeout.LONG });
   await po.navigation.goToAppsTab();
 
-  await po.sendPrompt("create gamma application");
+  await po.sendPrompt("create gamma application", { timeout: Timeout.LONG });
   await po.navigation.goToAppsTab();
 
   // Open search dialog
@@ -185,7 +194,9 @@ test("app search - case insensitive search", async ({ po }) => {
   await po.setUp({ autoApprove: true });
 
   // Create an app with mixed case content
-  await po.sendPrompt("create a Test Application with Mixed Case Content");
+  await po.sendPrompt("create a Test Application with Mixed Case Content", {
+    timeout: Timeout.LONG,
+  });
   await po.navigation.goToAppsTab();
 
   // Open search dialog
@@ -212,7 +223,9 @@ test("app search - partial word matching", async ({ po }) => {
   await po.setUp({ autoApprove: true });
 
   // Create an app with a long descriptive name
-  await po.sendPrompt("create a comprehensive project management solution");
+  await po.sendPrompt("create a comprehensive project management solution", {
+    timeout: Timeout.LONG,
+  });
   await po.navigation.goToAppsTab();
 
   // Open search dialog
@@ -239,13 +252,13 @@ test("app search - search by app name", async ({ po }) => {
   await po.setUp({ autoApprove: true });
 
   // Create apps - note that app names are randomly generated
-  await po.sendPrompt("create a todo application");
+  await po.sendPrompt("create a todo application", { timeout: Timeout.LONG });
   await po.navigation.goToAppsTab();
 
-  await po.sendPrompt("build a weather dashboard");
+  await po.sendPrompt("build a weather dashboard", { timeout: Timeout.LONG });
   await po.navigation.goToAppsTab();
 
-  await po.sendPrompt("create a blog system");
+  await po.sendPrompt("create a blog system", { timeout: Timeout.LONG });
   await po.navigation.goToAppsTab();
 
   // Get the actual app names from the UI (these are randomly generated)

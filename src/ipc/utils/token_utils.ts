@@ -15,6 +15,12 @@ type ToolResultForTokenEstimate = {
   output: unknown;
 };
 
+type ToolErrorForTokenEstimate = {
+  toolCallId: string;
+  toolName: string;
+  error: unknown;
+};
+
 /**
  * Estimate the tokens that completed tool results will add to the next model
  * request. Tool inputs are intentionally excluded because the engine's usage
@@ -22,18 +28,27 @@ type ToolResultForTokenEstimate = {
  */
 export const estimateToolResultTokens = (
   toolResults: readonly ToolResultForTokenEstimate[],
+  toolErrors: readonly ToolErrorForTokenEstimate[] = [],
 ): number => {
-  if (toolResults.length === 0) {
+  if (toolResults.length === 0 && toolErrors.length === 0) {
     return 0;
   }
 
   const serializedResults = JSON.stringify(
-    toolResults.map(({ toolCallId, toolName, output }) => ({
-      type: "tool-result",
-      toolCallId,
-      toolName,
-      output,
-    })),
+    [
+      ...toolResults.map(({ toolCallId, toolName, output }) => ({
+        type: "tool-result",
+        toolCallId,
+        toolName,
+        output,
+      })),
+      ...toolErrors.map(({ toolCallId, toolName, error }) => ({
+        type: "tool-result",
+        toolCallId,
+        toolName,
+        output: { type: "error-json", value: error },
+      })),
+    ],
     (_key, value) => (typeof value === "bigint" ? value.toString() : value),
   );
 

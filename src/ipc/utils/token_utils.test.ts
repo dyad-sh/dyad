@@ -53,6 +53,18 @@ describe("estimateToolResultTokens", () => {
       ]),
     ).toBeGreaterThan(0);
   });
+
+  it("includes failed tool output sent to the next model step", () => {
+    const toolErrors = [
+      {
+        toolCallId: "call-1",
+        toolName: "execute_command",
+        error: { message: "x".repeat(40_000) },
+      },
+    ];
+
+    expect(estimateToolResultTokens([], toolErrors)).toBeGreaterThan(10_000);
+  });
 });
 
 describe("getTemperature", () => {

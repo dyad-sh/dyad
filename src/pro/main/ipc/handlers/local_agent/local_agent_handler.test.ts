@@ -1630,7 +1630,7 @@ describe("handleLocalAgentStream", () => {
       expect(streamedMessageIds).not.toContain(20);
     });
 
-    it("compacts before the next step when tool results project usage over the threshold", async () => {
+    it("compacts before the next step when a tool error projects usage over the threshold", async () => {
       const { event } = createFakeEvent();
       mockSettings = buildTestSettings({ enableDyadPro: true });
       mockChatData = buildTestChat();
@@ -1657,12 +1657,14 @@ describe("handleLocalAgentStream", () => {
             await options.onStepFinish?.({
               usage: { totalTokens: 215_000 },
               toolCalls: [{}],
-              toolResults: [
+              toolResults: [],
+              content: [
                 {
+                  type: "tool-error",
                   toolCallId: "call-1",
-                  toolName: "read_file",
-                  input: { path: "large-file.ts" },
-                  output: "x".repeat(40_000),
+                  toolName: "execute_command",
+                  input: { command: "failing-command" },
+                  error: { message: "x".repeat(40_000) },
                 },
               ],
             });

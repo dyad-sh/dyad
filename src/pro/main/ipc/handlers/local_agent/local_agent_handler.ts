@@ -1259,8 +1259,12 @@ export async function handleLocalAgentStream(
                 return;
               }
 
+              const toolErrors = (step.content ?? []).filter(
+                (part) => part.type === "tool-error",
+              );
               const toolResultTokens = estimateToolResultTokens(
                 step.toolResults ?? [],
+                toolErrors,
               );
               const projectedNextRequestTokens =
                 step.usage.totalTokens + toolResultTokens;

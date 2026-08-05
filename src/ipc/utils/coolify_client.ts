@@ -4,6 +4,12 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 const logger = log.scope("coolify_client");
 
 import { COOLIFY_REQUIRED_SCOPES } from "@/shared/coolify_scopes";
+import {
+  CoolifyProjectSchema,
+  CoolifyServerSchema,
+  type CoolifyProjectInfo,
+  type CoolifyServerInfo,
+} from "@/ipc/types/coolify";
 
 export interface CoolifyClientOptions {
   instanceUrl: string;
@@ -28,16 +34,8 @@ export interface CoolifyDeployment {
   logs?: string;
 }
 
-export interface CoolifyServer {
-  uuid: string;
-  name: string;
-  ip?: string | null;
-}
-
-export interface CoolifyProject {
-  uuid: string;
-  name: string;
-}
+export type CoolifyServer = CoolifyServerInfo;
+export type CoolifyProject = CoolifyProjectInfo;
 
 /** Carries the HTTP status so callers can branch on 404 and 409. */
 class CoolifyRequestError extends DyadError {
@@ -245,13 +243,47 @@ export class CoolifyClient {
 
   /** Validates the token and returns the reachable servers. */
   async listServers(): Promise<CoolifyServer[]> {
-    const servers = await this.request<CoolifyServer[]>("GET", "/servers");
-    return Array.isArray(servers) ? servers : [];
+    return this.requestList("/servers", CoolifyServerSchema, "servers");
   }
 
   async listProjects(): Promise<CoolifyProject[]> {
-    const projects = await this.request<CoolifyProject[]>("GET", "/projects");
-    return Array.isArray(projects) ? projects : [];
+    return this.requestList("/projects", CoolifyProjectSchema, "projects");
+  }
+
+  /**
+   * Fetches a list and checks it is the shape we expect.
+   *
+   * Coolify is self-hosted, so the instance can be any version. Casting the
+   * response meant a renamed field or a wrapped payload produced an empty
+   * picker and a permanently disabled Save with nothing to act on, rather
+   * than saying the instance answered with something we do not understand.
+   */
+  private async requestList<T>(
+    path: string,
+    schema: { safeParse: (value: unknown) => { success: boolean; data?: T } },
+    what: string,
+  ): Promise<T[]> {
+    const body = await this.request<unknown>("GET", path);
+    if (!Array.isArray(body)) {
+      throw new DyadError(
+        `Coolify did not return a list of ${what}. This instance may be a ` +
+          `version Dyad does not understand.`,
+        DyadErrorKind.External,
+      );
+    }
+    const parsed: T[] = [];
+    for (const item of body) {
+      const result = schema.safeParse(item);
+      if (!result.success || result.data === undefined) {
+        throw new DyadError(
+          `Coolify returned ${what} in an unexpected shape. This instance may ` +
+            `be a version Dyad does not understand.`,
+          DyadErrorKind.External,
+        );
+      }
+      parsed.push(result.data);
+    }
+    return parsed;
   }
 
   async createProject(name: string): Promise<{ uuid: string }> {

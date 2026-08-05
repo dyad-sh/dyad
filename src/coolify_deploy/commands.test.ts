@@ -1303,3 +1303,34 @@ describe("surviving a failed resume", () => {
     expect(report.deploymentUuid).toBe("dep-earlier");
   });
 });
+
+describe("writing only to the server the deploy started against", () => {
+  it("does not record the result when the app was repointed mid-deploy", async () => {
+    // A deploy can run for fifteen minutes. If the user disconnects and
+    // reconnects to a different Coolify meanwhile, this application id and URL
+    // exist only on the instance this pipeline was talking to.
+    const app = await seedApp({ coolifyApplicationUuid: null });
+    happyPathRoutes();
+    const clock = createFakeClock();
+
+    const pipeline = drive(
+      clock,
+      runDeployPipeline({
+        appId: app.id,
+        signal: new AbortController().signal,
+        report: recorder(),
+        clock,
+      }),
+    );
+    // Repoint the app while the pipeline is in flight.
+    await harness.db
+      .update(apps)
+      .set({ coolifyServerUuid: "srv-other" })
+      .where(eq(apps.id, app.id));
+    await pipeline;
+
+    const row = await readApp(app.id);
+    expect(row?.coolifyApplicationUuid).toBeNull();
+    expect(row?.coolifyAppUrl).toBeNull();
+  });
+});

@@ -399,3 +399,45 @@ describe("totality", () => {
     }
   });
 });
+
+describe("DEPLOY_REQUESTED across apps", () => {
+  const failedForAppOne: CoolifyDeployState = {
+    type: "failed",
+    appId: 1,
+    log: "",
+    error: "boom",
+    finishedAt: 2,
+    deploymentUuid: "dep-1",
+  };
+
+  it("does not hand another app's deployment to a new one", () => {
+    // The registry keys stores by appId so this cannot happen today, but the
+    // transition is total on its own terms, and CANCELLED refuses the same
+    // mismatch.
+    const result = transition(failedForAppOne, {
+      type: "DEPLOY_REQUESTED",
+      appId: 2,
+      invocationRef: ref("b", 2),
+      startedAt: 3,
+    });
+
+    expect(result.kind).toBe("ignored");
+  });
+
+  it("still adopts its own earlier deployment on retry", () => {
+    const result = transition(failedForAppOne, {
+      type: "DEPLOY_REQUESTED",
+      appId: 1,
+      invocationRef: ref("b"),
+      startedAt: 3,
+    });
+
+    expect(result.kind).toBe("applied");
+    if (result.kind !== "applied") throw new Error("expected applied");
+    expect(result.commands[0]).toMatchObject({
+      type: "RUN_DEPLOY",
+      appId: 1,
+      resumeDeploymentUuid: "dep-1",
+    });
+  });
+});

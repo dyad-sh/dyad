@@ -218,3 +218,34 @@ describe("transport and response robustness", () => {
     });
   });
 });
+
+describe("validating list responses", () => {
+  it("rejects a payload wrapped in an envelope", async () => {
+    // A newer Coolify answering {data:[...]} used to yield an empty picker.
+    mockFetch([{ status: 200, body: JSON.stringify({ data: [] }) }]);
+    await expect(client().listServers()).rejects.toMatchObject({
+      kind: DyadErrorKind.External,
+      message: expect.stringContaining("did not return a list"),
+    });
+  });
+
+  it("rejects entries missing the fields the picker needs", async () => {
+    mockFetch([{ status: 200, body: JSON.stringify([{ uuid: "srv-1" }]) }]);
+    await expect(client().listServers()).rejects.toMatchObject({
+      kind: DyadErrorKind.External,
+      message: expect.stringContaining("unexpected shape"),
+    });
+  });
+
+  it("accepts a well-formed list", async () => {
+    mockFetch([
+      {
+        status: 200,
+        body: JSON.stringify([{ uuid: "srv-1", name: "prod", ip: "1.2.3.4" }]),
+      },
+    ]);
+    await expect(client().listServers()).resolves.toEqual([
+      { uuid: "srv-1", name: "prod", ip: "1.2.3.4" },
+    ]);
+  });
+});

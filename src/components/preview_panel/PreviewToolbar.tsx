@@ -112,7 +112,7 @@ export function VersionDiffContext({
   return (
     <div
       data-testid="version-diff-context"
-      className="no-app-region-drag flex min-w-0 shrink items-center overflow-hidden rounded-md border border-primary/20 bg-primary/5 text-xs text-muted-foreground"
+      className="no-app-region-drag flex min-w-fit shrink items-center overflow-hidden rounded-md border border-primary/20 bg-primary/5 text-xs text-muted-foreground"
     >
       <span
         data-testid="version-diff-label"

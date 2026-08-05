@@ -90,9 +90,9 @@ describe("version diff context", () => {
       }),
     );
 
-    expect(screen.getByTestId("version-diff-context").textContent).toContain(
-      "Viewing Version 2",
-    );
+    const context = screen.getByTestId("version-diff-context");
+    expect(context.textContent).toContain("Viewing Version 2");
+    expect(context.className.split(" ")).toContain("min-w-fit");
     expect(
       screen.getByTestId("version-diff-label").className.split(" "),
     ).toEqual(expect.arrayContaining(["hidden", "@md:inline"]));

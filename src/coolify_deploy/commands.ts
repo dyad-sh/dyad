@@ -13,6 +13,12 @@ import {
   type CoolifyBuildConfig,
 } from "@/ipc/utils/coolify_client";
 import {
+  applyCoolifyConnectionChange,
+  coolifyConnectionColumns,
+  coolifyConnectionFromColumns,
+  type CoolifyConnectionChange,
+} from "./connection";
+import {
   coolifyKeyName,
   ensureDeployKey,
   readPrivateKey,
@@ -115,6 +121,33 @@ function sleep(clock: Clock, ms: number): Promise<void> {
  * abort check would otherwise write an application id or URL back onto an app
  * the user has just cleared.
  */
+/**
+ * Applies a change to the app's Coolify record, still fenced to one server.
+ *
+ * Read-modify-write rather than a partial update, so the record cannot end up
+ * describing an application on one server and an address on another. The fence
+ * stays on the write: a pipeline that ran for fifteen minutes must not land on
+ * a row the user has since pointed somewhere else, and the connection form
+ * refuses to change anything while a deploy is running, so nothing else can
+ * edit the row between the read and the write.
+ */
+async function recordConnectionChange(
+  appId: number,
+  serverUuid: string,
+  change: CoolifyConnectionChange,
+): Promise<void> {
+  const row = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!row) return;
+  const next = applyCoolifyConnectionChange(
+    coolifyConnectionFromColumns(row),
+    change,
+  );
+  await db
+    .update(apps)
+    .set(coolifyConnectionColumns(next))
+    .where(stillConnected(appId, serverUuid));
+}
+
 function stillConnected(appId: number, serverUuid: string) {
   // The same server, not merely some server. A deploy can run for fifteen
   // minutes, and an app disconnected and pointed at a different Coolify
@@ -231,19 +264,15 @@ async function ensureGithubDeployKey({
  */
 async function resolveApplication({
   client,
-  appId,
   savedUuid,
   privateKeyId,
-  serverUuid,
   create,
   report,
   signal,
 }: {
   client: CoolifyClient;
-  appId: number;
   savedUuid: string | null;
   privateKeyId: number | null;
-  serverUuid: string;
   create: () => Promise<string>;
   report: DeployReporter;
   signal: AbortSignal;
@@ -278,10 +307,8 @@ async function resolveApplication({
     // Coolify calls above can park for a long time, so re-check before writing:
     // a pipeline abandoned meanwhile must not blank a newer deployment's uuid.
     throwIfAborted(signal);
-    await db
-      .update(apps)
-      .set({ coolifyApplicationUuid: null })
-      .where(stillConnected(appId, serverUuid));
+    // The application is gone from Coolify; whatever replaces it is recorded
+    // by the create path below, which reports the id it ends up with.
   }
   return create();
 }
@@ -482,10 +509,8 @@ export async function runDeployPipeline({
   report.stage("configuring");
   const applicationUuid = await resolveApplication({
     client,
-    appId,
     signal,
     savedUuid: app.coolifyApplicationUuid,
-    serverUuid,
     privateKeyId: key.id,
     report,
     create: async () => {
@@ -507,12 +532,10 @@ export async function runDeployPipeline({
   const recreated = applicationUuid !== app.coolifyApplicationUuid;
   if (recreated) {
     throwIfAborted(signal);
-    await db
-      .update(apps)
-      // The old URL belonged to the application just replaced, so leave
-      // nothing behind pointing at something that is gone.
-      .set({ coolifyApplicationUuid: applicationUuid, coolifyAppUrl: null })
-      .where(stillConnected(appId, serverUuid));
+    await recordConnectionChange(appId, serverUuid, {
+      type: "APPLICATION_RESOLVED",
+      applicationUuid,
+    });
   } else {
     // Framework or domain may have changed since the application was created.
     // Only send a domain we actually have: passing null would clear the
@@ -696,10 +719,11 @@ export async function runDeployPipeline({
   }
 
   throwIfAborted(signal);
-  await db
-    .update(apps)
-    .set({ coolifyAppUrl: url, coolifyLastDeployedAt: new Date(clock.now()) })
-    .where(stillConnected(appId, serverUuid));
+  await recordConnectionChange(appId, serverUuid, {
+    type: "DEPLOY_SUCCEEDED",
+    appUrl: url,
+    at: new Date(clock.now()),
+  });
   logger.info(`Coolify deploy succeeded for app ${appId}`);
   return { url };
 }

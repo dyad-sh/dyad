@@ -2,10 +2,11 @@ import fs from "node:fs";
 import path from "node:path";
 import log from "electron-log";
 
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
 import { getFileWriteKey, withLock } from "@/ipc/utils/lock_utils";
 import { assertMutationPathAllowed, safeJoin } from "@/ipc/utils/path_utils";
-import { gitAdd, gitCommit } from "@/ipc/utils/git_utils";
+import { gitAdd, gitCommit, isGitPathClean } from "@/ipc/utils/git_utils";
 import { getProjectApiKeys } from "./supabase_management_client";
 
 const logger = log.scope("supabase_app_key");
@@ -24,6 +25,18 @@ const CLIENT_FILE_RELATIVE_PATH = path.join(
 );
 
 const PUBLISHABLE_KEY_PREFIX = "sb_publishable_";
+/** `{"alg":…` base64url-encoded — the opening of every JWS header. */
+const JWT_PREFIX = "eyJ";
+
+/**
+ * Whether a value has the shape of a legacy Supabase key: a JWT with the three
+ * dot-separated segments. Only ever a fallback for a key the project no longer
+ * lists (see `resolveLegacyAppKey`); a listed key is classified by what
+ * Supabase says it is, never by how it looks.
+ */
+function isLegacyJwtShaped(key: string): boolean {
+  return key.startsWith(JWT_PREFIX) && key.split(".").length === 3;
+}
 /**
  * The key literal the app authenticates with, as an assignment
  * (`const SUPABASE_PUBLISHABLE_KEY = "…"`) or an object property
@@ -41,6 +54,24 @@ const PUBLISHABLE_KEY_PREFIX = "sb_publishable_";
 const APP_KEY_RE =
   /^([^\S\r\n]*(?:export[^\S\r\n]+)?(?:(?:const|let|var)[^\S\r\n]+)?SUPABASE_PUBLISHABLE_KEY[^\S\r\n]*[:=](?:(?:[^\S\r\n]*\r?\n)*[^\S\r\n]*))(["'`])([^"'`]+)\2/m;
 
+/**
+ * What a switch attempt actually did.
+ *
+ * Deliberately three-valued rather than a boolean: "didn't switch" covers both
+ * an app that was already migrated and half a dozen ways the switch couldn't
+ * proceed (no readable client, a client that resolves outside the app, a key
+ * the project doesn't recognise, no publishable key to move to, the file
+ * changing under the lock). Collapsing those into one `false` told a user whose
+ * key is still legacy that it was "already up to date".
+ */
+export type SwitchKeyOutcome =
+  /** The client was rewritten to the publishable key. */
+  | "switched"
+  /** The client already held a new-format key — nothing to do. */
+  | "already-current"
+  /** Nothing was switched and nothing can be: the app is out of scope. */
+  | "not-applicable";
+
 /** An app running on a legacy key, with the publishable key that replaces it. */
 export interface LegacyAppKey {
   /** Absolute path of the generated client holding the key. */
@@ -52,8 +83,9 @@ export interface LegacyAppKey {
 }
 
 /**
- * Blank out comment bodies, preserving every byte offset (and every newline),
- * so a match found in the result indexes straight back into the original.
+ * Blank out comment bodies and multiline template literals, preserving every
+ * byte offset (and every newline), so a match found in the result indexes
+ * straight back into the original.
  *
  * The anchor in `APP_KEY_RE` alone isn't enough: a block-commented example can
  * start at a line boundary just like the real declaration. Matching one would
@@ -61,9 +93,17 @@ export interface LegacyAppKey {
  * because the rewritten comment then matches first and reads as `sb_publishable_`,
  * so detection goes quiet and never offers the fix again.
  *
+ * A multiline template literal is the same hazard wearing different clothes —
+ * embedded docs, a usage example, a code sample rendered by the app — because
+ * its contents also carry real line breaks for `^` to anchor to. Only MULTILINE
+ * templates are masked: the key's own value is a single-line token, so a
+ * one-line backtick literal is still a legitimate declaration to find, while a
+ * literal spanning lines can never be one.
+ *
  * Deliberately a scanner rather than a parser: it only needs to tell code from
- * comments (string literals are tracked so a `//` inside one isn't mistaken for
- * a comment), and the rewrite still splices into the untouched original.
+ * comments and template prose (string literals are tracked so a `//` inside one
+ * isn't mistaken for a comment), and the rewrite still splices into the
+ * untouched original.
  */
 function maskComments(source: string): string {
   let out = "";
@@ -91,19 +131,35 @@ function maskComments(source: string): string {
     }
 
     if (char === '"' || char === "'" || char === "`") {
-      out += char;
+      // Consume the whole literal first, then decide whether to keep it: a
+      // template's line count isn't known until its closing backtick.
+      const start = i;
       i++;
       while (i < source.length) {
         if (source[i] === "\\") {
-          out += source.slice(i, i + 2);
           i += 2;
           continue;
         }
-        out += source[i];
         i++;
         if (source[i - 1] === char) {
           break;
         }
+      }
+      i = Math.min(i, source.length);
+      const literal = source.slice(start, i);
+      if (char === "`" && literal.includes("\n")) {
+        // Keep the delimiters so the scanner's view stays byte-aligned, blank
+        // the prose between them. A template left unterminated at EOF has no
+        // closing backtick to echo.
+        const closed = literal.length > 1 && literal.endsWith("`");
+        const bodyEnd = closed ? literal.length - 1 : literal.length;
+        out += "`";
+        for (let at = 1; at < bodyEnd; at++) {
+          out += literal[at] === "\n" ? "\n" : " ";
+        }
+        out += closed ? "`" : "";
+      } else {
+        out += literal;
       }
       continue;
     }
@@ -163,10 +219,21 @@ function readAppKey(clientFilePath: string): string | undefined {
  * request the app makes fails with "Legacy API keys are disabled".
  *
  * Reports only when there is a publishable key to switch to, so the caller
- * never has to raise a problem it can't offer a fix for. `undefined` here means
- * "nothing to switch" and nothing else — callers that act on the answer need to
- * tell that apart from a check that couldn't complete.
+ * never has to raise a problem it can't offer a fix for. A non-`legacy` result
+ * means "nothing to switch" and nothing else — callers that act on the answer
+ * need to tell that apart from a check that couldn't complete, which is why
+ * this throws rather than swallowing failures.
+ *
+ * `already-current` is kept distinct from `not-applicable` so the switch can
+ * tell the user their key is up to date only when it actually is.
  */
+type ResolvedAppKey =
+  | { kind: "legacy"; legacy: LegacyAppKey }
+  | { kind: "already-current" }
+  | { kind: "not-applicable" };
+
+const NOT_APPLICABLE = { kind: "not-applicable" } as const;
+
 async function resolveLegacyAppKey({
   appPath,
   projectId,
@@ -175,35 +242,41 @@ async function resolveLegacyAppKey({
   appPath: string;
   projectId: string;
   organizationSlug: string | null;
-}): Promise<LegacyAppKey | undefined> {
+}): Promise<ResolvedAppKey> {
   if (IS_TEST_BUILD) {
-    return undefined;
+    return NOT_APPLICABLE;
   }
 
   const clientFilePath = await resolveClientFilePath(appPath);
   if (!clientFilePath) {
-    return undefined;
+    return NOT_APPLICABLE;
   }
 
   const appKey = readAppKey(clientFilePath);
   if (!appKey) {
-    return undefined;
+    return NOT_APPLICABLE;
   }
   // Already on a new-format key: nothing to fetch, nothing to say.
   if (appKey.startsWith(PUBLISHABLE_KEY_PREFIX)) {
-    return undefined;
+    return { kind: "already-current" };
   }
 
   const keys = await getProjectApiKeys({ projectId, organizationSlug });
   // Classify against the project's own list rather than the key's shape: it
   // proves the key is this project's legacy `anon` key, not a rotated value
   // or one belonging to a different project.
-  const isLegacy = keys.some(
-    (key) =>
-      key.api_key === appKey && (key.type === "legacy" || key.name === "anon"),
-  );
+  const listed = keys.find((key) => key.api_key === appKey);
+  const isLegacy = listed
+    ? listed.type === "legacy" || listed.name === "anon"
+    : // Not listed at all. Disabling is only the first half of Supabase's
+      // migration — the end state is deletion, and a rotated key leaves the
+      // same trace. Going quiet here would drop the warning at exactly the
+      // moment the app is fully broken, so a JWT-shaped key the project no
+      // longer knows about still counts. The shape check matters: it keeps
+      // the offer off values that were never a Supabase legacy key.
+      isLegacyJwtShaped(appKey);
   if (!isLegacy) {
-    return undefined;
+    return NOT_APPLICABLE;
   }
   const publishable = keys.find(
     (key) =>
@@ -213,12 +286,15 @@ async function resolveLegacyAppKey({
   if (!publishable?.api_key) {
     // The project has no publishable key yet, so there's nothing to switch
     // to. Staying silent beats a warning whose only advice is "go make one".
-    return undefined;
+    return NOT_APPLICABLE;
   }
   return {
-    clientFilePath,
-    legacyKey: appKey,
-    publishableKey: publishable.api_key,
+    kind: "legacy",
+    legacy: {
+      clientFilePath,
+      legacyKey: appKey,
+      publishableKey: publishable.api_key,
+    },
   };
 }
 
@@ -238,10 +314,74 @@ export async function detectLegacyAppKey(params: {
   organizationSlug: string | null;
 }): Promise<LegacyAppKey | undefined> {
   try {
-    return await resolveLegacyAppKey(params);
+    const resolved = await resolveLegacyAppKey(params);
+    return resolved.kind === "legacy" ? resolved.legacy : undefined;
   } catch (error) {
     logger.warn(`Could not check the app's Supabase key: ${error}`);
     return undefined;
+  }
+}
+
+/**
+ * Read/write the client file, translating filesystem failures into classified
+ * errors on the way out.
+ *
+ * Detection tolerates an unreadable client (see `readAppKey`), but the switch
+ * runs because the user pressed a button: if the file was deleted, made
+ * unreadable, or is read-only between detection and the locked rewrite, that
+ * has to reach the renderer as a `DyadError` with a kind, not as a raw `ENOENT`
+ * that PostHog then files as an unclassified product exception
+ * (`rules/dyad-errors.md`).
+ */
+async function readClientFile(clientFilePath: string): Promise<string> {
+  try {
+    return await fs.promises.readFile(clientFilePath, "utf8");
+  } catch (error) {
+    throw new DyadError(
+      `Couldn't read the app's Supabase client at ${clientFilePath}: ${error instanceof Error ? error.message : error}`,
+      DyadErrorKind.External,
+    );
+  }
+}
+
+async function writeClientFile(
+  clientFilePath: string,
+  contents: string,
+): Promise<void> {
+  try {
+    await fs.promises.writeFile(clientFilePath, contents);
+  } catch (error) {
+    throw new DyadError(
+      `Couldn't update the app's Supabase client at ${clientFilePath}: ${error instanceof Error ? error.message : error}`,
+      DyadErrorKind.External,
+    );
+  }
+}
+
+/**
+ * Was the client file untouched before Dyad rewrote it?
+ *
+ * Decides whether the rewrite may be auto-committed. `git commit -- <path>`
+ * records the whole working-tree version of that path, not the single hunk Dyad
+ * changed, so committing a file the user was already editing would fold their
+ * in-progress work into a commit labelled as a key swap. It answers false on
+ * any failure (not a repo, git unavailable): "can't prove it was clean" has to
+ * mean "don't commit".
+ */
+async function wasClientFileClean({
+  appPath,
+  relativePath,
+}: {
+  appPath: string;
+  relativePath: string;
+}): Promise<boolean> {
+  try {
+    return await isGitPathClean({ path: appPath, filepath: relativePath });
+  } catch (error) {
+    logger.info(
+      `Not auto-committing ${relativePath}: could not check its git status (${error})`,
+    );
+    return false;
   }
 }
 
@@ -253,8 +393,14 @@ export async function detectLegacyAppKey(params: {
  * one-line key swap they didn't type and can't meaningfully judge. Committing
  * it also gives the change a version to revert to, which an unstaged edit has.
  *
- * Scoped to the client file by pathspec, so a user mid-edit elsewhere in the
- * app keeps their other changes uncommitted and their staged index intact.
+ * Only runs when the file held nothing but committed content beforehand — see
+ * `wasClientFileClean`. A user mid-edit in `client.ts` keeps their work in the
+ * working tree, where the key change simply joins it as one more line to
+ * review; that is the honest outcome, and far better than a "[dyad]" commit
+ * that quietly carries their edits.
+ *
+ * The pathspec scopes the commit to that one file, so edits and staged changes
+ * ELSEWHERE in the app are untouched either way.
  *
  * Never throws: the key is already switched by the time this runs, and an app
  * that isn't a git repo (or a client file that's gitignored) is not a reason to
@@ -288,7 +434,6 @@ async function commitKeySwitch({
  *
  * Rewrites only the key literal — the rest of the file may have been edited by
  * the user or the agent, and regenerating it wholesale would discard that.
- * Returns false when there was nothing to switch.
  *
  * Uses the throwing `resolveLegacyAppKey`, not `detectLegacyAppKey`: this runs
  * because the user pressed a button, and a Management API that couldn't be
@@ -303,29 +448,37 @@ export async function switchAppToPublishableKey({
   appPath: string;
   projectId: string;
   organizationSlug: string | null;
-}): Promise<boolean> {
-  const legacy = await resolveLegacyAppKey({
+}): Promise<SwitchKeyOutcome> {
+  const resolved = await resolveLegacyAppKey({
     appPath,
     projectId,
     organizationSlug,
   });
-  if (!legacy) {
-    return false;
+  if (resolved.kind !== "legacy") {
+    return resolved.kind;
   }
+  const { legacy } = resolved;
 
   // `legacy.clientFilePath` is already canonicalized and confirmed inside the
   // app by resolveClientFilePath, so this write cannot escape the app tree.
   const { clientFilePath } = legacy;
+  const relativePath = path.relative(appPath, clientFilePath);
 
   // The same lock the agent's file-writing tools take, so this read-modify-write
   // can neither clobber nor be clobbered by a concurrent write to this file.
   return withLock(getFileWriteKey(clientFilePath), async () => {
-    const contents = await fs.promises.readFile(clientFilePath, "utf8");
+    // Read git's view BEFORE the rewrite — afterwards every file looks dirty,
+    // including the one we just made dirty ourselves.
+    const wasClean = await wasClientFileClean({ appPath, relativePath });
+
+    const contents = await readClientFile(clientFilePath);
     // Match against the comment-masked copy, then splice into the original by
     // offset — maskComments preserves them, so the two line up exactly.
     const match = APP_KEY_RE.exec(maskComments(contents));
     if (!match || match[3] !== legacy.legacyKey) {
-      return false;
+      // The file changed between the check and the lock. Nothing was switched,
+      // and we can't claim the key is current — we no longer know what it is.
+      return "not-applicable";
     }
 
     const start = match.index;
@@ -336,16 +489,22 @@ export async function switchAppToPublishableKey({
       `${assignment}${quote}${legacy.publishableKey}${quote}` +
       contents.slice(start + match[0].length);
     if (updated === contents) {
-      return false;
+      return "already-current";
     }
 
-    await fs.promises.writeFile(clientFilePath, updated);
+    await writeClientFile(clientFilePath, updated);
     logger.info(
       `Switched app at ${appPath} to the publishable key for project ${projectId}`,
     );
-    // Inside the file lock: the commit has to capture the key we just wrote,
-    // not whatever a concurrent writer might put there next.
-    await commitKeySwitch({ appPath, clientFilePath });
-    return true;
+    if (wasClean) {
+      // Inside the file lock: the commit has to capture the key we just wrote,
+      // not whatever a concurrent writer might put there next.
+      await commitKeySwitch({ appPath, clientFilePath });
+    } else {
+      logger.info(
+        `Left the Supabase key change in ${relativePath} uncommitted: the file already had uncommitted edits, which a scoped commit would have swept in.`,
+      );
+    }
+    return "switched";
   });
 }

@@ -10,11 +10,13 @@ const {
   switchAppToPublishableKeyMock,
   toastSuccessMock,
   toastErrorMock,
+  toastInfoMock,
 } = vi.hoisted(() => ({
   detectLegacyAppKeyMock: vi.fn(),
   switchAppToPublishableKeyMock: vi.fn(),
   toastSuccessMock: vi.fn(),
   toastErrorMock: vi.fn(),
+  toastInfoMock: vi.fn(),
 }));
 
 vi.mock("@/ipc/types", () => ({
@@ -28,7 +30,11 @@ vi.mock("@/ipc/types", () => ({
 }));
 
 vi.mock("sonner", () => ({
-  toast: { success: toastSuccessMock, error: toastErrorMock },
+  toast: {
+    success: toastSuccessMock,
+    error: toastErrorMock,
+    info: toastInfoMock,
+  },
 }));
 
 vi.mock("react-i18next", () => ({
@@ -101,7 +107,7 @@ const SECTION = "supabase-legacy-key";
 beforeEach(() => {
   vi.clearAllMocks();
   detectLegacyAppKeyMock.mockResolvedValue({ hasLegacyKey: true });
-  switchAppToPublishableKeyMock.mockResolvedValue({ updated: true });
+  switchAppToPublishableKeyMock.mockResolvedValue({ outcome: "switched" });
 });
 
 describe("SupabaseConnector — app API key", () => {
@@ -148,7 +154,9 @@ describe("SupabaseConnector — app API key", () => {
   // Reachable despite the gate: the file can change between the detection
   // that showed the button and the click.
   it("says so when the key was already current", async () => {
-    switchAppToPublishableKeyMock.mockResolvedValue({ updated: false });
+    switchAppToPublishableKeyMock.mockResolvedValue({
+      outcome: "already-current",
+    });
 
     renderConnector();
     fireEvent.click(await screen.findByTestId(BUTTON));
@@ -158,6 +166,24 @@ describe("SupabaseConnector — app API key", () => {
         "integrations.supabase.apiKeyAlreadyCurrent",
       ),
     );
+  });
+
+  // The key is still legacy and Dyad couldn't act on it — the one case where
+  // claiming the key is "already up to date" would be a plain falsehood.
+  it("does not claim the key is current when nothing could be switched", async () => {
+    switchAppToPublishableKeyMock.mockResolvedValue({
+      outcome: "not-applicable",
+    });
+
+    renderConnector();
+    fireEvent.click(await screen.findByTestId(BUTTON));
+
+    await waitFor(() =>
+      expect(toastInfoMock).toHaveBeenCalledWith(
+        "integrations.supabase.apiKeyNotUpdated",
+      ),
+    );
+    expect(toastSuccessMock).not.toHaveBeenCalled();
   });
 
   it("surfaces a failed switch", async () => {

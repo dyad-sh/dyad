@@ -146,6 +146,53 @@ describe("getProjectApiKeys", () => {
       "https://api.supabase.com/v1/projects/proj-1/api-keys",
     );
   });
+
+  // This response decides which key the app authenticates with. A 200 carrying
+  // something other than an array would otherwise surface as an unclassified
+  // TypeError from `keys.find` — and inside detectLegacyAppKey, which swallows
+  // failures, it would silently suppress the legacy-key warning entirely.
+  it("rejects a 200 whose body isn't a list of keys", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ message: "something went wrong" }), {
+            status: 200,
+          }),
+      ),
+    );
+
+    const error = await getProjectApiKeys({
+      projectId: "proj-1",
+      organizationSlug: "org-1",
+    }).catch((thrown) => thrown);
+
+    expect(isDyadError(error)).toBe(true);
+    expect((error as DyadError).kind).toBe(DyadErrorKind.External);
+  });
+
+  // Supabase may add key types; an unknown one must not fail the whole request,
+  // because the keys around it are still what the app authenticates with.
+  it("passes through keys carrying an unfamiliar type", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify([
+              { name: "default", type: "something-new", api_key: "sb_x" },
+            ]),
+            { status: 200 },
+          ),
+      ),
+    );
+
+    await expect(
+      getProjectApiKeys({ projectId: "proj-1", organizationSlug: "org-1" }),
+    ).resolves.toEqual([
+      { name: "default", type: "something-new", api_key: "sb_x" },
+    ]);
+  });
 });
 
 describe("classifyManagementApiError", () => {
@@ -153,7 +200,12 @@ describe("classifyManagementApiError", () => {
     for (const status of [401, 403]) {
       const error = classifyManagementApiError(
         new SupabaseManagementAPIError(
-          "Failed to get project api keys: Forbidden (403)",
+          // Built from `status`, so the 401 iteration doesn't carry a message
+          // claiming 403 — a mislabelled fixture can't catch a regression that
+          // depends on the reported status, and makes failures harder to read.
+          `Failed to get project api keys: ${
+            status === 401 ? "Unauthorized" : "Forbidden"
+          } (${status})`,
           new Response(null, { status }),
         ),
         "update this app's API key",

@@ -28,6 +28,7 @@ import {
   getGitUncommittedFilesWithStatus,
   countChangedLines,
   unquoteGitPath,
+  isGitPathClean,
 } from "@/ipc/utils/git_utils";
 
 const execFileAsync = promisify(execFile);
@@ -259,6 +260,87 @@ describe("gitListFilesNative", () => {
     });
 
     expect(files).toEqual(["src/index.ts"]);
+  });
+});
+
+// Gates whether Dyad may auto-commit a file it rewrote: `git commit -- <path>`
+// records the whole working-tree version of that path, so a file the user was
+// already editing must not be committed on their behalf.
+describe("isGitPathClean", () => {
+  let repoDir: string | undefined;
+
+  afterEach(async () => {
+    if (repoDir) {
+      await fs.promises.rm(repoDir, { recursive: true, force: true });
+      repoDir = undefined;
+    }
+  });
+
+  async function makeRepo(): Promise<string> {
+    repoDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "git-clean-"));
+    await runGit(repoDir, ["init"]);
+    await runGit(repoDir, ["config", "user.email", "test@dyad.sh"]);
+    await runGit(repoDir, ["config", "user.name", "Test"]);
+    await fs.promises.writeFile(path.join(repoDir, "tracked.ts"), "one\n");
+    await fs.promises.writeFile(path.join(repoDir, "other.ts"), "other\n");
+    await runGit(repoDir, ["add", "."]);
+    await runGit(repoDir, ["commit", "-m", "init"]);
+    return repoDir;
+  }
+
+  it("is clean for a committed file with no local changes", async () => {
+    const repo = await makeRepo();
+
+    await expect(
+      isGitPathClean({ path: repo, filepath: "tracked.ts" }),
+    ).resolves.toBe(true);
+  });
+
+  it("is dirty for an unstaged edit", async () => {
+    const repo = await makeRepo();
+    await fs.promises.writeFile(path.join(repo, "tracked.ts"), "edited\n");
+
+    await expect(
+      isGitPathClean({ path: repo, filepath: "tracked.ts" }),
+    ).resolves.toBe(false);
+  });
+
+  it("is dirty for a staged edit", async () => {
+    const repo = await makeRepo();
+    await fs.promises.writeFile(path.join(repo, "tracked.ts"), "staged\n");
+    await runGit(repo, ["add", "tracked.ts"]);
+
+    await expect(
+      isGitPathClean({ path: repo, filepath: "tracked.ts" }),
+    ).resolves.toBe(false);
+  });
+
+  it("is dirty for an untracked file", async () => {
+    const repo = await makeRepo();
+    await fs.promises.writeFile(path.join(repo, "new.ts"), "new\n");
+
+    await expect(
+      isGitPathClean({ path: repo, filepath: "new.ts" }),
+    ).resolves.toBe(false);
+  });
+
+  // Scoped to the path asked about: unrelated work elsewhere in the app is
+  // exactly what the pathspec commit already leaves alone.
+  it("ignores changes to other files", async () => {
+    const repo = await makeRepo();
+    await fs.promises.writeFile(path.join(repo, "other.ts"), "changed\n");
+
+    await expect(
+      isGitPathClean({ path: repo, filepath: "tracked.ts" }),
+    ).resolves.toBe(true);
+  });
+
+  it("throws outside a git repository, so callers can't read it as clean", async () => {
+    repoDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "git-clean-"));
+
+    await expect(
+      isGitPathClean({ path: repoDir, filepath: "tracked.ts" }),
+    ).rejects.toThrow();
   });
 });
 

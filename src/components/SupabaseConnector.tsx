@@ -222,12 +222,16 @@ export function SupabaseConnector({ appId }: { appId: number }) {
 
   const handleUpdateApiKey = async () => {
     try {
-      const { updated } = await switchKey.mutateAsync({ appId });
-      toast.success(
-        updated
-          ? t("integrations.supabase.apiKeyUpdated")
-          : t("integrations.supabase.apiKeyAlreadyCurrent"),
-      );
+      const { outcome } = await switchKey.mutateAsync({ appId });
+      if (outcome === "switched") {
+        toast.success(t("integrations.supabase.apiKeyUpdated"));
+      } else if (outcome === "already-current") {
+        toast.success(t("integrations.supabase.apiKeyAlreadyCurrent"));
+      } else {
+        // The key is still legacy and Dyad couldn't act on it. Reporting
+        // success here would leave the user believing a broken app was fixed.
+        toast.info(t("integrations.supabase.apiKeyNotUpdated"));
+      }
     } catch (error) {
       console.error("Failed to update the app's Supabase key:", error);
       toast.error(

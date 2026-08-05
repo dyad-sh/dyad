@@ -219,6 +219,53 @@ describe("createTempTestUser", () => {
     },
   );
 
+  // `type` is optional on the Management API response. Requiring it alongside
+  // the prefix would drop a perfectly good sb_secret_ key straight to the legacy
+  // tier, silently un-migrating a project that had already moved.
+  it("picks the new-format secret key even when the response omits its type", async () => {
+    mocks.getProjectApiKeys.mockResolvedValue([
+      { name: "anon", type: "legacy", api_key: "eyJ.legacy-anon" },
+      {
+        name: "service_role",
+        type: "legacy",
+        api_key: "eyJ.legacy-service-role",
+      },
+      { name: "default", api_key: SECRET_KEY },
+    ]);
+    const fetchSpy = mockFetch(
+      () => new Response(JSON.stringify({ id: UUID })),
+    );
+
+    await createTempTestUser(makeApp());
+
+    const [, init] = fetchSpy.mock.calls[0];
+    expect(init.headers.apikey).toBe(SECRET_KEY);
+    expect(init.headers.Authorization).toBeUndefined();
+  });
+
+  // A JWT can never carry the sb_secret_ prefix, so the prefix classifies this
+  // on its own. Consulting `type` too could only add false negatives — this
+  // shape would lose its bearer header and 401 every Auth Admin call.
+  it("still sends the bearer header for a legacy JWT labelled as a secret key", async () => {
+    mocks.getProjectApiKeys.mockResolvedValue([
+      { name: "anon", type: "legacy", api_key: "eyJ.legacy-anon" },
+      {
+        name: "service_role",
+        type: "secret",
+        api_key: "eyJ.legacy-service-role",
+      },
+    ]);
+    const fetchSpy = mockFetch(
+      () => new Response(JSON.stringify({ id: UUID })),
+    );
+
+    await createTempTestUser(makeApp());
+
+    const [, init] = fetchSpy.mock.calls[0];
+    expect(init.headers.apikey).toBe("eyJ.legacy-service-role");
+    expect(init.headers.Authorization).toBe("Bearer eyJ.legacy-service-role");
+  });
+
   it("reveals the secret key value when fetching the project's keys", async () => {
     mockFetch(() => new Response(JSON.stringify({ id: UUID })));
 

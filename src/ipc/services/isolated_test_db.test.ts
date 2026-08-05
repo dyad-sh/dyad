@@ -124,7 +124,11 @@ describe("prepareIsolatedTestDatabase — Supabase test-user path", () => {
   // The test signs in through the app's own login UI, so a legacy key in the
   // app's client is a failure waiting to happen — one that reads as broken
   // login code rather than a retired key. Warn, and let the panel offer a fix.
-  it("warns and offers the switch when the app is on a legacy key", async () => {
+  //
+  // The warning travels as this flag rather than as prose in `reason`: the
+  // panel renders it in the user's own language and can retire it the moment
+  // the user takes the fix, neither of which a baked English sentence allows.
+  it("offers the switch when the app is on a legacy key", async () => {
     mocks.detectLegacyAppKey.mockResolvedValue({
       clientFilePath: "/apps/app1/src/integrations/supabase/client.ts",
       legacyKey: "eyJ.legacy-anon",
@@ -140,14 +144,16 @@ describe("prepareIsolatedTestDatabase — Supabase test-user path", () => {
       runtimeMode: "host",
     });
 
-    expect(prepared.isolation.reason).toMatch(/legacy API key/);
     expect(prepared.isolation.canSwitchToPublishableKey).toBe(true);
+    expect(prepared.isolation.reason).toBeUndefined();
     // Warns, never blocks — the run still happens.
     expect(prepared.infraError).toBeUndefined();
     expect(mocks.createTempTestUser).toHaveBeenCalled();
   });
 
-  it("combines the legacy-key warning with the RLS warning", async () => {
+  // The two warnings are independent: RLS stays main-process prose, the
+  // legacy-key half is a flag the renderer owns. One must not swallow the other.
+  it("reports the legacy key and the RLS warning independently", async () => {
     mocks.checkRls.mockResolvedValue({ tablesWithoutRls: ["todos"] });
     mocks.detectLegacyAppKey.mockResolvedValue({
       clientFilePath: "/apps/app1/src/integrations/supabase/client.ts",
@@ -165,7 +171,7 @@ describe("prepareIsolatedTestDatabase — Supabase test-user path", () => {
     });
 
     expect(prepared.isolation.reason).toMatch(/Row-Level Security/);
-    expect(prepared.isolation.reason).toMatch(/legacy API key/);
+    expect(prepared.isolation.canSwitchToPublishableKey).toBe(true);
   });
 
   it("creates a test user and returns credentials when RLS is fully enabled", async () => {

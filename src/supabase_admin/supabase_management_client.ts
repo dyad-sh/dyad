@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { z } from "zod";
 import { withLock } from "../ipc/utils/lock_utils";
 import { readSettings, writeSettings } from "../main/settings";
 import {
@@ -581,6 +582,25 @@ export interface SupabaseApiKey {
 }
 
 /**
+ * Validated at the boundary rather than asserted, because this response decides
+ * which key the app authenticates with and which key admin calls use. A 200
+ * carrying something other than an array (an error envelope, a paginated
+ * wrapper) would otherwise surface as an unclassified `TypeError` from
+ * `keys.find` — and inside `detectLegacyAppKey`, which swallows failures, it
+ * would silently suppress the very warning this exists to raise.
+ *
+ * Loose on purpose: unknown `type` values pass through as-is (Supabase may add
+ * more) and only `name`/`api_key` are required, so a new field can't break key
+ * selection.
+ */
+const SupabaseApiKeySchema = z.object({
+  name: z.string(),
+  api_key: z.string(),
+  type: z.string().nullish(),
+});
+const SupabaseApiKeysSchema = z.array(SupabaseApiKeySchema);
+
+/**
  * Fetch a project's API keys.
  *
  * Deliberately not `SupabaseManagementAPI.getProjectApiKeys()`: that helper
@@ -620,7 +640,14 @@ export async function getProjectApiKeys({
     throw await createResponseError(response, "get project api keys");
   }
 
-  return response.json();
+  const parsed = SupabaseApiKeysSchema.safeParse(await response.json());
+  if (!parsed.success) {
+    throw new DyadError(
+      `Supabase returned an unexpected API-keys response for project ${projectId}: ${parsed.error.message}`,
+      DyadErrorKind.External,
+    );
+  }
+  return parsed.data as SupabaseApiKey[];
 }
 
 export async function getSupabaseProjectLogs(

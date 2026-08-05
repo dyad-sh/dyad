@@ -34,10 +34,11 @@ export function SupabaseLegacyKeyBanner({ appId }: { appId: number | null }) {
   );
 
   const projectId = app?.supabaseProjectId ?? null;
+  const isConnected = isSupabaseConnected(settings) && !!projectId;
   const legacyKeyQuery = useLegacySupabaseKey({
     appId,
     projectId,
-    enabled: isSupabaseConnected(settings) && !!projectId,
+    enabled: isConnected,
   });
   const switchKey = useSwitchToPublishableKey();
 
@@ -46,8 +47,16 @@ export function SupabaseLegacyKeyBanner({ appId }: { appId: number | null }) {
   // project's legacy key and that a publishable key exists to replace it, so
   // the offer never appears without a fix behind it. It self-clears too — the
   // switch invalidates this query, and the re-check comes back false.
+  //
+  // `isConnected` is re-checked here and not just in the query's `enabled`:
+  // disabling a query stops it refetching but keeps its last result, so
+  // disconnecting Supabase would otherwise leave a cached `true` on screen
+  // offering a migration there is no longer a token to perform.
   const showBanner =
-    appId != null && !isDismissed && legacyKeyQuery.data?.hasLegacyKey === true;
+    appId != null &&
+    isConnected &&
+    !isDismissed &&
+    legacyKeyQuery.data?.hasLegacyKey === true;
 
   const handleDismiss = () => {
     if (appId == null) return;
@@ -57,11 +66,15 @@ export function SupabaseLegacyKeyBanner({ appId }: { appId: number | null }) {
   const handleUpdate = async () => {
     if (appId == null) return;
     try {
-      const { updated } = await switchKey.mutateAsync({ appId });
-      if (updated) {
+      const { outcome } = await switchKey.mutateAsync({ appId });
+      if (outcome === "switched") {
         showSuccess(t("integrations.supabase.apiKeyUpdated"));
-      } else {
+      } else if (outcome === "already-current") {
         showInfo(t("integrations.supabase.apiKeyAlreadyCurrent"));
+      } else {
+        // Still on the legacy key, but not one Dyad can swap — saying "already
+        // up to date" here would be a plain falsehood.
+        showInfo(t("integrations.supabase.apiKeyNotUpdated"));
       }
     } catch (error) {
       showError(error);

@@ -12,11 +12,15 @@ const {
   switchAppToPublishableKeyMock,
   showSuccessMock,
   showErrorMock,
+  showInfoMock,
+  isSupabaseConnectedMock,
 } = vi.hoisted(() => ({
   detectLegacyAppKeyMock: vi.fn(),
   switchAppToPublishableKeyMock: vi.fn(),
   showSuccessMock: vi.fn(),
   showErrorMock: vi.fn(),
+  showInfoMock: vi.fn(),
+  isSupabaseConnectedMock: vi.fn(),
 }));
 
 vi.mock("@/ipc/types", () => ({
@@ -31,7 +35,7 @@ vi.mock("@/ipc/types", () => ({
 vi.mock("@/lib/toast", () => ({
   showSuccess: showSuccessMock,
   showError: showErrorMock,
-  showInfo: vi.fn(),
+  showInfo: showInfoMock,
 }));
 
 vi.mock("react-i18next", () => ({
@@ -46,7 +50,9 @@ vi.mock("@/hooks/useLoadApp", () => ({
   useLoadApp: () => ({ app: { supabaseProjectId: "proj-1" } }),
 }));
 
-vi.mock("@/lib/schemas", () => ({ isSupabaseConnected: () => true }));
+vi.mock("@/lib/schemas", () => ({
+  isSupabaseConnected: isSupabaseConnectedMock,
+}));
 
 function renderBanner({ appId = 7 }: { appId?: number | null } = {}) {
   const queryClient = new QueryClient({
@@ -67,7 +73,8 @@ const banner = () => screen.queryByTestId("supabase-legacy-key-banner");
 beforeEach(() => {
   vi.clearAllMocks();
   detectLegacyAppKeyMock.mockResolvedValue({ hasLegacyKey: true });
-  switchAppToPublishableKeyMock.mockResolvedValue({ updated: true });
+  switchAppToPublishableKeyMock.mockResolvedValue({ outcome: "switched" });
+  isSupabaseConnectedMock.mockReturnValue(true);
 });
 
 describe("SupabaseLegacyKeyBanner", () => {
@@ -87,9 +94,19 @@ describe("SupabaseLegacyKeyBanner", () => {
     expect(banner()).toBeNull();
   });
 
-  it("switches the app to the publishable key from the banner", async () => {
+  // The banner's whole self-clearing contract: the switch invalidates the
+  // detection query, the re-check comes back false, and the warning goes away
+  // on its own. Nothing else clears it, so if this link breaks the user fixes
+  // the key and keeps being told it's broken.
+  it("switches the app to the publishable key and then clears itself", async () => {
     renderBanner();
     await waitFor(() => expect(banner()).toBeTruthy());
+
+    // The app is migrated from this point on, so re-detection must agree.
+    switchAppToPublishableKeyMock.mockImplementation(async () => {
+      detectLegacyAppKeyMock.mockResolvedValue({ hasLegacyKey: false });
+      return { outcome: "switched" };
+    });
 
     fireEvent.click(screen.getByRole("button", { name: /updateApiKeyShort/ }));
 
@@ -97,6 +114,41 @@ describe("SupabaseLegacyKeyBanner", () => {
       expect(switchAppToPublishableKeyMock).toHaveBeenCalledWith({ appId: 7 }),
     );
     expect(showSuccessMock).toHaveBeenCalled();
+    await waitFor(() => expect(banner()).toBeNull());
+  });
+
+  // Reachable despite the detection gate: client.ts can change between the
+  // check that raised the banner and the click. The key is still legacy, so
+  // the banner has to stay — and "already up to date" would be a falsehood.
+  it("keeps warning when the switch couldn't act on the key", async () => {
+    switchAppToPublishableKeyMock.mockResolvedValue({
+      outcome: "not-applicable",
+    });
+    renderBanner();
+    await waitFor(() => expect(banner()).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("button", { name: /updateApiKeyShort/ }));
+
+    await waitFor(() =>
+      expect(showInfoMock).toHaveBeenCalledWith(
+        "integrations.supabase.apiKeyNotUpdated",
+      ),
+    );
+    expect(showSuccessMock).not.toHaveBeenCalled();
+    expect(banner()).toBeTruthy();
+  });
+
+  // Disabling a query stops it refetching but keeps its last result, so without
+  // re-checking connectivity at render the banner would go on offering a
+  // migration there is no longer a Supabase token to perform.
+  it("disappears when Supabase is disconnected, cached verdict and all", async () => {
+    const { rerender } = renderBanner();
+    await waitFor(() => expect(banner()).toBeTruthy());
+
+    isSupabaseConnectedMock.mockReturnValue(false);
+    rerender(<SupabaseLegacyKeyBanner appId={7} />);
+
+    expect(banner()).toBeNull();
   });
 
   it("reports a failed switch instead of silently leaving the legacy key", async () => {

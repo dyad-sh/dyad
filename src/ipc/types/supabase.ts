@@ -138,12 +138,25 @@ export const supabaseContracts = {
   /**
    * Rewrite the app's generated Supabase client to use the project's
    * publishable key instead of the legacy `anon` key it was generated with.
-   * `updated` is false when there was nothing to switch.
+   *
+   * `outcome` distinguishes a successful switch from an app that was already
+   * migrated and from one the switch can't act on at all, so the UI never tells
+   * a user their key is current when it is still legacy.
+   *
+   * Declares `invalidates` because the handler rewrites a file and may commit
+   * it: the mutation's own `onSuccess` refreshes only the window that fired it,
+   * and Dyad can have the same app open in another.
    */
   switchAppToPublishableKey: defineContract({
     channel: "supabase:switch-app-to-publishable-key",
     input: z.object({ appId: z.number() }),
-    output: z.object({ updated: z.boolean() }),
+    output: z.object({
+      outcome: z.enum(["switched", "already-current", "not-applicable"]),
+    }),
+    invalidates: (input) => [
+      { family: "versions", appId: input.appId },
+      { family: "uncommitted-files", appId: input.appId },
+    ],
   }),
 
   // Test-only channel

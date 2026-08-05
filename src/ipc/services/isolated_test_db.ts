@@ -307,12 +307,12 @@ async function prepareSupabaseTestUserIsolation({
       projectId,
       organizationSlug,
     });
-    const warning = joinWarnings(
-      buildRlsWarning(rls),
-      legacyKey
-        ? "This app's Supabase client still uses the project's legacy API key, which Supabase is retiring — sign-in will start failing once legacy keys are disabled."
-        : undefined,
-    );
+    // The legacy-key half is NOT folded into `reason`. It travels as the
+    // structured `canSwitchToPublishableKey` flag so the panel can render it in
+    // the user's own language (`reason` is main-process English), and can drop
+    // it the moment the user takes the fix — a warning that outlives the
+    // problem it describes reads as the fix not having worked.
+    const warning = buildRlsWarning(rls);
 
     if (signal?.aborted) {
       throw new Error("Test run stopped.");
@@ -358,12 +358,6 @@ async function prepareSupabaseTestUserIsolation({
       teardown: NOOP_TEARDOWN,
     };
   }
-}
-
-/** Combine the setup warnings into one `reason`, dropping the empty ones. */
-function joinWarnings(...warnings: (string | undefined)[]): string | undefined {
-  const present = warnings.filter((warning): warning is string => !!warning);
-  return present.length > 0 ? present.join(" ") : undefined;
 }
 
 /** Build the user-facing RLS warning, or undefined when fully protected. */

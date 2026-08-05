@@ -469,6 +469,33 @@ export async function isGitStatusClean({
   return isClean;
 }
 
+/**
+ * Whether one path has no staged or unstaged changes (and is not untracked).
+ *
+ * `git status --porcelain -- <path>` prints a line per differing path and
+ * nothing at all when it matches HEAD, so an empty result means clean. Callers
+ * that auto-commit a file they just rewrote use this BEFORE the rewrite: a file
+ * the user was already editing must not have those edits folded into Dyad's
+ * commit, because `git commit -- <path>` records the whole working-tree version
+ * of that path, not just the hunk Dyad changed.
+ */
+export async function isGitPathClean({
+  path,
+  filepath,
+}: GitFileParams): Promise<boolean> {
+  const result = await execGit(
+    ["status", "--porcelain", "--", normalizePath(filepath)],
+    path,
+  );
+  if (result.exitCode !== 0) {
+    throw new DyadError(
+      `Failed to get status for ${filepath}: ${result.stderr.trim() || result.stdout.trim()}`,
+      DyadErrorKind.Conflict,
+    );
+  }
+  return result.stdout.trim().length === 0;
+}
+
 export async function hasStagedChanges({
   path,
 }: {

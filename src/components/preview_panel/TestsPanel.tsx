@@ -769,6 +769,10 @@ export function TestsPanel() {
     selectedAppId != null && switchedKeyAppId === selectedAppId;
   const isSwitchingKey =
     switchKey.isPending && switchKey.variables?.appId === selectedAppId;
+  // Clears as soon as the user takes the fix, so the sentence claiming the key
+  // is still legacy never sits next to a button that says it's been updated.
+  const showLegacyKeyWarning =
+    !!runState.isolation?.canSwitchToPublishableKey && !keySwitched;
 
   // Depends on mutateAsync, not the mutation object: useMutation returns a new
   // object every render, which would rebuild this callback each time.
@@ -777,12 +781,18 @@ export function TestsPanel() {
     if (selectedAppId == null) return;
     const appId = selectedAppId;
     try {
-      const { updated } = await switchKeyAsync({ appId });
-      setSwitchedKeyAppId(appId);
-      if (updated) {
+      const { outcome } = await switchKeyAsync({ appId });
+      // Only a real switch (or a key that was already current) may retire the
+      // warning. "not-applicable" means the key is still legacy and Dyad
+      // couldn't act on it, so the offer has to stay on screen.
+      if (outcome === "switched") {
+        setSwitchedKeyAppId(appId);
         showSuccess(t("integrations.supabase.apiKeyUpdated"));
-      } else {
+      } else if (outcome === "already-current") {
+        setSwitchedKeyAppId(appId);
         showInfo(t("integrations.supabase.apiKeyAlreadyCurrent"));
+      } else {
+        showInfo(t("integrations.supabase.apiKeyNotUpdated"));
       }
     } catch (error) {
       showError(error);
@@ -1288,11 +1298,19 @@ export function TestsPanel() {
           {!isRunning &&
             !runState.runError &&
             runState.isolation?.mode !== "neon-branch" &&
-            runState.isolation?.reason && (
+            (runState.isolation?.reason || showLegacyKeyWarning) && (
               <div className="flex items-start gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 text-sm text-amber-800 dark:text-amber-200">
                 <AlertTriangle size={15} className="shrink-0 mt-0.5" />
-                <span className="flex-1">{runState.isolation.reason}</span>
-                {runState.isolation.canSwitchToPublishableKey && (
+                <span className="flex-1">
+                  {runState.isolation?.reason}
+                  {/* Rendered here rather than folded into `reason` upstream:
+                  it's the one warning the user can retire without re-running,
+                  and the renderer is where it can be localized. */}
+                  {showLegacyKeyWarning &&
+                    (runState.isolation?.reason ? " " : "") +
+                      t("integrations.supabase.legacyApiKeyTestWarning")}
+                </span>
+                {runState.isolation?.canSwitchToPublishableKey && (
                   <button
                     onClick={switchToPublishableKey}
                     disabled={isSwitchingKey || keySwitched}

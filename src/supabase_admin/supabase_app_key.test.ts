@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getProjectApiKeys } from "./supabase_management_client";
-import { gitAdd, gitCommit } from "@/ipc/utils/git_utils";
+import { gitAdd, gitCommit, isGitPathClean } from "@/ipc/utils/git_utils";
 import {
   detectLegacyAppKey,
   switchAppToPublishableKey,
@@ -16,6 +16,7 @@ vi.mock("./supabase_management_client", () => ({
 vi.mock("@/ipc/utils/git_utils", () => ({
   gitAdd: vi.fn(),
   gitCommit: vi.fn(),
+  isGitPathClean: vi.fn(),
 }));
 vi.mock("electron-log", () => ({
   default: { scope: () => ({ warn: vi.fn(), info: vi.fn(), error: vi.fn() }) },
@@ -24,8 +25,12 @@ vi.mock("electron-log", () => ({
 const getProjectApiKeysMock = vi.mocked(getProjectApiKeys);
 const gitAddMock = vi.mocked(gitAdd);
 const gitCommitMock = vi.mocked(gitCommit);
+const isGitPathCleanMock = vi.mocked(isGitPathClean);
 
-const LEGACY_ANON = "eyJhbGciOiJIUzI1NiJ9.legacy-anon";
+// Three dot-separated segments, like the real thing: the unlisted-key fallback
+// keys off JWT shape, so a two-segment stand-in wouldn't exercise it.
+const LEGACY_ANON =
+  "eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiYW5vbiJ9.legacy-anon-signature";
 const PUBLISHABLE = "sb_publishable_abc123";
 
 // A migrated project still lists the legacy pair alongside the new keys.
@@ -75,6 +80,9 @@ beforeEach(() => {
   getProjectApiKeysMock.mockResolvedValue(PROJECT_API_KEYS);
   gitAddMock.mockResolvedValue(undefined);
   gitCommitMock.mockResolvedValue("commit-hash");
+  // The common case: the user wasn't editing client.ts, so the rewrite is
+  // Dyad's alone to commit.
+  isGitPathCleanMock.mockResolvedValue(true);
 });
 
 afterEach(() => {
@@ -194,7 +202,9 @@ describe("switchAppToPublishableKey", () => {
     const appPath = makeApp(LEGACY_ANON);
     const before = readClient(appPath);
 
-    await expect(switchAppToPublishableKey(args(appPath))).resolves.toBe(true);
+    await expect(switchAppToPublishableKey(args(appPath))).resolves.toBe(
+      "switched",
+    );
 
     const after = readClient(appPath);
     expect(after).toContain(`"${PUBLISHABLE}"`);
@@ -211,7 +221,9 @@ describe("switchAppToPublishableKey", () => {
       `const SUPABASE_PUBLISHABLE_KEY = "${LEGACY_ANON}";\nexport const supabase = createClient(URL, SUPABASE_PUBLISHABLE_KEY, {\n  auth: { persistSession: false },\n});\n`,
     );
 
-    await expect(switchAppToPublishableKey(args(appPath))).resolves.toBe(true);
+    await expect(switchAppToPublishableKey(args(appPath))).resolves.toBe(
+      "switched",
+    );
 
     const after = fs.readFileSync(clientPath, "utf8");
     expect(after).toContain("persistSession: false");
@@ -229,7 +241,9 @@ describe("switchAppToPublishableKey", () => {
       "client.ts",
     );
 
-    await expect(switchAppToPublishableKey(args(appPath))).resolves.toBe(true);
+    await expect(switchAppToPublishableKey(args(appPath))).resolves.toBe(
+      "switched",
+    );
 
     expect(gitAddMock).toHaveBeenCalledWith({
       path: appPath,
@@ -250,14 +264,16 @@ describe("switchAppToPublishableKey", () => {
     const appPath = makeApp(LEGACY_ANON);
     gitCommitMock.mockRejectedValue(new Error("not a git repository"));
 
-    await expect(switchAppToPublishableKey(args(appPath))).resolves.toBe(true);
+    await expect(switchAppToPublishableKey(args(appPath))).resolves.toBe(
+      "switched",
+    );
     expect(readClient(appPath)).toContain(`"${PUBLISHABLE}"`);
   });
 
   it("does not commit when there was nothing to switch", async () => {
     await expect(
       switchAppToPublishableKey(args(makeApp(PUBLISHABLE))),
-    ).resolves.toBe(false);
+    ).resolves.toBe("already-current");
 
     expect(gitCommitMock).not.toHaveBeenCalled();
   });
@@ -266,13 +282,17 @@ describe("switchAppToPublishableKey", () => {
     const appPath = makeApp(PUBLISHABLE);
     const before = readClient(appPath);
 
-    await expect(switchAppToPublishableKey(args(appPath))).resolves.toBe(false);
+    await expect(switchAppToPublishableKey(args(appPath))).resolves.toBe(
+      "already-current",
+    );
     expect(readClient(appPath)).toBe(before);
   });
 
-  it("is a no-op when there is no generated client to rewrite", async () => {
+  // "Nothing to switch" is NOT "already up to date": there is no key here at
+  // all, and telling the user their key is current would be a plain falsehood.
+  it("reports not-applicable when there is no generated client to rewrite", async () => {
     await expect(switchAppToPublishableKey(args(makeApp(null)))).resolves.toBe(
-      false,
+      "not-applicable",
     );
   });
 
@@ -295,7 +315,9 @@ describe("switchAppToPublishableKey", () => {
       `const SUPABASE_PUBLISHABLE_KEY =\n  "${LEGACY_ANON}";\n`,
     );
 
-    await expect(switchAppToPublishableKey(args(appPath))).resolves.toBe(true);
+    await expect(switchAppToPublishableKey(args(appPath))).resolves.toBe(
+      "switched",
+    );
 
     // The line break and indentation are part of the declaration, not the key.
     expect(fs.readFileSync(clientPath, "utf8")).toBe(
@@ -313,7 +335,9 @@ describe("switchAppToPublishableKey", () => {
       `/*\nconst SUPABASE_PUBLISHABLE_KEY = "${LEGACY_ANON}";\n*/\nconst SUPABASE_PUBLISHABLE_KEY = "${LEGACY_ANON}";\n`,
     );
 
-    await expect(switchAppToPublishableKey(args(appPath))).resolves.toBe(true);
+    await expect(switchAppToPublishableKey(args(appPath))).resolves.toBe(
+      "switched",
+    );
 
     expect(fs.readFileSync(clientPath, "utf8")).toBe(
       `/*\nconst SUPABASE_PUBLISHABLE_KEY = "${LEGACY_ANON}";\n*/\nconst SUPABASE_PUBLISHABLE_KEY = "${PUBLISHABLE}";\n`,
@@ -337,7 +361,112 @@ describe("switchAppToPublishableKey", () => {
 
     // Detection and the switch agree: no offer is made, and nothing is written.
     await expect(detectLegacyAppKey(args(appPath))).resolves.toBeUndefined();
-    await expect(switchAppToPublishableKey(args(appPath))).resolves.toBe(false);
+    await expect(switchAppToPublishableKey(args(appPath))).resolves.toBe(
+      "not-applicable",
+    );
     expect(fs.readFileSync(outside, "utf8")).toBe(original);
+  });
+
+  // `git commit -- <path>` records the whole working-tree version of that path,
+  // not the hunk Dyad changed, so committing a file the user was mid-edit in
+  // would fold their work into a commit labelled as a key swap.
+  it("leaves the rewrite uncommitted when client.ts already had user edits", async () => {
+    const appPath = makeApp(LEGACY_ANON);
+    isGitPathCleanMock.mockResolvedValue(false);
+
+    await expect(switchAppToPublishableKey(args(appPath))).resolves.toBe(
+      "switched",
+    );
+
+    // The key still switches — the user's app has to keep working.
+    expect(readClient(appPath)).toContain(`"${PUBLISHABLE}"`);
+    expect(gitCommitMock).not.toHaveBeenCalled();
+    expect(gitAddMock).not.toHaveBeenCalled();
+  });
+
+  // "Can't tell" has to mean "don't commit": an app that isn't a git repo at
+  // all makes the status check throw, and guessing clean would be a guess about
+  // the user's uncommitted work.
+  it("does not commit when the file's git status can't be determined", async () => {
+    const appPath = makeApp(LEGACY_ANON);
+    isGitPathCleanMock.mockRejectedValue(new Error("not a git repository"));
+
+    await expect(switchAppToPublishableKey(args(appPath))).resolves.toBe(
+      "switched",
+    );
+
+    expect(readClient(appPath)).toContain(`"${PUBLISHABLE}"`);
+    expect(gitCommitMock).not.toHaveBeenCalled();
+  });
+
+  // Disabling is only half of Supabase's migration; the end state is deletion.
+  // Going quiet then would drop the offer exactly when the app is fully broken.
+  it("still offers the switch for a legacy key the project no longer lists", async () => {
+    const appPath = makeApp(LEGACY_ANON);
+    getProjectApiKeysMock.mockResolvedValue([
+      { name: "default", type: "publishable" as const, api_key: PUBLISHABLE },
+    ]);
+
+    await expect(detectLegacyAppKey(args(appPath))).resolves.toMatchObject({
+      legacyKey: LEGACY_ANON,
+      publishableKey: PUBLISHABLE,
+    });
+    await expect(switchAppToPublishableKey(args(appPath))).resolves.toBe(
+      "switched",
+    );
+  });
+
+  // The unlisted fallback keys off JWT shape, so a hand-written placeholder
+  // that was never a Supabase key doesn't get quietly overwritten.
+  it("leaves an unlisted key alone when it isn't JWT-shaped", async () => {
+    const appPath = makeApp("not-a-real-key");
+    getProjectApiKeysMock.mockResolvedValue([
+      { name: "default", type: "publishable" as const, api_key: PUBLISHABLE },
+    ]);
+
+    await expect(detectLegacyAppKey(args(appPath))).resolves.toBeUndefined();
+    await expect(switchAppToPublishableKey(args(appPath))).resolves.toBe(
+      "not-applicable",
+    );
+    expect(readClient(appPath)).toContain("not-a-real-key");
+  });
+
+  // Comment masking alone isn't enough: a multiline template literal carries
+  // real line breaks, so `^` anchors inside it just as it does in code.
+  it("rewrites the live declaration, not one inside a multiline template", async () => {
+    const appPath = makeApp(LEGACY_ANON);
+    const clientPath = clientPathFor(appPath);
+    const docs = `const DOCS = \`\nconst SUPABASE_PUBLISHABLE_KEY = "${LEGACY_ANON}";\n\`;\n`;
+    fs.writeFileSync(
+      clientPath,
+      `${docs}const SUPABASE_PUBLISHABLE_KEY = "${LEGACY_ANON}";\n`,
+    );
+
+    await expect(switchAppToPublishableKey(args(appPath))).resolves.toBe(
+      "switched",
+    );
+
+    expect(fs.readFileSync(clientPath, "utf8")).toBe(
+      `${docs}const SUPABASE_PUBLISHABLE_KEY = "${PUBLISHABLE}";\n`,
+    );
+  });
+
+  // A single-line backtick literal IS a legitimate way to write the key, so
+  // masking must not reach it.
+  it("still rewrites a key declared with a single-line template literal", async () => {
+    const appPath = makeApp(LEGACY_ANON);
+    const clientPath = clientPathFor(appPath);
+    fs.writeFileSync(
+      clientPath,
+      `const SUPABASE_PUBLISHABLE_KEY = \`${LEGACY_ANON}\`;\n`,
+    );
+
+    await expect(switchAppToPublishableKey(args(appPath))).resolves.toBe(
+      "switched",
+    );
+
+    expect(fs.readFileSync(clientPath, "utf8")).toBe(
+      `const SUPABASE_PUBLISHABLE_KEY = \`${PUBLISHABLE}\`;\n`,
+    );
   });
 });

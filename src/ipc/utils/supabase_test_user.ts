@@ -71,15 +71,18 @@ const SECRET_KEY_PREFIX = "sb_secret_";
  * DISABLED key win on position, and every admin call 401s with "Legacy API keys
  * are disabled". The legacy tier stays last so projects that never migrated
  * keep working.
+ *
+ * The top tier keys off the VALUE, not `type`. `type` is optional on the
+ * Management API response, so requiring both would drop a perfectly good
+ * `sb_secret_…` key from a project that omits the field straight down to the
+ * legacy tier — silently un-migrating it. The prefix alone already proves the
+ * format; `type` only breaks ties below it.
  */
 function pickSecretKey(
   keys: readonly SupabaseApiKey[],
 ): SupabaseApiKey | undefined {
   return (
-    keys.find(
-      (key) =>
-        key.type === "secret" && key.api_key?.startsWith(SECRET_KEY_PREFIX),
-    ) ??
+    keys.find((key) => key.api_key?.startsWith(SECRET_KEY_PREFIX)) ??
     keys.find((key) => key.type === "secret") ??
     keys.find((key) => key.name === "service_role")
   );
@@ -93,8 +96,11 @@ interface AdminKey {
   apiKey: string;
   /**
    * True for the legacy `service_role` JWT, false for a new-format
-   * (`sb_secret_…`) key. Classified from the Management API's own `type`, with
-   * the key prefix as a second signal.
+   * (`sb_secret_…`) key. Classified from the key's own value: a JWT can never
+   * carry the `sb_secret_` prefix, so the prefix decides this on its own.
+   * Consulting `type` as well could only add false negatives — a legacy JWT
+   * that Supabase happened to label `secret` would lose its `Authorization`
+   * header and fail every Auth Admin call.
    */
   isLegacyJwt: boolean;
 }
@@ -133,8 +139,7 @@ async function getServiceRoleKey({
   }
   return {
     apiKey: secret.api_key,
-    isLegacyJwt:
-      secret.type !== "secret" && !secret.api_key.startsWith(SECRET_KEY_PREFIX),
+    isLegacyJwt: !secret.api_key.startsWith(SECRET_KEY_PREFIX),
   };
 }
 

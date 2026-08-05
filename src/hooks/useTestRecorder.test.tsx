@@ -1,14 +1,30 @@
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { createStore, Provider } from "jotai";
+import { atom, createStore, Provider, useAtomValue } from "jotai";
 import type { PropsWithChildren } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { AppUrlState } from "@/app_run/selectors";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { previewIframeRefAtom } from "@/atoms/previewAtoms";
-import { appUrlByAppIdAtom } from "@/atoms/previewRuntimeAtoms";
 import { recordingStartRequestAtom } from "@/atoms/recorderAtoms";
 import { useTestRecorder } from "@/hooks/useTestRecorder";
+
+/**
+ * The preview's URL, as the recorder sees it. Driven through an atom rather than
+ * a plain value so a test can bring the dev server down mid-session — the hook
+ * has to re-render for that to reach it.
+ */
+const testAppUrlAtom = atom<AppUrlState>({
+  appUrl: null,
+  appId: null,
+  originalUrl: null,
+  mode: null,
+});
+
+vi.mock("@/hooks/useAppRun", () => ({
+  useCurrentAppUrl: () => useAtomValue(testAppUrlAtom),
+}));
 
 const {
   startRecordingMock,
@@ -96,20 +112,22 @@ function makeIframe() {
 
 /** Point the hook's preview at a running dev server, as an active session is. */
 function setAppUrl(store: ReturnType<typeof createStore>, appId: number) {
-  store.set(
-    appUrlByAppIdAtom,
-    new Map([
-      [
-        appId,
-        {
-          appUrl: PREVIEW_URL,
-          appId,
-          originalUrl: PREVIEW_URL,
-          mode: "host" as const,
-        },
-      ],
-    ]),
-  );
+  store.set(testAppUrlAtom, {
+    appUrl: PREVIEW_URL,
+    appId,
+    originalUrl: PREVIEW_URL,
+    mode: "host",
+  });
+}
+
+/** The dev server going away, as it does while isolation restarts it. */
+function clearAppUrl(store: ReturnType<typeof createStore>) {
+  store.set(testAppUrlAtom, {
+    appUrl: null,
+    appId: null,
+    originalUrl: null,
+    mode: null,
+  });
 }
 
 /**
@@ -444,7 +462,7 @@ describe("useTestRecorder", () => {
     // being accepted — failing closed here would strand the session until the
     // 30s auth timeout.
     act(() => {
-      store.set(appUrlByAppIdAtom, new Map());
+      clearAppUrl(store);
     });
     act(() => {
       iframe.send({

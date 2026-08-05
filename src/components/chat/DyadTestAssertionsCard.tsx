@@ -5,7 +5,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { useAtomValue, useSetAtom, useStore } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Check,
@@ -19,6 +19,7 @@ import {
 import { selectedAppIdAtom, previewModeAtom } from "@/atoms/appAtoms";
 import { chatMessagesByIdAtom, selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { selectedFileAtom } from "@/atoms/viewAtoms";
+import { useChatStreamManager } from "@/chat_stream/ChatStreamProvider";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { ipc } from "@/ipc/types";
 import { cn } from "@/lib/utils";
@@ -32,9 +33,9 @@ import {
 } from "@/lib/test_recorder/assertion_proposal";
 import { parseAssertionsPayload } from "@/lib/test_recorder/assertion_tag";
 import {
-  getUserInputProjectionAdapter,
-  userInputRequestsAtom,
-} from "@/user_input/projection";
+  useUserInputReadModel,
+  useUserInputRequests,
+} from "@/user_input/hooks";
 import type { CustomTagState } from "./stateTypes";
 
 /**
@@ -135,14 +136,14 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
   const setSelectedFile = useSetAtom(selectedFileAtom);
   const setPreviewMode = useSetAtom(previewModeAtom);
   const queryClient = useQueryClient();
-  const store = useStore();
+  const chatStreamManager = useChatStreamManager();
   const { streamMessage } = useStreamChat();
   // The agent is parked on this card's request for as long as it's live, so
   // answering it resumes that turn. It won't be live for a card reloaded after
   // a restart, or one whose turn was stopped — those fall back to handing the
   // spec over as a fresh chat turn.
-  const userInputProjection = getUserInputProjectionAdapter({ store });
-  const userInputRequests = useAtomValue(userInputRequestsAtom);
+  const userInputReadModel = useUserInputReadModel();
+  const userInputRequests = useUserInputRequests();
   const parkedRequest = requestId
     ? userInputRequests.get(requestId)
     : undefined;
@@ -325,18 +326,19 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
       // expired between render and click — needs a new turn instead.
       const handedToParkedTurn =
         isAgentWaiting &&
-        (await userInputProjection.respond(requestId, {
+        (await userInputReadModel.respond(requestId, {
           kind: "test-assertions",
           specPath: result.specPath || null,
           appliedCount: result.appliedCount,
         }));
       if (!handedToParkedTurn) {
-        // The Provider-bound store, not `getDefaultStore()`: under a Jotai
-        // `Provider` the default store has none of this chat's state, so
-        // `syncChatFromDb` would miss the `isStreaming` guard and overwrite
-        // live messages with the DB snapshot. The parked path skips it — the
+        // The stream manager answers "is this chat streaming?" — without that
+        // guard the DB snapshot would overwrite the live messages of a stream
+        // that started meanwhile. The parked path skips the sync entirely: the
         // resumed turn streams the approved card down itself.
-        syncChatFromDb(chatId, setMessagesById, "[TEST-ASSERTIONS]", store);
+        syncChatFromDb(chatId, setMessagesById, "[TEST-ASSERTIONS]", (id) =>
+          chatStreamManager.getIsStreaming(id),
+        );
         requestVerificationRun(result.specPath);
       }
     } catch (error) {
@@ -380,7 +382,7 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
         }
       }
       setOptimisticDiscarded(true);
-      const answered = await userInputProjection.respond(requestId, {
+      const answered = await userInputReadModel.respond(requestId, {
         kind: "test-assertions",
         specPath: null,
         appliedCount: 0,

@@ -1,5 +1,4 @@
 import { render, screen, waitFor } from "@testing-library/react";
-import { getDefaultStore, type PrimitiveAtom } from "jotai";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -7,7 +6,6 @@ import {
   type AssertionProposalPayload,
 } from "@/lib/test_recorder/assertion_proposal";
 import { RECORDED_TEST_DRAFT_VERSION } from "@/lib/test_recorder/draft";
-import { userInputRequestsAtom } from "@/user_input/projection";
 import { DyadTestAssertionsCard } from "./DyadTestAssertionsCard";
 
 /**
@@ -22,6 +20,8 @@ const SPEC_PATH = "e2e-tests/recorded-add-an-item.spec.ts";
 
 const mocks = vi.hoisted(() => ({
   respond: vi.fn(async () => true),
+  /** The live user-input requests the read model reports, set per test. */
+  liveRequests: new Map<string, { status: string }>(),
   streamMessage: vi.fn(),
   applyTestAssertions: vi.fn(async () => ({
     specPath: SPEC_PATH,
@@ -32,20 +32,14 @@ const mocks = vi.hoisted(() => ({
   syncChatFromDb: vi.fn(),
 }));
 
-vi.mock("@/user_input/projection", async () => {
-  const { atom } = await import("jotai");
-  return {
-    getUserInputProjectionAdapter: () => ({ respond: mocks.respond }),
-    userInputRequestsAtom: atom(new Map()),
-  };
-});
+vi.mock("@/user_input/hooks", () => ({
+  useUserInputReadModel: () => ({ respond: mocks.respond }),
+  useUserInputRequests: () => mocks.liveRequests,
+}));
 
 /** The live user-input requests the projection exposes, set per test. */
 function setLiveRequests(requests: Map<string, { status: string }>): void {
-  getDefaultStore().set(
-    userInputRequestsAtom as unknown as PrimitiveAtom<unknown>,
-    requests,
-  );
+  mocks.liveRequests = requests;
 }
 
 vi.mock("@/atoms/chatAtoms", async () => {
@@ -65,6 +59,12 @@ vi.mock("@/atoms/viewAtoms", async () => {
   const { atom } = await import("jotai");
   return { selectedFileAtom: atom(null) };
 });
+
+// The card asks the manager whether the chat is streaming before re-reading it
+// from the DB; nothing here streams, so it never is.
+vi.mock("@/chat_stream/ChatStreamProvider", () => ({
+  useChatStreamManager: () => ({ getIsStreaming: () => false }),
+}));
 
 vi.mock("@/hooks/useStreamChat", () => ({
   useStreamChat: () => ({ streamMessage: mocks.streamMessage }),

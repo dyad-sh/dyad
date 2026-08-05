@@ -445,7 +445,6 @@ describe("prepareIsolatedTestDatabase — auth provisioning", () => {
     try {
       const prepared = await prepareIsolatedTestDatabase({
         app: makeApp({ neonProjectId: "proj-1" }),
-        event,
         emit,
         runtimeMode: "host",
       });
@@ -480,7 +479,6 @@ describe("prepareIsolatedTestDatabase — auth provisioning", () => {
     try {
       const prepared = await prepareIsolatedTestDatabase({
         app: makeApp({ neonProjectId: "proj-1" }),
-        event,
         emit,
         runtimeMode: "host",
       });
@@ -505,7 +503,6 @@ describe("prepareIsolatedTestDatabase — auth provisioning", () => {
     try {
       const prepared = await prepareIsolatedTestDatabase({
         app: makeApp({ neonProjectId: "proj-1" }),
-        event,
         emit,
         runtimeMode: "host",
       });
@@ -523,7 +520,6 @@ describe("prepareIsolatedTestDatabase — auth provisioning", () => {
         supabaseProjectId: "sb-1",
         supabaseOrganizationSlug: "org-1",
       }),
-      event,
       emit,
       runtimeMode: "host",
     });
@@ -551,7 +547,6 @@ describe("prepareIsolatedTestDatabase — auth provisioning", () => {
         supabaseProjectId: "sb-1",
         supabaseOrganizationSlug: "org-1",
       }),
-      event,
       emit,
       runtimeMode: "host",
     });

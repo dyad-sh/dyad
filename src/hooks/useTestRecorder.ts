@@ -5,7 +5,7 @@ import { ipc } from "@/ipc/types";
 import { showError } from "@/lib/toast";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { previewIframeRefAtom } from "@/atoms/previewAtoms";
-import { currentAppUrlAtom } from "@/atoms/previewRuntimeAtoms";
+import { useCurrentAppUrl } from "@/hooks/useAppRun";
 import {
   appendRecordedEntryAtom,
   clearRecordedEntriesForAppAtom,
@@ -54,7 +54,7 @@ export function useTestRecorder({
 }) {
   const appId = useAtomValue(selectedAppIdAtom);
   const iframeEl = useAtomValue(previewIframeRefAtom);
-  const appUrl = useAtomValue(currentAppUrlAtom).appUrl;
+  const appUrl = useCurrentAppUrl(appId).appUrl;
   const recordingState = useAtomValue(currentRecordingStateAtom);
   const entries = useAtomValue(currentRecordedEntriesAtom);
   const startRequest = useAtomValue(recordingStartRequestAtom);

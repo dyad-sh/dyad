@@ -577,10 +577,6 @@ function FileRow({
             label={`Ask AI to fix tests in: ${fileName}`}
           />
         )}
-        <OpenFileButton
-          onOpen={onOpenFile}
-          label={`Open test file: ${fileName}`}
-        />
         <RunButton
           onRun={onRunFile}
           disabled={disabled}

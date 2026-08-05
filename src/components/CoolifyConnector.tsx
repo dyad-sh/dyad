@@ -83,15 +83,17 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
   const [newProjectName, setNewProjectName] = useState("");
   const [acknowledgedInsecure, setAcknowledgedInsecure] = useState(false);
 
+  // Keyed on appId as well as the connection: this component is not remounted
+  // when the selected app changes, so an app with no connection has to clear
+  // the fields rather than leave the previous app's server and project in a
+  // form whose Save button would then attach them to the wrong app.
   useEffect(() => {
     const connection = status?.connection;
-    if (connection) {
-      setInstanceUrl(connection.instanceUrl);
-      setServerUuid(connection.serverUuid);
-      setProjectUuid(connection.projectUuid);
-      setDomain(connection.domain ?? "");
-    }
-  }, [status?.connection]);
+    setInstanceUrl(connection?.instanceUrl ?? "");
+    setServerUuid(connection?.serverUuid ?? "");
+    setProjectUuid(connection?.projectUuid ?? "");
+    setDomain(connection?.domain ?? "");
+  }, [appId, status?.connection]);
 
   if (appId === null || isStatusLoading) {
     return (
@@ -173,7 +175,7 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
             try {
               await saveToken.mutateAsync({
                 instanceUrl: trimmedUrl,
-                token,
+                token: token.trim(),
                 acknowledgedInsecure,
               });
             } catch (error) {

@@ -274,14 +274,21 @@ export class CoolifyClient {
     const parsed: T[] = [];
     for (const item of body) {
       const result = schema.safeParse(item);
+      // One odd entry should not cost the user the rest of the list: they can
+      // still pick a server that did parse. Only a list with nothing usable
+      // in it means we are talking to something we do not understand.
       if (!result.success || result.data === undefined) {
-        throw new DyadError(
-          `Coolify returned ${what} in an unexpected shape. This instance may ` +
-            `be a version Dyad does not understand.`,
-          DyadErrorKind.External,
-        );
+        logger.warn(`Skipped a Coolify ${what} entry in an unexpected shape.`);
+        continue;
       }
       parsed.push(result.data);
+    }
+    if (parsed.length === 0 && body.length > 0) {
+      throw new DyadError(
+        `Coolify returned ${what} in an unexpected shape. This instance may ` +
+          `be a version Dyad does not understand.`,
+        DyadErrorKind.External,
+      );
     }
     return parsed;
   }

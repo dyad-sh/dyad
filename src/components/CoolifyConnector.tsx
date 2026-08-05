@@ -121,7 +121,17 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
     const trimmedUrl = instanceUrl.trim();
     // A stock Coolify serves plain HTTP until it has a domain and certificate,
     // so this is the common case rather than an unusual one.
-    const isInsecure = Boolean(trimmedUrl) && !isSecureInstanceUrl(trimmedUrl);
+    // A bare hostname makes isSecureInstanceUrl return false from its catch,
+    // which is a missing scheme rather than an unencrypted address — saying
+    // "not encrypted" there diagnoses the wrong problem.
+    let parsedUrl: URL | null = null;
+    try {
+      parsedUrl = trimmedUrl ? new URL(trimmedUrl) : null;
+    } catch {
+      parsedUrl = null;
+    }
+    const needsScheme = Boolean(trimmedUrl) && !parsedUrl;
+    const isInsecure = Boolean(parsedUrl) && !isSecureInstanceUrl(trimmedUrl);
     return (
       <div className="space-y-3" data-testid="coolify-connector">
         <p className="text-sm text-muted-foreground">
@@ -149,6 +159,11 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
             onChange={(e) => setToken(e.target.value)}
           />
         </div>
+        {needsScheme && (
+          <p className="text-sm text-muted-foreground">
+            Include the scheme, for example https://{trimmedUrl}.
+          </p>
+        )}
         {isInsecure && (
           <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
             <p>
@@ -199,6 +214,28 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
   // --- Step 2: server, project, domain ---
   if (!status.connection) {
     const projects = discovery?.projects ?? [];
+    // The only control that removes the stored instance URL and token. It used
+    // to live solely inside the discovery-error card, so rotating a token or
+    // moving to another instance meant first breaking discovery on purpose.
+    const disconnectEverything = (
+      <Button
+        variant="ghost"
+        size="sm"
+        disabled={clearToken.isPending}
+        onClick={async () => {
+          try {
+            await clearToken.mutateAsync();
+            toast.success(
+              "Coolify disconnected from every app. Enter a token to start again.",
+            );
+          } catch (error) {
+            toast.error(getErrorMessage(error));
+          }
+        }}
+      >
+        Disconnect Coolify from all apps
+      </Button>
+    );
     const duplicateProjectName = projects.some(
       (p) => p.name.toLowerCase() === newProjectName.trim().toLowerCase(),
     );
@@ -217,22 +254,7 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
               >
                 Try again
               </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={async () => {
-                  try {
-                    await clearToken.mutateAsync();
-                    toast.success(
-                      "Coolify disconnected from every app. Enter a token to start again.",
-                    );
-                  } catch (error) {
-                    toast.error(getErrorMessage(error));
-                  }
-                }}
-              >
-                Disconnect Coolify from all apps
-              </Button>
+              {disconnectEverything}
             </div>
           </div>
         )}
@@ -242,6 +264,8 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
             Dyad cannot tell when servers or projects change in Coolify, so this
             list is cached. Refresh after adding one.
           </p>
+          {/* Outside the error card: rotating a token or moving to another
+              instance must not require breaking discovery first. */}
           <Button
             variant="ghost"
             size="sm"
@@ -256,6 +280,8 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
             )}
           </Button>
         </div>
+
+        <div className="flex justify-end">{disconnectEverything}</div>
 
         {/* A project belongs to the Coolify instance, not to this app, so it
             is named and created on its own before anything is picked. */}

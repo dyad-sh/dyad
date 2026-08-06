@@ -253,6 +253,12 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
         onClick={async () => {
           try {
             await clearToken.mutateAsync();
+            // The component is not remounted when the token goes, so without
+            // this the form comes back holding the credential just revoked —
+            // and pressing Connect would silently store it again, which is
+            // the opposite of what signing out to rotate a token is for.
+            setToken("");
+            setAcknowledgedInsecure(false);
             toast.success(
               "Signed out of Coolify. Your apps keep their settings; enter a token to use them again.",
             );
@@ -332,6 +338,17 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
 
         {/* A project belongs to the Coolify instance, not to this app, so it
             is named and created on its own before anything is picked. */}
+        {isEditingConnection &&
+          status.connection?.serverUuid &&
+          (serverUuid !== status.connection.serverUuid ||
+            projectUuid !== status.connection.projectUuid) && (
+            <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+              Moving this app leaves the application on its current server
+              running, and Dyad stops tracking it. Deploying here builds a new
+              one; removing the old one means going into Coolify.
+            </div>
+          )}
+
         <div className="flex items-end gap-2 rounded-md border p-3">
           <div className="flex-1">
             <Label htmlFor={newProjectId}>Create a project</Label>
@@ -597,11 +614,13 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
           >
             Edit
           </Button>
-          {/* Confirmed because it is the one control here that throws away
-              something the user cannot type back in: the id of the
-              application running on their server. Reconnecting builds a
-              second one beside it. NeonConnector guards its equivalent the
-              same way. */}
+          {/* Confirmed because it throws away something the user cannot type
+              back in: the id of the application running on their server.
+              Reconnecting builds a second one beside it. NeonConnector guards
+              its equivalent the same way. Saving a different server or
+              project has the same effect and is warned about in the form
+              rather than confirmed, since choosing another server is already
+              a deliberate statement about where the app should run. */}
           <AlertDialog>
             <AlertDialogTrigger
               className={buttonVariants({ variant: "ghost", size: "sm" })}

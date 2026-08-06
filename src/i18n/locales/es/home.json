@@ -590,7 +590,15 @@
       "failedDisconnectProject": "Error al desconectar el proyecto de la aplicación",
       "signInTimedOut": "El inicio de sesión expiró — inténtalo de nuevo o revisa tu navegador",
       "cancelSignIn": "Cancelar inicio de sesión",
-      "connectFailed": "Error al conectar con Supabase"
+      "connectFailed": "Error al conectar con Supabase",
+      "redeployFunctions": "Volver a desplegar funciones Edge",
+      "redeployFunctionsDescription": "Vuelve a desplegar todas las funciones Edge locales en este proyecto. Las funciones que solo existen de forma remota siguen la opción Conservar funciones Edge adicionales.",
+      "preparingRedeploy": "Preparando…",
+      "redeployProgress": "Desplegando {{completed}}/{{total}}…",
+      "redeploySucceeded_one": "Se volvió a desplegar {{count}} función Edge",
+      "redeploySucceeded_other": "Se volvieron a desplegar {{count}} funciones Edge",
+      "noFunctionsToRedeploy": "No se encontraron funciones Edge locales para volver a desplegar",
+      "redeployFailed": "El despliegue de las funciones Edge finalizó con problemas: {{error}}"
     },
     "neon": {
       "title": "Integración con Neon",

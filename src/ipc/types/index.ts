@@ -37,7 +37,7 @@ export {
 } from "./connection_flow";
 export { mcpContracts } from "./mcp";
 export { vercelContracts } from "./vercel";
-export { supabaseContracts } from "./supabase";
+export { supabaseContracts, supabaseEvents } from "./supabase";
 export { neonContracts } from "./neon";
 export { migrationContracts } from "./migration";
 export { systemContracts, systemEvents } from "./system";
@@ -97,7 +97,7 @@ export {
 } from "./connection_flow";
 export { mcpClient } from "./mcp";
 export { vercelClient } from "./vercel";
-export { supabaseClient } from "./supabase";
+export { supabaseClient, supabaseEventClient } from "./supabase";
 export { neonClient } from "./neon";
 export { migrationClient } from "./migration";
 export { systemClient, systemEventClient } from "./system";
@@ -264,6 +264,7 @@ export type {
   DeleteSupabaseOrganizationParams,
   SetSupabaseAppProjectParams,
   ConsoleEntry,
+  SupabaseRedeployProgress,
 } from "./supabase";
 
 // Neon types
@@ -482,7 +483,7 @@ import {
 } from "./connection_flow";
 import { mcpClient } from "./mcp";
 import { vercelClient } from "./vercel";
-import { supabaseClient } from "./supabase";
+import { supabaseClient, supabaseEventClient } from "./supabase";
 import { neonClient } from "./neon";
 import { migrationClient } from "./migration";
 import { systemClient, systemEventClient } from "./system";
@@ -597,6 +598,7 @@ export const ipc = {
   events: {
     agent: agentEventClient,
     connectionFlow: connectionFlowEventClient,
+    supabase: supabaseEventClient,
     system: systemEventClient,
     misc: miscEventClient,
     appBlueprint: appBlueprintEventClient,

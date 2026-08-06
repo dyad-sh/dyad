@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { defineContract, createClient } from "../contracts/core";
+import {
+  defineContract,
+  defineEvent,
+  createClient,
+  createEventClient,
+} from "../contracts/core";
 
 // =============================================================================
 // Supabase Schemas
@@ -74,6 +79,23 @@ export const SetSupabaseAppProjectParamsSchema = z.object({
 
 export type SetSupabaseAppProjectParams = z.infer<
   typeof SetSupabaseAppProjectParamsSchema
+>;
+
+export const SupabaseRedeployProgressSchema = z.object({
+  appId: z.number().int().positive(),
+  operationId: z.string().min(1).max(256),
+  phase: z.enum(["deploying", "finished", "failed"]),
+  total: z.number().int().nonnegative(),
+  active: z.number().int().nonnegative(),
+  queued: z.number().int().nonnegative(),
+  completed: z.number().int().nonnegative(),
+  succeeded: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+  functionName: z.string().optional(),
+});
+
+export type SupabaseRedeployProgress = z.infer<
+  typeof SupabaseRedeployProgressSchema
 >;
 
 // =============================================================================
@@ -159,6 +181,18 @@ export const supabaseContracts = {
     ],
   }),
 
+  redeployAllFunctions: defineContract({
+    channel: "supabase:redeploy-all-functions",
+    input: z.object({
+      appId: z.number().int().positive(),
+      operationId: z.string().min(1).max(256),
+    }),
+    output: z.object({
+      functionCount: z.number().int().nonnegative(),
+      errors: z.array(z.string()),
+    }),
+  }),
+
   // Test-only channel
   fakeConnectAndSetProject: defineContract({
     channel: "supabase:fake-connect-and-set-project",
@@ -170,8 +204,16 @@ export const supabaseContracts = {
   }),
 } as const;
 
+export const supabaseEvents = {
+  redeployProgress: defineEvent({
+    channel: "supabase:redeploy-progress",
+    payload: SupabaseRedeployProgressSchema,
+  }),
+} as const;
+
 // =============================================================================
 // Supabase Client
 // =============================================================================
 
 export const supabaseClient = createClient(supabaseContracts);
+export const supabaseEventClient = createEventClient(supabaseEvents);

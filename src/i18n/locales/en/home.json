@@ -612,7 +612,15 @@
       "failedDisconnectProject": "Failed to disconnect project from app",
       "signInTimedOut": "Sign-in timed out — try again or check your browser",
       "cancelSignIn": "Cancel sign-in",
-      "connectFailed": "Failed to connect to Supabase"
+      "connectFailed": "Failed to connect to Supabase",
+      "redeployFunctions": "Redeploy edge functions",
+      "redeployFunctionsDescription": "Redeploy every local edge function to this project. Remote-only functions follow the Keep extra edge functions setting.",
+      "preparingRedeploy": "Preparing…",
+      "redeployProgress": "Deploying {{completed}}/{{total}}…",
+      "redeploySucceeded_one": "Redeployed {{count}} edge function",
+      "redeploySucceeded_other": "Redeployed {{count}} edge functions",
+      "noFunctionsToRedeploy": "No local edge functions found to redeploy",
+      "redeployFailed": "Edge function redeployment finished with issues: {{error}}"
     },
     "neon": {
       "title": "Neon Integration",

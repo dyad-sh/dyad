@@ -118,11 +118,11 @@ function sleep(clock: Clock, ms: number): Promise<void> {
  * Applies a change to the app's Coolify record, still fenced to one server.
  *
  * Read-modify-write rather than a partial update, so the record cannot end up
- * describing an application on one server and an address on another. The fence
- * stays on the write: a pipeline that ran for fifteen minutes must not land on
- * a row the user has since pointed somewhere else, and the connection form
- * refuses to change anything while a deploy is running, so nothing else can
- * edit the row between the read and the write.
+ * describing an application on one server and an address on another. What
+ * makes that safe is the fence, not the absence of other writers: disconnect
+ * and a token repoint can both land between the read and the write, and both
+ * clear the server this was pinned to, so the write then matches no row at
+ * all rather than putting a stale record back.
  */
 async function recordConnectionChange(
   appId: number,
@@ -304,8 +304,9 @@ async function resolveApplication({
         "The application no longer exists in Coolify; recreating it.\n",
       );
     }
-    // Coolify calls above can park for a long time, so re-check before writing:
-    // a pipeline abandoned meanwhile must not blank a newer deployment's uuid.
+    // Coolify calls above can park for a long time, so re-check before going
+    // on to create an application: one abandoned meanwhile must not leave a
+    // new application behind on the user's server for nobody.
     throwIfAborted(signal);
     // The application is gone from Coolify; whatever replaces it is recorded
     // by the create path below, which reports the id it ends up with.

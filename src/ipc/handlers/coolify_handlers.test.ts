@@ -210,3 +210,27 @@ describe("moving an app to a different server or project", () => {
     expect(rows[0].coolifyDomain).toBe("https://new.example.com");
   });
 });
+
+describe("moving an app that never got an application", () => {
+  it("still clears the previous server's failed result", async () => {
+    // A deploy can fail before the application is created — an unreachable
+    // server, a refused deploy key. The record stays configured, but the
+    // machine holds that server's error, and it does not describe the one the
+    // user just switched to.
+    rows[0].coolifyApplicationUuid = null;
+    rows[0].coolifyAppUrl = null;
+    rows[0].coolifyLastDeployedAt = null;
+
+    await call("coolify:save-connection", {
+      appId: 1,
+      connection: {
+        serverUuid: "srv-2",
+        projectUuid: "prj-1",
+        environmentName: "production",
+        domain: null,
+      },
+    });
+
+    expect(cancelDeploy).toHaveBeenCalledWith(1);
+  });
+});

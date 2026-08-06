@@ -16,8 +16,13 @@ function isLoopbackAddress(value: string | null | undefined): boolean {
     .replace(/^\[|\]$/g, "")
     .toLowerCase();
   if (/^(localhost|.*\.localhost)$/.test(bare)) return true;
-  if (isIP(bare) === 4) return bare.startsWith("127.");
-  return isIP(bare) === 6 && (bare === "::1" || bare === "0:0:0:0:0:0:0:1");
+  // 0.0.0.0 means every interface rather than a reachable host, so it is no
+  // more an answer than a loopback address is.
+  if (isIP(bare) === 4) return bare.startsWith("127.") || bare === "0.0.0.0";
+  return (
+    isIP(bare) === 6 &&
+    (bare === "::1" || bare === "0:0:0:0:0:0:0:1" || bare === "::")
+  );
 }
 
 /**

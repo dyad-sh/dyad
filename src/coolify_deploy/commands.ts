@@ -115,13 +115,6 @@ function sleep(clock: Clock, ms: number): Promise<void> {
 }
 
 /**
- * Matches the app only while it is still connected to a Coolify server.
- *
- * Disconnecting nulls those columns, and a pipeline already past its last
- * abort check would otherwise write an application id or URL back onto an app
- * the user has just cleared.
- */
-/**
  * Applies a change to the app's Coolify record, still fenced to one server.
  *
  * Read-modify-write rather than a partial update, so the record cannot end up
@@ -148,6 +141,13 @@ async function recordConnectionChange(
     .where(stillConnected(appId, serverUuid));
 }
 
+/**
+ * Matches the app only while it is still connected to a Coolify server.
+ *
+ * Disconnecting nulls those columns, and a pipeline already past its last
+ * abort check would otherwise write an application id or URL back onto an app
+ * the user has just cleared.
+ */
 function stillConnected(appId: number, serverUuid: string) {
   // The same server, not merely some server. A deploy can run for fifteen
   // minutes, and an app disconnected and pointed at a different Coolify
@@ -408,9 +408,12 @@ async function resolveDatabaseEnv(
     // pages, and answers 500 on everything that touches a session — a
     // symptom that looks nothing like its cause.
     report.log(
-      "Warning: Neon Auth could not be resolved for this branch, so the app " +
-        "will deploy without NEON_AUTH_BASE_URL. Pages load, but anything " +
-        "that reads a session fails. Deploy again once Neon is reachable.\n",
+      "Warning: Neon Auth could not be resolved for this branch, so " +
+        "NEON_AUTH_BASE_URL was not set. Variables are updated one at a " +
+        "time, so a value from an earlier deploy is still in place and this " +
+        "may change nothing — but if this app has not deployed successfully " +
+        "before, pages will load while anything reading a session fails. " +
+        "Deploy again once Neon is reachable.\n",
     );
   }
   if (resolved.neonAuthBaseUrl) {

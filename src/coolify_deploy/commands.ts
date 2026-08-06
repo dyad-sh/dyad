@@ -74,7 +74,6 @@ function throwIfAborted(signal: AbortSignal): void {
   }
 }
 
-/** Cancels with the deployment, and independently if GitHub goes quiet. */
 function githubSignal(signal: AbortSignal): AbortSignal {
   return AbortSignal.any([signal, AbortSignal.timeout(GITHUB_TIMEOUT_MS)]);
 }
@@ -97,6 +96,7 @@ async function githubBody(
   }
 }
 
+/** Cancels with the deployment, and independently if GitHub goes quiet. */
 async function githubFetch(
   url: string,
   init: RequestInit,

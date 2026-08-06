@@ -261,8 +261,8 @@ export class CoolifyClient {
     return new CoolifyRequestError(
       apiMessage
         ? `Coolify request failed (${status}): ${apiMessage}`
-        : `Coolify request failed (${status}), and the response did not come ` +
-            `from Coolify. Something in front of the instance may be answering ` +
+        : `Coolify request failed (${status}) and did not explain why. If ` +
+            `something sits in front of the instance it may be answering ` +
             `instead. The response is in the log.`,
       DyadErrorKind.External,
       status,

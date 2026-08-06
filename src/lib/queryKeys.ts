@@ -311,6 +311,16 @@ export const queryKeys = {
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // Coolify Deployments
+  // ─────────────────────────────────────────────────────────────────────────────
+  coolify: {
+    all: ["coolify"] as const,
+    status: ({ appId }: { appId: number }) =>
+      ["coolify", "status", appId] as const,
+    discovery: ["coolify", "discovery"] as const,
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
   // App Upgrades
   // ─────────────────────────────────────────────────────────────────────────────
   appUpgrades: {
@@ -499,5 +509,6 @@ export type AppQueryKey =
   | QueryKeyOf<(typeof queryKeys.github)[keyof typeof queryKeys.github]>
   | QueryKeyOf<(typeof queryKeys.migration)[keyof typeof queryKeys.migration]>
   | QueryKeyOf<(typeof queryKeys.neon)[keyof typeof queryKeys.neon]>
+  | QueryKeyOf<(typeof queryKeys.coolify)[keyof typeof queryKeys.coolify]>
   | QueryKeyOf<(typeof queryKeys.appEnvVars)[keyof typeof queryKeys.appEnvVars]>
   | QueryKeyOf<(typeof queryKeys.media)[keyof typeof queryKeys.media]>;

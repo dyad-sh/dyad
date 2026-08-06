@@ -105,6 +105,18 @@ export const apps = sqliteTable("apps", {
   vercelProjectName: text("vercel_project_name"),
   vercelTeamId: text("vercel_team_id"),
   vercelDeploymentUrl: text("vercel_deployment_url"),
+  // Coolify: which server and project this app deploys to. The API token is
+  // instance-wide and lives in settings, not here.
+  coolifyServerUuid: text("coolify_server_uuid"),
+  coolifyProjectUuid: text("coolify_project_uuid"),
+  coolifyEnvironmentName: text("coolify_environment_name"),
+  coolifyApplicationUuid: text("coolify_application_uuid"),
+  // Blank means Coolify generates an sslip.io address from the server's IP.
+  coolifyDomain: text("coolify_domain"),
+  coolifyAppUrl: text("coolify_app_url"),
+  coolifyLastDeployedAt: integer("coolify_last_deployed_at", {
+    mode: "timestamp",
+  }),
   installCommand: text("install_command"),
   startCommand: text("start_command"),
   chatContext: text("chat_context", { mode: "json" }),

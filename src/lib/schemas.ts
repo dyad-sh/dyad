@@ -375,6 +375,8 @@ const BaseUserSettingsFields = {
   githubUser: GithubUserSchema.optional(),
   githubAccessToken: SecretSchema.optional(),
   vercelAccessToken: SecretSchema.optional(),
+  coolifyInstanceUrl: z.string().optional(),
+  coolifyAccessToken: SecretSchema.optional(),
   supabase: SupabaseSchema.optional(),
   neon: NeonSchema.optional(),
   autoApproveChanges: z.boolean().optional(),

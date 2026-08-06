@@ -382,6 +382,11 @@ export function writeSettings(settings: Partial<UserSettings>): void {
         newSettings.vercelAccessToken.value,
       );
     }
+    if (newSettings.coolifyAccessToken) {
+      newSettings.coolifyAccessToken = encrypt(
+        newSettings.coolifyAccessToken.value,
+      );
+    }
     if (newSettings.supabase) {
       // Encrypt legacy tokens (kept for backwards compat)
       if (newSettings.supabase.accessToken) {
@@ -633,6 +638,19 @@ function readExistingSettingsFile(
       combinedSettings.vercelAccessToken = resolved;
     } else {
       delete combinedSettings.vercelAccessToken;
+    }
+  }
+  if (combinedSettings.coolifyAccessToken) {
+    const resolved = resolveStoredSecret(
+      combinedSettings.coolifyAccessToken,
+      "Coolify access token",
+      ["coolifyAccessToken"],
+      ctx,
+    );
+    if (resolved) {
+      combinedSettings.coolifyAccessToken = resolved;
+    } else {
+      delete combinedSettings.coolifyAccessToken;
     }
   }
   for (const provider in combinedSettings.providerSettings) {

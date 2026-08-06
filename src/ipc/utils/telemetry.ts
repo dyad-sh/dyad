@@ -70,6 +70,15 @@ export function sendTelemetryException(
 }
 
 export function shouldFilterTelemetryException(error: unknown): boolean {
+  // Ahead of the kind check, which returns for every DyadError: this one is a
+  // DyadError too. A non-2xx from a self-hosted Coolify is that instance
+  // rejecting a request rather than a fault here, and its message carries
+  // whatever that machine chose to say — which can name a host, a path or a
+  // connection string. The user still sees it; nothing reports it.
+  if (error instanceof Error && error.name === "CoolifyRequestError") {
+    return true;
+  }
+
   if (error instanceof DyadError) {
     return isDyadErrorKindFilteredFromTelemetry(error.kind);
   }

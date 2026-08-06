@@ -24,6 +24,12 @@ export function queryKeysForInvalidationScope(
       return [queryKeys.freeModelQuota.status];
     case "app":
       return [queryKeys.apps.detail({ appId: scope.appId })];
+    case "coolify":
+      return [
+        scope.appId === undefined
+          ? queryKeys.coolify.all
+          : queryKeys.coolify.status({ appId: scope.appId }),
+      ];
     case "versions":
       return [
         scope.appId === undefined

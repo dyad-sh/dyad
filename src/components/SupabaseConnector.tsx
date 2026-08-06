@@ -65,6 +65,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useTheme } from "@/contexts/ThemeContext";
 import { isSupabaseConnected } from "@/lib/schemas";
+import { showError } from "@/lib/toast";
 
 export function SupabaseConnector({ appId }: { appId: number }) {
   const { t } = useTranslation(["home", "common"]);
@@ -266,7 +267,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     try {
       const result = await redeployAllFunctions(appId);
       if (result.errors.length > 0) {
-        toast.error(
+        showError(
           t("integrations.supabase.redeployFailed", {
             error: result.errors.join("\n"),
           }),
@@ -281,7 +282,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
         );
       }
     } catch (error) {
-      toast.error(
+      showError(
         t("integrations.supabase.redeployFailed", {
           error: getErrorMessage(error),
         }),

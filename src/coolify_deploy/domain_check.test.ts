@@ -197,3 +197,16 @@ describe("expectedServerAddress and loopback servers", () => {
     ).toEqual({ kind: "ip", ip: "143.244.162.54" });
   });
 });
+
+describe("expectedServerAddress and wildcard addresses", () => {
+  it("does not treat a bind-all address as where the server is", () => {
+    for (const serverIp of ["0.0.0.0", "::"]) {
+      expect(
+        expectedServerAddress({
+          serverIp,
+          instanceUrl: "http://143.244.162.54:8000",
+        }),
+      ).toEqual({ kind: "ip", ip: "143.244.162.54" });
+    }
+  });
+});

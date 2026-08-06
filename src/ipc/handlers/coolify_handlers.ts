@@ -234,15 +234,16 @@ export function registerCoolifyHandlers() {
       // deployed where it is going, so the machine's finished result would be
       // shown against a place it never ran.
       //
-      // Asked of the record rather than of the resulting kind: an app that
-      // never had an application is configured before and after an ordinary
-      // domain edit, and clearing a failed deploy's error and log there would
-      // throw away the only account of what went wrong.
-      const releasedApplication =
-        current.kind !== "configured" &&
+      // Asked of the server and project directly. Keying it on the resulting
+      // kind was wrong twice: on the kind alone an ordinary domain edit looks
+      // like a move and throws away a failed deploy's account of itself, and
+      // on whether an application was released a move away from an app that
+      // never got one stops looking like a move at all.
+      const movedHost =
         current.kind !== "none" &&
-        next.kind === "configured";
-      if (releasedApplication) {
+        (current.serverUuid !== connection.serverUuid ||
+          current.projectUuid !== connection.projectUuid);
+      if (movedHost) {
         coolifyDeployRegistry.cancelDeploy(appId);
       }
       await db

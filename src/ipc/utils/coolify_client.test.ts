@@ -271,3 +271,31 @@ describe("validating list responses", () => {
     ]);
   });
 });
+
+describe("what a failure tells telemetry", () => {
+  it("does not repeat a proxy page that names the instance", async () => {
+    // External errors are uploaded with their message verbatim, and anything
+    // in front of a self-hosted Coolify tends to sign its own pages.
+    mockFetch([
+      {
+        status: 521,
+        body: "<html><head><title>coolify.internal.acme.com | 521: Web server is down</title></head></html>",
+      },
+    ]);
+    await expect(client().listServers()).rejects.toMatchObject({
+      message: expect.not.stringContaining("coolify.internal.acme.com"),
+    });
+  });
+
+  it("still repeats Coolify's own explanation", async () => {
+    mockFetch([
+      {
+        status: 422,
+        body: JSON.stringify({ message: "Domain already in use." }),
+      },
+    ]);
+    await expect(client().listServers()).rejects.toMatchObject({
+      message: expect.stringContaining("Domain already in use."),
+    });
+  });
+});

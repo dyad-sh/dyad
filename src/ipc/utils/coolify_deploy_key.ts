@@ -25,7 +25,23 @@ function keyFilePath(keyName: string): string {
 }
 
 export function repoKeyName(owner: string, repo: string): string {
-  return `dyad_deploy_${owner}_${repo}`.replace(/[^A-Za-z0-9_.-]/g, "-");
+  // The readable part is lossy in both directions: every character outside the
+  // safe set folds to one dash, and the separator between owner and repo is
+  // itself inside that set. So owner_a/repo and owner/a_repo would name the
+  // same file and share a keypair — and GitHub allows a deploy key on only one
+  // repository, so the second app would be told to delete the key and start
+  // again, by a name that collides identically the next time round.
+  //
+  // The suffix is what makes it a name for this repository rather than for a
+  // shape, the same way coolifyKeyName below is a name for this key material.
+  const readable = `${owner}_${repo}`
+    .replace(/[^A-Za-z0-9_.-]/g, "-")
+    .slice(0, 48);
+  const distinct = createHash("sha256")
+    .update(`${owner}/${repo}`)
+    .digest("hex")
+    .slice(0, 8);
+  return `dyad_deploy_${readable}_${distinct}`;
 }
 
 /**

@@ -38,8 +38,26 @@ const sshPath = (name: string) => path.join(home, ".ssh", name);
 
 describe("repoKeyName", () => {
   it("is stable per repository and safe as a filename", () => {
-    expect(repoKeyName("acme", "demo")).toBe("dyad_deploy_acme_demo");
-    expect(repoKeyName("a/b", "c d")).toBe("dyad_deploy_a-b_c-d");
+    expect(repoKeyName("acme", "demo")).toBe(repoKeyName("acme", "demo"));
+    expect(repoKeyName("a/b", "c d")).toMatch(/^[A-Za-z0-9_.-]+$/);
+  });
+
+  it("gives different repositories different names", () => {
+    // The readable part folds every unsafe character to one dash and uses a
+    // safe character as its separator, so it cannot be relied on to tell
+    // repositories apart. GitHub allows a deploy key on one repository only,
+    // so a collision sends the second app to an error whose advice — delete
+    // the key and regenerate — produces the same collision again.
+    const collidingPairs: Array<[string, string]> = [
+      ["owner_a", "repo"],
+      ["owner", "a_repo"],
+    ];
+    const names = collidingPairs.map(([o, r]) => repoKeyName(o, r));
+    expect(new Set(names).size).toBe(collidingPairs.length);
+
+    // And the same for the character folding, which is equally lossy.
+    expect(repoKeyName("a/b", "c")).not.toBe(repoKeyName("a", "b/c"));
+    expect(repoKeyName("a b", "c")).not.toBe(repoKeyName("a-b", "c"));
   });
 });
 

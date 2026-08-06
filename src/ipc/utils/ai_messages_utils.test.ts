@@ -866,6 +866,165 @@ describe("sanitizeToolCallTranscript", () => {
     expect(result[2]).toBe(messages[2]);
   });
 
+  // A tool-call id that no provider will accept fails the WHOLE request, and
+  // once persisted it replays on every later turn — the chat never recovers on
+  // its own. Rewriting the call and its result together is what unsticks it.
+  it.each([
+    ["longer than 64 characters", `call_${"x".repeat(80)}`],
+    ["not matching Anthropic's ^[A-Za-z0-9_-]+$", '{"steps":[{"index":0}]}'],
+    ["empty", ""],
+  ])("rewrites a tool-call id that is %s", (_label, badId) => {
+    const messages: ModelMessage[] = [
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "tool-call",
+            toolCallId: badId,
+            toolName: "generate_test_assertions",
+            input: { steps: [] },
+          },
+        ],
+      },
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: badId,
+            toolName: "generate_test_assertions",
+            output: { type: "text", value: "ok" },
+          },
+        ],
+      },
+    ];
+
+    const result = sanitizeToolCallTranscript(messages);
+
+    const call = (result[0].content as any[])[0];
+    const toolResult = (result[1].content as any[])[0];
+    expect(call.toolCallId).toBe("dyad_call_0");
+    // Still paired: an unpaired exchange is rejected just as hard.
+    expect(toolResult.toolCallId).toBe(call.toolCallId);
+    expect(call.toolCallId).toMatch(/^[A-Za-z0-9_-]{1,64}$/);
+  });
+
+  it("gives each unusable id its own replacement and leaves good ones alone", () => {
+    const messages: ModelMessage[] = [
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "tool-call",
+            toolCallId: "x".repeat(100),
+            toolName: "a",
+            input: {},
+          },
+          {
+            type: "tool-call",
+            toolCallId: "y".repeat(100),
+            toolName: "b",
+            input: {},
+          },
+          {
+            type: "tool-call",
+            toolCallId: "call_ok-1",
+            toolName: "c",
+            input: {},
+          },
+        ],
+      },
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "y".repeat(100),
+            toolName: "b",
+            output: { type: "text", value: "b" },
+          },
+          {
+            type: "tool-result",
+            toolCallId: "x".repeat(100),
+            toolName: "a",
+            output: { type: "text", value: "a" },
+          },
+          {
+            type: "tool-result",
+            toolCallId: "call_ok-1",
+            toolName: "c",
+            output: { type: "text", value: "c" },
+          },
+        ],
+      },
+    ];
+
+    const result = sanitizeToolCallTranscript(messages);
+
+    const calls = (result[0].content as any[]).map((p) => p.toolCallId);
+    const results = new Map(
+      (result[1].content as any[]).map((p) => [p.toolName, p.toolCallId]),
+    );
+    expect(calls).toEqual(["dyad_call_0", "dyad_call_1", "call_ok-1"]);
+    expect(results.get("a")).toBe("dyad_call_0");
+    expect(results.get("b")).toBe("dyad_call_1");
+    expect(results.get("c")).toBe("call_ok-1");
+  });
+
+  it("doesn't hand a replacement the name of an id already in the transcript", () => {
+    // A chat repaired once already carries a `dyad_call_0`. Reusing that name
+    // would merge two distinct exchanges: the pairing pass would match this
+    // call against the earlier call's result and drop the other.
+    const messages: ModelMessage[] = [
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "tool-call",
+            toolCallId: "dyad_call_0",
+            toolName: "old",
+            input: {},
+          },
+          {
+            type: "tool-call",
+            toolCallId: "!".repeat(10),
+            toolName: "new",
+            input: {},
+          },
+        ],
+      },
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "dyad_call_0",
+            toolName: "old",
+            output: { type: "text", value: "old" },
+          },
+          {
+            type: "tool-result",
+            toolCallId: "!".repeat(10),
+            toolName: "new",
+            output: { type: "text", value: "new" },
+          },
+        ],
+      },
+    ];
+
+    const result = sanitizeToolCallTranscript(messages);
+
+    const calls = (result[0].content as any[]).map((p) => p.toolCallId);
+    expect(calls[0]).toBe("dyad_call_0");
+    expect(calls[1]).not.toBe("dyad_call_0");
+    expect(new Set(calls).size).toBe(2);
+    const results = new Map(
+      (result[1].content as any[]).map((p) => [p.toolName, p.toolCallId]),
+    );
+    expect(results.get("old")).toBe("dyad_call_0");
+    expect(results.get("new")).toBe(calls[1]);
+  });
+
   it("moves user messages after the matching tool result", () => {
     const messages: ModelMessage[] = [
       {

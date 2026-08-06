@@ -43,6 +43,7 @@ import {
 } from "@/shared/app_names";
 import { slugifyAppPath } from "@/shared/slugify";
 import { resolveUniqueFolderName } from "../utils/app_name_resolution";
+import { withLock } from "../utils/lock_utils";
 import {
   isComponentTaggerUpgradeNeeded,
   applyComponentTagger,
@@ -1243,93 +1244,100 @@ async function handleCloneRepoFromUrl(
     const finalAppName = sanitizeAppDisplayName(
       appName && appName.trim() ? appName : repoName,
     );
-    const existingApp = await db.query.apps.findFirst({
-      where: eq(apps.name, finalAppName),
-    });
-
-    if (existingApp) {
-      return { error: `An app named "${finalAppName}" already exists.` };
-    }
-
-    const folderName = await resolveUniqueFolderName(
-      slugifyAppFolderName(finalAppName),
-    );
-    const appPath = getDyadAppPath(folderName);
-
-    if (!isAppLocationAccessible(appPath)) {
-      throw new Error(
-        `The path ${appPath} is inaccessible. Please check your custom apps folder setting.`,
-      );
-    }
-
-    // Always clone with a credential-free URL; if a token exists it is
-    // injected per-invocation in git_utils.
-    const cloneUrl = `${getGitHubGitBase()}/${owner}/${repoName}.git`;
-    try {
-      await gitClone({
-        path: appPath,
-        url: cloneUrl,
-        accessToken,
-        singleBranch: false,
+    return await withLock(`github-import-name:${finalAppName}`, async () => {
+      const existingApp = await db.query.apps.findFirst({
+        where: eq(apps.name, finalAppName),
       });
-    } catch (cloneErr) {
-      logger.error("[GitHub Handler] Clone failed:", cloneErr);
-      return {
-        error:
-          "Failed to clone repository. Please check the URL and try again.",
-      };
-    }
-    const aiRulesPath = path.join(appPath, "AI_RULES.md");
-    const hasAiRules = fs.existsSync(aiRulesPath);
-    const [newApp] = await db
-      .insert(schema.apps)
-      .values({
-        name: finalAppName,
-        path: folderName,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        githubOrg: owner,
-        githubRepo: repoName,
-        githubBranch: "main",
-        installCommand: installCommand || null,
-        startCommand: startCommand || null,
-      })
-      .returning();
-    logger.log(`Successfully cloned repo ${owner}/${repoName} to ${appPath}`);
 
-    let autoUpgradeWarning = false;
-    if (optimizeForDyad && isComponentTaggerUpgradeNeeded(appPath)) {
-      try {
-        await applyComponentTagger(appPath, { installDependencies: false });
-        logger.log(
-          `Automatically applied component tagger upgrade for ${owner}/${repoName}`,
-        );
-      } catch (upgradeError) {
-        // Auto-upgrade  Failures are logged but don't block import.
-        // User will be notified via warning toast to manually upgrade if needed.
-        autoUpgradeWarning = true;
-        logger.warn(
-          `Failed to auto-apply component tagger upgrade for ${owner}/${repoName}: `,
-          upgradeError,
+      if (existingApp) {
+        return { error: `An app named "${finalAppName}" already exists.` };
+      }
+
+      const folderName = await resolveUniqueFolderName(
+        slugifyAppFolderName(finalAppName),
+      );
+      const appPath = getDyadAppPath(folderName);
+
+      if (!isAppLocationAccessible(appPath)) {
+        throw new Error(
+          `The path ${appPath} is inaccessible. Please check your custom apps folder setting.`,
         );
       }
-    }
 
-    return {
-      app: {
-        ...newApp,
-        files: [],
-        supabaseProjectName: null,
-        supabaseOrganizationSlug: null,
-        vercelTeamSlug: null,
-      },
-      hasAiRules,
-      autoUpgradeWarning,
-    };
-  } catch (err: any) {
+      // Always clone with a credential-free URL; if a token exists it is
+      // injected per-invocation in git_utils.
+      const cloneUrl = `${getGitHubGitBase()}/${owner}/${repoName}.git`;
+      try {
+        await gitClone({
+          path: appPath,
+          url: cloneUrl,
+          accessToken,
+          singleBranch: false,
+        });
+      } catch (cloneErr) {
+        logger.error("[GitHub Handler] Clone failed:", cloneErr);
+        return {
+          error:
+            "Failed to clone repository. Please check the URL and try again.",
+        };
+      }
+      const aiRulesPath = path.join(appPath, "AI_RULES.md");
+      const hasAiRules = fs.existsSync(aiRulesPath);
+      const [newApp] = await db
+        .insert(schema.apps)
+        .values({
+          name: finalAppName,
+          path: folderName,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          githubOrg: owner,
+          githubRepo: repoName,
+          githubBranch: "main",
+          installCommand: installCommand || null,
+          startCommand: startCommand || null,
+        })
+        .returning();
+      logger.log(`Successfully cloned repo ${owner}/${repoName} to ${appPath}`);
+
+      let autoUpgradeWarning = false;
+      if (optimizeForDyad && isComponentTaggerUpgradeNeeded(appPath)) {
+        try {
+          await applyComponentTagger(appPath, { installDependencies: false });
+          logger.log(
+            `Automatically applied component tagger upgrade for ${owner}/${repoName}`,
+          );
+        } catch (upgradeError) {
+          // Auto-upgrade  Failures are logged but don't block import.
+          // User will be notified via warning toast to manually upgrade if needed.
+          autoUpgradeWarning = true;
+          logger.warn(
+            `Failed to auto-apply component tagger upgrade for ${owner}/${repoName}: `,
+            upgradeError,
+          );
+        }
+      }
+
+      return {
+        app: {
+          ...newApp,
+          files: [],
+          supabaseProjectName: null,
+          supabaseOrganizationSlug: null,
+          vercelTeamSlug: null,
+        },
+        hasAiRules,
+        autoUpgradeWarning,
+      };
+    });
+  } catch (err: unknown) {
+    if (err instanceof DyadError) {
+      throw err;
+    }
     logger.error("[GitHub Handler] Unexpected error in clone flow:", err);
     return {
-      error: err.message || "An unexpected error occurred during cloning.",
+      error:
+        (err instanceof Error && err.message) ||
+        "An unexpected error occurred during cloning.",
     };
   }
 }

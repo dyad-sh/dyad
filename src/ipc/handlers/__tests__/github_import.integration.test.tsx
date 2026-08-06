@@ -12,6 +12,7 @@ import { eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { apps } from "@/db/schema";
+import { ipc } from "@/ipc/types";
 import { writeSettings } from "@/main/settings";
 import { invalidateDyadAppsBaseDirectoryCache } from "@/paths/paths";
 import {
@@ -191,6 +192,30 @@ describe("GitHub import dialog (integration)", () => {
 
     const pkg = fs.readFileSync(path.join(appDir, "package.json"), "utf8");
     expect(pkg).not.toContain("@dyad-sh/react-vite-component-tagger");
+  }, 90_000);
+
+  it("serializes concurrent imports with the same app name", async () => {
+    await harness.github.resetRepos();
+    const params = {
+      url: "https://github.com/testuser/existing-vite-app.git",
+      appName: "concurrent-github-import",
+      optimizeForDyad: false,
+    };
+
+    const results = await Promise.all([
+      ipc.github.cloneRepoFromUrl(params),
+      ipc.github.cloneRepoFromUrl(params),
+    ]);
+
+    expect(results.filter((result) => "app" in result)).toHaveLength(1);
+    expect(results.filter((result) => "error" in result)).toEqual([
+      { error: 'An app named "concurrent-github-import" already exists.' },
+    ]);
+    expect(
+      await harness.db.query.apps.findMany({
+        where: eq(apps.name, "concurrent-github-import"),
+      }),
+    ).toHaveLength(1);
   }, 90_000);
 
   it("requires both custom commands before enabling import", async () => {

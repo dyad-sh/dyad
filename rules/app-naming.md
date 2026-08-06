@@ -26,6 +26,10 @@ approval, template apply).
   pathological database/filesystem state from blocking a user action
   indefinitely. Exhausting the cap must surface a `DyadErrorKind.Conflict`
   with actionable context; auto-suffixing is not an unbounded guarantee.
+- App creation/import flows must serialize display-name checking, folder
+  allocation, filesystem creation, and the database insert under one
+  name-keyed lock. Otherwise auto-suffixing can let concurrent same-name
+  requests create duplicate display-name rows in different folders.
 - A case-only folder rename (`MyApp` → `myapp`) must use `fs.rename`, never
   copy-then-delete: on case-insensitive filesystems (macOS/Windows defaults)
   source and destination are the same physical directory, so the delete step

@@ -95,8 +95,9 @@ clean PR.
 
 Name the cursor variable `$endCursor` and include `pageInfo { hasNextPage
 endCursor }`, then let `gh` walk it. Note `--paginate` emits one JSON document
-per page, so apply `--jq` per page rather than expecting one combined array
-(older `gh` has no `--slurp`):
+per page, so apply `--jq` per page rather than expecting one combined array.
+`gh api --slurp` would combine them, but this environment's `gh` is 2.45, which
+predates that flag and fails with `unknown flag: --slurp`:
 
 ```bash
 # query file: query($owner:String!,$repo:String!,$pr:Int!,$endCursor:String){...
@@ -131,10 +132,14 @@ list --commit <sha>` returns just the review workflows. Do not read that as
 gh run list -R dyad-sh/dyad --workflow CI --commit <HEAD_SHA> --json databaseId,status,conclusion
 ```
 
-When it is empty, local `npm test` plus `npm run presubmit` and `npm run ts`
-are the only pre-merge signal — say so explicitly rather than implying CI
-verified the change. Logs from an older approved run on the same branch expire,
-so they cannot substitute either.
+**Pass the full 40-character SHA.** `--commit 8935bba2` returns `[]` rather than
+an error, which is indistinguishable from "no runs exist" — the exact wrong
+conclusion here. Take it from `gh pr view <n> --json headRefOid`.
+
+When it is genuinely empty, local `npm test` plus `npm run presubmit` and `npm
+run ts` are the only pre-merge signal — say so explicitly rather than implying
+CI verified the change. Logs from an older approved run on the same branch
+expire, so they cannot substitute either.
 
 ## Formatter Touching Unrelated Skill Files
 

@@ -232,6 +232,43 @@ describe("dyad recorder client", () => {
     ]);
   });
 
+  it("does not retarget to a wrapper whose live role is presentational", () => {
+    const r = setup();
+    // `role="presentation button"` resolves to `presentation` — the wrapper is
+    // not a button, it just mentions one. Retargeting to it would record the
+    // click against the wrapper and leave the real target's handler unexercised
+    // on replay.
+    r.setHtml(
+      `<div role="presentation button"><span data-testid="save">Save</span></div>`,
+    );
+    r.activate();
+    r.click(r.doc.querySelector("[data-testid='save']"));
+    r.settleClick();
+
+    expect(r.actions).toEqual([
+      { kind: "click", locator: { kind: "testid", value: "save" } },
+    ]);
+  });
+
+  it("still retargets to a wrapper whose live role is interactive", () => {
+    const r = setup();
+    // Here `button` is the first supported token, so the wrapper really is a
+    // button and the click belongs to it rather than to the label inside.
+    r.setHtml(
+      `<div role="button link" aria-label="Save"><span>Save</span></div>`,
+    );
+    r.activate();
+    r.click(r.doc.querySelector("span"));
+    r.settleClick();
+
+    expect(r.actions).toEqual([
+      {
+        kind: "click",
+        locator: { kind: "role", value: "button", name: "Save", exact: true },
+      },
+    ]);
+  });
+
   it("records a page-level shortcut without a locator", () => {
     const r = setup();
     r.setHtml(`<p>nothing focused</p>`);
@@ -654,5 +691,24 @@ describe("dyad recorder client", () => {
     r.settleClick();
 
     expect(r.actions).toEqual([]);
+  });
+
+  it("cannot be switched into accepting untrusted events after load", () => {
+    // The proxy injects this script at the top of <head>, so every page script
+    // runs after it. Setting the flag late — an app bundle, a CDN tag — must not
+    // let fabricated clicks into a spec the user commits and runs.
+    const r = setup({ allowUntrusted: false });
+    r.win.__DYAD_RECORDER_ALLOW_UNTRUSTED__ = true;
+    r.setHtml(`<button>Add</button>`);
+    r.activate();
+    r.click(r.doc.querySelector("button"));
+    r.settleClick();
+
+    expect(r.actions).toEqual([]);
+  });
+
+  it("removes the escape-hatch global once it has been read", () => {
+    const r = setup();
+    expect(r.win.__DYAD_RECORDER_ALLOW_UNTRUSTED__).toBeUndefined();
   });
 });

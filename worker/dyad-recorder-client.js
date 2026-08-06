@@ -34,6 +34,24 @@
  * Tracked as follow-up work; see the PR discussion.
  */
 (() => {
+  // Read once, here, and then take the global away.
+  //
+  // The vm/happy-dom unit test sets this before the script runs so it can drive
+  // the recorder with synthetic events. Nothing else legitimately sets it, and
+  // the proxy splices this script in immediately after `<head>` — so every one
+  // of the app's own scripts, inline or bundled or from a CDN, runs strictly
+  // after this line. Snapshotting is therefore enough to stop a page script
+  // flipping the recorder into accepting untrusted events mid-recording and
+  // fabricating clicks and fills that land in a spec the user commits and runs.
+  const allowUntrustedEvents =
+    window.__DYAD_RECORDER_ALLOW_UNTRUSTED__ === true;
+  try {
+    delete window.__DYAD_RECORDER_ALLOW_UNTRUSTED__;
+  } catch {
+    // Non-configurable, so someone is holding it deliberately. The snapshot
+    // above already decided this session's answer either way.
+  }
+
   const OVERLAY_CLASS = "__dyad_recorder_overlay__";
   // Absorbs the synthetic duplicate the browser dispatches when a <label>
   // activates its control, without swallowing deliberate repeat interactions.
@@ -59,13 +77,25 @@
   // recorded verbatim, so a generated spec is worth a glance before committing.
   const seenAsPassword = new WeakSet();
 
-  // `~=` rather than `=` for the same reason `computeRole` splits the attribute:
-  // `role` is a fallback token list, so `role="switch checkbox"` is a switch and
-  // has to retarget like one. `~=` matches a single-token value identically.
-  const INTERACTIVE_SELECTOR =
-    "button, a, input, select, textarea, summary, " +
-    '[role~="button"], [role~="link"], [role~="checkbox"], [role~="radio"], ' +
-    '[role~="tab"], [role~="menuitem"], [role~="switch"], [role~="option"]';
+  // Native elements that are interactive whatever their role says.
+  const INTERACTIVE_TAGS = "button, a, input, select, textarea, summary";
+
+  // Roles that make an element the thing a click is really aimed at. Matched
+  // against `computeRole`'s answer rather than the `role` attribute's text: only
+  // the first supported token of a fallback list is live, so
+  // `role="presentation button"` is a presentation element that merely contains
+  // the word "button". Retargeting to it would record the click against a
+  // wrapper and leave the real handler on the descendant unexercised on replay.
+  const INTERACTIVE_ROLES = new Set([
+    "button",
+    "link",
+    "checkbox",
+    "radio",
+    "tab",
+    "menuitem",
+    "switch",
+    "option",
+  ]);
 
   // WAI-ARIA 1.2 roles, which is what Playwright's `getByRole` accepts. Used to
   // pick the winning token out of a fallback role list — see `computeRole`.
@@ -195,7 +225,7 @@
   }
 
   function trustedOk(e) {
-    return e.isTrusted || window.__DYAD_RECORDER_ALLOW_UNTRUSTED__ === true;
+    return e.isTrusted || allowUntrustedEvents;
   }
 
   function deepTarget(e) {
@@ -392,8 +422,17 @@
 
   function retarget(el) {
     if (!el || el.nodeType !== 1) return el;
-    const closest = el.closest && el.closest(INTERACTIVE_SELECTOR);
-    return closest || el;
+    // Nearest-first, the way `closest` walked it — but asking `computeRole`
+    // per node instead of letting a CSS attribute match stand in for the role.
+    for (
+      let node = el;
+      node && node.nodeType === 1;
+      node = node.parentElement
+    ) {
+      if (node.matches && node.matches(INTERACTIVE_TAGS)) return node;
+      if (INTERACTIVE_ROLES.has(computeRole(node))) return node;
+    }
+    return el;
   }
 
   /* ---------- role / accessible-name (minimal port) -------------------- */

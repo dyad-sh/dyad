@@ -20,6 +20,7 @@ import { useTranslation } from "react-i18next";
 import { enqueueFileSave, getFileSaveQueueKey } from "./fileSaveQueue";
 import { editorCursorAtom } from "@/atoms/viewAtoms";
 import { useAtomValue, useSetAtom } from "jotai";
+import { useTrackUnsavedFile } from "@/hooks/useUnsavedFiles";
 
 interface FileEditorProps {
   appId: number | null;
@@ -164,6 +165,9 @@ export const FileEditor = ({
   cursorTargetRef.current = { appId, filePath, persistCursor };
 
   const queryClient = useQueryClient();
+
+  // Publish dirty state so the file tree can mark this file as unsaved.
+  useTrackUnsavedFile({ appId, filePath, isUnsaved: displayUnsavedChanges });
 
   useEffect(() => {
     isMountedRef.current = true;

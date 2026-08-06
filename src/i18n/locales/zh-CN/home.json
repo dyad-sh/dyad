@@ -582,7 +582,15 @@
       "failedDisconnectProject": "断开应用的项目连接失败",
       "signInTimedOut": "登录超时 — 请重试或检查浏览器",
       "cancelSignIn": "取消登录",
-      "connectFailed": "连接 Supabase 失败"
+      "connectFailed": "连接 Supabase 失败",
+      "redeployFunctions": "重新部署边缘函数",
+      "redeployFunctionsDescription": "将所有本地边缘函数重新部署到此项目。仅存在于远程的函数将遵循“保留额外的 Supabase 边缘函数”设置。",
+      "preparingRedeploy": "正在准备…",
+      "redeployProgress": "正在部署 {{completed}}/{{total}}…",
+      "redeploySucceeded_one": "已重新部署 {{count}} 个边缘函数",
+      "redeploySucceeded_other": "已重新部署 {{count}} 个边缘函数",
+      "noFunctionsToRedeploy": "未找到可重新部署的本地边缘函数",
+      "redeployFailed": "边缘函数重新部署完成，但出现问题：{{error}}"
     },
     "neon": {
       "title": "Neon 集成",

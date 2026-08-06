@@ -12,6 +12,7 @@ import {
   type SupabaseProjectLog,
 } from "../../supabase_admin/supabase_management_client";
 import { extractFunctionName } from "../../supabase_admin/supabase_utils";
+import { deployAllSupabaseFunctions } from "../../supabase_admin/supabase_utils";
 import {
   detectLegacyAppKey,
   switchAppToPublishableKey,
@@ -30,6 +31,7 @@ import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { assertNoNeonProject } from "../utils/neon_utils";
 import { runOAuthReturnExchange } from "./connection_flow_handlers";
 import { IS_TEST_BUILD } from "../utils/test_utils";
+import { safeSend } from "../utils/safe_sender";
 
 const logger = log.scope("supabase_handlers");
 const testOnlyHandle = createTestOnlyLoggedHandler(logger);
@@ -341,6 +343,54 @@ export function registerSupabaseHandlers() {
             DyadErrorKind.External,
           );
         }
+      },
+    ),
+  );
+
+  createTypedHandler(
+    supabaseContracts.redeployAllFunctions,
+    createAppOperationHandler(
+      "redeploy-all-supabase-functions",
+      [
+        readAppResource("app-path"),
+        readAppResource("provider"),
+        readAppResource("repository"),
+      ],
+      async (event, { appId, operationId }) => {
+        const app = await db.query.apps.findFirst({
+          where: eq(apps.id, appId),
+        });
+        if (!app) {
+          throw new DyadError(
+            `App ${appId} not found.`,
+            DyadErrorKind.NotFound,
+          );
+        }
+        if (!app.supabaseProjectId) {
+          throw new DyadError(
+            `App ${appId} is not connected to a Supabase project.`,
+            DyadErrorKind.Precondition,
+          );
+        }
+
+        let functionCount = 0;
+        const settings = readSettings();
+        const errors = await deployAllSupabaseFunctions({
+          appPath: getDyadAppPath(app.path),
+          supabaseProjectId: app.supabaseProjectId,
+          supabaseOrganizationSlug: app.supabaseOrganizationSlug ?? null,
+          skipPruneEdgeFunctions: settings.skipPruneEdgeFunctions ?? false,
+          onProgress: (progress) => {
+            functionCount = progress.total;
+            safeSend(event.sender, "supabase:redeploy-progress", {
+              ...progress,
+              appId,
+              operationId,
+            });
+          },
+        });
+
+        return { functionCount, errors };
       },
     ),
   );

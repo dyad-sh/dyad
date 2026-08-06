@@ -85,6 +85,18 @@ function githubSignal(signal: AbortSignal): AbortSignal {
  * Left bare, a timeout reaches the user as "signal timed out" — the whole
  * explanation for a failed deploy, with no mention of GitHub or the key.
  */
+/** Reads a body under the same classifier, since it can stall after headers. */
+async function githubBody(
+  read: () => Promise<string>,
+  signal: AbortSignal,
+): Promise<string> {
+  try {
+    return await read();
+  } catch (err) {
+    throw githubError(err, signal);
+  }
+}
+
 async function githubFetch(
   url: string,
   init: RequestInit,
@@ -93,21 +105,25 @@ async function githubFetch(
   try {
     return await fetch(url, { ...init, signal: githubSignal(signal) });
   } catch (err) {
-    if (signal.aborted) {
-      throw new DyadError("Deployment cancelled.", DyadErrorKind.UserCancelled);
-    }
-    const timedOut = err instanceof Error && err.name === "TimeoutError";
-    throw new DyadError(
-      `Could not reach GitHub to register the deploy key: ${
-        timedOut
-          ? `no response within ${GITHUB_TIMEOUT_MS / 1000}s`
-          : err instanceof Error
-            ? err.message
-            : String(err)
-      }`,
-      DyadErrorKind.External,
-    );
+    throw githubError(err, signal);
   }
+}
+
+function githubError(err: unknown, signal: AbortSignal): DyadError {
+  if (signal.aborted) {
+    return new DyadError("Deployment cancelled.", DyadErrorKind.UserCancelled);
+  }
+  const timedOut = err instanceof Error && err.name === "TimeoutError";
+  return new DyadError(
+    `Could not reach GitHub to register the deploy key: ${
+      timedOut
+        ? `no response within ${GITHUB_TIMEOUT_MS / 1000}s`
+        : err instanceof Error
+          ? err.message
+          : String(err)
+    }`,
+    DyadErrorKind.External,
+  );
 }
 
 function sleep(clock: Clock, ms: number): Promise<void> {
@@ -214,7 +230,7 @@ async function ensureGithubDeployKey({
     report.log(`Added the deploy key to ${owner}/${repo}.\n`);
     return keyName;
   }
-  const body = await res.text();
+  const body = await githubBody(() => res.text(), signal);
   if (res.status === 422 && /already in use/i.test(body)) {
     const listed = await githubFetch(
       `${getGitHubApiBase()}/repos/${owner}/${repo}/keys`,
@@ -236,7 +252,9 @@ async function ensureGithubDeployKey({
         DyadErrorKind.External,
       );
     }
-    const keys = (await listed.json()) as Array<{ key?: string }>;
+    const keys = JSON.parse(
+      await githubBody(() => listed.text(), signal),
+    ) as Array<{ key?: string }>;
     // GitHub returns the key without its trailing comment.
     const ours = publicKey.split(/\s+/).slice(0, 2).join(" ");
     if (keys.some((k) => (k.key ?? "").startsWith(ours))) {
@@ -249,6 +267,17 @@ async function ensureGithubDeployKey({
         `repository's deploy keys, or delete ~/.ssh/${keyName} to generate a new ` +
         `one — Dyad registers a regenerated key with Coolify under a new name.`,
       DyadErrorKind.Validation,
+    );
+  }
+  if (res.status === 401 || res.status === 403) {
+    // The guard above only proves a token exists. One that is revoked,
+    // expired, or blocked by an org's SAML enforcement is the same problem
+    // for the user as having none, and rules/dyad-errors.md puts both under
+    // Auth — the Coolify client classifies its equivalent the same way.
+    throw new DyadError(
+      `GitHub rejected the stored account when registering the deploy key ` +
+        `for ${owner}/${repo} (${res.status}). Reconnect GitHub and try again.`,
+      DyadErrorKind.Auth,
     );
   }
   throw new DyadError(
@@ -707,6 +736,21 @@ export async function runDeployPipeline({
 
   const application = await client.getApplication(applicationUuid);
   const url = (application.fqdn ?? "").split(",")[0] || null;
+
+  // The connection form warns that a Neon app without HTTPS will not load,
+  // but that was a screen ago and nothing since has repeated it. Saying so
+  // here means the one place the user is looking when it happens — the deploy
+  // log — explains the blank page they are about to get, rather than
+  // reporting plain success for a deployment known to be broken.
+  if (url && !url.toLowerCase().startsWith("https:") && database.auth) {
+    report.log(
+      "Warning: this app uses Neon Auth and is being served over plain " +
+        "HTTP, where browsers withhold the Web Crypto API that Neon Auth " +
+        "needs before the page mounts. The deployment itself is fine, but " +
+        "the address above will load a blank page. Give the app an https " +
+        "domain and deploy again.\n",
+    );
+  }
 
   // Neon Auth rejects sign-in from an origin it does not know, which reaches
   // the user as "Invalid origin" — a working deployment that cannot log in.

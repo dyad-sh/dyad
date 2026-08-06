@@ -51,72 +51,6 @@ describe("domainCheckVerdict", () => {
   });
 });
 
-describe("expectedServerAddress", () => {
-  const instanceUrl = "http://143.244.162.54:8000";
-
-  it("uses the address Coolify reports for a remote server", () => {
-    expect(expectedServerAddress({ serverIp: "5.6.7.8", instanceUrl })).toEqual(
-      { kind: "ip", ip: "5.6.7.8" },
-    );
-  });
-
-  it("falls back to the instance for Coolify's own server", () => {
-    // Coolify reports its own host as host.docker.internal, which is not an
-    // address and can never match a DNS record.
-    expect(
-      expectedServerAddress({ serverIp: "host.docker.internal", instanceUrl }),
-    ).toEqual({ kind: "ip", ip: "143.244.162.54" });
-  });
-
-  it("says nothing when Coolify reports no address for the server", () => {
-    // Coolify can omit the address, and the picker can hold a server the
-    // current list no longer has. Neither means the app runs where Coolify
-    // does, and guessing would fail a correctly pointed domain.
-    expect(
-      expectedServerAddress({
-        serverIp: null,
-        instanceUrl: "https://coolify.example.com",
-      }),
-    ).toBeNull();
-  });
-
-  it("asks for a lookup when Coolify's own host is named rather than numbered", () => {
-    expect(
-      expectedServerAddress({
-        serverIp: "host.docker.internal",
-        instanceUrl: "https://coolify.example.com",
-      }),
-    ).toEqual({ kind: "resolve", hostname: "coolify.example.com" });
-  });
-
-  it("gives up rather than guessing when the instance URL is unusable", () => {
-    expect(
-      expectedServerAddress({
-        serverIp: "host.docker.internal",
-        instanceUrl: "",
-      }),
-    ).toBeNull();
-  });
-
-  it("handles IPv6 on both sides", () => {
-    // A routable v6 address, since ::1 is loopback and is handled elsewhere.
-    expect(
-      expectedServerAddress({ serverIp: "2606:4700::1", instanceUrl }),
-    ).toEqual({
-      kind: "ip",
-      ip: "2606:4700::1",
-    });
-    // A routable v6 instance address; a loopback one is covered below, where
-    // it correctly answers with nothing at all.
-    expect(
-      expectedServerAddress({
-        serverIp: "host.docker.internal",
-        instanceUrl: "http://[2606:4700::1]:8000",
-      }),
-    ).toEqual({ kind: "ip", ip: "2606:4700::1" });
-  });
-});
-
 describe("domainCheckVerdict with several addresses", () => {
   it("accepts a dual-stack host answering on one family", () => {
     // The instance resolves to both; the app domain has only the v6 record.
@@ -147,87 +81,157 @@ describe("domainCheckVerdict with several addresses", () => {
   });
 });
 
-describe("expectedServerAddress for a named remote server", () => {
-  it("resolves the server's own hostname rather than the instance", () => {
-    // A remote server Coolify reports by name is still a different machine
-    // from the instance, so checking the domain against the instance would
-    // compare against the wrong host.
-    expect(
-      expectedServerAddress({
-        serverIp: "node-3.example.com",
-        instanceUrl: "https://coolify.example.com",
-      }),
-    ).toEqual({ kind: "resolve", hostname: "node-3.example.com" });
-  });
+/**
+ * Every shape an address can arrive as, in both positions it can arrive in.
+ *
+ * Written as a table rather than a case per bug. Eight separate defects in
+ * this one function were each "a shape handled in one position and not the
+ * other" — the Docker alias, loopback names, loopback literals, bind-all
+ * addresses, a bracketed IPv6, an absent address. A case per fix keeps
+ * finding them one at a time; enumerating the space finds them together.
+ */
+describe("expectedServerAddress over every address shape", () => {
+  const ROUTABLE_INSTANCE = "http://143.244.162.54:8000";
 
-  it("still stands in for Coolify's own server", () => {
-    expect(
-      expectedServerAddress({
-        serverIp: "host.docker.internal",
-        instanceUrl: "http://143.244.162.54:8000",
-      }),
-    ).toEqual({ kind: "ip", ip: "143.244.162.54" });
-  });
-});
+  // What a server address means when the instance is reachable and routable.
+  const SERVER_SHAPES: Array<{
+    shape: string;
+    serverIp: string | null | undefined;
+    expected: ReturnType<typeof expectedServerAddress>;
+    why: string;
+  }> = [
+    {
+      shape: "IPv4",
+      serverIp: "5.6.7.8",
+      expected: { kind: "ip", ip: "5.6.7.8" },
+      why: "an address, used as given",
+    },
+    {
+      shape: "IPv6",
+      serverIp: "2606:4700::1",
+      expected: { kind: "ip", ip: "2606:4700::1" },
+      why: "an address, used as given",
+    },
+    {
+      shape: "hostname",
+      serverIp: "node-3.example.com",
+      expected: { kind: "resolve", hostname: "node-3.example.com" },
+      why: "a different machine from the instance, so resolved on its own",
+    },
+    {
+      shape: "docker alias",
+      serverIp: "host.docker.internal",
+      expected: { kind: "ip", ip: "143.244.162.54" },
+      why: "a container naming its own host, which is where the instance is",
+    },
+    {
+      shape: "loopback name",
+      serverIp: "localhost",
+      expected: { kind: "ip", ip: "143.244.162.54" },
+      why: "names the machine Coolify runs on, same as the docker alias",
+    },
+    {
+      shape: "loopback IPv4",
+      serverIp: "127.0.0.1",
+      expected: { kind: "ip", ip: "143.244.162.54" },
+      why: "a public domain must never be pointed at loopback",
+    },
+    {
+      shape: "loopback IPv6",
+      serverIp: "::1",
+      expected: { kind: "ip", ip: "143.244.162.54" },
+      why: "a public domain must never be pointed at loopback",
+    },
+    {
+      shape: "bind-all IPv4",
+      serverIp: "0.0.0.0",
+      expected: { kind: "ip", ip: "143.244.162.54" },
+      why: "every interface is not a reachable host",
+    },
+    {
+      shape: "bind-all IPv6",
+      serverIp: "::",
+      expected: { kind: "ip", ip: "143.244.162.54" },
+      why: "every interface is not a reachable host",
+    },
+    {
+      shape: "empty",
+      serverIp: "",
+      expected: null,
+      why: "no address reported is not the same as naming Coolify's own host",
+    },
+    {
+      shape: "null",
+      serverIp: null,
+      expected: null,
+      why: "no address reported is not the same as naming Coolify's own host",
+    },
+    {
+      shape: "undefined",
+      serverIp: undefined,
+      expected: null,
+      why: "no address reported is not the same as naming Coolify's own host",
+    },
+  ];
 
-describe("expectedServerAddress and unusable server names", () => {
-  it("does not resolve a loopback name, which would name the user's own machine", () => {
-    expect(
-      expectedServerAddress({
-        serverIp: "localhost",
-        instanceUrl: "http://143.244.162.54:8000",
-      }),
-    ).toEqual({ kind: "ip", ip: "143.244.162.54" });
-  });
-});
-
-describe("expectedServerAddress and loopback servers", () => {
-  it("treats a loopback literal like Coolify's own host, not as an answer", () => {
-    // Telling someone to point a public domain at 127.0.0.1 is the one
-    // instruction guaranteed to be wrong.
-    expect(
-      expectedServerAddress({
-        serverIp: "127.0.0.1",
-        instanceUrl: "http://143.244.162.54:8000",
-      }),
-    ).toEqual({ kind: "ip", ip: "143.244.162.54" });
-    expect(
-      expectedServerAddress({
-        serverIp: "::1",
-        instanceUrl: "http://143.244.162.54:8000",
-      }),
-    ).toEqual({ kind: "ip", ip: "143.244.162.54" });
-  });
-});
-
-describe("expectedServerAddress and wildcard addresses", () => {
-  it("does not treat a bind-all address as where the server is", () => {
-    for (const serverIp of ["0.0.0.0", "::"]) {
+  it.each(SERVER_SHAPES)(
+    "reads a $shape server address as expected — $why",
+    ({ serverIp, expected }) => {
       expect(
-        expectedServerAddress({
-          serverIp,
-          instanceUrl: "http://143.244.162.54:8000",
-        }),
-      ).toEqual({ kind: "ip", ip: "143.244.162.54" });
-    }
-  });
-});
+        expectedServerAddress({ serverIp, instanceUrl: ROUTABLE_INSTANCE }),
+      ).toEqual(expected);
+    },
+  );
 
-describe("expectedServerAddress and a Coolify reached on loopback", () => {
-  it("says nothing rather than naming the user's own machine", () => {
-    // Coolify's own server plus an instance URL that is itself loopback: the
-    // fallback would otherwise answer 127.0.0.1 for a public domain.
-    for (const instanceUrl of [
-      "http://localhost:8000",
-      "http://127.0.0.1:8000",
-      "http://[::1]:8000",
-    ]) {
+  // The same shapes again, now in the instance URL, reached by a server that
+  // defers to it. Every one of these was a separate bug at some point.
+  const INSTANCE_SHAPES: Array<{
+    shape: string;
+    instanceUrl: string;
+    expected: ReturnType<typeof expectedServerAddress>;
+  }> = [
+    {
+      shape: "IPv4",
+      instanceUrl: "http://143.244.162.54:8000",
+      expected: { kind: "ip", ip: "143.244.162.54" },
+    },
+    {
+      shape: "bracketed IPv6",
+      instanceUrl: "http://[2606:4700::1]:8000",
+      expected: { kind: "ip", ip: "2606:4700::1" },
+    },
+    {
+      shape: "hostname",
+      instanceUrl: "https://coolify.example.com",
+      expected: { kind: "resolve", hostname: "coolify.example.com" },
+    },
+    {
+      shape: "loopback name",
+      instanceUrl: "http://localhost:8000",
+      expected: null,
+    },
+    {
+      shape: "loopback IPv4",
+      instanceUrl: "http://127.0.0.1:8000",
+      expected: null,
+    },
+    {
+      shape: "bracketed loopback IPv6",
+      instanceUrl: "http://[::1]:8000",
+      expected: null,
+    },
+    { shape: "unparseable", instanceUrl: "", expected: null },
+  ];
+
+  it.each(INSTANCE_SHAPES)(
+    "reads a $shape instance address as expected when the server defers to it",
+    ({ instanceUrl, expected }) => {
       expect(
         expectedServerAddress({
           serverIp: "host.docker.internal",
           instanceUrl,
         }),
-      ).toBeNull();
-    }
-  });
+      ).toEqual(expected);
+    },
+  );
 });

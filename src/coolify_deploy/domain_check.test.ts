@@ -106,12 +106,14 @@ describe("expectedServerAddress", () => {
       kind: "ip",
       ip: "2606:4700::1",
     });
+    // A routable v6 instance address; a loopback one is covered below, where
+    // it correctly answers with nothing at all.
     expect(
       expectedServerAddress({
         serverIp: "host.docker.internal",
-        instanceUrl: "http://[::1]:8000",
+        instanceUrl: "http://[2606:4700::1]:8000",
       }),
-    ).toEqual({ kind: "ip", ip: "::1" });
+    ).toEqual({ kind: "ip", ip: "2606:4700::1" });
   });
 });
 
@@ -207,6 +209,25 @@ describe("expectedServerAddress and wildcard addresses", () => {
           instanceUrl: "http://143.244.162.54:8000",
         }),
       ).toEqual({ kind: "ip", ip: "143.244.162.54" });
+    }
+  });
+});
+
+describe("expectedServerAddress and a Coolify reached on loopback", () => {
+  it("says nothing rather than naming the user's own machine", () => {
+    // Coolify's own server plus an instance URL that is itself loopback: the
+    // fallback would otherwise answer 127.0.0.1 for a public domain.
+    for (const instanceUrl of [
+      "http://localhost:8000",
+      "http://127.0.0.1:8000",
+      "http://[::1]:8000",
+    ]) {
+      expect(
+        expectedServerAddress({
+          serverIp: "host.docker.internal",
+          instanceUrl,
+        }),
+      ).toBeNull();
     }
   });
 });

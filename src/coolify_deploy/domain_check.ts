@@ -121,7 +121,10 @@ export function expectedServerAddress({
   } catch {
     return null;
   }
-  if (!host) return null;
+  // The same test the reported address gets: a Coolify reached on localhost
+  // says nothing about where a public domain should point, and answering with
+  // it would produce the one instruction guaranteed to be wrong.
+  if (!host || isLoopbackAddress(host)) return null;
   if (isIP(host)) return { kind: "ip", ip: host };
   return { kind: "resolve", hostname: host };
 }

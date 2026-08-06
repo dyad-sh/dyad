@@ -173,8 +173,8 @@ export const coolifyContracts = {
     channel: "coolify:save-token",
     input: SaveCoolifyTokenParamsSchema,
     output: z.void(),
-    // Reaches every app: a token that points somewhere else clears them all.
-    invalidates: () => [{ family: "apps" }],
+    // Reaches every app: without a token none of them reads as connected.
+    invalidates: () => [{ family: "apps" }, { family: "coolify" }],
   }),
 
   discover: defineContract({
@@ -188,10 +188,13 @@ export const coolifyContracts = {
     input: SaveCoolifyConnectionParamsSchema,
     output: z.void(),
     // The app row changed, so a second window showing this app would keep
-    // offering controls for the server and domain it used to have.
+    // offering controls for the server and domain it used to have. The coolify
+    // scope is the one that reaches the status query; apps and app only reach
+    // the list and the detail.
     invalidates: (input) => [
       { family: "apps" },
       { family: "app", appId: input.appId },
+      { family: "coolify", appId: input.appId },
     ],
   }),
 
@@ -231,7 +234,7 @@ export const coolifyContracts = {
     input: z.void(),
     output: z.void(),
     // Every app reads as disconnected without a token.
-    invalidates: () => [{ family: "apps" }],
+    invalidates: () => [{ family: "apps" }, { family: "coolify" }],
   }),
 
   createProject: defineContract({
@@ -250,6 +253,7 @@ export const coolifyContracts = {
     invalidates: (input) => [
       { family: "apps" },
       { family: "app", appId: input.appId },
+      { family: "coolify", appId: input.appId },
     ],
   }),
 } as const;

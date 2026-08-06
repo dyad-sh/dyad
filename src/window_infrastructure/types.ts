@@ -192,6 +192,10 @@ export const QueryInvalidationScopeSchema = z.discriminatedUnion("family", [
     appId: z.number().int().positive().optional(),
   }),
   z.object({
+    family: z.literal("coolify"),
+    appId: z.number().int().positive().optional(),
+  }),
+  z.object({
     family: z.literal("chat"),
     chatId: z.number().int().positive(),
   }),

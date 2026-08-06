@@ -1,7 +1,18 @@
 import { useEffect, useId, useState } from "react";
 import { ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -586,19 +597,45 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
           >
             Edit
           </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={async () => {
-              try {
-                await disconnect.mutateAsync();
-              } catch (error) {
-                toast.error(getErrorMessage(error));
-              }
-            }}
-          >
-            Disconnect
-          </Button>
+          {/* Confirmed because it is the one control here that throws away
+              something the user cannot type back in: the id of the
+              application running on their server. Reconnecting builds a
+              second one beside it. NeonConnector guards its equivalent the
+              same way. */}
+          <AlertDialog>
+            <AlertDialogTrigger
+              className={buttonVariants({ variant: "ghost", size: "sm" })}
+            >
+              Disconnect
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  Disconnect this app from Coolify?
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  The application keeps running on your server, but Dyad forgets
+                  how to reach it. Connecting this app again builds a second one
+                  beside it, and the two will compete for the same domain.
+                  Removing the first means going into Coolify.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Keep it connected</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={async () => {
+                    try {
+                      await disconnect.mutateAsync();
+                    } catch (error) {
+                      toast.error(getErrorMessage(error));
+                    }
+                  }}
+                >
+                  Disconnect
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </div>
 

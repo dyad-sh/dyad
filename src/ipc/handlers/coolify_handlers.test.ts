@@ -25,7 +25,9 @@ vi.mock("../../main/settings", () => ({
 const updateSet = vi.fn();
 vi.mock("../../db", () => ({
   db: {
-    query: { apps: { findFirst: async () => rows[0] } },
+    query: {
+      apps: { findFirst: async () => rows[0], findMany: async () => rows },
+    },
     update: () => ({
       set: (patch: Record<string, unknown>) => {
         updateSet(patch);
@@ -46,7 +48,7 @@ vi.mock("@/coolify_deploy/controller", () => ({
 }));
 
 const cancelDeploy = vi.hoisted(() => vi.fn());
-const listServers = vi.fn(async () => []);
+const listServers = vi.fn(async () => [] as Array<{ uuid: string }>);
 vi.mock("../utils/coolify_client", () => ({
   CoolifyClient: class {
     listServers = listServers;
@@ -135,6 +137,7 @@ describe("clearing the token", () => {
   it("starts over when the next token points at a different instance", async () => {
     // Those ids exist only on the old instance, so keeping them would deploy
     // against something that is not there.
+    listServers.mockResolvedValueOnce([{ uuid: "srv-elsewhere" }]);
     await call("coolify:clear-token");
     await call("coolify:save-token", {
       instanceUrl: "https://other.example.com",
@@ -144,6 +147,25 @@ describe("clearing the token", () => {
 
     expect(rows[0].coolifyApplicationUuid).toBeNull();
     expect(rows[0].coolifyServerUuid).toBeNull();
+  });
+
+  it("keeps everything when the same instance answers at a new address", async () => {
+    // The connection form tells people to give Coolify a domain and
+    // certificate, which changes the address. Treating that as a new instance
+    // abandons applications that are still running, with nothing left in Dyad
+    // that can reach them.
+    // A genuinely different address, so the repoint branch really runs — but
+    // the instance still reports the server the app is pinned to.
+    listServers.mockResolvedValueOnce([{ uuid: "srv-1" }]);
+    await call("coolify:clear-token");
+    await call("coolify:save-token", {
+      instanceUrl: "https://coolify.moved-here.com",
+      token: "tok-2",
+      acknowledgedInsecure: false,
+    });
+
+    expect(rows[0].coolifyApplicationUuid).toBe("app-1");
+    expect(rows[0].coolifyServerUuid).toBe("srv-1");
   });
 });
 

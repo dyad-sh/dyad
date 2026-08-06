@@ -294,7 +294,16 @@ async function resolveApplication({
         report.log(
           "The application clones with an outdated key; recreating it.\n",
         );
-        await client.deleteApplication(savedUuid).catch(() => undefined);
+        // Recreating regardless, since the old application cannot clone. But
+        // say so when it survives: it keeps running, keeps the domain, and
+        // the log would otherwise describe a replacement rather than a second
+        // application the user has to remove in Coolify themselves.
+        await client.deleteApplication(savedUuid).catch(() => {
+          report.log(
+            "Could not remove the old application; it is still on your " +
+              "server and may still hold the domain. Delete it in Coolify.\n",
+          );
+        });
       } else {
         return savedUuid;
       }

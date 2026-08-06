@@ -147,7 +147,7 @@ export function registerCoolifyHandlers() {
       // Validates the URL, the token and the instance's API switch in one
       // call. Coolify's own auth runs first, so a disabled API is only
       // reported once the token itself is accepted.
-      await probe.listServers();
+      const servers = await probe.listServers();
       const normalized = instanceUrl.replace(/\/+$/, "");
       const previous = readSettings().coolifyInstanceUrl;
       writeSettings({
@@ -159,8 +159,27 @@ export function registerCoolifyHandlers() {
       // running is still talking to the old instance, and a finished result
       // would otherwise be shown against the new one.
       if (previous && previous !== normalized) {
-        coolifyDeployRegistry.cancelAll();
-        await db.update(apps).set(coolifyConnectionColumns({ kind: "none" }));
+        // A new address is not evidence of a new instance. The usual reason it
+        // changes is the same Coolify gaining a domain and certificate, which
+        // is what the connection form tells people to do about the insecure
+        // warning — and starting every app over then abandons applications
+        // that are still running, with no way to reach them again.
+        //
+        // The servers this instance just reported are evidence. If it still
+        // hosts one an app is pinned to, it is the same Coolify somewhere new.
+        const connected = await db.query.apps.findMany();
+        const pinned = new Set(
+          connected
+            .map((row) => row.coolifyServerUuid)
+            .filter((uuid): uuid is string => Boolean(uuid)),
+        );
+        const sameInstanceMoved = servers.some((server) =>
+          pinned.has(server.uuid),
+        );
+        if (!sameInstanceMoved) {
+          coolifyDeployRegistry.cancelAll();
+          await db.update(apps).set(coolifyConnectionColumns({ kind: "none" }));
+        }
       }
     },
   );

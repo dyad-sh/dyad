@@ -362,11 +362,7 @@ export function registerSupabaseHandlers() {
     supabaseContracts.redeployAllFunctions,
     createAppOperationHandler(
       "redeploy-all-supabase-functions",
-      [
-        readAppResource("app-path"),
-        readAppResource("provider"),
-        readAppResource("repository"),
-      ],
+      [readAppResource("app-path"), "provider", readAppResource("repository")],
       async (event, { appId, operationId }) => {
         const app = await db.query.apps.findFirst({
           where: eq(apps.id, appId),
@@ -391,6 +387,7 @@ export function registerSupabaseHandlers() {
           supabaseProjectId: app.supabaseProjectId,
           supabaseOrganizationSlug: app.supabaseOrganizationSlug ?? null,
           skipPruneEdgeFunctions: settings.skipPruneEdgeFunctions ?? false,
+          pruneWhenNoLocalFunctions: true,
           onProgress: (progress) => {
             functionCount = progress.total;
             safeSend(event.sender, "supabase:redeploy-progress", {

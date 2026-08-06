@@ -28,6 +28,13 @@ This project uses a **contract-driven IPC architecture**. Contracts in `src/ipc/
 5. Register the handler in `src/ipc/handlers/<domain>_handlers.ts` using `createTypedHandler(contract, handler)`.
 6. Import and call the registration function in `src/ipc/ipc_host.ts`.
 
+For a domain's first main-to-renderer event, also import its event-contract
+object in `src/ipc/preload/channels.ts` and include it with
+`getReceiveChannels(...)`. The receive allowlist is derived from imported event
+objects, so defining and exporting an event alone does not make its channel
+available through preload. Add the domain to `channels.test.ts` to prevent a
+runtime `Invalid channel` failure that TypeScript cannot detect.
+
 ## Renderer usage
 
 ```ts

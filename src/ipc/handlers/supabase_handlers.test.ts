@@ -143,6 +143,7 @@ describe("Supabase handlers", () => {
           supabaseProjectId: "project-1",
           supabaseOrganizationSlug: "org-1",
           skipPruneEdgeFunctions: true,
+          pruneWhenNoLocalFunctions: true,
         }),
       );
       expect(event.sender.send).toHaveBeenCalledWith(

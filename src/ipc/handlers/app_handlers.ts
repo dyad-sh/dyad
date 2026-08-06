@@ -424,16 +424,19 @@ async function deleteAppById(
   // A teardown that couldn't restore the environment deliberately KEEPS the
   // temporary Neon branch, because the app row still records its id and the
   // startup sweep can reconcile it later. Deleting that row is what would
-  // strand it, so read the id now — off the row rather than off the session,
-  // which also covers a recording that ended long before this delete.
-  const appRow = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-  const strandedTestBranch =
-    appRow?.neonTestBranchId && appRow.neonProjectId ? appRow : null;
+  // strand it, so the id has to come off the row — that also covers a recording
+  // that ended long before this delete.
+  //
+  // Reported back by the exclusive path from the row it is about to delete,
+  // rather than snapshotted here: a recording or test run starting in between
+  // would persist a *different* branch id, and a snapshot would clean up the old
+  // one while the row carrying the new one goes away underneath it.
+  let deletedRow: typeof apps.$inferSelect | null = null;
 
   const appRunDeletion = appRunActorService.beginAppDeletion(appId);
   let appRunDeletionCommitted = false;
   try {
-    await appDeletionQueue.run(() =>
+    deletedRow = await appDeletionQueue.run(() =>
       deleteAppByIdExclusive(appId, options, {
         seal: () => appRunDeletion.seal(),
         commit: () => {
@@ -453,6 +456,10 @@ async function deleteAppById(
   // Only after the deletion has committed — the throw above skips this. Doing
   // it earlier means a deletion that then fails leaves a live app pointed at a
   // database that no longer exists, which is worse than the leak it prevents.
+  const strandedTestBranch =
+    deletedRow?.neonTestBranchId && deletedRow.neonProjectId
+      ? deletedRow
+      : null;
   if (strandedTestBranch) {
     try {
       await deleteTempTestBranch(strandedTestBranch);
@@ -466,6 +473,12 @@ async function deleteAppById(
   }
 }
 
+/**
+ * Resolves to the app row as it stood under the deletion lock immediately
+ * before it was removed — the last point at which a concurrently-started
+ * recording could still have written a new temporary Neon branch id onto it.
+ * Null when there was no row to delete.
+ */
 async function deleteAppByIdExclusive(
   appId: number,
   options: DeleteAppByIdOptions = {},
@@ -473,7 +486,7 @@ async function deleteAppByIdExclusive(
     seal(): Promise<void>;
     commit(): void;
   },
-): Promise<void> {
+): Promise<typeof apps.$inferSelect | null> {
   const appOperationDeletion = appOperationCoordinator.beginAppDeletion(appId);
   let versionPreviewDeletionStarted = false;
   let githubDeletionStarted = false;
@@ -484,6 +497,7 @@ async function deleteAppByIdExclusive(
   let deletionCommitted = false;
   let imageGenerationCleanupFailed = false;
   let imageGenerationCleanupError: unknown;
+  let deletedRow: typeof apps.$inferSelect | null = null;
   try {
     versionPreviewActorService.beginAppDeletion(appId);
     versionPreviewDeletionStarted = true;
@@ -514,7 +528,7 @@ async function deleteAppByIdExclusive(
       ),
     );
 
-    const appPath = await appOperationDeletion.runExclusive(async () => {
+    const { appPath, doomedRow } = await appOperationDeletion.runExclusive(async () => {
       const app = await db.query.apps.findFirst({
         where: eq(apps.id, appId),
       });
@@ -524,7 +538,7 @@ async function deleteAppByIdExclusive(
           await appRunDeletion.seal();
           appRunDeletion.commit();
           deletionCommitted = true;
-          return options.knownAppPath;
+          return { appPath: options.knownAppPath, doomedRow: null };
         }
         throw new DyadError("App not found", DyadErrorKind.NotFound);
       }
@@ -541,6 +555,15 @@ async function deleteAppByIdExclusive(
       }
 
       await appRunDeletion.seal();
+      // Re-read rather than reuse `app` from the top of this lock: the stop
+      // above can clear the temporary-branch columns on its way out, and a
+      // delete that queued behind a still-ending recording can arrive here with
+      // an id that only landed on the row after that first read. This is the
+      // last moment the row exists, so it is the only reading that can't go
+      // stale before the delete.
+      const doomedRow = await db.query.apps.findFirst({
+        where: eq(apps.id, appId),
+      });
       try {
         const testUserDeleted = await deleteTempTestUser(app);
         if (!testUserDeleted) {
@@ -566,8 +589,12 @@ async function deleteAppByIdExclusive(
           DyadErrorKind.External,
         );
       }
-      return getDyadAppPath(app.path);
+      return {
+        appPath: getDyadAppPath(app.path),
+        doomedRow: doomedRow ?? null,
+      };
     });
+    deletedRow = doomedRow;
 
     const actorCleanup = await Promise.allSettled([
       versionPreviewActorService.disposeApp(appId),
@@ -641,6 +668,7 @@ async function deleteAppByIdExclusive(
     }
   }
   if (imageGenerationCleanupFailed) throw imageGenerationCleanupError;
+  return deletedRow;
 }
 
 export function registerAppHandlers() {

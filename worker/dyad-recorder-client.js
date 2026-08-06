@@ -22,6 +22,16 @@
  *   down (from parent): { type: "activate-dyad-recorder" | "deactivate-dyad-recorder" }
  *   up   (to parent):   { type: "dyad-recorder-initialized" }
  *                       { type: "dyad-recorder-action", action: RecordedAction }
+ *
+ * Known limitation — the top-level preview document only. This script is
+ * injected into nested frames too, but Dyad activates only the frame it embeds,
+ * and `window.parent` from a nested document is the app, not the renderer. So
+ * interactions inside an app's own iframes are absent from the recording rather
+ * than misrecorded. Covering them needs the activation relayed down, the actions
+ * relayed back up, and a frame reference carried on each action so replay can
+ * address it via `page.frameLocator` — without that last part a relayed action
+ * would replay against the main frame and silently assert the wrong document.
+ * Tracked as follow-up work; see the PR discussion.
  */
 (() => {
   const OVERLAY_CLASS = "__dyad_recorder_overlay__";
@@ -49,10 +59,100 @@
   // recorded verbatim, so a generated spec is worth a glance before committing.
   const seenAsPassword = new WeakSet();
 
+  // `~=` rather than `=` for the same reason `computeRole` splits the attribute:
+  // `role` is a fallback token list, so `role="switch checkbox"` is a switch and
+  // has to retarget like one. `~=` matches a single-token value identically.
   const INTERACTIVE_SELECTOR =
     "button, a, input, select, textarea, summary, " +
-    '[role="button"], [role="link"], [role="checkbox"], [role="radio"], ' +
-    '[role="tab"], [role="menuitem"], [role="switch"], [role="option"]';
+    '[role~="button"], [role~="link"], [role~="checkbox"], [role~="radio"], ' +
+    '[role~="tab"], [role~="menuitem"], [role~="switch"], [role~="option"]';
+
+  // WAI-ARIA 1.2 roles, which is what Playwright's `getByRole` accepts. Used to
+  // pick the winning token out of a fallback role list — see `computeRole`.
+  const KNOWN_ROLES = new Set([
+    "alert",
+    "alertdialog",
+    "application",
+    "article",
+    "banner",
+    "blockquote",
+    "button",
+    "caption",
+    "cell",
+    "checkbox",
+    "code",
+    "columnheader",
+    "combobox",
+    "complementary",
+    "contentinfo",
+    "definition",
+    "deletion",
+    "dialog",
+    "directory",
+    "document",
+    "emphasis",
+    "feed",
+    "figure",
+    "form",
+    "generic",
+    "grid",
+    "gridcell",
+    "group",
+    "heading",
+    "img",
+    "insertion",
+    "link",
+    "list",
+    "listbox",
+    "listitem",
+    "log",
+    "main",
+    "marquee",
+    "math",
+    "menu",
+    "menubar",
+    "menuitem",
+    "menuitemcheckbox",
+    "menuitemradio",
+    "meter",
+    "navigation",
+    "none",
+    "note",
+    "option",
+    "paragraph",
+    "presentation",
+    "progressbar",
+    "radio",
+    "radiogroup",
+    "region",
+    "row",
+    "rowgroup",
+    "rowheader",
+    "scrollbar",
+    "search",
+    "searchbox",
+    "separator",
+    "slider",
+    "spinbutton",
+    "status",
+    "strong",
+    "subscript",
+    "superscript",
+    "switch",
+    "tab",
+    "table",
+    "tablist",
+    "tabpanel",
+    "term",
+    "textbox",
+    "time",
+    "timer",
+    "toolbar",
+    "tooltip",
+    "tree",
+    "treegrid",
+    "treeitem",
+  ]);
 
   const NAV_KEYS = new Set([
     "Enter",
@@ -300,7 +400,17 @@
   function computeRole(el) {
     if (!el || el.nodeType !== 1) return null;
     const explicit = el.getAttribute && el.getAttribute("role");
-    if (explicit && explicit.trim()) return explicit.trim().toLowerCase();
+    if (explicit && explicit.trim()) {
+      // `role` is a space-separated fallback list, and the browser takes the
+      // first token it recognises — `role="switch checkbox"` is a switch. Handing
+      // the whole attribute over as one role emits
+      // `getByRole("switch checkbox")`, which matches nothing on replay.
+      for (const token of explicit.trim().toLowerCase().split(/\s+/)) {
+        if (KNOWN_ROLES.has(token)) return token;
+      }
+      // Every token was junk. Browsers ignore an unrecognised `role` and fall
+      // back to the implicit one, so drop through rather than returning null.
+    }
     const tag = el.tagName ? el.tagName.toLowerCase() : "";
     switch (tag) {
       case "button":

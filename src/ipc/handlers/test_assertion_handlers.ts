@@ -14,7 +14,7 @@ import { E2E_TEST_DIR, testsContracts } from "../types/tests";
 import type { ApplyTestAssertionsResult } from "../types/tests";
 import { assertMutationPathAllowed } from "../utils/path_utils";
 import { withLock } from "../utils/lock_utils";
-import { safeSend } from "../utils/safe_sender";
+import { broadcastToAllWindows } from "../utils/window_broadcast";
 import { gitAdd, gitResetFile } from "../utils/git_utils";
 import { extractJson } from "../utils/extract_json";
 import { getModelClient } from "../utils/get_model_client";
@@ -641,7 +641,7 @@ export function registerTestAssertionHandlers() {
     // model, then writes "approved" back. Serializing makes that
     // read-modify-write an actual latch; the loser re-reads the now-approved tag
     // and returns the idempotent answer.
-    async (event, params): Promise<ApplyTestAssertionsResult> =>
+    async (_event, params): Promise<ApplyTestAssertionsResult> =>
       withLock(proposalWriteKey(params.chatId), async () => {
         const { appId, chatId, proposalId, items } = params;
 
@@ -831,7 +831,11 @@ export function registerTestAssertionHandlers() {
         // Approval happens entirely in the chat, so nothing else tells the
         // recording bar its draft is now a file. Without this it stays up
         // offering to propose the recording that has already been written.
-        safeSend(event.sender, "recording:draft-consumed", { appId, specPath });
+        //
+        // Broadcast rather than reply to the approving window: the bar belongs to
+        // whichever window holds the preview, which need not be the one the chat
+        // was approved in. Same reason `recording:draft-named` broadcasts.
+        broadcastToAllWindows("recording:draft-consumed", { appId, specPath });
 
         const appliedCount = countAssertions(finalItems);
         logger.info(

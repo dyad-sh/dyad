@@ -390,7 +390,7 @@ export function useTestRecorder({
       },
     );
     return unsub;
-  }, [patchState, postToIframe]);
+  }, [patchState, postToIframe, settlePendingAuth]);
 
   /**
    * Ask the main process to end this app's session and reset the app's recorder

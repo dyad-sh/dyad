@@ -85,6 +85,57 @@ comments become visible. After every review and CI check is terminal, query
 unresolved review threads again before declaring the PR clean; do not treat a
 green review check alone as proof that it posted no findings.
 
+## Always paginate `reviewThreads` — page 1 hides unresolved threads
+
+`reviewThreads(first: 100)` silently truncates, and bot-reviewed PRs blow past
+100 fast (dyad-sh/dyad#4065 had 217). The first page reported **1** unresolved
+thread; paginating surfaced **11**. Nothing in the response says it was cut off
+unless you ask for `pageInfo`/`totalCount`, so a single-page query reads as a
+clean PR.
+
+Name the cursor variable `$endCursor` and include `pageInfo { hasNextPage
+endCursor }`, then let `gh` walk it. Note `--paginate` emits one JSON document
+per page, so apply `--jq` per page rather than expecting one combined array
+(older `gh` has no `--slurp`):
+
+```bash
+# query file: query($owner:String!,$repo:String!,$pr:Int!,$endCursor:String){...
+#   reviewThreads(first:100, after:$endCursor){ pageInfo{hasNextPage endCursor} totalCount nodes{...} } }
+gh api graphql --paginate -F query=@threads.graphql \
+  -f owner=dyad-sh -f repo=dyad -F pr=4065 \
+  --jq '.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false)'
+```
+
+`-F query=@file` also sidesteps the security hook that blocks inline `-f
+query='...'` for containing shell metacharacters — the same `@file` trick the
+"GitHub API calls with special characters" section uses for comment bodies.
+
+## A contributor fork's `origin` makes bare `gh pr` commands miss the PR
+
+In a contributor's clone, `origin` is their own fork, so `gh pr view 4065`
+fails with `GraphQL: Could not resolve to a PullRequest with the number of
+4065` and `gh pr list` returns `[]` — the PR lives upstream. Pass `--repo
+dyad-sh/dyad` on every `gh pr`/`gh run`/`gh api` call rather than concluding
+the PR does not exist. Check `git remote -v` first: matching local branch name
+plus an empty `gh pr list` is the tell.
+
+## Fork PRs may have no CI run at all for the head SHA
+
+Outside-contributor PRs need a maintainer to approve each workflow run, so a
+fork PR can sit with only review bots reporting (`codex-review`,
+`claude-review`, CLA, Socket) and **no `CI` run for the head SHA** — `gh run
+list --commit <sha>` returns just the review workflows. Do not read that as
+"CI passed" or hunt for a failing job that was never created; confirm with:
+
+```bash
+gh run list -R dyad-sh/dyad --workflow CI --commit <HEAD_SHA> --json databaseId,status,conclusion
+```
+
+When it is empty, local `npm test` plus `npm run presubmit` and `npm run ts`
+are the only pre-merge signal — say so explicitly rather than implying CI
+verified the change. Logs from an older approved run on the same branch expire,
+so they cannot substitute either.
+
 ## Formatter Touching Unrelated Skill Files
 
 `npm run fmt` may rewrite Markdown emphasis in `.claude/skills/*.md`. After

@@ -187,6 +187,51 @@ describe("dyad recorder client", () => {
     ]);
   });
 
+  it("takes the first supported token from a fallback role list", () => {
+    const r = setup();
+    // Valid ARIA: the browser resolves the first token it knows, so this is a
+    // switch. Emitting `getByRole("switch checkbox")` would match nothing.
+    r.setHtml(`<div role="switch checkbox" aria-label="Wifi">on</div>`);
+    r.activate();
+    r.click(r.doc.querySelector("[role]"));
+
+    expect(r.actions).toEqual([
+      {
+        kind: "click",
+        locator: { kind: "role", value: "switch", name: "Wifi", exact: true },
+      },
+    ]);
+  });
+
+  it("skips unknown role tokens instead of emitting them", () => {
+    const r = setup();
+    r.setHtml(`<div role="totallymadeup menuitem" aria-label="Save">S</div>`);
+    r.activate();
+    r.click(r.doc.querySelector("[role]"));
+
+    expect(r.actions).toEqual([
+      {
+        kind: "click",
+        locator: { kind: "role", value: "menuitem", name: "Save", exact: true },
+      },
+    ]);
+  });
+
+  it("falls back to the implicit role when no token is a real role", () => {
+    const r = setup();
+    // Browsers ignore an unrecognised `role` wholesale, leaving the native one.
+    r.setHtml(`<button role="nonsense alsononsense">Save</button>`);
+    r.activate();
+    r.click(r.doc.querySelector("button"));
+
+    expect(r.actions).toEqual([
+      {
+        kind: "click",
+        locator: { kind: "role", value: "button", name: "Save", exact: true },
+      },
+    ]);
+  });
+
   it("records a page-level shortcut without a locator", () => {
     const r = setup();
     r.setHtml(`<p>nothing focused</p>`);

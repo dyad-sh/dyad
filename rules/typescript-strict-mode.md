@@ -28,6 +28,37 @@ The project's `tsconfig.app.json` targets ES2020 with `lib: ["ES2020"]`. Methods
 
 In IPC handlers that use `node-fetch`, `await response.json()` is treated as `unknown` by `tsgo`. If you access fields directly (for example `data.message` or `data.access_token`), add an explicit cast or narrow first (for example `const data = (await response.json()) as { message?: string }`) to avoid `TS18046`.
 
+## A variable only assigned inside a callback narrows to `never`
+
+`let row: Foo | null = null` that is written **only** from inside a callback
+passed to another function keeps its `null` narrowing at every later use, so
+the first property access fails with `TS2339: Property 'neonTestBranchId' does
+not exist on type 'never'`. Control-flow analysis does not track writes that
+happen through a function boundary, and the error names `never` rather than
+the callback, which makes it read like a bad type annotation.
+
+Return the value instead of capturing it — the direct assignment is something
+CFA can see:
+
+```ts
+// Bad: `deletedRow` is still `null` as far as CFA knows.
+let deletedRow: typeof apps.$inferSelect | null = null;
+await run(() =>
+  del(id, {
+    capture: (r) => {
+      deletedRow = r;
+    },
+  }),
+);
+
+// Good: `del` returns the row; assignment is in the main flow.
+const deletedRow = await run(() => del(id));
+```
+
+When the value must escape a callback (a `withLock` body, for example), return
+it from that callback and destructure the result rather than closing over a
+mutable binding.
+
 ## i18next `t()` keys are a literal union, not `string`
 
 `useTranslation` returns a `t()` typed against a union of every key in the namespace. Passing a variable whose type widens to `string` (e.g., a `labelKey` field collected into an array) fails with `TS2345: Argument of type '[string]' is not assignable to parameter of type '[key: "added" | "..."]'`. Resolve the label at the call site (`{ label: t("groupToday") }`) instead of storing the key for later lookup (`{ labelKey: "groupToday" }` then `t(group.labelKey)`). If you really need late binding, narrow with `as const` so the literal type survives.

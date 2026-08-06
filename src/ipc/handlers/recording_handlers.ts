@@ -201,6 +201,10 @@ export function registerRecordingHandlers() {
           // signs the user out of their own preview and drops whatever it had in
           // localStorage. Announced rather than done quietly — it is the one
           // thing here that touches state the user didn't hand us.
+          //
+          // TODO: give the recorder its own `session.fromPartition()` so the
+          // user's preview session is left alone entirely. That reaches into the
+          // preview stack well outside this feature, so it lands separately.
           let warning: string | undefined;
           emit(
             "Clearing the preview's cookies and local storage so the recording starts signed out…\n",

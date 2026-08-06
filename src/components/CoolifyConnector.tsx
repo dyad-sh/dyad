@@ -195,9 +195,12 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
         {isInsecure && (
           <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
             <p>
-              This address is not encrypted, so your API token can be read by
-              anything on the network between you and the server. Giving Coolify
-              a domain and certificate avoids this.
+              This address is not encrypted, so anything on the network between
+              you and the server can read what Dyad sends over it. That is not
+              only the API token: deploying also uploads the SSH private key
+              Coolify uses to clone your repository, and your database
+              connection string with its password. Giving Coolify a domain and
+              certificate avoids this.
             </p>
             <label className="mt-2 flex items-center gap-2">
               <Checkbox

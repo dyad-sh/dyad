@@ -173,6 +173,8 @@ export const coolifyContracts = {
     channel: "coolify:save-token",
     input: SaveCoolifyTokenParamsSchema,
     output: z.void(),
+    // Reaches every app: a token that points somewhere else clears them all.
+    invalidates: () => [{ family: "apps" }],
   }),
 
   discover: defineContract({
@@ -185,6 +187,12 @@ export const coolifyContracts = {
     channel: "coolify:save-connection",
     input: SaveCoolifyConnectionParamsSchema,
     output: z.void(),
+    // The app row changed, so a second window showing this app would keep
+    // offering controls for the server and domain it used to have.
+    invalidates: (input) => [
+      { family: "apps" },
+      { family: "app", appId: input.appId },
+    ],
   }),
 
   checkDomain: defineContract({
@@ -222,6 +230,8 @@ export const coolifyContracts = {
     channel: "coolify:clear-token",
     input: z.void(),
     output: z.void(),
+    // Every app reads as disconnected without a token.
+    invalidates: () => [{ family: "apps" }],
   }),
 
   createProject: defineContract({
@@ -237,6 +247,10 @@ export const coolifyContracts = {
     channel: "coolify:disconnect",
     input: CoolifyAppParamsSchema,
     output: z.void(),
+    invalidates: (input) => [
+      { family: "apps" },
+      { family: "app", appId: input.appId },
+    ],
   }),
 } as const;
 

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { CoolifyClient, isCoolifyStatus } from "./coolify_client";
 import { isSecureInstanceUrl } from "../types/coolify";
 import { DyadErrorKind } from "@/errors/dyad_error";
+import { shouldFilterTelemetryException } from "@/ipc/utils/telemetry";
 
 function mockFetch(
   responses: Array<{ status: number; body?: string }>,
@@ -287,15 +288,21 @@ describe("what a failure tells telemetry", () => {
     });
   });
 
-  it("still repeats Coolify's own explanation", async () => {
+  it("tells the user why, and keeps that out of telemetry", async () => {
+    // The explanation is the useful part of a failure, so the user sees it —
+    // but it comes from a machine the user runs and can name a host or a
+    // connection string, so nothing reports it.
     mockFetch([
       {
         status: 422,
         body: JSON.stringify({ message: "Domain already in use." }),
       },
     ]);
-    await expect(client().listServers()).rejects.toMatchObject({
-      message: expect.stringContaining("Domain already in use."),
-    });
+    const err = await client()
+      .listServers()
+      .then(() => null)
+      .catch((e: unknown) => e as Error);
+    expect(err?.message).toContain("Domain already in use.");
+    expect(shouldFilterTelemetryException(err)).toBe(true);
   });
 });

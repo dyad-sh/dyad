@@ -152,39 +152,23 @@ export function registerCoolifyHandlers() {
       // Validates the URL, the token and the instance's API switch in one
       // call. Coolify's own auth runs first, so a disabled API is only
       // reported once the token itself is accepted.
-      const servers = await probe.listServers();
+      await probe.listServers();
       const normalized = instanceUrl.replace(/\/+$/, "");
       const previous = readSettings().coolifyInstanceUrl;
       writeSettings({
         coolifyInstanceUrl: normalized,
         coolifyAccessToken: { value: token },
       });
-      // Server and project ids belong to the old instance and mean nothing on
-      // a new one, so pointing somewhere else starts every app over. Anything
-      // running is still talking to the old instance, and a finished result
-      // would otherwise be shown against the new one.
+      // Nothing is cleared here. Server, project and application ids are
+      // meaningless on another instance, but they are not meaningless — they
+      // describe applications still running on the one being left, and the
+      // application id cannot be re-entered. Pointing somewhere else is not a
+      // reason to destroy them: an app whose server this instance does not
+      // have simply reads as belonging elsewhere, and pointing back restores
+      // it untouched. Anything running is still talking to the old instance
+      // with a token that may no longer be for it, so that does stop.
       if (previous && previous !== normalized) {
-        // A new address is not evidence of a new instance. The usual reason it
-        // changes is the same Coolify gaining a domain and certificate, which
-        // is what the connection form tells people to do about the insecure
-        // warning — and starting every app over then abandons applications
-        // that are still running, with no way to reach them again.
-        //
-        // The servers this instance just reported are evidence. If it still
-        // hosts one an app is pinned to, it is the same Coolify somewhere new.
-        const connected = await db.query.apps.findMany();
-        const pinned = new Set(
-          connected
-            .map((row) => row.coolifyServerUuid)
-            .filter((uuid): uuid is string => Boolean(uuid)),
-        );
-        const sameInstanceMoved = servers.some((server) =>
-          pinned.has(server.uuid),
-        );
-        if (!sameInstanceMoved) {
-          coolifyDeployRegistry.cancelAll();
-          await db.update(apps).set(coolifyConnectionColumns({ kind: "none" }));
-        }
+        coolifyDeployRegistry.cancelAll();
       }
     },
   );

@@ -240,11 +240,12 @@ export class CoolifyClient {
       );
     }
     logger.error(`Coolify ${method} ${path} -> ${status}: ${detail}`);
-    // Same reason the unreachable-instance message no longer names the host:
-    // External errors are reported to telemetry verbatim, and this body comes
-    // from a machine the user runs. A proxy or gateway page answering instead
-    // of Coolify routinely carries the hostname in its title or footer. Only
-    // Coolify's own JSON message is repeated; the raw body stays in the log.
+    // Coolify's own explanation is the useful part of a failure, so the user
+    // gets it. It never reaches telemetry: CoolifyRequestError is filtered
+    // there by name, because the body comes from a machine the user runs and
+    // can name a host, a path or a connection string. The raw body is not
+    // repeated either — a proxy answering with an HTML page is not something
+    // to paste into a toast.
     let apiMessage: string | undefined;
     try {
       const parsed: unknown = JSON.parse(text);

@@ -134,9 +134,10 @@ describe("clearing the token", () => {
     expect(rows[0].coolifyApplicationUuid).toBe("app-1");
   });
 
-  it("starts over when the next token points at a different instance", async () => {
-    // Those ids exist only on the old instance, so keeping them would deploy
-    // against something that is not there.
+  it("keeps every app's record when the next token points somewhere else", async () => {
+    // Those ids mean nothing on the new instance, but they describe
+    // applications still running on the old one, and the application id
+    // cannot be re-entered. Pointing back has to restore them untouched.
     listServers.mockResolvedValueOnce([{ uuid: "srv-elsewhere" }]);
     await call("coolify:clear-token");
     await call("coolify:save-token", {
@@ -145,8 +146,9 @@ describe("clearing the token", () => {
       acknowledgedInsecure: false,
     });
 
-    expect(rows[0].coolifyApplicationUuid).toBeNull();
-    expect(rows[0].coolifyServerUuid).toBeNull();
+    expect(rows[0].coolifyApplicationUuid).toBe("app-1");
+    expect(rows[0].coolifyServerUuid).toBe("srv-1");
+    expect(updateSet).not.toHaveBeenCalled();
   });
 
   it("keeps everything when the same instance answers at a new address", async () => {

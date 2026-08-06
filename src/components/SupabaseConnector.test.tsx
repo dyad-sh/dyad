@@ -13,6 +13,7 @@ const {
   toastInfoMock,
   redeployAllFunctionsMock,
   redeployState,
+  showErrorMock,
 } = vi.hoisted(() => ({
   detectLegacyAppKeyMock: vi.fn(),
   switchAppToPublishableKeyMock: vi.fn(),
@@ -20,6 +21,7 @@ const {
   toastErrorMock: vi.fn(),
   toastInfoMock: vi.fn(),
   redeployAllFunctionsMock: vi.fn(),
+  showErrorMock: vi.fn(),
   redeployState: {
     progress: null as null | { completed: number; total: number },
     isPending: false,
@@ -42,6 +44,10 @@ vi.mock("sonner", () => ({
     error: toastErrorMock,
     info: toastInfoMock,
   },
+}));
+
+vi.mock("@/lib/toast", () => ({
+  showError: showErrorMock,
 }));
 
 vi.mock("react-i18next", () => ({
@@ -182,7 +188,7 @@ describe("SupabaseConnector — edge function redeployment", () => {
     fireEvent.click(await screen.findByTestId(REDEPLOY_BUTTON));
 
     await waitFor(() =>
-      expect(toastErrorMock).toHaveBeenCalledWith(
+      expect(showErrorMock).toHaveBeenCalledWith(
         "integrations.supabase.redeployFailed",
       ),
     );

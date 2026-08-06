@@ -45,6 +45,7 @@
   "appImportedWithRules": "앱을 성공적으로 가져왔습니다. Dyad가 이제 자동으로 AI_RULES.md를 생성합니다.",
   "appImported": "앱을 성공적으로 가져왔습니다",
   "successfullyImported": "{{name}}을(를) 성공적으로 가져왔습니다",
+  "successfullyImportedWithAdjustedFolder": "원래 폴더 이름이 이미 사용 중이어서 {{name}}을(를) {{folderName}} 폴더로 성공적으로 가져왔습니다",
   "failedFetchRepos": "저장소를 가져오지 못했습니다.",
   "failedCheckAppName": "앱 이름 확인 실패: {{error}}",
   "failedImportRepo": "저장소 가져오기 실패: {{error}}",

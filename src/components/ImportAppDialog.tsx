@@ -37,6 +37,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSettings } from "@/hooks/useSettings";
 import { UnconnectedGitHubConnector } from "@/components/GitHubConnector";
 import { queryKeys } from "@/lib/queryKeys";
+import { slugifyAppFolderName } from "@/shared/app_names";
 
 interface ImportAppDialogProps {
   isOpen: boolean;
@@ -127,7 +128,15 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
     } catch (e) {
       console.error("Failed to refresh apps", e);
     }
-    showSuccess(t("home:successfullyImported", { name: result.app.name }));
+    const expectedFolderName = slugifyAppFolderName(result.app.name);
+    showSuccess(
+      result.app.path === expectedFolderName
+        ? t("home:successfullyImported", { name: result.app.name })
+        : t("home:successfullyImportedWithAdjustedFolder", {
+            name: result.app.name,
+            folderName: result.app.path,
+          }),
+    );
     if (result.autoUpgradeWarning) {
       showWarning(t("home:autoUpgradeFailed"));
     }

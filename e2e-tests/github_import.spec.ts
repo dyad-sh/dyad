@@ -77,3 +77,41 @@ test("imports apps from the authenticated list and a GitHub URL", async ({
   });
   await expectImportedApp(po, "github-url-e2e");
 });
+
+test("uses a unique folder when a GitHub import destination already exists", async ({
+  po,
+}) => {
+  await po.setUp();
+
+  const appName = "existing-vite-app";
+  const destinationPath = path.join(po.userDataDir, "dyad-apps", appName);
+  const markerPath = path.join(destinationPath, "existing-file.txt");
+  fs.mkdirSync(destinationPath, { recursive: true });
+  fs.writeFileSync(markerPath, "do not overwrite");
+
+  await po.page.getByRole("button", { name: "Import App" }).click();
+  await po.page.getByRole("tab", { name: "GitHub URL" }).click();
+  const urlPanel = po.page.getByLabel("GitHub URL");
+  const urlInput = urlPanel.getByPlaceholder(
+    "https://github.com/user/repo.git",
+  );
+  const appNameInput = urlPanel.getByPlaceholder(/Leave empty/);
+  await urlInput.fill(`https://github.com/testuser/${appName}.git`);
+  await urlInput.blur();
+  await expect(appNameInput).toHaveValue(appName);
+
+  await urlPanel.getByRole("button", { name: "Import", exact: true }).click();
+
+  await po.toastNotifications.waitForToastWithText(
+    `Successfully imported ${appName} to folder ${appName}-2 because the original folder name was already in use`,
+    Timeout.LONG,
+  );
+  await expect(po.page.getByRole("dialog", { name: "Import App" })).toBeHidden({
+    timeout: Timeout.LONG,
+  });
+  await expectImportedApp(po, appName);
+  expect(path.basename(await po.appManagement.getCurrentAppPath())).toBe(
+    `${appName}-2`,
+  );
+  expect(fs.readFileSync(markerPath, "utf8")).toBe("do not overwrite");
+});

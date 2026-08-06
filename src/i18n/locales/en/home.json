@@ -45,6 +45,7 @@
   "appImportedWithRules": "App imported successfully. Dyad will automatically generate an AI_RULES.md now.",
   "appImported": "App imported successfully",
   "successfullyImported": "Successfully imported {{name}}",
+  "successfullyImportedWithAdjustedFolder": "Successfully imported {{name}} to folder {{folderName}} because the original folder name was already in use",
   "failedFetchRepos": "Failed to fetch repositories.",
   "failedCheckAppName": "Failed to check app name: {{error}}",
   "failedImportRepo": "Failed to import repository: {{error}}",

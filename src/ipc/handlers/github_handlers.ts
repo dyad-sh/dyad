@@ -37,7 +37,12 @@ import { createTypedHandler } from "./base";
 import { githubContracts } from "../types/github";
 import type { CloneRepoParams, CloneRepoResult } from "../types/github";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import {
+  sanitizeAppDisplayName,
+  slugifyAppFolderName,
+} from "@/shared/app_names";
 import { slugifyAppPath } from "@/shared/slugify";
+import { resolveUniqueFolderName } from "../utils/app_name_resolution";
 import {
   isComponentTaggerUpgradeNeeded,
   applyComponentTagger,
@@ -1235,7 +1240,9 @@ async function handleCloneRepoFromUrl(
         };
       }
     }
-    const finalAppName = appName && appName.trim() ? appName.trim() : repoName;
+    const finalAppName = sanitizeAppDisplayName(
+      appName && appName.trim() ? appName : repoName,
+    );
     const existingApp = await db.query.apps.findFirst({
       where: eq(apps.name, finalAppName),
     });
@@ -1244,7 +1251,10 @@ async function handleCloneRepoFromUrl(
       return { error: `An app named "${finalAppName}" already exists.` };
     }
 
-    const appPath = getDyadAppPath(finalAppName);
+    const folderName = await resolveUniqueFolderName(
+      slugifyAppFolderName(finalAppName),
+    );
+    const appPath = getDyadAppPath(folderName);
 
     if (!isAppLocationAccessible(appPath)) {
       throw new Error(
@@ -1275,7 +1285,7 @@ async function handleCloneRepoFromUrl(
       .insert(schema.apps)
       .values({
         name: finalAppName,
-        path: finalAppName,
+        path: folderName,
         createdAt: new Date(),
         updatedAt: new Date(),
         githubOrg: owner,

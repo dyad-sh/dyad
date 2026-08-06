@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Circle,
   MessageCircle,
   ChevronDown,
   ChevronRight,
@@ -19,8 +20,11 @@ import {
 } from "@/components/ui/tooltip";
 import type { AppFileSearchResult } from "@/ipc/types";
 import { useSearchAppFiles } from "@/hooks/useSearchAppFiles";
+import { useUncommittedFiles } from "@/hooks/useUncommittedFiles";
+import { useUnsavedFiles } from "@/hooks/useUnsavedFiles";
 import { useTranslation } from "react-i18next";
 import { chatInputValueAtom } from "@/atoms/chatAtoms";
+import { cn } from "@/lib/utils";
 
 interface FileTreeProps {
   appId: number | null;
@@ -33,6 +37,75 @@ interface TreeNode {
   isDirectory: boolean;
   children: TreeNode[];
 }
+
+/**
+ * Per-path change state the tree decorates rows with. Bundled into one prop so
+ * the recursive components don't grow three more parameters each.
+ */
+interface FileTreeStatus {
+  /** Files with changes that are not committed yet (staged or unstaged). */
+  uncommittedPaths: ReadonlySet<string>;
+  /** Directories with at least one uncommitted descendant. */
+  uncommittedDirs: ReadonlySet<string>;
+  /** Files whose open editor buffer differs from disk. */
+  unsavedPaths: ReadonlySet<string>;
+}
+
+type FileMarker = "unsaved" | "uncommitted" | null;
+
+const MARKER_CLASSES: Record<NonNullable<FileMarker>, string> = {
+  // Matches the unsaved dot in the editor header (FileEditor's Breadcrumb).
+  unsaved: "text-amber-600 dark:text-amber-400",
+  uncommitted: "text-blue-600 dark:text-blue-400",
+};
+
+// Unsaved wins: a buffer that hasn't hit disk is the more urgent of the two.
+const getFileMarker = (path: string, status: FileTreeStatus): FileMarker => {
+  if (status.unsavedPaths.has(path)) return "unsaved";
+  if (status.uncommittedPaths.has(path)) return "uncommitted";
+  return null;
+};
+
+/**
+ * Change marker that trails the file name, so the dot reads as belonging to the
+ * name rather than sitting in a gutter column away from it. Matches the folder
+ * rollup dot, which already trails its name.
+ *
+ * Uses the native `title` rather than a Tooltip: tooltips open immediately on
+ * hover, which flickers while moving the pointer down a dense tree.
+ */
+const FileMarkerDot = ({ marker }: { marker: FileMarker }) => {
+  const { t } = useTranslation("home");
+
+  if (!marker) return null;
+
+  const label =
+    marker === "unsaved"
+      ? t("preview.unsavedChanges")
+      : t("preview.uncommittedChanges");
+
+  return (
+    <span
+      role="img"
+      aria-label={label}
+      title={label}
+      className={cn(
+        "ml-1.5 flex flex-shrink-0 items-center",
+        MARKER_CLASSES[marker],
+      )}
+    >
+      <Circle size={8} fill="currentColor" />
+    </span>
+  );
+};
+
+/**
+ * Keeps file names lined up with folder names rather than with the folder icon.
+ * Files have no icon of their own, so they need the icon's width back.
+ */
+const FileIndent = () => (
+  <span aria-hidden className="mr-1 w-4 flex-shrink-0" />
+);
 
 const useDebouncedValue = <T,>(value: T, delay = 200) => {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -182,6 +255,43 @@ export const FileTree = ({ appId, files }: FileTreeProps) => {
 
   const treeData = useMemo(() => buildFileTree(visibleFiles), [visibleFiles]);
 
+  // CodeView (this component's parent) already subscribes to this query, so
+  // this is a cache read rather than another IPC round trip.
+  const { uncommittedFiles } = useUncommittedFiles(appId);
+  const unsavedPaths = useUnsavedFiles(appId);
+
+  const uncommittedPaths = useMemo(
+    () =>
+      new Set(
+        uncommittedFiles
+          // Deleted files are gone from disk so they have no row here; counting
+          // them would mark folders that show no marked child.
+          .filter((file) => file.status !== "deleted")
+          .map((file) => file.path),
+      ),
+    [uncommittedFiles],
+  );
+
+  // Ancestor directories of every uncommitted file, so collapsed folders can
+  // still advertise changes buried inside them. Derived from the changed-file
+  // list rather than the tree, keeping this O(changed files x depth) instead of
+  // O(all files) on every poll.
+  const uncommittedDirs = useMemo(() => {
+    const dirs = new Set<string>();
+    for (const filePath of uncommittedPaths) {
+      const parts = filePath.split("/");
+      for (let i = 1; i < parts.length; i++) {
+        dirs.add(parts.slice(0, i).join("/"));
+      }
+    }
+    return dirs;
+  }, [uncommittedPaths]);
+
+  const status = useMemo<FileTreeStatus>(
+    () => ({ uncommittedPaths, uncommittedDirs, unsavedPaths }),
+    [uncommittedPaths, uncommittedDirs, unsavedPaths],
+  );
+
   // In search mode, create a flat list of matching files with match counts
   const searchResultsList = useMemo(() => {
     if (!isSearchMode) {
@@ -266,6 +376,7 @@ export const FileTree = ({ appId, files }: FileTreeProps) => {
                 path={path}
                 matchCount={matchCount}
                 result={result}
+                status={status}
               />
             ))}
           </div>
@@ -276,6 +387,7 @@ export const FileTree = ({ appId, files }: FileTreeProps) => {
             matchesByPath={matchesByPath}
             isSearchMode={isSearchMode}
             searchQuery={debouncedSearch}
+            status={status}
           />
         )}
       </div>
@@ -289,6 +401,7 @@ interface TreeNodesProps {
   matchesByPath: Map<string, AppFileSearchResult>;
   isSearchMode: boolean;
   searchQuery: string;
+  status: FileTreeStatus;
 }
 
 // Sort nodes to show directories first
@@ -308,6 +421,7 @@ const TreeNodes = ({
   matchesByPath,
   isSearchMode,
   searchQuery,
+  status,
 }: TreeNodesProps) => (
   <ul className="ml-4">
     {sortNodes(nodes).map((node) => (
@@ -318,6 +432,7 @@ const TreeNodes = ({
         matchesByPath={matchesByPath}
         isSearchMode={isSearchMode}
         searchQuery={searchQuery}
+        status={status}
       />
     ))}
   </ul>
@@ -329,6 +444,7 @@ interface TreeNodeProps {
   matchesByPath: Map<string, AppFileSearchResult>;
   isSearchMode: boolean;
   searchQuery: string;
+  status: FileTreeStatus;
 }
 
 // Search result item component (flat list in search mode)
@@ -336,12 +452,14 @@ interface SearchResultItemProps {
   path: string;
   matchCount: number;
   result: AppFileSearchResult;
+  status: FileTreeStatus;
 }
 
 const SearchResultItem = ({
   path,
   matchCount,
   result,
+  status,
 }: SearchResultItemProps) => {
   const setSelectedFile = useSetAtom(selectedFileAtom);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -357,19 +475,35 @@ const SearchResultItem = ({
     });
   };
 
+  const marker = getFileMarker(path, status);
+
   return (
     <div className="py-1">
       <div
         className="group flex items-center rounded px-1.5 py-1 text-sm hover:bg-(--sidebar) cursor-pointer"
         onClick={handleFileClick}
+        data-testid="file-tree-file"
+        data-path={path}
+        data-marker={marker ?? undefined}
       >
         {/* Chevron */}
         <span className="text-muted-foreground mr-1.5 flex-shrink-0">
           {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </span>
 
-        {/* Path */}
-        <span className="truncate flex-1">{path}</span>
+        {/* Path, with its change marker trailing it */}
+        <span className="flex min-w-0 flex-1 items-center">
+          <span
+            className={cn(
+              "truncate",
+              marker && "font-medium",
+              marker && MARKER_CLASSES[marker],
+            )}
+          >
+            {path}
+          </span>
+          <FileMarkerDot marker={marker} />
+        </span>
 
         {/* Mention button */}
         <MentionFileButton filePath={path} />
@@ -421,10 +555,15 @@ const TreeNode = ({
   matchesByPath,
   isSearchMode,
   searchQuery,
+  status,
 }: TreeNodeProps) => {
+  const { t } = useTranslation("home");
   const [expanded, setExpanded] = useState(level < 2);
   const setSelectedFile = useSetAtom(selectedFileAtom);
   const match = isSearchMode ? matchesByPath.get(node.path) : undefined;
+  const marker = node.isDirectory ? null : getFileMarker(node.path, status);
+  const hasUncommittedDescendants =
+    node.isDirectory && status.uncommittedDirs.has(node.path);
 
   useEffect(() => {
     if (isSearchMode && node.isDirectory) {
@@ -448,14 +587,44 @@ const TreeNode = ({
       <div
         className="group flex items-center rounded px-1.5 py-0.5 text-sm hover:bg-(--sidebar)"
         onClick={handleClick}
+        data-testid={node.isDirectory ? "file-tree-dir" : "file-tree-file"}
+        data-path={node.path}
+        data-marker={
+          node.isDirectory
+            ? hasUncommittedDescendants
+              ? "uncommitted"
+              : undefined
+            : (marker ?? undefined)
+        }
       >
-        {node.isDirectory && (
+        {node.isDirectory ? (
           <span className="mr-1 text-gray-500">
             {expanded ? <FolderOpen size={16} /> : <Folder size={16} />}
           </span>
+        ) : (
+          <FileIndent />
         )}
-        <span className="truncate flex-1">
-          {isSearchMode ? highlightMatch(node.name, searchQuery) : node.name}
+        <span className="flex min-w-0 flex-1 items-center">
+          <span
+            className={cn(
+              "truncate",
+              marker && "font-medium",
+              marker && MARKER_CLASSES[marker],
+            )}
+          >
+            {isSearchMode ? highlightMatch(node.name, searchQuery) : node.name}
+          </span>
+          {!node.isDirectory && <FileMarkerDot marker={marker} />}
+          {hasUncommittedDescendants && (
+            <span
+              role="img"
+              aria-label={t("preview.folderHasUncommittedChanges")}
+              title={t("preview.folderHasUncommittedChanges")}
+              className="ml-1.5 flex flex-shrink-0 items-center text-muted-foreground/70"
+            >
+              <Circle size={6} fill="currentColor" />
+            </span>
+          )}
         </span>
         {!node.isDirectory && <MentionFileButton filePath={node.path} />}
       </div>
@@ -492,6 +661,7 @@ const TreeNode = ({
           matchesByPath={matchesByPath}
           isSearchMode={isSearchMode}
           searchQuery={searchQuery}
+          status={status}
         />
       )}
     </li>

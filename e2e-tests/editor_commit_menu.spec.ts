@@ -47,11 +47,39 @@ function commitRuntimeBaselineChanges(appPath: string) {
   );
 }
 
-async function editAndSaveFile(page: Page, fileName: string, content: string) {
+function treeRow(page: Page, filePath: string) {
+  return page.locator(
+    `[data-testid="file-tree-file"][data-path="${filePath}"]`,
+  );
+}
+
+function treeDirRow(page: Page, dirPath: string) {
+  return page.locator(`[data-testid="file-tree-dir"][data-path="${dirPath}"]`);
+}
+
+async function editAndSaveFile(
+  page: Page,
+  fileName: string,
+  filePath: string,
+  content: string,
+) {
   await selectFileAndWaitForEditor(page, fileName);
+
+  const row = treeRow(page, filePath);
+  await expect(row).not.toHaveAttribute("data-marker");
+
   await replaceEditorContent(page, content);
+  // The editor still holds focus, so the buffer is dirty and the tree marks it.
+  await expect(row).toHaveAttribute("data-marker", "unsaved", {
+    timeout: Timeout.MEDIUM,
+  });
+
   await page.getByTestId("save-file-button").click();
   await expect(page.getByTestId("save-file-button")).toBeDisabled({
+    timeout: Timeout.MEDIUM,
+  });
+  // Saving stages the file, so the marker flips from unsaved to uncommitted.
+  await expect(row).toHaveAttribute("data-marker", "uncommitted", {
     timeout: Timeout.MEDIUM,
   });
 }
@@ -88,8 +116,25 @@ test("editor commit menu commits multiple staged files at once", async ({
   // Edit and save two files. Saving stages (does not commit) each file.
   const madeWithDyadContent = 'export const MadeWithDyad = "commit-menu";\n';
   const robotsContent = "User-agent: *\nDisallow: /commit-menu\n";
-  await editAndSaveFile(po.page, "made-with-dyad.tsx", madeWithDyadContent);
-  await editAndSaveFile(po.page, "robots.txt", robotsContent);
+  const madeWithDyadTreePath = madeWithDyadPath.replace(/\\/g, "/");
+  const robotsTreePath = robotsPath.replace(/\\/g, "/");
+  await editAndSaveFile(
+    po.page,
+    "made-with-dyad.tsx",
+    madeWithDyadTreePath,
+    madeWithDyadContent,
+  );
+  await editAndSaveFile(po.page, "robots.txt", robotsTreePath, robotsContent);
+
+  // Collapsed or not, the ancestor folders advertise the buried changes.
+  await expect(treeDirRow(po.page, "src/components")).toHaveAttribute(
+    "data-marker",
+    "uncommitted",
+  );
+  await expect(treeDirRow(po.page, "src")).toHaveAttribute(
+    "data-marker",
+    "uncommitted",
+  );
 
   // The Commit button shows the number of staged files.
   const commitButton = po.page.getByTestId("editor-commit-button");
@@ -137,6 +182,18 @@ test("editor commit menu commits multiple staged files at once", async ({
   await expect(commitButton).not.toContainText("2", {
     timeout: Timeout.MEDIUM,
   });
+
+  // Committing clears every tree marker, including the folder rollups.
+  await expect(treeRow(po.page, madeWithDyadTreePath)).not.toHaveAttribute(
+    "data-marker",
+    { timeout: Timeout.MEDIUM },
+  );
+  await expect(treeRow(po.page, robotsTreePath)).not.toHaveAttribute(
+    "data-marker",
+  );
+  await expect(treeDirRow(po.page, "src/components")).not.toHaveAttribute(
+    "data-marker",
+  );
 
   // Exactly ONE new commit was created, with our message...
   const headAfterCommit = execSync("git rev-parse HEAD", {

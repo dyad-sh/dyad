@@ -56,11 +56,11 @@ async function drain(work: Promise<void>): Promise<void> {
 /**
  * Everything the registry knows about one app.
  *
- * Held together rather than in parallel collections: the store, the abort
- * handle and the promise all describe one pipeline, and every disposal bug
- * this machine has had came from two of them disagreeing about whether it
- * existed. A pipeline cannot be reachable without its store, or aborted
- * without being drained, because there is only one place to look.
+ * Held together rather than in parallel collections. Every disposal bug this
+ * machine has had came from two collections disagreeing about whether a
+ * pipeline existed, so a pipeline lives inside the machine it belongs to and
+ * disposal has one place to look. Usually there is one; a cancelled pipeline
+ * still unwinding sits beside the retry that replaced it until it settles.
  */
 interface AppMachine {
   store: SnapshotStore<CoolifyDeployState>;

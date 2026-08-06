@@ -113,6 +113,18 @@ describe("expectedServerAddress over every address shape", () => {
       why: "an address, used as given",
     },
     {
+      shape: "bracketed IPv6",
+      serverIp: "[2606:4700::1]",
+      expected: { kind: "ip", ip: "2606:4700::1" },
+      why: "an address wearing the brackets URL adds, not a hostname",
+    },
+    {
+      shape: "bracketed loopback IPv6",
+      serverIp: "[::1]",
+      expected: { kind: "ip", ip: "143.244.162.54" },
+      why: "still loopback once the brackets come off",
+    },
+    {
       shape: "hostname",
       serverIp: "node-3.example.com",
       expected: { kind: "resolve", hostname: "node-3.example.com" },

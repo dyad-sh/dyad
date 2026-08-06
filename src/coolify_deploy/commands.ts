@@ -296,6 +296,7 @@ async function resolveApplication({
   savedUuid,
   privateKeyId,
   create,
+  onPreviousGone,
   report,
   signal,
 }: {
@@ -303,6 +304,8 @@ async function resolveApplication({
   savedUuid: string | null;
   privateKeyId: number | null;
   create: () => Promise<string>;
+  /** Called once the saved application is no longer the one to deploy to. */
+  onPreviousGone: () => Promise<void>;
   report: DeployReporter;
   signal: AbortSignal;
 }): Promise<string> {
@@ -346,8 +349,11 @@ async function resolveApplication({
     // on to create an application: one abandoned meanwhile must not leave a
     // new application behind on the user's server for nobody.
     throwIfAborted(signal);
-    // The application is gone from Coolify; whatever replaces it is recorded
-    // by the create path below, which reports the id it ends up with.
+    // Reported now rather than only on success: if creating the replacement
+    // fails, the panel would otherwise keep offering the address of an
+    // application Coolify has already confirmed is gone. Handed back rather
+    // than written here, so this stays free of the database.
+    await onPreviousGone();
   }
   return create();
 }
@@ -553,6 +559,8 @@ export async function runDeployPipeline({
     client,
     signal,
     savedUuid: app.coolifyApplicationUuid,
+    onPreviousGone: () =>
+      recordConnectionChange(appId, serverUuid, { type: "APPLICATION_GONE" }),
     privateKeyId: key.id,
     report,
     create: async () => {

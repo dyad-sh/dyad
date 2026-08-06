@@ -105,9 +105,13 @@ export function expectedServerAddress({
     serverIp === DOCKER_HOST_ALIAS || isLoopbackAddress(serverIp);
 
   if (serverIp && !namesCoolifysOwnHost) {
-    return isIP(serverIp)
-      ? { kind: "ip", ip: serverIp }
-      : { kind: "resolve", hostname: serverIp };
+    // Unbracketed first: a bracketed literal fails isIP and would otherwise
+    // be handed to the resolver as though it were a hostname, which is the
+    // same mistake the instance-URL path already avoids.
+    const bare = serverIp.trim().replace(/^\[|\]$/g, "");
+    return isIP(bare)
+      ? { kind: "ip", ip: bare }
+      : { kind: "resolve", hostname: bare };
   }
   // No address at all is not the same as naming Coolify's own host: Coolify
   // can omit one, and the picker can hold a server the current list no longer

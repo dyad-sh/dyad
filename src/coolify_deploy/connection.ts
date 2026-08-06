@@ -61,6 +61,12 @@ export type CoolifyConnectionChange =
   | { type: "DETACHED" }
   /** The pipeline created or adopted an application in Coolify. */
   | { type: "APPLICATION_RESOLVED"; applicationUuid: string }
+  /**
+   * The recorded application is no longer this app's, with none to replace it
+   * yet — Coolify answered 404 for it, or it clones with a stale key and is
+   * being replaced. It may still exist on the server in the second case.
+   */
+  | { type: "APPLICATION_GONE" }
   /** The pipeline finished and the app is reachable. */
   | { type: "DEPLOY_SUCCEEDED"; appUrl: string | null; at: Date };
 
@@ -207,6 +213,21 @@ export function applyCoolifyConnectionChange(
         applicationUuid: state.applicationUuid,
         appUrl: state.appUrl,
         lastDeployedAt: state.lastDeployedAt,
+      };
+    }
+
+    case "APPLICATION_GONE": {
+      // Back to configured: the address and deploy time described the
+      // application Coolify no longer has, and a recreate that then fails
+      // would otherwise leave the panel offering a dead link until some
+      // later deploy happens to succeed.
+      if (state.kind === "none" || state.kind === "configured") return state;
+      return {
+        kind: "configured",
+        serverUuid: state.serverUuid,
+        projectUuid: state.projectUuid,
+        environmentName: state.environmentName,
+        domain: state.domain,
       };
     }
 

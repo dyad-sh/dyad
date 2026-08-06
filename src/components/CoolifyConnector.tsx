@@ -214,6 +214,10 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
           disabled={
             saveToken.isPending ||
             !trimmedUrl ||
+            // The hint below already says this address cannot be used, so
+            // offering a button that only reports the same thing again is a
+            // round trip for nothing.
+            needsScheme ||
             !token.trim() ||
             (isInsecure && !acknowledgedInsecure)
           }
@@ -642,14 +646,20 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
               <AlertDialogFooter>
                 <AlertDialogCancel>Keep it connected</AlertDialogCancel>
                 <AlertDialogAction
-                  onClick={async () => {
-                    try {
-                      await disconnect.mutateAsync();
-                    } catch (error) {
-                      toast.error(getErrorMessage(error));
-                    }
+                  disabled={disconnect.isPending}
+                  onClick={(event) => {
+                    // Held open until the clearing settles: the dialog is the
+                    // only thing stopping a second disconnect, an edit, or a
+                    // deploy against an app being cleared.
+                    event.preventDefault();
+                    void disconnect
+                      .mutateAsync()
+                      .catch((error) => toast.error(getErrorMessage(error)));
                   }}
                 >
+                  {disconnect.isPending && (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  )}
                   Disconnect
                 </AlertDialogAction>
               </AlertDialogFooter>

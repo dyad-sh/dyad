@@ -78,8 +78,13 @@ async function resolveBoth(
   ]);
   return {
     addresses: [...v4.addresses, ...v6.addresses],
-    // Only a problem if we learned nothing: one family answering is enough.
-    failed: v4.failed && v6.failed,
+    // One family answering is enough. But a definitive "no such record" from
+    // one and a failed lookup from the other is not the same as no records:
+    // the family we could not reach may hold the one that works.
+    failed:
+      v4.addresses.length === 0 &&
+      v6.addresses.length === 0 &&
+      (v4.failed || v6.failed),
   };
 }
 

@@ -12,7 +12,6 @@ vi.mock("os", async (importOriginal) => {
 import {
   coolifyKeyName,
   ensureDeployKey,
-  readPublicKey,
   repoKeyName,
 } from "./coolify_deploy_key";
 
@@ -73,16 +72,37 @@ describe("ensureDeployKey", () => {
     expect(second).toBe(first);
   });
 
-  it("regenerates when only the private half survived", async () => {
+  it("rebuilds the public half without replacing the private one", async () => {
     // ssh-keygen writes the private half first, so an interrupted run leaves
-    // exactly this. Skipping generation would wedge every later deploy.
-    await ensureDeployKey("dyad_deploy_test_c");
+    // exactly this. The private half is what GitHub authorised and Coolify
+    // stored, so rotating the pair would orphan a key still in use.
+    const first = await ensureDeployKey("dyad_deploy_test_c");
+    const privateBefore = fs.readFileSync(
+      sshPath("dyad_deploy_test_c"),
+      "utf8",
+    );
     fs.rmSync(sshPath("dyad_deploy_test_c.pub"));
 
     const recovered = await ensureDeployKey("dyad_deploy_test_c");
 
-    expect(recovered.startsWith("ssh-ed25519 ")).toBe(true);
-    expect(readPublicKey("dyad_deploy_test_c")).toBe(recovered);
+    expect(recovered).toBe(first);
+    expect(fs.readFileSync(sshPath("dyad_deploy_test_c"), "utf8")).toBe(
+      privateBefore,
+    );
+  });
+
+  it("leaves an intact pair alone when only the public half is unreadable", async () => {
+    // A derive that fails must not take the private half with it.
+    await ensureDeployKey("dyad_deploy_test_e");
+    const privateBefore = fs.readFileSync(
+      sshPath("dyad_deploy_test_e"),
+      "utf8",
+    );
+    fs.rmSync(sshPath("dyad_deploy_test_e.pub"));
+    await ensureDeployKey("dyad_deploy_test_e");
+    expect(fs.readFileSync(sshPath("dyad_deploy_test_e"), "utf8")).toBe(
+      privateBefore,
+    );
   });
 
   it("gives concurrent callers the same pair", async () => {

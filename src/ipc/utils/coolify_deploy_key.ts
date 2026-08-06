@@ -79,6 +79,48 @@ function findKeygenBinary(): string {
   return "ssh-keygen";
 }
 
+/** Writes the public half from the private one, leaving the private untouched. */
+function derivePublicKey(keyPath: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(findKeygenBinary(), ["-y", "-f", keyPath], {
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    });
+    let stdout = "";
+    let stderr = "";
+    const timeout = setTimeout(() => child.kill("SIGKILL"), 30_000);
+    child.stdout.on("data", (chunk) => (stdout += chunk.toString()));
+    child.stderr.on("data", (chunk) => (stderr += chunk.toString()));
+    child.on("error", (err) => {
+      clearTimeout(timeout);
+      reject(
+        new DyadError(
+          `Could not run ssh-keygen: ${err.message}`,
+          DyadErrorKind.External,
+        ),
+      );
+    });
+    child.on("close", (code) => {
+      clearTimeout(timeout);
+      if (code !== 0 || !stdout.trim()) {
+        reject(
+          new DyadError(
+            `Could not rebuild the public key from ${keyPath}: ${
+              stderr.trim() || `exit code ${code}`
+            }`,
+            DyadErrorKind.External,
+          ),
+        );
+        return;
+      }
+      // Written only once ssh-keygen has succeeded, so a failure leaves the
+      // pair exactly as it was rather than half-removed.
+      fs.writeFileSync(`${keyPath}.pub`, `${stdout.trim()}\n`, { mode: 0o644 });
+      resolve();
+    });
+  });
+}
+
 function runKeygen(keyPath: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(
@@ -134,14 +176,19 @@ export async function ensureDeployKey(keyName: string): Promise<string> {
 
   const work = (async () => {
     const keyPath = keyFilePath(keyName);
-    // Both halves, not just the private one. ssh-keygen writes them in
-    // sequence, so a crash or the kill on timeout can leave the private half
-    // alone — and skipping generation then wedges every future deploy on an
-    // unreadable .pub with nothing in the UI to explain it.
-    if (!fs.existsSync(keyPath) || !fs.existsSync(`${keyPath}.pub`)) {
+    const hasPrivate = fs.existsSync(keyPath);
+    const hasPublic = fs.existsSync(`${keyPath}.pub`);
+    if (hasPrivate && !hasPublic) {
+      // The private half is what GitHub authorised and Coolify stored, so it
+      // is worth keeping: the public half is derived from it rather than the
+      // pair being replaced. ssh-keygen writes them in sequence, so a crash
+      // or the kill on its own timeout leaves exactly this.
+      await derivePublicKey(keyPath);
+      logger.info(`Rebuilt the public half of ${keyPath}`);
+    } else if (!hasPrivate) {
       fs.mkdirSync(keyDir(), { recursive: true, mode: 0o700 });
-      // ssh-keygen will not overwrite, and cannot prompt with stdin ignored.
-      fs.rmSync(keyPath, { force: true });
+      // Nothing usable survives without the private half, and ssh-keygen
+      // will not overwrite or prompt with stdin ignored.
       fs.rmSync(`${keyPath}.pub`, { force: true });
       await runKeygen(keyPath);
       logger.info(`Generated deploy key at ${keyPath}`);

@@ -39,6 +39,7 @@ const CHANGES: CoolifyConnectionChange[] = [
   { type: "APPLICATION_RESOLVED", applicationUuid: "app-2" },
   { type: "DEPLOY_SUCCEEDED", appUrl: "https://demo.example.com", at: AT },
   { type: "DEPLOY_SUCCEEDED", appUrl: null, at: AT },
+  { type: "APPLICATION_GONE" },
 ];
 
 describe("the connection is total over state x change", () => {
@@ -187,5 +188,23 @@ describe("reading rows the union did not write", () => {
         coolifyProjectUuid: "prj-1",
       }),
     ).toMatchObject({ environmentName: "production" });
+  });
+});
+
+describe("an application Coolify no longer has", () => {
+  it("takes its address and deploy time with it", () => {
+    // Reported before the replacement is created, so a create that fails does
+    // not leave the panel offering a link to something that is gone.
+    expect(
+      applyCoolifyConnectionChange(STATES[3], { type: "APPLICATION_GONE" }),
+    ).toEqual({ kind: "configured", ...HOST });
+  });
+
+  it("changes nothing when there was no application to lose", () => {
+    for (const state of [STATES[0], STATES[1]]) {
+      expect(
+        applyCoolifyConnectionChange(state, { type: "APPLICATION_GONE" }),
+      ).toEqual(state);
+    }
   });
 });

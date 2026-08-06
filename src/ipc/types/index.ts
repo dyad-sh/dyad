@@ -74,6 +74,16 @@ export { testsContracts, testsEvents } from "./tests";
 export { userInputContracts, userInputEvents } from "./user_input";
 export { firstPromptSendContracts } from "./first_prompt";
 export {
+  previewViewContracts,
+  previewViewEvents,
+  previewViewSendContracts,
+  PreviewViewBoundsSchema,
+} from "./preview_view";
+export type {
+  PreviewViewBounds,
+  PreviewViewNavigationState,
+} from "./preview_view";
+export {
   windowInfrastructureContracts,
   windowInfrastructureEvents,
 } from "./window_infrastructure";
@@ -128,6 +138,11 @@ export { terminalClient } from "./terminal";
 export { testsClient, testsEventClient } from "./tests";
 export { userInputClient, userInputEventClient } from "./user_input";
 export { firstPromptClient } from "./first_prompt";
+export {
+  previewViewClient,
+  previewViewEventClient,
+  previewViewSendClient,
+} from "./preview_view";
 export {
   windowInfrastructureClient,
   windowInfrastructureEventClient,
@@ -493,6 +508,11 @@ import { testsClient, testsEventClient } from "./tests";
 import { userInputClient, userInputEventClient } from "./user_input";
 import { firstPromptClient } from "./first_prompt";
 import {
+  previewViewClient,
+  previewViewEventClient,
+  previewViewSendClient,
+} from "./preview_view";
+import {
   windowInfrastructureClient,
   windowInfrastructureEventClient,
 } from "./window_infrastructure";
@@ -569,6 +589,10 @@ export const ipc = {
   windowInfrastructure: windowInfrastructureClient,
   distributedMachine: distributedMachineClient,
   imageGeneration: imageGenerationClient,
+  previewView: {
+    ...previewViewClient,
+    setBounds: previewViewSendClient.setBounds,
+  },
 
   // Event clients for main->renderer pub/sub
   events: {
@@ -582,5 +606,6 @@ export const ipc = {
     imageGeneration: imageGenerationEventClient,
     windowInfrastructure: windowInfrastructureEventClient,
     distributedMachine: distributedMachineEventClient,
+    previewView: previewViewEventClient,
   },
 } as const;

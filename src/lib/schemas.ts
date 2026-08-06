@@ -421,6 +421,7 @@ const BaseUserSettingsFields = {
   enableMcpToolSearch: z.boolean().optional(),
   enableCodeExplorer: z.boolean().optional(),
   enableMultiWindow: z.boolean().optional(),
+  enableTestRunInPreview: z.boolean().optional(),
   enableAutoUpdate: z.boolean(),
   releaseChannel: ReleaseChannelSchema,
   runtimeMode2: RuntimeMode2Schema.optional(),

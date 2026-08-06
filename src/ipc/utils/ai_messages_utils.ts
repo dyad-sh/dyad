@@ -116,6 +116,88 @@ export function cleanMessage<T extends ModelMessage>(message: T): T {
 }
 
 /**
+ * Providers validate tool-call ids and reject the entire request over a single
+ * bad one: Anthropic requires `^[A-Za-z0-9_-]+$`, and the OpenAI Responses API
+ * caps `call_id` at 64 characters. This is not a transient failure — once a
+ * malformed id reaches the persisted transcript, every later turn in that chat
+ * replays it and fails identically, so the chat is stuck until the id is
+ * replaced.
+ */
+const MAX_TOOL_CALL_ID_LENGTH = 64;
+const USABLE_TOOL_CALL_ID = /^[A-Za-z0-9_-]+$/;
+
+function isUsableToolCallId(id: string): boolean {
+  return (
+    id.length > 0 &&
+    id.length <= MAX_TOOL_CALL_ID_LENGTH &&
+    USABLE_TOOL_CALL_ID.test(id)
+  );
+}
+
+/** Every tool-call/result id in the transcript, usable or not. */
+function collectToolCallIds(messages: ModelMessage[]): Set<string> {
+  const ids = new Set<string>();
+  for (const message of messages) {
+    if (!Array.isArray(message.content)) continue;
+    for (const part of message.content) {
+      if (isToolCallPart(part) || isToolResultPart(part)) {
+        ids.add(part.toolCallId);
+      }
+    }
+  }
+  return ids;
+}
+
+/**
+ * Replacement ids for every unusable id in the transcript, in encounter order.
+ * Built over the whole array up front so a tool-call and its result are given
+ * the SAME replacement — renaming them independently would unpair them, which
+ * providers reject just as hard as the id we're fixing.
+ *
+ * Replacements skip every id already in the transcript: a chat repaired once
+ * already holds a `dyad_call_0`, and handing that name to a different call would
+ * merge two distinct exchanges into one and lose a tool result.
+ */
+function buildToolCallIdRenames(messages: ModelMessage[]): Map<string, string> {
+  const taken = collectToolCallIds(messages);
+  const renames = new Map<string, string>();
+  let next = 0;
+  const allocate = () => {
+    let candidate = `dyad_call_${next++}`;
+    while (taken.has(candidate)) candidate = `dyad_call_${next++}`;
+    taken.add(candidate);
+    return candidate;
+  };
+
+  for (const message of messages) {
+    if (!Array.isArray(message.content)) continue;
+    for (const part of message.content) {
+      if (!isToolCallPart(part) && !isToolResultPart(part)) continue;
+      const id = part.toolCallId;
+      if (renames.has(id) || isUsableToolCallId(id)) continue;
+      renames.set(id, allocate());
+    }
+  }
+  return renames;
+}
+
+function renameToolCallIds<T extends ModelMessage>(
+  message: T,
+  renames: Map<string, string>,
+): T {
+  if (!Array.isArray(message.content)) return message;
+  let didModify = false;
+  const content = message.content.map((part) => {
+    if (!isToolCallPart(part) && !isToolResultPart(part)) return part;
+    const replacement = renames.get(part.toolCallId);
+    if (!replacement) return part;
+    didModify = true;
+    return { ...part, toolCallId: replacement };
+  });
+  return didModify ? ({ ...message, content } as T) : message;
+}
+
+/**
  * Anthropic requires every assistant tool-call to be followed immediately by a
  * tool message containing the matching results. Persisted or dynamically
  * injected local-agent messages can occasionally violate that shape after
@@ -125,7 +207,21 @@ export function cleanMessage<T extends ModelMessage>(message: T): T {
 export function sanitizeToolCallTranscript(
   messages: ModelMessage[],
 ): ModelMessage[] {
-  const cleaned = messages.map(cleanMessage);
+  const renames = buildToolCallIdRenames(messages);
+  if (renames.size > 0) {
+    logger.warn(
+      // Folded rather than spread into Math.max: a transcript with enough
+      // distinct bad ids would blow the argument limit and crash the repair.
+      `Rewrote ${renames.size} tool-call id(s) no provider would accept (longest was ${[
+        ...renames.keys(),
+      ].reduce((longest, id) => Math.max(longest, id.length), 0)} chars)`,
+    );
+  }
+  const cleaned = messages.map((message) =>
+    cleanMessage(
+      renames.size > 0 ? renameToolCallIds(message, renames) : message,
+    ),
+  );
   const sanitized: ModelMessage[] = [];
 
   for (let i = 0; i < cleaned.length; i++) {

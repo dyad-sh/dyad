@@ -590,8 +590,28 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
     discovery?.projects.find((p) => p.uuid === status.connection!.projectUuid)
       ?.name ?? "project";
 
+  // Only once discovery has actually answered. A slow or failing lookup says
+  // nothing about where this app belongs, and treating it as an answer would
+  // tell people their connection had moved every time the network hiccuped.
+  const belongsElsewhere =
+    !isDiscovering &&
+    !discoveryError &&
+    Boolean(discovery) &&
+    !discovery!.servers.some((s) => s.uuid === status.connection!.serverUuid);
+
   return (
     <div className="space-y-3" data-testid="coolify-connector">
+      {belongsElsewhere && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+          <p>
+            <strong>This app belongs to a different Coolify.</strong> The server
+            it deploys to is not on the instance you are connected to now, so
+            its application is still running wherever it was — this is kept, not
+            lost. Connect back to that instance and it works again, or press
+            Edit to move this app here.
+          </p>
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div className="text-sm">
           <div className="font-medium">

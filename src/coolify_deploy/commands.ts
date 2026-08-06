@@ -581,11 +581,16 @@ export async function runDeployPipeline({
   });
   const recreated = applicationUuid !== app.coolifyApplicationUuid;
   if (recreated) {
-    throwIfAborted(signal);
+    // Recorded before the abort check, not after. Coolify has already created
+    // this application; an abort landing between the two would throw away the
+    // only record of something that exists, and the next deploy would build a
+    // second one beside it. The write is still fenced, so a connection that
+    // was cleared meanwhile matches no row rather than being resurrected.
     await recordConnectionChange(appId, serverUuid, {
       type: "APPLICATION_RESOLVED",
       applicationUuid,
     });
+    throwIfAborted(signal);
   } else {
     // Framework or domain may have changed since the application was created.
     // Only send a domain we actually have: passing null would clear the

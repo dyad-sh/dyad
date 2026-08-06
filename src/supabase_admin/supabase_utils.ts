@@ -257,6 +257,7 @@ export async function deploySupabaseFunctions({
   supabaseProjectId,
   supabaseOrganizationSlug,
   skipPruneEdgeFunctions,
+  pruneWhenNoLocalFunctions = false,
   functionNames,
   onProgress,
 }: {
@@ -264,23 +265,29 @@ export async function deploySupabaseFunctions({
   supabaseProjectId: string;
   supabaseOrganizationSlug: string | null;
   skipPruneEdgeFunctions: boolean;
+  pruneWhenNoLocalFunctions?: boolean;
   functionNames?: string[];
   onProgress?: (progress: SupabaseDeployProgress) => void;
 }): Promise<string[]> {
   const functionsDir = path.join(appPath, "supabase", "functions");
 
-  // Check if supabase/functions directory exists
+  let functionsDirectoryExists = true;
   try {
     await fs.access(functionsDir);
   } catch {
     logger.info(`No supabase/functions directory found at ${functionsDir}`);
-    return [];
+    functionsDirectoryExists = false;
+    if (!pruneWhenNoLocalFunctions || skipPruneEdgeFunctions) {
+      return [];
+    }
   }
 
   const errors: string[] = [];
 
   try {
-    const allValidFunctions = await getValidSupabaseFunctionNames(functionsDir);
+    const allValidFunctions = functionsDirectoryExists
+      ? await getValidSupabaseFunctionNames(functionsDir)
+      : [];
     const allValidFunctionNames = new Set(allValidFunctions);
     const requestedFunctionNames = functionNames
       ? Array.from(new Set(functionNames))
@@ -310,7 +317,10 @@ export async function deploySupabaseFunctions({
 
     if (validFunctions.length === 0) {
       logger.info("No valid functions to deploy");
-      if (!requestedFunctionNames) {
+      if (
+        !requestedFunctionNames &&
+        (!pruneWhenNoLocalFunctions || skipPruneEdgeFunctions)
+      ) {
         return [];
       }
       if (errors.length > 0) {
@@ -485,6 +495,7 @@ export async function deployAllSupabaseFunctions(args: {
   supabaseProjectId: string;
   supabaseOrganizationSlug: string | null;
   skipPruneEdgeFunctions: boolean;
+  pruneWhenNoLocalFunctions?: boolean;
   onProgress?: (progress: SupabaseDeployProgress) => void;
 }): Promise<string[]> {
   return deploySupabaseFunctions(args);

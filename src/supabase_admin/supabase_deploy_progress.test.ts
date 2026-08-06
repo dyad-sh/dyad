@@ -220,6 +220,82 @@ describe("deployAllSupabaseFunctions progress", () => {
     });
   });
 
+  it("prunes remote functions when a manual sync has no valid local functions", async () => {
+    await fs.rm(path.join(appPath, "supabase", "functions", "alpha"), {
+      recursive: true,
+    });
+    await fs.rm(path.join(appPath, "supabase", "functions", "beta"), {
+      recursive: true,
+    });
+    vi.mocked(listSupabaseFunctions).mockResolvedValue([
+      { slug: "old-fn" },
+    ] as any);
+
+    await expect(
+      deployAllSupabaseFunctions({
+        appPath,
+        supabaseProjectId: "project-id",
+        supabaseOrganizationSlug: "org",
+        skipPruneEdgeFunctions: false,
+        pruneWhenNoLocalFunctions: true,
+      }),
+    ).resolves.toEqual([]);
+
+    expect(deploySupabaseFunction).not.toHaveBeenCalled();
+    expect(deleteSupabaseFunction).toHaveBeenCalledWith({
+      supabaseProjectId: "project-id",
+      functionName: "old-fn",
+      organizationSlug: "org",
+    });
+  });
+
+  it("prunes remote functions when a manual sync has no functions directory", async () => {
+    await fs.rm(path.join(appPath, "supabase", "functions"), {
+      recursive: true,
+    });
+    vi.mocked(listSupabaseFunctions).mockResolvedValue([
+      { slug: "old-fn" },
+    ] as any);
+
+    await expect(
+      deployAllSupabaseFunctions({
+        appPath,
+        supabaseProjectId: "project-id",
+        supabaseOrganizationSlug: null,
+        skipPruneEdgeFunctions: false,
+        pruneWhenNoLocalFunctions: true,
+      }),
+    ).resolves.toEqual([]);
+
+    expect(deleteSupabaseFunction).toHaveBeenCalledWith({
+      supabaseProjectId: "project-id",
+      functionName: "old-fn",
+      organizationSlug: null,
+    });
+  });
+
+  it("keeps remote functions when empty manual sync pruning is disabled", async () => {
+    await fs.rm(path.join(appPath, "supabase", "functions"), {
+      recursive: true,
+    });
+    vi.mocked(listSupabaseFunctions).mockResolvedValue([
+      { slug: "old-fn" },
+    ] as any);
+
+    await expect(
+      deployAllSupabaseFunctions({
+        appPath,
+        supabaseProjectId: "project-id",
+        supabaseOrganizationSlug: null,
+        skipPruneEdgeFunctions: true,
+        pruneWhenNoLocalFunctions: true,
+      }),
+    ).resolves.toEqual([]);
+
+    expect(listSupabaseFunctions).not.toHaveBeenCalled();
+    expect(deleteSupabaseFunction).not.toHaveBeenCalled();
+  });
+
   it("returns an error when a non-empty requested subset has no valid local functions", async () => {
     await expect(
       deploySupabaseFunctions({

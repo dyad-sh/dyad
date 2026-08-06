@@ -26,7 +26,7 @@ import {
 } from "../types/connection_flow";
 import { mcpContracts } from "../types/mcp";
 import { vercelContracts } from "../types/vercel";
-import { supabaseContracts } from "../types/supabase";
+import { supabaseContracts, supabaseEvents } from "../types/supabase";
 import { neonContracts } from "../types/neon";
 import { migrationContracts } from "../types/migration";
 import { systemContracts, systemEvents } from "../types/system";
@@ -170,6 +170,7 @@ export const VALID_RECEIVE_CHANNELS = [
   // Event channels
   ...getReceiveChannels(agentEvents),
   ...getReceiveChannels(connectionFlowEvents),
+  ...getReceiveChannels(supabaseEvents),
   ...getReceiveChannels(systemEvents),
   ...getReceiveChannels(versionEvents),
   ...getReceiveChannels(miscEvents),

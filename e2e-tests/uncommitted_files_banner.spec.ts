@@ -97,7 +97,8 @@ const runDiscardChangesTest = async (po: PageObject) => {
   await po.page.getByTestId("confirm-discard-button").click();
 
   // Wait for success toast
-  await po.toastNotifications.waitForToast("success");
+  // Discard queues behind preview startup while it owns the repository.
+  await po.toastNotifications.waitForToast("success", Timeout.EXTRA_LONG);
 
   // Dialog should close
   await expect(po.page.getByTestId("commit-dialog")).not.toBeVisible();
@@ -182,7 +183,8 @@ const runUncommittedFilesBannerTest = async (po: PageObject) => {
   await po.page.getByTestId("commit-button").click();
 
   // Wait for success toast
-  await po.toastNotifications.waitForToast("success");
+  // Commit queues behind preview startup while it owns the repository.
+  await po.toastNotifications.waitForToast("success", Timeout.EXTRA_LONG);
 
   // The dialog should close
   await expect(po.page.getByTestId("commit-dialog")).not.toBeVisible();

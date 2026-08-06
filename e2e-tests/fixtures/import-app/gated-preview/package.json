@@ -1,0 +1,8 @@
+{
+  "name": "gated-preview",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "node server.cjs"
+  }
+}

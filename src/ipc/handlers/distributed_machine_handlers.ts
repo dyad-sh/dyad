@@ -11,20 +11,29 @@ export function registerDistributedMachineHandlers(
 ): void {
   createTypedHandler(
     distributedMachineContracts.subscribe,
-    async (event, input) =>
-      transport.subscribe(event.sender as RemoteTransportEndpoint, input),
+    async (event, { rendererConnectionId, ...input }) =>
+      transport.subscribe(
+        event.sender as RemoteTransportEndpoint,
+        input,
+        rendererConnectionId,
+      ),
   );
   createTypedHandler(
     distributedMachineContracts.dispatch,
-    async (event, input) =>
-      transport.dispatch(event.sender as RemoteTransportEndpoint, input),
+    async (event, { rendererConnectionId, ...input }) =>
+      transport.dispatch(
+        event.sender as RemoteTransportEndpoint,
+        input,
+        rendererConnectionId,
+      ),
   );
   createTypedHandler(
     distributedMachineContracts.unsubscribe,
-    async (event, input) => {
+    async (event, { rendererConnectionId, ...input }) => {
       await transport.unsubscribe(
         event.sender as RemoteTransportEndpoint,
         input,
+        rendererConnectionId,
       );
     },
   );

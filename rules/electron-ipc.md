@@ -112,6 +112,7 @@ writeSettings({
 `did-finish-load` can still precede React effect subscriptions, so fire-and-forget startup events must register a renderer-module-level listener before bootstrap and replay buffered payloads when their UI consumer mounts.
 Mark transport readiness before development-only completed-load filters: a DevTools reload can abort the initial navigation, making the filtered completion the window's only `did-finish-load` event.
 Clear a window's renderer readiness only for a non-in-place main-frame `did-start-navigation`. `did-start-loading` is broader and can leave deep links queued when a usable renderer triggers loading activity that has no matching top-level `did-finish-load`.
+Do not use `webContents.id` or main-frame process/routing IDs as a renderer-document lifetime: Electron can reuse all of them across a navigation. For main-owned subscriptions, generate a bounded ID for each renderer transport connection, include it in subscribe/dispatch/unsubscribe IPC, and ignore stale releases once a newer connection has claimed the same `WebContents` slot.
 When explicit window creation awaits `loadURL()` / `loadFile()`, start any
 development-only DevTools reload only after that initial load promise resolves.
 Scheduling the reload first can reject the awaited promise with

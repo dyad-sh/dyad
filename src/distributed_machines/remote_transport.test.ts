@@ -306,6 +306,38 @@ describe("remote machine transport", () => {
     });
   });
 
+  it("keeps a replacement renderer connection subscribed after a stale release", async () => {
+    const { host, machine, transport, windows } = createHarness();
+    const sessionId = windows.createTrustedRendererWindow();
+    const endpoint = windows.endpoint(sessionId);
+    const oldConnection = "renderer:old";
+    const replacementConnection = "renderer:replacement";
+
+    await transport.subscribe(endpoint, address(), oldConnection);
+    const replacementBootstrap = await transport.subscribe(
+      endpoint,
+      address(),
+      replacementConnection,
+    );
+    expect(replacementBootstrap.encodedState).toEqual({ value: 0 });
+
+    await transport.unsubscribe(endpoint, address(), oldConnection);
+    expect(transport.inspectSubscriptions()).toEqual([
+      expect.objectContaining({
+        totalReferences: 1,
+        windows: new Map([[endpoint.id, 1]]),
+      }),
+    ]);
+
+    await host.peek(machine.id, "actor")?.send({ type: "INCREMENT" });
+
+    const snapshots = windows.received(
+      sessionId,
+      "distributed-machine:snapshot",
+    ) as MachineSnapshotEnvelope[];
+    expect(snapshots.at(-1)?.encodedState).toEqual({ value: 1 });
+  });
+
   it("follows the definition's no-subscriber lifecycle policy", async () => {
     const machine = createRemoteTestMachine(
       "remote-test",
@@ -2093,6 +2125,52 @@ describe("remote machine transport", () => {
       "synthetic projection failure",
     );
     expect(transport.inspectSubscriptions()).toEqual([]);
+  });
+
+  it("restores prior connection ownership when replacement bootstrap fails", async () => {
+    const base = createRemoteTestMachine();
+    let projectionCount = 0;
+    const machine = {
+      ...base,
+      remote: {
+        ...base.remote,
+        projectSnapshot(
+          ...args: Parameters<typeof base.remote.projectSnapshot>
+        ) {
+          projectionCount += 1;
+          if (projectionCount === 2) {
+            throw new Error("synthetic replacement projection failure");
+          }
+          return base.remote.projectSnapshot(...args);
+        },
+      },
+    } as AnyRemoteMachineDefinition;
+    const { transport, windows } = createHarness({ machine });
+    const sessionId = windows.createTrustedRendererWindow();
+    const endpoint = windows.endpoint(sessionId);
+    const priorConnectionId = "00000000-0000-4000-8000-000000000001";
+    const replacementConnectionId = "00000000-0000-4000-8000-000000000002";
+
+    const bootstrap = await transport.subscribe(
+      endpoint,
+      address(),
+      priorConnectionId,
+    );
+    await expect(
+      transport.subscribe(endpoint, address(), replacementConnectionId),
+    ).rejects.toThrow("synthetic replacement projection failure");
+
+    await expect(
+      transport.dispatch(
+        endpoint,
+        {
+          ...dispatch({ type: "INCREMENT" }),
+          expectedActorInstanceId: bootstrap.actorInstanceId,
+          expectedRevision: bootstrap.revision,
+        },
+        priorConnectionId,
+      ),
+    ).resolves.toMatchObject({ kind: "applied", revision: 1 });
   });
 
   it("does not retain a canonical key when key encoding fails", async () => {

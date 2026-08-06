@@ -81,6 +81,7 @@ describe("distributed machine IPC handlers", () => {
         protocolVersion: REMOTE_MACHINE_PROTOCOL_VERSION,
         machineId: "remote-test",
         encodedKey: "actor",
+        rendererConnectionId: "00000000-0000-4000-8000-000000000001",
       }),
     ).resolves.toMatchObject({
       ok: true,
@@ -95,6 +96,7 @@ describe("distributed machine IPC handlers", () => {
         protocolVersion: REMOTE_MACHINE_PROTOCOL_VERSION,
         machineId: "",
         encodedKey: "actor",
+        rendererConnectionId: "00000000-0000-4000-8000-000000000001",
       }),
     ).resolves.toMatchObject({
       ok: false,
@@ -106,6 +108,7 @@ describe("distributed machine IPC handlers", () => {
         protocolVersion: REMOTE_MACHINE_PROTOCOL_VERSION,
         machineId: "remote-test",
         encodedKey: 42,
+        rendererConnectionId: "00000000-0000-4000-8000-000000000001",
       }),
     ).resolves.toMatchObject({
       ok: false,
@@ -120,10 +123,72 @@ describe("distributed machine IPC handlers", () => {
         protocolVersion: REMOTE_MACHINE_PROTOCOL_VERSION,
         machineId: "remote-test",
         encodedKey: "actor",
+        rendererConnectionId: "00000000-0000-4000-8000-000000000001",
       }),
     ).resolves.toMatchObject({
       ok: false,
       error: { message: expect.stringContaining("trusted Dyad renderer") },
     });
+  });
+
+  it("routes subscription ownership through the renderer connection identity", async () => {
+    const transport = {
+      subscribe: vi.fn(async () => ({
+        protocolVersion: REMOTE_MACHINE_PROTOCOL_VERSION,
+        machineId: "remote-test",
+        encodedKey: "actor",
+        actorInstanceId: "actor:1",
+        revision: 0,
+        encodedState: { value: 0 },
+      })),
+      dispatch: vi.fn(async (input: { messageId: string }) => ({
+        kind: "rejected" as const,
+        messageId: input.messageId,
+        reason: "stale-actor" as const,
+      })),
+      unsubscribe: vi.fn(async () => undefined),
+    };
+    registerDistributedMachineHandlers(transport as never);
+    const address = {
+      protocolVersion: REMOTE_MACHINE_PROTOCOL_VERSION,
+      machineId: "remote-test",
+      encodedKey: "actor",
+    };
+    const oldDocument = eventFor("http://localhost:5173/chat");
+    const replacementDocument = eventFor("http://localhost:5173/chat");
+
+    await mocks.handlers.get("distributed-machine:subscribe")!(oldDocument, {
+      ...address,
+      rendererConnectionId: "00000000-0000-4000-8000-000000000001",
+    });
+    await mocks.handlers.get("distributed-machine:subscribe")!(
+      replacementDocument,
+      {
+        ...address,
+        rendererConnectionId: "00000000-0000-4000-8000-000000000002",
+      },
+    );
+    await mocks.handlers.get("distributed-machine:unsubscribe")!(oldDocument, {
+      ...address,
+      rendererConnectionId: "00000000-0000-4000-8000-000000000001",
+    });
+
+    expect(transport.subscribe).toHaveBeenNthCalledWith(
+      1,
+      oldDocument.sender,
+      address,
+      "00000000-0000-4000-8000-000000000001",
+    );
+    expect(transport.subscribe).toHaveBeenNthCalledWith(
+      2,
+      replacementDocument.sender,
+      address,
+      "00000000-0000-4000-8000-000000000002",
+    );
+    expect(transport.unsubscribe).toHaveBeenCalledWith(
+      oldDocument.sender,
+      address,
+      "00000000-0000-4000-8000-000000000001",
+    );
   });
 });

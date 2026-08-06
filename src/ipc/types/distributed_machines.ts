@@ -15,20 +15,29 @@ import {
 } from "../../distributed_machines/remote_protocol";
 import { z } from "zod";
 
+const rendererConnectionIdSchema = z.string().uuid();
+const RendererMachineAddressSchema = MachineAddressSchema.extend({
+  rendererConnectionId: rendererConnectionIdSchema,
+});
+const RendererMachineDispatchEnvelopeSchema =
+  MachineDispatchEnvelopeSchema.extend({
+    rendererConnectionId: rendererConnectionIdSchema,
+  });
+
 export const distributedMachineContracts = {
   subscribe: defineContract({
     channel: "distributed-machine:subscribe",
-    input: MachineAddressSchema,
+    input: RendererMachineAddressSchema,
     output: MachineSnapshotEnvelopeSchema,
   }),
   dispatch: defineContract({
     channel: "distributed-machine:dispatch",
-    input: MachineDispatchEnvelopeSchema,
+    input: RendererMachineDispatchEnvelopeSchema,
     output: MachineDispatchReceiptSchema,
   }),
   unsubscribe: defineContract({
     channel: "distributed-machine:unsubscribe",
-    input: MachineAddressSchema,
+    input: RendererMachineAddressSchema,
     output: z.void(),
   }),
 } as const;

@@ -47,6 +47,8 @@ export interface RemoteTransportEndpoint {
   once?(event: "destroyed", listener: () => void): this | void;
 }
 
+export type RendererConnectionId = string;
+
 export interface RemoteTransportWindowRegistry {
   ensureRegistered(endpoint: RemoteTransportEndpoint): WindowSessionId;
   onUnregister(listener: (webContentsId: number) => void): () => void;
@@ -85,7 +87,9 @@ interface SubscriptionEntry {
   readonly key: unknown;
   readonly encodedKey: unknown;
   readonly actor: HostedActorRef<unknown, unknown, string>;
-  readonly windows: Map<number, number>;
+  // A WebContents survives navigation, so ownership is fenced by the
+  // renderer-side connection lifetime rather than WebContents ID alone.
+  readonly windows: Map<number, RendererConnectionId>;
   unsubscribeActor: () => void;
 }
 
@@ -100,6 +104,7 @@ interface PreparedDispatchIdentity {
   readonly actorMetadata: ActorRuntimeMetadata;
   readonly lifecycleGeneration: ActorHostAdmissionGeneration;
   readonly windowSessionId: WindowSessionId;
+  readonly rendererConnectionId: RendererConnectionId;
   readonly fingerprint: string;
   consumed: boolean;
 }
@@ -107,6 +112,7 @@ interface PreparedDispatchIdentity {
 interface PendingSubscription {
   readonly address: string;
   readonly webContentsId: number;
+  readonly rendererConnectionId: RendererConnectionId;
   readonly countsTowardLimit: boolean;
   readonly lifecycleGeneration: ActorHostAdmissionGeneration;
   cancelled: boolean;
@@ -121,6 +127,7 @@ interface PreparedSubscribe {
   readonly address: string;
   readonly domainAddress: string;
   readonly windowSessionId: WindowSessionId;
+  readonly rendererConnectionId: RendererConnectionId;
   readonly pending: PendingSubscription;
   consumed: boolean;
 }
@@ -241,6 +248,9 @@ export class RemoteMachineTransport {
   async subscribe(
     sender: RemoteTransportEndpoint,
     input: MachineAddress,
+    rendererConnectionId: RendererConnectionId = this.legacyRendererConnectionId(
+      sender,
+    ),
   ): Promise<MachineSnapshotEnvelope> {
     this.assertOpen();
     this.assertAddressWithinLimit(input);
@@ -252,15 +262,23 @@ export class RemoteMachineTransport {
     const encodedKey = this.encodeKey(definition, key);
     const address = this.wireAddress(definition, encodedKey);
     const existingBeforeAuthorization = this.subscriptions.get(address);
-    const alreadySubscribedBeforeAuthorization =
-      existingBeforeAuthorization?.windows.has(sender.id) === true;
-    const pendingKey = this.pendingSubscriptionKey(sender.id, address);
+    const pendingKey = this.pendingSubscriptionKey(
+      sender.id,
+      rendererConnectionId,
+      address,
+    );
     const existingPending = this.pendingSubscriptions.get(pendingKey);
     if (existingPending?.promise) return existingPending.promise;
+    this.cancelSupersededPendingSubscriptions(
+      sender.id,
+      rendererConnectionId,
+      address,
+    );
     const pending = this.beginPendingSubscription(
       sender.id,
+      rendererConnectionId,
       address,
-      !alreadySubscribedBeforeAuthorization,
+      !existingBeforeAuthorization?.windows.has(sender.id),
       definition.id,
       key,
     );
@@ -271,6 +289,7 @@ export class RemoteMachineTransport {
       address,
       domainAddress: this.domainAddress(definition, key),
       windowSessionId,
+      rendererConnectionId,
       pending,
       consumed: false,
     };
@@ -320,9 +339,12 @@ export class RemoteMachineTransport {
       const canonicalKey = this.actorKeys.get(address) ?? authorizedKey;
       const currentReferences = this.referencesPerWindow.get(sender.id) ?? 0;
       let entry = this.subscriptions.get(address);
-      const alreadySubscribed = entry?.windows.has(sender.id) === true;
+      const subscribedConnectionId = entry?.windows.get(sender.id);
+      const alreadySubscribed =
+        subscribedConnectionId === prepared.rendererConnectionId;
+      const alreadyHasWindowReference = subscribedConnectionId !== undefined;
       if (
-        !alreadySubscribed &&
+        !alreadyHasWindowReference &&
         currentReferences >= this.maxSubscriptionsPerWindow
       ) {
         throw new DyadError(
@@ -397,8 +419,10 @@ export class RemoteMachineTransport {
       }
 
       if (!alreadySubscribed) {
-        entry.windows.set(sender.id, 1);
-        this.referencesPerWindow.set(sender.id, currentReferences + 1);
+        entry.windows.set(sender.id, prepared.rendererConnectionId);
+        if (!alreadyHasWindowReference) {
+          this.referencesPerWindow.set(sender.id, currentReferences + 1);
+        }
       }
 
       // Atomic bootstrap invariant: there is deliberately no await between
@@ -406,7 +430,17 @@ export class RemoteMachineTransport {
       try {
         return this.snapshotEnvelope(entry);
       } catch (error) {
-        if (!alreadySubscribed) this.removeWindowReference(entry, sender.id);
+        if (!alreadySubscribed) {
+          if (subscribedConnectionId !== undefined) {
+            entry.windows.set(sender.id, subscribedConnectionId);
+          } else {
+            this.removeWindowReference(
+              entry,
+              sender.id,
+              prepared.rendererConnectionId,
+            );
+          }
+        }
         throw error;
       }
     } finally {
@@ -423,7 +457,11 @@ export class RemoteMachineTransport {
       prepared.pending.cancelled ||
       prepared.pending.accountingReleased ||
       this.pendingSubscriptions.get(
-        this.pendingSubscriptionKey(sender.id, prepared.address),
+        this.pendingSubscriptionKey(
+          sender.id,
+          prepared.rendererConnectionId,
+          prepared.address,
+        ),
       ) !== prepared.pending
     ) {
       throw new DyadError(
@@ -449,6 +487,9 @@ export class RemoteMachineTransport {
   async unsubscribe(
     sender: RemoteTransportEndpoint,
     input: MachineAddress,
+    rendererConnectionId: RendererConnectionId = this.legacyRendererConnectionId(
+      sender,
+    ),
   ): Promise<void> {
     this.assertOpen();
     this.assertAddressWithinLimit(input);
@@ -460,15 +501,18 @@ export class RemoteMachineTransport {
       definition,
       this.encodeKey(definition, key),
     );
-    this.cancelPendingSubscriptions(sender.id, address);
+    this.cancelPendingSubscriptions(sender.id, rendererConnectionId, address);
     const entry = this.subscriptions.get(address);
     if (!entry) return;
-    this.removeWindowReference(entry, sender.id);
+    this.removeWindowReference(entry, sender.id, rendererConnectionId);
   }
 
   dispatch(
     sender: RemoteTransportEndpoint,
     envelope: MachineDispatchEnvelope,
+    rendererConnectionId: RendererConnectionId = this.legacyRendererConnectionId(
+      sender,
+    ),
   ): Promise<MachineDispatchReceipt> {
     this.assertOpen();
     const windowSessionId = this.options.windows.ensureRegistered(sender);
@@ -489,6 +533,7 @@ export class RemoteMachineTransport {
     const prepared = this.prepareDispatchIdentity(
       sender,
       windowSessionId,
+      rendererConnectionId,
       envelope,
     );
     if ("receipt" in prepared) {
@@ -569,11 +614,8 @@ export class RemoteMachineTransport {
     return [...this.subscriptions.values()].map((entry) => ({
       machineId: entry.definition.id,
       key: entry.key,
-      totalReferences: [...entry.windows.values()].reduce(
-        (total, count) => total + count,
-        0,
-      ),
-      windows: new Map(entry.windows),
+      totalReferences: entry.windows.size,
+      windows: new Map([...entry.windows.keys()].map((id) => [id, 1])),
     }));
   }
 
@@ -621,6 +663,7 @@ export class RemoteMachineTransport {
   private prepareDispatchIdentity(
     sender: RemoteTransportEndpoint,
     windowSessionId: WindowSessionId,
+    rendererConnectionId: RendererConnectionId,
     envelope: MachineDispatchEnvelope,
   ):
     | PreparedDispatchIdentity
@@ -660,7 +703,10 @@ export class RemoteMachineTransport {
       envelope,
     );
     const admittedEntry = this.subscriptions.get(address);
-    if (!admittedEntry || !admittedEntry.windows.has(sender.id)) {
+    if (
+      !admittedEntry ||
+      admittedEntry.windows.get(sender.id) !== rendererConnectionId
+    ) {
       return {
         receipt: this.rejected(envelope.messageId, "stale-actor"),
         fingerprint,
@@ -733,6 +779,7 @@ export class RemoteMachineTransport {
         admittedEntry.key,
       ),
       windowSessionId,
+      rendererConnectionId,
       fingerprint,
       consumed: false,
     };
@@ -774,7 +821,8 @@ export class RemoteMachineTransport {
         }
         if (
           this.subscriptions.get(address) !== prepared.admittedEntry ||
-          !prepared.admittedEntry.windows.has(sender.id) ||
+          prepared.admittedEntry.windows.get(sender.id) !==
+            prepared.rendererConnectionId ||
           this.options.host.peek(definition.id, key) !== actor
         ) {
           return this.rejected(envelope.messageId, "stale-actor");
@@ -1345,7 +1393,7 @@ export class RemoteMachineTransport {
     }
     if (
       this.subscriptions.get(address) !== admittedEntry ||
-      !admittedEntry.windows.has(sender.id)
+      admittedEntry.windows.get(sender.id) !== prepared.rendererConnectionId
     ) {
       return "stale-actor";
     }
@@ -1392,7 +1440,7 @@ export class RemoteMachineTransport {
     }
     if (
       this.subscriptions.get(address) !== admittedEntry ||
-      !admittedEntry.windows.has(sender.id)
+      admittedEntry.windows.get(sender.id) !== prepared.rendererConnectionId
     ) {
       return refusalMap?.actorChanged ?? "stale-actor";
     }
@@ -1527,10 +1575,9 @@ export class RemoteMachineTransport {
       }
     }
     for (const entry of this.subscriptions.values()) {
-      const count = entry.windows.get(webContentsId);
-      if (count === undefined) continue;
+      if (!entry.windows.has(webContentsId)) continue;
       entry.windows.delete(webContentsId);
-      this.decrementWindowReferences(webContentsId, count);
+      this.decrementWindowReferences(webContentsId, 1);
       this.releaseEntryIfUnused(entry);
     }
   }
@@ -1538,9 +1585,16 @@ export class RemoteMachineTransport {
   private removeWindowReference(
     entry: SubscriptionEntry,
     webContentsId: number,
+    rendererConnectionId?: RendererConnectionId,
   ): void {
-    const count = entry.windows.get(webContentsId);
-    if (count === undefined) return;
+    const subscribedConnectionId = entry.windows.get(webContentsId);
+    if (
+      subscribedConnectionId === undefined ||
+      (rendererConnectionId !== undefined &&
+        subscribedConnectionId !== rendererConnectionId)
+    ) {
+      return;
+    }
     entry.windows.delete(webContentsId);
     this.decrementWindowReferences(webContentsId, 1);
     this.releaseEntryIfUnused(entry);
@@ -1553,8 +1607,8 @@ export class RemoteMachineTransport {
   }
 
   private decrementAllWindowReferences(entry: SubscriptionEntry): void {
-    for (const [webContentsId, count] of entry.windows) {
-      this.decrementWindowReferences(webContentsId, count);
+    for (const webContentsId of entry.windows.keys()) {
+      this.decrementWindowReferences(webContentsId, 1);
     }
   }
 
@@ -1820,6 +1874,7 @@ export class RemoteMachineTransport {
 
   private beginPendingSubscription(
     webContentsId: number,
+    rendererConnectionId: RendererConnectionId,
     address: string,
     countsTowardLimit: boolean,
     machineId: string,
@@ -1840,6 +1895,7 @@ export class RemoteMachineTransport {
     const subscription: PendingSubscription = {
       address,
       webContentsId,
+      rendererConnectionId,
       countsTowardLimit,
       lifecycleGeneration: this.options.host.captureAdmissionGeneration(
         machineId,
@@ -1848,7 +1904,11 @@ export class RemoteMachineTransport {
       cancelled: false,
       accountingReleased: false,
     };
-    const pendingKey = this.pendingSubscriptionKey(webContentsId, address);
+    const pendingKey = this.pendingSubscriptionKey(
+      webContentsId,
+      rendererConnectionId,
+      address,
+    );
     this.pendingSubscriptions.set(pendingKey, subscription);
     if (countsTowardLimit) {
       this.pendingReferencesPerWindow.set(webContentsId, pendingReferences + 1);
@@ -1862,13 +1922,30 @@ export class RemoteMachineTransport {
 
   private cancelPendingSubscriptions(
     webContentsId: number,
+    rendererConnectionId: RendererConnectionId,
     address: string,
   ): void {
     const pending = this.pendingSubscriptions.get(
-      this.pendingSubscriptionKey(webContentsId, address),
+      this.pendingSubscriptionKey(webContentsId, rendererConnectionId, address),
     );
     if (!pending) return;
     this.cancelPendingSubscription(pending);
+  }
+
+  private cancelSupersededPendingSubscriptions(
+    webContentsId: number,
+    rendererConnectionId: RendererConnectionId,
+    address: string,
+  ): void {
+    for (const pending of this.pendingSubscriptions.values()) {
+      if (
+        pending.webContentsId === webContentsId &&
+        pending.address === address &&
+        pending.rendererConnectionId !== rendererConnectionId
+      ) {
+        this.cancelPendingSubscription(pending);
+      }
+    }
   }
 
   private cancelPendingSubscriptionsForAddress(address: string): void {
@@ -1889,6 +1966,7 @@ export class RemoteMachineTransport {
     subscription.accountingReleased = true;
     const pendingKey = this.pendingSubscriptionKey(
       subscription.webContentsId,
+      subscription.rendererConnectionId,
       subscription.address,
     );
     if (this.pendingSubscriptions.get(pendingKey) === subscription) {
@@ -1901,9 +1979,16 @@ export class RemoteMachineTransport {
 
   private pendingSubscriptionKey(
     webContentsId: number,
+    rendererConnectionId: RendererConnectionId,
     address: string,
   ): string {
-    return `${webContentsId}\0${address}`;
+    return `${webContentsId}\0${rendererConnectionId}\0${address}`;
+  }
+
+  private legacyRendererConnectionId(
+    sender: RemoteTransportEndpoint,
+  ): RendererConnectionId {
+    return `web-contents:${sender.id}`;
   }
 
   private decrementPendingWindowReferences(webContentsId: number): void {

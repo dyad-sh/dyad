@@ -1015,6 +1015,45 @@ describe("executeApp", () => {
     });
   });
 
+  it("clears cached readiness while replacing a proxy worker", async () => {
+    let onStarted: ((proxyUrl: string) => void) | undefined;
+    startProxyMock.mockImplementation(async (_originalUrl, opts) => {
+      onStarted = opts.onStarted;
+      return { terminate: vi.fn() };
+    });
+    const terminatePrevious = vi.fn();
+    runningApps.set(42, {
+      process: null,
+      processId: 1,
+      mode: "cloud",
+      proxyWorker: {
+        terminate: terminatePrevious,
+      } as unknown as Worker,
+      proxyUrl: "http://localhost:42142",
+      originalUrl: "https://old-preview.example",
+      proxyAuthToken: "old-token",
+      cloudPreviewAuthToken: "new-token",
+      lastViewedAt: Date.now(),
+    });
+
+    await ensureProxyForRunningApp({
+      appId: 42,
+      output: createOutput(),
+      originalUrl: "https://new-preview.example",
+      mode: "cloud",
+    });
+
+    expect(terminatePrevious).toHaveBeenCalledOnce();
+    expect(runningApps.get(42)?.proxyUrl).toBeUndefined();
+
+    onStarted?.("http://localhost:42142");
+    expect(runningApps.get(42)).toMatchObject({
+      proxyUrl: "http://localhost:42142",
+      originalUrl: "https://new-preview.example",
+      proxyAuthToken: "new-token",
+    });
+  });
+
   it("surfaces a proxy port-exhaustion error to the renderer", async () => {
     const terminate = vi.fn();
     startProxyMock.mockImplementation(async (_originalUrl, opts) => {

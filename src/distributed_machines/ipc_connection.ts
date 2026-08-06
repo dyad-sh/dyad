@@ -21,6 +21,7 @@ export class IpcRemoteMachineConnection implements RemoteMachineClientConnection
     (status: RemoteTransportStatus) => void
   >();
   private status: RemoteTransportStatus = "connected";
+  private readonly rendererConnectionId = globalThis.crypto.randomUUID();
 
   getStatus(): RemoteTransportStatus {
     return this.status;
@@ -46,15 +47,24 @@ export class IpcRemoteMachineConnection implements RemoteMachineClientConnection
   }
 
   subscribe(address: MachineAddress): Promise<MachineSnapshotEnvelope> {
-    return ipc.distributedMachine.subscribe(address);
+    return ipc.distributedMachine.subscribe({
+      ...address,
+      rendererConnectionId: this.rendererConnectionId,
+    });
   }
 
   unsubscribe(address: MachineAddress): Promise<void> {
-    return ipc.distributedMachine.unsubscribe(address);
+    return ipc.distributedMachine.unsubscribe({
+      ...address,
+      rendererConnectionId: this.rendererConnectionId,
+    });
   }
 
   dispatch(envelope: MachineDispatchEnvelope): Promise<MachineDispatchReceipt> {
-    return ipc.distributedMachine.dispatch(envelope);
+    return ipc.distributedMachine.dispatch({
+      ...envelope,
+      rendererConnectionId: this.rendererConnectionId,
+    });
   }
 
   start(): () => void {

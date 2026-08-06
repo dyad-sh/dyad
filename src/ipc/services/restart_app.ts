@@ -30,5 +30,5 @@ export function waitForAppReady(
   appId: number,
   options?: { timeoutMs?: number },
 ): Promise<void> {
-  return appRuntimeService.waitForReady(appId, options);
+  return appRuntimeService.waitForReady(appId, options).then(() => undefined);
 }

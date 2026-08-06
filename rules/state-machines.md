@@ -725,6 +725,7 @@ timers or nondeterministic UUIDs; retrofitting existing machines is optional.
   stale or replacement-job output. Factory-buffered sequential emissions must
   retain the same captured identity through activation, and output after actor
   disposal must remain non-creating.
+- When readiness can be satisfied by a runtime started under an older invocation, have the readiness API return the current authoritative endpoint and bind it to the waiting invocation before reporting success. Do not rely on replaying the original producer's log/output callback: its stale correlation may be correctly rejected, leaving a `ready` snapshot without the endpoint.
 - A destructive fence is scoped to the actor key, not to a domain predicate
   within a collection. If owner deletion must preserve unrelated in-flight
   producers, partition the actor key by owner or add first-class scoped gate

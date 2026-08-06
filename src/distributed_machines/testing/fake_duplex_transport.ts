@@ -36,6 +36,8 @@ interface FakeRemoteView {
   malformedSnapshots: number;
 }
 
+let nextRendererConnectionId = 1;
+
 export class FakeTransportDisconnectedError extends Error {
   constructor() {
     super("Fake renderer transport disconnected");
@@ -98,6 +100,7 @@ export class FakeRemoteRenderer implements RemoteMachineClientConnection {
   private readonly bootstrapReleases: Array<() => void> = [];
   private connected = true;
   private status: RemoteTransportStatus = "connected";
+  private readonly rendererConnectionId = `fake-renderer:${nextRendererConnectionId++}`;
 
   constructor(
     private readonly duplex: FakeDuplexRemoteTransport,
@@ -197,6 +200,7 @@ export class FakeRemoteRenderer implements RemoteMachineClientConnection {
       const bootstrap = await this.duplex.main.subscribe(
         this.endpoint(),
         address,
+        this.rendererConnectionId,
       );
       mainSubscribed = true;
       if (this.holdBootstrap) {
@@ -227,7 +231,11 @@ export class FakeRemoteRenderer implements RemoteMachineClientConnection {
   async unsubscribe(address: MachineAddress): Promise<void> {
     this.assertConnected();
     this.views.delete(this.addressKey(address));
-    await this.duplex.main.unsubscribe(this.endpoint(), address);
+    await this.duplex.main.unsubscribe(
+      this.endpoint(),
+      address,
+      this.rendererConnectionId,
+    );
   }
 
   async dispatch(
@@ -235,9 +243,17 @@ export class FakeRemoteRenderer implements RemoteMachineClientConnection {
   ): Promise<MachineDispatchReceipt> {
     this.assertConnected();
     const generation = this.connectionGeneration();
-    const first = this.duplex.main.dispatch(this.endpoint(), envelope);
+    const first = this.duplex.main.dispatch(
+      this.endpoint(),
+      envelope,
+      this.rendererConnectionId,
+    );
     if (this.duplex.consumeDuplicateDispatch()) {
-      void this.duplex.main.dispatch(this.endpoint(), envelope);
+      void this.duplex.main.dispatch(
+        this.endpoint(),
+        envelope,
+        this.rendererConnectionId,
+      );
     }
     const receipt = await first;
     if (this.duplex.consumeDroppedReceipt()) {
@@ -366,6 +382,7 @@ export class FakeRemoteRenderer implements RemoteMachineClientConnection {
       const bootstrap = await this.duplex.main.subscribe(
         this.endpoint(),
         view.address,
+        this.rendererConnectionId,
       );
       mainSubscribed = true;
       if (!this.isCurrentView(view)) {
@@ -394,7 +411,11 @@ export class FakeRemoteRenderer implements RemoteMachineClientConnection {
   private async compensateSubscription(address: MachineAddress): Promise<void> {
     if (!this.connected) return;
     try {
-      await this.duplex.main.unsubscribe(this.endpoint(), address);
+      await this.duplex.main.unsubscribe(
+        this.endpoint(),
+        address,
+        this.rendererConnectionId,
+      );
     } catch {
       // A destroyed endpoint is already cleaned up by the main transport.
     }

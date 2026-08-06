@@ -20,11 +20,23 @@ import { appRunKey } from "./transport";
 import { AppRunRemoteManager } from "./remote_manager";
 import { appRunOperationRegistry } from "./operations";
 
+type ReadyRuntime = {
+  proxyUrl: string;
+  originalUrl: string;
+  mode: "host";
+};
+
+const readyRuntime = (proxyUrl = "http://localhost:3210"): ReadyRuntime => ({
+  proxyUrl,
+  originalUrl: "http://localhost:5173",
+  mode: "host",
+});
+
 const runtime = vi.hoisted(() => ({
   start: vi.fn<() => Promise<void>>(),
   restart: vi.fn<() => Promise<void>>(),
   stop: vi.fn<() => Promise<void>>(),
-  waitForReady: vi.fn<() => Promise<void>>(),
+  waitForReady: vi.fn<() => Promise<ReadyRuntime>>(),
   cleanup: vi.fn(),
   createExternalLifecycleRef: vi.fn(),
 }));
@@ -128,7 +140,7 @@ describe("main-hosted app-run actor", () => {
     runtime.start.mockResolvedValue(undefined);
     runtime.restart.mockResolvedValue(undefined);
     runtime.stop.mockResolvedValue(undefined);
-    runtime.waitForReady.mockResolvedValue(undefined);
+    runtime.waitForReady.mockResolvedValue(readyRuntime());
   });
 
   it("authorizes manual reload independently of the current phase", async () => {
@@ -246,7 +258,7 @@ describe("main-hosted app-run actor", () => {
     await flush();
     expect(actorA.getSnapshot()).toMatchObject({
       phase: "ready",
-      previewReloadEpoch: 2,
+      previewReloadEpoch: 3,
       invocationRef: { operationId: "restart-b" },
     });
     expect(runtime.restart).toHaveBeenCalledTimes(1);
@@ -262,12 +274,34 @@ describe("main-hosted app-run actor", () => {
     await flush();
     expect(actorA.getSnapshot()).toMatchObject({
       phase: "ready",
-      previewReloadEpoch: 3,
+      previewReloadEpoch: 4,
+    });
+  });
+
+  it("restores the ready proxy URL when attaching to an existing startup", async () => {
+    runtime.waitForReady.mockResolvedValue(
+      readyRuntime("http://localhost:4321"),
+    );
+    const { actorA } = createHarness();
+    await actorA.resync();
+
+    await actorA.dispatch({
+      type: "START",
+      operationId: "attach-to-startup",
+      startedAt: 10,
+      expectedRevision: 0,
+    });
+
+    await vi.waitFor(() => {
+      expect(actorA.getSnapshot()).toMatchObject({
+        phase: "ready",
+        url: { appUrl: "http://localhost:4321" },
+      });
     });
   });
 
   it("resolves renderer dispatch only after the matching runtime is ready", async () => {
-    const pendingReady = deferred<void>();
+    const pendingReady = deferred<ReadyRuntime>();
     runtime.waitForReady.mockReturnValue(pendingReady.promise);
     const { duplex } = createHarness();
     const manager = new AppRunRemoteManager(
@@ -288,7 +322,7 @@ describe("main-hosted app-run actor", () => {
     });
     expect(settled).toBe(false);
 
-    pendingReady.resolve();
+    pendingReady.resolve(readyRuntime());
     await dispatch;
     expect(settled).toBe(true);
     manager.dispose();

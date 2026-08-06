@@ -430,6 +430,10 @@ export async function ensureProxyForRunningApp({
   if (appInfo.proxyWorker) {
     await appInfo.proxyWorker.terminate();
     appInfo.proxyWorker = undefined;
+    // Replacing the worker invalidates readiness until the replacement's
+    // onStarted callback publishes its live endpoint. In particular, cloud
+    // in-place restarts may retain the same original URL with new auth.
+    appInfo.proxyUrl = undefined;
   }
 
   // Prefer the deterministic port so the iframe origin stays stable across
@@ -1472,9 +1476,15 @@ export interface AppRuntimeServiceDependencies {
   readRuntimeMode(): RuntimeMode2;
   removeNodeModules(appPath: string): Promise<void>;
   removeDockerVolumes(appId: number): Promise<void>;
-  waitForReady(appId: number, timeoutMs?: number): Promise<void>;
+  waitForReady(appId: number, timeoutMs?: number): Promise<ReadyAppRuntime>;
   createId(): string;
   now(): number;
+}
+
+export interface ReadyAppRuntime {
+  proxyUrl: string;
+  originalUrl: string;
+  mode: RuntimeMode2;
 }
 
 export interface StartAppRuntimeOptions {
@@ -1683,7 +1693,7 @@ export class AppRuntimeService {
   waitForReady(
     appId: number,
     options: { timeoutMs?: number } = {},
-  ): Promise<void> {
+  ): Promise<ReadyAppRuntime> {
     return this.dependencies.waitForReady(appId, options.timeoutMs);
   }
 
@@ -1904,7 +1914,7 @@ function errorMessage(error: unknown): string {
 async function waitForAppReady(
   appId: number,
   timeoutMs = DEFAULT_APP_READY_TIMEOUT_MS,
-): Promise<void> {
+): Promise<ReadyAppRuntime> {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
     const appInfo = runningApps.get(appId);
@@ -1914,8 +1924,12 @@ async function waitForAppReady(
         DyadErrorKind.External,
       );
     }
-    if (appInfo.proxyUrl) {
-      return;
+    if (appInfo.proxyUrl && appInfo.originalUrl) {
+      return {
+        proxyUrl: appInfo.proxyUrl,
+        originalUrl: appInfo.originalUrl,
+        mode: appInfo.mode,
+      };
     }
     await new Promise<void>((resolve) => {
       setTimeout(resolve, APP_READY_POLL_MS);

@@ -7,6 +7,7 @@ import {
   AppRuntimeService,
   type AppRuntimeOutput,
   type AppRuntimeServiceDependencies,
+  type ReadyAppRuntime,
 } from "./app_runtime_service";
 
 const APP_ID = 42;
@@ -15,6 +16,19 @@ const REF: AppRunInvocationRef = {
   entityKey: APP_ID,
   operationId: "app-run:test",
 };
+const READY_RUNTIME: ReadyAppRuntime = {
+  proxyUrl: "http://localhost:3000",
+  originalUrl: "http://localhost:5173",
+  mode: "host",
+};
+
+function deferredReady() {
+  let resolve!: (runtime: ReadyAppRuntime) => void;
+  const promise = new Promise<ReadyAppRuntime>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
 
 function createOutput() {
   const sent: unknown[] = [];
@@ -82,6 +96,7 @@ function createHarness() {
     removeDockerVolumes: vi.fn(),
     waitForReady: vi.fn(async () => {
       calls.push("ready");
+      return READY_RUNTIME;
     }),
     createId: () => `id-${++id}`,
     now: () => 123,
@@ -300,12 +315,9 @@ describe("AppRuntimeService", () => {
     const harness = createHarness();
     const { output, sent } = createOutput();
     const abortController = new AbortController();
-    let releaseReady!: () => void;
-    const ready = new Promise<void>((resolve) => {
-      releaseReady = resolve;
-    });
+    const ready = deferredReady();
     vi.mocked(harness.dependencies.waitForReady).mockImplementation(
-      async () => ready,
+      async () => ready.promise,
     );
 
     const execution = harness.service.executeExternalLifecycle({
@@ -320,7 +332,7 @@ describe("AppRuntimeService", () => {
     );
 
     abortController.abort();
-    releaseReady();
+    ready.resolve(READY_RUNTIME);
     await execution;
 
     expect(sent).toEqual([
@@ -333,12 +345,9 @@ describe("AppRuntimeService", () => {
     const harness = createHarness();
     const first = createOutput();
     const second = createOutput();
-    let releaseReady!: () => void;
-    const ready = new Promise<void>((resolve) => {
-      releaseReady = resolve;
-    });
+    const ready = deferredReady();
     vi.mocked(harness.dependencies.waitForReady).mockImplementation(
-      async () => ready,
+      async () => ready.promise,
     );
     const secondRef: AppRunInvocationRef = {
       ...REF,
@@ -360,7 +369,7 @@ describe("AppRuntimeService", () => {
     await vi.waitFor(() =>
       expect(harness.dependencies.waitForReady).toHaveBeenCalledTimes(2),
     );
-    releaseReady();
+    ready.resolve(READY_RUNTIME);
     await Promise.all([firstExecution, secondExecution]);
 
     expect(first.sent).toContainEqual(
@@ -414,12 +423,9 @@ describe("AppRuntimeService", () => {
     const harness = createHarness();
     const first = createOutput();
     const second = createOutput();
-    let releaseReady!: () => void;
-    const ready = new Promise<void>((resolve) => {
-      releaseReady = resolve;
-    });
+    const ready = deferredReady();
     vi.mocked(harness.dependencies.waitForReady).mockImplementation(
-      async () => ready,
+      async () => ready.promise,
     );
     const secondRef: AppRunInvocationRef = {
       kind: "app-run",
@@ -446,7 +452,7 @@ describe("AppRuntimeService", () => {
     );
 
     harness.service.cleanupAll();
-    releaseReady();
+    ready.resolve(READY_RUNTIME);
     await Promise.all(executions);
 
     expect(first.sent).toEqual([

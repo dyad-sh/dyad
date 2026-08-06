@@ -509,7 +509,18 @@ function createCommandRunner() {
                 output,
               }));
           runtimeMayBeLive = true;
-          await appRuntimeService.waitForReady(command.appId);
+          const readyRuntime = await appRuntimeService.waitForReady(
+            command.appId,
+          );
+          emit({
+            type: "PROXY_READY",
+            invocationRef: command.invocationRef,
+            url: {
+              appUrl: readyRuntime.proxyUrl,
+              originalUrl: readyRuntime.originalUrl,
+              mode: readyRuntime.mode,
+            },
+          });
         });
         return operation.then(
           () =>

@@ -1,0 +1,6 @@
+allowBuilds:
+  core-js: true
+  sharp: true
+
+packages:
+  - .

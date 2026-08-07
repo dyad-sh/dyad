@@ -210,6 +210,20 @@ export type SupabaseOrganizationCredentials = z.infer<
   typeof SupabaseOrganizationCredentialsSchema
 >;
 
+/**
+ * A Coolify instance Dyad can deploy to.
+ *
+ * One object rather than two loose fields: the address and the token are only
+ * useful together, and neither says anything on its own. Which app deploys
+ * where lives in the coolify_app_connections table, not here — this is the
+ * instance, and it is instance-wide.
+ */
+export const CoolifySchema = z.object({
+  instanceUrl: z.string().optional(),
+  accessToken: SecretSchema.optional(),
+});
+export type Coolify = z.infer<typeof CoolifySchema>;
+
 export const SupabaseSchema = z.object({
   // Map keyed by organizationSlug -> organization credentials
   organizations: z
@@ -383,8 +397,7 @@ const BaseUserSettingsFields = {
   githubUser: GithubUserSchema.optional(),
   githubAccessToken: SecretSchema.optional(),
   vercelAccessToken: SecretSchema.optional(),
-  coolifyInstanceUrl: z.string().optional(),
-  coolifyAccessToken: SecretSchema.optional(),
+  coolify: CoolifySchema.optional(),
   supabase: SupabaseSchema.optional(),
   neon: NeonSchema.optional(),
   autoApproveChanges: z.boolean().optional(),

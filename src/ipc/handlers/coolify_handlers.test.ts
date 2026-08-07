@@ -118,8 +118,10 @@ beforeEach(() => {
   rows.push({ ...APP_ROW });
   connection = { ...CONNECTED };
   for (const key of Object.keys(settings)) delete settings[key];
-  settings.coolifyInstanceUrl = "https://coolify.example.com";
-  settings.coolifyAccessToken = { value: "tok" };
+  settings.coolify = {
+    instanceUrl: "https://coolify.example.com",
+    accessToken: { value: "tok" },
+  };
   registerCoolifyHandlers();
 });
 

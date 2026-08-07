@@ -58,8 +58,8 @@ export interface DeployResult {
 
 function getClient(signal?: AbortSignal): CoolifyClient {
   const settings = readSettings();
-  const token = settings.coolifyAccessToken?.value;
-  const instanceUrl = settings.coolifyInstanceUrl;
+  const token = settings.coolify?.accessToken?.value;
+  const instanceUrl = settings.coolify?.instanceUrl;
   if (!token || !instanceUrl) {
     throw new DyadError(
       "Coolify is not connected. Add your instance URL and API token first.",
@@ -508,7 +508,7 @@ export async function runDeployPipeline({
   }
   const settings = readSettings();
   const connection = await readConnectionState(appId);
-  if (!settings.coolifyInstanceUrl || connection.kind === "none") {
+  if (!settings.coolify?.instanceUrl || connection.kind === "none") {
     throw new DyadError(
       "Connect a Coolify server for this app first.",
       DyadErrorKind.Validation,

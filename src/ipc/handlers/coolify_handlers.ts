@@ -33,8 +33,8 @@ const logger = log.scope("coolify_handlers");
 
 function getClient(): CoolifyClient {
   const settings = readSettings();
-  const token = settings.coolifyAccessToken?.value;
-  const instanceUrl = settings.coolifyInstanceUrl;
+  const token = settings.coolify?.accessToken?.value;
+  const instanceUrl = settings.coolify?.instanceUrl;
   if (!token || !instanceUrl) {
     throw new DyadError(
       "Coolify is not connected. Add your instance URL and API token first.",
@@ -127,14 +127,14 @@ function readConnection(
 ): CoolifyConnection | null {
   const settings = readSettings();
   if (
-    !settings.coolifyAccessToken?.value ||
-    !settings.coolifyInstanceUrl ||
+    !settings.coolify?.accessToken?.value ||
+    !settings.coolify?.instanceUrl ||
     state.kind === "none"
   ) {
     return null;
   }
   return {
-    instanceUrl: settings.coolifyInstanceUrl,
+    instanceUrl: settings.coolify?.instanceUrl,
     serverUuid: state.serverUuid,
     projectUuid: state.projectUuid,
     environmentName: state.environmentName,
@@ -160,8 +160,8 @@ export function registerCoolifyHandlers() {
     const state = await readConnectionState(appId);
     const deployed = state.kind === "deployed" ? state : null;
     return {
-      hasToken: Boolean(settings.coolifyAccessToken?.value),
-      instanceUrl: settings.coolifyInstanceUrl ?? null,
+      hasToken: Boolean(settings.coolify?.accessToken?.value),
+      instanceUrl: settings.coolify?.instanceUrl ?? null,
       connection: readConnection(state),
       appUrl: deployed?.appUrl ?? null,
       lastDeployedAt: deployed?.lastDeployedAt.getTime() ?? null,
@@ -186,10 +186,9 @@ export function registerCoolifyHandlers() {
       // reported once the token itself is accepted.
       await probe.listServers();
       const normalized = instanceUrl.replace(/\/+$/, "");
-      const previous = readSettings().coolifyInstanceUrl;
+      const previous = readSettings().coolify?.instanceUrl;
       writeSettings({
-        coolifyInstanceUrl: normalized,
-        coolifyAccessToken: { value: token },
+        coolify: { instanceUrl: normalized, accessToken: { value: token } },
       });
       // Nothing is cleared here. Server, project and application ids are
       // meaningless on another instance, but they are not meaningless — they
@@ -225,7 +224,11 @@ export function registerCoolifyHandlers() {
     // token points somewhere else; that is the case where the ids really are
     // meaningless, and it clears them itself.
     coolifyDeployRegistry.cancelAll();
-    writeSettings({ coolifyAccessToken: undefined });
+    // The address survives; only the token goes. Spread rather than replaced,
+    // so a field added to CoolifySchema later is not silently dropped here.
+    writeSettings({
+      coolify: { ...readSettings().coolify, accessToken: undefined },
+    });
   });
 
   createTypedHandler(coolifyContracts.createProject, async (_, { name }) => {
@@ -304,7 +307,7 @@ export function registerCoolifyHandlers() {
       const servers = await client.listServers();
       const address = expectedServerAddress({
         serverIp: servers.find((s) => s.uuid === serverUuid)?.ip,
-        instanceUrl: readSettings().coolifyInstanceUrl ?? "",
+        instanceUrl: readSettings().coolify?.instanceUrl ?? "",
       });
 
       let expectedIps: string[] = [];

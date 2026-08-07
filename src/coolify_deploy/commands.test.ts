@@ -6,8 +6,10 @@ import { eq } from "drizzle-orm";
 // here because the handler harness and its context module import them too.
 vi.mock("@/main/settings", () => ({
   readSettings: () => ({
-    coolifyInstanceUrl: "https://coolify.test",
-    coolifyAccessToken: { value: "token" },
+    coolify: {
+      instanceUrl: "https://coolify.test",
+      accessToken: { value: "token" },
+    },
     githubAccessToken: { value: "gh-token" },
   }),
   writeSettings: vi.fn(),

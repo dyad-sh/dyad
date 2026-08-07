@@ -27,8 +27,8 @@
 <text x="296.53018000000003" y="822.9131016042784" text-anchor="middle" fill="#d1d5db" font-size="11.5">claude-sonnet-5</text>
 <circle cx="142.00618" cy="1010.2404984721163" r="7" fill="#199e70" stroke="#1a1a19" stroke-width="2"/>
 <text x="142.00618" y="1032.2404984721163" text-anchor="middle" fill="#d1d5db" font-size="11.5">grok-4.5</text>
-<circle cx="114.26295999999999" cy="1158.592890565317" r="7" fill="#3987e5" stroke="#1a1a19" stroke-width="2"/>
-<text x="114.26295999999999" y="1146.592890565317" text-anchor="middle" fill="#d1d5db" font-size="11.5">gpt-5.6-luna</text>
+<circle cx="114.26295999999999" cy="1182.217890565317" r="7" fill="#3987e5" stroke="#1a1a19" stroke-width="2"/>
+<text x="114.26295999999999" y="1170.217890565317" text-anchor="middle" fill="#d1d5db" font-size="11.5">gpt-5.6-luna</text>
 <text x="380" y="410" text-anchor="middle" fill="#d1d5db" font-size="12.5">Total build cost, all apps (USD, list price)</text>
 <text transform="rotate(-90)" x="-206" y="16" text-anchor="middle" fill="#d1d5db" font-size="12.5">Overall composite (axis from 80%)</text>
 </svg>

@@ -17,7 +17,7 @@ Costs are list-price dollars from exact per-request token counts
 | gpt-5.6-terra   | 87.0% ($1.48)  | 87.1% ($2.35)  | 8.0% ($2.30)   | 25 min     | $6.13      | **60.7%** |
 | claude-sonnet-5 | 8.0% ($8.26)   | 90.5% ($3.69)  | 72.3% ($2.77)  | 58 min     | $14.72     | **56.9%** |
 | grok-4.5        | 82.4% ($1.97)  | 49.2% ($1.44)  | 13.2% ($1.53)  | 50 min     | $4.94      | **48.3%** |
-| gpt-5.6-luna    | 56.7% ($1.46)  | 59.1% ($0.79)  | 7.0% ($0.93)   | 27 min     | $3.18      | **41.0%** |
+| gpt-5.6-luna    | 56.7% ($1.46)  | 59.1% ($0.79)  | 3.5% ($0.93)   | 27 min     | $3.18      | **39.8%** |
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="scatter-dark.svg">
@@ -35,7 +35,7 @@ and are reported separately from the headline matrix.
 
 | Model         | Effort | Relay CRM | Deskhero | Portalis | Cost   | Wall-clock | Overall   |
 | ------------- | ------ | --------- | -------- | -------- | ------ | ---------- | --------- |
-| gpt-5.6-luna  | medium | 56.7%     | 59.1%    | 7.0%     | $3.18  | 27 min     | **41.0%** |
+| gpt-5.6-luna  | medium | 56.7%     | 59.1%    | 3.5%     | $3.18  | 27 min     | **39.8%** |
 | gpt-5.6-luna  | high   | 76.6%     | 68.8%    | 92.5%    | $6.51  | 61 min     | **79.3%** |
 | gpt-5.6-luna  | xhigh  | 41.1%     | 95.8%    | 0.0%     | $9.82  | 71 min     | **45.6%** |
 | gpt-5.6-terra | medium | 87.0%     | 87.1%    | 8.0%     | $6.13  | 25 min     | **60.7%** |

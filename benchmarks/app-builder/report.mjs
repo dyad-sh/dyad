@@ -76,7 +76,6 @@ function scoreCell(slug, app, cellOverride) {
     prP = 0,
     prT = 0,
     judge = 0,
-    jn = 0,
     scored = 0;
   const fails = [];
   for (const ck of [1, 2, 3]) {
@@ -97,12 +96,16 @@ function scoreCell(slug, app, cellOverride) {
     prP += cfg.probes[ck] - probeFails;
     fails.push(...x.failures.map((id) => `${id}@${app}:ckpt${ck}`));
     const jf = R("judge", `${cell}-m${ck}.json`);
-    if (fs.existsSync(jf)) {
-      judge += JSON.parse(fs.readFileSync(jf)).judgeScore;
-      jn++;
-    }
+    if (fs.existsSync(jf)) judge += JSON.parse(fs.readFileSync(jf)).judgeScore;
   }
-  const judgeAvg = jn ? judge / jn : 0;
+  // Divide by the number of CHECKPOINTS, not by the number that produced a
+  // judge verdict. A checkpoint that fails to build scores zero on all three
+  // components, judge included — averaging over survivors instead handed a cell
+  // whose M2 and M3 did not compile the full 15% judge weight from its one
+  // surviving checkpoint (luna/portalis read 7.0% that way, 3.5% correctly).
+  // The judge does score a non-building diff — it gave those two checkpoints
+  // 0.425 and 0.5 — which is precisely why they must not be averaged in.
+  const judgeAvg = scored ? judge / scored : 0;
   // Composite only when all 3 checkpoints are scored — a mid-scoring cell
   // would otherwise count its unscored checkpoints as zeros.
   const composite =

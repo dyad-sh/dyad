@@ -240,6 +240,7 @@
     "uncommittedChanges": "Uncommitted changes",
     "unsavedChanges": "Unsaved changes",
     "folderHasUncommittedChanges": "Contains uncommitted changes",
+    "folderHasUnsavedChanges": "Contains unsaved changes",
     "fileSaved": "File saved",
     "loadingFileContent": "Loading file content...",
     "noContentAvailable": "No content available",

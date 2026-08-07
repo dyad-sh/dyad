@@ -237,6 +237,7 @@
     "uncommittedChanges": "未提交的更改",
     "unsavedChanges": "未保存的更改",
     "folderHasUncommittedChanges": "包含未提交的更改",
+    "folderHasUnsavedChanges": "包含未保存的更改",
     "fileSaved": "文件已保存",
     "loadingFileContent": "正在加载文件内容...",
     "noContentAvailable": "没有可用内容",

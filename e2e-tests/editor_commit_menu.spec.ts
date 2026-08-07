@@ -66,6 +66,10 @@ async function editAndSaveFile(
   await selectFileAndWaitForEditor(page, fileName);
 
   const row = treeRow(page, filePath);
+  // A locator matching nothing satisfies a negated assertion, so pin the row
+  // down first: otherwise a collapsed folder or a drifted path would let every
+  // "no marker" check below pass without the feature ever running.
+  await expect(row).toBeVisible({ timeout: Timeout.MEDIUM });
   await expect(row).not.toHaveAttribute("data-marker");
 
   await replaceEditorContent(page, content);
@@ -73,6 +77,14 @@ async function editAndSaveFile(
   await expect(row).toHaveAttribute("data-marker", "unsaved", {
     timeout: Timeout.MEDIUM,
   });
+  // The rollup carries the same state up, so a collapsed ancestor still points
+  // at the unsaved buffer buried inside it.
+  const parentDir = filePath.split("/").slice(0, -1).join("/");
+  await expect(treeDirRow(page, parentDir)).toHaveAttribute(
+    "data-marker",
+    "unsaved",
+    { timeout: Timeout.MEDIUM },
+  );
 
   await page.getByTestId("save-file-button").click();
   await expect(page.getByTestId("save-file-button")).toBeDisabled({
@@ -183,17 +195,20 @@ test("editor commit menu commits multiple staged files at once", async ({
     timeout: Timeout.MEDIUM,
   });
 
-  // Committing clears every tree marker, including the folder rollups.
-  await expect(treeRow(po.page, madeWithDyadTreePath)).not.toHaveAttribute(
-    "data-marker",
-    { timeout: Timeout.MEDIUM },
-  );
-  await expect(treeRow(po.page, robotsTreePath)).not.toHaveAttribute(
-    "data-marker",
-  );
-  await expect(treeDirRow(po.page, "src/components")).not.toHaveAttribute(
-    "data-marker",
-  );
+  // Committing clears every tree marker, including the folder rollups. Each row
+  // is pinned down first so a missing row cannot satisfy the negated assertion.
+  const clearedRows = [
+    treeRow(po.page, madeWithDyadTreePath),
+    treeRow(po.page, robotsTreePath),
+    treeDirRow(po.page, "src/components"),
+    treeDirRow(po.page, "src"),
+  ];
+  for (const row of clearedRows) {
+    await expect(row).toBeVisible({ timeout: Timeout.MEDIUM });
+    await expect(row).not.toHaveAttribute("data-marker", {
+      timeout: Timeout.MEDIUM,
+    });
+  }
 
   // Exactly ONE new commit was created, with our message...
   const headAfterCommit = execSync("git rev-parse HEAD", {

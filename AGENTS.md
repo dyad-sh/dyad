@@ -60,6 +60,8 @@ A worktree's `node_modules` can also be _sparsely_ populated — every package d
 
 Also run `npm install` in `testing/fake-llm-server/` before `npm run ts` in a fresh worktree. Otherwise the root type-check reports missing declarations for that package's local `express` and `cors` dependencies.
 
+If you symlink a worktree's `node_modules` at a shared install instead of installing into it, check `git status` before staging. `.gitignore` now lists `node_modules` without a trailing slash precisely because the old `node_modules/` pattern matched only real directories — a symlink slipped past it, and `git add -A` committed an absolute path from one machine, so every later checkout of that branch replaced the reader's real `node_modules` with a dangling link.
+
 ## Pre-commit checks
 
 RUN THE FOLLOWING CHECKS before you do a commit.

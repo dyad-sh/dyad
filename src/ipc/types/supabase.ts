@@ -189,6 +189,7 @@ export const supabaseContracts = {
     }),
     output: z.object({
       functionCount: z.number().int().nonnegative(),
+      prunedFunctionNames: z.array(z.string()),
       errors: z.array(z.string()),
     }),
   }),

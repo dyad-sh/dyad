@@ -18,6 +18,7 @@ import {
 import { useAtomValue, useSetAtom } from "jotai";
 import { useQueryClient } from "@tanstack/react-query";
 import { selectedFileAtom, stagedDiffFileAtom } from "@/atoms/viewAtoms";
+import { clearStagedDiffAtom, exitStagedDiffAtom } from "@/atoms/commitAtoms";
 import { queryKeys } from "@/lib/queryKeys";
 import { useTranslation } from "react-i18next";
 import { VersionDiffView } from "./VersionDiffView";
@@ -63,7 +64,8 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
   const queryClient = useQueryClient();
   const selectedVersionId = diffVersionIdForState(previewState);
   const stagedDiffFile = useAtomValue(stagedDiffFileAtom);
-  const setStagedDiffFile = useSetAtom(stagedDiffFileAtom);
+  const exitStagedDiff = useSetAtom(exitStagedDiffAtom);
+  const clearStagedDiff = useSetAtom(clearStagedDiffAtom);
   const { refreshApp } = useLoadApp(app?.id ?? null);
   const { uncommittedFiles, hasUncommittedFiles } = useUncommittedFiles(
     app?.id ?? null,
@@ -301,8 +303,9 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
     const path = displayedDiffPath;
     // A staged selection left over from before the version diff opened would
     // put the panel back in staged-diff mode instead of the editor, so clear it
-    // on every path out of here.
-    setStagedDiffFile(null);
+    // on every path out of here. The user asked for the editor, so this must
+    // not reopen a commit dialog on top of it.
+    clearStagedDiff();
 
     if (!isVersionDiffMode) {
       setSelectedFile({ path });
@@ -377,7 +380,7 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
               <TooltipTrigger
                 render={
                   <button
-                    onClick={() => setStagedDiffFile(null)}
+                    onClick={() => exitStagedDiff()}
                     aria-label={t("preview.backToEditor")}
                     className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
                     data-testid="staged-diff-back-button"

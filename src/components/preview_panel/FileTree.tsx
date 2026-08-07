@@ -82,7 +82,7 @@ const getDirMarker = (path: string, status: FileTreeStatus): FileMarker => {
  * rather than by walking the tree, keeping this O(changed files x depth)
  * instead of O(all files) on every poll.
  */
-const collectAncestorDirs = (
+export const collectAncestorDirs = (
   paths: ReadonlySet<string>,
 ): ReadonlySet<string> => {
   const dirs = new Set<string>();
@@ -93,6 +93,42 @@ const collectAncestorDirs = (
     }
   }
   return dirs;
+};
+
+/**
+ * The rows `uncommittedFiles` should mark, reconciled against the tree's file
+ * list so every marked path has a row to sit on.
+ *
+ * Two git-status shapes have no row of their own. Deleted files are gone from
+ * disk, so they are dropped. A wholly-untracked directory arrives as a single
+ * entry ending in "/" (git only reports untracked files individually under
+ * `-uall`), so it is expanded into the files beneath it — dropping it instead
+ * would leave brand-new files looking unchanged. Either one left as-is would
+ * put a rollup dot on a folder whose children all show nothing.
+ */
+export const collectUncommittedPaths = (
+  uncommittedFiles: readonly { path: string; status: string }[],
+  files: readonly string[],
+): ReadonlySet<string> => {
+  const paths = new Set<string>();
+  const untrackedDirs: string[] = [];
+  for (const file of uncommittedFiles) {
+    if (file.status === "deleted") continue;
+    if (file.path.endsWith("/")) {
+      untrackedDirs.push(file.path);
+    } else {
+      paths.add(file.path);
+    }
+  }
+  // Only walk the (much longer) file list when there is a directory to expand.
+  if (untrackedDirs.length > 0) {
+    for (const filePath of files) {
+      if (untrackedDirs.some((dir) => filePath.startsWith(dir))) {
+        paths.add(filePath);
+      }
+    }
+  }
+  return paths;
 };
 
 /**
@@ -317,15 +353,8 @@ export const FileTree = ({ appId, files }: FileTreeProps) => {
   const unsavedPaths = useUnsavedFiles(appId);
 
   const uncommittedPaths = useMemo(
-    () =>
-      new Set(
-        uncommittedFiles
-          // Deleted files are gone from disk so they have no row here; counting
-          // them would mark folders that show no marked child.
-          .filter((file) => file.status !== "deleted")
-          .map((file) => file.path),
-      ),
-    [uncommittedFiles],
+    () => collectUncommittedPaths(uncommittedFiles, files),
+    [uncommittedFiles, files],
   );
 
   const uncommittedDirs = useMemo(

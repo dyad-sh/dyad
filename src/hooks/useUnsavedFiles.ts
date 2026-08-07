@@ -27,9 +27,14 @@ export function useUnsavedFiles(appId: number | null): ReadonlySet<string> {
  * Publishes the calling editor's dirty state to `unsavedEditorFilesAtom`.
  *
  * The cleanup runs against the `appId`/`filePath` the effect was set up with, so
- * unmounting (file switch, app switch, collapsing a chat write card) and
- * switching files in place both clear the previous entry rather than leaving a
- * stale marker behind.
+ * unmounting (file switch, app switch, cancelling a chat write card's inline
+ * edit) and switching files in place both clear the previous entry rather than
+ * leaving a stale marker behind.
+ *
+ * Collapsing a chat write card does NOT clear it: DyadCardContent keeps its
+ * children mounted once expanded, so that editor's buffer is still live and
+ * still dirty, and the marker still reports the truth. The card's Cancel
+ * button, which stays reachable in the collapsed header, is what unmounts it.
  */
 export function useTrackUnsavedFile({
   appId,

@@ -49,6 +49,8 @@ interface FileTreeStatus {
   uncommittedDirs: ReadonlySet<string>;
   /** Files whose open editor buffer differs from disk. */
   unsavedPaths: ReadonlySet<string>;
+  /** Directories with at least one unsaved descendant. */
+  unsavedDirs: ReadonlySet<string>;
 }
 
 type FileMarker = "unsaved" | "uncommitted" | null;
@@ -64,6 +66,33 @@ const getFileMarker = (path: string, status: FileTreeStatus): FileMarker => {
   if (status.unsavedPaths.has(path)) return "unsaved";
   if (status.uncommittedPaths.has(path)) return "uncommitted";
   return null;
+};
+
+// Same precedence as getFileMarker, so a folder reports the most urgent state
+// buried inside it rather than only its uncommitted descendants.
+const getDirMarker = (path: string, status: FileTreeStatus): FileMarker => {
+  if (status.unsavedDirs.has(path)) return "unsaved";
+  if (status.uncommittedDirs.has(path)) return "uncommitted";
+  return null;
+};
+
+/**
+ * Ancestor directories of every path in `paths`, so collapsed folders can still
+ * advertise changes buried inside them. Derived from the changed-file list
+ * rather than by walking the tree, keeping this O(changed files x depth)
+ * instead of O(all files) on every poll.
+ */
+const collectAncestorDirs = (
+  paths: ReadonlySet<string>,
+): ReadonlySet<string> => {
+  const dirs = new Set<string>();
+  for (const filePath of paths) {
+    const parts = filePath.split("/");
+    for (let i = 1; i < parts.length; i++) {
+      dirs.add(parts.slice(0, i).join("/"));
+    }
+  }
+  return dirs;
 };
 
 /**
@@ -95,6 +124,33 @@ const FileMarkerDot = ({ marker }: { marker: FileMarker }) => {
       )}
     >
       <Circle size={8} fill="currentColor" />
+    </span>
+  );
+};
+
+/**
+ * Rollup marker for a folder with changes buried inside it. Deliberately
+ * smaller and muted next to FileMarkerDot: it points at a change somewhere
+ * below rather than being one itself, so only its label names the state.
+ */
+const FolderRollupDot = ({ marker }: { marker: FileMarker }) => {
+  const { t } = useTranslation("home");
+
+  if (!marker) return null;
+
+  const label =
+    marker === "unsaved"
+      ? t("preview.folderHasUnsavedChanges")
+      : t("preview.folderHasUncommittedChanges");
+
+  return (
+    <span
+      role="img"
+      aria-label={label}
+      title={label}
+      className="ml-1.5 flex flex-shrink-0 items-center text-muted-foreground/70"
+    >
+      <Circle size={6} fill="currentColor" />
     </span>
   );
 };
@@ -272,24 +328,18 @@ export const FileTree = ({ appId, files }: FileTreeProps) => {
     [uncommittedFiles],
   );
 
-  // Ancestor directories of every uncommitted file, so collapsed folders can
-  // still advertise changes buried inside them. Derived from the changed-file
-  // list rather than the tree, keeping this O(changed files x depth) instead of
-  // O(all files) on every poll.
-  const uncommittedDirs = useMemo(() => {
-    const dirs = new Set<string>();
-    for (const filePath of uncommittedPaths) {
-      const parts = filePath.split("/");
-      for (let i = 1; i < parts.length; i++) {
-        dirs.add(parts.slice(0, i).join("/"));
-      }
-    }
-    return dirs;
-  }, [uncommittedPaths]);
+  const uncommittedDirs = useMemo(
+    () => collectAncestorDirs(uncommittedPaths),
+    [uncommittedPaths],
+  );
+  const unsavedDirs = useMemo(
+    () => collectAncestorDirs(unsavedPaths),
+    [unsavedPaths],
+  );
 
   const status = useMemo<FileTreeStatus>(
-    () => ({ uncommittedPaths, uncommittedDirs, unsavedPaths }),
-    [uncommittedPaths, uncommittedDirs, unsavedPaths],
+    () => ({ uncommittedPaths, uncommittedDirs, unsavedPaths, unsavedDirs }),
+    [uncommittedPaths, uncommittedDirs, unsavedPaths, unsavedDirs],
   );
 
   // In search mode, create a flat list of matching files with match counts
@@ -557,13 +607,15 @@ const TreeNode = ({
   searchQuery,
   status,
 }: TreeNodeProps) => {
-  const { t } = useTranslation("home");
   const [expanded, setExpanded] = useState(level < 2);
   const setSelectedFile = useSetAtom(selectedFileAtom);
   const match = isSearchMode ? matchesByPath.get(node.path) : undefined;
-  const marker = node.isDirectory ? null : getFileMarker(node.path, status);
-  const hasUncommittedDescendants =
-    node.isDirectory && status.uncommittedDirs.has(node.path);
+  const marker = node.isDirectory
+    ? getDirMarker(node.path, status)
+    : getFileMarker(node.path, status);
+  // Folder names stay unstyled: coloring one would read as the folder itself
+  // having changed rather than something below it.
+  const nameMarker = node.isDirectory ? null : marker;
 
   useEffect(() => {
     if (isSearchMode && node.isDirectory) {
@@ -589,13 +641,7 @@ const TreeNode = ({
         onClick={handleClick}
         data-testid={node.isDirectory ? "file-tree-dir" : "file-tree-file"}
         data-path={node.path}
-        data-marker={
-          node.isDirectory
-            ? hasUncommittedDescendants
-              ? "uncommitted"
-              : undefined
-            : (marker ?? undefined)
-        }
+        data-marker={marker ?? undefined}
       >
         {node.isDirectory ? (
           <span className="mr-1 text-gray-500">
@@ -608,22 +654,16 @@ const TreeNode = ({
           <span
             className={cn(
               "truncate",
-              marker && "font-medium",
-              marker && MARKER_CLASSES[marker],
+              nameMarker && "font-medium",
+              nameMarker && MARKER_CLASSES[nameMarker],
             )}
           >
             {isSearchMode ? highlightMatch(node.name, searchQuery) : node.name}
           </span>
-          {!node.isDirectory && <FileMarkerDot marker={marker} />}
-          {hasUncommittedDescendants && (
-            <span
-              role="img"
-              aria-label={t("preview.folderHasUncommittedChanges")}
-              title={t("preview.folderHasUncommittedChanges")}
-              className="ml-1.5 flex flex-shrink-0 items-center text-muted-foreground/70"
-            >
-              <Circle size={6} fill="currentColor" />
-            </span>
+          {node.isDirectory ? (
+            <FolderRollupDot marker={marker} />
+          ) : (
+            <FileMarkerDot marker={marker} />
           )}
         </span>
         {!node.isDirectory && <MentionFileButton filePath={node.path} />}

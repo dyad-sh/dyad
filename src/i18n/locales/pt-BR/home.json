@@ -238,6 +238,7 @@
     "uncommittedChanges": "Alterações não commitadas",
     "unsavedChanges": "Alterações não salvas",
     "folderHasUncommittedChanges": "Contém alterações não commitadas",
+    "folderHasUnsavedChanges": "Contém alterações não salvas",
     "fileSaved": "Arquivo salvo",
     "loadingFileContent": "Carregando conteúdo do arquivo...",
     "noContentAvailable": "Nenhum conteúdo disponível",

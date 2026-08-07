@@ -1,39 +1,60 @@
 {
   "pinnedAt": "2026-07-28",
-  "note": "Per-1M-token public list prices. claude-sonnet-5 is intro pricing through 2026-08-31 (standard $3/$15 after). grok-4.5 tiers: prompt >= 200000 tokens re-prices the whole request. Sources: developers.openai.com/api/docs/pricing, Anthropic claude-api pricing (cross-validated benchlm.ai), docs.x.ai/docs/models.",
+  "note": "Per-1M-token public list prices. claude-sonnet-5 is intro pricing through 2026-08-31 (standard $3/$15 after). grok-4.5 tiers: prompt >= 200000 tokens re-prices the whole request. Sources: developers.openai.com/api/docs/pricing, Anthropic claude-api pricing (cross-validated benchlm.ai), docs.x.ai/docs/models. deepseek-v4-flash (0731 snapshot) priced from DeepSeek's own list, matching the convention used for grok-4.5 (priced from xAI's list, not the OpenRouter reseller rate); cross-validated across deepseek.ai/pricing, benchlm.ai and aipricing.guru on 2026-08-07. TWO CAVEATS: DeepSeek announced a significant unspecified API price increase on 2026-08-06, and a peak-hour surcharge doubling rates during UTC 01:00-04:00 and 06:00-10:00 (announced 2026-06-30, not active as of 2026-08-02). Either could make this pin stale; re-verify before quoting deepseek cost.",
   "models": {
-    "gpt-5.6-sol": { "input": 5.0, "cachedInput": 0.5, "output": 30.0 },
-    "gpt-5.6-terra": { "input": 2.5, "cachedInput": 0.25, "output": 15.0 },
-    "gpt-5.6-luna": { "input": 1.0, "cachedInput": 0.1, "output": 6.0 },
+    "gpt-5.6-sol": {
+      "input": 5,
+      "cachedInput": 0.5,
+      "output": 30
+    },
+    "gpt-5.6-terra": {
+      "input": 2.5,
+      "cachedInput": 0.25,
+      "output": 15
+    },
+    "gpt-5.6-luna": {
+      "input": 1,
+      "cachedInput": 0.1,
+      "output": 6
+    },
     "claude-opus-5": {
-      "input": 5.0,
+      "input": 5,
       "cachedInput": 0.5,
       "cacheWrite": 6.25,
-      "output": 25.0
+      "output": 25
     },
     "claude-fable-5": {
-      "input": 10.0,
-      "cachedInput": 1.0,
+      "input": 10,
+      "cachedInput": 1,
       "cacheWrite": 12.5,
-      "output": 50.0
+      "output": 50
     },
     "claude-sonnet-5": {
-      "input": 2.0,
+      "input": 2,
       "cachedInput": 0.2,
       "cacheWrite": 2.5,
-      "output": 10.0
+      "output": 10
     },
     "grok-4.5": {
-      "input": 2.0,
+      "input": 2,
       "cachedInput": 0.3,
-      "output": 6.0,
+      "output": 6,
       "tiers": {
         "threshold": 200000,
-        "input": 4.0,
+        "input": 4,
         "cachedInput": 0.6,
-        "output": 12.0
+        "output": 12
       }
     },
-    "gemini-3.6-flash": { "input": 0.3, "cachedInput": 0.075, "output": 1.2 }
+    "gemini-3.6-flash": {
+      "input": 0.3,
+      "cachedInput": 0.075,
+      "output": 1.2
+    },
+    "deepseek-v4-flash": {
+      "input": 0.14,
+      "cachedInput": 0.0028,
+      "output": 0.28
+    }
   }
 }

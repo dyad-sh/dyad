@@ -40,13 +40,43 @@ fi
 # Refuse to start until a tiny request answers quickly.
 ENGINE_URL="${DYAD_ENGINE_UPSTREAM:-https://engine.dyad.sh/v1}"
 echo "[run-cell] engine drain check…"
-for i in $(seq 1 30); do
-  code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 \
-    -X POST "$ENGINE_URL/chat/completions" \
+# Probe with the model this cell will actually use, and inspect the STREAM BODY,
+# not the status line. The engine answers HTTP 200 and reports failures inside
+# the SSE stream: a bogus model name yields 200 plus
+#   event: error  {"error":{"message":"... Invalid model name ..."}}
+# so a status-only check would let a whole 3-milestone cell run against a model
+# that never responds. Verified against this engine on 2026-08-07.
+#
+# The accepted model string differs by provider — direct providers take a bare
+# name ("gpt-5.6-luna") while OpenRouter models keep their full path
+# ("openrouter/deepseek/deepseek-v4-flash-0731"). Rather than encode that rule,
+# try the spec as given and then with its leading provider segment stripped,
+# and only fail when neither is accepted.
+ENGINE_PROBE_SPEC="${APPBENCH_MODEL:-openai/gpt-5.6-luna}"
+engine_probe() {
+  curl -s --max-time 20 -X POST "$ENGINE_URL/chat/completions" \
     -H "authorization: Bearer $DYAD_PRO_KEY" -H 'content-type: application/json' \
-    -d '{"model":"gpt-5.6-luna","stream":true,"max_tokens":1,"messages":[{"role":"user","content":"hi"}]}' || true)
-  [[ "$code" == "200" ]] && { echo "[run-cell] engine responsive."; break; }
-  echo "  engine busy/unreachable (code=$code), waiting 30s ($i/30)…"
+    -d "{\"model\":\"$1\",\"stream\":true,\"max_tokens\":1,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}" || true
+}
+for i in $(seq 1 30); do
+  ok=0
+  for candidate in "$ENGINE_PROBE_SPEC" "${ENGINE_PROBE_SPEC#*/}"; do
+    body=$(engine_probe "$candidate")
+    [[ -z "$body" ]] && continue
+    if grep -q 'event: error' <<<"$body"; then
+      last_err=$(grep -o '"message":"[^"]*' <<<"$body" | head -1 | cut -c12-200)
+      continue
+    fi
+    echo "[run-cell] engine responsive (model string: $candidate)."
+    ok=1; break
+  done
+  (( ok )) && break
+  if [[ -n "${last_err:-}" ]]; then
+    echo "[run-cell] engine REJECTED both forms of $ENGINE_PROBE_SPEC:"
+    echo "           $last_err"
+    exit 1
+  fi
+  echo "  engine unreachable, waiting 30s ($i/30)…"
   sleep 30
   [[ $i == 30 ]] && { echo "engine never drained; aborting"; exit 1; }
 done

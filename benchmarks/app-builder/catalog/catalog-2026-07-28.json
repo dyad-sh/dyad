@@ -60,7 +60,9 @@
         "temperature": 1,
         "maxOutputTokens": 128000,
         "contextWindow": 1050000,
-        "lifecycle": { "stage": "preview" }
+        "lifecycle": {
+          "stage": "preview"
+        }
       },
       {
         "apiName": "gpt-5.6-terra",
@@ -70,7 +72,9 @@
         "temperature": 1,
         "maxOutputTokens": 128000,
         "contextWindow": 1050000,
-        "lifecycle": { "stage": "preview" }
+        "lifecycle": {
+          "stage": "preview"
+        }
       },
       {
         "apiName": "gpt-5.6-luna",
@@ -80,7 +84,9 @@
         "temperature": 1,
         "maxOutputTokens": 128000,
         "contextWindow": 1050000,
-        "lifecycle": { "stage": "preview" }
+        "lifecycle": {
+          "stage": "preview"
+        }
       }
     ],
     "anthropic": [
@@ -138,7 +144,9 @@
         "temperature": 1,
         "maxOutputTokens": 65535,
         "contextWindow": 1048576,
-        "lifecycle": { "stage": "preview" }
+        "lifecycle": {
+          "stage": "preview"
+        }
       }
     ],
     "vertex": [
@@ -158,7 +166,9 @@
         "temperature": 1,
         "maxOutputTokens": 65535,
         "contextWindow": 1048576,
-        "lifecycle": { "stage": "preview" }
+        "lifecycle": {
+          "stage": "preview"
+        }
       }
     ],
     "openrouter": [
@@ -212,6 +222,15 @@
         "dollarSigns": 3,
         "temperature": 1,
         "contextWindow": 500000
+      },
+      {
+        "apiName": "deepseek/deepseek-v4-flash-0731",
+        "displayName": "DeepSeek V4 Flash",
+        "description": "DeepSeek's 0731 release for fast reasoning, coding, and agent workflows",
+        "dollarSigns": 1,
+        "temperature": 1,
+        "maxOutputTokens": 65536,
+        "contextWindow": 1048576
       }
     ],
     "xai": [
@@ -246,13 +265,19 @@
     },
     {
       "id": "dyad/theme-generator/openai",
-      "resolvedModel": { "providerId": "openai", "apiName": "gpt-5.4" },
+      "resolvedModel": {
+        "providerId": "openai",
+        "apiName": "gpt-5.4"
+      },
       "displayName": "OpenAI",
       "purpose": "theme-generation"
     },
     {
       "id": "dyad/auto/openai",
-      "resolvedModel": { "providerId": "openai", "apiName": "gpt-5.6-sol" },
+      "resolvedModel": {
+        "providerId": "openai",
+        "apiName": "gpt-5.6-sol"
+      },
       "displayName": "Auto OpenAI",
       "purpose": "auto-mode"
     },
@@ -285,16 +310,28 @@
     },
     {
       "id": "dyad/help-bot/default",
-      "resolvedModel": { "providerId": "openai", "apiName": "gpt-5-nano" },
+      "resolvedModel": {
+        "providerId": "openai",
+        "apiName": "gpt-5-nano"
+      },
       "displayName": "Help Bot",
       "purpose": "help-bot"
     }
   ],
   "curatedSelections": {
     "themeGenerationOptions": [
-      { "id": "dyad/theme-generator/google", "label": "Google" },
-      { "id": "dyad/theme-generator/anthropic", "label": "Anthropic" },
-      { "id": "dyad/theme-generator/openai", "label": "OpenAI" }
+      {
+        "id": "dyad/theme-generator/google",
+        "label": "Google"
+      },
+      {
+        "id": "dyad/theme-generator/anthropic",
+        "label": "Anthropic"
+      },
+      {
+        "id": "dyad/theme-generator/openai",
+        "label": "OpenAI"
+      }
     ]
   }
 }

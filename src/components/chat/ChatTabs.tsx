@@ -41,6 +41,7 @@ import {
   stagedDiffFileAtom,
 } from "@/atoms/viewAtoms";
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
+import { resetCommitDialogAtom } from "@/atoms/commitAtoms";
 import { selectedComponentsPreviewAtom } from "@/atoms/previewAtoms";
 import { terminalOpenByChatIdAtom } from "@/atoms/terminalAtoms";
 import {
@@ -609,6 +610,9 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
     ) => {
       store.set(selectedFileAtom, presentation.selectedFile);
       store.set(editorCursorAtom, presentation.editorCursor);
+      // The tab's own staged diff replaces whatever was displayed, so a commit
+      // dialog - or a pending return to one - belongs to the tab we just left.
+      store.set(resetCommitDialogAtom);
       store.set(stagedDiffFileAtom, presentation.stagedDiffFile);
       store.set(previewModeAtom, presentation.previewMode);
       store.set(isPreviewOpenAtom, presentation.isPreviewOpen);
@@ -935,6 +939,12 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
             store.set(selectedAppIdAtom, previousSelectedAppId);
             store.set(selectedFileAtom, previousSelectedFile);
             store.set(editorCursorAtom, previousEditorCursor);
+            // This branch restores the presentation by hand rather than through
+            // restorePresentation, so it has to drop the commit dialog itself:
+            // the staged diff below replaces what was displayed, and no chat is
+            // selected afterwards, so a dialog left open would belong to
+            // nothing.
+            store.set(resetCommitDialogAtom);
             store.set(stagedDiffFileAtom, previousStagedDiffFile);
             store.set(previewModeAtom, previousPreviewMode);
             store.set(isPreviewOpenAtom, previousIsPreviewOpen);

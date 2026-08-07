@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createStore, Provider } from "jotai";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { selectedFileAtom, stagedDiffFileAtom } from "@/atoms/viewAtoms";
+import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { queryKeys } from "@/lib/queryKeys";
 import { CodeView } from "./CodeView";
 
@@ -166,6 +167,10 @@ function renderCodeView(
   files: string[],
   queryClient = new QueryClient(),
 ) {
+  // PreviewPanel renders CodeView with useLoadApp(selectedAppId)'s app, so the
+  // two are always the same app. Keep the store honest about that: actions
+  // scoped to the app the user is on are no-ops when they disagree.
+  store.set(selectedAppIdAtom, 1);
   const view = (
     <QueryClientProvider client={queryClient}>
       <Provider store={store}>
@@ -177,14 +182,16 @@ function renderCodeView(
   return {
     ...rendered,
     queryClient,
-    rerenderCodeView: (nextFiles: string[] = files, appId = 1) =>
+    rerenderCodeView: (nextFiles: string[] = files, appId = 1) => {
+      store.set(selectedAppIdAtom, appId);
       rendered.rerender(
         <QueryClientProvider client={queryClient}>
           <Provider store={store}>
             <CodeView loading={false} app={{ id: appId, files: nextFiles }} />
           </Provider>
         </QueryClientProvider>,
-      ),
+      );
+    },
   };
 }
 

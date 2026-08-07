@@ -129,6 +129,21 @@ test("editor commit menu commits multiple staged files at once", async ({
   await messageInput.clear();
   await messageInput.fill(commitMessage);
 
+  // Clicking a file in the dialog closes it and opens that file's diff...
+  await filesList
+    .getByTestId("commit-file-item")
+    .filter({ hasText: "robots.txt" })
+    .click();
+  await expect(dialog).not.toBeVisible();
+  await expect(po.page.getByTestId("staged-diff-view")).toBeVisible({
+    timeout: Timeout.MEDIUM,
+  });
+
+  // ...and leaving the diff brings the dialog back with the message intact.
+  await po.page.getByTestId("staged-diff-back-button").click();
+  await expect(dialog).toBeVisible();
+  await expect(messageInput).toHaveValue(commitMessage);
+
   await po.page.getByTestId("editor-commit-confirm-button").click();
   await po.toastNotifications.waitForToast("success");
 

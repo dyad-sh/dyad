@@ -178,6 +178,22 @@ const runUncommittedFilesBannerTest = async (po: PageObject) => {
   await commitInput.clear();
   await commitInput.fill(testCommitMessage);
 
+  // Clicking a file closes the dialog and reveals that file's diff in the code
+  // panel, which the banner has to open since it lives in the chat header.
+  await changedFilesList
+    .getByTestId("commit-file-item")
+    .filter({ hasText: "new-file.txt" })
+    .click();
+  await expect(po.page.getByTestId("commit-dialog")).not.toBeVisible();
+  await expect(po.page.getByTestId("staged-diff-view")).toBeVisible({
+    timeout: Timeout.MEDIUM,
+  });
+
+  // Leaving the diff brings the dialog back with the typed message intact.
+  await po.page.getByTestId("staged-diff-back-button").click();
+  await expect(po.page.getByTestId("commit-dialog")).toBeVisible();
+  await expect(commitInput).toHaveValue(testCommitMessage);
+
   // Click the commit button
   await po.page.getByTestId("commit-button").click();
 

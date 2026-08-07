@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { GitCommitVertical, ChevronDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { useSetAtom } from "jotai";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Dialog,
@@ -20,17 +20,22 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { stagedDiffFileAtom } from "@/atoms/viewAtoms";
+import {
+  clearStagedDiffAtom,
+  commitMessageDraftAtom,
+  openCommitDialogAtom,
+  openStagedDiffAtom,
+  type CommitDialogSource,
+} from "@/atoms/commitAtoms";
 import { useUncommittedFiles } from "@/hooks/useUncommittedFiles";
 import { useCommitChanges } from "@/hooks/useCommitChanges";
 import { cn } from "@/lib/utils";
 import {
   getStatusIcon,
-  getStatusLabel,
-  getStatusBadgeClassName,
   generateDefaultCommitMessage,
   LineStats,
 } from "@/components/chat/uncommittedFileStatus";
+import { CommitFileList } from "@/components/chat/CommitFileList";
 import { useVersionPreview } from "@/hooks/useVersionPreview";
 
 interface CommitMenuProps {
@@ -46,22 +51,38 @@ export function CommitMenu({ appId }: CommitMenuProps) {
   const { t } = useTranslation("home");
   const { uncommittedFiles, hasUncommittedFiles } = useUncommittedFiles(appId);
   const { commitChanges, isCommitting } = useCommitChanges();
-  const setStagedDiffFile = useSetAtom(stagedDiffFileAtom);
+  const [openCommitDialog, setOpenCommitDialog] = useAtom(openCommitDialogAtom);
+  const openStagedDiffFile = useSetAtom(openStagedDiffAtom);
+  const clearStagedDiff = useSetAtom(clearStagedDiffAtom);
+  const setCommitMessageDraft = useSetAtom(commitMessageDraftAtom);
+  const commitMessageDraft = useAtomValue(commitMessageDraftAtom);
   const { send: sendPreviewEvent } = useVersionPreview(appId);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [commitMessage, setCommitMessage] = useState("");
+  // Frozen at open so polling doesn't rewrite the suggestion under the user.
+  // Only ever a suggestion: once the user types, the draft atom takes over.
+  const [generatedMessage, setGeneratedMessage] = useState<string | null>(null);
+
+  const isDialogOpen = openCommitDialog === "editor";
+  const commitMessage =
+    commitMessageDraft ??
+    generatedMessage ??
+    generateDefaultCommitMessage(uncommittedFiles);
 
   // Opening a staged file's diff must clear any selected version diff, since
   // CodeView suppresses staged-diff mode whenever a version diff is active.
-  const openStagedDiff = (filePath: string) => {
+  // `returnTo` is what brings the user back to the dialog they came from.
+  const openStagedDiff = (
+    filePath: string,
+    returnTo: CommitDialogSource | null,
+  ) => {
     sendPreviewEvent({ type: "CLOSE" });
-    setStagedDiffFile(filePath);
+    openStagedDiffFile({ path: filePath, returnTo });
   };
 
   const handleOpenDialog = () => {
-    // Prefill only when opening so polling doesn't overwrite the user's edits.
-    setCommitMessage(generateDefaultCommitMessage(uncommittedFiles));
-    setIsDialogOpen(true);
+    // Regenerate the suggestion on every open so its file counts stay current.
+    // A message the user actually typed lives in the draft atom and survives.
+    setGeneratedMessage(generateDefaultCommitMessage(uncommittedFiles));
+    setOpenCommitDialog("editor");
   };
 
   const handleCommit = async () => {
@@ -73,10 +94,12 @@ export function CommitMenu({ appId }: CommitMenuProps) {
       // and preserve the message so the user can retry without retyping it.
       return;
     }
-    setIsDialogOpen(false);
-    setCommitMessage("");
-    // Nothing is staged anymore, so leave the diff view if it was open.
-    setStagedDiffFile(null);
+    setOpenCommitDialog(null);
+    setGeneratedMessage(null);
+    setCommitMessageDraft(null);
+    // Nothing is staged anymore, so leave the diff view if it was open. This
+    // must not reopen the dialog, hence clear rather than exit.
+    clearStagedDiff();
   };
 
   return (
@@ -125,7 +148,9 @@ export function CommitMenu({ appId }: CommitMenuProps) {
               <DropdownMenuItem
                 key={file.path}
                 className="flex items-center gap-2"
-                onClick={() => openStagedDiff(file.path)}
+                // The dropdown is a shortcut straight to a diff, so leaving it
+                // returns to the editor rather than opening the dialog.
+                onClick={() => openStagedDiff(file.path, null)}
                 data-testid="staged-file-item"
               >
                 {getStatusIcon(file.status)}
@@ -149,7 +174,7 @@ export function CommitMenu({ appId }: CommitMenuProps) {
         open={isDialogOpen}
         onOpenChange={(open) => {
           if (!open && isCommitting) return;
-          setIsDialogOpen(open);
+          setOpenCommitDialog(open ? "editor" : null);
         }}
       >
         <DialogContent
@@ -174,7 +199,7 @@ export function CommitMenu({ appId }: CommitMenuProps) {
               <Input
                 id="editor-commit-message"
                 value={commitMessage}
-                onChange={(e) => setCommitMessage(e.target.value)}
+                onChange={(e) => setCommitMessageDraft(e.target.value)}
                 placeholder={t("preview.commitMessagePlaceholder")}
                 data-testid="editor-commit-message-input"
               />
@@ -186,39 +211,19 @@ export function CommitMenu({ appId }: CommitMenuProps) {
                   count: uncommittedFiles.length,
                 })}
               </p>
-              <div
-                className="max-h-60 overflow-y-auto rounded-md border p-2 space-y-1"
-                data-testid="editor-commit-files-list"
-              >
-                {uncommittedFiles.map((file) => (
-                  <div
-                    key={file.path}
-                    className="flex items-center gap-2 text-sm py-1 px-2 rounded hover:bg-muted"
-                  >
-                    {getStatusIcon(file.status)}
-                    <span
-                      className={cn(
-                        "flex-1 truncate font-mono text-xs",
-                        file.status === "deleted" && "line-through opacity-60",
-                      )}
-                      title={file.path}
-                    >
-                      {file.path}
-                    </span>
-                    <LineStats file={file} />
-                    <span className={getStatusBadgeClassName(file.status)}>
-                      {getStatusLabel(file.status)}
-                    </span>
-                  </div>
-                ))}
-              </div>
+              <CommitFileList
+                files={uncommittedFiles}
+                onSelectFile={(path) => openStagedDiff(path, "editor")}
+                disabled={isCommitting}
+                testId="editor-commit-files-list"
+              />
             </div>
           </div>
 
           <DialogFooter className="px-6 pb-6 pt-2">
             <Button
               variant="outline"
-              onClick={() => setIsDialogOpen(false)}
+              onClick={() => setOpenCommitDialog(null)}
               disabled={isCommitting}
             >
               {t("preview.cancel")}

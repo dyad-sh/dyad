@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { FileWarning, TriangleAlert } from "lucide-react";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -11,21 +12,16 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+  commitMessageDraftAtom,
+  openCommitDialogAtom,
+  openStagedDiffAtom,
+} from "@/atoms/commitAtoms";
 import { useUncommittedFiles } from "@/hooks/useUncommittedFiles";
 import { useCommitChanges } from "@/hooks/useCommitChanges";
 import { useDiscardChanges } from "@/hooks/useDiscardChanges";
-import { cn } from "@/lib/utils";
-import {
-  getStatusIcon,
-  getStatusLabel,
-  getStatusBadgeClassName,
-  generateDefaultCommitMessage,
-} from "@/components/chat/uncommittedFileStatus";
+import { useVersionPreview } from "@/hooks/useVersionPreview";
+import { generateDefaultCommitMessage } from "@/components/chat/uncommittedFileStatus";
+import { CommitFileList } from "@/components/chat/CommitFileList";
 
 interface UncommittedFilesBannerProps {
   appId: number | null;
@@ -36,8 +32,14 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
     useUncommittedFiles(appId);
   const { commitChanges, isCommitting } = useCommitChanges();
   const { discardChanges, isDiscarding } = useDiscardChanges();
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [commitMessage, setCommitMessage] = useState("");
+  const { send: sendPreviewEvent } = useVersionPreview(appId);
+  const [openCommitDialog, setOpenCommitDialog] = useAtom(openCommitDialogAtom);
+  const openStagedDiffFile = useSetAtom(openStagedDiffAtom);
+  const commitMessageDraft = useAtomValue(commitMessageDraftAtom);
+  const setCommitMessageDraft = useSetAtom(commitMessageDraftAtom);
+  // Frozen at open so polling doesn't rewrite the suggestion under the user.
+  // Only ever a suggestion: once the user types, the draft atom takes over.
+  const [generatedMessage, setGeneratedMessage] = useState<string | null>(null);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const confirmPanelRef = useRef<HTMLDivElement>(null);
 
@@ -55,11 +57,26 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
     return null;
   }
 
+  const isDialogOpen = openCommitDialog === "banner";
+  const commitMessage =
+    commitMessageDraft ??
+    generatedMessage ??
+    generateDefaultCommitMessage(uncommittedFiles);
+
   const handleOpenDialog = () => {
-    // Set default commit message only when opening the dialog
-    // This prevents overwriting user's custom message during polling
-    setCommitMessage(generateDefaultCommitMessage(uncommittedFiles));
-    setIsDialogOpen(true);
+    // Regenerate the suggestion on every open so its file counts stay current.
+    // A message the user actually typed lives in the draft atom and survives.
+    setGeneratedMessage(generateDefaultCommitMessage(uncommittedFiles));
+    setOpenCommitDialog("banner");
+  };
+
+  // The diff renders in the code panel, which this banner's dialog has to
+  // reveal. Any selected version diff must close first, since CodeView
+  // suppresses staged-diff mode whenever one is active.
+  const openStagedDiff = (filePath: string) => {
+    sendPreviewEvent({ type: "CLOSE" });
+    setShowDiscardConfirm(false);
+    openStagedDiffFile({ path: filePath, returnTo: "banner" });
   };
 
   const handleCommit = async () => {
@@ -67,8 +84,9 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
 
     await commitChanges({ appId, message: commitMessage.trim() });
     setShowDiscardConfirm(false);
-    setIsDialogOpen(false);
-    setCommitMessage("");
+    setOpenCommitDialog(null);
+    setGeneratedMessage(null);
+    setCommitMessageDraft(null);
   };
 
   const handleDiscard = async () => {
@@ -76,7 +94,9 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
 
     await discardChanges({ appId });
     setShowDiscardConfirm(false);
-    setIsDialogOpen(false);
+    setOpenCommitDialog(null);
+    setGeneratedMessage(null);
+    setCommitMessageDraft(null);
   };
 
   return (
@@ -108,7 +128,7 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
           // Prevent closing while committing or discarding
           if (!open && (isCommitting || isDiscarding)) return;
           if (!open) setShowDiscardConfirm(false);
-          setIsDialogOpen(open);
+          setOpenCommitDialog(open ? "banner" : null);
         }}
       >
         <DialogContent
@@ -133,7 +153,7 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
               <Input
                 id="commit-message"
                 value={commitMessage}
-                onChange={(e) => setCommitMessage(e.target.value)}
+                onChange={(e) => setCommitMessageDraft(e.target.value)}
                 placeholder="Enter commit message..."
                 data-testid="commit-message-input"
               />
@@ -143,42 +163,12 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
               <p className="text-sm font-medium mb-2">
                 Changed files ({uncommittedFiles.length})
               </p>
-              <TooltipProvider delay={300}>
-                <div
-                  className="max-h-60 overflow-y-auto rounded-md border p-2 space-y-1"
-                  data-testid="changed-files-list"
-                >
-                  {uncommittedFiles.map((file) => (
-                    <div
-                      key={file.path}
-                      className="flex items-center gap-2 text-sm py-1 px-2 rounded hover:bg-muted"
-                    >
-                      {getStatusIcon(file.status)}
-                      <Tooltip>
-                        <TooltipTrigger
-                          render={
-                            <span
-                              className={cn(
-                                "flex-1 truncate font-mono text-xs text-left cursor-default",
-                                file.status === "deleted" &&
-                                  "line-through opacity-60",
-                              )}
-                            />
-                          }
-                        >
-                          {file.path}
-                        </TooltipTrigger>
-                        <TooltipContent side="top" align="start">
-                          <p className="max-w-[400px] break-all">{file.path}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                      <span className={getStatusBadgeClassName(file.status)}>
-                        {getStatusLabel(file.status)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </TooltipProvider>
+              <CommitFileList
+                files={uncommittedFiles}
+                onSelectFile={openStagedDiff}
+                disabled={isCommitting || isDiscarding}
+                testId="changed-files-list"
+              />
             </div>
           </div>
 
@@ -235,7 +225,7 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
             </Button>
             <Button
               variant="outline"
-              onClick={() => setIsDialogOpen(false)}
+              onClick={() => setOpenCommitDialog(null)}
               disabled={isCommitting || isDiscarding}
             >
               Cancel

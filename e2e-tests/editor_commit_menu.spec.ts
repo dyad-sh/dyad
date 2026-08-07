@@ -90,10 +90,16 @@ async function editAndSaveFile(
   await expect(page.getByTestId("save-file-button")).toBeDisabled({
     timeout: Timeout.MEDIUM,
   });
-  // Saving stages the file, so the marker flips from unsaved to uncommitted.
+  // Saving stages the file, so the marker flips from unsaved to uncommitted —
+  // on the row and on the rollup that mirrors it.
   await expect(row).toHaveAttribute("data-marker", "uncommitted", {
     timeout: Timeout.MEDIUM,
   });
+  await expect(treeDirRow(page, parentDir)).toHaveAttribute(
+    "data-marker",
+    "uncommitted",
+    { timeout: Timeout.MEDIUM },
+  );
 }
 
 // Editing two files in the code editor and clicking "Commit" should produce a
@@ -202,6 +208,7 @@ test("editor commit menu commits multiple staged files at once", async ({
     treeRow(po.page, robotsTreePath),
     treeDirRow(po.page, "src/components"),
     treeDirRow(po.page, "src"),
+    treeDirRow(po.page, "public"),
   ];
   for (const row of clearedRows) {
     await expect(row).toBeVisible({ timeout: Timeout.MEDIUM });

@@ -183,6 +183,23 @@ Add `#skip-bugbot` to the PR description for trivial PRs that won't affect end-u
 - Base new feature branches on `upstream/main`, not `origin/main`. The fork's
   `main` can lag far behind and lack files that exist upstream; cherry-picks
   then fail with modify/delete conflicts and can push an empty tip.
+- **A missing `upstream` remote is not permission to rebase onto `origin/main`.**
+  Some worktrees have only `origin` pointing at a contributor fork, so a
+  rebase helper's "use `origin/main` when there is no `upstream`" fallback
+  silently rebases onto a stale base — the fork's `main` had no commits of its
+  own and was simply 5 behind, so nothing looked wrong and the rebase reported
+  success. The PR still targets `dyad-sh/dyad:main`, so verify before rebasing
+  and add the remote when it is absent:
+
+  ```bash
+  git ls-remote https://github.com/dyad-sh/dyad main   # compare to origin/main
+  git remote add upstream https://github.com/dyad-sh/dyad.git && git fetch upstream main
+  ```
+
+  The tell is a green rebase that resolves conflicts only against code older
+  than upstream's tip; the newer commits' conflicts surface on the _second_
+  rebase, so budget for another conflict pass.
+
 - `git fetch --all` can return nonzero after successfully refreshing
   `upstream/main` when unrelated collaborator remotes have clashing historical
   tags (`would clobber existing tag`). Verify the base ref was updated, then
@@ -326,6 +343,7 @@ The stashed changes will be automatically merged back after the rebase completes
 - **Auto-merged region can silently drop a definition needed by a conflict region**: A conflict may surface only at a symbol's _use_ site while its _definition_ site auto-merges to the side that lacks it. Example: upstream added `const PRO_AGENT_ONLY_TOOLS = new Set()` plus its use in `shouldIncludeTool`; only the use site conflicted, and the declaration block auto-merged to the branch's version (no definition), causing `TS2304: Cannot find name 'PRO_AGENT_ONLY_TOOLS'`. **Always run `npm run ts` after every conflict resolution** — grep-checking the conflict markers alone won't catch a dropped definition in a cleanly auto-merged hunk; restore it from `git show upstream/main:<file>`.
 - **Native-git migration conflicts (`git_utils.ts`)**: `git_utils.ts` no longer has the `settings.enableNativeGit` dual-path — upstream is native-git-only (no `readSettings`/`enableNativeGit`, no `isomorphic-git` import or `git.statusMatrix`/`git.readBlob` calls). When an older branch conflicts here, take the native path and drop the whole `if (settings.enableNativeGit) {...} else {...isomorphic...}` gate (de-indent the native body). Preserve any semantic refinements your branch made to the native path (e.g. a boolean return via `hasStagedChanges`, rename-aware porcelain parsing). Then fix `git_utils.test.ts`: remove `vi.mocked(readSettings)` calls and tests that exercise isomorphic behavior, or they fail with `ReferenceError: readSettings is not defined`.
 - **Upstream independently added the same capability under a different name**: When both sides implemented the same feature and only differ in naming (e.g. upstream added `GitCommitParams.paths` while the branch added `filepaths` for the same `git commit -- <pathspec>` behavior), adopt upstream's name — it is now the established API for other callers. The conflict markers only appear at the declaration and one use site, so `grep` the branch's old name repo-wide afterwards and rename the call sites in files that merged cleanly. Keep any semantic refinement your side had (e.g. `.map(normalizePath)`) while taking upstream's name.
+- **`lock_utils` → `appOperationCoordinator` migration (upstream #4223)**: app-level locking moved out of `src/ipc/utils/lock_utils.ts`. It no longer exports `isLockHeld`, and `withLock` now takes a **string** key (for file writes via `getFileWriteKey`), not an app id. A branch that locked per-app merges cleanly and fails only at typecheck with `TS2305: Module '"../utils/lock_utils"' has no exported member 'isLockHeld'` plus `TS2345: Argument of type 'number' is not assignable to parameter of type 'string'`. Port to `appOperationCoordinator.run({appId, operation, resources}, fn)` and `appOperationCoordinator.isBusy(appId, resources)`, declaring the resources the operation owns (see `APP_OPERATION_RESOURCES`); `tests_handlers.ts` is the reference for an operation that holds resources across a prepare → run → teardown lifecycle. In tests, keep using the **real** coordinator — a stub that just invokes the callback cannot tell serialized from concurrent, which is the property such tests exist to protect.
 - **Auto-merged test files need a real test run, not just `npm run ts`**: A rebased `*.test.ts` can typecheck yet fail at runtime — stale mocks of a now-removed module, or a test auto-merged into the _wrong_ `describe` block (so it references a `let repoDir`/`afterEach` that only exists in a sibling block) throwing `ReferenceError`. After resolving conflicts, run the affected test files (`npx vitest run <file>`), not only the typechecker.
 
 ## Rebasing with uncommitted changes

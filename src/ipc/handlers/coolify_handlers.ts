@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import log from "electron-log";
 import * as dns from "node:dns/promises";
 import { db } from "../../db";
-import { apps } from "../../db/schema";
+import { apps, coolifyAppConnections } from "../../db/schema";
 import { readSettings, writeSettings } from "../../main/settings";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { createTypedHandler } from "./base";
@@ -20,8 +20,9 @@ import {
 } from "@/coolify_deploy/domain_check";
 import {
   applyCoolifyConnectionChange,
-  coolifyConnectionColumns,
-  coolifyConnectionFromColumns,
+  coolifyConnectionFromRow,
+  coolifyConnectionRow,
+  type CoolifyConnectionState,
 } from "@/coolify_deploy/connection";
 import { CoolifyClient } from "../utils/coolify_client";
 import { safeSend } from "../utils/safe_sender";
@@ -88,27 +89,56 @@ async function resolveBoth(
   };
 }
 
-function readConnection(app: {
-  coolifyServerUuid: string | null;
-  coolifyProjectUuid: string | null;
-  coolifyEnvironmentName: string | null;
-  coolifyDomain: string | null;
-}): CoolifyConnection | null {
+/** The app's stored connection, or nothing when it has none. */
+async function readConnectionState(
+  appId: number,
+): Promise<CoolifyConnectionState> {
+  const row = await db.query.coolifyAppConnections.findFirst({
+    where: eq(coolifyAppConnections.appId, appId),
+  });
+  return coolifyConnectionFromRow(row ?? null);
+}
+
+/**
+ * Writes the state as a row, or removes the row when there should be none.
+ *
+ * The whole row goes every time, so no write can leave some fields describing
+ * a connection that no longer exists.
+ */
+async function writeConnectionState(
+  appId: number,
+  state: CoolifyConnectionState,
+): Promise<void> {
+  const row = coolifyConnectionRow(state);
+  if (!row) {
+    await db
+      .delete(coolifyAppConnections)
+      .where(eq(coolifyAppConnections.appId, appId));
+    return;
+  }
+  await db
+    .insert(coolifyAppConnections)
+    .values({ appId, ...row })
+    .onConflictDoUpdate({ target: coolifyAppConnections.appId, set: row });
+}
+
+function readConnection(
+  state: CoolifyConnectionState,
+): CoolifyConnection | null {
   const settings = readSettings();
   if (
     !settings.coolifyAccessToken?.value ||
     !settings.coolifyInstanceUrl ||
-    !app.coolifyServerUuid ||
-    !app.coolifyProjectUuid
+    state.kind === "none"
   ) {
     return null;
   }
   return {
     instanceUrl: settings.coolifyInstanceUrl,
-    serverUuid: app.coolifyServerUuid,
-    projectUuid: app.coolifyProjectUuid,
-    environmentName: app.coolifyEnvironmentName ?? "production",
-    domain: app.coolifyDomain,
+    serverUuid: state.serverUuid,
+    projectUuid: state.projectUuid,
+    environmentName: state.environmentName,
+    domain: state.domain,
   };
 }
 
@@ -125,14 +155,16 @@ export function registerCoolifyHandlers() {
   });
 
   createTypedHandler(coolifyContracts.getStatus, async (_, { appId }) => {
-    const app = await getApp(appId);
+    await getApp(appId);
     const settings = readSettings();
+    const state = await readConnectionState(appId);
+    const deployed = state.kind === "deployed" ? state : null;
     return {
       hasToken: Boolean(settings.coolifyAccessToken?.value),
       instanceUrl: settings.coolifyInstanceUrl ?? null,
-      connection: readConnection(app),
-      appUrl: app.coolifyAppUrl,
-      lastDeployedAt: app.coolifyLastDeployedAt?.getTime() ?? null,
+      connection: readConnection(state),
+      appUrl: deployed?.appUrl ?? null,
+      lastDeployedAt: deployed?.lastDeployedAt.getTime() ?? null,
     };
   });
 
@@ -228,8 +260,8 @@ export function registerCoolifyHandlers() {
           DyadErrorKind.Validation,
         );
       }
-      const app = await getApp(appId);
-      const current = coolifyConnectionFromColumns(app);
+      await getApp(appId);
+      const current = await readConnectionState(appId);
       const next = applyCoolifyConnectionChange(current, {
         type: "CONFIGURED",
         serverUuid: connection.serverUuid,
@@ -254,10 +286,7 @@ export function registerCoolifyHandlers() {
       if (movedHost) {
         coolifyDeployRegistry.cancelDeploy(appId);
       }
-      await db
-        .update(apps)
-        .set(coolifyConnectionColumns(next))
-        .where(eq(apps.id, appId));
+      await writeConnectionState(appId, next);
     },
   );
 
@@ -310,8 +339,8 @@ export function registerCoolifyHandlers() {
   );
 
   createTypedHandler(coolifyContracts.deploy, async (_, { appId }) => {
-    const app = await getApp(appId);
-    if (!readConnection(app)) {
+    await getApp(appId);
+    if (!readConnection(await readConnectionState(appId))) {
       throw new DyadError(
         "Connect a Coolify server for this app first.",
         DyadErrorKind.Validation,
@@ -328,15 +357,11 @@ export function registerCoolifyHandlers() {
     // Abandon anything running first, so it cannot write its result over the
     // cleared connection afterwards.
     coolifyDeployRegistry.cancelDeploy(appId);
-    const app = await getApp(appId);
     const next = applyCoolifyConnectionChange(
-      coolifyConnectionFromColumns(app),
+      await readConnectionState(appId),
       { type: "DETACHED" },
     );
-    await db
-      .update(apps)
-      .set(coolifyConnectionColumns(next))
-      .where(eq(apps.id, appId));
+    await writeConnectionState(appId, next);
   });
 
   logger.debug("Registered Coolify IPC handlers");

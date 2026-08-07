@@ -1,16 +1,18 @@
 /**
  * An app's Coolify record, as a shape that cannot hold a contradiction.
  *
- * These seven columns were written from twenty-eight places, each deciding for
- * itself which subset to clear. Seven nullable columns admit a hundred and
- * twenty-eight combinations and about four of them mean anything, so nearly
- * every bug here has been the same one: cleared the application id but not the
- * URL, cleared the URL but not the deploy time, kept an application that
- * belonged to a server the app had already left.
+ * This began as seven nullable columns on `apps` written from twenty-eight
+ * places, each deciding which subset to clear, and nearly every bug here was
+ * the same one: cleared the application id but not the URL, cleared the URL
+ * but not the deploy time, kept an application belonging to a server the app
+ * had already left. It is a row in `coolify_app_connections` now, so a
+ * connection either exists or does not, and the server, project and
+ * environment are NOT NULL — the database will not hold half of one either.
  *
- * A change is applied by `applyCoolifyConnectionChange` and written by
- * `coolifyConnectionColumns`, which always writes all seven. There is no way
- * to update a subset, so there is no way to update an inconsistent subset.
+ * A change is applied by `applyCoolifyConnectionChange` and turned into a row
+ * by `coolifyConnectionRow`, which returns null for a connection that should
+ * not exist. There is no way to write a subset of a row, so there is no way
+ * to write an inconsistent one.
  *
  * Pure by design: no database, no clock, no Electron. The caller supplies the
  * current record and the time.
@@ -70,96 +72,91 @@ export type CoolifyConnectionChange =
   /** The pipeline finished and the app is reachable. */
   | { type: "DEPLOY_SUCCEEDED"; appUrl: string | null; at: Date };
 
-/** The seven columns, always written together. */
-export interface CoolifyConnectionColumns {
-  coolifyServerUuid: string | null;
-  coolifyProjectUuid: string | null;
-  coolifyEnvironmentName: string | null;
-  coolifyApplicationUuid: string | null;
-  coolifyDomain: string | null;
-  coolifyAppUrl: string | null;
-  coolifyLastDeployedAt: Date | null;
+/** The stored row, minus the app id its caller already knows. */
+export interface CoolifyConnectionRow {
+  serverUuid: string;
+  projectUuid: string;
+  environmentName: string;
+  applicationUuid: string | null;
+  domain: string | null;
+  appUrl: string | null;
+  lastDeployedAt: Date | null;
 }
 
 /**
  * Reads a stored row back into a state.
  *
- * Rows written before this existed, or by hand, can still hold a combination
- * the union does not describe. Those degrade to the strongest state their
- * fields actually support rather than being trusted.
+ * No row is no connection. A row can still hold a combination the union does
+ * not describe — an address recorded without a deploy time, say — so it
+ * degrades to the strongest state its fields actually support rather than
+ * being trusted.
  */
-export function coolifyConnectionFromColumns(
-  row: Partial<CoolifyConnectionColumns>,
+export function coolifyConnectionFromRow(
+  row: CoolifyConnectionRow | null | undefined,
 ): CoolifyConnectionState {
-  const { coolifyServerUuid, coolifyProjectUuid } = row;
-  if (!coolifyServerUuid || !coolifyProjectUuid) return { kind: "none" };
+  if (!row) return { kind: "none" };
 
   const base = {
-    serverUuid: coolifyServerUuid,
-    projectUuid: coolifyProjectUuid,
-    environmentName: row.coolifyEnvironmentName ?? "production",
-    domain: row.coolifyDomain ?? null,
+    serverUuid: row.serverUuid,
+    projectUuid: row.projectUuid,
+    environmentName: row.environmentName,
+    domain: row.domain ?? null,
   };
-  if (!row.coolifyApplicationUuid) return { kind: "configured", ...base };
+  if (!row.applicationUuid) return { kind: "configured", ...base };
 
-  const provisioned = {
-    ...base,
-    applicationUuid: row.coolifyApplicationUuid,
-  };
+  const provisioned = { ...base, applicationUuid: row.applicationUuid };
   // A deploy time is what makes an address meaningful; without one there is
   // nothing to say the URL was ever reached.
-  if (!row.coolifyLastDeployedAt)
-    return { kind: "provisioned", ...provisioned };
+  if (!row.lastDeployedAt) return { kind: "provisioned", ...provisioned };
   return {
     kind: "deployed",
     ...provisioned,
-    appUrl: row.coolifyAppUrl ?? null,
-    lastDeployedAt: row.coolifyLastDeployedAt,
+    appUrl: row.appUrl ?? null,
+    lastDeployedAt: row.lastDeployedAt,
   };
 }
 
-/** Every column the state implies, so a write can never be partial. */
-export function coolifyConnectionColumns(
+/**
+ * The row a state implies, or null when there should be no row at all.
+ *
+ * Every field is present in the result, so a write can never set some and
+ * leave others describing something that no longer exists.
+ */
+export function coolifyConnectionRow(
   state: CoolifyConnectionState,
-): CoolifyConnectionColumns {
-  const empty: CoolifyConnectionColumns = {
-    coolifyServerUuid: null,
-    coolifyProjectUuid: null,
-    coolifyEnvironmentName: null,
-    coolifyApplicationUuid: null,
-    coolifyDomain: null,
-    coolifyAppUrl: null,
-    coolifyLastDeployedAt: null,
-  };
+): CoolifyConnectionRow | null {
   switch (state.kind) {
     case "none":
-      return empty;
+      return null;
     case "configured":
       return {
-        ...empty,
-        coolifyServerUuid: state.serverUuid,
-        coolifyProjectUuid: state.projectUuid,
-        coolifyEnvironmentName: state.environmentName,
-        coolifyDomain: state.domain,
+        serverUuid: state.serverUuid,
+        projectUuid: state.projectUuid,
+        environmentName: state.environmentName,
+        applicationUuid: null,
+        domain: state.domain,
+        appUrl: null,
+        lastDeployedAt: null,
       };
     case "provisioned":
       return {
-        ...empty,
-        coolifyServerUuid: state.serverUuid,
-        coolifyProjectUuid: state.projectUuid,
-        coolifyEnvironmentName: state.environmentName,
-        coolifyDomain: state.domain,
-        coolifyApplicationUuid: state.applicationUuid,
+        serverUuid: state.serverUuid,
+        projectUuid: state.projectUuid,
+        environmentName: state.environmentName,
+        applicationUuid: state.applicationUuid,
+        domain: state.domain,
+        appUrl: null,
+        lastDeployedAt: null,
       };
     case "deployed":
       return {
-        coolifyServerUuid: state.serverUuid,
-        coolifyProjectUuid: state.projectUuid,
-        coolifyEnvironmentName: state.environmentName,
-        coolifyDomain: state.domain,
-        coolifyApplicationUuid: state.applicationUuid,
-        coolifyAppUrl: state.appUrl,
-        coolifyLastDeployedAt: state.lastDeployedAt,
+        serverUuid: state.serverUuid,
+        projectUuid: state.projectUuid,
+        environmentName: state.environmentName,
+        applicationUuid: state.applicationUuid,
+        domain: state.domain,
+        appUrl: state.appUrl,
+        lastDeployedAt: state.lastDeployedAt,
       };
     default: {
       const exhaustive: never = state;

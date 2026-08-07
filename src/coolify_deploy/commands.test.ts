@@ -83,7 +83,7 @@ vi.mock("@/ipc/utils/neon_utils", () => ({
   ),
 }));
 
-import { apps } from "@/db/schema";
+import { apps, coolifyAppConnections } from "@/db/schema";
 import { setupHandlerTestHarness } from "@/testing/handler_test_harness";
 import type { HandlerTestHarness } from "@/testing/handler_test_harness";
 import { createFakeClock, type FakeClock } from "@/state_machines/testing";
@@ -205,7 +205,19 @@ async function drive<T>(clock: FakeClock, promise: Promise<T>): Promise<T> {
 
 let harness: HandlerTestHarness;
 
-async function seedApp(overrides: Partial<typeof apps.$inferInsert> = {}) {
+/**
+ * An app plus the connection row that says where it deploys.
+ *
+ * The connection lives in its own table, and no row is what "not connected"
+ * means — so `connection: null` seeds an app with none rather than an app
+ * with seven nulls.
+ */
+async function seedApp(
+  overrides: Partial<typeof apps.$inferInsert> & {
+    connection?: Partial<typeof coolifyAppConnections.$inferInsert> | null;
+  } = {},
+) {
+  const { connection, ...appOverrides } = overrides;
   const [row] = await harness.db
     .insert(apps)
     .values({
@@ -214,17 +226,25 @@ async function seedApp(overrides: Partial<typeof apps.$inferInsert> = {}) {
       githubOrg: "acme",
       githubRepo: "demo",
       githubBranch: "main",
-      coolifyServerUuid: "server-1",
-      coolifyProjectUuid: "project-1",
-      coolifyEnvironmentName: "production",
-      ...overrides,
+      ...appOverrides,
     })
     .returning();
+  if (connection !== null) {
+    await harness.db.insert(coolifyAppConnections).values({
+      appId: row.id,
+      serverUuid: "server-1",
+      projectUuid: "project-1",
+      environmentName: "production",
+      ...connection,
+    });
+  }
   return row;
 }
 
 function readApp(appId: number) {
-  return harness.db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  return harness.db.query.coolifyAppConnections.findFirst({
+    where: eq(coolifyAppConnections.appId, appId),
+  });
 }
 
 /** Routes for a deployment that starts and immediately reports finished. */
@@ -291,9 +311,9 @@ describe("first deploy", () => {
     expect(coolifyCalls()).toContain(`POST /applications/${APP_UUID}/start`);
 
     const saved = await readApp(app.id);
-    expect(saved?.coolifyApplicationUuid).toBe(APP_UUID);
-    expect(saved?.coolifyAppUrl).toBe("https://demo.sslip.io");
-    expect(saved?.coolifyLastDeployedAt).toBeTruthy();
+    expect(saved?.applicationUuid).toBe(APP_UUID);
+    expect(saved?.appUrl).toBe("https://demo.sslip.io");
+    expect(saved?.lastDeployedAt).toBeTruthy();
   });
 
   it("asks Coolify to generate an address when no domain is set", async () => {
@@ -323,7 +343,7 @@ describe("first deploy", () => {
 
 describe("redeploy", () => {
   it("updates the existing application without clearing its generated address", async () => {
-    const app = await seedApp({ coolifyApplicationUuid: APP_UUID });
+    const app = await seedApp({ connection: { applicationUuid: APP_UUID } });
     happyPathRoutes();
     const clock = createFakeClock();
 
@@ -349,8 +369,10 @@ describe("redeploy", () => {
 
   it("sends the domain when the app has one", async () => {
     const app = await seedApp({
-      coolifyApplicationUuid: APP_UUID,
-      coolifyDomain: "https://demo.example.com",
+      connection: {
+        applicationUuid: APP_UUID,
+        domain: "https://demo.example.com",
+      },
     });
     happyPathRoutes();
     const clock = createFakeClock();
@@ -371,7 +393,7 @@ describe("redeploy", () => {
   });
 
   it("treats a hidden private_key_id as unknown rather than a mismatch", async () => {
-    const app = await seedApp({ coolifyApplicationUuid: APP_UUID });
+    const app = await seedApp({ connection: { applicationUuid: APP_UUID } });
     happyPathRoutes();
     // Coolify omits private_key_id for tokens without read:sensitive.
     route(`GET /applications/${APP_UUID}`, {
@@ -404,14 +426,8 @@ describe("disconnect racing a deploy", () => {
     // Disconnect lands while the create request is in flight.
     sideEffects.set("POST /applications/private-deploy-key", async () => {
       await harness.db
-        .update(apps)
-        .set({
-          coolifyServerUuid: null,
-          coolifyProjectUuid: null,
-          coolifyApplicationUuid: null,
-          coolifyAppUrl: null,
-        })
-        .where(eq(apps.id, app.id));
+        .delete(coolifyAppConnections)
+        .where(eq(coolifyAppConnections.appId, app.id));
     });
     const clock = createFakeClock();
 
@@ -425,9 +441,10 @@ describe("disconnect racing a deploy", () => {
       }),
     );
 
-    const saved = await readApp(app.id);
-    expect(saved?.coolifyApplicationUuid).toBeNull();
-    expect(saved?.coolifyAppUrl).toBeNull();
+    // Disconnecting deletes the row, so there is nothing for the pipeline to
+    // write its application id or address onto — not a row of nulls to
+    // overwrite, and not a row it could recreate.
+    expect(await readApp(app.id)).toBeUndefined();
   });
 
   it("stops at the next abort check once cancelled", async () => {
@@ -457,7 +474,7 @@ describe("disconnect racing a deploy", () => {
 
 describe("resuming a previous deployment", () => {
   it("follows a build that is still running", async () => {
-    const app = await seedApp({ coolifyApplicationUuid: APP_UUID });
+    const app = await seedApp({ connection: { applicationUuid: APP_UUID } });
     happyPathRoutes();
     // Still building when adopted, finished by the first poll.
     routeSequence("GET /deployments/dep-earlier", [
@@ -485,7 +502,7 @@ describe("resuming a previous deployment", () => {
   });
 
   it("starts fresh when the previous deployment already finished", async () => {
-    const app = await seedApp({ coolifyApplicationUuid: APP_UUID });
+    const app = await seedApp({ connection: { applicationUuid: APP_UUID } });
     happyPathRoutes();
     route("GET /deployments/dep-earlier", { status: "failed" });
     const clock = createFakeClock();
@@ -505,7 +522,9 @@ describe("resuming a previous deployment", () => {
   });
 
   it("drops the resumed deployment when the application was recreated", async () => {
-    const app = await seedApp({ coolifyApplicationUuid: "stale-uuid" });
+    const app = await seedApp({
+      connection: { applicationUuid: "stale-uuid" },
+    });
     happyPathRoutes();
     // The saved application clones with an outdated key, so it is replaced.
     route("GET /applications/stale-uuid", {
@@ -534,7 +553,7 @@ describe("resuming a previous deployment", () => {
 
 describe("polling", () => {
   it("fails with the deployment log when the build fails", async () => {
-    const app = await seedApp({ coolifyApplicationUuid: APP_UUID });
+    const app = await seedApp({ connection: { applicationUuid: APP_UUID } });
     happyPathRoutes();
     route("GET /deployments/dep-1", {
       status: "failed",
@@ -556,7 +575,7 @@ describe("polling", () => {
   });
 
   it("explains an out-of-memory kill rather than reporting a bare exit status", async () => {
-    const app = await seedApp({ coolifyApplicationUuid: APP_UUID });
+    const app = await seedApp({ connection: { applicationUuid: APP_UUID } });
     happyPathRoutes();
     route("GET /deployments/dep-1", {
       status: "failed",
@@ -578,7 +597,7 @@ describe("polling", () => {
   });
 
   it("gives up once the poll timeout elapses on the injected clock", async () => {
-    const app = await seedApp({ coolifyApplicationUuid: APP_UUID });
+    const app = await seedApp({ connection: { applicationUuid: APP_UUID } });
     happyPathRoutes();
     route("GET /deployments/dep-1", { status: "in_progress" });
     const clock = createFakeClock();
@@ -684,7 +703,7 @@ describe("preconditions", () => {
   });
 
   it("refuses an app with no Coolify server", async () => {
-    const app = await seedApp({ coolifyServerUuid: null });
+    const app = await seedApp({ connection: null });
     const clock = createFakeClock();
 
     await expect(
@@ -700,7 +719,7 @@ describe("preconditions", () => {
 
 describe("losing contact with Coolify", () => {
   it("fails with the transport error instead of stalling until the timeout", async () => {
-    const app = await seedApp({ coolifyApplicationUuid: APP_UUID });
+    const app = await seedApp({ connection: { applicationUuid: APP_UUID } });
     happyPathRoutes();
     // The instance answers the start call, then stops responding.
     route("GET /deployments/dep-1", { message: "gone" }, 502);
@@ -723,7 +742,7 @@ describe("losing contact with Coolify", () => {
   });
 
   it("rides out a blip and still finishes", async () => {
-    const app = await seedApp({ coolifyApplicationUuid: APP_UUID });
+    const app = await seedApp({ connection: { applicationUuid: APP_UUID } });
     happyPathRoutes();
     routes.set("GET /deployments/dep-1", [
       { status: 502, body: { message: "blip" } },
@@ -747,7 +766,9 @@ describe("losing contact with Coolify", () => {
 
 describe("recreating an application", () => {
   it("does not blank a newer deployment's uuid after being cancelled", async () => {
-    const app = await seedApp({ coolifyApplicationUuid: "stale-uuid" });
+    const app = await seedApp({
+      connection: { applicationUuid: "stale-uuid" },
+    });
     happyPathRoutes();
     route("GET /applications/stale-uuid", {}, 404);
     const controller = new AbortController();
@@ -768,7 +789,7 @@ describe("recreating an application", () => {
     ).rejects.toThrow(/cancelled/i);
 
     const saved = await readApp(app.id);
-    expect(saved?.coolifyApplicationUuid).toBe("stale-uuid");
+    expect(saved?.applicationUuid).toBe("stale-uuid");
   });
 });
 
@@ -959,7 +980,7 @@ describe("starting the build", () => {
   it("fails clearly when Coolify returns no deployment to follow", async () => {
     // A 2xx with only a message means Coolify declined to queue the build.
     // Falling through the poll loop would report a status never asked for.
-    const app = await seedApp({ coolifyApplicationUuid: APP_UUID });
+    const app = await seedApp({ connection: { applicationUuid: APP_UUID } });
     happyPathRoutes();
     route(`POST /applications/${APP_UUID}/start`, {
       message: "already queued",
@@ -980,7 +1001,7 @@ describe("starting the build", () => {
   });
 
   it("does not claim a status it never asked for", async () => {
-    const app = await seedApp({ coolifyApplicationUuid: APP_UUID });
+    const app = await seedApp({ connection: { applicationUuid: APP_UUID } });
     happyPathRoutes();
     route(`POST /applications/${APP_UUID}/start`, {});
     const clock = createFakeClock();
@@ -1003,7 +1024,7 @@ describe("adopting a previous deployment", () => {
   it("does not start a second build when the status lookup fails", async () => {
     // The retry exists because the earlier build may still be running; reading
     // a transient failure as "not running" queues a second one beside it.
-    const app = await seedApp({ coolifyApplicationUuid: APP_UUID });
+    const app = await seedApp({ connection: { applicationUuid: APP_UUID } });
     happyPathRoutes();
     route("GET /deployments/dep-earlier", { message: "gateway" }, 502);
     const clock = createFakeClock();
@@ -1027,7 +1048,7 @@ describe("adopting a previous deployment", () => {
   });
 
   it("starts fresh when the deployment is genuinely gone", async () => {
-    const app = await seedApp({ coolifyApplicationUuid: APP_UUID });
+    const app = await seedApp({ connection: { applicationUuid: APP_UUID } });
     happyPathRoutes();
     route("GET /deployments/dep-earlier", { message: "not found" }, 404);
     const clock = createFakeClock();
@@ -1233,8 +1254,8 @@ describe("keeping the Coolify application in step with the repo", () => {
     // The application keeps whatever branch it was created with, so a user who
     // switches branches would otherwise redeploy the old source.
     const app = await seedApp({
-      coolifyApplicationUuid: APP_UUID,
       githubBranch: "feature",
+      connection: { applicationUuid: APP_UUID },
     });
     happyPathRoutes();
     const clock = createFakeClock();
@@ -1257,7 +1278,7 @@ describe("keeping the Coolify application in step with the repo", () => {
   it("clears a publish directory left by a previous framework shape", async () => {
     // A vite app leaves /dist behind; nextjs must not inherit it.
     framework.type = "nextjs";
-    const app = await seedApp({ coolifyApplicationUuid: APP_UUID });
+    const app = await seedApp({ connection: { applicationUuid: APP_UUID } });
     happyPathRoutes();
     const clock = createFakeClock();
 
@@ -1281,7 +1302,7 @@ describe("surviving a failed resume", () => {
   it("still reports the adopted deployment when the probe fails", async () => {
     // The machine keeps this id into the failed state, so the next retry can
     // adopt the build that is still running instead of being refused forever.
-    const app = await seedApp({ coolifyApplicationUuid: APP_UUID });
+    const app = await seedApp({ connection: { applicationUuid: APP_UUID } });
     happyPathRoutes();
     route("GET /deployments/dep-earlier", { message: "gateway" }, 502);
     const report = recorder();
@@ -1309,11 +1330,23 @@ describe("writing only to the server the deploy started against", () => {
     // A deploy can run for fifteen minutes. If the user disconnects and
     // reconnects to a different Coolify meanwhile, this application id and URL
     // exist only on the instance this pipeline was talking to.
-    const app = await seedApp({ coolifyApplicationUuid: null });
+    const app = await seedApp({ connection: { applicationUuid: null } });
     happyPathRoutes();
     const clock = createFakeClock();
 
-    const pipeline = drive(
+    // Repointed while the application is being created, so the record that
+    // follows is fenced against a server the row no longer names. Hooked to
+    // the request rather than raced against the pipeline, or whether this
+    // lands first is a matter of how many microtasks the pipeline happens to
+    // take.
+    sideEffects.set("POST /applications/private-deploy-key", async () => {
+      await harness.db
+        .update(coolifyAppConnections)
+        .set({ serverUuid: "srv-other" })
+        .where(eq(coolifyAppConnections.appId, app.id));
+    });
+
+    await drive(
       clock,
       runDeployPipeline({
         appId: app.id,
@@ -1322,16 +1355,13 @@ describe("writing only to the server the deploy started against", () => {
         clock,
       }),
     );
-    // Repoint the app while the pipeline is in flight.
-    await harness.db
-      .update(apps)
-      .set({ coolifyServerUuid: "srv-other" })
-      .where(eq(apps.id, app.id));
-    await pipeline;
 
+    // The row moved to another server, so the fenced write matched nothing
+    // and left it describing the server it was repointed to.
     const row = await readApp(app.id);
-    expect(row?.coolifyApplicationUuid).toBeNull();
-    expect(row?.coolifyAppUrl).toBeNull();
+    expect(row?.serverUuid).toBe("srv-other");
+    expect(row?.applicationUuid).toBeNull();
+    expect(row?.appUrl).toBeNull();
   });
 });
 
@@ -1340,8 +1370,10 @@ describe("replacing an application", () => {
     // The old address belonged to the application Coolify no longer has, so
     // the panel must not keep offering a link to it.
     const app = await seedApp({
-      coolifyApplicationUuid: "gone-1",
-      coolifyAppUrl: "https://old.example.com",
+      connection: {
+        applicationUuid: "gone-1",
+        appUrl: "https://old.example.com",
+      },
     });
     happyPathRoutes();
     route("GET /applications/gone-1", { message: "not found" }, 404);
@@ -1363,7 +1395,7 @@ describe("replacing an application", () => {
     ).rejects.toThrow();
 
     const row = await readApp(app.id);
-    expect(row?.coolifyApplicationUuid).toBe(APP_UUID);
-    expect(row?.coolifyAppUrl).toBeNull();
+    expect(row?.applicationUuid).toBe(APP_UUID);
+    expect(row?.appUrl).toBeNull();
   });
 });

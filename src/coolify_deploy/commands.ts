@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import log from "electron-log";
 import { db } from "@/db";
-import { apps } from "@/db/schema";
+import { apps, coolifyAppConnections } from "@/db/schema";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { readSettings } from "@/main/settings";
 import { getDyadAppPath } from "@/paths/paths";
@@ -14,9 +14,10 @@ import {
 } from "@/ipc/utils/coolify_client";
 import {
   applyCoolifyConnectionChange,
-  coolifyConnectionColumns,
-  coolifyConnectionFromColumns,
+  coolifyConnectionFromRow,
+  coolifyConnectionRow,
   type CoolifyConnectionChange,
+  type CoolifyConnectionState,
 } from "./connection";
 import {
   coolifyKeyName,
@@ -145,31 +146,35 @@ async function recordConnectionChange(
   serverUuid: string,
   change: CoolifyConnectionChange,
 ): Promise<void> {
-  const row = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-  if (!row) return;
   const next = applyCoolifyConnectionChange(
-    coolifyConnectionFromColumns(row),
+    await readConnectionState(appId),
     change,
   );
+  const row = coolifyConnectionRow(next);
+  if (!row) return;
+  // The whole row every time, fenced to the server this deploy started on. A
+  // deploy can run for fifteen minutes, and an app disconnected or pointed at
+  // a different Coolify meanwhile matches nothing here rather than receiving
+  // an application id and URL that exist only on the instance it left.
   await db
-    .update(apps)
-    .set(coolifyConnectionColumns(next))
-    .where(stillConnected(appId, serverUuid));
+    .update(coolifyAppConnections)
+    .set(row)
+    .where(
+      and(
+        eq(coolifyAppConnections.appId, appId),
+        eq(coolifyAppConnections.serverUuid, serverUuid),
+      ),
+    );
 }
 
-/**
- * Matches the app only while it is still connected to a Coolify server.
- *
- * Disconnecting nulls those columns, and a pipeline already past its last
- * abort check would otherwise write an application id or URL back onto an app
- * the user has just cleared.
- */
-function stillConnected(appId: number, serverUuid: string) {
-  // The same server, not merely some server. A deploy can run for fifteen
-  // minutes, and an app disconnected and pointed at a different Coolify
-  // meanwhile must not receive an application id and URL that exist only on
-  // the one this pipeline was talking to.
-  return and(eq(apps.id, appId), eq(apps.coolifyServerUuid, serverUuid));
+/** The app's stored connection, or nothing when it has none. */
+async function readConnectionState(
+  appId: number,
+): Promise<CoolifyConnectionState> {
+  const row = await db.query.coolifyAppConnections.findFirst({
+    where: eq(coolifyAppConnections.appId, appId),
+  });
+  return coolifyConnectionFromRow(row ?? null);
 }
 
 /**
@@ -502,11 +507,8 @@ export async function runDeployPipeline({
     throw new DyadError(`App ${appId} not found`, DyadErrorKind.NotFound);
   }
   const settings = readSettings();
-  if (
-    !settings.coolifyInstanceUrl ||
-    !app.coolifyServerUuid ||
-    !app.coolifyProjectUuid
-  ) {
+  const connection = await readConnectionState(appId);
+  if (!settings.coolifyInstanceUrl || connection.kind === "none") {
     throw new DyadError(
       "Connect a Coolify server for this app first.",
       DyadErrorKind.Validation,
@@ -552,34 +554,37 @@ export async function runDeployPipeline({
   const gitBranch = app.githubBranch ?? "main";
   // Captured at the start: every write below is fenced against this exact
   // server, so a repoint mid-deploy leaves the stale result unwritten.
-  const serverUuid = app.coolifyServerUuid;
+  const serverUuid = connection.serverUuid;
 
   report.stage("configuring");
+  // Absent until Coolify has one; the guard above already ruled out "none".
+  const savedApplicationUuid =
+    connection.kind === "configured" ? null : connection.applicationUuid;
   const applicationUuid = await resolveApplication({
     client,
     signal,
-    savedUuid: app.coolifyApplicationUuid,
+    savedUuid: savedApplicationUuid,
     onPreviousGone: () =>
       recordConnectionChange(appId, serverUuid, { type: "APPLICATION_GONE" }),
     privateKeyId: key.id,
     report,
     create: async () => {
       const created = await client.createApplicationFromPrivateRepo({
-        serverUuid: app.coolifyServerUuid!,
-        projectUuid: app.coolifyProjectUuid!,
-        environmentName: app.coolifyEnvironmentName ?? "production",
+        serverUuid: connection.serverUuid,
+        projectUuid: connection.projectUuid,
+        environmentName: connection.environmentName,
         privateKeyUuid: key.uuid,
         gitRepository,
         gitBranch,
         name: `dyad-${app.name}`.toLowerCase().replace(/[^a-z0-9-]/g, "-"),
         build,
-        domains: app.coolifyDomain,
+        domains: connection.domain,
       });
       report.log(`Application created (${created.uuid}).\n`);
       return created.uuid;
     },
   });
-  const recreated = applicationUuid !== app.coolifyApplicationUuid;
+  const recreated = applicationUuid !== savedApplicationUuid;
   if (recreated) {
     // Recorded before the abort check, not after. Coolify has already created
     // this application; an abort landing between the two would throw away the
@@ -596,7 +601,7 @@ export async function runDeployPipeline({
     // Only send a domain we actually have: passing null would clear the
     // address Coolify generated at creation and it cannot generate another.
     await client.updateApplication(applicationUuid, {
-      ...(app.coolifyDomain ? { domains: app.coolifyDomain } : {}),
+      ...(connection.domain ? { domains: connection.domain } : {}),
       build,
       source: { gitRepository, gitBranch },
     });

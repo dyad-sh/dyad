@@ -22,17 +22,42 @@ vi.mock("../../main/settings", () => ({
   },
 }));
 
+/**
+ * The connection is its own table now, so the double models a row that can be
+ * absent. `connection` holds it, or null when the app has none — which is what
+ * disconnecting produces and what "not connected" means.
+ */
 const updateSet = vi.fn();
+const deleted = vi.fn();
+let connection: Record<string, unknown> | null = null;
+
 vi.mock("../../db", () => ({
   db: {
     query: {
       apps: { findFirst: async () => rows[0], findMany: async () => rows },
+      coolifyAppConnections: { findFirst: async () => connection ?? undefined },
     },
+    insert: () => ({
+      values: (row: Record<string, unknown>) => ({
+        onConflictDoUpdate: ({ set }: { set: Record<string, unknown> }) => {
+          updateSet(set);
+          connection = { ...row, ...set };
+          return Promise.resolve();
+        },
+      }),
+    }),
     update: () => ({
       set: (patch: Record<string, unknown>) => {
         updateSet(patch);
-        Object.assign(rows[0], patch);
+        if (connection) Object.assign(connection, patch);
         return { where: () => Promise.resolve() };
+      },
+    }),
+    delete: () => ({
+      where: () => {
+        deleted();
+        connection = null;
+        return Promise.resolve();
       },
     }),
   },
@@ -71,23 +96,27 @@ const { registerCoolifyHandlers } = await import("./coolify_handlers");
 const call = (channel: string, payload?: unknown) =>
   handlers.get(channel)!(null, payload);
 
-const CONNECTED_ROW = {
-  id: 1,
-  coolifyServerUuid: "srv-1",
-  coolifyProjectUuid: "prj-1",
-  coolifyEnvironmentName: "production",
-  coolifyApplicationUuid: "app-1",
-  coolifyDomain: "https://demo.example.com",
-  coolifyAppUrl: "https://demo.example.com",
-  coolifyLastDeployedAt: new Date(5),
+const APP_ROW = { id: 1, name: "demo" };
+
+const CONNECTED = {
+  appId: 1,
+  serverUuid: "srv-1",
+  projectUuid: "prj-1",
+  environmentName: "production",
+  applicationUuid: "app-1",
+  domain: "https://demo.example.com",
+  appUrl: "https://demo.example.com",
+  lastDeployedAt: new Date(5),
 };
 
 beforeEach(() => {
   handlers.clear();
   updateSet.mockClear();
+  deleted.mockClear();
   cancelDeploy.mockClear();
   rows.length = 0;
-  rows.push({ ...CONNECTED_ROW });
+  rows.push({ ...APP_ROW });
+  connection = { ...CONNECTED };
   for (const key of Object.keys(settings)) delete settings[key];
   settings.coolifyInstanceUrl = "https://coolify.example.com";
   settings.coolifyAccessToken = { value: "tok" };
@@ -98,9 +127,9 @@ describe("clearing the token", () => {
   it("keeps every app's application id and settings", async () => {
     await call("coolify:clear-token");
 
-    expect(rows[0].coolifyApplicationUuid).toBe("app-1");
-    expect(rows[0].coolifyServerUuid).toBe("srv-1");
-    expect(rows[0].coolifyDomain).toBe("https://demo.example.com");
+    expect(connection?.applicationUuid).toBe("app-1");
+    expect(connection?.serverUuid).toBe("srv-1");
+    expect(connection?.domain).toBe("https://demo.example.com");
     // Nothing was written to the apps table at all.
     expect(updateSet).not.toHaveBeenCalled();
   });
@@ -131,7 +160,7 @@ describe("clearing the token", () => {
       connection: { serverUuid: string } | null;
     };
     expect(status.connection?.serverUuid).toBe("srv-1");
-    expect(rows[0].coolifyApplicationUuid).toBe("app-1");
+    expect(connection?.applicationUuid).toBe("app-1");
   });
 
   it("keeps every app's record when the next token points somewhere else", async () => {
@@ -146,8 +175,8 @@ describe("clearing the token", () => {
       acknowledgedInsecure: false,
     });
 
-    expect(rows[0].coolifyApplicationUuid).toBe("app-1");
-    expect(rows[0].coolifyServerUuid).toBe("srv-1");
+    expect(connection?.applicationUuid).toBe("app-1");
+    expect(connection?.serverUuid).toBe("srv-1");
     expect(updateSet).not.toHaveBeenCalled();
   });
 
@@ -166,8 +195,8 @@ describe("clearing the token", () => {
       acknowledgedInsecure: false,
     });
 
-    expect(rows[0].coolifyApplicationUuid).toBe("app-1");
-    expect(rows[0].coolifyServerUuid).toBe("srv-1");
+    expect(connection?.applicationUuid).toBe("app-1");
+    expect(connection?.serverUuid).toBe("srv-1");
   });
 });
 
@@ -186,12 +215,12 @@ describe("moving an app to a different server or project", () => {
       },
     });
 
-    expect(rows[0].coolifyServerUuid).toBe("srv-2");
-    expect(rows[0].coolifyApplicationUuid).toBeNull();
-    expect(rows[0].coolifyAppUrl).toBeNull();
+    expect(connection?.serverUuid).toBe("srv-2");
+    expect(connection?.applicationUuid).toBeNull();
+    expect(connection?.appUrl).toBeNull();
     // Nothing has been deployed where it is going, so the old result must not
     // be shown against it.
-    expect(rows[0].coolifyLastDeployedAt).toBeNull();
+    expect(connection?.lastDeployedAt).toBeNull();
     expect(cancelDeploy).toHaveBeenCalledWith(1);
   });
 
@@ -206,9 +235,9 @@ describe("moving an app to a different server or project", () => {
       },
     });
 
-    expect(rows[0].coolifyApplicationUuid).toBe("app-1");
-    expect(rows[0].coolifyDomain).toBe("https://new.example.com");
-    expect(rows[0].coolifyLastDeployedAt).not.toBeNull();
+    expect(connection?.applicationUuid).toBe("app-1");
+    expect(connection?.domain).toBe("https://new.example.com");
+    expect(connection?.lastDeployedAt).not.toBeNull();
     expect(cancelDeploy).not.toHaveBeenCalled();
   });
 
@@ -216,9 +245,12 @@ describe("moving an app to a different server or project", () => {
     // An app that never had an application is configured before and after an
     // ordinary domain edit. Cancelling there would clear the error and log
     // that say why the last attempt failed.
-    rows[0].coolifyApplicationUuid = null;
-    rows[0].coolifyAppUrl = null;
-    rows[0].coolifyLastDeployedAt = null;
+    connection = {
+      ...CONNECTED,
+      applicationUuid: null,
+      appUrl: null,
+      lastDeployedAt: null,
+    };
 
     await call("coolify:save-connection", {
       appId: 1,
@@ -231,7 +263,7 @@ describe("moving an app to a different server or project", () => {
     });
 
     expect(cancelDeploy).not.toHaveBeenCalled();
-    expect(rows[0].coolifyDomain).toBe("https://new.example.com");
+    expect(connection?.domain).toBe("https://new.example.com");
   });
 });
 
@@ -241,9 +273,12 @@ describe("moving an app that never got an application", () => {
     // server, a refused deploy key. The record stays configured, but the
     // machine holds that server's error, and it does not describe the one the
     // user just switched to.
-    rows[0].coolifyApplicationUuid = null;
-    rows[0].coolifyAppUrl = null;
-    rows[0].coolifyLastDeployedAt = null;
+    connection = {
+      ...CONNECTED,
+      applicationUuid: null,
+      appUrl: null,
+      lastDeployedAt: null,
+    };
 
     await call("coolify:save-connection", {
       appId: 1,

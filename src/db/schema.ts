@@ -106,18 +106,6 @@ export const apps = sqliteTable("apps", {
   vercelProjectName: text("vercel_project_name"),
   vercelTeamId: text("vercel_team_id"),
   vercelDeploymentUrl: text("vercel_deployment_url"),
-  // Coolify: which server and project this app deploys to. The API token is
-  // instance-wide and lives in settings, not here.
-  coolifyServerUuid: text("coolify_server_uuid"),
-  coolifyProjectUuid: text("coolify_project_uuid"),
-  coolifyEnvironmentName: text("coolify_environment_name"),
-  coolifyApplicationUuid: text("coolify_application_uuid"),
-  // Blank means Coolify generates an sslip.io address from the server's IP.
-  coolifyDomain: text("coolify_domain"),
-  coolifyAppUrl: text("coolify_app_url"),
-  coolifyLastDeployedAt: integer("coolify_last_deployed_at", {
-    mode: "timestamp",
-  }),
   installCommand: text("install_command"),
   startCommand: text("start_command"),
   chatContext: text("chat_context", { mode: "json" }),
@@ -508,6 +496,46 @@ export const security_fix_chats = sqliteTable(
 );
 
 // Define relations
+/**
+ * Where an app deploys to on a Coolify instance.
+ *
+ * A table rather than columns on `apps` because these are set together and
+ * mean nothing apart: a server without a project names nowhere, and an
+ * application id without either belongs to no instance. The row existing is
+ * what "connected" means, so disconnecting deletes it rather than nulling
+ * seven fields and hoping every writer nulls the same seven.
+ *
+ * The first three are NOT NULL for the same reason — the database will not
+ * hold a half-configured connection. The rest fill in as a deploy progresses:
+ * an application id once Coolify has one, an address and a time once it has
+ * run. The API token is instance-wide and lives in settings, not here.
+ */
+export const coolifyAppConnections = sqliteTable("coolify_app_connections", {
+  appId: integer("app_id")
+    .primaryKey()
+    .references(() => apps.id, { onDelete: "cascade" }),
+
+  serverUuid: text("server_uuid").notNull(),
+  projectUuid: text("project_uuid").notNull(),
+  environmentName: text("environment_name").notNull().default("production"),
+
+  applicationUuid: text("application_uuid"),
+  /** Blank means Coolify generates an sslip.io address from the server's IP. */
+  domain: text("domain"),
+  appUrl: text("app_url"),
+  lastDeployedAt: integer("last_deployed_at", { mode: "timestamp" }),
+});
+
+export const coolifyAppConnectionsRelations = relations(
+  coolifyAppConnections,
+  ({ one }) => ({
+    app: one(apps, {
+      fields: [coolifyAppConnections.appId],
+      references: [apps.id],
+    }),
+  }),
+);
+
 export const appsRelations = relations(apps, ({ many, one }) => ({
   chats: many(chats),
   versions: many(versions),
@@ -515,6 +543,10 @@ export const appsRelations = relations(apps, ({ many, one }) => ({
   collection: one(appCollections, {
     fields: [apps.collectionId],
     references: [appCollections.id],
+  }),
+  coolifyConnection: one(coolifyAppConnections, {
+    fields: [apps.id],
+    references: [coolifyAppConnections.appId],
   }),
 }));
 

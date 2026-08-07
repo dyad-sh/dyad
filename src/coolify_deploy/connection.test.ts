@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   applyCoolifyConnectionChange,
-  coolifyConnectionColumns,
-  coolifyConnectionFromColumns,
+  coolifyConnectionRow,
+  coolifyConnectionFromRow,
   type CoolifyConnectionChange,
   type CoolifyConnectionState,
 } from "./connection";
@@ -49,41 +49,42 @@ describe("the connection is total over state x change", () => {
         const next = applyCoolifyConnectionChange(state, change);
         // The columns are the only thing persisted, so a state that does not
         // survive them is a state the database cannot actually hold.
-        expect(
-          coolifyConnectionFromColumns(coolifyConnectionColumns(next)),
-        ).toEqual(next);
+        expect(coolifyConnectionFromRow(coolifyConnectionRow(next))).toEqual(
+          next,
+        );
       }
     }
   });
 
   it("never writes a partial record", () => {
-    // Every bug this replaces was a write that set some columns and left
+    // Every bug this replaces was a write that set some fields and left
     // others describing something that no longer existed.
     for (const state of STATES) {
       for (const change of CHANGES) {
-        const columns = coolifyConnectionColumns(
+        const row = coolifyConnectionRow(
           applyCoolifyConnectionChange(state, change),
         );
-        expect(Object.keys(columns).sort()).toEqual([
-          "coolifyAppUrl",
-          "coolifyApplicationUuid",
-          "coolifyDomain",
-          "coolifyEnvironmentName",
-          "coolifyLastDeployedAt",
-          "coolifyProjectUuid",
-          "coolifyServerUuid",
+        // No row is a connection that should not exist, which the caller
+        // turns into a delete rather than a write of nulls.
+        if (row === null) continue;
+
+        expect(Object.keys(row).sort()).toEqual([
+          "appUrl",
+          "applicationUuid",
+          "domain",
+          "environmentName",
+          "lastDeployedAt",
+          "projectUuid",
+          "serverUuid",
         ]);
-        // An address or a deploy time without an application, or an
-        // application without a server, is exactly what could be written
-        // before and cannot be expressed now.
-        if (!columns.coolifyServerUuid) {
-          expect(columns.coolifyApplicationUuid).toBeNull();
-          expect(columns.coolifyAppUrl).toBeNull();
-          expect(columns.coolifyLastDeployedAt).toBeNull();
-        }
-        if (!columns.coolifyApplicationUuid) {
-          expect(columns.coolifyAppUrl).toBeNull();
-          expect(columns.coolifyLastDeployedAt).toBeNull();
+        // A row always names where it deploys — the columns are NOT NULL —
+        // and an address or a deploy time without an application is exactly
+        // what could be written before and cannot be expressed now.
+        expect(row.serverUuid).toBeTruthy();
+        expect(row.projectUuid).toBeTruthy();
+        if (!row.applicationUuid) {
+          expect(row.appUrl).toBeNull();
+          expect(row.lastDeployedAt).toBeNull();
         }
       }
     }
@@ -157,38 +158,33 @@ describe("what the pipeline reports", () => {
   });
 });
 
-describe("reading rows the union did not write", () => {
-  it("treats an application without a server as no connection", () => {
-    expect(
-      coolifyConnectionFromColumns({
-        coolifyServerUuid: null,
-        coolifyProjectUuid: null,
-        coolifyApplicationUuid: "app-1",
-        coolifyAppUrl: "https://stale.example.com",
-      }),
-    ).toEqual({ kind: "none" });
+describe("reading a stored row", () => {
+  it("treats no row as no connection", () => {
+    // Which is now the only way to express it: disconnecting deletes the row
+    // rather than nulling the fields that said where the app deployed.
+    expect(coolifyConnectionFromRow(null)).toEqual({ kind: "none" });
+    expect(coolifyConnectionFromRow(undefined)).toEqual({ kind: "none" });
   });
 
   it("treats an address without a deploy time as not yet deployed", () => {
+    // Still reachable — both are nullable — so the address is dropped rather
+    // than trusted, since nothing says it was ever answered at.
     expect(
-      coolifyConnectionFromColumns({
-        coolifyServerUuid: "srv-1",
-        coolifyProjectUuid: "prj-1",
-        coolifyApplicationUuid: "app-1",
-        coolifyAppUrl: "https://stale.example.com",
-        coolifyLastDeployedAt: null,
+      coolifyConnectionFromRow({
+        serverUuid: "srv-1",
+        projectUuid: "prj-1",
+        environmentName: "production",
+        applicationUuid: "app-1",
+        domain: null,
+        appUrl: "https://stale.example.com",
+        lastDeployedAt: null,
       }),
     ).toMatchObject({ kind: "provisioned" });
   });
 
-  it("defaults a missing environment to the one Coolify creates", () => {
-    expect(
-      coolifyConnectionFromColumns({
-        coolifyServerUuid: "srv-1",
-        coolifyProjectUuid: "prj-1",
-      }),
-    ).toMatchObject({ environmentName: "production" });
-  });
+  // Two degradations this used to need are gone: a row cannot name an
+  // application without a server, and cannot omit an environment, because
+  // those columns are NOT NULL.
 });
 
 describe("an application Coolify no longer has", () => {

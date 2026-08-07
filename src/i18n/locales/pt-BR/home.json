@@ -593,6 +593,8 @@
       "redeployProgress": "Implantando {{completed}}/{{total}}…",
       "redeploySucceeded_one": "{{count}} Edge Function reimplantada",
       "redeploySucceeded_other": "{{count}} Edge Functions reimplantadas",
+      "redeploySucceededWithPruning": "{{count}} Edge Functions reimplantadas e funções somente remotas removidas: {{functions}}",
+      "redeployPrunedOnly": "Edge Functions somente remotas removidas: {{functions}}",
       "noFunctionsToRedeploy": "Nenhuma Edge Function local encontrada para reimplantar",
       "redeployFailed": "A reimplantação das Edge Functions terminou com problemas: {{error}}"
     },

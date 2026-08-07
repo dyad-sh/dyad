@@ -380,7 +380,7 @@ export function registerSupabaseHandlers() {
           );
         }
 
-        let functionCount = 0;
+        let summary = { functionCount: 0, prunedFunctionNames: [] as string[] };
         const settings = readSettings();
         const errors = await deployAllSupabaseFunctions({
           appPath: getDyadAppPath(app.path),
@@ -388,8 +388,10 @@ export function registerSupabaseHandlers() {
           supabaseOrganizationSlug: app.supabaseOrganizationSlug ?? null,
           skipPruneEdgeFunctions: settings.skipPruneEdgeFunctions ?? false,
           pruneWhenNoLocalFunctions: true,
+          onSummary: (nextSummary) => {
+            summary = nextSummary;
+          },
           onProgress: (progress) => {
-            functionCount = progress.total;
             safeSend(event.sender, "supabase:redeploy-progress", {
               ...progress,
               appId,
@@ -398,7 +400,7 @@ export function registerSupabaseHandlers() {
           },
         });
 
-        return { functionCount, errors };
+        return { ...summary, errors };
       },
     ),
   );

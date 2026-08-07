@@ -101,7 +101,7 @@ describe("Supabase handlers", () => {
         .run();
       mocks.readSettings.mockReturnValue({ skipPruneEdgeFunctions: true });
       mocks.deployAllSupabaseFunctions.mockImplementation(
-        async ({ onProgress }) => {
+        async ({ onProgress, onSummary }) => {
           onProgress({
             phase: "deploying",
             total: 2,
@@ -111,6 +111,10 @@ describe("Supabase handlers", () => {
             succeeded: 1,
             failed: 0,
             functionName: "send-email",
+          });
+          onSummary({
+            functionCount: 2,
+            prunedFunctionNames: ["old-webhook"],
           });
           return ["Failed to bundle webhook"];
         },
@@ -134,6 +138,7 @@ describe("Supabase handlers", () => {
         ),
       ).resolves.toEqual({
         functionCount: 2,
+        prunedFunctionNames: ["old-webhook"],
         errors: ["Failed to bundle webhook"],
       });
 

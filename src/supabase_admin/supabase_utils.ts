@@ -28,6 +28,11 @@ export interface SupabaseDeployProgress {
   functionName?: string;
 }
 
+export interface SupabaseDeploySummary {
+  functionCount: number;
+  prunedFunctionNames: string[];
+}
+
 export async function mapSettledWithConcurrency<T, R>(
   items: readonly T[],
   concurrency: number,
@@ -260,6 +265,7 @@ export async function deploySupabaseFunctions({
   pruneWhenNoLocalFunctions = false,
   functionNames,
   onProgress,
+  onSummary,
 }: {
   appPath: string;
   supabaseProjectId: string;
@@ -268,26 +274,27 @@ export async function deploySupabaseFunctions({
   pruneWhenNoLocalFunctions?: boolean;
   functionNames?: string[];
   onProgress?: (progress: SupabaseDeployProgress) => void;
+  onSummary?: (summary: SupabaseDeploySummary) => void;
 }): Promise<string[]> {
   const functionsDir = path.join(appPath, "supabase", "functions");
+  const prunedFunctionNames: string[] = [];
+  let functionCount = 0;
+  const finish = (errors: string[]) => {
+    onSummary?.({ functionCount, prunedFunctionNames });
+    return errors;
+  };
 
-  let functionsDirectoryExists = true;
   try {
     await fs.access(functionsDir);
   } catch {
     logger.info(`No supabase/functions directory found at ${functionsDir}`);
-    functionsDirectoryExists = false;
-    if (!pruneWhenNoLocalFunctions || skipPruneEdgeFunctions) {
-      return [];
-    }
+    return finish([]);
   }
 
   const errors: string[] = [];
 
   try {
-    const allValidFunctions = functionsDirectoryExists
-      ? await getValidSupabaseFunctionNames(functionsDir)
-      : [];
+    const allValidFunctions = await getValidSupabaseFunctionNames(functionsDir);
     const allValidFunctionNames = new Set(allValidFunctions);
     const requestedFunctionNames = functionNames
       ? Array.from(new Set(functionNames))
@@ -305,6 +312,7 @@ export async function deploySupabaseFunctions({
           return false;
         })
       : allValidFunctions;
+    functionCount = validFunctions.length;
     if (missingRequestedFunctionNames.length > 0) {
       const errorMessage = `Requested Supabase functions do not exist locally or are missing index.ts: ${missingRequestedFunctionNames.join(", ")}`;
       logger.error(errorMessage);
@@ -321,10 +329,10 @@ export async function deploySupabaseFunctions({
         !requestedFunctionNames &&
         (!pruneWhenNoLocalFunctions || skipPruneEdgeFunctions)
       ) {
-        return [];
+        return finish([]);
       }
       if (errors.length > 0) {
-        return errors;
+        return finish(errors);
       }
     }
 
@@ -451,6 +459,7 @@ export async function deploySupabaseFunctions({
                 functionName: fn.slug,
                 organizationSlug: supabaseOrganizationSlug,
               });
+              prunedFunctionNames.push(fn.slug);
               logger.info(`Pruned dangling edge function: ${fn.slug}`);
             } catch (deleteError: any) {
               const errorMessage = `Failed to prune edge function ${fn.slug}: ${deleteError.message}`;
@@ -479,7 +488,7 @@ export async function deploySupabaseFunctions({
     errors.push(errorMessage);
   }
 
-  return errors;
+  return finish(errors);
 }
 
 /**
@@ -497,6 +506,7 @@ export async function deployAllSupabaseFunctions(args: {
   skipPruneEdgeFunctions: boolean;
   pruneWhenNoLocalFunctions?: boolean;
   onProgress?: (progress: SupabaseDeployProgress) => void;
+  onSummary?: (summary: SupabaseDeploySummary) => void;
 }): Promise<string[]> {
   return deploySupabaseFunctions(args);
 }

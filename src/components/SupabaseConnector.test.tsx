@@ -128,6 +128,7 @@ beforeEach(() => {
   switchAppToPublishableKeyMock.mockResolvedValue({ outcome: "switched" });
   redeployAllFunctionsMock.mockResolvedValue({
     functionCount: 2,
+    prunedFunctionNames: [],
     errors: [],
   });
   redeployState.progress = null;
@@ -141,9 +142,7 @@ describe("SupabaseConnector — edge function redeployment", () => {
     renderConnector();
     fireEvent.click(await screen.findByTestId(REDEPLOY_BUTTON));
 
-    await waitFor(() =>
-      expect(redeployAllFunctionsMock).toHaveBeenCalledWith(7),
-    );
+    await waitFor(() => expect(redeployAllFunctionsMock).toHaveBeenCalled());
     expect(toastSuccessMock).toHaveBeenCalledWith(
       "integrations.supabase.redeploySucceeded",
     );
@@ -165,6 +164,7 @@ describe("SupabaseConnector — edge function redeployment", () => {
   it("reports when there are no local functions", async () => {
     redeployAllFunctionsMock.mockResolvedValue({
       functionCount: 0,
+      prunedFunctionNames: [],
       errors: [],
     });
 
@@ -178,9 +178,28 @@ describe("SupabaseConnector — edge function redeployment", () => {
     );
   });
 
+  it("reports remote-only functions removed by a prune-only sync", async () => {
+    redeployAllFunctionsMock.mockResolvedValue({
+      functionCount: 0,
+      prunedFunctionNames: ["old-webhook"],
+      errors: [],
+    });
+
+    renderConnector();
+    fireEvent.click(await screen.findByTestId(REDEPLOY_BUTTON));
+
+    await waitFor(() =>
+      expect(toastSuccessMock).toHaveBeenCalledWith(
+        "integrations.supabase.redeployPrunedOnly",
+      ),
+    );
+    expect(toastInfoMock).not.toHaveBeenCalled();
+  });
+
   it("surfaces partial deployment failures", async () => {
     redeployAllFunctionsMock.mockResolvedValue({
       functionCount: 2,
+      prunedFunctionNames: [],
       errors: ["Failed to bundle send-email"],
     });
 

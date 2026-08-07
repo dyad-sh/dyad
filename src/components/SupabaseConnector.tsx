@@ -87,7 +87,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
   const hasLegacyKey = legacyKeyQuery.data?.hasLegacyKey ?? false;
   const switchKey = useSwitchToPublishableKey();
   const { redeployAllFunctions, redeployProgress, isRedeployingFunctions } =
-    useRedeploySupabaseFunctions();
+    useRedeploySupabaseFunctions(appId);
 
   const branchesProjectId =
     app?.supabaseParentProjectId || app?.supabaseProjectId;
@@ -265,15 +265,31 @@ export function SupabaseConnector({ appId }: { appId: number }) {
 
   const handleRedeployAllFunctions = async () => {
     try {
-      const result = await redeployAllFunctions(appId);
+      const result = await redeployAllFunctions();
       if (result.errors.length > 0) {
         showError(
           t("integrations.supabase.redeployFailed", {
             error: result.errors.join("\n"),
           }),
         );
+      } else if (
+        result.functionCount === 0 &&
+        result.prunedFunctionNames.length > 0
+      ) {
+        toast.success(
+          t("integrations.supabase.redeployPrunedOnly", {
+            functions: result.prunedFunctionNames.join(", "),
+          }),
+        );
       } else if (result.functionCount === 0) {
         toast.info(t("integrations.supabase.noFunctionsToRedeploy"));
+      } else if (result.prunedFunctionNames.length > 0) {
+        toast.success(
+          t("integrations.supabase.redeploySucceededWithPruning", {
+            count: result.functionCount,
+            functions: result.prunedFunctionNames.join(", "),
+          }),
+        );
       } else {
         toast.success(
           t("integrations.supabase.redeploySucceeded", {

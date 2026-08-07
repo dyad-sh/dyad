@@ -1,4 +1,9 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  useIsMutating,
+} from "@tanstack/react-query";
 import { useAtom, useAtomValue } from "jotai";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { lastLogTimestampAtom } from "@/atoms/supabaseAtoms";
@@ -253,7 +258,7 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
   };
 }
 
-export function useRedeploySupabaseFunctions() {
+export function useRedeploySupabaseFunctions(appId: number) {
   const [progress, setProgress] = useState<SupabaseRedeployProgress | null>(
     null,
   );
@@ -268,27 +273,28 @@ export function useRedeploySupabaseFunctions() {
   }, []);
 
   const mutation = useMutation({
+    mutationKey: queryKeys.supabase.redeploy({ appId }),
     mutationFn: (params: { appId: number; operationId: string }) =>
       ipc.supabase.redeployAllFunctions(params),
   });
+  const matchingMutations = useIsMutating({
+    mutationKey: queryKeys.supabase.redeploy({ appId }),
+  });
 
-  const redeployAllFunctions = useCallback(
-    async (appId: number) => {
-      const operationId = `supabase-redeploy:${globalThis.crypto.randomUUID()}`;
-      activeOperationIdRef.current = operationId;
-      setProgress(null);
-      try {
-        return await mutation.mutateAsync({ appId, operationId });
-      } finally {
-        activeOperationIdRef.current = null;
-      }
-    },
-    [mutation],
-  );
+  const redeployAllFunctions = useCallback(async () => {
+    const operationId = `supabase-redeploy:${globalThis.crypto.randomUUID()}`;
+    activeOperationIdRef.current = operationId;
+    setProgress(null);
+    try {
+      return await mutation.mutateAsync({ appId, operationId });
+    } finally {
+      activeOperationIdRef.current = null;
+    }
+  }, [appId, mutation]);
 
   return {
     redeployAllFunctions,
     redeployProgress: progress,
-    isRedeployingFunctions: mutation.isPending,
+    isRedeployingFunctions: matchingMutations > 0,
   };
 }

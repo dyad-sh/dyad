@@ -221,6 +221,10 @@ describe("deployAllSupabaseFunctions progress", () => {
   });
 
   it("prunes remote functions when a manual sync has no valid local functions", async () => {
+    let summary: {
+      functionCount: number;
+      prunedFunctionNames: string[];
+    } | null = null;
     await fs.rm(path.join(appPath, "supabase", "functions", "alpha"), {
       recursive: true,
     });
@@ -238,6 +242,9 @@ describe("deployAllSupabaseFunctions progress", () => {
         supabaseOrganizationSlug: "org",
         skipPruneEdgeFunctions: false,
         pruneWhenNoLocalFunctions: true,
+        onSummary: (nextSummary) => {
+          summary = nextSummary;
+        },
       }),
     ).resolves.toEqual([]);
 
@@ -247,9 +254,13 @@ describe("deployAllSupabaseFunctions progress", () => {
       functionName: "old-fn",
       organizationSlug: "org",
     });
+    expect(summary).toEqual({
+      functionCount: 0,
+      prunedFunctionNames: ["old-fn"],
+    });
   });
 
-  it("prunes remote functions when a manual sync has no functions directory", async () => {
+  it("does not prune remote functions when the functions directory is missing", async () => {
     await fs.rm(path.join(appPath, "supabase", "functions"), {
       recursive: true,
     });
@@ -267,11 +278,8 @@ describe("deployAllSupabaseFunctions progress", () => {
       }),
     ).resolves.toEqual([]);
 
-    expect(deleteSupabaseFunction).toHaveBeenCalledWith({
-      supabaseProjectId: "project-id",
-      functionName: "old-fn",
-      organizationSlug: null,
-    });
+    expect(listSupabaseFunctions).not.toHaveBeenCalled();
+    expect(deleteSupabaseFunction).not.toHaveBeenCalled();
   });
 
   it("keeps remote functions when empty manual sync pruning is disabled", async () => {

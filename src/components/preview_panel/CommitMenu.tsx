@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { GitCommitVertical, ChevronDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useSetAtom } from "jotai";
@@ -21,10 +22,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   clearStagedDiffAtom,
-  dismissCommitDialogAtom,
+  closeCommitDialogAtom,
   openCommitDialogAtom,
   openStagedDiffAtom,
-  type CommitDialogSource,
+  type CommitDialogOwner,
 } from "@/atoms/commitAtoms";
 import { useUncommittedFiles } from "@/hooks/useUncommittedFiles";
 import { useCommitChanges } from "@/hooks/useCommitChanges";
@@ -53,11 +54,23 @@ export function CommitMenu({ appId }: CommitMenuProps) {
   const setOpenCommitDialog = useSetAtom(openCommitDialogAtom);
   const openStagedDiffFile = useSetAtom(openStagedDiffAtom);
   const clearStagedDiff = useSetAtom(clearStagedDiffAtom);
-  const dismissCommitDialog = useSetAtom(dismissCommitDialogAtom);
+  const closeCommitDialog = useSetAtom(closeCommitDialogAtom);
   const { send: sendPreviewEvent } = useVersionPreview(appId);
   const { isDialogOpen, commitMessage, setCommitMessage } = useCommitMessage(
     "editor",
+    appId,
     uncommittedFiles,
+  );
+
+  // CodeView unmounts whenever previewMode leaves "code", and background
+  // subscriptions change it on their own - usePlanEvents switches to plan mode
+  // on every plan:update event. The dialog lives in a global atom, so without
+  // this it would survive that unmount invisibly and pop back open the next
+  // time the user returns to Code. The staged diff renders inside this same
+  // toolbar's view, so the round trip out to a diff does not unmount us.
+  useEffect(
+    () => () => closeCommitDialog({ source: "editor", appId }),
+    [closeCommitDialog, appId],
   );
 
   // Opening a staged file's diff must clear any selected version diff, since
@@ -65,7 +78,7 @@ export function CommitMenu({ appId }: CommitMenuProps) {
   // `returnTo` is what brings the user back to the dialog they came from.
   const openStagedDiff = (
     filePath: string,
-    returnTo: CommitDialogSource | null,
+    returnTo: CommitDialogOwner | null,
   ) => {
     sendPreviewEvent({ type: "CLOSE" });
     openStagedDiffFile({ path: filePath, returnTo });
@@ -78,7 +91,7 @@ export function CommitMenu({ appId }: CommitMenuProps) {
   // round trip out to a diff closes the dialog through openStagedDiffAtom
   // instead, so the draft survives that.
   const dismissDialog = () => {
-    dismissCommitDialog({ source: "editor", appId });
+    closeCommitDialog({ source: "editor", appId });
   };
 
   const handleCommit = async () => {
@@ -90,10 +103,11 @@ export function CommitMenu({ appId }: CommitMenuProps) {
       // and preserve the message so the user can retry without retyping it.
       return;
     }
-    dismissCommitDialog({ source: "editor", appId });
+    closeCommitDialog({ source: "editor", appId });
     // Nothing is staged anymore, so leave the diff view if it was open. This
-    // must not reopen the dialog, hence clear rather than exit.
-    clearStagedDiff();
+    // must not reopen the dialog, hence clear rather than exit. Both calls name
+    // the app committed, so neither touches another one if this lands late.
+    clearStagedDiff(appId);
   };
 
   return (
@@ -103,7 +117,7 @@ export function CommitMenu({ appId }: CommitMenuProps) {
         size="sm"
         className="rounded-r-none border-r-0"
         disabled={!hasUncommittedFiles}
-        onClick={() => setOpenCommitDialog("editor")}
+        onClick={() => setOpenCommitDialog({ source: "editor", appId })}
         data-testid="editor-commit-button"
       >
         <GitCommitVertical size={14} />
@@ -168,7 +182,7 @@ export function CommitMenu({ appId }: CommitMenuProps) {
         open={isDialogOpen}
         onOpenChange={(open) => {
           if (open) {
-            setOpenCommitDialog("editor");
+            setOpenCommitDialog({ source: "editor", appId });
             return;
           }
           if (isCommitting) return;
@@ -211,7 +225,9 @@ export function CommitMenu({ appId }: CommitMenuProps) {
               </p>
               <CommitFileList
                 files={uncommittedFiles}
-                onSelectFile={(path) => openStagedDiff(path, "editor")}
+                onSelectFile={(path) =>
+                  openStagedDiff(path, { source: "editor", appId })
+                }
                 disabled={isCommitting}
                 testId="editor-commit-files-list"
               />

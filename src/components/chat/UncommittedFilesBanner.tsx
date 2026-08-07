@@ -13,10 +13,9 @@ import {
 import { Input } from "@/components/ui/input";
 import {
   clearStagedDiffAtom,
-  dismissCommitDialogAtom,
+  closeCommitDialogAtom,
   openCommitDialogAtom,
   openStagedDiffAtom,
-  releaseCommitDialogAtom,
 } from "@/atoms/commitAtoms";
 import { useUncommittedFiles } from "@/hooks/useUncommittedFiles";
 import { useCommitChanges } from "@/hooks/useCommitChanges";
@@ -37,16 +36,16 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
   const { send: sendPreviewEvent } = useVersionPreview(appId);
   const setOpenCommitDialog = useSetAtom(openCommitDialogAtom);
   const openStagedDiffFile = useSetAtom(openStagedDiffAtom);
-  const releaseCommitDialog = useSetAtom(releaseCommitDialogAtom);
-  const dismissCommitDialog = useSetAtom(dismissCommitDialogAtom);
+  const closeCommitDialog = useSetAtom(closeCommitDialogAtom);
   const clearStagedDiff = useSetAtom(clearStagedDiffAtom);
   const { isDialogOpen, commitMessage, setCommitMessage } = useCommitMessage(
     "banner",
+    appId,
     uncommittedFiles,
   );
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const confirmPanelRef = useRef<HTMLDivElement>(null);
-  const canShowBanner = Boolean(appId) && !isLoading && !!hasUncommittedFiles;
+  const canShowBanner = appId !== null && !isLoading && !!hasUncommittedFiles;
 
   useEffect(() => {
     if (showDiscardConfirm) {
@@ -62,16 +61,18 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
   // mounted conditionally - ChatHeader hides it while streaming and behind the
   // version pane, and it renders nothing without uncommitted files. Hand the
   // state back whenever it cannot be shown, so a dialog left open (or a pending
-  // return to one) cannot pop open unprompted on the next remount.
+  // return to one) cannot pop open unprompted on the next remount, and the
+  // message typed into it does not sit around to prefill a later commit.
   useEffect(() => {
+    if (appId === null) return;
     if (!canShowBanner) {
-      releaseCommitDialog("banner");
+      closeCommitDialog({ source: "banner", appId });
       return;
     }
-    return () => releaseCommitDialog("banner");
-  }, [canShowBanner, releaseCommitDialog]);
+    return () => closeCommitDialog({ source: "banner", appId });
+  }, [canShowBanner, closeCommitDialog, appId]);
 
-  if (!canShowBanner) {
+  if (!canShowBanner || appId === null) {
     return null;
   }
 
@@ -83,7 +84,7 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
   // instead, so the draft survives that.
   const dismissDialog = () => {
     setShowDiscardConfirm(false);
-    dismissCommitDialog({ source: "banner", appId });
+    closeCommitDialog({ source: "banner", appId });
   };
 
   // The diff renders in the code panel, which this banner's dialog has to
@@ -92,7 +93,10 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
   const openStagedDiff = (filePath: string) => {
     sendPreviewEvent({ type: "CLOSE" });
     setShowDiscardConfirm(false);
-    openStagedDiffFile({ path: filePath, returnTo: "banner" });
+    openStagedDiffFile({
+      path: filePath,
+      returnTo: { source: "banner", appId },
+    });
   };
 
   // Nothing is staged after either of these, so a diff opened from this dialog
@@ -100,7 +104,7 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
   // showing "no staged changes". Clearing rather than exiting keeps it from
   // reopening the dialog on the way out. Both mirror CommitMenu.handleCommit.
   const handleCommit = async () => {
-    if (!appId || !commitMessage.trim()) return;
+    if (!commitMessage.trim()) return;
 
     try {
       await commitChanges({ appId, message: commitMessage.trim() });
@@ -110,13 +114,11 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
       return;
     }
     setShowDiscardConfirm(false);
-    dismissCommitDialog({ source: "banner", appId });
-    clearStagedDiff();
+    closeCommitDialog({ source: "banner", appId });
+    clearStagedDiff(appId);
   };
 
   const handleDiscard = async () => {
-    if (!appId) return;
-
     try {
       await discardChanges({ appId });
     } catch {
@@ -124,8 +126,8 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
       return;
     }
     setShowDiscardConfirm(false);
-    dismissCommitDialog({ source: "banner", appId });
-    clearStagedDiff();
+    closeCommitDialog({ source: "banner", appId });
+    clearStagedDiff(appId);
   };
 
   return (
@@ -144,7 +146,7 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
         <Button
           variant="outline"
           size="sm"
-          onClick={() => setOpenCommitDialog("banner")}
+          onClick={() => setOpenCommitDialog({ source: "banner", appId })}
           data-testid="review-commit-button"
         >
           Review & commit
@@ -155,7 +157,7 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
         open={isDialogOpen}
         onOpenChange={(open) => {
           if (open) {
-            setOpenCommitDialog("banner");
+            setOpenCommitDialog({ source: "banner", appId });
             return;
           }
           // Prevent closing while committing or discarding

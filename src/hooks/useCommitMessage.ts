@@ -18,6 +18,7 @@ import type { UncommittedFile } from "@/hooks/useUncommittedFiles";
  */
 export function useCommitMessage(
   source: CommitDialogSource,
+  appId: number | null,
   uncommittedFiles: UncommittedFile[],
 ) {
   const openCommitDialog = useAtomValue(openCommitDialogAtom);
@@ -26,7 +27,10 @@ export function useCommitMessage(
   // Frozen at open so polling doesn't rewrite the suggestion under the user.
   // Only ever a suggestion: once the user types, the draft atom takes over.
   const [generatedMessage, setGeneratedMessage] = useState<string | null>(null);
-  const isDialogOpen = openCommitDialog === source;
+  // A dialog belongs to an app as well as a source, so an open dialog left over
+  // from another app is not this one.
+  const isDialogOpen =
+    openCommitDialog?.source === source && openCommitDialog.appId === appId;
   // Read only at the moment the dialog opens, so the freeze above is against a
   // ref rather than a render-time dependency that would refresh with polling.
   const uncommittedFilesRef = useRef(uncommittedFiles);

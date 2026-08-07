@@ -66,6 +66,32 @@ const CELL_ID = `${MODEL_NAME.replace(/[^a-z0-9.-]/gi, "_")}-${APP}${EFFORT ? "-
 // Distinguishes snapshot DBs across reruns of the same cell.
 const RUN_STAMP = Date.now().toString(36);
 
+/**
+ * A snapshot database name that always fits Postgres's 63-byte identifier
+ * limit (the shim enforces `^sim_[a-z0-9_]{1,59}$`).
+ *
+ * Naively interpolating the cell id overflows for long model names:
+ * `deepseek-v4-flash-0731` yields a 64-character label, which the shim rejected
+ * *after* the milestone's model spend had been incurred — the whole run failed
+ * at the checkpoint-capture step with a message that mentioned only the
+ * character class, so it read as a hyphen problem rather than a length one.
+ * When the readable form does not fit, compress the cell slug to a stable
+ * digest so distinct cells still cannot collide.
+ */
+function snapshotLabel(milestone: number): string {
+  const slug = CELL_ID.toLowerCase().replace(/[^a-z0-9_]/g, "_");
+  const readable = `sim_${RUN_STAMP}_${slug}_ckpt${milestone}`;
+  if (readable.length <= 63) return readable;
+  const digest = crypto
+    .createHash("sha1")
+    .update(slug)
+    .digest("hex")
+    .slice(0, 8);
+  const fixed = `sim_${RUN_STAMP}__${digest}_ckpt${milestone}`;
+  const room = Math.max(0, 63 - fixed.length);
+  return `sim_${RUN_STAMP}_${slug.slice(0, room)}_${digest}_ckpt${milestone}`;
+}
+
 // Soft caps only (flagged as overSoftCap, never aborted). Raised from
 // 15/20/25 after the first S-CELL run showed wall-clock is dominated by
 // transport stalls, not model speed — re-calibrate once clean cells exist.
@@ -275,7 +301,7 @@ async function json(url: string, init?: RequestInit) {
         );
         // Snapshot after the summary is durably written; label must match the
         // shim's ^sim_[a-z0-9_]+$ contract and be unique across reruns.
-        const snapshotDb = `sim_${RUN_STAMP}_${CELL_ID.toLowerCase().replace(/[^a-z0-9_]/g, "_")}_ckpt${m}`;
+        const snapshotDb = snapshotLabel(m);
         summary.milestones[summary.milestones.length - 1].snapshotDb =
           snapshotDb;
         await json(`${SIM}/__sim/snapshot`, {

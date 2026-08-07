@@ -286,14 +286,21 @@ export function createControlPlane({ port = 7788, ledgerDir, sqlProxy }) {
     }
     if (req.method !== "POST") return json(res, 404, { message: "not found" });
     const body = await readBody(req);
-    const validLabel = (l) => /^sim_[a-z0-9_]{1,50}$/.test(l ?? "");
+    // 59, not 50: Postgres truncates identifiers at 63 bytes, and "sim_" eats
+    // four of them. The old cap of 50 was arbitrary and rejected any cell whose
+    // model name was long — deepseek-v4-flash-0731 produced a 60-char body and
+    // failed a full milestone's work at the snapshot step, after the model
+    // spend had already been incurred.
+    const validLabel = (l) => /^sim_[a-z0-9_]{1,59}$/.test(l ?? "");
 
     if (op === "snapshot") {
       const project = findProject(body.projectId);
       const branch = project?.branches.get(body.branchId);
       if (!branch) return json(res, 404, { message: "branch not found" });
       if (!validLabel(body.label))
-        return json(res, 400, { message: "label must match ^sim_[a-z0-9_]+$" });
+        return json(res, 400, {
+          message: `label must match ^sim_[a-z0-9_]{1,59}$ (got ${JSON.stringify(body.label)}, length ${(body.label ?? "").length}) — 59 is the Postgres 63-byte identifier limit minus the "sim_" prefix`,
+        });
       await closeMountsForDb(branch.db);
       await sqlProxy.closePoolsForDb(branch.db);
       await createDatabase(body.label, { template: branch.db });
@@ -325,7 +332,9 @@ export function createControlPlane({ port = 7788, ledgerDir, sqlProxy }) {
         });
       }
       if (!validLabel(body.label))
-        return json(res, 400, { message: "label must match ^sim_[a-z0-9_]+$" });
+        return json(res, 400, {
+          message: `label must match ^sim_[a-z0-9_]{1,59}$ (got ${JSON.stringify(body.label)}, length ${(body.label ?? "").length}) — 59 is the Postgres 63-byte identifier limit minus the "sim_" prefix`,
+        });
       await createDatabase(body.label, { template: body.snapshot });
       // Mount better-auth over the clone's neon_auth schema so scoring runs
       // can sign up/sign in against the cloned checkpoint database.

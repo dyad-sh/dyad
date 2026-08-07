@@ -1,6 +1,11 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  useIsMutating,
+} from "@tanstack/react-query";
 import { useAtom, useAtomValue } from "jotai";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { lastLogTimestampAtom } from "@/atoms/supabaseAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import {
@@ -11,6 +16,7 @@ import {
   SupabaseOrganizationInfo,
   SupabaseProject,
   SupabaseBranch,
+  SupabaseRedeployProgress,
 } from "@/ipc/types";
 import { useSettings } from "./useSettings";
 import { isSupabaseConnected } from "@/lib/schemas";
@@ -249,5 +255,46 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
     deleteOrganization: deleteOrganizationMutation.mutateAsync,
     setAppProject: setAppProjectMutation.mutateAsync,
     unsetAppProject: unsetAppProjectMutation.mutateAsync,
+  };
+}
+
+export function useRedeploySupabaseFunctions(appId: number) {
+  const [progress, setProgress] = useState<SupabaseRedeployProgress | null>(
+    null,
+  );
+  const activeOperationIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    return ipc.events.supabase.onRedeployProgress((nextProgress) => {
+      if (nextProgress.operationId === activeOperationIdRef.current) {
+        setProgress(nextProgress);
+      }
+    });
+  }, []);
+
+  const mutation = useMutation({
+    mutationKey: queryKeys.supabase.redeploy({ appId }),
+    mutationFn: (params: { appId: number; operationId: string }) =>
+      ipc.supabase.redeployAllFunctions(params),
+  });
+  const matchingMutations = useIsMutating({
+    mutationKey: queryKeys.supabase.redeploy({ appId }),
+  });
+
+  const redeployAllFunctions = useCallback(async () => {
+    const operationId = `supabase-redeploy:${globalThis.crypto.randomUUID()}`;
+    activeOperationIdRef.current = operationId;
+    setProgress(null);
+    try {
+      return await mutation.mutateAsync({ appId, operationId });
+    } finally {
+      activeOperationIdRef.current = null;
+    }
+  }, [appId, mutation]);
+
+  return {
+    redeployAllFunctions,
+    redeployProgress: progress,
+    isRedeployingFunctions: matchingMutations > 0,
   };
 }

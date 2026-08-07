@@ -588,7 +588,17 @@
       "failedDisconnectProject": "앱에서 프로젝트 연결 해제 실패",
       "signInTimedOut": "로그인 시간이 초과되었습니다 — 다시 시도하거나 브라우저를 확인하세요",
       "cancelSignIn": "로그인 취소",
-      "connectFailed": "Supabase 연결에 실패했습니다"
+      "connectFailed": "Supabase 연결에 실패했습니다",
+      "redeployFunctions": "Edge Function 다시 배포",
+      "redeployFunctionsDescription": "모든 로컬 Edge Function을 이 프로젝트에 다시 배포합니다. 원격에만 있는 함수는 추가 Supabase Edge Function 유지 설정을 따릅니다.",
+      "preparingRedeploy": "준비 중…",
+      "redeployProgress": "배포 중 {{completed}}/{{total}}…",
+      "redeploySucceeded_one": "Edge Function {{count}}개를 다시 배포했습니다",
+      "redeploySucceeded_other": "Edge Function {{count}}개를 다시 배포했습니다",
+      "redeploySucceededWithPruning": "Edge Function {{count}}개를 다시 배포하고 원격 전용 함수를 제거했습니다: {{functions}}",
+      "redeployPrunedOnly": "원격에만 있던 Edge Function을 제거했습니다: {{functions}}",
+      "noFunctionsToRedeploy": "다시 배포할 로컬 Edge Function이 없습니다",
+      "redeployFailed": "Edge Function 재배포가 문제와 함께 완료되었습니다: {{error}}"
     },
     "neon": {
       "title": "Neon 연동",

@@ -11,12 +11,21 @@ const {
   toastSuccessMock,
   toastErrorMock,
   toastInfoMock,
+  redeployAllFunctionsMock,
+  redeployState,
+  showErrorMock,
 } = vi.hoisted(() => ({
   detectLegacyAppKeyMock: vi.fn(),
   switchAppToPublishableKeyMock: vi.fn(),
   toastSuccessMock: vi.fn(),
   toastErrorMock: vi.fn(),
   toastInfoMock: vi.fn(),
+  redeployAllFunctionsMock: vi.fn(),
+  showErrorMock: vi.fn(),
+  redeployState: {
+    progress: null as null | { completed: number; total: number },
+    isPending: false,
+  },
 }));
 
 vi.mock("@/ipc/types", () => ({
@@ -35,6 +44,10 @@ vi.mock("sonner", () => ({
     error: toastErrorMock,
     info: toastInfoMock,
   },
+}));
+
+vi.mock("@/lib/toast", () => ({
+  showError: showErrorMock,
 }));
 
 vi.mock("react-i18next", () => ({
@@ -78,6 +91,11 @@ vi.mock("@/hooks/useSupabase", () => ({
     unsetAppProject: vi.fn(),
     deleteOrganization: vi.fn(),
   }),
+  useRedeploySupabaseFunctions: () => ({
+    redeployAllFunctions: redeployAllFunctionsMock,
+    redeployProgress: redeployState.progress,
+    isRedeployingFunctions: redeployState.isPending,
+  }),
 }));
 
 vi.mock("@/hooks/useConnectionFlow", () => ({
@@ -108,6 +126,93 @@ beforeEach(() => {
   vi.clearAllMocks();
   detectLegacyAppKeyMock.mockResolvedValue({ hasLegacyKey: true });
   switchAppToPublishableKeyMock.mockResolvedValue({ outcome: "switched" });
+  redeployAllFunctionsMock.mockResolvedValue({
+    functionCount: 2,
+    prunedFunctionNames: [],
+    errors: [],
+  });
+  redeployState.progress = null;
+  redeployState.isPending = false;
+});
+
+describe("SupabaseConnector — edge function redeployment", () => {
+  const REDEPLOY_BUTTON = "supabase-redeploy-functions-button";
+
+  it("redeploys every function for the current app", async () => {
+    renderConnector();
+    fireEvent.click(await screen.findByTestId(REDEPLOY_BUTTON));
+
+    await waitFor(() => expect(redeployAllFunctionsMock).toHaveBeenCalled());
+    expect(toastSuccessMock).toHaveBeenCalledWith(
+      "integrations.supabase.redeploySucceeded",
+    );
+  });
+
+  it("shows correlated live progress and prevents another deployment", async () => {
+    redeployState.isPending = true;
+    redeployState.progress = { completed: 3, total: 5 };
+
+    renderConnector();
+
+    const button = await screen.findByTestId(REDEPLOY_BUTTON);
+    expect(button.hasAttribute("disabled")).toBe(true);
+    expect(button.textContent).toContain(
+      "integrations.supabase.redeployProgress",
+    );
+  });
+
+  it("reports when there are no local functions", async () => {
+    redeployAllFunctionsMock.mockResolvedValue({
+      functionCount: 0,
+      prunedFunctionNames: [],
+      errors: [],
+    });
+
+    renderConnector();
+    fireEvent.click(await screen.findByTestId(REDEPLOY_BUTTON));
+
+    await waitFor(() =>
+      expect(toastInfoMock).toHaveBeenCalledWith(
+        "integrations.supabase.noFunctionsToRedeploy",
+      ),
+    );
+  });
+
+  it("reports remote-only functions removed by a prune-only sync", async () => {
+    redeployAllFunctionsMock.mockResolvedValue({
+      functionCount: 0,
+      prunedFunctionNames: ["old-webhook"],
+      errors: [],
+    });
+
+    renderConnector();
+    fireEvent.click(await screen.findByTestId(REDEPLOY_BUTTON));
+
+    await waitFor(() =>
+      expect(toastSuccessMock).toHaveBeenCalledWith(
+        "integrations.supabase.redeployPrunedOnly",
+      ),
+    );
+    expect(toastInfoMock).not.toHaveBeenCalled();
+  });
+
+  it("surfaces partial deployment failures", async () => {
+    redeployAllFunctionsMock.mockResolvedValue({
+      functionCount: 2,
+      prunedFunctionNames: [],
+      errors: ["Failed to bundle send-email"],
+    });
+
+    renderConnector();
+    fireEvent.click(await screen.findByTestId(REDEPLOY_BUTTON));
+
+    await waitFor(() =>
+      expect(showErrorMock).toHaveBeenCalledWith(
+        "integrations.supabase.redeployFailed",
+      ),
+    );
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+  });
 });
 
 describe("SupabaseConnector — app API key", () => {

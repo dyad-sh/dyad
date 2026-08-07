@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { ipc, type SupabaseProject } from "@/ipc/types";
 import { toast } from "sonner";
 import { useSettings } from "@/hooks/useSettings";
-import { useSupabase } from "@/hooks/useSupabase";
+import { useRedeploySupabaseFunctions, useSupabase } from "@/hooks/useSupabase";
 import {
   Select,
   SelectContent,
@@ -48,7 +48,14 @@ import connectSupabaseDark from "../../assets/supabase/connect-supabase-dark.svg
 // @ts-ignore
 import connectSupabaseLight from "../../assets/supabase/connect-supabase-light.svg";
 
-import { ExternalLink, Info, Plus, RefreshCw, Trash2 } from "lucide-react";
+import {
+  ExternalLink,
+  Info,
+  Loader2,
+  Plus,
+  RefreshCw,
+  Trash2,
+} from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { getErrorMessage } from "@/lib/errors";
 import {
@@ -58,6 +65,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useTheme } from "@/contexts/ThemeContext";
 import { isSupabaseConnected } from "@/lib/schemas";
+import { showError } from "@/lib/toast";
 
 export function SupabaseConnector({ appId }: { appId: number }) {
   const { t } = useTranslation(["home", "common"]);
@@ -78,6 +86,8 @@ export function SupabaseConnector({ appId }: { appId: number }) {
   });
   const hasLegacyKey = legacyKeyQuery.data?.hasLegacyKey ?? false;
   const switchKey = useSwitchToPublishableKey();
+  const { redeployAllFunctions, redeployProgress, isRedeployingFunctions } =
+    useRedeploySupabaseFunctions(appId);
 
   const branchesProjectId =
     app?.supabaseParentProjectId || app?.supabaseProjectId;
@@ -253,6 +263,49 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     }
   };
 
+  const handleRedeployAllFunctions = async () => {
+    try {
+      const result = await redeployAllFunctions();
+      if (result.errors.length > 0) {
+        showError(
+          t("integrations.supabase.redeployFailed", {
+            error: result.errors.join("\n"),
+          }),
+        );
+      } else if (
+        result.functionCount === 0 &&
+        result.prunedFunctionNames.length > 0
+      ) {
+        toast.success(
+          t("integrations.supabase.redeployPrunedOnly", {
+            functions: result.prunedFunctionNames.join(", "),
+          }),
+        );
+      } else if (result.functionCount === 0) {
+        toast.info(t("integrations.supabase.noFunctionsToRedeploy"));
+      } else if (result.prunedFunctionNames.length > 0) {
+        toast.success(
+          t("integrations.supabase.redeploySucceededWithPruning", {
+            count: result.functionCount,
+            functions: result.prunedFunctionNames.join(", "),
+          }),
+        );
+      } else {
+        toast.success(
+          t("integrations.supabase.redeploySucceeded", {
+            count: result.functionCount,
+          }),
+        );
+      }
+    } catch (error) {
+      showError(
+        t("integrations.supabase.redeployFailed", {
+          error: getErrorMessage(error),
+        }),
+      );
+    }
+  };
+
   const handleDeleteOrganization = async (organizationSlug: string) => {
     try {
       await deleteOrganization({ organizationSlug });
@@ -389,6 +442,30 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                 </p>
               </div>
             )}
+
+            <div className="space-y-2">
+              <Button
+                variant="outline"
+                onClick={handleRedeployAllFunctions}
+                disabled={isRedeployingFunctions}
+                data-testid="supabase-redeploy-functions-button"
+              >
+                {isRedeployingFunctions && (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                )}
+                {isRedeployingFunctions
+                  ? redeployProgress
+                    ? t("integrations.supabase.redeployProgress", {
+                        completed: redeployProgress.completed,
+                        total: redeployProgress.total,
+                      })
+                    : t("integrations.supabase.preparingRedeploy")
+                  : t("integrations.supabase.redeployFunctions")}
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                {t("integrations.supabase.redeployFunctionsDescription")}
+              </p>
+            </div>
 
             <Button variant="destructive" onClick={handleUnsetProject}>
               {t("integrations.supabase.disconnectProject")}

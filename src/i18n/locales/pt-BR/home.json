@@ -582,7 +582,17 @@
       "failedDisconnectProject": "Falha ao desconectar projeto do app",
       "signInTimedOut": "Login expirou — tente novamente ou verifique seu navegador",
       "cancelSignIn": "Cancelar login",
-      "connectFailed": "Falha ao conectar ao Supabase"
+      "connectFailed": "Falha ao conectar ao Supabase",
+      "redeployFunctions": "Reimplantar Edge Functions",
+      "redeployFunctionsDescription": "Reimplanta todas as Edge Functions locais neste projeto. As funções que existem apenas remotamente seguem a configuração Manter Edge Functions extras.",
+      "preparingRedeploy": "Preparando…",
+      "redeployProgress": "Implantando {{completed}}/{{total}}…",
+      "redeploySucceeded_one": "{{count}} Edge Function reimplantada",
+      "redeploySucceeded_other": "{{count}} Edge Functions reimplantadas",
+      "redeploySucceededWithPruning": "{{count}} Edge Functions reimplantadas e funções somente remotas removidas: {{functions}}",
+      "redeployPrunedOnly": "Edge Functions somente remotas removidas: {{functions}}",
+      "noFunctionsToRedeploy": "Nenhuma Edge Function local encontrada para reimplantar",
+      "redeployFailed": "A reimplantação das Edge Functions terminou com problemas: {{error}}"
     },
     "neon": {
       "title": "Integração com Neon",

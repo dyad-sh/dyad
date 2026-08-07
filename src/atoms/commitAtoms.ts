@@ -27,9 +27,11 @@ const commitDialogReturnAtom = atom<CommitDialogSource | null>(null);
  *
  * Both dialogs share one entry per app on purpose: they are two entrances to
  * the same commit of the same working tree, so a message typed in one is the
- * message for the other. Staleness is bounded by lifetime instead - dismissing
- * a dialog without committing discards the draft, so it cannot outlive the
- * change set it was written for.
+ * message for the other. Staleness is bounded by lifetime instead: a draft only
+ * survives while its dialog is open or while a diff opened from that dialog is
+ * showing. Every way out of that round trip - committing, discarding,
+ * dismissing, or leaving the diff for anywhere other than the dialog - drops
+ * it, so it cannot outlive the change set it was written for.
  */
 export const commitMessageDraftsByAppIdAtom = atom<Map<number, string>>(
   new Map(),
@@ -56,6 +58,22 @@ export const commitMessageDraftAtom = atom(
     } else {
       next.set(appId, message);
     }
+    set(commitMessageDraftsByAppIdAtom, next);
+  },
+);
+
+/**
+ * Discards one app's draft by id rather than by whatever app is selected now.
+ * Commit and discard handlers use this so a mutation that resolves after the
+ * user moved on cannot wipe a draft they have since typed for another app.
+ */
+export const discardCommitMessageDraftAtom = atom(
+  null,
+  (get, set, appId: number) => {
+    const drafts = get(commitMessageDraftsByAppIdAtom);
+    if (!drafts.has(appId)) return;
+    const next = new Map(drafts);
+    next.delete(appId);
     set(commitMessageDraftsByAppIdAtom, next);
   },
 );
@@ -99,10 +117,15 @@ export const exitStagedDiffAtom = atom(null, (get, set) => {
  * diff is cleared as a side effect of going somewhere else - committing,
  * opening a file in the editor - so a pending return target cannot pop a
  * dialog open on top of the destination.
+ *
+ * This is the end of the round trip, not a pause in it: with the return target
+ * gone there is no way back to the dialog, so the draft written in it goes too
+ * rather than lying in wait to prefill an unrelated commit later.
  */
 export const clearStagedDiffAtom = atom(null, (_get, set) => {
   set(stagedDiffFileAtom, null);
   set(commitDialogReturnAtom, null);
+  set(commitMessageDraftAtom, null);
 });
 
 /**
@@ -131,9 +154,39 @@ export const releaseCommitDialogAtom = atom(
 );
 
 /**
+ * Ends one dialog's session without committing: closes it, drops a pending
+ * return to it, and discards the draft typed in it. Reaching the diff and
+ * coming back reopens the same dialog through `commitDialogReturnAtom`, so a
+ * return target that outlived its dialog would resurrect one the user had
+ * already dismissed - hence dropping it here rather than only closing.
+ *
+ * Scoped to the source that owns the dialog, and to the app the draft was
+ * written for, so a commit or discard resolving late cannot close a dialog the
+ * user has since opened elsewhere or clear a message meant for another app.
+ */
+export const dismissCommitDialogAtom = atom(
+  null,
+  (
+    _get,
+    set,
+    { source, appId }: { source: CommitDialogSource; appId: number | null },
+  ) => {
+    set(releaseCommitDialogAtom, source);
+    if (appId !== null) {
+      set(discardCommitMessageDraftAtom, appId);
+    }
+  },
+);
+
+/**
  * Drops the open dialog and any pending return without touching the staged
  * diff. For callers that replace the displayed presentation wholesale (chat tab
  * switches), where a dialog belonging to the previous tab must not survive.
+ *
+ * The draft deliberately survives: it is keyed by app, so coming back to that
+ * app's dialog is the "switching back" case the per-app map exists for. Writing
+ * it here would be unsafe anyway - callers set `selectedAppIdAtom` around this,
+ * so a selected-app-scoped write could land on the wrong app's entry.
  */
 export const resetCommitDialogAtom = atom(null, (_get, set) => {
   set(openCommitDialogAtom, null);

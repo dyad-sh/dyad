@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { FileWarning, TriangleAlert } from "lucide-react";
-import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import { useSetAtom } from "jotai";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -12,16 +12,17 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
-  commitMessageDraftAtom,
+  clearStagedDiffAtom,
+  dismissCommitDialogAtom,
   openCommitDialogAtom,
   openStagedDiffAtom,
   releaseCommitDialogAtom,
 } from "@/atoms/commitAtoms";
 import { useUncommittedFiles } from "@/hooks/useUncommittedFiles";
 import { useCommitChanges } from "@/hooks/useCommitChanges";
+import { useCommitMessage } from "@/hooks/useCommitMessage";
 import { useDiscardChanges } from "@/hooks/useDiscardChanges";
 import { useVersionPreview } from "@/hooks/useVersionPreview";
-import { generateDefaultCommitMessage } from "@/components/chat/uncommittedFileStatus";
 import { CommitFileList } from "@/components/chat/CommitFileList";
 
 interface UncommittedFilesBannerProps {
@@ -34,22 +35,18 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
   const { commitChanges, isCommitting } = useCommitChanges();
   const { discardChanges, isDiscarding } = useDiscardChanges();
   const { send: sendPreviewEvent } = useVersionPreview(appId);
-  const [openCommitDialog, setOpenCommitDialog] = useAtom(openCommitDialogAtom);
+  const setOpenCommitDialog = useSetAtom(openCommitDialogAtom);
   const openStagedDiffFile = useSetAtom(openStagedDiffAtom);
   const releaseCommitDialog = useSetAtom(releaseCommitDialogAtom);
-  const commitMessageDraft = useAtomValue(commitMessageDraftAtom);
-  const setCommitMessageDraft = useSetAtom(commitMessageDraftAtom);
-  // Frozen at open so polling doesn't rewrite the suggestion under the user.
-  // Only ever a suggestion: once the user types, the draft atom takes over.
-  const [generatedMessage, setGeneratedMessage] = useState<string | null>(null);
+  const dismissCommitDialog = useSetAtom(dismissCommitDialogAtom);
+  const clearStagedDiff = useSetAtom(clearStagedDiffAtom);
+  const { isDialogOpen, commitMessage, setCommitMessage } = useCommitMessage(
+    "banner",
+    uncommittedFiles,
+  );
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const confirmPanelRef = useRef<HTMLDivElement>(null);
   const canShowBanner = Boolean(appId) && !isLoading && !!hasUncommittedFiles;
-  const isDialogOpen = openCommitDialog === "banner";
-  // Read only at the moment the dialog opens, so the freeze above is against a
-  // ref rather than a render-time dependency that would refresh with polling.
-  const uncommittedFilesRef = useRef(uncommittedFiles);
-  uncommittedFilesRef.current = uncommittedFiles;
 
   useEffect(() => {
     if (showDiscardConfirm) {
@@ -74,34 +71,19 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
     return () => releaseCommitDialog("banner");
   }, [canShowBanner, releaseCommitDialog]);
 
-  // Refresh the suggestion on every open and drop it on close. The reopen after
-  // leaving the staged diff comes straight from the atom rather than the button
-  // handler, so freezing it there would commit a file list the user never saw.
-  useEffect(() => {
-    setGeneratedMessage(
-      isDialogOpen
-        ? generateDefaultCommitMessage(uncommittedFilesRef.current)
-        : null,
-    );
-  }, [isDialogOpen]);
-
   if (!canShowBanner) {
     return null;
   }
 
-  const commitMessage =
-    commitMessageDraft ??
-    generatedMessage ??
-    generateDefaultCommitMessage(uncommittedFiles);
-
   // Dismissing without committing abandons the message: keeping it would
   // prefill a later, unrelated commit with text written for a change set that
-  // has since moved on. The staged-diff round trip closes the dialog through
-  // openStagedDiffAtom instead, so the draft survives that.
+  // has since moved on. It also drops any pending return to this dialog, so the
+  // staged diff's back arrow cannot resurrect the dialog just dismissed. The
+  // round trip out to a diff closes the dialog through openStagedDiffAtom
+  // instead, so the draft survives that.
   const dismissDialog = () => {
     setShowDiscardConfirm(false);
-    setOpenCommitDialog(null);
-    setCommitMessageDraft(null);
+    dismissCommitDialog({ source: "banner", appId });
   };
 
   // The diff renders in the code panel, which this banner's dialog has to
@@ -113,22 +95,37 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
     openStagedDiffFile({ path: filePath, returnTo: "banner" });
   };
 
+  // Nothing is staged after either of these, so a diff opened from this dialog
+  // has to close too - otherwise the code panel sits in staged-diff mode
+  // showing "no staged changes". Clearing rather than exiting keeps it from
+  // reopening the dialog on the way out. Both mirror CommitMenu.handleCommit.
   const handleCommit = async () => {
     if (!appId || !commitMessage.trim()) return;
 
-    await commitChanges({ appId, message: commitMessage.trim() });
+    try {
+      await commitChanges({ appId, message: commitMessage.trim() });
+    } catch {
+      // useCommitChanges surfaces the error via a toast. Keep the dialog open
+      // and preserve the message so the user can retry without retyping it.
+      return;
+    }
     setShowDiscardConfirm(false);
-    setOpenCommitDialog(null);
-    setCommitMessageDraft(null);
+    dismissCommitDialog({ source: "banner", appId });
+    clearStagedDiff();
   };
 
   const handleDiscard = async () => {
     if (!appId) return;
 
-    await discardChanges({ appId });
+    try {
+      await discardChanges({ appId });
+    } catch {
+      // useDiscardChanges surfaces the error via a toast; leave the dialog up.
+      return;
+    }
     setShowDiscardConfirm(false);
-    setOpenCommitDialog(null);
-    setCommitMessageDraft(null);
+    dismissCommitDialog({ source: "banner", appId });
+    clearStagedDiff();
   };
 
   return (
@@ -188,7 +185,7 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
               <Input
                 id="commit-message"
                 value={commitMessage}
-                onChange={(e) => setCommitMessageDraft(e.target.value)}
+                onChange={(e) => setCommitMessage(e.target.value)}
                 placeholder="Enter commit message..."
                 data-testid="commit-message-input"
               />

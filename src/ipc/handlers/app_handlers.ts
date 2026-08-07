@@ -528,72 +528,74 @@ async function deleteAppByIdExclusive(
       ),
     );
 
-    const { appPath, doomedRow } = await appOperationDeletion.runExclusive(async () => {
-      const app = await db.query.apps.findFirst({
-        where: eq(apps.id, appId),
-      });
+    const { appPath, doomedRow } = await appOperationDeletion.runExclusive(
+      async () => {
+        const app = await db.query.apps.findFirst({
+          where: eq(apps.id, appId),
+        });
 
-      if (!app) {
-        if (options.allowMissing && options.knownAppPath) {
-          await appRunDeletion.seal();
+        if (!app) {
+          if (options.allowMissing && options.knownAppPath) {
+            await appRunDeletion.seal();
+            appRunDeletion.commit();
+            deletionCommitted = true;
+            return { appPath: options.knownAppPath, doomedRow: null };
+          }
+          throw new DyadError("App not found", DyadErrorKind.NotFound);
+        }
+
+        if (runningApps.has(appId)) {
+          const appInfo = runningApps.get(appId)!;
+          try {
+            logger.log(`Stopping app ${appId} before deletion.`);
+            await stopAppByInfo(appId, appInfo);
+          } catch (error: any) {
+            logger.error(`Error stopping app ${appId} before deletion:`, error);
+            // Continue with deletion even if stopping fails
+          }
+        }
+
+        await appRunDeletion.seal();
+        // Re-read rather than reuse `app` from the top of this lock: the stop
+        // above can clear the temporary-branch columns on its way out, and a
+        // delete that queued behind a still-ending recording can arrive here with
+        // an id that only landed on the row after that first read. This is the
+        // last moment the row exists, so it is the only reading that can't go
+        // stale before the delete.
+        const doomedRow = await db.query.apps.findFirst({
+          where: eq(apps.id, appId),
+        });
+        try {
+          const testUserDeleted = await deleteTempTestUser(app);
+          if (!testUserDeleted) {
+            throw new DyadError(
+              "Failed to delete the app's temporary Supabase test user. Please retry app deletion.",
+              DyadErrorKind.External,
+            );
+          }
+          await db.delete(apps).where(eq(apps.id, appId));
           appRunDeletion.commit();
           deletionCommitted = true;
-          return { appPath: options.knownAppPath, doomedRow: null };
-        }
-        throw new DyadError("App not found", DyadErrorKind.NotFound);
-      }
-
-      if (runningApps.has(appId)) {
-        const appInfo = runningApps.get(appId)!;
-        try {
-          logger.log(`Stopping app ${appId} before deletion.`);
-          await stopAppByInfo(appId, appInfo);
+          // Note: Associated chats will cascade delete
+          if (options.publishDisposal !== false) {
+            for (const { id: chatId } of appChats) {
+              entityDisposalBus.publish({ kind: "chat", id: chatId });
+            }
+            entityDisposalBus.publish({ kind: "app", id: appId });
+          }
         } catch (error: any) {
-          logger.error(`Error stopping app ${appId} before deletion:`, error);
-          // Continue with deletion even if stopping fails
-        }
-      }
-
-      await appRunDeletion.seal();
-      // Re-read rather than reuse `app` from the top of this lock: the stop
-      // above can clear the temporary-branch columns on its way out, and a
-      // delete that queued behind a still-ending recording can arrive here with
-      // an id that only landed on the row after that first read. This is the
-      // last moment the row exists, so it is the only reading that can't go
-      // stale before the delete.
-      const doomedRow = await db.query.apps.findFirst({
-        where: eq(apps.id, appId),
-      });
-      try {
-        const testUserDeleted = await deleteTempTestUser(app);
-        if (!testUserDeleted) {
+          logger.error(`Error deleting app ${appId} from database:`, error);
           throw new DyadError(
-            "Failed to delete the app's temporary Supabase test user. Please retry app deletion.",
+            `Failed to delete app from database: ${error.message}`,
             DyadErrorKind.External,
           );
         }
-        await db.delete(apps).where(eq(apps.id, appId));
-        appRunDeletion.commit();
-        deletionCommitted = true;
-        // Note: Associated chats will cascade delete
-        if (options.publishDisposal !== false) {
-          for (const { id: chatId } of appChats) {
-            entityDisposalBus.publish({ kind: "chat", id: chatId });
-          }
-          entityDisposalBus.publish({ kind: "app", id: appId });
-        }
-      } catch (error: any) {
-        logger.error(`Error deleting app ${appId} from database:`, error);
-        throw new DyadError(
-          `Failed to delete app from database: ${error.message}`,
-          DyadErrorKind.External,
-        );
-      }
-      return {
-        appPath: getDyadAppPath(app.path),
-        doomedRow: doomedRow ?? null,
-      };
-    });
+        return {
+          appPath: getDyadAppPath(app.path),
+          doomedRow: doomedRow ?? null,
+        };
+      },
+    );
     deletedRow = doomedRow;
 
     const actorCleanup = await Promise.allSettled([

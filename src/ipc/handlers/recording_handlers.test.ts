@@ -5,7 +5,6 @@ const mocks = vi.hoisted(() => ({
   findFirst: vi.fn(),
   prepareIsolatedTestDatabase: vi.fn(),
   isTestRunActive: vi.fn().mockReturnValue(false),
-  isLockHeld: vi.fn().mockReturnValue(false),
   clearStorageData: vi.fn().mockResolvedValue(undefined),
   safeSend: vi.fn(),
   runningApps: new Map<number, any>(),
@@ -25,13 +24,10 @@ vi.mock("electron", () => ({
   session: { defaultSession: { clearStorageData: mocks.clearStorageData } },
 }));
 vi.mock("../utils/process_manager", () => ({ runningApps: mocks.runningApps }));
-// The real lock, deliberately: a session holds the app's lock for its whole
-// lifetime, and a stub that just invokes the callback can't tell serialized
-// from concurrent — which is the property these tests exist to protect.
-vi.mock("../utils/lock_utils", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../utils/lock_utils")>();
-  return { ...actual, isLockHeld: mocks.isLockHeld };
-});
+// The real operation coordinator, deliberately: a session owns the app's
+// resources for its whole lifetime, and a stub that just invokes the callback
+// can't tell serialized from concurrent — which is the property these tests
+// exist to protect.
 vi.mock("../utils/safe_sender", () => ({ safeSend: mocks.safeSend }));
 vi.mock("../services/isolated_test_db", () => ({
   prepareIsolatedTestDatabase: mocks.prepareIsolatedTestDatabase,
@@ -51,7 +47,10 @@ vi.mock("electron-log", () => ({
 
 import { registerRecordingHandlers } from "./recording_handlers";
 import { activeRecordings } from "../services/recording_registry";
-import { withLock } from "../utils/lock_utils";
+import {
+  appOperationCoordinator,
+  readAppResource,
+} from "../services/app_operation_coordinator";
 
 registerRecordingHandlers();
 const startHandler = mocks.handlers.get("recording:start")!;
@@ -90,7 +89,6 @@ beforeEach(() => {
   mocks.runningApps.set(1, { proxyUrl: "http://localhost:42100" });
   mocks.findFirst.mockResolvedValue({ id: 1, testingEnabled: true });
   mocks.isTestRunActive.mockReturnValue(false);
-  mocks.isLockHeld.mockReturnValue(false);
   mocks.readSettings.mockReturnValue({ runtimeMode2: "host" });
 });
 
@@ -164,17 +162,24 @@ describe("recording:start / recording:stop", () => {
     expect(activeRecordings.has(1)).toBe(false);
   });
 
-  it("serializes a queued app operation behind the session's lock", async () => {
+  it("serializes a queued app operation behind the session's resources", async () => {
     mocks.prepareIsolatedTestDatabase.mockResolvedValue(makePrepared());
     const { event } = makeEvent();
     await startHandler(event, { appId: 1 });
 
-    // The session holds the app's lock for its whole lifetime — that is what
-    // keeps a test run or a rebuild from touching the app mid-recording.
+    // The session owns the app's resources for its whole lifetime — that is
+    // what keeps a test run or a rebuild from touching the app mid-recording.
     let ranWhileRecording = false;
-    const queued = withLock(1, async () => {
-      ranWhileRecording = true;
-    });
+    const queued = appOperationCoordinator.run(
+      {
+        appId: 1,
+        operation: "queued-operation",
+        resources: [readAppResource("app-path"), "runtime"],
+      },
+      async () => {
+        ranWhileRecording = true;
+      },
+    );
     await Promise.resolve();
     expect(ranWhileRecording).toBe(false);
 

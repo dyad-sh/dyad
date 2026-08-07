@@ -4,16 +4,19 @@ import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { isPreviewOpenAtom, stagedDiffFileAtom } from "@/atoms/viewAtoms";
 import {
   clearStagedDiffAtom,
+  closeCommitDialogAtom,
   commitMessageDraftAtom,
   commitMessageDraftsByAppIdAtom,
   discardCommitMessageDraftAtom,
-  dismissCommitDialogAtom,
   exitStagedDiffAtom,
   openCommitDialogAtom,
   openStagedDiffAtom,
-  releaseCommitDialogAtom,
   resetCommitDialogAtom,
+  type CommitDialogSource,
 } from "@/atoms/commitAtoms";
+
+const APP = 1;
+const OTHER_APP = 2;
 
 /**
  * The staged-diff round trip these atoms exist for: a dialog is open, the user
@@ -21,10 +24,15 @@ import {
  */
 function openDiffFrom(
   store: ReturnType<typeof createStore>,
-  source: "editor" | "banner",
+  source: CommitDialogSource,
+  appId = APP,
 ) {
-  store.set(openCommitDialogAtom, source);
-  store.set(openStagedDiffAtom, { path: "src/a.ts", returnTo: source });
+  store.set(selectedAppIdAtom, appId);
+  store.set(openCommitDialogAtom, { source, appId });
+  store.set(openStagedDiffAtom, {
+    path: "src/a.ts",
+    returnTo: { source, appId },
+  });
 }
 
 describe("commit dialog atoms", () => {
@@ -33,11 +41,11 @@ describe("commit dialog atoms", () => {
       const store = createStore();
       store.set(previewModeAtom, "preview");
       store.set(isPreviewOpenAtom, false);
-      store.set(openCommitDialogAtom, "editor");
+      store.set(openCommitDialogAtom, { source: "editor", appId: APP });
 
       store.set(openStagedDiffAtom, {
         path: "src/a.ts",
-        returnTo: "editor",
+        returnTo: { source: "editor", appId: APP },
       });
 
       expect(store.get(openCommitDialogAtom)).toBeNull();
@@ -55,7 +63,10 @@ describe("commit dialog atoms", () => {
       store.set(exitStagedDiffAtom);
 
       expect(store.get(stagedDiffFileAtom)).toBeNull();
-      expect(store.get(openCommitDialogAtom)).toBe("banner");
+      expect(store.get(openCommitDialogAtom)).toEqual({
+        source: "banner",
+        appId: APP,
+      });
     });
 
     it("opens nothing when the diff was not opened from a dialog", () => {
@@ -86,7 +97,7 @@ describe("commit dialog atoms", () => {
       const store = createStore();
       openDiffFrom(store, "editor");
 
-      store.set(clearStagedDiffAtom);
+      store.set(clearStagedDiffAtom, APP);
 
       expect(store.get(stagedDiffFileAtom)).toBeNull();
       expect(store.get(openCommitDialogAtom)).toBeNull();
@@ -97,59 +108,149 @@ describe("commit dialog atoms", () => {
 
     it("discards the draft, which cannot outlive the round trip", () => {
       const store = createStore();
-      store.set(selectedAppIdAtom, 1);
-      store.set(openCommitDialogAtom, "editor");
+      store.set(selectedAppIdAtom, APP);
+      store.set(openCommitDialogAtom, { source: "editor", appId: APP });
       store.set(commitMessageDraftAtom, "Fix login redirect");
-      store.set(openStagedDiffAtom, { path: "src/a.ts", returnTo: "editor" });
+      store.set(openStagedDiffAtom, {
+        path: "src/a.ts",
+        returnTo: { source: "editor", appId: APP },
+      });
 
       // Editing the file from the diff is the path with no way back.
-      store.set(clearStagedDiffAtom);
+      store.set(clearStagedDiffAtom, APP);
 
       expect(store.get(commitMessageDraftAtom)).toBeNull();
     });
-  });
 
-  describe("releaseCommitDialogAtom", () => {
-    it("closes only the releasing source's dialog", () => {
+    it("does nothing once the user has moved to another app", () => {
       const store = createStore();
-      store.set(openCommitDialogAtom, "editor");
+      openDiffFrom(store, "banner");
+      // A commit for app 1 resolves after the user switched to app 2 and
+      // started their own diff and message there.
+      store.set(selectedAppIdAtom, OTHER_APP);
+      store.set(stagedDiffFileAtom, "src/b.ts");
+      store.set(commitMessageDraftAtom, "Add settings page");
 
-      store.set(releaseCommitDialogAtom, "banner");
+      store.set(clearStagedDiffAtom, APP);
 
-      expect(store.get(openCommitDialogAtom)).toBe("editor");
-
-      store.set(releaseCommitDialogAtom, "editor");
-
-      expect(store.get(openCommitDialogAtom)).toBeNull();
+      expect(store.get(stagedDiffFileAtom)).toBe("src/b.ts");
+      expect(store.get(commitMessageDraftAtom)).toBe("Add settings page");
     });
 
-    it("drops a pending return only when the releasing source owns it", () => {
+    it("does nothing without an app to scope to", () => {
       const store = createStore();
       openDiffFrom(store, "editor");
 
-      store.set(releaseCommitDialogAtom, "banner");
-      store.set(exitStagedDiffAtom);
+      store.set(clearStagedDiffAtom, null);
 
-      expect(store.get(openCommitDialogAtom)).toBe("editor");
+      expect(store.get(stagedDiffFileAtom)).toBe("src/a.ts");
+    });
+  });
+
+  describe("closeCommitDialogAtom", () => {
+    it("closes the dialog and discards its draft", () => {
+      const store = createStore();
+      store.set(selectedAppIdAtom, APP);
+      store.set(openCommitDialogAtom, { source: "editor", appId: APP });
+      store.set(commitMessageDraftAtom, "Fix login redirect");
+
+      store.set(closeCommitDialogAtom, { source: "editor", appId: APP });
+
+      expect(store.get(openCommitDialogAtom)).toBeNull();
+      expect(store.get(commitMessageDraftAtom)).toBeNull();
     });
 
-    it("drops its own pending return so the back arrow cannot reach it", () => {
+    it("drops the pending return, so the back arrow cannot resurrect it", () => {
       const store = createStore();
-      openDiffFrom(store, "banner");
+      // Open the diff from the dialog, then reopen the dialog from its own
+      // button on top of the diff, then cancel it.
+      openDiffFrom(store, "editor");
+      store.set(openCommitDialogAtom, { source: "editor", appId: APP });
 
-      store.set(releaseCommitDialogAtom, "banner");
+      store.set(closeCommitDialogAtom, { source: "editor", appId: APP });
       store.set(exitStagedDiffAtom);
 
       expect(store.get(openCommitDialogAtom)).toBeNull();
+      expect(store.get(stagedDiffFileAtom)).toBeNull();
+    });
+
+    it("drops a pending return when its host can no longer render it", () => {
+      const store = createStore();
+      // The banner is unmounted by ChatHeader while streaming, mid round trip.
+      openDiffFrom(store, "banner");
+      store.set(commitMessageDraftAtom, "Fix login redirect");
+
+      store.set(closeCommitDialogAtom, { source: "banner", appId: APP });
+
+      // Nothing renders that dialog now, so neither the back arrow nor a later
+      // reopen may find its way back to it - message included.
+      store.set(exitStagedDiffAtom);
+      expect(store.get(openCommitDialogAtom)).toBeNull();
+      expect(store.get(commitMessageDraftAtom)).toBeNull();
     });
 
     it("leaves the staged diff showing", () => {
       const store = createStore();
       openDiffFrom(store, "banner");
 
-      store.set(releaseCommitDialogAtom, "banner");
+      store.set(closeCommitDialogAtom, { source: "banner", appId: APP });
 
       expect(store.get(stagedDiffFileAtom)).toBe("src/a.ts");
+    });
+
+    it("leaves the other source's dialog and pending return alone", () => {
+      const store = createStore();
+      openDiffFrom(store, "editor");
+      store.set(openCommitDialogAtom, { source: "editor", appId: APP });
+
+      store.set(closeCommitDialogAtom, { source: "banner", appId: APP });
+
+      expect(store.get(openCommitDialogAtom)).toEqual({
+        source: "editor",
+        appId: APP,
+      });
+      store.set(openCommitDialogAtom, null);
+      store.set(exitStagedDiffAtom);
+      expect(store.get(openCommitDialogAtom)).toEqual({
+        source: "editor",
+        appId: APP,
+      });
+    });
+
+    it("leaves the draft alone when it owns neither the dialog nor a return", () => {
+      const store = createStore();
+      store.set(selectedAppIdAtom, APP);
+      // The user is typing in the banner's dialog when a plan:update event
+      // flips previewMode and unmounts CodeView, taking the commit menu with
+      // it. The two sources share one draft per app, so this must not empty
+      // the input in front of the user.
+      store.set(openCommitDialogAtom, { source: "banner", appId: APP });
+      store.set(commitMessageDraftAtom, "Fix login redirect");
+
+      store.set(closeCommitDialogAtom, { source: "editor", appId: APP });
+
+      expect(store.get(commitMessageDraftAtom)).toBe("Fix login redirect");
+      expect(store.get(openCommitDialogAtom)).toEqual({
+        source: "banner",
+        appId: APP,
+      });
+    });
+
+    it("leaves the same source's dialog for another app alone", () => {
+      const store = createStore();
+      store.set(selectedAppIdAtom, OTHER_APP);
+      // The user switched apps and opened a new banner dialog before app 1's
+      // commit finished.
+      store.set(openCommitDialogAtom, { source: "banner", appId: OTHER_APP });
+      store.set(commitMessageDraftAtom, "Add settings page");
+
+      store.set(closeCommitDialogAtom, { source: "banner", appId: APP });
+
+      expect(store.get(openCommitDialogAtom)).toEqual({
+        source: "banner",
+        appId: OTHER_APP,
+      });
+      expect(store.get(commitMessageDraftAtom)).toBe("Add settings page");
     });
   });
 
@@ -157,7 +258,7 @@ describe("commit dialog atoms", () => {
     it("drops the dialog and pending return without touching the diff", () => {
       const store = createStore();
       openDiffFrom(store, "editor");
-      store.set(openCommitDialogAtom, "editor");
+      store.set(openCommitDialogAtom, { source: "editor", appId: APP });
 
       store.set(resetCommitDialogAtom);
 
@@ -169,7 +270,7 @@ describe("commit dialog atoms", () => {
 
     it("keeps the draft, which is per-app and survives switching back", () => {
       const store = createStore();
-      store.set(selectedAppIdAtom, 1);
+      store.set(selectedAppIdAtom, APP);
       store.set(commitMessageDraftAtom, "Fix login redirect");
 
       store.set(resetCommitDialogAtom);
@@ -178,81 +279,30 @@ describe("commit dialog atoms", () => {
     });
   });
 
-  describe("dismissCommitDialogAtom", () => {
-    it("closes the dialog and discards its draft", () => {
-      const store = createStore();
-      store.set(selectedAppIdAtom, 1);
-      store.set(openCommitDialogAtom, "editor");
-      store.set(commitMessageDraftAtom, "Fix login redirect");
-
-      store.set(dismissCommitDialogAtom, { source: "editor", appId: 1 });
-
-      expect(store.get(openCommitDialogAtom)).toBeNull();
-      expect(store.get(commitMessageDraftAtom)).toBeNull();
-    });
-
-    it("drops the pending return, so the back arrow cannot resurrect it", () => {
-      const store = createStore();
-      store.set(selectedAppIdAtom, 1);
-      // Open the diff from the dialog, then reopen the dialog from its own
-      // button on top of the diff, then cancel it.
-      openDiffFrom(store, "editor");
-      store.set(openCommitDialogAtom, "editor");
-
-      store.set(dismissCommitDialogAtom, { source: "editor", appId: 1 });
-      store.set(exitStagedDiffAtom);
-
-      expect(store.get(openCommitDialogAtom)).toBeNull();
-      expect(store.get(stagedDiffFileAtom)).toBeNull();
-    });
-
-    it("leaves the other source's dialog and draft alone", () => {
-      const store = createStore();
-      store.set(selectedAppIdAtom, 2);
-      store.set(openCommitDialogAtom, "banner");
-      store.set(commitMessageDraftAtom, "Add settings page");
-
-      // A commit started from the editor dialog for app 1 resolving late.
-      store.set(dismissCommitDialogAtom, { source: "editor", appId: 1 });
-
-      expect(store.get(openCommitDialogAtom)).toBe("banner");
-      expect(store.get(commitMessageDraftAtom)).toBe("Add settings page");
-    });
-
-    it("is a no-op on the draft before an app is selected", () => {
-      const store = createStore();
-      store.set(openCommitDialogAtom, "banner");
-
-      store.set(dismissCommitDialogAtom, { source: "banner", appId: null });
-
-      expect(store.get(openCommitDialogAtom)).toBeNull();
-    });
-  });
-
   describe("commitMessageDraftAtom", () => {
     it("reads and writes the selected app's entry", () => {
       const store = createStore();
-      store.set(selectedAppIdAtom, 1);
+      store.set(selectedAppIdAtom, APP);
       store.set(commitMessageDraftAtom, "Fix login redirect");
-      store.set(selectedAppIdAtom, 2);
+      store.set(selectedAppIdAtom, OTHER_APP);
 
       expect(store.get(commitMessageDraftAtom)).toBeNull();
 
       store.set(commitMessageDraftAtom, "Add settings page");
-      store.set(selectedAppIdAtom, 1);
+      store.set(selectedAppIdAtom, APP);
 
       expect(store.get(commitMessageDraftAtom)).toBe("Fix login redirect");
     });
 
     it("deletes the entry when written null", () => {
       const store = createStore();
-      store.set(selectedAppIdAtom, 1);
+      store.set(selectedAppIdAtom, APP);
       store.set(commitMessageDraftAtom, "Fix login redirect");
 
       store.set(commitMessageDraftAtom, null);
 
       expect(store.get(commitMessageDraftAtom)).toBeNull();
-      expect(store.get(commitMessageDraftsByAppIdAtom).has(1)).toBe(false);
+      expect(store.get(commitMessageDraftsByAppIdAtom).has(APP)).toBe(false);
     });
 
     it("is a no-op before an app is selected", () => {
@@ -268,22 +318,22 @@ describe("commit dialog atoms", () => {
   describe("discardCommitMessageDraftAtom", () => {
     it("deletes by app id rather than by the selected app", () => {
       const store = createStore();
-      store.set(selectedAppIdAtom, 1);
+      store.set(selectedAppIdAtom, APP);
       store.set(commitMessageDraftAtom, "Fix login redirect");
-      store.set(selectedAppIdAtom, 2);
+      store.set(selectedAppIdAtom, OTHER_APP);
       store.set(commitMessageDraftAtom, "Add settings page");
 
-      store.set(discardCommitMessageDraftAtom, 1);
+      store.set(discardCommitMessageDraftAtom, APP);
 
       expect(store.get(commitMessageDraftAtom)).toBe("Add settings page");
-      expect(store.get(commitMessageDraftsByAppIdAtom).has(1)).toBe(false);
+      expect(store.get(commitMessageDraftsByAppIdAtom).has(APP)).toBe(false);
     });
 
     it("keeps the map identity when there is nothing to delete", () => {
       const store = createStore();
       const before = store.get(commitMessageDraftsByAppIdAtom);
 
-      store.set(discardCommitMessageDraftAtom, 1);
+      store.set(discardCommitMessageDraftAtom, APP);
 
       expect(store.get(commitMessageDraftsByAppIdAtom)).toBe(before);
     });

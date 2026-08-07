@@ -1017,11 +1017,11 @@ export function TestsPanel() {
       // so a diff left open from the commit menu would swallow this request.
       // Clearing (rather than exiting) also drops any pending commit-dialog
       // return, which would otherwise pop open over the spec.
-      clearStagedDiff();
+      clearStagedDiff(selectedAppId);
       setSelectedFile({ path: file, line: line ?? null });
       setPreviewMode("code");
     },
-    [setSelectedFile, setPreviewMode, clearStagedDiff],
+    [setSelectedFile, setPreviewMode, clearStagedDiff, selectedAppId],
   );
 
   // The spec file awaiting delete confirmation, tagged with the app it came

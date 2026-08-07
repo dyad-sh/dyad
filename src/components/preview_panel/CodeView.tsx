@@ -304,8 +304,9 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
     // A staged selection left over from before the version diff opened would
     // put the panel back in staged-diff mode instead of the editor, so clear it
     // on every path out of here. The user asked for the editor, so this must
-    // not reopen a commit dialog on top of it.
-    clearStagedDiff();
+    // not reopen a commit dialog on top of it, nor keep the message they were
+    // typing in one.
+    clearStagedDiff(app?.id ?? null);
 
     if (!isVersionDiffMode) {
       setSelectedFile({ path });

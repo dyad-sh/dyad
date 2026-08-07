@@ -5,33 +5,55 @@ import { isPreviewOpenAtom, stagedDiffFileAtom } from "./viewAtoms";
 export type CommitDialogSource = "editor" | "banner";
 
 /**
+ * Who a commit dialog belongs to: the entry point that opened it and the app it
+ * commits. Both halves matter. The source decides which component renders it,
+ * and the app is what makes a late-arriving teardown safe - a commit that
+ * resolves after the user moved on names the app it was for, so it cannot close
+ * a dialog or discard a message that now belongs to somewhere else.
+ */
+export interface CommitDialogOwner {
+  source: CommitDialogSource;
+  appId: number;
+}
+
+const isSameOwner = (
+  a: CommitDialogOwner | null,
+  b: CommitDialogOwner | null,
+) => a !== null && b !== null && a.source === b.source && a.appId === b.appId;
+
+/**
  * Which commit dialog is showing, if any. This is global rather than component
  * state because the dialog is no longer owned by one subtree: clicking a file
  * closes it and opens that file's staged diff, and the code view's "back to
  * editor" control is what brings it back.
  */
-export const openCommitDialogAtom = atom<CommitDialogSource | null>(null);
+export const openCommitDialogAtom = atom<CommitDialogOwner | null>(null);
 
 /**
  * The dialog to reopen when the user leaves the staged diff, set when the diff
  * was opened from a dialog. Deliberately not exported: only the actions below
  * may write it, so no caller can leave a stale return target behind.
  */
-const commitDialogReturnAtom = atom<CommitDialogSource | null>(null);
+const commitDialogReturnAtom = atom<CommitDialogOwner | null>(null);
 
 /**
- * Commit messages the user typed, keyed by app so a draft neither leaks into
- * another app nor is lost when switching back. Auto-generated defaults are
+ * Commit messages the user typed, keyed by app. Auto-generated defaults are
  * never stored here, so a message the user did not write cannot go stale as
  * more files change.
  *
  * Both dialogs share one entry per app on purpose: they are two entrances to
  * the same commit of the same working tree, so a message typed in one is the
- * message for the other. Staleness is bounded by lifetime instead: a draft only
- * survives while its dialog is open or while a diff opened from that dialog is
- * showing. Every way out of that round trip - committing, discarding,
- * dismissing, or leaving the diff for anywhere other than the dialog - drops
+ * message for the other. Staleness is bounded by lifetime: a draft only lives
+ * while its dialog is open, or while a diff opened from that dialog is showing.
+ * Every way out of that round trip - committing, discarding, dismissing,
+ * unmounting the dialog's host, or leaving the diff for anywhere else - drops
  * it, so it cannot outlive the change set it was written for.
+ *
+ * Keying by app is what makes those exits safe rather than what makes drafts
+ * durable. A commit that resolves after the user moved on names the app it was
+ * for, so it deletes that entry instead of whatever is on screen now. In
+ * practice at most one entry exists, because switching apps unmounts the host
+ * that owned the dialog and that drops the draft with it.
  */
 export const commitMessageDraftsByAppIdAtom = atom<Map<number, string>>(
   new Map(),
@@ -64,8 +86,9 @@ export const commitMessageDraftAtom = atom(
 
 /**
  * Discards one app's draft by id rather than by whatever app is selected now.
- * Commit and discard handlers use this so a mutation that resolves after the
- * user moved on cannot wipe a draft they have since typed for another app.
+ * Everything that ends a dialog's life goes through here, so a teardown that
+ * runs after the user moved on cannot wipe a draft they have since typed for
+ * another app.
  */
 export const discardCommitMessageDraftAtom = atom(
   null,
@@ -92,7 +115,7 @@ export const openStagedDiffAtom = atom(
   (
     _get,
     set,
-    { path, returnTo }: { path: string; returnTo: CommitDialogSource | null },
+    { path, returnTo }: { path: string; returnTo: CommitDialogOwner | null },
   ) => {
     set(openCommitDialogAtom, null);
     set(commitDialogReturnAtom, returnTo);
@@ -121,60 +144,54 @@ export const exitStagedDiffAtom = atom(null, (get, set) => {
  * This is the end of the round trip, not a pause in it: with the return target
  * gone there is no way back to the dialog, so the draft written in it goes too
  * rather than lying in wait to prefill an unrelated commit later.
- */
-export const clearStagedDiffAtom = atom(null, (_get, set) => {
-  set(stagedDiffFileAtom, null);
-  set(commitDialogReturnAtom, null);
-  set(commitMessageDraftAtom, null);
-});
-
-/**
- * Hands back the dialog state owned by one source, leaving the other source's
- * alone. A dialog is only visible while its owner is mounted, and the owner of
- * a pending return has to still be there to be returned to, so a source that
- * cannot render must drop both - otherwise the dialog pops open unprompted on
- * the next remount, and the staged diff's back control resolves to a dialog
- * nobody renders.
  *
- * Only the banner needs this: it is mounted conditionally by ChatHeader and
- * renders nothing without uncommitted files, whereas the editor dialog and the
- * back control that reopens it both live inside CodeView, so they come and go
- * together.
+ * `appId` is the app the caller acted on, and this is a no-op once the user has
+ * moved to another one. The staged diff and the draft are both global but only
+ * ever describe the selected app, so a commit resolving late must not close the
+ * diff, or discard the message, that has since come to belong to somebody else.
  */
-export const releaseCommitDialogAtom = atom(
+export const clearStagedDiffAtom = atom(
   null,
-  (get, set, source: CommitDialogSource) => {
-    if (get(openCommitDialogAtom) === source) {
-      set(openCommitDialogAtom, null);
-    }
-    if (get(commitDialogReturnAtom) === source) {
-      set(commitDialogReturnAtom, null);
-    }
+  (get, set, appId: number | null) => {
+    if (appId === null || get(selectedAppIdAtom) !== appId) return;
+    set(stagedDiffFileAtom, null);
+    set(commitDialogReturnAtom, null);
+    set(discardCommitMessageDraftAtom, appId);
   },
 );
 
 /**
- * Ends one dialog's session without committing: closes it, drops a pending
- * return to it, and discards the draft typed in it. Reaching the diff and
- * coming back reopens the same dialog through `commitDialogReturnAtom`, so a
- * return target that outlived its dialog would resurrect one the user had
- * already dismissed - hence dropping it here rather than only closing.
+ * Ends one dialog's life: closes it, drops a pending return to it, and discards
+ * the message typed in it. Both ways a dialog can end come through here.
  *
- * Scoped to the source that owns the dialog, and to the app the draft was
- * written for, so a commit or discard resolving late cannot close a dialog the
- * user has since opened elsewhere or clear a message meant for another app.
+ * - The user dismissed it. Leaving the return target behind would let the
+ *   staged diff's back arrow resurrect a dialog they just cancelled, and
+ *   leaving the draft behind would prefill a later, unrelated commit.
+ * - Its host can no longer render it. A dialog is only visible while its owner
+ *   is mounted, and the owner of a pending return has to still be there to be
+ *   returned to, so a source that cannot render must drop both - otherwise the
+ *   dialog pops open unprompted on the next remount, and the staged diff's back
+ *   control resolves to a dialog nobody renders. Both hosts need this: the
+ *   banner is mounted conditionally by ChatHeader, and CodeView unmounts
+ *   whenever `previewMode` leaves "code", which background subscriptions do on
+ *   their own (a `plan:update` event switches to plan mode).
+ *
+ * Scoped to the owner, so neither a teardown for another source nor one for
+ * another app can touch the dialog in front of the user. An owner that turns
+ * out to hold neither the dialog nor the pending return leaves even the draft
+ * alone: the two sources share one draft per app, so the editor's toolbar
+ * unmounting must not empty the input of a banner dialog the user is typing in.
  */
-export const dismissCommitDialogAtom = atom(
+export const closeCommitDialogAtom = atom(
   null,
-  (
-    _get,
-    set,
-    { source, appId }: { source: CommitDialogSource; appId: number | null },
-  ) => {
-    set(releaseCommitDialogAtom, source);
-    if (appId !== null) {
-      set(discardCommitMessageDraftAtom, appId);
-    }
+  (get, set, owner: CommitDialogOwner) => {
+    const ownsDialog = isSameOwner(get(openCommitDialogAtom), owner);
+    const ownsReturn = isSameOwner(get(commitDialogReturnAtom), owner);
+    if (!ownsDialog && !ownsReturn) return;
+
+    if (ownsDialog) set(openCommitDialogAtom, null);
+    if (ownsReturn) set(commitDialogReturnAtom, null);
+    set(discardCommitMessageDraftAtom, owner.appId);
   },
 );
 
@@ -183,10 +200,10 @@ export const dismissCommitDialogAtom = atom(
  * diff. For callers that replace the displayed presentation wholesale (chat tab
  * switches), where a dialog belonging to the previous tab must not survive.
  *
- * The draft deliberately survives: it is keyed by app, so coming back to that
- * app's dialog is the "switching back" case the per-app map exists for. Writing
- * it here would be unsafe anyway - callers set `selectedAppIdAtom` around this,
- * so a selected-app-scoped write could land on the wrong app's entry.
+ * The draft is left alone, because this has no app to name it by: callers set
+ * `selectedAppIdAtom` around this, so a selected-app-scoped write could land on
+ * the wrong app's entry. Nothing leaks either way - the tab switch unmounts
+ * whichever host owned the dialog, and that drops the draft with it.
  */
 export const resetCommitDialogAtom = atom(null, (_get, set) => {
   set(openCommitDialogAtom, null);

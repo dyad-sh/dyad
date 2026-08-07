@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { GitCommitVertical, ChevronDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
@@ -60,8 +60,24 @@ export function CommitMenu({ appId }: CommitMenuProps) {
   // Frozen at open so polling doesn't rewrite the suggestion under the user.
   // Only ever a suggestion: once the user types, the draft atom takes over.
   const [generatedMessage, setGeneratedMessage] = useState<string | null>(null);
+  // Read only at the moment the dialog opens, so the freeze above is against a
+  // ref rather than a render-time dependency that would refresh with polling.
+  const uncommittedFilesRef = useRef(uncommittedFiles);
+  uncommittedFilesRef.current = uncommittedFiles;
 
   const isDialogOpen = openCommitDialog === "editor";
+
+  // Refresh the suggestion on every open and drop it on close. The reopen after
+  // leaving the staged diff comes straight from the atom rather than the button
+  // handler, so freezing it there would commit a file list the user never saw.
+  useEffect(() => {
+    setGeneratedMessage(
+      isDialogOpen
+        ? generateDefaultCommitMessage(uncommittedFilesRef.current)
+        : null,
+    );
+  }, [isDialogOpen]);
+
   const commitMessage =
     commitMessageDraft ??
     generatedMessage ??
@@ -78,11 +94,13 @@ export function CommitMenu({ appId }: CommitMenuProps) {
     openStagedDiffFile({ path: filePath, returnTo });
   };
 
-  const handleOpenDialog = () => {
-    // Regenerate the suggestion on every open so its file counts stay current.
-    // A message the user actually typed lives in the draft atom and survives.
-    setGeneratedMessage(generateDefaultCommitMessage(uncommittedFiles));
-    setOpenCommitDialog("editor");
+  // Dismissing without committing abandons the message: keeping it would
+  // prefill a later, unrelated commit with text written for a change set that
+  // has since moved on. The staged-diff round trip closes the dialog through
+  // openStagedDiffAtom instead, so the draft survives that.
+  const dismissDialog = () => {
+    setOpenCommitDialog(null);
+    setCommitMessageDraft(null);
   };
 
   const handleCommit = async () => {
@@ -95,7 +113,6 @@ export function CommitMenu({ appId }: CommitMenuProps) {
       return;
     }
     setOpenCommitDialog(null);
-    setGeneratedMessage(null);
     setCommitMessageDraft(null);
     // Nothing is staged anymore, so leave the diff view if it was open. This
     // must not reopen the dialog, hence clear rather than exit.
@@ -109,7 +126,7 @@ export function CommitMenu({ appId }: CommitMenuProps) {
         size="sm"
         className="rounded-r-none border-r-0"
         disabled={!hasUncommittedFiles}
-        onClick={handleOpenDialog}
+        onClick={() => setOpenCommitDialog("editor")}
         data-testid="editor-commit-button"
       >
         <GitCommitVertical size={14} />
@@ -173,8 +190,12 @@ export function CommitMenu({ appId }: CommitMenuProps) {
       <Dialog
         open={isDialogOpen}
         onOpenChange={(open) => {
-          if (!open && isCommitting) return;
-          setOpenCommitDialog(open ? "editor" : null);
+          if (open) {
+            setOpenCommitDialog("editor");
+            return;
+          }
+          if (isCommitting) return;
+          dismissDialog();
         }}
       >
         <DialogContent
@@ -223,7 +244,7 @@ export function CommitMenu({ appId }: CommitMenuProps) {
           <DialogFooter className="px-6 pb-6 pt-2">
             <Button
               variant="outline"
-              onClick={() => setOpenCommitDialog(null)}
+              onClick={dismissDialog}
               disabled={isCommitting}
             >
               {t("preview.cancel")}

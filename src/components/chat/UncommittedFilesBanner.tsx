@@ -15,6 +15,7 @@ import {
   commitMessageDraftAtom,
   openCommitDialogAtom,
   openStagedDiffAtom,
+  releaseCommitDialogAtom,
 } from "@/atoms/commitAtoms";
 import { useUncommittedFiles } from "@/hooks/useUncommittedFiles";
 import { useCommitChanges } from "@/hooks/useCommitChanges";
@@ -35,6 +36,7 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
   const { send: sendPreviewEvent } = useVersionPreview(appId);
   const [openCommitDialog, setOpenCommitDialog] = useAtom(openCommitDialogAtom);
   const openStagedDiffFile = useSetAtom(openStagedDiffAtom);
+  const releaseCommitDialog = useSetAtom(releaseCommitDialogAtom);
   const commitMessageDraft = useAtomValue(commitMessageDraftAtom);
   const setCommitMessageDraft = useSetAtom(commitMessageDraftAtom);
   // Frozen at open so polling doesn't rewrite the suggestion under the user.
@@ -42,6 +44,12 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
   const [generatedMessage, setGeneratedMessage] = useState<string | null>(null);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const confirmPanelRef = useRef<HTMLDivElement>(null);
+  const canShowBanner = Boolean(appId) && !isLoading && !!hasUncommittedFiles;
+  const isDialogOpen = openCommitDialog === "banner";
+  // Read only at the moment the dialog opens, so the freeze above is against a
+  // ref rather than a render-time dependency that would refresh with polling.
+  const uncommittedFilesRef = useRef(uncommittedFiles);
+  uncommittedFilesRef.current = uncommittedFiles;
 
   useEffect(() => {
     if (showDiscardConfirm) {
@@ -53,21 +61,47 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
     }
   }, [showDiscardConfirm]);
 
-  if (!appId || isLoading || !hasUncommittedFiles) {
+  // The dialog lives in a global atom but is rendered here, and this banner is
+  // mounted conditionally - ChatHeader hides it while streaming and behind the
+  // version pane, and it renders nothing without uncommitted files. Hand the
+  // state back whenever it cannot be shown, so a dialog left open (or a pending
+  // return to one) cannot pop open unprompted on the next remount.
+  useEffect(() => {
+    if (!canShowBanner) {
+      releaseCommitDialog("banner");
+      return;
+    }
+    return () => releaseCommitDialog("banner");
+  }, [canShowBanner, releaseCommitDialog]);
+
+  // Refresh the suggestion on every open and drop it on close. The reopen after
+  // leaving the staged diff comes straight from the atom rather than the button
+  // handler, so freezing it there would commit a file list the user never saw.
+  useEffect(() => {
+    setGeneratedMessage(
+      isDialogOpen
+        ? generateDefaultCommitMessage(uncommittedFilesRef.current)
+        : null,
+    );
+  }, [isDialogOpen]);
+
+  if (!canShowBanner) {
     return null;
   }
 
-  const isDialogOpen = openCommitDialog === "banner";
   const commitMessage =
     commitMessageDraft ??
     generatedMessage ??
     generateDefaultCommitMessage(uncommittedFiles);
 
-  const handleOpenDialog = () => {
-    // Regenerate the suggestion on every open so its file counts stay current.
-    // A message the user actually typed lives in the draft atom and survives.
-    setGeneratedMessage(generateDefaultCommitMessage(uncommittedFiles));
-    setOpenCommitDialog("banner");
+  // Dismissing without committing abandons the message: keeping it would
+  // prefill a later, unrelated commit with text written for a change set that
+  // has since moved on. The staged-diff round trip closes the dialog through
+  // openStagedDiffAtom instead, so the draft survives that.
+  const dismissDialog = () => {
+    setShowDiscardConfirm(false);
+    setOpenCommitDialog(null);
+    setCommitMessageDraft(null);
   };
 
   // The diff renders in the code panel, which this banner's dialog has to
@@ -85,7 +119,6 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
     await commitChanges({ appId, message: commitMessage.trim() });
     setShowDiscardConfirm(false);
     setOpenCommitDialog(null);
-    setGeneratedMessage(null);
     setCommitMessageDraft(null);
   };
 
@@ -95,7 +128,6 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
     await discardChanges({ appId });
     setShowDiscardConfirm(false);
     setOpenCommitDialog(null);
-    setGeneratedMessage(null);
     setCommitMessageDraft(null);
   };
 
@@ -115,7 +147,7 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
         <Button
           variant="outline"
           size="sm"
-          onClick={handleOpenDialog}
+          onClick={() => setOpenCommitDialog("banner")}
           data-testid="review-commit-button"
         >
           Review & commit
@@ -125,10 +157,13 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
       <Dialog
         open={isDialogOpen}
         onOpenChange={(open) => {
+          if (open) {
+            setOpenCommitDialog("banner");
+            return;
+          }
           // Prevent closing while committing or discarding
-          if (!open && (isCommitting || isDiscarding)) return;
-          if (!open) setShowDiscardConfirm(false);
-          setOpenCommitDialog(open ? "banner" : null);
+          if (isCommitting || isDiscarding) return;
+          dismissDialog();
         }}
       >
         <DialogContent
@@ -225,7 +260,7 @@ export function UncommittedFilesBanner({ appId }: UncommittedFilesBannerProps) {
             </Button>
             <Button
               variant="outline"
-              onClick={() => setOpenCommitDialog(null)}
+              onClick={dismissDialog}
               disabled={isCommitting || isDiscarding}
             >
               Cancel

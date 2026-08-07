@@ -939,6 +939,12 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
             store.set(selectedAppIdAtom, previousSelectedAppId);
             store.set(selectedFileAtom, previousSelectedFile);
             store.set(editorCursorAtom, previousEditorCursor);
+            // This branch restores the presentation by hand rather than through
+            // restorePresentation, so it has to drop the commit dialog itself:
+            // the staged diff below replaces what was displayed, and no chat is
+            // selected afterwards, so a dialog left open would belong to
+            // nothing.
+            store.set(resetCommitDialogAtom);
             store.set(stagedDiffFileAtom, previousStagedDiffFile);
             store.set(previewModeAtom, previousPreviewMode);
             store.set(isPreviewOpenAtom, previousIsPreviewOpen);

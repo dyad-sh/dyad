@@ -51,6 +51,7 @@ export const SETTING_IDS = {
   enableImplementerSubagent: "setting-enable-implementer-subagent",
   enableAdvancedSubagents: "setting-enable-advanced-subagents",
   autoFixReviewIssues: "setting-auto-fix-review-issues",
+  enableOwnServerDeployment: "setting-enable-own-server-deployment",
   enableSelectAppFromHomeChatInput:
     "setting-enable-select-app-from-home-chat-input",
   reset: "setting-reset",
@@ -588,6 +589,26 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     label: "Automatically fix review findings",
     description: "Start an Agent remediation turn after Reviewer finds issues",
     keywords: ["sub-agent", "review", "fix", "automatic", "pro"],
+    sectionId: SECTION_IDS.experiments,
+    sectionLabel: "Experiments",
+  },
+
+  {
+    id: SETTING_IDS.enableOwnServerDeployment,
+    label: "Allow deployment to your own server",
+    description:
+      "Integrates with Coolify so you can deploy an app to a server you run yourself",
+    keywords: [
+      "deploy",
+      "deployment",
+      "self-hosted",
+      "self hosted",
+      "own server",
+      "coolify",
+      "vps",
+      "publish",
+      "experiment",
+    ],
     sectionId: SECTION_IDS.experiments,
     sectionLabel: "Experiments",
   },

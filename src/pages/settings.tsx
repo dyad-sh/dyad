@@ -246,6 +246,30 @@ export default function SettingsPage() {
               <AutoApproveMcpSwitch />
             </div>
 
+            <div
+              id={SETTING_IDS.enableOwnServerDeployment}
+              className="space-y-1.5"
+            >
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="enable-own-server-deployment"
+                  aria-label="Allow deployment to your own server"
+                  checked={!!settings?.enableOwnServerDeployment}
+                  onCheckedChange={(checked) => {
+                    updateSettings({ enableOwnServerDeployment: checked });
+                  }}
+                />
+                <Label htmlFor="enable-own-server-deployment">
+                  Allow deployment to your own server
+                </Label>
+              </div>
+              <p className={hint}>
+                Integrates with Coolify so you can deploy an app to a server you
+                run yourself. This is in early development: it is undocumented,
+                unstable, and may change or break without notice.
+              </p>
+            </div>
+
             <div id={SETTING_IDS.enableMcpToolSearch} className="space-y-1.5">
               <div className="flex items-center gap-2">
                 <Switch

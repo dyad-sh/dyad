@@ -78,6 +78,13 @@ When passing a PR body inline via `gh pr create --body "..."`, unescaped backtic
 
 Publishing helpers must transport an agent-written PR body based on the complete branch diff; a commit subject plus changed filenames is not an acceptable summary. Start with a 1-2 sentence overview, then highlight subjective design decisions, trade-offs, boundaries, and questions reviewers should verify. Do not add a routine testing section, and preserve human or review-tool additions when refreshing an existing PR body.
 
+## Another session may already be fixing the same review comments
+
+Before writing code to address PR review comments, run `git fetch <remote> <branch>` and compare the remote tip to your local `HEAD`. A second agent session on the same branch can push its own fix for the identical threads while you work, and you only find out when the push is rejected with `stale info`. If the remote is ahead:
+
+- Read the remote commit's diff before touching anything. If it addresses the same comments, `git reset --hard <remote>/<branch>` and replay only your genuinely new commits on top — do **not** force-push your duplicate over a version that has already been posted and had its threads resolved.
+- Verify the resolution status of the threads (`isResolved` in the `reviewThreads` GraphQL query) before assuming there is work left to do.
+
 ## Final automated-review audit
 
 An automated review workflow can finish successfully before its GitHub review
@@ -98,7 +105,11 @@ commit the corresponding tracked `.claude/skills/...` path instead.
 
 ## node_modules symlinks and `.gitignore`
 
-When a worktree symlinks `node_modules` from another checkout (common in agent worktrees to avoid reinstalling), `.gitignore`'s `node_modules/` pattern does NOT match it — the trailing slash makes the pattern directory-only, and a symlink is not a directory. `git add -A` will therefore stage the symlink. Check `git status` for symlink entries before committing, and remove any staged one with `git rm --cached node_modules` (same for `testing/fake-llm-server/node_modules`).
+`.gitignore` lists `node_modules` **without** a trailing slash, and it must stay that way. A worktree that symlinks `node_modules` at another checkout (common in agent worktrees to avoid reinstalling) is not a directory, so the old directory-only `node_modules/` pattern did not match it and `git add -A` staged the symlink — committing an absolute path from one machine, which made every later checkout of that branch replace the reader's real `node_modules` with a dangling link. The bare pattern covers symlinks and nested copies such as `testing/fake-llm-server/node_modules` alike. If one is ever staged again, untrack it with `git rm --cached node_modules`.
+
+## Consumers of `git status --porcelain`
+
+`git status --porcelain` defaults to `--untracked-files=normal`, which collapses a wholly-untracked directory into a **single entry whose path ends in `/`** (`?? src/newfolder/`) instead of listing the files inside it. `getGitUncommittedFiles`/`getGitUncommittedFilesWithStatus` pass that entry straight through, so anything matching those paths against a real file list (file-tree markers, per-file UI) silently misses every file in a new folder. Either expand the entry against the file list or drop it — never let it flow into path-derived state, or you get a folder flagged as changed with no changed child. Adding `-uall` fixes the shape but makes `attachLineStats` run per untracked file, so it is not free for large unignored directories.
 
 ## Commit hooks and untracked artifacts
 

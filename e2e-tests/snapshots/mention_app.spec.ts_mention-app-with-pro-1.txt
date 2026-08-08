@@ -68,7 +68,7 @@
         },
         {
           "path": "README.md",
-          "content": "# Welcome to your Dyad app\n",
+          "content": "# Welcome to your Meta Human OS app\n",
           "force": false
         },
         {

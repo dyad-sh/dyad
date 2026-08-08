@@ -3,6 +3,7 @@ import { removeUnsupportedWindowsSigningFiles } from "./src/lib/windows_signing"
 import type { ForgeConfig } from "@electron-forge/shared-types";
 import { MakerSquirrel } from "@electron-forge/maker-squirrel";
 import { MakerZIP } from "@electron-forge/maker-zip";
+import { MakerDMG } from "@electron-forge/maker-dmg";
 import { MakerDeb } from "@electron-forge/maker-deb";
 import { MakerRpm } from "@electron-forge/maker-rpm";
 import { MakerAppImage } from "./makers/MakerAppImage";
@@ -26,6 +27,11 @@ const ignore = (file: string) => {
   }
   if (file.startsWith("/scaffold")) {
     return false;
+  }
+  // Qdrant is copied as an executable extraResource. Keeping it out of the
+  // asar avoids embedding a second copy and preserves executable permissions.
+  if (file.startsWith("/assets/qdrant")) {
+    return true;
   }
 
   if (file.startsWith("/worker") && !file.startsWith("/workers")) {
@@ -71,6 +77,16 @@ const ignore = (file: string) => {
 const isEndToEndTestBuild = process.env.E2E_TEST_BUILD === "true";
 const isWindowsSigningEnabled = process.env.WINDOWS_SIGN === "true";
 
+// Local builds without Apple credentials skip Developer ID signing and
+// notarization (the packager ad-hoc signs on arm64 instead). CI keeps the
+// full signing flow because the env vars are present there.
+const hasMacSigningEnv = Boolean(process.env.APPLE_TEAM_ID);
+const hasMacNotarizeEnv = Boolean(
+  process.env.APPLE_ID &&
+  process.env.APPLE_PASSWORD &&
+  process.env.APPLE_TEAM_ID,
+);
+
 if (isWindowsSigningEnabled && !process.env.AZURE_CODE_SIGNING_DLIB) {
   throw new Error(
     "WINDOWS_SIGN is enabled but AZURE_CODE_SIGNING_DLIB is not set. " +
@@ -98,37 +114,49 @@ const config: ForgeConfig = {
       : undefined,
     protocols: [
       {
-        name: "Dyad",
-        schemes: ["dyad"],
+        name: "Meta Human OS",
+        schemes: ["dyad", "metahumanos"],
       },
     ],
     icon: "./assets/icon/logo",
+    // macOS refuses microphone access outright unless the bundle declares why
+    // it needs it. Without this, JARVIS voice input fails in packaged builds.
+    extendInfo: {
+      NSMicrophoneUsageDescription:
+        "Meta Human OS uses the microphone for JARVIS voice conversations and voice-to-text in chat.",
+    },
 
-    osxSign: isEndToEndTestBuild
-      ? undefined
-      : ({
-          identity: process.env.APPLE_TEAM_ID,
-          // Surface the actual signing error instead of silently continuing
-          // (@electron/packager defaults continueOnError to true, which masks failures)
-          continueOnError: false,
-          // Skip provisioning profile search (not needed for Developer ID distribution,
-          // and the cwd scan crashes on broken symlinks like CLAUDE.md)
-          preEmbedProvisioningProfile: false,
-        } as Record<string, unknown>),
-    osxNotarize: isEndToEndTestBuild
-      ? undefined
-      : {
-          appleId: process.env.APPLE_ID!,
-          appleIdPassword: process.env.APPLE_PASSWORD!,
-          teamId: process.env.APPLE_TEAM_ID!,
-        },
+    osxSign:
+      isEndToEndTestBuild || !hasMacSigningEnv
+        ? undefined
+        : ({
+            identity: process.env.APPLE_TEAM_ID,
+            // Surface the actual signing error instead of silently continuing
+            // (@electron/packager defaults continueOnError to true, which masks failures)
+            continueOnError: false,
+            // Skip provisioning profile search (not needed for Developer ID distribution,
+            // and the cwd scan crashes on broken symlinks like CLAUDE.md)
+            preEmbedProvisioningProfile: false,
+          } as Record<string, unknown>),
+    osxNotarize:
+      isEndToEndTestBuild || !hasMacNotarizeEnv
+        ? undefined
+        : {
+            appleId: process.env.APPLE_ID!,
+            appleIdPassword: process.env.APPLE_PASSWORD!,
+            teamId: process.env.APPLE_TEAM_ID!,
+          },
     asar: {
       // node-pty loads helper binaries like spawn-helper and winpty-agent from disk.
       unpackDir:
         "{node_modules/node-pty,node_modules/mustardscript,node_modules/@mustardscript}",
     },
     ignore,
-    extraResource: ["node_modules/dugite/git", "node_modules/@vscode"],
+    extraResource: [
+      "node_modules/dugite/git",
+      "node_modules/@vscode",
+      "assets/qdrant",
+    ],
     // ignore: [/node_modules\/(?!(better-sqlite3|bindings|file-uri-to-path)\/)/],
   },
   rebuildConfig: {
@@ -151,7 +179,14 @@ const config: ForgeConfig = {
             setupIcon: "./assets/icon/logo.ico",
           },
     ),
+    // The ZIP stays because auto-update (update-electron-app) reads it; the
+    // DMG is the installer humans download.
     new MakerZIP({}, ["darwin"]),
+    // `name` is deliberately omitted so the output is
+    // `Meta Human OS-<version>-<arch>.dmg`, matching how the ZIP artifacts are
+    // named. electron-installer-dmg supplies the default drag-to-Applications
+    // layout.
+    new MakerDMG({ icon: "./assets/icon/logo.icns" }, ["darwin"]),
     new MakerRpm({
       options: {
         icon: "./assets/icon/logo.png",

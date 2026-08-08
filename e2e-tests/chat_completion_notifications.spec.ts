@@ -335,7 +335,7 @@ testWithNotificationsEnabled(
 
     // Check for warning toast
     await po.toastNotifications.waitForToastWithText(
-      "Enable notifications for Dyad",
+      "Enable notifications for Meta Human OS",
     );
   },
 );

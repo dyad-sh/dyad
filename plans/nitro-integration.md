@@ -14,7 +14,7 @@ Dyad users building React/Vite apps have no server layer. This creates three con
 2. **Neon integration is blocked for Vite** — Neon's standard connection pattern uses `DATABASE_URL` with `@neondatabase/serverless`, which requires server-side code. The previously proposed workaround (Neon Data API + RLS) is non-standard and may require extra configuration from the users.
 3. **No Vercel Functions** — Without a server layer, Vite apps deployed to Vercel are static-only. Users who need webhook handlers, API proxies, or any server logic must switch to Next.js.
 
-Since Vite is the default template, this affects the majority of Dyad apps.
+Since Vite is the default template, this affects the majority of Meta Human OS apps.
 
 ## Scope
 

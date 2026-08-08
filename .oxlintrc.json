@@ -1,15 +1,28 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "ignorePatterns": [
+    "aios/**/*",
     "e2e-tests/fixtures/**/*",
     "src/__tests__/evals/fixtures/**/*"
   ],
+  "plugins": ["unicorn", "typescript", "oxc", "react"],
   "categories": {
     "correctness": "warn"
   },
   "rules": {
     "eslint/no-unused-vars": "error",
     "eslint/no-empty-pattern": "off",
-    "eslint/no-control-regex": "off"
-  }
+    "eslint/no-control-regex": "off",
+    "react/rules-of-hooks": "error",
+    "react/exhaustive-deps": "warn"
+  },
+  "overrides": [
+    {
+      "files": ["e2e-tests/**", "testing/**", "scripts/**", "workers/**"],
+      "rules": {
+        "react/rules-of-hooks": "off",
+        "react/exhaustive-deps": "off"
+      }
+    }
+  ]
 }

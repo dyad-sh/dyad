@@ -1,0 +1,10 @@
+# pnpm 11 refuses to install when a dependency's build script has not been
+# approved, and `pnpm run dev` re-checks the install before starting — so an
+# unapproved build stops the dev server from ever coming up.
+#
+# esbuild and @swc/core are what Vite and the React plugin compile with. Both
+# are ordinary build-time dependencies of this template, so approve them here
+# rather than leaving the placeholder pnpm writes on a failed install.
+allowBuilds:
+  "@swc/core": true
+  esbuild: true

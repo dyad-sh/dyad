@@ -169,7 +169,7 @@ export function ChatList({
       }
     } else {
       // If no app is selected, navigate to home page
-      navigate({ to: "/" });
+      navigate({ to: "/coder/studio" });
     }
   };
 
@@ -187,7 +187,7 @@ export function ChatList({
         if (selectedAppId) {
           navigate({ to: "/app-details", search: { appId: selectedAppId } });
         } else {
-          navigate({ to: "/" });
+          navigate({ to: "/coder/studio" });
         }
       }
 
@@ -230,7 +230,7 @@ export function ChatList({
   return (
     <>
       <SidebarGroup
-        className="overflow-y-auto h-[calc(100vh-112px)]"
+        className="h-full min-h-0 overflow-y-auto"
         data-testid="chat-list-container"
       >
         {showViewAllAppsButton && (

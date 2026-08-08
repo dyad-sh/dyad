@@ -133,6 +133,7 @@ import {
   unmarkMessageAsUsingFreeAgentQuota,
 } from "./free_agent_quota_handlers";
 import { AI_STREAMING_ERROR_MESSAGE_PREFIX } from "@/shared/texts";
+import { formatChatStreamError } from "@/lib/chat_stream_errors";
 import { getCurrentCommitHash } from "../utils/git_utils";
 import {
   processChatMessagesWithVersionedFiles as getVersionedFiles,
@@ -822,7 +823,7 @@ ${componentSnippet}
         effectiveChatMode: selectedChatMode,
         chatModeFallbackReason,
       });
-      // Only Dyad Pro requests have request ids.
+      // Only Meta Human OS Pro requests have request ids.
       if (settings.enableDyadPro) {
         // Generate requestId early so it can be saved with the message
         dyadRequestId = uuidv4();
@@ -1027,7 +1028,7 @@ ${componentSnippet}
           }
         }
 
-        // For Dyad Pro + Deep Context, we set to 200 chat turns (+1)
+        // For Meta Human OS Pro + Deep Context, we set to 200 chat turns (+1)
         // this is to enable more cache hits. Practically, users should
         // rarely go over this limit because they will hit the model's
         // context window limit.
@@ -1407,7 +1408,11 @@ This conversation includes one or more image attachments. When the user uploads 
               if (errorMessage && responseBody) {
                 errorMessage += "\n\nDetails: " + responseBody;
               }
-              const message = errorMessage || JSON.stringify(error);
+              const rawMessage = errorMessage || JSON.stringify(error);
+              const message = formatChatStreamError(rawMessage, {
+                provider: settings.selectedModel.provider,
+                modelName: settings.selectedModel.name,
+              });
               const requestIdPrefix = isEngineEnabled
                 ? `[Request ID: ${dyadRequestId}] `
                 : "";
@@ -2066,9 +2071,16 @@ ${problemReport.problems
       return req.chatId;
     } catch (error) {
       logger.error("Error calling LLM:", error);
+      const latestSettings = readSettings();
+      const formatted = formatChatStreamError(error, {
+        provider: latestSettings.selectedModel?.provider,
+        modelName: latestSettings.selectedModel?.name,
+      });
       safeSend(event.sender, "chat:response:error", {
         chatId: req.chatId,
-        error: `Sorry, there was an error processing your request: ${error}`,
+        error: formatted.startsWith("Sorry,")
+          ? formatted
+          : `Sorry, there was an error processing your request: ${formatted}`,
       });
 
       return "error";

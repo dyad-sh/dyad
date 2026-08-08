@@ -33,7 +33,7 @@
   "deleteChatNote": "注意：已接受的代码更改将被保留。",
   "scrollToBottom": "滚动到底部",
   "dismissError": "忽略错误",
-  "askDyadToBuild": "让 Dyad 来构建...",
+  "askDyadToBuild": "让 Meta Human OS 来构建...",
   "cancelGeneration": "取消生成",
   "sendMessage": "发送消息",
   "loadingProposal": "正在加载提案...",
@@ -120,7 +120,7 @@
   "total": "总计",
   "failedCountTokens": "令牌计数失败",
   "optimizeTokens": "通过以下方式优化您的令牌",
-  "dyadProSmartContext": "Dyad Pro 的智能上下文",
+  "dyadProSmartContext": "Pro 的智能上下文",
   "attachFiles": "附加文件",
   "themes": "主题",
   "noTheme": "无主题",
@@ -196,29 +196,29 @@
     "versionCount": "版本 {{count}}"
   },
   "errorBox": {
-    "accessWithDyadPro": "使用 Dyad Pro 访问",
+    "accessWithDyadPro": "使用 Pro 访问",
     "orSwitchModel": "或切换到其他模型。",
-    "upgradeToDyadPro": "升级到 Dyad Pro",
+    "upgradeToDyadPro": "升级到 Pro",
     "troubleshootingGuide": "故障排除指南",
-    "invalidProKey": "您似乎没有有效的 Dyad Pro 密钥。",
+    "invalidProKey": "您似乎没有有效的 Pro 密钥。",
     "today": "今天。",
-    "creditsUsed": "您本月的 Dyad AI 额度已用完。",
+    "creditsUsed": "您本月的 Meta Human OS AI 额度已用完。",
     "reloadOrUpgrade": "重新加载或升级您的订阅",
     "getMoreCredits": "获取更多 AI 额度",
     "readDocs": "阅读文档"
   },
   "promo": {
     "tiredOfWaiting": "厌倦了等待 AI？",
-    "getDyadPro": "获取 Dyad Pro",
+    "getDyadPro": "获取 Pro",
     "fasterEdits": "使用 Turbo Edits 实现更快的编辑。",
     "saveOnCosts": "使用以下功能节省高达 3 倍的 AI 成本",
     "debuggingLoop": "陷入调试循环？尝试换一个模型。",
     "joinBuilders": "加入 600 多名开发者，访问",
-    "dyadSubreddit": "Dyad 论坛",
+    "dyadSubreddit": "Meta Human OS 论坛",
     "foundBug": "发现了 Bug？点击「帮助」>「报告 Bug」",
     "reportBadResponse": "想要报告不良的 AI 回复？点击「帮助」上传聊天",
     "watch": "观看",
-    "creatorBuildApp": "Dyad 创建者一步步构建圣经应用",
+    "creatorBuildApp": "Meta Human OS 创建者一步步构建圣经应用",
     "gettingStuck": "遇到困难？阅读我们的",
     "debuggingTips": "调试技巧",
     "advancedTip": "高级技巧：自定义您的",
@@ -226,7 +226,7 @@
     "keepFocused": "想让 AI 更专注？开始新聊天。",
     "whatsNext": "想知道接下来有什么？查看我们的",
     "roadmap": "路线图",
-    "likeDyad": "喜欢 Dyad？在 GitHub 上给个 Star",
+    "likeDyad": "喜欢 Meta Human OS？在 GitHub 上给个 Star",
     "gitHub": "GitHub"
   },
   "consent": {
@@ -237,5 +237,16 @@
   "guide": "指南",
   "agentModeActivated": "Agent 模式已激活",
   "agentModeTip": "提示：创建新聊天以给 Agent 一个干净的上下文，获得更好的结果。",
-  "neverShowAgain": "不再显示"
+  "neverShowAgain": "不再显示",
+  "chatAgent": {
+    "messagePlaceholder": "给 Chat Agent 发消息…",
+    "sendMessage": "发送消息",
+    "stopGenerating": "停止生成",
+    "enhancePrompt": "优化提示词",
+    "attachMenu": "添加附件",
+    "attachFiles": "附加文件",
+    "attachImage": "附加图片",
+    "generationStarted": "助手正在回复",
+    "generationFinished": "回复已完成"
+  }
 }

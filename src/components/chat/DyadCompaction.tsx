@@ -21,13 +21,16 @@ export const DyadCompaction: React.FC<DyadCompactionProps> = ({
   const inProgress = state === "pending";
   const [isExpanded, setIsExpanded] = useState(true);
 
-  // Auto-collapse when compaction finishes
+  // Auto-collapse when compaction finishes. Intentionally only depends on
+  // `inProgress` — re-running on `isExpanded` would re-collapse a block the
+  // user manually expanded.
   useEffect(() => {
     if (!inProgress && isExpanded) {
       // Small delay so the user can see the final state before collapsing
       const timer = setTimeout(() => setIsExpanded(false), 600);
       return () => clearTimeout(timer);
     }
+    // eslint-disable-next-line react/exhaustive-deps
   }, [inProgress]);
 
   const content = typeof children === "string" ? children : "";

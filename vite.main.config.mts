@@ -10,7 +10,16 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
-      external: ["better-sqlite3", "node-pty", "mustardscript"],
+      external: [
+        "better-sqlite3",
+        "node-pty",
+        "mustardscript",
+        // Optional native accelerators for `ws`. They are not installed and
+        // `ws` falls back to its JS implementations, but Rollup still tries
+        // to resolve the requires.
+        "bufferutil",
+        "utf-8-validate",
+      ],
     },
   },
   plugins: [

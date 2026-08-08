@@ -24,7 +24,7 @@
     if (!element || !styles) return;
 
     console.debug(
-      `[Dyad Visual Editor] Applying styles:`,
+      `[Meta Human OS Visual Editor] Applying styles:`,
       styles,
       "to element:",
       element,

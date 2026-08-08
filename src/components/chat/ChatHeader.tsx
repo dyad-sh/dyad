@@ -100,7 +100,7 @@ export function ChatHeader({
         showError(t("failedCreateChat", { error: (error as any).toString() }));
       }
     } else {
-      navigate({ to: "/" });
+      navigate({ to: "/coder/studio" });
     }
   };
 

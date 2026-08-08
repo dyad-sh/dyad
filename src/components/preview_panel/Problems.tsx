@@ -217,12 +217,12 @@ const ProblemsSummary = ({
 export function Problems() {
   return (
     <div data-testid="problems-pane">
-      <_Problems />
+      <ProblemsContent />
     </div>
   );
 }
 
-export function _Problems() {
+export function ProblemsContent() {
   const { t } = useTranslation(["home", "common"]);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const { problemReport } = useCheckProblems(selectedAppId);

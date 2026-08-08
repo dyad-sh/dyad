@@ -431,7 +431,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
 
     if (fallbackChatId === null && selectedChatId === chatId) {
       setSelectedChatId(null);
-      navigate({ to: "/" });
+      navigate({ to: "/coder/studio" });
     }
   };
 

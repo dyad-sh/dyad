@@ -4,7 +4,7 @@
 
 ## Summary
 
-Add support for connecting Dyad apps to a local Supabase instance (via the Supabase CLI + Docker) as an alternative to cloud Supabase. Users can easily switch between cloud and local on a per-app basis, with cloud positioned as "Recommended for production" and local as "Great for development." Dyad detects whether local Supabase is running but does not manage the lifecycle — users run `supabase start` and `supabase functions serve` themselves.
+Add support for connecting Meta Human OS apps to a local Supabase instance (via the Supabase CLI + Docker) as an alternative to cloud Supabase. Users can easily switch between cloud and local on a per-app basis, with cloud positioned as "Recommended for production" and local as "Great for development." Dyad detects whether local Supabase is running but does not manage the lifecycle — users run `supabase start` and `supabase functions serve` themselves.
 
 ## Problem Statement
 

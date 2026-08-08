@@ -28,10 +28,13 @@ export const DyadCodebaseContext: React.FC<DyadCodebaseContextProps> = ({
   const [isExpanded, setIsExpanded] = useState(inProgress);
   const files = node?.properties?.files?.split(",") || [];
 
+  // Intentionally only depends on `inProgress` — re-running on `isExpanded`
+  // would re-collapse a block the user manually expanded.
   useEffect(() => {
     if (!inProgress && isExpanded) {
       setIsExpanded(false);
     }
+    // eslint-disable-next-line react/exhaustive-deps
   }, [inProgress]);
 
   return (

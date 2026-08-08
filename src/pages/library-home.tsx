@@ -16,6 +16,7 @@ import {
   type FilterType,
 } from "@/components/LibraryFilterTabs";
 import { DyadAppMediaFolder } from "@/components/DyadAppMediaFolder";
+import { CloudMediaGallery } from "@/components/library/CloudMediaGallery";
 import { ImageGeneratorDialog } from "@/components/ImageGeneratorDialog";
 import { ImageGenerationProgressButton } from "@/components/ImageGenerationProgressButton";
 import { filterMediaAppsByQuery } from "@/lib/mediaUtils";
@@ -28,7 +29,13 @@ export default function LibraryHomePage() {
   const [activeFilter, setActiveFilter] = useState<FilterType>(() => {
     const params = new URLSearchParams(window.location.search);
     const filter = params.get("filter");
-    if (filter === "themes" || filter === "prompts" || filter === "media")
+    if (
+      filter === "themes" ||
+      filter === "prompts" ||
+      filter === "media" ||
+      filter === "images" ||
+      filter === "videos"
+    )
       return filter;
     return "all";
   });
@@ -122,95 +129,97 @@ export default function LibraryHomePage() {
 
   return (
     <PageContainer size="xl" className="py-6">
-          {/* Header */}
-          <div className="flex items-center justify-between mb-6">
-            <h1 className="text-3xl font-bold">
-              <BookOpen className="inline-block h-8 w-8 mr-2" />
-              Library
-            </h1>
-            <div className="flex items-center gap-2">
-              <ImageGenerationProgressButton />
-              <NewLibraryItemMenu
-                onNewPrompt={() => setPromptDialogOpen(true)}
-                onNewTheme={() => setCreateThemeDialogOpen(true)}
-                onNewImage={() => setImageGeneratorOpen(true)}
-              />
-            </div>
-          </div>
-
-          {/* Dialogs (controlled externally) */}
-          <CreateOrEditPromptDialog
-            mode="create"
-            onCreatePrompt={createPrompt}
-            prefillData={prefillData}
-            isOpen={promptDialogOpen}
-            onOpenChange={handlePromptDialogClose}
-            trigger={<span />}
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-3xl font-bold">
+          <BookOpen className="inline-block h-8 w-8 mr-2" />
+          Library
+        </h1>
+        <div className="flex items-center gap-2">
+          <ImageGenerationProgressButton />
+          <NewLibraryItemMenu
+            onNewPrompt={() => setPromptDialogOpen(true)}
+            onNewTheme={() => setCreateThemeDialogOpen(true)}
+            onNewImage={() => setImageGeneratorOpen(true)}
           />
+        </div>
+      </div>
 
-          {/* Search Bar */}
-          <LibrarySearchBar value={searchQuery} onChange={setSearchQuery} />
+      {/* Dialogs (controlled externally) */}
+      <CreateOrEditPromptDialog
+        mode="create"
+        onCreatePrompt={createPrompt}
+        prefillData={prefillData}
+        isOpen={promptDialogOpen}
+        onOpenChange={handlePromptDialogClose}
+        trigger={<span />}
+      />
 
-          {/* Filter Tabs */}
-          <LibraryFilterTabs active={activeFilter} onChange={setActiveFilter} />
+      {/* Search Bar */}
+      <LibrarySearchBar value={searchQuery} onChange={setSearchQuery} />
 
-          {/* Grid */}
-          {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : hasNoResults ? (
-            <div className="text-muted-foreground text-center py-12">
-              {searchQuery
-                ? "No results found."
-                : activeFilter === "media"
-                  ? "No media files yet."
-                  : activeFilter === "themes"
-                    ? "No themes yet."
-                    : activeFilter === "prompts"
-                      ? "No prompts yet."
-                      : "No items in your library yet."}
-            </div>
-          ) : (
-            <div
-              data-testid="library-grid"
-              className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-4"
-            >
-              {filteredItems.map((item) => (
-                <LibraryCard
-                  key={`${item.type}-${item.data.id}`}
-                  item={item}
-                  onUpdatePrompt={updatePrompt}
-                  onDeletePrompt={deletePrompt}
-                />
-              ))}
-              {filteredMediaApps.map((app) => (
-                <DyadAppMediaFolder
-                  key={`media-${app.appId}`}
-                  appId={app.appId}
-                  appPath={app.appPath}
-                  appName={app.appName}
-                  files={app.files}
-                  allApps={allApps}
-                  onRenameMediaFile={renameMediaFile}
-                  onDeleteMediaFile={deleteMediaFile}
-                  onMoveMediaFile={moveMediaFile}
-                  isMutatingMedia={isMutatingMedia}
-                  searchQuery={searchQuery}
-                />
-              ))}
-            </div>
-          )}
+      {/* Filter Tabs */}
+      <LibraryFilterTabs active={activeFilter} onChange={setActiveFilter} />
 
-        <CustomThemeDialog
-          open={createThemeDialogOpen}
-          onOpenChange={setCreateThemeDialogOpen}
-        />
+      {/* Grid */}
+      {activeFilter === "images" || activeFilter === "videos" ? (
+        <CloudMediaGallery kind={activeFilter} searchQuery={searchQuery} />
+      ) : isLoading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      ) : hasNoResults ? (
+        <div className="text-muted-foreground text-center py-12">
+          {searchQuery
+            ? "No results found."
+            : activeFilter === "media"
+              ? "No media files yet."
+              : activeFilter === "themes"
+                ? "No themes yet."
+                : activeFilter === "prompts"
+                  ? "No prompts yet."
+                  : "No items in your library yet."}
+        </div>
+      ) : (
+        <div
+          data-testid="library-grid"
+          className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-4"
+        >
+          {filteredItems.map((item) => (
+            <LibraryCard
+              key={`${item.type}-${item.data.id}`}
+              item={item}
+              onUpdatePrompt={updatePrompt}
+              onDeletePrompt={deletePrompt}
+            />
+          ))}
+          {filteredMediaApps.map((app) => (
+            <DyadAppMediaFolder
+              key={`media-${app.appId}`}
+              appId={app.appId}
+              appPath={app.appPath}
+              appName={app.appName}
+              files={app.files}
+              allApps={allApps}
+              onRenameMediaFile={renameMediaFile}
+              onDeleteMediaFile={deleteMediaFile}
+              onMoveMediaFile={moveMediaFile}
+              isMutatingMedia={isMutatingMedia}
+              searchQuery={searchQuery}
+            />
+          ))}
+        </div>
+      )}
 
-        <ImageGeneratorDialog
-          open={imageGeneratorOpen}
-          onOpenChange={setImageGeneratorOpen}
-        />
+      <CustomThemeDialog
+        open={createThemeDialogOpen}
+        onOpenChange={setCreateThemeDialogOpen}
+      />
+
+      <ImageGeneratorDialog
+        open={imageGeneratorOpen}
+        onOpenChange={setImageGeneratorOpen}
+      />
     </PageContainer>
   );
 }

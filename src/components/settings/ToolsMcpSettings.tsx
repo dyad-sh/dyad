@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -11,11 +12,25 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useMcp, type Transport } from "@/hooks/useMcp";
+import { useSettings } from "@/hooks/useSettings";
 import { showError, showInfo, showSuccess } from "@/lib/toast";
-import { Edit2, Plus, Save, Trash2, X } from "lucide-react";
+import {
+  AlertCircle,
+  ChevronDown,
+  CheckCircle2,
+  Edit2,
+  Loader2,
+  Plus,
+  RefreshCw,
+  Save,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useDeepLink } from "@/contexts/DeepLinkContext";
 import { AddMcpServerDeepLinkData } from "@/ipc/deep_link_data";
 import { useTranslation } from "react-i18next";
+import { SETTING_IDS } from "@/lib/settingsSearchIndex";
+import type { McpConnectionStatus } from "@/ipc/types";
 
 type KeyValue = { key: string; value: string };
 
@@ -44,6 +59,185 @@ function arrayToJsonObject(envVars: KeyValue[]): Record<string, string> {
     env[key.trim()] = value;
   }
   return env;
+}
+
+function parseHeadersInput(headers: string): Record<string, string> | null {
+  const trimmed = headers.trim();
+  if (!trimmed) return null;
+
+  if (/^Bearer\s+/i.test(trimmed)) {
+    return { Authorization: trimmed };
+  }
+
+  if (!trimmed.startsWith("{")) {
+    const entries = trimmed
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const separatorIndex = line.indexOf(":");
+        if (separatorIndex === -1) {
+          throw new Error(
+            "Headers must be JSON, Key: Value lines, or a Bearer token",
+          );
+        }
+        return [
+          line.slice(0, separatorIndex).trim(),
+          line.slice(separatorIndex + 1).trim(),
+        ] as const;
+      });
+
+    return Object.fromEntries(
+      entries.filter(([key, value]) => key.length > 0 && value.length > 0),
+    );
+  }
+
+  const parsed = JSON.parse(trimmed) as unknown;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Headers must be a JSON object");
+  }
+
+  return Object.fromEntries(
+    Object.entries(parsed).map(([key, value]) => [key, String(value ?? "")]),
+  );
+}
+
+function maskHeaderValue(key: string, value: string): string {
+  if (/authorization|token|secret|key/i.test(key)) {
+    return value ? "********" : "";
+  }
+  return value;
+}
+
+function getChatAgentToolKey(serverId: number, toolName: string): string {
+  return `${serverId}:${toolName}`;
+}
+
+function getChatAgentWorkflowKey(serverId: number, workflowId: string): string {
+  return `${serverId}:${workflowId}`;
+}
+
+function McpConnectionIndicator({
+  enabled,
+  status,
+  isChecking,
+}: {
+  enabled: boolean;
+  status?: McpConnectionStatus;
+  isChecking: boolean;
+}) {
+  if (!enabled) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs text-muted-foreground">
+        <span className="size-2 rounded-full bg-muted-foreground/50" />
+        Disabled
+      </span>
+    );
+  }
+
+  if (isChecking && !status) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-md border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-xs text-sky-500">
+        <Loader2 className="size-3 animate-spin" />
+        Checking
+      </span>
+    );
+  }
+
+  if (status?.ok) {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-500"
+        title={`${status.toolCount ?? 0} tools/workflows discovered`}
+      >
+        <CheckCircle2 className="size-3" />
+        Connected
+        {status.toolCount != null ? ` (${status.toolCount})` : ""}
+      </span>
+    );
+  }
+
+  if (status && !status.ok) {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-md border border-destructive/30 bg-destructive/10 px-2 py-0.5 text-xs text-destructive"
+        title={status.error}
+      >
+        <AlertCircle className="size-3" />
+        Error
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs text-muted-foreground">
+      <Loader2 className="size-3 animate-spin" />
+      Checking
+    </span>
+  );
+}
+
+function CollapsibleMcpSection({
+  title,
+  description,
+  count,
+  selectedCount,
+  defaultOpen = false,
+  accent = false,
+  children,
+  actions,
+}: {
+  title: string;
+  description: string;
+  count: number;
+  selectedCount?: number;
+  defaultOpen?: boolean;
+  accent?: boolean;
+  children: React.ReactNode;
+  actions?: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+
+  return (
+    <div
+      className={
+        accent
+          ? "rounded-lg border border-cyan-500/20 bg-cyan-500/5"
+          : "rounded-lg border"
+      }
+    >
+      <div className="flex items-center justify-between gap-3 p-3">
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          onClick={() => setOpen((value) => !value)}
+          aria-expanded={open}
+        >
+          <ChevronDown
+            className={[
+              "size-4 shrink-0 text-muted-foreground transition-transform",
+              open ? "" : "-rotate-90",
+            ].join(" ")}
+          />
+          <span className="min-w-0">
+            <span className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-medium">{title}</span>
+              <span className="rounded-md border px-1.5 py-0.5 text-xs text-muted-foreground">
+                {selectedCount != null
+                  ? `${selectedCount}/${count} enabled`
+                  : `${count} found`}
+              </span>
+            </span>
+            <span className="block text-xs text-muted-foreground">
+              {description}
+            </span>
+          </span>
+        </button>
+        <div className="flex shrink-0 items-center gap-2">{actions}</div>
+      </div>
+      {open && <div className="space-y-2 border-t p-3">{children}</div>}
+    </div>
+  );
 }
 
 function KeyValueEditor({
@@ -265,7 +459,9 @@ function KeyValueEditor({
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-sm truncate">{kv.key}</div>
                     <div className="text-xs text-muted-foreground truncate">
-                      {kv.value}
+                      {itemLabel === "Header"
+                        ? maskHeaderValue(kv.key, kv.value)
+                        : kv.value}
                     </div>
                   </div>
                   <div className="flex gap-1">
@@ -302,25 +498,34 @@ export function ToolsMcpSettings() {
   const {
     servers,
     toolsByServer,
+    workflowsByServer,
+    connectionStatuses,
     consentsMap,
     createServer,
     toggleEnabled: toggleServerEnabled,
     deleteServer,
     setToolConsent: updateToolConsent,
     updateServer,
+    refetchAll,
     isUpdatingServer,
+    isCheckingConnections,
   } = useMcp();
+  const { settings, updateSettings } = useSettings();
   const [consents, setConsents] = useState<Record<string, any>>({});
   const [name, setName] = useState("");
   const [transport, setTransport] = useState<Transport>("stdio");
   const [command, setCommand] = useState("");
   const [args, setArgs] = useState<string>("");
   const [url, setUrl] = useState("");
+  const [headersText, setHeadersText] = useState("");
+  const [importConfig, setImportConfig] = useState("");
   const [enabled, setEnabled] = useState(true);
   const { lastDeepLink, clearLastDeepLink } = useDeepLink();
-  console.log("lastDeepLink!!!", lastDeepLink);
+  const chatAgentMcpServerIds = settings?.chatAgentMcpServerIds ?? [];
+  const chatAgentMcpToolKeys = settings?.chatAgentMcpToolKeys ?? [];
+  const chatAgentMcpWorkflowKeys = settings?.chatAgentMcpWorkflowKeys ?? [];
+
   useEffect(() => {
-    console.log("rerun effect");
     const handleDeepLink = async () => {
       if (lastDeepLink?.type === "add-mcp-server") {
         const deepLink = lastDeepLink as AddMcpServerDeepLinkData;
@@ -339,6 +544,9 @@ export function ToolsMcpSettings() {
       }
     };
     handleDeepLink();
+    // Keyed on the deep-link timestamp so this runs once per incoming deep
+    // link; intentionally not re-run when callback/object identities change.
+    // eslint-disable-next-line react/exhaustive-deps
   }, [lastDeepLink?.timestamp]);
 
   React.useEffect(() => {
@@ -346,6 +554,25 @@ export function ToolsMcpSettings() {
   }, [consentsMap]);
 
   const onCreate = async () => {
+    if (!name.trim()) {
+      showError("Server name is required");
+      return;
+    }
+    if (transport === "http" && !url.trim()) {
+      showError("HTTP MCP servers require a URL");
+      return;
+    }
+
+    let parsedHeaders: Record<string, string> | null = null;
+    if (transport === "http") {
+      try {
+        parsedHeaders = parseHeadersInput(headersText);
+      } catch (error) {
+        showError(error instanceof Error ? error.message : "Invalid headers");
+        return;
+      }
+    }
+
     const parsedArgs = (() => {
       const trimmed = args.trim();
       if (!trimmed) return null;
@@ -367,16 +594,198 @@ export function ToolsMcpSettings() {
       command: command || null,
       args: parsedArgs,
       url: url || null,
+      headersJson: parsedHeaders,
       enabled,
     });
     setName("");
     setCommand("");
     setArgs("");
     setUrl("");
+    setHeadersText("");
     setEnabled(true);
   };
 
-  // Removed activation toggling – tools are used dynamically with consent checks
+  const onImportConfig = async () => {
+    try {
+      const parsed = JSON.parse(importConfig) as unknown;
+      const serversConfig =
+        parsed &&
+        typeof parsed === "object" &&
+        "mcpServers" in parsed &&
+        parsed.mcpServers &&
+        typeof parsed.mcpServers === "object"
+          ? (parsed.mcpServers as Record<string, any>)
+          : null;
+
+      const entries = serversConfig ? Object.entries(serversConfig) : [];
+      if (entries.length === 0) {
+        showError("Paste JSON with an mcpServers object");
+        return;
+      }
+
+      for (const [serverName, config] of entries) {
+        const type = config?.type === "http" ? "http" : "stdio";
+        const headers =
+          config?.headers && typeof config.headers === "object"
+            ? Object.fromEntries(
+                Object.entries(config.headers).map(([key, value]) => [
+                  key,
+                  String(value ?? ""),
+                ]),
+              )
+            : null;
+
+        if (type === "http") {
+          if (!config?.url || typeof config.url !== "string") {
+            showError(`${serverName} is missing a URL`);
+            return;
+          }
+          await createServer({
+            name: serverName,
+            transport: "http",
+            url: config.url,
+            headersJson: headers,
+            enabled: true,
+          });
+        } else {
+          await createServer({
+            name: serverName,
+            transport: "stdio",
+            command:
+              typeof config?.command === "string" ? config.command : null,
+            args: Array.isArray(config?.args) ? config.args : null,
+            envJson:
+              config?.env && typeof config.env === "object"
+                ? Object.fromEntries(
+                    Object.entries(config.env).map(([key, value]) => [
+                      key,
+                      String(value ?? ""),
+                    ]),
+                  )
+                : null,
+            enabled: true,
+          });
+        }
+      }
+
+      setImportConfig("");
+      showSuccess(
+        `Imported ${entries.length} MCP server${entries.length === 1 ? "" : "s"}`,
+      );
+    } catch (error) {
+      showError(error instanceof Error ? error.message : "Invalid MCP JSON");
+    }
+  };
+
+  const onToggleChatAgentServer = (serverId: number, checked: boolean) => {
+    const serverToolKeys = (toolsByServer[serverId] || []).map((tool) =>
+      getChatAgentToolKey(serverId, tool.name),
+    );
+    const serverWorkflowKeys = (workflowsByServer[serverId] || []).map(
+      (workflow) => getChatAgentWorkflowKey(serverId, workflow.id),
+    );
+    const nextIds = checked
+      ? Array.from(new Set([...chatAgentMcpServerIds, serverId]))
+      : chatAgentMcpServerIds.filter((id) => id !== serverId);
+    const nextToolKeys = checked
+      ? Array.from(new Set([...chatAgentMcpToolKeys, ...serverToolKeys]))
+      : chatAgentMcpToolKeys.filter((key) => !key.startsWith(`${serverId}:`));
+    const nextWorkflowKeys = checked
+      ? Array.from(
+          new Set([...chatAgentMcpWorkflowKeys, ...serverWorkflowKeys]),
+        )
+      : chatAgentMcpWorkflowKeys.filter(
+          (key) => !key.startsWith(`${serverId}:`),
+        );
+
+    void updateSettings({
+      chatAgentMcpServerIds: nextIds,
+      chatAgentMcpToolKeys: nextToolKeys,
+      chatAgentMcpWorkflowKeys: nextWorkflowKeys,
+    });
+  };
+
+  const onToggleChatAgentTool = (
+    serverId: number,
+    toolName: string,
+    checked: boolean,
+  ) => {
+    const key = getChatAgentToolKey(serverId, toolName);
+    const nextToolKeys = checked
+      ? Array.from(new Set([...chatAgentMcpToolKeys, key]))
+      : chatAgentMcpToolKeys.filter((existingKey) => existingKey !== key);
+    const nextServerIds = checked
+      ? Array.from(new Set([...chatAgentMcpServerIds, serverId]))
+      : chatAgentMcpServerIds;
+
+    void updateSettings({
+      chatAgentMcpServerIds: nextServerIds,
+      chatAgentMcpToolKeys: nextToolKeys,
+    });
+  };
+
+  const onToggleChatAgentWorkflow = (
+    serverId: number,
+    workflowId: string,
+    checked: boolean,
+  ) => {
+    const key = getChatAgentWorkflowKey(serverId, workflowId);
+    const nextWorkflowKeys = checked
+      ? Array.from(new Set([...chatAgentMcpWorkflowKeys, key]))
+      : chatAgentMcpWorkflowKeys.filter((existingKey) => existingKey !== key);
+    const nextServerIds = checked
+      ? Array.from(new Set([...chatAgentMcpServerIds, serverId]))
+      : chatAgentMcpServerIds;
+
+    void updateSettings({
+      chatAgentMcpServerIds: nextServerIds,
+      chatAgentMcpWorkflowKeys: nextWorkflowKeys,
+    });
+  };
+
+  const onSetAllChatAgentWorkflows = (
+    serverId: number,
+    workflowIds: string[],
+    checked: boolean,
+  ) => {
+    const workflowKeys = workflowIds.map((workflowId) =>
+      getChatAgentWorkflowKey(serverId, workflowId),
+    );
+    const nextWorkflowKeys = checked
+      ? Array.from(new Set([...chatAgentMcpWorkflowKeys, ...workflowKeys]))
+      : chatAgentMcpWorkflowKeys.filter(
+          (key) => !key.startsWith(`${serverId}:`),
+        );
+    const nextServerIds = checked
+      ? Array.from(new Set([...chatAgentMcpServerIds, serverId]))
+      : chatAgentMcpServerIds;
+
+    void updateSettings({
+      chatAgentMcpServerIds: nextServerIds,
+      chatAgentMcpWorkflowKeys: nextWorkflowKeys,
+    });
+  };
+
+  const onSetAllChatAgentTools = (
+    serverId: number,
+    toolNames: string[],
+    checked: boolean,
+  ) => {
+    const toolKeys = toolNames.map((toolName) =>
+      getChatAgentToolKey(serverId, toolName),
+    );
+    const nextToolKeys = checked
+      ? Array.from(new Set([...chatAgentMcpToolKeys, ...toolKeys]))
+      : chatAgentMcpToolKeys.filter((key) => !key.startsWith(`${serverId}:`));
+    const nextServerIds = checked
+      ? Array.from(new Set([...chatAgentMcpServerIds, serverId]))
+      : chatAgentMcpServerIds;
+
+    void updateSettings({
+      chatAgentMcpServerIds: nextServerIds,
+      chatAgentMcpToolKeys: nextToolKeys,
+    });
+  };
 
   const onSetToolConsent = async (
     serverId: number,
@@ -389,6 +798,34 @@ export function ToolsMcpSettings() {
 
   return (
     <div className="space-y-6">
+      <div className="space-y-3">
+        <div>
+          <Label htmlFor="mcp-import-json">Import MCP config JSON</Label>
+          <Textarea
+            id="mcp-import-json"
+            value={importConfig}
+            onChange={(e) => setImportConfig(e.target.value)}
+            placeholder={
+              '{ "mcpServers": { "n8n-mcp": { "type": "http", "url": "https://...", "headers": { "Authorization": "Bearer ..." } } } }'
+            }
+            className="mt-1 min-h-24 font-mono text-xs"
+          />
+          <p className="mt-1 text-xs text-muted-foreground">
+            Paste an MCP JSON block to add n8n or other HTTP servers with their
+            headers.
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onImportConfig}
+          disabled={!importConfig.trim()}
+        >
+          <Plus size={14} />
+          Import Servers
+        </Button>
+      </div>
+
       <div className="space-y-2">
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -433,14 +870,31 @@ export function ToolsMcpSettings() {
             </>
           )}
           {transport === "http" && (
-            <div className="col-span-2">
-              <Label>URL</Label>
-              <Input
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                placeholder="http://localhost:3000"
-              />
-            </div>
+            <>
+              <div className="col-span-2">
+                <Label>URL</Label>
+                <Input
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  placeholder="https://example.com/mcp-server/http"
+                />
+              </div>
+              <div className="col-span-2">
+                <Label>Headers / bearer token</Label>
+                <Textarea
+                  value={headersText}
+                  onChange={(e) => setHeadersText(e.target.value)}
+                  placeholder={
+                    'Bearer ...\n\nor\n{ "Authorization": "Bearer ..." }'
+                  }
+                  className="mt-1 min-h-20 font-mono text-xs"
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Paste a raw Bearer token, Key: Value header lines, or a JSON
+                  object.
+                </p>
+              </div>
+            </>
           )}
           <div className="flex items-center gap-2">
             <Switch
@@ -453,8 +907,20 @@ export function ToolsMcpSettings() {
         </div>
         <div>
           <Button onClick={onCreate} disabled={!name.trim()}>
+            <Plus size={14} />
             Add Server
           </Button>
+        </div>
+      </div>
+
+      <div id={SETTING_IDS.chatAgentMcpServers} className="space-y-1">
+        <div className="text-sm font-medium">Chat Agent access</div>
+        <div
+          id={SETTING_IDS.chatAgentMcpTools}
+          className="text-sm text-muted-foreground"
+        >
+          Select which enabled MCP servers and discovered tools/workflows Chat
+          Agent can call. Tool consent still applies before a tool runs.
         </div>
       </div>
 
@@ -463,7 +929,14 @@ export function ToolsMcpSettings() {
           <div key={s.id} className="border rounded-lg p-3">
             <div className="flex items-center justify-between">
               <div>
-                <div className="font-medium">{s.name}</div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="font-medium">{s.name}</div>
+                  <McpConnectionIndicator
+                    enabled={!!s.enabled}
+                    status={connectionStatuses[s.id]}
+                    isChecking={isCheckingConnections}
+                  />
+                </div>
                 <div className="text-xs text-muted-foreground">
                   {s.transport}
                   {s.url ? ` · ${s.url}` : ""}
@@ -473,12 +946,42 @@ export function ToolsMcpSettings() {
                     : ""}
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <Switch
-                  aria-label={`Toggle ${s.name}`}
-                  checked={!!s.enabled}
-                  onCheckedChange={() => toggleServerEnabled(s.id, !!s.enabled)}
-                />
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <Switch
+                    aria-label={`Toggle ${s.name}`}
+                    checked={!!s.enabled}
+                    onCheckedChange={() =>
+                      toggleServerEnabled(s.id, !!s.enabled)
+                    }
+                  />
+                  <span className="text-xs text-muted-foreground">Enabled</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Switch
+                    aria-label={`Use ${s.name} with Chat Agent`}
+                    checked={chatAgentMcpServerIds.includes(s.id)}
+                    disabled={!s.enabled}
+                    onCheckedChange={(checked) =>
+                      onToggleChatAgentServer(s.id, checked)
+                    }
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    Chat Agent
+                  </span>
+                </div>
+                {(toolsByServer[s.id] || []).length > 0 && (
+                  <span className="text-xs text-muted-foreground">
+                    {
+                      (toolsByServer[s.id] || []).filter((tool) =>
+                        chatAgentMcpToolKeys.includes(
+                          getChatAgentToolKey(s.id, tool.name),
+                        ),
+                      ).length
+                    }
+                    /{(toolsByServer[s.id] || []).length} tools
+                  </span>
+                )}
                 <Button variant="outline" onClick={() => deleteServer(s.id)}>
                   Delete
                 </Button>
@@ -521,42 +1024,261 @@ export function ToolsMcpSettings() {
                 />
               </div>
             )}
-            <div className="mt-3 space-y-2">
-              {(toolsByServer[s.id] || []).map((t) => (
-                <div key={t.name} className="border rounded p-2">
-                  <div className="flex items-center gap-4">
-                    <div className="font-mono text-sm truncate">{t.name}</div>
-                    <div className="flex items-center gap-2">
-                      <Select
-                        value={consents[`${s.id}:${t.name}`] || "ask"}
-                        onValueChange={(v) =>
-                          onSetToolConsent(s.id, t.name, v as any)
-                        }
-                      >
-                        <SelectTrigger className="w-[140px] h-8">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="ask">Ask</SelectItem>
-                          <SelectItem value="always">Always allow</SelectItem>
-                          <SelectItem value="denied">Deny</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  {t.description && (
-                    <div className="mt-1 text-xs max-w-[500px] text-muted-foreground truncate">
-                      {t.description}
-                    </div>
+            {(() => {
+              const tools = toolsByServer[s.id] || [];
+              const workflows = workflowsByServer[s.id] || [];
+              const supportsWorkflowDiscovery = tools.some(
+                (tool) => tool.name === "search_workflows",
+              );
+              const selectedToolCount = tools.filter((tool) =>
+                chatAgentMcpToolKeys.includes(
+                  getChatAgentToolKey(s.id, tool.name),
+                ),
+              ).length;
+              const selectedWorkflowCount = workflows.filter((workflow) =>
+                chatAgentMcpWorkflowKeys.includes(
+                  getChatAgentWorkflowKey(s.id, workflow.id),
+                ),
+              ).length;
+
+              return (
+                <div className="mt-3 space-y-2">
+                  {supportsWorkflowDiscovery && (
+                    <CollapsibleMcpSection
+                      title="n8n workflows"
+                      description="Real workflow records returned by search_workflows. Toggle the workflows Chat Agent may execute."
+                      count={workflows.length}
+                      selectedCount={selectedWorkflowCount}
+                      accent
+                      actions={
+                        <>
+                          {workflows.length > 0 && (
+                            <>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                disabled={!s.enabled}
+                                onClick={() =>
+                                  onSetAllChatAgentWorkflows(
+                                    s.id,
+                                    workflows.map((workflow) => workflow.id),
+                                    true,
+                                  )
+                                }
+                              >
+                                Select all
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                disabled={!s.enabled}
+                                onClick={() =>
+                                  onSetAllChatAgentWorkflows(
+                                    s.id,
+                                    workflows.map((workflow) => workflow.id),
+                                    false,
+                                  )
+                                }
+                              >
+                                Clear
+                              </Button>
+                            </>
+                          )}
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={!s.enabled}
+                            onClick={() => void refetchAll()}
+                          >
+                            <RefreshCw
+                              size={14}
+                              className={
+                                isCheckingConnections ? "animate-spin" : ""
+                              }
+                            />
+                            Refresh
+                          </Button>
+                        </>
+                      }
+                    >
+                      <div id={SETTING_IDS.chatAgentMcpWorkflows} />
+                      {workflows.map((workflow) => (
+                        <div
+                          key={workflow.id}
+                          className="flex items-center gap-3 rounded-md border bg-background/60 p-2"
+                        >
+                          <Switch
+                            aria-label={`Use workflow ${workflow.name} with Chat Agent`}
+                            checked={chatAgentMcpWorkflowKeys.includes(
+                              getChatAgentWorkflowKey(s.id, workflow.id),
+                            )}
+                            disabled={
+                              !s.enabled ||
+                              !chatAgentMcpServerIds.includes(s.id)
+                            }
+                            onCheckedChange={(checked) =>
+                              onToggleChatAgentWorkflow(
+                                s.id,
+                                workflow.id,
+                                checked,
+                              )
+                            }
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-sm font-medium">
+                              {workflow.name}
+                            </div>
+                            <div className="truncate font-mono text-xs text-muted-foreground">
+                              {workflow.id}
+                              {workflow.active != null
+                                ? workflow.active
+                                  ? " · active"
+                                  : " · inactive"
+                                : ""}
+                            </div>
+                            {workflow.description && (
+                              <div className="truncate text-xs text-muted-foreground">
+                                {workflow.description}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+
+                      {workflows.length === 0 && (
+                        <div className="text-xs text-muted-foreground">
+                          No n8n workflows returned yet. Confirm the server
+                          connection, then refresh.
+                        </div>
+                      )}
+                    </CollapsibleMcpSection>
                   )}
+
+                  <CollapsibleMcpSection
+                    title="Available MCP tools"
+                    description="Server capabilities like search_workflows and execute_workflow."
+                    count={tools.length}
+                    selectedCount={selectedToolCount}
+                    actions={
+                      <>
+                        {tools.length > 0 && (
+                          <>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              disabled={!s.enabled}
+                              onClick={() =>
+                                onSetAllChatAgentTools(
+                                  s.id,
+                                  tools.map((tool) => tool.name),
+                                  true,
+                                )
+                              }
+                            >
+                              Select all
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              disabled={!s.enabled}
+                              onClick={() =>
+                                onSetAllChatAgentTools(
+                                  s.id,
+                                  tools.map((tool) => tool.name),
+                                  false,
+                                )
+                              }
+                            >
+                              Clear
+                            </Button>
+                          </>
+                        )}
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={!s.enabled}
+                          onClick={() => void refetchAll()}
+                        >
+                          <RefreshCw
+                            size={14}
+                            className={
+                              isCheckingConnections ? "animate-spin" : ""
+                            }
+                          />
+                          Refresh
+                        </Button>
+                      </>
+                    }
+                  >
+                    {(toolsByServer[s.id] || []).map((t) => (
+                      <div key={t.name} className="border rounded p-2">
+                        <div className="flex items-center gap-4">
+                          <div className="min-w-0 flex-1">
+                            <div className="font-mono text-sm truncate">
+                              {t.name}
+                            </div>
+                            {t.description && (
+                              <div className="mt-1 text-xs text-muted-foreground truncate">
+                                {t.description}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Switch
+                              aria-label={`Use ${t.name} with Chat Agent`}
+                              checked={chatAgentMcpToolKeys.includes(
+                                getChatAgentToolKey(s.id, t.name),
+                              )}
+                              disabled={
+                                !s.enabled ||
+                                !chatAgentMcpServerIds.includes(s.id)
+                              }
+                              onCheckedChange={(checked) =>
+                                onToggleChatAgentTool(s.id, t.name, checked)
+                              }
+                            />
+                            <span className="text-xs text-muted-foreground">
+                              Chat Agent
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Select
+                              value={consents[`${s.id}:${t.name}`] || "ask"}
+                              onValueChange={(v) =>
+                                onSetToolConsent(s.id, t.name, v as any)
+                              }
+                            >
+                              <SelectTrigger className="w-[140px] h-8">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="ask">Ask</SelectItem>
+                                <SelectItem value="always">
+                                  Always allow
+                                </SelectItem>
+                                <SelectItem value="denied">Deny</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {tools.length === 0 && (
+                      <div className="text-xs text-muted-foreground">
+                        No tools discovered yet. Check the server URL and
+                        headers, then refresh.
+                      </div>
+                    )}
+                  </CollapsibleMcpSection>
                 </div>
-              ))}
-              {(toolsByServer[s.id] || []).length === 0 && (
-                <div className="text-xs text-muted-foreground">
-                  No tools discovered.
-                </div>
-              )}
-            </div>
+              );
+            })()}
           </div>
         ))}
         {servers.length === 0 && (

@@ -116,3 +116,7 @@ storybook-static/
 
 # Eval framework — run results
 eval-results/
+openworker/
+
+# Platform qdrant binaries (~147 MB) — fetched/rebuilt locally, not tracked
+assets/qdrant/

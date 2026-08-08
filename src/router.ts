@@ -6,15 +6,55 @@ import { settingsRoute } from "./routes/settings";
 import { providerSettingsRoute } from "./routes/settings/providers/$provider";
 import { appDetailsRoute } from "./routes/app-details";
 import { hubRoute } from "./routes/hub";
+import { githubManagerRoute } from "./routes/github-manager";
+import { vercelManagerRoute } from "./routes/vercel-manager";
+import {
+  chatAgentHomeRoute,
+  chatAgentRoute,
+  legacySocialMediaAgentRoute,
+  plannerRoute,
+} from "./routes/agents";
+import {
+  codingAgentsRoute,
+  helixAgentRoute,
+  openWorkerAgentRoute,
+  buildForgeRoute,
+} from "./routes/coding-agents";
 import { libraryRoute } from "./routes/library";
 import { appsRoute } from "./routes/apps";
 import { themesRoute } from "./routes/themes";
 import { promptsRoute } from "./routes/prompts";
 import { mediaRoute } from "./routes/media";
+import { agentOsRoute } from "./routes/agent-os";
+import { metaHdRoute } from "./routes/meta-hd";
+import { vectorRoute } from "./routes/vector";
+import { storageRoute } from "./routes/storage";
+import { devOpsRoute } from "./routes/dev-ops";
+import { jarvisRoute } from "./routes/jarvis";
+import { knowledgeBaseRoute } from "./routes/knowledge-base";
+import { knowledgeCoreRoute } from "./routes/knowledge-core";
 
 const routeTree = rootRoute.addChildren([
+  jarvisRoute,
+  knowledgeBaseRoute,
+  knowledgeCoreRoute,
+  chatAgentHomeRoute,
+  chatAgentRoute,
   homeRoute,
+  codingAgentsRoute,
+  helixAgentRoute,
+  openWorkerAgentRoute,
+  buildForgeRoute,
+  plannerRoute,
+  legacySocialMediaAgentRoute,
+  agentOsRoute,
+  storageRoute,
+  metaHdRoute,
+  vectorRoute,
+  devOpsRoute,
   hubRoute,
+  githubManagerRoute,
+  vercelManagerRoute,
   libraryRoute,
   appsRoute,
   themesRoute,

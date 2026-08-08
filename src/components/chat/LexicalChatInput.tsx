@@ -130,10 +130,10 @@ function CustomMenu({ loading: _loading, ...props }: any) {
 // Plugin to handle Enter key
 function EnterKeyPlugin({
   onSubmit,
-  disableSendButton,
+  submitOnEnter,
 }: {
-  onSubmit: () => void;
-  disableSendButton: boolean;
+  onSubmit: (currentText?: string) => void;
+  submitOnEnter: boolean;
 }) {
   const [editor] = useLexicalComposerContext();
 
@@ -153,16 +153,20 @@ function EnterKeyPlugin({
           return false;
         }
 
-        if (!event.shiftKey && !disableSendButton) {
+        if (!event.shiftKey && submitOnEnter) {
           event.preventDefault();
-          onSubmit();
+          let currentText = "";
+          editor.getEditorState().read(() => {
+            currentText = $getRoot().getTextContent();
+          });
+          onSubmit(currentText);
           return true;
         }
         return false;
       },
       COMMAND_PRIORITY_HIGH, // Use higher priority to catch before mentions plugin
     );
-  }, [editor, onSubmit, disableSendButton]);
+  }, [editor, onSubmit, submitOnEnter]);
 
   return null;
 }
@@ -189,6 +193,36 @@ function ClearEditorPlugin({
       onCleared();
     }
   }, [editor, shouldClear, onCleared]);
+
+  return null;
+}
+
+function FocusEditorPlugin({ enabled }: { enabled: boolean }) {
+  const [editor] = useLexicalComposerContext();
+
+  useEffect(() => {
+    if (!enabled) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      editor.focus(() => {
+        editor.update(() => {
+          $getRoot().selectEnd();
+        });
+      });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [editor, enabled]);
+
+  return null;
+}
+
+function SyncEditablePlugin({ disabled }: { disabled: boolean }) {
+  const [editor] = useLexicalComposerContext();
+
+  useEffect(() => {
+    editor.setEditable(!disabled);
+  }, [editor, disabled]);
 
   return null;
 }
@@ -287,13 +321,18 @@ function ExternalValueSyncPlugin({
 interface LexicalChatInputProps {
   value: string;
   onChange: (value: string) => void;
-  onSubmit: () => void;
+  onSubmit: (currentText?: string) => void;
   onPaste?: (e: React.ClipboardEvent) => void;
   placeholder?: string;
   disabled?: boolean;
   messageHistory: string[];
   excludeCurrentApp: boolean;
-  disableSendButton: boolean;
+  /** When true, blocks Enter-to-send (e.g. home hero uses a separate send control). */
+  disableSendButton?: boolean;
+  /** Enter sends the message; Shift+Enter inserts a newline. Defaults to !disableSendButton. */
+  submitOnEnter?: boolean;
+  /** Focus the editor when it mounts and when it becomes enabled again. */
+  autoFocus?: boolean;
 }
 
 function onError(error: Error) {
@@ -306,11 +345,14 @@ export function LexicalChatInput({
   onSubmit,
   onPaste,
   excludeCurrentApp,
-  placeholder = "Ask Dyad to build...",
+  placeholder = "Ask Meta Human OS to build...",
   disabled = false,
-  disableSendButton,
+  disableSendButton = false,
+  submitOnEnter: submitOnEnterProp,
+  autoFocus = false,
   messageHistory = [],
 }: LexicalChatInputProps) {
+  const submitOnEnter = submitOnEnterProp ?? !disableSendButton;
   const { apps } = useLoadApps();
   const { prompts } = usePrompts();
   const { mediaApps } = useAppMediaFiles();
@@ -508,10 +550,13 @@ export function LexicalChatInput({
     [onChange, apps, prompts, appFiles, mediaApps, selectedAppId],
   );
 
-  const handleSubmit = useCallback(() => {
-    onSubmit();
-    setShouldClear(true);
-  }, [onSubmit]);
+  const handleSubmit = useCallback(
+    (currentText?: string) => {
+      onSubmit(currentText);
+      setShouldClear(true);
+    },
+    [onSubmit],
+  );
 
   const handleCleared = useCallback(() => {
     setShouldClear(false);
@@ -526,7 +571,7 @@ export function LexicalChatInput({
 
   return (
     <LexicalComposer initialConfig={initialConfig}>
-      <div className="relative flex-1">
+      <div className="relative flex-1 min-w-0 w-full">
         <PlainTextPlugin
           contentEditable={
             <ContentEditable
@@ -552,10 +597,7 @@ export function LexicalChatInput({
         />
         <OnChangePlugin onChange={handleEditorChange} />
         <HistoryPlugin />
-        <EnterKeyPlugin
-          onSubmit={handleSubmit}
-          disableSendButton={disableSendButton}
-        />
+        <EnterKeyPlugin onSubmit={handleSubmit} submitOnEnter={submitOnEnter} />
         <ExternalValueSyncPlugin
           value={value}
           promptsById={Object.fromEntries(
@@ -566,6 +608,8 @@ export function LexicalChatInput({
           shouldClear={shouldClear}
           onCleared={handleCleared}
         />
+        <FocusEditorPlugin enabled={autoFocus && !disabled} />
+        <SyncEditablePlugin disabled={disabled} />
         <HistoryNavigation
           messageHistory={messageHistory}
           onTriggerInserted={() => {

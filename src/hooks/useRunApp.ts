@@ -199,75 +199,87 @@ export function useRunApp() {
   const appId = useAtomValue(selectedAppIdAtom);
   const setPreviewErrorMessage = useSetAtom(previewErrorMessageAtom);
 
-  const runApp = useCallback(async (appId: number) => {
-    setLoading(true);
-    try {
-      console.debug("Running app", appId);
+  const runApp = useCallback(
+    async (appId: number) => {
+      setLoading(true);
+      try {
+        console.debug("Running app", appId);
 
-      // Clear the URL and add restart message
-      setAppUrlObj((prevAppUrlObj) => {
-        if (prevAppUrlObj?.appId !== appId) {
-          return { appUrl: null, appId: null, originalUrl: null, mode: null };
-        }
-        return prevAppUrlObj; // No change needed
-      });
+        // Clear the URL and add restart message
+        setAppUrlObj((prevAppUrlObj) => {
+          if (prevAppUrlObj?.appId !== appId) {
+            return { appUrl: null, appId: null, originalUrl: null, mode: null };
+          }
+          return prevAppUrlObj; // No change needed
+        });
 
-      const logEntry = {
-        level: "info" as const,
-        type: "server" as const,
-        message: "Connecting to app...",
-        appId,
-        timestamp: Date.now(),
-      };
+        const logEntry = {
+          level: "info" as const,
+          type: "server" as const,
+          message: "Connecting to app...",
+          appId,
+          timestamp: Date.now(),
+        };
 
-      // Send to central log store
-      ipc.misc.addLog(logEntry);
+        // Send to central log store
+        ipc.misc.addLog(logEntry);
 
-      // Also update UI state
-      setConsoleEntries((prev) => [...prev, logEntry]);
-      const app = await ipc.app.getApp(appId);
-      setApp(app);
-      await ipc.app.runApp({ appId });
-      setPreviewErrorMessage(undefined);
-    } catch (error) {
-      console.error(`Error running app ${appId}:`, error);
-      setPreviewErrorMessage(
-        error instanceof Error
-          ? { message: error.message, source: "dyad-app" }
-          : {
-              message: error?.toString() || "Unknown error",
-              source: "dyad-app",
-            },
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+        // Also update UI state
+        setConsoleEntries((prev) => [...prev, logEntry]);
+        const app = await ipc.app.getApp(appId);
+        setApp(app);
+        await ipc.app.runApp({ appId });
+        setPreviewErrorMessage(undefined);
+      } catch (error) {
+        console.error(`Error running app ${appId}:`, error);
+        setPreviewErrorMessage(
+          error instanceof Error
+            ? { message: error.message, source: "dyad-app" }
+            : {
+                message: error?.toString() || "Unknown error",
+                source: "dyad-app",
+              },
+        );
+      } finally {
+        setLoading(false);
+      }
+    },
+    [
+      setAppUrlObj,
+      setConsoleEntries,
+      setApp,
+      setPreviewErrorMessage,
+      setLoading,
+    ],
+  );
 
-  const stopApp = useCallback(async (appId: number) => {
-    if (appId === null) {
-      return;
-    }
+  const stopApp = useCallback(
+    async (appId: number) => {
+      if (appId === null) {
+        return;
+      }
 
-    setLoading(true);
-    try {
-      await ipc.app.stopApp({ appId });
+      setLoading(true);
+      try {
+        await ipc.app.stopApp({ appId });
 
-      setPreviewErrorMessage(undefined);
-    } catch (error) {
-      console.error(`Error stopping app ${appId}:`, error);
-      setPreviewErrorMessage(
-        error instanceof Error
-          ? { message: error.message, source: "dyad-app" }
-          : {
-              message: error?.toString() || "Unknown error",
-              source: "dyad-app",
-            },
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+        setPreviewErrorMessage(undefined);
+      } catch (error) {
+        console.error(`Error stopping app ${appId}:`, error);
+        setPreviewErrorMessage(
+          error instanceof Error
+            ? { message: error.message, source: "dyad-app" }
+            : {
+                message: error?.toString() || "Unknown error",
+                source: "dyad-app",
+              },
+        );
+      } finally {
+        setLoading(false);
+      }
+    },
+    [setPreviewErrorMessage, setLoading],
+  );
 
   const restartApp = useCallback(
     async ({
@@ -344,6 +356,8 @@ export function useRunApp() {
       setAppUrlObj,
       setPreviewPanelKey,
       setPreservedUrls,
+      setLoading,
+      setPreviewErrorMessage,
     ],
   );
 

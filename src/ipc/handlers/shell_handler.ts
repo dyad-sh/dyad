@@ -1,6 +1,7 @@
 import { shell } from "electron";
 import log from "electron-log";
 import path from "node:path";
+import fsSync from "node:fs";
 import { createLoggedHandler } from "./safe_handle";
 import { IS_TEST_BUILD } from "../utils/test_utils";
 import { isFileWithinAnyDyadMediaDir } from "../utils/media_path_utils";
@@ -60,6 +61,65 @@ export function registerShellHandlers() {
     shell.showItemInFolder(fullPath);
     logger.debug("Showed item in folder:", fullPath);
   });
+
+  handle(
+    "read-local-image",
+    async (
+      _event,
+      { path: filePath }: { path: string },
+    ): Promise<{ dataUrl: string; name: string; sizeBytes: number }> => {
+      const resolved = path.resolve(filePath.replace(/^file:\/\//, ""));
+      const extension = path.extname(resolved).toLowerCase();
+      const mimeTypes: Record<string, string> = {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".gif": "image/gif",
+        ".webp": "image/webp",
+        ".avif": "image/avif",
+        ".svg": "image/svg+xml",
+        ".bmp": "image/bmp",
+      };
+      const mimeType = mimeTypes[extension];
+      // Images only: this must not become a way to read arbitrary files.
+      if (!mimeType) {
+        throw new DyadError(
+          "That file is not an image.",
+          DyadErrorKind.Validation,
+        );
+      }
+
+      let stat: fsSync.Stats;
+      try {
+        stat = fsSync.statSync(resolved);
+      } catch {
+        throw new DyadError(
+          "That image no longer exists.",
+          DyadErrorKind.NotFound,
+        );
+      }
+      if (!stat.isFile()) {
+        throw new DyadError(
+          "That path is not a file.",
+          DyadErrorKind.Validation,
+        );
+      }
+      const MAX_BYTES = 16 * 1024 * 1024;
+      if (stat.size > MAX_BYTES) {
+        throw new DyadError(
+          "That image is too large to preview.",
+          DyadErrorKind.Validation,
+        );
+      }
+
+      const data = fsSync.readFileSync(resolved);
+      return {
+        dataUrl: `data:${mimeType};base64,${data.toString("base64")}`,
+        name: path.basename(resolved),
+        sizeBytes: stat.size,
+      };
+    },
+  );
 
   handle("open-file-path", async (_event, fullPath: string) => {
     if (!fullPath) {

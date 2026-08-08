@@ -12,12 +12,9 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-const SIDEBAR_COOKIE_NAME = "sidebar_state";
-const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
-// Expanded width = labeled rail (4rem) + the inline panel column (14rem).
-const SIDEBAR_WIDTH = "18rem";
+// Expanded: single column with nav labels + contextual lists. Collapsed: icon rail.
+const SIDEBAR_WIDTH = "16rem";
 const SIDEBAR_WIDTH_ICON = "3rem";
-const SIDEBAR_KEYBOARD_SHORTCUT = "b";
 
 type SidebarContextProps = {
   state: "expanded" | "collapsed";
@@ -38,9 +35,6 @@ function useSidebar() {
 }
 
 function SidebarProvider({
-  defaultOpen = true,
-  open: openProp,
-  onOpenChange: setOpenProp,
   className,
   style,
   children,
@@ -50,60 +44,11 @@ function SidebarProvider({
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }) {
-  // This is the internal state of the sidebar.
-  // We use openProp and setOpenProp for control from outside the component.
-  const [_open, _setOpen] = React.useState(defaultOpen);
-  const open = openProp ?? _open;
-  const setOpen = React.useCallback(
-    (value: boolean | ((value: boolean) => boolean)) => {
-      const openState = typeof value === "function" ? value(open) : value;
-      if (setOpenProp) {
-        setOpenProp(openState);
-      } else {
-        _setOpen(openState);
-      }
-
-      // This sets the cookie to keep the sidebar state.
-      document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`;
-    },
-    [setOpenProp, open],
-  );
+  const open = false;
+  const setOpen = React.useCallback(() => {}, []);
 
   // Helper to toggle the sidebar.
-  const toggleSidebar = React.useCallback(() => {
-    setOpen((open) => !open);
-  }, [setOpen]);
-
-  // Auto-collapse on small screens
-  React.useEffect(() => {
-    const mql = window.matchMedia("(max-width: 480px)");
-    const handleResize = () => {
-      if (mql.matches) {
-        setOpen(false);
-      }
-    };
-
-    mql.addEventListener("change", handleResize);
-    handleResize(); // Check initial size
-
-    return () => mql.removeEventListener("change", handleResize);
-  }, [setOpen]);
-
-  // Adds a keyboard shortcut to toggle the sidebar.
-  React.useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (
-        event.key === SIDEBAR_KEYBOARD_SHORTCUT &&
-        (event.metaKey || event.ctrlKey)
-      ) {
-        event.preventDefault();
-        toggleSidebar();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [toggleSidebar]);
+  const toggleSidebar = React.useCallback(() => {}, []);
 
   // We add a state so that we can do data-state="expanded" or "collapsed".
   // This makes it easier to style the sidebar with Tailwind classes.
@@ -133,7 +78,7 @@ function SidebarProvider({
           }
           className={cn(
             "bg-sidebar",
-            "group/sidebar-wrapper has-data-[variant=inset]:bg-sidebar flex min-h-svh w-full",
+            "group/sidebar-wrapper has-data-[variant=inset]:bg-sidebar flex h-svh min-h-0 w-full overflow-hidden",
             className,
           )}
           {...props}
@@ -372,7 +317,10 @@ function SidebarGroupLabel<T extends React.ElementType = "div">({
   as,
   ...props
 }: { as?: T } & Omit<React.ComponentPropsWithoutRef<T>, "as">) {
-  const Comp = as || "div";
+  // Cast at the render site, not in the props: callers keep full type
+  // checking on `as` and its element's props, while the spread itself is
+  // something TypeScript cannot verify for a generic element.
+  const Comp = (as || "div") as React.ElementType<Record<string, unknown>>;
 
   return (
     <Comp
@@ -393,7 +341,10 @@ function SidebarGroupAction<T extends React.ElementType = "button">({
   as,
   ...props
 }: { as?: T } & Omit<React.ComponentPropsWithoutRef<T>, "as">) {
-  const Comp = as || "button";
+  // Cast at the render site, not in the props: callers keep full type
+  // checking on `as` and its element's props, while the spread itself is
+  // something TypeScript cannot verify for a generic element.
+  const Comp = (as || "button") as React.ElementType<Record<string, unknown>>;
 
   return (
     <Comp
@@ -448,12 +399,7 @@ function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {
 }
 
 const sidebarMenuButtonVariants = cva(
-  // (Only the sidebarMenuButtonVariants constant is updated; the rest of the code remains unchanged)
-  // Updated base classes:
-  // • Changed flex direction to column and centered items.
-  // • Enforced a fixed width (w-20) for consistent space.
-  // • Removed text-left and gap changes to ensure the text label appears below the icon.
-  "peer/menu-button flex flex-col items-center gap-1 w-16 overflow-hidden p-2 text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground [&>svg]:size-4 [&>svg]:shrink-0 [&>span]:mt-1",
+  "peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0",
   {
     variants: {
       variant: {
@@ -486,7 +432,10 @@ function SidebarMenuButton<T extends React.ElementType = "button">({
     isActive?: boolean;
     tooltip?: string | React.ComponentProps<typeof TooltipContent>;
   } & VariantProps<typeof sidebarMenuButtonVariants>) {
-  const Comp = as || "button";
+  // Cast at the render site, not in the props: callers keep full type
+  // checking on `as` and its element's props, while the spread itself is
+  // something TypeScript cannot verify for a generic element.
+  const Comp = (as || "button") as React.ElementType<Record<string, unknown>>;
 
   const button = (
     <Comp
@@ -525,7 +474,10 @@ function SidebarMenuAction<T extends React.ElementType = "button">({
 }: { as?: T } & Omit<React.ComponentPropsWithoutRef<T>, "as"> & {
     showOnHover?: boolean;
   }) {
-  const Comp = as || "button";
+  // Cast at the render site, not in the props: callers keep full type
+  // checking on `as` and its element's props, while the spread itself is
+  // something TypeScript cannot verify for a generic element.
+  const Comp = (as || "button") as React.ElementType<Record<string, unknown>>;
 
   return (
     <Comp
@@ -647,7 +599,10 @@ function SidebarMenuSubButton<T extends React.ElementType = "a">({
     size?: "sm" | "md";
     isActive?: boolean;
   }) {
-  const Comp = as || "a";
+  // Cast at the render site, not in the props: callers keep full type
+  // checking on `as` and its element's props, while the spread itself is
+  // something TypeScript cannot verify for a generic element.
+  const Comp = (as || "a") as React.ElementType<Record<string, unknown>>;
 
   return (
     <Comp

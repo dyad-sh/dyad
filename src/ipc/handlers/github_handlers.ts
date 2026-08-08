@@ -548,7 +548,13 @@ function handleStartGithubFlow(
 
 // --- GitHub List Repos Handler ---
 async function handleListGithubRepos(): Promise<
-  { name: string; full_name: string; private: boolean }[]
+  {
+    name: string;
+    full_name: string;
+    owner: string;
+    private: boolean;
+    default_branch?: string;
+  }[]
 > {
   try {
     // Get access token from settings
@@ -577,11 +583,16 @@ async function handleListGithubRepos(): Promise<
     }
 
     const repos = (await response.json()) as any[];
-    return repos.map((repo: any) => ({
-      name: repo.name,
-      full_name: repo.full_name,
-      private: repo.private,
-    }));
+    return repos.map((repo: any) => {
+      const [owner] = (repo.full_name as string).split("/");
+      return {
+        name: repo.name,
+        full_name: repo.full_name,
+        owner: repo.owner?.login ?? owner,
+        private: repo.private,
+        default_branch: repo.default_branch,
+      };
+    });
   } catch (err: any) {
     if (err instanceof DyadError) throw err;
     logger.error("[GitHub Handler] Failed to list repos:", err);

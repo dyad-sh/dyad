@@ -111,6 +111,8 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
     checkoutVersion,
     refreshVersions,
     liveVersions,
+    app?.neonProjectId,
+    restartApp,
   ]);
 
   // Initial load of cached versions when live versions become available

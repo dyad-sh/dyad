@@ -6,6 +6,9 @@ import { eq } from "drizzle-orm";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { isLovableMcpServerUrl } from "@/lib/lovableMcp";
+import { LovableOAuthClientProvider } from "./lovable_mcp_oauth";
+import { createLovableMcpTransport } from "./lovable_mcp_transport";
 
 class McpManager {
   private static _instance: McpManager;
@@ -38,11 +41,11 @@ class McpManager {
     } else if (s.transport === "http") {
       if (!s.url) throw new Error("HTTP MCP requires url");
       const headers = s.headersJson ?? {};
-      transport = new StreamableHTTPClientTransport(new URL(s.url as string), {
-        requestInit: {
-          headers,
-        },
-      });
+      transport = isLovableMcpServerUrl(s.url)
+        ? createLovableMcpTransport(new LovableOAuthClientProvider(), headers)
+        : new StreamableHTTPClientTransport(new URL(s.url as string), {
+            requestInit: { headers },
+          });
     } else {
       throw new DyadError(
         `Unsupported MCP transport: ${s.transport}`,

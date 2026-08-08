@@ -10,16 +10,20 @@ import type {
   ThemeGenerationModelOption,
 } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
+import { isIpcRendererAvailable } from "@/ipc/contracts/core";
 
 /**
  * Hook to fetch all custom themes.
  */
 export function useCustomThemes() {
+  const hasIpcRenderer = isIpcRendererAvailable();
   const query = useQuery({
     queryKey: queryKeys.customThemes.all,
     queryFn: async (): Promise<CustomTheme[]> => {
       return ipc.template.getCustomThemes();
     },
+    enabled: hasIpcRenderer,
+    initialData: hasIpcRenderer ? undefined : [],
     meta: {
       showErrorToast: true,
     },
@@ -106,11 +110,14 @@ export function useGenerateThemeFromUrl() {
 }
 
 export function useThemeGenerationModelOptions() {
+  const hasIpcRenderer = isIpcRendererAvailable();
   const query = useQuery({
     queryKey: queryKeys.themeGenerationModelOptions.all,
     queryFn: async (): Promise<ThemeGenerationModelOption[]> => {
       return ipc.template.getThemeGenerationModelOptions();
     },
+    enabled: hasIpcRenderer,
+    initialData: hasIpcRenderer ? undefined : [],
     meta: {
       showErrorToast: true,
     },

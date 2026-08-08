@@ -20,7 +20,7 @@ Target users:
 
 ### In Scope (MVP)
 
-- **Deploy key connection flow** — User pastes a Convex deploy key + deployment URL to connect an existing Convex project to a Dyad app. "Open Convex Dashboard" link via `ipc.system.openExternalUrl` for easy key retrieval. Deploy key field uses `type="password"` with show/hide toggle. Inline validation errors (not toasts).
+- **Deploy key connection flow** — User pastes a Convex deploy key + deployment URL to connect an existing Convex project to a Meta Human OS app. "Open Convex Dashboard" link via `ipc.system.openExternalUrl` for easy key retrieval. Deploy key field uses `type="password"` with show/hide toggle. Inline validation errors (not toasts).
 - **Convex-aware agent prompts** — High-fidelity port of Chef's `convexGuidelines.ts` (~960 lines) and `solutionConstraints.ts` for Dyad's tool set and execution model. This is the highest-value item. Since Dyad is the long-term Chef successor, invest in prompt quality (budget 3-4 days, not a quick copy).
 - **Convex context injection** — Before each chat turn, read `convex/schema.ts` from the app's files and inject schema context into the AI prompt.
 - **Dual dev server via `concurrently`** — Template start script runs both `npx convex dev` and `npx vite` via `concurrently --names "vite,convex"`. Uses existing `startCommand` column — no process manager changes needed. Console output prefixed with process names for error attribution.
@@ -50,7 +50,7 @@ Target users:
 
 ## User Stories
 
-1. **As a Dyad user**, I want to connect my existing Convex project to a Dyad app so that I can build apps with real-time data and serverless functions.
+1. **As a Dyad user**, I want to connect my existing Convex project to a Meta Human OS app so that I can build apps with real-time data and serverless functions.
 2. **As a Dyad user**, I want the AI agent to generate correct Convex code (schema, queries, mutations, actions) so that my app works without manual debugging.
 3. **As a Dyad user**, I want my Convex functions to auto-sync during development (via `npx convex dev`) so that I see live data in the preview immediately.
 4. **As a Dyad user**, I want to approve schema deployments before they push to production so that I understand what's changing.

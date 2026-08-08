@@ -33,7 +33,6 @@ import { GithubBranchManager } from "@/components/GithubBranchManager";
 import { useResolveMergeConflictsWithAI } from "@/hooks/useResolveMergeConflictsWithAI";
 import { showSuccess, showError } from "@/lib/toast";
 import { useGithubSyncState } from "@/atoms/githubSyncAtoms";
-
 type SyncResult =
   | { error: Error; handled?: boolean }
   | { error?: undefined; handled?: boolean };
@@ -790,7 +789,9 @@ export function UnconnectedGitHubConnector({
       setIsConnectingToGithub(false);
       setGithubStatusMessage(null);
     };
-  }, []); // Re-run effect if appId changes
+    // One-time setup of GitHub flow listeners on mount.
+    // eslint-disable-next-line react/exhaustive-deps
+  }, []);
 
   // Load available repos when GitHub is connected
   useEffect(() => {
@@ -811,11 +812,12 @@ export function UnconnectedGitHubConnector({
     }
   };
 
-  // Load branches when a repo is selected
+  // Load branches when a repo is selected.
   useEffect(() => {
     if (selectedRepo && repoSetupMode === "existing") {
       loadRepoBranches();
     }
+    // eslint-disable-next-line react/exhaustive-deps
   }, [selectedRepo, repoSetupMode]);
 
   const loadRepoBranches = async () => {

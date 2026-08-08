@@ -16,8 +16,6 @@ import {
   ChevronsDownUp,
   SendHorizontalIcon,
   Lock,
-  Mic,
-  MicOff,
 } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useRef, useState, useMemo } from "react";
@@ -103,8 +101,7 @@ import { useChats } from "@/hooks/useChats";
 import { useRouter } from "@tanstack/react-router";
 import { showError as showErrorToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
-import { useVoiceToText } from "@/hooks/useVoiceToText";
-import { isDyadProEnabled } from "@/lib/schemas";
+import { VoiceInputButton } from "./VoiceInputButton";
 import { useChatMode } from "@/hooks/useChatMode";
 import { useInitialChatMode } from "@/hooks/useInitialChatMode";
 
@@ -273,20 +270,17 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   }, [chatId, messagesById]);
 
   const { userBudget } = useUserBudgetInfo();
-  const isProEnabled = settings ? isDyadProEnabled(settings) : false;
 
-  const handleTranscription = useCallback(
+  // Voice input appends to whatever is typed, then sends on the next render
+  // once the transcript has actually landed in state.
+  const pendingVoiceSendRef = useRef(false);
+  const handleVoiceTranscript = useCallback(
     (text: string) => {
       setInputValue((prev: string) => (prev.trim() ? prev + " " + text : text));
+      pendingVoiceSendRef.current = true;
     },
     [setInputValue],
   );
-
-  const { isRecording, isTranscribing, toggleRecording } = useVoiceToText({
-    enabled: isProEnabled,
-    onTranscription: handleTranscription,
-    onError: (message) => showErrorToast(message),
-  });
 
   const [needsFreshPlanChat, setNeedsFreshPlanChat] = useAtom(
     needsFreshPlanChatAtom,
@@ -488,6 +482,9 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     [editingQueuedMessageId, removeQueuedMessage, resetEditingState],
   );
 
+  // Keeps the auto-send effect pointed at the current handleSubmit without
+  // re-running whenever the component re-renders.
+
   const handleSubmit = async () => {
     if (
       (!inputValue.trim() &&
@@ -497,10 +494,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       pendingFiles
     ) {
       return;
-    }
-
-    if (isRecording) {
-      await toggleRecording();
     }
 
     // Build prompt with auto-added image mentions
@@ -622,6 +615,17 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     posthog.capture("chat:submit", { chatMode });
   };
 
+  // Auto-send once a voice transcript has landed in state. The ref keeps this
+  // effect pointed at the latest handleSubmit without re-running every render.
+  const submitRef = useRef(handleSubmit);
+  submitRef.current = handleSubmit;
+  useEffect(() => {
+    if (!pendingVoiceSendRef.current) return;
+    if (!inputValue.trim()) return;
+    pendingVoiceSendRef.current = false;
+    void submitRef.current();
+  }, [inputValue]);
+
   const handleCancel = () => {
     // Only clear the queue if NOT paused
     if (!isPaused) {
@@ -662,7 +666,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         );
       }
     } else {
-      navigate({ to: "/" });
+      navigate({ to: "/coder/studio" });
     }
   };
 
@@ -741,332 +745,281 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
   return (
     <>
-      {error && showError && (
-        <ChatErrorBox
-          onDismiss={dismissError}
-          error={error}
-          isDyadProEnabled={settings.enableDyadPro ?? false}
-          onStartNewChat={handleNewChat}
-        />
-      )}
-      {/* Display loading or error state for proposal */}
-      {isProposalLoading && (
-        <div className="p-4 text-sm text-muted-foreground">
-          {t("loadingProposal")}
-        </div>
-      )}
-      {proposalError && (
-        <div className="p-4 text-sm text-red-600">
-          {t("errorLoadingProposal", { message: proposalError.message })}
-        </div>
-      )}
-      <div className="p-2 pt-0" data-testid="chat-input-container">
-        {/* Show context limit banner above chat input for visibility */}
-        {showBanner && tokenCountResult && (
-          <ContextLimitBanner
-            totalTokens={tokenCountResult.actualMaxTokens}
-            contextWindow={tokenCountResult.contextWindow}
-          />
-        )}
-        <div
-          className={cn(
-            "relative flex flex-col border border-border rounded-2xl bg-(--background-lighter) transition-colors duration-200",
-            "focus-within:border-primary/30 focus-within:ring-1 focus-within:ring-primary/20",
-            isDraggingOver && "ring-2 ring-blue-500 border-blue-500",
-            showBanner && "rounded-t-none border-t-0",
-          )}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-        >
-          {/* Show active questionnaire if exists */}
-          <QuestionnaireInput />
-
-          {/* Show todo list if there are todos for this chat */}
-          {chatTodos.length > 0 && <TodoList todos={chatTodos} />}
-          {/* Show agent consent banner if there's a pending consent request */}
-          {pendingAgentConsent && (
-            <AgentConsentBanner
-              consent={pendingAgentConsent}
-              queueTotal={consentsForThisChat.length}
-              onDecision={(decision) => {
-                ipc.agent.respondToConsent({
-                  requestId: pendingAgentConsent.requestId,
-                  decision,
-                });
-                // Remove this consent from the queue by requestId
-                setPendingAgentConsents((prev) =>
-                  prev.filter(
-                    (c) => c.requestId !== pendingAgentConsent.requestId,
-                  ),
-                );
-              }}
-              onClose={() => {
-                ipc.agent.respondToConsent({
-                  requestId: pendingAgentConsent.requestId,
-                  decision: "decline",
-                });
-                // Remove this consent from the queue by requestId
-                setPendingAgentConsents((prev) =>
-                  prev.filter(
-                    (c) => c.requestId !== pendingAgentConsent.requestId,
-                  ),
-                );
-              }}
+      <div>
+        <div className="w-full">
+          {error && showError && (
+            <ChatErrorBox
+              onDismiss={dismissError}
+              error={error}
+              isDyadProEnabled={settings.enableDyadPro ?? false}
+              onStartNewChat={handleNewChat}
             />
           )}
-          {/* Show queued messages list */}
-          {queuedMessages.length > 0 && (
-            <QueuedMessagesList
-              messages={queuedMessages}
-              onEdit={handleEditQueuedMessage}
-              onDelete={handleDeleteQueuedMessage}
-              onMoveUp={handleMoveUp}
-              onMoveDown={handleMoveDown}
-              isStreaming={isStreaming}
-              hasError={!!error}
-              isPaused={isPaused}
-              onPauseQueue={pauseQueue}
-              onResumeQueue={resumeQueue}
-            />
-          )}
-          {/* Show editing indicator when editing a queued message */}
-          {editingQueuedMessageId && (
-            <div className="border-b border-border p-2 bg-yellow-500/10 flex items-center justify-between">
-              <span className="text-sm text-yellow-700 dark:text-yellow-400">
-                Editing queued message
-              </span>
-              <button
-                type="button"
-                onClick={() => resetEditingState()}
-                className="text-xs text-muted-foreground hover:text-foreground cursor-pointer"
-              >
-                Cancel
-              </button>
+          {/* Display loading or error state for proposal */}
+          {isProposalLoading && (
+            <div className="p-4 text-sm text-muted-foreground">
+              {t("loadingProposal")}
             </div>
           )}
-          {/* Only render ChatInputActions if proposal is loaded and no pending consent */}
-          {!pendingAgentConsent &&
-            proposal &&
-            proposalResult?.chatId === chatId &&
-            effectiveMode !== "ask" &&
-            effectiveMode !== "local-agent" && (
-              <ChatInputActions
-                proposal={proposal}
-                onApprove={handleApprove}
-                onReject={handleReject}
-                isApprovable={
-                  !isProposalLoading &&
-                  !!proposal &&
-                  !!messageId &&
-                  !isApproving &&
-                  !isRejecting &&
-                  !isStreaming
-                }
-                isApproving={isApproving}
-                isRejecting={isRejecting}
+          {proposalError && (
+            <div className="p-4 text-sm text-red-600">
+              {t("errorLoadingProposal", { message: proposalError.message })}
+            </div>
+          )}
+          <div className="p-2 pt-0" data-testid="chat-input-container">
+            {/* Show context limit banner above chat input for visibility */}
+            {showBanner && tokenCountResult && (
+              <ContextLimitBanner
+                totalTokens={tokenCountResult.actualMaxTokens}
+                contextWindow={tokenCountResult.contextWindow}
               />
             )}
+            <div
+              className={cn(
+                "relative flex flex-col border border-border rounded-2xl bg-(--background-lighter) transition-colors duration-200",
+                "focus-within:border-primary/30 focus-within:ring-1 focus-within:ring-primary/20",
+                isDraggingOver && "ring-2 ring-blue-500 border-blue-500",
+                showBanner && "rounded-t-none border-t-0",
+              )}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+            >
+              {/* Show active questionnaire if exists */}
+              <QuestionnaireInput />
 
-          {userBudget ? (
-            <VisualEditingChangesDialog
-              iframeRef={
-                previewIframeRef
-                  ? { current: previewIframeRef }
-                  : { current: null }
-              }
-              onReset={() => {
-                // Exit component selection mode and visual editing
-                setSelectedComponents([]);
-                setVisualEditingSelectedComponent(null);
-                setCurrentComponentCoordinates(null);
-                setPendingVisualChanges(new Map());
-                refreshAppIframe();
-
-                // Deactivate component selector in iframe
-                if (previewIframeRef?.contentWindow) {
-                  previewIframeRef.contentWindow.postMessage(
-                    { type: "deactivate-dyad-component-selector" },
-                    "*",
-                  );
-                }
-              }}
-            />
-          ) : (
-            selectedComponents.length > 0 && (
-              <div className="border-b border-border p-3 bg-muted/30">
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <button
-                        onClick={() => {
-                          ipc.system.openExternalUrl("https://dyad.sh/pro");
-                        }}
-                        className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors cursor-pointer"
-                      />
-                    }
+              {/* Show todo list if there are todos for this chat */}
+              {chatTodos.length > 0 && <TodoList todos={chatTodos} />}
+              {/* Show agent consent banner if there's a pending consent request */}
+              {pendingAgentConsent && (
+                <AgentConsentBanner
+                  consent={pendingAgentConsent}
+                  queueTotal={consentsForThisChat.length}
+                  onDecision={(decision) => {
+                    ipc.agent.respondToConsent({
+                      requestId: pendingAgentConsent.requestId,
+                      decision,
+                    });
+                    // Remove this consent from the queue by requestId
+                    setPendingAgentConsents((prev) =>
+                      prev.filter(
+                        (c) => c.requestId !== pendingAgentConsent.requestId,
+                      ),
+                    );
+                  }}
+                  onClose={() => {
+                    ipc.agent.respondToConsent({
+                      requestId: pendingAgentConsent.requestId,
+                      decision: "decline",
+                    });
+                    // Remove this consent from the queue by requestId
+                    setPendingAgentConsents((prev) =>
+                      prev.filter(
+                        (c) => c.requestId !== pendingAgentConsent.requestId,
+                      ),
+                    );
+                  }}
+                />
+              )}
+              {/* Show queued messages list */}
+              {queuedMessages.length > 0 && (
+                <QueuedMessagesList
+                  messages={queuedMessages}
+                  onEdit={handleEditQueuedMessage}
+                  onDelete={handleDeleteQueuedMessage}
+                  onMoveUp={handleMoveUp}
+                  onMoveDown={handleMoveDown}
+                  isStreaming={isStreaming}
+                  hasError={!!error}
+                  isPaused={isPaused}
+                  onPauseQueue={pauseQueue}
+                  onResumeQueue={resumeQueue}
+                />
+              )}
+              {/* Show editing indicator when editing a queued message */}
+              {editingQueuedMessageId && (
+                <div className="border-b border-border p-2 bg-yellow-500/10 flex items-center justify-between">
+                  <span className="text-sm text-yellow-700 dark:text-yellow-400">
+                    Editing queued message
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => resetEditingState()}
+                    className="text-xs text-muted-foreground hover:text-foreground cursor-pointer"
                   >
-                    <Lock size={16} />
-                    <span className="font-medium">{t("visualEditor")}</span>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    {t("visualEditorDescription")}
-                  </TooltipContent>
-                </Tooltip>
+                    Cancel
+                  </button>
+                </div>
+              )}
+              {/* Only render ChatInputActions if proposal is loaded and no pending consent */}
+              {!pendingAgentConsent &&
+                proposal &&
+                proposalResult?.chatId === chatId &&
+                effectiveMode !== "ask" &&
+                effectiveMode !== "local-agent" && (
+                  <ChatInputActions
+                    proposal={proposal}
+                    onApprove={handleApprove}
+                    onReject={handleReject}
+                    isApprovable={
+                      !isProposalLoading &&
+                      !!proposal &&
+                      !!messageId &&
+                      !isApproving &&
+                      !isRejecting &&
+                      !isStreaming
+                    }
+                    isApproving={isApproving}
+                    isRejecting={isRejecting}
+                  />
+                )}
+
+              {userBudget ? (
+                <VisualEditingChangesDialog
+                  iframeRef={
+                    previewIframeRef
+                      ? { current: previewIframeRef }
+                      : { current: null }
+                  }
+                  onReset={() => {
+                    // Exit component selection mode and visual editing
+                    setSelectedComponents([]);
+                    setVisualEditingSelectedComponent(null);
+                    setCurrentComponentCoordinates(null);
+                    setPendingVisualChanges(new Map());
+                    refreshAppIframe();
+
+                    // Deactivate component selector in iframe
+                    if (previewIframeRef?.contentWindow) {
+                      previewIframeRef.contentWindow.postMessage(
+                        { type: "deactivate-dyad-component-selector" },
+                        "*",
+                      );
+                    }
+                  }}
+                />
+              ) : (
+                selectedComponents.length > 0 && (
+                  <div className="border-b border-border p-3 bg-muted/30">
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <button
+                            onClick={() => {
+                              ipc.system.openExternalUrl("https://dyad.sh/pro");
+                            }}
+                            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors cursor-pointer"
+                          />
+                        }
+                      >
+                        <Lock size={16} />
+                        <span className="font-medium">{t("visualEditor")}</span>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {t("visualEditorDescription")}
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                )
+              )}
+
+              <SelectedComponentsDisplay />
+
+              {/* Use the AttachmentsList component */}
+              <AttachmentsList
+                attachments={attachments}
+                onRemove={removeAttachment}
+              />
+
+              {/* Chat image generation strip */}
+              <ChatImageGenerationStrip
+                onGenerateImage={handleOpenImageGenerator}
+              />
+
+              {/* Use the DragDropOverlay component */}
+              <DragDropOverlay isDraggingOver={isDraggingOver} />
+
+              {/* Dialog for choosing attachment type */}
+              <FileAttachmentTypeDialog
+                pendingFiles={pendingFiles}
+                onConfirm={confirmPendingFiles}
+                onCancel={cancelPendingFiles}
+              />
+
+              <div className="flex items-end gap-1 min-w-0 w-full">
+                <LexicalChatInput
+                  value={inputValue}
+                  onChange={setInputValue}
+                  onSubmit={handleSubmit}
+                  onPaste={handlePaste}
+                  placeholder={t("askDyadToBuild")}
+                  excludeCurrentApp={true}
+                  disableSendButton={disableSendButton}
+                  messageHistory={userMessageHistory}
+                />
+
+                {/* Voice-to-text: speak, watch the waveform, auto-send */}
+                <VoiceInputButton
+                  className="mb-0.5"
+                  onTranscript={handleVoiceTranscript}
+                  onError={(message: string) => showErrorToast(message)}
+                />
+
+                {isStreaming ? (
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <button
+                          onClick={handleCancel}
+                          aria-label={t("cancelGeneration")}
+                          className="px-2 py-2 mb-0.5 mr-1 text-muted-foreground hover:text-destructive rounded-lg transition-colors duration-150 cursor-pointer"
+                        />
+                      }
+                    >
+                      <StopCircleIcon size={20} />
+                    </TooltipTrigger>
+                    <TooltipContent>{t("cancelGeneration")}</TooltipContent>
+                  </Tooltip>
+                ) : (
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <button
+                          onClick={handleSubmit}
+                          disabled={
+                            (!inputValue.trim() &&
+                              attachments.length === 0 &&
+                              !hasSuccessfulImageJobs) ||
+                            disableSendButton
+                          }
+                          aria-label={t("sendMessage")}
+                          className="px-2 py-2 mb-0.5 mr-1 text-muted-foreground hover:text-primary rounded-lg transition-colors duration-150 disabled:opacity-30 disabled:hover:text-muted-foreground cursor-pointer disabled:cursor-default"
+                        />
+                      }
+                    >
+                      <SendHorizontalIcon size={20} />
+                    </TooltipTrigger>
+                    <TooltipContent>{t("sendMessage")}</TooltipContent>
+                  </Tooltip>
+                )}
               </div>
-            )
-          )}
+              <div className="px-2 flex items-center justify-between pb-0.5 pt-0.5">
+                <div className="flex items-center">
+                  <ChatInputControls showContextFilesPicker={false} />
+                </div>
 
-          <SelectedComponentsDisplay />
-
-          {/* Use the AttachmentsList component */}
-          <AttachmentsList
-            attachments={attachments}
-            onRemove={removeAttachment}
-          />
-
-          {/* Chat image generation strip */}
-          <ChatImageGenerationStrip
-            onGenerateImage={handleOpenImageGenerator}
-          />
-
-          {/* Use the DragDropOverlay component */}
-          <DragDropOverlay isDraggingOver={isDraggingOver} />
-
-          {/* Dialog for choosing attachment type */}
-          <FileAttachmentTypeDialog
-            pendingFiles={pendingFiles}
-            onConfirm={confirmPendingFiles}
-            onCancel={cancelPendingFiles}
-          />
-
-          <div className="flex items-end gap-1">
-            <LexicalChatInput
-              value={inputValue}
-              onChange={setInputValue}
-              onSubmit={handleSubmit}
-              onPaste={handlePaste}
-              placeholder={t("askDyadToBuild")}
-              excludeCurrentApp={true}
-              disableSendButton={disableSendButton}
-              messageHistory={userMessageHistory}
-            />
-
-            {/* Voice-to-text button */}
-            {isProEnabled ? (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <button
-                      onClick={toggleRecording}
-                      disabled={isTranscribing}
-                      aria-label={
-                        isRecording
-                          ? t("stopRecording", "Stop recording")
-                          : isTranscribing
-                            ? t("transcribing", "Transcribing...")
-                            : t("voiceToText", "Voice to text")
-                      }
-                      className={cn(
-                        "px-2 py-2 mb-0.5 text-muted-foreground rounded-lg transition-colors duration-150 cursor-pointer disabled:cursor-default disabled:opacity-30",
-                        isRecording &&
-                          "text-red-500 hover:text-red-600 animate-pulse",
-                        !isRecording && !isTranscribing && "hover:text-primary",
-                      )}
-                    />
-                  }
-                >
-                  {isTranscribing ? (
-                    <Loader2 size={20} className="animate-spin" />
-                  ) : isRecording ? (
-                    <MicOff size={20} />
-                  ) : (
-                    <Mic size={20} />
-                  )}
-                </TooltipTrigger>
-                <TooltipContent>
-                  {isRecording
-                    ? t("stopRecording", "Stop recording")
-                    : isTranscribing
-                      ? t("transcribing", "Transcribing...")
-                      : t("voiceToText", "Voice to text")}
-                </TooltipContent>
-              </Tooltip>
-            ) : (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <button
-                      onClick={() =>
-                        ipc.system.openExternalUrl("https://dyad.sh/pro")
-                      }
-                      aria-label={t("voiceToTextPro", "Voice to text (Pro)")}
-                      className="px-2 py-2 mb-0.5 text-muted-foreground hover:text-primary rounded-lg transition-colors duration-150 cursor-pointer relative"
-                    />
-                  }
-                >
-                  <Mic size={20} />
-                  <Lock size={10} className="absolute -top-0.5 -right-0.5" />
-                </TooltipTrigger>
-                <TooltipContent>
-                  {t("voiceToTextRequiresPro", "Voice to text (requires Pro)")}
-                </TooltipContent>
-              </Tooltip>
-            )}
-
-            {isStreaming ? (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <button
-                      onClick={handleCancel}
-                      aria-label={t("cancelGeneration")}
-                      className="px-2 py-2 mb-0.5 mr-1 text-muted-foreground hover:text-destructive rounded-lg transition-colors duration-150 cursor-pointer"
-                    />
-                  }
-                >
-                  <StopCircleIcon size={20} />
-                </TooltipTrigger>
-                <TooltipContent>{t("cancelGeneration")}</TooltipContent>
-              </Tooltip>
-            ) : (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <button
-                      onClick={handleSubmit}
-                      disabled={
-                        (!inputValue.trim() &&
-                          attachments.length === 0 &&
-                          !hasSuccessfulImageJobs) ||
-                        disableSendButton
-                      }
-                      aria-label={t("sendMessage")}
-                      className="px-2 py-2 mb-0.5 mr-1 text-muted-foreground hover:text-primary rounded-lg transition-colors duration-150 disabled:opacity-30 disabled:hover:text-muted-foreground cursor-pointer disabled:cursor-default"
-                    />
-                  }
-                >
-                  <SendHorizontalIcon size={20} />
-                </TooltipTrigger>
-                <TooltipContent>{t("sendMessage")}</TooltipContent>
-              </Tooltip>
-            )}
-          </div>
-          <div className="px-2 flex items-center justify-between pb-0.5 pt-0.5">
-            <div className="flex items-center">
-              <ChatInputControls showContextFilesPicker={false} />
+                <AuxiliaryActionsMenu
+                  onFileSelect={handleFileSelect}
+                  showTokenBar={showTokenBar}
+                  toggleShowTokenBar={toggleShowTokenBar}
+                  appId={appId ?? undefined}
+                  onGenerateImage={handleOpenImageGenerator}
+                />
+              </div>
+              {/* TokenBar is only displayed when showTokenBar is true */}
+              {showTokenBar && <TokenBar chatId={chatId} />}
             </div>
-
-            <AuxiliaryActionsMenu
-              onFileSelect={handleFileSelect}
-              showTokenBar={showTokenBar}
-              toggleShowTokenBar={toggleShowTokenBar}
-              appId={appId ?? undefined}
-              onGenerateImage={handleOpenImageGenerator}
-            />
           </div>
-          {/* TokenBar is only displayed when showTokenBar is true */}
-          {showTokenBar && <TokenBar chatId={chatId} />}
         </div>
       </div>
 

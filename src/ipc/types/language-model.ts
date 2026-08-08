@@ -12,6 +12,8 @@ export const LanguageModelProviderSchema = z.object({
   websiteUrl: z.string().optional(),
   gatewayPrefix: z.string().optional(),
   secondary: z.boolean().optional(),
+  /** Models are not conversational; hidden from the chat model picker. */
+  nonChat: z.boolean().optional(),
   envVarName: z.string().optional(),
   apiBaseUrl: z.string().optional(),
   type: z.enum(["custom", "local", "cloud"]),
@@ -37,12 +39,31 @@ export const LanguageModelSchema = z.object({
 export type LanguageModel = z.infer<typeof LanguageModelSchema>;
 
 export const LocalModelSchema = z.object({
-  provider: z.enum(["ollama", "lmstudio"]),
+  provider: z.enum(["ollama", "lmstudio", "mx_serve"]),
   modelName: z.string(),
   displayName: z.string(),
+  sizeBytes: z.number().optional(),
+  parameterSize: z.string().optional(),
+  quantization: z.string().optional(),
+  contextWindow: z.number().optional(),
+  loaded: z.boolean().optional(),
 });
 
 export type LocalModel = z.infer<typeof LocalModelSchema>;
+
+export const DiscoveredLocalModelServerSchema = z.object({
+  provider: z.enum(["ollama", "lmstudio", "mx_serve"]),
+  name: z.string(),
+  url: z.string(),
+  host: z.string(),
+  port: z.number(),
+  latencyMs: z.number(),
+  models: z.array(LocalModelSchema),
+});
+
+export type DiscoveredLocalModelServer = z.infer<
+  typeof DiscoveredLocalModelServerSchema
+>;
 
 export const CreateCustomLanguageModelProviderParamsSchema = z.object({
   id: z.string(),
@@ -67,6 +88,21 @@ export const CreateCustomLanguageModelParamsSchema = z.object({
 export type CreateCustomLanguageModelParams = z.infer<
   typeof CreateCustomLanguageModelParamsSchema
 >;
+
+/** One model as reported by a provider's own /models endpoint. */
+export const ApiModelSchema = z.object({
+  id: z.string(),
+  ownedBy: z.string().optional(),
+  created: z.number().optional(),
+});
+export type ApiModel = z.infer<typeof ApiModelSchema>;
+
+export const ListApiModelsResultSchema = z.object({
+  models: z.array(ApiModelSchema),
+  /** Endpoint the list came from, shown so the source is obvious. */
+  baseUrl: z.string(),
+});
+export type ListApiModelsResult = z.infer<typeof ListApiModelsResultSchema>;
 
 export const DeleteCustomModelParamsSchema = z.object({
   providerId: z.string(),
@@ -120,6 +156,13 @@ export const languageModelContracts = {
     output: z.void(),
   }),
 
+  /** Ask the provider which models the configured key can actually use. */
+  listApiModels: defineContract({
+    channel: "language-models:list-api-models",
+    input: z.object({ providerId: z.string().min(1) }),
+    output: ListApiModelsResultSchema,
+  }),
+
   deleteCustomModel: defineContract({
     channel: "delete-custom-language-model",
     input: z.string(), // modelId
@@ -142,6 +185,18 @@ export const languageModelContracts = {
     channel: "local-models:list-lmstudio",
     input: z.void(),
     output: z.object({ models: z.array(LocalModelSchema) }),
+  }),
+
+  discoverLocalServers: defineContract({
+    channel: "local-models:discover-servers",
+    input: z.object({
+      scanLocalSubnet: z.boolean().default(false),
+      targets: z.array(z.string()).max(16).default([]),
+    }),
+    output: z.object({
+      servers: z.array(DiscoveredLocalModelServerSchema),
+      scannedHostCount: z.number(),
+    }),
   }),
 } as const;
 

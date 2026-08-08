@@ -98,11 +98,12 @@ export const Annotator = ({
     return () => resizeObserver.disconnect();
   }, []);
 
-  // Initialize history
+  // Initialize history once on mount.
   useEffect(() => {
     if (history.length === 0) {
       setHistory([[]]);
     }
+    // eslint-disable-next-line react/exhaustive-deps
   }, []);
 
   // Save history

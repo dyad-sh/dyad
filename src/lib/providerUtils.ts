@@ -44,6 +44,10 @@ export function isProviderSetup(
   }
 
   // Azure needs apiKey + resourceName
+  if (provider === "lmstudio" || provider === "ollama") {
+    return true;
+  }
+
   if (provider === "azure") {
     const azureSettings = providerSettings as AzureProviderSetting;
     const hasSavedSettings = Boolean(

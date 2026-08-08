@@ -6,14 +6,19 @@ import { ipc } from "@/ipc/types";
 import { generateCuteAppName } from "@/lib/utils";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { useSettings } from "@/hooks/useSettings";
-import { SetupBanner } from "@/components/SetupBanner";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { HomeChatInput } from "@/components/chat/HomeChatInput";
 import { usePostHog } from "posthog-js/react";
 import { PrivacyBanner } from "@/components/TelemetryBanner";
-import { INSPIRATION_PROMPTS } from "@/prompts/inspiration_prompts";
+import {
+  HomeQuickActions,
+  pickHomeQuickActionPrompts,
+} from "@/components/home/HomeQuickActions";
+import { HomeGreeting } from "@/components/home/HomeGreeting";
+import { JarvisBackground } from "@/components/home/JarvisBackground";
+import { BuildingPreviewScreen } from "@/components/preview_panel/BuildingPreviewScreen";
 import { useAppVersion } from "@/hooks/useAppVersion";
 
 import {
@@ -25,24 +30,17 @@ import {
 import { useTheme } from "@/contexts/ThemeContext";
 import { Button } from "@/components/ui/button";
 import { ExternalLink } from "lucide-react";
-import { ImportAppButton } from "@/components/ImportAppButton";
 import { showError } from "@/lib/toast";
 import { invalidateAppQuery } from "@/hooks/useLoadApp";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 import { ForceCloseDialog } from "@/components/ForceCloseDialog";
 import { useSelectChat } from "@/hooks/useSelectChat";
-import { FeaturedAppShowcase } from "@/components/FeaturedAppShowcase";
-
 import type { FileAttachment } from "@/ipc/types";
 import type { ListedApp } from "@/ipc/types/app";
 import { NEON_TEMPLATE_IDS } from "@/shared/templates";
 import { neonTemplateHook } from "@/client_logic/template_hook";
-import {
-  ManageDyadProButton,
-  SetupDyadProButton,
-} from "@/components/ProBanner";
-import { hasDyadProKey, getEffectiveDefaultChatMode } from "@/lib/schemas";
+import { getEffectiveDefaultChatMode } from "@/lib/schemas";
 import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
 import { useInitialChatMode } from "@/hooks/useInitialChatMode";
 
@@ -56,11 +54,47 @@ export interface HomeSubmitOptions {
   selectedApp?: ListedApp;
 }
 
+function JarvisStatusBar() {
+  const metrics = useMemo(
+    () => ({
+      cpu: Math.round(12 + Math.random() * 15),
+      mem: Math.round(28 + Math.random() * 20),
+    }),
+    [],
+  );
+
+  return (
+    <div
+      className="jarvis-status-bar pointer-events-none mt-4 hidden w-full max-w-2xl select-none items-center justify-between sm:flex"
+      aria-hidden
+    >
+      <div className="flex items-center gap-3">
+        <span className="jarvis-status-dot" />
+        <span className="jarvis-status-text">SYSTEM ONLINE</span>
+      </div>
+      <div className="flex items-center gap-4">
+        <span className="jarvis-status-metric">
+          CPU: <span className="jarvis-status-value">{metrics.cpu}%</span>
+        </span>
+        <span className="jarvis-status-metric">
+          MEM: <span className="jarvis-status-value">{metrics.mem}%</span>
+        </span>
+        <span className="jarvis-status-metric">
+          NET: <span className="jarvis-status-value">OPTIMAL</span>
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export default function HomePage() {
   const { t } = useTranslation("home");
   const [inputValue, setInputValue] = useAtom(homeChatInputValueAtom);
   const navigate = useNavigate();
-  const search = useSearch({ from: "/" });
+  // Desktop Mode renders this route component directly inside a window. Use
+  // non-strict search so the studio stays mounted when another desktop app
+  // changes the shared router location.
+  const search = useSearch({ strict: false });
   const { refreshApps } = useLoadApps();
   const { settings, updateSettings, envVars } = useSettings();
   const { isQuotaExceeded, isLoading: isQuotaLoading } = useFreeAgentQuota();
@@ -133,21 +167,9 @@ export default function HomePage() {
   // Get the appId from search params
   const appId = search.appId ? Number(search.appId) : null;
 
-  // State for random prompts
-  const [randomPrompts, setRandomPrompts] = useState<
-    typeof INSPIRATION_PROMPTS
-  >([]);
-
-  // Function to get random prompts
-  const getRandomPrompts = useCallback(() => {
-    const shuffled = [...INSPIRATION_PROMPTS].sort(() => 0.5 - Math.random());
-    return shuffled.slice(0, 3);
-  }, []);
-
-  // Initialize random prompts
-  useEffect(() => {
-    setRandomPrompts(getRandomPrompts());
-  }, [getRandomPrompts]);
+  const [quickActionPrompts, setQuickActionPrompts] = useState(() =>
+    pickHomeQuickActionPrompts(5),
+  );
 
   // Redirect to app details page if appId is present. Use `replace` so the
   // intermediate `/?appId=…` entry doesn't sit in history and trap the back
@@ -255,155 +277,99 @@ export default function HomePage() {
     }
   };
 
-  // Loading overlay for app creation
   if (isLoading) {
     return (
-      <div className="flex w-full flex-col items-center justify-center p-8">
-        <div className="w-full max-w-3xl mx-auto">
-        <div className="w-full flex flex-col items-center">
-          {/* Loading Spinner */}
-          <div className="relative w-24 h-24 mb-8">
-            <div className="absolute top-0 left-0 w-full h-full border-8 border-gray-200 dark:border-gray-700 rounded-full"></div>
-            <div className="absolute top-0 left-0 w-full h-full border-8 border-t-primary rounded-full animate-spin"></div>
-          </div>
-          <h2 className="text-2xl font-bold mb-2 text-gray-800 dark:text-gray-200">
-            {loadingMode === "existing" ? t("startingChat") : t("buildingApp")}
-          </h2>
-          <p className="text-gray-600 dark:text-gray-400 text-center max-w-md mb-8">
-            {loadingMode === "existing" ? (
-              t("creatingNewChat")
-            ) : (
-              <>
-                {t("settingUp")} <br />
-                {t("mightTakeMoment")}
-              </>
-            )}
-          </p>
-        </div>
-        </div>
-      </div>
+      <BuildingPreviewScreen
+        variant="fullscreen"
+        phase={loadingMode === "existing" ? "starting" : "building"}
+      />
     );
   }
 
   // Main Home Page Content
   return (
-    <div className="flex w-full flex-col">
-      <div className="mx-auto flex w-full max-w-3xl flex-col items-center justify-center p-8 relative">
-        <div className="fixed top-16 right-8 z-50">
-          {settings && hasDyadProKey(settings) ? (
-            <ManageDyadProButton className="mt-0 w-auto h-9 px-3 text-base shadow-sm bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm hover:bg-white dark:hover:bg-gray-800" />
-          ) : (
-            <SetupDyadProButton />
-          )}
+    <div className="home-jarvis relative flex min-h-0 w-full flex-1 flex-col overflow-hidden">
+      <JarvisBackground className="z-0" />
+      <div className="home-jarvis-scroll relative z-10 flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto scrollbar-on-hover">
+        {/* HUD corner overlays */}
+        <div
+          className="pointer-events-none absolute inset-4 z-20 hidden sm:block"
+          aria-hidden
+        >
+          <div className="jarvis-hud-corner jarvis-hud-corner--tl absolute top-0 left-0" />
+          <div className="jarvis-hud-corner jarvis-hud-corner--tr absolute top-0 right-0" />
+          <div className="jarvis-hud-corner jarvis-hud-corner--bl absolute bottom-0 left-0" />
+          <div className="jarvis-hud-corner jarvis-hud-corner--br absolute bottom-0 right-0" />
         </div>
-        <ForceCloseDialog
-          isOpen={forceCloseDialogOpen}
-          onClose={() => setForceCloseDialogOpen(false)}
-          performanceData={performanceData}
-        />
-        <SetupBanner />
 
-        <div className="w-full">
-          <div className="flex items-center justify-center gap-4 mb-4">
-            <ImportAppButton className="px-0 pb-0 flex-none" />
+        <div
+          className="home-jarvis-content mx-auto flex w-full min-h-full max-w-3xl flex-col items-center px-4 py-6 sm:px-8 sm:py-8"
+          data-reset-scroll-on-route
+        >
+          <ForceCloseDialog
+            isOpen={forceCloseDialogOpen}
+            onClose={() => setForceCloseDialogOpen(false)}
+            performanceData={performanceData}
+          />
+          <div className="home-jarvis-prompt flex w-full flex-1 flex-col items-center justify-center gap-6 sm:gap-8">
+            <HomeGreeting />
+
+            <div className="w-full max-w-2xl shrink-0">
+              <HomeChatInput onSubmit={handleSubmit} />
+            </div>
           </div>
-          <HomeChatInput onSubmit={handleSubmit} />
 
-          <div className="flex flex-col gap-4 mt-2">
-            <div className="flex flex-wrap gap-4 justify-center">
-              {randomPrompts.map((item, index) => (
-                <button
-                  type="button"
-                  key={index}
+          <div className="home-jarvis-below flex w-full shrink-0 flex-col items-center gap-6 pt-2">
+            <HomeQuickActions
+              prompts={quickActionPrompts}
+              onSelect={(label) => setInputValue(t("buildMeA", { label }))}
+              onRefresh={() =>
+                setQuickActionPrompts(pickHomeQuickActionPrompts(5))
+              }
+            />
+
+            <PrivacyBanner />
+          </div>
+
+          {/* Bottom HUD status bar */}
+          <JarvisStatusBar />
+
+          {/* Release Notes Dialog */}
+          <Dialog open={releaseNotesOpen} onOpenChange={setReleaseNotesOpen}>
+            <DialogContent className="max-w-4xl bg-(--docs-bg) pr-0 pt-4 pl-4 gap-1">
+              <DialogHeader>
+                <DialogTitle>
+                  {t("whatsNew", { version: appVersion })}
+                </DialogTitle>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-10 top-2 focus-visible:ring-0 focus-visible:ring-offset-0"
                   onClick={() =>
-                    setInputValue(t("buildMeA", { label: item.label }))
+                    window.open(
+                      releaseUrl.replace("?hideHeader=true&theme=" + theme, ""),
+                      "_blank",
+                    )
                   }
-                  className="flex items-center gap-3 px-4 py-2 rounded-xl border border-gray-200
-                           bg-white/50 backdrop-blur-sm
-                           transition-all duration-200
-                           hover:bg-white hover:shadow-md hover:border-gray-300
-                           active:scale-[0.98]
-                           dark:bg-gray-800/50 dark:border-gray-700
-                           dark:hover:bg-gray-800 dark:hover:border-gray-600"
                 >
-                  <span className="text-gray-700 dark:text-gray-300">
-                    {item.icon}
-                  </span>
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                    {item.label}
-                  </span>
-                </button>
-              ))}
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setRandomPrompts(getRandomPrompts())}
-              className="self-center flex items-center gap-2 px-4 py-2 rounded-xl border border-gray-200
-                       bg-white/50 backdrop-blur-sm
-                       transition-all duration-200
-                       hover:bg-white hover:shadow-md hover:border-gray-300
-                       active:scale-[0.98]
-                       dark:bg-gray-800/50 dark:border-gray-700
-                       dark:hover:bg-gray-800 dark:hover:border-gray-600"
-            >
-              <svg
-                className="w-5 h-5 text-gray-700 dark:text-gray-300"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                />
-              </svg>
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                {t("moreIdeas")}
-              </span>
-            </button>
-          </div>
+                  <ExternalLink className="w-4 h-4" />
+                </Button>
+              </DialogHeader>
+              <div className="overflow-auto h-[70vh] flex flex-col ">
+                {releaseUrl && (
+                  <div className="flex-1">
+                    <iframe
+                      src={releaseUrl}
+                      className="w-full h-full border-0 rounded-lg"
+                      title={t("releaseNotesTitle", { version: appVersion })}
+                    />
+                  </div>
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
-        <PrivacyBanner />
-
-        {/* Release Notes Dialog */}
-        <Dialog open={releaseNotesOpen} onOpenChange={setReleaseNotesOpen}>
-          <DialogContent className="max-w-4xl bg-(--docs-bg) pr-0 pt-4 pl-4 gap-1">
-            <DialogHeader>
-              <DialogTitle>
-                {t("whatsNew", { version: appVersion })}
-              </DialogTitle>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="absolute right-10 top-2 focus-visible:ring-0 focus-visible:ring-offset-0"
-                onClick={() =>
-                  window.open(
-                    releaseUrl.replace("?hideHeader=true&theme=" + theme, ""),
-                    "_blank",
-                  )
-                }
-              >
-                <ExternalLink className="w-4 h-4" />
-              </Button>
-            </DialogHeader>
-            <div className="overflow-auto h-[70vh] flex flex-col ">
-              {releaseUrl && (
-                <div className="flex-1">
-                  <iframe
-                    src={releaseUrl}
-                    className="w-full h-full border-0 rounded-lg"
-                    title={t("releaseNotesTitle", { version: appVersion })}
-                  />
-                </div>
-              )}
-            </div>
-          </DialogContent>
-        </Dialog>
       </div>
-      <FeaturedAppShowcase />
     </div>
   );
 }

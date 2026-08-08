@@ -53,7 +53,7 @@ export default function ChatPage() {
     }
 
     if (!selectedAppId) {
-      navigate({ to: "/", replace: true });
+      navigate({ to: "/coder/studio", replace: true });
       return;
     }
 
@@ -145,7 +145,11 @@ export default function ChatPage() {
   }, [isChatPanelHidden]);
 
   return (
-    <PanelGroup autoSaveId="persistence" direction="horizontal">
+    <PanelGroup
+      autoSaveId="persistence"
+      direction="horizontal"
+      className="min-h-0 flex-1"
+    >
       <Panel
         id="chat-panel"
         ref={chatPanelRef}

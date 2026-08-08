@@ -1,2 +1,8 @@
-export const LM_STUDIO_BASE_URL =
-  process.env.LM_STUDIO_BASE_URL_FOR_TESTING || "http://localhost:1234";
+export {
+  DEFAULT_LM_STUDIO_BASE_URL as LM_STUDIO_BASE_URL,
+  getLMStudioBaseUrlFromSettings,
+  parseLMStudioBaseUrl,
+} from "@/lib/local_provider_utils";
+
+// Legacy export name used across the codebase
+export { getLMStudioBaseUrlFromSettings as getLMStudioBaseUrl } from "@/lib/local_provider_utils";

@@ -240,7 +240,7 @@ Allow: /
 
 
 === README.md ===
-# Welcome to your Dyad app
+# Welcome to your Meta Human OS app
 
 
 === src/App.css ===

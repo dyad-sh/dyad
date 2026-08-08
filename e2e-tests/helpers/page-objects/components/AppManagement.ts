@@ -26,7 +26,7 @@ export class AppManagement {
   }
 
   async showAppList() {
-    await this.page.getByRole("link", { name: "Apps" }).hover();
+    await this.page.getByRole("link", { name: "Coding Agent" }).hover();
     const viewAllAppsButton = this.page.getByTestId("view-all-apps-button");
     if (
       await viewAllAppsButton.isVisible({ timeout: 1_000 }).catch(() => false)

@@ -31,6 +31,7 @@ import {
   getGitUncommittedFiles,
   hasStagedChanges,
 } from "../utils/git_utils";
+import { backupAppSource } from "../utils/app_cloud_backup";
 import { readSettings } from "@/main/settings";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { writeMigrationFile } from "../utils/file_utils";
@@ -653,6 +654,10 @@ export async function processFullResponseActions(
         });
         logger.log(`Successfully committed changes: ${changes.join(", ")}`);
 
+        // Best-effort: mirror the app's source to the cloud `code/` folder so
+        // it can be restored later. Fire-and-forget; never blocks the response.
+        void backupAppSource(chatWithApp.app.id);
+
         // Check for any uncommitted changes after the commit
         uncommittedFiles = await getGitUncommittedFiles({ path: appPath });
 
@@ -662,7 +667,8 @@ export async function processFullResponseActions(
           try {
             commitHash = await gitCommit({
               path: appPath,
-              message: message + " + extra files edited outside of Dyad",
+              message:
+                message + " + extra files edited outside of Meta Human OS",
               amend: true,
             });
             logger.log(
@@ -670,7 +676,7 @@ export async function processFullResponseActions(
             );
           } catch (error) {
             // Just log, but don't throw an error because the user can still
-            // commit these changes outside of Dyad if needed.
+            // commit these changes outside of Meta Human OS if needed.
             logger.error(
               `Failed to commit changes outside of dyad: ${uncommittedFiles.join(", ")}`,
             );

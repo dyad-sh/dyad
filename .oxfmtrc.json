@@ -3,6 +3,7 @@
   "printWidth": 80,
   "experimentalSortPackageJson": false,
   "ignorePatterns": [
+    "aios/",
     "build",
     "coverage",
     "drizzle/",

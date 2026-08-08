@@ -47,7 +47,10 @@ function Button<T extends React.ElementType = "button">({
   as,
   ...props
 }: ButtonProps<T>) {
-  const Comp = as || "button";
+  // Cast at the render site, not in the props: callers keep full type
+  // checking on `as` and its element's props, while the spread itself is
+  // something TypeScript cannot verify for a generic element.
+  const Comp = (as || "button") as React.ElementType<Record<string, unknown>>;
 
   return (
     <Comp

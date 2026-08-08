@@ -1,0 +1,55 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/Users/ace/Desktop/dyad/.codex/hooks/gh-permission-hook.py'",
+            "timeout": 5000
+          },
+          {
+            "type": "command",
+            "command": "'/Users/ace/Desktop/dyad/.codex/hooks/python-permission-hook.py'",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/Users/ace/Desktop/dyad/.codex/hooks/permission-request-hook.py'",
+            "timeout": 30000
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npm install",
+            "timeout": 60000
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/Users/ace/Desktop/dyad/.codex/hooks/stop-hook.py'",
+            "timeout": 30000
+          }
+        ]
+      }
+    ]
+  }
+}

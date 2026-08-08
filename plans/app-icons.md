@@ -4,7 +4,7 @@
 
 ## Summary
 
-Add a visual identity system to Dyad apps — every app gets an icon (emoji or GitHub-style generated avatar) that appears in chat tabs, the app list sidebar, and the app details page. Chat tabs become condensed single-line layouts (icon + chat title) for better density. Icons are auto-generated for all apps (including existing ones via backfill) and customizable by the user through a modal picker on the app details page.
+Add a visual identity system to Meta Human OS apps — every app gets an icon (emoji or GitHub-style generated avatar) that appears in chat tabs, the app list sidebar, and the app details page. Chat tabs become condensed single-line layouts (icon + chat title) for better density. Icons are auto-generated for all apps (including existing ones via backfill) and customizable by the user through a modal picker on the app details page.
 
 ## Problem Statement
 

@@ -175,7 +175,7 @@ return (
 ### Environment Variables (`.env.local`)
 
 <code-template label="env-vars" file=".env.local" language="bash">
-# Neon Database (injected by Dyad)
+# Neon Database (injected by Meta Human OS)
 DATABASE_URL=postgresql://user:pass@ep-xxx.us-east-2.aws.neon.tech/dbname?sslmode=require
 
 # Neon Auth (managed by Neon, values from Neon Console > Auth settings)
@@ -199,9 +199,9 @@ This project is a Vite SPA (React Router) with a Nitro server layer at `server/`
 - **must-use-server-proxy**: The React app MUST call `/api/auth/*` (the Nitro proxy), NOT `NEON_AUTH_BASE_URL`. Do NOT pass `import.meta.env.VITE_NEON_AUTH_URL` (or any other Vite-prefixed Neon URL) to `createAuthClient`. Keep `NEON_AUTH_BASE_URL` server-only.
 - **must-use-same-origin-baseURL**: When constructing `createAuthClient`, pass an **absolute URL pointing at the same origin** — e.g. `${window.location.origin}/api/auth`. Better Auth's `assertHasProtocol` validator throws `Invalid base URL: /api/auth` for bare paths (a relative `'/api/auth'` is rejected at runtime), so the protocol is required.
 - **must-mount-catchall-route**: The Nitro proxy MUST be a catch-all so every Better Auth path (sign-in, sign-up, get-session, sign-out, callback, etc.) reaches the handler. Use `server/routes/api/auth/[...all].ts` — a single file. Do NOT hand-write per-endpoint files.
-- **must-rewrite-secure-cookies-for-http-dev**: Neon Auth's session cookie is named `__Secure-neon-auth.session_token`. The browser enforces a hard rule: any cookie whose name starts with `__Secure-` or `__Host-` MUST carry the `Secure` attribute AND can only be set over HTTPS. The Vite dev server and Dyad preview run over plain HTTP, so the browser silently drops every session cookie — sign-in returns 200, the next `get-session` finds no cookie, and the user appears to never sign in. The proxy MUST therefore rewrite cookies in HTTP dev (see template below): on the way down rename `__Secure-` → `__Secure_` and `__Host-` → `__Host_`, strip `Secure`, strip `Partitioned`, strip `Domain=...`, and rewrite `SameSite=None` → `SameSite=Lax`; on the way up, undo the rename in the incoming `Cookie` header before forwarding upstream. Without this rewrite, sign-in is silently broken in every HTTP preview.
+- **must-rewrite-secure-cookies-for-http-dev**: Neon Auth's session cookie is named `__Secure-neon-auth.session_token`. The browser enforces a hard rule: any cookie whose name starts with `__Secure-` or `__Host-` MUST carry the `Secure` attribute AND can only be set over HTTPS. The Vite dev server and Meta Human OS preview run over plain HTTP, so the browser silently drops every session cookie — sign-in returns 200, the next `get-session` finds no cookie, and the user appears to never sign in. The proxy MUST therefore rewrite cookies in HTTP dev (see template below): on the way down rename `__Secure-` → `__Secure_` and `__Host-` → `__Host_`, strip `Secure`, strip `Partitioned`, strip `Domain=...`, and rewrite `SameSite=None` → `SameSite=Lax`; on the way up, undo the rename in the incoming `Cookie` header before forwarding upstream. Without this rewrite, sign-in is silently broken in every HTTP preview.
 - **must-wire-react-router-into-provider**: `NeonAuthUIProvider` defaults its `navigate`/`replace`/`Link` to `window.location.href`, which causes a full page reload after sign-in/sign-up. The reload races the session cookie write and frequently leaves the user stuck on the auth page. You MUST pass `navigate`, `replace`, and `Link` from `react-router-dom` into `NeonAuthUIProvider`, AND pass `redirectTo="/"` (or the app's home route) on `<AuthView>`.
-- **no-nitro-auto-imports-in-templates**: Always write explicit `import` statements in server code. Nitro's auto-import is opt-in and not enabled in the default Dyad scaffolding; relying on it will fail type-checking and (often) runtime.
+- **no-nitro-auto-imports-in-templates**: Always write explicit `import` statements in server code. Nitro's auto-import is opt-in and not enabled in the default Meta Human OS scaffolding; relying on it will fail type-checking and (often) runtime.
 - **must-avoid-regex-pitfalls-in-proxy**: Past LLM-generated proxies have repeatedly emitted broken regex literals like `/^/api/auth/` (the second `/` ends the regex; `api` becomes flags) or `/(^|;s*)/` (the `\s` got mangled to bare `s`). To prevent this, follow these rules in the proxy and session helper: (1) use `String.prototype.startsWith` + `slice` for the `/api/auth` prefix strip — do NOT use a regex; (2) for fixed-string substitutions like `__Secure_` ↔ `__Secure-`, `__Host_` ↔ `__Host-`, `; Secure`, `; Partitioned`, and `; SameSite=None` → `; SameSite=Lax`, use `String.prototype.replaceAll` with **string literals** — do NOT use regex; (3) the only place a regex is required is stripping `; Domain=<value>` from a `Set-Cookie`, where the value is variable. For that single regex, use `/;[ ]*Domain=[^;]*/gi` — note the literal-space character class `[ ]*` instead of `\s*` (resists `\s`-loss bugs), and no slashes inside the pattern.
 </critical-rules>
 
@@ -283,7 +283,7 @@ Create `src/lib/auth-client.ts`.
 
 `NeonAuthUIProvider`'s default `navigate`/`replace`/`Link` use `window.location.href`, which causes a full page reload after sign-in/sign-up that races the session cookie. Wire React Router in.
 
-- **Router placement**: `AuthProvider` calls `useNavigate()`, so it must be rendered inside a `<BrowserRouter>`. **Check `src/App.tsx` first** — the Dyad scaffold already renders `<BrowserRouter>` there around its `<Routes>`. In that case, do NOT add a second `<BrowserRouter>` in `src/main.tsx` (React Router throws "You cannot render a `<Router>` inside another `<Router>`"); just reuse the existing one. Only if `App.tsx` has no `<BrowserRouter>` should you wrap `<App />` in `<BrowserRouter>` inside `src/main.tsx` (within `<StrictMode>`).
+- **Router placement**: `AuthProvider` calls `useNavigate()`, so it must be rendered inside a `<BrowserRouter>`. **Check `src/App.tsx` first** — the Meta Human OS scaffold already renders `<BrowserRouter>` there around its `<Routes>`. In that case, do NOT add a second `<BrowserRouter>` in `src/main.tsx` (React Router throws "You cannot render a `<Router>` inside another `<Router>`"); just reuse the existing one. Only if `App.tsx` has no `<BrowserRouter>` should you wrap `<App />` in `<BrowserRouter>` inside `src/main.tsx` (within `<StrictMode>`).
 - **`src/components/AuthProvider.tsx`**: a wrapper component that imports `Link` and `useNavigate` from `react-router-dom`, `NeonAuthUIProvider` from `"@neondatabase/auth/react"`, and `authClient` from `@/lib/auth-client`. Inside, call `useNavigate()` and render `<NeonAuthUIProvider>` with these props:
   - `authClient={authClient}`
   - `defaultTheme="light"` (or `"dark"` / `"system"`) — **inspect the app's theme first** (Tailwind config, theme provider, `<html>` class) and pass the matching value. Do not leave it as the library default.
@@ -313,7 +313,7 @@ If you do prefer the prebuilt `<UserButton />`, import it from `"@neondatabase/a
 
 The file should contain (server-only):
 
-- `DATABASE_URL` — Neon Postgres connection string, injected by Dyad.
+- `DATABASE_URL` — Neon Postgres connection string, injected by Meta Human OS.
 - `NEON_AUTH_BASE_URL` — copy from Neon Console → Auth settings (e.g. `https://ep-xxx.neonauth.us-east-1.aws.neon.tech/neondb/auth`).
 
 </vite-nitro-only>

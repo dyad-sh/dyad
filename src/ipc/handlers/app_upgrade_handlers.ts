@@ -20,7 +20,7 @@ const availableUpgrades: Omit<AppUpgrade, "isNeeded">[] = [
     id: "component-tagger",
     title: "Enable select component to edit",
     description:
-      "Installs the Dyad component tagger Vite plugin and its dependencies.",
+      "Installs the Meta Human OS component tagger Vite plugin and its dependencies.",
     manualUpgradeUrl: "https://dyad.sh/docs/upgrades/select-component",
   },
   {
@@ -191,7 +191,7 @@ async function applyComponentTagger(appPath: string) {
     await gitAddAll({ path: appPath });
     await gitCommit({
       path: appPath,
-      message: "[dyad] add Dyad component tagger",
+      message: "[meta-human-os] add component tagger",
     });
     logger.info("Successfully committed changes");
   } catch (err) {
@@ -218,9 +218,15 @@ async function applyCapacitor({
     errorPrefix: "Failed to install Capacitor dependencies",
   });
 
-  // Initialize Capacitor
+  // Initialize Capacitor.
+  // `simpleSpawn` runs with `shell: true`, so interpolating the raw app name
+  // would allow shell injection (e.g. an app named `x" $(rm -rf ~) "`).
+  // Both values are only display/identifier metadata in capacitor.config, so
+  // restrict them to shell-safe character sets (allow-list, not escaping).
+  const safeAppName = appName.replace(/[^a-zA-Z0-9 _.-]/g, "").trim() || "App";
+  const safeAppId = `com.example.${appName.toLowerCase().replace(/[^a-z0-9]/g, "") || "app"}`;
   await simpleSpawn({
-    command: `npx cap init "${appName}" "com.example.${appName.toLowerCase().replace(/[^a-z0-9]/g, "")}" --web-dir=dist`,
+    command: `npx cap init "${safeAppName}" "${safeAppId}" --web-dir=dist`,
     cwd: appPath,
     successMessage: "Capacitor initialized successfully",
     errorPrefix: "Failed to initialize Capacitor",

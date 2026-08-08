@@ -63,6 +63,9 @@ export function QuestionnaireInput() {
     });
     setAdditionalTexts({});
     setIsExpanded(true);
+    // Re-initialize only when a new questionnaire arrives (identified by
+    // chatId + requestId + question count), not on every render.
+    // eslint-disable-next-line react/exhaustive-deps
   }, [
     questionnaire?.chatId,
     questionnaire?.requestId,

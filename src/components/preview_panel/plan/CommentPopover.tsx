@@ -159,6 +159,9 @@ export const CommentPopover: React.FC<CommentPopoverProps> = ({
 
     scrollEl.addEventListener("scroll", handleScroll);
     return () => scrollEl.removeEventListener("scroll", handleScroll);
+    // Keyed on the annotation id; re-subscribing on every popover position
+    // change (which this handler itself triggers) would churn the listener.
+    // eslint-disable-next-line react/exhaustive-deps
   }, [scrollRef, containerRef, popover?.annotationId, dismiss]);
 
   // Dismiss when annotations change (e.g., deleted)
@@ -189,6 +192,8 @@ export const CommentPopover: React.FC<CommentPopoverProps> = ({
     clampPosition();
     window.addEventListener("resize", clampPosition);
     return () => window.removeEventListener("resize", clampPosition);
+    // Keyed on the specific position props it reads.
+    // eslint-disable-next-line react/exhaustive-deps
   }, [popover?.annotationId, popover?.anchorX, popover?.anchorY]);
 
   useEffect(() => {
@@ -199,6 +204,9 @@ export const CommentPopover: React.FC<CommentPopoverProps> = ({
     );
 
     (firstFocusable ?? popoverRef.current).focus();
+    // Focus once when a new annotation popover opens; depending on the whole
+    // popover object would steal focus on every position update.
+    // eslint-disable-next-line react/exhaustive-deps
   }, [popover?.annotationId]);
 
   if (!popover) return null;

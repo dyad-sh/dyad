@@ -1,0 +1,986 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ParticleBackground } from "@/components/home/ParticleBackground";
+import { ChatAgentComposer } from "@/components/chat-agent/ChatAgentComposer";
+import { JumpToLatestButton } from "@/components/chat-agent/JumpToLatestButton";
+import { ChatAgentHeader } from "@/components/chat-agent/ChatAgentHeader";
+import { ChatAgentMessageRow } from "@/components/chat-agent/ChatAgentMessageRow";
+import { ChatAgentActivityIndicator } from "@/components/chat-agent/ChatAgentActivityIndicator";
+import { ChatAgentHistoryDialog } from "@/components/chat-agent/ChatAgentHistoryDialog";
+import type { MessageFeedback } from "@/components/chat-agent/ChatAgentMessageActions";
+import type {
+  ChatAgentConversation,
+  ChatAgentMessage,
+  ChatAgentOpenTab,
+  ChatAgentToolResult,
+} from "@/components/chat-agent/types";
+import { useChatAgentStream } from "@/hooks/useChatAgentStream";
+import { useAtom, useSetAtom } from "jotai";
+import {
+  activeChatAgentTabAtom,
+  chatAgentAttachmentsAtom,
+  chatAgentHistoryAtom,
+  chatAgentOpenTabsAtom,
+  busyChatSessionsAtom,
+  MAX_CHAT_AGENT_HISTORY,
+} from "@/atoms/chatAgentAtoms";
+import {
+  describeAttachments,
+  getFirstImageAttachmentDataUrl,
+  needsDocumentReading,
+  prepareChatAgentMessage,
+} from "@/lib/chat_agent_attachments";
+import {
+  buildChatAgentMcpActionsMessage,
+  getChatAgentMcpActionSelectionKeys,
+  type ChatAgentMcpAction,
+} from "@/lib/chat_agent_mcp_actions";
+import { detectImagePrompt } from "@/lib/chat_agent_image_intent";
+import { detectVideoPrompt } from "@/lib/chat_agent_video_intent";
+import { ipc } from "@/ipc/types";
+import { DEFAULT_VIDEO_MODEL } from "@/ipc/types/video_generation";
+import { useSettings } from "@/hooks/useSettings";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { showError, showSuccess } from "@/lib/toast";
+import { getAssignedModelForRole } from "@/lib/model_roles";
+import { useChatAutoScroll } from "@/hooks/useChatAutoScroll";
+import { closeChatAgentTab, openChatAgentTab } from "@/lib/chat_agent_tabs";
+import { pruneEmptyAssistantMessages } from "@/lib/chat_agent_messages";
+
+/**
+ * How often the live transcript is mirrored into the durable tab list. Long
+ * enough that streaming does not thrash localStorage, short enough that a
+ * crash costs at most this much of an answer.
+ */
+const TAB_SYNC_INTERVAL_MS = 400;
+
+/** Shared empty value, so "nothing is busy" never re-renders the tab bar. */
+const EMPTY_BUSY_SESSIONS: readonly string[] = [];
+
+function titleFromMessages(messages: ChatAgentMessage[]) {
+  const firstUser = messages.find((m) => m.role === "user");
+  if (!firstUser) return "New conversation";
+  const snippet = firstUser.content.trim().slice(0, 48);
+  return snippet.length < firstUser.content.length ? `${snippet}…` : snippet;
+}
+
+function createBlankConversation(): ChatAgentOpenTab {
+  return {
+    id: crypto.randomUUID(),
+    title: "New conversation",
+    messages: [],
+    vectorCollectionIds: [],
+    updatedAt: Date.now(),
+  };
+}
+
+export default function ChatAgentPage() {
+  const [openTabs, setOpenTabs] = useAtom(chatAgentOpenTabsAtom);
+  const [persistedActiveId, setPersistedActiveId] = useAtom(
+    activeChatAgentTabAtom,
+  );
+  const initialTabRef = useRef<ChatAgentOpenTab | null>(null);
+  if (!initialTabRef.current) {
+    initialTabRef.current =
+      openTabs.find((tab) => tab.id === persistedActiveId) ??
+      openTabs[0] ??
+      createBlankConversation();
+  }
+  const [sessionId, setSessionId] = useState<string>(initialTabRef.current.id);
+  const [messages, setMessages] = useState<ChatAgentMessage[]>(
+    pruneEmptyAssistantMessages(initialTabRef.current.messages),
+  );
+  const [vectorCollectionIds, setVectorCollectionIds] = useState<string[]>(
+    initialTabRef.current.vectorCollectionIds ?? [],
+  );
+  const [messageFeedback, setMessageFeedback] = useState<
+    Record<string, MessageFeedback>
+  >({});
+  /** The assistant message being written, per session — one per open tab. */
+  const assistantMessageIdRef = useRef(new Map<string, string>());
+  /**
+   * The tab on screen right now, readable from callbacks that were created in
+   * a different tab. Work started in one tab must land in that tab even after
+   * the user has moved on.
+   */
+  const activeSessionRef = useRef(sessionId);
+  activeSessionRef.current = sessionId;
+
+  /**
+   * Applies a change to one session's transcript, wherever it lives: through
+   * React state when that tab is on screen, straight into the stored tab when
+   * it is not. Without this, a slow answer would land in whichever tab the
+   * user happened to switch to — or vanish.
+   */
+  const updateSessionMessages = useCallback(
+    (
+      target: string,
+      updater: (previous: ChatAgentMessage[]) => ChatAgentMessage[],
+    ) => {
+      if (target === activeSessionRef.current) {
+        // The tab-sync effect writes this through to openTabs.
+        setMessages(updater);
+        return;
+      }
+      setOpenTabs((previous) =>
+        previous.map((tab) =>
+          tab.id === target
+            ? { ...tab, messages: updater(tab.messages), updatedAt: Date.now() }
+            : tab,
+        ),
+      );
+    },
+    [setOpenTabs],
+  );
+
+  const title = useMemo(() => titleFromMessages(messages), [messages]);
+  const userMessageHistory = useMemo(
+    () =>
+      messages
+        .filter((m) => m.role === "user" && m.content.trim())
+        .map((m) => m.content)
+        .reverse(),
+    [messages],
+  );
+  const dayOfWeek = useMemo(() => {
+    const days = [
+      "Sunday",
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday",
+    ];
+    return days[new Date().getDay()]!;
+  }, []);
+  const [attachments, setAttachments] = useAtom(chatAgentAttachmentsAtom);
+  const [history, setHistory] = useAtom(chatAgentHistoryAtom);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  // Media jobs are tracked per session for the same reason streams are: they
+  // outlive the tab they were started from.
+  const [generatingImageSessions, setGeneratingImageSessions] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
+  const [generatingVideoSessions, setGeneratingVideoSessions] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
+  const markSessionBusy = useCallback(
+    (
+      setSessions: React.Dispatch<React.SetStateAction<ReadonlySet<string>>>,
+      target: string,
+      busy: boolean,
+    ) => {
+      setSessions((previous) => {
+        if (previous.has(target) === busy) return previous;
+        const next = new Set(previous);
+        if (busy) next.add(target);
+        else next.delete(target);
+        return next;
+      });
+    },
+    [],
+  );
+  const isGeneratingImage = generatingImageSessions.has(sessionId);
+  const isGeneratingVideo = generatingVideoSessions.has(sessionId);
+  const { settings } = useSettings();
+  const {
+    sendMessage,
+    regenerate,
+    cancel,
+    isStreaming,
+    activeTool,
+    streamingSessions,
+  } = useChatAgentStream(sessionId);
+  const isBusy = isStreaming || isGeneratingImage || isGeneratingVideo;
+
+  // Tell the tab bar which conversations are still working, so a background
+  // answer is visibly in progress rather than silently finishing offscreen.
+  const setBusyChatSessions = useSetAtom(busyChatSessionsAtom);
+  useEffect(() => {
+    const busy = new Set([
+      ...streamingSessions,
+      ...generatingImageSessions,
+      ...generatingVideoSessions,
+    ]);
+    setBusyChatSessions(busy.size > 0 ? [...busy] : EMPTY_BUSY_SESSIONS);
+  }, [
+    streamingSessions,
+    generatingImageSessions,
+    generatingVideoSessions,
+    setBusyChatSessions,
+  ]);
+  // Leaving Chat Agent must not leave stale spinners in the tab bar.
+  useEffect(
+    () => () => setBusyChatSessions(EMPTY_BUSY_SESSIONS),
+    [setBusyChatSessions],
+  );
+  // Video generation runs on a provider job with no cancel route, so stop is
+  // offered only for the work we can genuinely interrupt.
+  const imageRequestIdRef = useRef(new Map<string, string>());
+  const canStop = isStreaming || isGeneratingImage;
+  const handleStop = useCallback(() => {
+    if (isStreaming) cancel();
+    const requestId = imageRequestIdRef.current.get(sessionId);
+    if (requestId) {
+      void ipc.imageGeneration.cancelImageGeneration({ requestId });
+    }
+  }, [cancel, isStreaming, sessionId]);
+  const {
+    scrollRef,
+    handleScroll,
+    followLatest,
+    isFollowing,
+    pendingCount,
+    scrollIntentHandlers,
+  } = useChatAutoScroll({
+    conversationId: sessionId,
+    contentVersion: messages,
+    isStreaming: isBusy,
+  });
+
+  // Keep every open tab durable, including a brand-new empty tab. This is
+  // separate from history because closing a tab must not delete its transcript.
+  //
+  // The tab list is localStorage-backed, so each write re-serialises every open
+  // conversation. Doing that per streamed token — twenty-plus times a second,
+  // synchronously — is what makes long chats stutter, so the mirror is
+  // throttled and flushed explicitly at the moments staleness would be visible.
+  const latestTabRef = useRef({
+    sessionId,
+    title,
+    messages,
+    vectorCollectionIds,
+  });
+  latestTabRef.current = {
+    sessionId,
+    title,
+    messages,
+    vectorCollectionIds,
+  };
+  const tabSyncTimerRef = useRef<number | null>(null);
+
+  const flushTabSync = useCallback(() => {
+    if (tabSyncTimerRef.current !== null) {
+      window.clearTimeout(tabSyncTimerRef.current);
+      tabSyncTimerRef.current = null;
+    }
+    const {
+      sessionId: id,
+      title: tabTitle,
+      messages: tabMessages,
+      vectorCollectionIds: tabVectorCollectionIds,
+    } = latestTabRef.current;
+    setOpenTabs((prev) => {
+      const index = prev.findIndex((tab) => tab.id === id);
+      const tab: ChatAgentOpenTab = {
+        id,
+        title: tabTitle,
+        messages: tabMessages,
+        vectorCollectionIds: tabVectorCollectionIds,
+        updatedAt: Date.now(),
+      };
+      if (index < 0) return [...prev, tab];
+      const existing = prev[index];
+      // Returning `prev` unchanged is what actually skips the storage write.
+      if (
+        existing.messages === tabMessages &&
+        existing.title === tabTitle &&
+        existing.vectorCollectionIds === tabVectorCollectionIds
+      ) {
+        return prev;
+      }
+      const next = [...prev];
+      next[index] = tab;
+      return next;
+    });
+  }, [setOpenTabs]);
+
+  useEffect(() => {
+    if (tabSyncTimerRef.current !== null) return;
+    tabSyncTimerRef.current = window.setTimeout(() => {
+      tabSyncTimerRef.current = null;
+      flushTabSync();
+    }, TAB_SYNC_INTERVAL_MS);
+  }, [messages, title, vectorCollectionIds, flushTabSync]);
+
+  // Whatever is pending must reach storage before the page goes away.
+  useEffect(() => () => flushTabSync(), [flushTabSync]);
+
+  // A conversation closed mid-answer must not keep generating. The text has
+  // nowhere to land, and tokens are billed until the model stops — so closing
+  // a tab from anywhere in the app stops its stream too.
+  useEffect(() => {
+    if (streamingSessions.size === 0) return;
+    const open = new Set(openTabs.map((tab) => tab.id));
+    for (const id of streamingSessions) {
+      if (!open.has(id)) cancel(id);
+    }
+  }, [openTabs, streamingSessions, cancel]);
+
+  // The active id changes far less often than the transcript, so it gets its
+  // own effect rather than a storage write per token.
+  useEffect(() => {
+    setPersistedActiveId(sessionId);
+  }, [sessionId, setPersistedActiveId]);
+
+  // Persist the current conversation to history once a turn settles (not mid
+  // stream, and only once it has a real user message).
+  useEffect(() => {
+    if (isStreaming || messages.length === 0) return;
+    const hasUserMessage = messages.some(
+      (m) => m.role === "user" && m.content.trim(),
+    );
+    if (!hasUserMessage) return;
+    setHistory((prev) => {
+      const conversation: ChatAgentConversation = {
+        id: sessionId,
+        title,
+        messages,
+        vectorCollectionIds,
+        updatedAt: Date.now(),
+      };
+      const idx = prev.findIndex((c) => c.id === sessionId);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = conversation;
+        return next;
+      }
+      return [conversation, ...prev].slice(0, MAX_CHAT_AGENT_HISTORY);
+    });
+  }, [
+    isStreaming,
+    messages,
+    sessionId,
+    title,
+    vectorCollectionIds,
+    setHistory,
+  ]);
+
+  const handleNewChat = () => {
+    // A new tab never waits on an old one: work already running keeps running
+    // in the tab that started it.
+    flushTabSync();
+    const conversation = createBlankConversation();
+    setOpenTabs((prev) => [...prev, conversation]);
+    setPersistedActiveId(conversation.id);
+    setSessionId(conversation.id);
+    setMessages([]);
+    setVectorCollectionIds([]);
+    setMessageFeedback({});
+    setAttachments([]);
+  };
+
+  // Register the conversation this page opened with, so it shows up in the
+  // workspace tab bar like every other open tab.
+  useEffect(() => {
+    const initial = initialTabRef.current;
+    if (!initial) return;
+    setOpenTabs((prev) =>
+      prev.some((tab) => tab.id === initial.id) ? prev : [...prev, initial],
+    );
+    setPersistedActiveId(initial.id);
+    // Mount only: later tabs are registered as they are created.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Keep the tab label in step with the conversation as it gains messages.
+  useEffect(() => {
+    setOpenTabs((prev) => {
+      const existing = prev.find((tab) => tab.id === sessionId);
+      if (!existing || existing.title === title) return prev;
+      return prev.map((tab) =>
+        tab.id === sessionId ? { ...tab, title } : tab,
+      );
+    });
+  }, [sessionId, title, setOpenTabs]);
+
+  // Closing the last tab from the bar clears the active id; start fresh.
+  useEffect(() => {
+    if (persistedActiveId !== null) return;
+    const conversation = createBlankConversation();
+    setOpenTabs((prev) => (prev.length > 0 ? prev : [conversation]));
+    setPersistedActiveId(conversation.id);
+    setSessionId(conversation.id);
+    setMessages([]);
+    setVectorCollectionIds([]);
+    setMessageFeedback({});
+  }, [persistedActiveId, setOpenTabs, setPersistedActiveId]);
+
+  // The tab bar lives in the app chrome now, so a selection there arrives as
+  // a change to the persisted active id. Load that conversation when it does.
+  useEffect(() => {
+    if (!persistedActiveId || persistedActiveId === sessionId) return;
+    const target = openTabs.find((tab) => tab.id === persistedActiveId);
+    if (!target) return;
+    // Commit the outgoing tab first: it is still the one in React state here,
+    // and a throttled write must not lose the last second of it.
+    flushTabSync();
+    // Switching away is always allowed; the outgoing tab keeps generating and
+    // its text keeps landing in its own transcript.
+    setSessionId(target.id);
+    setMessages(pruneEmptyAssistantMessages(target.messages));
+    setVectorCollectionIds(target.vectorCollectionIds ?? []);
+    setMessageFeedback({});
+  }, [persistedActiveId, sessionId, openTabs, flushTabSync]);
+
+  const handleLoadConversation = (conversation: ChatAgentConversation) => {
+    flushTabSync();
+    const openConversation =
+      openTabs.find((tab) => tab.id === conversation.id) ?? conversation;
+    setOpenTabs((prev) => openChatAgentTab(prev, conversation));
+    setPersistedActiveId(openConversation.id);
+    setSessionId(openConversation.id);
+    setMessages(pruneEmptyAssistantMessages(openConversation.messages));
+    setVectorCollectionIds(openConversation.vectorCollectionIds ?? []);
+    setMessageFeedback({});
+    setAttachments([]);
+    setHistoryOpen(false);
+  };
+
+  const handleDeleteConversation = (id: string) => {
+    // Deleting a conversation that is still answering stops it first, rather
+    // than leaving an orphaned stream writing to a transcript that is gone.
+    cancel(id);
+    assistantMessageIdRef.current.delete(id);
+    setHistory((prev) => prev.filter((c) => c.id !== id));
+    const { tabs: remaining, fallback } = closeChatAgentTab(openTabs, id);
+    // Deleting from history is permanent, so also remove any matching open tab.
+    if (id === sessionId) {
+      const next = fallback ?? createBlankConversation();
+      setOpenTabs(fallback ? remaining : [next]);
+      setPersistedActiveId(next.id);
+      setSessionId(next.id);
+      setMessages(pruneEmptyAssistantMessages(next.messages));
+      setVectorCollectionIds(next.vectorCollectionIds ?? []);
+      setMessageFeedback({});
+      setAttachments([]);
+    } else {
+      setOpenTabs(remaining);
+    }
+  };
+
+  const handleFeedback = (messageId: string, feedback: MessageFeedback) => {
+    setMessageFeedback((prev) => ({ ...prev, [messageId]: feedback }));
+  };
+
+  const lastAssistantMessageId = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i]?.role === "assistant") return messages[i].id;
+    }
+    return null;
+  }, [messages]);
+
+  /**
+   * Callbacks bound to the tab that started the response, so a stream still
+   * writes into its own transcript after the user switches tabs.
+   */
+  const makeStreamCallbacks = (target: string) => ({
+    onAssistantFlush: (content: string) => {
+      const assistantId = assistantMessageIdRef.current.get(target);
+      if (!assistantId) return;
+      updateSessionMessages(target, (prev) =>
+        prev.map((m) => (m.id === assistantId ? { ...m, content } : m)),
+      );
+    },
+    onToolResult: (result: ChatAgentToolResult) => {
+      const assistantId = assistantMessageIdRef.current.get(target);
+      if (!assistantId) return;
+      updateSessionMessages(target, (prev) =>
+        prev.map((m) =>
+          m.id === assistantId
+            ? { ...m, toolResults: [...(m.toolResults ?? []), result] }
+            : m,
+        ),
+      );
+    },
+    onRagSources: (ragSources: ChatAgentMessage["ragSources"]) => {
+      const assistantId = assistantMessageIdRef.current.get(target);
+      if (!assistantId || !ragSources) return;
+      updateSessionMessages(target, (prev) =>
+        prev.map((message) =>
+          message.id === assistantId ? { ...message, ragSources } : message,
+        ),
+      );
+    },
+    onComplete: () => {
+      assistantMessageIdRef.current.delete(target);
+      updateSessionMessages(target, pruneEmptyAssistantMessages);
+    },
+    onError: () => {
+      assistantMessageIdRef.current.delete(target);
+      updateSessionMessages(target, pruneEmptyAssistantMessages);
+    },
+  });
+
+  const handleRegenerate = (assistantMessageId: string) => {
+    if (isStreaming) return;
+    const target = sessionId;
+    const assistantId = crypto.randomUUID();
+    assistantMessageIdRef.current.set(target, assistantId);
+    setMessageFeedback((prev) => {
+      const next = { ...prev };
+      delete next[assistantMessageId];
+      return next;
+    });
+    setMessages((prev) => {
+      const idx = prev.findIndex((m) => m.id === assistantMessageId);
+      if (idx < 0) return prev;
+      return [
+        ...prev.slice(0, idx),
+        { id: assistantId, role: "assistant", content: "" },
+      ];
+    });
+    regenerate(
+      makeStreamCallbacks(target),
+      messages.map(({ role, content }) => ({ role, content })),
+    );
+  };
+
+  const handleGenerateImage = async (
+    displayContent: string,
+    prompt: string,
+  ) => {
+    const userMessage: ChatAgentMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: displayContent,
+    };
+    // The tab that asked for the image owns the result, even if the user has
+    // moved to another tab by the time it arrives.
+    const target = sessionId;
+    const assistantId = crypto.randomUUID();
+    updateSessionMessages(target, (prev) => [
+      ...prev,
+      userMessage,
+      {
+        id: assistantId,
+        role: "assistant",
+        content: "",
+        generatingImage: true,
+      },
+    ]);
+    markSessionBusy(setGeneratingImageSessions, target, true);
+    const requestId = crypto.randomUUID();
+    imageRequestIdRef.current.set(target, requestId);
+    try {
+      const result = await ipc.imageGeneration.generateAgentImage({
+        prompt,
+        requestId,
+        model:
+          (settings
+            ? getAssignedModelForRole(settings, "image")?.name
+            : undefined) ?? settings?.imageAgentModel,
+      });
+      updateSessionMessages(target, (prev) =>
+        prev.map((m) =>
+          m.id === assistantId
+            ? {
+                ...m,
+                generatingImage: false,
+                images: result.images,
+                imageModel: result.model,
+                mediaPrompt: prompt,
+                content: result.text?.trim() || "",
+              }
+            : m,
+        ),
+      );
+      // Persist to the Library and the configured durable storage destination.
+      void Promise.all(
+        result.images.map((image) =>
+          ipc.imageGeneration.saveImageToLibrary({ image, prompt }),
+        ),
+      )
+        .then((savedImages) => {
+          const destination = savedImages.find(
+            (image) => image.storageDestination,
+          )?.storageDestination;
+          if (destination === "local") {
+            showSuccess("Generated image saved to your Local Vault");
+          } else if (destination === "cloud") {
+            showSuccess("Generated image saved to Vercel Blob");
+          }
+        })
+        .catch((error) => {
+          showError(
+            error instanceof Error
+              ? error.message
+              : "The image was generated but could not be saved.",
+          );
+        });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      updateSessionMessages(target, (prev) =>
+        prev.map((m) =>
+          m.id === assistantId
+            ? {
+                ...m,
+                generatingImage: false,
+                content: `Sorry, I couldn't generate that image. ${message}`,
+              }
+            : m,
+        ),
+      );
+    } finally {
+      markSessionBusy(setGeneratingImageSessions, target, false);
+      imageRequestIdRef.current.delete(target);
+    }
+  };
+
+  const handleGenerateVideo = async (
+    displayContent: string,
+    prompt: string,
+    format: "youtube_shorts" | "instagram_reels",
+    inputImage?: string,
+    durationSeconds?: number,
+  ) => {
+    const userMessage: ChatAgentMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: displayContent,
+    };
+    // Video takes minutes, so switching tabs while it runs is the normal case
+    // rather than the exception. Bind the result to the tab that asked.
+    const target = sessionId;
+    const assistantId = crypto.randomUUID();
+    updateSessionMessages(target, (prev) => [
+      ...prev,
+      userMessage,
+      {
+        id: assistantId,
+        role: "assistant",
+        content: "",
+        generatingVideo: true,
+      },
+    ]);
+    markSessionBusy(setGeneratingVideoSessions, target, true);
+    try {
+      const result = await ipc.videoGeneration.generate({
+        prompt,
+        format,
+        model:
+          (settings
+            ? getAssignedModelForRole(settings, "video")?.name
+            : undefined) ??
+          settings?.videoAgentModel ??
+          DEFAULT_VIDEO_MODEL,
+        inputImage,
+        // The provider clamps this to its own minimum, so asking for less
+        // than ten seconds still yields a ten-second clip.
+        duration: durationSeconds != null ? String(durationSeconds) : undefined,
+      });
+      const finished = {
+        generatingVideo: false,
+        videoUrl: result.videoUrl,
+        videoModel: result.model,
+        videoFormat: result.format,
+        mediaPrompt: prompt,
+        // No filler caption: it added nothing and forced an empty glass
+        // panel to render behind the video.
+        content: "",
+      };
+      updateSessionMessages(target, (prev) => {
+        // Minutes of waiting must not be thrown away because the placeholder
+        // is gone — if it is, post the video as a new message instead.
+        if (!prev.some((message) => message.id === assistantId)) {
+          return [...prev, { id: assistantId, role: "assistant", ...finished }];
+        }
+        return prev.map((message) =>
+          message.id === assistantId ? { ...message, ...finished } : message,
+        );
+      });
+      showSuccess("Video generated");
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      updateSessionMessages(target, (prev) =>
+        prev.map((message) =>
+          message.id === assistantId
+            ? {
+                ...message,
+                generatingVideo: false,
+                content: `Sorry, I couldn't generate that video. ${errorMessage}`,
+              }
+            : message,
+        ),
+      );
+      showError(errorMessage);
+    } finally {
+      markSessionBusy(setGeneratingVideoSessions, target, false);
+    }
+  };
+
+  const handleSubmit = async (
+    text: string,
+    selectedMcpActions: ChatAgentMcpAction[],
+    vectorCollectionIds: string[],
+  ) => {
+    // Reading a document happens before the model is called and can take a
+    // while, so this turn is pinned to the tab it was sent from.
+    const target = sessionId;
+    // Captured before the composer is cleared, so the sent bubble can show
+    // which files went with it.
+    const sentAttachments = describeAttachments(attachments);
+    const readingDocument = attachments.some((attachment) =>
+      needsDocumentReading(attachment.file),
+    );
+
+    // Documents are read before the model is called, which takes real time.
+    // Post the turn first so the upload is acknowledged and the reading
+    // animation is visible, rather than the UI sitting silent.
+    let placeholderId: string | null = null;
+    if (readingDocument) {
+      placeholderId = crypto.randomUUID();
+      const userId = crypto.randomUUID();
+      updateSessionMessages(target, (prev) => [
+        ...prev,
+        {
+          id: userId,
+          role: "user",
+          content: text.trim() || attachments[0].file.name,
+          attachments: sentAttachments,
+        },
+        {
+          id: placeholderId!,
+          role: "assistant",
+          content: "",
+          readingDocument: true,
+        },
+      ]);
+    }
+
+    let prepared: Awaited<ReturnType<typeof prepareChatAgentMessage>>;
+    try {
+      prepared = await prepareChatAgentMessage(text, attachments);
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "The document could not be read.";
+      if (placeholderId) {
+        const id = placeholderId;
+        updateSessionMessages(target, (prev) =>
+          prev.map((message) =>
+            message.id === id
+              ? {
+                  ...message,
+                  readingDocument: false,
+                  content: `Sorry, I couldn't read that document. ${errorMessage}`,
+                }
+              : message,
+          ),
+        );
+      }
+      showError(errorMessage);
+      return;
+    }
+    const content = prepared.modelText;
+
+    // The reading card has served its purpose; the turn continues below.
+    if (placeholderId) {
+      const id = placeholderId;
+      updateSessionMessages(target, (prev) =>
+        prev.filter((message) => message.id !== id),
+      );
+    }
+    if (prepared.attachmentErrors.length > 0) {
+      showError(prepared.attachmentErrors.join("\n"));
+    }
+    if (!content) return;
+
+    const videoIntent = detectVideoPrompt(text);
+    const inputImage = videoIntent
+      ? await getFirstImageAttachmentDataUrl(attachments)
+      : undefined;
+    setAttachments([]);
+
+    if (videoIntent && selectedMcpActions.length === 0) {
+      await handleGenerateVideo(
+        content,
+        videoIntent.prompt,
+        videoIntent.format,
+        inputImage,
+        videoIntent.durationSeconds,
+      );
+      return;
+    }
+
+    // If the user is asking for an image (and not invoking MCP tools), generate
+    // one with the default image model instead of streaming a text reply.
+    const imagePrompt = detectImagePrompt(text);
+    if (imagePrompt && selectedMcpActions.length === 0) {
+      await handleGenerateImage(content, imagePrompt);
+      return;
+    }
+
+    const messageForApi =
+      selectedMcpActions.length > 0
+        ? buildChatAgentMcpActionsMessage(selectedMcpActions, content)
+        : content;
+    const selectedMcpKeys =
+      selectedMcpActions.length > 0
+        ? getChatAgentMcpActionSelectionKeys(selectedMcpActions)
+        : null;
+
+    sendMessage(
+      {
+        message: messageForApi,
+        displayMessage: prepared.displayText,
+        selectedMcpToolKeys: selectedMcpKeys?.toolKeys,
+        selectedMcpWorkflowKeys: selectedMcpKeys?.workflowKeys,
+        vectorCollectionIds:
+          vectorCollectionIds.length > 0 ? vectorCollectionIds : undefined,
+        conversationHistory: messages.map(({ role, content }) => ({
+          role,
+          content,
+        })),
+      },
+      {
+        onUserMessage: (userContent) => {
+          const assistantId = crypto.randomUUID();
+          assistantMessageIdRef.current.set(target, assistantId);
+          // The document path already posted this turn's user message while
+          // the file was being read; posting it again would duplicate it.
+          const userMessages: ChatAgentMessage[] = readingDocument
+            ? []
+            : [
+                {
+                  id: crypto.randomUUID(),
+                  role: "user",
+                  content: userContent,
+                  attachments: sentAttachments,
+                },
+              ];
+          updateSessionMessages(target, (prev) => [
+            ...prev,
+            ...userMessages,
+            { id: assistantId, role: "assistant", content: "" },
+          ]);
+        },
+        ...makeStreamCallbacks(target),
+      },
+    );
+  };
+
+  return (
+    <div
+      className="chat-agent-page home-jarvis relative flex min-h-0 w-full flex-1 flex-col overflow-hidden"
+      data-testid="chat-agent-page"
+    >
+      <ParticleBackground className="z-0" />
+
+      <div className="relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden">
+        <ChatAgentHeader
+          title={title}
+          onNewChat={handleNewChat}
+          onOpenHistory={() => setHistoryOpen(true)}
+        />
+        <TooltipProvider delay={200}>
+          {messages.length === 0 ? (
+            <div
+              className="chat-agent-empty-stage"
+              data-testid="chat-agent-empty-stage"
+            >
+              <div className="chat-agent-empty">
+                <h2 className="chat-agent-empty-title font-jarvis-display">
+                  Hello {dayOfWeek}
+                </h2>
+              </div>
+              <ChatAgentComposer
+                onSubmit={handleSubmit}
+                disabled={isBusy}
+                isStreaming={canStop}
+                onStop={handleStop}
+                messageHistory={userMessageHistory}
+                variant="empty"
+                selectedVectorCollectionIds={vectorCollectionIds}
+                onVectorCollectionIdsChange={setVectorCollectionIds}
+              />
+            </div>
+          ) : (
+            <>
+              <div
+                ref={scrollRef}
+                className="chat-agent-messages"
+                onScroll={handleScroll}
+                {...scrollIntentHandlers}
+              >
+                <div className="chat-agent-messages-inner">
+                  <div className="chat-agent-thread">
+                    {messages.map((message) => {
+                      if (
+                        isStreaming &&
+                        message.role === "assistant" &&
+                        !message.content.trim() &&
+                        !message.toolResults?.length
+                      ) {
+                        return null;
+                      }
+                      return (
+                        <ChatAgentMessageRow
+                          key={message.id}
+                          message={message}
+                          isLastAssistant={
+                            message.id === lastAssistantMessageId
+                          }
+                          isStreaming={isStreaming}
+                          feedback={messageFeedback[message.id] ?? null}
+                          onFeedback={handleFeedback}
+                          onRegenerate={
+                            message.id === lastAssistantMessageId
+                              ? () => handleRegenerate(message.id)
+                              : undefined
+                          }
+                        />
+                      );
+                    })}
+                    {isStreaming &&
+                      messages[messages.length - 1]?.role === "assistant" &&
+                      (!messages[messages.length - 1]?.content ||
+                        activeTool) && (
+                        <article className="chat-agent-turn chat-agent-turn--assistant">
+                          <div
+                            className="chat-agent-assistant-avatar"
+                            aria-hidden
+                          >
+                            <span className="chat-agent-typing-dots">···</span>
+                          </div>
+                          <ChatAgentActivityIndicator activeTool={activeTool} />
+                        </article>
+                      )}
+                  </div>
+                </div>
+              </div>
+              <div className="relative">
+                <JumpToLatestButton
+                  visible={!isFollowing}
+                  onClick={followLatest}
+                  pendingCount={pendingCount}
+                  isStreaming={isBusy}
+                />
+                <ChatAgentComposer
+                  onSubmit={handleSubmit}
+                  disabled={isBusy}
+                  isStreaming={canStop}
+                  onStop={handleStop}
+                  messageHistory={userMessageHistory}
+                  selectedVectorCollectionIds={vectorCollectionIds}
+                  onVectorCollectionIdsChange={setVectorCollectionIds}
+                />
+              </div>
+            </>
+          )}
+        </TooltipProvider>
+      </div>
+
+      <ChatAgentHistoryDialog
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+        conversations={history}
+        activeId={sessionId}
+        onSelect={handleLoadConversation}
+        onDelete={handleDeleteConversation}
+      />
+    </div>
+  );
+}

@@ -36,9 +36,9 @@ export function ReleaseChannelSelector() {
     } else {
       toast("Using Beta release channel", {
         description:
-          "You will need to restart Dyad for your settings to take effect.",
+          "You will need to restart Meta Human OS for your settings to take effect.",
         action: {
-          label: "Restart Dyad",
+          label: "Restart Meta Human OS",
           onClick: () => {
             ipc.system.restartDyad();
           },

@@ -79,6 +79,35 @@ export const McpToolSchema = z.object({
 
 export type McpTool = z.infer<typeof McpToolSchema>;
 
+export const McpWorkflowSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  description: z.string().nullable().optional(),
+  active: z.boolean().nullable().optional(),
+});
+
+export type McpWorkflow = z.infer<typeof McpWorkflowSchema>;
+
+export const McpConnectionStatusSchema = z.object({
+  serverId: z.number(),
+  ok: z.boolean(),
+  toolCount: z.number().optional(),
+  error: z.string().optional(),
+});
+
+export type McpConnectionStatus = z.infer<typeof McpConnectionStatusSchema>;
+
+export const LovableConnectionStatusSchema = z.object({
+  state: z.enum(["disconnected", "connected", "error"]),
+  serverId: z.number().optional(),
+  toolCount: z.number().optional(),
+  error: z.string().optional(),
+});
+
+export type LovableConnectionStatus = z.infer<
+  typeof LovableConnectionStatusSchema
+>;
+
 export const McpToolConsentRecordSchema = z.object({
   id: z.number(),
   serverId: z.number(),
@@ -158,6 +187,36 @@ export const mcpContracts = {
     channel: "mcp:list-tools",
     input: z.number(), // serverId
     output: z.array(McpToolSchema),
+  }),
+
+  listWorkflows: defineContract({
+    channel: "mcp:list-workflows",
+    input: z.number(), // serverId
+    output: z.array(McpWorkflowSchema),
+  }),
+
+  checkConnection: defineContract({
+    channel: "mcp:check-connection",
+    input: z.number(), // serverId
+    output: McpConnectionStatusSchema,
+  }),
+
+  getLovableStatus: defineContract({
+    channel: "mcp:lovable-status",
+    input: z.void(),
+    output: LovableConnectionStatusSchema,
+  }),
+
+  connectLovable: defineContract({
+    channel: "mcp:connect-lovable",
+    input: z.void(),
+    output: LovableConnectionStatusSchema,
+  }),
+
+  disconnectLovable: defineContract({
+    channel: "mcp:disconnect-lovable",
+    input: z.void(),
+    output: LovableConnectionStatusSchema,
   }),
 
   getToolConsents: defineContract({

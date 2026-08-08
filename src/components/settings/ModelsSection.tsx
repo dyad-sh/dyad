@@ -18,6 +18,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useQueryClient } from "@tanstack/react-query";
+import { ApiModelsList } from "./ApiModelsList";
 import { queryKeys } from "@/lib/queryKeys";
 
 interface ModelsSectionProps {
@@ -90,9 +91,11 @@ export function ModelsSection({ providerId }: ModelsSectionProps) {
   };
 
   return (
-    <div className="mt-8 border-t pt-6">
-      <h2 className="text-2xl font-semibold mb-4">Models</h2>
-      <p className="text-muted-foreground mb-4">
+    <section className="mt-10 border-t border-border/60 pt-8">
+      <h2 className="text-lg font-semibold tracking-tight text-foreground">
+        Models
+      </h2>
+      <p className="mt-1 mb-5 text-sm text-muted-foreground">
         Manage specific models available through this provider.
       </p>
 
@@ -115,16 +118,16 @@ export function ModelsSection({ providerId }: ModelsSectionProps) {
           {models.map((model) => (
             <div
               key={model.apiName + model.displayName}
-              className={`p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm cursor-pointer hover:shadow-md transition-shadow ${
+              className={`cursor-pointer rounded-xl border border-border/70 bg-card/50 p-4 shadow-sm transition-[border-color,box-shadow] hover:border-primary/30 hover:shadow-md ${
                 selectedModel === model.apiName
-                  ? "ring-2 ring-blue-500 dark:ring-blue-400"
+                  ? "border-primary/50 ring-1 ring-primary/30"
                   : ""
               }`}
               onClick={() => handleModelClick(model.apiName)}
               onDoubleClick={() => handleModelDoubleClick(model)}
             >
               <div className="flex justify-between items-center">
-                <h4 className="text-lg font-semibold text-gray-800 dark:text-gray-100">
+                <h4 className="text-sm font-semibold text-foreground">
                   {model.displayName}
                 </h4>
                 {model.type === "custom" && (
@@ -167,15 +170,15 @@ export function ModelsSection({ providerId }: ModelsSectionProps) {
                   </div>
                 )}
               </div>
-              <p className="text-sm text-gray-500 dark:text-gray-400 italic">
+              <p className="font-mono text-xs text-muted-foreground italic">
                 {model.apiName}
               </p>
               {model.description && (
-                <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
+                <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
                   {model.description}
                 </p>
               )}
-              <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-gray-500 dark:text-gray-400">
+              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                 {model.contextWindow && (
                   <span>
                     Context: {model.contextWindow.toLocaleString()} tokens
@@ -188,12 +191,12 @@ export function ModelsSection({ providerId }: ModelsSectionProps) {
                 )}
               </div>
               <div className="flex flex-wrap gap-x-2">
-                <span className="mt-2 inline-block bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded-full dark:bg-blue-900 dark:text-blue-300">
+                <span className="mt-2 inline-block rounded-md bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
                   {model.type === "cloud" ? "Built-in" : "Custom"}
                 </span>
 
                 {model.tag && (
-                  <span className="mt-2 inline-block bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded-full dark:bg-blue-900 dark:text-blue-300">
+                  <span className="mt-2 inline-block rounded-md bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                     {model.tag}
                   </span>
                 )}
@@ -213,10 +216,18 @@ export function ModelsSection({ providerId }: ModelsSectionProps) {
         <Button
           onClick={() => setIsCustomModelDialogOpen(true)}
           variant="outline"
-          className="mt-6"
+          size="sm"
+          className="mt-6 w-fit"
         >
           <PlusIcon className="mr-2 h-4 w-4" /> Add Custom Model
         </Button>
+      )}
+
+      {providerId !== "auto" && (
+        <ApiModelsList
+          providerId={providerId}
+          existingApiNames={(models ?? []).map((model) => model.apiName)}
+        />
       )}
 
       {/* Render the dialogs */}
@@ -273,6 +284,6 @@ export function ModelsSection({ providerId }: ModelsSectionProps) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </section>
   );
 }

@@ -1,5 +1,5 @@
 import { StrictMode, useEffect } from "react";
-import { createRoot } from "react-dom/client";
+import { createRoot, type Root } from "react-dom/client";
 import { router } from "./router";
 import { RouterProvider } from "@tanstack/react-router";
 import { PostHogProvider } from "posthog-js/react";
@@ -289,12 +289,28 @@ function App() {
       );
     });
     return () => unsubscribe();
-  }, []);
+  }, [queryClient]);
 
   return <RouterProvider router={router} />;
 }
 
-createRoot(document.getElementById("root")!).render(
+declare global {
+  // Vite can re-evaluate the renderer entry module after a non-refreshable
+  // dependency changes. Reusing the same root prevents a second application
+  // tree from being appended to #root during development.
+  var __metaHumanReactRoot: Root | undefined;
+}
+
+const rootElement = document.getElementById("root");
+if (!rootElement) {
+  throw new Error("Missing application root element");
+}
+
+const reactRoot =
+  globalThis.__metaHumanReactRoot ??
+  (globalThis.__metaHumanReactRoot = createRoot(rootElement));
+
+reactRoot.render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <PostHogProvider client={posthogClient}>

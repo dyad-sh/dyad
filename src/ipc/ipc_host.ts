@@ -6,6 +6,7 @@ import { registerShellHandlers } from "./handlers/shell_handler";
 import { registerDependencyHandlers } from "./handlers/dependency_handlers";
 import { registerCustomAppsFolderHandlers } from "./handlers/custom_apps_folder_handlers";
 import { registerGithubHandlers } from "./handlers/github_handlers";
+import { registerGithubManagerHandlers } from "./handlers/github_manager_handlers";
 import { registerGithubBranchHandlers } from "./handlers/git_branch_handlers";
 import { registerVercelHandlers } from "./handlers/vercel_handlers";
 import { registerNodeHandlers } from "./handlers/node_handlers";
@@ -33,7 +34,14 @@ import { registerThemesHandlers } from "../pro/main/ipc/handlers/themes_handlers
 import { registerPortalHandlers } from "./handlers/portal_handlers";
 import { registerMigrationHandlers } from "./handlers/migration_handlers";
 import { registerPromptHandlers } from "./handlers/prompt_handlers";
+import { registerAgentOsHandlers } from "./handlers/agent_os_handlers";
+import { registerVercelBlobHandlers } from "./handlers/vercel_blob_handlers";
+import { registerCloudAppsHandlers } from "./handlers/cloud_apps_handlers";
+import { registerVideoGenerationHandlers } from "./handlers/video_generation_handlers";
+import { registerOcrHandlers } from "./handlers/ocr_handlers";
+import { registerKnowledgeGraphHandlers } from "./handlers/knowledge_graph_handlers";
 import { registerHelpBotHandlers } from "./handlers/help_bot_handlers";
+import { registerChatAgentHandlers } from "./handlers/chat_agent_handlers";
 import { registerMcpHandlers } from "./handlers/mcp_handlers";
 import { registerSecurityHandlers } from "./handlers/security_handlers";
 import { registerVisualEditingHandlers } from "../pro/main/ipc/handlers/visual_editing_handlers";
@@ -43,7 +51,15 @@ import { registerPlanHandlers } from "./handlers/plan_handlers";
 import { registerIntegrationHandlers } from "./handlers/integration_handlers";
 import { registerMediaHandlers } from "./handlers/media_handlers";
 import { registerImageGenerationHandlers } from "./handlers/image_generation_handlers";
+import { registerSocialMediaHandlers } from "./handlers/social_media_handlers";
+import { registerHelixHandlers } from "./handlers/helix_handlers";
+import { registerOpenWorkerHandlers } from "./handlers/openworker_handlers";
+import { stopMemoryWorker } from "./utils/conversation_store";
+import { app as electronApp } from "electron";
 import { registerMiscHandlers } from "./handlers/misc_handlers";
+import { registerStorageHandlers } from "./handlers/storage_handlers";
+import { registerVectorHandlers } from "./handlers/vector_handlers";
+import { registerJarvisHandlers } from "./handlers/jarvis_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -55,6 +71,7 @@ export function registerIpcHandlers() {
   registerDependencyHandlers();
   registerCustomAppsFolderHandlers();
   registerGithubHandlers();
+  registerGithubManagerHandlers();
   registerGithubBranchHandlers();
   registerVercelHandlers();
   registerNodeHandlers();
@@ -82,7 +99,14 @@ export function registerIpcHandlers() {
   registerPortalHandlers();
   registerMigrationHandlers();
   registerPromptHandlers();
+  registerAgentOsHandlers();
+  registerVercelBlobHandlers();
+  registerCloudAppsHandlers();
+  registerVideoGenerationHandlers();
+  registerOcrHandlers();
+  registerKnowledgeGraphHandlers();
   registerHelpBotHandlers();
+  registerChatAgentHandlers();
   registerMcpHandlers();
   registerSecurityHandlers();
   registerVisualEditingHandlers();
@@ -92,5 +116,13 @@ export function registerIpcHandlers() {
   registerIntegrationHandlers();
   registerMediaHandlers();
   registerImageGenerationHandlers();
+  registerSocialMediaHandlers();
+  registerHelixHandlers();
+  registerOpenWorkerHandlers();
+  // Extraction must not keep writing while the app is tearing down.
+  electronApp.on("before-quit", () => stopMemoryWorker());
   registerMiscHandlers();
+  registerStorageHandlers();
+  registerVectorHandlers();
+  registerJarvisHandlers();
 }

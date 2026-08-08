@@ -32,7 +32,7 @@ export function showUserInputNotification({
     ? queryClient.getQueryData<App | null>(queryKeys.apps.detail({ appId }))
     : null;
 
-  new Notification(app?.name ?? "Dyad", {
+  new Notification(app?.name ?? "Meta Human OS", {
     body,
     requireInteraction,
   });

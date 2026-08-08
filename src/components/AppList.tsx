@@ -53,14 +53,14 @@ export function AppList({ show }: { show?: boolean }) {
   };
 
   const handleNewApp = () => {
-    navigate({ to: "/" });
+    navigate({ to: "/coder/studio" });
     // We'll eventually need a create app workflow
   };
 
   return (
     <>
       <SidebarGroup
-        className="overflow-y-auto h-[calc(100vh-112px)]"
+        className="h-full min-h-0 overflow-y-auto"
         data-testid="app-list-container"
       >
         <SidebarGroupContent>

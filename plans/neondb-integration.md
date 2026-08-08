@@ -46,7 +46,7 @@ This violates the **Backend-Flexible** design principle — users who want serve
 
 1. **As a user creating a new Next.js app**, I want to connect my Neon account and have the AI agent set up my database schema, so that I get a working database-backed app without manual SQL or connection configuration.
 
-2. **As a user with an existing Neon project**, I want to link it to my Dyad app by selecting it from a dropdown, so that I don't have to create a new project or copy connection strings.
+2. **As a user with an existing Neon project**, I want to link it to my Meta Human OS app by selecting it from a dropdown, so that I don't have to create a new project or copy connection strings.
 
 3. **As a user building a CRUD app**, I want to tell the agent "add a tasks table and build a task list page" and have it execute the SQL on Neon and generate the React components, so that I get an end-to-end working feature in one step.
 
@@ -413,7 +413,7 @@ export function TodoList() {
 ### Next.js Environment Variables (`.env.local`)
 
 ```bash
-# Neon Database (injected by Dyad)
+# Neon Database (injected by Meta Human OS)
 DATABASE_URL=postgresql://user:pass@ep-xxx.us-east-2.aws.neon.tech/dbname?sslmode=require
 
 # Neon Auth (managed by Neon, values from Neon Console > Auth settings)

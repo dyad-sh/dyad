@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ipc } from "@/ipc/types";
+import { isIpcRendererAvailable } from "@/ipc/contracts/core";
 import { queryKeys } from "@/lib/queryKeys";
 
 export interface PromptItem {
@@ -14,11 +15,13 @@ export interface PromptItem {
 
 export function usePrompts() {
   const queryClient = useQueryClient();
+  const hasIpcRenderer = isIpcRendererAvailable();
   const listQuery = useQuery({
     queryKey: queryKeys.prompts.all,
     queryFn: async (): Promise<PromptItem[]> => {
       return ipc.prompt.list();
     },
+    enabled: hasIpcRenderer,
     meta: { showErrorToast: true },
   });
 

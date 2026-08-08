@@ -33,29 +33,31 @@ export const VanillaMarkdownParser = ({ content }: { content: string }) => {
   );
 };
 
+// Rotating loader messages. Module-level so the typing effect's dependency
+// on this array stays referentially stable across renders.
+const loadingTexts = [
+  "Preparing your conversation... 🗨️",
+  "Gathering thoughts... 💭",
+  "Crafting the perfect response... 🎨",
+  "Almost there... 🚀",
+  "Just a moment... ⏳",
+  "Warming up the neural networks... 🧠",
+  "Connecting the dots... 🔗",
+  "Brewing some digital magic... ✨",
+  "Assembling words with care... 🔤",
+  "Fine-tuning the response... 🎯",
+  "Diving into deep thought... 🤿",
+  "Weaving ideas together... 🕸️",
+  "Sparking up the conversation... ⚡",
+  "Polishing the perfect reply... 💎",
+];
+
 // Chat loader with human-like typing/deleting of rotating messages
 function ChatLoader() {
   const [currentTextIndex, setCurrentTextIndex] = useState(0);
   const [displayText, setDisplayText] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
   const [typingSpeed, setTypingSpeed] = useState(100);
-
-  const loadingTexts = [
-    "Preparing your conversation... 🗨️",
-    "Gathering thoughts... 💭",
-    "Crafting the perfect response... 🎨",
-    "Almost there... 🚀",
-    "Just a moment... ⏳",
-    "Warming up the neural networks... 🧠",
-    "Connecting the dots... 🔗",
-    "Brewing some digital magic... ✨",
-    "Assembling words with care... 🔤",
-    "Fine-tuning the response... 🎯",
-    "Diving into deep thought... 🤿",
-    "Weaving ideas together... 🕸️",
-    "Sparking up the conversation... ⚡",
-    "Polishing the perfect reply... 💎",
-  ];
 
   useEffect(() => {
     const currentText = loadingTexts[currentTextIndex];

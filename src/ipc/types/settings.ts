@@ -30,6 +30,42 @@ export const settingsContracts = {
     input: UserSettingsSchema.partial(),
     output: UserSettingsSchema,
   }),
+
+  testAiCoderConnection: defineContract({
+    channel: "test-ai-coder-connection",
+    input: z.object({
+      provider: z.enum(["phantom", "openai"]),
+      apiKey: z.string().optional(),
+      endpoint: z.string().optional(),
+      model: z.string().optional(),
+      openaiModel: z.string().optional(),
+    }),
+    output: z.object({
+      ok: z.literal(true),
+      message: z.string(),
+    }),
+  }),
+
+  testResearchPlugin: defineContract({
+    channel: "test-research-plugin",
+    input: z.object({
+      plugin: z.enum([
+        "travel-search",
+        "duckduckgo",
+        "coingecko",
+        "weather",
+        "maps",
+        "skyscanner",
+        "amadeus",
+        "duffel",
+      ]),
+      settings: UserSettingsSchema.pick({ researchPlugins: true }),
+    }),
+    output: z.object({
+      ok: z.literal(true),
+      message: z.string(),
+    }),
+  }),
 } as const;
 
 // =============================================================================

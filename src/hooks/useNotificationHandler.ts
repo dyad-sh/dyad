@@ -194,7 +194,7 @@ export function useNotificationHandler() {
             ? ` from "${params.sourceLabel}"`
             : "";
           showWarning(
-            `"${params.toolName}"${target} needs your approval. Enable notifications for Dyad in your operating system's notification settings.`,
+            `"${params.toolName}"${target} needs your approval. Enable notifications for Meta Human OS in your operating system's notification settings.`,
           );
         }
         return;
@@ -215,7 +215,7 @@ export function useNotificationHandler() {
       // get app name so user knows which app is making the request
       const appName = chatSummary?.appId
         ? await resolveAppNameForAppId(chatSummary.appId, queryClient)
-        : "Dyad";
+        : "Meta Human OS";
       const title = appName;
 
       showNativeNotification({
@@ -253,7 +253,7 @@ export function useNotificationHandler() {
         const chatSummary = await resolveChatSummary(chatId, queryClient);
         const appName = chatSummary?.appId
           ? await resolveAppNameForAppId(chatSummary.appId, queryClient)
-          : "Dyad";
+          : "Meta Human OS";
         const chatTitle = chatSummary?.title ?? null;
 
         const bodyContext = summary || chatTitle || "Chat response completed";
@@ -273,7 +273,7 @@ export function useNotificationHandler() {
         if (!completionDeniedWarningShownRef.current) {
           completionDeniedWarningShownRef.current = true;
           showWarning(
-            "Enable notifications for Dyad in your operating system's notification settings to receive chat completion alerts.",
+            "Enable notifications for Meta Human OS in your operating system's notification settings to receive chat completion alerts.",
           );
         }
         return;
@@ -290,7 +290,7 @@ export function useNotificationHandler() {
           if (permission === "denied") {
             completionDeniedWarningShownRef.current = true;
             showWarning(
-              "Enable notifications for Dyad in your operating system's notification settings to receive chat completion alerts.",
+              "Enable notifications for Meta Human OS in your operating system's notification settings to receive chat completion alerts.",
             );
           }
           return;
@@ -309,7 +309,7 @@ export function useNotificationHandler() {
             const chatSummary = await resolveChatSummary(chatId, queryClient);
             const appName = chatSummary?.appId
               ? await resolveAppNameForAppId(chatSummary.appId, queryClient)
-              : "Dyad";
+              : "Meta Human OS";
             const chatTitle = chatSummary?.title ?? null;
 
             const bodyContext =

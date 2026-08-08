@@ -1,6 +1,9 @@
-import { FileText, X, MessageSquare, Upload } from "lucide-react";
+import { X, MessageSquare, Upload } from "lucide-react";
 import type { FileAttachment } from "@/ipc/types";
 import { useTranslation } from "react-i18next";
+
+import { FileTypeIcon } from "./FileTypeIcon";
+import { useImagePreviews } from "@/hooks/useImagePreviews";
 
 interface AttachmentsListProps {
   attachments: FileAttachment[];
@@ -12,6 +15,9 @@ export function AttachmentsList({
   onRemove,
 }: AttachmentsListProps) {
   const { t } = useTranslation("chat");
+  const previews = useImagePreviews(
+    attachments.map((attachment) => attachment.file),
+  );
 
   if (attachments.length === 0) return null;
 
@@ -29,36 +35,16 @@ export function AttachmentsList({
             ) : (
               <MessageSquare size={12} className="text-green-600" />
             )}
-            {attachment.file.type.startsWith("image/") ? (
-              <div className="relative group">
-                <img
-                  src={URL.createObjectURL(attachment.file)}
-                  alt={attachment.file.name}
-                  className="w-12 h-12 object-cover rounded-md"
-                  onLoad={(e) =>
-                    URL.revokeObjectURL((e.target as HTMLImageElement).src)
-                  }
-                  onError={(e) =>
-                    URL.revokeObjectURL((e.target as HTMLImageElement).src)
-                  }
-                />
-                <div className="absolute hidden group-hover:block top-14 left-0 z-10">
-                  <img
-                    src={URL.createObjectURL(attachment.file)}
-                    alt={attachment.file.name}
-                    className="max-w-[200px] max-h-[200px] object-contain bg-white p-1 rounded shadow-lg"
-                    onLoad={(e) =>
-                      URL.revokeObjectURL((e.target as HTMLImageElement).src)
-                    }
-                    onError={(e) =>
-                      URL.revokeObjectURL((e.target as HTMLImageElement).src)
-                    }
-                  />
-                </div>
-              </div>
-            ) : (
-              <FileText size={12} />
-            )}
+            <FileTypeIcon
+              fileName={attachment.file.name}
+              mimeType={attachment.file.type}
+              previewUrl={previews.get(attachment.file)}
+              uploading={
+                attachment.file.type.startsWith("image/") &&
+                !previews.has(attachment.file)
+              }
+              size="sm"
+            />
           </div>
           <span className="truncate max-w-[120px]">{attachment.file.name}</span>
           <button

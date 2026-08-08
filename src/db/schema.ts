@@ -283,3 +283,33 @@ export const customThemes = sqliteTable("custom_themes", {
     .notNull()
     .default(sql`(unixepoch())`),
 });
+
+// --- Agent OS: user-registered agents (Multi-Agent Command Center) ---
+export const agentOsAgents = sqliteTable("agent_os_agents", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description").notNull().default(""),
+  // Hermes | OpenClaw | MCP | Custom
+  type: text("type").notNull().default("Custom"),
+  endpoint: text("endpoint").notNull().default(""),
+  // Where this agent serves images it generated, e.g. https://host/images.
+  // Blank means "derive it from the endpoint origin".
+  imageBaseUrl: text("image_base_url").notNull().default(""),
+  model: text("model").notNull().default(""),
+  // Stored locally on this machine; never returned to the renderer in plaintext.
+  apiKey: text("api_key"),
+  // JSON-encoded string[] of capability tags.
+  capabilities: text("capabilities").notNull().default("[]"),
+  icon: text("icon").notNull().default("🤖"),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  // online | idle | offline | error
+  status: text("status").notNull().default("idle"),
+  taskCount: integer("task_count").notNull().default(0),
+  lastActivityAt: integer("last_activity_at", { mode: "timestamp" }),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});

@@ -14,7 +14,29 @@ import { AppSchema } from "./app";
 export const GitHubRepoSchema = z.object({
   name: z.string(),
   full_name: z.string(),
+  owner: z.string(),
   private: z.boolean(),
+  default_branch: z.string().optional(),
+});
+
+export const GitHubAccountSchema = z.object({
+  login: z.string(),
+  email: z.string(),
+});
+
+export const GitHubContentEntrySchema = z.object({
+  name: z.string(),
+  path: z.string(),
+  type: z.enum(["file", "dir", "symlink", "submodule"]),
+  sha: z.string().optional(),
+  size: z.number().optional(),
+});
+
+export const GitHubFileContentSchema = z.object({
+  path: z.string(),
+  content: z.string(),
+  sha: z.string(),
+  encoding: z.literal("utf-8"),
 });
 
 export type GithubRepository = z.infer<typeof GitHubRepoSchema>;
@@ -299,6 +321,79 @@ export const githubContracts = {
     input: CloneRepoParamsSchema,
     output: CloneRepoResultSchema,
   }),
+
+  setAccessToken: defineContract({
+    channel: "github:set-access-token",
+    input: z.object({ token: z.string().min(1) }),
+    output: GitHubAccountSchema,
+  }),
+
+  getAccount: defineContract({
+    channel: "github:get-account",
+    input: z.void(),
+    output: GitHubAccountSchema.nullable(),
+  }),
+
+  createManagerRepo: defineContract({
+    channel: "github:create-manager-repo",
+    input: z.object({
+      name: z.string().min(1),
+      private: z.boolean().optional(),
+      description: z.string().optional(),
+    }),
+    output: GitHubRepoSchema,
+  }),
+
+  deleteRepo: defineContract({
+    channel: "github:delete-repo",
+    input: z.object({ owner: z.string(), repo: z.string() }),
+    output: z.void(),
+  }),
+
+  listContents: defineContract({
+    channel: "github:list-contents",
+    input: z.object({
+      owner: z.string(),
+      repo: z.string(),
+      path: z.string().optional(),
+    }),
+    output: z.array(GitHubContentEntrySchema),
+  }),
+
+  getContent: defineContract({
+    channel: "github:get-content",
+    input: z.object({
+      owner: z.string(),
+      repo: z.string(),
+      path: z.string().min(1),
+    }),
+    output: GitHubFileContentSchema,
+  }),
+
+  upsertContent: defineContract({
+    channel: "github:upsert-content",
+    input: z.object({
+      owner: z.string(),
+      repo: z.string(),
+      path: z.string().min(1),
+      content: z.string(),
+      message: z.string().min(1),
+      sha: z.string().optional(),
+    }),
+    output: z.object({ sha: z.string() }),
+  }),
+
+  deleteContent: defineContract({
+    channel: "github:delete-content",
+    input: z.object({
+      owner: z.string(),
+      repo: z.string(),
+      path: z.string().min(1),
+      message: z.string().min(1),
+      sha: z.string(),
+    }),
+    output: z.void(),
+  }),
 } as const;
 
 // Git contracts (non-GitHub specific)
@@ -368,3 +463,6 @@ export type UncommittedFileStatus = UncommittedFile["status"];
 export type GithubSyncOptions = z.infer<typeof GithubSyncOptionsSchema>;
 export type CloneRepoParams = z.infer<typeof CloneRepoParamsSchema>;
 export type CloneRepoResult = z.infer<typeof CloneRepoResultSchema>;
+export type GitHubAccount = z.infer<typeof GitHubAccountSchema>;
+export type GitHubContentEntry = z.infer<typeof GitHubContentEntrySchema>;
+export type GitHubFileContent = z.infer<typeof GitHubFileContentSchema>;

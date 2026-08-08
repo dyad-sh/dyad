@@ -3,10 +3,6 @@ import {
   StopCircleIcon,
   FolderOpenIcon,
   XIcon,
-  Mic,
-  MicOff,
-  Loader2,
-  Lock,
 } from "lucide-react";
 import {
   Tooltip,
@@ -28,15 +24,13 @@ import { HomeSubmitOptions } from "@/pages/home";
 import { ChatInputControls } from "../ChatInputControls";
 import { LexicalChatInput } from "./LexicalChatInput";
 import { useChatModeToggle } from "@/hooks/useChatModeToggle";
-import { useTypingPlaceholder } from "@/hooks/useTypingPlaceholder";
 import { AuxiliaryActionsMenu } from "./AuxiliaryActionsMenu";
 import { cn } from "@/lib/utils";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { AppSearchDialog } from "../AppSearchDialog";
-import { useVoiceToText } from "@/hooks/useVoiceToText";
-import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
-import { ipc } from "@/ipc/types";
-import { useCallback, useEffect } from "react";
+import { VoiceInputButton } from "./VoiceInputButton";
+import { useCallback, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { showError } from "@/lib/toast";
 
 export function HomeChatInput({
@@ -44,6 +38,7 @@ export function HomeChatInput({
 }: {
   onSubmit: (options?: HomeSubmitOptions) => void;
 }) {
+  const { t } = useTranslation("home");
   const posthog = usePostHog();
   const [inputValue, setInputValue] = useAtom(homeChatInputValueAtom);
   const [selectedApp, setSelectedApp] = useAtom(homeSelectedAppAtom);
@@ -52,21 +47,17 @@ export function HomeChatInput({
     hasChatId: false,
   }); // eslint-disable-line @typescript-eslint/no-unused-vars
   useChatModeToggle();
-  const { userBudget } = useUserBudgetInfo();
-  const isProEnabled = !!userBudget && !!settings?.enableDyadPro;
 
-  const handleTranscription = useCallback(
+  // Voice input appends to the draft, then sends once the transcript has
+  // landed in state on the next render.
+  const pendingVoiceSendRef = useRef(false);
+  const handleVoiceTranscript = useCallback(
     (text: string) => {
       setInputValue((prev: string) => (prev.trim() ? prev + " " + text : text));
+      pendingVoiceSendRef.current = true;
     },
     [setInputValue],
   );
-
-  const { isRecording, isTranscribing, toggleRecording } = useVoiceToText({
-    enabled: isProEnabled,
-    onTranscription: handleTranscription,
-    onError: (message) => showError(message),
-  });
 
   const [appSearchOpen, setAppSearchOpen] = useState(false);
   const { apps } = useLoadApps();
@@ -78,14 +69,9 @@ export function HomeChatInput({
     }
   }, [settings?.enableSelectAppFromHomeChatInput, setSelectedApp]);
 
-  const typingText = useTypingPlaceholder([
-    "an ecommerce store...",
-    "an information page...",
-    "a landing page...",
-  ]);
   const placeholder = selectedApp
-    ? `Send a message to ${selectedApp.name}...`
-    : `Ask Dyad to build ${typingText ?? ""}`;
+    ? t("homeChat.placeholderWithApp", { name: selectedApp.name })
+    : t("homeChat.placeholder");
 
   // Use the attachments hook
   const {
@@ -121,10 +107,6 @@ export function HomeChatInput({
       return;
     }
 
-    if (isRecording) {
-      await toggleRecording();
-    }
-
     // Call the parent's onSubmit handler with attachments and selected app
     onSubmit({
       attachments,
@@ -140,19 +122,32 @@ export function HomeChatInput({
     });
   };
 
+  // Auto-send after a voice transcript lands. The ref keeps the effect on the
+  // latest submit handler without re-running each render.
+  const submitRef = useRef(handleCustomSubmit);
+  submitRef.current = handleCustomSubmit;
+  useEffect(() => {
+    if (!pendingVoiceSendRef.current) return;
+    if (!inputValue.trim()) return;
+    pendingVoiceSendRef.current = false;
+    void submitRef.current();
+  }, [inputValue]);
+
   if (!settings) {
     return null; // Or loading state
   }
 
   return (
     <>
-      <div className="p-4" data-testid="home-chat-input-container">
+      <div className="w-full" data-testid="home-chat-input-container">
         <div
           className={cn(
-            "relative flex flex-col border border-border rounded-2xl bg-(--background-lighter) transition-colors duration-200",
-            "hover:border-primary/30",
-            "focus-within:border-primary/30 focus-within:ring-1 focus-within:ring-primary/20",
-            isDraggingOver && "ring-2 ring-blue-500 border-blue-500",
+            "home-chat-input-surface jarvis-hud-surface relative flex min-h-[120px] flex-col overflow-hidden rounded-2xl sm:min-h-[132px]",
+            "transition-[border-color,box-shadow] duration-200",
+            "hover:border-cyan-400/35 focus-within:border-cyan-400/50",
+            "focus-within:shadow-[0_0_28px_rgba(0,229,255,0.12)]",
+            isDraggingOver &&
+              "ring-2 ring-cyan-400/40 border-cyan-400/50 shadow-[0_0_32px_rgba(0,229,255,0.2)]",
           )}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
@@ -174,7 +169,7 @@ export function HomeChatInput({
             onCancel={cancelPendingFiles}
           />
 
-          <div className="flex items-end gap-1">
+          <div className="home-chat-input-editor flex min-h-[72px] flex-1 flex-col px-4 pt-4 pb-1.5 sm:px-5 sm:pt-5">
             <LexicalChatInput
               value={inputValue}
               onChange={setInputValue}
@@ -183,106 +178,17 @@ export function HomeChatInput({
               placeholder={placeholder}
               disabled={isStreaming}
               excludeCurrentApp={false}
-              disableSendButton={false}
+              submitOnEnter
               messageHistory={[]}
             />
-
-            {/* Voice-to-text button */}
-            {isProEnabled ? (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <button
-                      onClick={toggleRecording}
-                      disabled={isTranscribing}
-                      aria-label={
-                        isRecording
-                          ? "Stop recording"
-                          : isTranscribing
-                            ? "Transcribing..."
-                            : "Voice to text"
-                      }
-                      className={cn(
-                        "px-2 py-2 mb-0.5 text-muted-foreground rounded-lg transition-colors duration-150 cursor-pointer disabled:cursor-default disabled:opacity-30",
-                        isRecording &&
-                          "text-red-500 hover:text-red-600 animate-pulse",
-                        !isRecording && !isTranscribing && "hover:text-primary",
-                      )}
-                    />
-                  }
-                >
-                  {isTranscribing ? (
-                    <Loader2 size={20} className="animate-spin" />
-                  ) : isRecording ? (
-                    <MicOff size={20} />
-                  ) : (
-                    <Mic size={20} />
-                  )}
-                </TooltipTrigger>
-                <TooltipContent>
-                  {isRecording
-                    ? "Stop recording"
-                    : isTranscribing
-                      ? "Transcribing..."
-                      : "Voice to text"}
-                </TooltipContent>
-              </Tooltip>
-            ) : (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <button
-                      onClick={() =>
-                        ipc.system.openExternalUrl("https://dyad.sh/pro")
-                      }
-                      aria-label="Voice to text (Pro)"
-                      className="px-2 py-2 mb-0.5 text-muted-foreground hover:text-primary rounded-lg transition-colors duration-150 cursor-pointer relative"
-                    />
-                  }
-                >
-                  <Mic size={20} />
-                  <Lock size={10} className="absolute -top-0.5 -right-0.5" />
-                </TooltipTrigger>
-                <TooltipContent>Voice to text (requires Pro)</TooltipContent>
-              </Tooltip>
-            )}
-
-            {isStreaming ? (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <button
-                      aria-label="Cancel generation (unavailable here)"
-                      className="px-2 py-2 mb-0.5 mr-1 text-muted-foreground rounded-lg opacity-50 cursor-not-allowed transition-colors duration-150"
-                    />
-                  }
-                >
-                  <StopCircleIcon size={20} />
-                </TooltipTrigger>
-                <TooltipContent>
-                  Cancel generation (unavailable here)
-                </TooltipContent>
-              </Tooltip>
-            ) : (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <button
-                      onClick={handleCustomSubmit}
-                      disabled={!inputValue.trim() && attachments.length === 0}
-                      aria-label="Send message"
-                      className="px-2 py-2 mb-0.5 mr-1 text-muted-foreground hover:text-primary rounded-lg transition-colors duration-150 disabled:opacity-30 disabled:hover:text-muted-foreground cursor-pointer disabled:cursor-default"
-                    />
-                  }
-                >
-                  <SendHorizontalIcon size={20} />
-                </TooltipTrigger>
-                <TooltipContent>Send message</TooltipContent>
-              </Tooltip>
-            )}
           </div>
-          <div className="px-2 flex items-center justify-between pb-0.5 pt-0.5">
-            <div className="flex items-center">
+
+          <div className="home-chat-input-toolbar flex flex-col gap-2 border-t border-cyan-500/15 px-3 py-2 font-jarvis-ui sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
+              <AuxiliaryActionsMenu
+                onFileSelect={handleFileSelect}
+                hideContextFilesPicker
+              />
               <ChatInputControls showContextFilesPicker={false} />
               {settings?.enableSelectAppFromHomeChatInput && (
                 <Tooltip>
@@ -291,18 +197,18 @@ export function HomeChatInput({
                       <button
                         onClick={() => setAppSearchOpen(true)}
                         className={cn(
-                          "cursor-pointer px-2 py-1 ml-1.5 text-xs font-medium rounded-lg transition-colors flex items-center gap-1",
+                          "cursor-pointer rounded-lg px-2 py-1.5 text-xs font-medium transition-colors flex items-center gap-1",
                           selectedApp
                             ? "bg-primary/10 text-primary hover:bg-primary/15"
-                            : "text-foreground/80 hover:text-foreground hover:bg-muted/60",
+                            : "text-muted-foreground hover:text-foreground hover:bg-muted/60",
                         )}
                         data-testid="home-app-selector"
                       />
                     }
                   >
                     <FolderOpenIcon size={14} />
-                    <span className="truncate max-w-[150px]">
-                      {selectedApp ? selectedApp.name : "No app selected"}
+                    <span className="truncate max-w-[120px]">
+                      {selectedApp ? selectedApp.name : t("homeChat.noApp")}
                     </span>
                     {selectedApp && (
                       <button
@@ -321,17 +227,55 @@ export function HomeChatInput({
                   </TooltipTrigger>
                   <TooltipContent>
                     {selectedApp
-                      ? "Change selected app"
-                      : "Select an existing app"}
+                      ? t("homeChat.changeApp")
+                      : t("homeChat.selectApp")}
                   </TooltipContent>
                 </Tooltip>
               )}
             </div>
+            <div className="flex shrink-0 items-center justify-end gap-0.5 self-end sm:self-auto">
+              <VoiceInputButton
+                className="mb-0.5"
+                onTranscript={handleVoiceTranscript}
+                onError={(message: string) => showError(message)}
+              />
 
-            <AuxiliaryActionsMenu
-              onFileSelect={handleFileSelect}
-              hideContextFilesPicker
-            />
+              {isStreaming ? (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <button
+                        aria-label="Cancel generation (unavailable here)"
+                        className="px-2 py-2 mb-0.5 mr-1 text-muted-foreground rounded-lg opacity-50 cursor-not-allowed transition-colors duration-150"
+                      />
+                    }
+                  >
+                    <StopCircleIcon size={20} />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Cancel generation (unavailable here)
+                  </TooltipContent>
+                </Tooltip>
+              ) : (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <button
+                        onClick={handleCustomSubmit}
+                        disabled={
+                          !inputValue.trim() && attachments.length === 0
+                        }
+                        aria-label="Send message"
+                        className="px-2 py-2 mb-0.5 mr-1 text-muted-foreground hover:text-primary rounded-lg transition-colors duration-150 disabled:opacity-30 disabled:hover:text-muted-foreground cursor-pointer disabled:cursor-default"
+                      />
+                    }
+                  >
+                    <SendHorizontalIcon size={20} />
+                  </TooltipTrigger>
+                  <TooltipContent>Send message</TooltipContent>
+                </Tooltip>
+              )}
+            </div>
           </div>
         </div>
       </div>

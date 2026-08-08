@@ -23,7 +23,10 @@ import {
 import { PageContainer } from "@/components/PageContainer";
 import { ProviderSettingsHeader } from "./ProviderSettingsHeader";
 import { ApiKeyConfiguration } from "./ApiKeyConfiguration";
+import { LocalProviderConfiguration } from "./LocalProviderConfiguration";
 import { ModelsSection } from "./ModelsSection";
+import { isLocalProviderId } from "@/lib/local_provider_utils";
+import { useLocalProviderStatus } from "@/hooks/useLocalProviderStatus";
 
 interface ProviderSettingsPageProps {
   provider: string;
@@ -59,7 +62,8 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
   const supportsCustomModels =
     providerData?.type === "custom" || providerData?.type === "cloud";
 
-  const isIronIDE = provider === "auto";
+  const isMetaHumanOS = provider === "auto";
+  const isLocalProvider = isLocalProviderId(provider);
 
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -67,13 +71,13 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
 
-  // Use fetched data (or defaults for Iron IDE)
-  const providerDisplayName = isIronIDE
-    ? "Iron IDE"
+  // Use fetched data (or defaults for Meta Human OS)
+  const providerDisplayName = isMetaHumanOS
+    ? "Meta Human OS"
     : (providerData?.name ?? "Unknown Provider");
   const providerWebsiteUrl = providerData?.websiteUrl;
-  const hasFreeTier = isIronIDE ? false : providerData?.hasFreeTier;
-  const envVarName = isIronIDE ? undefined : providerData?.envVarName;
+  const hasFreeTier = isMetaHumanOS ? false : providerData?.hasFreeTier;
+  const envVarName = isMetaHumanOS ? undefined : providerData?.envVarName;
 
   // Use provider ID (which is the 'provider' prop)
   const userApiKey = settings?.providerSettings?.[provider]?.apiKey?.value;
@@ -113,12 +117,20 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
       ? azureHasSavedSettings || azureHasEnvConfiguration
       : false;
 
-  const isConfigured =
-    provider === "azure"
+  const localServerUrl = (
+    settings?.providerSettings?.[provider] as
+      | { apiBaseUrl?: string }
+      | undefined
+  )?.apiBaseUrl?.trim();
+  const localProviderStatus = useLocalProviderStatus(provider, localServerUrl);
+
+  const isConfigured = isLocalProvider
+    ? Boolean(localServerUrl)
+    : provider === "azure"
       ? isAzureConfigured
       : provider === "vertex"
         ? isVertexConfigured
-        : isValidUserKey || hasEnvKey; // Configured if either is set
+        : isValidUserKey || hasEnvKey;
 
   // --- Save Handler ---
   const handleSaveKey = async (value: string) => {
@@ -130,7 +142,8 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
     setSaveError(null);
     try {
       // Check if this is the first time user is setting up Pro
-      const isNewProSetup = isIronIDE && settings && !hasDyadProKey(settings);
+      const isNewProSetup =
+        isMetaHumanOS && settings && !hasDyadProKey(settings);
 
       const settingsUpdate: Partial<UserSettings> = {
         providerSettings: {
@@ -143,7 +156,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
           },
         },
       };
-      if (isIronIDE) {
+      if (isMetaHumanOS) {
         settingsUpdate.enableDyadPro = true;
         // Set default chat mode to local-agent when user upgrades to pro
         if (isNewProSetup) {
@@ -154,12 +167,58 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
       setApiKeyInput(""); // Clear input on success
 
       // Refetch user budget when Pro key is saved
-      if (isIronIDE) {
+      if (isMetaHumanOS) {
         queryClient.invalidateQueries({ queryKey: queryKeys.userBudget.info });
       }
     } catch (error: any) {
       console.error("Error saving API key:", error);
       setSaveError(error.message || "Failed to save API key.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  /** Persists the thinking switch without disturbing the saved URL. */
+  const handleSetDisableThinking = async (disableThinking: boolean) => {
+    setIsSaving(true);
+    setSaveError(null);
+    try {
+      await updateSettings({
+        providerSettings: {
+          ...settings?.providerSettings,
+          [provider]: {
+            ...settings?.providerSettings?.[provider],
+            disableThinking,
+          },
+        },
+      });
+    } catch (error: unknown) {
+      setSaveError(
+        error instanceof Error ? error.message : "Failed to save setting.",
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveLocalServerUrl = async (apiBaseUrl: string) => {
+    setIsSaving(true);
+    setSaveError(null);
+    try {
+      await updateSettings({
+        providerSettings: {
+          ...settings?.providerSettings,
+          [provider]: {
+            ...settings?.providerSettings?.[provider],
+            apiBaseUrl: apiBaseUrl.trim(),
+          },
+        },
+      });
+    } catch (error: unknown) {
+      setSaveError(
+        error instanceof Error ? error.message : "Failed to save server URL.",
+      );
+      throw error;
     } finally {
       setIsSaving(false);
     }
@@ -202,23 +261,25 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
     }
   };
 
-  // Effect to clear input error when input changes
+  // Clear the input error only when the user edits the input. Depending on
+  // saveError would instantly re-clear a freshly-set error.
   useEffect(() => {
     if (saveError) {
       setSaveError(null);
     }
+    // eslint-disable-next-line react/exhaustive-deps
   }, [apiKeyInput]);
 
   // --- Loading State for Providers ---
   if (providersLoading) {
     return (
       <PageContainer size="md">
-          <Skeleton className="h-8 w-24 mb-4" />
-          <Skeleton className="h-10 w-1/2 mb-6" />
-          <Skeleton className="h-10 w-48 mb-4" />
-          <div className="space-y-4 mt-6">
-            <Skeleton className="h-40 w-full" />
-          </div>
+        <Skeleton className="h-8 w-24 mb-4" />
+        <Skeleton className="h-10 w-1/2 mb-6" />
+        <Skeleton className="h-10 w-48 mb-4" />
+        <div className="space-y-4 mt-6">
+          <Skeleton className="h-40 w-full" />
+        </div>
       </PageContainer>
     );
   }
@@ -227,119 +288,135 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
   if (providersError) {
     return (
       <PageContainer size="md">
-          <Button
-            onClick={() => router.history.back()}
-            variant="outline"
-            size="sm"
-            className="flex items-center gap-2 mb-4 bg-(--background-lightest) py-5"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Go Back
-          </Button>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mr-3 mb-6">
-            Configure Provider
-          </h1>
-          <Alert variant="destructive">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertTitle>Error Loading Provider Details</AlertTitle>
-            <AlertDescription>
-              Could not load provider data: {providersError.message}
-            </AlertDescription>
-          </Alert>
+        <Button
+          onClick={() => router.history.back()}
+          variant="outline"
+          size="sm"
+          className="flex items-center gap-2 mb-4 bg-(--background-lightest) py-5"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Go Back
+        </Button>
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mr-3 mb-6">
+          Configure Provider
+        </h1>
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Error Loading Provider Details</AlertTitle>
+          <AlertDescription>
+            Could not load provider data: {providersError.message}
+          </AlertDescription>
+        </Alert>
       </PageContainer>
     );
   }
 
   // Handle case where provider is not found (e.g., invalid ID in URL)
-  if (!providerData && !isIronIDE) {
+  if (!providerData && !isMetaHumanOS) {
     return (
       <PageContainer size="md">
-          <Button
-            onClick={() => router.history.back()}
-            variant="outline"
-            size="sm"
-            className="flex items-center gap-2 mb-4 bg-(--background-lightest) py-5"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Go Back
-          </Button>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mr-3 mb-6">
-            Provider Not Found
-          </h1>
-          <Alert variant="destructive">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertTitle>Error</AlertTitle>
-            <AlertDescription>
-              The provider with ID "{provider}" could not be found.
-            </AlertDescription>
-          </Alert>
+        <Button
+          onClick={() => router.history.back()}
+          variant="outline"
+          size="sm"
+          className="flex items-center gap-2 mb-4 bg-(--background-lightest) py-5"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Go Back
+        </Button>
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mr-3 mb-6">
+          Provider Not Found
+        </h1>
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>
+            The provider with ID "{provider}" could not be found.
+          </AlertDescription>
+        </Alert>
       </PageContainer>
     );
   }
 
   return (
-    <PageContainer size="md">
-        <ProviderSettingsHeader
+    <PageContainer size="md" innerClassName="max-w-2xl">
+      <ProviderSettingsHeader
+        providerDisplayName={providerDisplayName}
+        isConfigured={isConfigured}
+        isLoading={settingsLoading}
+        hasFreeTier={hasFreeTier}
+        providerWebsiteUrl={providerWebsiteUrl}
+        isMetaHumanOS={isMetaHumanOS}
+        isLocalProvider={isLocalProvider}
+        localConnectionStatus={
+          isLocalProvider ? localProviderStatus.status : undefined
+        }
+        onBackClick={() => router.history.back()}
+      />
+
+      {settingsLoading ? (
+        <div className="space-y-4">
+          <Skeleton className="h-40 w-full" />
+        </div>
+      ) : settingsError ? (
+        <Alert variant="destructive">
+          <AlertTitle>Error Loading Settings</AlertTitle>
+          <AlertDescription>
+            Could not load configuration data: {settingsError.message}
+          </AlertDescription>
+        </Alert>
+      ) : isLocalProvider ? (
+        <LocalProviderConfiguration
+          provider={provider}
           providerDisplayName={providerDisplayName}
-          isConfigured={isConfigured}
-          isLoading={settingsLoading}
-          hasFreeTier={hasFreeTier}
-          providerWebsiteUrl={providerWebsiteUrl}
-          isIronIDE={isIronIDE}
-          onBackClick={() => router.history.back()}
+          settings={settings}
+          isSaving={isSaving}
+          onSave={handleSaveLocalServerUrl}
+          onSetDisableThinking={handleSetDisableThinking}
         />
+      ) : (
+        <ApiKeyConfiguration
+          provider={provider}
+          providerDisplayName={providerDisplayName}
+          settings={settings}
+          envVars={envVars}
+          envVarName={envVarName}
+          isSaving={isSaving}
+          saveError={saveError}
+          apiKeyInput={apiKeyInput}
+          onApiKeyInputChange={setApiKeyInput}
+          onSaveKey={handleSaveKey}
+          onDeleteKey={handleDeleteKey}
+          isMetaHumanOS={isMetaHumanOS}
+          updateSettings={updateSettings}
+        />
+      )}
+      {saveError && isLocalProvider && (
+        <p className="mt-2 text-xs text-destructive">{saveError}</p>
+      )}
 
-        {settingsLoading ? (
-          <div className="space-y-4">
-            <Skeleton className="h-40 w-full" />
+      {isMetaHumanOS && !settingsLoading && (
+        <div className="mt-6 flex items-center justify-between rounded-xl border border-border/70 bg-card/50 p-4 shadow-sm">
+          <div>
+            <h3 className="text-sm font-semibold">Enable Pro</h3>
+            <p className="text-sm text-muted-foreground">
+              Toggle to enable Pro
+            </p>
           </div>
-        ) : settingsError ? (
-          <Alert variant="destructive">
-            <AlertTitle>Error Loading Settings</AlertTitle>
-            <AlertDescription>
-              Could not load configuration data: {settingsError.message}
-            </AlertDescription>
-          </Alert>
-        ) : (
-          <ApiKeyConfiguration
-            provider={provider}
-            providerDisplayName={providerDisplayName}
-            settings={settings}
-            envVars={envVars}
-            envVarName={envVarName}
-            isSaving={isSaving}
-            saveError={saveError}
-            apiKeyInput={apiKeyInput}
-            onApiKeyInputChange={setApiKeyInput}
-            onSaveKey={handleSaveKey}
-            onDeleteKey={handleDeleteKey}
-            isIronIDE={isIronIDE}
-            updateSettings={updateSettings}
+          <Switch
+            aria-label="Enable Pro"
+            checked={settings?.enableDyadPro}
+            onCheckedChange={handleTogglePro}
+            disabled={isSaving}
           />
-        )}
+        </div>
+      )}
 
-        {isIronIDE && !settingsLoading && (
-          <div className="mt-6 flex items-center justify-between p-4 bg-(--background-lightest) rounded-lg border">
-            <div>
-              <h3 className="font-medium">Enable Pro</h3>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                Toggle to enable Pro
-              </p>
-            </div>
-            <Switch
-              aria-label="Enable Pro"
-              checked={settings?.enableDyadPro}
-              onCheckedChange={handleTogglePro}
-              disabled={isSaving}
-            />
-          </div>
-        )}
-
-        {/* Conditionally render CustomModelsSection */}
-        {supportsCustomModels && providerData && (
-          <ModelsSection providerId={providerData.id} />
-        )}
-        <div className="h-24" />
+      {/* Conditionally render CustomModelsSection */}
+      {supportsCustomModels && providerData && (
+        <ModelsSection providerId={providerData.id} />
+      )}
+      <div className="h-24" />
     </PageContainer>
   );
 }

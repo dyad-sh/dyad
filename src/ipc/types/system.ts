@@ -105,6 +105,8 @@ export const ForceCloseDetectedPayloadSchema = z.object({
     .optional(),
 });
 
+export const AppLayoutModeSchema = z.enum(["landscape", "portrait"]);
+
 // =============================================================================
 // System Contracts
 // =============================================================================
@@ -134,6 +136,16 @@ export const systemContracts = {
     channel: "window:focus",
     input: z.void(),
     output: z.void(),
+  }),
+
+  setAppLayoutMode: defineContract({
+    channel: "window:set-layout-mode",
+    input: z.object({ mode: AppLayoutModeSchema }),
+    output: z.object({
+      mode: AppLayoutModeSchema,
+      width: z.number().int().positive(),
+      height: z.number().int().positive(),
+    }),
   }),
 
   // Platform info
@@ -205,6 +217,20 @@ export const systemContracts = {
     channel: "open-external-url",
     input: z.string(),
     output: z.void(),
+  }),
+
+  /**
+   * Read a local image so the renderer can display it. Restricted to image
+   * files with a size cap; this is deliberately not a general file reader.
+   */
+  readLocalImage: defineContract({
+    channel: "read-local-image",
+    input: z.object({ path: z.string().min(1) }),
+    output: z.object({
+      dataUrl: z.string(),
+      name: z.string(),
+      sizeBytes: z.number().nonnegative(),
+    }),
   }),
 
   showItemInFolder: defineContract({

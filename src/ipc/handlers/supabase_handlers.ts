@@ -194,7 +194,7 @@ export function registerSupabaseHandlers() {
     });
   });
 
-  // Set app project - links a Dyad app to a Supabase project
+  // Set app project - links a Meta Human OS app to a Supabase project
   createTypedHandler(supabaseContracts.setAppProject, async (_, params) => {
     const { projectId, appId, parentProjectId, organizationSlug } = params;
     await assertNoNeonProject(appId);
@@ -212,7 +212,7 @@ export function registerSupabaseHandlers() {
     );
   });
 
-  // Unset app project - removes the link between a Dyad app and a Supabase project
+  // Unset app project - removes the link between a Meta Human OS app and a Supabase project
   createTypedHandler(supabaseContracts.unsetAppProject, async (_, params) => {
     const { app } = params;
     await db

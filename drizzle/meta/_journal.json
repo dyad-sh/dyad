@@ -204,6 +204,20 @@
       "when": 1776728360068,
       "tag": "0028_icy_veda",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "6",
+      "when": 1780974758102,
+      "tag": "0029_exotic_nekra",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "6",
+      "when": 1785461447311,
+      "tag": "0030_chubby_war_machine",
+      "breakpoints": true
     }
   ]
 }

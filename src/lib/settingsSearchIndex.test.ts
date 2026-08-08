@@ -6,6 +6,43 @@ import {
 } from "./settingsSearchIndex";
 
 describe("SETTINGS_SEARCH_INDEX", () => {
+  it("includes the Lovable MCP plugin", () => {
+    expect(
+      SETTINGS_SEARCH_INDEX.find((item) => item.id === SETTING_IDS.lovable),
+    ).toEqual({
+      id: SETTING_IDS.lovable,
+      label: "Lovable MCP",
+      description: "Connect Lovable projects, builds, and published websites",
+      keywords: [
+        "lovable",
+        "mcp",
+        "plugin",
+        "website",
+        "deploy",
+        "project",
+        "agent",
+      ],
+      sectionId: SECTION_IDS.plugins,
+      sectionLabel: "Plugins",
+    });
+  });
+
+  it("includes Chat Agent research plugins", () => {
+    const pluginIds = new Set(
+      SETTINGS_SEARCH_INDEX.filter(
+        (item) => item.sectionId === SECTION_IDS.plugins,
+      ).map((item) => item.id),
+    );
+    expect(pluginIds).toContain(SETTING_IDS.duckDuckGo);
+    expect(pluginIds).toContain(SETTING_IDS.coinGecko);
+    expect(pluginIds).toContain(SETTING_IDS.weather);
+    expect(pluginIds).toContain(SETTING_IDS.maps);
+    expect(pluginIds).toContain(SETTING_IDS.travelSearch);
+    expect(pluginIds).toContain(SETTING_IDS.skyscanner);
+    expect(pluginIds).toContain(SETTING_IDS.amadeus);
+    expect(pluginIds).toContain(SETTING_IDS.duffel);
+  });
+
   it("includes the cloud sandbox experiment", () => {
     expect(
       SETTINGS_SEARCH_INDEX.find(
@@ -66,6 +103,69 @@ describe("SETTINGS_SEARCH_INDEX", () => {
       ],
       sectionId: SECTION_IDS.experiments,
       sectionLabel: "Experiments",
+    });
+  });
+
+  it("includes Chat Agent MCP server selection", () => {
+    expect(
+      SETTINGS_SEARCH_INDEX.find(
+        (item) => item.id === SETTING_IDS.chatAgentMcpServers,
+      ),
+    ).toEqual({
+      id: SETTING_IDS.chatAgentMcpServers,
+      label: "Chat Agent MCP servers",
+      description: "Choose which configured MCP servers Chat Agent can use",
+      keywords: ["mcp", "chat agent", "tools", "server", "n8n", "select"],
+      sectionId: SECTION_IDS.toolsMcp,
+      sectionLabel: "Tools (MCP)",
+    });
+  });
+
+  it("includes Chat Agent MCP tool selection", () => {
+    expect(
+      SETTINGS_SEARCH_INDEX.find(
+        (item) => item.id === SETTING_IDS.chatAgentMcpTools,
+      ),
+    ).toEqual({
+      id: SETTING_IDS.chatAgentMcpTools,
+      label: "Chat Agent MCP tools",
+      description:
+        "Choose which n8n workflows and MCP tools Chat Agent can use",
+      keywords: [
+        "mcp",
+        "chat agent",
+        "tools",
+        "workflow",
+        "workflows",
+        "n8n",
+        "select",
+      ],
+      sectionId: SECTION_IDS.toolsMcp,
+      sectionLabel: "Tools (MCP)",
+    });
+  });
+
+  it("includes Chat Agent n8n workflow selection", () => {
+    expect(
+      SETTINGS_SEARCH_INDEX.find(
+        (item) => item.id === SETTING_IDS.chatAgentMcpWorkflows,
+      ),
+    ).toEqual({
+      id: SETTING_IDS.chatAgentMcpWorkflows,
+      label: "Chat Agent n8n workflows",
+      description:
+        "Choose which discovered n8n workflows Chat Agent may execute",
+      keywords: [
+        "mcp",
+        "chat agent",
+        "workflow",
+        "workflows",
+        "n8n",
+        "execute",
+        "select",
+      ],
+      sectionId: SECTION_IDS.toolsMcp,
+      sectionLabel: "Tools (MCP)",
     });
   });
 });

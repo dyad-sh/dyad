@@ -83,6 +83,19 @@ export type DisconnectVercelProjectParams = z.infer<
   typeof DisconnectVercelProjectParamsSchema
 >;
 
+export const CreateVercelManagerProjectParamsSchema = z.object({
+  name: z.string().trim().min(1).max(100),
+});
+
+export const UpdateVercelManagerProjectParamsSchema = z.object({
+  projectId: z.string().min(1),
+  name: z.string().trim().min(1).max(100),
+});
+
+export const DeleteVercelManagerProjectParamsSchema = z.object({
+  projectId: z.string().min(1),
+});
+
 // =============================================================================
 // Vercel Contracts
 // =============================================================================
@@ -98,6 +111,24 @@ export const vercelContracts = {
     channel: "vercel:list-projects",
     input: z.void(),
     output: z.array(VercelProjectSchema),
+  }),
+
+  createManagerProject: defineContract({
+    channel: "vercel:create-manager-project",
+    input: CreateVercelManagerProjectParamsSchema,
+    output: VercelProjectSchema,
+  }),
+
+  updateManagerProject: defineContract({
+    channel: "vercel:update-manager-project",
+    input: UpdateVercelManagerProjectParamsSchema,
+    output: VercelProjectSchema,
+  }),
+
+  deleteManagerProject: defineContract({
+    channel: "vercel:delete-manager-project",
+    input: DeleteVercelManagerProjectParamsSchema,
+    output: z.void(),
   }),
 
   isProjectAvailable: defineContract({

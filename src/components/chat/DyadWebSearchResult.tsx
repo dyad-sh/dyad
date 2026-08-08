@@ -24,10 +24,13 @@ export const DyadWebSearchResult: React.FC<DyadWebSearchResultProps> = ({
   const inProgress = state === "pending";
   const [isExpanded, setIsExpanded] = useState(inProgress);
 
+  // Intentionally only depends on `inProgress` — re-running on `isExpanded`
+  // would re-collapse a block the user manually expanded.
   useEffect(() => {
     if (!inProgress && isExpanded) {
       setIsExpanded(false);
     }
+    // eslint-disable-next-line react/exhaustive-deps
   }, [inProgress]);
 
   return (

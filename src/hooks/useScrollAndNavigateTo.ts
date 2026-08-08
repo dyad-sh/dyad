@@ -1,7 +1,11 @@
 import { useCallback } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useSetAtom } from "jotai";
-import { activeSettingsSectionAtom } from "@/atoms/viewAtoms";
+import {
+  activeSettingsSectionAtom,
+  activeSettingsTabAtom,
+} from "@/atoms/viewAtoms";
+import { getTabIdForSection } from "@/lib/settingsTabs";
 
 type ScrollOptions = {
   behavior?: ScrollBehavior;
@@ -20,37 +24,46 @@ export function useScrollAndNavigateTo(
 ) {
   const navigate = useNavigate();
   const setActiveSection = useSetAtom(activeSettingsSectionAtom);
+  const setActiveTab = useSetAtom(activeSettingsTabAtom);
 
-  return useCallback(
-    async (id: string, sectionId?: string) => {
-      await navigate({ to });
-      const element = document.getElementById(id);
-      if (element) {
-        element.scrollIntoView({
-          behavior: options?.behavior ?? "smooth",
-          block: options?.block ?? "start",
-          inline: options?.inline,
-        });
-        setActiveSection(sectionId ?? id);
-        options?.onScrolled?.(id, element);
-
-        if (options?.highlight) {
-          element.classList.remove("settings-highlight");
-          void element.offsetWidth; // force reflow to restart animation
-          element.classList.add("settings-highlight");
-          const onEnd = () => {
-            element.classList.remove("settings-highlight");
-          };
-          element.addEventListener("animationend", onEnd, { once: true });
-          element.addEventListener("animationcancel", onEnd, { once: true });
-        }
-
-        return true;
+  const scrollToElement = useCallback(
+    (id: string, sectionId?: string) => {
+      const resolvedSection = sectionId ?? id;
+      if (to === "/settings") {
+        setActiveTab(getTabIdForSection(resolvedSection));
       }
-      return false;
+      setActiveSection(resolvedSection);
+
+      const element = document.getElementById(id);
+      if (!element) {
+        return false;
+      }
+
+      element.scrollIntoView({
+        behavior: options?.behavior ?? "smooth",
+        block: options?.block ?? "start",
+        inline: options?.inline,
+      });
+      options?.onScrolled?.(id, element);
+
+      if (options?.highlight) {
+        element.classList.remove("settings-highlight");
+        void element.offsetWidth;
+        element.classList.add("settings-highlight");
+        const onEnd = () => {
+          element.classList.remove("settings-highlight");
+        };
+        element.addEventListener("animationend", onEnd, { once: true });
+        element.addEventListener("animationcancel", onEnd, { once: true });
+      }
+
+      return true;
     },
+    // Depend on the individual option fields (stable primitives/callbacks)
+    // rather than the `options` object, which callers typically pass as a
+    // fresh inline object each render.
+    // eslint-disable-next-line react/exhaustive-deps
     [
-      navigate,
       to,
       options?.behavior,
       options?.block,
@@ -58,6 +71,23 @@ export function useScrollAndNavigateTo(
       options?.onScrolled,
       options?.highlight,
       setActiveSection,
+      setActiveTab,
     ],
+  );
+
+  return useCallback(
+    async (id: string, sectionId?: string) => {
+      await navigate({ to });
+
+      if (to === "/settings") {
+        // Wait for the target tab panel to mount before scrolling.
+        await new Promise<void>((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+        });
+      }
+
+      return scrollToElement(id, sectionId);
+    },
+    [navigate, to, scrollToElement],
   );
 }

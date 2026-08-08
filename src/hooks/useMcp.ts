@@ -5,6 +5,8 @@ import type {
   McpServer,
   McpServerUpdate,
   McpTool,
+  McpWorkflow,
+  McpConnectionStatus,
   McpToolConsent,
   CreateMcpServer,
 } from "@/ipc/types";
@@ -41,6 +43,39 @@ export function useMcp() {
     meta: { showErrorToast: true },
   });
 
+  const workflowsByServerQuery = useQuery<Record<number, McpWorkflow[]>, Error>(
+    {
+      queryKey: queryKeys.mcp.workflowsByServer.list({ serverIds }),
+      enabled: serverIds.length > 0,
+      queryFn: async () => {
+        const entries = await Promise.all(
+          serverIds.map(
+            async (id) => [id, await ipc.mcp.listWorkflows(id)] as const,
+          ),
+        );
+        return Object.fromEntries(entries) as Record<number, McpWorkflow[]>;
+      },
+      meta: { showErrorToast: true },
+    },
+  );
+
+  const connectionStatusesQuery = useQuery<
+    Record<number, McpConnectionStatus>,
+    Error
+  >({
+    queryKey: queryKeys.mcp.connectionStatuses.list({ serverIds }),
+    enabled: serverIds.length > 0,
+    queryFn: async () => {
+      const entries = await Promise.all(
+        serverIds.map(
+          async (id) => [id, await ipc.mcp.checkConnection(id)] as const,
+        ),
+      );
+      return Object.fromEntries(entries) as Record<number, McpConnectionStatus>;
+    },
+    meta: { showErrorToast: true },
+  });
+
   const consentsQuery = useQuery<McpToolConsent[], Error>({
     queryKey: queryKeys.mcp.consents,
     queryFn: async () => {
@@ -67,6 +102,12 @@ export function useMcp() {
       await queryClient.invalidateQueries({
         queryKey: queryKeys.mcp.toolsByServer.all,
       });
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.mcp.workflowsByServer.all,
+      });
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.mcp.connectionStatuses.all,
+      });
     },
     meta: { showErrorToast: true },
   });
@@ -80,6 +121,12 @@ export function useMcp() {
       await queryClient.invalidateQueries({
         queryKey: queryKeys.mcp.toolsByServer.all,
       });
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.mcp.workflowsByServer.all,
+      });
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.mcp.connectionStatuses.all,
+      });
     },
     meta: { showErrorToast: true },
   });
@@ -92,6 +139,12 @@ export function useMcp() {
       await queryClient.invalidateQueries({ queryKey: queryKeys.mcp.servers });
       await queryClient.invalidateQueries({
         queryKey: queryKeys.mcp.toolsByServer.all,
+      });
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.mcp.workflowsByServer.all,
+      });
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.mcp.connectionStatuses.all,
       });
     },
     meta: { showErrorToast: true },
@@ -135,6 +188,12 @@ export function useMcp() {
       queryClient.invalidateQueries({
         queryKey: queryKeys.mcp.toolsByServer.all,
       }),
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.mcp.workflowsByServer.all,
+      }),
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.mcp.connectionStatuses.all,
+      }),
       queryClient.invalidateQueries({ queryKey: queryKeys.mcp.consents }),
     ]);
   };
@@ -142,14 +201,22 @@ export function useMcp() {
   return {
     servers: serversQuery.data || [],
     toolsByServer: toolsByServerQuery.data || {},
+    workflowsByServer: workflowsByServerQuery.data || {},
+    connectionStatuses: connectionStatusesQuery.data || {},
     consentsList: consentsQuery.data || [],
     consentsMap,
     isLoading:
       serversQuery.isLoading ||
       toolsByServerQuery.isLoading ||
+      workflowsByServerQuery.isLoading ||
+      connectionStatusesQuery.isLoading ||
       consentsQuery.isLoading,
     error:
-      serversQuery.error || toolsByServerQuery.error || consentsQuery.error,
+      serversQuery.error ||
+      toolsByServerQuery.error ||
+      workflowsByServerQuery.error ||
+      connectionStatusesQuery.error ||
+      consentsQuery.error,
     refetchAll,
 
     // Mutations
@@ -163,6 +230,7 @@ export function useMcp() {
     isCreating: createServerMutation.isPending,
     isToggling: updateServerMutation.isPending,
     isUpdatingServer: updateServerMutation.isPending,
+    isCheckingConnections: connectionStatusesQuery.isFetching,
     isDeleting: deleteServerMutation.isPending,
     isSettingConsent: setConsentMutation.isPending,
   } as const;

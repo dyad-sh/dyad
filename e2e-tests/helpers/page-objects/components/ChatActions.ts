@@ -19,7 +19,7 @@ export class ChatActions {
 
   getChatInput() {
     return this.page.locator(
-      '[data-testid="chat-input-container"]:visible [data-lexical-editor="true"][aria-placeholder^="Ask Dyad to build"], [data-testid="home-chat-input-container"]:visible [data-lexical-editor="true"][aria-placeholder^="Ask Dyad to build"]',
+      '[data-testid="chat-input-container"]:visible [data-lexical-editor="true"][aria-placeholder^="Ask Meta Human OS to build"], [data-testid="home-chat-input-container"]:visible [data-lexical-editor="true"]',
     );
   }
 
@@ -62,7 +62,7 @@ export class ChatActions {
     await expect(async () => {
       const visibleCount = await visibleNewChatButtons.count();
       if (visibleCount <= index) {
-        await this.page.getByRole("link", { name: "Apps" }).hover();
+        await this.page.getByRole("link", { name: "Coding Agent" }).hover();
         await expect(this.page.getByTestId("chat-list-container")).toBeVisible({
           timeout: 1_000,
         });

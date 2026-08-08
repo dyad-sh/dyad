@@ -21,6 +21,7 @@ import {
 import { and, eq } from "drizzle-orm";
 import { IpcMainInvokeEvent } from "electron";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { listProviderApiModels } from "../utils/provider_api_models";
 
 const logger = log.scope("language_model_handlers");
 const handle = createLoggedHandler(logger);
@@ -431,6 +432,16 @@ export function registerLanguageModelHandlers() {
     "get-language-models-by-providers",
     async (): Promise<Record<string, LanguageModel[]>> => {
       return getLanguageModelsByProviders();
+    },
+  );
+
+  handle(
+    "language-models:list-api-models",
+    async (
+      _event: IpcMainInvokeEvent,
+      params: { providerId: string; customApiBaseUrl?: string },
+    ) => {
+      return listProviderApiModels(params);
     },
   );
 }

@@ -123,12 +123,13 @@ export function useStreamChat({
 
   const posthog = usePostHog();
   const queryClient = useQueryClient();
-  let chatId: number | undefined;
 
-  if (hasChatId) {
-    const { id } = useSearch({ from: "/chat" });
-    chatId = id;
-  }
+  // Call useSearch unconditionally to satisfy the rules of hooks. `strict:
+  // false` returns the current route's search loosely (and doesn't throw when
+  // this hook runs outside the /chat route, e.g. on the home page, where there
+  // is no `id` search param).
+  const search = useSearch({ strict: false }) as { id?: number };
+  const chatId: number | undefined = hasChatId ? search.id : undefined;
   const { invalidateTokenCount } = useCountTokens(chatId ?? null, "");
 
   const streamMessage = useCallback(
@@ -540,6 +541,11 @@ export function useStreamChat({
         onSettled?.({ success: false });
       }
     },
+    // streamMessage closes over the latest values intentionally; its deps are
+    // a curated stable subset. Adding the remaining refresh/invalidate helpers
+    // (several recreated each render) would destabilize this hot streaming
+    // callback and cascade re-renders to every consumer.
+    // eslint-disable-next-line react/exhaustive-deps
     [
       setMessagesById,
       setIsStreamingById,

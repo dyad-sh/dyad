@@ -7,7 +7,7 @@ function sendTestNotification() {
     typeof window.Notification !== "undefined" &&
     window.Notification.permission === "granted"
   ) {
-    new window.Notification("Dyad", {
+    new window.Notification("Meta Human OS", {
       body: "Notifications are working! You'll be notified when responses finish or input is needed.",
     });
   }

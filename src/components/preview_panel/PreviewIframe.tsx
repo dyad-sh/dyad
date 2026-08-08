@@ -85,6 +85,7 @@ import { Annotator } from "@/pro/ui/components/Annotator/Annotator";
 import { VisualEditingToolbar } from "./VisualEditingToolbar";
 import { resolvePreviewBrowserUrl } from "./previewBrowserUrl";
 import { PreviewToolbar } from "./PreviewToolbar";
+import { BuildingPreviewScreen } from "./BuildingPreviewScreen";
 import { useTranslation } from "react-i18next";
 
 interface ErrorBannerProps {
@@ -130,7 +131,7 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
 
       {(isInternalDyadError || isSyncError) && (
         <div className="absolute top-1 right-1 p-1 bg-red-100 dark:bg-red-900 rounded-md text-xs font-medium text-red-700 dark:text-red-300">
-          {isSyncError ? "Cloud sync issue" : "Internal Dyad error"}
+          {isSyncError ? "Cloud sync issue" : "Internal Meta Human OS error"}
         </div>
       )}
 
@@ -165,9 +166,9 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
             {isDockerError
               ? "Make sure Docker Desktop is running and try restarting the app."
               : isSyncError
-                ? "Dyad could not upload your latest local changes to the cloud sandbox. Check your network connection or wait for sync to recover."
+                ? "Meta Human OS could not upload your latest local changes to the cloud sandbox. Check your network connection or wait for sync to recover."
                 : isInternalDyadError
-                  ? "Try restarting the Dyad app or restarting your computer to see if that fixes the error."
+                  ? "Try restarting Meta Human OS or restarting your computer to see if that fixes the error."
                   : "Check if restarting the app fixes the error."}
           </span>
         </div>
@@ -203,7 +204,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const [reloadKey, setReloadKey] = useState(0);
   const [errorMessage, setErrorMessage] = useAtom(previewErrorMessageAtom);
   const selectedChatId = useAtomValue(selectedChatIdAtom);
-  const { streamMessage } = useStreamChat();
+  const { streamMessage, isStreaming } = useStreamChat();
   const {
     routes: availableRoutes,
     loading: routesLoading,
@@ -213,6 +214,10 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const { settings, updateSettings } = useSettings();
   const { userBudget } = useUserBudgetInfo();
   const isProMode = !!userBudget;
+  const showBuildingPreview =
+    isStreaming &&
+    (settings?.selectedChatMode === "build" ||
+      settings?.selectedChatMode === "local-agent");
   const queryClient = useQueryClient();
 
   // Preserved URL state (persists across HMR-induced remounts)
@@ -472,14 +477,16 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     ) {
       setErrorMessage({
         message: cloudSandboxStatus.lastErrorMessage
-          ? cloudSandboxStatus.lastErrorMessage.includes("Dyad stopped")
+          ? cloudSandboxStatus.lastErrorMessage.includes(
+              "Meta Human OS stopped",
+            )
             ? cloudSandboxStatus.lastErrorMessage
             : cloudSandboxStatus.terminationReason === "credits_exhausted"
-              ? "This cloud sandbox was stopped because your Dyad Pro credits ran out. Add credits and start it again."
-              : "This cloud sandbox was stopped because Dyad could not confirm billing. Please try starting it again."
+              ? "This cloud sandbox was stopped because your Pro credits ran out. Add credits and start it again."
+              : "This cloud sandbox was stopped because Meta Human OS could not confirm billing. Please try starting it again."
           : cloudSandboxStatus.terminationReason === "credits_exhausted"
-            ? "This cloud sandbox was stopped because your Dyad Pro credits ran out. Add credits and start it again."
-            : "This cloud sandbox was stopped because Dyad could not confirm billing. Please try starting it again.",
+            ? "This cloud sandbox was stopped because your Pro credits ran out. Add credits and start it again."
+            : "This cloud sandbox was stopped because Meta Human OS could not confirm billing. Please try starting it again.",
         source: "dyad-app",
       });
     }
@@ -517,6 +524,8 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     void queryClient.invalidateQueries({
       queryKey: queryKeys.userBudget.info,
     });
+    // Keyed on the specific status fields that should trigger a budget refresh.
+    // eslint-disable-next-line react/exhaustive-deps
   }, [
     cloudSandboxStatus?.billingSlicesCharged,
     cloudSandboxStatus?.terminationReason,
@@ -620,7 +629,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   };
   useEffect(() => {
     setAnnotatorMode(false);
-  }, []);
+  }, [setAnnotatorMode]);
   // Reset visual editing state when app changes or component unmounts
   useEffect(() => {
     return () => {
@@ -629,12 +638,17 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       setPendingChanges(new Map());
       setCurrentComponentCoordinates(null);
     };
-  }, [selectedAppId]);
+  }, [
+    selectedAppId,
+    setVisualEditingSelectedComponent,
+    setPendingChanges,
+    setCurrentComponentCoordinates,
+  ]);
 
   // Update iframe ref atom
   useEffect(() => {
     setPreviewIframeRef(iframeRef.current);
-  }, [iframeRef.current, setPreviewIframeRef]);
+  }, [setPreviewIframeRef]);
 
   // Send pro mode status to iframe
   useEffect(() => {
@@ -1151,6 +1165,10 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
+    // Subscribe once per navigation-state change; the handler closes over the
+    // latest helpers/setters intentionally (adding the unstable inline helpers
+    // would re-bind the window listener on every render).
+    // eslint-disable-next-line react/exhaustive-deps
   }, [
     navigationHistory,
     currentHistoryPosition,
@@ -1191,6 +1209,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     if (visualEditingSelectedComponent) {
       getCurrentElementStyles();
     }
+    // eslint-disable-next-line react/exhaustive-deps
   }, [visualEditingSelectedComponent]);
 
   // Function to activate component selector in the iframe
@@ -1444,7 +1463,8 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     } catch {
       return appUrl;
     }
-  }, [appUrl, reloadKey, selectedAppId]);
+    // currentUrl comes from a ref (not reactive); only appUrl drives this memo.
+  }, [appUrl]);
 
   // Display message if no app is selected
   if (selectedAppId === null) {
@@ -1867,17 +1887,10 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       )}
 
       <div className="relative flex-grow overflow-hidden">
-        {loading ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center space-y-4 bg-gray-50 dark:bg-gray-950">
-            <div className="relative w-5 h-5 animate-spin">
-              <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-2 h-2 bg-primary rounded-full"></div>
-              <div className="absolute bottom-0 left-0 w-2 h-2 bg-primary rounded-full opacity-80"></div>
-              <div className="absolute bottom-0 right-0 w-2 h-2 bg-primary rounded-full opacity-60"></div>
-            </div>
-            <p className="text-gray-600 dark:text-gray-300">
-              Preparing app preview...
-            </p>
-          </div>
+        {showBuildingPreview ? (
+          <BuildingPreviewScreen variant="panel" phase="building" />
+        ) : loading ? (
+          <BuildingPreviewScreen variant="panel" phase="starting" />
         ) : (
           <>
             <ErrorBanner

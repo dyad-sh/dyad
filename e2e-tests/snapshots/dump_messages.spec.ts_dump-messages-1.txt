@@ -103,7 +103,7 @@ export default {
 </dyad-file>
 
 <dyad-file path="README.md">
-# Welcome to your Dyad app
+# Welcome to your Meta Human OS app
 
 </dyad-file>
 

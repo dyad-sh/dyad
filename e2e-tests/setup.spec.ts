@@ -5,24 +5,22 @@ const testSetup = testWithConfig({
   showSetupScreen: true,
 });
 
-testSetup("setup ai provider", async ({ po }) => {
-  await po.page
-    .getByRole("button", { name: "Setup Google Gemini API Key" })
-    .click();
+testSetup("setup ai provider via settings", async ({ po }) => {
+  await po.navigation.goToSettingsTab();
+
+  await expect(
+    po.page.getByRole("heading", { level: 1, name: "Settings" }),
+  ).toBeVisible();
+
+  await po.page.getByRole("heading", { name: "Google" }).click();
   await expect(
     po.page.getByRole("heading", { name: "Configure Google" }),
   ).toBeVisible();
 
   await po.page.getByRole("button", { name: "Go Back" }).click();
-  await po.page
-    .getByRole("button", { name: "Setup OpenRouter API Key" })
-    .click();
+
+  await po.page.getByRole("heading", { name: "OpenRouter" }).click();
   await expect(
     po.page.getByRole("heading", { name: "Configure OpenRouter" }),
   ).toBeVisible();
-
-  await po.page.getByRole("button", { name: "Go Back" }).click();
-  await po.page
-    .getByRole("button", { name: "Setup other AI providers" })
-    .click();
 });

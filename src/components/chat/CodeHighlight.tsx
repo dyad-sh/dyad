@@ -7,7 +7,13 @@ import ShikiHighlighter, {
 import type { Element as HastElement } from "hast";
 import { useTheme } from "../../contexts/ThemeContext";
 import { PLAN_ANNOTATION_IGNORE_ATTRIBUTE } from "../preview_panel/plan/planAnnotationDom";
-import { Copy, Check } from "lucide-react";
+import { Copy, Check, Eye } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import github from "@shikijs/themes/github-light-default";
 import githubDark from "@shikijs/themes/github-dark-default";
 // common languages
@@ -79,22 +85,44 @@ interface CodeHighlightProps {
   className?: string | undefined;
   children?: ReactNode | undefined;
   node?: HastElement | undefined;
+  // Force the dark Shiki theme regardless of the app's light/dark setting.
+  // Used by always-dark surfaces (e.g. the Chat Agent HUD) so code blocks
+  // don't render a light theme on a dark background.
+  forceDark?: boolean | undefined;
+  // Show a "Preview" button on renderable (HTML/SVG) blocks that opens a
+  // sandboxed live preview in a modal.
+  enablePreview?: boolean | undefined;
 }
 
+// Languages whose source can be rendered as a live HTML preview.
+const PREVIEWABLE_LANGUAGES = new Set(["html", "svg", "xml"]);
+
 export const CodeHighlight = memo(
-  ({ className, children, node, ...props }: CodeHighlightProps) => {
+  ({
+    className,
+    children,
+    node,
+    forceDark,
+    enablePreview,
+    ...props
+  }: CodeHighlightProps) => {
     const code = String(children).trim();
     const language = className?.match(/language-(\w+)/)?.[1];
     const isInline = node ? isInlineCode(node) : false;
     //handle copying code to clipboard with transition effect
     const [copied, setCopied] = useState(false);
+    const [previewOpen, setPreviewOpen] = useState(false);
     const handleCopy = () => {
       navigator.clipboard.writeText(code);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000); // revert after 2s
     };
 
+    const isPreviewable =
+      !!enablePreview && !!language && PREVIEWABLE_LANGUAGES.has(language);
+
     const { isDarkMode } = useTheme();
+    const useDarkTheme = forceDark || isDarkMode;
     const highlighter = useHighlighter();
 
     return !isInline ? (
@@ -112,21 +140,54 @@ export const CodeHighlight = memo(
                 {language}
               </span>
             )}
-            <button
-              className="flex items-center text-xs cursor-pointer ml-auto flex-shrink-0"
-              onClick={handleCopy}
-              type="button"
-            >
-              {copied ? <Check size={14} /> : <Copy size={14} />}
-              <span className="ml-1">{copied ? "Copied" : "Copy"}</span>
-            </button>
+            <div className="ml-auto flex flex-shrink-0 items-center gap-3">
+              {isPreviewable && (
+                <button
+                  className="flex items-center text-xs cursor-pointer"
+                  onClick={() => setPreviewOpen(true)}
+                  type="button"
+                >
+                  <Eye size={14} />
+                  <span className="ml-1">Preview</span>
+                </button>
+              )}
+              <button
+                className="flex items-center text-xs cursor-pointer"
+                onClick={handleCopy}
+                type="button"
+              >
+                {copied ? <Check size={14} /> : <Copy size={14} />}
+                <span className="ml-1">{copied ? "Copied" : "Copy"}</span>
+              </button>
+            </div>
           </div>
+        )}
+        {isPreviewable && (
+          <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+            <DialogContent className="w-[92vw] max-w-5xl gap-0 overflow-hidden p-0">
+              <DialogHeader className="border-b px-4 py-3">
+                <DialogTitle className="text-sm">
+                  Preview{language ? ` · ${language}` : ""}
+                </DialogTitle>
+              </DialogHeader>
+              {/* Sandboxed (no allow-same-origin) so previewed markup can't
+                  reach the app. Scripts run in an opaque origin. */}
+              <iframe
+                title="Code preview"
+                srcDoc={code}
+                sandbox="allow-scripts allow-modals allow-popups"
+                className="h-[72vh] w-full border-0 bg-white"
+              />
+            </DialogContent>
+          </Dialog>
         )}
         {highlighter ? (
           <ShikiHighlighter
             highlighter={highlighter}
             language={language}
-            theme={isDarkMode ? "github-dark-default" : "github-light-default"}
+            theme={
+              useDarkTheme ? "github-dark-default" : "github-light-default"
+            }
             delay={150}
             showLanguage={false}
           >

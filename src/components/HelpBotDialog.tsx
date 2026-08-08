@@ -31,6 +31,10 @@ export function HelpBotDialog({ isOpen, onClose }: HelpBotDialogProps) {
   const flushTimerRef = useRef<number | null>(null);
   const FLUSH_INTERVAL_MS = 100;
 
+  // Regenerate a fresh session id each time the dialog opens/closes. The
+  // factory doesn't read isOpen, so the linter flags the dep as unnecessary —
+  // but it's intentional (the dep is what drives regeneration).
+  // eslint-disable-next-line react/exhaustive-deps
   const sessionId = useMemo(() => uuidv4(), [isOpen]);
 
   useEffect(() => {
@@ -163,7 +167,7 @@ export function HelpBotDialog({ isOpen, onClose }: HelpBotDialogProps) {
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Dyad Help Bot</DialogTitle>
+          <DialogTitle>Meta Human OS Help Bot</DialogTitle>
         </DialogHeader>
         <div className="flex flex-col gap-3 h-[480px]">
           {error && (
@@ -186,7 +190,7 @@ export function HelpBotDialog({ isOpen, onClose }: HelpBotDialogProps) {
             {messages.length === 0 ? (
               <div className="space-y-3">
                 <div className="text-sm text-muted-foreground">
-                  Ask a question about using Dyad.
+                  Ask a question about using Meta Human OS.
                 </div>
                 <div className="text-xs text-muted-foreground/70 bg-muted/50 rounded-md p-3">
                   This conversation may be logged and used to improve the

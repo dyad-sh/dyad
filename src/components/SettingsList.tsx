@@ -1,10 +1,14 @@
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useScrollAndNavigateTo } from "@/hooks/useScrollAndNavigateTo";
 import { useAtom } from "jotai";
-import { activeSettingsSectionAtom } from "@/atoms/viewAtoms";
+import {
+  activeSettingsSectionAtom,
+  activeSettingsTabAtom,
+} from "@/atoms/viewAtoms";
 import { SECTION_IDS, SETTINGS_SEARCH_INDEX } from "@/lib/settingsSearchIndex";
+import { SETTINGS_TABS } from "@/lib/settingsTabs";
 import Fuse from "fuse.js";
 import { SearchIcon, XIcon } from "lucide-react";
 
@@ -17,14 +21,19 @@ const SETTINGS_SECTIONS: SettingsSection[] = [
   { id: SECTION_IDS.general, label: "General" },
   { id: SECTION_IDS.workflow, label: "Workflow" },
   { id: SECTION_IDS.ai, label: "AI" },
+  { id: SECTION_IDS.chatAgent, label: "Chat Agent" },
   { id: SECTION_IDS.providers, label: "Model Providers" },
   { id: SECTION_IDS.telemetry, label: "Telemetry" },
   { id: SECTION_IDS.integrations, label: "Integrations" },
-  { id: SECTION_IDS.agentPermissions, label: "Agent Permissions" },
+  { id: SECTION_IDS.agentPermissions, label: "Tool Permissions" },
   { id: SECTION_IDS.toolsMcp, label: "Tools (MCP)" },
   { id: SECTION_IDS.experiments, label: "Experiments" },
   { id: SECTION_IDS.dangerZone, label: "Danger Zone" },
 ];
+
+const sectionLabelById = new Map(
+  SETTINGS_SECTIONS.map((section) => [section.id, section.label]),
+);
 
 const fuse = new Fuse(SETTINGS_SEARCH_INDEX, {
   keys: [
@@ -39,7 +48,8 @@ const fuse = new Fuse(SETTINGS_SEARCH_INDEX, {
 });
 
 export function SettingsList({ show }: { show: boolean }) {
-  const [activeSection, setActiveSection] = useAtom(activeSettingsSectionAtom);
+  const [activeSection] = useAtom(activeSettingsSectionAtom);
+  const [activeTab, setActiveTab] = useAtom(activeSettingsTabAtom);
   const [searchQuery, setSearchQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -59,32 +69,10 @@ export function SettingsList({ show }: { show: boolean }) {
     return fuse.search(searchQuery.trim());
   }, [searchQuery]);
 
-  useEffect(() => {
-    if (!show) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            setActiveSection(entry.target.id);
-            return;
-          }
-        }
-      },
-      { rootMargin: "-20% 0px -80% 0px", threshold: 0 },
-    );
-
-    for (const section of SETTINGS_SECTIONS) {
-      const el = document.getElementById(section.id);
-      if (el) {
-        observer.observe(el);
-      }
-    }
-
-    return () => {
-      observer.disconnect();
-    };
-  }, [show, setActiveSection]);
+  const navigateToSection = (sectionId: string, settingId?: string) => {
+    const targetId = settingId ?? sectionId;
+    void scrollAndNavigateTo(targetId, sectionId);
+  };
 
   if (!show) {
     return null;
@@ -122,14 +110,14 @@ export function SettingsList({ show }: { show: boolean }) {
         </div>
       </div>
       <ScrollArea className="flex-grow">
-        <div className="space-y-1 p-4 pt-0">
+        <div className="space-y-3 p-4 pt-0">
           {searchResults !== null ? (
             searchResults.length > 0 ? (
               searchResults.map((result) => (
                 <button
                   key={`${result.item.id}-${result.refIndex}`}
                   onClick={() => {
-                    scrollAndNavigateToWithHighlight(
+                    void scrollAndNavigateToWithHighlight(
                       result.item.id,
                       result.item.sectionId,
                     );
@@ -149,19 +137,42 @@ export function SettingsList({ show }: { show: boolean }) {
               </div>
             )
           ) : (
-            SETTINGS_SECTIONS.map((section) => (
-              <button
-                key={section.id}
-                onClick={() => scrollAndNavigateTo(section.id)}
-                className={cn(
-                  "w-full text-left px-3 py-2 rounded-md text-sm transition-colors",
-                  activeSection === section.id
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground font-semibold"
-                    : "hover:bg-sidebar-accent",
-                )}
-              >
-                {section.label}
-              </button>
+            SETTINGS_TABS.map((tab) => (
+              <div key={tab.id} className="space-y-0.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab(tab.id);
+                    const firstSection = tab.sectionIds[0];
+                    if (firstSection) {
+                      navigateToSection(firstSection);
+                    }
+                  }}
+                  className={cn(
+                    "w-full text-left px-3 py-1.5 rounded-md text-xs font-semibold uppercase tracking-wide transition-colors",
+                    activeTab === tab.id
+                      ? "text-sidebar-accent-foreground"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {tab.label}
+                </button>
+                {tab.sectionIds.map((sectionId) => (
+                  <button
+                    key={sectionId}
+                    type="button"
+                    onClick={() => navigateToSection(sectionId)}
+                    className={cn(
+                      "w-full text-left pl-5 pr-3 py-2 rounded-md text-sm transition-colors",
+                      activeSection === sectionId
+                        ? "bg-sidebar-accent text-sidebar-accent-foreground font-semibold"
+                        : "hover:bg-sidebar-accent text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {sectionLabelById.get(sectionId) ?? sectionId}
+                  </button>
+                ))}
+              </div>
             ))
           )}
         </div>

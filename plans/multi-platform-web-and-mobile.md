@@ -26,7 +26,7 @@ Dyad is currently limited to users who download and install a desktop app on mac
 - Backend service extraction from Electron main process into standalone Node.js server
 - Server-side container infrastructure for live app preview (via E2B or Fly Machines)
 - Web client with core chat + build + preview + deploy loop
-- User authentication (GitHub OAuth, extending Dyad Pro infrastructure)
+- User authentication (GitHub OAuth, extending Meta Human OS Pro infrastructure)
 - Freemium tier (limited projects/compute on free, expanded on Pro)
 - Responsive layout foundations (preparing for PWA mobile)
 - Server-side database (better-sqlite3 or PostgreSQL with same Drizzle schema)
@@ -231,7 +231,7 @@ StreamContract: onChunk/onEnd/onError  ->  SSE: event: chunk/end/error
 
 - All API endpoints require auth (except initial anonymous trial)
 - Session-based (JWT or secure cookie)
-- Built on existing Dyad Pro infrastructure
+- Built on existing Meta Human OS Pro infrastructure
 
 ### Container Architecture
 
@@ -291,7 +291,7 @@ Build the web version with the full chat + build + preview + deploy experience.
 - [ ] Implement HTTP client adapter to replace `ipcRenderer.invoke()` for web
 - [ ] Set up server-side database (better-sqlite3 or PostgreSQL with Drizzle)
 - [ ] Add `userId` columns to all user-facing tables; add tenant isolation middleware
-- [ ] Implement authentication (GitHub OAuth, session management, extending Dyad Pro)
+- [ ] Implement authentication (GitHub OAuth, session management, extending Meta Human OS Pro)
 - [ ] Replace `safeStorage` with server-side encrypted secret storage for API keys
 - [ ] Implement cloud file storage for projects (S3/GCS)
 - [ ] Set up E2B (or Fly Machines) container infrastructure
@@ -321,7 +321,7 @@ Unify desktop and web backends to prevent codebase divergence.
 - [ ] Desktop Electron app spawns local Node.js server (same server as web, running locally)
 - [ ] Unified feature development: new features work on both desktop and web from a single implementation
 - [ ] Audit isomorphic-git coverage vs. dugite -- implement web-compatible git for all critical operations
-- [ ] Unify Dyad Pro subscription: one account, one Pro status, works on desktop + web
+- [ ] Unify Meta Human OS Pro subscription: one account, one Pro status, works on desktop + web
 - [ ] Billing/payment integration (Stripe or similar)
 - [ ] Feature flags for platform-specific capabilities (`hasFilesystem`, `hasShell`, `hasLocalModels`, etc.)
 

@@ -1,4 +1,4 @@
-import { useAtom, useAtomValue } from "jotai";
+import { useAtom } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { useRouter } from "@tanstack/react-router";
@@ -21,14 +21,11 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ChatTabs } from "@/components/chat/ChatTabs";
-import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 
 export const TitleBar = () => {
   const [selectedAppId] = useAtom(selectedAppIdAtom);
-  const selectedChatId = useAtomValue(selectedChatIdAtom);
   const { apps } = useLoadApps();
   const { navigate } = useRouter();
   const { settings, refreshSettings } = useSettings();
@@ -46,13 +43,16 @@ export const TitleBar = () => {
     const handleDeepLink = async () => {
       if (lastDeepLink?.type === "dyad-pro-return") {
         await refreshSettings();
-        // Refetch user budget when Dyad Pro key is set via deep link
+        // Refetch user budget when Meta Human OS Pro key is set via deep link
         queryClient.invalidateQueries({ queryKey: queryKeys.userBudget.info });
         showDyadProSuccessDialog();
         clearLastDeepLink();
       }
     };
     handleDeepLink();
+    // Keyed on the deep-link timestamp so this runs once per incoming deep
+    // link; intentionally not re-run when callback/object identities change.
+    // eslint-disable-next-line react/exhaustive-deps
   }, [lastDeepLink?.timestamp]);
 
   const selectedApp = apps.find((app) => app.id === selectedAppId);
@@ -103,7 +103,11 @@ export const TitleBar = () => {
                 />
               }
             >
-              <img src={logo} alt="Dyad" className="w-5 h-5 shrink-0" />
+              <img
+                src={logo}
+                alt="Meta Human OS"
+                className="w-5 h-5 shrink-0"
+              />
               <span className="hidden @2xl:inline max-w-40 truncate">
                 Manage app
               </span>
@@ -113,9 +117,12 @@ export const TitleBar = () => {
           {isDyadPro && <DyadProButton isDyadProEnabled={isDyadProEnabled} />}
         </div>
 
-        <div className="flex-1 min-w-0 overflow-hidden self-end">
-          <ChatTabs selectedChatId={selectedChatId} />
-        </div>
+        {/*
+         * Coder chat tabs used to live here, which put a second tab row above
+         * the unified workspace bar. They are now one family inside that bar,
+         * so every open thing in the app shares a single row.
+         */}
+        <div className="flex-1 min-w-0" />
 
         {showWindowControls && <WindowsControls />}
       </div>

@@ -105,12 +105,14 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
       })
     : t("integrations.migration.confirmDescription");
 
-  // Auto-dismiss success/info banners after 5 seconds
+  // Auto-dismiss success/info banners after 5 seconds. Keyed on the success
+  // state; migrateMutation.reset is referentially stable (react-query).
   useEffect(() => {
     if (migrateMutation.isSuccess && migrateMutation.data?.success) {
       const timer = setTimeout(() => migrateMutation.reset(), 5000);
       return () => clearTimeout(timer);
     }
+    // eslint-disable-next-line react/exhaustive-deps
   }, [migrateMutation.isSuccess, migrateMutation.data?.success]);
 
   const errorSummary = migrateMutation.isError

@@ -23,6 +23,9 @@ export function useAddPromptDeepLink() {
       setDialogOpen(true);
       clearLastDeepLink();
     }
+    // Keyed on the deep-link timestamp so this runs once per incoming deep
+    // link; intentionally not re-run when callback/object identities change.
+    // eslint-disable-next-line react/exhaustive-deps
   }, [lastDeepLink?.timestamp, clearLastDeepLink]);
 
   const handleDialogClose = useCallback((open: boolean) => {

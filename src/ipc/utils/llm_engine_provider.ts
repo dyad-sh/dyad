@@ -249,7 +249,7 @@ export async function transcribeWithDyadEngine(
   const apiKey = loadApiKey({
     apiKey: options.apiKey,
     environmentVariableName: "DYAD_PRO_API_KEY",
-    description: "Dyad Pro API key",
+    description: "Pro API key",
   });
   logger.info("transcribing with dyad engine with baseURL", baseURL);
 
@@ -281,7 +281,7 @@ export async function transcribeWithDyadEngine(
   if (!response.ok) {
     const errorText = await response.text();
     throw new DyadError(
-      `Dyad Engine transcription failed: ${response.status} ${response.statusText} - ${errorText}`,
+      `Meta Human OS Engine transcription failed: ${response.status} ${response.statusText} - ${errorText}`,
       DyadErrorKind.External,
     );
   }

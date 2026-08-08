@@ -39,7 +39,7 @@ interface ApiKeyConfigurationProps {
   onApiKeyInputChange: (value: string) => void;
   onSaveKey: (value: string) => Promise<void>;
   onDeleteKey: () => Promise<void>;
-  isDyad: boolean;
+  isMetaHumanOS: boolean;
   updateSettings: (settings: Partial<UserSettings>) => Promise<UserSettings>;
 }
 
@@ -55,7 +55,7 @@ export function ApiKeyConfiguration({
   onApiKeyInputChange,
   onSaveKey,
   onDeleteKey,
-  isDyad,
+  isMetaHumanOS,
   updateSettings,
 }: ApiKeyConfigurationProps) {
   const [showUserApiKey, setShowUserApiKey] = useState(false);
@@ -106,24 +106,24 @@ export function ApiKeyConfiguration({
   if (isValidUserKey || !hasEnvKey) {
     defaultAccordionValue.push("settings-key");
   }
-  if (!isDyad && hasEnvKey) {
+  if (!isMetaHumanOS && hasEnvKey) {
     defaultAccordionValue.push("env-key");
   }
 
   return (
     <Accordion
       multiple
-      className="w-full space-y-4"
+      className="space-y-3"
       defaultValue={defaultAccordionValue}
     >
       <AccordionItem
         value="settings-key"
-        className="border rounded-lg px-4 bg-(--background-lightest)"
+        className="overflow-hidden rounded-xl border border-border/70 bg-card/50 px-4 shadow-sm"
       >
-        <AccordionTrigger className="text-lg font-medium hover:no-underline cursor-pointer">
+        <AccordionTrigger className="py-4 text-sm font-semibold tracking-tight hover:no-underline">
           API Key from Settings
         </AccordionTrigger>
-        <AccordionContent className="pt-4 ">
+        <AccordionContent className="pb-5 pt-0">
           {isValidUserKey && (
             <Alert variant="default" className="mb-4">
               <KeyRound className="h-4 w-4" />
@@ -171,54 +171,59 @@ export function ApiKeyConfiguration({
             </Alert>
           )}
 
-          <div className="space-y-2">
+          <div className="space-y-3">
             <label
               htmlFor="apiKeyInput"
-              className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+              className="block text-sm font-medium text-foreground"
             >
               {isValidUserKey ? "Update" : "Set"} {providerDisplayName} API Key
             </label>
-            <div className="flex items-start space-x-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <Input
                 id="apiKeyInput"
                 value={apiKeyInput}
                 onChange={(e) => onApiKeyInputChange(e.target.value)}
                 placeholder={`Enter new ${providerDisplayName} API Key here`}
-                className={`flex-grow ${saveError ? "border-red-500" : ""}`}
+                className={`min-w-0 flex-1 font-mono text-sm ${saveError ? "border-destructive" : ""}`}
               />
-              <Button
-                onClick={async () => {
-                  let text = "";
-                  try {
-                    text = await navigator.clipboard.readText();
-                  } catch (error) {
-                    showError("Failed to paste from clipboard");
-                    console.error("Failed to paste from clipboard", error);
-                    return;
-                  }
+              <div className="flex shrink-0 items-center gap-2">
+                <Button
+                  onClick={async () => {
+                    let text = "";
+                    try {
+                      text = await navigator.clipboard.readText();
+                    } catch (error) {
+                      showError("Failed to paste from clipboard");
+                      console.error("Failed to paste from clipboard", error);
+                      return;
+                    }
 
-                  if (text) {
-                    await handleSave(text);
-                  }
-                }}
-                disabled={isSaving}
-                variant="outline"
-                size="icon"
-                title="Paste from clipboard and save"
-                aria-label="Paste from clipboard and save"
-              >
-                <Clipboard className="h-4 w-4" />
-              </Button>
+                    if (text) {
+                      await handleSave(text);
+                    }
+                  }}
+                  disabled={isSaving}
+                  variant="outline"
+                  size="icon"
+                  title="Paste from clipboard and save"
+                  aria-label="Paste from clipboard and save"
+                >
+                  <Clipboard className="size-4" />
+                </Button>
 
-              <Button
-                onClick={() => handleSave(apiKeyInput)}
-                disabled={isSaving || !apiKeyInput}
-              >
-                {isSaving ? "Saving..." : "Save Key"}
-              </Button>
+                <Button
+                  onClick={() => handleSave(apiKeyInput)}
+                  disabled={isSaving || !apiKeyInput}
+                  className="w-fit shrink-0 px-5"
+                >
+                  {isSaving ? "Saving…" : "Save Key"}
+                </Button>
+              </div>
             </div>
-            {saveError && <p className="text-xs text-red-600">{saveError}</p>}
-            <p className="text-xs text-gray-500 dark:text-gray-400">
+            {saveError && (
+              <p className="text-xs text-destructive">{saveError}</p>
+            )}
+            <p className="text-xs text-muted-foreground">
               Setting a key here will override the environment variable (if
               set).
             </p>
@@ -226,15 +231,15 @@ export function ApiKeyConfiguration({
         </AccordionContent>
       </AccordionItem>
 
-      {!isDyad && envVarName && (
+      {!isMetaHumanOS && envVarName && (
         <AccordionItem
           value="env-key"
-          className="border rounded-lg px-4 bg-(--background-lightest)"
+          className="overflow-hidden rounded-xl border border-border/70 bg-card/50 px-4 shadow-sm"
         >
-          <AccordionTrigger className="text-lg font-medium hover:no-underline cursor-pointer">
+          <AccordionTrigger className="py-4 text-sm font-semibold tracking-tight hover:no-underline">
             API Key from Environment Variable
           </AccordionTrigger>
-          <AccordionContent className="pt-4">
+          <AccordionContent className="pb-5 pt-0">
             {hasEnvKey ? (
               <Alert variant="default">
                 <KeyRound className="h-4 w-4" />

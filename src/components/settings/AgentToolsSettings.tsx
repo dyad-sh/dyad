@@ -36,16 +36,51 @@ export function AgentToolsSettings() {
     );
   }
 
-  const autoApprovedTools =
-    tools?.filter((t: AgentTool) => t.isAllowedByDefault) || [];
-  const requiresApprovalTools =
-    tools?.filter((t: AgentTool) => !t.isAllowedByDefault) || [];
+  const workspaceToolNames = new Set([
+    "write_file",
+    "create_directory",
+    "run_terminal_command",
+    "write_vault_note",
+  ]);
+  const workspaceTools =
+    tools?.filter((tool: AgentTool) => workspaceToolNames.has(tool.name)) || [];
+  const remainingTools =
+    tools?.filter((tool: AgentTool) => !workspaceToolNames.has(tool.name)) ||
+    [];
+  const autoApprovedTools = remainingTools.filter(
+    (tool: AgentTool) => tool.isAllowedByDefault,
+  );
+  const requiresApprovalTools = remainingTools.filter(
+    (tool: AgentTool) => !tool.isAllowedByDefault,
+  );
 
   return (
     <div className="space-y-6">
       <p className="text-sm text-muted-foreground">
         {t("agentPermissions.description")}
       </p>
+
+      <div className="rounded-xl border border-cyan-400/20 bg-cyan-400/5 p-4">
+        <h3 className="text-sm font-medium text-cyan-50">Workspace access</h3>
+        <p className="mt-1 text-xs leading-5 text-cyan-100/45">
+          Control whether the agent can use the terminal, create files and
+          folders, or write Markdown notes into your selected Local Vault.
+          Terminal and vault access ask before running by default.
+        </p>
+        <div className="mt-3 space-y-2">
+          {workspaceTools.map((tool: AgentTool) => (
+            <ToolConsentRow
+              key={tool.name}
+              name={tool.name}
+              description={tool.description}
+              consent={tool.consent}
+              onConsentChange={(consent) =>
+                handleConsentChange(tool.name as AgentToolName, consent)
+              }
+            />
+          ))}
+        </div>
+      </div>
 
       {/* Requires approval tools */}
       <div className="space-y-2">

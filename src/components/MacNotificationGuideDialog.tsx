@@ -24,7 +24,8 @@ export function MacNotificationGuideDialog({
           <DialogTitle>Allow Notifications on macOS</DialogTitle>
           <DialogDescription>
             If you didn't receive a test notification, you may need to allow
-            notifications for Dyad in macOS. Here are two ways to do it:
+            notifications for Meta Human OS in macOS. Here are two ways to do
+            it:
           </DialogDescription>
         </DialogHeader>
 
@@ -45,7 +46,7 @@ export function MacNotificationGuideDialog({
               Open{" "}
               <strong>
                 System Settings → Notifications → Application Notifications →
-                Dyad
+                Meta Human OS
               </strong>{" "}
               and enable <strong>"Allow Notifications"</strong>.
             </p>

@@ -40,10 +40,18 @@ export { systemContracts, systemEvents } from "./system";
 export { versionContracts } from "./version";
 export { languageModelContracts } from "./language-model";
 export { promptContracts } from "./prompts";
+export { agentOsContracts, agentOsChatStreamContract } from "./agent_os";
+export { vercelBlobContracts } from "./vercel_blob";
+export { storageContracts } from "./storage";
+export { cloudAppsContracts } from "./cloud_apps";
+export { videoGenerationContracts } from "./video_generation";
+export { ocrContracts } from "./ocr";
+export { knowledgeGraphContracts } from "./knowledge_graph";
 export { templateContracts } from "./templates";
 export { proposalContracts } from "./proposals";
 export { importContracts } from "./import";
 export { helpContracts, helpStreamContract } from "./help";
+export { chatAgentContracts, chatAgentStreamContract } from "./chat_agent";
 export { capacitorContracts } from "./capacitor";
 export { contextContracts } from "./context";
 export { upgradeContracts } from "./upgrade";
@@ -54,6 +62,10 @@ export { freeAgentQuotaContracts } from "./free_agent_quota";
 export { audioContracts } from "./audio";
 export { mediaContracts } from "./media";
 export { imageGenerationContracts } from "./image_generation";
+export { socialMediaContracts } from "./social_media";
+export { helixContracts } from "./helix";
+export { openWorkerContracts } from "./openworker";
+export { vectorContracts, vectorEvents } from "./vector";
 
 // =============================================================================
 // Client Exports
@@ -73,10 +85,24 @@ export { systemClient, systemEventClient } from "./system";
 export { versionClient } from "./version";
 export { languageModelClient } from "./language-model";
 export { promptClient } from "./prompts";
+export { agentOsClient, agentOsChatStreamClient } from "./agent_os";
+export { vercelBlobClient } from "./vercel_blob";
+export { storageClient } from "./storage";
+export { cloudAppsClient } from "./cloud_apps";
+export type { VercelBlobItem, VercelBlobStatus } from "./vercel_blob";
+export { videoGenerationClient } from "./video_generation";
+export { ocrClient } from "./ocr";
+export { knowledgeGraphClient } from "./knowledge_graph";
+export type {
+  VideoFormat,
+  VideoModel,
+  GenerateVideoResponse,
+} from "./video_generation";
 export { templateClient } from "./templates";
 export { proposalClient } from "./proposals";
 export { importClient } from "./import";
 export { helpClient, helpStreamClient } from "./help";
+export { chatAgentClient, chatAgentStreamClient } from "./chat_agent";
 export { capacitorClient } from "./capacitor";
 export { contextClient } from "./context";
 export { upgradeClient } from "./upgrade";
@@ -87,6 +113,10 @@ export { freeAgentQuotaClient } from "./free_agent_quota";
 export { audioClient } from "./audio";
 export { mediaClient } from "./media";
 export { imageGenerationClient } from "./image_generation";
+export { socialMediaClient } from "./social_media";
+export { helixClient } from "./helix";
+export { openWorkerClient } from "./openworker";
+export { vectorClient, vectorEventClient } from "./vector";
 
 // =============================================================================
 // Type Exports
@@ -168,6 +198,9 @@ export type {
   CreateMcpServer,
   McpServerUpdate,
   McpTool,
+  McpWorkflow,
+  McpConnectionStatus,
+  LovableConnectionStatus,
   McpToolConsent,
   McpConsentValue,
   McpConsentDecision,
@@ -240,6 +273,7 @@ export type {
   LanguageModelProvider,
   LanguageModel,
   LocalModel,
+  DiscoveredLocalModelServer,
   CreateCustomLanguageModelProviderParams,
   CreateCustomLanguageModelParams,
 } from "./language-model";
@@ -250,6 +284,16 @@ export type {
   CreatePromptParamsDto,
   UpdatePromptParamsDto,
 } from "./prompts";
+
+// Agent OS types
+export type {
+  AgentOsAgentDto,
+  AgentOsType,
+  AgentOsStatus,
+  CreateAgentOsAgent,
+  UpdateAgentOsAgent,
+  ToggleAgentOsAgent,
+} from "./agent_os";
 
 // Template types
 export type {
@@ -321,12 +365,40 @@ export type {
   MoveMediaFileParams,
 } from "./media";
 
+export type {
+  VectorServiceState,
+  VectorServiceStatus,
+  VectorCollection,
+  VectorSource,
+  VectorSearchResult,
+  VectorActivity,
+  VectorSettings,
+  VectorOverview,
+  VectorRagResponse,
+  KnowledgeBaseImportProgress,
+} from "./vector";
+
 // Image generation types
 export type {
   ImageThemeMode,
   GenerateImageParams,
   GenerateImageResponse,
 } from "./image_generation";
+
+// Social media types
+export type {
+  SocialPlatform,
+  SocialPost,
+  SocialPostStatus,
+  SocialConnectionsStatus,
+  CreateSocialPostParams,
+  UpdateSocialPostParams,
+  GeneratePostCopyParams,
+  GeneratePostCopyResponse,
+} from "./social_media";
+
+// Helix coding agent types
+export type { HelixState, HelixStatus } from "./helix";
 
 // =============================================================================
 // Schema Exports (for validation in handlers/components)
@@ -374,10 +446,17 @@ import { systemClient, systemEventClient } from "./system";
 import { versionClient } from "./version";
 import { languageModelClient } from "./language-model";
 import { promptClient } from "./prompts";
+import { agentOsClient, agentOsChatStreamClient } from "./agent_os";
+import { vercelBlobClient } from "./vercel_blob";
+import { cloudAppsClient } from "./cloud_apps";
+import { videoGenerationClient } from "./video_generation";
+import { ocrClient } from "./ocr";
+import { knowledgeGraphClient } from "./knowledge_graph";
 import { templateClient } from "./templates";
 import { proposalClient } from "./proposals";
 import { importClient } from "./import";
 import { helpClient, helpStreamClient } from "./help";
+import { chatAgentClient, chatAgentStreamClient } from "./chat_agent";
 import { capacitorClient } from "./capacitor";
 import { contextClient } from "./context";
 import { upgradeClient } from "./upgrade";
@@ -388,6 +467,11 @@ import { freeAgentQuotaClient } from "./free_agent_quota";
 import { audioClient } from "./audio";
 import { mediaClient } from "./media";
 import { imageGenerationClient } from "./image_generation";
+import { socialMediaClient } from "./social_media";
+import { helixClient } from "./helix";
+import { openWorkerClient } from "./openworker";
+import { storageClient } from "./storage";
+import { vectorClient, vectorEventClient } from "./vector";
 
 /**
  * Unified IPC client with all domains organized by namespace.
@@ -418,6 +502,9 @@ export const ipc = {
   // Streaming clients
   chatStream: chatStreamClient,
   helpStream: helpStreamClient,
+  chatAgent: chatAgentClient,
+  chatAgentStream: chatAgentStreamClient,
+  agentOsChatStream: agentOsChatStreamClient,
 
   // Integrations
   github: githubClient,
@@ -433,6 +520,13 @@ export const ipc = {
   version: versionClient,
   languageModel: languageModelClient,
   prompt: promptClient,
+  agentOs: agentOsClient,
+  vercelBlob: vercelBlobClient,
+  storage: storageClient,
+  cloudApps: cloudAppsClient,
+  videoGeneration: videoGenerationClient,
+  ocr: ocrClient,
+  knowledgeGraph: knowledgeGraphClient,
   template: templateClient,
   proposal: proposalClient,
   import: importClient,
@@ -447,6 +541,10 @@ export const ipc = {
   audio: audioClient,
   media: mediaClient,
   imageGeneration: imageGenerationClient,
+  socialMedia: socialMediaClient,
+  helix: helixClient,
+  openWorker: openWorkerClient,
+  vector: vectorClient,
 
   // Event clients for main->renderer pub/sub
   events: {
@@ -455,5 +553,6 @@ export const ipc = {
     mcp: mcpEventClient,
     system: systemEventClient,
     misc: miscEventClient,
+    vector: vectorEventClient,
   },
 } as const;

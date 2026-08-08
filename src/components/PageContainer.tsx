@@ -21,7 +21,9 @@ export function PageContainer({
   innerClassName?: string;
 }) {
   return (
-    <div className={cn("w-full min-h-full px-4 py-4 sm:px-6 lg:px-8", className)}>
+    <div
+      className={cn("w-full min-h-full px-4 py-4 sm:px-6 lg:px-8", className)}
+    >
       <div
         className={cn("mx-auto w-full", maxWidthClasses[size], innerClassName)}
       >

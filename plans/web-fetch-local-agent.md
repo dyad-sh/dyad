@@ -8,7 +8,7 @@ Add a new `web_fetch` tool to the local agent that fetches and reads website con
 
 ## Problem Statement
 
-When users paste a URL into the Dyad chat (e.g., "Help me integrate this API: https://docs.stripe.com/api"), the agent cannot access the content behind that URL. Users must manually copy-paste page content, breaking their flow. This is especially painful for developers building with APIs, following tutorials, or referencing documentation — the most common use cases for Dyad's target audience. The existing `web_crawl` tool only activates for "clone/copy/replicate" intent and requires Dyad Pro, leaving a gap for the broader "read this page for context" use case.
+When users paste a URL into the Dyad chat (e.g., "Help me integrate this API: https://docs.stripe.com/api"), the agent cannot access the content behind that URL. Users must manually copy-paste page content, breaking their flow. This is especially painful for developers building with APIs, following tutorials, or referencing documentation — the most common use cases for Dyad's target audience. The existing `web_crawl` tool only activates for "clone/copy/replicate" intent and requires Meta Human OS Pro, leaving a gap for the broader "read this page for context" use case.
 
 ## Scope
 

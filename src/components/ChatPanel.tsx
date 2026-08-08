@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useAtomValue, useSetAtom, useStore } from "jotai";
 import {
@@ -14,7 +14,6 @@ import { MessagesList } from "./chat/MessagesList";
 import { ChatInput } from "./chat/ChatInput";
 import { VersionPane } from "./chat/VersionPane";
 import { FreeAgentQuotaBanner } from "./chat/FreeAgentQuotaBanner";
-import { NotificationBanner } from "./chat/NotificationBanner";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -86,7 +85,12 @@ export function ChatPanel({
 
   // Scroll to bottom when a new stream starts (user sent a message)
   const streamCount = chatId ? (streamCountById.get(chatId) ?? 0) : 0;
-  const messages = chatId ? (messagesById.get(chatId) ?? []) : [];
+  // Memoized so its reference is stable between renders (a fresh `?? []` array
+  // every render would re-run the scroll effect below on every render).
+  const messages = useMemo(
+    () => (chatId ? (messagesById.get(chatId) ?? []) : []),
+    [chatId, messagesById],
+  );
   const streamError = chatId ? (chatErrorById.get(chatId) ?? null) : null;
 
   // Track previous chatId to detect chat switches
@@ -284,7 +288,6 @@ export function ChatPanel({
                 }
               />
             )}
-            <NotificationBanner />
             <ChatInput chatId={chatId} />
           </div>
         )}

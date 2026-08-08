@@ -33,7 +33,7 @@ function resolveDefaultDyadAppsDirectory(): string {
       defaultDirCreated = true;
     } catch {
       // Fall through; if it fails then the user will see error toasts
-      // when they try to do anything meaningful, but we don't want Dyad to crash
+      // when they try to do anything meaningful, but we don't want Meta Human OS to crash
     }
   }
   return defaultDir;

@@ -4,7 +4,7 @@
 
 ## Summary
 
-Add a new "Cloud Sandbox" runtime mode to Dyad that executes user-generated apps in Vercel's cloud sandbox environment instead of on the local machine. This is a Dyad Pro feature that removes local toolchain requirements, provides instant cloud-based previews, and enables shareable preview URLs. Initially supports Vercel Sandbox SDK, with a provider-agnostic interface to support additional providers later.
+Add a new "Cloud Sandbox" runtime mode to Dyad that executes user-generated apps in Vercel's cloud sandbox environment instead of on the local machine. This is a Meta Human OS Pro feature that removes local toolchain requirements, provides instant cloud-based previews, and enables shareable preview URLs. Initially supports Vercel Sandbox SDK, with a provider-agnostic interface to support additional providers later.
 
 ## Problem Statement
 
@@ -52,7 +52,7 @@ Cloud sandboxes solve this by offloading execution to a remote, pre-configured e
 
 1. **As a new Dyad user**, I want to preview my AI-generated app without installing Node.js, so that I can start building immediately after downloading Dyad.
 2. **As a Dyad user on a slow machine**, I want to offload app execution to the cloud, so that my laptop doesn't slow down while building.
-3. **As a Dyad Pro user**, I want to switch between local and cloud runtime with one click in Settings, so that I can choose the mode that works best for my situation.
+3. **As a Meta Human OS Pro user**, I want to switch between local and cloud runtime with one click in Settings, so that I can choose the mode that works best for my situation.
 4. **As a user**, I want to see clear feedback when my app is deploying to a cloud sandbox, so that I understand what's happening (Transparent Over Magical principle).
 5. **As a user**, I want to copy a shareable link to my running cloud preview, so that I can share it with teammates or clients for feedback.
 6. **As a user**, I want my cloud sandbox to update when the AI edits code, so that the preview experience is responsive.
@@ -64,7 +64,7 @@ Cloud sandboxes solve this by offloading execution to a remote, pre-configured e
 
 1. **Discovery**: User navigates to Settings > General Settings, sees the Runtime Mode selector.
 2. **Selection**: User selects "Cloud Sandbox (Pro)" from the dropdown.
-   - If **not Pro**: Inline upgrade prompt ("Cloud sandboxes are a Dyad Pro feature. [Upgrade to Pro]"). No further action possible.
+   - If **not Pro**: Inline upgrade prompt ("Cloud sandboxes are a Meta Human OS Pro feature. [Upgrade to Pro]"). No further action possible.
    - If **Pro**: Option activates immediately. No Vercel setup needed from the user.
 3. **Building**: User returns to chat, builds with AI, clicks "Run" or AI triggers execution.
 4. **Provisioning**: System creates a Vercel sandbox via Dyad Engine. Loading state: "Starting cloud sandbox..." with a simple spinner. If provisioning takes >5 seconds, show a multi-step stepper: "Creating sandbox..." -> "Installing dependencies..." -> "Starting server..."
@@ -213,7 +213,7 @@ This maps cleanly to the existing `appUrlAtom` which already stores both `appUrl
 
 ### Phase 2: Dyad Backend Endpoints
 
-- [ ] Determine if existing Dyad Pro backend can be extended (or if new infrastructure is needed)
+- [ ] Determine if existing Meta Human OS Pro backend can be extended (or if new infrastructure is needed)
 - [ ] Implement sandbox CRUD endpoints: create, destroy, status
 - [ ] Implement file upload endpoint
 - [ ] Implement log streaming endpoint (SSE or WebSocket)
@@ -275,18 +275,18 @@ This maps cleanly to the existing `appUrlAtom` which already stores both `appUrl
 
 ## Decision Log
 
-| Decision                                           | Reasoning                                                                                                                                                                                               |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Vercel Sandbox SDK** as the first cloud provider | Real-time file sync and instant rebuilds. Existing Vercel relationship. SDK purpose-built for interactive development.                                                                                  |
-| **Proxy through localhost** for iframe preview     | Preserves all Pro features (component selector, visual editing, console capture) via script injection. Trade-off: proxied URL isn't directly shareable, but "Copy link" button provides the direct URL. |
-| **Dyad Pro feature** (Dyad manages infrastructure) | Simplifies UX (no Vercel account setup needed), controls costs, creates Pro upsell opportunity. Requires Dyad Engine for sandbox management.                                                            |
-| **Shareable URLs in MVP**                          | Highest-value, lowest-effort differentiator of cloud mode. "Copy link" button is ~10 lines of code.                                                                                                     |
-| **Global runtime mode for v1**                     | Consistent with existing Docker mode. Simpler data model and UI. Per-app override deferred to v2.                                                                                                       |
-| **In-memory sandbox state for MVP**                | Sandboxes are ephemeral. No DB migration needed. Revisit if sandboxes need to survive restarts.                                                                                                         |
-| **`mode` string union over boolean flags**         | `mode: "host" \| "docker" \| "cloud"` is cleaner than `isDocker` + `isCloud` boolean flags. Easier to extend.                                                                                           |
-| **Cloud mode is opt-in, not default**              | Local mode remains default for all users including Pro. Cloud mode is slower for iteration and requires internet.                                                                                       |
-| **Batch file sync per AI turn**                    | Avoids thundering herd of 5-20 individual uploads during multi-file AI responses. Reduces API calls and prevents mid-batch rebuilds.                                                                    |
-| **Auto-hibernate after 15 min**                    | Prevents orphaned sandboxes from running up Dyad's cloud costs. Balance between convenience and cost control.                                                                                           |
+| Decision                                                    | Reasoning                                                                                                                                                                                               |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Vercel Sandbox SDK** as the first cloud provider          | Real-time file sync and instant rebuilds. Existing Vercel relationship. SDK purpose-built for interactive development.                                                                                  |
+| **Proxy through localhost** for iframe preview              | Preserves all Pro features (component selector, visual editing, console capture) via script injection. Trade-off: proxied URL isn't directly shareable, but "Copy link" button provides the direct URL. |
+| **Meta Human OS Pro feature** (Dyad manages infrastructure) | Simplifies UX (no Vercel account setup needed), controls costs, creates Pro upsell opportunity. Requires Dyad Engine for sandbox management.                                                            |
+| **Shareable URLs in MVP**                                   | Highest-value, lowest-effort differentiator of cloud mode. "Copy link" button is ~10 lines of code.                                                                                                     |
+| **Global runtime mode for v1**                              | Consistent with existing Docker mode. Simpler data model and UI. Per-app override deferred to v2.                                                                                                       |
+| **In-memory sandbox state for MVP**                         | Sandboxes are ephemeral. No DB migration needed. Revisit if sandboxes need to survive restarts.                                                                                                         |
+| **`mode` string union over boolean flags**                  | `mode: "host" \| "docker" \| "cloud"` is cleaner than `isDocker` + `isCloud` boolean flags. Easier to extend.                                                                                           |
+| **Cloud mode is opt-in, not default**                       | Local mode remains default for all users including Pro. Cloud mode is slower for iteration and requires internet.                                                                                       |
+| **Batch file sync per AI turn**                             | Avoids thundering herd of 5-20 individual uploads during multi-file AI responses. Reduces API calls and prevents mid-batch rebuilds.                                                                    |
+| **Auto-hibernate after 15 min**                             | Prevents orphaned sandboxes from running up Dyad's cloud costs. Balance between convenience and cost control.                                                                                           |
 
 ---
 

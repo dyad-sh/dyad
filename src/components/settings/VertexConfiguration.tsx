@@ -21,10 +21,14 @@ export function VertexConfiguration() {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
+  // Resync the form when the persisted vertex settings change. Keyed on the
+  // settings object so it doesn't clobber in-progress edits to the local
+  // fields it reads.
   useEffect(() => {
     setProjectId(existing.projectId || "");
     setLocation(existing.location || "");
     setServiceAccountKey(existing.serviceAccountKey?.value || "");
+    // eslint-disable-next-line react/exhaustive-deps
   }, [settings?.providerSettings?.vertex]);
 
   const onSave = async () => {

@@ -7,11 +7,11 @@ test.describe("Back button navigation", () => {
 
     await po.sendPrompt("create a test app");
 
-    await po.navigation.goToAppsTab();
+    await po.navigation.goToMyAppsGallery();
 
-    const showcase = po.page.getByTestId("featured-app-showcase");
-    await expect(showcase).toBeVisible({ timeout: Timeout.MEDIUM });
-    const showcaseCards = await showcase
+    const gallery = po.page.getByTestId("my-apps-gallery");
+    await expect(gallery).toBeVisible({ timeout: Timeout.MEDIUM });
+    const showcaseCards = await gallery
       .getByTestId(/^app-showcase-card-/)
       .all();
     expect(showcaseCards.length).toBeGreaterThan(0);
@@ -23,7 +23,7 @@ test.describe("Back button navigation", () => {
     await po.navigation.clickBackButton();
 
     await expect(appDetailsPage).toBeHidden({ timeout: Timeout.MEDIUM });
-    await expect(showcase).toBeVisible({ timeout: Timeout.MEDIUM });
+    await expect(gallery).toBeVisible({ timeout: Timeout.MEDIUM });
     await po.page.waitForTimeout(500);
     await expect(appDetailsPage).toBeHidden();
   });

@@ -21,7 +21,7 @@ What remains is the real backend implementation: authenticated sandbox lifecycle
 
 - Provide a stable Dyad Engine API for cloud sandbox creation and teardown.
 - Keep provider-specific details out of the desktop app.
-- Enforce Dyad Pro access and usage limits server-side.
+- Enforce Meta Human OS Pro access and usage limits server-side.
 - Preserve Dyad’s current preview model:
   - proxied URL for the iframe
   - direct URL for sharing and opening externally
@@ -169,7 +169,7 @@ Implement:
 
 Requirements:
 
-- bearer auth using Dyad Pro credentials
+- bearer auth using Meta Human OS Pro credentials
 - reject non-Pro users with a clear 403
 - validate ownership on every sandbox-scoped route
 - map provider failures to stable error codes/messages
@@ -284,7 +284,7 @@ Connect a staging desktop build to staging engine and validate:
 
 ### Step 3
 
-Turn on for internal users first, then a small Dyad Pro cohort.
+Turn on for internal users first, then a small Meta Human OS Pro cohort.
 
 ## Testing Plan
 

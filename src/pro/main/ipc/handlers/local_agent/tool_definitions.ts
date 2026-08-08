@@ -36,6 +36,9 @@ import { writePlanTool } from "./tools/write_plan";
 import { exitPlanTool } from "./tools/exit_plan";
 import { readGuideTool } from "./tools/read_guide";
 import { executeSandboxScriptTool } from "./tools/execute_sandbox_script";
+import { createDirectoryTool } from "./tools/create_directory";
+import { runTerminalCommandTool } from "./tools/run_terminal_command";
+import { writeVaultNoteTool } from "./tools/write_vault_note";
 import type { LanguageModelV3ToolResultOutput } from "@ai-sdk/provider";
 import {
   escapeXmlAttr,
@@ -71,6 +74,8 @@ function getToolErrorSummary(error: unknown): string {
 // Combined tool definitions array
 export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   writeFileTool,
+  createDirectoryTool,
+  writeVaultNoteTool,
   searchReplaceTool,
   copyFileTool,
   deleteFileTool,
@@ -96,6 +101,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   runTypeChecksTool,
   readGuideTool,
   executeSandboxScriptTool,
+  runTerminalCommandTool,
   // Plan mode tools
   planningQuestionnaireTool,
   writePlanTool,

@@ -159,7 +159,7 @@ export default function AppDetailsPage() {
       setSelectedAppId(null);
       setSelectedChatId(null);
       await refreshApps();
-      navigate({ to: "/", search: {} });
+      navigate({ to: "/coder/studio", search: {} });
     } catch (error) {
       setIsDeleteDialogOpen(false);
       showError(error);

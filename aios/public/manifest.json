@@ -1,0 +1,17 @@
+{
+  "name": "Helix",
+  "short_name": "Helix",
+  "description": "Helix — AI-powered full-stack coding platform",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000510",
+  "theme_color": "#000510",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "any",
+      "type": "image/x-icon"
+    }
+  ]
+}

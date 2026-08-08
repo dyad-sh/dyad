@@ -1,98 +1,185 @@
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, LayoutTemplate, Plus } from "lucide-react";
 import { useRouter } from "@tanstack/react-router";
 import { useSettings } from "@/hooks/useSettings";
 import { useTemplates } from "@/hooks/useTemplates";
 import { TemplateCard } from "@/components/TemplateCard";
 import { CreateAppDialog } from "@/components/CreateAppDialog";
 import { PageContainer } from "@/components/PageContainer";
+import { isIpcRendererAvailable } from "@/ipc/contracts/core";
+import { DEFAULT_TEMPLATE_ID } from "@/shared/templates";
+
+const TEMPLATE_GRID_CLASS =
+  "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4";
+
+function TemplateGallerySection({
+  title,
+  description,
+  count,
+  children,
+}: {
+  title: string;
+  description?: string;
+  count: number;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="mb-10">
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-3 border-b border-border/60 pb-3">
+        <div>
+          <h2 className="text-lg font-semibold tracking-tight text-foreground">
+            {title}
+          </h2>
+          {description && (
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              {description}
+            </p>
+          )}
+        </div>
+        <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+          {count} {count === 1 ? "template" : "templates"}
+        </span>
+      </div>
+      <div className={TEMPLATE_GRID_CLASS}>{children}</div>
+    </section>
+  );
+}
 
 const HubPage: React.FC = () => {
   const router = useRouter();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [browserSelectedTemplateId, setBrowserSelectedTemplateId] =
+    useState(DEFAULT_TEMPLATE_ID);
   const { templates, isLoading } = useTemplates();
   const { settings, updateSettings } = useSettings();
-  const selectedTemplateId = settings?.selectedTemplateId;
+  const hasIpcRenderer = isIpcRendererAvailable();
+  const selectedTemplateId = hasIpcRenderer
+    ? settings?.selectedTemplateId
+    : browserSelectedTemplateId;
 
   const handleTemplateSelect = (templateId: string) => {
-    updateSettings({ selectedTemplateId: templateId });
+    if (!hasIpcRenderer) {
+      setBrowserSelectedTemplateId(templateId);
+      return;
+    }
+    void updateSettings({ selectedTemplateId: templateId });
   };
 
   const handleCreateApp = () => {
+    if (!hasIpcRenderer) return;
     setIsCreateDialogOpen(true);
   };
-  // Separate templates into official and community
+
   const officialTemplates =
     templates?.filter((template) => template.isOfficial) || [];
   const communityTemplates =
     templates?.filter((template) => !template.isOfficial) || [];
 
+  const selectedTemplate = templates?.find((t) => t.id === selectedTemplateId);
+
   return (
-    <PageContainer size="lg" innerClassName="pb-12">
-        <Button
-          onClick={() => router.history.back()}
-          variant="outline"
-          size="sm"
-          className="flex items-center gap-2 mb-4 bg-(--background-lightest) py-5"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Go Back
-        </Button>
-        <header className="mb-8 text-left">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+    <PageContainer size="xl" innerClassName="pb-8">
+      <Button
+        onClick={() => router.history.back()}
+        variant="ghost"
+        size="sm"
+        className="mb-6 -ml-2 gap-2 text-muted-foreground hover:text-foreground"
+      >
+        <ArrowLeft className="size-4" />
+        Go Back
+      </Button>
+
+      <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <div className="mb-2 flex items-center gap-2 text-primary">
+            <LayoutTemplate className="size-5 shrink-0" />
+            <span className="text-xs font-semibold uppercase tracking-widest">
+              Templates
+            </span>
+          </div>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
             Pick your default template
           </h1>
-          <p className="text-md text-gray-600 dark:text-gray-400">
-            Choose a starting point for your new project.
-            {isLoading && " Loading additional templates..."}
+          <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">
+            Choose a starting point for new projects. Click a card to set your
+            default, then create an app when you are ready.
+            {isLoading && " Loading community templates…"}
           </p>
-        </header>
+        </div>
 
-        {/* Official Templates Section */}
-        {officialTemplates.length > 0 && (
-          <section className="mb-12">
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
-              Official templates
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {officialTemplates.map((template) => (
-                <TemplateCard
-                  key={template.id}
-                  template={template}
-                  isSelected={template.id === selectedTemplateId}
-                  onSelect={handleTemplateSelect}
-                  onCreateApp={handleCreateApp}
-                />
-              ))}
-            </div>
-          </section>
-        )}
+        <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
+          {selectedTemplate && (
+            <span
+              className="inline-flex max-w-[min(100%,16rem)] items-center rounded-full border border-border/70 bg-muted/50 px-3 py-1.5 text-xs text-muted-foreground"
+              data-testid="hub-selected-template-label"
+            >
+              <span className="truncate">
+                Default:{" "}
+                <span className="font-medium text-foreground">
+                  {selectedTemplate.title}
+                </span>
+              </span>
+            </span>
+          )}
+          <Button
+            size="sm"
+            onClick={handleCreateApp}
+            disabled={!selectedTemplate || !hasIpcRenderer}
+            title={
+              hasIpcRenderer
+                ? undefined
+                : "Open Meta Human OS as a desktop app to create projects"
+            }
+            data-testid="hub-create-app-button"
+            className="gap-1.5"
+          >
+            <Plus className="size-4" />
+            Create app
+          </Button>
+        </div>
+      </header>
 
-        {/* Community Templates Section */}
-        {communityTemplates.length > 0 && (
-          <section className="mb-12">
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
-              Community templates
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {communityTemplates.map((template) => (
-                <TemplateCard
-                  key={template.id}
-                  template={template}
-                  isSelected={template.id === selectedTemplateId}
-                  onSelect={handleTemplateSelect}
-                  onCreateApp={handleCreateApp}
-                />
-              ))}
-            </div>
-          </section>
-        )}
+      {officialTemplates.length > 0 && (
+        <TemplateGallerySection
+          title="Official templates"
+          description="Maintained by the Meta Human OS team — recommended for most projects."
+          count={officialTemplates.length}
+        >
+          {officialTemplates.map((template) => (
+            <TemplateCard
+              key={template.id}
+              template={template}
+              isSelected={template.id === selectedTemplateId}
+              onSelect={handleTemplateSelect}
+              onCreateApp={handleCreateApp}
+            />
+          ))}
+        </TemplateGallerySection>
+      )}
+
+      {communityTemplates.length > 0 && (
+        <TemplateGallerySection
+          title="Community templates"
+          description="Built by the community. Review the source before use."
+          count={communityTemplates.length}
+        >
+          {communityTemplates.map((template) => (
+            <TemplateCard
+              key={template.id}
+              template={template}
+              isSelected={template.id === selectedTemplateId}
+              onSelect={handleTemplateSelect}
+              onCreateApp={handleCreateApp}
+            />
+          ))}
+        </TemplateGallerySection>
+      )}
 
       <CreateAppDialog
         open={isCreateDialogOpen}
         onOpenChange={setIsCreateDialogOpen}
-        template={templates?.find((t) => t.id === settings?.selectedTemplateId)}
+        template={selectedTemplate}
       />
     </PageContainer>
   );

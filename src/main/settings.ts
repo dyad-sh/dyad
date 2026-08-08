@@ -54,6 +54,43 @@ const DEFAULT_SETTINGS: UserSettings = {
   autoExpandPreviewPanel: true,
   enableContextCompaction: true,
   previewIdleTimeoutPolicy: "default",
+  chatAgentMcpServerIds: [],
+  chatAgentMcpToolKeys: [],
+  chatAgentMcpWorkflowKeys: [],
+  researchPlugins: {
+    travelSearch: {
+      enabled: true,
+      market: "AU",
+      locale: "en-AU",
+      currency: "AUD",
+    },
+    duckDuckGo: { enabled: true },
+    coinGecko: { enabled: true, plan: "public" },
+    weather: {
+      enabled: true,
+      temperatureUnit: "celsius",
+      windSpeedUnit: "kmh",
+      forecastDays: 7,
+    },
+    maps: { enabled: true, style: "dark" },
+    skyscanner: {
+      enabled: false,
+      market: "AU",
+      locale: "en-AU",
+      currency: "AUD",
+    },
+    amadeus: {
+      enabled: false,
+      environment: "test",
+      currency: "AUD",
+    },
+    duffel: { enabled: false },
+  },
+  chatAgentSystemAccess: {
+    terminal: false,
+    browser: false,
+    computer: false,
+  },
 };
 
 const CRASH_SENTINEL_FILE = "session.lock";
@@ -252,6 +289,15 @@ export function writeSettings(settings: Partial<UserSettings>): void {
     const filePath = getSettingsFilePath();
     const settingsForWrite = readSettingsForWrite(filePath);
     const newSettings = { ...settingsForWrite.settings, ...settings };
+    // `jarvis` holds a secret alongside ordinary preferences. A shallow merge
+    // would let a caller that sends only one field drop the API key, so merge
+    // this object field-by-field instead.
+    if (settings.jarvis) {
+      newSettings.jarvis = {
+        ...settingsForWrite.settings.jarvis,
+        ...settings.jarvis,
+      };
+    }
     if (newSettings.githubAccessToken) {
       newSettings.githubAccessToken = encrypt(
         newSettings.githubAccessToken.value,
@@ -297,6 +343,59 @@ export function writeSettings(settings: Partial<UserSettings>): void {
         newSettings.neon.refreshToken = encrypt(
           newSettings.neon.refreshToken.value,
         );
+      }
+    }
+    if (newSettings.vercelAiGatewayApiKey) {
+      newSettings.vercelAiGatewayApiKey = encrypt(
+        newSettings.vercelAiGatewayApiKey.value,
+      );
+    }
+    if (newSettings.vercelBlob?.token) {
+      newSettings.vercelBlob.token = encrypt(
+        newSettings.vercelBlob.token.value,
+      );
+    }
+    if (newSettings.researchPlugins?.coinGecko?.apiKey) {
+      newSettings.researchPlugins.coinGecko.apiKey = encrypt(
+        newSettings.researchPlugins.coinGecko.apiKey.value,
+      );
+    }
+    if (newSettings.researchPlugins?.skyscanner?.apiKey) {
+      newSettings.researchPlugins.skyscanner.apiKey = encrypt(
+        newSettings.researchPlugins.skyscanner.apiKey.value,
+      );
+    }
+    if (newSettings.researchPlugins?.amadeus?.apiKey) {
+      newSettings.researchPlugins.amadeus.apiKey = encrypt(
+        newSettings.researchPlugins.amadeus.apiKey.value,
+      );
+    }
+    if (newSettings.researchPlugins?.amadeus?.apiSecret) {
+      newSettings.researchPlugins.amadeus.apiSecret = encrypt(
+        newSettings.researchPlugins.amadeus.apiSecret.value,
+      );
+    }
+    if (newSettings.researchPlugins?.duffel?.accessToken) {
+      newSettings.researchPlugins.duffel.accessToken = encrypt(
+        newSettings.researchPlugins.duffel.accessToken.value,
+      );
+    }
+    if (newSettings.jarvis?.elevenLabsApiKey) {
+      newSettings.jarvis.elevenLabsApiKey = encrypt(
+        newSettings.jarvis.elevenLabsApiKey.value,
+      );
+    }
+    if (newSettings.socialMedia) {
+      const facebook = newSettings.socialMedia.facebook;
+      if (facebook?.pageAccessToken) {
+        facebook.pageAccessToken = encrypt(facebook.pageAccessToken.value);
+      }
+      const x = newSettings.socialMedia.x;
+      if (x) {
+        x.apiKey = encrypt(x.apiKey.value);
+        x.apiSecret = encrypt(x.apiSecret.value);
+        x.accessToken = encrypt(x.accessToken.value);
+        x.accessTokenSecret = encrypt(x.accessTokenSecret.value);
       }
     }
     for (const provider in newSettings.providerSettings) {
@@ -408,6 +507,124 @@ function readExistingSettingsFile(filePath: string): UserSettings {
       }
     }
   }
+  if (combinedSettings.vercelAiGatewayApiKey) {
+    const decrypted = decryptStoredSecret(
+      combinedSettings.vercelAiGatewayApiKey,
+      "Vercel AI Gateway API key",
+    );
+    if (decrypted) {
+      combinedSettings.vercelAiGatewayApiKey = decrypted;
+    } else {
+      delete combinedSettings.vercelAiGatewayApiKey;
+    }
+  }
+  if (combinedSettings.vercelBlob?.token) {
+    const decrypted = decryptStoredSecret(
+      combinedSettings.vercelBlob.token,
+      "Vercel Blob token",
+    );
+    if (decrypted) {
+      combinedSettings.vercelBlob.token = decrypted;
+    } else {
+      delete combinedSettings.vercelBlob.token;
+    }
+  }
+  if (combinedSettings.researchPlugins?.coinGecko?.apiKey) {
+    const decrypted = decryptStoredSecret(
+      combinedSettings.researchPlugins.coinGecko.apiKey,
+      "CoinGecko API key",
+    );
+    if (decrypted) {
+      combinedSettings.researchPlugins.coinGecko.apiKey = decrypted;
+    } else {
+      delete combinedSettings.researchPlugins.coinGecko.apiKey;
+    }
+  }
+  if (combinedSettings.researchPlugins?.skyscanner?.apiKey) {
+    const decrypted = decryptStoredSecret(
+      combinedSettings.researchPlugins.skyscanner.apiKey,
+      "Skyscanner API key",
+    );
+    if (decrypted) {
+      combinedSettings.researchPlugins.skyscanner.apiKey = decrypted;
+    } else {
+      delete combinedSettings.researchPlugins.skyscanner.apiKey;
+    }
+  }
+  if (combinedSettings.researchPlugins?.amadeus?.apiKey) {
+    const decrypted = decryptStoredSecret(
+      combinedSettings.researchPlugins.amadeus.apiKey,
+      "Amadeus API key",
+    );
+    if (decrypted) {
+      combinedSettings.researchPlugins.amadeus.apiKey = decrypted;
+    } else {
+      delete combinedSettings.researchPlugins.amadeus.apiKey;
+    }
+  }
+  if (combinedSettings.researchPlugins?.amadeus?.apiSecret) {
+    const decrypted = decryptStoredSecret(
+      combinedSettings.researchPlugins.amadeus.apiSecret,
+      "Amadeus API secret",
+    );
+    if (decrypted) {
+      combinedSettings.researchPlugins.amadeus.apiSecret = decrypted;
+    } else {
+      delete combinedSettings.researchPlugins.amadeus.apiSecret;
+    }
+  }
+  if (combinedSettings.researchPlugins?.duffel?.accessToken) {
+    const decrypted = decryptStoredSecret(
+      combinedSettings.researchPlugins.duffel.accessToken,
+      "Duffel access token",
+    );
+    if (decrypted) {
+      combinedSettings.researchPlugins.duffel.accessToken = decrypted;
+    } else {
+      delete combinedSettings.researchPlugins.duffel.accessToken;
+    }
+  }
+  if (combinedSettings.jarvis?.elevenLabsApiKey) {
+    const decrypted = decryptStoredSecret(
+      combinedSettings.jarvis.elevenLabsApiKey,
+      "ElevenLabs API key",
+    );
+    if (decrypted) {
+      combinedSettings.jarvis.elevenLabsApiKey = decrypted;
+    } else {
+      delete combinedSettings.jarvis.elevenLabsApiKey;
+    }
+  }
+  const socialMedia = combinedSettings.socialMedia;
+  if (socialMedia?.facebook) {
+    const decrypted = decryptStoredSecret(
+      socialMedia.facebook.pageAccessToken,
+      "Facebook page access token",
+    );
+    if (decrypted) {
+      socialMedia.facebook.pageAccessToken = decrypted;
+    } else {
+      delete socialMedia.facebook;
+    }
+  }
+  if (socialMedia?.x) {
+    const x = socialMedia.x;
+    const apiKey = decryptStoredSecret(x.apiKey, "X API key");
+    const apiSecret = decryptStoredSecret(x.apiSecret, "X API secret");
+    const accessToken = decryptStoredSecret(x.accessToken, "X access token");
+    const accessTokenSecret = decryptStoredSecret(
+      x.accessTokenSecret,
+      "X access token secret",
+    );
+    if (apiKey && apiSecret && accessToken && accessTokenSecret) {
+      x.apiKey = apiKey;
+      x.apiSecret = apiSecret;
+      x.accessToken = accessToken;
+      x.accessTokenSecret = accessTokenSecret;
+    } else {
+      delete socialMedia.x;
+    }
+  }
   if (combinedSettings.githubAccessToken) {
     const decrypted = decryptStoredSecret(
       combinedSettings.githubAccessToken,
@@ -511,7 +728,7 @@ function readSettingsForWrite(filePath: string): {
     logger.error("Existing settings file is unreadable:", error);
     notifyRendererError({
       message:
-        "Dyad could not read your existing settings file, so it fell back to default settings.",
+        "Meta Human OS could not read your existing settings file, so it fell back to default settings.",
       action: {
         label: "Read restore docs",
         url: RESTORE_SETTINGS_DOCS_URL,

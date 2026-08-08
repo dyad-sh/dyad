@@ -1,7 +1,17 @@
 import { useMemo, useState } from "react";
-import { useNavigate, useRouter } from "@tanstack/react-router";
-import { ArrowLeft, CheckSquare, Loader2, Search, Trash2 } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
+import {
+  CheckSquare,
+  Cloud,
+  LayoutGrid,
+  Loader2,
+  Plus,
+  Search,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
 import { useAtom } from "jotai";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -15,15 +25,18 @@ import { cn } from "@/lib/utils";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { useOpenApp } from "@/hooks/useOpenApp";
 import { AppShowcaseCard } from "@/components/AppShowcaseCard";
-import { PageContainer } from "@/components/PageContainer";
+import { RestoreFromCloudDialog } from "@/components/RestoreFromCloudDialog";
+import { ParticleBackground } from "@/components/home/ParticleBackground";
 import { useAppThumbnails } from "@/hooks/useAppThumbnails";
 import { sortAppsForShowcase } from "@/lib/sortApps";
 import { ipc } from "@/ipc/types";
 import { selectedAppIdAtom, currentAppAtom } from "@/atoms/appAtoms";
 import { showError } from "@/lib/toast";
 
+const RECENT_HIGHLIGHT_COUNT = 6;
+
 export default function AppsPage() {
-  const router = useRouter();
+  const { t } = useTranslation("home");
   const navigate = useNavigate();
   const { apps, loading, refreshApps } = useLoadApps();
   const openApp = useOpenApp();
@@ -32,20 +45,23 @@ export default function AppsPage() {
   const [selectedAppIds, setSelectedAppIds] = useState<Set<number>>(new Set());
   const [isBulkDeleteDialogOpen, setIsBulkDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isRestoreOpen, setIsRestoreOpen] = useState(false);
   const [selectedAppId, setSelectedAppId] = useAtom(selectedAppIdAtom);
   const [currentApp, setCurrentApp] = useAtom(currentAppAtom);
 
-  const filteredApps = useMemo(() => {
-    const sorted = sortAppsForShowcase(apps);
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return sorted;
-    return sorted.filter((app) => app.name.toLowerCase().includes(q));
-  }, [apps, searchQuery]);
+  const sortedApps = useMemo(() => sortAppsForShowcase(apps), [apps]);
 
-  // Fetch thumbnails for ALL apps once and filter client-side so typing in
-  // the search box doesn't trigger a burst of IPC + filesystem reads. This
-  // also lets the underlying query cache be shared with the featured
-  // showcase on the home page.
+  const filteredApps = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return sortedApps;
+    return sortedApps.filter((app) => app.name.toLowerCase().includes(q));
+  }, [sortedApps, searchQuery]);
+
+  const recentHighlights = useMemo(
+    () => sortedApps.slice(0, RECENT_HIGHLIGHT_COUNT),
+    [sortedApps],
+  );
+
   const allAppIds = useMemo(() => apps.map((a) => a.id), [apps]);
   const thumbnailByAppId = useAppThumbnails(allAppIds);
 
@@ -61,13 +77,8 @@ export default function AppsPage() {
     visibleFilteredIds.length > 0 &&
     visibleFilteredIds.every((id) => selectedAppIds.has(id));
 
-  const handleGoBack = () => {
-    if (router.history.length > 1) {
-      router.history.back();
-    } else {
-      navigate({ to: "/" });
-    }
-  };
+  const showRecentRow =
+    !searchQuery.trim() && recentHighlights.length > 0 && !isSelectionMode;
 
   const handleEnterSelectionMode = () => {
     setIsSelectionMode(true);
@@ -114,8 +125,6 @@ export default function AppsPage() {
         results.filter((r) => r.success).map((r) => r.appId),
       );
 
-      // Reset the active app atoms if the currently-active app was deleted,
-      // so app-details and the sidebar don't render against a stale id.
       if (selectedAppId != null && succeededIds.has(selectedAppId)) {
         setSelectedAppId(null);
       }
@@ -130,7 +139,6 @@ export default function AppsPage() {
         showError(
           `Failed to delete ${failed.length} app${failed.length === 1 ? "" : "s"}: ${failedNames}`,
         );
-        // Keep only the failed ids selected so the user can retry.
         setSelectedAppIds(new Set(failed.map((r) => r.appId)));
         setIsBulkDeleteDialogOpen(false);
       } else {
@@ -148,194 +156,293 @@ export default function AppsPage() {
   };
 
   return (
-    <PageContainer size="xl" innerClassName="pb-12">
-        <Button
-          onClick={handleGoBack}
-          variant="outline"
-          size="sm"
-          className="flex items-center gap-2 mb-4 bg-(--background-lightest) py-5"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Go Back
-        </Button>
+    <div
+      className="home-jarvis relative flex min-h-0 w-full flex-1 flex-col overflow-hidden"
+      data-testid="my-apps-gallery"
+    >
+      <ParticleBackground className="z-0" />
 
-        <header className="mb-6 flex items-end justify-between gap-3">
-          <h1 className="text-3xl font-bold">Apps</h1>
-          {!isSelectionMode && apps.length > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleEnterSelectionMode}
-              data-testid="apps-gallery-select-button"
-              className="flex items-center gap-2"
-            >
-              <CheckSquare className="h-4 w-4" />
-              Select
-            </Button>
-          )}
-        </header>
-
-        <div className="mb-4">
-          <div
-            className={cn(
-              "relative flex items-center border border-border rounded-2xl bg-(--background-lighter) transition-colors duration-200",
-              "hover:border-primary/30",
-              "focus-within:border-primary/30 focus-within:ring-1 focus-within:ring-primary/20",
-            )}
-          >
-            <Search className="absolute left-4 h-4 w-4 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Search apps..."
-              aria-label="Search apps"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-transparent py-3 pl-11 pr-4 text-sm outline-none placeholder:text-muted-foreground"
-            />
-          </div>
-        </div>
-
-        {isSelectionMode && (
-          <div
-            data-testid="apps-gallery-selection-toolbar"
-            className="mb-4 flex items-center justify-between gap-2 rounded-xl border border-border bg-(--background-lighter) px-3 py-2"
-          >
-            <div className="text-sm text-muted-foreground">
-              <span data-testid="apps-gallery-selection-count">
-                {selectedAppIds.size}
-              </span>{" "}
-              selected
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleToggleSelectAllVisible}
-                disabled={visibleFilteredIds.length === 0}
-                data-testid="apps-gallery-select-all-button"
-              >
-                {allVisibleSelected ? "Clear visible" : "Select all visible"}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleExitSelectionMode}
-                data-testid="apps-gallery-cancel-select-button"
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => setIsBulkDeleteDialogOpen(true)}
-                disabled={selectedAppIds.size === 0}
-                data-testid="apps-gallery-bulk-delete-button"
-                className="flex items-center gap-1"
-              >
-                <Trash2 className="h-4 w-4" />
-                Delete ({selectedAppIds.size})
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {loading ? (
-          <div className="text-muted-foreground text-center py-12">
-            Loading apps...
-          </div>
-        ) : filteredApps.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 gap-3">
-            <p className="text-muted-foreground text-center">
-              {searchQuery
-                ? "No apps match your search."
-                : "You haven't created any apps yet."}
-            </p>
-            {!searchQuery && (
-              <Button onClick={() => navigate({ to: "/" })} size="sm">
-                Create your first app
-              </Button>
-            )}
-          </div>
-        ) : (
-          <div
-            data-testid="apps-grid"
-            className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4"
-          >
-            {filteredApps.map((app) => (
-              <AppShowcaseCard
-                key={app.id}
-                app={app}
-                thumbnailUrl={thumbnailByAppId.get(app.id) ?? null}
-                onClick={openApp}
-                isSelectionMode={isSelectionMode}
-                isSelected={selectedAppIds.has(app.id)}
-                onToggleSelect={handleToggleSelect}
-              />
-            ))}
-          </div>
-        )}
-
-      <Dialog
-        open={isBulkDeleteDialogOpen}
-        onOpenChange={(open) => {
-          if (!isDeleting) setIsBulkDeleteDialogOpen(open);
-        }}
+      <div
+        className="relative z-10 flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto"
+        data-reset-scroll-on-route
       >
-        <DialogContent className="max-w-sm p-4">
-          <DialogHeader className="pb-2">
-            <DialogTitle>
-              Delete {selectedAppIds.size} app
-              {selectedAppIds.size === 1 ? "" : "s"}?
-            </DialogTitle>
-            <DialogDescription className="text-xs">
-              This action is irreversible. All app files and chat history for
-              these apps will be permanently deleted.
-            </DialogDescription>
-          </DialogHeader>
-          {selectedApps.length > 0 && (
-            <ul
-              data-testid="apps-gallery-bulk-delete-list"
-              className="max-h-40 overflow-y-auto rounded border border-border bg-(--background-lighter) px-3 py-2 text-xs text-foreground"
-            >
-              {selectedApps.map((app) => (
-                <li key={app.id} className="truncate py-0.5">
-                  {app.name}
-                </li>
-              ))}
-            </ul>
-          )}
-          <DialogFooter className="flex justify-end gap-2 pt-2">
-            <Button
-              variant="outline"
-              onClick={() => setIsBulkDeleteDialogOpen(false)}
-              disabled={isDeleting}
-              size="sm"
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleConfirmBulkDelete}
-              disabled={isDeleting || selectedAppIds.size === 0}
-              size="sm"
-              className="flex items-center gap-1"
-              data-testid="apps-gallery-bulk-delete-confirm-button"
-            >
-              {isDeleting ? (
-                <>
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                  Deleting...
-                </>
-              ) : (
-                <>
-                  Delete {selectedAppIds.size} app
-                  {selectedAppIds.size === 1 ? "" : "s"}
-                </>
+        <div className="mx-auto flex w-full max-w-6xl flex-col px-4 py-6 sm:px-10 sm:py-8">
+          <header className="mb-8 flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-cyan-400/80">
+                <LayoutGrid className="size-4" />
+                <span className="font-jarvis-ui text-xs tracking-[0.2em] uppercase">
+                  {t("myAppsGallery.eyebrow")}
+                </span>
+              </div>
+              <h1 className="font-jarvis-display text-3xl font-semibold tracking-wide text-[#e8f8fa] sm:text-4xl">
+                {t("myAppsGallery.title")}
+              </h1>
+              <p className="max-w-lg text-sm text-cyan-100/50">
+                {t("myAppsGallery.subtitle")}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigate({ to: "/coder/studio" })}
+                className="border-cyan-500/20 bg-cyan-500/5 text-cyan-100/90 hover:bg-cyan-500/10"
+              >
+                <Plus className="mr-1.5 size-4" />
+                {t("myAppsGallery.newProject")}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsRestoreOpen(true)}
+                className="border-cyan-500/20 bg-cyan-500/5 text-cyan-100/90 hover:bg-cyan-500/10"
+                data-testid="restore-from-cloud-button"
+              >
+                <Cloud className="mr-1.5 size-4" />
+                Restore from cloud
+              </Button>
+              {!isSelectionMode && apps.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleEnterSelectionMode}
+                  data-testid="apps-gallery-select-button"
+                  className="border-white/10 bg-white/5"
+                >
+                  <CheckSquare className="mr-1.5 size-4" />
+                  {t("myAppsGallery.select")}
+                </Button>
               )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </PageContainer>
+            </div>
+          </header>
+
+          <div className="mb-6">
+            <div
+              className={cn(
+                "relative flex items-center rounded-2xl border border-cyan-500/15 bg-[#0a0a12]/60 backdrop-blur-md",
+                "transition-colors duration-200",
+                "hover:border-cyan-500/25",
+                "focus-within:border-cyan-400/40 focus-within:ring-1 focus-within:ring-cyan-400/20",
+              )}
+            >
+              <Search className="absolute left-4 size-4 text-cyan-400/50" />
+              <input
+                type="text"
+                placeholder={t("myAppsGallery.searchPlaceholder")}
+                aria-label={t("myAppsGallery.searchPlaceholder")}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-transparent py-3.5 pl-11 pr-4 text-sm text-[#e8f8fa] outline-none placeholder:text-cyan-100/30"
+              />
+            </div>
+          </div>
+
+          {isSelectionMode && (
+            <div
+              data-testid="apps-gallery-selection-toolbar"
+              className="mb-6 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-cyan-500/15 bg-[#0a0a12]/70 px-3 py-2.5 backdrop-blur-md"
+            >
+              <div className="text-sm text-cyan-100/60">
+                <span data-testid="apps-gallery-selection-count">
+                  {selectedAppIds.size}
+                </span>{" "}
+                {t("myAppsGallery.selected")}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleToggleSelectAllVisible}
+                  disabled={visibleFilteredIds.length === 0}
+                  data-testid="apps-gallery-select-all-button"
+                  className="border-white/10 bg-white/5"
+                >
+                  {allVisibleSelected
+                    ? t("myAppsGallery.clearVisible")
+                    : t("myAppsGallery.selectAllVisible")}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleExitSelectionMode}
+                  data-testid="apps-gallery-cancel-select-button"
+                  className="border-white/10 bg-white/5"
+                >
+                  {t("myAppsGallery.cancel")}
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setIsBulkDeleteDialogOpen(true)}
+                  disabled={selectedAppIds.size === 0}
+                  data-testid="apps-gallery-bulk-delete-button"
+                  className="flex items-center gap-1"
+                >
+                  <Trash2 className="size-4" />
+                  {t("myAppsGallery.deleteCount", {
+                    count: selectedAppIds.size,
+                  })}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {loading ? (
+            <div className="flex flex-col items-center justify-center gap-3 py-24 text-cyan-100/50">
+              <Loader2 className="size-8 animate-spin text-cyan-400/60" />
+              <p>{t("myAppsGallery.loading")}</p>
+            </div>
+          ) : filteredApps.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-cyan-500/20 bg-[#0a0a12]/50 py-20 px-6 text-center backdrop-blur-sm">
+              <Sparkles className="size-10 text-cyan-400/40" />
+              <p className="max-w-sm text-cyan-100/55">
+                {searchQuery
+                  ? t("myAppsGallery.noSearchResults")
+                  : t("myAppsGallery.empty")}
+              </p>
+              {!searchQuery && (
+                <Button
+                  onClick={() => navigate({ to: "/coder/studio" })}
+                  size="sm"
+                  className="bg-cyan-500/20 text-cyan-100 hover:bg-cyan-500/30"
+                >
+                  {t("myAppsGallery.createFirst")}
+                </Button>
+              )}
+            </div>
+          ) : (
+            <>
+              {showRecentRow && (
+                <section className="mb-10" data-testid="featured-app-showcase">
+                  <div className="mb-4 flex items-center justify-between">
+                    <h2 className="font-jarvis-ui text-sm font-medium tracking-widest text-cyan-300/70 uppercase">
+                      {t("myAppsGallery.recent")}
+                    </h2>
+                    <span className="text-xs text-cyan-100/40">
+                      {t("myAppsGallery.appCount", { count: apps.length })}
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <div
+                      tabIndex={0}
+                      role="region"
+                      aria-label={t("myAppsGallery.recent")}
+                      className="apps-gallery-recent-scroll flex gap-4 overflow-x-auto pb-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/40 rounded-xl"
+                    >
+                      {recentHighlights.map((app) => (
+                        <div key={app.id} className="w-64 shrink-0 sm:w-72">
+                          <AppShowcaseCard
+                            app={app}
+                            thumbnailUrl={thumbnailByAppId.get(app.id) ?? null}
+                            onClick={openApp}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    <div
+                      aria-hidden
+                      className="pointer-events-none absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-[#0a0a0f] to-transparent"
+                    />
+                  </div>
+                </section>
+              )}
+
+              <section>
+                <h2 className="mb-4 font-jarvis-ui text-sm font-medium tracking-widest text-cyan-300/70 uppercase">
+                  {searchQuery
+                    ? t("myAppsGallery.searchResults")
+                    : t("myAppsGallery.allProjects")}
+                </h2>
+                <div
+                  data-testid="apps-grid"
+                  className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-5"
+                >
+                  {filteredApps.map((app) => (
+                    <AppShowcaseCard
+                      key={app.id}
+                      app={app}
+                      thumbnailUrl={thumbnailByAppId.get(app.id) ?? null}
+                      onClick={openApp}
+                      isSelectionMode={isSelectionMode}
+                      isSelected={selectedAppIds.has(app.id)}
+                      onToggleSelect={handleToggleSelect}
+                    />
+                  ))}
+                </div>
+              </section>
+            </>
+          )}
+
+          <Dialog
+            open={isBulkDeleteDialogOpen}
+            onOpenChange={(open) => {
+              if (!isDeleting) setIsBulkDeleteDialogOpen(open);
+            }}
+          >
+            <DialogContent className="max-w-sm p-4">
+              <DialogHeader className="pb-2">
+                <DialogTitle>
+                  {t("myAppsGallery.deleteConfirmTitle", {
+                    count: selectedAppIds.size,
+                  })}
+                </DialogTitle>
+                <DialogDescription className="text-xs">
+                  {t("myAppsGallery.deleteConfirmDescription")}
+                </DialogDescription>
+              </DialogHeader>
+              {selectedApps.length > 0 && (
+                <ul
+                  data-testid="apps-gallery-bulk-delete-list"
+                  className="max-h-40 overflow-y-auto rounded border border-border bg-(--background-lighter) px-3 py-2 text-xs text-foreground"
+                >
+                  {selectedApps.map((app) => (
+                    <li key={app.id} className="truncate py-0.5">
+                      {app.name}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <DialogFooter className="flex justify-end gap-2 pt-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setIsBulkDeleteDialogOpen(false)}
+                  disabled={isDeleting}
+                  size="sm"
+                >
+                  {t("myAppsGallery.cancel")}
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={handleConfirmBulkDelete}
+                  disabled={isDeleting || selectedAppIds.size === 0}
+                  size="sm"
+                  className="flex items-center gap-1"
+                  data-testid="apps-gallery-bulk-delete-confirm-button"
+                >
+                  {isDeleting ? (
+                    <>
+                      <Loader2 className="size-3 animate-spin" />
+                      {t("myAppsGallery.deleting")}
+                    </>
+                  ) : (
+                    <>
+                      {t("myAppsGallery.deleteCount", {
+                        count: selectedAppIds.size,
+                      })}
+                    </>
+                  )}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <RestoreFromCloudDialog
+            open={isRestoreOpen}
+            onOpenChange={setIsRestoreOpen}
+          />
+        </div>
+      </div>
+    </div>
   );
 }

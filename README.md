@@ -1,32 +1,26 @@
-# Dyad
+# Meta Human OS
 
-Dyad is a local, open-source AI app builder. It's fast, private, and fully under your control — like Lovable, v0, or Bolt, but running right on your machine.
-
-[![Image](https://github.com/user-attachments/assets/f6c83dfc-6ffd-4d32-93dd-4b9c46d17790)](https://dyad.sh/)
-
-More info at: [https://dyad.sh/](https://dyad.sh/)
+Meta Human OS is a local-first AI command centre for agents, apps, knowledge,
+media and workflows. It supports local and cloud model providers while keeping
+the user in control of storage, tools and privacy.
 
 ## 🚀 Features
 
-- ⚡️ **Local**: Fast, private and no lock-in.
-- 🛠 **Bring your own keys**: Use your own AI API keys — no vendor lock-in.
-- 🖥️ **Cross-platform**: Easy to run on Mac or Windows.
+- **Model roles**: Assign compatible models for chat, coding, images, video,
+  embeddings and OCR.
+- **Local providers**: Connect LM Studio, Ollama and OpenAI-compatible servers.
+- **Hermes agents**: Add personal agents and keep their chats available in
+  switchable tabs.
+- **Knowledge and storage**: Use Meta Drive HD, a local Markdown vault and a
+  private vector workspace.
+- **App building**: Create, preview and manage applications from one workspace.
+- **Bring your own keys**: Connect supported cloud providers without vendor
+  lock-in.
 
-## 📦 Download
+## Development
 
-No sign-up required. Just download and go.
-
-### [👉 Download for your platform](https://www.dyad.sh/#download)
-
-## 🤝 Community
-
-Join our growing community of AI app builders on **Reddit**: [r/dyadbuilders](https://www.reddit.com/r/dyadbuilders/) - share your projects and get help from the community!
-
-## 🛠️ Contributing
-
-**Dyad** is open-source (see License info below).
-
-If you're interested in contributing to dyad, please read our [contributing](./CONTRIBUTING.md) doc.
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for setup, testing and contribution
+guidance.
 
 ## License
 

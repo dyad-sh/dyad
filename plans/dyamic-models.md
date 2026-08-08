@@ -358,7 +358,7 @@ File:
 Current issues:
 
 - `AUTO_MODELS` hardcodes exact provider/model pairs
-- the Dyad Pro local-agent fallback also hardcodes exact concrete models
+- the Meta Human OS Pro local-agent fallback also hardcodes exact concrete models
 
 Planned change:
 

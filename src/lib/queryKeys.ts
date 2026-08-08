@@ -33,6 +33,32 @@ export const queryKeys = {
     envVars: ["settings", "envVars"] as const,
   },
 
+  storage: {
+    all: ["storage"] as const,
+    status: (localVaultPath?: string) =>
+      ["storage", "status", localVaultPath ?? ""] as const,
+  },
+
+  vercelBlob: {
+    all: ["vercelBlob"] as const,
+    status: ["vercelBlob", "status"] as const,
+  },
+
+  vector: {
+    all: ["vector"] as const,
+    overview: ["vector", "overview"] as const,
+    collections: ["vector", "collections"] as const,
+    sources: ({ collectionId }: { collectionId: string | null }) =>
+      ["vector", "sources", collectionId] as const,
+    search: ({
+      collectionIds,
+      query,
+    }: {
+      collectionIds: string[];
+      query: string;
+    }) => ["vector", "search", collectionIds, query] as const,
+  },
+
   // ─────────────────────────────────────────────────────────────────────────────
   // Apps
   // ─────────────────────────────────────────────────────────────────────────────
@@ -207,6 +233,14 @@ export const queryKeys = {
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // Agent OS (Multi-Agent Command Center)
+  // ─────────────────────────────────────────────────────────────────────────────
+  agentOs: {
+    all: ["agentOs"] as const,
+    agents: ["agentOs", "agents"] as const,
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
   // Agent Tools
   // ─────────────────────────────────────────────────────────────────────────────
   agentTools: {
@@ -221,6 +255,20 @@ export const queryKeys = {
     byProviders: ["language-models-by-providers"] as const,
     forProvider: ({ providerId }: { providerId: string }) =>
       ["language-models", providerId] as const,
+    localStatus: ({
+      providerId,
+      serverUrl,
+    }: {
+      providerId: string;
+      serverUrl: string;
+    }) => ["local-models", "status", providerId, serverUrl] as const,
+    localDiscovery: ({ targets }: { targets: string[] }) =>
+      ["local-models", "discovery", ...targets.slice().sort()] as const,
+  },
+
+  videoGeneration: {
+    status: ["video-generation", "status"] as const,
+    models: ["video-generation", "models"] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -246,8 +294,9 @@ export const queryKeys = {
   // Vercel Deployments
   // ─────────────────────────────────────────────────────────────────────────────
   vercel: {
-    all: ["vercel-deployments"] as const,
-    deployments: ({ appId }: { appId: number }) =>
+    all: ["vercel"] as const,
+    projects: ["vercel", "projects"] as const,
+    deploymentsByApp: ({ appId }: { appId: number }) =>
       ["vercel-deployments", appId] as const,
   },
 
@@ -267,10 +316,21 @@ export const queryKeys = {
   mcp: {
     all: ["mcp"] as const,
     servers: ["mcp", "servers"] as const,
+    lovableStatus: ["mcp", "lovable-status"] as const,
     toolsByServer: {
       all: ["mcp", "tools-by-server"] as const,
       list: ({ serverIds }: { serverIds: number[] }) =>
         ["mcp", "tools-by-server", serverIds] as const,
+    },
+    workflowsByServer: {
+      all: ["mcp", "workflows-by-server"] as const,
+      list: ({ serverIds }: { serverIds: number[] }) =>
+        ["mcp", "workflows-by-server", serverIds] as const,
+    },
+    connectionStatuses: {
+      all: ["mcp", "connection-statuses"] as const,
+      list: ({ serverIds }: { serverIds: number[] }) =>
+        ["mcp", "connection-statuses", serverIds] as const,
     },
     consents: ["mcp", "consents"] as const,
   },
@@ -306,6 +366,16 @@ export const queryKeys = {
   github: {
     all: ["github"] as const,
     repos: ["github", "repos"] as const,
+    account: ["github", "account"] as const,
+    contents: ({
+      owner,
+      repo,
+      path,
+    }: {
+      owner: string;
+      repo: string;
+      path: string;
+    }) => ["github", "contents", owner, repo, path] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -355,6 +425,27 @@ export const queryKeys = {
   media: {
     all: ["media"] as const,
   },
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Social Media (connections + content planner)
+  // ─────────────────────────────────────────────────────────────────────────────
+  socialMedia: {
+    all: ["socialMedia"] as const,
+    connections: ["socialMedia", "connections"] as const,
+    posts: ["socialMedia", "posts"] as const,
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Helix coding agent (embedded dev server)
+  // ─────────────────────────────────────────────────────────────────────────────
+  helix: {
+    all: ["helix"] as const,
+    status: ["helix", "status"] as const,
+  },
+  openWorker: {
+    all: ["openworker"] as const,
+    status: ["openworker", "status"] as const,
+  },
 } as const;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -372,6 +463,8 @@ export type QueryKeyOf<T> = T extends readonly unknown[]
 export type AppQueryKey =
   | QueryKeyOf<(typeof queryKeys.system)[keyof typeof queryKeys.system]>
   | QueryKeyOf<(typeof queryKeys.settings)[keyof typeof queryKeys.settings]>
+  | QueryKeyOf<(typeof queryKeys.storage)[keyof typeof queryKeys.storage]>
+  | QueryKeyOf<(typeof queryKeys.vercelBlob)[keyof typeof queryKeys.vercelBlob]>
   | QueryKeyOf<(typeof queryKeys.apps)[keyof typeof queryKeys.apps]>
   | QueryKeyOf<(typeof queryKeys.chats)[keyof typeof queryKeys.chats]>
   | QueryKeyOf<(typeof queryKeys.plans)[keyof typeof queryKeys.plans]>
@@ -420,4 +513,8 @@ export type AppQueryKey =
   | QueryKeyOf<(typeof queryKeys.migration)[keyof typeof queryKeys.migration]>
   | QueryKeyOf<(typeof queryKeys.neon)[keyof typeof queryKeys.neon]>
   | QueryKeyOf<(typeof queryKeys.appEnvVars)[keyof typeof queryKeys.appEnvVars]>
-  | QueryKeyOf<(typeof queryKeys.media)[keyof typeof queryKeys.media]>;
+  | QueryKeyOf<(typeof queryKeys.media)[keyof typeof queryKeys.media]>
+  | QueryKeyOf<
+      (typeof queryKeys.socialMedia)[keyof typeof queryKeys.socialMedia]
+    >
+  | QueryKeyOf<(typeof queryKeys.helix)[keyof typeof queryKeys.helix]>;

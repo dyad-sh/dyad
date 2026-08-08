@@ -19,7 +19,7 @@ export const DyadThink: React.FC<DyadThinkProps> = ({ children, node }) => {
     if (isExpanded && !hasExpanded) {
       setHasExpanded(true);
     }
-  }, [isExpanded]);
+  }, [isExpanded, hasExpanded]);
 
   // Check if content matches token savings format
   const tokenSavingsMatch =
@@ -29,11 +29,14 @@ export const DyadThink: React.FC<DyadThinkProps> = ({ children, node }) => {
         )
       : null;
 
-  // Collapse when transitioning from in-progress to not-in-progress
+  // Collapse when transitioning from in-progress to not-in-progress.
+  // Intentionally only depends on `inProgress` — re-running on `isExpanded`
+  // would immediately re-collapse a block the user manually expanded.
   useEffect(() => {
     if (!inProgress && isExpanded) {
       setIsExpanded(false);
     }
+    // eslint-disable-next-line react/exhaustive-deps
   }, [inProgress]);
 
   // If it's token savings format, render DyadTokenSavings component

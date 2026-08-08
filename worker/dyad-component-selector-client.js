@@ -637,7 +637,7 @@
   function initializeComponentSelector() {
     if (!document.body) {
       console.error(
-        "Dyad component selector initialization failed: document.body not found.",
+        "Meta Human OS component selector initialization failed: document.body not found.",
       );
       return;
     }
@@ -669,7 +669,7 @@
           },
           "*",
         );
-        console.debug("Dyad component selector initialized");
+        console.debug("Meta Human OS component selector initialized");
         return true;
       }
       return false;
@@ -683,7 +683,7 @@
 
       // If not found, set up MutationObserver to watch for tagged elements
       console.debug(
-        "Dyad component selector waiting for tagged elements to appear...",
+        "Meta Human OS component selector waiting for tagged elements to appear...",
       );
 
       observer = new MutationObserver((mutations) => {
@@ -730,7 +730,7 @@
         // Only warn if we never found tagged elements
         if (!document.body.querySelector("[data-dyad-id]")) {
           console.warn(
-            "Dyad component selector not initialized because no DOM elements were tagged",
+            "Meta Human OS component selector not initialized because no DOM elements were tagged",
           );
         }
       }, INIT_TIMEOUT_MS);

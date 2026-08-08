@@ -192,7 +192,7 @@ test("manage context - default", async ({ po }) => {
 
   const dialog = await po.openContextFilesPicker();
   await expect(po.page.getByRole("dialog")).toContainText(
-    "Dyad will use the entire codebase as context.",
+    "Meta Human OS will use the entire codebase as context.",
   );
   await addPathAndWait(
     po,
@@ -232,7 +232,7 @@ test("manage context - smart context", async ({ po }) => {
 
   let dialog = await po.openContextFilesPicker();
   await expect(po.page.getByRole("dialog")).toContainText(
-    "Dyad will use Smart Context to automatically find the most relevant files to use as context.",
+    "Meta Human OS will use Smart Context to automatically find the most relevant files to use as context.",
   );
   await expect(po.page.getByRole("dialog")).toContainText(
     "Smart Context Auto-includes",

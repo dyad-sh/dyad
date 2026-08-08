@@ -17,13 +17,22 @@ export class Navigation {
     await this.page.getByRole("link", { name: "Library" }).click();
   }
 
+  async goToMyAppsGallery() {
+    const link = this.page.getByRole("link", { name: "My Apps" });
+    await expect(link).toBeVisible({ timeout: 60000 });
+    await link.click();
+    await expect(this.page.getByTestId("my-apps-gallery")).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
+  }
+
   async goToAppsTab() {
-    const appsLink = this.page.getByRole("link", { name: "Apps" });
+    const appsLink = this.page.getByRole("link", { name: "Coding Agent" });
     await expect(appsLink).toBeVisible({ timeout: 60000 });
     await appsLink.click();
     await expect(async () => {
       const isAppsLandingVisible = await this.page
-        .getByText("Build a new app")
+        .getByTestId("home-chat-input-container")
         .isVisible({ timeout: 500 })
         .catch(() => false);
       const isAppListVisible = await this.page
@@ -51,7 +60,7 @@ export class Navigation {
   }
 
   private async openAppsPane() {
-    const appsLink = this.page.getByRole("link", { name: "Apps" });
+    const appsLink = this.page.getByRole("link", { name: "Coding Agent" });
     await expect(appsLink).toBeVisible({ timeout: 60000 });
     await appsLink.click();
 

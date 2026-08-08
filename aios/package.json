@@ -1,0 +1,60 @@
+{
+  "name": "vibe-coding-agent",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-sdk/gateway": "3.0.59",
+    "@ai-sdk/openai": "3.0.37",
+    "@ai-sdk/provider": "3.0.8",
+    "@ai-sdk/react": "3.0.107",
+    "@monaco-editor/react": "^4.7.0",
+    "@radix-ui/react-checkbox": "1.3.3",
+    "@radix-ui/react-dialog": "1.1.14",
+    "@radix-ui/react-label": "2.1.7",
+    "@radix-ui/react-popover": "1.1.14",
+    "@radix-ui/react-scroll-area": "1.2.9",
+    "@radix-ui/react-select": "2.2.5",
+    "@radix-ui/react-slot": "1.2.3",
+    "@vercel/sandbox": "0.0.17",
+    "ai": "6.0.105",
+    "botid": "1.4.5",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "lucide-react": "0.528.0",
+    "next": "^16.0.10",
+    "next-themes": "^0.4.6",
+    "nuqs": "2.4.3",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
+    "react-resizable-panels": "3.0.4",
+    "react-spinners": "0.17.0",
+    "sonner": "^2.0.6",
+    "streamdown": "^1.6.6",
+    "strip-ansi": "7.1.0",
+    "swr": "2.3.4",
+    "tailwind-merge": "3.3.1",
+    "use-stick-to-bottom": "1.1.1",
+    "zod": "3.25.76",
+    "zustand": "5.0.6"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "raw-loader": "4.0.2",
+    "tailwindcss": "^4",
+    "tw-animate-css": "1.3.6",
+    "typescript": "^5"
+  },
+  "engines": {
+    "node": "22.x"
+  }
+}

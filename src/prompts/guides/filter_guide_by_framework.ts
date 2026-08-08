@@ -18,7 +18,7 @@ const HAS_VITE_NITRO_BLOCK = /^<vite-nitro-only>$[\s\S]*?^<\/vite-nitro-only>$/m
  * a guide's markdown. Guides bundle both the Next.js and Vite + Nitro paths
  * for ease of maintenance; we only ship the one that matches.
  *
- * Plain "vite" maps to the Vite + Nitro path because Dyad adds a Nitro layer
+ * Plain "vite" maps to the Vite + Nitro path because Meta Human OS adds a Nitro layer
  * when Neon is connected to a Vite app.
  *
  * Unknown frameworks ("other", null) keep both sections — the caller doesn't

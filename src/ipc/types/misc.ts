@@ -53,7 +53,7 @@ export const SESSION_DEBUG_SCHEMA_VERSION = 2;
 // -- System info --
 
 const DebugSystemInfoSchema = z.object({
-  /** Dyad application version (from package.json) */
+  /** Meta Human OS application version (from package.json) */
   dyadVersion: z.string(),
   /** OS platform: "darwin", "win32", "linux" */
   platform: z.string(),
@@ -86,7 +86,7 @@ const DebugSettingsSchema = z.object({
   defaultChatMode: z.string().nullable(),
   /** Whether changes are auto-approved without review */
   autoApproveChanges: z.boolean().nullable(),
-  /** Whether Dyad Pro is enabled */
+  /** Whether Meta Human OS Pro is enabled */
   enableDyadPro: z.boolean().nullable(),
   /** Thinking budget level: "low" | "medium" | "high" */
   thinkingBudget: z.string().nullable(),

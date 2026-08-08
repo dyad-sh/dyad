@@ -13,7 +13,7 @@ export type EvalProvider = "anthropic" | "openai" | "google";
 // the judge model.
 export const GPT_5_4 = "gpt-5.4";
 
-// Single source of truth for the Dyad Engine URL across the eval helpers.
+// Single source of truth for the Meta Human OS Engine URL across the eval helpers.
 export const DYAD_ENGINE_URL =
   process.env.DYAD_ENGINE_URL ?? "https://engine.dyad.sh/v1";
 
@@ -34,7 +34,7 @@ let _provider: DyadEngineProvider | null = null;
  * Reassemble an SSE stream of OpenAI chat-completion chunks into a single
  * non-streaming JSON response that the AI SDK's `doGenerate` path can parse.
  *
- * The Dyad Engine only supports `stream: true`, but the AI SDK sends
+ * The Meta Human OS Engine only supports `stream: true`, but the AI SDK sends
  * non-streaming requests for `generateText`. This adapter bridges the gap.
  */
 async function sseToNonStreamingResponse(
@@ -170,7 +170,7 @@ async function sseToNonStreamingResponse(
 }
 
 /**
- * Fetch wrapper that adapts requests for the Dyad Engine, which only supports
+ * Fetch wrapper that adapts requests for the Meta Human OS Engine, which only supports
  * streaming (`stream: true`). For non-streaming SDK calls (e.g. `generateText`),
  * this forces `stream: true` in the request and then reassembles the SSE
  * response into a single JSON object the SDK expects.
@@ -194,7 +194,7 @@ const evalFetch: typeof fetch = async (input, init) => {
     return fetch(input, init);
   }
 
-  // Force streaming — the Dyad Engine returns 500 for non-streaming requests
+  // Force streaming — the Meta Human OS Engine returns 500 for non-streaming requests
   parsed.stream = true;
   // Ask OpenAI-compatible providers to include a final usage chunk so
   // we can surface token counts in the reassembled non-streaming
@@ -247,7 +247,7 @@ export function getEvalModel(
   const modelId = `${GATEWAY_PREFIXES[provider]}${modelName}`;
 
   // Always use the chat completions model (not .responses()) because:
-  // 1. The Dyad Engine only supports streaming for chat completions, and the
+  // 1. The Meta Human OS Engine only supports streaming for chat completions, and the
   //    SSE-to-JSON adapter handles that format. The Responses API uses a
   //    different SSE event format that would need its own adapter.
   // 2. The eval tests model quality (correct tool calls), not transport layer.

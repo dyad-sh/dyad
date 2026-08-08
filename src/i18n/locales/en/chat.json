@@ -33,7 +33,7 @@
   "deleteChatNote": "Note: Any code changes that have already been accepted will be kept.",
   "scrollToBottom": "Scroll to bottom",
   "dismissError": "Dismiss error",
-  "askDyadToBuild": "Ask Dyad to build...",
+  "askDyadToBuild": "Ask Meta Human OS to build...",
   "cancelGeneration": "Cancel generation",
   "sendMessage": "Send message",
   "loadingProposal": "Loading proposal...",
@@ -120,7 +120,7 @@
   "total": "Total",
   "failedCountTokens": "Failed to count tokens",
   "optimizeTokens": "Optimize your tokens with",
-  "dyadProSmartContext": "Dyad Pro's Smart Context",
+  "dyadProSmartContext": "Pro's Smart Context",
   "attachFiles": "Attach files",
   "themes": "Themes",
   "noTheme": "No Theme",
@@ -196,29 +196,29 @@
     "versionCount": "Version {{count}}"
   },
   "errorBox": {
-    "accessWithDyadPro": "Access with Dyad Pro",
+    "accessWithDyadPro": "Access with Pro",
     "orSwitchModel": "or switch to another model.",
-    "upgradeToDyadPro": "Upgrade to Dyad Pro",
+    "upgradeToDyadPro": "Upgrade to Pro",
     "troubleshootingGuide": "Troubleshooting guide",
-    "invalidProKey": "Looks like you don't have a valid Dyad Pro key.",
+    "invalidProKey": "Looks like you don't have a valid Pro key.",
     "today": "today.",
-    "creditsUsed": "You have used all of your Dyad AI credits this month.",
+    "creditsUsed": "You have used all of your Meta Human OS AI credits this month.",
     "reloadOrUpgrade": "Reload or upgrade your subscription",
     "getMoreCredits": "and get more AI credits",
     "readDocs": "Read docs"
   },
   "promo": {
     "tiredOfWaiting": "Tired of waiting on AI?",
-    "getDyadPro": "Get Dyad Pro",
+    "getDyadPro": "Get Pro",
     "fasterEdits": "for faster edits with Turbo Edits.",
     "saveOnCosts": "Save up to 3x on AI costs with",
     "debuggingLoop": "Getting stuck in a debugging loop? Try a different model.",
     "joinBuilders": "Join 600+ builders in the",
-    "dyadSubreddit": "Dyad subreddit",
+    "dyadSubreddit": "Meta Human OS subreddit",
     "foundBug": "Found a bug? Click Help > Report a Bug",
     "reportBadResponse": "Want to report a bad AI response? Upload the chat by clicking Help",
     "watch": "Watch",
-    "creatorBuildApp": "the creator of Dyad build a Bible app step-by-step",
+    "creatorBuildApp": "the creator of Meta Human OS build a Bible app step-by-step",
     "gettingStuck": "Getting stuck? Read our",
     "debuggingTips": "debugging tips",
     "advancedTip": "Advanced tip: Customize your",
@@ -226,7 +226,7 @@
     "keepFocused": "Want to keep the AI focused? Start a new chat.",
     "whatsNext": "Want to know what's next? Check out our",
     "roadmap": "roadmap",
-    "likeDyad": "Like Dyad? Star it on",
+    "likeDyad": "Like Meta Human OS? Star it on",
     "gitHub": "GitHub"
   },
   "consent": {
@@ -237,5 +237,16 @@
   "guide": "Guide",
   "agentModeActivated": "Agent Mode Activated",
   "agentModeTip": "Tip: Create a new chat to give the agent a clean context for better results.",
-  "neverShowAgain": "Never show again"
+  "neverShowAgain": "Never show again",
+  "chatAgent": {
+    "messagePlaceholder": "Message Chat Agent…",
+    "sendMessage": "Send message",
+    "stopGenerating": "Stop generating",
+    "enhancePrompt": "Improve prompt",
+    "attachMenu": "Add attachments",
+    "attachFiles": "Attach files",
+    "attachImage": "Attach image",
+    "generationStarted": "Assistant is responding",
+    "generationFinished": "Response finished"
+  }
 }

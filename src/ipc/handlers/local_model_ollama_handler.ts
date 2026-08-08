@@ -1,47 +1,15 @@
 import log from "electron-log";
+import { getOllamaApiUrl } from "@/lib/local_provider_utils";
+import { readSettings } from "../../main/settings";
 import { createTypedHandler } from "./base";
 import { languageModelContracts } from "../types/language-model";
 import type { LocalModel } from "../types/language-model";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import type { UserSettings } from "@/lib/schemas";
 
 const logger = log.scope("ollama_handler");
 
-export function parseOllamaHost(host?: string): string {
-  if (!host) {
-    return "http://localhost:11434";
-  }
-
-  // If it already has a protocol, use as-is
-  if (host.startsWith("http://") || host.startsWith("https://")) {
-    return host;
-  }
-
-  // Check for bracketed IPv6 with port: [::1]:8080
-  if (host.startsWith("[") && host.includes("]:")) {
-    return `http://${host}`;
-  }
-
-  // Check for regular host:port (but not plain IPv6)
-  if (
-    host.includes(":") &&
-    !host.includes("::") &&
-    host.split(":").length === 2
-  ) {
-    return `http://${host}`;
-  }
-
-  // Check if it's a plain IPv6 address (contains :: or multiple colons)
-  if (host.includes("::") || host.split(":").length > 2) {
-    return `http://[${host}]:11434`;
-  }
-
-  // If it's just a hostname, add default port
-  return `http://${host}:11434`;
-}
-
-export function getOllamaApiUrl(): string {
-  return parseOllamaHost(process.env.OLLAMA_HOST);
-}
+export { getOllamaApiUrl, parseOllamaHost } from "@/lib/local_provider_utils";
 
 interface OllamaModel {
   name: string;
@@ -57,12 +25,16 @@ interface OllamaModel {
   };
 }
 
-export async function fetchOllamaModels(): Promise<{ models: LocalModel[] }> {
+export async function fetchOllamaModels(
+  settings?: UserSettings | null,
+): Promise<{ models: LocalModel[] }> {
+  const apiUrl = getOllamaApiUrl(settings);
+
   try {
-    const response = await fetch(`${getOllamaApiUrl()}/api/tags`);
+    const response = await fetch(`${apiUrl}/tags`);
     if (!response.ok) {
       throw new DyadError(
-        `Failed to fetch model: ${response.statusText}`,
+        `Failed to fetch models from Ollama (${response.status})`,
         DyadErrorKind.External,
       );
     }
@@ -84,6 +56,10 @@ export async function fetchOllamaModels(): Promise<{ models: LocalModel[] }> {
         modelName: model.name,
         displayName,
         provider: "ollama",
+        sizeBytes: model.size,
+        parameterSize: model.details?.parameter_size,
+        quantization: model.details?.quantization_level,
+        loaded: true,
       };
     });
     logger.info(`Successfully fetched ${models.length} models from Ollama`);
@@ -93,9 +69,13 @@ export async function fetchOllamaModels(): Promise<{ models: LocalModel[] }> {
       error instanceof TypeError &&
       (error as Error).message.includes("fetch failed")
     ) {
-      throw new Error(
-        "Could not connect to Ollama. Make sure it's running at http://localhost:11434",
+      throw new DyadError(
+        `Could not connect to Ollama at ${apiUrl.replace(/\/api$/, "")}. Make sure Ollama is running.`,
+        DyadErrorKind.External,
       );
+    }
+    if (error instanceof DyadError) {
+      throw error;
     }
     throw new DyadError(
       "Failed to fetch models from Ollama",
@@ -106,6 +86,6 @@ export async function fetchOllamaModels(): Promise<{ models: LocalModel[] }> {
 
 export function registerOllamaHandlers() {
   createTypedHandler(languageModelContracts.listOllamaModels, async () => {
-    return fetchOllamaModels();
+    return fetchOllamaModels(readSettings());
   });
 }

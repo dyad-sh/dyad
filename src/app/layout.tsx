@@ -5,8 +5,10 @@ import { DeepLinkProvider } from "../contexts/DeepLinkContext";
 import { Toaster } from "sonner";
 import { TitleBar } from "./TitleBar";
 import { useEffect, type ReactNode } from "react";
+import { useRouterState } from "@tanstack/react-router";
+import { cn } from "@/lib/utils";
 import { useRunApp, useAppOutputSubscription } from "@/hooks/useRunApp";
-import { useAtomValue, useSetAtom } from "jotai";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import {
   appConsoleEntriesAtom,
   previewModeAtom,
@@ -25,13 +27,69 @@ import i18n from "@/i18n";
 import { LanguageSchema } from "@/lib/schemas";
 import { useShortcut } from "@/hooks/useShortcut";
 import { useIsMac } from "@/hooks/useChatModeToggle";
+import { useStorageAutoSync } from "@/hooks/useStorageAutoSync";
+import { ipc } from "@/ipc/types";
+import { AgentWorkspaceTabs } from "@/components/AgentWorkspaceTabs";
+import { DesktopShell } from "@/components/desktop/DesktopShell";
+import { desktopModeAtom } from "@/atoms/desktopAtoms";
+
+/** Routes where the main panel scrolls (tall page content). */
+export function isScrollableMainRoute(pathname: string): boolean {
+  return (
+    pathname.startsWith("/settings") ||
+    pathname.startsWith("/storage") ||
+    pathname.startsWith("/vector") ||
+    pathname === "/hub" ||
+    pathname.startsWith("/github") ||
+    pathname.startsWith("/vercel") ||
+    pathname.startsWith("/library")
+  );
+}
 
 export default function RootLayout({ children }: { children: ReactNode }) {
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const isScrollableMain = isScrollableMainRoute(pathname);
+
+  useEffect(() => {
+    const main = document.getElementById("layout-main-content-container");
+    if (!main) return;
+
+    const frameId = window.requestAnimationFrame(() => {
+      main.scrollTop = 0;
+      main
+        .querySelectorAll<HTMLElement>("[data-reset-scroll-on-route]")
+        .forEach((element) => {
+          element.scrollTop = 0;
+          element.scrollLeft = 0;
+        });
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [pathname, isScrollableMain]);
   const { refreshAppIframe } = useRunApp();
   // Subscribe to app output events once at the root level to avoid duplicates
   useAppOutputSubscription();
   const previewMode = useAtomValue(previewModeAtom);
+  const [desktopMode, setDesktopMode] = useAtom(desktopModeAtom);
+
+  // Cmd/Ctrl+Shift+D flips between Standard and Desktop Mode. Presentation
+  // only: nothing reloads and no feature state is touched.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        event.shiftKey &&
+        event.key.toLowerCase() === "d"
+      ) {
+        event.preventDefault();
+        setDesktopMode((mode) => !mode);
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [setDesktopMode]);
   const { settings } = useSettings();
+  useStorageAutoSync(settings?.storage);
   const setSelectedComponentsPreview = useSetAtom(
     selectedComponentsPreviewAtom,
   );
@@ -88,6 +146,18 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     return () => {};
   }, [settings?.zoomLevel]);
 
+  useEffect(() => {
+    if (!settings?.appLayoutMode) return;
+
+    void ipc.system
+      .setAppLayoutMode({
+        mode: settings.appLayoutMode,
+      })
+      .catch((error) => {
+        console.error("Failed to apply app layout mode:", error);
+      });
+  }, [settings?.appLayoutMode]);
+
   // Sync i18n language with persisted user setting
   useEffect(() => {
     const parsed = LanguageSchema.safeParse(settings?.language);
@@ -121,20 +191,48 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     setSelectedComponentsPreview([]);
     setConsoleEntries([]);
-  }, [selectedAppId]);
+  }, [selectedAppId, setSelectedComponentsPreview, setConsoleEntries]);
 
   return (
     <>
       <ThemeProvider>
         <DeepLinkProvider>
           <SidebarProvider defaultOpen={false}>
-            <TitleBar />
-            <AppSidebar />
-            <div
-              id="layout-main-content-container"
-              className="flex h-screenish w-full min-w-0 flex-1 overflow-x-hidden mt-[var(--layout-title-bar-offset)] border-l border-border bg-background"
-            >
-              <div className="w-full min-w-0">{children}</div>
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+              <TitleBar />
+              <div className="flex min-h-0 flex-1 overflow-hidden pt-[var(--layout-title-bar-offset)]">
+                {desktopMode && <DesktopShell />}
+                {/* Hidden rather than unmounted: an in-flight generation's
+                    stream handlers live in the mounted page, and switching
+                    modes must not kill them. */}
+                <div
+                  className={cn(
+                    "flex min-h-0 min-w-0 flex-1 overflow-hidden",
+                    desktopMode && "hidden",
+                  )}
+                >
+                  <AppSidebar />
+                  <div
+                    id="layout-main-content-container"
+                    className={cn(
+                      "no-app-region-drag flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden border-l border-border bg-background",
+                      isScrollableMain ? "overflow-y-auto" : "overflow-hidden",
+                    )}
+                  >
+                    <AgentWorkspaceTabs />
+                    <div
+                      className={cn(
+                        "layout-route-outlet flex w-full min-w-0 flex-1 flex-col",
+                        isScrollableMain
+                          ? "min-h-0"
+                          : "min-h-0 overflow-hidden",
+                      )}
+                    >
+                      {children}
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
             <Toaster
               richColors

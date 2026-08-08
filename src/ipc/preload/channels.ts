@@ -28,10 +28,20 @@ import { systemContracts, systemEvents } from "../types/system";
 import { versionContracts } from "../types/version";
 import { languageModelContracts } from "../types/language-model";
 import { promptContracts } from "../types/prompts";
+import { agentOsContracts, agentOsChatStreamContract } from "../types/agent_os";
+import { vercelBlobContracts } from "../types/vercel_blob";
+import { cloudAppsContracts } from "../types/cloud_apps";
+import { videoGenerationContracts } from "../types/video_generation";
+import { ocrContracts } from "../types/ocr";
+import { knowledgeGraphContracts } from "../types/knowledge_graph";
 import { templateContracts } from "../types/templates";
 import { proposalContracts } from "../types/proposals";
 import { importContracts } from "../types/import";
 import { helpContracts, helpStreamContract } from "../types/help";
+import {
+  chatAgentContracts,
+  chatAgentStreamContract,
+} from "../types/chat_agent";
 import { capacitorContracts } from "../types/capacitor";
 import { contextContracts } from "../types/context";
 import { upgradeContracts } from "../types/upgrade";
@@ -44,6 +54,11 @@ import { integrationEvents, integrationContracts } from "../types/integration";
 import { audioContracts } from "../types/audio";
 import { mediaContracts } from "../types/media";
 import { imageGenerationContracts } from "../types/image_generation";
+import { socialMediaContracts } from "../types/social_media";
+import { helixContracts } from "../types/helix";
+import { vectorContracts, vectorEvents } from "../types/vector";
+import { storageContracts } from "../types/storage";
+import { jarvisContracts, jarvisEvents } from "../types/jarvis";
 
 // =============================================================================
 // Invoke Channels (derived from all contracts)
@@ -51,6 +66,10 @@ import { imageGenerationContracts } from "../types/image_generation";
 
 const CHAT_STREAM_CHANNELS = getStreamChannels(chatStreamContract);
 const HELP_STREAM_CHANNELS = getStreamChannels(helpStreamContract);
+const CHAT_AGENT_STREAM_CHANNELS = getStreamChannels(chatAgentStreamContract);
+const AGENT_OS_CHAT_STREAM_CHANNELS = getStreamChannels(
+  agentOsChatStreamContract,
+);
 
 // Test-only channels (handler only registered in E2E test builds, but channel always allowed)
 const TEST_INVOKE_CHANNELS = [
@@ -72,6 +91,8 @@ export const VALID_INVOKE_CHANNELS = [
   // Stream invoke channels
   CHAT_STREAM_CHANNELS.invoke,
   HELP_STREAM_CHANNELS.invoke,
+  CHAT_AGENT_STREAM_CHANNELS.invoke,
+  AGENT_OS_CHAT_STREAM_CHANNELS.invoke,
 
   // Integrations
   ...getInvokeChannels(githubContracts),
@@ -87,10 +108,17 @@ export const VALID_INVOKE_CHANNELS = [
   ...getInvokeChannels(versionContracts),
   ...getInvokeChannels(languageModelContracts),
   ...getInvokeChannels(promptContracts),
+  ...getInvokeChannels(agentOsContracts),
+  ...getInvokeChannels(vercelBlobContracts),
+  ...getInvokeChannels(cloudAppsContracts),
+  ...getInvokeChannels(videoGenerationContracts),
+  ...getInvokeChannels(ocrContracts),
+  ...getInvokeChannels(knowledgeGraphContracts),
   ...getInvokeChannels(templateContracts),
   ...getInvokeChannels(proposalContracts),
   ...getInvokeChannels(importContracts),
   ...getInvokeChannels(helpContracts),
+  ...getInvokeChannels(chatAgentContracts),
   ...getInvokeChannels(capacitorContracts),
   ...getInvokeChannels(contextContracts),
   ...getInvokeChannels(upgradeContracts),
@@ -103,6 +131,11 @@ export const VALID_INVOKE_CHANNELS = [
   ...getInvokeChannels(audioContracts),
   ...getInvokeChannels(mediaContracts),
   ...getInvokeChannels(imageGenerationContracts),
+  ...getInvokeChannels(socialMediaContracts),
+  ...getInvokeChannels(helixContracts),
+  ...getInvokeChannels(vectorContracts),
+  ...getInvokeChannels(storageContracts),
+  ...getInvokeChannels(jarvisContracts),
 
   // Test-only channels
   ...TEST_INVOKE_CHANNELS,
@@ -120,6 +153,8 @@ export const VALID_RECEIVE_CHANNELS = [
   // Stream receive channels
   ...CHAT_STREAM_CHANNELS.receive,
   ...HELP_STREAM_CHANNELS.receive,
+  ...CHAT_AGENT_STREAM_CHANNELS.receive,
+  ...AGENT_OS_CHAT_STREAM_CHANNELS.receive,
 
   // Event channels
   ...getReceiveChannels(agentEvents),
@@ -129,6 +164,8 @@ export const VALID_RECEIVE_CHANNELS = [
   ...getReceiveChannels(miscEvents),
   ...getReceiveChannels(planEvents),
   ...getReceiveChannels(integrationEvents),
+  ...getReceiveChannels(jarvisEvents),
+  ...getReceiveChannels(vectorEvents),
 ] as const;
 
 // =============================================================================

@@ -21,9 +21,10 @@ export function NodePathSelector() {
   const [isCheckingNode, setIsCheckingNode] = useState(false);
   const [systemPath, setSystemPath] = useState<string>("Loading...");
 
-  // Check Node.js status when component mounts or path changes
+  // Check Node.js status when component mounts or the configured path changes.
   useEffect(() => {
     checkNodeStatus();
+    // eslint-disable-next-line react/exhaustive-deps
   }, [settings?.customNodePath]);
 
   const fetchSystemPath = async () => {

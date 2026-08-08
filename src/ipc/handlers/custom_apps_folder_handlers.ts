@@ -35,7 +35,7 @@ export function registerCustomAppsFolderHandlers() {
     const { filePaths, canceled } = await dialog.showOpenDialog({
       title: "Select Custom Apps Folder",
       properties: ["openDirectory"],
-      message: "Select the folder where Dyad apps should be stored",
+      message: "Select the folder where Meta Human OS apps should be stored",
     });
 
     if (canceled) {

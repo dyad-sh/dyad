@@ -130,6 +130,12 @@ export type EventChannel<T> = T extends EventContract<infer C, any> ? C : never;
 // Client Generators
 // =============================================================================
 
+export function isIpcRendererAvailable(): boolean {
+  return (
+    typeof window !== "undefined" && !!(window as any).electron?.ipcRenderer
+  );
+}
+
 /** Type to convert contracts object to client methods */
 type ClientFromContracts<
   T extends Record<string, IpcContract<string, z.ZodType, z.ZodType>>,
@@ -155,7 +161,8 @@ export function createClient<
   T extends Record<string, IpcContract<string, z.ZodType, z.ZodType>>,
 >(contracts: T): ClientFromContracts<T> {
   // Access ipcRenderer from the window.electron exposed by preload
-  const getIpcRenderer = () => (window as any).electron?.ipcRenderer;
+  const getIpcRenderer = () =>
+    isIpcRendererAvailable() ? (window as any).electron.ipcRenderer : undefined;
 
   const client = {} as ClientFromContracts<T>;
   for (const [methodName, contract] of Object.entries(contracts)) {

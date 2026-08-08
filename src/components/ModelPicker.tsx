@@ -184,9 +184,11 @@ export function ModelPicker() {
   // Split providers into primary and secondary groups (excluding auto)
   const providerEntries =
     !loading && modelsByProviders
-      ? Object.entries(modelsByProviders).filter(
-          ([providerId]) => providerId !== "auto",
-        )
+      ? Object.entries(modelsByProviders).filter(([providerId]) => {
+          if (providerId === "auto") return false;
+          // Video-only providers have nothing to offer a chat.
+          return !providers?.find((p) => p.id === providerId)?.nonChat;
+        })
       : [];
   const primaryProviderEntries = providerEntries.filter(
     ([providerId, models]) => {
@@ -208,8 +210,8 @@ export function ModelPicker() {
   const flatProModelEntries = primaryProviderEntries
     .flatMap(([providerId, models], providerIndex) =>
       models.flatMap((model, modelIndex) => {
-        // Don't show free models if Dyad Pro is enabled because we will use
-        // the paid models in the Dyad Pro backend instead.
+        // Don't show free models if Meta Human OS Pro is enabled because we will use
+        // the paid models in the Meta Human OS Pro backend instead.
         if (
           model.apiName.endsWith(":free") ||
           model.apiName.endsWith("/free")
@@ -401,7 +403,7 @@ export function ModelPicker() {
           <>
             <div className="px-2 py-3 bg-gradient-to-r from-indigo-50 to-sky-50 dark:from-indigo-950/50 dark:to-sky-950/50">
               <p className="text-sm text-indigo-700 dark:text-indigo-300 mb-2">
-                Upgrade from Dyad Pro trial to unlock more models.
+                Upgrade from Pro trial to unlock more models.
               </p>
               <Button
                 variant="outline"
@@ -414,7 +416,7 @@ export function ModelPicker() {
                   setOpen(false);
                 }}
               >
-                Upgrade to Dyad Pro
+                Upgrade to Pro
               </Button>
             </div>
             <DropdownMenuSeparator />

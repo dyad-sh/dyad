@@ -24,11 +24,16 @@ import {
   type DyadEngineProvider,
 } from "./llm_engine_provider";
 
-import { LM_STUDIO_BASE_URL } from "./lm_studio_utils";
+import {
+  getLMStudioApiBaseUrl,
+  getOllamaApiUrl,
+} from "@/lib/local_provider_utils";
+import { getMxServeApiBaseUrl } from "@/lib/mx_serve";
+import { getPhantomApiKey, getPhantomHermesApiBase } from "@/lib/ai_coder";
 import { createOllamaProvider } from "./ollama_provider";
-import { getOllamaApiUrl } from "../handlers/local_model_ollama_handler";
 import { createFallback } from "./fallback_ai_model";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { assertLocalModelReady } from "@/lib/validate_local_model";
 
 const dyadEngineUrl = process.env.DYAD_ENGINE_URL;
 
@@ -67,9 +72,9 @@ export async function getModelClient(
     );
   }
 
-  // Handle Dyad Pro override
-  if (dyadApiKey && settings.enableDyadPro) {
-    // Check if the selected provider supports Dyad Pro (has a gateway prefix) OR
+  // Handle Meta Human OS Pro override (never route LM Studio / Ollama through the cloud engine)
+  if (dyadApiKey && settings.enableDyadPro && providerConfig.type !== "local") {
+    // Check if the selected provider supports Meta Human OS Pro (has a gateway prefix) OR
     // we're using local engine.
     // IMPORTANT: some providers like OpenAI have an empty string gateway prefix,
     // so we do a nullish and not a truthy check here.
@@ -91,11 +96,11 @@ export async function getModelClient(
       });
 
       logger.info(
-        `\x1b[1;97;44m Using Dyad Pro API key for model: ${model.name} \x1b[0m`,
+        `\x1b[1;97;44m Using Meta Human OS Pro API key for model: ${model.name} \x1b[0m`,
       );
 
       logger.info(
-        `\x1b[1;30;42m Using Dyad Pro engine: ${dyadEngineUrl ?? "<prod>"} \x1b[0m`,
+        `\x1b[1;30;42m Using Meta Human OS Pro engine: ${dyadEngineUrl ?? "<prod>"} \x1b[0m`,
       );
 
       // Do not use free variant (for openrouter).
@@ -114,7 +119,7 @@ export async function getModelClient(
       };
     } else {
       logger.warn(
-        `Dyad Pro enabled, but provider ${model.provider} does not have a gateway prefix defined. Falling back to direct provider connection.`,
+        `Meta Human OS Pro enabled, but provider ${model.provider} does not have a gateway prefix defined. Falling back to direct provider connection.`,
       );
       // Fall through to regular provider logic if gateway prefix is missing
     }
@@ -178,10 +183,16 @@ export async function getModelClient(
       }
     }
     // If no models have API keys, throw an error
-    throw new Error(
+    throw new DyadError(
       "No API keys available for any model supported by the 'auto' provider.",
+      DyadErrorKind.Validation,
     );
   }
+
+  if (providerConfig.type === "local") {
+    await assertLocalModelReady(model, settings);
+  }
+
   return getRegularModelClient(model, settings, providerConfig);
 }
 
@@ -376,6 +387,34 @@ function getRegularModelClient(
         backupModelClients: [],
       };
     }
+    case "vercel": {
+      const provider = createOpenAICompatible({
+        name: "vercel-ai-gateway",
+        baseURL: "https://ai-gateway.vercel.sh/v1",
+        apiKey,
+      });
+      return {
+        modelClient: {
+          model: provider(model.name),
+          builtinProviderId: providerId,
+        },
+        backupModelClients: [],
+      };
+    }
+    case "kimi-code": {
+      const provider = createOpenAICompatible({
+        name: "kimi-code",
+        baseURL: "https://api.kimi.com/coding/v1",
+        apiKey,
+      });
+      return {
+        modelClient: {
+          model: provider(model.name),
+          builtinProviderId: providerId,
+        },
+        backupModelClients: [],
+      };
+    }
     case "azure": {
       // Check if we're in e2e testing mode
       const testAzureBaseUrl = getEnvVar("TEST_AZURE_BASE_URL");
@@ -413,14 +452,16 @@ function getRegularModelClient(
       const azureApiKey = azureApiKeyFromSettings || envAzureApiKey;
 
       if (!resourceName) {
-        throw new Error(
+        throw new DyadError(
           "Azure OpenAI resource name is required. Provide it in Settings or set the AZURE_RESOURCE_NAME environment variable.",
+          DyadErrorKind.Validation,
         );
       }
 
       if (!azureApiKey) {
-        throw new Error(
+        throw new DyadError(
           "Azure OpenAI API key is required. Provide it in Settings or set the AZURE_API_KEY environment variable.",
+          DyadErrorKind.Validation,
         );
       }
 
@@ -438,7 +479,9 @@ function getRegularModelClient(
       };
     }
     case "ollama": {
-      const provider = createOllamaProvider({ baseURL: getOllamaApiUrl() });
+      const provider = createOllamaProvider({
+        baseURL: getOllamaApiUrl(settings),
+      });
       return {
         modelClient: {
           model: provider(model.name),
@@ -448,15 +491,33 @@ function getRegularModelClient(
       };
     }
     case "lmstudio": {
-      // LM Studio uses OpenAI compatible API
-      const baseURL = providerConfig.apiBaseUrl || LM_STUDIO_BASE_URL + "/v1";
       const provider = createOpenAICompatible({
         name: "lmstudio",
-        baseURL,
+        baseURL: getLMStudioApiBaseUrl(settings),
+        // LM Studio ignores the key but some SDK paths require a non-empty value.
+        apiKey: apiKey?.trim() || "lm-studio",
       });
       return {
         modelClient: {
           model: provider(model.name),
+          builtinProviderId: providerId,
+        },
+        backupModelClients: [],
+      };
+    }
+    case "mx_serve": {
+      // Same OpenAI-compatible path as LM Studio — MX Serve differs only in
+      // where it listens. The SDK requires a non-empty key even when the
+      // server wants none, so a placeholder stands in for a blank field.
+      const provider = createOpenAICompatible({
+        name: "mx_serve",
+        baseURL: getMxServeApiBaseUrl(settings),
+        apiKey: apiKey?.trim() || "mx-serve",
+      });
+      return {
+        modelClient: {
+          model: provider(model.name),
+          builtinProviderId: providerId,
         },
         backupModelClients: [],
       };
@@ -490,12 +551,29 @@ function getRegularModelClient(
         backupModelClients: [],
       };
     }
+    case "phantom": {
+      // Saved key wins; otherwise the hardcoded Hermes Phantom key is used so
+      // the chat agent works even if the key never got saved in settings.
+      const provider = createOpenAICompatible({
+        name: "phantom",
+        baseURL: getPhantomHermesApiBase(settings),
+        apiKey: getPhantomApiKey(settings),
+      });
+      return {
+        modelClient: {
+          model: provider(model.name),
+          builtinProviderId: providerId,
+        },
+        backupModelClients: [],
+      };
+    }
     default: {
       // Handle custom providers
       if (providerConfig.type === "custom") {
         if (!providerConfig.apiBaseUrl) {
-          throw new Error(
+          throw new DyadError(
             `Custom provider ${model.provider} is missing the API Base URL.`,
+            DyadErrorKind.Validation,
           );
         }
         // Assume custom providers are OpenAI compatible for now

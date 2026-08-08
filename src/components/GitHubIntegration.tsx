@@ -1,63 +1,96 @@
 import { useState } from "react";
-import { useTranslation } from "react-i18next";
+import { ExternalLink, Loader2 } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
-import { Github } from "lucide-react";
-import { useSettings } from "@/hooks/useSettings";
-import { showSuccess, showError } from "@/lib/toast";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useGithubAccount } from "@/hooks/useGithubAccount";
+import { ipc } from "@/ipc/types";
+import { showError } from "@/lib/toast";
 
 export function GitHubIntegration() {
-  const { t } = useTranslation(["home", "common"]);
-  const { settings, updateSettings } = useSettings();
-  const [isDisconnecting, setIsDisconnecting] = useState(false);
+  const {
+    isConnected,
+    account,
+    setAccessToken,
+    isConnecting,
+    disconnect,
+    isDisconnecting,
+  } = useGithubAccount();
+  const [token, setToken] = useState("");
 
-  const handleDisconnectFromGithub = async () => {
-    setIsDisconnecting(true);
-    try {
-      const result = await updateSettings({
-        githubAccessToken: undefined,
-        githubUser: undefined,
-      });
-      if (result) {
-        showSuccess(t("integrations.github.disconnected"));
-      } else {
-        showError(t("integrations.github.failedDisconnect"));
-      }
-    } catch (err: any) {
-      showError(err.message || t("integrations.github.errorDisconnect"));
-    } finally {
-      setIsDisconnecting(false);
+  const connect = async () => {
+    if (!token.trim()) {
+      showError("Enter a GitHub personal access token.");
+      return;
     }
+    await setAccessToken(token.trim());
+    setToken("");
   };
 
-  const isConnected = !!settings?.githubAccessToken;
-
-  if (!isConnected) {
-    return null;
+  if (isConnected) {
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-sm text-cyan-50">
+            Connected{account?.login ? ` as ${account.login}` : ""}
+          </p>
+          <p className="mt-1 text-xs text-cyan-100/40">
+            This token is encrypted on this device.
+          </p>
+        </div>
+        <Button
+          variant="destructive"
+          size="sm"
+          onClick={() => void disconnect()}
+          disabled={isDisconnecting}
+        >
+          {isDisconnecting ? "Disconnecting…" : "Disconnect"}
+        </Button>
+      </div>
+    );
   }
 
   return (
-    <div className="flex items-center justify-between">
-      <div>
-        <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">
-          {t("integrations.github.title")}
-        </h3>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-          {t("integrations.github.connected")}
-        </p>
+    <div className="space-y-3">
+      <p className="text-xs leading-5 text-cyan-100/50">
+        Enter a fine-grained or classic personal access token with repository
+        access. Credentials are verified before being stored.
+      </p>
+      <div className="space-y-1.5">
+        <Label htmlFor="settings-github-token">Personal access token</Label>
+        <Input
+          id="settings-github-token"
+          type="password"
+          autoComplete="off"
+          placeholder="github_pat_… or ghp_…"
+          value={token}
+          onChange={(event) => setToken(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") void connect();
+          }}
+        />
       </div>
-
-      <Button
-        onClick={handleDisconnectFromGithub}
-        variant="destructive"
-        size="sm"
-        disabled={isDisconnecting}
-        className="flex items-center gap-2"
-      >
-        {isDisconnecting
-          ? t("common:disconnecting")
-          : t("integrations.github.disconnect")}
-        <Github className="h-4 w-4" />
-      </Button>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          onClick={() => void connect()}
+          disabled={!token.trim() || isConnecting}
+        >
+          {isConnecting && <Loader2 className="mr-2 size-4 animate-spin" />}
+          Connect GitHub
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() =>
+            void ipc.system.openExternalUrl(
+              "https://github.com/settings/personal-access-tokens",
+            )
+          }
+        >
+          Create token <ExternalLink className="ml-1 size-3.5" />
+        </Button>
+      </div>
     </div>
   );
 }

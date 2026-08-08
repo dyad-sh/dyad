@@ -13,6 +13,7 @@ import {
   PROVIDER_TO_ENV_VAR,
 } from "./language_model_constants";
 import { getBuiltinLanguageModelCatalog } from "./remote_language_model_catalog";
+import { getVercelAiGatewayModels } from "./vercel_ai_gateway_catalog";
 
 const logger = log.scope("language_model_helpers");
 /**
@@ -63,6 +64,7 @@ export async function getLanguageModelProviders(): Promise<
         websiteUrl: providerDetails.websiteUrl,
         gatewayPrefix: providerDetails.gatewayPrefix,
         secondary: providerDetails.secondary,
+        nonChat: providerDetails.nonChat,
         envVarName:
           PROVIDER_TO_ENV_VAR[providerId as keyof typeof PROVIDER_TO_ENV_VAR] ??
           undefined,
@@ -79,6 +81,7 @@ export async function getLanguageModelProviders(): Promise<
         id: key,
         name: providerDetails.displayName,
         hasFreeTier: providerDetails.hasFreeTier,
+        websiteUrl: providerDetails.websiteUrl,
         type: "local",
       });
     }
@@ -151,7 +154,28 @@ export async function getLanguageModels({
       version: builtinCatalog.version,
       hasProviderModels: providerId in builtinCatalog.modelsByProvider,
     });
-    if (providerId in builtinCatalog.modelsByProvider) {
+    if (providerId === "vercel") {
+      try {
+        hardcodedModels = await getVercelAiGatewayModels();
+      } catch (error) {
+        logger.warn(
+          "Failed to load the Vercel AI Gateway catalog; using fallback models.",
+          error,
+        );
+        hardcodedModels = (MODEL_OPTIONS.vercel ?? []).map((model) => ({
+          apiName: model.name,
+          displayName: model.displayName,
+          description: model.description,
+          tag: model.tag,
+          tagColor: model.tagColor,
+          maxOutputTokens: model.maxOutputTokens,
+          contextWindow: model.contextWindow,
+          temperature: model.temperature,
+          dollarSigns: model.dollarSigns,
+          type: "cloud" as const,
+        }));
+      }
+    } else if (providerId in builtinCatalog.modelsByProvider) {
       hardcodedModels = builtinCatalog.modelsByProvider[providerId] || [];
     } else if (providerId in MODEL_OPTIONS) {
       // Fall back to hardcoded MODEL_OPTIONS for providers not in the remote

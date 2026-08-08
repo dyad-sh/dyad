@@ -67,8 +67,11 @@ const providers = [
   "vertex",
   "auto",
   "openrouter",
+  "vercel",
+  "kimi-code",
   "ollama",
   "lmstudio",
+  "mx_serve",
   "azure",
   "xai",
   "bedrock",
@@ -76,7 +79,8 @@ const providers = [
 ] as const;
 
 export const cloudProviders = providers.filter(
-  (provider) => provider !== "ollama" && provider !== "lmstudio",
+  (provider) =>
+    provider !== "ollama" && provider !== "lmstudio" && provider !== "mx_serve",
 );
 
 /**
@@ -92,6 +96,34 @@ export const LargeLanguageModelSchema = z.object({
  * Type derived from the LargeLanguageModelSchema
  */
 export type LargeLanguageModel = z.infer<typeof LargeLanguageModelSchema>;
+
+export const ModelRoleSchema = z.enum([
+  "chat",
+  "image",
+  "coding",
+  "video",
+  "embeddings",
+  "ocr",
+]);
+export type ModelRole = z.infer<typeof ModelRoleSchema>;
+
+export const ModelRoleAssignmentSchema = z.object({
+  auto: z.boolean(),
+  model: LargeLanguageModelSchema.optional(),
+});
+export type ModelRoleAssignment = z.infer<typeof ModelRoleAssignmentSchema>;
+
+export const ModelRoleAssignmentsSchema = z
+  .object({
+    chat: ModelRoleAssignmentSchema.optional(),
+    image: ModelRoleAssignmentSchema.optional(),
+    coding: ModelRoleAssignmentSchema.optional(),
+    video: ModelRoleAssignmentSchema.optional(),
+    embeddings: ModelRoleAssignmentSchema.optional(),
+    ocr: ModelRoleAssignmentSchema.optional(),
+  })
+  .optional();
+export type ModelRoleAssignments = z.infer<typeof ModelRoleAssignmentsSchema>;
 
 /**
  * Zod schema for provider settings
@@ -114,6 +146,14 @@ export const VertexProviderSettingSchema = z.object({
   serviceAccountKey: SecretSchema.optional(),
 });
 
+/** LM Studio, Ollama, and other local OpenAI-compatible servers */
+export const LocalProviderSettingSchema = z.object({
+  /** Suppresses a reasoning model's deliberation via /no_think. */
+  disableThinking: z.boolean().optional(),
+  apiBaseUrl: z.string().optional(),
+  apiKey: SecretSchema.optional(),
+});
+
 export const ProviderSettingSchema = z.union([
   // Must use more specific type first!
   // Zod uses the first type that matches.
@@ -126,6 +166,7 @@ export const ProviderSettingSchema = z.union([
   // so doing passthrough keeps these extra fields.
   AzureProviderSettingSchema.passthrough(),
   VertexProviderSettingSchema.passthrough(),
+  LocalProviderSettingSchema.passthrough(),
   RegularProviderSettingSchema.passthrough(),
 ]);
 
@@ -138,6 +179,7 @@ export type RegularProviderSetting = z.infer<
 >;
 export type AzureProviderSetting = z.infer<typeof AzureProviderSettingSchema>;
 export type VertexProviderSetting = z.infer<typeof VertexProviderSettingSchema>;
+export type LocalProviderSetting = z.infer<typeof LocalProviderSettingSchema>;
 
 export const RuntimeModeSchema = z.enum(["web-sandbox", "local-node", "unset"]);
 export type RuntimeMode = z.infer<typeof RuntimeModeSchema>;
@@ -181,6 +223,7 @@ export type GitHubSecrets = z.infer<typeof GitHubSecretsSchema>;
 
 export const GithubUserSchema = z.object({
   email: z.string(),
+  login: z.string().optional(),
 });
 export type GithubUser = z.infer<typeof GithubUserSchema>;
 
@@ -219,6 +262,219 @@ export const NeonSchema = z.object({
   tokenTimestamp: z.number().optional(),
 });
 export type Neon = z.infer<typeof NeonSchema>;
+
+/**
+ * Vercel Blob cloud storage. A store-scoped read/write token
+ * (BLOB_READ_WRITE_TOKEN) connects persistent storage for images/assets.
+ */
+export const VercelBlobSchema = z.object({
+  token: SecretSchema.optional(),
+  connectedAt: z.number().optional(),
+});
+export type VercelBlob = z.infer<typeof VercelBlobSchema>;
+
+export const StorageSettingsSchema = z.object({
+  destination: z.enum(["local", "cloud"]).optional(),
+  localVaultPath: z.string().optional(),
+  autoSync: z.boolean().optional(),
+  syncConversations: z.boolean().optional(),
+  syncGeneratedMedia: z.boolean().optional(),
+  syncSystemNotes: z.boolean().optional(),
+  lastSyncedAt: z.number().optional(),
+});
+export type StorageSettings = z.infer<typeof StorageSettingsSchema>;
+
+export const ResearchPluginsSchema = z.object({
+  travelSearch: z
+    .object({
+      enabled: z.boolean().optional(),
+      market: z.string().optional(),
+      locale: z.string().optional(),
+      currency: z.string().optional(),
+    })
+    .optional(),
+  duckDuckGo: z
+    .object({
+      enabled: z.boolean().optional(),
+    })
+    .optional(),
+  coinGecko: z
+    .object({
+      enabled: z.boolean().optional(),
+      plan: z.enum(["public", "demo", "pro"]).optional(),
+      apiKey: SecretSchema.optional(),
+    })
+    .optional(),
+  weather: z
+    .object({
+      enabled: z.boolean().optional(),
+      temperatureUnit: z.enum(["celsius", "fahrenheit"]).optional(),
+      windSpeedUnit: z.enum(["kmh", "mph"]).optional(),
+      forecastDays: z.number().int().min(1).max(10).optional(),
+    })
+    .optional(),
+  maps: z
+    .object({
+      enabled: z.boolean().optional(),
+      style: z.enum(["dark", "liberty", "positron"]).optional(),
+    })
+    .optional(),
+  skyscanner: z
+    .object({
+      enabled: z.boolean().optional(),
+      apiKey: SecretSchema.optional(),
+      market: z.string().optional(),
+      locale: z.string().optional(),
+      currency: z.string().optional(),
+    })
+    .optional(),
+  amadeus: z
+    .object({
+      enabled: z.boolean().optional(),
+      environment: z.enum(["test", "production"]).optional(),
+      apiKey: SecretSchema.optional(),
+      apiSecret: SecretSchema.optional(),
+      currency: z.string().optional(),
+    })
+    .optional(),
+  duffel: z
+    .object({
+      enabled: z.boolean().optional(),
+      accessToken: SecretSchema.optional(),
+    })
+    .optional(),
+});
+export type ResearchPlugins = z.infer<typeof ResearchPluginsSchema>;
+
+export const ChatAgentSystemAccessSchema = z.object({
+  terminal: z.boolean().optional(),
+  browser: z.boolean().optional(),
+  computer: z.boolean().optional(),
+});
+export type ChatAgentSystemAccess = z.infer<typeof ChatAgentSystemAccessSchema>;
+
+/**
+ * Facebook Page connection used by the Social Media Agent.
+ * Posting goes through the Graph API with a Page access token.
+ */
+export const FacebookConnectionSchema = z.object({
+  pageId: z.string(),
+  pageName: z.string().optional(),
+  pageAccessToken: SecretSchema,
+  connectedAt: z.number().optional(),
+});
+export type FacebookConnection = z.infer<typeof FacebookConnectionSchema>;
+
+/**
+ * X (Twitter) connection used by the Social Media Agent.
+ * Posting uses OAuth 1.0a user-context credentials from an X developer app.
+ */
+export const XConnectionSchema = z.object({
+  apiKey: SecretSchema,
+  apiSecret: SecretSchema,
+  accessToken: SecretSchema,
+  accessTokenSecret: SecretSchema,
+  username: z.string().optional(),
+  connectedAt: z.number().optional(),
+});
+export type XConnection = z.infer<typeof XConnectionSchema>;
+
+export const SocialMediaConnectionsSchema = z.object({
+  facebook: FacebookConnectionSchema.optional(),
+  x: XConnectionSchema.optional(),
+});
+export type SocialMediaConnections = z.infer<
+  typeof SocialMediaConnectionsSchema
+>;
+
+/**
+ * How JARVIS picks the LLM that powers voice conversations.
+ * "agent" routes to a registered Hermes/Agent OS endpoint.
+ */
+export const JarvisModelModeSchema = z.enum([
+  "agent",
+  "automatic",
+  "chat",
+  "voice",
+  "custom",
+]);
+export type JarvisModelMode = z.infer<typeof JarvisModelModeSchema>;
+
+export const JarvisPermissionModeSchema = z.enum(["allow", "confirm"]);
+export type JarvisPermissionMode = z.infer<typeof JarvisPermissionModeSchema>;
+
+export const JarvisPermissionsSchema = z.object({
+  navigation: JarvisPermissionModeSchema.optional(),
+  files: JarvisPermissionModeSchema.optional(),
+  builds: JarvisPermissionModeSchema.optional(),
+  externalApis: JarvisPermissionModeSchema.optional(),
+  /** Destructive actions always confirm; stored for UI display only. */
+  requireSpokenConfirmation: z.boolean().optional(),
+});
+export type JarvisPermissions = z.infer<typeof JarvisPermissionsSchema>;
+
+/**
+ * Settings for the JARVIS live voice assistant.
+ * ElevenLabs provides STT/TTS only; reasoning uses the app's own models.
+ */
+/**
+ * Which voice engine drives a session.
+ * - "pipeline": ElevenLabs speech-to-text → your own model → ElevenLabs speech
+ * - "realtime": OpenAI Realtime speech-to-speech (lowest latency)
+ */
+export const JarvisVoiceEngineSchema = z.enum(["pipeline", "realtime"]);
+export type JarvisVoiceEngine = z.infer<typeof JarvisVoiceEngineSchema>;
+
+export const JarvisSettingsSchema = z.object({
+  enabled: z.boolean().optional(),
+  voiceEngine: JarvisVoiceEngineSchema.optional(),
+  realtimeModel: z.string().optional(),
+  realtimeVoice: z.string().optional(),
+  startListeningOnOpen: z.boolean().optional(),
+  continueListeningAfterResponse: z.boolean().optional(),
+  greeting: z.string().optional(),
+  inactivityTimeoutSeconds: z.number().optional(),
+  saveTranscripts: z.boolean().optional(),
+  showActivityPanel: z.boolean().optional(),
+  playInterfaceSounds: z.boolean().optional(),
+
+  // Voice input (ElevenLabs STT)
+  elevenLabsApiKey: SecretSchema.optional(),
+  sttModelId: z.string().optional(),
+  language: z.string().optional(),
+  autoDetectLanguage: z.boolean().optional(),
+  /** MediaDevices deviceId for the capture device; empty means system default. */
+  inputDeviceId: z.string().optional(),
+  vadSensitivity: z.number().optional(),
+  silenceTimeoutMs: z.number().optional(),
+  interruptionSensitivity: z.number().optional(),
+  echoCancellation: z.boolean().optional(),
+  noiseSuppression: z.boolean().optional(),
+
+  // Voice output (ElevenLabs TTS)
+  voiceId: z.string().optional(),
+  ttsModelId: z.string().optional(),
+  stability: z.number().optional(),
+  similarityBoost: z.number().optional(),
+  speed: z.number().optional(),
+  outputFormat: z.string().optional(),
+  streamingLatency: z.number().optional(),
+  allowInterruptions: z.boolean().optional(),
+
+  // Intelligence
+  modelMode: JarvisModelModeSchema.optional(),
+  voiceModel: LargeLanguageModelSchema.optional(),
+  /**
+   * Agent OS agent id used as the voice brain. Set from the Agents page.
+   * When present, JARVIS reasons through that agent's endpoint.
+   */
+  brainAgentId: z.string().optional(),
+  preferLocalModels: z.boolean().optional(),
+  localModelsOnly: z.boolean().optional(),
+
+  permissions: JarvisPermissionsSchema.optional(),
+});
+export type JarvisSettings = z.infer<typeof JarvisSettingsSchema>;
 
 export const ExperimentsSchema = z.object({
   // Deprecated
@@ -283,6 +539,9 @@ export type Language = z.infer<typeof LanguageSchema>;
 export const DeviceModeSchema = z.enum(["desktop", "tablet", "mobile"]);
 export type DeviceMode = z.infer<typeof DeviceModeSchema>;
 
+export const AppLayoutModeSchema = z.enum(["landscape", "portrait"]);
+export type AppLayoutMode = z.infer<typeof AppLayoutModeSchema>;
+
 export const SmartContextModeSchema = z.enum([
   "balanced",
   "conservative",
@@ -320,6 +579,15 @@ const BaseUserSettingsFields = {
   vercelAccessToken: SecretSchema.optional(),
   supabase: SupabaseSchema.optional(),
   neon: NeonSchema.optional(),
+  vercelBlob: VercelBlobSchema.optional(),
+  storage: StorageSettingsSchema.optional(),
+  researchPlugins: ResearchPluginsSchema.optional(),
+  chatAgentSystemAccess: ChatAgentSystemAccessSchema.optional(),
+  socialMedia: SocialMediaConnectionsSchema.optional(),
+  /** JARVIS live voice assistant configuration. */
+  jarvis: JarvisSettingsSchema.optional(),
+  /** Vercel AI Gateway API key, used by the Helix coding agent. */
+  vercelAiGatewayApiKey: SecretSchema.optional(),
   autoApproveChanges: z.boolean().optional(),
   telemetryConsent: z.enum(["opted_in", "opted_out", "unset"]).optional(),
   telemetryUserId: z.string().optional(),
@@ -343,6 +611,8 @@ const BaseUserSettingsFields = {
   zoomLevel: ZoomLevelSchema.optional(),
   language: LanguageSchema.optional(),
   previewDeviceMode: DeviceModeSchema.optional(),
+  /** Preferred shape of the main application window. */
+  appLayoutMode: AppLayoutModeSchema.optional(),
 
   enableAutoFixProblems: z.boolean().optional(),
   autoExpandPreviewPanel: z.boolean().optional(),
@@ -371,6 +641,34 @@ const BaseUserSettingsFields = {
   skipNotificationBanner: z.boolean().optional(),
   enableSelectAppFromHomeChatInput: z.boolean().optional(),
   previewIdleTimeoutPolicy: z.enum(["default", "never"]).optional(),
+  /** Chat Agent inference model (OpenRouter, OpenAI, or LM Studio). */
+  chatAgentModel: LargeLanguageModelSchema.optional(),
+  /** Image Agent model — an OpenRouter image-generation model id. */
+  imageAgentModel: z.string().optional(),
+  /** Video Agent model — a fal.ai video model id. */
+  videoAgentModel: z.string().optional(),
+  /** Preferred model assignment for each application role. */
+  modelRoles: ModelRoleAssignmentsSchema,
+  /** MCP server IDs the standalone Chat Agent may call. */
+  chatAgentMcpServerIds: z.array(z.number()).optional(),
+  /** MCP tool keys the standalone Chat Agent may call, formatted as `${serverId}:${toolName}`. */
+  chatAgentMcpToolKeys: z.array(z.string()).optional(),
+  /** MCP workflow keys the standalone Chat Agent may execute, formatted as `${serverId}:${workflowId}`. */
+  chatAgentMcpWorkflowKeys: z.array(z.string()).optional(),
+  /** Phantom (Hermes) / OpenAI AI coder routing and feature flags. */
+  aiCoder: z
+    .object({
+      provider: z
+        .enum(["phantom", "openai", "lmstudio", "openrouter"])
+        .optional(),
+      endpoint: z.string().optional(),
+      model: z.string().optional(),
+      openaiModel: z.string().optional(),
+      enableForChatAgent: z.boolean().optional(),
+      enableForCodeCompletion: z.boolean().optional(),
+      streamResponses: z.boolean().optional(),
+    })
+    .optional(),
 };
 
 /**

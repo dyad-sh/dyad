@@ -260,6 +260,80 @@ async function handleListVercelProjects(): Promise<VercelProject[]> {
   }
 }
 
+function getVercelToken(): string {
+  const accessToken = readSettings().vercelAccessToken?.value;
+  if (!accessToken) {
+    throw new DyadError("Not authenticated with Vercel.", DyadErrorKind.Auth);
+  }
+  return accessToken;
+}
+
+function toVercelProject(project: {
+  id?: string;
+  name?: string;
+  framework?: string | null;
+}): VercelProject {
+  if (!project.id || !project.name) {
+    throw new DyadError(
+      "Vercel returned an invalid project.",
+      DyadErrorKind.External,
+    );
+  }
+  return {
+    id: project.id,
+    name: project.name,
+    framework: project.framework ?? null,
+  };
+}
+
+async function handleCreateManagerProject(name: string) {
+  const token = getVercelToken();
+  try {
+    const project = await createVercelClient(token).projects.createProject({
+      requestBody: { name: name.trim() },
+    });
+    return toVercelProject(project);
+  } catch (error) {
+    logger.error("[Vercel Handler] Failed to create manager project:", error);
+    throw new DyadError(
+      error instanceof Error ? error.message : "Failed to create project.",
+      DyadErrorKind.External,
+    );
+  }
+}
+
+async function handleUpdateManagerProject(projectId: string, name: string) {
+  const token = getVercelToken();
+  try {
+    const project = await createVercelClient(token).projects.updateProject({
+      idOrName: projectId,
+      requestBody: { name: name.trim() },
+    });
+    return toVercelProject(project);
+  } catch (error) {
+    logger.error("[Vercel Handler] Failed to update manager project:", error);
+    throw new DyadError(
+      error instanceof Error ? error.message : "Failed to update project.",
+      DyadErrorKind.External,
+    );
+  }
+}
+
+async function handleDeleteManagerProject(projectId: string) {
+  const token = getVercelToken();
+  try {
+    await createVercelClient(token).projects.deleteProject({
+      idOrName: projectId,
+    });
+  } catch (error) {
+    logger.error("[Vercel Handler] Failed to delete manager project:", error);
+    throw new DyadError(
+      error instanceof Error ? error.message : "Failed to delete project.",
+      DyadErrorKind.External,
+    );
+  }
+}
+
 // --- Vercel Project Availability Handler ---
 async function handleIsProjectAvailable(
   event: IpcMainInvokeEvent,
@@ -567,6 +641,18 @@ export function registerVercelHandlers() {
   createTypedHandler(vercelContracts.listProjects, async () => {
     return handleListVercelProjects();
   });
+
+  createTypedHandler(vercelContracts.createManagerProject, async (_, params) =>
+    handleCreateManagerProject(params.name),
+  );
+
+  createTypedHandler(vercelContracts.updateManagerProject, async (_, params) =>
+    handleUpdateManagerProject(params.projectId, params.name),
+  );
+
+  createTypedHandler(vercelContracts.deleteManagerProject, async (_, params) =>
+    handleDeleteManagerProject(params.projectId),
+  );
 
   createTypedHandler(
     vercelContracts.isProjectAvailable,

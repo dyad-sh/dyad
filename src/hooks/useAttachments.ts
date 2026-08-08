@@ -68,16 +68,19 @@ export function useAttachments() {
     }
   };
 
-  const addAttachments = (
-    files: File[],
-    type: "chat-context" | "upload-to-codebase" = "chat-context",
-  ) => {
-    const fileAttachments: FileAttachment[] = files.map((file) => ({
-      file,
-      type,
-    }));
-    setAttachments((attachments) => [...attachments, ...fileAttachments]);
-  };
+  const addAttachments = useCallback(
+    (
+      files: File[],
+      type: "chat-context" | "upload-to-codebase" = "chat-context",
+    ) => {
+      const fileAttachments: FileAttachment[] = files.map((file) => ({
+        file,
+        type,
+      }));
+      setAttachments((attachments) => [...attachments, ...fileAttachments]);
+    },
+    [setAttachments],
+  );
 
   const confirmPendingFiles = useCallback(
     (type: "chat-context" | "upload-to-codebase") => {

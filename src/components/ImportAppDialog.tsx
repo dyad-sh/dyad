@@ -75,11 +75,13 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
     }
   }, [isOpen]);
 
-  // Re-check app name when copyToDyadApps changes
+  // Re-check app name only when copyToDyadApps changes (name/path edits are
+  // handled elsewhere); intentionally not keyed on customAppName/selectedPath.
   useEffect(() => {
     if (customAppName.trim() && selectedPath) {
       checkAppName({ name: customAppName, skipCopy: !copyToDyadApps });
     }
+    // eslint-disable-next-line react/exhaustive-deps
   }, [copyToDyadApps]);
 
   const handleUrlBlur = async () => {
@@ -397,7 +399,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                     <div className="flex items-center space-x-2">
                       <Checkbox
                         id="copy-to-dyad-apps"
-                        aria-label="Copy to the dyad-apps folder"
+                        aria-label="Copy to the Meta Human OS apps folder"
                         checked={copyToDyadApps}
                         onCheckedChange={(checked) =>
                           setCopyToDyadApps(checked === true)
@@ -481,7 +483,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                     {hasAiRules === false && (
                       <Alert className="border-yellow-500/20 text-yellow-500 flex items-start gap-2">
                         <span
-                          title="AI_RULES.md lets Dyad know which tech stack to use for editing the app"
+                          title="AI_RULES.md lets Meta Human OS know which tech stack to use for editing the app"
                           className="flex-shrink-0 mt-1"
                         >
                           <Info className="h-4 w-4" />

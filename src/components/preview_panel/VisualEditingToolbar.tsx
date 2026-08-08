@@ -202,10 +202,12 @@ export function VisualEditingToolbar({
     }
   };
 
+  // Fetch element styles when the selected component changes.
   useEffect(() => {
     if (selectedComponent) {
       getCurrentElementStyles();
     }
+    // eslint-disable-next-line react/exhaustive-deps
   }, [selectedComponent]);
 
   useEffect(() => {

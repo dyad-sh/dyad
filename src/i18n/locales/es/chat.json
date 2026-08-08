@@ -33,7 +33,7 @@
   "deleteChatNote": "Nota: Cualquier cambio de código que ya haya sido aceptado se mantendrá.",
   "scrollToBottom": "Desplazarse hacia abajo",
   "dismissError": "Descartar error",
-  "askDyadToBuild": "Pídele a Dyad que construya...",
+  "askDyadToBuild": "Pídele a Meta Human OS que construya...",
   "cancelGeneration": "Cancelar generación",
   "sendMessage": "Enviar mensaje",
   "loadingProposal": "Cargando propuesta...",
@@ -121,7 +121,7 @@
   "total": "Total",
   "failedCountTokens": "Error al contar los tokens",
   "optimizeTokens": "Optimiza tus tokens con",
-  "dyadProSmartContext": "Contexto Inteligente de Dyad Pro",
+  "dyadProSmartContext": "Contexto Inteligente de Pro",
   "attachFiles": "Adjuntar archivos",
   "themes": "Temas",
   "noTheme": "Sin Tema",
@@ -197,29 +197,29 @@
     "versionCount": "Versión {{count}}"
   },
   "errorBox": {
-    "accessWithDyadPro": "Acceder con Dyad Pro",
+    "accessWithDyadPro": "Acceder con Pro",
     "orSwitchModel": "o cambia a otro modelo.",
-    "upgradeToDyadPro": "Actualizar a Dyad Pro",
+    "upgradeToDyadPro": "Actualizar a Pro",
     "troubleshootingGuide": "Guía de solución de problemas",
-    "invalidProKey": "Parece que no tienes una clave válida de Dyad Pro.",
+    "invalidProKey": "Parece que no tienes una clave válida de Pro.",
     "today": "hoy.",
-    "creditsUsed": "Has usado todos tus créditos de IA de Dyad este mes.",
+    "creditsUsed": "Has usado todos tus créditos de IA de Meta Human OS este mes.",
     "reloadOrUpgrade": "Recarga o actualiza tu suscripción",
     "getMoreCredits": "y consigue más créditos de IA",
     "readDocs": "Leer documentación"
   },
   "promo": {
     "tiredOfWaiting": "¿Cansado de esperar a la IA?",
-    "getDyadPro": "Consigue Dyad Pro",
+    "getDyadPro": "Consigue Pro",
     "fasterEdits": "para ediciones más rápidas con Turbo Edits.",
     "saveOnCosts": "Ahorra hasta 3 veces en costos de IA con",
     "debuggingLoop": "¿Atrapado en un bucle de depuración? Prueba un modelo diferente.",
     "joinBuilders": "Únete a más de 600 desarrolladores en el",
-    "dyadSubreddit": "Subreddit de Dyad",
+    "dyadSubreddit": "Subreddit de Meta Human OS",
     "foundBug": "¿Encontraste un error? Haz clic en Ayuda > Informar de un error",
     "reportBadResponse": "¿Quieres reportar una mala respuesta de la IA? Sube el chat haciendo clic en Ayuda",
     "watch": "Ver",
-    "creatorBuildApp": "al creador de Dyad construir una app bíblica paso a paso",
+    "creatorBuildApp": "al creador de Meta Human OS construir una app bíblica paso a paso",
     "gettingStuck": "¿Te estás atascando? Lee nuestros",
     "debuggingTips": "consejos de depuración",
     "advancedTip": "Consejo avanzado: Personaliza tus",
@@ -227,7 +227,7 @@
     "keepFocused": "¿Quieres mantener enfocada a la IA? Inicia un nuevo chat.",
     "whatsNext": "¿Quieres saber qué sigue? Echa un vistazo a nuestra",
     "roadmap": "hoja de ruta",
-    "likeDyad": "¿Te gusta Dyad? Dale una estrella en",
+    "likeDyad": "¿Te gusta Meta Human OS? Dale una estrella en",
     "gitHub": "GitHub"
   },
   "consent": {
@@ -238,5 +238,16 @@
   "guide": "Guía",
   "agentModeActivated": "Modo Agente Activado",
   "agentModeTip": "Consejo: Crea un nuevo chat para darle al agente un contexto limpio para obtener mejores resultados.",
-  "neverShowAgain": "No volver a mostrar"
+  "neverShowAgain": "No volver a mostrar",
+  "chatAgent": {
+    "messagePlaceholder": "Mensaje para Chat Agent…",
+    "sendMessage": "Enviar mensaje",
+    "stopGenerating": "Detener generación",
+    "enhancePrompt": "Mejorar prompt",
+    "attachMenu": "Añadir adjuntos",
+    "attachFiles": "Adjuntar archivos",
+    "attachImage": "Adjuntar imagen",
+    "generationStarted": "El asistente está respondiendo",
+    "generationFinished": "Respuesta finalizada"
+  }
 }

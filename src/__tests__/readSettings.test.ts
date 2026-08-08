@@ -38,6 +38,7 @@ vi.mock("electron", () => ({
   },
   safeStorage: {
     isEncryptionAvailable: vi.fn(),
+    encryptString: vi.fn(),
     decryptString: vi.fn(),
   },
 }));
@@ -63,6 +64,9 @@ describe("readSettings", () => {
     mockGetUserDataPath.mockReturnValue(mockUserDataPath);
     mockPath.join.mockReturnValue(mockSettingsPath);
     mockSafeStorage.isEncryptionAvailable.mockReturnValue(true);
+    mockSafeStorage.encryptString.mockImplementation((value) =>
+      Buffer.from(`encrypted:${value}`),
+    );
   });
 
   afterEach(() => {
@@ -84,6 +88,14 @@ describe("readSettings", () => {
       expect(scrubSettings(result)).toMatchInlineSnapshot(`
         {
           "autoExpandPreviewPanel": true,
+          "chatAgentMcpServerIds": [],
+          "chatAgentMcpToolKeys": [],
+          "chatAgentMcpWorkflowKeys": [],
+          "chatAgentSystemAccess": {
+            "browser": false,
+            "computer": false,
+            "terminal": false,
+          },
           "enableAutoFixProblems": false,
           "enableAutoUpdate": true,
           "enableContextCompaction": true,
@@ -97,6 +109,45 @@ describe("readSettings", () => {
           "previewIdleTimeoutPolicy": "default",
           "providerSettings": {},
           "releaseChannel": "stable",
+          "researchPlugins": {
+            "amadeus": {
+              "currency": "AUD",
+              "enabled": false,
+              "environment": "test",
+            },
+            "coinGecko": {
+              "enabled": true,
+              "plan": "public",
+            },
+            "duckDuckGo": {
+              "enabled": true,
+            },
+            "duffel": {
+              "enabled": false,
+            },
+            "maps": {
+              "enabled": true,
+              "style": "dark",
+            },
+            "skyscanner": {
+              "currency": "AUD",
+              "enabled": false,
+              "locale": "en-AU",
+              "market": "AU",
+            },
+            "travelSearch": {
+              "currency": "AUD",
+              "enabled": true,
+              "locale": "en-AU",
+              "market": "AU",
+            },
+            "weather": {
+              "enabled": true,
+              "forecastDays": 7,
+              "temperatureUnit": "celsius",
+              "windSpeedUnit": "kmh",
+            },
+          },
           "selectedChatMode": "build",
           "selectedModel": {
             "name": "auto",
@@ -189,6 +240,32 @@ describe("readSettings", () => {
       );
       expect(result.githubAccessToken).toEqual({
         value: "decrypted-github-token",
+        encryptionType: "electron-safe-storage",
+      });
+    });
+
+    it("should decrypt encrypted Vercel Blob token", () => {
+      const mockFileContent = {
+        vercelBlob: {
+          token: {
+            value: "encrypted-blob-token",
+            encryptionType: "electron-safe-storage",
+          },
+          connectedAt: 123,
+        },
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
+      mockSafeStorage.decryptString.mockReturnValue("decrypted-blob-token");
+
+      const result = readSettings();
+
+      expect(mockSafeStorage.decryptString).toHaveBeenCalledWith(
+        Buffer.from("encrypted-blob-token", "base64"),
+      );
+      expect(result.vercelBlob?.token).toEqual({
+        value: "decrypted-blob-token",
         encryptionType: "electron-safe-storage",
       });
     });
@@ -477,6 +554,14 @@ describe("readSettings", () => {
       expect(scrubSettings(result)).toMatchInlineSnapshot(`
         {
           "autoExpandPreviewPanel": true,
+          "chatAgentMcpServerIds": [],
+          "chatAgentMcpToolKeys": [],
+          "chatAgentMcpWorkflowKeys": [],
+          "chatAgentSystemAccess": {
+            "browser": false,
+            "computer": false,
+            "terminal": false,
+          },
           "enableAutoFixProblems": false,
           "enableAutoUpdate": true,
           "enableContextCompaction": true,
@@ -490,6 +575,45 @@ describe("readSettings", () => {
           "previewIdleTimeoutPolicy": "default",
           "providerSettings": {},
           "releaseChannel": "stable",
+          "researchPlugins": {
+            "amadeus": {
+              "currency": "AUD",
+              "enabled": false,
+              "environment": "test",
+            },
+            "coinGecko": {
+              "enabled": true,
+              "plan": "public",
+            },
+            "duckDuckGo": {
+              "enabled": true,
+            },
+            "duffel": {
+              "enabled": false,
+            },
+            "maps": {
+              "enabled": true,
+              "style": "dark",
+            },
+            "skyscanner": {
+              "currency": "AUD",
+              "enabled": false,
+              "locale": "en-AU",
+              "market": "AU",
+            },
+            "travelSearch": {
+              "currency": "AUD",
+              "enabled": true,
+              "locale": "en-AU",
+              "market": "AU",
+            },
+            "weather": {
+              "enabled": true,
+              "forecastDays": 7,
+              "temperatureUnit": "celsius",
+              "windSpeedUnit": "kmh",
+            },
+          },
           "selectedChatMode": "build",
           "selectedModel": {
             "name": "auto",
@@ -710,6 +834,9 @@ describe("writeSettings", () => {
     mockGetUserDataPath.mockReturnValue(mockUserDataPath);
     mockPath.join.mockReturnValue(mockSettingsPath);
     mockSafeStorage.isEncryptionAvailable.mockReturnValue(true);
+    mockSafeStorage.encryptString.mockImplementation((value) =>
+      Buffer.from(`encrypted:${value}`),
+    );
   });
 
   afterEach(() => {
@@ -780,6 +907,68 @@ describe("writeSettings", () => {
       tempFilePath,
       mockSettingsPath,
     );
+  });
+
+  it("persists research plugin API keys through the secret wrapper", () => {
+    mockFs.existsSync.mockReturnValue(true);
+    mockFs.readFileSync.mockReturnValue(
+      JSON.stringify({
+        providerSettings: {},
+        selectedModel: { name: "auto", provider: "auto" },
+        selectedTemplateId: "react",
+        enableAutoUpdate: true,
+        releaseChannel: "stable",
+      }),
+    );
+
+    writeSettings({
+      researchPlugins: {
+        duckDuckGo: { enabled: true },
+        coinGecko: {
+          enabled: true,
+          plan: "demo",
+          apiKey: { value: "  cg-demo-key\n" },
+        },
+        skyscanner: {
+          enabled: true,
+          apiKey: { value: " sky-partner-key " },
+        },
+        amadeus: {
+          enabled: true,
+          environment: "test",
+          apiKey: { value: " amadeus-key " },
+          apiSecret: { value: " amadeus-secret " },
+        },
+        duffel: {
+          enabled: true,
+          accessToken: { value: " duffel_test_token " },
+        },
+      },
+    });
+
+    const written = JSON.parse(
+      String(mockFs.writeFileSync.mock.calls.at(-1)?.[1]),
+    );
+    expect(written.researchPlugins.coinGecko.apiKey).toMatchObject({
+      value: Buffer.from("encrypted:cg-demo-key").toString("base64"),
+      encryptionType: "electron-safe-storage",
+    });
+    expect(written.researchPlugins.skyscanner.apiKey).toMatchObject({
+      value: Buffer.from("encrypted:sky-partner-key").toString("base64"),
+      encryptionType: "electron-safe-storage",
+    });
+    expect(written.researchPlugins.amadeus.apiKey).toMatchObject({
+      value: Buffer.from("encrypted:amadeus-key").toString("base64"),
+      encryptionType: "electron-safe-storage",
+    });
+    expect(written.researchPlugins.amadeus.apiSecret).toMatchObject({
+      value: Buffer.from("encrypted:amadeus-secret").toString("base64"),
+      encryptionType: "electron-safe-storage",
+    });
+    expect(written.researchPlugins.duffel.accessToken).toMatchObject({
+      value: Buffer.from("encrypted:duffel_test_token").toString("base64"),
+      encryptionType: "electron-safe-storage",
+    });
   });
 });
 

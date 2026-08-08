@@ -32,7 +32,7 @@ export function ChatInputControls({
     enabledMcpServersCount > 0;
 
   return (
-    <div className="flex items-center">
+    <div className="flex flex-wrap items-center gap-y-1">
       <ChatModeSelector />
       {showMcpToolsPicker && (
         <>

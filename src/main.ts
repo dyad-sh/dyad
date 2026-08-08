@@ -6,9 +6,11 @@ import {
   protocol,
   net,
   session,
+  shell,
 } from "electron";
 import * as path from "node:path";
 import { registerIpcHandlers } from "./ipc/ipc_host";
+import { restoreSecretsFromVault } from "./ipc/utils/vault_secrets_sync";
 import dotenv from "dotenv";
 // @ts-ignore
 import started from "electron-squirrel-startup";
@@ -59,6 +61,7 @@ import fs from "fs";
 import { gitAddSafeDirectory } from "./ipc/utils/git_utils";
 import { getDyadAppsBaseDirectory, getDyadAppPath } from "./paths/paths";
 import { createDeepLinkQueue } from "./main/deep_link_queue";
+import { handleLovableOAuthProtocolCallback } from "./ipc/utils/lovable_mcp_oauth";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();
@@ -69,6 +72,15 @@ const deepLinkQueue = createDeepLinkQueue(handleDeepLinkReturn);
 
 // Load environment variables from .env file
 dotenv.config();
+
+// This is a personal fork ("Meta Human OS"). The built-in auto-updater points
+// at the upstream dyad-sh/dyad release feed, which ships a *different* app — so
+// for an unsigned local build it stages an update it can't apply and the
+// "move to Applications (required for auto-update)" prompt relaunches the app,
+// which together make the app appear to "keep closing". Keep both off unless a
+// genuine signed release explicitly opts in via META_ENABLE_AUTO_UPDATE=true.
+const AUTO_UPDATE_ALLOWED =
+  !IS_TEST_BUILD && process.env.META_ENABLE_AUTO_UPDATE === "true";
 
 // Register IPC handlers before app is ready
 registerIpcHandlers();
@@ -97,12 +109,16 @@ if (fs.existsSync(gitDir)) {
 // https://www.electronjs.org/docs/latest/tutorial/launch-app-from-url-in-another-app#main-process-mainjs
 if (process.defaultApp) {
   if (process.argv.length >= 2) {
-    app.setAsDefaultProtocolClient("dyad", process.execPath, [
-      path.resolve(process.argv[1]),
-    ]);
+    for (const scheme of ["dyad", "metahumanos"]) {
+      app.setAsDefaultProtocolClient(scheme, process.execPath, [
+        path.resolve(process.argv[1]),
+      ]);
+    }
   }
 } else {
-  app.setAsDefaultProtocolClient("dyad");
+  for (const scheme of ["dyad", "metahumanos"]) {
+    app.setAsDefaultProtocolClient(scheme);
+  }
 }
 
 export async function onReady() {
@@ -184,6 +200,14 @@ export async function onReady() {
   }
   initializeDatabase();
 
+  // Pick up any API key the vault holds that this install is missing, before
+  // anything asks whether a provider is configured.
+  try {
+    await restoreSecretsFromVault();
+  } catch (e) {
+    logger.error("Error restoring API keys from the vault", e);
+  }
+
   // Cleanup old ai_messages_json entries to prevent database bloat
   cleanupOldAiMessagesJson();
 
@@ -197,7 +221,7 @@ export async function onReady() {
   // See: https://git-scm.com/docs/git-config#Documentation/git-config.txt-safedirectory
   if (settings.enableNativeGit) {
     // Don't need to await because this only needs to run before
-    // the user starts interacting with Dyad app and uses a git-related feature.
+    // the user starts interacting with Meta Human OS app and uses a git-related feature.
     gitAddSafeDirectory(`${getDyadAppsBaseDirectory()}/*`);
   }
 
@@ -291,8 +315,13 @@ export async function onReady() {
   createWindow();
   createApplicationMenu();
 
-  logger.info("Auto-update enabled=", settings.enableAutoUpdate);
-  if (settings.enableAutoUpdate) {
+  logger.info(
+    "Auto-update enabled=",
+    settings.enableAutoUpdate,
+    "allowed=",
+    AUTO_UPDATE_ALLOWED,
+  );
+  if (settings.enableAutoUpdate && AUTO_UPDATE_ALLOWED) {
     // Technically we could just pass the releaseChannel directly to the host,
     // but this is more explicit and falls back to stable if there's an unknown
     // release channel.
@@ -313,7 +342,11 @@ export async function onReady() {
 
 export async function onFirstRunMaybe(settings: UserSettings) {
   if (!settings.hasRunBefore) {
-    await promptMoveToApplicationsFolder();
+    // Only nag to move into /Applications when auto-update is actually active —
+    // otherwise the move + relaunch just disrupts a local build for no benefit.
+    if (AUTO_UPDATE_ALLOWED) {
+      await promptMoveToApplicationsFolder();
+    }
     writeSettings({
       hasRunBefore: true,
     });
@@ -361,8 +394,68 @@ let mainWindow: BrowserWindow | null = null;
 let pendingForceCloseData: any = null;
 let pendingCrashDetected = false;
 let isAppQuitting = false;
+const shouldOpenDevTools =
+  process.env.NODE_ENV === "development" &&
+  process.env.DYAD_OPEN_DEVTOOLS === "true";
+
+/**
+ * Electron denies media permission requests unless the app handles them, so
+ * `getUserMedia` in the renderer fails silently without this. Grant only the
+ * microphone, and only to our own windows — never to embedded app previews.
+ */
+const registerMediaPermissionHandlers = () => {
+  const isOwnWindow = (webContents: Electron.WebContents): boolean => {
+    const window = BrowserWindow.fromWebContents(webContents);
+    return window != null && window === mainWindow;
+  };
+
+  session.defaultSession.setPermissionRequestHandler(
+    (webContents, permission, callback, details) => {
+      if (permission === "media") {
+        const wantsAudioOnly =
+          !("mediaTypes" in details) ||
+          (details.mediaTypes ?? []).every((type) => type === "audio");
+        callback(isOwnWindow(webContents) && wantsAudioOnly);
+        return;
+      }
+      callback(false);
+    },
+  );
+
+  session.defaultSession.setPermissionCheckHandler(
+    (webContents, permission) =>
+      permission === "media" && webContents != null && isOwnWindow(webContents),
+  );
+};
+
+/**
+ * The main window has no browser chrome, so anything that navigates it away
+ * from the app strands the user with no way back — a remote image opened by an
+ * anchor, a stray link in agent output. Keep the window on the app and send
+ * real destinations to the system browser, which has a back button.
+ */
+const registerNavigationGuards = (window: BrowserWindow) => {
+  const isAppUrl = (url: string): boolean => {
+    if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+      return url.startsWith(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+    }
+    return url.startsWith("file://");
+  };
+
+  window.webContents.on("will-navigate", (event, url) => {
+    if (isAppUrl(url)) return;
+    event.preventDefault();
+    if (/^https?:\/\//i.test(url)) void shell.openExternal(url);
+  });
+
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) void shell.openExternal(url);
+    return { action: "deny" };
+  });
+};
 
 const createWindow = () => {
+  registerMediaPermissionHandlers();
   // Create the browser window.
   mainWindow = new BrowserWindow({
     width: process.env.NODE_ENV === "development" ? 1280 : 960,
@@ -385,8 +478,10 @@ const createWindow = () => {
     // backgroundColor: "#00000001",
     // frame: false,
   });
+  registerNavigationGuards(mainWindow);
+
   // In development, wait for DevTools to open, then reload the page once so React DevTools initializes correctly
-  if (process.env.NODE_ENV === "development") {
+  if (shouldOpenDevTools) {
     mainWindow.webContents.once("devtools-opened", () => {
       setTimeout(() => {
         const windowRef = mainWindow;
@@ -412,7 +507,7 @@ const createWindow = () => {
   let devToolsReloadedCount = 0;
 
   mainWindow.webContents.on("did-finish-load", () => {
-    if (process.env.NODE_ENV === "development") {
+    if (shouldOpenDevTools) {
       // In dev, wait until AFTER the DevTools-triggered reload before sending the message
       if (devToolsReloadedCount === 0) {
         devToolsReloadedCount++;
@@ -701,6 +796,7 @@ if (IS_TEST_BUILD) {
 
 // Handle the protocol. In this case, we choose to show an Error Box.
 app.on("open-url", (event, url) => {
+  event.preventDefault();
   deepLinkQueue.handle(url);
 });
 
@@ -725,6 +821,11 @@ async function handleDeepLinkReturn(url: string) {
     "hostname",
     parsed.hostname,
   );
+  if (handleLovableOAuthProtocolCallback(url)) {
+    mainWindow?.show();
+    mainWindow?.focus();
+    return;
+  }
   if (parsed.protocol !== "dyad:") {
     dialog.showErrorBox(
       "Invalid Protocol",

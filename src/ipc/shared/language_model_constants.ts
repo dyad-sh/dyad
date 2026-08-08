@@ -241,6 +241,61 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       temperature: 0,
     },
   ],
+  vercel: [
+    {
+      name: "openai/gpt-5.4",
+      displayName: "GPT 5.4",
+      description: "OpenAI GPT 5.4 through Vercel AI Gateway",
+      contextWindow: 1_050_000,
+      maxOutputTokens: 128_000,
+    },
+    {
+      name: "anthropic/claude-sonnet-4.6",
+      displayName: "Claude Sonnet 4.6",
+      description: "Anthropic Claude Sonnet 4.6 through Vercel AI Gateway",
+      contextWindow: 1_000_000,
+      maxOutputTokens: 64_000,
+    },
+    {
+      name: "google/gemini-3-flash",
+      displayName: "Gemini 3 Flash",
+      description: "Google Gemini 3 Flash through Vercel AI Gateway",
+      contextWindow: 1_048_576,
+      maxOutputTokens: 65_536,
+    },
+  ],
+  // https://www.kimi.com/code/docs/en/kimi-code/models.html
+  "kimi-code": [
+    {
+      name: "k3",
+      displayName: "Kimi K3",
+      description:
+        "Kimi's flagship coding model for large codebases and multi-file work",
+      contextWindow: 1_048_576,
+      dollarSigns: 2,
+    },
+    {
+      name: "k3-256k",
+      displayName: "Kimi K3 256K",
+      description: "Kimi K3 for everyday coding with lower quota consumption",
+      contextWindow: 256_000,
+      dollarSigns: 1,
+    },
+    {
+      name: "kimi-for-coding",
+      displayName: "Kimi K2.7 Code",
+      description: "Kimi's coding model for completion and routine development",
+      contextWindow: 256_000,
+      dollarSigns: 1,
+    },
+    {
+      name: "kimi-for-coding-highspeed",
+      displayName: "Kimi K2.7 Code HighSpeed",
+      description: "Kimi K2.7 Code with substantially faster model output",
+      contextWindow: 256_000,
+      dollarSigns: 2,
+    },
+  ],
   openrouter: [
     {
       name: "openrouter/free",
@@ -517,6 +572,44 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       dollarSigns: 1,
     },
   ],
+  phantom: [
+    {
+      name: "kimi-k2.6",
+      displayName: "Kimi K2.6",
+      description: "Hermes / Phantom default model",
+      maxOutputTokens: 8192,
+      contextWindow: 128_000,
+      temperature: 0.7,
+    },
+  ],
+  // Video models. These are not chat models: they are listed so the Video
+  // model role has something to choose from, and every one is a fal endpoint.
+  fal: [
+    {
+      name: "fal-ai/kling-video/v1/standard/text-to-video",
+      displayName: "Kling 1.0 (video)",
+      description: "Default text-to-video model. Smooth motion, 10s clips.",
+      dollarSigns: 2,
+    },
+    {
+      name: "fal-ai/kling-video/v1/standard/image-to-video",
+      displayName: "Kling 1.0 Image-to-Video",
+      description: "Animates a still image into a 10s clip.",
+      dollarSigns: 2,
+    },
+    {
+      name: "fal-ai/luma-dream-machine",
+      displayName: "Luma Dream Machine (video)",
+      description: "Cinematic text-to-video with strong camera movement.",
+      dollarSigns: 2,
+    },
+    {
+      name: "fal-ai/minimax/video-01",
+      displayName: "MiniMax Video 01 (video)",
+      description: "Text-to-video with detailed scene composition.",
+      dollarSigns: 2,
+    },
+  ],
 };
 
 export const FREE_OPENROUTER_MODEL_NAMES = MODEL_OPTIONS.openrouter
@@ -530,10 +623,14 @@ export const PROVIDER_TO_ENV_VAR: Record<string, string> = {
   anthropic: "ANTHROPIC_API_KEY",
   google: "GEMINI_API_KEY",
   openrouter: "OPENROUTER_API_KEY",
+  vercel: "AI_GATEWAY_API_KEY",
+  "kimi-code": "KIMI_API_KEY",
   azure: "AZURE_API_KEY",
   xai: "XAI_API_KEY",
   bedrock: "AWS_BEARER_TOKEN_BEDROCK",
   minimax: "MINIMAX_API_KEY",
+  phantom: "HERMES_API_KEY",
+  fal: "FAL_KEY",
 };
 
 export const CLOUD_PROVIDERS: Record<
@@ -542,8 +639,13 @@ export const CLOUD_PROVIDERS: Record<
     displayName: string;
     hasFreeTier?: boolean;
     websiteUrl?: string;
-    gatewayPrefix: string;
+    gatewayPrefix?: string;
     secondary?: boolean;
+    /**
+     * Set for providers whose models are not conversational. They stay out of
+     * the chat model picker and are offered only for the roles they can serve.
+     */
+    nonChat?: boolean;
   }
 > = {
   openai: {
@@ -568,7 +670,7 @@ export const CLOUD_PROVIDERS: Record<
     displayName: "Google Vertex AI",
     hasFreeTier: false,
     websiteUrl: "https://console.cloud.google.com/vertex-ai",
-    // Use the same gateway prefix as Google Gemini for Dyad Pro compatibility.
+    // Use the same gateway prefix as Google Gemini for Meta Human OS Pro compatibility.
     gatewayPrefix: "gemini/",
     secondary: true,
   },
@@ -578,8 +680,18 @@ export const CLOUD_PROVIDERS: Record<
     websiteUrl: "https://openrouter.ai/settings/keys",
     gatewayPrefix: "openrouter/",
   },
+  vercel: {
+    displayName: "Vercel AI Gateway",
+    hasFreeTier: false,
+    websiteUrl: "https://vercel.com/ai-gateway",
+  },
+  "kimi-code": {
+    displayName: "Kimi Code",
+    hasFreeTier: false,
+    websiteUrl: "https://www.kimi.com/code/console",
+  },
   auto: {
-    displayName: "Dyad",
+    displayName: "Meta Human OS",
     websiteUrl: "https://academy.dyad.sh/subscription",
     gatewayPrefix: "dyad/",
   },
@@ -611,6 +723,21 @@ export const CLOUD_PROVIDERS: Record<
     gatewayPrefix: "minimax/",
     secondary: true,
   },
+  phantom: {
+    displayName: "Phantom (Hermes)",
+    hasFreeTier: false,
+    websiteUrl: "http://192.168.68.111:8642/",
+    gatewayPrefix: "phantom/",
+    secondary: true,
+  },
+  fal: {
+    displayName: "fal.ai",
+    hasFreeTier: false,
+    websiteUrl: "https://fal.ai/dashboard/keys",
+    secondary: true,
+    // Video only — Kling is not something you hold a conversation with.
+    nonChat: true,
+  },
 };
 
 export const LOCAL_PROVIDERS: Record<
@@ -618,14 +745,21 @@ export const LOCAL_PROVIDERS: Record<
   {
     displayName: string;
     hasFreeTier: boolean;
+    websiteUrl?: string;
   }
 > = {
   ollama: {
     displayName: "Ollama",
     hasFreeTier: true,
+    websiteUrl: "https://ollama.com/",
   },
   lmstudio: {
     displayName: "LM Studio",
+    hasFreeTier: true,
+    websiteUrl: "https://lmstudio.ai/",
+  },
+  mx_serve: {
+    displayName: "MX Serve",
     hasFreeTier: true,
   },
 };

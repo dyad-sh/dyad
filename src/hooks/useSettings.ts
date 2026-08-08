@@ -7,6 +7,8 @@ import { type UserSettings, hasDyadProKey } from "@/lib/schemas";
 import { usePostHog } from "posthog-js/react";
 import { useAppVersion } from "./useAppVersion";
 import { queryKeys } from "@/lib/queryKeys";
+import { useSettingsDraftContext } from "@/contexts/SettingsDraftContext";
+import { isIpcRendererAvailable } from "@/ipc/contracts/core";
 
 const TELEMETRY_CONSENT_KEY = "dyadTelemetryConsent";
 const TELEMETRY_USER_ID_KEY = "dyadTelemetryUserId";
@@ -26,23 +28,27 @@ export function isDyadProUser(): boolean {
 
 let isInitialLoad = false;
 
-export function useSettings() {
+/** Settings query/mutation without draft overlay (used by SettingsDraftProvider). */
+export function useSettingsInternal() {
   const posthog = usePostHog();
   const [, setSettingsAtom] = useAtom(userSettingsAtom);
   const [, setEnvVarsAtom] = useAtom(envVarsAtom);
   const appVersion = useAppVersion();
   const queryClient = useQueryClient();
+  const hasIpcRenderer = isIpcRendererAvailable();
 
   // Query for user settings
   const settingsQuery = useQuery({
     queryKey: queryKeys.settings.user,
     queryFn: () => ipc.settings.getUserSettings(),
+    enabled: hasIpcRenderer,
   });
 
   // Query for env vars
   const envVarsQuery = useQuery({
     queryKey: queryKeys.settings.envVars,
     queryFn: () => ipc.misc.getEnvVars(),
+    enabled: hasIpcRenderer,
   });
 
   // Process telemetry side effects when settings load/change
@@ -106,6 +112,26 @@ export function useSettings() {
     error,
     updateSettings,
     refreshSettings,
+    isUpdatePending: updateSettingsMutation.isPending,
+  };
+}
+
+export function useSettings() {
+  const internal = useSettingsInternal();
+  const draft = useSettingsDraftContext();
+
+  if (!draft) {
+    return internal;
+  }
+
+  return {
+    ...internal,
+    settings: draft.effectiveSettings,
+    updateSettings: draft.patchDraft,
+    saveSettingsTab: draft.saveTab,
+    discardSettingsTab: draft.discardTab,
+    isSettingsTabDirty: draft.isTabDirty,
+    isSavingSettings: draft.isSaving,
   };
 }
 

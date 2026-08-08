@@ -1,0 +1,1 @@
+ALTER TABLE `agent_os_agents` ADD `image_base_url` text DEFAULT '' NOT NULL;

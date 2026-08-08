@@ -77,14 +77,14 @@ export function ProModeSelector() {
           <Sparkles className="h-3.5 w-3.5" />
           <span className="font-medium">Pro</span>
         </TooltipTrigger>
-        <TooltipContent>Configure Dyad Pro settings</TooltipContent>
+        <TooltipContent>Configure Pro settings</TooltipContent>
       </Tooltip>
       <PopoverContent className="w-80 border-primary/20">
         <div className="space-y-4">
           <div className="space-y-1">
             <h4 className="font-medium flex items-center gap-1.5">
               <Sparkles className="h-4 w-4 text-primary" />
-              <span className="text-primary font-medium">Dyad Pro</span>
+              <span className="text-primary font-medium">Pro</span>
             </h4>
             <div className="h-px bg-gradient-to-r from-primary/50 via-primary/20 to-transparent" />
           </div>
@@ -95,7 +95,7 @@ export function ProModeSelector() {
                 onClick={() => {
                   ipc.system.openExternalUrl("https://dyad.sh/pro#ai");
                 }}
-                title="Visit dyad.sh/pro to unlock Pro features"
+                title="Open the Pro page to unlock additional features"
               >
                 Unlock Pro modes
               </a>
@@ -104,8 +104,8 @@ export function ProModeSelector() {
           <div className="flex flex-col gap-3">
             <SelectorRow
               id="pro-enabled"
-              label="Enable Dyad Pro"
-              tooltip="Uses Dyad Pro AI credits for the main AI model and Pro modes."
+              label="Enable Pro"
+              tooltip="Uses Pro AI credits for the main AI model and Pro modes."
               isTogglable={hasProKey}
               settingEnabled={Boolean(settings?.enableDyadPro)}
               toggle={toggleProEnabled}
@@ -123,7 +123,7 @@ export function ProModeSelector() {
                     <SelectorRow
                       id="web-search"
                       label="Web Access"
-                      tooltip="Allows Dyad to access the web (e.g. search for information)"
+                      tooltip="Allows Meta Human OS to access the web (e.g. search for information)"
                       isTogglable={proModeTogglable}
                       settingEnabled={Boolean(settings?.enableProWebSearch)}
                       toggle={toggleWebSearch}

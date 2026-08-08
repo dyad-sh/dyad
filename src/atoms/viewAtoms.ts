@@ -1,5 +1,6 @@
 import { atom } from "jotai";
 import { SECTION_IDS } from "@/lib/settingsSearchIndex";
+import type { SettingsTabId } from "@/lib/settingsTabs";
 
 export const isPreviewOpenAtom = atom(true);
 export const isChatPanelHiddenAtom = atom(false);
@@ -10,3 +11,4 @@ export const selectedFileAtom = atom<{
 export const activeSettingsSectionAtom = atom<string | null>(
   SECTION_IDS.general,
 );
+export const activeSettingsTabAtom = atom<SettingsTabId>("ai");

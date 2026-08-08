@@ -54,7 +54,7 @@ export function DyadProTrialDialog({
           {/* Title */}
           <div className="text-center">
             <h2 className="text-xl font-semibold tracking-tight text-foreground">
-              Unlock Dyad Pro
+              Unlock Pro
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
               Start your free 3-day trial today

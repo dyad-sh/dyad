@@ -11,7 +11,7 @@ export function useVercelDeployments(appId: number) {
     error,
     refetch,
   } = useQuery<VercelDeployment[], Error>({
-    queryKey: queryKeys.vercel.deployments({ appId }),
+    queryKey: queryKeys.vercel.deploymentsByApp({ appId }),
     queryFn: async () => {
       return ipc.vercel.getDeployments({ appId });
     },
@@ -25,7 +25,7 @@ export function useVercelDeployments(appId: number) {
     onSuccess: () => {
       // Clear deployments cache when project is disconnected
       queryClient.removeQueries({
-        queryKey: queryKeys.vercel.deployments({ appId }),
+        queryKey: queryKeys.vercel.deploymentsByApp({ appId }),
       });
     },
   });

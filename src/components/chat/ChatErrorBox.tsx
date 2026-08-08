@@ -37,7 +37,7 @@ export function ChatErrorBox({
             href="https://dyad.sh/pro?utm_source=dyad-app&utm_medium=app&utm_campaign=free-quota-error"
             variant="primary"
           >
-            Access with Dyad Pro
+            Access with Pro
           </ExternalLink>
         </span>{" "}
         or switch to another model.
@@ -48,9 +48,9 @@ export function ChatErrorBox({
   // Important, this needs to come after the "free quota tier" check
   // because it also includes this URL in the error message
   //
-  // Sometimes Dyad Pro can return rate limit errors and we do not want to
-  // show the upgrade to Dyad Pro link in that case because they are
-  // already on the Dyad Pro plan.
+  // Sometimes Meta Human OS Pro can return rate limit errors and we do not want to
+  // show the upgrade to Meta Human OS Pro link in that case because they are
+  // already on the Meta Human OS Pro plan.
   if (
     !isDyadProEnabled &&
     (error.includes("Resource has been exhausted") ||
@@ -65,7 +65,7 @@ export function ChatErrorBox({
             href="https://dyad.sh/pro?utm_source=dyad-app&utm_medium=app&utm_campaign=rate-limit-error"
             variant="primary"
           >
-            Upgrade to Dyad Pro
+            Upgrade to Pro
           </ExternalLink>
 
           <ExternalLink href="https://dyad.sh/docs/help/ai-rate-limit">
@@ -76,16 +76,33 @@ export function ChatErrorBox({
     );
   }
 
+  if (
+    error.includes("LM Studio") ||
+    error.includes("Ollama") ||
+    error.includes("not loaded in LM Studio")
+  ) {
+    return (
+      <ChatErrorContainer onDismiss={onDismiss}>
+        {error}
+        <div className="mt-2 space-x-2">
+          <ExternalLink href="https://www.dyad.sh/docs/help/local-models">
+            Local models guide
+          </ExternalLink>
+        </div>
+      </ChatErrorContainer>
+    );
+  }
+
   if (error.includes("LiteLLM Virtual Key expected")) {
     return (
       <ChatInfoContainer onDismiss={onDismiss}>
         <span>
-          Looks like you don't have a valid Dyad Pro key.{" "}
+          Looks like you don't have a valid Pro key.{" "}
           <ExternalLink
             href="https://dyad.sh/pro?utm_source=dyad-app&utm_medium=app&utm_campaign=invalid-pro-key-error"
             variant="primary"
           >
-            Upgrade to Dyad Pro
+            Upgrade to Pro
           </ExternalLink>{" "}
           today.
         </span>
@@ -96,7 +113,7 @@ export function ChatErrorBox({
     return (
       <ChatInfoContainer onDismiss={onDismiss}>
         <span>
-          You have used all of your Dyad AI credits this month.{" "}
+          You have used all of your Meta Human OS AI credits this month.{" "}
           <ExternalLink
             href="https://academy.dyad.sh/subscription?utm_source=dyad-app&utm_medium=app&utm_campaign=exceeded-budget-error"
             variant="primary"
@@ -122,13 +139,13 @@ export function ChatErrorBox({
     return (
       <ChatErrorContainer onDismiss={onDismiss}>
         You have used all {messagesLimit} free Agent messages for today. Please
-        upgrade to Dyad Pro for unlimited access or switch to Build mode.
+        upgrade to Pro for unlimited access or switch to Build mode.
         <div className="mt-2 space-y-2 space-x-2">
           <ExternalLink
             href="https://dyad.sh/pro?utm_source=dyad-app&utm_medium=app&utm_campaign=free-agent-quota-exceeded"
             variant="primary"
           >
-            Upgrade to Dyad Pro
+            Upgrade to Pro
           </ExternalLink>
         </div>
       </ChatErrorContainer>
@@ -146,7 +163,7 @@ export function ChatErrorBox({
               href="https://dyad.sh/pro?utm_source=dyad-app&utm_medium=app&utm_campaign=general-error"
               variant="primary"
             >
-              Upgrade to Dyad Pro
+              Upgrade to Pro
             </ExternalLink>
           )}
         {isDyadProEnabled && onStartNewChat && (

@@ -216,7 +216,7 @@ function injectHTML(buf) {
     scripts.push(`<script>${dyadComponentSelectorClientContent}</script>`);
   } else {
     scripts.push(
-      '<script>console.warn("[proxy-worker] dyad component selector client was not injected.");</script>',
+      '<script>console.warn("[proxy-worker] Meta Human OS component selector client was not injected.");</script>',
     );
   }
   if (htmlToImageContent) {

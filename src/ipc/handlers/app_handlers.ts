@@ -18,6 +18,12 @@ import {
   invalidateDyadAppsBaseDirectoryCache,
 } from "../../paths/paths";
 import { ChildProcess, spawn } from "node:child_process";
+import {
+  ensurePnpmBuildsApproved,
+  PNPM_WORKSPACE_FILENAME,
+} from "../utils/pnpm_build_approval";
+import { IMAGE_AGENT_APP_PATH } from "./image_generation_handlers";
+import { restoreAppCodeFromVault } from "../utils/vault_code";
 import { promises as fsPromises } from "node:fs";
 
 // Import our utility modules
@@ -36,10 +42,13 @@ import { getEnvVar } from "../utils/read_env";
 import { readSettings } from "../../main/settings";
 import { addLog, clearLogs } from "../../lib/log_store";
 import {
+  DYAD_MEDIA_DIR_NAME,
   DYAD_SCREENSHOT_DIR_NAME,
   MAX_SCREENSHOTS_PER_APP,
   SCREENSHOT_FILENAME_REGEX,
 } from "../utils/media_path_utils";
+
+const THUMBNAIL_IMAGE_REGEX = /\.(?:png|jpe?g|webp|gif)$/i;
 
 /**
  * Read screenshot entries for a single app directory, filtered by filename
@@ -66,6 +75,33 @@ async function readScreenshotEntries(
   }
   results.sort((a, b) => b.mtimeMs - a.mtimeMs);
   return results;
+}
+
+async function findLatestMediaThumbnail(
+  appPath: string,
+): Promise<string | null> {
+  const mediaDir = path.join(appPath, DYAD_MEDIA_DIR_NAME);
+  let entries: string[];
+  try {
+    entries = await fsPromises.readdir(mediaDir);
+  } catch {
+    return null;
+  }
+
+  const images = await Promise.all(
+    entries
+      .filter((entry) => THUMBNAIL_IMAGE_REGEX.test(entry))
+      .map(async (name) => {
+        try {
+          const stat = await fsPromises.stat(path.join(mediaDir, name));
+          return stat.isFile() ? { name, mtimeMs: stat.mtimeMs } : null;
+        } catch {
+          return null;
+        }
+      }),
+  );
+  images.sort((a, b) => (b?.mtimeMs ?? 0) - (a?.mtimeMs ?? 0));
+  return images.find((entry) => entry !== null)?.name ?? null;
 }
 
 import fixPath from "fix-path";
@@ -137,11 +173,11 @@ function formatCloudSandboxError(error: unknown) {
 
   switch (error.code) {
     case "sandbox_pro_required":
-      return "Dyad Pro is required to use cloud sandboxes.";
+      return "Pro is required to use cloud sandboxes.";
     case "sandbox_insufficient_credits":
       return "You need at least 1 credit available to start a cloud sandbox.";
     case "sandbox_billing_unavailable":
-      return "Dyad couldn’t verify sandbox billing right now. Please try again.";
+      return "Meta Human OS couldn’t verify sandbox billing right now. Please try again.";
     case "sandbox_credits_exhausted":
       return "This cloud sandbox stopped because your credits ran out.";
     default:
@@ -149,13 +185,13 @@ function formatCloudSandboxError(error: unknown) {
         return "This cloud sandbox is no longer available.";
       }
       if (error.status === 401 || error.status === 403) {
-        return "Dyad couldn’t authorize the cloud sandbox request. Please try again.";
+        return "Meta Human OS couldn’t authorize the cloud sandbox request. Please try again.";
       }
       if (error.status === 429) {
-        return "Dyad is rate limiting cloud sandbox requests right now. Please try again.";
+        return "Meta Human OS is rate limiting cloud sandbox requests right now. Please try again.";
       }
       if (typeof error.status === "number" && error.status >= 500) {
-        return "Dyad’s cloud sandbox service is temporarily unavailable. Please try again.";
+        return "Meta Human OS's cloud sandbox service is temporarily unavailable. Please try again.";
       }
       return error.message;
   }
@@ -401,6 +437,23 @@ async function executeAppLocalNode({
   installCommand?: string | null;
   startCommand?: string | null;
 }): Promise<void> {
+  // pnpm 11 fails the install — and therefore `run dev` — when a dependency's
+  // build script is unapproved, which leaves the preview waiting forever.
+  try {
+    const { updated, skipped } = await ensurePnpmBuildsApproved(appPath);
+    if (updated) {
+      logger.log(`Approved pnpm build scripts for app ${appId}`);
+    }
+    if (skipped.length > 0) {
+      logger.warn(
+        `App ${appId} has unapproved build scripts: ${skipped.join(", ")}. ` +
+          `Install will fail until they are allowed in ${PNPM_WORKSPACE_FILENAME}.`,
+      );
+    }
+  } catch (e) {
+    logger.warn(`Could not check pnpm build approvals for app ${appId}: ${e}`);
+  }
+
   const command = getCommand({ appId, installCommand, startCommand });
   const spawnedProcess = spawn(command, [], {
     cwd: appPath,
@@ -605,7 +658,7 @@ function listenToProcess({
     // This is a hacky heuristic to pick up when drizzle is asking for user
     // to select from one of a few choices. We automatically pick the first
     // option because it's usually a good default choice. We guard this with
-    // isNeon because: 1) only Neon apps (for the official Dyad templates) should
+    // isNeon because: 1) only Neon apps (for the official Meta Human OS templates) should
     // get this template and 2) it's safer to do this with Neon apps because
     // their databases have point in time restore built-in.
     if (isNeon && message.includes("created or renamed from another")) {
@@ -1321,7 +1374,7 @@ export function registerAppHandlers() {
     // Create initial commit
     const commitHash = await gitCommit({
       path: fullAppPath,
-      message: "Init Dyad app",
+      message: "Init Meta Human OS app",
     });
 
     // Update chat with initial commit hash
@@ -1402,7 +1455,7 @@ export function registerAppHandlers() {
       // Create initial commit
       await gitCommit({
         path: newAppPath,
-        message: "Init Dyad app",
+        message: "Init Meta Human OS app",
       });
     }
 
@@ -1437,6 +1490,29 @@ export function registerAppHandlers() {
 
     // Get app files
     const appPath = getDyadAppPath(app.path);
+
+    // A missing working copy is not the end of the project: the vault keeps a
+    // mirror in Code/, so opening the app restores it and the coder carries on
+    // where it left off.
+    try {
+      const vaultRoot = readSettings().storage?.localVaultPath?.trim();
+      if (vaultRoot) {
+        const { restored, files: restoredCount } =
+          await restoreAppCodeFromVault({
+            vaultRoot,
+            appPath: app.path,
+            appDir: appPath,
+          });
+        if (restored) {
+          logger.log(
+            `Restored app ${appId} (${restoredCount} files) from the vault Code folder`,
+          );
+        }
+      }
+    } catch (e) {
+      logger.warn(`Vault restore check failed for app ${appId}: ${e}`);
+    }
+
     let files: string[] = [];
 
     try {
@@ -1483,10 +1559,16 @@ export function registerAppHandlers() {
     const allApps = await db.query.apps.findMany({
       orderBy: [desc(apps.createdAt)],
     });
-    const appsWithResolvedPath = allApps.map((app) => ({
-      ...app,
-      resolvedPath: getDyadAppPath(app.path),
-    }));
+    const appsWithResolvedPath = allApps
+      // The Image Agent's media library is an apps row only so generated media
+      // has an owner. It has no package.json and no git repo, so listing it as
+      // an app means "start" and "current branch" fail on something the user
+      // never created.
+      .filter((app) => app.path !== IMAGE_AGENT_APP_PATH)
+      .map((app) => ({
+        ...app,
+        resolvedPath: getDyadAppPath(app.path),
+      }));
     return {
       apps: appsWithResolvedPath,
     };
@@ -2870,11 +2952,18 @@ export function registerAppHandlers() {
         const screenshotDir = path.join(appPath, DYAD_SCREENSHOT_DIR_NAME);
         const entries = await readScreenshotEntries(screenshotDir);
         const latest = entries[0];
-        if (!latest) {
-          return { appId, thumbnailUrl: null };
+        if (latest) {
+          const thumbnailUrl = `dyad-media://media/${encodeURIComponent(record.path)}/${DYAD_SCREENSHOT_DIR_NAME}/${latest.name}`;
+          return { appId, thumbnailUrl };
         }
-        const thumbnailUrl = `dyad-media://media/${encodeURIComponent(record.path)}/${DYAD_SCREENSHOT_DIR_NAME}/${latest.name}`;
-        return { appId, thumbnailUrl };
+
+        const mediaThumbnail = await findLatestMediaThumbnail(appPath);
+        return {
+          appId,
+          thumbnailUrl: mediaThumbnail
+            ? `dyad-media://media/${encodeURIComponent(record.path)}/${DYAD_MEDIA_DIR_NAME}/${encodeURIComponent(mediaThumbnail)}`
+            : null,
+        };
       }),
     );
 

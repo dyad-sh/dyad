@@ -8,6 +8,8 @@ import {
   Pencil,
   Plug,
   Plus,
+  Power,
+  PowerOff,
   RefreshCw,
   Trash2,
   XCircle,
@@ -31,6 +33,13 @@ const ENVIRONMENT_LABELS: Record<DataSourceDto["environment"], string> = {
   staging: "Staging",
   development: "Development",
   other: "Other",
+};
+
+const CREDENTIAL_LABELS: Record<DataSourceDto["credentialType"], string> = {
+  publishable: "Publishable Key",
+  anon: "Anon Key",
+  secret: "Secret Key",
+  service_role: "Service Role Key",
 };
 
 const STATUS_STYLE: Record<
@@ -130,7 +139,24 @@ function DataSourceCard({
       showError(error instanceof Error ? error.message : "Could not remove"),
   });
 
-  const busy = test.isPending || sync.isPending || remove.isPending;
+  const setEnabled = useMutation({
+    mutationFn: (enabled: boolean) =>
+      ipc.dataSource.update({ id: source.id, enabled }),
+    onSuccess: async () => {
+      await invalidate();
+      showSuccess(
+        source.enabled ? "Data source disabled" : "Data source enabled",
+      );
+    },
+    onError: (error) =>
+      showError(error instanceof Error ? error.message : "Could not update"),
+  });
+
+  const busy =
+    test.isPending ||
+    sync.isPending ||
+    remove.isPending ||
+    setEnabled.isPending;
 
   return (
     <div
@@ -177,12 +203,15 @@ function DataSourceCard({
 
         <dl className="mt-4 grid grid-cols-2 gap-2 text-[11px]">
           <div>
-            <dt className="text-white/35">Tables</dt>
-            <dd className="text-white/80">{source.tableCount}</dd>
+            <dt className="text-white/35">Key ID</dt>
+            {/* Names the credential without naming the secret. */}
+            <dd className="font-mono text-white/80">{source.keyId || "—"}</dd>
           </div>
           <div>
-            <dt className="text-white/35">Relationships</dt>
-            <dd className="text-white/80">{source.relationshipCount}</dd>
+            <dt className="text-white/35">Type</dt>
+            <dd className="text-white/80">
+              {CREDENTIAL_LABELS[source.credentialType]}
+            </dd>
           </div>
           <div>
             <dt className="text-white/35">Last connected</dt>
@@ -191,16 +220,14 @@ function DataSourceCard({
             </dd>
           </div>
           <div>
-            <dt className="text-white/35">Last schema sync</dt>
-            <dd className="text-white/80">
-              {formatWhen(source.lastSchemaSyncAt)}
-            </dd>
+            <dt className="text-white/35">Readable tables</dt>
+            <dd className="text-white/80">{source.tableCount}</dd>
           </div>
         </dl>
 
-        {!source.hasConnectionString && (
+        {!source.hasCredential && (
           <p className="mt-3 rounded-md border border-amber-400/20 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-200">
-            Add a PostgreSQL connection string to discover the schema.
+            Add a connection key to use this source.
           </p>
         )}
       </div>
@@ -222,7 +249,7 @@ function DataSourceCard({
         <button
           type="button"
           onClick={() => sync.mutate()}
-          disabled={busy || !source.hasConnectionString}
+          disabled={busy || !source.hasCredential}
           className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1.5 text-xs text-white/70 hover:bg-white/[0.09] disabled:opacity-40"
           data-testid={`data-source-sync-${source.id}`}
         >
@@ -232,6 +259,19 @@ function DataSourceCard({
             <RefreshCw className="size-3.5" />
           )}
           Sync schema
+        </button>
+        <button
+          type="button"
+          onClick={() => setEnabled.mutate(!source.enabled)}
+          disabled={busy}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1.5 text-xs text-white/70 hover:bg-white/[0.09] disabled:opacity-40"
+        >
+          {source.enabled ? (
+            <PowerOff className="size-3.5" />
+          ) : (
+            <Power className="size-3.5" />
+          )}
+          {source.enabled ? "Disable" : "Enable"}
         </button>
         <button
           type="button"

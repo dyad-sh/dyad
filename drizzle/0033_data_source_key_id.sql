@@ -1,0 +1,1 @@
+ALTER TABLE `data_sources` ADD `key_id` text DEFAULT '' NOT NULL;

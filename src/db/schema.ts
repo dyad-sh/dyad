@@ -340,7 +340,15 @@ export const dataSources = sqliteTable("data_sources", {
    * never returned to the renderer or put into a model prompt.
    */
   encryptedCredential: text("encrypted_credential"),
-  // secret | service_role | publishable | anon
+  /**
+   * Short, quotable identifier for the saved key, e.g. SUP-8F3A21.
+   *
+   * Exists so a card and a support conversation can name a credential without
+   * naming the secret. Generated from random bytes rather than derived from
+   * the key, because anything derived from a secret leaks a little of it.
+   */
+  keyId: text("key_id").notNull().default(""),
+  // publishable | anon | secret | service_role
   credentialType: text("credential_type").notNull().default("secret"),
   /**
    * Postgres connection string, encrypted the same way.

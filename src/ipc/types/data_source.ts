@@ -27,10 +27,10 @@ export const DataSourceStatusSchema = z.enum([
 ]);
 
 export const DataSourceCredentialTypeSchema = z.enum([
-  "secret",
-  "service_role",
   "publishable",
   "anon",
+  "secret",
+  "service_role",
 ]);
 
 /** Everything the renderer is allowed to know about a data source. */
@@ -42,13 +42,14 @@ export const DataSourceSchema = z.object({
   projectUrl: z.string(),
   environment: DataSourceEnvironmentSchema,
   credentialType: DataSourceCredentialTypeSchema,
+  /** Short quotable identifier for the saved key, e.g. SUP-8F3A21. */
+  keyId: z.string(),
   accessMode: z.literal("read_only"),
   enabled: z.boolean(),
   status: DataSourceStatusSchema,
   statusMessage: z.string(),
-  /** Whether a secret exists, never the secret. */
+  /** Whether a key is stored, never the key. */
   hasCredential: z.boolean(),
-  hasConnectionString: z.boolean(),
   tableCount: z.number(),
   relationshipCount: z.number(),
   lastConnectedAt: z.number().nullable(),
@@ -67,6 +68,7 @@ export const HealthCheckSchema = z.object({
 
 export const HealthResultSchema = z.object({
   ok: z.boolean(),
+  status: z.enum(["connected", "auth_error", "connection_error", "unknown"]),
   checks: z.array(HealthCheckSchema),
   tablesDiscovered: z.number().nullable(),
 });
@@ -134,8 +136,7 @@ export const dataSourceContracts = {
       projectUrl: z.string().min(1),
       environment: DataSourceEnvironmentSchema,
       credentialType: DataSourceCredentialTypeSchema,
-      apiKey: SecretInput,
-      connectionString: SecretInput,
+      connectionKey: SecretInput,
     }),
     output: DataSourceSchema,
   }),
@@ -149,8 +150,7 @@ export const dataSourceContracts = {
       environment: DataSourceEnvironmentSchema.optional(),
       credentialType: DataSourceCredentialTypeSchema.optional(),
       enabled: z.boolean().optional(),
-      apiKey: SecretInput,
-      connectionString: SecretInput,
+      connectionKey: SecretInput,
     }),
     output: DataSourceSchema,
   }),
@@ -160,8 +160,7 @@ export const dataSourceContracts = {
     input: z.object({
       id: z.string().optional(),
       projectUrl: z.string().optional(),
-      apiKey: SecretInput,
-      connectionString: SecretInput,
+      connectionKey: SecretInput,
     }),
     output: HealthResultSchema,
   }),

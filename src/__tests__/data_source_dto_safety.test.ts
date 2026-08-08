@@ -29,11 +29,13 @@ const SECRET_ISH = [
  * is narrow rather than a hole: adding a new one means editing this list.
  */
 const ALLOWED_SECRET_ISH_NAMES = new Set([
-  // Booleans: whether a secret exists, never what it is.
+  // A boolean: whether a key is stored, never what it is.
   "hasCredential",
-  "hasConnectionString",
   // An enum of which kind of key was supplied, not the key.
   "credentialType",
+  // A random public label for the key, e.g. SUP-8F3A21. Deliberately not
+  // derived from the secret, so it cannot leak any of it.
+  "keyId",
 ]);
 
 describe("data source DTO", () => {
@@ -61,13 +63,13 @@ describe("data source DTO", () => {
       "secret",
     );
 
-    for (const flag of ["hasCredential", "hasConnectionString"] as const) {
-      expect(() => DataSourceSchema.shape[flag].parse("a-real-key")).toThrow();
-      expect(DataSourceSchema.shape[flag].parse(true)).toBe(true);
-    }
+    expect(() =>
+      DataSourceSchema.shape.hasCredential.parse("a-real-key"),
+    ).toThrow();
+    expect(DataSourceSchema.shape.hasCredential.parse(true)).toBe(true);
   });
 
-  it("exposes only booleans for whether secrets are set", () => {
+  it("exposes only a boolean for whether a key is set", () => {
     const parsed = DataSourceSchema.parse({
       id: "a",
       provider: "supabase",
@@ -80,8 +82,8 @@ describe("data source DTO", () => {
       enabled: true,
       status: "connected",
       statusMessage: "",
+      keyId: "SUP-8F3A21",
       hasCredential: true,
-      hasConnectionString: true,
       tableCount: 3,
       relationshipCount: 1,
       lastConnectedAt: 1,
@@ -90,7 +92,7 @@ describe("data source DTO", () => {
       updatedAt: 1,
     });
     expect(typeof parsed.hasCredential).toBe("boolean");
-    expect(typeof parsed.hasConnectionString).toBe("boolean");
+    expect(parsed.keyId).toBe("SUP-8F3A21");
   });
 
   it("strips an unknown field rather than passing it through", () => {
@@ -108,8 +110,8 @@ describe("data source DTO", () => {
       enabled: true,
       status: "connected",
       statusMessage: "",
+      keyId: "SUP-000000",
       hasCredential: false,
-      hasConnectionString: false,
       tableCount: 0,
       relationshipCount: 0,
       lastConnectedAt: null,
@@ -117,10 +119,8 @@ describe("data source DTO", () => {
       createdAt: 1,
       updatedAt: 1,
       encryptedCredential: "should-not-survive",
-      encryptedConnectionString: "should-not-survive",
     });
     expect(parsed).not.toHaveProperty("encryptedCredential");
-    expect(parsed).not.toHaveProperty("encryptedConnectionString");
   });
 
   it("pins access mode to read only", () => {

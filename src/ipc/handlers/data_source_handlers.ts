@@ -19,6 +19,10 @@ import {
   encryptCredential,
   testConnection,
 } from "../utils/data_sources/supabase_provider";
+import {
+  generateKeyId,
+  type ParsedSchema,
+} from "@/lib/data_sources/postgrest_schema";
 import { sanitiseDatabaseError } from "@/lib/data_sources/read_only";
 
 /**
@@ -66,8 +70,8 @@ async function toDto(row: DataSourceRow): Promise<DataSourceDto> {
     enabled: row.enabled,
     status: row.status as DataSourceDto["status"],
     statusMessage: row.statusMessage,
+    keyId: row.keyId,
     hasCredential: Boolean(row.encryptedCredential),
-    hasConnectionString: Boolean(row.encryptedConnectionString),
     tableCount: tables.length,
     relationshipCount: relationships.length,
     lastConnectedAt: asEpoch(row.lastConnectedAt),
@@ -108,10 +112,11 @@ function nextSecret(incoming: string | undefined): string | null | undefined {
 /** Replaces the cached catalogue for a source with freshly discovered rows. */
 async function persistCatalogue(
   dataSourceId: string,
-  catalogue: Awaited<ReturnType<typeof discoverSchema>>,
+  catalogue: ParsedSchema,
 ): Promise<{ tables: number; columns: number; relationships: number }> {
-  // Replace wholesale rather than diffing: a dropped table must disappear, and
-  // a stale row the agent still trusts is worse than a slower sync.
+  // Replace wholesale rather than diffing: a table the key can no longer read
+  // must disappear, and a stale row the agent still trusts is worse than a
+  // slower sync.
   await db
     .delete(dataSourceTables)
     .where(eq(dataSourceTables.dataSourceId, dataSourceId));
@@ -123,11 +128,6 @@ async function persistCatalogue(
 
   for (const table of catalogue.tables) {
     const tableId = randomUUID();
-    const columns = catalogue.columns.filter(
-      (column) =>
-        column.schemaName === table.schemaName &&
-        column.tableName === table.tableName,
-    );
 
     await db.insert(dataSourceTables).values({
       id: tableId,
@@ -138,14 +138,15 @@ async function persistCatalogue(
       description: table.description,
       semanticDescription: describeTableSemantically(
         table,
-        columns,
         catalogue.relationships,
       ),
-      estimatedRows: table.estimatedRows,
+      // PostgREST does not report row counts, and guessing one would be
+      // inventing information the agent would then quote back.
+      estimatedRows: null,
       syncedAt: new Date(),
     });
 
-    for (const column of columns) {
+    for (const column of table.columns) {
       await db.insert(dataSourceColumns).values({
         id: randomUUID(),
         tableId,
@@ -167,14 +168,14 @@ async function persistCatalogue(
     await db.insert(dataSourceRelationships).values({
       id: randomUUID(),
       dataSourceId,
-      sourceSchema: link.sourceSchema,
+      sourceSchema: "public",
       sourceTable: link.sourceTable,
       sourceColumn: link.sourceColumn,
-      targetSchema: link.targetSchema,
+      targetSchema: "public",
       targetTable: link.targetTable,
       targetColumn: link.targetColumn,
       relationshipType: "foreign_key",
-      constraintName: link.constraintName,
+      constraintName: "",
     });
   }
 
@@ -212,11 +213,9 @@ export function registerDataSourceHandlers() {
       projectUrl: input.projectUrl.trim(),
       environment: input.environment,
       credentialType: input.credentialType,
-      encryptedCredential: input.apiKey?.trim()
-        ? encryptCredential(input.apiKey.trim())
-        : null,
-      encryptedConnectionString: input.connectionString?.trim()
-        ? encryptCredential(input.connectionString.trim())
+      keyId: generateKeyId(),
+      encryptedCredential: input.connectionKey?.trim()
+        ? encryptCredential(input.connectionKey.trim())
         : null,
       accessMode: "read_only",
       enabled: true,
@@ -232,8 +231,7 @@ export function registerDataSourceHandlers() {
   createTypedHandler(dataSourceContracts.update, async (_, input) => {
     const existing = await requireRow(input.id);
 
-    const credential = nextSecret(input.apiKey);
-    const connection = nextSecret(input.connectionString);
+    const credential = nextSecret(input.connectionKey);
 
     await db
       .update(dataSources)
@@ -260,9 +258,6 @@ export function registerDataSourceHandlers() {
         ...(credential !== undefined
           ? { encryptedCredential: credential }
           : {}),
-        ...(connection !== undefined
-          ? { encryptedConnectionString: connection }
-          : {}),
         updatedAt: new Date(),
       })
       .where(eq(dataSources.id, input.id));
@@ -274,30 +269,24 @@ export function registerDataSourceHandlers() {
     // Two callers: an unsaved form, which supplies its own values, and a saved
     // source, which supplies an id and nothing else.
     let projectUrl = input.projectUrl?.trim() ?? "";
-    let apiKey = input.apiKey?.trim() || null;
-    let connectionString = input.connectionString?.trim() || null;
+    let key = input.connectionKey?.trim() || null;
 
     if (input.id) {
       const row = await requireRow(input.id);
       projectUrl = projectUrl || row.projectUrl;
       // A blank field on an edit form means "keep what is stored", so fall
-      // back to the saved secret rather than testing without one.
-      apiKey = apiKey ?? decryptCredential(row.encryptedCredential);
-      connectionString =
-        connectionString ?? decryptCredential(row.encryptedConnectionString);
+      // back to the saved key rather than testing without one.
+      key = key ?? decryptCredential(row.encryptedCredential);
     }
 
-    const health = await testConnection({
-      projectUrl,
-      apiKey,
-      connectionString,
-    });
+    const health = await testConnection({ projectUrl, key });
 
     if (input.id) {
+      // Status is derived, never chosen: the test decides it.
       await db
         .update(dataSources)
         .set({
-          status: health.ok ? "connected" : "connection_error",
+          status: health.status,
           statusMessage: health.ok
             ? ""
             : (health.checks.find((check) => !check.ok)?.detail ?? ""),
@@ -312,11 +301,11 @@ export function registerDataSourceHandlers() {
 
   createTypedHandler(dataSourceContracts.syncSchema, async (_, { id }) => {
     const row = await requireRow(id);
-    const connectionString = decryptCredential(row.encryptedConnectionString);
+    const key = decryptCredential(row.encryptedCredential);
 
-    if (!connectionString) {
+    if (!key) {
       throw new DyadError(
-        "Add a PostgreSQL connection string before syncing the schema.",
+        "Add a connection key before syncing the schema.",
         DyadErrorKind.Precondition,
       );
     }
@@ -327,7 +316,10 @@ export function registerDataSourceHandlers() {
       .where(eq(dataSources.id, id));
 
     try {
-      const catalogue = await discoverSchema(connectionString);
+      const catalogue = await discoverSchema({
+        projectUrl: row.projectUrl,
+        key,
+      });
       const counts = await persistCatalogue(id, catalogue);
 
       await db

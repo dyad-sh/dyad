@@ -32,10 +32,10 @@ const ENVIRONMENTS = [
 ] as const;
 
 const CREDENTIAL_TYPES = [
-  { value: "secret", label: "Secret key (sb_secret_…)" },
-  { value: "service_role", label: "Legacy service role key" },
-  { value: "publishable", label: "Publishable key" },
-  { value: "anon", label: "Legacy anon key" },
+  { value: "publishable", label: "Publishable Key" },
+  { value: "anon", label: "Anon Key" },
+  { value: "secret", label: "Secret Key" },
+  { value: "service_role", label: "Service Role Key" },
 ] as const;
 
 type HealthCheck = { name: string; ok: boolean; detail: string };
@@ -58,9 +58,8 @@ export function DataSourceDialog({
   const [environment, setEnvironment] =
     useState<DataSourceDto["environment"]>("development");
   const [credentialType, setCredentialType] =
-    useState<DataSourceDto["credentialType"]>("secret");
-  const [apiKey, setApiKey] = useState("");
-  const [connectionString, setConnectionString] = useState("");
+    useState<DataSourceDto["credentialType"]>("publishable");
+  const [connectionKey, setConnectionKey] = useState("");
   const [checks, setChecks] = useState<HealthCheck[] | null>(null);
 
   // Reset when the dialog is opened for a different source, so an edit never
@@ -71,11 +70,10 @@ export function DataSourceDialog({
     setDescription(source?.description ?? "");
     setProjectUrl(source?.projectUrl ?? "");
     setEnvironment(source?.environment ?? "development");
-    setCredentialType(source?.credentialType ?? "secret");
-    // Always blank: the stored secret is never sent to the renderer, so there
-    // is nothing to prefill with even if we wanted to.
-    setApiKey("");
-    setConnectionString("");
+    setCredentialType(source?.credentialType ?? "publishable");
+    // Always blank: the stored key is never sent to the renderer, so there is
+    // nothing to prefill with even if we wanted to.
+    setConnectionKey("");
     setChecks(null);
   }, [open, source]);
 
@@ -89,8 +87,7 @@ export function DataSourceDialog({
         projectUrl,
         // Blank means "use what is stored" on an edit, and "nothing" on a new
         // source; sending undefined expresses both.
-        apiKey: apiKey.trim() || undefined,
-        connectionString: connectionString.trim() || undefined,
+        connectionKey: connectionKey.trim() || undefined,
       }),
     onSuccess: (health) => {
       setChecks(health.checks);
@@ -121,10 +118,7 @@ export function DataSourceDialog({
             projectUrl,
             environment,
             credentialType,
-            apiKey: apiKey.trim() ? apiKey.trim() : undefined,
-            connectionString: connectionString.trim()
-              ? connectionString.trim()
-              : undefined,
+            connectionKey: connectionKey.trim() || undefined,
           })
         : await ipc.dataSource.create({
             name,
@@ -132,11 +126,10 @@ export function DataSourceDialog({
             projectUrl,
             environment,
             credentialType,
-            apiKey: apiKey.trim() || undefined,
-            connectionString: connectionString.trim() || undefined,
+            connectionKey: connectionKey.trim() || undefined,
           });
 
-      if (saved.hasConnectionString) {
+      if (saved.hasCredential) {
         try {
           await ipc.dataSource.syncSchema({ id: saved.id });
         } catch (error) {
@@ -272,47 +265,27 @@ export function DataSourceDialog({
           </div>
 
           <div className="space-y-1.5">
-            <label className={label} htmlFor="ds-api-key">
-              Supabase API key
+            <label className={label} htmlFor="ds-connection-key">
+              Connection key
             </label>
             <input
-              id="ds-api-key"
+              id="ds-connection-key"
               type="password"
               autoComplete="off"
-              value={apiKey}
-              onChange={(event) => setApiKey(event.target.value)}
+              value={connectionKey}
+              onChange={(event) => setConnectionKey(event.target.value)}
               placeholder={
                 source?.hasCredential
-                  ? "Credential saved — leave blank to keep it"
-                  : "Optional; used for Data API calls"
+                  ? "•••••••••••••••• — Key saved"
+                  : "sb_publishable_… or a legacy anon/service key"
               }
               className={field}
-              data-testid="data-source-api-key"
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <label className={label} htmlFor="ds-connection">
-              PostgreSQL connection string
-            </label>
-            <input
-              id="ds-connection"
-              type="password"
-              autoComplete="off"
-              value={connectionString}
-              onChange={(event) => setConnectionString(event.target.value)}
-              placeholder={
-                source?.hasConnectionString
-                  ? "Credential saved — leave blank to keep it"
-                  : "postgresql://user:password@host:5432/postgres"
-              }
-              className={field}
-              data-testid="data-source-connection-string"
+              data-testid="data-source-connection-key"
             />
             <p className="text-[11px] leading-5 text-white/35">
-              Required for schema discovery. Use a role with SELECT-only
-              permissions rather than the project owner: MyMeta blocks writes
-              itself, and a read-only role is a second boundary underneath that.
+              {source?.hasCredential
+                ? "Leave blank to keep the saved key, or paste a new one to replace it."
+                : "MyMeta reads only what this key is allowed to read, so the project's own access rules still apply."}
             </p>
           </div>
 

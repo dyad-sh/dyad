@@ -1,4 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import {
+  Panel,
+  PanelGroup,
+  PanelResizeHandle,
+  type ImperativePanelHandle,
+} from "react-resizable-panels";
 import {
   Box,
   Circle,
@@ -9,6 +15,8 @@ import {
   Home,
   Layers,
   Move3d,
+  PanelLeft,
+  PanelRight,
   Plus,
   RotateCw,
   Scaling,
@@ -213,6 +221,20 @@ export default function Assembler3DPage() {
    * the store because it is a way of working, not part of the document.
    */
   const [freeTransform, setFreeTransform] = useState(false);
+  // Collapsing a panel is the fastest way to give the canvas the whole window,
+  // so both sides get a toolbar toggle as well as a drag handle.
+  const scenePanelRef = useRef<ImperativePanelHandle>(null);
+  const inspectorPanelRef = useRef<ImperativePanelHandle>(null);
+  const [sceneCollapsed, setSceneCollapsed] = useState(false);
+  const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
+
+  const togglePanel = (
+    ref: React.RefObject<ImperativePanelHandle | null>,
+    collapsed: boolean,
+  ) => {
+    if (collapsed) ref.current?.expand();
+    else ref.current?.collapse();
+  };
   const [cameraRequest, setCameraRequest] = useState<CameraState | null>(null);
   // What the right-click landed on. Cleared in the capture phase before the
   // canvas gets a chance to set it, so a miss reads as empty space.
@@ -402,6 +424,38 @@ export default function Assembler3DPage() {
         </span>
 
         <div className="ml-auto flex items-center gap-1.5">
+          {/* Panel toggles sit first, next to the edges they control. */}
+          <button
+            type="button"
+            onClick={() => togglePanel(scenePanelRef, sceneCollapsed)}
+            title={sceneCollapsed ? "Show scene panel" : "Hide scene panel"}
+            aria-pressed={!sceneCollapsed}
+            className={
+              sceneCollapsed
+                ? "grid size-7 place-items-center rounded-lg text-white/40 hover:bg-white/10"
+                : "grid size-7 place-items-center rounded-lg bg-white/10 text-white"
+            }
+            data-testid="assembler3d-toggle-scene-panel"
+          >
+            <PanelLeft className="size-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => togglePanel(inspectorPanelRef, inspectorCollapsed)}
+            title={inspectorCollapsed ? "Show inspector" : "Hide inspector"}
+            aria-pressed={!inspectorCollapsed}
+            className={
+              inspectorCollapsed
+                ? "grid size-7 place-items-center rounded-lg text-white/40 hover:bg-white/10"
+                : "grid size-7 place-items-center rounded-lg bg-white/10 text-white"
+            }
+            data-testid="assembler3d-toggle-inspector-panel"
+          >
+            <PanelRight className="size-4" />
+          </button>
+
+          <span className="mx-1 h-5 w-px bg-white/10" />
+
           {PRIMITIVES.map(({ kind, label, Icon }) => (
             <button
               key={kind}
@@ -580,8 +634,25 @@ export default function Assembler3DPage() {
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1">
-        <aside className="hidden w-56 shrink-0 flex-col border-r border-white/10 lg:flex">
+      {/* Sizes persist through autoSaveId: a workspace someone widened once
+          should stay that way, not reset every time the page is reopened. */}
+      <PanelGroup
+        autoSaveId="assembler3d-layout"
+        direction="horizontal"
+        className="min-h-0 flex-1"
+      >
+        <Panel
+          id="assembler3d-scene"
+          order={1}
+          ref={scenePanelRef}
+          collapsible
+          collapsedSize={0}
+          minSize={10}
+          defaultSize={16}
+          onCollapse={() => setSceneCollapsed(true)}
+          onExpand={() => setSceneCollapsed(false)}
+          className="flex flex-col border-r border-white/10"
+        >
           <p className="px-3 py-2 text-[10px] font-medium tracking-wide text-white/35 uppercase">
             Scene
           </p>
@@ -607,9 +678,19 @@ export default function Assembler3DPage() {
               </li>
             ))}
           </ul>
-        </aside>
+        </Panel>
 
-        <div className="min-h-0 min-w-0 flex-1">
+        <PanelResizeHandle
+          className="w-1 bg-white/10 transition-colors hover:bg-cyan-400/40 data-[resize-handle-state=drag]:bg-cyan-400/60"
+          data-testid="assembler3d-resize-scene"
+        />
+
+        <Panel
+          id="assembler3d-viewport"
+          order={2}
+          minSize={30}
+          className="min-h-0 min-w-0"
+        >
           <SceneContextMenu
             targetId={contextTarget}
             onBeforeOpen={() => setContextTarget(null)}
@@ -655,11 +736,27 @@ export default function Assembler3DPage() {
               onCameraApplied={() => setCameraRequest(null)}
             />
           </SceneContextMenu>
-        </div>
+        </Panel>
+
+        <PanelResizeHandle
+          className="w-1 bg-white/10 transition-colors hover:bg-cyan-400/40 data-[resize-handle-state=drag]:bg-cyan-400/60"
+          data-testid="assembler3d-resize-inspector"
+        />
 
         {/* Inspector. Gizmos place things roughly; this is how a part gets to
             exactly where it belongs. */}
-        <aside className="hidden w-72 shrink-0 border-l border-white/10 xl:block">
+        <Panel
+          id="assembler3d-inspector"
+          order={3}
+          ref={inspectorPanelRef}
+          collapsible
+          collapsedSize={0}
+          minSize={12}
+          defaultSize={20}
+          onCollapse={() => setInspectorCollapsed(true)}
+          onExpand={() => setInspectorCollapsed(false)}
+          className="min-h-0 border-l border-white/10"
+        >
           {scene.selection.length === 1 &&
           scene.objects[scene.selection[0]!] ? (
             <Inspector object={scene.objects[scene.selection[0]!]!} />
@@ -670,8 +767,8 @@ export default function Assembler3DPage() {
                 : "Select an object to edit its name, transform and state."}
             </p>
           )}
-        </aside>
-      </div>
+        </Panel>
+      </PanelGroup>
 
       <footer className="flex shrink-0 items-center gap-4 border-t border-white/10 px-4 py-1.5 text-[11px] text-white/45">
         <span>{Object.keys(scene.objects).length} objects</span>

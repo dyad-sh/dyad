@@ -5,7 +5,7 @@ export type AgentSidebarItemTitle = "Chat Agent" | "Coding Agent" | "Planner";
 export type AppSidebarItemTitle =
   | AgentSidebarItemTitle
   | "Knowledge Core"
-  | "Assembler"
+  | "Engineering"
   | "Knowledge Base"
   | "Agents"
   | "Dev Ops"

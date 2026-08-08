@@ -1,5 +1,6 @@
 import type { ComponentType } from "react";
 import {
+  DraftingCompass,
   Briefcase,
   Blocks,
   BookOpen,
@@ -32,6 +33,7 @@ import { appDetailsRoute } from "@/routes/app-details";
 import { appsRoute } from "@/routes/apps";
 import {
   buildForgeRoute,
+  engineeringRoute,
   codingAgentsRoute,
   helixAgentRoute,
   openWorkerAgentRoute,
@@ -148,6 +150,14 @@ export const DESKTOP_APPS: DesktopApp[] = [
   app("build-studio", "Build Studio", Code2, "Develop", homeRoute, [
     "/coder/studio",
   ]),
+  app(
+    "engineering",
+    "Engineering",
+    DraftingCompass,
+    "Develop",
+    engineeringRoute,
+    ["/engineering"],
+  ),
   app("assembler", "Assembler", Box, "Develop", buildForgeRoute, [
     "/assembler3d",
   ]),

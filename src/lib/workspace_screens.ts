@@ -1,4 +1,5 @@
 import {
+  DraftingCompass,
   Blocks,
   Briefcase,
   Code2,
@@ -48,6 +49,7 @@ const SCREENS: WorkspaceScreen[] = [
   { path: "/coder", title: "Coding Agents", icon: Terminal },
   { path: "/knowledge-core", title: "Knowledge Core", icon: Sparkles },
   { path: "/assembler3d", title: "Assembler", icon: Box },
+  { path: "/engineering", title: "Engineering", icon: DraftingCompass },
   { path: "/jarvis", title: "JARVIS", icon: Sparkles },
   { path: "/knowledge-base", title: "Knowledge Base", icon: BookOpen },
   { path: "/library", title: "Library", icon: Library },

@@ -19,6 +19,7 @@ import {
   helixAgentRoute,
   openWorkerAgentRoute,
   buildForgeRoute,
+  engineeringRoute,
 } from "./routes/coding-agents";
 import { libraryRoute } from "./routes/library";
 import { appsRoute } from "./routes/apps";
@@ -44,6 +45,7 @@ const routeTree = rootRoute.addChildren([
   codingAgentsRoute,
   helixAgentRoute,
   openWorkerAgentRoute,
+  engineeringRoute,
   buildForgeRoute,
   plannerRoute,
   legacySocialMediaAgentRoute,

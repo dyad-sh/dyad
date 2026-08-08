@@ -1,5 +1,5 @@
 import {
-  Box,
+  DraftingCompass,
   type LucideIcon,
   Code2,
   MessageSquare,
@@ -62,10 +62,10 @@ const agentNavItems = [
 const mainNavItems = [
   { title: "Knowledge Core", to: "/knowledge-core", icon: Network },
   ...agentNavItems,
-  // Agents and Assembler sit directly under the coding agent, which is where
+  // Agents and Engineering sit directly under the coding agent, which is where
   // the build tools belong together.
   { title: "Agents", to: "/agent-os", icon: Bot },
-  { title: "Assembler", to: "/assembler3d", icon: Box },
+  { title: "Engineering", to: "/engineering", icon: DraftingCompass },
   { title: "Dev Ops", to: "/dev-ops", icon: GitFork },
   { title: "Library", to: "/library", icon: BookOpen },
   { title: "Knowledge Base", to: "/knowledge-base", icon: Library },

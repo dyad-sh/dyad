@@ -3,6 +3,7 @@ import CodingAgentsPage from "../pages/coding-agents";
 import HelixAgentPage from "../pages/helix-agent";
 import OpenWorkerAgentPage from "../pages/openworker-agent";
 import Assembler3DPage from "../pages/assembler3d";
+import EngineeringPage from "../pages/engineering";
 import { rootRoute } from "./root";
 
 /** Coding agent launcher — pick Build Studio or Helix. */
@@ -24,6 +25,13 @@ export const openWorkerAgentRoute = new Route({
   getParentRoute: () => rootRoute,
   path: "/coder/openworker",
   component: OpenWorkerAgentPage,
+});
+
+/** Engineering hangar — the launcher for the design and build tools. */
+export const engineeringRoute = new Route({
+  getParentRoute: () => rootRoute,
+  path: "/engineering",
+  component: EngineeringPage,
 });
 
 /** Assembler 3D — the engineering design workspace. */

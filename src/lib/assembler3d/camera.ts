@@ -141,6 +141,60 @@ export function frameAll(scene: Scene, fovDegrees = 45): CameraState {
   return frameBounds(sceneBounds(scene), fovDegrees);
 }
 
+/**
+ * The named views every CAD package puts on a toolbar.
+ *
+ * Working out where a part sits is far easier from a square-on elevation than
+ * from a three-quarter view, and getting back to a known angle by orbiting is
+ * guesswork. Directions point from the build towards the camera.
+ */
+export const STANDARD_VIEWS = {
+  top: { x: 0, y: 1, z: 0 },
+  front: { x: 0, y: 0, z: 1 },
+  right: { x: 1, y: 0, z: 0 },
+  left: { x: -1, y: 0, z: 0 },
+  back: { x: 0, y: 0, z: -1 },
+  iso: VIEW_DIRECTION,
+} as const;
+
+export type StandardView = keyof typeof STANDARD_VIEWS;
+
+/**
+ * Frames bounds from a named direction.
+ *
+ * Top gets a nudge along Z: a camera exactly overhead has no unambiguous "up",
+ * and orbit controls that clamp just short of vertical would fight it.
+ */
+export function standardView(
+  bounds: Bounds,
+  view: StandardView,
+  fovDegrees = 45,
+): CameraState {
+  const target = boundsCentre(bounds);
+  const distance = framingDistance(bounds, fovDegrees);
+  const raw = STANDARD_VIEWS[view];
+  const direction = view === "top" ? { x: raw.x, y: raw.y, z: 0.001 } : raw;
+  const length = Math.hypot(direction.x, direction.y, direction.z);
+
+  return {
+    target,
+    position: addVectors(target, {
+      x: (direction.x / length) * distance,
+      y: (direction.y / length) * distance,
+      z: (direction.z / length) * distance,
+    }),
+  };
+}
+
+/** Named view of the whole build. */
+export function viewScene(
+  scene: Scene,
+  view: StandardView,
+  fovDegrees = 45,
+): CameraState {
+  return standardView(sceneBounds(scene), view, fovDegrees);
+}
+
 /** Frames the current selection, falling back to the whole scene. */
 export function focusSelection(scene: Scene, fovDegrees = 45): CameraState {
   if (scene.selection.length === 0) return frameAll(scene, fovDegrees);

@@ -33,12 +33,18 @@ import {
   type PrimitiveKind,
   type ProjectCategory,
 } from "@/lib/assembler3d/project_store";
-import { childrenOf, dimensionsOf } from "@/lib/assembler3d/scene_model";
+import {
+  childrenOf,
+  dimensionsOf,
+  measureBetween,
+} from "@/lib/assembler3d/scene_model";
 import {
   DEFAULT_CAMERA,
   focusSelection,
   frameAll,
+  viewScene,
   type CameraState,
+  type StandardView,
 } from "@/lib/assembler3d/camera";
 import {
   listProjects,
@@ -88,6 +94,13 @@ const NUDGES: Record<string, { x: number; y: number; z: number }> = {
   PageUp: { x: 0, y: 1, z: 0 },
   PageDown: { x: 0, y: -1, z: 0 },
 };
+
+const STANDARD_VIEW_BUTTONS: { view: StandardView; label: string }[] = [
+  { view: "top", label: "TOP" },
+  { view: "front", label: "FRT" },
+  { view: "right", label: "RGT" },
+  { view: "iso", label: "ISO" },
+];
 
 const PRIMITIVES: { kind: PrimitiveKind; label: string; Icon: typeof Box }[] = [
   { kind: "box", label: "Box", Icon: Box },
@@ -260,6 +273,12 @@ export default function Assembler3DPage() {
   const selectedObject =
     scene.selection.length === 1
       ? (scene.objects[scene.selection[0]!] ?? null)
+      : null;
+  // Two parts selected is the universal "how far apart are these?" gesture,
+  // so the answer appears without a separate measure tool to enter and leave.
+  const measurement =
+    scene.selection.length === 2
+      ? measureBetween(scene, scene.selection[0]!, scene.selection[1]!)
       : null;
 
   // Reopen the most recent project on load. Without this a refresh looks
@@ -600,6 +619,21 @@ export default function Assembler3DPage() {
           >
             <Home className="size-4" />
           </button>
+          {/* Named views. Reading a position off a square-on elevation is far
+              easier than off a three-quarter view, and orbiting back to a
+              known angle by hand is guesswork. */}
+          {STANDARD_VIEW_BUTTONS.map(({ view, label }) => (
+            <button
+              key={view}
+              type="button"
+              onClick={() => setCameraRequest(viewScene(scene, view))}
+              title={`${label} view`}
+              className="rounded-lg px-1.5 py-1 text-[10px] font-medium text-white/55 hover:bg-white/10 hover:text-white"
+              data-testid={`assembler3d-view-${view}`}
+            >
+              {label}
+            </button>
+          ))}
           <button
             type="button"
             onClick={toggleGrid}
@@ -805,6 +839,16 @@ export default function Assembler3DPage() {
               const size = dimensionsOf(selectedObject);
               return `${size.x.toFixed(2)} × ${size.y.toFixed(2)} × ${size.z.toFixed(2)}`;
             })()}
+          </span>
+        )}
+        {measurement && (
+          <span
+            className="font-mono text-cyan-200/70"
+            data-testid="assembler3d-measurement"
+          >
+            d {measurement.distance.toFixed(2)} · gap{" "}
+            {measurement.gap.x.toFixed(2)}, {measurement.gap.y.toFixed(2)},{" "}
+            {measurement.gap.z.toFixed(2)}
           </span>
         )}
         <span className="ml-auto text-white/30">

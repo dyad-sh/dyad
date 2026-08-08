@@ -3,15 +3,19 @@ import { describe, expect, it } from "vitest";
 import {
   addObject,
   alignObjects,
+  arrayLinear,
+  arrayPolar,
   copyObjects,
   dimensionsOf,
   distributeObjects,
+  dropToGround,
   duplicateObjects,
   emptyScene,
   flipObject,
   groupObjects,
   IDENTITY_TRANSFORM,
   isDescendantOf,
+  measureBetween,
   mirrorObjects,
   ORIGIN,
   pasteObjects,
@@ -513,5 +517,161 @@ describe("flipObject", () => {
   it("refuses a locked part", () => {
     const scene = sceneWith(part("a", { locked: true }));
     expect(flipObject(scene, "a", "x")).toBe(scene);
+  });
+});
+
+describe("arrayLinear", () => {
+  it("counts the original among the instances", () => {
+    const scene = sceneWith(part("a"));
+    const { scene: next, created } = arrayLinear(scene, ["a"], makeId, 4, {
+      x: 2,
+      y: 0,
+      z: 0,
+    });
+    // Four instances means the original plus three copies.
+    expect(created).toHaveLength(3);
+    expect(Object.keys(next.objects)).toHaveLength(4);
+  });
+
+  it("spaces copies evenly from the original, not from each other", () => {
+    const scene = sceneWith(part("a"));
+    const { scene: next, created } = arrayLinear(scene, ["a"], makeId, 4, {
+      x: 2,
+      y: 0,
+      z: 0,
+    });
+    const xs = created
+      .map((id) => next.objects[id]!.position.x)
+      .sort((p, q) => p - q);
+    expect(xs).toEqual([2, 4, 6]);
+  });
+
+  it("gives instances distinct names", () => {
+    const scene = sceneWith(part("a", { name: "Bolt" }));
+    const { scene: next, created } = arrayLinear(scene, ["a"], makeId, 3, {
+      x: 1,
+      y: 0,
+      z: 0,
+    });
+    const names = created.map((id) => next.objects[id]!.name);
+    expect(new Set(names).size).toBe(names.length);
+    expect(names).toContain("Bolt 2");
+  });
+
+  it("does nothing for a count below two", () => {
+    const scene = sceneWith(part("a"));
+    expect(
+      arrayLinear(scene, ["a"], makeId, 1, { x: 1, y: 0, z: 0 }).created,
+    ).toHaveLength(0);
+  });
+});
+
+describe("arrayPolar", () => {
+  it("divides a full turn so the last does not land on the first", () => {
+    const scene = sceneWith(part("a", { position: { x: 2, y: 0, z: 0 } }));
+    const { scene: next, created } = arrayPolar(
+      scene,
+      ["a"],
+      makeId,
+      4,
+      "y",
+      ORIGIN,
+    );
+    expect(created).toHaveLength(3);
+    // Four around a circle is every 90 degrees: the first copy swings to -z.
+    const first = next.objects[created[0]!]!;
+    expect(first.position.x).toBeCloseTo(0);
+    expect(first.position.z).toBeCloseTo(-2);
+  });
+
+  it("turns each instance to face around the circle", () => {
+    const scene = sceneWith(part("a", { position: { x: 2, y: 0, z: 0 } }));
+    const { scene: next, created } = arrayPolar(
+      scene,
+      ["a"],
+      makeId,
+      4,
+      "y",
+      ORIGIN,
+    );
+    expect(next.objects[created[0]!]!.rotation.y).toBeCloseTo(Math.PI / 2);
+  });
+
+  it("puts an instance at both ends of a partial sweep", () => {
+    const scene = sceneWith(part("a", { position: { x: 2, y: 0, z: 0 } }));
+    const { scene: next, created } = arrayPolar(
+      scene,
+      ["a"],
+      makeId,
+      3,
+      "y",
+      ORIGIN,
+      180,
+    );
+    // Three across 180 degrees is every 90, so the last sits opposite.
+    const last = next.objects[created.at(-1)!]!;
+    expect(last.position.x).toBeCloseTo(-2);
+  });
+});
+
+describe("dropToGround", () => {
+  it("rests a part on the floor", () => {
+    const scene = sceneWith(part("a", { position: { x: 0, y: 5, z: 0 } }));
+    const next = dropToGround(scene, ["a"]);
+    // A unit box is half a unit tall, so its centre sits at 0.5.
+    expect(next.objects.a!.position.y).toBeCloseTo(0.5);
+  });
+
+  it("lifts a part that had sunk below the floor", () => {
+    const scene = sceneWith(part("a", { position: { x: 0, y: -3, z: 0 } }));
+    expect(dropToGround(scene, ["a"]).objects.a!.position.y).toBeCloseTo(0.5);
+  });
+
+  it("accounts for a part's size", () => {
+    const scene = sceneWith(
+      part("a", {
+        position: { x: 0, y: 9, z: 0 },
+        scale: { x: 1, y: 4, z: 1 },
+      }),
+    );
+    expect(dropToGround(scene, ["a"]).objects.a!.position.y).toBeCloseTo(2);
+  });
+
+  it("leaves a locked part alone", () => {
+    const scene = sceneWith(
+      part("a", { position: { x: 0, y: 5, z: 0 }, locked: true }),
+    );
+    expect(dropToGround(scene, ["a"])).toBe(scene);
+  });
+});
+
+describe("measureBetween", () => {
+  it("reports centre distance", () => {
+    const scene = sceneWith(
+      part("a"),
+      part("b", { position: { x: 3, y: 4, z: 0 } }),
+    );
+    expect(measureBetween(scene, "a", "b")!.distance).toBeCloseTo(5);
+  });
+
+  it("reports the clearance between the boxes, not the centres", () => {
+    const scene = sceneWith(
+      part("a"),
+      part("b", { position: { x: 3, y: 0, z: 0 } }),
+    );
+    // Two unit boxes 3 apart leave a 2 unit gap between their faces.
+    expect(measureBetween(scene, "a", "b")!.gap.x).toBeCloseTo(2);
+  });
+
+  it("reports a negative gap where parts overlap", () => {
+    const scene = sceneWith(
+      part("a"),
+      part("b", { position: { x: 0.5, y: 0, z: 0 } }),
+    );
+    expect(measureBetween(scene, "a", "b")!.gap.x).toBeCloseTo(-0.5);
+  });
+
+  it("returns null for a missing object", () => {
+    expect(measureBetween(sceneWith(part("a")), "a", "nope")).toBeNull();
   });
 });

@@ -17,6 +17,7 @@ import {
   clippingPlanes,
   MIN_ELEVATION,
   POLAR_LIMITS,
+  viewScene,
 } from "@/lib/assembler3d/camera";
 import {
   addObject,
@@ -370,5 +371,52 @@ describe("clippingPlanes", () => {
   it("keeps the near plane small enough not to clip nearby geometry", () => {
     const planes = clippingPlanes(sceneBounds(sceneWith(part("a"))));
     expect(planes.near).toBeLessThanOrEqual(0.05);
+  });
+});
+
+describe("standard views", () => {
+  const scene = (() => {
+    let s = emptyScene();
+    s = addObject(s, {
+      id: "a",
+      name: "a",
+      kind: "box",
+      position: { x: 0, y: 0, z: 0 },
+      rotation: { x: 0, y: 0, z: 0 },
+      scale: { x: 1, y: 1, z: 1 },
+      parentId: null,
+      visible: true,
+      locked: false,
+    });
+    return s;
+  })();
+
+  it("puts the camera overhead for a top view", () => {
+    const view = viewScene(scene, "top");
+    expect(view.position.y).toBeGreaterThan(0);
+    expect(Math.abs(view.position.x)).toBeLessThan(0.001);
+  });
+
+  it("keeps a top view off exact vertical so orbit has an up", () => {
+    // Exactly overhead leaves the camera with no unambiguous roll, and the
+    // polar clamp would fight it on the first drag.
+    expect(Math.abs(viewScene(scene, "top").position.z)).toBeGreaterThan(0);
+  });
+
+  it("looks down an axis for a front view", () => {
+    const view = viewScene(scene, "front");
+    expect(view.position.z).toBeGreaterThan(0);
+    expect(Math.abs(view.position.y)).toBeLessThan(0.001);
+  });
+
+  it("puts right and left on opposite sides", () => {
+    expect(viewScene(scene, "right").position.x).toBeGreaterThan(0);
+    expect(viewScene(scene, "left").position.x).toBeLessThan(0);
+  });
+
+  it("always aims at the build", () => {
+    for (const view of ["top", "front", "right", "iso"] as const) {
+      expect(viewScene(scene, view).target).toEqual({ x: 0, y: 0, z: 0 });
+    }
   });
 });

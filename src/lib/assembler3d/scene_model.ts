@@ -726,6 +726,185 @@ export function mirrorObjects(scene: Scene, ids: string[], axis: Axis): Scene {
   return next;
 }
 
+// ── Arrays ─────────────────────────────────────────────────────────────────
+
+/**
+ * Repeats a selection along a direction.
+ *
+ * `count` is the total number of instances including the original, which is
+ * how every CAD array command reads: "eight bolts" means eight, not one plus
+ * seven. Each copy is made from the original rather than from the previous
+ * copy, so a long run cannot accumulate drift.
+ */
+export function arrayLinear(
+  scene: Scene,
+  ids: string[],
+  makeId: () => string,
+  count: number,
+  offset: Vector3,
+): { scene: Scene; created: string[] } {
+  if (count < 2) return { scene, created: [] };
+
+  let next = scene;
+  const created: string[] = [];
+
+  for (let index = 1; index < count; index++) {
+    const step: Vector3 = {
+      x: offset.x * index,
+      y: offset.y * index,
+      z: offset.z * index,
+    };
+    // Copies always come from the original ids, which still exist in `next`,
+    // so nothing ever copies a copy.
+    const result = duplicateObjects(next, ids, makeId, step);
+    next = result.scene;
+    for (const id of result.created) {
+      const object = next.objects[id]!;
+      next = updateObject(next, id, {
+        // "Box 1 copy" eight times over is a scene nobody can navigate.
+        name: `${object.name.replace(/ copy$/, "")} ${index + 1}`,
+      });
+      created.push(id);
+    }
+  }
+
+  return { scene: next, created };
+}
+
+/**
+ * Repeats a selection around an axis.
+ *
+ * A full turn divides by `count`, so eight items land every 45 degrees and the
+ * last does not sit on top of the first. A partial sweep divides by the gaps
+ * instead, so both ends of the arc carry an instance.
+ */
+export function arrayPolar(
+  scene: Scene,
+  ids: string[],
+  makeId: () => string,
+  count: number,
+  axis: Axis,
+  centre: Vector3,
+  totalDegrees = 360,
+): { scene: Scene; created: string[] } {
+  if (count < 2) return { scene, created: [] };
+
+  const full = Math.abs(totalDegrees) >= 360;
+  const stepDegrees = full ? totalDegrees / count : totalDegrees / (count - 1);
+
+  let next = scene;
+  const created: string[] = [];
+
+  for (let index = 1; index < count; index++) {
+    const radians = (stepDegrees * index * Math.PI) / 180;
+    const turn: Vector3 = {
+      x: axis === "x" ? radians : 0,
+      y: axis === "y" ? radians : 0,
+      z: axis === "z" ? radians : 0,
+    };
+
+    for (const sourceId of topLevelIds(next, ids)) {
+      const world = worldPosition(next, sourceId);
+      const swung = addVectors(
+        centre,
+        rotateVector(subtractVectors(world, centre), turn),
+      );
+      const result = duplicateObjects(
+        next,
+        [sourceId],
+        makeId,
+        subtractVectors(swung, world),
+      );
+      next = result.scene;
+
+      for (const id of result.created) {
+        const object = next.objects[id]!;
+        next = updateObject(next, id, {
+          name: `${object.name.replace(/ copy$/, "")} ${index + 1}`,
+          // The instance turns to face around the circle, not just orbit it.
+          rotation: {
+            x: wrapAngle(object.rotation.x + turn.x),
+            y: wrapAngle(object.rotation.y + turn.y),
+            z: wrapAngle(object.rotation.z + turn.z),
+          },
+        });
+        created.push(id);
+      }
+    }
+  }
+
+  return { scene: next, created };
+}
+
+// ── Placement helpers ──────────────────────────────────────────────────────
+
+/**
+ * Drops objects so they rest on the ground plane.
+ *
+ * Parts arrive centred on the origin, half of them below the floor. Sitting
+ * things on y=0 is the first thing anyone does after adding them, and doing it
+ * by eye with a gizmo never quite lands.
+ */
+export function dropToGround(scene: Scene, ids: string[]): Scene {
+  const targets = ids.filter(
+    (id) => scene.objects[id] && isEditable(scene, id),
+  );
+  if (targets.length === 0) return scene;
+
+  let next = scene;
+  for (const id of targets) {
+    const object = next.objects[id]!;
+    const bottom = worldPosition(next, id).y - projectedHalfExtent(object, "y");
+    if (bottom === 0) continue;
+    next = updateObject(next, id, {
+      position: { ...object.position, y: object.position.y - bottom },
+    });
+  }
+  return next;
+}
+
+/** Distance and per-axis gap between two objects, for a measurement readout. */
+export type Measurement = {
+  /** World centre-to-centre offset. */
+  delta: Vector3;
+  /** Straight-line distance between centres. */
+  distance: number;
+  /**
+   * Clearance between the two bounding boxes per axis.
+   *
+   * Negative where the boxes overlap on that axis, which is the number you
+   * actually want when checking whether two parts foul each other.
+   */
+  gap: Vector3;
+};
+
+export function measureBetween(
+  scene: Scene,
+  fromId: string,
+  toId: string,
+): Measurement | null {
+  const from = scene.objects[fromId];
+  const to = scene.objects[toId];
+  if (!from || !to) return null;
+
+  const a = worldPosition(scene, fromId);
+  const b = worldPosition(scene, toId);
+  const delta = subtractVectors(b, a);
+
+  const gap = { x: 0, y: 0, z: 0 } as Vector3;
+  for (const axis of AXES) {
+    const reach =
+      projectedHalfExtent(from, axis) + projectedHalfExtent(to, axis);
+    gap[axis] = Math.abs(delta[axis]) - reach;
+  }
+
+  return {
+    delta,
+    distance: Math.hypot(delta.x, delta.y, delta.z),
+    gap,
+  };
+}
+
 // ── Multi-object transform ─────────────────────────────────────────────────
 
 /** A move, turn and resize applied to a whole selection at once. */

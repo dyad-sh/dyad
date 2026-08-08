@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import {
   AlignCenterHorizontal,
   AlignHorizontalJustifyCenter,
+  ArrowDownToLine,
   Box,
   Circle,
   Clipboard,
@@ -11,6 +12,7 @@ import {
   Cylinder,
   Eye,
   FlipHorizontal,
+  Grid3x3,
   Layers,
   Lock,
   RotateCcw,
@@ -104,6 +106,10 @@ export function SceneContextMenu({
   const mirrorSelection = useAssembler3D((state) => state.mirrorSelection);
   const rotateBy = useAssembler3D((state) => state.rotateBy);
   const flipObject = useAssembler3D((state) => state.flipObject);
+  const arrayLinear = useAssembler3D((state) => state.arraySelectionLinear);
+  const arrayPolar = useAssembler3D((state) => state.arraySelectionPolar);
+  const dropToGround = useAssembler3D((state) => state.dropSelectionToGround);
+  const gridStep = useAssembler3D((state) => state.gridStep);
   const setVisibility = useAssembler3D((state) => state.setVisibility);
   const setLocked = useAssembler3D((state) => state.setLocked);
   const resetScale = useAssembler3D((state) => state.resetScale);
@@ -282,6 +288,52 @@ export function SceneContextMenu({
                 ))}
               </ContextMenuSubContent>
             </ContextMenuSub>
+
+            <ContextMenuSeparator />
+
+            {/* Array: the command a CAD user reaches for the moment they need
+                more than one of anything. Spacing follows the grid step, so
+                the run lands on the same grid everything else snaps to. */}
+            <ContextMenuSub>
+              <ContextMenuSubTrigger>
+                <Grid3x3 />
+                Array
+              </ContextMenuSubTrigger>
+              <ContextMenuSubContent className="w-52">
+                <ContextMenuLabel>Along a line</ContextMenuLabel>
+                {[2, 3, 4, 6, 8].map((count) => (
+                  <ContextMenuItem
+                    key={`lin-${count}`}
+                    disabled={!actsOnTarget}
+                    onClick={() =>
+                      arrayLinear(count, {
+                        x: (gridStep || 1) * 2,
+                        y: 0,
+                        z: 0,
+                      })
+                    }
+                  >
+                    {count}× along X
+                  </ContextMenuItem>
+                ))}
+                <ContextMenuSeparator />
+                <ContextMenuLabel>Around a circle</ContextMenuLabel>
+                {[3, 4, 6, 8, 12].map((count) => (
+                  <ContextMenuItem
+                    key={`pol-${count}`}
+                    disabled={!actsOnTarget}
+                    onClick={() => arrayPolar(count, "y")}
+                  >
+                    {count}× about Y
+                  </ContextMenuItem>
+                ))}
+              </ContextMenuSubContent>
+            </ContextMenuSub>
+
+            <ContextMenuItem disabled={!actsOnTarget} onClick={dropToGround}>
+              <ArrowDownToLine />
+              Drop to ground
+            </ContextMenuItem>
 
             <ContextMenuSeparator />
 

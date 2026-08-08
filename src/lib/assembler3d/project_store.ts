@@ -3,12 +3,15 @@ import { create } from "zustand";
 import {
   addObject,
   alignObjects,
+  arrayLinear,
+  arrayPolar,
   clearSelection,
   commit,
   copyObjects,
   createHistory,
   descendantsOf,
   distributeObjects,
+  dropToGround,
   duplicateObjects,
   emptyScene,
   flipObject,
@@ -21,6 +24,7 @@ import {
   resizeObject,
   rotateObjectBy,
   select,
+  selectionPivot,
   snapAngle,
   toggleSelection,
   transformAboutPivot,
@@ -146,6 +150,16 @@ type Assembler3DState = {
   rotateBy: (id: string, axis: Axis, degrees: number) => void;
   /** Reverses an object along an axis without moving it. */
   flipObject: (id: string, axis: Axis) => void;
+  /** Repeats the selection along a direction; count includes the original. */
+  arraySelectionLinear: (count: number, offset: Vector3) => void;
+  /** Repeats the selection around an axis through the selection's centre. */
+  arraySelectionPolar: (
+    count: number,
+    axis: Axis,
+    totalDegrees?: number,
+  ) => void;
+  /** Rests the selection on the ground plane. */
+  dropSelectionToGround: () => void;
 
   openProject: (project: Project, scene: Scene) => void;
   undo: () => void;
@@ -538,6 +552,49 @@ export const useAssembler3D = create<Assembler3DState>((set, get) => ({
     const { history } = get();
     const next = flipObject(history.present, id, axis);
     if (next === history.present) return;
+    set({ history: commit(history, next) });
+  },
+
+  arraySelectionLinear(count, offset) {
+    const { history } = get();
+    const scene = history.present;
+    if (scene.selection.length === 0) return;
+    const { scene: next, created } = arrayLinear(
+      scene,
+      scene.selection,
+      newId,
+      count,
+      offset,
+    );
+    if (created.length === 0) return;
+    // The new instances are selected, so the next action can act on the run
+    // rather than on the one part it grew from.
+    set({ history: commit(history, select(next, created)) });
+  },
+
+  arraySelectionPolar(count, axis, totalDegrees = 360) {
+    const { history } = get();
+    const scene = history.present;
+    if (scene.selection.length === 0) return;
+    const { scene: next, created } = arrayPolar(
+      scene,
+      scene.selection,
+      newId,
+      count,
+      axis,
+      selectionPivot(scene, scene.selection),
+      totalDegrees,
+    );
+    if (created.length === 0) return;
+    set({ history: commit(history, select(next, created)) });
+  },
+
+  dropSelectionToGround() {
+    const { history } = get();
+    const scene = history.present;
+    if (scene.selection.length === 0) return;
+    const next = dropToGround(scene, scene.selection);
+    if (next === scene) return;
     set({ history: commit(history, next) });
   },
 

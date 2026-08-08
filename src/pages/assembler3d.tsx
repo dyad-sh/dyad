@@ -25,7 +25,7 @@ import {
   type PrimitiveKind,
   type ProjectCategory,
 } from "@/lib/assembler3d/project_store";
-import { childrenOf } from "@/lib/assembler3d/scene_model";
+import { childrenOf, dimensionsOf } from "@/lib/assembler3d/scene_model";
 import {
   DEFAULT_CAMERA,
   focusSelection,
@@ -196,6 +196,20 @@ export default function Assembler3DPage() {
   const selectAll = useAssembler3D((state) => state.selectAll);
   const moveSelection = useAssembler3D((state) => state.moveSelection);
   const gridStep = useAssembler3D((state) => state.gridStep);
+  const rotationSnapDegrees = useAssembler3D(
+    (state) => state.rotationSnapDegrees,
+  );
+  const setGridStep = useAssembler3D((state) => state.setGridStep);
+  const setRotationSnap = useAssembler3D((state) => state.setRotationSnap);
+  /**
+   * Free transform: drag with no detents at all.
+   *
+   * Snapping is right for laying out a frame and wrong for sketching a shape,
+   * and switching between the two is frequent enough that it needs to be one
+   * key rather than a trip to a settings panel. Held in the page rather than
+   * the store because it is a way of working, not part of the document.
+   */
+  const [freeTransform, setFreeTransform] = useState(false);
   const [cameraRequest, setCameraRequest] = useState<CameraState | null>(null);
   // What the right-click landed on. Cleared in the capture phase before the
   // canvas gets a chance to set it, so a miss reads as empty space.
@@ -209,6 +223,10 @@ export default function Assembler3DPage() {
 
   const scene = history.present;
   const roots = childrenOf(scene, null);
+  const selectedObject =
+    scene.selection.length === 1
+      ? (scene.objects[scene.selection[0]!] ?? null)
+      : null;
 
   // Reopen the most recent project on load. Without this a refresh looks
   // exactly like losing the work.
@@ -307,6 +325,10 @@ export default function Assembler3DPage() {
         setTransformMode("scale");
       } else if (event.key === "q" || event.key === "Q") {
         toggleTransformSpace();
+      } else if (event.key === "x" || event.key === "X") {
+        // Free transform is a hold-and-work mode, so it toggles rather than
+        // hiding behind a modifier the user has to keep pressed mid-drag.
+        setFreeTransform((on) => !on);
       } else if (event.key === "f" || event.key === "F") {
         // Shift widens it to the whole build; plain F frames the selection.
         setCameraRequest(
@@ -425,6 +447,52 @@ export default function Assembler3DPage() {
           >
             {transformSpace === "world" ? "WORLD" : "LOCAL"}
           </button>
+
+          <span className="mx-1 h-5 w-px bg-white/10" />
+
+          {/* Snapping. Free transform is what you reach for to sketch a shape;
+              the detents are what you reach for to build a frame. */}
+          <button
+            type="button"
+            onClick={() => setFreeTransform((on) => !on)}
+            title="Free transform, no snapping (X)"
+            aria-pressed={freeTransform}
+            className={
+              freeTransform
+                ? "rounded-lg bg-amber-500/20 px-2 py-1 text-[10px] font-medium text-amber-200"
+                : "rounded-lg px-2 py-1 text-[10px] font-medium text-white/60 hover:bg-white/10 hover:text-white"
+            }
+            data-testid="assembler3d-free-transform"
+          >
+            {freeTransform ? "FREE" : "SNAP"}
+          </button>
+          <label className="flex items-center gap-1 text-[10px] text-white/40">
+            <span className="sr-only">Grid snap step</span>
+            <input
+              type="number"
+              min="0"
+              step="0.1"
+              value={gridStep}
+              disabled={freeTransform}
+              onChange={(event) => setGridStep(Number(event.target.value))}
+              title="Grid snap step (0 = off)"
+              className="w-12 rounded-md border border-white/10 bg-black/30 px-1 py-0.5 text-right text-[10px] text-white outline-none focus:border-cyan-400/50 disabled:opacity-40"
+            />
+          </label>
+          <label className="flex items-center gap-1 text-[10px] text-white/40">
+            <span className="sr-only">Rotation snap degrees</span>
+            <input
+              type="number"
+              min="0"
+              step="5"
+              value={rotationSnapDegrees}
+              disabled={freeTransform}
+              onChange={(event) => setRotationSnap(Number(event.target.value))}
+              title="Rotation snap in degrees (0 = off)"
+              className="w-11 rounded-md border border-white/10 bg-black/30 px-1 py-0.5 text-right text-[10px] text-white outline-none focus:border-cyan-400/50 disabled:opacity-40"
+            />
+            °
+          </label>
 
           <span className="mx-1 h-5 w-px bg-white/10" />
 
@@ -553,6 +621,15 @@ export default function Assembler3DPage() {
               onContextTarget={setContextTarget}
               transformMode={transformMode}
               transformSpace={transformSpace}
+              // A grid step of zero already means "no snapping", and free
+              // transform overrides all three at once.
+              translationSnap={freeTransform || !gridStep ? null : gridStep}
+              rotationSnap={
+                freeTransform || !rotationSnapDegrees
+                  ? null
+                  : (rotationSnapDegrees * Math.PI) / 180
+              }
+              scaleSnap={freeTransform || !gridStep ? null : gridStep}
               onTransformStart={beginTransform}
               onTransformEnd={endTransform}
               onTransformChange={(id, node) =>
@@ -595,8 +672,23 @@ export default function Assembler3DPage() {
       <footer className="flex shrink-0 items-center gap-4 border-t border-white/10 px-4 py-1.5 text-[11px] text-white/45">
         <span>{Object.keys(scene.objects).length} objects</span>
         <span>{scene.selection.length} selected</span>
+        {/* Live size, so a mouse drag is not a guess. The gizmo gives you the
+            feel; this gives you the number while you are still dragging. */}
+        {selectedObject && (
+          <span
+            className="font-mono text-white/60"
+            data-testid="assembler3d-size-readout"
+          >
+            {(() => {
+              const size = dimensionsOf(selectedObject);
+              return `${size.x.toFixed(2)} × ${size.y.toFixed(2)} × ${size.z.toFixed(2)}`;
+            })()}
+          </span>
+        )}
         <span className="ml-auto text-white/30">
-          Weight, cost and power totals arrive with the inspector.
+          {freeTransform
+            ? "Free transform: snapping off"
+            : `Snap ${gridStep || "off"} · ${rotationSnapDegrees || "off"}°`}
         </span>
       </footer>
     </div>

@@ -293,3 +293,57 @@ describe("numeric editing", () => {
     expect(scene().objects[id]!.scale).toEqual({ x: 1, y: 1, z: 1 });
   });
 });
+
+describe("applyTransform validation", () => {
+  it("refuses a zero scale from a gizmo drag", () => {
+    store().createProject("p", "custom");
+    const id = store().addPrimitive("box");
+
+    // Dragging a scale handle all the way down used to write 0, which makes
+    // the object unclickable and takes the gizmo away with it.
+    store().applyTransform(id, { scale: { x: 0, y: 1, z: 1 } });
+
+    expect(scene().objects[id]!.scale.x).toBe(1);
+  });
+
+  it("clamps an enormous scale from a gizmo drag", () => {
+    store().createProject("p", "custom");
+    const id = store().addPrimitive("box");
+
+    store().applyTransform(id, { scale: { x: 1e9, y: 1, z: 1 } });
+
+    expect(scene().objects[id]!.scale.x).toBe(10_000);
+  });
+
+  it("keeps a mirrored axis mirrored", () => {
+    store().createProject("p", "custom");
+    const id = store().addPrimitive("box");
+
+    store().applyTransform(id, { scale: { x: -2, y: 1, z: 1 } });
+
+    expect(scene().objects[id]!.scale.x).toBe(-2);
+  });
+
+  it("ignores a non-finite position rather than corrupting the scene", () => {
+    store().createProject("p", "custom");
+    const id = store().addPrimitive("box");
+
+    store().applyTransform(id, { position: { x: Number.NaN, y: 3, z: 0 } });
+
+    const object = scene().objects[id]!;
+    expect(object.position.x).toBe(0);
+    // The usable part of the change still lands.
+    expect(object.position.y).toBe(3);
+  });
+});
+
+describe("rotation snap setting", () => {
+  it("defaults to a 15 degree detent", () => {
+    expect(store().rotationSnapDegrees).toBe(15);
+  });
+
+  it("refuses a negative snap", () => {
+    store().setRotationSnap(-5);
+    expect(store().rotationSnapDegrees).toBe(0);
+  });
+});

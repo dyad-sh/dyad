@@ -132,6 +132,14 @@ type Assembler3DState = {
   undo: () => void;
   redo: () => void;
   setGridStep: (step: number) => void;
+  /**
+   * Rotation snap in degrees; 0 turns it off.
+   *
+   * Degrees rather than radians because it is a user-facing setting and
+   * nobody thinks in radians about a 15 degree detent.
+   */
+  rotationSnapDegrees: number;
+  setRotationSnap: (degrees: number) => void;
   toggleGrid: () => void;
 };
 
@@ -161,6 +169,7 @@ export const useAssembler3D = create<Assembler3DState>((set, get) => ({
   showGrid: true,
   transformMode: "translate",
   transformSpace: "world",
+  rotationSnapDegrees: 15,
   clipboard: [],
 
   createProject(name, category) {
@@ -437,6 +446,23 @@ export const useAssembler3D = create<Assembler3DState>((set, get) => ({
     const { history } = get();
     const object = history.present.objects[id];
     if (!object) return;
+
+    // The gizmo is validated on the same terms as the inspector. Dragging a
+    // scale handle to zero would otherwise collapse the object: it stops being
+    // clickable, so the gizmo that shrank it is gone too and undo is the only
+    // way back. The numeric path has always guarded this; the mouse path did
+    // not, which made the safer route the one nobody uses.
+    const validated: Partial<SceneObject> = { ...changes };
+    if (changes.position) {
+      validated.position = safeVector(changes.position, object.position);
+    }
+    if (changes.rotation) {
+      validated.rotation = safeVector(changes.rotation, object.rotation);
+    }
+    if (changes.scale) {
+      validated.scale = safeScale(changes.scale, object.scale);
+    }
+
     set({
       history: {
         ...history,
@@ -444,11 +470,15 @@ export const useAssembler3D = create<Assembler3DState>((set, get) => ({
           ...history.present,
           objects: {
             ...history.present.objects,
-            [id]: { ...object, ...changes },
+            [id]: { ...object, ...validated },
           },
         },
       },
     });
+  },
+
+  setRotationSnap(degrees) {
+    set({ rotationSnapDegrees: Math.max(0, degrees) });
   },
 
   endTransform() {

@@ -167,6 +167,9 @@ export function Viewport({
   showGrid = true,
   transformMode = "translate",
   transformSpace = "world",
+  translationSnap = null,
+  rotationSnap = null,
+  scaleSnap = null,
   onTransformStart,
   onTransformEnd,
   onTransformChange,
@@ -181,6 +184,16 @@ export function Viewport({
   showGrid?: boolean;
   transformMode?: "translate" | "rotate" | "scale";
   transformSpace?: "world" | "local";
+  /**
+   * Gizmo detents, or null for free dragging.
+   *
+   * Snapping belongs on the gizmo rather than on the value it produces: the
+   * handle itself steps, so the part visibly lands on the grid instead of
+   * jumping there after the fact.
+   */
+  translationSnap?: number | null;
+  rotationSnap?: number | null;
+  scaleSnap?: number | null;
   onTransformStart?: () => void;
   onTransformEnd?: () => void;
   onTransformChange?: (id: string, node: Object3D) => void;
@@ -278,6 +291,9 @@ export function Viewport({
           object={gizmoTarget}
           mode={transformMode}
           space={transformSpace}
+          translationSnap={translationSnap}
+          rotationSnap={rotationSnap}
+          scaleSnap={scaleSnap}
           onMouseDown={() => {
             setDragging(true);
             onTransformStart?.();

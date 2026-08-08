@@ -9,6 +9,7 @@ export type AppSidebarItemTitle =
   | "Knowledge Base"
   | "Agents"
   | "Dev Ops"
+  | "Data Sources"
   | "Storage"
   | "Settings"
   | "Library"

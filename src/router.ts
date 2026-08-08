@@ -30,6 +30,7 @@ import { agentOsRoute } from "./routes/agent-os";
 import { metaHdRoute } from "./routes/meta-hd";
 import { vectorRoute } from "./routes/vector";
 import { storageRoute } from "./routes/storage";
+import { dataSourcesRoute } from "./routes/data-sources";
 import { devOpsRoute } from "./routes/dev-ops";
 import { jarvisRoute } from "./routes/jarvis";
 import { knowledgeBaseRoute } from "./routes/knowledge-base";
@@ -51,6 +52,7 @@ const routeTree = rootRoute.addChildren([
   legacySocialMediaAgentRoute,
   agentOsRoute,
   storageRoute,
+  dataSourcesRoute,
   metaHdRoute,
   vectorRoute,
   devOpsRoute,

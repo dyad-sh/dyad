@@ -1,4 +1,5 @@
 import {
+  Database,
   DraftingCompass,
   type LucideIcon,
   Code2,
@@ -69,6 +70,7 @@ const mainNavItems = [
   { title: "Dev Ops", to: "/dev-ops", icon: GitFork },
   { title: "Library", to: "/library", icon: BookOpen },
   { title: "Knowledge Base", to: "/knowledge-base", icon: Library },
+  { title: "Data Sources", to: "/data-sources", icon: Database },
   { title: "Storage", to: "/storage", icon: HardDrive },
   { title: "My Apps", to: "/apps", icon: LayoutGrid },
   { title: "Hub", to: "/hub", icon: Store },

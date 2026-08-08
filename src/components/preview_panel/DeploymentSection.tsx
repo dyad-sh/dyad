@@ -135,7 +135,16 @@ export function DeploymentSection({
             </div>
             <VercelDeployment appId={appId} app={app} />
           </TabsContent>
-          <TabsContent value="own-server" className="pt-4 space-y-4">
+          {/* Mounted with the card rather than on first click. The connector
+              cannot read its status until it mounts, so a lazy panel opens on
+              a spinner and then jumps to full height. The cost is that opening
+              Publish now reaches the user's Coolify server for its server and
+              project list, whether or not they come to this tab. */}
+          <TabsContent
+            value="own-server"
+            className="pt-4 space-y-4"
+            keepMounted
+          >
             <div className="flex items-center gap-2 text-sm font-semibold">
               <Server className="w-5 h-5" />
               Your own server

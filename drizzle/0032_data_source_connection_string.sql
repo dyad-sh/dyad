@@ -1,0 +1,1 @@
+ALTER TABLE `data_sources` ADD `encrypted_connection_string` text;

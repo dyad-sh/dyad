@@ -225,6 +225,13 @@
       "when": 1786229741656,
       "tag": "0031_data_sources",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1786230495338,
+      "tag": "0032_data_source_connection_string",
+      "breakpoints": true
     }
   ]
 }

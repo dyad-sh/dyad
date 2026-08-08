@@ -342,6 +342,15 @@ export const dataSources = sqliteTable("data_sources", {
   encryptedCredential: text("encrypted_credential"),
   // secret | service_role | publishable | anon
   credentialType: text("credential_type").notNull().default("secret"),
+  /**
+   * Postgres connection string, encrypted the same way.
+   *
+   * Kept separate from the API credential rather than overloading one column:
+   * they grant different access, are rotated independently, and one may be
+   * present without the other. Schema introspection needs this one, because
+   * PostgREST cannot read information_schema or pg_catalog.
+   */
+  encryptedConnectionString: text("encrypted_connection_string"),
   // production | staging | development | other
   environment: text("environment").notNull().default("development"),
   // Read-only is the only mode version one accepts. The column exists so a

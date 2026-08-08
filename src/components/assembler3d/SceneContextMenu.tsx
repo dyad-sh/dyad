@@ -105,6 +105,9 @@ export function SceneContextMenu({
   const setVisibility = useAssembler3D((state) => state.setVisibility);
   const setLocked = useAssembler3D((state) => state.setLocked);
   const resetScale = useAssembler3D((state) => state.resetScale);
+  const snapRotationToDetent = useAssembler3D(
+    (state) => state.snapRotationToDetent,
+  );
   const isolateSelection = useAssembler3D((state) => state.isolateSelection);
   const showAll = useAssembler3D((state) => state.showAll);
   const selectAll = useAssembler3D((state) => state.selectAll);
@@ -268,6 +271,13 @@ export function SceneContextMenu({
             >
               <RotateCcw />
               Reset scale
+            </ContextMenuItem>
+            <ContextMenuItem
+              disabled={target.locked}
+              onClick={() => snapRotationToDetent(target.id)}
+            >
+              <RotateCcw />
+              Snap rotation to detent
             </ContextMenuItem>
 
             <ContextMenuSeparator />

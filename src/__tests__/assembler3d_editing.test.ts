@@ -9,14 +9,19 @@ import {
   duplicateObjects,
   emptyScene,
   groupObjects,
+  IDENTITY_TRANSFORM,
   isDescendantOf,
   mirrorObjects,
   ORIGIN,
   pasteObjects,
+  projectedHalfExtent,
   resizeObject,
+  rotateVector,
   scaleForDimensions,
+  selectionPivot,
   snapAngle,
   topLevelIds,
+  transformAboutPivot,
   UNIT_SCALE,
   updateObject,
   worldPosition,
@@ -309,5 +314,131 @@ describe("updateObject", () => {
   it("ignores an unknown id rather than inventing an object", () => {
     const scene = sceneWith(part("a"));
     expect(updateObject(scene, "missing", { name: "x" })).toBe(scene);
+  });
+});
+
+describe("rotation-aware extents", () => {
+  it("widens a box turned 45 degrees, as its real footprint does", () => {
+    const object = part("a", { rotation: { x: 0, y: 0, z: Math.PI / 4 } });
+    // A unit square turned 45 degrees spans its diagonal: about 1.414.
+    expect(projectedHalfExtent(object, "x")).toBeCloseTo(Math.SQRT2 / 2);
+  });
+
+  it("leaves an unrotated part at half its width", () => {
+    expect(projectedHalfExtent(part("a"), "x")).toBe(0.5);
+  });
+
+  it("ignores rotation about the axis being measured", () => {
+    const object = part("a", { rotation: { x: Math.PI / 4, y: 0, z: 0 } });
+    expect(projectedHalfExtent(object, "x")).toBeCloseTo(0.5);
+  });
+
+  it("aligns the face of a rotated part, not the face it never had", () => {
+    const scene = sceneWith(
+      part("a", { position: { x: 0, y: 0, z: 0 } }),
+      part("b", {
+        position: { x: 4, y: 0, z: 0 },
+        rotation: { x: 0, y: 0, z: Math.PI / 4 },
+      }),
+    );
+    const next = alignObjects(scene, ["a", "b"], "x", "min");
+    // "a" spans -0.5..0.5. The turned "b" is sqrt(2) wide, so its centre has
+    // to sit at -0.5 + sqrt(2)/2 for its own left face to reach -0.5.
+    expect(next.objects.b!.position.x).toBeCloseTo(-0.5 + Math.SQRT2 / 2);
+  });
+});
+
+describe("rotateVector", () => {
+  it("turns a unit x into y with a quarter turn about z", () => {
+    const turned = rotateVector(
+      { x: 1, y: 0, z: 0 },
+      { x: 0, y: 0, z: Math.PI / 2 },
+    );
+    expect(turned.x).toBeCloseTo(0);
+    expect(turned.y).toBeCloseTo(1);
+  });
+
+  it("leaves a vector alone with no rotation", () => {
+    expect(rotateVector({ x: 1, y: 2, z: 3 }, ORIGIN)).toEqual({
+      x: 1,
+      y: 2,
+      z: 3,
+    });
+  });
+});
+
+describe("transformAboutPivot", () => {
+  const pair = () =>
+    sceneWith(
+      part("a", { position: { x: -2, y: 0, z: 0 } }),
+      part("b", { position: { x: 2, y: 0, z: 0 } }),
+    );
+
+  it("translates a whole selection together", () => {
+    const scene = pair();
+    const next = transformAboutPivot(scene, ["a", "b"], ORIGIN, {
+      ...IDENTITY_TRANSFORM,
+      translation: { x: 1, y: 0, z: 0 },
+    });
+    expect(next.objects.a!.position.x).toBe(-1);
+    expect(next.objects.b!.position.x).toBe(3);
+  });
+
+  it("swings parts around the pivot when rotating, not on the spot", () => {
+    const scene = pair();
+    const next = transformAboutPivot(scene, ["a", "b"], ORIGIN, {
+      ...IDENTITY_TRANSFORM,
+      rotation: { x: 0, y: 0, z: Math.PI / 2 },
+    });
+    // "b" was 2 along x; a quarter turn about the origin carries it to y.
+    expect(next.objects.b!.position.x).toBeCloseTo(0);
+    expect(next.objects.b!.position.y).toBeCloseTo(2);
+    // And the part itself turns too.
+    expect(next.objects.b!.rotation.z).toBeCloseTo(Math.PI / 2);
+  });
+
+  it("spreads parts apart when scaling, as well as growing them", () => {
+    const scene = pair();
+    const next = transformAboutPivot(scene, ["a", "b"], ORIGIN, {
+      ...IDENTITY_TRANSFORM,
+      scale: { x: 2, y: 2, z: 2 },
+    });
+    expect(next.objects.b!.position.x).toBe(4);
+    expect(next.objects.b!.scale.x).toBe(2);
+  });
+
+  it("clamps a collapsing group scale rather than vanishing the parts", () => {
+    const scene = pair();
+    const next = transformAboutPivot(scene, ["a", "b"], ORIGIN, {
+      ...IDENTITY_TRANSFORM,
+      scale: { x: 0, y: 1, z: 1 },
+    });
+    expect(next.objects.b!.scale.x).toBe(1);
+  });
+
+  it("leaves locked members where they are", () => {
+    const scene = sceneWith(
+      part("a", { position: { x: -2, y: 0, z: 0 } }),
+      part("b", { position: { x: 2, y: 0, z: 0 }, locked: true }),
+    );
+    const next = transformAboutPivot(scene, ["a", "b"], ORIGIN, {
+      ...IDENTITY_TRANSFORM,
+      translation: { x: 1, y: 0, z: 0 },
+    });
+    expect(next.objects.b!.position.x).toBe(2);
+  });
+});
+
+describe("selectionPivot", () => {
+  it("sits at the mean of the selection", () => {
+    const scene = sceneWith(
+      part("a", { position: { x: 0, y: 0, z: 0 } }),
+      part("b", { position: { x: 4, y: 2, z: 0 } }),
+    );
+    expect(selectionPivot(scene, ["a", "b"])).toEqual({ x: 2, y: 1, z: 0 });
+  });
+
+  it("falls back to the origin with nothing selected", () => {
+    expect(selectionPivot(emptyScene(), [])).toEqual(ORIGIN);
   });
 });

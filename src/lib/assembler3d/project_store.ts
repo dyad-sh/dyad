@@ -19,16 +19,20 @@ import {
   removeObjects,
   resizeObject,
   select,
+  snapAngle,
   toggleSelection,
+  transformAboutPivot,
   translateObjects,
   undo,
   ungroupObjects,
+  updateObject,
   safeScale,
   safeVector,
   UNIT_SCALE,
   type AlignMode,
   type Axis,
   type ClipboardEntry,
+  type GroupTransform,
   type History,
   type Scene,
   type SceneObject,
@@ -127,6 +131,15 @@ type Assembler3DState = {
   beginTransform: () => void;
   endTransform: () => void;
   applyTransform: (id: string, changes: Partial<SceneObject>) => void;
+  /**
+   * Gizmo drag on a multi-selection, applied about a shared pivot.
+   *
+   * Always recomputed from the scene as it was when the drag began, so a drag
+   * cannot feed its own output back in and run away.
+   */
+  applyGroupTransform: (pivot: Vector3, transform: GroupTransform) => void;
+  /** Rounds an object's rotation onto the current detent. */
+  snapRotationToDetent: (id: string) => void;
 
   openProject: (project: Project, scene: Scene) => void;
   undo: () => void;
@@ -474,6 +487,37 @@ export const useAssembler3D = create<Assembler3DState>((set, get) => ({
           },
         },
       },
+    });
+  },
+
+  applyGroupTransform(pivot, transform) {
+    const { history } = get();
+    // The drag-start scene is the base, never the running result.
+    const base = dragStart ?? history.present;
+    const next = transformAboutPivot(base, base.selection, pivot, transform);
+    set({ history: { ...history, present: next } });
+  },
+
+  snapRotationToDetent(id) {
+    const { history, rotationSnapDegrees } = get();
+    const object = history.present.objects[id];
+    if (!object || object.locked || !rotationSnapDegrees) return;
+
+    const step = (rotationSnapDegrees * Math.PI) / 180;
+    const rotation = {
+      x: snapAngle(object.rotation.x, step),
+      y: snapAngle(object.rotation.y, step),
+      z: snapAngle(object.rotation.z, step),
+    };
+    if (
+      rotation.x === object.rotation.x &&
+      rotation.y === object.rotation.y &&
+      rotation.z === object.rotation.z
+    ) {
+      return;
+    }
+    set({
+      history: commit(history, updateObject(history.present, id, { rotation })),
     });
   },
 

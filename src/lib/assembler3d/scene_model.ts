@@ -534,14 +534,73 @@ export function pasteObjects(
   return { scene: next, created };
 }
 
+// ── Rotation maths ─────────────────────────────────────────────────────────
+
+/**
+ * Rotation matrix for an XYZ Euler, matching Three.js's default order.
+ *
+ * Written out rather than pulled from Three so the scene model stays free of
+ * the renderer: these functions have to run in tests with no canvas. The
+ * element order is copied from `Matrix4.makeRotationFromEuler`, so a part
+ * behaves in the maths exactly as it looks on screen.
+ */
+export function rotationMatrix(rotation: Vector3): number[][] {
+  const a = Math.cos(rotation.x);
+  const b = Math.sin(rotation.x);
+  const c = Math.cos(rotation.y);
+  const d = Math.sin(rotation.y);
+  const e = Math.cos(rotation.z);
+  const f = Math.sin(rotation.z);
+  const ae = a * e;
+  const af = a * f;
+  const be = b * e;
+  const bf = b * f;
+
+  return [
+    [c * e, -c * f, d],
+    [af + be * d, ae - bf * d, -b * c],
+    [bf - ae * d, be + af * d, a * c],
+  ];
+}
+
+/** Rotates a vector by an XYZ Euler. */
+export function rotateVector(value: Vector3, rotation: Vector3): Vector3 {
+  const m = rotationMatrix(rotation);
+  return {
+    x: m[0]![0]! * value.x + m[0]![1]! * value.y + m[0]![2]! * value.z,
+    y: m[1]![0]! * value.x + m[1]![1]! * value.y + m[1]![2]! * value.z,
+    z: m[2]![0]! * value.x + m[2]![1]! * value.y + m[2]![2]! * value.z,
+  };
+}
+
+/**
+ * Half the space an object occupies along a world axis, once rotated.
+ *
+ * This is the axis-aligned bound of the oriented box: the sum of each local
+ * half-extent projected onto the world axis. A part turned 45 degrees really
+ * is wider than its own width, and aligning its face means aligning the face
+ * of the box it actually occupies.
+ */
+export function projectedHalfExtent(object: SceneObject, axis: Axis): number {
+  const size = dimensionsOf(object);
+  const half = { x: size.x / 2, y: size.y / 2, z: size.z / 2 };
+  const m = rotationMatrix(object.rotation);
+  const row = m[AXES.indexOf(axis)]!;
+  return (
+    Math.abs(row[0]!) * half.x +
+    Math.abs(row[1]!) * half.y +
+    Math.abs(row[2]!) * half.z
+  );
+}
+
 // ── Alignment ──────────────────────────────────────────────────────────────
 
 /**
  * World-space extent of an object along one axis.
  *
- * Rotation is deliberately ignored. Accounting for it means aligning against
- * the rotated bounding box, which moves an unrotated neighbour to match a
- * corner rather than a face and surprises people far more often than it helps.
+ * Rotation is accounted for: the extent is that of the axis-aligned box around
+ * the rotated part, so a face-align lines up the faces you can actually see
+ * rather than the faces the part would have had if you had never turned it.
  */
 function extentAlong(
   scene: Scene,
@@ -550,7 +609,7 @@ function extentAlong(
 ): { min: number; centre: number; max: number } {
   const object = scene.objects[id]!;
   const centre = worldPosition(scene, id)[axis];
-  const half = dimensionsOf(object)[axis] / 2;
+  const half = projectedHalfExtent(object, axis);
   return { min: centre - half, centre, max: centre + half };
 }
 
@@ -662,6 +721,92 @@ export function mirrorObjects(scene: Scene, ids: string[], axis: Axis): Scene {
     next = updateObject(next, id, {
       position: { ...object.position, [axis]: object.position[axis] + delta },
       scale: { ...object.scale, [axis]: -object.scale[axis] },
+    });
+  }
+  return next;
+}
+
+// ── Multi-object transform ─────────────────────────────────────────────────
+
+/** A move, turn and resize applied to a whole selection at once. */
+export type GroupTransform = {
+  /** World-space translation. */
+  translation: Vector3;
+  /** Euler delta in radians, added to each object and applied about the pivot. */
+  rotation: Vector3;
+  /** Per-axis multiplier, applied to each object and to its offset. */
+  scale: Vector3;
+};
+
+export const IDENTITY_TRANSFORM: GroupTransform = {
+  translation: ORIGIN,
+  rotation: ORIGIN,
+  scale: UNIT_SCALE,
+};
+
+/** The mean world position of a set of objects: the pivot a gizmo sits on. */
+export function selectionPivot(scene: Scene, ids: string[]): Vector3 {
+  const present = ids.filter((id) => scene.objects[id]);
+  if (present.length === 0) return ORIGIN;
+  const total = present.reduce(
+    (sum, id) => addVectors(sum, worldPosition(scene, id)),
+    ORIGIN,
+  );
+  return {
+    x: total.x / present.length,
+    y: total.y / present.length,
+    z: total.z / present.length,
+  };
+}
+
+/**
+ * Transforms several objects as one, about a shared pivot.
+ *
+ * This is what makes a gizmo work on a multi-selection. Each part is moved by
+ * where the pivot carried it *and* turned or resized in place, which is the
+ * difference between rotating an assembly and rotating each part on the spot.
+ *
+ * It is always applied to the scene as it was when the drag began, never to
+ * the running result, so a drag cannot compound its own output into a
+ * runaway. Callers pass the drag-start scene for exactly that reason.
+ */
+export function transformAboutPivot(
+  scene: Scene,
+  ids: string[],
+  pivot: Vector3,
+  transform: GroupTransform,
+): Scene {
+  const targets = ids.filter(
+    (id) => scene.objects[id] && isEditable(scene, id),
+  );
+  if (targets.length === 0) return scene;
+
+  let next = scene;
+  for (const id of targets) {
+    const object = scene.objects[id]!;
+    const world = worldPosition(scene, id);
+    const offset = subtractVectors(world, pivot);
+
+    const resized: Vector3 = {
+      x: offset.x * transform.scale.x,
+      y: offset.y * transform.scale.y,
+      z: offset.z * transform.scale.z,
+    };
+    const turned = rotateVector(resized, transform.rotation);
+    const target = addVectors(addVectors(pivot, turned), transform.translation);
+    const delta = subtractVectors(target, world);
+
+    next = updateObject(next, id, {
+      position: addVectors(object.position, delta),
+      rotation: addVectors(object.rotation, transform.rotation),
+      scale: safeScale(
+        {
+          x: object.scale.x * transform.scale.x,
+          y: object.scale.y * transform.scale.y,
+          z: object.scale.z * transform.scale.z,
+        },
+        object.scale,
+      ),
     });
   }
   return next;

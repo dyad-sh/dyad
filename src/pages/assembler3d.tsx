@@ -189,6 +189,9 @@ export default function Assembler3DPage() {
   const beginTransform = useAssembler3D((state) => state.beginTransform);
   const endTransform = useAssembler3D((state) => state.endTransform);
   const applyTransform = useAssembler3D((state) => state.applyTransform);
+  const applyGroupTransform = useAssembler3D(
+    (state) => state.applyGroupTransform,
+  );
   const toggleGrid = useAssembler3D((state) => state.toggleGrid);
   const copySelection = useAssembler3D((state) => state.copySelection);
   const cutSelection = useAssembler3D((state) => state.cutSelection);
@@ -647,6 +650,7 @@ export default function Assembler3DPage() {
                   scale: { x: node.scale.x, y: node.scale.y, z: node.scale.z },
                 })
               }
+              onGroupTransform={applyGroupTransform}
               cameraRequest={cameraRequest}
               onCameraApplied={() => setCameraRequest(null)}
             />

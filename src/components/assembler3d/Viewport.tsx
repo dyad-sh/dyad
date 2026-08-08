@@ -5,8 +5,11 @@ import type { Object3D } from "three";
 
 import {
   childrenOf,
+  selectionPivot,
+  type GroupTransform,
   type Scene,
   type SceneObject,
+  type Vector3,
 } from "@/lib/assembler3d/scene_model";
 import {
   cameraLimits,
@@ -173,6 +176,7 @@ export function Viewport({
   onTransformStart,
   onTransformEnd,
   onTransformChange,
+  onGroupTransform,
   cameraRequest = null,
   onCameraApplied,
 }: {
@@ -197,16 +201,27 @@ export function Viewport({
   onTransformStart?: () => void;
   onTransformEnd?: () => void;
   onTransformChange?: (id: string, node: Object3D) => void;
+  /** Gizmo drag on a multi-selection, as a delta about the shared pivot. */
+  onGroupTransform?: (pivot: Vector3, transform: GroupTransform) => void;
   cameraRequest?: CameraState | null;
   onCameraApplied?: () => void;
 }) {
   const nodes = useRef(new Map<string, Object3D>());
+  const pivotRef = useRef<Object3D | null>(null);
   const [dragging, setDragging] = useState(false);
 
-  // A gizmo attaches to a single selection only; multi-object transform is a
-  // later phase.
+  const multiple = scene.selection.length > 1;
   const gizmoId = scene.selection.length === 1 ? scene.selection[0]! : null;
-  const gizmoTarget = gizmoId ? nodes.current.get(gizmoId) : undefined;
+  // A single selection drives its own node; several share an invisible proxy
+  // at their centre, so one gizmo moves the set as a body rather than making
+  // the user drag each part to the same place by eye.
+  const pivot = useMemo(
+    () => (multiple ? selectionPivot(scene, scene.selection) : null),
+    [multiple, scene],
+  );
+  const gizmoTarget = gizmoId
+    ? nodes.current.get(gizmoId)
+    : (pivotRef.current ?? undefined);
   // Only roots are rendered at the top level; children come through nesting.
   const roots = useMemo(() => childrenOf(scene, null), [scene]);
   // Limits and clipping follow the build, so a bolt and a boat both stay
@@ -286,7 +301,19 @@ export function Viewport({
         />
       ))}
 
-      {gizmoTarget && gizmoId && (
+      {/* The proxy carries the gizmo for a multi-selection. It is reset to the
+          pivot after every drag, so its transform is always the delta of the
+          drag in progress and never an accumulation of past ones. */}
+      {pivot && (
+        <group
+          ref={(node) => {
+            pivotRef.current = node;
+          }}
+          position={[pivot.x, pivot.y, pivot.z]}
+        />
+      )}
+
+      {gizmoTarget && (gizmoId || pivot) && (
         <TransformControls
           object={gizmoTarget}
           mode={transformMode}
@@ -301,8 +328,38 @@ export function Viewport({
           onMouseUp={() => {
             setDragging(false);
             onTransformEnd?.();
+            const proxy = pivotRef.current;
+            if (proxy && pivot) {
+              proxy.position.set(pivot.x, pivot.y, pivot.z);
+              proxy.rotation.set(0, 0, 0);
+              proxy.scale.set(1, 1, 1);
+            }
           }}
-          onObjectChange={() => onTransformChange?.(gizmoId, gizmoTarget)}
+          onObjectChange={() => {
+            if (gizmoId && gizmoTarget) {
+              onTransformChange?.(gizmoId, gizmoTarget);
+              return;
+            }
+            const proxy = pivotRef.current;
+            if (!proxy || !pivot) return;
+            onGroupTransform?.(pivot, {
+              translation: {
+                x: proxy.position.x - pivot.x,
+                y: proxy.position.y - pivot.y,
+                z: proxy.position.z - pivot.z,
+              },
+              rotation: {
+                x: proxy.rotation.x,
+                y: proxy.rotation.y,
+                z: proxy.rotation.z,
+              },
+              scale: {
+                x: proxy.scale.x,
+                y: proxy.scale.y,
+                z: proxy.scale.z,
+              },
+            });
+          }}
         />
       )}
 

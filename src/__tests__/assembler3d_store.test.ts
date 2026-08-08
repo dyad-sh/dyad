@@ -347,3 +347,100 @@ describe("rotation snap setting", () => {
     expect(store().rotationSnapDegrees).toBe(0);
   });
 });
+
+describe("multi-object gizmo", () => {
+  it("moves every selected object as one body", () => {
+    store().createProject("p", "custom");
+    const a = store().addPrimitive("box");
+    const b = store().addPrimitive("box");
+    store().setTransform(b, "position", "x", 4);
+    store().selectObject(a, false);
+    store().selectObject(b, true);
+
+    store().beginTransform();
+    store().applyGroupTransform(
+      { x: 2, y: 0, z: 0 },
+      {
+        translation: { x: 1, y: 0, z: 0 },
+        rotation: { x: 0, y: 0, z: 0 },
+        scale: { x: 1, y: 1, z: 1 },
+      },
+    );
+    store().endTransform();
+
+    expect(scene().objects[a]!.position.x).toBe(1);
+    expect(scene().objects[b]!.position.x).toBe(5);
+  });
+
+  it("does not compound when a drag reports many times", () => {
+    store().createProject("p", "custom");
+    const a = store().addPrimitive("box");
+    store().selectObject(a, false);
+
+    store().beginTransform();
+    // A real drag fires on every pointer move. Each report is the delta from
+    // where the drag began, so repeating one must not keep adding.
+    for (let i = 0; i < 5; i++) {
+      store().applyGroupTransform(
+        { x: 0, y: 0, z: 0 },
+        {
+          translation: { x: 3, y: 0, z: 0 },
+          rotation: { x: 0, y: 0, z: 0 },
+          scale: { x: 1, y: 1, z: 1 },
+        },
+      );
+    }
+    store().endTransform();
+
+    expect(scene().objects[a]!.position.x).toBe(3);
+  });
+
+  it("records the whole drag as one undo step", () => {
+    store().createProject("p", "custom");
+    const a = store().addPrimitive("box");
+    store().selectObject(a, false);
+    const before = store().history.past.length;
+
+    store().beginTransform();
+    store().applyGroupTransform(
+      { x: 0, y: 0, z: 0 },
+      {
+        translation: { x: 2, y: 0, z: 0 },
+        rotation: { x: 0, y: 0, z: 0 },
+        scale: { x: 1, y: 1, z: 1 },
+      },
+    );
+    store().endTransform();
+
+    expect(store().history.past.length).toBe(before + 1);
+    store().undo();
+    expect(scene().objects[a]!.position.x).toBe(0);
+  });
+});
+
+describe("snapRotationToDetent", () => {
+  it("rounds a hand-turned part onto the detent", () => {
+    store().createProject("p", "custom");
+    // Set explicitly: the detent is store state that outlives closeProject,
+    // so an earlier test can otherwise decide this one's outcome.
+    store().setRotationSnap(15);
+    const id = store().addPrimitive("box");
+    // 20 degrees, with a 15 degree detent, rounds to 15.
+    store().setTransform(id, "rotation", "z", (20 * Math.PI) / 180);
+
+    store().snapRotationToDetent(id);
+
+    expect(scene().objects[id]!.rotation.z).toBeCloseTo((15 * Math.PI) / 180);
+  });
+
+  it("does nothing when the detent is off", () => {
+    store().createProject("p", "custom");
+    const id = store().addPrimitive("box");
+    store().setTransform(id, "rotation", "z", 0.37);
+    store().setRotationSnap(0);
+
+    store().snapRotationToDetent(id);
+
+    expect(scene().objects[id]!.rotation.z).toBe(0.37);
+  });
+});

@@ -116,6 +116,16 @@ export function SceneContextMenu({
   const scene = history.present;
   const target = targetId ? scene.objects[targetId] : null;
   const selectionCount = scene.selection.length;
+  /**
+   * Whether the commands that act on the selection are about this part.
+   *
+   * Right-clicking normally selects what is under the cursor, so these agree.
+   * A locked part is the exception: it cannot be selected, so a Delete or an
+   * Align offered here would silently act on whatever was selected before,
+   * which is the wrong object and no warning. Those entries are disabled
+   * until the part is unlocked and can speak for itself.
+   */
+  const actsOnTarget = target ? scene.selection.includes(target.id) : false;
   const hasGroup = scene.selection.some(
     (id) => scene.objects[id]?.kind === "group",
   );
@@ -139,23 +149,29 @@ export function SceneContextMenu({
           <>
             <ContextMenuLabel className="truncate">
               {target.name}
-              {selectionCount > 1 && (
+              {target.locked && (
+                <span className="ml-1 text-amber-300/80">· locked</span>
+              )}
+              {actsOnTarget && selectionCount > 1 && (
                 <span className="text-white/40"> +{selectionCount - 1}</span>
               )}
             </ContextMenuLabel>
             <ContextMenuSeparator />
 
-            <ContextMenuItem onClick={cutSelection}>
+            <ContextMenuItem disabled={!actsOnTarget} onClick={cutSelection}>
               <Scissors />
               Cut
               <ContextMenuShortcut>⌘X</ContextMenuShortcut>
             </ContextMenuItem>
-            <ContextMenuItem onClick={copySelection}>
+            <ContextMenuItem disabled={!actsOnTarget} onClick={copySelection}>
               <Copy />
               Copy
               <ContextMenuShortcut>⌘C</ContextMenuShortcut>
             </ContextMenuItem>
-            <ContextMenuItem onClick={duplicateSelection}>
+            <ContextMenuItem
+              disabled={!actsOnTarget}
+              onClick={duplicateSelection}
+            >
               <Copy />
               Duplicate
               <ContextMenuShortcut>⌘D</ContextMenuShortcut>
@@ -178,7 +194,7 @@ export function SceneContextMenu({
                       {ALIGNMENTS.map(({ mode, label }) => (
                         <ContextMenuItem
                           key={mode}
-                          disabled={selectionCount < 2}
+                          disabled={!actsOnTarget || selectionCount < 2}
                           onClick={() => alignSelection(axis as Axis, mode)}
                         >
                           {label}
@@ -200,7 +216,7 @@ export function SceneContextMenu({
                   <ContextMenuItem
                     key={axis}
                     // Fewer than three objects are already evenly spaced.
-                    disabled={selectionCount < 3}
+                    disabled={!actsOnTarget || selectionCount < 3}
                     onClick={() => distributeSelection(axis as Axis)}
                   >
                     Along {axis.toUpperCase()}
@@ -218,6 +234,7 @@ export function SceneContextMenu({
                 {AXES.map((axis) => (
                   <ContextMenuItem
                     key={axis}
+                    disabled={!actsOnTarget}
                     onClick={() => mirrorSelection(axis as Axis)}
                   >
                     Across {axis.toUpperCase()}
@@ -229,14 +246,17 @@ export function SceneContextMenu({
             <ContextMenuSeparator />
 
             <ContextMenuItem
-              disabled={selectionCount < 2}
+              disabled={!actsOnTarget || selectionCount < 2}
               onClick={groupSelection}
             >
               <Layers />
               Group
               <ContextMenuShortcut>⌘G</ContextMenuShortcut>
             </ContextMenuItem>
-            <ContextMenuItem disabled={!hasGroup} onClick={ungroupSelection}>
+            <ContextMenuItem
+              disabled={!actsOnTarget || !hasGroup}
+              onClick={ungroupSelection}
+            >
               <Ungroup />
               Ungroup
               <ContextMenuShortcut>⇧⌘G</ContextMenuShortcut>
@@ -244,12 +264,18 @@ export function SceneContextMenu({
 
             <ContextMenuSeparator />
 
-            <ContextMenuItem onClick={onFocusSelection}>
+            <ContextMenuItem
+              disabled={!actsOnTarget}
+              onClick={onFocusSelection}
+            >
               <Crosshair />
               Focus
               <ContextMenuShortcut>F</ContextMenuShortcut>
             </ContextMenuItem>
-            <ContextMenuItem onClick={isolateSelection}>
+            <ContextMenuItem
+              disabled={!actsOnTarget}
+              onClick={isolateSelection}
+            >
               <Eye />
               Isolate
             </ContextMenuItem>
@@ -282,7 +308,11 @@ export function SceneContextMenu({
 
             <ContextMenuSeparator />
 
-            <ContextMenuItem variant="destructive" onClick={deleteSelection}>
+            <ContextMenuItem
+              variant="destructive"
+              disabled={!actsOnTarget}
+              onClick={deleteSelection}
+            >
               <Trash2 />
               Delete
               <ContextMenuShortcut>⌫</ContextMenuShortcut>

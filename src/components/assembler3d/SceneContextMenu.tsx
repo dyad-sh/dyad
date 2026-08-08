@@ -102,6 +102,8 @@ export function SceneContextMenu({
     (state) => state.distributeSelection,
   );
   const mirrorSelection = useAssembler3D((state) => state.mirrorSelection);
+  const rotateBy = useAssembler3D((state) => state.rotateBy);
+  const flipObject = useAssembler3D((state) => state.flipObject);
   const setVisibility = useAssembler3D((state) => state.setVisibility);
   const setLocked = useAssembler3D((state) => state.setLocked);
   const resetScale = useAssembler3D((state) => state.resetScale);
@@ -225,10 +227,48 @@ export function SceneContextMenu({
               </ContextMenuSubContent>
             </ContextMenuSub>
 
+            {/* Flip and quarter-turn are one click, not three. They are the
+                two things people reach for constantly, and burying them under
+                a submenu made the common case the slowest one. Mirror keeps
+                its submenu: it moves parts as well as reversing them, so it is
+                the deliberate choice rather than the quick one. */}
+            <div className="flex gap-1 px-2 py-1">
+              <span className="self-center text-[10px] text-white/35">
+                Flip
+              </span>
+              {AXES.map((axis) => (
+                <button
+                  key={`flip-${axis}`}
+                  type="button"
+                  disabled={target.locked}
+                  onClick={() => flipObject(target.id, axis as Axis)}
+                  className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[11px] text-white/70 hover:bg-white/[0.12] disabled:opacity-40"
+                >
+                  {axis.toUpperCase()}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-1 px-2 pb-1">
+              <span className="self-center text-[10px] text-white/35">
+                Turn 90°
+              </span>
+              {AXES.map((axis) => (
+                <button
+                  key={`turn-${axis}`}
+                  type="button"
+                  disabled={target.locked}
+                  onClick={() => rotateBy(target.id, axis as Axis, 90)}
+                  className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[11px] text-white/70 hover:bg-white/[0.12] disabled:opacity-40"
+                >
+                  {axis.toUpperCase()}
+                </button>
+              ))}
+            </div>
+
             <ContextMenuSub>
               <ContextMenuSubTrigger>
                 <FlipHorizontal />
-                Mirror
+                Mirror selection
               </ContextMenuSubTrigger>
               <ContextMenuSubContent className="w-36">
                 {AXES.map((axis) => (

@@ -11,6 +11,7 @@ import {
   distributeObjects,
   duplicateObjects,
   emptyScene,
+  flipObject,
   groupObjects,
   mirrorObjects,
   ORIGIN,
@@ -18,6 +19,7 @@ import {
   redo,
   removeObjects,
   resizeObject,
+  rotateObjectBy,
   select,
   snapAngle,
   toggleSelection,
@@ -140,6 +142,10 @@ type Assembler3DState = {
   applyGroupTransform: (pivot: Vector3, transform: GroupTransform) => void;
   /** Rounds an object's rotation onto the current detent. */
   snapRotationToDetent: (id: string) => void;
+  /** Turns an object about one of its axes by whole degrees. */
+  rotateBy: (id: string, axis: Axis, degrees: number) => void;
+  /** Reverses an object along an axis without moving it. */
+  flipObject: (id: string, axis: Axis) => void;
 
   openProject: (project: Project, scene: Scene) => void;
   undo: () => void;
@@ -519,6 +525,20 @@ export const useAssembler3D = create<Assembler3DState>((set, get) => ({
     set({
       history: commit(history, updateObject(history.present, id, { rotation })),
     });
+  },
+
+  rotateBy(id, axis, degrees) {
+    const { history } = get();
+    const next = rotateObjectBy(history.present, id, axis, degrees);
+    if (next === history.present) return;
+    set({ history: commit(history, next) });
+  },
+
+  flipObject(id, axis) {
+    const { history } = get();
+    const next = flipObject(history.present, id, axis);
+    if (next === history.present) return;
+    set({ history: commit(history, next) });
   },
 
   setRotationSnap(degrees) {

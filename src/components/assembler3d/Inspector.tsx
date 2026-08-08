@@ -2,9 +2,11 @@ import { useState } from "react";
 import {
   Eye,
   EyeOff,
+  FlipHorizontal,
   Link,
   Lock,
   RotateCcw,
+  RotateCw,
   Trash2,
   Unlink,
   Unlock,
@@ -35,11 +37,18 @@ function AxisRow({
   label,
   value,
   disabled,
+  step = 0.1,
+  toDisplay = (n: number) => n,
+  fromDisplay = (n: number) => n,
   onCommit,
 }: {
   label: string;
   value: Vector3;
   disabled: boolean;
+  step?: number;
+  /** Storage units to the units a person types. Identity except for angles. */
+  toDisplay?: (value: number) => number;
+  fromDisplay?: (value: number) => number;
   onCommit: (axis: "x" | "y" | "z", next: number) => void;
 }) {
   return (
@@ -48,28 +57,33 @@ function AxisRow({
         {label}
       </span>
       <div className="grid grid-cols-3 gap-1.5">
-        {AXES.map((axis) => (
-          <label key={axis} className="relative block">
-            <span className="absolute top-1/2 left-2 -translate-y-1/2 text-[10px] text-white/30 uppercase">
-              {axis}
-            </span>
-            <input
-              type="number"
-              step="0.1"
-              disabled={disabled}
-              // Uncontrolled between commits, so a half-typed number is never
-              // pushed into the scene.
-              defaultValue={Number(value[axis].toFixed(4))}
-              key={`${axis}-${value[axis]}`}
-              onBlur={(event) => onCommit(axis, Number(event.target.value))}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") event.currentTarget.blur();
-              }}
-              className="w-full rounded-md border border-white/10 bg-black/30 py-1.5 pr-1.5 pl-6 text-right text-xs text-white outline-none focus:border-cyan-400/50 disabled:opacity-40"
-              aria-label={`${label} ${axis}`}
-            />
-          </label>
-        ))}
+        {AXES.map((axis) => {
+          const shown = toDisplay(value[axis]);
+          return (
+            <label key={axis} className="relative block">
+              <span className="absolute top-1/2 left-2 -translate-y-1/2 text-[10px] text-white/30 uppercase">
+                {axis}
+              </span>
+              <input
+                type="number"
+                step={step}
+                disabled={disabled}
+                // Uncontrolled between commits, so a half-typed number is never
+                // pushed into the scene.
+                defaultValue={Number(shown.toFixed(4))}
+                key={`${axis}-${shown}`}
+                onBlur={(event) =>
+                  onCommit(axis, fromDisplay(Number(event.target.value)))
+                }
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") event.currentTarget.blur();
+                }}
+                className="w-full rounded-md border border-white/10 bg-black/30 py-1.5 pr-1.5 pl-6 text-right text-xs text-white outline-none focus:border-cyan-400/50 disabled:opacity-40"
+                aria-label={`${label} ${axis}`}
+              />
+            </label>
+          );
+        })}
       </div>
     </div>
   );
@@ -160,6 +174,8 @@ export function Inspector({ object }: { object: SceneObject }) {
   const setVisibility = useAssembler3D((state) => state.setVisibility);
   const setLocked = useAssembler3D((state) => state.setLocked);
   const resetScale = useAssembler3D((state) => state.resetScale);
+  const rotateBy = useAssembler3D((state) => state.rotateBy);
+  const flipObject = useAssembler3D((state) => state.flipObject);
   const deleteSelection = useAssembler3D((state) => state.deleteSelection);
 
   const locked = object.locked;
@@ -233,14 +249,51 @@ export function Inspector({ object }: { object: SceneObject }) {
           setTransform(object.id, "position", axis, next)
         }
       />
+      {/* Degrees, not radians. The scene stores radians because Three does,
+          but nobody types 1.5708 when they mean a quarter turn, and typing 90
+          into a radians field silently spins the part fourteen times round. */}
       <AxisRow
-        label="Rotation"
+        label="Rotation (°)"
         value={object.rotation}
         disabled={locked}
+        step={15}
+        toDisplay={(radians) => (radians * 180) / Math.PI}
+        fromDisplay={(degrees) => (degrees * Math.PI) / 180}
         onCommit={(axis, next) =>
           setTransform(object.id, "rotation", axis, next)
         }
       />
+
+      <div className="flex flex-wrap gap-1">
+        {/* One click per quarter turn, and a flip, because reaching these
+            through a gizmo drag is slower and less exact than it needs to be. */}
+        {AXES.map((axis) => (
+          <button
+            key={`rot-${axis}`}
+            type="button"
+            disabled={locked}
+            onClick={() => rotateBy(object.id, axis, 90)}
+            title={`Rotate 90° about ${axis.toUpperCase()}`}
+            className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-1 text-[10px] text-white/70 hover:bg-white/[0.09] disabled:opacity-40"
+          >
+            <RotateCw className="size-3" />
+            {axis.toUpperCase()}
+          </button>
+        ))}
+        {AXES.map((axis) => (
+          <button
+            key={`flip-${axis}`}
+            type="button"
+            disabled={locked}
+            onClick={() => flipObject(object.id, axis)}
+            title={`Flip along ${axis.toUpperCase()}`}
+            className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-1 text-[10px] text-white/70 hover:bg-white/[0.09] disabled:opacity-40"
+          >
+            <FlipHorizontal className="size-3" />
+            {axis.toUpperCase()}
+          </button>
+        ))}
+      </div>
 
       <DimensionRow object={object} disabled={locked} />
 

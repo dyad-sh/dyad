@@ -8,6 +8,7 @@ import {
   distributeObjects,
   duplicateObjects,
   emptyScene,
+  flipObject,
   groupObjects,
   IDENTITY_TRANSFORM,
   isDescendantOf,
@@ -16,6 +17,7 @@ import {
   pasteObjects,
   projectedHalfExtent,
   resizeObject,
+  rotateObjectBy,
   rotateVector,
   scaleForDimensions,
   selectionPivot,
@@ -23,6 +25,7 @@ import {
   topLevelIds,
   transformAboutPivot,
   UNIT_SCALE,
+  wrapAngle,
   updateObject,
   worldPosition,
   type Scene,
@@ -440,5 +443,75 @@ describe("selectionPivot", () => {
 
   it("falls back to the origin with nothing selected", () => {
     expect(selectionPivot(emptyScene(), [])).toEqual(ORIGIN);
+  });
+});
+
+describe("rotateObjectBy", () => {
+  it("turns by whole degrees, stored as radians", () => {
+    const scene = sceneWith(part("a"));
+    const next = rotateObjectBy(scene, "a", "y", 90);
+    expect(next.objects.a!.rotation.y).toBeCloseTo(Math.PI / 2);
+  });
+
+  it("accumulates across repeated turns", () => {
+    let scene = sceneWith(part("a"));
+    scene = rotateObjectBy(scene, "a", "y", 90);
+    scene = rotateObjectBy(scene, "a", "y", 90);
+    expect(scene.objects.a!.rotation.y).toBeCloseTo(Math.PI);
+  });
+
+  it("comes back to zero after a full turn", () => {
+    let scene = sceneWith(part("a"));
+    for (let i = 0; i < 4; i++) scene = rotateObjectBy(scene, "a", "y", 90);
+    expect(scene.objects.a!.rotation.y).toBeCloseTo(0);
+  });
+
+  it("wraps rather than climbing past a full turn", () => {
+    const scene = rotateObjectBy(sceneWith(part("a")), "a", "y", 270);
+    // 270 reads as -90, which is the same pose and a friendlier number.
+    expect(scene.objects.a!.rotation.y).toBeCloseTo(-Math.PI / 2);
+  });
+
+  it("refuses a locked part", () => {
+    const scene = sceneWith(part("a", { locked: true }));
+    expect(rotateObjectBy(scene, "a", "y", 90)).toBe(scene);
+  });
+});
+
+describe("wrapAngle", () => {
+  it("leaves an angle already in range alone", () => {
+    expect(wrapAngle(Math.PI / 3)).toBeCloseTo(Math.PI / 3);
+  });
+
+  it("brings a full turn back to zero", () => {
+    expect(wrapAngle(Math.PI * 2)).toBeCloseTo(0);
+  });
+
+  it("maps a negative overshoot into range", () => {
+    expect(wrapAngle(-Math.PI * 3)).toBeCloseTo(Math.PI);
+  });
+});
+
+describe("flipObject", () => {
+  it("reverses an axis without moving the part", () => {
+    const scene = sceneWith(part("a", { position: { x: 3, y: 1, z: 0 } }));
+    const next = flipObject(scene, "a", "x");
+    expect(next.objects.a!.scale.x).toBe(-1);
+    // Flipping is not mirroring: the part stays exactly where it was put.
+    expect(next.objects.a!.position).toEqual({ x: 3, y: 1, z: 0 });
+  });
+
+  it("returns to the original when flipped twice", () => {
+    const scene = flipObject(
+      flipObject(sceneWith(part("a")), "a", "z"),
+      "a",
+      "z",
+    );
+    expect(scene.objects.a!.scale.z).toBe(1);
+  });
+
+  it("refuses a locked part", () => {
+    const scene = sceneWith(part("a", { locked: true }));
+    expect(flipObject(scene, "a", "x")).toBe(scene);
   });
 });

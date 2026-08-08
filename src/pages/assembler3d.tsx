@@ -71,6 +71,13 @@ const CATEGORIES: { id: ProjectCategory; label: string }[] = [
   { id: "custom", label: "Custom mechanical" },
 ];
 
+/** Single-key flips. Chosen next to each other and away from the mode keys. */
+const FLIP_KEYS: Record<string, "x" | "y" | "z"> = {
+  j: "x",
+  k: "y",
+  l: "z",
+};
+
 /** Arrow keys, mapped onto the ground plane the grid describes. */
 const NUDGES: Record<string, { x: number; y: number; z: number }> = {
   ArrowLeft: { x: -1, y: 0, z: 0 },
@@ -200,6 +207,8 @@ export default function Assembler3DPage() {
   const applyGroupTransform = useAssembler3D(
     (state) => state.applyGroupTransform,
   );
+  const rotateBy = useAssembler3D((state) => state.rotateBy);
+  const flipObject = useAssembler3D((state) => state.flipObject);
   const toggleGrid = useAssembler3D((state) => state.toggleGrid);
   const copySelection = useAssembler3D((state) => state.copySelection);
   const cutSelection = useAssembler3D((state) => state.cutSelection);
@@ -350,6 +359,14 @@ export default function Assembler3DPage() {
         setTransformMode("scale");
       } else if (event.key === "q" || event.key === "Q") {
         toggleTransformSpace();
+      } else if (selectedObject && FLIP_KEYS[event.key.toLowerCase()]) {
+        // Flip and turn on single keys: they are the two moves people repeat
+        // most, and a menu round-trip for each was the slow part.
+        event.preventDefault();
+        flipObject(selectedObject.id, FLIP_KEYS[event.key.toLowerCase()]!);
+      } else if (selectedObject && (event.key === "[" || event.key === "]")) {
+        event.preventDefault();
+        rotateBy(selectedObject.id, "y", event.key === "[" ? -90 : 90);
       } else if (event.key === "x" || event.key === "X") {
         // Free transform is a hold-and-work mode, so it toggles rather than
         // hiding behind a modifier the user has to keep pressed mid-drag.
@@ -382,6 +399,9 @@ export default function Assembler3DPage() {
     selectAll,
     moveSelection,
     gridStep,
+    rotateBy,
+    flipObject,
+    selectedObject,
     scene,
   ]);
 
@@ -732,6 +752,7 @@ export default function Assembler3DPage() {
                 })
               }
               onGroupTransform={applyGroupTransform}
+              onDragMove={(id, position) => applyTransform(id, { position })}
               cameraRequest={cameraRequest}
               onCameraApplied={() => setCameraRequest(null)}
             />

@@ -1,11 +1,12 @@
-import { Canvas, useThree } from "@react-three/fiber";
+import { Canvas, useThree, type ThreeEvent } from "@react-three/fiber";
 import { Grid, OrbitControls, TransformControls } from "@react-three/drei";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Object3D } from "three";
+import { Plane, Vector3 as Vector3Three, type Object3D } from "three";
 
 import {
   childrenOf,
   selectionPivot,
+  worldPosition,
   type GroupTransform,
   type Scene,
   type SceneObject,
@@ -29,6 +30,29 @@ import {
  * undo history authoritative and stops the viewport and the panels drifting
  * apart.
  */
+
+/**
+ * Click-and-drag a part straight across the ground.
+ *
+ * The gizmo is precise and slow: you must select, then find the one arrow that
+ * points where you meant. Most placement is not that fussy, so dragging the
+ * part itself moves it across the ground plane, which is the plane the grid
+ * already describes and the one an assembly is laid out on.
+ *
+ * Vertical stays with the gizmo deliberately. A single drag cannot mean both
+ * "across the floor" and "up into the air" without guessing, and guessing
+ * wrong moves a part somewhere you did not look.
+ */
+type DragHandlers = {
+  start: (id: string, event: ThreeEvent<PointerEvent>) => void;
+  move: (id: string, event: ThreeEvent<PointerEvent>) => void;
+  end: (id: string, event: ThreeEvent<PointerEvent>) => void;
+  /** True once per drag that actually moved, so it is not read as a click. */
+  consumeClick: () => boolean;
+};
+
+/** Below this, a wobble during a click is still a click. */
+const DRAG_THRESHOLD = 0.02;
 
 /** Geometry per primitive kind. Imported meshes are handled separately. */
 function Primitive({ kind }: { kind: SceneObject["kind"] }) {
@@ -59,12 +83,14 @@ function SceneNode({
   object,
   onSelect,
   onContextTarget,
+  drag,
   registerRef,
 }: {
   scene: Scene;
   object: SceneObject;
   onSelect: (id: string, additive: boolean) => void;
   onContextTarget?: (id: string) => void;
+  drag: DragHandlers;
   registerRef: (id: string, node: Object3D | null) => void;
 }) {
   const selected = scene.selection.includes(object.id);
@@ -90,8 +116,18 @@ function SceneNode({
             // A locked part must not be selectable by clicking, or the gizmo
             // would appear on something that cannot be moved.
             if (object.locked) return;
+            // A click that ended a drag has already done its work; selecting
+            // again here would be harmless but reporting it as a click is not.
+            if (drag.consumeClick()) return;
             onSelect(object.id, event.nativeEvent.shiftKey);
           }}
+          onPointerDown={(event) => {
+            if (event.button !== 0 || object.locked) return;
+            event.stopPropagation();
+            drag.start(object.id, event);
+          }}
+          onPointerMove={(event) => drag.move(object.id, event)}
+          onPointerUp={(event) => drag.end(object.id, event)}
           onContextMenu={(event) => {
             event.stopPropagation();
             // A locked part still gets its menu: unlocking is one of the few
@@ -125,6 +161,7 @@ function SceneNode({
           object={child}
           onSelect={onSelect}
           onContextTarget={onContextTarget}
+          drag={drag}
           registerRef={registerRef}
         />
       ))}
@@ -177,6 +214,7 @@ export function Viewport({
   onTransformEnd,
   onTransformChange,
   onGroupTransform,
+  onDragMove,
   cameraRequest = null,
   onCameraApplied,
 }: {
@@ -203,12 +241,105 @@ export function Viewport({
   onTransformChange?: (id: string, node: Object3D) => void;
   /** Gizmo drag on a multi-selection, as a delta about the shared pivot. */
   onGroupTransform?: (pivot: Vector3, transform: GroupTransform) => void;
+  /** Direct drag of a part across the ground, as a new parent-local position. */
+  onDragMove?: (id: string, position: Vector3) => void;
   cameraRequest?: CameraState | null;
   onCameraApplied?: () => void;
 }) {
   const nodes = useRef(new Map<string, Object3D>());
   const pivotRef = useRef<Object3D | null>(null);
   const [dragging, setDragging] = useState(false);
+
+  const dragState = useRef<{
+    id: string;
+    plane: Plane;
+    /** Where the part sits relative to the point the cursor grabbed it by. */
+    grabOffset: Vector3Three;
+    startLocal: { x: number; y: number; z: number };
+    moved: boolean;
+  } | null>(null);
+  const clickWasDrag = useRef(false);
+
+  const drag: DragHandlers = useMemo(() => {
+    const snap = (value: number) =>
+      translationSnap
+        ? Math.round(value / translationSnap) * translationSnap
+        : value;
+
+    return {
+      start(id, event) {
+        const object = scene.objects[id];
+        if (!object || !onDragMove) return;
+        const world = new Vector3Three();
+        event.eventObject.getWorldPosition(world);
+
+        dragState.current = {
+          id,
+          // Horizontal plane through the part, so it slides across the floor
+          // rather than towards the camera.
+          plane: new Plane(new Vector3Three(0, 1, 0), -world.y),
+          grabOffset: world.clone().sub(event.point),
+          startLocal: { ...object.position },
+          moved: false,
+        };
+        (event.target as Element)?.setPointerCapture?.(event.pointerId);
+      },
+
+      move(id, event) {
+        const state = dragState.current;
+        if (!state || state.id !== id || !onDragMove) return;
+
+        const hit = event.ray.intersectPlane(state.plane, new Vector3Three());
+        // A ray parallel to the plane has no intersection: keep the last good
+        // position rather than throwing the part to the horizon.
+        if (!hit) return;
+
+        const world = hit.add(state.grabOffset);
+        const object = scene.objects[id];
+        if (!object) return;
+
+        // Positions are parent-relative, and only translation is involved, so
+        // a world delta is the same delta in the parent's frame.
+        const currentWorld = worldPosition(scene, id);
+        const delta = {
+          x: world.x - currentWorld.x,
+          z: world.z - currentWorld.z,
+        };
+        if (!state.moved && Math.hypot(delta.x, delta.z) < DRAG_THRESHOLD) {
+          return;
+        }
+        if (!state.moved) {
+          state.moved = true;
+          setDragging(true);
+          onTransformStart?.();
+        }
+
+        onDragMove(id, {
+          x: snap(object.position.x + delta.x),
+          y: object.position.y,
+          z: snap(object.position.z + delta.z),
+        });
+      },
+
+      end(id, event) {
+        const state = dragState.current;
+        (event.target as Element)?.releasePointerCapture?.(event.pointerId);
+        dragState.current = null;
+        if (!state || state.id !== id) return;
+        if (state.moved) {
+          clickWasDrag.current = true;
+          setDragging(false);
+          onTransformEnd?.();
+        }
+      },
+
+      consumeClick() {
+        const was = clickWasDrag.current;
+        clickWasDrag.current = false;
+        return was;
+      },
+    };
+  }, [scene, translationSnap, onDragMove, onTransformStart, onTransformEnd]);
 
   const multiple = scene.selection.length > 1;
   const gizmoId = scene.selection.length === 1 ? scene.selection[0]! : null;
@@ -294,6 +425,7 @@ export function Viewport({
           object={object}
           onSelect={onSelect}
           onContextTarget={onContextTarget}
+          drag={drag}
           registerRef={(id, node) => {
             if (node) nodes.current.set(id, node);
             else nodes.current.delete(id);

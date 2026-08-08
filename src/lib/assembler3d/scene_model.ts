@@ -812,6 +812,53 @@ export function transformAboutPivot(
   return next;
 }
 
+/**
+ * Turns an object about one of its own axes.
+ *
+ * Kept as a whole-number-of-degrees operation because that is how people
+ * describe the turns they actually want: a quarter turn, a flip, ninety more.
+ * Angles are wrapped to (-180, 180] so repeated quarter turns read as -90
+ * rather than climbing to 450 and beyond in the inspector.
+ */
+export function rotateObjectBy(
+  scene: Scene,
+  id: string,
+  axis: Axis,
+  degrees: number,
+): Scene {
+  const object = scene.objects[id];
+  if (!object || !isEditable(scene, id)) return scene;
+  const radians = (degrees * Math.PI) / 180;
+  return updateObject(scene, id, {
+    rotation: {
+      ...object.rotation,
+      [axis]: wrapAngle(object.rotation[axis] + radians),
+    },
+  });
+}
+
+/** Brings an angle into (-180°, 180°], the range people read comfortably. */
+export function wrapAngle(radians: number): number {
+  const turn = Math.PI * 2;
+  const wrapped = ((radians % turn) + turn) % turn;
+  return wrapped > Math.PI ? wrapped - turn : wrapped;
+}
+
+/**
+ * Flips an object along one of its axes, in place.
+ *
+ * Distinct from mirroring a selection: this never moves the part, it only
+ * reverses it. Flipping a bracket you have already positioned should not also
+ * relocate it.
+ */
+export function flipObject(scene: Scene, id: string, axis: Axis): Scene {
+  const object = scene.objects[id];
+  if (!object || !isEditable(scene, id)) return scene;
+  return updateObject(scene, id, {
+    scale: { ...object.scale, [axis]: -object.scale[axis] },
+  });
+}
+
 /** Rounds an angle to a step in radians; a step of zero means no snapping. */
 export function snapAngle(value: number, stepRadians: number): number {
   if (!stepRadians || stepRadians <= 0) return value;

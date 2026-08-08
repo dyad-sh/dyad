@@ -2,14 +2,22 @@ import { create } from "zustand";
 
 import {
   addObject,
+  alignObjects,
   clearSelection,
   commit,
+  copyObjects,
   createHistory,
+  descendantsOf,
+  distributeObjects,
+  duplicateObjects,
   emptyScene,
   groupObjects,
+  mirrorObjects,
   ORIGIN,
+  pasteObjects,
   redo,
   removeObjects,
+  resizeObject,
   select,
   toggleSelection,
   translateObjects,
@@ -18,9 +26,13 @@ import {
   safeScale,
   safeVector,
   UNIT_SCALE,
+  type AlignMode,
+  type Axis,
+  type ClipboardEntry,
   type History,
   type Scene,
   type SceneObject,
+  type Vector3,
 } from "./scene_model";
 
 /**
@@ -71,7 +83,29 @@ type Assembler3DState = {
   groupSelection: () => void;
   ungroupSelection: () => void;
 
+  /** Clipboard contents, kept out of history: copying is not an edit. */
+  clipboard: ClipboardEntry[];
+  copySelection: () => void;
+  cutSelection: () => void;
+  paste: () => void;
+
+  /** Size an object in scene units rather than by scale multiplier. */
+  resizeObject: (
+    id: string,
+    dimensions: Partial<Vector3>,
+    uniform?: boolean,
+  ) => void;
+  alignSelection: (axis: Axis, mode: AlignMode) => void;
+  distributeSelection: (axis: Axis) => void;
+  mirrorSelection: (axis: Axis) => void;
+
   selectObject: (id: string, additive: boolean) => void;
+  selectAll: () => void;
+  invertSelection: () => void;
+  /** Hides everything except the selection, the usual way to work inside a
+   *  crowded assembly. */
+  isolateSelection: () => void;
+  showAll: () => void;
   clearSelection: () => void;
   renameObject: (id: string, name: string) => void;
   setVisibility: (id: string, visible: boolean) => void;
@@ -127,6 +161,7 @@ export const useAssembler3D = create<Assembler3DState>((set, get) => ({
   showGrid: true,
   transformMode: "translate",
   transformSpace: "world",
+  clipboard: [],
 
   createProject(name, category) {
     const project: Project = {
@@ -178,28 +213,122 @@ export const useAssembler3D = create<Assembler3DState>((set, get) => ({
     const { history } = get();
     const scene = history.present;
     if (scene.selection.length === 0) return;
+    // Offset so the duplicate is visible rather than hidden inside its
+    // original, and deep so a duplicated assembly keeps its parts.
+    const { scene: next, created } = duplicateObjects(
+      scene,
+      scene.selection,
+      newId,
+    );
+    if (created.length === 0) return;
+    set({ history: commit(history, select(next, created)) });
+  },
 
-    let next = scene;
-    const copies: string[] = [];
+  copySelection() {
+    const scene = get().history.present;
+    if (scene.selection.length === 0) return;
+    set({ clipboard: copyObjects(scene, scene.selection) });
+  },
+
+  cutSelection() {
+    const { history } = get();
+    const scene = history.present;
+    if (scene.selection.length === 0) return;
+    set({
+      clipboard: copyObjects(scene, scene.selection),
+      history: commit(history, removeObjects(scene, scene.selection)),
+    });
+  },
+
+  paste() {
+    const { history, clipboard } = get();
+    if (clipboard.length === 0) return;
+    const { scene, created } = pasteObjects(history.present, clipboard, newId);
+    if (created.length === 0) return;
+    // The clipboard is not consumed: pasting twice is a normal way to lay out
+    // repeated parts.
+    set({ history: commit(history, select(scene, created)) });
+  },
+
+  resizeObject(id, dimensions, uniform = false) {
+    const { history } = get();
+    const next = resizeObject(history.present, id, dimensions, uniform);
+    if (next === history.present) return;
+    set({ history: commit(history, next) });
+  },
+
+  alignSelection(axis, mode) {
+    const { history } = get();
+    const scene = history.present;
+    const next = alignObjects(scene, scene.selection, axis, mode);
+    if (next === scene) return;
+    set({ history: commit(history, next) });
+  },
+
+  distributeSelection(axis) {
+    const { history } = get();
+    const scene = history.present;
+    const next = distributeObjects(scene, scene.selection, axis);
+    if (next === scene) return;
+    set({ history: commit(history, next) });
+  },
+
+  mirrorSelection(axis) {
+    const { history } = get();
+    const scene = history.present;
+    const next = mirrorObjects(scene, scene.selection, axis);
+    if (next === scene) return;
+    set({ history: commit(history, next) });
+  },
+
+  selectAll() {
+    const { history } = get();
+    set({
+      history: {
+        ...history,
+        present: select(history.present, history.present.order),
+      },
+    });
+  },
+
+  invertSelection() {
+    const { history } = get();
+    const scene = history.present;
+    const inverted = scene.order.filter((id) => !scene.selection.includes(id));
+    set({ history: { ...history, present: select(scene, inverted) } });
+  },
+
+  isolateSelection() {
+    const { history } = get();
+    const scene = history.present;
+    if (scene.selection.length === 0) return;
+    // Ancestors stay visible: hiding the assembly a part belongs to would hide
+    // the part along with it.
+    const keep = new Set<string>();
     for (const id of scene.selection) {
-      const source = scene.objects[id];
-      if (!source) continue;
-      const copyId = newId();
-      copies.push(copyId);
-      next = addObject(next, {
-        ...source,
-        id: copyId,
-        name: `${source.name} copy`,
-        // Offset so the duplicate is visible rather than hidden inside its
-        // original.
-        position: {
-          x: source.position.x + 1,
-          y: source.position.y,
-          z: source.position.z,
-        },
-      });
+      keep.add(id);
+      for (const child of descendantsOf(scene, id)) keep.add(child);
+      let parentId = scene.objects[id]?.parentId ?? null;
+      while (parentId) {
+        keep.add(parentId);
+        parentId = scene.objects[parentId]?.parentId ?? null;
+      }
     }
-    set({ history: commit(history, select(next, copies)) });
+    const objects = { ...scene.objects };
+    for (const id of scene.order) {
+      objects[id] = { ...objects[id]!, visible: keep.has(id) };
+    }
+    set({ history: commit(history, { ...scene, objects }) });
+  },
+
+  showAll() {
+    const { history } = get();
+    const scene = history.present;
+    const hidden = scene.order.filter((id) => !scene.objects[id]!.visible);
+    if (hidden.length === 0) return;
+    const objects = { ...scene.objects };
+    for (const id of hidden) objects[id] = { ...objects[id]!, visible: true };
+    set({ history: commit(history, { ...scene, objects }) });
   },
 
   moveSelection(delta) {

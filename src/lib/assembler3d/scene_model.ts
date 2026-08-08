@@ -18,6 +18,9 @@ export type Vector3 = { x: number; y: number; z: number };
 export const ORIGIN: Vector3 = { x: 0, y: 0, z: 0 };
 export const UNIT_SCALE: Vector3 = { x: 1, y: 1, z: 1 };
 
+export type Axis = "x" | "y" | "z";
+export const AXES: readonly Axis[] = ["x", "y", "z"] as const;
+
 export type SceneObject = {
   id: string;
   name: string;
@@ -112,6 +115,40 @@ export function descendantsOf(scene: Scene, id: string): string[] {
   };
   walk(id);
   return found;
+}
+
+/** True when `id` sits anywhere beneath `ancestorId`. */
+export function isDescendantOf(
+  scene: Scene,
+  id: string,
+  ancestorId: string,
+): boolean {
+  let object = scene.objects[id];
+  const guard = new Set<string>();
+  while (object?.parentId) {
+    if (guard.has(object.id)) return false;
+    guard.add(object.id);
+    if (object.parentId === ancestorId) return true;
+    object = scene.objects[object.parentId];
+  }
+  return false;
+}
+
+/**
+ * The outermost ids in a selection.
+ *
+ * Selecting an assembly and one of its parts means the part is already covered
+ * by its ancestor. Operations that copy or delete whole subtrees must act on
+ * the ancestor only, or the part is processed twice.
+ */
+export function topLevelIds(scene: Scene, ids: string[]): string[] {
+  const present = ids.filter((id) => scene.objects[id]);
+  return present.filter(
+    (id) =>
+      !present.some(
+        (other) => other !== id && isDescendantOf(scene, id, other),
+      ),
+  );
 }
 
 /** Objects that can be acted on: not locked, and no locked ancestor. */
@@ -284,6 +321,356 @@ export function ungroupObjects(scene: Scene, groupId: string): Scene {
     next,
     members.map((member) => member.id),
   );
+}
+
+// ── Size ───────────────────────────────────────────────────────────────────
+
+/**
+ * Size of each primitive at scale 1, in scene units.
+ *
+ * Scale is a multiplier and says nothing about how big a part actually is. A
+ * CAD user thinks in millimetres, not in "1.4x", so everything size-facing
+ * converts through these base sizes. They must match the geometry arguments
+ * the viewport builds: change one without the other and the inspector lies
+ * about the part.
+ */
+export const BASE_SIZE: Record<SceneObject["kind"], Vector3> = {
+  box: { x: 1, y: 1, z: 1 },
+  sphere: { x: 1, y: 1, z: 1 },
+  cylinder: { x: 1, y: 1, z: 1 },
+  cone: { x: 1, y: 1, z: 1 },
+  // A torus lies in XY: outer diameter across x and y, tube across z.
+  torus: { x: 1.1, y: 1.1, z: 0.3 },
+  // An assembly has no geometry, so its "size" is only what it multiplies its
+  // children by. Treating it as a unit cube keeps the maths uniform.
+  group: { x: 1, y: 1, z: 1 },
+  imported: { x: 1, y: 1, z: 1 },
+};
+
+/**
+ * Current size in scene units.
+ *
+ * Absolute, because a mirrored part is still the same size: a negative scale
+ * flips it, it does not give it a negative width.
+ */
+export function dimensionsOf(object: SceneObject): Vector3 {
+  const base = BASE_SIZE[object.kind];
+  return {
+    x: Math.abs(base.x * object.scale.x),
+    y: Math.abs(base.y * object.scale.y),
+    z: Math.abs(base.z * object.scale.z),
+  };
+}
+
+/**
+ * The scale that produces a requested size.
+ *
+ * Mirroring survives a resize: if an axis was flipped, typing a new width
+ * keeps it flipped rather than silently un-mirroring the part.
+ */
+export function scaleForDimensions(
+  kind: SceneObject["kind"],
+  dimensions: Partial<Vector3>,
+  currentScale: Vector3,
+): Vector3 {
+  const base = BASE_SIZE[kind];
+  const next: Vector3 = { ...currentScale };
+  for (const axis of AXES) {
+    const wanted = safeNumber(dimensions[axis]);
+    if (wanted === null) continue;
+    const sign = currentScale[axis] < 0 ? -1 : 1;
+    next[axis] = safeScaleComponent(
+      (sign * wanted) / base[axis],
+      currentScale[axis],
+    );
+  }
+  return next;
+}
+
+/**
+ * Resizes an object to a size rather than to a multiplier.
+ *
+ * `uniform` takes the ratio from whichever axis was given and applies it to
+ * the rest, which is what a corner handle does and what "keep proportions"
+ * means everywhere else.
+ */
+export function resizeObject(
+  scene: Scene,
+  id: string,
+  dimensions: Partial<Vector3>,
+  uniform = false,
+): Scene {
+  const object = scene.objects[id];
+  if (!object || !isEditable(scene, id)) return scene;
+
+  const current = dimensionsOf(object);
+  let wanted = dimensions;
+
+  if (uniform) {
+    const axis = AXES.find((each) => safeNumber(dimensions[each]) !== null);
+    if (!axis) return scene;
+    const target = safeNumber(dimensions[axis])!;
+    // A collapsed axis carries no ratio to scale the others by, so there is
+    // nothing sensible to infer.
+    if (!current[axis]) return scene;
+    const ratio = target / current[axis];
+    wanted = {
+      x: current.x * ratio,
+      y: current.y * ratio,
+      z: current.z * ratio,
+    };
+  }
+
+  const scale = scaleForDimensions(object.kind, wanted, object.scale);
+  if (
+    scale.x === object.scale.x &&
+    scale.y === object.scale.y &&
+    scale.z === object.scale.z
+  ) {
+    return scene;
+  }
+  return updateObject(scene, id, { scale });
+}
+
+// ── Copying ────────────────────────────────────────────────────────────────
+
+/**
+ * Copies objects together with everything beneath them.
+ *
+ * Copying only the named objects would turn a duplicated assembly into an
+ * empty one, which looks like the copy silently failed. Ids are remapped as
+ * the subtree is walked so the copy is self-contained rather than pointing at
+ * the original's children.
+ */
+export function duplicateObjects(
+  scene: Scene,
+  ids: string[],
+  makeId: () => string,
+  offset: Vector3 = { x: 1, y: 0, z: 0 },
+): { scene: Scene; created: string[] } {
+  const roots = topLevelIds(scene, ids);
+  if (roots.length === 0) return { scene, created: [] };
+
+  let next = scene;
+  const created: string[] = [];
+
+  for (const rootId of roots) {
+    const subtree = [rootId, ...descendantsOf(scene, rootId)];
+    const remap = new Map<string, string>();
+    for (const oldId of subtree) remap.set(oldId, makeId());
+
+    for (const oldId of subtree) {
+      const source = scene.objects[oldId]!;
+      const isRoot = oldId === rootId;
+      next = addObject(next, {
+        ...source,
+        id: remap.get(oldId)!,
+        name: isRoot ? `${source.name} copy` : source.name,
+        // Only the root is re-parented and offset. Children keep their
+        // positions relative to it, so the copy holds its shape.
+        parentId: isRoot
+          ? source.parentId
+          : (remap.get(source.parentId!) ?? source.parentId),
+        position: isRoot
+          ? addVectors(source.position, offset)
+          : source.position,
+      });
+    }
+    created.push(remap.get(rootId)!);
+  }
+
+  return { scene: next, created };
+}
+
+/** A detached copy of a subtree, safe to hold while the scene changes. */
+export type ClipboardEntry = { root: SceneObject; descendants: SceneObject[] };
+
+export function copyObjects(scene: Scene, ids: string[]): ClipboardEntry[] {
+  return topLevelIds(scene, ids).map((id) => ({
+    root: { ...scene.objects[id]! },
+    descendants: descendantsOf(scene, id).map((childId) => ({
+      ...scene.objects[childId]!,
+    })),
+  }));
+}
+
+/**
+ * Pastes clipboard entries as new objects.
+ *
+ * Pasted roots land at the top level rather than back inside whatever assembly
+ * they were cut from: that assembly may no longer exist, and a paste that
+ * silently vanishes into a collapsed group reads as a paste that did nothing.
+ */
+export function pasteObjects(
+  scene: Scene,
+  entries: ClipboardEntry[],
+  makeId: () => string,
+  offset: Vector3 = { x: 1, y: 0, z: 0 },
+): { scene: Scene; created: string[] } {
+  let next = scene;
+  const created: string[] = [];
+
+  for (const entry of entries) {
+    const remap = new Map<string, string>();
+    remap.set(entry.root.id, makeId());
+    for (const child of entry.descendants) remap.set(child.id, makeId());
+
+    next = addObject(next, {
+      ...entry.root,
+      id: remap.get(entry.root.id)!,
+      parentId: null,
+      position: addVectors(entry.root.position, offset),
+    });
+    for (const child of entry.descendants) {
+      next = addObject(next, {
+        ...child,
+        id: remap.get(child.id)!,
+        parentId: remap.get(child.parentId!) ?? null,
+      });
+    }
+    created.push(remap.get(entry.root.id)!);
+  }
+
+  return { scene: next, created };
+}
+
+// ── Alignment ──────────────────────────────────────────────────────────────
+
+/**
+ * World-space extent of an object along one axis.
+ *
+ * Rotation is deliberately ignored. Accounting for it means aligning against
+ * the rotated bounding box, which moves an unrotated neighbour to match a
+ * corner rather than a face and surprises people far more often than it helps.
+ */
+function extentAlong(
+  scene: Scene,
+  id: string,
+  axis: Axis,
+): { min: number; centre: number; max: number } {
+  const object = scene.objects[id]!;
+  const centre = worldPosition(scene, id)[axis];
+  const half = dimensionsOf(object)[axis] / 2;
+  return { min: centre - half, centre, max: centre + half };
+}
+
+export type AlignMode = "min" | "center" | "max";
+
+/**
+ * Lines objects up on an axis by face or by centre.
+ *
+ * The target is taken from the selection itself (leftmost face, mean centre,
+ * rightmost face) rather than from the world origin, which is what makes it
+ * useful for tidying a built assembly instead of throwing it to the middle.
+ */
+export function alignObjects(
+  scene: Scene,
+  ids: string[],
+  axis: Axis,
+  mode: AlignMode,
+): Scene {
+  const targets = ids.filter(
+    (id) => scene.objects[id] && isEditable(scene, id),
+  );
+  if (targets.length < 2) return scene;
+
+  const extents = targets.map((id) => extentAlong(scene, id, axis));
+  const target =
+    mode === "min"
+      ? Math.min(...extents.map((each) => each.min))
+      : mode === "max"
+        ? Math.max(...extents.map((each) => each.max))
+        : extents.reduce((total, each) => total + each.centre, 0) /
+          extents.length;
+
+  let next = scene;
+  targets.forEach((id, index) => {
+    const extent = extents[index]!;
+    const from =
+      mode === "min" ? extent.min : mode === "max" ? extent.max : extent.centre;
+    const delta = target - from;
+    if (delta === 0) return;
+    const object = next.objects[id]!;
+    next = updateObject(next, id, {
+      position: { ...object.position, [axis]: object.position[axis] + delta },
+    });
+  });
+  return next;
+}
+
+/**
+ * Spaces objects evenly between the two outermost ones.
+ *
+ * The extremes stay put: they define the span the user already chose, and
+ * moving them would make repeated distributes drift the whole row.
+ */
+export function distributeObjects(
+  scene: Scene,
+  ids: string[],
+  axis: Axis,
+): Scene {
+  const targets = ids.filter(
+    (id) => scene.objects[id] && isEditable(scene, id),
+  );
+  // Two objects are already evenly spaced by definition.
+  if (targets.length < 3) return scene;
+
+  const ordered = targets
+    .map((id) => ({ id, centre: extentAlong(scene, id, axis).centre }))
+    .sort((a, b) => a.centre - b.centre);
+
+  const first = ordered[0]!;
+  const last = ordered.at(-1)!;
+  const step = (last.centre - first.centre) / (ordered.length - 1);
+
+  let next = scene;
+  ordered.forEach((entry, index) => {
+    if (index === 0 || index === ordered.length - 1) return;
+    const delta = first.centre + step * index - entry.centre;
+    if (delta === 0) return;
+    const object = next.objects[entry.id]!;
+    next = updateObject(next, entry.id, {
+      position: { ...object.position, [axis]: object.position[axis] + delta },
+    });
+  });
+  return next;
+}
+
+/**
+ * Mirrors objects across the selection's centre.
+ *
+ * Both the geometry and the placement flip: a bracket on the left becomes a
+ * mirrored bracket on the right. Mirroring a single object therefore flips it
+ * in place, since it is its own centre.
+ */
+export function mirrorObjects(scene: Scene, ids: string[], axis: Axis): Scene {
+  const targets = ids.filter(
+    (id) => scene.objects[id] && isEditable(scene, id),
+  );
+  if (targets.length === 0) return scene;
+
+  const centre =
+    targets.reduce((total, id) => total + worldPosition(scene, id)[axis], 0) /
+    targets.length;
+
+  let next = scene;
+  for (const id of targets) {
+    const world = worldPosition(scene, id)[axis];
+    const object = next.objects[id]!;
+    // Reflecting w about c lands at 2c - w, so the move is twice the gap.
+    const delta = 2 * (centre - world);
+    next = updateObject(next, id, {
+      position: { ...object.position, [axis]: object.position[axis] + delta },
+      scale: { ...object.scale, [axis]: -object.scale[axis] },
+    });
+  }
+  return next;
+}
+
+/** Rounds an angle to a step in radians; a step of zero means no snapping. */
+export function snapAngle(value: number, stepRadians: number): number {
+  if (!stepRadians || stepRadians <= 0) return value;
+  return Math.round(value / stepRadians) * stepRadians;
 }
 
 // ── History ────────────────────────────────────────────────────────────────

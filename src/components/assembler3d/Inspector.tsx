@@ -1,7 +1,21 @@
-import { Eye, EyeOff, Lock, RotateCcw, Trash2, Unlock } from "lucide-react";
+import { useState } from "react";
+import {
+  Eye,
+  EyeOff,
+  Link,
+  Lock,
+  RotateCcw,
+  Trash2,
+  Unlink,
+  Unlock,
+} from "lucide-react";
 
 import { useAssembler3D } from "@/lib/assembler3d/project_store";
-import type { SceneObject, Vector3 } from "@/lib/assembler3d/scene_model";
+import {
+  dimensionsOf,
+  type SceneObject,
+  type Vector3,
+} from "@/lib/assembler3d/scene_model";
 
 /**
  * Numeric editing for the selected object.
@@ -53,6 +67,85 @@ function AxisRow({
               }}
               className="w-full rounded-md border border-white/10 bg-black/30 py-1.5 pr-1.5 pl-6 text-right text-xs text-white outline-none focus:border-cyan-400/50 disabled:opacity-40"
               aria-label={`${label} ${axis}`}
+            />
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Size in scene units, which is how a part is actually specified.
+ *
+ * Scale is kept below for the cases where a multiplier is genuinely what you
+ * want, but "how wide is this bracket" should never require dividing by a base
+ * geometry in your head. The link toggle is the corner-handle behaviour: on,
+ * one edited axis carries the other two with it.
+ */
+function DimensionRow({
+  object,
+  disabled,
+}: {
+  object: SceneObject;
+  disabled: boolean;
+}) {
+  const resize = useAssembler3D((state) => state.resizeObject);
+  const [uniform, setUniform] = useState(true);
+  const size = dimensionsOf(object);
+  const labels = { x: "W", y: "H", z: "D" } as const;
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-medium tracking-wide text-white/40 uppercase">
+          Size
+        </span>
+        <button
+          type="button"
+          onClick={() => setUniform((on) => !on)}
+          aria-pressed={uniform}
+          title={uniform ? "Proportions locked" : "Axes resize independently"}
+          className={
+            uniform
+              ? "inline-flex items-center gap-1 rounded-md bg-cyan-500/15 px-1.5 py-0.5 text-[10px] text-cyan-200"
+              : "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] text-white/40 hover:bg-white/[0.06]"
+          }
+          data-testid="assembler3d-uniform-toggle"
+        >
+          {uniform ? (
+            <Link className="size-3" />
+          ) : (
+            <Unlink className="size-3" />
+          )}
+          {uniform ? "Locked" : "Free"}
+        </button>
+      </div>
+      <div className="grid grid-cols-3 gap-1.5">
+        {AXES.map((axis) => (
+          <label key={axis} className="relative block">
+            <span className="absolute top-1/2 left-2 -translate-y-1/2 text-[10px] text-white/30">
+              {labels[axis]}
+            </span>
+            <input
+              type="number"
+              step="0.1"
+              min="0"
+              disabled={disabled}
+              defaultValue={Number(size[axis].toFixed(4))}
+              key={`${axis}-${size[axis]}-${uniform}`}
+              onBlur={(event) =>
+                resize(
+                  object.id,
+                  { [axis]: Number(event.target.value) },
+                  uniform,
+                )
+              }
+              onKeyDown={(event) => {
+                if (event.key === "Enter") event.currentTarget.blur();
+              }}
+              className="w-full rounded-md border border-white/10 bg-black/30 py-1.5 pr-1.5 pl-6 text-right text-xs text-white outline-none focus:border-cyan-400/50 disabled:opacity-40"
+              aria-label={`Size ${labels[axis]}`}
             />
           </label>
         ))}
@@ -148,6 +241,8 @@ export function Inspector({ object }: { object: SceneObject }) {
           setTransform(object.id, "rotation", axis, next)
         }
       />
+
+      <DimensionRow object={object} disabled={locked} />
 
       <div className="space-y-1.5">
         <AxisRow

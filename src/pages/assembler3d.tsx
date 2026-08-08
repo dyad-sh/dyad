@@ -19,6 +19,7 @@ import {
 
 import { Viewport } from "@/components/assembler3d/Viewport";
 import { Inspector } from "@/components/assembler3d/Inspector";
+import { SceneContextMenu } from "@/components/assembler3d/SceneContextMenu";
 import {
   useAssembler3D,
   type PrimitiveKind,
@@ -61,6 +62,17 @@ const CATEGORIES: { id: ProjectCategory; label: string }[] = [
   { id: "electronics", label: "Electronics" },
   { id: "custom", label: "Custom mechanical" },
 ];
+
+/** Arrow keys, mapped onto the ground plane the grid describes. */
+const NUDGES: Record<string, { x: number; y: number; z: number }> = {
+  ArrowLeft: { x: -1, y: 0, z: 0 },
+  ArrowRight: { x: 1, y: 0, z: 0 },
+  // Up and down read as "away" and "towards" on a floor plan, which is Z.
+  ArrowUp: { x: 0, y: 0, z: -1 },
+  ArrowDown: { x: 0, y: 0, z: 1 },
+  PageUp: { x: 0, y: 1, z: 0 },
+  PageDown: { x: 0, y: -1, z: 0 },
+};
 
 const PRIMITIVES: { kind: PrimitiveKind; label: string; Icon: typeof Box }[] = [
   { kind: "box", label: "Box", Icon: Box },
@@ -178,7 +190,16 @@ export default function Assembler3DPage() {
   const endTransform = useAssembler3D((state) => state.endTransform);
   const applyTransform = useAssembler3D((state) => state.applyTransform);
   const toggleGrid = useAssembler3D((state) => state.toggleGrid);
+  const copySelection = useAssembler3D((state) => state.copySelection);
+  const cutSelection = useAssembler3D((state) => state.cutSelection);
+  const paste = useAssembler3D((state) => state.paste);
+  const selectAll = useAssembler3D((state) => state.selectAll);
+  const moveSelection = useAssembler3D((state) => state.moveSelection);
+  const gridStep = useAssembler3D((state) => state.gridStep);
   const [cameraRequest, setCameraRequest] = useState<CameraState | null>(null);
+  // What the right-click landed on. Cleared in the capture phase before the
+  // canvas gets a chance to set it, so a miss reads as empty space.
+  const [contextTarget, setContextTarget] = useState<string | null>(null);
 
   const openProject = useAssembler3D((state) => state.openProject);
   const [saveState, setSaveState] = useState<
@@ -242,13 +263,38 @@ export default function Assembler3DPage() {
 
       if (meta && event.key.toLowerCase() === "z") {
         event.preventDefault();
-        event.shiftKey ? redo() : undo();
+        if (event.shiftKey) redo();
+        else undo();
       } else if (meta && event.key.toLowerCase() === "d") {
         event.preventDefault();
         duplicateSelection();
       } else if (meta && event.key.toLowerCase() === "g") {
         event.preventDefault();
-        event.shiftKey ? ungroupSelection() : groupSelection();
+        if (event.shiftKey) ungroupSelection();
+        else groupSelection();
+      } else if (meta && event.key.toLowerCase() === "c") {
+        event.preventDefault();
+        copySelection();
+      } else if (meta && event.key.toLowerCase() === "x") {
+        event.preventDefault();
+        cutSelection();
+      } else if (meta && event.key.toLowerCase() === "v") {
+        event.preventDefault();
+        paste();
+      } else if (meta && event.key.toLowerCase() === "a") {
+        event.preventDefault();
+        selectAll();
+      } else if (NUDGES[event.key]) {
+        // Arrow keys nudge by one grid step, the fine adjustment a gizmo
+        // cannot do. Shift takes ten steps for crossing a workspace.
+        event.preventDefault();
+        const step = (gridStep || 0.1) * (event.shiftKey ? 10 : 1);
+        const direction = NUDGES[event.key]!;
+        moveSelection({
+          x: direction.x * step,
+          y: direction.y * step,
+          z: direction.z * step,
+        });
       } else if (event.key === "Delete" || event.key === "Backspace") {
         deleteSelection();
       } else if (event.key === "Escape") {
@@ -283,6 +329,12 @@ export default function Assembler3DPage() {
     clearSelection,
     setTransformMode,
     toggleTransformSpace,
+    copySelection,
+    cutSelection,
+    paste,
+    selectAll,
+    moveSelection,
+    gridStep,
     scene,
   ]);
 
@@ -487,33 +539,41 @@ export default function Assembler3DPage() {
         </aside>
 
         <div className="min-h-0 min-w-0 flex-1">
-          <Viewport
-            scene={scene}
-            showGrid={showGrid}
-            onSelect={selectObject}
-            onClearSelection={clearSelection}
-            transformMode={transformMode}
-            transformSpace={transformSpace}
-            onTransformStart={beginTransform}
-            onTransformEnd={endTransform}
-            onTransformChange={(id, node) =>
-              applyTransform(id, {
-                position: {
-                  x: node.position.x,
-                  y: node.position.y,
-                  z: node.position.z,
-                },
-                rotation: {
-                  x: node.rotation.x,
-                  y: node.rotation.y,
-                  z: node.rotation.z,
-                },
-                scale: { x: node.scale.x, y: node.scale.y, z: node.scale.z },
-              })
-            }
-            cameraRequest={cameraRequest}
-            onCameraApplied={() => setCameraRequest(null)}
-          />
+          <SceneContextMenu
+            targetId={contextTarget}
+            onBeforeOpen={() => setContextTarget(null)}
+            onFocusSelection={() => setCameraRequest(focusSelection(scene))}
+            onFrameAll={() => setCameraRequest(frameAll(scene))}
+          >
+            <Viewport
+              scene={scene}
+              showGrid={showGrid}
+              onSelect={selectObject}
+              onClearSelection={clearSelection}
+              onContextTarget={setContextTarget}
+              transformMode={transformMode}
+              transformSpace={transformSpace}
+              onTransformStart={beginTransform}
+              onTransformEnd={endTransform}
+              onTransformChange={(id, node) =>
+                applyTransform(id, {
+                  position: {
+                    x: node.position.x,
+                    y: node.position.y,
+                    z: node.position.z,
+                  },
+                  rotation: {
+                    x: node.rotation.x,
+                    y: node.rotation.y,
+                    z: node.rotation.z,
+                  },
+                  scale: { x: node.scale.x, y: node.scale.y, z: node.scale.z },
+                })
+              }
+              cameraRequest={cameraRequest}
+              onCameraApplied={() => setCameraRequest(null)}
+            />
+          </SceneContextMenu>
         </div>
 
         {/* Inspector. Gizmos place things roughly; this is how a part gets to

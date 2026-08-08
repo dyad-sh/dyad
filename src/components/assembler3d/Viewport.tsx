@@ -55,11 +55,13 @@ function SceneNode({
   scene,
   object,
   onSelect,
+  onContextTarget,
   registerRef,
 }: {
   scene: Scene;
   object: SceneObject;
   onSelect: (id: string, additive: boolean) => void;
+  onContextTarget?: (id: string) => void;
   registerRef: (id: string, node: Object3D | null) => void;
 }) {
   const selected = scene.selection.includes(object.id);
@@ -87,6 +89,19 @@ function SceneNode({
             if (object.locked) return;
             onSelect(object.id, event.nativeEvent.shiftKey);
           }}
+          onContextMenu={(event) => {
+            event.stopPropagation();
+            // A locked part still gets its menu: unlocking is one of the few
+            // things you can do to it, and the menu is where that lives.
+            onContextTarget?.(object.id);
+            // Right-clicking outside the current selection acts on what is
+            // under the cursor, as every editor does. Right-clicking inside it
+            // keeps the selection, so a menu cannot silently shrink a
+            // multi-object operation to one part.
+            if (!scene.selection.includes(object.id) && !object.locked) {
+              onSelect(object.id, false);
+            }
+          }}
         >
           <Primitive kind={object.kind} />
           <meshStandardMaterial
@@ -106,6 +121,7 @@ function SceneNode({
           scene={scene}
           object={child}
           onSelect={onSelect}
+          onContextTarget={onContextTarget}
           registerRef={registerRef}
         />
       ))}
@@ -147,6 +163,7 @@ export function Viewport({
   scene,
   onSelect,
   onClearSelection,
+  onContextTarget,
   showGrid = true,
   transformMode = "translate",
   transformSpace = "world",
@@ -159,6 +176,8 @@ export function Viewport({
   scene: Scene;
   onSelect: (id: string, additive: boolean) => void;
   onClearSelection: () => void;
+  /** Reports the object under a right-click, so the menu knows its subject. */
+  onContextTarget?: (id: string) => void;
   showGrid?: boolean;
   transformMode?: "translate" | "rotate" | "scale";
   transformSpace?: "world" | "local";
@@ -246,6 +265,7 @@ export function Viewport({
           scene={scene}
           object={object}
           onSelect={onSelect}
+          onContextTarget={onContextTarget}
           registerRef={(id, node) => {
             if (node) nodes.current.set(id, node);
             else nodes.current.delete(id);

@@ -13,6 +13,7 @@ import {
   matchConsentClassifierPayload,
   SLOW_CONSENT_TOOL,
 } from "./consentClassifier";
+import { matchAssertionCodePayload } from "./testAssertionsFixtures";
 
 /**
  * Generate a dump file from the request and return the path marker
@@ -189,6 +190,13 @@ export const createResponsesHandler =
       messageContent = generateDump(req);
     }
 
+    // See testAssertionsFixtures.ts: code synthesis for assertions the user
+    // edited before approving the card. The proposal itself is an agent tool
+    // call, which this route never serves.
+    const assertionsMatch = matchAssertionCodePayload(lastUserText);
+    if (assertionsMatch) {
+      messageContent = assertionsMatch;
+    }
     // See consentClassifier.ts: fake decisions for the MCP auto-consent
     // classifier, shared with the chat-completions fake route. Also gated off
     // for compaction requests, whose transcript can quote classifier payloads.

@@ -17,6 +17,12 @@ import {
   matchConsentClassifierPayload,
   SLOW_CONSENT_TOOL,
 } from "./consentClassifier";
+import {
+  matchAssertionCodePayload,
+  matchAssertionsAgentTurn,
+  matchAssertionsResumedTurn,
+  matchAssertionsVerifyTurn,
+} from "./testAssertionsFixtures";
 
 let globalCounter = 0;
 
@@ -114,11 +120,31 @@ function sendToolCallJson(
   });
 }
 
+/**
+ * Stream a tool call as SSE, a few characters at a time.
+ *
+ * The disconnect watch is on `res`, not `req`: the argument chunks are
+ * deliberately spread over time, so a client that gives up (the user stopping a
+ * stream, a test aborting) would otherwise leave this loop writing to a
+ * destroyed response for the rest of its run. It must NOT be on `req` — since
+ * Node 16 an `IncomingMessage` emits `close` as soon as the request itself is
+ * complete, which for a POST whose body express has already parsed is before
+ * the first chunk goes out. Watching that fired on every call, and the loop
+ * bailed after one chunk without ever ending the response: every fixture that
+ * answers with a streamed tool call hung until the client timed out.
+ */
 async function streamToolCall(
   res: Response,
   toolName: string,
   args: Record<string, unknown>,
 ) {
+  let closed = res.destroyed;
+  const onClose = () => {
+    closed = true;
+  };
+  res.on("close", onClose);
+  const finish = () => res.off("close", onClose);
+
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
@@ -161,8 +187,14 @@ async function streamToolCall(
       }),
     );
     await new Promise((resolve) => setTimeout(resolve, 5));
+    if (closed) {
+      finish();
+      return;
+    }
   }
 
+  finish();
+  if (closed) return;
   res.write(mkChunk({}, "tool_calls"));
   res.write("data: [DONE]\n\n");
   res.end();
@@ -297,6 +329,24 @@ export const createChatCompletionHandler =
     ) {
       messageContent =
         "## Key Decisions Made\n- Completed initial task as requested\n\n## Current Task State\nConversation was compacted to save context space.";
+    }
+    // See testAssertionsFixtures.ts: propose the plan for the just-finished
+    // recording through the agent's generate_test_assertions tool.
+    const assertionsToolCall = matchAssertionsAgentTurn(
+      userTextContent,
+      messages.map(getTextContent),
+    );
+    if (assertionsToolCall) {
+      if (stream) {
+        await streamToolCall(
+          res,
+          assertionsToolCall.name,
+          assertionsToolCall.args,
+        );
+        return;
+      }
+      sendToolCallJson(res, assertionsToolCall.name, assertionsToolCall.args);
+      return;
     }
     if (isExploreCodeSubagentPrompt(userTextContent)) {
       const toolName = hasExploreCodeToolResult(messages, getTextContent)
@@ -553,6 +603,26 @@ export default Index;
     ) {
       messageContent = `[[STRING_IS_FINISHED]]";</dyad-write>\nFinished writing file.`;
       messageContent += "\n\n" + generateDump(req);
+    }
+    // See testAssertionsFixtures.ts: code synthesis for assertions the user
+    // edited before approving the card.
+    const assertionsMatch = matchAssertionCodePayload(lastMessageText);
+    if (assertionsMatch) {
+      messageContent = assertionsMatch;
+    }
+    // ...and the "run the spec you just generated" hand-off, answered without
+    // spawning a real Playwright run. Normally it comes back as the parked
+    // tool's result inside the same turn, so it's found by scanning every
+    // message; the fallback path sends it as a user message instead.
+    const assertionsResumedMatch = matchAssertionsResumedTurn(
+      messages.map(getTextContent),
+    );
+    if (assertionsResumedMatch) {
+      messageContent = assertionsResumedMatch;
+    }
+    const assertionsVerifyMatch = matchAssertionsVerifyTurn(userTextContent);
+    if (assertionsVerifyMatch) {
+      messageContent = assertionsVerifyMatch;
     }
     // See consentClassifier.ts: fake decisions for the MCP auto-consent
     // classifier, shared with the responses fake route.

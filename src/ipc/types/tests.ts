@@ -5,6 +5,9 @@ import {
   defineContract,
   defineEvent,
 } from "../contracts/core";
+// Relative imports: this module is pulled into the preload bundle, which cannot
+// resolve the "@/" alias.
+import { AssertionPlanItemSchema } from "../../lib/test_recorder/assertion_proposal";
 
 // =============================================================================
 // E2E spec-file identity
@@ -280,10 +283,70 @@ export const MigrateLegacyTestsResultSchema = z.object({
 });
 
 // =============================================================================
+// Recorded tests
+//
+// A recording is a draft until the user approves the proposal the agent makes
+// from it — that approval is the only thing that writes a spec, and it goes
+// through deterministic codegen.
+// =============================================================================
+
+// =============================================================================
+// AI-proposed assertions
+//
+// The proposal is produced by the agent's `generate_test_assertions` tool and
+// rendered as a chat card; only the user's approval comes back over IPC, and
+// that approval is what generates the spec file.
+// =============================================================================
+
+export const ApplyTestAssertionsParamsSchema = z.object({
+  appId: z.number(),
+  chatId: z.number(),
+  proposalId: z.string(),
+  /** The card's current plan, in the order the user approved. */
+  items: z.array(AssertionPlanItemSchema),
+});
+export type ApplyTestAssertionsParams = z.infer<
+  typeof ApplyTestAssertionsParamsSchema
+>;
+
+/** Mark a proposal declined, so a reloaded card can't offer it for approval. */
+export const DiscardTestAssertionsParamsSchema = z.object({
+  appId: z.number(),
+  chatId: z.number(),
+  proposalId: z.string(),
+});
+export type DiscardTestAssertionsParams = z.infer<
+  typeof DiscardTestAssertionsParamsSchema
+>;
+
+export const ApplyTestAssertionsResultSchema = z.object({
+  /** App-relative path of the spec this approval generated. */
+  specPath: z.string(),
+  appliedCount: z.number(),
+  /** Set when the apply succeeded but something was skipped. */
+  warning: z.string().optional(),
+});
+export type ApplyTestAssertionsResult = z.infer<
+  typeof ApplyTestAssertionsResultSchema
+>;
+
+// =============================================================================
 // Tests Contracts
 // =============================================================================
 
 export const testsContracts = {
+  applyTestAssertions: defineContract({
+    channel: "tests:apply-assertions",
+    input: ApplyTestAssertionsParamsSchema,
+    output: ApplyTestAssertionsResultSchema,
+  }),
+
+  discardTestAssertions: defineContract({
+    channel: "tests:discard-assertions",
+    input: DiscardTestAssertionsParamsSchema,
+    output: z.object({ ok: z.literal(true) }),
+  }),
+
   listAppTests: defineContract({
     channel: "tests:list",
     input: ListAppTestsParamsSchema,

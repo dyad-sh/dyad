@@ -47,7 +47,7 @@ function pickPublishableKey(
   );
 }
 
-async function getPublishableKey({
+export async function getPublishableKey({
   projectId,
   organizationSlug,
 }: {

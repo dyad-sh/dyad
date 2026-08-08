@@ -57,6 +57,7 @@ import {
   type PreparedIsolation,
 } from "../services/isolated_test_db";
 import { readTestScreenshotDataUrl } from "../utils/test_screenshot";
+import { isRecordingActive } from "../services/recording_registry";
 import { readSettings } from "@/main/settings";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 
@@ -153,6 +154,15 @@ interface TestRun {
   done: Promise<void>;
 }
 const testRunControllers = new Map<number, TestRun>();
+
+/**
+ * Whether a test run is in flight for the app. Consulted by the recording
+ * handler for mutual exclusion — a recording session and a test run must never
+ * run at once (both restart the dev server and share the Neon test-branch slot).
+ */
+export function isTestRunActive(appId: number): boolean {
+  return testRunControllers.has(appId);
+}
 
 async function getApp(appId: number) {
   const app = await db.query.apps.findFirst({
@@ -560,6 +570,18 @@ export async function runAppTestsWithIsolation({
     };
   }
 
+  // A recording session holds the same per-app lock and isolation; refuse to
+  // run rather than queue invisibly behind it.
+  if (isRecordingActive(appId)) {
+    return {
+      appId,
+      results: [],
+      infraError: {
+        message: "Stop the recording session before running tests.",
+      },
+    };
+  }
+
   // Register this run's controller SYNCHRONOUSLY — before awaiting the prior
   // run's teardown — so a concurrent invocation sees THIS run as its prior
   // and chains behind it. If we awaited before registering, two rapid Run
@@ -590,6 +612,34 @@ export async function runAppTestsWithIsolation({
     emitOutput(event, appId, chunk, phase);
 
   let finalResult: RunAppTestsResult = { appId, results: [] };
+  // Set by isolation teardown below when `.env.local` couldn't be put back. The
+  // run may have produced perfectly good results, but the app is still pointed
+  // at the temporary branch, so the caller has to be told rather than left to
+  // relaunch it against isolated data.
+  let envRestoreFailed = false;
+  /**
+   * Fold a failed `.env.local` restore into a result. Applied on BOTH exits —
+   * an unexpected rejection inside the lock must not swallow it, or the run
+   * reports an ordinary infrastructure error while the app is still pointed at
+   * the temporary branch.
+   */
+  const withEnvRestoreWarning = (
+    result: RunAppTestsResult,
+  ): RunAppTestsResult => {
+    if (!envRestoreFailed) return result;
+    const restoreMessage =
+      "Dyad couldn't restore your app's real database settings after the test run. Restore .env.local before running the app again.";
+    return {
+      ...result,
+      // Appended rather than substituted: an isolation-setup failure explains
+      // why the run produced nothing, and replacing it would hide that.
+      infraError: {
+        message: result.infraError
+          ? `${result.infraError.message}\n\n${restoreMessage}`
+          : restoreMessage,
+      },
+    };
+  };
   try {
     // Wait for the prior run's full lifecycle (prepare → run → teardown) to
     // finish before swapping env. Otherwise a Stop-then-Run could race the
@@ -705,7 +755,11 @@ export async function runAppTestsWithIsolation({
           // already restored).
           if (prepared) {
             try {
-              await prepared.teardown();
+              // Fail closed across the await: a teardown that throws has said
+              // nothing about whether the env came back, and "unknown" has to
+              // read the same as "no".
+              envRestoreFailed = true;
+              envRestoreFailed = !(await prepared.teardown()).envRestored;
             } catch (error) {
               logger.error(
                 `Failed to tear down isolated test environment for app ${appId}: ${error}`,
@@ -715,17 +769,18 @@ export async function runAppTestsWithIsolation({
         }
       },
     );
+    finalResult = withEnvRestoreWarning(finalResult);
     return finalResult;
   } catch (error) {
     // Surface an unexpected failure as an infra error on the run-state event so
     // the panel leaves its spinner state, then rethrow for the caller.
-    finalResult = {
+    finalResult = withEnvRestoreWarning({
       appId,
       results: [],
       infraError: {
         message: error instanceof Error ? error.message : String(error),
       },
-    };
+    });
     // Anything reaching here is a test-infrastructure failure (isolation setup,
     // teardown, spawn), not a product exception — classify it so telemetry
     // routes it by kind instead of counting it as unclassified.

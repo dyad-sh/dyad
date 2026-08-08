@@ -30,6 +30,8 @@ import {
   Pen,
   MoreVertical,
   Trash2,
+  CircleDot,
+  Loader2,
 } from "lucide-react";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { CopyErrorMessage } from "@/components/CopyErrorMessage";
@@ -44,6 +46,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useStreamChat } from "@/hooks/useStreamChat";
+import { useChatMode } from "@/hooks/useChatMode";
+import { AgentModeRequiredDialog } from "./AgentModeRequiredDialog";
 import {
   selectedComponentsPreviewAtom,
   visualEditingSelectedComponentAtom,
@@ -71,7 +75,9 @@ import { useSettings } from "@/hooks/useSettings";
 import { useShortcut } from "@/hooks/useShortcut";
 import { cn } from "@/lib/utils";
 import { normalizePath } from "../../../shared/normalizePath";
-import { showError, showSuccess } from "@/lib/toast";
+import { showError, showInfo, showSuccess } from "@/lib/toast";
+import type { TestRecorderController } from "@/hooks/useTestRecorder";
+import { useLoadApp } from "@/hooks/useLoadApp";
 import type { DeviceMode } from "@/lib/schemas";
 import {
   boundPreviewConsoleEntry,
@@ -84,12 +90,14 @@ import { useAttachments } from "@/hooks/useAttachments";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { Annotator } from "@/pro/ui/components/Annotator/Annotator";
 import { VisualEditingToolbar } from "./VisualEditingToolbar";
+import { RecordingBanner, recordingStatusMessage } from "./RecordingBanner";
 import { resolvePreviewBrowserUrl } from "./previewBrowserUrl";
 import { PreviewLoadingScreen } from "./PreviewLoadingScreen";
 import { useTranslation } from "react-i18next";
 import {
   formatPreviewAddressPath,
   normalizePreviewAddressPath,
+  sameOriginStartPath,
 } from "./previewAddressPath";
 import { getPreviewToolbarActionVisibility } from "./previewToolbarLayout";
 import { usePreviewIframe } from "@/preview_iframe/usePreviewIframe";
@@ -211,14 +219,60 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
 const PREVIEW_TOOLBAR_BUTTON_CLASSES =
   "flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-40";
 
+/**
+ * The prompt that starts the test proposal. The recording isn't a file yet, so
+ * the statements travel in the message — the agent names the test, describes the
+ * steps and proposes checks, and its `generate_test_assertions` tool validates
+ * what it sends back against the draft Dyad parked when recording stopped.
+ */
+function buildAssertionsPrompt(
+  testName: string | undefined,
+  recordingId: string,
+  steps: string[],
+): string {
+  return [
+    `Add assertions to the test I just recorded${testName ? `: "${testName}"` : ""}`,
+    "",
+    // Named in the prompt and echoed back through the tool, so a request that
+    // sat queued while a *newer* recording replaced this one is rejected
+    // instead of annotating the wrong flow.
+    `Recording id: ${recordingId}`,
+    "",
+    // The steps are all there is to name it from, which is why the naming
+    // happens here rather than being guessed before the flow was performed.
+    testName
+      ? `Use "${testName}" as the test name — I chose it.`
+      : "I didn't name it, so name it yourself from what the steps actually do.",
+    "",
+    "It isn't a file yet — here are its statements, numbered the way your generate_test_assertions tool counts them:",
+    ...steps.map((step, index) => `${index}: ${step}`),
+    "",
+    // The recorder bar and the assertion card both number these from 1, so a
+    // user who says "step 3" means the statement listed as 2 here.
+    'Note: I see these numbered from 1, not 0 — if I ask for a check after "step N", that\'s the statement you see as N-1.',
+    "",
+    "Call generate_test_assertions with that recording id, a test name, one plain-English step description per statement, plus the assertions you'd propose. There's nothing to read and nothing to run — I'll review the proposal, and Dyad generates the test file when I approve it.",
+  ].join("\n");
+}
+
 // Preview iframe component
-export const PreviewIframe = ({ loading }: { loading: boolean }) => {
+export const PreviewIframe = ({
+  loading,
+  recorder,
+}: {
+  loading: boolean;
+  recorder: TestRecorderController;
+}) => {
   const { t } = useTranslation("home");
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const { appUrl, originalUrl, mode } = useCurrentAppUrl(selectedAppId);
   const appRunManager = useAppRunRemoteManager();
   const selectedChatId = useAtomValue(selectedChatIdAtom);
+  // True while the Agent-mode confirmation for the assertion pass is open.
+  const [assertionsNeedAgentMode, setAssertionsNeedAgentMode] = useState(false);
   const { streamMessage } = useStreamChat();
+  const { effectiveMode } = useChatMode(selectedChatId);
+  const isAgentMode = effectiveMode === "local-agent";
   const {
     routes: availableRoutes,
     loading: routesLoading,
@@ -239,6 +293,13 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   );
   const setPreviewIframeRef = useSetAtom(previewIframeRefAtom);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const handleIframeRef = useCallback(
+    (iframe: HTMLIFrameElement | null) => {
+      iframeRef.current = iframe;
+      setPreviewIframeRef(iframe);
+    },
+    [setPreviewIframeRef],
+  );
   const componentMessageHandlerRef = useRef<(event: MessageEvent) => void>(
     () => undefined,
   );
@@ -270,6 +331,79 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const canGoBack = selectCanGoBack(iframeState);
   const canGoForward = selectCanGoForward(iframeState);
   const [annotatorMode, setAnnotatorMode] = useAtom(annotatorModeAtom);
+  const { app: loadedApp } = useLoadApp(selectedAppId);
+  // Recording is part of the testing feature, so the entry point only exists
+  // for apps that opted into testing (the Tests panel owns that opt-in).
+  const canRecordTests = !!loadedApp?.testingEnabled;
+
+  const handleRecordClick = () => {
+    if (recorder.phase !== "idle") return;
+    // The route the preview is on right now. An unauthenticated recording keeps
+    // it across the remount, while every generated spec opens with
+    // `page.goto("/")` — so the recorder needs to know when those differ.
+    //
+    // Only when the preview is still on the app. `formatPreviewAddressPath`
+    // strips the origin unconditionally, so a preview that followed an external
+    // link would hand back a path that reads as app-relative and replay as
+    // `page.goto("/that/path")` against the app — a destination the user never
+    // visited. Unknown or off-origin means no hint at all.
+    void recorder.startRecording(
+      sameOriginStartPath(currentHistoryUrl, appUrl),
+    );
+  };
+
+  // Hand the recorded steps to the agent for the test proposal. Its
+  // `generate_test_assertions` tool posts a reviewable card into the chat, and
+  // approving that card is what generates the spec — so nothing is written
+  // until the user has seen the name, the steps and the checks.
+  const doGenerateAssertions = () => {
+    const draft = recorder.draft;
+    if (!draft) return;
+    if (!selectedChatId) {
+      showInfo("Open a chat to generate a test from the recording.");
+      return;
+    }
+    const requestAppId = selectedAppId;
+    // Marked before the send: a submission that lands on the prompt queue
+    // settles synchronously, and the clear below must not be overwritten by a
+    // mark that runs after it.
+    //
+    // The review stays up until the user closes it. The request can fail, be
+    // cancelled, or finish without ever calling the tool, and this bar is the
+    // only UI that can ask again or discard the parked draft.
+    recorder.markAwaitingAssertions();
+    streamMessage({
+      prompt: buildAssertionsPrompt(
+        draft.testName,
+        draft.draftId,
+        recorder.draftSteps,
+      ),
+      chatId: selectedChatId,
+      requestedChatMode: "local-agent",
+      // Every way this turn can end arrives here: a card posted and answered, a
+      // reply that never called the tool, an error, or the user stopping the
+      // chat. Only the approval closes the bar on its own, so without this the
+      // "asking the AI" spinner outlives the request it describes. A submission
+      // queued behind an active stream settles here straight away and its
+      // callback is not carried through the queue, so it stops the spinner too —
+      // the card still arrives when the queued turn runs.
+      onSettled: () => {
+        if (requestAppId != null)
+          recorder.clearAwaitingAssertions(requestAppId);
+      },
+    });
+    showInfo("Sent to chat — asking the AI for assertions…");
+  };
+
+  // Confirm the switch to Agent mode first when the chat is in another mode,
+  // matching the Tests panel's "Generate test" / "Fix with AI" entry points.
+  const handleGenerateAssertions = () => {
+    if (isAgentMode) {
+      doGenerateAssertions();
+    } else {
+      setAssertionsNeedAgentMode(true);
+    }
+  };
   const previewToolbarRef = useRef<HTMLDivElement>(null);
   const [previewToolbarWidth, setPreviewToolbarWidth] = useState<number | null>(
     null,
@@ -553,11 +687,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       setCurrentComponentCoordinates(null);
     };
   }, [selectedAppId]);
-
-  // Update iframe ref atom
-  useEffect(() => {
-    setPreviewIframeRef(iframeRef.current);
-  }, [iframeRef.current, setPreviewIframeRef]);
 
   // Send pro mode status to iframe
   useEffect(() => {
@@ -964,6 +1093,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const handleNavigateBack = () => {
     if (canGoBack && iframeRef.current?.contentWindow) {
       sendIframeEvent({ type: "GO_BACK" });
+      // Replayed as `page.goBack()`, not as a jump to where it landed: the
+      // history move is what the user performed, and what the test should check.
+      recorder.recordHistoryMove("back");
     }
   };
 
@@ -971,6 +1103,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const handleNavigateForward = () => {
     if (canGoForward && iframeRef.current?.contentWindow) {
       sendIframeEvent({ type: "GO_FORWARD" });
+      recorder.recordHistoryMove("forward");
     }
   };
 
@@ -1004,6 +1137,10 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     const newUrl = new URL(normalized.path, baseUrl).href;
 
     sendIframeEvent({ type: "NAVIGATE", path: newUrl });
+    // A jump the user made around the app, rather than through it: this is the
+    // one navigation a recording replays as `page.goto`. Routing the app does
+    // on its own belongs to the step that triggered it.
+    recorder.recordNavigation(normalized.path);
 
     return true;
   };
@@ -1077,6 +1214,11 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       restartApp({ recreateSandbox: true }),
     );
   };
+
+  // Isolation setup restarts the dev server and signs the test user in, so the
+  // preview is showing a page nothing the user does will survive. It reads as
+  // inert rather than covered — see RecordingSetupOverlay.
+  const isRecorderSettingUp = recorder.isBusy && !annotatorMode;
 
   const { showOpenBrowser } =
     getPreviewToolbarActionVisibility(previewToolbarWidth);
@@ -1166,6 +1308,66 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 {annotatorMode ? "Annotator mode active" : "Activate annotator"}
               </TooltipContent>
             </Tooltip>
+            {canRecordTests && (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      onClick={handleRecordClick}
+                      aria-label={
+                        recorder.isRecording
+                          ? "Recording — stop it from the recording bar below"
+                          : "Record test"
+                      }
+                      aria-pressed={recorder.phase !== "idle"}
+                      className={cn(
+                        PREVIEW_TOOLBAR_BUTTON_CLASSES,
+                        "rounded-none border-l border-border",
+                        recorder.phase !== "idle"
+                          ? "bg-purple-500 text-white hover:bg-purple-600 hover:text-white dark:bg-purple-600 dark:hover:bg-purple-700"
+                          : "text-purple-700 hover:bg-purple-100 hover:text-purple-800 dark:text-purple-300 dark:hover:bg-purple-900/50 dark:hover:text-purple-200",
+                      )}
+                      disabled={
+                        loading ||
+                        !selectedAppId ||
+                        !appUrl ||
+                        isPicking ||
+                        annotatorMode ||
+                        recorder.phase !== "idle"
+                      }
+                      data-testid="preview-record-button"
+                    />
+                  }
+                >
+                  {/* Never a Stop square: this button is disabled for every
+                      non-idle phase, and a stop glyph is the one affordance
+                      users are certain means "click to stop" — offering it on
+                      an inert control strands them, with only a tooltip a
+                      disabled button may never fire to explain it. A pulsing
+                      record dot says "recording, in progress" without
+                      promising an action that lives in the bar below. */}
+                  {recorder.isBusy ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : recorder.isRecording ? (
+                    <CircleDot size={16} className="animate-pulse" />
+                  ) : (
+                    <CircleDot size={16} />
+                  )}
+                </TooltipTrigger>
+                <TooltipContent>
+                  {recorder.phase === "idle"
+                    ? "Record a test"
+                    : recorder.isRecording
+                      ? "Recording — use the bar below to stop"
+                      : // `recordingStatusMessage` only speaks for the spinner
+                        // phases; reviewing/saved are waiting on the user, and
+                        // saying "Setting up…" there is just wrong.
+                        recorder.isBusy
+                        ? recordingStatusMessage(recorder)
+                        : "Finish the recorded test in the bar below first"}
+                </TooltipContent>
+              </Tooltip>
+            )}
           </div>
 
           {/* Browser navigation group */}
@@ -1492,6 +1694,23 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         </div>
       )}
 
+      {recorder.phase !== "idle" && !annotatorMode && (
+        <RecordingBanner
+          recorder={recorder}
+          onGenerateAssertions={handleGenerateAssertions}
+        />
+      )}
+
+      <AgentModeRequiredDialog
+        open={assertionsNeedAgentMode}
+        onOpenChange={setAssertionsNeedAgentMode}
+        action="assertions"
+        onContinue={() => {
+          doGenerateAssertions();
+          setAssertionsNeedAgentMode(false);
+        }}
+      />
+
       <div className="relative flex-grow overflow-hidden">
         {!loading && (
           <ErrorBanner
@@ -1517,6 +1736,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
             className={cn(
               "w-full h-full",
               deviceMode !== "desktop" && "flex justify-center",
+              // Greyed out while the recorder sets up, the same way a cancelled
+              // chat message reads as inert.
+              isRecorderSettingUp && "opacity-50 transition-opacity",
             )}
           >
             {annotatorMode && screenshotDataUrl ? (
@@ -1546,7 +1768,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                   onLoad={() => {
                     onIframeLoaded();
                   }}
-                  ref={iframeRef}
+                  ref={handleIframeRef}
                   key={iframeState.iframeEpoch}
                   title={`Preview for App ${selectedAppId}`}
                   className="w-full h-full border-none bg-white dark:bg-gray-950"
@@ -1576,10 +1798,54 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
             )}
           </div>
         )}
+        {isRecorderSettingUp && <RecordingSetupOverlay recorder={recorder} />}
       </div>
     </div>
   );
 };
+
+/**
+ * Explains the preview — and swallows clicks — while a recording session is
+ * being set up or torn down. Anything the user does in that window is lost to
+ * the dev-server restart, and confusing besides.
+ *
+ * Nothing is laid over the app: the preview itself greys out, the way a
+ * cancelled chat message does. Dimming says "inert" without covering anything,
+ * so the page stays completely sharp — watching it reload into the isolated
+ * environment is most of the reassurance this wait has to offer. This layer is
+ * transparent and exists only to hold the message and eat pointer events.
+ *
+ * The message keeps a card of its own, which is the one place this departs
+ * from the cancelled-message pattern: a chat message controls what sits behind
+ * its label, and a preview does not — bare text lands on top of whatever the
+ * app happens to be rendering.
+ */
+function RecordingSetupOverlay({
+  recorder,
+}: {
+  recorder: TestRecorderController;
+}) {
+  return (
+    <div
+      className="absolute inset-0 z-20 flex items-center justify-center px-6 text-center"
+      data-testid="preview-recording-overlay"
+      role="status"
+      aria-live="polite"
+    >
+      <div className="flex max-w-sm flex-col items-center gap-2.5 rounded-xl border border-border bg-(--background-lightest) px-6 py-5 shadow-lg">
+        <Loader2 className="size-7 animate-spin text-purple-600 dark:text-purple-300" />
+        <p className="text-base font-medium text-foreground">
+          {recordingStatusMessage(recorder)}
+        </p>
+        <p className="text-sm text-muted-foreground">
+          {recorder.phase === "starting" || recorder.phase === "authenticating"
+            ? "Dyad is preparing an isolated environment for your recording — hold off on interacting with the preview until it's ready."
+            : "Hold off on interacting with the preview until this finishes."}
+        </p>
+      </div>
+    </div>
+  );
+}
 
 function parseComponentSelection(data: any): ComponentSelection | null {
   if (!data || data.type !== "dyad-component-selected") {

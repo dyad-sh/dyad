@@ -58,6 +58,7 @@ import {
   registerCloudSandboxSyncUpdateListener,
 } from "../services/app_runtime_service";
 import { getIpcAppRuntimeOutput } from "../services/app_runtime_transport";
+import { endRecordingForApp } from "../services/recording_registry";
 import { getPtySessionManager } from "../utils/pty_session_manager";
 import { sameInvocationRef } from "@/state_machines/invocation_ref";
 import { userInputRegistry } from "@/user_input/main";
@@ -126,6 +127,7 @@ import {
 } from "@/supabase_admin/supabase_utils";
 import { getVercelTeamSlug } from "../utils/vercel_utils";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
+import { deleteTempTestBranch } from "../utils/neon_test_branch";
 import type { AppSearchResult } from "@/lib/schemas";
 
 import {
@@ -403,10 +405,38 @@ async function deleteAppById(
   appId: number,
   options: DeleteAppByIdOptions = {},
 ): Promise<void> {
+  // A recording session holds this app's lock until it ends, so the deletion
+  // below would sit behind it for up to 30 minutes with the delete dialog
+  // spinning. The renderer's own recorder cleanup can't help: it runs only
+  // after this call returns. Same end-before-lock step as stop and restart;
+  // nothing here needs the dev server back, and the app is about to be gone.
+  const { envRestored } = await endRecordingForApp(appId, "app-stopped", {
+    skipRestart: true,
+  });
+  if (!envRestored) {
+    // The app directory is about to be removed, so a stale `.env.local` inside
+    // it goes with it — this is worth a log line for diagnosis, not a refusal.
+    logger.warn(
+      `App ${appId}: isolation teardown couldn't restore .env.local before deletion`,
+    );
+  }
+
+  // A teardown that couldn't restore the environment deliberately KEEPS the
+  // temporary Neon branch, because the app row still records its id and the
+  // startup sweep can reconcile it later. Deleting that row is what would
+  // strand it, so the id has to come off the row — that also covers a recording
+  // that ended long before this delete.
+  //
+  // Reported back by the exclusive path from the row it is about to delete,
+  // rather than snapshotted here: a recording or test run starting in between
+  // would persist a *different* branch id, and a snapshot would clean up the old
+  // one while the row carrying the new one goes away underneath it.
+  let deletedRow: typeof apps.$inferSelect | null = null;
+
   const appRunDeletion = appRunActorService.beginAppDeletion(appId);
   let appRunDeletionCommitted = false;
   try {
-    await appDeletionQueue.run(() =>
+    deletedRow = await appDeletionQueue.run(() =>
       deleteAppByIdExclusive(appId, options, {
         seal: () => appRunDeletion.seal(),
         commit: () => {
@@ -422,8 +452,33 @@ async function deleteAppById(
       appRunDeletion.abort();
     }
   }
+
+  // Only after the deletion has committed — the throw above skips this. Doing
+  // it earlier means a deletion that then fails leaves a live app pointed at a
+  // database that no longer exists, which is worse than the leak it prevents.
+  const strandedTestBranch =
+    deletedRow?.neonTestBranchId && deletedRow.neonProjectId
+      ? deletedRow
+      : null;
+  if (strandedTestBranch) {
+    try {
+      await deleteTempTestBranch(strandedTestBranch);
+    } catch (error) {
+      // The row is gone, so nothing can reconcile this later. Logged loudly
+      // rather than failing a deletion that has already happened.
+      logger.error(
+        `App ${appId} was deleted but its temporary Neon branch ${strandedTestBranch.neonTestBranchId} could not be removed; it must be deleted manually: ${error}`,
+      );
+    }
+  }
 }
 
+/**
+ * Resolves to the app row as it stood under the deletion lock immediately
+ * before it was removed — the last point at which a concurrently-started
+ * recording could still have written a new temporary Neon branch id onto it.
+ * Null when there was no row to delete.
+ */
 async function deleteAppByIdExclusive(
   appId: number,
   options: DeleteAppByIdOptions = {},
@@ -431,7 +486,7 @@ async function deleteAppByIdExclusive(
     seal(): Promise<void>;
     commit(): void;
   },
-): Promise<void> {
+): Promise<typeof apps.$inferSelect | null> {
   const appOperationDeletion = appOperationCoordinator.beginAppDeletion(appId);
   let versionPreviewDeletionStarted = false;
   let githubDeletionStarted = false;
@@ -442,6 +497,7 @@ async function deleteAppByIdExclusive(
   let deletionCommitted = false;
   let imageGenerationCleanupFailed = false;
   let imageGenerationCleanupError: unknown;
+  let deletedRow: typeof apps.$inferSelect | null = null;
   try {
     versionPreviewActorService.beginAppDeletion(appId);
     versionPreviewDeletionStarted = true;
@@ -472,60 +528,75 @@ async function deleteAppByIdExclusive(
       ),
     );
 
-    const appPath = await appOperationDeletion.runExclusive(async () => {
-      const app = await db.query.apps.findFirst({
-        where: eq(apps.id, appId),
-      });
+    const { appPath, doomedRow } = await appOperationDeletion.runExclusive(
+      async () => {
+        const app = await db.query.apps.findFirst({
+          where: eq(apps.id, appId),
+        });
 
-      if (!app) {
-        if (options.allowMissing && options.knownAppPath) {
-          await appRunDeletion.seal();
+        if (!app) {
+          if (options.allowMissing && options.knownAppPath) {
+            await appRunDeletion.seal();
+            appRunDeletion.commit();
+            deletionCommitted = true;
+            return { appPath: options.knownAppPath, doomedRow: null };
+          }
+          throw new DyadError("App not found", DyadErrorKind.NotFound);
+        }
+
+        if (runningApps.has(appId)) {
+          const appInfo = runningApps.get(appId)!;
+          try {
+            logger.log(`Stopping app ${appId} before deletion.`);
+            await stopAppByInfo(appId, appInfo);
+          } catch (error: any) {
+            logger.error(`Error stopping app ${appId} before deletion:`, error);
+            // Continue with deletion even if stopping fails
+          }
+        }
+
+        await appRunDeletion.seal();
+        // Re-read rather than reuse `app` from the top of this lock: the stop
+        // above can clear the temporary-branch columns on its way out, and a
+        // delete that queued behind a still-ending recording can arrive here with
+        // an id that only landed on the row after that first read. This is the
+        // last moment the row exists, so it is the only reading that can't go
+        // stale before the delete.
+        const doomedRow = await db.query.apps.findFirst({
+          where: eq(apps.id, appId),
+        });
+        try {
+          const testUserDeleted = await deleteTempTestUser(app);
+          if (!testUserDeleted) {
+            throw new DyadError(
+              "Failed to delete the app's temporary Supabase test user. Please retry app deletion.",
+              DyadErrorKind.External,
+            );
+          }
+          await db.delete(apps).where(eq(apps.id, appId));
           appRunDeletion.commit();
           deletionCommitted = true;
-          return options.knownAppPath;
-        }
-        throw new DyadError("App not found", DyadErrorKind.NotFound);
-      }
-
-      if (runningApps.has(appId)) {
-        const appInfo = runningApps.get(appId)!;
-        try {
-          logger.log(`Stopping app ${appId} before deletion.`);
-          await stopAppByInfo(appId, appInfo);
+          // Note: Associated chats will cascade delete
+          if (options.publishDisposal !== false) {
+            for (const { id: chatId } of appChats) {
+              entityDisposalBus.publish({ kind: "chat", id: chatId });
+            }
+            entityDisposalBus.publish({ kind: "app", id: appId });
+          }
         } catch (error: any) {
-          logger.error(`Error stopping app ${appId} before deletion:`, error);
-          // Continue with deletion even if stopping fails
-        }
-      }
-
-      await appRunDeletion.seal();
-      try {
-        const testUserDeleted = await deleteTempTestUser(app);
-        if (!testUserDeleted) {
+          logger.error(`Error deleting app ${appId} from database:`, error);
           throw new DyadError(
-            "Failed to delete the app's temporary Supabase test user. Please retry app deletion.",
+            `Failed to delete app from database: ${error.message}`,
             DyadErrorKind.External,
           );
         }
-        await db.delete(apps).where(eq(apps.id, appId));
-        appRunDeletion.commit();
-        deletionCommitted = true;
-        // Note: Associated chats will cascade delete
-        if (options.publishDisposal !== false) {
-          for (const { id: chatId } of appChats) {
-            entityDisposalBus.publish({ kind: "chat", id: chatId });
-          }
-          entityDisposalBus.publish({ kind: "app", id: appId });
-        }
-      } catch (error: any) {
-        logger.error(`Error deleting app ${appId} from database:`, error);
-        throw new DyadError(
-          `Failed to delete app from database: ${error.message}`,
-          DyadErrorKind.External,
-        );
-      }
-      return getDyadAppPath(app.path);
-    });
+        return {
+          appPath: getDyadAppPath(app.path),
+          doomedRow: doomedRow ?? null,
+        };
+      },
+    );
+    deletedRow = doomedRow;
 
     const actorCleanup = await Promise.allSettled([
       versionPreviewActorService.disposeApp(appId),
@@ -599,6 +670,7 @@ async function deleteAppByIdExclusive(
     }
   }
   if (imageGenerationCleanupFailed) throw imageGenerationCleanupError;
+  return deletedRow;
 }
 
 export function registerAppHandlers() {
@@ -960,6 +1032,23 @@ export function registerAppHandlers() {
   });
 
   createTypedHandler(appContracts.stopApp, async (_, { appId }) => {
+    // A recording session holds this app's lock until it ends, so stopping
+    // would sit behind it for up to 30 minutes. The recording exists to observe
+    // the running app; the app stopping ends it. `skipRestart` because the app
+    // is on its way down — teardown still restores `.env.local`, it just
+    // doesn't bring the dev server back up for us to stop again.
+    const { envRestored } = await endRecordingForApp(appId, "app-stopped", {
+      skipRestart: true,
+    });
+    if (!envRestored) {
+      // Not a refusal — the app is going down either way, and refusing would
+      // leave it running. The user already gets this as an error toast via
+      // `recording:ended`; this is the main-process trail for diagnosing why a
+      // later Run comes up on the wrong database.
+      logger.error(
+        `App ${appId}: isolation teardown couldn't restore .env.local while stopping; the app is still pointed at the temporary test branch`,
+      );
+    }
     const snapshot = await appRunActorService.getRunState(appId);
     if (snapshot.type === "idle") return;
     await appRunActorService.dispatchStop(appId, {
@@ -1063,6 +1152,26 @@ export function registerAppHandlers() {
   );
 
   createTypedHandler(appContracts.restartApp, async (_, params) => {
+    // Same reasoning as stopApp: the restart tears down the dev server the
+    // recording is observing, and the session would otherwise hold the app's
+    // lock until the 30-minute cap. Isolation setup restarts the server through
+    // `executeApp` directly, so it doesn't end the session it is preparing.
+    // `skipRestart` because this handler is itself the restart; without it
+    // teardown brings the dev server back and then so do we.
+    const { envRestored } = await endRecordingForApp(
+      params.appId,
+      "app-stopped",
+      { skipRestart: true },
+    );
+    if (!envRestored) {
+      // Restarting now would bring the app up against the temporary test branch
+      // the recording created. Better to say so than to serve isolated data
+      // under the user's own app.
+      throw new DyadError(
+        "Dyad couldn't restore this app's real database settings after recording. Restore .env.local, then restart.",
+        DyadErrorKind.Precondition,
+      );
+    }
     await appRunActorService.dispatchRestart(params.appId, {
       operationId: params.invocationRef?.operationId ?? randomUUID(),
       startedAt: Date.now(),
@@ -2280,6 +2389,43 @@ export function registerAppHandlers() {
           .returning({ id: apps.id });
         if (result.length === 0) {
           throw new Error(`No app found for name=${appName}`);
+        }
+      },
+    );
+    registerTrustedIpcHandler(
+      "test:set-neon-auth-fixture",
+      async (_event, { appName }: { appName: string }) => {
+        // apps.name is not unique, so resolve and assert BEFORE writing: an
+        // update-then-check has already overwritten every matching row's Neon
+        // columns by the time it throws, and nothing rolls that back.
+        const matches = await db
+          .select({ id: apps.id })
+          .from(apps)
+          .where(eq(apps.name, appName));
+        if (matches.length !== 1) {
+          throw new DyadError(
+            `Expected exactly one app named ${appName}, but matched ${matches.length}`,
+            DyadErrorKind.Validation,
+          );
+        }
+        const updated = await db
+          .update(apps)
+          .set({
+            neonProjectId: "test-project-id",
+            neonDevelopmentBranchId: "test-development-branch-id",
+            neonActiveBranchId: "test-development-branch-id",
+            neonDevelopmentAuthCookieSecret: "test-cookie-secret",
+          })
+          .where(eq(apps.id, matches[0].id))
+          .returning({ id: apps.id });
+        // The row can be deleted between the lookup and the write; a zero-row
+        // update would otherwise report success and leave the E2E to fail later
+        // on a fixture that was never applied.
+        if (updated.length !== 1) {
+          throw new DyadError(
+            `App ${appName} was deleted before the Neon auth fixture was applied`,
+            DyadErrorKind.NotFound,
+          );
         }
       },
     );

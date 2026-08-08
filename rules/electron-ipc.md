@@ -198,6 +198,12 @@ queryClient.invalidateQueries({ queryKey: queryKeys.apps.all });
 
 **Adding new keys:** Add entries to the appropriate domain in `queryKeys.ts`. Follow the existing pattern with `all` for the base key and factory functions using object parameters for parameterized keys.
 
+## Events and invoke replies are not ordered relative to each other
+
+An `invoke` reply and a `safeSend`/`webContents.send` event travel different Electron interfaces, so a renderer can observe them in either order even when main emits the event strictly before the handler returns. Never let an event handler reset state that an in-flight invoke's continuation is about to set — the reset can land last and wipe the result.
+
+Symptom: a flow works, then intermittently "does nothing", as if the successful path never ran. Fix by making the event handler ignore endings the renderer itself requested (e.g. `recording:ended` with `reason === "stopped"` in `useTestRecorder`), rather than relying on the ordering that happens to hold today.
+
 ## High-volume event batching
 
 When an IPC event can fire at very high frequency (e.g., stdout/stderr from child processes), **batch messages and flush on a timer** instead of sending each message individually. This prevents IPC channel saturation, excessive array allocations in the renderer, and unnecessary React re-renders.

@@ -56,6 +56,15 @@ When reusing a setup component behind a persistent "Manage setup" entry point, m
 
 ## Visually verifying component designs without launching Electron
 
-To screenshot a redesigned component without driving the full Electron app (which may require onboarding/app state to reach the surface): build a standalone HTML harness using `@tailwindcss/browser@4` (CDN) with the app's CSS variables copied from `src/styles/globals.css` (including the `.dark` block for dark-mode frames), then screenshot it with the repo's Playwright. Note: import Playwright by absolute path — `import { chromium } from "file:///<repo>/node_modules/playwright/index.mjs"` — because plain `import "playwright"` fails with `ERR_MODULE_NOT_FOUND` when the script lives outside the repo (ESM resolves from the script's location, not cwd).
+To screenshot a redesigned component without driving the full Electron app (which may require onboarding/app state to reach the surface): build a standalone HTML harness using `@tailwindcss/browser@4` (CDN) with the app's CSS variables copied from `src/styles/globals.css` (including the `.dark` block for dark-mode frames), then screenshot it with the repo's Playwright. Note: import Playwright by absolute path — `import { chromium } from "file:///<repo>/node_modules/playwright/index.mjs"` — because plain `import "playwright"` fails with `ERR_MODULE_NOT_FOUND` when the script lives outside the repo (ESM resolves from the script's location, not cwd); copying the script into the repo before running it works too.
+
+For exact fidelity (real tokens, real utilities), compile the project's own CSS instead of the CDN build. The v4 CLI takes content globs via an `@source` directive in the CSS, **not** a `--content` flag (passing `--content` silently emits preflight only), and the input file must sit inside the repo so `@import` resolves:
+
+```bash
+printf '@import "./src/styles/globals.css";\n@source "/abs/path/harness.html";\n' > .tw-probe.css
+npx @tailwindcss/cli -i .tw-probe.css -o /abs/path/out.css   # then delete .tw-probe.css
+```
+
+The same probe doubles as a check that a utility actually exists before shipping it — grep the output for the generated rule rather than assuming a class name is valid. Use a fixed-string match so the leading `.` isn't read as a regex wildcard: `grep -F '.-indent-5 {' /abs/path/out.css` (the class `-indent-5` compiles to the selector `.-indent-5`).
 
 Related: `npm run start:onboarding` launches the real app with fresh userData and `DYAD_DEV_NODEJS_STATUS=missing` to reproduce first-run / Node-missing states.

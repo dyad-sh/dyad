@@ -57,7 +57,7 @@ When you create a new git worktree for this repository, run `npm install` inside
 
 After installation, verify that `node_modules/.bin/oxfmt` exists before running formatting. If `npm install` reports success without materializing `node_modules`, run `npm ci`; otherwise `npx` may download an unpinned formatter and rewrite unrelated files.
 
-Also run `npm install` in `testing/fake-llm-server/` before `npm run ts` in a fresh worktree. Otherwise the root type-check reports missing declarations for that package's local `express` and `cors` dependencies.
+Also run `npm install` in `testing/fake-llm-server/` before `npm run ts` **or `npm test`** in a fresh worktree. Without it the root type-check reports ~50 missing-declaration errors for that package's local `express`/`cors`, and roughly 60 Vitest files fail to collect with `Cannot find module 'git-http-mock-server/middleware'` — none of which are caused by your changes. If you see either symptom, install there first rather than debugging the diff.
 
 ## Pre-commit checks
 
@@ -115,6 +115,8 @@ This is the only supported way to type-check the project. It uses the correct co
 ## Verifying your changes
 
 You should test your changes before committing or pushing. Run relevant unit tests and E2E tests to verify expected behavior. If it's truly impossible to test a change locally (e.g. CI-only behavior, third-party service integration), note this in the PR description explaining why and what manual verification is needed.
+
+When diagnosing a bug the user hit in their running dev app, read `logs/main.log` under the dev app's userData directory — `NODE_ENV=development` repoints Electron's userData away from the OS path (`~/.config/dyad/logs/main.log`), which holds unit-test noise instead. That directory is `./userData` **inside the repo** by default, but `DYAD_DEV_USER_DATA_DIR` overrides it (see `getUserDataPath` in `src/paths/paths.ts`) — `npm run start:onboarding` sets it to a throwaway directory, so a plain `userData/logs/main.log` there is stale or absent. Check the env var first, or read the path `electron-log` prints on startup. The main log carries scoped lines (`process_manager`, `app_runtime_service`, timings) that pin down whether a failure is main-process or renderer-side.
 
 ## General guidance
 

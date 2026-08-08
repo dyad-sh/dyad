@@ -27,6 +27,7 @@ import {
   EyeOff,
   Zap,
   ShieldCheck,
+  CircleDot,
   Code,
   Trash2,
 } from "lucide-react";
@@ -34,6 +35,10 @@ import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useCurrentAppUrl } from "@/hooks/useAppRun";
 import { selectedFileAtom, stagedDiffFileAtom } from "@/atoms/viewAtoms";
+import {
+  currentRecordingStateAtom,
+  recordingStartRequestAtom,
+} from "@/atoms/recorderAtoms";
 import {
   applyTestRunFinishedAtom,
   applyTestRunStartedAtom,
@@ -626,6 +631,8 @@ export function TestsPanel() {
   // on every flush and defeat the point of the separate output atom).
   const jotaiStore = useStore();
   const chatId = useAtomValue(selectedChatIdAtom);
+  const recordingState = useAtomValue(currentRecordingStateAtom);
+  const requestRecording = useSetAtom(recordingStartRequestAtom);
   const { app } = useLoadApp(selectedAppId);
   const { settings, updateSettings } = useSettings();
   const { runApp } = useRunApp();
@@ -998,6 +1005,26 @@ export function TestsPanel() {
     }
   }, [doGenerateTest, isAgentMode]);
 
+  // Recording happens in the preview (it drives the real app), but this panel is
+  // where users look for it. Switch tabs and hand the request to the recorder,
+  // which starts the session as soon as the preview mounts.
+  const isRecordingSession = recordingState.phase !== "idle";
+  const canStartRecording =
+    devServerRunning && !isRunning && !isRecordingSession;
+  const startRecording = useCallback(() => {
+    if (selectedAppId == null) return;
+    requestRecording({ appId: selectedAppId, requestedAt: Date.now() });
+    setPreviewMode("preview");
+  }, [requestRecording, selectedAppId, setPreviewMode]);
+
+  const recordButtonTitle = !devServerRunning
+    ? "Start the app to record a test."
+    : isRunning
+      ? "Wait for the current test run to finish."
+      : isRecordingSession
+        ? "A recording session is already in progress."
+        : "Click through your app in the preview and Dyad writes the test for you.";
+
   const enableTesting = useCallback(() => {
     if (selectedAppId == null) return;
     setTestingEnabled({ appId: selectedAppId, enabled: true });
@@ -1210,6 +1237,23 @@ export function TestsPanel() {
           >
             {headed ? <Eye size={14} /> : <EyeOff size={14} />}
             {headed ? "Headed" : "Headless"}
+          </button>
+        )}
+        {testingEnabled && !isRunning && (
+          <button
+            onClick={startRecording}
+            disabled={!canStartRecording}
+            title={recordButtonTitle}
+            aria-label="Record a test in the preview"
+            data-testid="tests-record-button"
+            className={cn(
+              "flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md cursor-pointer transition-colors",
+              "text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/40",
+              !canStartRecording && "opacity-40 cursor-not-allowed",
+            )}
+          >
+            <CircleDot size={14} />
+            Record
           </button>
         )}
         {isRunning ? (
@@ -1458,6 +1502,20 @@ export function TestsPanel() {
             >
               <Sparkles size={16} />
               Generate a test for a critical user journey
+            </button>
+            <button
+              onClick={startRecording}
+              disabled={!canStartRecording}
+              title={recordButtonTitle}
+              data-testid="tests-empty-record-button"
+              className={cn(
+                "mt-3 flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium cursor-pointer transition-colors",
+                "text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/40",
+                !canStartRecording && "opacity-40 cursor-not-allowed",
+              )}
+            >
+              <CircleDot size={16} />
+              Or record one by clicking through your app
             </button>
           </div>
         ) : (

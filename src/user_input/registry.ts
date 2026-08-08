@@ -32,6 +32,13 @@ import { transition, type UserInputIgnoreReason } from "./transition";
 
 const CONSENT_DEADLINE_MS = 5 * 60 * 1_000;
 const INTEGRATION_DEADLINE_MS = 30 * 60 * 1_000;
+/**
+ * Reviewing an assertion plan is an editing session — rewording checks, adding
+ * and reordering them — not a yes/no click, so it gets the long deadline. Timing
+ * out only releases the agent: the card stays approvable and falls back to
+ * handing the spec back as a normal chat turn.
+ */
+const REVIEW_DEADLINE_MS = 30 * 60 * 1_000;
 const MAX_SETTLED_TOMBSTONES = 1_000;
 
 export interface PendingUserInputSnapshot {
@@ -103,9 +110,9 @@ export function createUserInputRegistry(deps: {
   });
 
   function deadlineMs(kind: UserInputDescriptor["kind"]): number {
-    return kind === "integration"
-      ? INTEGRATION_DEADLINE_MS
-      : CONSENT_DEADLINE_MS;
+    if (kind === "integration") return INTEGRATION_DEADLINE_MS;
+    if (kind === "test-assertions") return REVIEW_DEADLINE_MS;
+    return CONSENT_DEADLINE_MS;
   }
 
   function addToChat(descriptor: UserInputDescriptor): void {

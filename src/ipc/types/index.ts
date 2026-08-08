@@ -136,6 +136,12 @@ export {
   distributedMachineClient,
   distributedMachineEventClient,
 } from "./distributed_machines";
+export {
+  recordingClient,
+  recordingContracts,
+  recordingEventClient,
+  recordingEvents,
+} from "./recording";
 
 // =============================================================================
 // Type Exports
@@ -408,6 +414,15 @@ export type {
   PendingUserInputPayload,
 } from "./user_input";
 
+// Recording types
+export type {
+  RecordingAuth,
+  StartRecordingResult,
+  RecordingSetupProgressPayload,
+  RecordingEndedPayload,
+  RecordingDraftConsumedPayload,
+} from "./recording";
+
 // App blueprint types
 export type {
   AppBlueprintVisual,
@@ -490,6 +505,7 @@ import { appBlueprintClient, appBlueprintEventClient } from "./app_blueprint";
 import { appCollectionClient } from "./app_collections";
 import { terminalClient } from "./terminal";
 import { testsClient, testsEventClient } from "./tests";
+import { recordingClient, recordingEventClient } from "./recording";
 import { userInputClient, userInputEventClient } from "./user_input";
 import { firstPromptClient } from "./first_prompt";
 import {
@@ -564,6 +580,7 @@ export const ipc = {
   appCollection: appCollectionClient,
   terminal: terminalClient,
   tests: testsClient,
+  recording: recordingClient,
   userInput: userInputClient,
   firstPrompt: firstPromptClient,
   windowInfrastructure: windowInfrastructureClient,
@@ -582,5 +599,6 @@ export const ipc = {
     imageGeneration: imageGenerationEventClient,
     windowInfrastructure: windowInfrastructureEventClient,
     distributedMachine: distributedMachineEventClient,
+    recording: recordingEventClient,
   },
 } as const;

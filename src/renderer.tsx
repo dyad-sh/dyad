@@ -55,6 +55,7 @@ import {
   earlyTelemetryEvents,
   registerEarlyRendererEvents,
 } from "./app_wiring/early_renderer_events";
+import { clearRecorderForAppAtom } from "./atoms/recorderAtoms";
 
 // @ts-ignore
 console.log("Running in mode:", import.meta.env.MODE);
@@ -169,6 +170,17 @@ function RendererServices() {
   const clearAppRuntime = useCallback(
     (appId: number) => {
       store.set(clearTestRuntimeForAppAtom, appId);
+      // Recorded interactions can carry whatever the user typed into the app;
+      // a deleted app must not leave them (or its draft) resident for the rest
+      // of the renderer's life.
+      store.set(clearRecorderForAppAtom, appId);
+      // The main process holds its own copies: a parked draft, and possibly a
+      // live session still serving an isolated database and holding the app's
+      // lock. Clearing the atoms only takes away the UI that could have ended
+      // them. (`stopApp` during deletion ends the session too, but deletion
+      // paths that never started the app wouldn't have.)
+      void ipc.recording.discardRecordedTestDraft({ appId }).catch(() => {});
+      void ipc.recording.stopRecording({ appId }).catch(() => {});
     },
     [store],
   );

@@ -64,6 +64,13 @@ export const UserInputDescriptorSchema = z.discriminatedUnion("kind", [
     classifier: z.literal("none"),
     followUpPrompt: z.string(),
   }),
+  DescriptorBaseSchema.extend({
+    kind: z.literal("test-assertions"),
+    appId: z.number(),
+    proposalId: z.string(),
+    testTitle: z.string(),
+    classifier: z.literal("none"),
+  }),
 ]);
 
 export const UserInputResponseSchema = z.discriminatedUnion("kind", [
@@ -80,6 +87,11 @@ export const UserInputResponseSchema = z.discriminatedUnion("kind", [
     kind: z.literal("integration"),
     provider: z.enum(["supabase", "neon"]).nullable(),
     completed: z.boolean(),
+  }),
+  z.object({
+    kind: z.literal("test-assertions"),
+    specPath: z.string().nullable(),
+    appliedCount: z.number(),
   }),
   z.object({ kind: z.literal("follow-up-dispatched") }),
 ]);

@@ -78,6 +78,7 @@ import {
   clearTestRuntimeForAppAtom,
   testRunOutputByAppIdAtom,
 } from "@/atoms/testRuntimeAtoms";
+import { clearRecorderForAppAtom } from "@/atoms/recorderAtoms";
 import { planAcceptInNewChatByChatIdAtom } from "@/atoms/planAtoms";
 import { registerRendererIpcListeners } from "@/app_wiring/registerRendererIpcListeners";
 import { useChatStreamRuntime } from "@/hooks/useChatStream";
@@ -567,6 +568,7 @@ function HybridEntityDisposalWiring({ store }: { store: JotaiStore }) {
   const clearAppRuntime = useCallback(
     (appId: number) => {
       store.set(clearTestRuntimeForAppAtom, appId);
+      store.set(clearRecorderForAppAtom, appId);
     },
     [store],
   );

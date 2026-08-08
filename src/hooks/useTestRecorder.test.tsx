@@ -121,6 +121,16 @@ function makeIframe() {
   };
 }
 
+/**
+ * A preview reload, as far as the recorder can tell: the document is replaced
+ * and the new one's recorder client announces itself. The hook waits for that
+ * announce before arming, so a `reloadPreview` that never produces one leaves a
+ * start hanging on its timeout — exactly as a preview that failed to load does.
+ */
+function reloadAnnouncing(iframe?: ReturnType<typeof makeIframe>) {
+  return () => iframe?.send({ type: "dyad-recorder-initialized" });
+}
+
 /** Point the hook's preview at a running dev server, as an active session is. */
 function setAppUrl(store: ReturnType<typeof createStore>, appId: number) {
   store.set(testAppUrlAtom, {
@@ -149,7 +159,7 @@ function clearAppUrl(store: ReturnType<typeof createStore>) {
 function mountRecorder({
   iframe,
   appUrl = false,
-  reloadPreview = () => {},
+  reloadPreview,
 }: {
   iframe?: ReturnType<typeof makeIframe>;
   appUrl?: boolean;
@@ -159,8 +169,9 @@ function mountRecorder({
   store.set(selectedAppIdAtom, 1);
   if (iframe) store.set(previewIframeRefAtom, iframe.el);
   if (appUrl) setAppUrl(store, 1);
+  const reload = reloadPreview ?? reloadAnnouncing(iframe);
   const { result, unmount, rerender } = renderHook(
-    () => useTestRecorder({ reloadPreview }),
+    () => useTestRecorder({ reloadPreview: reload }),
     { wrapper: Wrapper },
   );
   return { store, Wrapper, result, unmount, rerender };
@@ -303,6 +314,43 @@ describe("useTestRecorder", () => {
     // the user needs once the request came back empty.
     expect(result.current.phase).toBe("reviewing");
     expect(result.current.draft?.testName).toBe("my flow");
+  });
+
+  it("waits for the reloaded preview before it says it is recording", async () => {
+    const iframe = makeIframe();
+    // A reload whose document hasn't come up yet — the window between asking
+    // for one and the new document's recorder client announcing itself.
+    const { result } = mountRecorder({
+      iframe,
+      appUrl: true,
+      reloadPreview: () => {},
+    });
+
+    let started!: Promise<void>;
+    act(() => {
+      started = result.current.startRecording();
+    });
+    await waitFor(() => expect(startRecordingMock).toHaveBeenCalled());
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // Still setting up. Saying "Recording" here promises capture the recorder
+    // can't deliver: the document that would be armed is being replaced, and
+    // everything done in the gap — usually the first click of the flow — is
+    // dropped without a trace.
+    expect(result.current.isRecording).toBe(false);
+    expect(iframe.posted).not.toContainEqual({
+      type: "activate-dyad-recorder",
+    });
+
+    await act(async () => {
+      iframe.send({ type: "dyad-recorder-initialized" });
+      await started;
+    });
+
+    expect(result.current.isRecording).toBe(true);
+    expect(iframe.posted).toContainEqual({ type: "activate-dyad-recorder" });
   });
 
   it("keeps the review when the stop we asked for reports back late", async () => {
@@ -576,7 +624,8 @@ describe("useTestRecorder", () => {
   it("keeps the session after StrictMode's mount/unmount/remount replay", async () => {
     const { store, Wrapper } = makeWrapper();
     store.set(selectedAppIdAtom, 1);
-    store.set(previewIframeRefAtom, makeIframe().el);
+    const iframe = makeIframe();
+    store.set(previewIframeRefAtom, iframe.el);
     setAppUrl(store, 1);
     // Started from the parked request, and held mid-setup, so the session is
     // genuinely in flight *across* the replay. Starting afterwards would leave
@@ -596,7 +645,7 @@ describe("useTestRecorder", () => {
     );
 
     const { result } = renderHook(
-      () => useTestRecorder({ reloadPreview: () => {} }),
+      () => useTestRecorder({ reloadPreview: reloadAnnouncing(iframe) }),
       { wrapper: Wrapper, reactStrictMode: true },
     );
 

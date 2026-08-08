@@ -57,8 +57,11 @@ testSkipIfWindows(
     // it lands in the card.
     const card = po.page.getByTestId("dyad-test-assertions-card");
     await expect(card).toBeVisible({ timeout: Timeout.LONG });
-    // Named by the AI, not a path — nothing has been written yet.
-    await expect(card).toContainText(`Type "Ada" into the field`);
+    // Named by the AI, not a path — nothing has been written yet. The fake
+    // model names the flow from its last statement, and the recorder's
+    // role-first locator strategy records that fill against the field's
+    // accessible name.
+    await expect(card).toContainText(`Type "Ada" into the Name`);
     await expect(
       card.locator('[data-testid^="dyad-test-assertions-step-"]').first(),
     ).toBeVisible();
@@ -93,7 +96,7 @@ testSkipIfWindows(
     // The card's own link opens the generated spec in the Code tab, which has
     // the recorded steps and an assertion. Its filename comes from the name the
     // AI proposed, slugified — no "recorded test" placeholder anywhere.
-    const specFileName = "recorded-type-ada-into-the-field.spec.ts";
+    const specFileName = "recorded-type-ada-into-the-name.spec.ts";
     await po.page.getByTestId("dyad-test-assertions-open-file-button").click();
     // The spec shows up twice in the Code tab (file tree + editor breadcrumb),
     // so pin to the first rather than tripping strict mode.

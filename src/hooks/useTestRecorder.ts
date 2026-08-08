@@ -32,6 +32,18 @@ import type { RecordingAuth } from "@/ipc/types";
 
 const AUTH_READY_TIMEOUT_MS = 30_000;
 
+/**
+ * How long to wait for the reloaded preview document to announce its recorder
+ * client before arming anyway.
+ *
+ * Bounded rather than open-ended: a document that never announces (an app that
+ * fails to load, a proxy that didn't inject the client) must still leave the
+ * user with a bar they can stop, not a start that hangs. Arming a document that
+ * isn't listening costs nothing — the re-arm on `dyad-recorder-initialized`
+ * still catches it whenever it does load.
+ */
+const RECORDER_READY_TIMEOUT_MS = 5_000;
+
 /** One `startRecording` in flight. Cancelled when the recorder walks away. */
 interface StartAttempt {
   cancelled: boolean;
@@ -79,6 +91,14 @@ export function useTestRecorder({
   const authReadyRef = useRef<
     ((data: { ok?: boolean; error?: string }) => void) | null
   >(null);
+  // Settled by the `dyad-recorder-initialized` of the document the recording is
+  // about to be armed in. Tagged with its app because the iframe ref follows the
+  // *selected* app: an announce from a preview the user switched to must not be
+  // read as this app's preview being ready.
+  const recorderReadyRef = useRef<{
+    appId: number;
+    resolve: () => void;
+  } | null>(null);
   // The auth to (re)send while waiting for the in-iframe sign-in, so a bootstrap
   // that reloads mid-flow can be handed the credentials as soon as it announces
   // itself. Tagged with its app: the iframe ref follows the *selected* app, so an
@@ -294,6 +314,12 @@ export function useTestRecorder({
           break;
         }
         case "dyad-recorder-initialized": {
+          // The document a start is waiting on has come up; let it arm.
+          const waiting = recorderReadyRef.current;
+          if (waiting && waiting.appId === currentAppId) {
+            recorderReadyRef.current = null;
+            waiting.resolve();
+          }
           // Re-arm after a dev-server restart / HMR reload swapped the iframe.
           if (phaseRef.current === "recording") {
             postToIframe({ type: "activate-dyad-recorder" });
@@ -582,6 +608,23 @@ export function useTestRecorder({
     );
   }, [appId, appUrl, postToIframe, previewOrigin]);
 
+  /**
+   * A promise for the next preview document to announce its recorder client.
+   *
+   * Register it BEFORE triggering the reload that replaces the document, or the
+   * announce can land in the gap and be waited out to the timeout.
+   */
+  const waitForRecorderReady = useCallback((targetAppId: number) => {
+    return new Promise<void>((resolve) => {
+      recorderReadyRef.current = { appId: targetAppId, resolve };
+      setTimeout(() => {
+        if (recorderReadyRef.current?.resolve !== resolve) return;
+        recorderReadyRef.current = null;
+        resolve();
+      }, RECORDER_READY_TIMEOUT_MS);
+    });
+  }, []);
+
   const beginRecording = useCallback(
     async (
       targetAppId: number,
@@ -687,6 +730,16 @@ export function useTestRecorder({
       } else {
         // Still start from a fresh load so the preview reflects the isolated
         // database and cleared storage, and isn't stuck on a dead page.
+        //
+        // Registered before the reload is asked for: the document that comes
+        // back is the one the recorder has to be armed in, and the announce
+        // that says so can arrive before the next line of this function runs.
+        // With no preview attached there is nothing to arm and nothing that
+        // could announce — the re-arm on `dyad-recorder-initialized` picks up
+        // whatever loads later.
+        const previewReady = iframeElRef.current
+          ? waitForRecorderReady(targetAppId)
+          : Promise.resolve();
         reloadPreview();
         // ...but a bare remount keeps whatever route the user was on, while
         // `recordedBodyStatements` opens every spec with `page.goto("/")`.
@@ -704,6 +757,22 @@ export function useTestRecorder({
             entry: { action, at: Date.now() },
           });
         }
+
+        // The bar is what tells the user recording has begun, and it goes up
+        // on the phase set below. Flipping it while the reload is still in
+        // flight promises capture the recorder cannot deliver: the activate
+        // below would arm a document that is being replaced, and everything
+        // done in the gap — usually the first click of the flow — is dropped
+        // with no sign that anything was missed.
+        await previewReady;
+        if (isAbandoned()) {
+          releaseSession(targetAppId);
+          return;
+        }
+        // The session can end underneath this wait the same way it can under
+        // the sign-in above; arming over one that is gone records against the
+        // app's real database.
+        if (!ownedSessionsRef.current.has(targetAppId)) return;
       }
 
       postToIframe({ type: "activate-dyad-recorder" });
@@ -723,6 +792,7 @@ export function useTestRecorder({
       postToIframe,
       releaseSession,
       reloadPreview,
+      waitForRecorderReady,
     ],
   );
 

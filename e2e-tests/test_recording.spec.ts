@@ -88,7 +88,10 @@ testSkipIfWindows(
     await po.importApp("recorder");
 
     // Recording is part of the testing feature — no opt-in, no record button.
-    await po.previewPanel.selectPreviewMode("preview");
+    // The panel already opens on Preview, and its tabs are toggle-to-close, so
+    // selecting that mode again collapses it — then the collapse is undone a
+    // beat later, which races the next mode switch's "open the panel first".
+    await po.previewPanel.ensurePreviewPanelOpen();
     await expect(po.page.getByTestId("preview-record-button")).toBeHidden();
 
     await po.previewPanel.selectPreviewMode("tests");

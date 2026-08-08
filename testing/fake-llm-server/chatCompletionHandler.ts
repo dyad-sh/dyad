@@ -123,23 +123,27 @@ function sendToolCallJson(
 /**
  * Stream a tool call as SSE, a few characters at a time.
  *
- * `req` is what makes cancellation work: the argument chunks are deliberately
- * spread over time, so a client that gives up (the user stopping a stream, a
- * test aborting) would otherwise leave this loop writing to a destroyed
- * response for the rest of its run.
+ * The disconnect watch is on `res`, not `req`: the argument chunks are
+ * deliberately spread over time, so a client that gives up (the user stopping a
+ * stream, a test aborting) would otherwise leave this loop writing to a
+ * destroyed response for the rest of its run. It must NOT be on `req` — since
+ * Node 16 an `IncomingMessage` emits `close` as soon as the request itself is
+ * complete, which for a POST whose body express has already parsed is before
+ * the first chunk goes out. Watching that fired on every call, and the loop
+ * bailed after one chunk without ever ending the response: every fixture that
+ * answers with a streamed tool call hung until the client timed out.
  */
 async function streamToolCall(
-  req: Request,
   res: Response,
   toolName: string,
   args: Record<string, unknown>,
 ) {
-  let closed = req.destroyed;
+  let closed = res.destroyed;
   const onClose = () => {
     closed = true;
   };
-  req.on("close", onClose);
-  const finish = () => req.off("close", onClose);
+  res.on("close", onClose);
+  const finish = () => res.off("close", onClose);
 
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
@@ -335,7 +339,6 @@ export const createChatCompletionHandler =
     if (assertionsToolCall) {
       if (stream) {
         await streamToolCall(
-          req,
           res,
           assertionsToolCall.name,
           assertionsToolCall.args,
@@ -354,7 +357,7 @@ export const createChatCompletionHandler =
           ? buildExploreCodeSubmitReportArgs()
           : buildExploreCodeNestedToolArgs();
       if (stream) {
-        await streamToolCall(req, res, toolName, input);
+        await streamToolCall(res, toolName, input);
         return;
       }
       sendToolCallJson(res, toolName, input);

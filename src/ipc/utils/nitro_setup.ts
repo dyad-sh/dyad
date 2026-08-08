@@ -19,6 +19,9 @@ const logger = log.scope("nitro_setup");
 
 const NITRO_DEPENDENCIES = ["nitro", "jiti"];
 
+/** Where Nitro's node-server preset writes the entry point it builds. */
+const NITRO_START_SCRIPT = "node .output/server/index.mjs";
+
 const NITRO_CONFIG_CONTENTS = `import { defineConfig } from "nitro";
 
 export default defineConfig({
@@ -38,6 +41,49 @@ async function writeNitroConfigIfMissing(
   }
   await fs.writeFile(filePath, NITRO_CONFIG_CONTENTS, "utf8");
   return { filePath, wasCreated: true };
+}
+
+/**
+ * Gives the app a `start` script, because it has just become one that needs
+ * starting.
+ *
+ * A Vite app is served as static files; adding Nitro turns it into a server
+ * whose entry point is inside the build output. Nothing else in the app says
+ * so, and a build pack still reads `vite.config.ts` and sees a static site.
+ * Naming the entry point here is the app describing itself, which travels
+ * with it anywhere it is deployed.
+ *
+ * Never overwrites an existing script: one that is already there describes
+ * this app better than a default can.
+ */
+async function addStartScriptIfMissing(
+  appPath: string,
+): Promise<{ wasAdded: boolean; backup: string | null }> {
+  const filePath = path.join(appPath, "package.json");
+  let contents: string;
+  try {
+    contents = await fs.readFile(filePath, "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+    return { wasAdded: false, backup: null };
+  }
+
+  const packageJson = JSON.parse(contents);
+  if (typeof packageJson.scripts?.start === "string") {
+    return { wasAdded: false, backup: null };
+  }
+  packageJson.scripts = {
+    ...packageJson.scripts,
+    start: NITRO_START_SCRIPT,
+  };
+  // Two spaces and a trailing newline, which is what package managers write,
+  // so this does not show up as a whole-file diff.
+  await fs.writeFile(
+    filePath,
+    `${JSON.stringify(packageJson, null, 2)}\n`,
+    "utf8",
+  );
+  return { wasAdded: true, backup: contents };
 }
 
 export interface EnsureNitroResult {
@@ -73,6 +119,10 @@ export async function ensureNitroOnViteApp(
     null;
   let serverDirCreated = false;
   let viteConfigBackup: ViteConfigBackup | null = null;
+  let startScript: { wasAdded: boolean; backup: string | null } = {
+    wasAdded: false,
+    backup: null,
+  };
   const serverDirPath = path.join(appPath, "server");
 
   const rollback = async () => {
@@ -88,6 +138,13 @@ export async function ensureNitroOnViteApp(
       }
       if (viteConfigBackup) {
         await restoreViteConfig(viteConfigBackup);
+      }
+      if (startScript.wasAdded && startScript.backup !== null) {
+        await fs.writeFile(
+          path.join(appPath, "package.json"),
+          startScript.backup,
+          "utf8",
+        );
       }
     } catch (rollbackError) {
       logger.error(
@@ -116,6 +173,7 @@ export async function ensureNitroOnViteApp(
     );
 
     viteConfigBackup = await addNitroToViteConfig(appPath);
+    startScript = await addStartScriptIfMissing(appPath);
 
     const result = await installPackages({
       packages: NITRO_DEPENDENCIES,

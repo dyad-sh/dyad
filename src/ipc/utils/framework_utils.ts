@@ -53,6 +53,32 @@ export function detectFrameworkType(appPath: string): AppFrameworkType | null {
   }
 }
 
+/**
+ * Whether the app names its own entry point.
+ *
+ * This is the same lookup a build pack does, in the same order: a `start`
+ * script, then `main`, then a root index module. An app that answers here is
+ * describing how to run itself, and knows things about its own build that
+ * nothing outside it can see.
+ */
+export function declaresStart(appPath: string): boolean {
+  try {
+    const packageJsonPath = path.join(appPath, "package.json");
+    if (fs.existsSync(packageJsonPath)) {
+      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+      if (typeof packageJson.scripts?.start === "string") return true;
+      if (typeof packageJson.main === "string") return true;
+    }
+    return ["index.js", "index.mjs", "index.cjs", "index.ts"].some((entry) =>
+      fs.existsSync(path.join(appPath, entry)),
+    );
+  } catch {
+    // An unreadable app is one Dyad knows nothing about, and claiming it
+    // starts itself would leave the deploy with no start command at all.
+    return false;
+  }
+}
+
 function hasNitro(
   appPath: string,
   deps: Record<string, string> | null,

@@ -40,9 +40,13 @@ vi.mock("@/ipc/utils/coolify_deploy_key", () => ({
   readPrivateKey: () => "PRIVATE",
 }));
 
-const framework = vi.hoisted(() => ({ type: "vite" as string | null }));
+const framework = vi.hoisted(() => ({
+  type: "vite" as string | null,
+  declaresStart: false,
+}));
 vi.mock("@/ipc/utils/framework_utils", () => ({
   detectFrameworkType: () => framework.type,
+  declaresStart: () => framework.declaresStart,
 }));
 
 // The real resolver talks to Neon; the pipeline's job is to pass the branch the
@@ -270,6 +274,7 @@ beforeEach(() => {
   routes = new Map();
   sideEffects = new Map();
   framework.type = "vite";
+  framework.declaresStart = false;
   git.hashes = { HEAD: "abc", remote: "abc" };
   neon.branchTypes = [];
   neon.trustedDomains = [];
@@ -336,10 +341,12 @@ describe("first deploy", () => {
     const created = bodyOf("POST /applications/private-deploy-key");
     expect(created.autogenerate_domain).toBe(true);
     expect(created.domains).toBeUndefined();
-    // A Vite app compiles to static files, which nixpacks cannot start.
+    // Railpack recognises a Vite app and serves the build itself, so the
+    // only thing sent about it is the port Coolify insists on.
     expect(created.build_pack).toBe("railpack");
-    expect(created.is_static).toBe(true);
-    expect(created.is_spa).toBe(true);
+    expect(created.ports_exposes).toBe("3000");
+    expect(created.start_command).toBeFalsy();
+    expect(created.publish_directory).toBeFalsy();
   });
 });
 
@@ -642,7 +649,6 @@ describe("build configuration", () => {
     const created = bodyOf("POST /applications/private-deploy-key");
     expect(created.build_pack).toBe("railpack");
     expect(created.ports_exposes).toBe("3000");
-    expect(created.is_static).toBe(false);
     expect(created.start_command).toBe("node .output/server/index.mjs");
   });
 
@@ -683,9 +689,13 @@ describe("build configuration", () => {
     );
 
     const created = bodyOf("POST /applications/private-deploy-key");
-    expect(created.build_pack).toBe("nixpacks");
+    expect(created.build_pack).toBe("railpack");
     expect(created.ports_exposes).toBe("3000");
-    expect(created.is_static).toBe(false);
+    // Nothing else is claimed about an app Dyad does not recognise, so railpack
+    // reads it and decides for itself.
+    expect(created.start_command).toBeUndefined();
+    expect(created.publish_directory).toBeUndefined();
+    expect(created.is_static).toBeUndefined();
   });
 });
 
@@ -1277,8 +1287,10 @@ describe("keeping the Coolify application in step with the repo", () => {
     expect(patch.git_repository).toBe("git@github.com:acme/demo.git");
   });
 
-  it("clears a publish directory left by a previous framework shape", async () => {
-    // A vite app leaves /dist behind; nextjs must not inherit it.
+  it("leaves settings it has no opinion on untouched", async () => {
+    // A redeploy that rewrote every field would replace anything the user set
+    // in Coolify, and anything an app configured for itself, with a default
+    // Dyad invented. Only what Dyad actually has a value for is sent.
     framework.type = "nextjs";
     const app = await seedApp({ connection: { applicationUuid: APP_UUID } });
     happyPathRoutes();
@@ -1294,9 +1306,14 @@ describe("keeping the Coolify application in step with the repo", () => {
       }),
     );
 
-    expect(bodyOf(`PATCH /applications/${APP_UUID}`).publish_directory).toBe(
-      "",
-    );
+    const patch = bodyOf(`PATCH /applications/${APP_UUID}`);
+    expect(patch.build_pack).toBe("railpack");
+    expect(patch.ports_exposes).toBe("3000");
+    // Absent from the request entirely, not set to an empty string.
+    expect("publish_directory" in patch).toBe(false);
+    expect("start_command" in patch).toBe(false);
+    expect("is_static" in patch).toBe(false);
+    expect("is_spa" in patch).toBe(false);
   });
 });
 

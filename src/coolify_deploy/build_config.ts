@@ -1,9 +1,6 @@
 import type { AppFrameworkType } from "@/lib/framework_constants";
 import type { CoolifyBuildConfig } from "@/ipc/utils/coolify_client";
 
-/** Where each framework leaves its built output. */
-const VITE_PUBLISH_DIRECTORY = "/dist";
-
 /**
  * Nitro's node-server preset writes its entry here and listens on 3000.
  *
@@ -14,72 +11,108 @@ const VITE_PUBLISH_DIRECTORY = "/dist";
 const NITRO_START_COMMAND = "node .output/server/index.mjs";
 
 /**
+ * What the app says about itself, read from its own files.
+ *
+ * The build pack works out how to install, build and run an app on its own,
+ * and it reads the app rather than a table, so it is right about apps nobody
+ * here has heard of. Anything it can determine is better left to it.
+ */
+export interface AppDeclarations {
+  /**
+   * Whether the app names its own entry point — a `start` script, a `main`
+   * field, or a root index module. These are what the build pack looks for,
+   * in that order.
+   */
+  declaresStart: boolean;
+}
+
+/** An app that says nothing about itself, which is the safe assumption. */
+export const NO_DECLARATIONS: AppDeclarations = { declaresStart: false };
+
+/**
+ * The part of a build configuration Dyad supplies.
+ *
+ * Every field is optional, because every field is a claim that overrides what
+ * the build pack would have decided. A claim is worth making only where Dyad
+ * knows something the build pack cannot read off the app, and each one should
+ * be retired once that stops being true.
+ */
+interface FrameworkKnowledge {
+  /** Overrides the port below, for an app that cannot be told which to use. */
+  portsExposes?: string;
+  isStatic?: boolean;
+  isSpa?: boolean;
+  publishDirectory?: string;
+  /**
+   * Used only when the app declares no entry point of its own. An app that
+   * names one is describing something Dyad cannot see — a changed Nitro
+   * output directory, a wrapper script — and overriding it would break a
+   * configuration that was already correct.
+   */
+  fallbackStartCommand?: string;
+}
+
+/**
+ * The port Coolify routes to.
+ *
+ * Coolify will not route to an application that exposes none — it warns that
+ * the app "will not be reachable through the proxy or your domains" — so one
+ * is always sent. The value is arbitrary: Coolify passes it as $PORT, and
+ * both railpack's Caddy and any framework's server bind what they are given.
+ *
+ * It is a container port, so every app can use the same one. Host ports are
+ * Coolify's separate port mappings, which Dyad does not set.
+ */
+const DEFAULT_PORT = "3000";
+
+/**
+ * What Dyad knows about each framework, over and above what the build pack
+ * works out for itself.
+ *
+ * Partial on purpose: a framework belongs here only when there is something
+ * to say about it. Railpack detects Vite, Astro, Next.js, CRA, Angular,
+ * React Router and Expo Web on its own, reads the app rather than a table,
+ * and so is right about apps nobody here has heard of — including ones added
+ * after this was written. Absent means "let railpack decide", which is the
+ * answer for everything not listed.
+ */
+const FRAMEWORK_KNOWLEDGE: Partial<
+  Record<AppFrameworkType, FrameworkKnowledge>
+> = {
+  /**
+   * Adding a database turns a Vite app into this: a real server, but one that
+   * keeps the `vite.config.ts` railpack reads as a static site. Naming an
+   * entry point is what stops it being served as one, with its API routes
+   * answering nothing.
+   *
+   * Only used when the app names no entry point of its own — the conversion
+   * writes a `start` script, so this is for apps converted before it did.
+   */
+  "vite-nitro": { fallbackStartCommand: NITRO_START_COMMAND },
+};
+
+/**
  * Decides how Coolify should build and serve an app.
  *
- * A plain Vite app compiles to static files with no process to run, so a
- * build pack alone finds nothing to start and the container exits. Pairing
- * one with `isStatic` builds it and then serves the output with nginx.
- *
- * Note this is not Coolify's `static` build pack: that one skips the build
- * entirely and copies the repository as-is, which serves the unbuilt source
- * and leaves the browser refusing `main.tsx` as the wrong MIME type.
- *
- * Railpack rather than nixpacks because nixpacks cannot install these apps.
- * Left to itself it silently skips the bundler's native binding, and given a
- * pinned package manager it shims it through a corepack too old to run it.
- * Railpack is its successor from the same authors and handles both.
- *
- * Adding a Neon database turns a Vite app into a `vite-nitro` one, which is
- * both at once: a real server, so it cannot be static, and still a Vite build,
- * so nixpacks cannot install it either. It gets railpack and an explicit start
- * command.
- *
- * An unknown framework is treated as a server, since a static site served as
- * one fails visibly while the reverse can look deployed but serve nothing.
+ * Railpack rather than nixpacks throughout: nixpacks is in maintenance mode,
+ * and it cannot install these apps anyway — left to itself it silently skips
+ * the bundler's native binding, and given a pinned package manager it shims
+ * it through a corepack too old to run it.
  */
 export function buildConfigForFramework(
   frameworkType: AppFrameworkType | null,
+  declarations: AppDeclarations = NO_DECLARATIONS,
 ): CoolifyBuildConfig {
-  switch (frameworkType) {
-    case "vite":
-      return {
-        buildPack: "railpack",
-        // nginx serves the built output, so the port is its own, not the app's.
-        portsExposes: "80",
-        isStatic: true,
-        // React Router and friends need unknown paths rewritten to index.html.
-        isSpa: true,
-        publishDirectory: VITE_PUBLISH_DIRECTORY,
-      };
-    case "vite-nitro":
-      return {
-        buildPack: "railpack",
-        portsExposes: "3000",
-        // Nitro serves the built client itself, from inside the same process.
-        isStatic: false,
-        isSpa: false,
-        startCommand: NITRO_START_COMMAND,
-      };
-    case "nextjs":
-    case "other":
-    case null:
-      return {
-        buildPack: "nixpacks",
-        portsExposes: "3000",
-        isStatic: false,
-        isSpa: false,
-      };
-    default: {
-      // A new AppFrameworkType must make a decision here rather than silently
-      // inheriting the server default — that is how vite-nitro shipped broken.
-      const exhaustive: never = frameworkType;
-      void exhaustive;
-      return {
-        buildPack: "nixpacks",
-        portsExposes: "3000",
-        isStatic: false,
-        isSpa: false,
-      };
-    }
-  }
+  const known = (frameworkType && FRAMEWORK_KNOWLEDGE[frameworkType]) ?? {};
+
+  return {
+    buildPack: "railpack",
+    portsExposes: known.portsExposes ?? DEFAULT_PORT,
+    isStatic: known.isStatic,
+    isSpa: known.isSpa,
+    publishDirectory: known.publishDirectory,
+    startCommand: declarations.declaresStart
+      ? undefined
+      : known.fallbackStartCommand,
+  };
 }

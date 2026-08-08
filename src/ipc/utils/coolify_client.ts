@@ -64,9 +64,14 @@ export function isCoolifyStatus(error: unknown, status: number): boolean {
 export interface CoolifyBuildConfig {
   buildPack: "nixpacks" | "railpack";
   portsExposes: string;
-  isStatic: boolean;
+  /**
+   * Left undefined unless Dyad has something to say. An undefined field is
+   * not sent, so Coolify keeps whatever is already configured there rather
+   * than having it replaced on every deploy.
+   */
+  isStatic?: boolean;
   /** Rewrites unknown paths to index.html so client-side routes resolve. */
-  isSpa: boolean;
+  isSpa?: boolean;
   publishDirectory?: string;
   /**
    * How to run the built app, for frameworks whose build output is not
@@ -428,12 +433,20 @@ export class CoolifyClient {
     if (patch.build) {
       body.build_pack = patch.build.buildPack;
       body.ports_exposes = patch.build.portsExposes;
-      body.is_static = patch.build.isStatic;
-      body.is_spa = patch.build.isSpa;
-      // Both sent even when absent, so a framework change clears whichever the
-      // previous shape left behind rather than keeping a stale one.
-      body.publish_directory = patch.build.publishDirectory ?? "";
-      body.start_command = patch.build.startCommand ?? "";
+      // Only what Dyad actually has a value for. A field it says nothing
+      // about is left out of the request entirely, so a setting the user or
+      // the app put there survives a redeploy instead of being replaced by a
+      // default Dyad invented.
+      if (patch.build.isStatic !== undefined) {
+        body.is_static = patch.build.isStatic;
+      }
+      if (patch.build.isSpa !== undefined) body.is_spa = patch.build.isSpa;
+      if (patch.build.publishDirectory !== undefined) {
+        body.publish_directory = patch.build.publishDirectory;
+      }
+      if (patch.build.startCommand !== undefined) {
+        body.start_command = patch.build.startCommand;
+      }
     }
     await this.request("PATCH", `/applications/${uuid}`, body);
   }

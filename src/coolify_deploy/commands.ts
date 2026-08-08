@@ -5,7 +5,10 @@ import { apps, coolifyAppConnections } from "@/db/schema";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { readSettings } from "@/main/settings";
 import { getDyadAppPath } from "@/paths/paths";
-import { detectFrameworkType } from "@/ipc/utils/framework_utils";
+import {
+  declaresStart,
+  detectFrameworkType,
+} from "@/ipc/utils/framework_utils";
 import { buildConfigForFramework } from "@/coolify_deploy/build_config";
 import {
   CoolifyClient,
@@ -528,10 +531,16 @@ export async function runDeployPipeline({
   });
 
   const client = getClient(signal);
+  const resolvedAppPath = getDyadAppPath(app.path);
   const build: CoolifyBuildConfig = buildConfigForFramework(
-    detectFrameworkType(getDyadAppPath(app.path)),
+    detectFrameworkType(resolvedAppPath),
+    { declaresStart: declaresStart(resolvedAppPath) },
   );
-  report.log(`Building as ${build.buildPack} on port ${build.portsExposes}.\n`);
+  report.log(
+    build.portsExposes
+      ? `Building as ${build.buildPack} on port ${build.portsExposes}.\n`
+      : `Building as ${build.buildPack}, on the port Coolify picks.\n`,
+  );
 
   const keyName = await ensureGithubDeployKey({
     owner: app.githubOrg,

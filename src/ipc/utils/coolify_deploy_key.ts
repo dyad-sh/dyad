@@ -1,5 +1,4 @@
-import { spawn } from "child_process";
-import { createHash } from "crypto";
+import { createHash, generateKeyPairSync, randomBytes } from "crypto";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -15,6 +14,9 @@ const logger = log.scope("coolify_deploy_key");
  * public half to GitHub as a deploy key and the private half to Coolify.
  * GitHub allows a deploy key on only one repository, so each repo gets its own.
  */
+
+/** Written into the key so a human reading ~/.ssh can see where it came from. */
+const KEY_COMMENT = "dyad-deploy";
 
 function keyDir(): string {
   return path.join(os.homedir(), ".ssh");
@@ -75,154 +77,177 @@ export function readPrivateKey(keyName: string): string {
   return fs.readFileSync(keyFilePath(keyName), "utf8");
 }
 
-function findKeygenBinary(): string {
-  const fileName =
-    process.platform === "win32" ? "ssh-keygen.exe" : "ssh-keygen";
-  const dirs =
-    process.platform === "win32"
-      ? [
-          path.join(
-            process.env.SystemRoot ?? "C:\\Windows",
-            "System32",
-            "OpenSSH",
-          ),
-        ]
-      : ["/usr/bin", "/usr/local/bin", "/opt/homebrew/bin"];
-  for (const dir of dirs) {
-    const candidate = path.join(dir, fileName);
-    if (fs.existsSync(candidate)) return candidate;
+/** Length-prefixed field, the one primitive the SSH wire format is built from. */
+function sshField(value: Buffer | string): Buffer {
+  const body = Buffer.isBuffer(value) ? value : Buffer.from(value, "utf8");
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(body.length);
+  return Buffer.concat([length, body]);
+}
+
+function readFields(buffer: Buffer, offset: number, count: number) {
+  const fields: Buffer[] = [];
+  for (let i = 0; i < count; i++) {
+    const length = buffer.readUInt32BE(offset);
+    offset += 4;
+    fields.push(buffer.subarray(offset, offset + length));
+    offset += length;
   }
-  return "ssh-keygen";
+  return { fields, offset };
 }
 
-/** Writes the public half from the private one, leaving the private untouched. */
-function derivePublicKey(keyPath: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(findKeygenBinary(), ["-y", "-f", keyPath], {
-      stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true,
-    });
-    let stdout = "";
-    let stderr = "";
-    const timeout = setTimeout(() => child.kill("SIGKILL"), 30_000);
-    child.stdout.on("data", (chunk) => (stdout += chunk.toString()));
-    child.stderr.on("data", (chunk) => (stderr += chunk.toString()));
-    child.on("error", (err) => {
-      clearTimeout(timeout);
-      reject(
-        new DyadError(
-          `Could not run ssh-keygen: ${err.message}`,
-          DyadErrorKind.External,
-        ),
-      );
-    });
-    child.on("close", (code) => {
-      clearTimeout(timeout);
-      if (code !== 0 || !stdout.trim()) {
-        reject(
-          new DyadError(
-            `Could not rebuild the public key from ${keyPath}: ${
-              stderr.trim() || `exit code ${code}`
-            }`,
-            DyadErrorKind.External,
-          ),
-        );
-        return;
-      }
-      // Written only once ssh-keygen has succeeded, so a failure leaves the
-      // pair exactly as it was rather than half-removed.
-      fs.writeFileSync(`${keyPath}.pub`, `${stdout.trim()}\n`, { mode: 0o644 });
-      resolve();
-    });
-  });
-}
-
-function runKeygen(keyPath: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(
-      findKeygenBinary(),
-      ["-t", "ed25519", "-N", "", "-C", "dyad-deploy", "-f", keyPath],
-      { stdio: ["ignore", "pipe", "pipe"], windowsHide: true },
+/**
+ * An ed25519 pair in the two shapes OpenSSH expects on disk.
+ *
+ * The private file is the "openssh-key-v1" container: a header naming the
+ * cipher and KDF (both "none" — this key is used unattended and cannot carry
+ * a passphrase), the public blob, and then a section that would be encrypted
+ * if there were a passphrase. That section repeats a random check value twice,
+ * which is how a decrypting reader knows it got the passphrase right, and is
+ * padded 1,2,3... because the format pads to the cipher's block size even when
+ * the cipher is "none".
+ */
+export function generateDeployKeyPair(comment: string): {
+  publicKey: string;
+  privateKey: string;
+} {
+  const pair = generateKeyPairSync("ed25519");
+  // JWK is the one export format that hands back the raw 32-byte values,
+  // which is what the SSH encoding wants; DER would have to be unwrapped.
+  const { x } = pair.publicKey.export({ format: "jwk" });
+  const { d } = pair.privateKey.export({ format: "jwk" });
+  if (!x || !d) {
+    throw new DyadError(
+      "Could not generate a deploy key: the runtime returned an ed25519 key " +
+        "without its raw halves.",
+      DyadErrorKind.Internal,
     );
-    let stderr = "";
-    let timedOut = false;
-    const timeout = setTimeout(() => {
-      timedOut = true;
-      child.kill("SIGKILL");
-    }, 30_000);
-    child.stderr.on("data", (chunk) => (stderr += chunk.toString()));
-    child.on("error", (err) => {
-      clearTimeout(timeout);
-      // A missing ssh-keygen arrives here rather than as a non-zero exit, and
-      // an unclassified error would be reported as a crash.
-      reject(
-        new DyadError(
-          `Could not run ssh-keygen: ${err.message}`,
-          DyadErrorKind.External,
-        ),
-      );
-    });
-    child.on("close", (code) => {
-      clearTimeout(timeout);
-      if (code === 0) return resolve();
-      reject(
-        new DyadError(
-          timedOut
-            ? "ssh-keygen did not finish within 30s and was stopped."
-            : `ssh-keygen failed: ${stderr.trim() || `exit code ${code}`}`,
-          DyadErrorKind.External,
-        ),
-      );
-    });
-  });
+  }
+  const publicBytes = Buffer.from(x, "base64url");
+  // OpenSSH stores the seed and the public key together as the secret half.
+  const secretBytes = Buffer.concat([Buffer.from(d, "base64url"), publicBytes]);
+
+  const blob = Buffer.concat([sshField("ssh-ed25519"), sshField(publicBytes)]);
+
+  const check = randomBytes(4);
+  const inner = Buffer.concat([
+    check,
+    check,
+    sshField("ssh-ed25519"),
+    sshField(publicBytes),
+    sshField(secretBytes),
+    sshField(comment),
+  ]);
+  const padding = (8 - (inner.length % 8)) % 8;
+  const padded = Buffer.concat([
+    inner,
+    Buffer.from(Array.from({ length: padding }, (_, i) => i + 1)),
+  ]);
+
+  const container = Buffer.concat([
+    Buffer.from("openssh-key-v1\0", "utf8"),
+    sshField("none"),
+    sshField("none"),
+    sshField(""),
+    Buffer.from([0, 0, 0, 1]),
+    sshField(blob),
+    sshField(padded),
+  ]);
+
+  const lines = container.toString("base64").match(/.{1,70}/g) ?? [];
+  return {
+    publicKey: `ssh-ed25519 ${blob.toString("base64")} ${comment}\n`,
+    privateKey:
+      `-----BEGIN OPENSSH PRIVATE KEY-----\n${lines.join("\n")}\n` +
+      `-----END OPENSSH PRIVATE KEY-----\n`,
+  };
 }
 
-// Two deploys starting together would otherwise both find the key missing and
-// race, leaving one waiting on ssh-keygen's overwrite prompt.
-const inFlight = new Map<string, Promise<string>>();
+/**
+ * Reads the public half back out of a stored private key.
+ *
+ * The public blob sits in the clear ahead of the section a passphrase would
+ * encrypt, so this works without knowing the cipher, and so reads any
+ * unmodified OpenSSH key rather than only the ones written here.
+ */
+export function publicKeyFromPrivate(pem: string): string | null {
+  try {
+    const body = Buffer.from(
+      pem
+        .split("\n")
+        .filter((line) => !line.startsWith("-----"))
+        .join(""),
+      "base64",
+    );
+    const magic = "openssh-key-v1\0";
+    if (body.subarray(0, magic.length).toString("utf8") !== magic) return null;
+
+    // ciphername, kdfname, kdfoptions, then the number of keys.
+    const header = readFields(body, magic.length, 3);
+    const count = body.readUInt32BE(header.offset);
+    if (count !== 1) return null;
+    const { fields } = readFields(body, header.offset + 4, 1);
+    const blob = fields[0];
+    if (!blob?.length) return null;
+
+    // The blob names its own type; anything else is a key we did not write.
+    const { fields: parts } = readFields(blob, 0, 1);
+    if (parts[0]?.toString("utf8") !== "ssh-ed25519") return null;
+    return `ssh-ed25519 ${blob.toString("base64")} ${KEY_COMMENT}\n`;
+  } catch {
+    // A truncated or non-OpenSSH file lands here; the caller reports it as an
+    // unreadable key rather than replacing one that is still in use.
+    return null;
+  }
+}
 
 /**
  * Generates the keypair if it does not exist and returns the public half.
  * It is passphrase-less because it is used non-interactively, and is a
  * dedicated identity rather than the user's personal key.
+ *
+ * The body never yields, so two deploys starting together cannot interleave
+ * and end up with one registering a pair the other has already replaced.
  */
 export async function ensureDeployKey(keyName: string): Promise<string> {
-  const existing = inFlight.get(keyName);
-  if (existing) return existing;
+  const keyPath = keyFilePath(keyName);
+  const hasPrivate = fs.existsSync(keyPath);
+  const hasPublic = fs.existsSync(`${keyPath}.pub`);
 
-  const work = (async () => {
-    const keyPath = keyFilePath(keyName);
-    const hasPrivate = fs.existsSync(keyPath);
-    const hasPublic = fs.existsSync(`${keyPath}.pub`);
-    if (hasPrivate && !hasPublic) {
-      // The private half is what GitHub authorised and Coolify stored, so it
-      // is worth keeping: the public half is derived from it rather than the
-      // pair being replaced. ssh-keygen writes them in sequence, so a crash
-      // or the kill on its own timeout leaves exactly this.
-      await derivePublicKey(keyPath);
-      logger.info(`Rebuilt the public half of ${keyPath}`);
-    } else if (!hasPrivate) {
-      fs.mkdirSync(keyDir(), { recursive: true, mode: 0o700 });
-      // Nothing usable survives without the private half, and ssh-keygen
-      // will not overwrite or prompt with stdin ignored.
-      fs.rmSync(`${keyPath}.pub`, { force: true });
-      await runKeygen(keyPath);
-      logger.info(`Generated deploy key at ${keyPath}`);
-    }
-    const publicKey = readPublicKey(keyName);
-    if (!publicKey) {
+  if (hasPrivate && !hasPublic) {
+    // The private half is what GitHub authorised and Coolify stored, so it is
+    // worth keeping: the public half is read back out of it rather than the
+    // pair being replaced.
+    const derived = publicKeyFromPrivate(readPrivateKey(keyName));
+    if (!derived) {
       throw new DyadError(
-        `Deploy key exists but ${keyPath}.pub is unreadable`,
+        `The deploy key at ${keyPath} could not be read, and its public half ` +
+          `is missing. Delete it to have a new pair generated, then add the ` +
+          `new key to the repository's deploy keys.`,
         DyadErrorKind.External,
       );
     }
-    return publicKey;
-  })();
-
-  inFlight.set(keyName, work);
-  try {
-    return await work;
-  } finally {
-    inFlight.delete(keyName);
+    fs.writeFileSync(`${keyPath}.pub`, derived, { mode: 0o644 });
+    logger.info(`Rebuilt the public half of ${keyPath}`);
+  } else if (!hasPrivate) {
+    fs.mkdirSync(keyDir(), { recursive: true, mode: 0o700 });
+    // Nothing usable survives without the private half, so a stray public one
+    // describes a pair that no longer exists.
+    fs.rmSync(`${keyPath}.pub`, { force: true });
+    const pair = generateDeployKeyPair(KEY_COMMENT);
+    // Private first: the half that cannot be rebuilt is the one to have on
+    // disk if only one write lands.
+    fs.writeFileSync(keyPath, pair.privateKey, { mode: 0o600 });
+    fs.writeFileSync(`${keyPath}.pub`, pair.publicKey, { mode: 0o644 });
+    logger.info(`Generated deploy key at ${keyPath}`);
   }
+
+  const publicKey = readPublicKey(keyName);
+  if (!publicKey) {
+    throw new DyadError(
+      `Deploy key exists but ${keyPath}.pub is unreadable`,
+      DyadErrorKind.External,
+    );
+  }
+  return publicKey;
 }

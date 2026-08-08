@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { execFileSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -12,8 +13,26 @@ vi.mock("os", async (importOriginal) => {
 import {
   coolifyKeyName,
   ensureDeployKey,
+  generateDeployKeyPair,
+  publicKeyFromPrivate,
   repoKeyName,
 } from "./coolify_deploy_key";
+
+/**
+ * Whether real OpenSSH is on this machine, which is exactly what the key
+ * generation no longer requires — so the tests that use it to check our
+ * encoding skip rather than fail where it is absent.
+ */
+const hasSshKeygen = (() => {
+  try {
+    execFileSync("ssh-keygen", ["-?"], { stdio: "ignore" });
+    return true;
+  } catch (err) {
+    // ssh-keygen exits non-zero for an unknown flag; only a missing binary
+    // means it cannot be used.
+    return (err as NodeJS.ErrnoException).code !== "ENOENT";
+  }
+})();
 
 /**
  * A throwaway home directory, so these never touch the real ~/.ssh.
@@ -58,6 +77,144 @@ describe("repoKeyName", () => {
     // And the same for the character folding, which is equally lossy.
     expect(repoKeyName("a/b", "c")).not.toBe(repoKeyName("a", "b/c"));
     expect(repoKeyName("a b", "c")).not.toBe(repoKeyName("a-b", "c"));
+  });
+});
+
+describe("generateDeployKeyPair", () => {
+  /**
+   * The one test that is not self-referential.
+   *
+   * Everything else here reads our own keys with our own reader, so a wrong
+   * byte in the container would round-trip happily and only surface as a
+   * refused clone inside a Coolify build. This hands the private half to real
+   * OpenSSH and asks what public key it sees.
+   */
+  it.skipIf(!hasSshKeygen)(
+    "writes a private key that OpenSSH reads as the pair we generated",
+    () => {
+      const { publicKey, privateKey } = generateDeployKeyPair("dyad-deploy");
+      const keyPath = sshPath("interop");
+      fs.mkdirSync(path.dirname(keyPath), { recursive: true });
+      fs.writeFileSync(keyPath, privateKey, { mode: 0o600 });
+
+      const derived = execFileSync("ssh-keygen", ["-y", "-f", keyPath], {
+        encoding: "utf8",
+      });
+      const material = (line: string) =>
+        line.trim().split(/\s+/).slice(0, 2).join(" ");
+      expect(material(derived)).toBe(material(publicKey));
+    },
+  );
+
+  /**
+   * `ssh-keygen -y` reports the public blob stored alongside the secret rather
+   * than recomputing it, so it cannot tell whether the secret half is intact.
+   * Signing does, and it checks the invariant the deploy actually depends on:
+   * the private key handed to Coolify must be the one GitHub authorised.
+   */
+  it.skipIf(!hasSshKeygen)(
+    "signs for the public key that goes to GitHub",
+    () => {
+      const { publicKey, privateKey } = generateDeployKeyPair("dyad-deploy");
+      const keyPath = sshPath("signing");
+      fs.mkdirSync(path.dirname(keyPath), { recursive: true });
+      fs.writeFileSync(keyPath, privateKey, { mode: 0o600 });
+      const message = sshPath("message");
+      fs.writeFileSync(message, "deploy");
+
+      execFileSync(
+        "ssh-keygen",
+        ["-Y", "sign", "-f", keyPath, "-n", "test", message],
+        { stdio: "pipe" },
+      );
+
+      const allowed = sshPath("allowed_signers");
+      fs.writeFileSync(allowed, `tester ${publicKey.trim()}\n`);
+      expect(() =>
+        execFileSync(
+          "ssh-keygen",
+          [
+            "-Y",
+            "verify",
+            "-f",
+            allowed,
+            "-I",
+            "tester",
+            "-n",
+            "test",
+            "-s",
+            `${message}.sig`,
+          ],
+          { input: "deploy", stdio: "pipe" },
+        ),
+      ).not.toThrow();
+    },
+  );
+
+  it.skipIf(!hasSshKeygen)("stores the comment where OpenSSH finds it", () => {
+    const keyPath = sshPath("commented");
+    fs.mkdirSync(path.dirname(keyPath), { recursive: true });
+    fs.writeFileSync(keyPath, generateDeployKeyPair("dyad-deploy").privateKey, {
+      mode: 0o600,
+    });
+
+    const derived = execFileSync("ssh-keygen", ["-y", "-f", keyPath], {
+      encoding: "utf8",
+    });
+    expect(derived.trim().split(/\s+/)[2]).toBe("dyad-deploy");
+  });
+
+  it("gives every call its own key", () => {
+    const a = generateDeployKeyPair("dyad-deploy");
+    const b = generateDeployKeyPair("dyad-deploy");
+    expect(a.publicKey).not.toBe(b.publicKey);
+    expect(a.privateKey).not.toBe(b.privateKey);
+  });
+
+  it("round-trips through the reader", () => {
+    const { publicKey, privateKey } = generateDeployKeyPair("dyad-deploy");
+    expect(publicKeyFromPrivate(privateKey)).toBe(publicKey);
+  });
+});
+
+describe("publicKeyFromPrivate", () => {
+  it("refuses a file that is not an OpenSSH key", () => {
+    // The caller replaces the pair on a null, so anything it cannot vouch for
+    // has to come back null rather than as a plausible-looking string.
+    expect(publicKeyFromPrivate("not a key")).toBeNull();
+    expect(publicKeyFromPrivate("")).toBeNull();
+    expect(
+      publicKeyFromPrivate(
+        "-----BEGIN OPENSSH PRIVATE KEY-----\nZm9v\n-----END OPENSSH PRIVATE KEY-----\n",
+      ),
+    ).toBeNull();
+  });
+
+  it("refuses a truncated key rather than guessing at it", () => {
+    const { privateKey } = generateDeployKeyPair("dyad-deploy");
+    const lines = privateKey.split("\n");
+    const truncated = [lines[0], lines[1]?.slice(0, 20), lines.at(-2)].join(
+      "\n",
+    );
+    expect(publicKeyFromPrivate(truncated)).toBeNull();
+  });
+
+  it.skipIf(!hasSshKeygen)("reads a key OpenSSH wrote", () => {
+    // Nothing says the only keys on disk are ones we generated.
+    const keyPath = sshPath("foreign");
+    fs.mkdirSync(path.dirname(keyPath), { recursive: true });
+    execFileSync(
+      "ssh-keygen",
+      ["-t", "ed25519", "-N", "", "-C", "someone-else", "-f", keyPath],
+      { stdio: "ignore" },
+    );
+
+    const parsed = publicKeyFromPrivate(fs.readFileSync(keyPath, "utf8"));
+    const onDisk = fs.readFileSync(`${keyPath}.pub`, "utf8");
+    const material = (line: string) =>
+      line.trim().split(/\s+/).slice(0, 2).join(" ");
+    expect(parsed).not.toBeNull();
+    expect(material(parsed!)).toBe(material(onDisk));
   });
 });
 

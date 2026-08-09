@@ -130,6 +130,7 @@ import { getVercelTeamSlug } from "../utils/vercel_utils";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
 import {
   deleteTempTestBranch,
+  isTestBranchCleanupOnly,
   restoreAppFromTestBranch,
 } from "../utils/neon_test_branch";
 import type { AppSearchResult } from "@/lib/schemas";
@@ -162,11 +163,6 @@ import {
 } from "@/ipc/services/chat_actor_deletion_service";
 import { blockNewStreamsForApp } from "./chat_stream_handlers";
 import { beginAppChatDeletion } from "@/ipc/services/app_chat_creation_fence";
-import {
-  clearAppPointedAtTestBranch,
-  markAppPointedAtTestBranch,
-} from "@/ipc/services/test_isolation_recovery";
-
 const logger = log.scope("app_handlers");
 const handle = createLoggedHandler(logger);
 
@@ -422,21 +418,17 @@ async function removeAppFiles(appId: number, appPath: string): Promise<void> {
 async function ensureAppOffTestBranch(appId: number): Promise<void> {
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
   if (!app) {
-    clearAppPointedAtTestBranch(appId);
     return;
   }
 
-  // The database row is the crash-safe gate. The process-local mark alone is
-  // not enough: it disappears on restart, exactly when startup reconciliation
-  // may have failed and left the app pointed at this durable branch id.
+  // The database row is the single crash-safe gate. It survives exactly the
+  // restart where startup reconciliation may have failed and left the app
+  // pointed at this durable branch id.
   if (!app.neonTestBranchId) {
-    // No Neon isolation branch means production never swapped `.env.local`.
-    // Clear a stale in-process mark rather than dead-ending Run/Restart for the
-    // rest of the session (for example after manual/partial recovery).
-    clearAppPointedAtTestBranch(appId);
     return;
   }
 
+  const cleanupOnly = isTestBranchCleanupOnly(app.neonTestBranchId);
   let restored = false;
   try {
     restored = await restoreAppFromTestBranch(app);
@@ -445,11 +437,12 @@ async function ensureAppOffTestBranch(appId: number): Promise<void> {
       `App ${appId}: retrying the .env.local restore before relaunch failed: ${error}`,
     );
   }
-  if (restored) {
-    clearAppPointedAtTestBranch(appId);
+  if (restored || cleanupOnly) {
+    // Cleanup-only means `.env.local` was durably recorded as safe before the
+    // remote delete was attempted. A Neon/API cleanup outage must not block a
+    // relaunch, even if this best-effort retry itself threw.
     return;
   }
-  markAppPointedAtTestBranch(appId);
   throw new DyadError(
     "Dyad couldn't restore this app's real database settings after recording, so starting it now would run against the temporary test branch. Check your Neon connection, then try again so Dyad can finish recovery.",
     DyadErrorKind.Precondition,
@@ -512,11 +505,6 @@ async function deleteAppById(
   } finally {
     appOperationDeletion.release();
   }
-
-  // Same timing as the branch cleanup below: a deletion that threw leaves a
-  // live app whose `.env.local` may still be swapped, and dropping the mark
-  // would let the next Run come up on the temporary branch unannounced.
-  clearAppPointedAtTestBranch(appId);
 
   // Only after the deletion has committed — the throw above skips this. Doing
   // it earlier means a deletion that then fails leaves a live app pointed at a
@@ -882,92 +870,110 @@ export function registerAppHandlers() {
       );
     }
 
-    // 2. Find the original app
-    const originalApp = await db.query.apps.findFirst({
-      where: eq(apps.id, appId),
-    });
+    return appOperationCoordinator.run(
+      {
+        appId,
+        operation: "copy-app",
+        resources: [
+          readAppResource("app-path"),
+          readAppResource("runtime-config"),
+        ],
+      },
+      async () => {
+        // 2. Find the original app while its path and runtime configuration are
+        // stable. Recording temporarily rewrites `.env.local`; waiting for its
+        // write claim prevents that isolated credential set from being copied
+        // into a new app that has no recovery metadata.
+        const originalApp = await db.query.apps.findFirst({
+          where: eq(apps.id, appId),
+        });
 
-    if (!originalApp) {
-      throw new DyadError("Original app not found.", DyadErrorKind.NotFound);
-    }
+        if (!originalApp) {
+          throw new DyadError(
+            "Original app not found.",
+            DyadErrorKind.NotFound,
+          );
+        }
 
-    const newFolderName = await resolveUniqueFolderName(
-      slugifyAppFolderName(newAppName),
-    );
-    const originalAppPath = getDyadAppPath(originalApp.path);
-    const newAppPath = getDyadAppPath(newFolderName);
+        const newFolderName = await resolveUniqueFolderName(
+          slugifyAppFolderName(newAppName),
+        );
+        const originalAppPath = getDyadAppPath(originalApp.path);
+        const newAppPath = getDyadAppPath(newFolderName);
 
-    if (!isAppLocationAccessible(newAppPath)) {
-      throw new Error(
-        `The path ${newAppPath} is inaccessible. Please check your custom apps folder setting.`,
-      );
-    }
+        if (!isAppLocationAccessible(newAppPath)) {
+          throw new Error(
+            `The path ${newAppPath} is inaccessible. Please check your custom apps folder setting.`,
+          );
+        }
 
-    // 3. Copy the app folder
-    try {
-      await copyDir(
-        originalAppPath,
-        newAppPath,
-        (source: string) => {
-          if (!withHistory && path.basename(source) === ".git") {
-            return false;
+        // 3. Copy the app folder
+        try {
+          await copyDir(
+            originalAppPath,
+            newAppPath,
+            (source: string) => {
+              if (!withHistory && path.basename(source) === ".git") {
+                return false;
+              }
+              return true;
+            },
+            { excludeNodeModules: true },
+          );
+        } catch (error) {
+          logger.error("Failed to copy app directory:", error);
+          throw new DyadError(
+            "Failed to copy app directory.",
+            DyadErrorKind.External,
+          );
+        }
+
+        if (!withHistory) {
+          // Initialize git repo and create first commit
+          await gitService.initRepoWithInitialCommit({ path: newAppPath });
+        }
+
+        // 4. Create a new app entry in the database
+        const [newDbApp] = await db
+          .insert(apps)
+          .values({
+            name: newAppName,
+            path: newFolderName,
+            // Explicitly set these to null because we don't want to copy them over.
+            // Note: we could just leave them out since they're nullable field, but this
+            // is to make it explicit we intentionally don't want to copy them over.
+            supabaseProjectId: null,
+            githubOrg: null,
+            githubRepo: null,
+            installCommand: originalApp.installCommand,
+            startCommand: originalApp.startCommand,
+          })
+          .returning();
+
+        if (withHistory) {
+          const originalVersionMetadata = await db.query.versions.findMany({
+            where: eq(versions.appId, appId),
+          });
+          const copiedVersionMetadata = originalVersionMetadata
+            .filter((version) => version.isFavorite || version.note)
+            .map((version) => ({
+              appId: newDbApp.id,
+              commitHash: version.commitHash,
+              // neonDbTimestamp intentionally omitted: duplicated apps get their
+              // own Neon branches, so snapshot timestamps from the original app
+              // do not apply.
+              isFavorite: version.isFavorite,
+              note: version.note,
+            }));
+
+          if (copiedVersionMetadata.length > 0) {
+            await db.insert(versions).values(copiedVersionMetadata);
           }
-          return true;
-        },
-        { excludeNodeModules: true },
-      );
-    } catch (error) {
-      logger.error("Failed to copy app directory:", error);
-      throw new DyadError(
-        "Failed to copy app directory.",
-        DyadErrorKind.External,
-      );
-    }
+        }
 
-    if (!withHistory) {
-      // Initialize git repo and create first commit
-      await gitService.initRepoWithInitialCommit({ path: newAppPath });
-    }
-
-    // 4. Create a new app entry in the database
-    const [newDbApp] = await db
-      .insert(apps)
-      .values({
-        name: newAppName,
-        path: newFolderName,
-        // Explicitly set these to null because we don't want to copy them over.
-        // Note: we could just leave them out since they're nullable field, but this
-        // is to make it explicit we intentionally don't want to copy them over.
-        supabaseProjectId: null,
-        githubOrg: null,
-        githubRepo: null,
-        installCommand: originalApp.installCommand,
-        startCommand: originalApp.startCommand,
-      })
-      .returning();
-
-    if (withHistory) {
-      const originalVersionMetadata = await db.query.versions.findMany({
-        where: eq(versions.appId, appId),
-      });
-      const copiedVersionMetadata = originalVersionMetadata
-        .filter((version) => version.isFavorite || version.note)
-        .map((version) => ({
-          appId: newDbApp.id,
-          commitHash: version.commitHash,
-          // neonDbTimestamp intentionally omitted: duplicated apps get their
-          // own Neon branches, so snapshot timestamps from the original app
-          // do not apply.
-          isFavorite: version.isFavorite,
-          note: version.note,
-        }));
-
-      if (copiedVersionMetadata.length > 0) {
-        await db.insert(versions).values(copiedVersionMetadata);
-      }
-    }
-
-    return { app: newDbApp };
+        return { app: newDbApp };
+      },
+    );
   });
 
   createTypedHandler(appContracts.getApp, async (_, appId) => {
@@ -1086,6 +1092,13 @@ export function registerAppHandlers() {
   });
 
   createTypedHandler(appContracts.runApp, async (_, params) => {
+    // A recording owns the resources ensureAppOffTestBranch uses for its whole
+    // lifetime. End it first, just like Stop/Restart, so Run cannot queue behind
+    // a session that only the user ending that very session would release.
+    await endRecordingForApp(params.appId, "app-stopped", {
+      skipRestart: true,
+    });
+
     // Restart refuses to relaunch onto a `.env.local` isolation teardown
     // couldn't restore; so must Run, or the refusal is trivially routed around
     // by stopping the app and starting it again.
@@ -1113,10 +1126,6 @@ export function registerAppHandlers() {
       logger.error(
         `App ${appId}: isolation teardown couldn't restore .env.local while stopping; the app is still pointed at the temporary test branch`,
       );
-      // This is the path that reaches Run: the app is down and the next thing
-      // the user presses starts it again. Record it so that start has to deal
-      // with the swapped env rather than silently coming up on isolated data.
-      markAppPointedAtTestBranch(appId);
     }
     const snapshot = await appRunActorService.getRunState(appId);
     if (snapshot.type === "idle") return;
@@ -1227,17 +1236,9 @@ export function registerAppHandlers() {
     // `executeApp` directly, so it doesn't end the session it is preparing.
     // `skipRestart` because this handler is itself the restart; without it
     // teardown brings the dev server back and then so do we.
-    const { envRestored } = await endRecordingForApp(
-      params.appId,
-      "app-stopped",
-      { skipRestart: true },
-    );
-    if (!envRestored) {
-      // Restarting now would bring the app up against the temporary test branch
-      // the recording created, so the relaunch has to answer for it — as does
-      // every later Run, which is why the mark outlives this call.
-      markAppPointedAtTestBranch(params.appId);
-    }
+    await endRecordingForApp(params.appId, "app-stopped", {
+      skipRestart: true,
+    });
     await ensureAppOffTestBranch(params.appId);
     await appRunActorService.dispatchRestart(params.appId, {
       operationId: params.invocationRef?.operationId ?? randomUUID(),

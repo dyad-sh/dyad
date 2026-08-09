@@ -6,6 +6,7 @@ import { apps } from "../../db/schema";
 import {
   createTempTestBranch,
   deleteTempTestBranch,
+  markTestBranchCleanupOnly,
 } from "../utils/neon_test_branch";
 import { createNeonTestAccount } from "../utils/neon_test_account";
 import {
@@ -198,9 +199,12 @@ export async function prepareIsolatedTestDatabase({
     // branch itself, after the deletion commits.
     if (branchId && envRestored) {
       // deleteTempTestBranch reads neonTestBranchId off the row; our in-memory
-      // `app` is stale, so pass the branch we actually created.
+      // `app` is stale, so persist and pass the branch we actually created.
+      // This marker distinguishes safe cleanup residue from an env that may
+      // still target the temporary branch across process restarts.
       try {
-        await deleteTempTestBranch({ ...app, neonTestBranchId: branchId });
+        const cleanupApp = await markTestBranchCleanupOnly(app, branchId);
+        await deleteTempTestBranch(cleanupApp);
       } catch (error) {
         logger.error(
           `Failed to delete isolated test branch ${branchId} for app ${app.id}: ${error}`,

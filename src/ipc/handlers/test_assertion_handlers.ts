@@ -173,13 +173,19 @@ async function findWrittenSpecForDraft(
         "utf-8",
       );
     } catch (error) {
-      // This fallback is an idempotency aid, not a reason an unrelated broken
-      // spec should prevent the user approving the recording in front of them.
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        // The file disappeared after readdir. It cannot contain the marker now,
+        // so continue just as if it had not appeared in the listing.
+        continue;
+      }
+      // An existing candidate that cannot be inspected may be this draft's
+      // durable record. Surface the read failure rather than silently writing a
+      // suffixed duplicate and consuming the draft a second time.
       logger.warn(
         `Couldn't inspect ${entry.name} for a recorded draft marker:`,
         error,
       );
-      continue;
+      throw error;
     }
     if (source.split(/\r?\n/, 1)[0] !== marker) continue;
 

@@ -610,7 +610,7 @@ describe("registerTestAssertionHandlers", () => {
       );
     });
 
-    it("skips an unreadable unrelated spec while finding a durable marker", async () => {
+    it("skips a concurrently removed spec while finding a durable marker", async () => {
       const { appId, chatId } = seed();
       propose(appId, chatId, { proposalId: "proposal-1" });
       propose(appId, chatId, { proposalId: "proposal-2" });
@@ -643,6 +643,47 @@ describe("registerTestAssertionHandlers", () => {
         const result = await approve(appId, chatId, "proposal-2");
         expect(result.specPath).toBe(SPEC_PATH);
         expect(result.warning).toMatch(/already saved/i);
+      } finally {
+        readFileSpy.mockRestore();
+      }
+    });
+
+    it("surfaces non-ENOENT marker read failures without writing a duplicate", async () => {
+      const { appId, chatId } = seed();
+      propose(appId, chatId, { proposalId: "proposal-1" });
+      propose(appId, chatId, { proposalId: "proposal-2" });
+      await approve(appId, chatId, "proposal-1");
+      resetRecordedTestDrafts();
+
+      const unreadableName = "recorded-aaa-unreadable.spec.ts";
+      fs.writeFileSync(
+        path.join(tmpDir, "e2e-tests", unreadableName),
+        "// potentially the same draft\n",
+      );
+      const originalReadFile = fs.promises.readFile.bind(fs.promises);
+      const readFileSpy = vi
+        .spyOn(fs.promises, "readFile")
+        .mockImplementation((file, options) => {
+          if (String(file).endsWith(unreadableName)) {
+            return Promise.reject(
+              Object.assign(new Error("permission denied"), {
+                code: "EACCES",
+              }),
+            );
+          }
+          return originalReadFile(
+            file,
+            options as BufferEncoding,
+          ) as ReturnType<typeof fs.promises.readFile>;
+        });
+
+      try {
+        await expect(approve(appId, chatId, "proposal-2")).rejects.toThrow(
+          /permission denied/,
+        );
+        expect(specExists("e2e-tests/recorded-add-an-item-2.spec.ts")).toBe(
+          false,
+        );
       } finally {
         readFileSpy.mockRestore();
       }

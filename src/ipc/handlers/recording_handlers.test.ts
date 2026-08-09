@@ -52,10 +52,6 @@ import {
   readAppResource,
 } from "../services/app_operation_coordinator";
 import {
-  isAppPointedAtTestBranch,
-  resetTestIsolationRecovery,
-} from "../services/test_isolation_recovery";
-import {
   getRecordedTestDraft,
   resetRecordedTestDrafts,
   setRecordedTestDraft,
@@ -99,7 +95,6 @@ function makePrepared(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   activeRecordings.clear();
-  resetTestIsolationRecovery();
   resetRecordedTestDrafts();
   mocks.runningApps.clear();
   mocks.runningApps.set(1, {
@@ -287,7 +282,6 @@ describe("recording:start / recording:stop", () => {
         message: expect.stringMatching(/restore your app's real database/i),
       }),
     );
-    expect(isAppPointedAtTestBranch(1)).toBe(true);
   });
 
   it("hands the caller's teardown options through to isolation", async () => {

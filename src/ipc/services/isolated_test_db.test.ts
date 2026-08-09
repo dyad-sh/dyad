@@ -3,6 +3,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   createTempTestBranch: vi.fn(),
   deleteTempTestBranch: vi.fn().mockResolvedValue(undefined),
+  markTestBranchCleanupOnly: vi.fn(
+    async (app: Record<string, unknown>, branchId: string) => ({
+      ...app,
+      neonTestBranchId: `cleanup:${branchId}`,
+    }),
+  ),
   createNeonTestAccount: vi.fn(),
   createTempTestUser: vi.fn(),
   deleteTempTestUser: vi.fn().mockResolvedValue(undefined),
@@ -41,6 +47,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../utils/neon_test_branch", () => ({
   createTempTestBranch: mocks.createTempTestBranch,
   deleteTempTestBranch: mocks.deleteTempTestBranch,
+  markTestBranchCleanupOnly: mocks.markTestBranchCleanupOnly,
 }));
 vi.mock("../utils/neon_test_account", () => ({
   createNeonTestAccount: mocks.createNeonTestAccount,
@@ -366,8 +373,12 @@ describe("prepareIsolatedTestDatabase — Neon happy path", () => {
 
       // Teardown deletes the branch we created (row is stale, so it's passed in).
       await prepared.teardown();
+      expect(mocks.markTestBranchCleanupOnly).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 1 }),
+        "test-br",
+      );
       expect(mocks.deleteTempTestBranch).toHaveBeenCalledWith(
-        expect.objectContaining({ neonTestBranchId: "test-br" }),
+        expect.objectContaining({ neonTestBranchId: "cleanup:test-br" }),
       );
     } finally {
       fetchSpy.mockRestore();

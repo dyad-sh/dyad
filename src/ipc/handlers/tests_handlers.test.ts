@@ -101,8 +101,6 @@ vi.mock("@/ipc/utils/window_broadcast", async (importOriginal) => {
 // Imported after the mocks so the handler module picks them up.
 const { registerTestsHandlers, runAppTestsWithIsolation } =
   await import("./tests_handlers");
-const { isAppPointedAtTestBranch, resetTestIsolationRecovery } =
-  await import("../services/test_isolation_recovery");
 
 describe("tests handlers", () => {
   let harness: HandlerTestHarness;
@@ -114,7 +112,6 @@ describe("tests handlers", () => {
     queueCloudSandboxSnapshotSyncMock.mockClear();
     prepareIsolatedTestDatabaseMock.mockReset();
     broadcastToRegisteredWindowsMock.mockClear();
-    resetTestIsolationRecovery();
     harness = setupHandlerTestHarness();
     registerTestsHandlers();
   });
@@ -139,7 +136,7 @@ describe("tests handlers", () => {
   }
 
   describe("tests:run", () => {
-    it("marks an unrestored test-run environment for relaunch recovery", async () => {
+    it("reports an unrestored test-run environment", async () => {
       const appId = seedApp("app");
       harness.db
         .update(apps)
@@ -161,7 +158,6 @@ describe("tests handlers", () => {
       });
 
       expect(result.infraError?.message).toMatch(/real database settings/i);
-      expect(isAppPointedAtTestBranch(appId)).toBe(true);
     });
   });
 

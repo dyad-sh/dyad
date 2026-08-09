@@ -13,7 +13,6 @@ import {
 import { configureTrustedRenderer } from "@/ipc/utils/renderer_security";
 import { activeRecordings } from "@/ipc/services/recording_registry";
 import { appOperationCoordinator } from "@/ipc/services/app_operation_coordinator";
-import { resetTestIsolationRecovery } from "@/ipc/services/test_isolation_recovery";
 
 // All app folders live under one throwaway base so the filesystem-probing
 // conflict checks (and actual folder moves) run against real directories.
@@ -163,7 +162,6 @@ describe("app naming handlers", () => {
     fs.mkdirSync(TEMP_BASE, { recursive: true });
     harness = setupHandlerTestHarness();
     activeRecordings.clear();
-    resetTestIsolationRecovery();
     deletionOrder.length = 0;
     settleChatActorsForDeletionMock.mockClear();
     createFromTemplateMock.mockClear();
@@ -344,6 +342,55 @@ describe("app naming handlers", () => {
         }),
       ).rejects.toMatchObject({ kind: DyadErrorKind.Conflict });
     });
+
+    it("waits for recording isolation to restore env before copying", async () => {
+      const sourceId = seedAppWithFolder("Source", "source");
+      const sourceEnv = path.join(TEMP_BASE, "source", ".env.local");
+      fs.writeFileSync(sourceEnv, "DATABASE_URL=real\n");
+
+      let releaseRecording!: () => void;
+      const recordingReleased = new Promise<void>((resolve) => {
+        releaseRecording = resolve;
+      });
+      let isolationStarted!: () => void;
+      const isolationReady = new Promise<void>((resolve) => {
+        isolationStarted = resolve;
+      });
+      const recording = appOperationCoordinator.run(
+        {
+          appId: sourceId,
+          operation: "test-recording",
+          resources: ["runtime-config"],
+        },
+        async () => {
+          fs.writeFileSync(sourceEnv, "DATABASE_URL=temporary\n");
+          isolationStarted();
+          await recordingReleased;
+          fs.writeFileSync(sourceEnv, "DATABASE_URL=real\n");
+        },
+      );
+      await isolationReady;
+
+      const copy = harness.invokeHandler<{ app: { path: string } }>(
+        "copy-app",
+        {
+          appId: sourceId,
+          newAppName: "Safe Copy",
+          withHistory: false,
+        },
+      );
+      await Promise.resolve();
+      expect(fs.existsSync(path.join(TEMP_BASE, "safe-copy"))).toBe(false);
+
+      releaseRecording();
+      await recording;
+      const result = await copy;
+      expect(
+        fs.readFileSync(path.join(TEMP_BASE, result.app.path, ".env.local"), {
+          encoding: "utf-8",
+        }),
+      ).toBe("DATABASE_URL=real\n");
+    });
   });
 
   describe("run-app", () => {
@@ -367,6 +414,36 @@ describe("app naming handlers", () => {
           neonTestBranchId: "test-branch-from-prior-process",
         }),
       );
+    });
+
+    it("ends an active recording before attempting durable recovery", async () => {
+      const appId = seedAppWithFolder("Recover Me", "recover-me");
+      harness.db
+        .update(apps)
+        .set({ neonTestBranchId: "test-branch" })
+        .where(eq(apps.id, appId))
+        .run();
+      restoreAppFromTestBranchMock.mockResolvedValueOnce(false);
+
+      let stopReason: string | undefined;
+      let finishRecording!: (summary: { envRestored: boolean }) => void;
+      const done = new Promise<{ envRestored: boolean }>((resolve) => {
+        finishRecording = resolve;
+      });
+      activeRecordings.set(appId, {
+        appId,
+        stop: (reason) => {
+          stopReason = reason;
+          finishRecording({ envRestored: false });
+        },
+        done,
+      });
+
+      await expect(
+        harness.invokeHandler("run-app", { appId }),
+      ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
+      expect(stopReason).toBe("app-stopped");
+      expect(restoreAppFromTestBranchMock).toHaveBeenCalled();
     });
   });
 

@@ -69,6 +69,7 @@ vi.mock("electron-log", () => ({
 import {
   createTempTestBranch,
   deleteTempTestBranch,
+  isTestBranchCleanupOnly,
   reconcileOrphanTestBranches,
   restoreAppFromTestBranch,
 } from "./neon_test_branch";
@@ -267,6 +268,14 @@ describe("deleteTempTestBranch", () => {
     expect(mocks.set).toHaveBeenCalledWith({ neonTestBranchId: null });
   });
 
+  it("strips a cleanup-only marker before calling Neon", async () => {
+    await deleteTempTestBranch(
+      makeApp({ neonTestBranchId: "dyad-cleanup-only:v1:test-br" }),
+    );
+    expect(mocks.deleteProjectBranch).toHaveBeenCalledWith("proj-1", "test-br");
+    expect(mocks.set).toHaveBeenCalledWith({ neonTestBranchId: null });
+  });
+
   it("is a no-op when no test branch is set", async () => {
     await deleteTempTestBranch(makeApp({ neonTestBranchId: null }));
     expect(mocks.deleteProjectBranch).not.toHaveBeenCalled();
@@ -293,6 +302,44 @@ describe("deleteTempTestBranch", () => {
 });
 
 describe("restoreAppFromTestBranch", () => {
+  it("persists cleanup-only state before a fallible branch delete", async () => {
+    mocks.deleteProjectBranch.mockRejectedValueOnce({
+      response: { status: 500 },
+    });
+
+    await expect(
+      restoreAppFromTestBranch(
+        makeApp({
+          neonTestBranchId: "leaked-br",
+        }),
+      ),
+    ).resolves.toBe(true);
+
+    expect(isTestBranchCleanupOnly("dyad-cleanup-only:v1:leaked-br")).toBe(
+      true,
+    );
+    expect(mocks.set).toHaveBeenCalledWith({
+      neonTestBranchId: "dyad-cleanup-only:v1:leaked-br",
+    });
+    expect(mocks.set).not.toHaveBeenCalledWith({ neonTestBranchId: null });
+  });
+
+  it("does not rewrite env for cleanup-only residue", async () => {
+    await expect(
+      restoreAppFromTestBranch(
+        makeApp({
+          neonTestBranchId: "dyad-cleanup-only:v1:leaked-br",
+        }),
+      ),
+    ).resolves.toBe(true);
+
+    expect(mocks.updateNeonEnvVars).not.toHaveBeenCalled();
+    expect(mocks.deleteProjectBranch).toHaveBeenCalledWith(
+      "proj-1",
+      "leaked-br",
+    );
+  });
+
   it("reports the env restored when branch cleanup persistence fails", async () => {
     // The Neon API helper already absorbs API failures. Exercise the remaining
     // throw path: Neon deleted the branch, but clearing its durable row marker

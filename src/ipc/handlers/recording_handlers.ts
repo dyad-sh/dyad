@@ -37,7 +37,6 @@ import {
 import { isTestRunActive } from "./tests_handlers";
 import { readSettings } from "@/main/settings";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { markAppPointedAtTestBranch } from "@/ipc/services/test_isolation_recovery";
 
 const logger = log.scope("recording_handlers");
 
@@ -307,15 +306,10 @@ export function registerRecordingHandlers() {
                 }
               }
               if (!summary.envRestored) {
-                // Main owns this recovery fact. The recorder-bar Stop/Cancel,
-                // timeout, and renderer-destruction paths never pass through
-                // app_handlers, so relying on stopApp/restartApp to mark it
-                // leaves later Run attempts unaware of the swapped env.
-                markAppPointedAtTestBranch(appId);
                 // The app is still pointed at the temporary test branch. The
-                // recorder bar is the only surface still listening, and this
-                // reaches the user as an error toast — the alternative is their app
-                // quietly serving isolated data from here on.
+                // durable app-row branch id is the relaunch/startup recovery
+                // gate. The recorder bar is the surface still listening, and
+                // this reaches the user as an error toast.
                 endReason = "error";
                 endMessage =
                   "Dyad couldn't restore your app's real database settings after recording. Restore .env.local before running the app again.";

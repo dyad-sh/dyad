@@ -21,6 +21,39 @@ const logger = log.scope("neon_test_branch");
 
 type AppRow = typeof apps.$inferSelect;
 
+// The same durable column tracks two materially different states:
+//
+// - a raw branch id means `.env.local` may still point at that test branch;
+// - a cleanup-only marker means the real env was restored and only the remote
+//   branch deletion remains.
+//
+// Keeping that distinction durable prevents a harmless Neon cleanup outage
+// from blocking Run after a restart. Neon branch ids do not use this namespaced
+// value, and every API boundary below strips it before addressing Neon.
+const CLEANUP_ONLY_BRANCH_PREFIX = "dyad-cleanup-only:v1:";
+
+function trackedBranchId(marker: string): string {
+  return marker.startsWith(CLEANUP_ONLY_BRANCH_PREFIX)
+    ? marker.slice(CLEANUP_ONLY_BRANCH_PREFIX.length)
+    : marker;
+}
+
+export function isTestBranchCleanupOnly(marker: string | null): boolean {
+  return marker?.startsWith(CLEANUP_ONLY_BRANCH_PREFIX) ?? false;
+}
+
+export async function markTestBranchCleanupOnly(
+  appData: AppRow,
+  branchId: string,
+): Promise<AppRow> {
+  const marker = `${CLEANUP_ONLY_BRANCH_PREFIX}${trackedBranchId(branchId)}`;
+  await db
+    .update(apps)
+    .set({ neonTestBranchId: marker })
+    .where(eq(apps.id, appData.id));
+  return { ...appData, neonTestBranchId: marker };
+}
+
 /** Connection details for an isolated, throwaway Neon test branch. */
 export interface TempTestBranch {
   /** The ephemeral branch's id (also persisted on the app row while live). */
@@ -129,7 +162,7 @@ export async function createTempTestBranch(
   if (appData.neonTestBranchId) {
     const priorCleanupOk = await deleteBranchBestEffort(
       projectId,
-      appData.neonTestBranchId,
+      trackedBranchId(appData.neonTestBranchId),
     );
     if (!priorCleanupOk) {
       throw new DyadError(
@@ -257,11 +290,12 @@ export async function createTempTestBranch(
  * the persisted `neonTestBranchId`. Safe to call when no branch is set.
  */
 export async function deleteTempTestBranch(appData: AppRow): Promise<void> {
-  const branchId = appData.neonTestBranchId;
+  const marker = appData.neonTestBranchId;
   const projectId = appData.neonProjectId;
-  if (!branchId || !projectId) {
+  if (!marker || !projectId) {
     return;
   }
+  const branchId = trackedBranchId(marker);
   // Only forget the branch once Neon confirms it's gone. Clearing the column on
   // a failed delete would orphan the branch in the user's account forever, since
   // the startup reconciliation sweep relies on this id to find it again.
@@ -412,6 +446,9 @@ export async function reconcileOrphanTestBranches(): Promise<void> {
 export async function restoreAppFromTestBranch(
   appData: AppRow,
 ): Promise<boolean> {
+  if (!appData.neonTestBranchId) {
+    return true;
+  }
   // Serialize against user-initiated test runs on the same app: both this and a
   // run swap .env.local and restart the dev server, so an interleaving could
   // leave the run pointed at the real database. The run path acquires the same
@@ -428,17 +465,37 @@ export async function restoreAppFromTestBranch(
       ],
     },
     async () => {
-      const restored = await restoreRealBranchEnvVars(appData);
-      if (!restored) {
-        return false;
+      let cleanupApp = appData;
+      if (!isTestBranchCleanupOnly(appData.neonTestBranchId)) {
+        const restored = await restoreRealBranchEnvVars(appData);
+        if (!restored) {
+          return false;
+        }
+
+        // Persist the safe state before the fallible remote deletion. If Neon
+        // is unavailable, a later Run/restart may proceed while the startup
+        // sweep keeps retrying branch cleanup.
+        try {
+          cleanupApp = await markTestBranchCleanupOnly(
+            appData,
+            appData.neonTestBranchId!,
+          );
+        } catch (error) {
+          // The env is already real. Still attempt deletion with the raw id; a
+          // successful delete clears that stale marker, and relaunch is safe in
+          // this process regardless of the bookkeeping failure.
+          logger.warn(
+            `Restored the real env for app ${appData.id}, but couldn't persist its cleanup-only Neon state: ${error}`,
+          );
+        }
       }
       // Best-effort: the env is what the relaunch gate cares about, and a
       // branch that survives stays tracked for the next sweep.
       try {
-        await deleteTempTestBranch(appData);
+        await deleteTempTestBranch(cleanupApp);
       } catch (error) {
         logger.warn(
-          `Restored the real env for app ${appData.id}, but couldn't delete temporary Neon branch ${appData.neonTestBranchId}: ${error}`,
+          `Restored the real env for app ${appData.id}, but couldn't delete temporary Neon branch ${trackedBranchId(appData.neonTestBranchId!)}: ${error}`,
         );
       }
       return true;

@@ -55,10 +55,20 @@ import {
   isAppPointedAtTestBranch,
   resetTestIsolationRecovery,
 } from "../services/test_isolation_recovery";
+import {
+  getRecordedTestDraft,
+  resetRecordedTestDrafts,
+  setRecordedTestDraft,
+} from "../services/recorded_test_drafts";
+import {
+  RECORDED_TEST_DRAFT_VERSION,
+  type RecordedTestDraft,
+} from "@/lib/test_recorder/draft";
 
 registerRecordingHandlers();
 const startHandler = mocks.handlers.get("recording:start")!;
 const stopHandler = mocks.handlers.get("recording:stop")!;
+const discardDraftHandler = mocks.handlers.get("recording:discard-draft")!;
 
 function makeEvent() {
   let destroyedHandler: (() => void) | undefined;
@@ -90,6 +100,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   activeRecordings.clear();
   resetTestIsolationRecovery();
+  resetRecordedTestDrafts();
   mocks.runningApps.clear();
   mocks.runningApps.set(1, {
     proxyUrl: "http://localhost:42100",
@@ -98,6 +109,26 @@ beforeEach(() => {
   mocks.findFirst.mockResolvedValue({ id: 1, testingEnabled: true });
   mocks.isTestRunActive.mockReturnValue(false);
   mocks.readSettings.mockReturnValue({ runtimeMode2: "host" });
+});
+
+describe("recording:discard-draft", () => {
+  it("does not let a stale window discard a newer draft", async () => {
+    const newerDraft: RecordedTestDraft = {
+      version: RECORDED_TEST_DRAFT_VERSION,
+      draftId: "newer-draft",
+      testName: "new flow",
+      authMode: "none",
+      actions: [],
+    };
+    setRecordedTestDraft(1, newerDraft);
+
+    await discardDraftHandler(makeEvent().event, {
+      appId: 1,
+      draftId: "older-draft",
+    });
+
+    expect(getRecordedTestDraft(1)).toEqual(newerDraft);
+  });
 });
 
 describe("recording:start / recording:stop", () => {

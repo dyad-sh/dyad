@@ -164,7 +164,6 @@ import { blockNewStreamsForApp } from "./chat_stream_handlers";
 import { beginAppChatDeletion } from "@/ipc/services/app_chat_creation_fence";
 import {
   clearAppPointedAtTestBranch,
-  isAppPointedAtTestBranch,
   markAppPointedAtTestBranch,
 } from "@/ipc/services/test_isolation_recovery";
 
@@ -421,24 +420,38 @@ async function removeAppFiles(appId: number, appPath: string): Promise<void> {
  * sweep performs — and only refuse when that fails too.
  */
 async function ensureAppOffTestBranch(appId: number): Promise<void> {
-  if (!isAppPointedAtTestBranch(appId)) return;
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-  if (app) {
-    let restored = false;
-    try {
-      restored = await restoreAppFromTestBranch(app);
-    } catch (error) {
-      logger.error(
-        `App ${appId}: retrying the .env.local restore before relaunch failed: ${error}`,
-      );
-    }
-    if (restored) {
-      clearAppPointedAtTestBranch(appId);
-      return;
-    }
+  if (!app) {
+    clearAppPointedAtTestBranch(appId);
+    return;
   }
+
+  // The database row is the crash-safe gate. The process-local mark alone is
+  // not enough: it disappears on restart, exactly when startup reconciliation
+  // may have failed and left the app pointed at this durable branch id.
+  if (!app.neonTestBranchId) {
+    // No Neon isolation branch means production never swapped `.env.local`.
+    // Clear a stale in-process mark rather than dead-ending Run/Restart for the
+    // rest of the session (for example after manual/partial recovery).
+    clearAppPointedAtTestBranch(appId);
+    return;
+  }
+
+  let restored = false;
+  try {
+    restored = await restoreAppFromTestBranch(app);
+  } catch (error) {
+    logger.error(
+      `App ${appId}: retrying the .env.local restore before relaunch failed: ${error}`,
+    );
+  }
+  if (restored) {
+    clearAppPointedAtTestBranch(appId);
+    return;
+  }
+  markAppPointedAtTestBranch(appId);
   throw new DyadError(
-    "Dyad couldn't restore this app's real database settings after recording, so starting it now would run against the temporary test branch. Restore .env.local in your app folder, then try again.",
+    "Dyad couldn't restore this app's real database settings after recording, so starting it now would run against the temporary test branch. Check your Neon connection, then try again so Dyad can finish recovery.",
     DyadErrorKind.Precondition,
   );
 }

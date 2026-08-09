@@ -52,15 +52,16 @@ export function getRecordedTestDraft(appId: number): RecordedTestDraft | null {
 }
 
 /**
- * Drop the parked draft. `only` scopes the clear to a specific recording: a card
- * hidden and approved after a *newer* recording was parked must not take that
- * newer draft down with it, leaving a recording the user can no longer save.
+ * Drop the parked draft. `onlyDraftId` scopes the clear to a specific
+ * recording: a card hidden and approved after a *newer* recording was parked
+ * must not take that newer draft down with it, leaving a recording the user can
+ * no longer save.
  */
 export function clearRecordedTestDraft(
   appId: number,
-  only?: RecordedTestDraft,
+  onlyDraftId?: string,
 ): void {
-  if (only && draftsByAppId.get(appId)?.draftId !== only.draftId) return;
+  if (onlyDraftId && draftsByAppId.get(appId)?.draftId !== onlyDraftId) return;
   draftsByAppId.delete(appId);
 }
 

@@ -166,10 +166,21 @@ async function findWrittenSpecForDraft(
     if (!entry.isFile() || !/^recorded-.+\.spec\.ts$/.test(entry.name)) {
       continue;
     }
-    const source = await fs.promises.readFile(
-      path.join(appPath, E2E_TEST_DIR, entry.name),
-      "utf-8",
-    );
+    let source: string;
+    try {
+      source = await fs.promises.readFile(
+        path.join(appPath, E2E_TEST_DIR, entry.name),
+        "utf-8",
+      );
+    } catch (error) {
+      // This fallback is an idempotency aid, not a reason an unrelated broken
+      // spec should prevent the user approving the recording in front of them.
+      logger.warn(
+        `Couldn't inspect ${entry.name} for a recorded draft marker:`,
+        error,
+      );
+      continue;
+    }
     if (source.split(/\r?\n/, 1)[0] !== marker) continue;
 
     const relativePath = `${E2E_TEST_DIR}/${entry.name}`;
@@ -316,7 +327,7 @@ async function writeRecordedSpec({
   // A stale draft would otherwise let a later agent turn propose assertions for
   // a test that's already written. Scoped to this recording: a card approved
   // after a newer recording was parked must not discard that newer draft.
-  clearRecordedTestDraft(appId, draft);
+  clearRecordedTestDraft(appId, draft.draftId);
   return { specPath: relativePath };
 }
 
@@ -934,7 +945,11 @@ export function registerTestAssertionHandlers() {
         // Broadcast rather than reply to the approving window: the bar belongs to
         // whichever window holds the preview, which need not be the one the chat
         // was approved in. Same reason `recording:draft-named` broadcasts.
-        broadcastToAllWindows("recording:draft-consumed", { appId, specPath });
+        broadcastToAllWindows("recording:draft-consumed", {
+          appId,
+          draftId: stored.draft.draftId,
+          specPath,
+        });
 
         const appliedCount = countAssertions(finalItems);
         logger.info(

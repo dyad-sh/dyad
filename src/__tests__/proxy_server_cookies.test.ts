@@ -235,7 +235,7 @@ describe("proxy worker cookie rewriting", () => {
     cleanup.push(upstream.close);
 
     const port = await findFreePort();
-    const authBootstrapToken = "00000000-0000-4000-8000-000000000001";
+    const authBootstrapToken = `token<&"boundary`;
     const { waitForStart } = startWorker({
       targetOrigin: upstream.origin,
       port,
@@ -246,7 +246,13 @@ describe("proxy worker cookie rewriting", () => {
 
     const body = await getBody(await waitForStart());
 
-    expect(body).toContain(`data-dyad-auth-token="${authBootstrapToken}"`);
+    const escapedToken = "token&lt;&amp;&quot;boundary";
+    expect(body).toContain(`data-dyad-auth-token="${escapedToken}"`);
+    expect(body).toContain(`data-dyad-recorder-token="${escapedToken}"`);
+    expect(body).not.toContain(`data-dyad-auth-token="${authBootstrapToken}"`);
+    expect(body).not.toContain(
+      `data-dyad-recorder-token="${authBootstrapToken}"`,
+    );
     expect(body).toContain('data.type === "dyad-auth-login"');
   });
 });

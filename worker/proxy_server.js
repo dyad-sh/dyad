@@ -220,6 +220,14 @@ function injectHTML(buf) {
     txt.includes("window-error") && txt.includes("unhandled-rejection");
 
   const scripts = [];
+  // Both injected bridges read the same per-proxy capability before any app
+  // script runs. Escape at the HTML boundary even though today's token is a
+  // UUID so a future token-source change cannot create an attribute injection.
+  const escapedProxyToken = String(authBootstrapToken || "")
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 
   if (!legacyAppWithShim) {
     if (stacktraceJsContent) {
@@ -246,22 +254,17 @@ function injectHTML(buf) {
     );
   }
   if (dyadRecorderClientContent) {
-    scripts.push(`<script>${dyadRecorderClientContent}</script>`);
+    scripts.push(
+      `<script data-dyad-recorder-token="${escapedProxyToken}">${dyadRecorderClientContent}</script>`,
+    );
   } else {
     scripts.push(
       '<script>console.warn("[proxy-worker] dyad recorder client was not injected.");</script>',
     );
   }
   if (dyadAuthBootstrapContent) {
-    // The bootstrap reads this before any app script runs. Escaping keeps the
-    // worker boundary safe even if the token source ever changes from UUIDs.
-    const escapedAuthBootstrapToken = String(authBootstrapToken || "")
-      .replace(/&/g, "&amp;")
-      .replace(/"/g, "&quot;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;");
     scripts.push(
-      `<script data-dyad-auth-token="${escapedAuthBootstrapToken}">${dyadAuthBootstrapContent}</script>`,
+      `<script data-dyad-auth-token="${escapedProxyToken}">${dyadAuthBootstrapContent}</script>`,
     );
   } else {
     scripts.push(

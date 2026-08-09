@@ -19,7 +19,7 @@
  * of the actions and locator descriptors it emits.
  *
  * Protocol:
- *   down (from parent): { type: "activate-dyad-recorder" | "deactivate-dyad-recorder" }
+ *   down (from parent): { type: "activate-dyad-recorder" | "deactivate-dyad-recorder", token }
  *   up   (to parent):   { type: "dyad-recorder-initialized" }
  *                       { type: "dyad-recorder-action", action: RecordedAction }
  *
@@ -45,6 +45,10 @@
   // fabricating clicks and fills that land in a spec the user commits and runs.
   const allowUntrustedEvents =
     window.__DYAD_RECORDER_ALLOW_UNTRUSTED__ === true;
+  // Minted per proxy and known only to the trusted renderer. Without this, an
+  // unrelated page can frame the localhost preview, arm the recorder, and
+  // receive every captured fill value through the parent message channel.
+  const recorderToken = document.currentScript?.dataset.dyadRecorderToken;
   try {
     delete window.__DYAD_RECORDER_ALLOW_UNTRUSTED__;
   } catch {
@@ -550,7 +554,7 @@
    * produced would match nothing when the test replays — Playwright computes the
    * name the same way this does, and gets "Close".
    */
-  function accessibleTextContent(el) {
+  function accessibleTextContent(el, includeHidden = false) {
     let out = "";
     const children = el.childNodes || [];
     for (let i = 0; i < children.length; i++) {
@@ -560,15 +564,19 @@
         continue;
       }
       if (node.nodeType !== 1) continue;
-      if (node.getAttribute && node.getAttribute("aria-hidden") === "true")
+      if (
+        !includeHidden &&
+        node.getAttribute &&
+        node.getAttribute("aria-hidden") === "true"
+      )
         continue;
       // The same visibility rule `getByRole` matching uses, so a name built
       // here is one Playwright can actually match. `display: none` and
       // `visibility: hidden` descendants contribute nothing to a name — a
       // screen-reader-only label or a collapsed tooltip would otherwise be
       // baked into a locator that matches nothing at replay.
-      if (!isAriaVisible(node)) continue;
-      out += accessibleTextContent(node);
+      if (!includeHidden && !isAriaVisible(node)) continue;
+      out += accessibleTextContent(node, includeHidden);
     }
     return out;
   }
@@ -584,7 +592,10 @@
         .split(/\s+/)
         .map((id) => {
           const ref = document.getElementById(id);
-          return ref ? normalize(accessibleTextContent(ref)) : "";
+          // Explicit aria-labelledby references contribute even when the
+          // referenced node is visually hidden. Ordinary descendants and
+          // native labels still use the visibility filter above.
+          return ref ? normalize(accessibleTextContent(ref, true)) : "";
         })
         .filter(Boolean);
       if (parts.length) return normalize(parts.join(" "));
@@ -975,6 +986,20 @@
     if (["Control", "Meta", "Alt", "Shift"].includes(e.key)) return false;
     const hasNonShiftModifier = e.ctrlKey || e.metaKey || e.altKey;
     if (hasNonShiftModifier) return true;
+    if (e.key === " " || e.key === "Spacebar") {
+      const t = deepTarget(e);
+      const customRole = t && computeRole(t);
+      // Browsers synthesize the useful click/change for native controls, but
+      // custom ARIA controls rely on the app's key handler. Record that Space
+      // press or keyboard-only interactions disappear from replay entirely.
+      return Boolean(
+        t &&
+        !t.matches(INTERACTIVE_TAGS) &&
+        ["button", "checkbox", "radio", "switch", "menuitem"].includes(
+          customRole,
+        ),
+      );
+    }
     if (NAV_KEYS.has(e.key)) {
       if (e.key === "Enter") {
         const t = deepTarget(e);
@@ -1216,7 +1241,8 @@
   window.addEventListener("message", (e) => {
     if (!isFramed) return;
     if (e.source !== window.parent) return;
-    const type = e.data && e.data.type;
+    if (!recorderToken || e.data?.token !== recorderToken) return;
+    const type = e.data.type;
     if (type === "activate-dyad-recorder") activate();
     else if (type === "deactivate-dyad-recorder") deactivate();
   });

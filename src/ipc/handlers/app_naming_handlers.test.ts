@@ -32,6 +32,7 @@ const createFromTemplateMock = vi.hoisted(() =>
 );
 const deletionOrder = vi.hoisted(() => [] as string[]);
 const settleChatActorsForDeletionMock = vi.hoisted(() => vi.fn());
+const restoreAppFromTestBranchMock = vi.hoisted(() => vi.fn());
 
 vi.mock("electron", () => ({
   ipcMain: {
@@ -111,6 +112,15 @@ vi.mock("@/ipc/handlers/chat_stream_handlers", async (importOriginal) => {
   };
 });
 
+vi.mock("@/ipc/utils/neon_test_branch", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/ipc/utils/neon_test_branch")>();
+  return {
+    ...actual,
+    restoreAppFromTestBranch: restoreAppFromTestBranchMock,
+  };
+});
+
 import { registerAppHandlers } from "./app_handlers";
 import { registerImportHandlers } from "./import_handlers";
 import { firstPromptCreationRegistry } from "../services/first_prompt_creation_service";
@@ -157,6 +167,8 @@ describe("app naming handlers", () => {
     deletionOrder.length = 0;
     settleChatActorsForDeletionMock.mockClear();
     createFromTemplateMock.mockClear();
+    restoreAppFromTestBranchMock.mockReset();
+    restoreAppFromTestBranchMock.mockResolvedValue(true);
     registerAppHandlers();
     registerImportHandlers();
   });
@@ -331,6 +343,30 @@ describe("app naming handlers", () => {
           withHistory: false,
         }),
       ).rejects.toMatchObject({ kind: DyadErrorKind.Conflict });
+    });
+  });
+
+  describe("run-app", () => {
+    it("rehydrates the recovery gate from a persisted test branch", async () => {
+      const appId = seedAppWithFolder("Recover Me", "recover-me");
+      harness.db
+        .update(apps)
+        .set({ neonTestBranchId: "test-branch-from-prior-process" })
+        .where(eq(apps.id, appId))
+        .run();
+      restoreAppFromTestBranchMock.mockResolvedValueOnce(false);
+
+      // No in-memory mark exists: this models a fresh Dyad process whose
+      // startup recovery could not restore the durable branch marker.
+      await expect(
+        harness.invokeHandler("run-app", { appId }),
+      ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
+      expect(restoreAppFromTestBranchMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: appId,
+          neonTestBranchId: "test-branch-from-prior-process",
+        }),
+      );
     });
   });
 

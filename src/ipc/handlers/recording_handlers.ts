@@ -373,7 +373,7 @@ export function registerRecordingHandlers() {
   createTypedHandler(
     recordingContracts.discardRecordedTestDraft,
     async (_event, params) => {
-      clearRecordedTestDraft(params.appId);
+      clearRecordedTestDraft(params.appId, params.draftId);
       return { ok: true as const };
     },
   );

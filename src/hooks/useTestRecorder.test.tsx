@@ -223,6 +223,7 @@ describe("useTestRecorder", () => {
       appId: 1,
       isolation: { mode: "none" },
       auth: { mode: "none" },
+      authBootstrapToken: AUTH_BOOTSTRAP_TOKEN,
     });
     stopRecordingMock.mockResolvedValue({ ok: true });
     saveDraftMock.mockResolvedValue({ ok: true });
@@ -326,15 +327,36 @@ describe("useTestRecorder", () => {
     // thing that tells the bar its draft is now a file. Left up, it would go on
     // offering to propose a recording that has already been written.
     const onDraftConsumed = onDraftConsumedMock.mock.calls[0][0];
+    const draftId = result.current.draft!.draftId;
     act(() => {
       onDraftConsumed({
         appId: 1,
+        draftId,
         specPath: "e2e-tests/recorded-my-flow.spec.ts",
       });
     });
 
     expect(result.current.phase).toBe("idle");
     expect(result.current.draft).toBeUndefined();
+  });
+
+  it("keeps a newer review when an older draft is consumed", async () => {
+    const { result } = await recordingSession({ appUrl: true });
+    await act(async () => {
+      await result.current.stopAndReview("new flow");
+    });
+
+    const onDraftConsumed = onDraftConsumedMock.mock.calls[0][0];
+    act(() => {
+      onDraftConsumed({
+        appId: 1,
+        draftId: "an-older-draft",
+        specPath: "e2e-tests/recorded-old-flow.spec.ts",
+      });
+    });
+
+    expect(result.current.phase).toBe("reviewing");
+    expect(result.current.draft?.testName).toBe("new flow");
   });
 
   it("stops waiting on the AI once the assertion turn has ended", async () => {
@@ -395,7 +417,10 @@ describe("useTestRecorder", () => {
     });
 
     expect(result.current.isRecording).toBe(true);
-    expect(iframe.posted).toContainEqual({ type: "activate-dyad-recorder" });
+    expect(iframe.posted).toContainEqual({
+      type: "activate-dyad-recorder",
+      token: AUTH_BOOTSTRAP_TOKEN,
+    });
   });
 
   it("frees the next start when a no-auth setup is cancelled mid-reload", async () => {
@@ -480,7 +505,10 @@ describe("useTestRecorder", () => {
 
     // The parked draft goes with it, so a queued assertion turn can't annotate
     // a recording the user threw away.
-    expect(discardDraftMock).toHaveBeenCalledWith({ appId: 1 });
+    expect(discardDraftMock).toHaveBeenCalledWith({
+      appId: 1,
+      draftId: expect.any(String),
+    });
     expect(result.current.phase).toBe("idle");
     expect(result.current.draft).toBeUndefined();
   });
@@ -648,6 +676,7 @@ describe("useTestRecorder", () => {
     expect(stopRecordingMock).toHaveBeenCalledWith({ appId: 1 });
     expect(iframe.posted).toContainEqual({
       type: "deactivate-dyad-recorder",
+      token: AUTH_BOOTSTRAP_TOKEN,
     });
   });
 
@@ -663,6 +692,7 @@ describe("useTestRecorder", () => {
               sessionId: "session-1",
               isolation: { mode: "none" },
               auth: { mode: "none" },
+              authBootstrapToken: AUTH_BOOTSTRAP_TOKEN,
             });
         }),
     );
@@ -731,6 +761,7 @@ describe("useTestRecorder", () => {
               appId: 1,
               isolation: { mode: "none" },
               auth: { mode: "none" },
+              authBootstrapToken: AUTH_BOOTSTRAP_TOKEN,
             });
         }),
     );
@@ -768,6 +799,7 @@ describe("useTestRecorder", () => {
     // red hover overlay with no recording bar left to explain them.
     expect(iframe.posted).toContainEqual({
       type: "deactivate-dyad-recorder",
+      token: AUTH_BOOTSTRAP_TOKEN,
     });
     expect(result.current.phase).toBe("idle");
   });
@@ -902,7 +934,7 @@ describe("useTestRecorder", () => {
     expect(result.current.warning).toMatch(/without authentication/i);
   });
 
-  it("does not send credentials when the proxy capability is unavailable", async () => {
+  it("refuses to record when the proxy capability is unavailable", async () => {
     startRecordingMock.mockResolvedValue({
       appId: 1,
       sessionId: "session-1",
@@ -921,9 +953,9 @@ describe("useTestRecorder", () => {
     });
 
     expect(findLogin(iframe)).toBeNull();
-    expect(result.current.isRecording).toBe(true);
-    expect(result.current.auth).toEqual({ mode: "none" });
-    expect(result.current.warning).toMatch(/secure preview sign-in/i);
+    expect(result.current.isRecording).toBe(false);
+    expect(result.current.error).toMatch(/secure preview recording/i);
+    expect(stopRecordingMock).toHaveBeenCalledWith({ appId: 1 });
   });
 
   it("ignores a sign-in result from an attempt that already timed out", async () => {
@@ -1087,7 +1119,10 @@ describe("useTestRecorder", () => {
 
     expect(draft).toBeNull();
     expect(result.current.phase).toBe("idle");
-    expect(discardDraftMock).toHaveBeenCalledWith({ appId: 1 });
+    expect(discardDraftMock).toHaveBeenCalledWith({
+      appId: 1,
+      draftId: expect.any(String),
+    });
   });
 
   it("abandons setup when the selected app changes mid-start", async () => {

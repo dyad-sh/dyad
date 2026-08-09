@@ -10,6 +10,7 @@ const recorderSource = fs.readFileSync(
 );
 
 const CLICK_DEBOUNCE_MS = 200;
+const RECORDER_TOKEN = "proxy-session-token";
 
 type AnyEl = any;
 
@@ -22,6 +23,10 @@ type AnyEl = any;
 function setup({ allowUntrusted = true }: { allowUntrusted?: boolean } = {}) {
   const hw = new Window({ url: "https://preview.test/" });
   const doc: AnyEl = hw.document;
+  Object.defineProperty(doc, "currentScript", {
+    configurable: true,
+    value: { dataset: { dyadRecorderToken: RECORDER_TOKEN } },
+  });
 
   const messages: any[] = [];
   const actions: any[] = [];
@@ -67,15 +72,15 @@ function setup({ allowUntrusted = true }: { allowUntrusted?: boolean } = {}) {
   const setHtml = (html: string) => {
     doc.body.innerHTML = html;
   };
-  const activate = () =>
+  const activate = (token = RECORDER_TOKEN) =>
     messageHandler!({
       source: parent,
-      data: { type: "activate-dyad-recorder" },
+      data: { type: "activate-dyad-recorder", token },
     });
   const deactivate = () =>
     messageHandler!({
       source: parent,
-      data: { type: "deactivate-dyad-recorder" },
+      data: { type: "deactivate-dyad-recorder", token: RECORDER_TOKEN },
     });
 
   const click = (el: AnyEl) =>
@@ -126,6 +131,15 @@ afterEach(() => {
 });
 
 describe("dyad recorder client", () => {
+  it("refuses recorder activation without the proxy capability", () => {
+    const r = setup();
+    r.setHtml(`<input aria-label="Email" />`);
+    r.activate("attacker-controlled-token");
+    r.typeInto(r.doc.querySelector("input"), "private@example.com");
+
+    expect(r.actions).toEqual([]);
+  });
+
   it("reports a click immediately, leaving the dblclick merge to the renderer", () => {
     const r = setup();
     r.setHtml(`<button>Open</button>`);
@@ -276,6 +290,28 @@ describe("dyad recorder client", () => {
     r.keydown(r.doc.body, { key: "Escape" });
 
     expect(r.actions).toEqual([{ kind: "press", key: "Escape" }]);
+  });
+
+  it("records Space activation for custom interactive roles", () => {
+    const r = setup();
+    r.setHtml(
+      `<div role="switch" aria-label="Notifications" tabindex="0"></div>`,
+    );
+    r.activate();
+    r.keydown(r.doc.querySelector("[role=switch]"), { key: " " });
+
+    expect(r.actions).toEqual([
+      {
+        kind: "press",
+        key: " ",
+        locator: {
+          kind: "role",
+          value: "switch",
+          name: "Notifications",
+          exact: true,
+        },
+      },
+    ]);
   });
 
   it("falls back to a body selector rather than an empty one", () => {
@@ -490,6 +526,23 @@ describe("dyad recorder client", () => {
         value: "person@example.com",
       },
     ]);
+  });
+
+  it("uses text from a hidden aria-labelledby reference", () => {
+    const r = setup();
+    r.setHtml(
+      `<span id="hidden-name" hidden>Account email</span>` +
+        `<input aria-labelledby="hidden-name" />`,
+    );
+    r.activate();
+    r.typeInto(r.doc.querySelector("input"), "person@example.com");
+
+    expect(r.actions[0]?.locator).toEqual({
+      kind: "role",
+      value: "textbox",
+      name: "Account email",
+      exact: true,
+    });
   });
 
   it("records a multi-select as a listbox with every chosen value", () => {

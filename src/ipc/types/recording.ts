@@ -49,7 +49,8 @@ export const StartRecordingResultSchema = z.object({
   /** Auth to establish before recording (`{ mode: "none" }` when unavailable). */
   auth: RecordingAuthSchema,
   /**
-   * Per-proxy capability the renderer must echo with `dyad-auth-login`.
+   * Per-proxy capability the renderer must echo with `dyad-auth-login` and
+   * recorder activation/deactivation messages.
    * Absent on setup failures, where no preview authentication is attempted.
    */
   authBootstrapToken: z.string().uuid().optional(),
@@ -90,6 +91,11 @@ export const SaveRecordedTestDraftParamsSchema = z.object({
 
 export const DiscardRecordedTestDraftParamsSchema = z.object({
   appId: z.number(),
+  /**
+   * Scope a renderer discard to the draft it actually rendered. App deletion
+   * may omit this to clear all recorder state for the deleted app.
+   */
+  draftId: z.string().optional(),
 });
 
 // =============================================================================
@@ -155,6 +161,8 @@ export type RecordingEndedPayload = z.infer<typeof RecordingEndedPayloadSchema>;
  */
 export const RecordingDraftConsumedPayloadSchema = z.object({
   appId: z.number(),
+  /** A newer recording for the same app must remain visible. */
+  draftId: z.string(),
   specPath: z.string(),
 });
 export type RecordingDraftConsumedPayload = z.infer<

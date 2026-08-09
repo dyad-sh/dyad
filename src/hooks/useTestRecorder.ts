@@ -117,6 +117,10 @@ export function useTestRecorder({
     nonce: string;
     authBootstrapToken: string;
   } | null>(null);
+  // Per-proxy capabilities used to arm/disarm the injected recorder. A page
+  // that merely frames the localhost preview must not be able to turn it into
+  // a form-field recorder and receive the resulting wildcard parent posts.
+  const recorderTokensRef = useRef(new Map<number, string>());
   // Apps whose main-process session this hook started and hasn't stopped. The
   // session outlives the renderer's state (it holds an isolated database and the
   // per-app lock), so every path that walks away has to hand it back explicitly.
@@ -269,6 +273,18 @@ export function useTestRecorder({
     return lastPreviewOriginRef.current ?? "*";
   }, []);
 
+  const postRecorderControl = useCallback(
+    (targetAppId: number, type: "activate" | "deactivate") => {
+      const token = recorderTokensRef.current.get(targetAppId);
+      const origin = previewOrigin();
+      // Fail closed while the app origin or capability is unavailable. The
+      // initialized-message path retries activation after both are present.
+      if (!token || origin === "*") return;
+      postToIframe({ type: `${type}-dyad-recorder`, token }, origin);
+    },
+    [postToIframe, previewOrigin],
+  );
+
   const patchState = useCallback(
     (
       targetAppId: number,
@@ -340,8 +356,8 @@ export function useTestRecorder({
           // The document a start is waiting on has come up; let it arm.
           if (currentAppId != null) settleRecorderReady(currentAppId);
           // Re-arm after a dev-server restart / HMR reload swapped the iframe.
-          if (phaseRef.current === "recording") {
-            postToIframe({ type: "activate-dyad-recorder" });
+          if (phaseRef.current === "recording" && currentAppId != null) {
+            postRecorderControl(currentAppId, "activate");
           }
           break;
         }
@@ -382,7 +398,13 @@ export function useTestRecorder({
     };
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
-  }, [postToIframe, previewOrigin, record, settleRecorderReady]);
+  }, [
+    postRecorderControl,
+    postToIframe,
+    previewOrigin,
+    record,
+    settleRecorderReady,
+  ]);
 
   // Reset the UI if a session ends outside our control (app stopped / crash /
   // session cap) — and only then. Failures are toasted: the recording bar
@@ -425,8 +447,9 @@ export function useTestRecorder({
         // injected client keeps painting the hover highlight with no recording
         // bar left to explain it. (User-driven stops disarm it themselves.)
         if (endedAppId === appIdRef.current) {
-          postToIframe({ type: "deactivate-dyad-recorder" });
+          postRecorderControl(endedAppId, "deactivate");
         }
+        recorderTokensRef.current.delete(endedAppId);
         patchState(endedAppId, (prev) =>
           prev.phase === "idle"
             ? prev
@@ -439,7 +462,7 @@ export function useTestRecorder({
       },
     );
     return unsub;
-  }, [patchState, postToIframe, settlePendingAuth, settleRecorderReady]);
+  }, [patchState, postRecorderControl, settlePendingAuth, settleRecorderReady]);
 
   /**
    * Ask the main process to end this app's session and reset the app's recorder
@@ -456,8 +479,9 @@ export function useTestRecorder({
       // settled here or the next Record is refused until the wait times out.
       settleRecorderReady(targetAppId);
       if (targetAppId === appIdRef.current) {
-        postToIframe({ type: "deactivate-dyad-recorder" });
+        postRecorderControl(targetAppId, "deactivate");
       }
+      recorderTokensRef.current.delete(targetAppId);
       void ipc.recording.stopRecording({ appId: targetAppId }).catch(() => {});
       clearEntries(targetAppId);
       patchState(targetAppId, { phase: "idle" });
@@ -465,7 +489,7 @@ export function useTestRecorder({
     [
       clearEntries,
       patchState,
-      postToIframe,
+      postRecorderControl,
       settlePendingAuth,
       settleRecorderReady,
     ],
@@ -533,19 +557,21 @@ export function useTestRecorder({
   // activation reliable. The client treats repeat activations as no-ops.
   useEffect(() => {
     if (recordingState.phase === "recording") {
-      postToIframe({ type: "activate-dyad-recorder" });
+      if (appId != null) postRecorderControl(appId, "activate");
     }
-  }, [recordingState.phase, postToIframe]);
+  }, [appId, postRecorderControl, recordingState.phase]);
 
   // The assertions card in the chat approved the draft. Close the bar: its
   // remaining actions all act on a recording that has already been written, and
   // taking one up would produce a second copy of the same test.
   useEffect(() => {
     const unsub = ipc.events.recording.onDraftConsumed(
-      ({ appId: consumedAppId }) => {
+      ({ appId: consumedAppId, draftId }) => {
         if (consumedAppId == null) return;
         patchState(consumedAppId, (prev) =>
-          prev.phase === "reviewing" ? { phase: "idle" } : prev,
+          prev.phase === "reviewing" && prev.draft?.draftId === draftId
+            ? { phase: "idle" }
+            : prev,
         );
       },
     );
@@ -737,6 +763,16 @@ export function useTestRecorder({
         return;
       }
 
+      if (!result.authBootstrapToken) {
+        const message =
+          "Secure preview recording is unavailable. Restart the app and try again.";
+        endSession(targetAppId);
+        patchState(targetAppId, { phase: "idle", error: message });
+        showError(message);
+        return;
+      }
+      recorderTokensRef.current.set(targetAppId, result.authBootstrapToken);
+
       ownedSessionsRef.current.add(targetAppId);
       if (result.sessionId) {
         sessionIdsRef.current.set(targetAppId, result.sessionId);
@@ -839,7 +875,7 @@ export function useTestRecorder({
         if (!ownedSessionsRef.current.has(targetAppId)) return;
       }
 
-      postToIframe({ type: "activate-dyad-recorder" });
+      postRecorderControl(targetAppId, "activate");
       patchState(targetAppId, (prev) => ({
         ...prev,
         phase: "recording",
@@ -853,7 +889,7 @@ export function useTestRecorder({
       clearEntries,
       endSession,
       patchState,
-      postToIframe,
+      postRecorderControl,
       releaseSession,
       reloadPreview,
       waitForRecorderReady,
@@ -907,7 +943,7 @@ export function useTestRecorder({
       // must not also try to stop it.
       ownedSessionsRef.current.delete(targetAppId);
       patchState(targetAppId, (prev) => ({ ...prev, phase: "finishing" }));
-      postToIframe({ type: "deactivate-dyad-recorder" });
+      postRecorderControl(targetAppId, "deactivate");
 
       const auth = stateRef.current.auth ?? { mode: "none" };
       const draft: RecordedTestDraft = {
@@ -935,6 +971,7 @@ export function useTestRecorder({
         await ipc.recording
           .stopRecording({ appId: targetAppId })
           .catch(() => {});
+        recorderTokensRef.current.delete(targetAppId);
         clearEntries(targetAppId);
         patchState(targetAppId, { phase: "idle" });
         return null;
@@ -943,6 +980,7 @@ export function useTestRecorder({
       // Teardown takes seconds; hold the "finishing" spinner until it's done so
       // the review UI doesn't appear over a half-torn-down session.
       await ipc.recording.stopRecording({ appId: targetAppId }).catch(() => {});
+      recorderTokensRef.current.delete(targetAppId);
 
       // That teardown may have failed — most consequentially by not restoring
       // `.env.local`, leaving the app on the temporary test branch. The user has
@@ -961,7 +999,10 @@ export function useTestRecorder({
       if (ourSessionFailed) {
         failedSessionsRef.current.delete(targetAppId);
         void ipc.recording
-          .discardRecordedTestDraft({ appId: targetAppId })
+          .discardRecordedTestDraft({
+            appId: targetAppId,
+            draftId: draft.draftId,
+          })
           .catch(() => {});
         clearEntries(targetAppId);
         patchState(targetAppId, (prev) =>
@@ -1023,9 +1064,10 @@ export function useTestRecorder({
   const discardDraft = useCallback(async () => {
     const targetAppId = appId;
     if (targetAppId == null) return;
+    const draftId = stateRef.current.draft?.draftId;
     patchState(targetAppId, { phase: "idle" });
     await ipc.recording
-      .discardRecordedTestDraft({ appId: targetAppId })
+      .discardRecordedTestDraft({ appId: targetAppId, draftId })
       .catch(() => {});
   }, [appId, patchState]);
 
@@ -1049,7 +1091,7 @@ export function useTestRecorder({
     // otherwise drop the bar back to idle while the app's start entry stayed
     // parked, silently refusing the next Record for the rest of the window.
     settleRecorderReady(targetAppId);
-    postToIframe({ type: "deactivate-dyad-recorder" });
+    postRecorderControl(targetAppId, "deactivate");
     void ipc.recording
       .discardRecordedTestDraft({ appId: targetAppId })
       .catch(() => {});
@@ -1057,13 +1099,14 @@ export function useTestRecorder({
     // visible "stopping" phase instead of leaving the bar up with no feedback.
     patchState(targetAppId, (prev) => ({ ...prev, phase: "stopping" }));
     await ipc.recording.stopRecording({ appId: targetAppId }).catch(() => {});
+    recorderTokensRef.current.delete(targetAppId);
     clearEntries(targetAppId);
     patchState(targetAppId, { phase: "idle" });
   }, [
     appId,
     clearEntries,
     patchState,
-    postToIframe,
+    postRecorderControl,
     settlePendingAuth,
     settleRecorderReady,
   ]);

@@ -40,9 +40,12 @@ vi.mock("@/ipc/utils/coolify_deploy_key", () => ({
   // Identity here: the fingerprint suffix is this module's own concern, and
   // routing it through would only make every route name in these tests noisier.
   coolifyKeyName: (keyName: string) => keyName,
-  ensureDeployKey: vi.fn(async (name: string) => name),
-  readPublicKey: () => "ssh-ed25519 AAAAPUBLIC comment",
+  // Returns a public key, as the real one does — production sends this
+  // value to GitHub, so a mock handing back the key name would be lying
+  // about the shape of what it returns.
+  ensureDeployKey: vi.fn(async () => "ssh-ed25519 AAAAPUBLIC comment"),
   readPrivateKey: () => "PRIVATE",
+  deployKeyFilePath: (name: string) => `/keys/${name}`,
 }));
 
 const framework = vi.hoisted(() => ({

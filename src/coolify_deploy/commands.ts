@@ -26,7 +26,6 @@ import {
   ensureDeployKey,
   readPrivateKey,
   deployKeyFilePath,
-  readPublicKey,
   repoKeyName,
 } from "@/ipc/utils/coolify_deploy_key";
 import { getGitHubApiBase } from "@/ipc/handlers/github_handlers";
@@ -170,7 +169,7 @@ async function ensureGithubDeployKey({
   repo: string;
   report: DeployReporter;
   signal: AbortSignal;
-}): Promise<string> {
+}): Promise<{ keyName: string; publicKey: string }> {
   const keyName = repoKeyName(owner, repo);
   // Returns the public half and throws if it cannot be read, so there is no
   // second read here and no branch for a null that cannot arrive.
@@ -204,7 +203,7 @@ async function ensureGithubDeployKey({
 
   if (res.ok) {
     report.log(`Added the deploy key to ${owner}/${repo}.\n`);
-    return keyName;
+    return { keyName, publicKey };
   }
   const body = await githubBody(() => res.text(), signal);
   if (res.status === 422 && /already in use/i.test(body)) {
@@ -252,7 +251,7 @@ async function ensureGithubDeployKey({
     const ours = publicKey.split(/\s+/).slice(0, 2).join(" ");
     if (keys.some((k) => (k.key ?? "").startsWith(ours))) {
       report.log(`Deploy key already present on ${owner}/${repo}.\n`);
-      return keyName;
+      return { keyName, publicKey };
     }
     throw new DyadError(
       `The deploy key for ${owner}/${repo} is already registered on a different ` +
@@ -589,7 +588,7 @@ export async function runDeployPipeline({
   );
   report.log(`Building as ${build.buildPack} on port ${build.portsExposes}.\n`);
 
-  const keyName = await ensureGithubDeployKey({
+  const { keyName, publicKey } = await ensureGithubDeployKey({
     owner: app.githubOrg,
     repo: app.githubRepo,
     report,
@@ -600,7 +599,9 @@ export async function runDeployPipeline({
   const key = await client.registerPrivateKey({
     // Named after the key material, so regenerating the local pair registers a
     // new entry instead of reusing one Coolify can never update.
-    name: coolifyKeyName(keyName, readPublicKey(keyName) ?? ""),
+    // The half already in hand, rather than a second read off disk with a
+    // fallback that would fingerprint an empty string.
+    name: coolifyKeyName(keyName, publicKey),
     description: "Key Dyad uses to let Coolify clone this repository",
     privateKey: readPrivateKey(keyName),
   });

@@ -347,9 +347,17 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
         {/* A project belongs to the Coolify instance, not to this app, so it
             is named and created on its own before anything is picked. */}
         {isEditingConnection &&
-          status.connection?.serverUuid &&
-          (serverUuid !== status.connection.serverUuid ||
-            projectUuid !== status.connection.projectUuid) && (
+          status.connection &&
+          isHostMove(
+            {
+              kind: "configured",
+              serverUuid: status.connection.serverUuid,
+              projectUuid: status.connection.projectUuid,
+              environmentName: status.connection.environmentName,
+              domain: status.connection.domain,
+            },
+            { serverUuid, projectUuid, environmentName: "production" },
+          ) && (
             <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
               Moving this app leaves the application on its current server
               running, and Dyad stops tracking it. Deploying here builds a new
@@ -517,31 +525,12 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
           onClick={async () => {
             try {
               const trimmed = domain.trim();
-              // Moving releases whatever exists in Coolify, so there is then
-              // nothing whose address a cleared domain could contradict. Asked
-              // with the same predicate the handler uses, which is how these
-              // two came to disagree in the first place.
-              const moving =
-                status.connection !== null &&
-                isHostMove(
-                  {
-                    kind: "configured",
-                    serverUuid: status.connection.serverUuid,
-                    projectUuid: status.connection.projectUuid,
-                    environmentName: status.connection.environmentName,
-                    domain: status.connection.domain,
-                  },
-                  { serverUuid, projectUuid, environmentName: "production" },
-                );
-              if (!moving && !trimmed && status.connection?.domain) {
-                // updateApplication deliberately never sends an empty domains
-                // value, because Coolify cannot generate a replacement
-                // address once one has been set.
-                toast.error(
-                  "A domain cannot be removed from Dyad. Change it here, or clear it in Coolify.",
-                );
-                return;
-              }
+              // Whether a domain may be cleared is the handler's to answer:
+              // it turns on whether an application exists in Coolify, which
+              // the status contract does not carry. A copy here was wrong
+              // twice — first missing the moving case, then missing the
+              // never-provisioned one — so there is no copy. The catch below
+              // surfaces the handler's message.
               if (trimmed) {
                 // Advisory only: if the check itself fails, say so and still
                 // let the user save rather than trapping them behind it.

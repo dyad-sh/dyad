@@ -47,6 +47,7 @@ import {
   createKeylessTravelSearch,
 } from "../utils/research_plugins";
 import { buildChatAgentSystemToolSet } from "../utils/chat_agent_system_tools";
+import { buildDataSourceToolSet } from "../utils/data_sources/data_source_tools";
 import {
   isSseInvalidJsonResponse,
   providerResponseErrorDetails,
@@ -370,6 +371,8 @@ function runChatAgentStream(
     workflowKeys?: string[];
   } | null,
   agentProfile: ChatAgentStartParams["agentProfile"],
+  /** Data sources the user ticked. The agent may reach no others. */
+  dataSourceIds: string[],
   abortController: AbortController,
 ) {
   void (async () => {
@@ -516,10 +519,16 @@ function runChatAgentStream(
             });
           })
         : {};
+      // Only what the user ticked in the composer. The allow-list is passed
+      // in rather than read inside the tools, so the model cannot widen it.
+      const dataSourceTools = isLovableWebDev
+        ? {}
+        : buildDataSourceToolSet(dataSourceIds);
       const tools = instrumentToolActivity(event, sessionId, {
         ...researchTools,
         ...systemTools,
         ...deploymentTools,
+        ...dataSourceTools,
         ...mcpTools,
       });
       const systemPrompt = isLovableWebDev
@@ -766,6 +775,7 @@ export function registerChatAgentHandlers() {
             }
           : null,
         params.agentProfile,
+        params.dataSourceIds ?? [],
         abortController,
       );
       return { ok: true } as const;

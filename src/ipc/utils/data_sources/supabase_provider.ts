@@ -9,6 +9,12 @@ import {
   type ParsedTable,
 } from "@/lib/data_sources/postgrest_schema";
 import { sanitiseDatabaseError } from "@/lib/data_sources/read_only";
+import {
+  buildQueryUrl,
+  compileQueryPlan,
+  parseContentRange,
+} from "@/lib/data_sources/postgrest_query";
+import type { QueryPlan } from "@/lib/data_sources/query_plan";
 
 /**
  * The Supabase data-source provider.
@@ -309,4 +315,67 @@ export function describeTableSemantically(
   if (outbound.length) parts.push(`references to ${outbound.join(", ")}`);
 
   return `${parts.join(", ")}.`;
+}
+
+export type QueryOutcome = {
+  rows: unknown[];
+  /** Total matching rows, or null when the project did not report one. */
+  totalRows: number | null;
+  executionMs: number;
+};
+
+/**
+ * Runs a validated plan against the project.
+ *
+ * Read-only by construction: this issues a GET, and there is no code path here
+ * that can issue anything else. A permission failure is surfaced as itself
+ * rather than retried with different credentials, because working around a
+ * project's access rules is exactly what this feature must not do.
+ */
+export async function executePlan(input: {
+  projectUrl: string;
+  key: string;
+  plan: QueryPlan;
+}): Promise<QueryOutcome> {
+  const compiled = compileQueryPlan(input.plan);
+  const url = buildQueryUrl(input.projectUrl, compiled);
+  const startedAt = Date.now();
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      apikey: input.key,
+      Authorization: `Bearer ${input.key}`,
+      Accept: "application/json",
+      ...compiled.headers,
+    },
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+
+  const executionMs = Date.now() - startedAt;
+
+  if (response.status === 401 || response.status === 403) {
+    throw new Error("This connection key is not permitted to read that data.");
+  }
+  if (!response.ok) {
+    let detail = "";
+    try {
+      const body = (await response.json()) as { message?: string };
+      detail = typeof body?.message === "string" ? body.message : "";
+    } catch {
+      // A non-JSON error body still leaves the status to report.
+    }
+    throw new Error(
+      sanitiseDatabaseError(
+        detail || `The project responded ${response.status}.`,
+      ),
+    );
+  }
+
+  const rows = (await response.json()) as unknown[];
+  return {
+    rows: Array.isArray(rows) ? rows : [],
+    totalRows: parseContentRange(response.headers.get("content-range")),
+    executionMs,
+  };
 }

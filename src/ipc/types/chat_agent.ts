@@ -27,6 +27,8 @@ export const ChatAgentStartParamsSchema = z.object({
   selectedMcpWorkflowKeys: z.array(z.string()).optional(),
   /** Explicitly selected local Vector collections for retrieval this turn. */
   vectorCollectionIds: z.array(z.string()).max(20).optional(),
+  /** Data sources the user ticked; the agent may reach no others. */
+  dataSourceIds: z.array(z.string()).max(20).optional(),
   /** When true, re-run the last user turn (drops the latest assistant reply). */
   regenerate: z.boolean().optional(),
 });

@@ -56,6 +56,7 @@ export function ChatAgentComposer({
     text: string,
     selectedMcpActions: ChatAgentMcpAction[],
     vectorCollectionIds: string[],
+    dataSourceIds: string[],
   ) => void;
   disabled?: boolean;
   /** While true the send button becomes a stop button. */
@@ -162,7 +163,7 @@ export function ChatAgentComposer({
     const text = currentText ?? inputValue;
     const hasContent = text.trim().length > 0 || attachments.length > 0;
     if (disabled || isEnhancing || !hasContent) return;
-    onSubmit(text, selectedMcpActions, vectorCollectionIds);
+    onSubmit(text, selectedMcpActions, vectorCollectionIds, dataSourceIds);
     setInputValue("");
   };
 

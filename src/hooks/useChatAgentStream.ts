@@ -114,6 +114,7 @@ export function useChatAgentStream(
         selectedMcpToolKeys?: string[];
         selectedMcpWorkflowKeys?: string[];
         vectorCollectionIds?: string[];
+        dataSourceIds?: string[];
         regenerate?: boolean;
       },
       callbacks: {
@@ -195,6 +196,7 @@ export function useChatAgentStream(
             selectedMcpToolKeys?: string[];
             selectedMcpWorkflowKeys?: string[];
             vectorCollectionIds?: string[];
+            dataSourceIds?: string[];
             agentProfile?: "lovable-web-dev";
             conversationHistory?: Array<{
               role: "user" | "assistant";
@@ -247,6 +249,8 @@ export function useChatAgentStream(
             typeof message === "string"
               ? undefined
               : message.vectorCollectionIds,
+          dataSourceIds:
+            typeof message === "string" ? undefined : message.dataSourceIds,
         },
         {
           onAssistantFlush: callbacks.onAssistantFlush,

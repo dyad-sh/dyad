@@ -714,6 +714,7 @@ export default function ChatAgentPage() {
     text: string,
     selectedMcpActions: ChatAgentMcpAction[],
     vectorCollectionIds: string[],
+    dataSourceIds: string[],
   ) => {
     // Reading a document happens before the model is called and can take a
     // while, so this turn is pinned to the tab it was sent from.
@@ -830,6 +831,10 @@ export default function ChatAgentPage() {
         selectedMcpWorkflowKeys: selectedMcpKeys?.workflowKeys,
         vectorCollectionIds:
           vectorCollectionIds.length > 0 ? vectorCollectionIds : undefined,
+        // Only what the user ticked. The main process treats this as the
+        // allow-list, so an empty array means the agent gets no database
+        // tools at all rather than access to everything.
+        dataSourceIds: dataSourceIds.length > 0 ? dataSourceIds : undefined,
         conversationHistory: messages.map(({ role, content }) => ({
           role,
           content,

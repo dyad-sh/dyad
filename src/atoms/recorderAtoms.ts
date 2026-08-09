@@ -67,6 +67,8 @@ export const EMPTY_RECORDING_STATE: RecordingState = Object.freeze({
 export interface RecordingStartRequest {
   appId: number;
   requestedAt: number;
+  /** App-relative route preserved by the preview machine across the tab swap. */
+  startPath?: string;
 }
 
 export const RECORDING_REQUEST_TTL_MS = 15_000;

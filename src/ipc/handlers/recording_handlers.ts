@@ -37,6 +37,7 @@ import {
 import { isTestRunActive } from "./tests_handlers";
 import { readSettings } from "@/main/settings";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { restoreAppFromTestBranch } from "../utils/neon_test_branch";
 
 const logger = log.scope("recording_handlers");
 
@@ -89,7 +90,7 @@ export function registerRecordingHandlers() {
     async (event, params): Promise<StartRecordingResult> => {
       const { appId } = params;
 
-      const app = await getApp(appId);
+      let app = await getApp(appId);
       if (!app.testingEnabled) {
         return infraResult(
           appId,
@@ -115,6 +116,31 @@ export function registerRecordingHandlers() {
           appId,
           "Start the app before recording — the dev server isn't running.",
         );
+      }
+
+      // A prior failed teardown leaves a raw durable marker while `.env.local`
+      // may still target that branch. Snapshotting it as the next recording's
+      // "real" env would make teardown restore a deleted database URL and then
+      // clear the replacement marker. Recover (or refuse) before isolation can
+      // take its snapshot.
+      if (app.neonTestBranchId) {
+        let restored = false;
+        try {
+          restored = await restoreAppFromTestBranch(app);
+        } catch (error) {
+          logger.error(
+            `App ${appId}: failed to recover the prior test branch before recording: ${error}`,
+          );
+        }
+        if (!restored) {
+          return infraResult(
+            appId,
+            "Dyad couldn't restore this app's real database settings from the previous session. Retry after checking the Neon connection.",
+          );
+        }
+        // Recovery may clear the marker or leave a cleanup-only marker. Give
+        // isolation the current row rather than the stale raw branch id.
+        app = await getApp(appId);
       }
 
       const sessionId = crypto.randomUUID();
@@ -164,6 +190,15 @@ export function registerRecordingHandlers() {
       const onDestroyed = () => stop("app-stopped");
       event.sender.once?.("destroyed", onDestroyed);
       const sessionTimer = setTimeout(() => stop("timed-out"), MAX_SESSION_MS);
+      const clearRegistration = () => {
+        // Only retire our own entry: teardown can overlap another attempted
+        // registration, and its newer owner must survive.
+        if (activeRecordings.get(appId)?.stop === stop) {
+          activeRecordings.delete(appId);
+        }
+        clearTimeout(sessionTimer);
+        event.sender.removeListener?.("destroyed", onDestroyed);
+      };
 
       // Hold the app's resources across the whole session. The handler resolves
       // on `ready`; they are released only when the session is stopped.
@@ -314,14 +349,7 @@ export function registerRecordingHandlers() {
                 endMessage =
                   "Dyad couldn't restore your app's real database settings after recording. Restore .env.local before running the app again.";
               }
-              // Only retire our own entry: teardown runs for seconds, so a
-              // registration made meanwhile must survive. The per-session `stop`
-              // closure is the session's identity.
-              if (activeRecordings.get(appId)?.stop === stop) {
-                activeRecordings.delete(appId);
-              }
-              clearTimeout(sessionTimer);
-              event.sender.removeListener?.("destroyed", onDestroyed);
+              clearRegistration();
               if (started) {
                 safeSend(event.sender, "recording:ended", {
                   appId,
@@ -333,7 +361,27 @@ export function registerRecordingHandlers() {
             }
           },
         )
-        .then(() => summary);
+        .then(
+          () => summary,
+          (error) => {
+            // A deletion fence rejects coordinator admission without invoking
+            // the callback above. Settle the IPC ask and retire the provisional
+            // registry/timer instead of leaving Record permanently spinning.
+            logger.warn(
+              `Recording admission was refused for app ${appId}: ${error}`,
+            );
+            settled = true;
+            controller.abort();
+            ready.resolve(
+              infraResult(
+                appId,
+                "This app is temporarily unavailable. Wait for the current app operation to finish, then try recording again.",
+              ),
+            );
+            clearRegistration();
+            return summary;
+          },
+        );
 
       activeRecordings.set(appId, { appId, stop, done });
 

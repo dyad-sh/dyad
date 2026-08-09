@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   isTestRunActive: vi.fn().mockReturnValue(false),
   clearStorageData: vi.fn().mockResolvedValue(undefined),
   safeSend: vi.fn(),
+  restoreAppFromTestBranch: vi.fn(),
   runningApps: new Map<number, any>(),
   readSettings: vi.fn().mockReturnValue({ runtimeMode2: "host" }),
 }));
@@ -31,6 +32,9 @@ vi.mock("../utils/process_manager", () => ({ runningApps: mocks.runningApps }));
 vi.mock("../utils/safe_sender", () => ({ safeSend: mocks.safeSend }));
 vi.mock("../services/isolated_test_db", () => ({
   prepareIsolatedTestDatabase: mocks.prepareIsolatedTestDatabase,
+}));
+vi.mock("../utils/neon_test_branch", () => ({
+  restoreAppFromTestBranch: mocks.restoreAppFromTestBranch,
 }));
 vi.mock("./tests_handlers", () => ({ isTestRunActive: mocks.isTestRunActive }));
 vi.mock("@/main/settings", () => ({ readSettings: mocks.readSettings }));
@@ -102,6 +106,8 @@ beforeEach(() => {
     authBootstrapToken: "00000000-0000-4000-8000-000000000001",
   });
   mocks.findFirst.mockResolvedValue({ id: 1, testingEnabled: true });
+  mocks.restoreAppFromTestBranch.mockReset();
+  mocks.restoreAppFromTestBranch.mockResolvedValue(true);
   mocks.isTestRunActive.mockReturnValue(false);
   mocks.readSettings.mockReturnValue({ runtimeMode2: "host" });
 });
@@ -127,6 +133,63 @@ describe("recording:discard-draft", () => {
 });
 
 describe("recording:start / recording:stop", () => {
+  it("refuses to snapshot an environment a prior recording did not restore", async () => {
+    mocks.findFirst.mockResolvedValue({
+      id: 1,
+      testingEnabled: true,
+      neonTestBranchId: "dirty-test-branch",
+    });
+    mocks.restoreAppFromTestBranch.mockResolvedValueOnce(false);
+    const { event } = makeEvent();
+
+    const result = await startHandler(event, { appId: 1 });
+
+    expect(result.infraError?.message).toMatch(/previous session/i);
+    expect(mocks.restoreAppFromTestBranch).toHaveBeenCalledWith(
+      expect.objectContaining({ neonTestBranchId: "dirty-test-branch" }),
+    );
+    expect(mocks.prepareIsolatedTestDatabase).not.toHaveBeenCalled();
+  });
+
+  it("passes the refreshed app row to isolation after recovery", async () => {
+    mocks.findFirst
+      .mockResolvedValueOnce({
+        id: 1,
+        testingEnabled: true,
+        neonTestBranchId: "dirty-test-branch",
+      })
+      .mockResolvedValueOnce({
+        id: 1,
+        testingEnabled: true,
+        neonTestBranchId: null,
+      });
+    mocks.prepareIsolatedTestDatabase.mockResolvedValue(makePrepared());
+    const { event } = makeEvent();
+
+    await startHandler(event, { appId: 1 });
+
+    expect(mocks.prepareIsolatedTestDatabase).toHaveBeenCalledWith(
+      expect.objectContaining({
+        app: expect.objectContaining({ neonTestBranchId: null }),
+      }),
+    );
+    await stopHandler(event, { appId: 1 });
+  });
+
+  it("settles and unregisters when deletion rejects coordinator admission", async () => {
+    const deletion = appOperationCoordinator.beginAppDeletion(1);
+    const { event } = makeEvent();
+    try {
+      const result = await startHandler(event, { appId: 1 });
+
+      expect(result.infraError?.message).toMatch(/temporarily unavailable/i);
+      expect(activeRecordings.has(1)).toBe(false);
+      expect(mocks.prepareIsolatedTestDatabase).not.toHaveBeenCalled();
+    } finally {
+      deletion.release();
+    }
+  });
+
   it("sets up isolation, clears preview storage, and holds the session until stop", async () => {
     const prepared = makePrepared({
       authSetup: {

@@ -1159,7 +1159,7 @@ export function useTestRecorder({
     }
     setStartRequest(null);
     if (isStale || phaseRef.current !== "idle") return;
-    requestStartRecording();
+    requestStartRecording(startRequest.startPath);
   }, [appId, requestStartRecording, setStartRequest, startRequest]);
 
   // Numbered exactly as the assertion tool numbers them, so what the review

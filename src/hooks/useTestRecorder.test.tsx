@@ -233,7 +233,11 @@ describe("useTestRecorder", () => {
   it("starts a session for a record request made outside the preview", async () => {
     const { store, Wrapper } = makeWrapper();
     store.set(selectedAppIdAtom, 1);
-    store.set(recordingStartRequestAtom, { appId: 1, requestedAt: Date.now() });
+    store.set(recordingStartRequestAtom, {
+      appId: 1,
+      requestedAt: Date.now(),
+      startPath: "/settings?tab=profile",
+    });
 
     const { result } = renderHook(
       () => useTestRecorder({ reloadPreview: () => {} }),
@@ -250,6 +254,9 @@ describe("useTestRecorder", () => {
     await waitFor(() => {
       expect(result.current.isRecording).toBe(true);
     });
+    expect(result.current.steps).toEqual([
+      'await page.goto("/settings?tab=profile");',
+    ]);
   });
 
   it("starts nothing when the storage warning is dismissed", async () => {

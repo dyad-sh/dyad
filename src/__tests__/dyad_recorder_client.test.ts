@@ -181,6 +181,32 @@ describe("dyad recorder client", () => {
     ]);
   });
 
+  it("records a label-activated button only once against the control", () => {
+    const r = setup();
+    r.setHtml(
+      `<label for="submit">Send order</label>` +
+        `<button id="submit" type="submit">Submit</button>`,
+    );
+    r.activate();
+
+    // Browsers deliver the pointer click to the label, then dispatch their own
+    // trusted activation click on the associated button.
+    r.click(r.doc.querySelector("label"));
+    r.click(r.doc.querySelector("button"));
+
+    expect(r.actions).toEqual([
+      {
+        kind: "click",
+        locator: {
+          kind: "role",
+          value: "button",
+          name: "Send order",
+          exact: true,
+        },
+      },
+    ]);
+  });
+
   it("uses the spinbutton role for a number input", () => {
     const r = setup();
     r.setHtml(`<input type="number" aria-label="Quantity" />`);

@@ -457,7 +457,22 @@ async function deleteAppById(
   // or recorder teardown. Otherwise a recording can enter while this app's
   // delete is queued behind another app, then hold the resources this deletion
   // needs until the session is explicitly stopped or times out.
-  const appOperationDeletion = appOperationCoordinator.beginAppDeletion(appId);
+  let appOperationDeletion: AppOperationDeletion;
+  try {
+    appOperationDeletion = appOperationCoordinator.beginAppDeletion(appId);
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message === `App ${appId} deletion is already in progress`
+    ) {
+      throw new DyadError(
+        "This app is already being deleted.",
+        DyadErrorKind.Precondition,
+        { cause: error },
+      );
+    }
+    throw error;
+  }
   let deletedRow: typeof apps.$inferSelect | null = null;
   try {
     // A recording session already admitted before the fence holds this app's

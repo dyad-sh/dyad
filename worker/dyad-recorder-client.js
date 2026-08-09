@@ -1059,7 +1059,10 @@
     // Emitted now, not after a debounce: a click on a link unloads this document
     // within milliseconds and a stalled click would go with it. The click
     // preceding a double-click is folded in by the renderer's `collapseActions`.
-    const target = retarget(raw);
+    // A label click dispatches a second trusted click on its associated
+    // click-driven control. Targeting the control here makes both emissions
+    // identical, so `emit` deduplicates the browser-generated second click.
+    const target = control || retarget(raw);
     emit({ kind: "click", locator: selectorFor(target) });
   }
 

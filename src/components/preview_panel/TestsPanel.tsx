@@ -77,6 +77,8 @@ import { queryKeys } from "@/lib/queryKeys";
 import { cn } from "@/lib/utils";
 import { showError, showInfo, showSuccess } from "@/lib/toast";
 import { findCaseResult, statusLabel, testKey } from "@/lib/testResultUtils";
+import { usePreviewIframeController } from "@/preview_iframe/usePreviewIframe";
+import { sameOriginStartPath } from "./previewAddressPath";
 
 function StatusIcon({ status }: { status: TestStatus }) {
   switch (status) {
@@ -621,6 +623,8 @@ export function TestsPanel() {
   const specs = useAtomValue(currentTestSpecsAtom);
   const runState = useAtomValue(currentTestRunStateAtom);
   const appUrl = useCurrentAppUrl(selectedAppId);
+  const { state: previewIframeState } =
+    usePreviewIframeController(selectedAppId);
   const setSpecs = useSetAtom(setTestSpecsForAppAtom);
   const setRunState = useSetAtom(setTestRunStateForAppAtom);
   const setPreviewMode = useSetAtom(previewModeAtom);
@@ -1013,9 +1017,24 @@ export function TestsPanel() {
     devServerRunning && !isRunning && !isRecordingSession;
   const startRecording = useCallback(() => {
     if (selectedAppId == null) return;
-    requestRecording({ appId: selectedAppId, requestedAt: Date.now() });
+    const currentPreviewUrl =
+      previewIframeState.history[previewIframeState.position] ??
+      previewIframeState.currentUrl;
+    requestRecording({
+      appId: selectedAppId,
+      requestedAt: Date.now(),
+      startPath: sameOriginStartPath(currentPreviewUrl, appUrl.appUrl),
+    });
     setPreviewMode("preview");
-  }, [requestRecording, selectedAppId, setPreviewMode]);
+  }, [
+    appUrl.appUrl,
+    previewIframeState.currentUrl,
+    previewIframeState.history,
+    previewIframeState.position,
+    requestRecording,
+    selectedAppId,
+    setPreviewMode,
+  ]);
 
   const recordButtonTitle = !devServerRunning
     ? "Start the app to record a test."

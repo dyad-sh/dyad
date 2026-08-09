@@ -448,6 +448,21 @@ describe("app naming handlers", () => {
   });
 
   describe("delete-app", () => {
+    it("classifies a duplicate deletion as an expected precondition", async () => {
+      const appId = seedAppWithFolder("Delete Me", "delete-me");
+      const deletion = appOperationCoordinator.beginAppDeletion(appId);
+      try {
+        await expect(
+          harness.invokeHandler("delete-app", { appId }),
+        ).rejects.toMatchObject({
+          kind: DyadErrorKind.Precondition,
+          message: expect.stringMatching(/already being deleted/i),
+        });
+      } finally {
+        deletion.release();
+      }
+    });
+
     it("raises the operation fence before waiting for recording teardown", async () => {
       const appId = seedAppWithFolder("Delete Me", "delete-me");
       let observeStop!: () => void;

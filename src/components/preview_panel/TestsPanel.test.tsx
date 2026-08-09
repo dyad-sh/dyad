@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   getTestScreenshot: vi.fn(),
   /** Null stands in for a dev server that isn't up. */
   appUrl: "http://localhost:32100" as string | null,
+  previewUrl: "http://localhost:32100/" as string | null,
 }));
 
 vi.mock("@/ipc/types", () => ({
@@ -63,6 +64,16 @@ vi.mock("@/hooks/useAppRun", () => ({
     appId: 1,
     originalUrl: mocks.appUrl,
     mode: "host" as const,
+  }),
+}));
+
+vi.mock("@/preview_iframe/usePreviewIframe", () => ({
+  usePreviewIframeController: () => ({
+    state: {
+      history: mocks.previewUrl ? [mocks.previewUrl] : [],
+      position: 0,
+      currentUrl: mocks.previewUrl,
+    },
   }),
 }));
 
@@ -110,6 +121,7 @@ describe("TestsPanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.appUrl = "http://localhost:32100";
+    mocks.previewUrl = "http://localhost:32100/";
     mocks.listAppTests.mockResolvedValue({
       specs: [
         {
@@ -250,12 +262,16 @@ describe("TestsPanel", () => {
 
   // Recording runs in the preview, but this panel is where users look for it.
   it("hands a record request to the preview recorder", () => {
+    mocks.previewUrl = "http://localhost:32100/settings?tab=profile#billing";
     const { store } = renderPanel();
     store.set(previewModeAtom, "tests");
 
     fireEvent.click(screen.getByTestId("tests-record-button"));
 
     expect(store.get(recordingStartRequestAtom)?.appId).toBe(1);
+    expect(store.get(recordingStartRequestAtom)?.startPath).toBe(
+      "/settings?tab=profile#billing",
+    );
     // The recorder only exists in the preview, so the panel switches to it.
     expect(store.get(previewModeAtom)).toBe("preview");
   });

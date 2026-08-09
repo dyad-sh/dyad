@@ -78,16 +78,21 @@ export default defineConfig({
     expect(written.replace(/\r\n/g, "")).not.toContain("\n");
   });
 
-  it("leaves a manifest it cannot parse alone", async () => {
-    // Not this step's to repair, and throwing here would roll back the whole
-    // Nitro conversion over a file it did not write.
+  it("fails the conversion when the manifest cannot be read", async () => {
+    // This asserted the opposite until now, and only passed because it mocked
+    // installPackages away: that is what reads the manifest first, so a
+    // broken one stops the conversion there and never reaches the step that
+    // adds a start script.
+    installPackagesMock.mockRejectedValueOnce(
+      new Error("Invalid package.json"),
+    );
     await fs.writeFile(
       path.join(appPath, "package.json"),
       "{ not json",
       "utf8",
     );
 
-    await expect(ensureNitroOnViteApp(appPath)).resolves.toBeTruthy();
+    await expect(ensureNitroOnViteApp(appPath)).rejects.toThrow();
 
     expect(await fs.readFile(path.join(appPath, "package.json"), "utf8")).toBe(
       "{ not json",

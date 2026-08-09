@@ -76,14 +76,10 @@ async function addStartScriptIfMissing(
     return { wasAdded: false, backup: null };
   }
 
-  let packageJson: { scripts?: Record<string, string> };
-  try {
-    packageJson = JSON.parse(contents);
-  } catch {
-    // A manifest that does not parse is not this step's to repair, and
-    // failing here would roll back a Nitro conversion over it.
-    return { wasAdded: false, backup: null };
-  }
+  // Not guarded: installPackages has already read this manifest by now, so a
+  // file that does not parse has failed the conversion before reaching here.
+  const packageJson: { scripts?: Record<string, string> } =
+    JSON.parse(contents);
   if (typeof packageJson.scripts?.start === "string") {
     return { wasAdded: false, backup: null };
   }

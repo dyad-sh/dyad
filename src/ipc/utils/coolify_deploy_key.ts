@@ -1,6 +1,5 @@
 import { createHash, generateKeyPairSync, randomBytes } from "crypto";
 import * as fs from "fs";
-import * as os from "os";
 import * as path from "path";
 import log from "electron-log";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
@@ -32,11 +31,6 @@ function keyDir(): string {
   return path.join(getUserDataPath(), "coolify_deploy_keys");
 }
 
-/** Where earlier versions put them, kept only to move what is already there. */
-function legacyKeyDir(): string {
-  return path.join(os.homedir(), ".ssh");
-}
-
 function keyFilePath(keyName: string): string {
   return path.join(keyDir(), keyName);
 }
@@ -49,38 +43,6 @@ function keyFilePath(keyName: string): string {
  */
 export function deployKeyFilePath(keyName: string): string {
   return keyFilePath(keyName);
-}
-
-/**
- * Moves a keypair written by an earlier version into Dyad's directory.
- *
- * Regenerating instead would strand the user: GitHub allows a deploy key on
- * one repository, so the fresh public half is refused with "already in use"
- * by the very key this is replacing, and the deploy stops with advice that
- * cannot be followed.
- */
-function migrateLegacyKey(keyName: string): void {
-  const target = keyFilePath(keyName);
-  const source = path.join(legacyKeyDir(), keyName);
-  if (fs.existsSync(target) || !fs.existsSync(source)) return;
-  try {
-    fs.mkdirSync(keyDir(), { recursive: true, mode: 0o700 });
-    fs.copyFileSync(source, target);
-    if (fs.existsSync(`${source}.pub`)) {
-      fs.copyFileSync(`${source}.pub`, `${target}.pub`);
-    }
-    // Copied rather than moved, then the original removed only once the copy
-    // is readable: a private half is not something to lose to a failed write.
-    if (fs.existsSync(target)) {
-      fs.rmSync(source, { force: true });
-      fs.rmSync(`${source}.pub`, { force: true });
-    }
-    logger.info(`Moved ${keyName} out of ~/.ssh into Dyad's own directory`);
-  } catch (err) {
-    // The key is still where it was, and the caller will read it from there
-    // on the next attempt or generate a new one if it is gone.
-    logger.warn(`Could not move ${keyName} out of ~/.ssh: ${String(err)}`);
-  }
 }
 
 export function repoKeyName(owner: string, repo: string): string {
@@ -288,7 +250,6 @@ export function publicKeyFromPrivate(pem: string): string | null {
  * and end up with one registering a pair the other has already replaced.
  */
 export async function ensureDeployKey(keyName: string): Promise<string> {
-  migrateLegacyKey(keyName);
   const keyPath = keyFilePath(keyName);
   const hasPrivate = fs.existsSync(keyPath);
   const hasPublic = fs.existsSync(`${keyPath}.pub`);

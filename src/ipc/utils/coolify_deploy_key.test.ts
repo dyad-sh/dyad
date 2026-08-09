@@ -80,8 +80,6 @@ afterEach(() => {
 });
 
 const keyFile = (name: string) => path.join(home, "coolify_deploy_keys", name);
-/** Where an earlier version wrote them. */
-const legacyPath = (name: string) => path.join(home, ".ssh", name);
 
 describe("repoKeyName", () => {
   it("is stable per repository and safe as a filename", () => {
@@ -265,54 +263,6 @@ describe("publicKeyFromPrivate", () => {
       line.trim().split(/\s+/).slice(0, 2).join(" ");
     expect(parsed).not.toBeNull();
     expect(material(parsed!)).toBe(material(onDisk));
-  });
-});
-
-describe("keys written by an earlier version", () => {
-  it("moves them out of ~/.ssh rather than generating a new pair", async () => {
-    // GitHub allows a deploy key on one repository, so a fresh public half is
-    // refused by the very key it would replace. Regenerating would strand the
-    // user on advice they cannot follow.
-    fs.mkdirSync(path.dirname(legacyPath("dyad_deploy_old")), {
-      recursive: true,
-    });
-    const pair = generateDeployKeyPair("dyad-deploy");
-    fs.writeFileSync(legacyPath("dyad_deploy_old"), pair.privateKey);
-    fs.writeFileSync(`${legacyPath("dyad_deploy_old")}.pub`, pair.publicKey);
-
-    const returned = await ensureDeployKey("dyad_deploy_old");
-
-    expect(returned.trim()).toBe(pair.publicKey.trim());
-    expect(fs.existsSync(keyFile("dyad_deploy_old"))).toBe(true);
-    // And the old location is left clean rather than holding a second copy.
-    expect(fs.existsSync(legacyPath("dyad_deploy_old"))).toBe(false);
-  });
-
-  it("rebuilds a missing public half after moving the private one", async () => {
-    fs.mkdirSync(path.dirname(legacyPath("dyad_deploy_halved")), {
-      recursive: true,
-    });
-    const pair = generateDeployKeyPair("dyad-deploy");
-    fs.writeFileSync(legacyPath("dyad_deploy_halved"), pair.privateKey);
-
-    const returned = await ensureDeployKey("dyad_deploy_halved");
-
-    expect(returned.trim()).toBe(pair.publicKey.trim());
-  });
-
-  it("leaves the old copy alone once one already exists in the new place", async () => {
-    // Nothing to migrate, and overwriting would replace a key GitHub and
-    // Coolify already know with an older one.
-    const current = await ensureDeployKey("dyad_deploy_both");
-    fs.mkdirSync(path.dirname(legacyPath("dyad_deploy_both")), {
-      recursive: true,
-    });
-    fs.writeFileSync(
-      legacyPath("dyad_deploy_both"),
-      generateDeployKeyPair("dyad-deploy").privateKey,
-    );
-
-    expect(await ensureDeployKey("dyad_deploy_both")).toBe(current);
   });
 });
 

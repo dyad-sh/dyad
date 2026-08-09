@@ -1,6 +1,6 @@
 import log from "electron-log";
 
-import { writeSettings } from "@/main/settings";
+import { readSettings, writeSettings } from "@/main/settings";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { createTypedHandler } from "./base";
 import { vercelBlobContracts } from "../types/vercel_blob";
@@ -16,6 +16,11 @@ import {
   uploadToBlob,
   verifyBlobToken,
 } from "../utils/vercel_blob";
+import {
+  mirrorLocalVaultToBlob,
+  scaffoldBlobVault,
+} from "../utils/blob_vault";
+import { isLocalVaultReady } from "../utils/storage_vault";
 
 const logger = log.scope("vercel_blob_handlers");
 
@@ -43,6 +48,30 @@ export function registerVercelBlobHandlers() {
       vercelBlob: { token: { value: trimmed }, connectedAt: Date.now() },
     });
     logger.log("Connected Vercel Blob store");
+
+    // A connected store should already look like a vault, so lay down the same
+    // structure the local one has, then copy an existing local vault across so
+    // the two match rather than diverging until the first sync.
+    try {
+      await scaffoldBlobVault();
+      const vaultPath = readSettings().storage?.localVaultPath?.trim();
+      if (vaultPath && isLocalVaultReady(vaultPath)) {
+        const mirrored = await mirrorLocalVaultToBlob(vaultPath);
+        logger.log(
+          `Mirrored local vault on connect: ${mirrored.uploaded} uploaded, ${mirrored.skipped} unchanged`,
+        );
+      }
+    } catch (e) {
+      // The connection itself worked. Reporting it as a failure because the
+      // first copy did not finish would leave the user reconnecting a store
+      // that is already connected.
+      logger.warn(
+        `Connected, but the initial vault copy did not finish: ${
+          e instanceof Error ? e.message : "unknown error"
+        }`,
+      );
+    }
+
     return { connected: true };
   });
 

@@ -10,7 +10,17 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { getDyadAppPath } from "@/paths/paths";
 import { DYAD_MEDIA_DIR_NAME } from "./media_path_utils";
 import { uploadToBlob } from "./vercel_blob";
-import { CODE_FOLDER_README, syncAppCodeToVault } from "./vault_code";
+import { syncAppCodeToVault } from "./vault_code";
+import {
+  GENERATED_MEDIA_FOLDER,
+  VAULT_FOLDERS,
+  vaultStarterFiles,
+} from "./vault_structure";
+import {
+  blobVaultKey,
+  mirrorLocalVaultToBlob,
+  scaffoldBlobVault,
+} from "./blob_vault";
 
 export type StoragePreferences = {
   destination: "local" | "cloud";
@@ -48,7 +58,6 @@ const IMAGE_EXTENSIONS = new Set([
   ".webp",
 ]);
 const VIDEO_EXTENSIONS = new Set([".mov", ".mp4", ".m4v", ".webm"]);
-const GENERATED_MEDIA_FOLDER = "Generated";
 const VAULT_MANIFEST_PATH = ".meta-human/manifest.json";
 
 function safeName(value: string): string {
@@ -96,29 +105,7 @@ function assertVaultPath(vaultPath: string): string {
 
 export async function initializeLocalVault(vaultPath: string): Promise<string> {
   const root = assertVaultPath(vaultPath);
-  const folders = [
-    ".obsidian",
-    ".meta-human",
-    "Conversations/Apps",
-    "Conversations/Chat Agent",
-    "Conversations/Hermes Agents",
-    "Notes/Apps",
-    "Notes/Daily",
-    "Media/Images",
-    // Everything the app generates lands here, so images are never scattered
-    // across app-private folders.
-    `Media/Images/${GENERATED_MEDIA_FOLDER}`,
-    "Media/Videos",
-    `Media/Videos/${GENERATED_MEDIA_FOLDER}`,
-    "Media/Files",
-    "Notes/Generated Media",
-    "Attachments",
-    // Drop documents here to have them indexed into the Knowledge Base.
-    "Documents",
-    // Mirrors of coder projects, restored automatically when reopening an
-    // app whose working copy is missing.
-    "Code",
-  ];
+  const folders = VAULT_FOLDERS;
   await Promise.all(
     folders.map((folder) =>
       fs.promises.mkdir(path.join(root, folder), { recursive: true }),
@@ -130,30 +117,7 @@ export async function initializeLocalVault(vaultPath: string): Promise<string> {
   // Anything left in Processing belongs to a run that died; return it to the
   // queue so interrupted extraction resumes rather than being lost.
   await recoverAbandonedJobs(root);
-  const starterFiles: Record<string, string> = {
-    ".obsidian/app.json": JSON.stringify(
-      {
-        attachmentFolderPath: "Attachments",
-        newLinkFormat: "shortest",
-        useMarkdownLinks: false,
-      },
-      null,
-      2,
-    ),
-    "Vault Home.md":
-      "---\ntype: vault-home\ntags:\n  - meta-human\n---\n\n# Meta Human Vault\n\nThis is an ordinary Obsidian vault. Meta Human automatically keeps conversations, generated media and system notes organised here while preserving notes you create yourself.\n\n- [[Conversations]]\n- [[Notes]]\n- [[Media]]\n- [[Documents]]\n\n> [!info] Your files stay portable\n> Every note is Markdown and every attachment is stored as a normal file.\n",
-    "Conversations.md":
-      "# Conversations\n\nConversation links appear here automatically after the first sync.\n",
-    "Notes.md":
-      "# Notes\n\n- [[Notes/System Notes|System Notes]]\n- `Notes/Apps` contains durable context for each app.\n- `Notes/Daily` is yours for daily notes.\n",
-    "Documents.md":
-      "---\ntype: documents-index\ntags:\n  - meta-human\n  - knowledge-base\n---\n\n# Documents\n\nDrop documents in the `Documents` folder to add them to your Knowledge Base. Choose **Index now** on the Knowledge Base screen and every file here becomes searchable by your agents.\n\nDocuments you attach in chat are filed here automatically once read, together with a `.md` of their extracted text — that sidecar is what the embedder indexes, since the vector store reads text rather than PDF bytes.\n\nMarkdown, text, code and data files are indexed. Private keys and certificates are skipped.\n",
-    "Media.md":
-      "---\ntype: media-index\ntags:\n  - meta-human\n---\n\n# Media\n\nEverything the app produces or saves lives here and can be embedded in any note with Obsidian links.\n\n- `Media/Images/Generated` — images created by your agents\n- `Media/Images` — images you add yourself\n- `Media/Videos/Generated` — generated video\n- `Media/Files` — other attachments\n\nEach generated image also gets a note in `Notes/Generated Media` recording its prompt and model.\n",
-    "Code.md": CODE_FOLDER_README,
-    "Notes/System Notes.md":
-      "---\ntype: system-notes\ntags:\n  - meta-human\n  - notes\n---\n\n# System Notes\n\nDurable notes created by you or the system can live here. Meta Human will not overwrite this file.\n",
-  };
+  const starterFiles = vaultStarterFiles();
   await Promise.all(
     Object.entries(starterFiles).map(async ([relativePath, contents]) => {
       const destination = path.join(root, ...relativePath.split("/"));
@@ -360,6 +324,54 @@ async function buildVaultFiles(
   return files;
 }
 
+/**
+ * Index notes as content, so both destinations write identical files.
+ *
+ * Extracted from the local writer for exactly that reason: an index that was
+ * generated one way on disk and another in the cloud would make the two
+ * copies disagree about what the vault contains.
+ */
+export function buildVaultIndexes(files: VaultFile[]): Record<string, string> {
+  const conversations = files
+    .filter(
+      (file) =>
+        file.kind === "conversation" && file.relativePath.endsWith(".md"),
+    )
+    .map((file) => file.relativePath)
+    .sort((a, b) => a.localeCompare(b));
+
+  const media = files
+    .filter((file) => file.kind === "media")
+    .map((file) => file.relativePath)
+    .sort((a, b) => a.localeCompare(b));
+
+  return {
+    "Conversations.md": `# Conversations\n\n${
+      conversations.length
+        ? conversations.map(markdownLink).join("\n")
+        : "No conversations have been synced yet."
+    }\n`,
+    "Media.md": `# Media\n\n${
+      media.length
+        ? media.map(markdownLink).join("\n")
+        : "No media has been synced yet."
+    }\n`,
+  };
+}
+
+/** The manifest, as data, so both destinations record the same thing. */
+export function buildVaultManifest(files: VaultFile[]) {
+  return {
+    version: 1,
+    syncedAt: new Date().toISOString(),
+    files: files.map((file) => ({
+      path: file.relativePath,
+      kind: file.kind,
+      bytes: file.data.length,
+    })),
+  };
+}
+
 export async function syncVault(input: {
   preferences: StoragePreferences;
   chatAgentConversations: PortableConversation[];
@@ -400,11 +412,39 @@ export async function syncVault(input: {
       }
     }
   } else {
+    // The cloud copy is a vault, not a pile of files: same structure, same
+    // indexes, same manifest, so a store can be browsed or restored on its own
+    // terms rather than only making sense next to a local copy.
+    await scaffoldBlobVault();
+
     for (const file of files) {
-      await uploadToBlob(`vault/${file.relativePath}`, file.data, {
+      await uploadToBlob(blobVaultKey(file.relativePath), file.data, {
         contentType: file.contentType,
         allowOverwrite: true,
       });
+    }
+
+    for (const [relativePath, contents] of Object.entries(
+      buildVaultIndexes(files),
+    )) {
+      await uploadToBlob(blobVaultKey(relativePath), Buffer.from(contents), {
+        contentType: "text/markdown",
+        allowOverwrite: true,
+      });
+    }
+
+    await uploadToBlob(
+      blobVaultKey(VAULT_MANIFEST_PATH),
+      Buffer.from(JSON.stringify(buildVaultManifest(files), null, 2)),
+      { contentType: "application/json", allowOverwrite: true },
+    );
+
+    // When a local vault exists it is the source of truth, so the cloud gets
+    // an exact copy of it rather than only the files this sync generated.
+    // Anything the user put in the vault by hand belongs in the backup too.
+    const vaultPath = input.preferences.localVaultPath?.trim();
+    if (vaultPath && isLocalVaultReady(vaultPath)) {
+      await mirrorLocalVaultToBlob(vaultPath);
     }
   }
   return {

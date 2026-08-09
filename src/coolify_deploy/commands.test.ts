@@ -26,8 +26,11 @@ const git = vi.hoisted(() => ({
   hashes: { HEAD: "abc", remote: "abc" } as Record<string, string>,
 }));
 vi.mock("@/ipc/utils/git_utils", () => ({
-  getCurrentCommitHash: async ({ ref }: { ref: string }) =>
-    ref === "HEAD" ? git.hashes.HEAD : git.hashes.remote,
+  getCurrentCommitHash: async ({ ref }: { ref: string }) => {
+    const value = ref === "HEAD" ? git.hashes.HEAD : git.hashes.remote;
+    if (value === "__throw__") throw new Error("unknown revision");
+    return value;
+  },
   getGitUncommittedFiles: async () => git.uncommitted,
 }));
 
@@ -278,6 +281,8 @@ beforeEach(() => {
   framework.type = "vite";
   framework.declaresStart = false;
   git.uncommitted = [];
+  git.hashes.HEAD = "abc";
+  git.hashes.remote = "abc";
   git.hashes = { HEAD: "abc", remote: "abc" };
   neon.branchTypes = [];
   neon.trustedDomains = [];
@@ -1145,6 +1150,31 @@ describe("pre-deploy warnings", () => {
     );
 
     expect(report.text()).toMatch(/not on origin\/main/);
+  });
+
+  it("still reports edits on disk when there is no origin ref to compare", async () => {
+    // The remote lookup throws for a branch that was never pushed. Sharing a
+    // try with the working-tree check meant that throw swallowed it, in the
+    // one case where nothing whatsoever is on GitHub.
+    git.hashes.remote = "__throw__";
+    git.uncommitted = ["src/App.tsx"];
+    const app = await seedApp();
+    happyPathRoutes();
+    const report = loggingRecorder();
+    const clock = createFakeClock();
+
+    await drive(
+      clock,
+      runDeployPipeline({
+        appId: app.id,
+        signal: new AbortController().signal,
+        report,
+        clock,
+      }),
+    );
+
+    expect(report.text()).toMatch(/1 uncommitted file/);
+    expect(report.text()).toMatch(/never been pushed/);
   });
 
   it("says when edits are only on disk, which no commit hash reveals", async () => {

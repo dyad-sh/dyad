@@ -236,7 +236,12 @@ async function ensureGithubDeployKey({
     const listedBody = await githubBody(() => listed.text(), signal);
     let keys: Array<{ key?: string }>;
     try {
-      keys = JSON.parse(listedBody) as Array<{ key?: string }>;
+      const parsed: unknown = JSON.parse(listedBody);
+      // Parsing is not enough: GitHub answers errors as a JSON object, and an
+      // object reaching .some below is a TypeError naming neither GitHub nor
+      // the key — which is the whole point of classifying this.
+      if (!Array.isArray(parsed)) throw new Error("not a key list");
+      keys = parsed as Array<{ key?: string }>;
     } catch {
       // A proxy or a sign-in page answers 200 with HTML. Left bare that is a
       // SyntaxError with no mention of GitHub or the deploy key, which is the
@@ -404,6 +409,10 @@ async function warnIfBranchNotPushed({
   branch: string;
   report: DeployReporter;
 }): Promise<void> {
+  // Two questions, asked separately. Reading the remote ref throws when the
+  // branch has never been pushed, and sharing one try with the working-tree
+  // check meant that throw silently skipped it — in the one case where
+  // nothing at all is on GitHub and the warning matters most.
   try {
     const [local, remote] = await Promise.all([
       getCurrentCommitHash({ path: appPath, ref: "HEAD" }),
@@ -419,10 +428,22 @@ async function warnIfBranchNotPushed({
           `until they are pushed.\n`,
       );
     }
-    // Uncommitted work does not move HEAD, so the comparison above says
-    // nothing about it. Deploying what is on GitHub is the intent, but a user
-    // looking at edits Dyad has just made has no way to tell they are not in
-    // this build.
+  } catch {
+    // Most often there is no origin/<branch> yet. Coolify clones by branch
+    // name, so the build is going to fail looking for it, and saying so here
+    // beats the same failure arriving from inside a container minutes later.
+    report.log(
+      `Warning: could not find origin/${branch} locally. If that branch has ` +
+        `never been pushed, Coolify has nothing to clone and this deployment ` +
+        `will fail.\n`,
+    );
+  }
+
+  // Uncommitted work does not move HEAD, so the comparison above says nothing
+  // about it. Deploying what is on GitHub is the intent, but a user looking
+  // at edits Dyad has just made has no way to tell they are not in this
+  // build.
+  try {
     const uncommitted = await getGitUncommittedFiles({ path: appPath });
     if (uncommitted.length > 0) {
       report.log(
@@ -432,7 +453,7 @@ async function warnIfBranchNotPushed({
       );
     }
   } catch {
-    // No remote ref yet, or git is unhappy — not worth failing a deploy over.
+    // git is unhappy — not worth failing a deploy over.
   }
 }
 
@@ -670,8 +691,8 @@ export async function runDeployPipeline({
       report,
     });
   }
-  for (const { key, value } of database.vars) {
-    await client.setEnv(applicationUuid, key, value);
+  for (const { key: envKey, value } of database.vars) {
+    await client.setEnv(applicationUuid, envKey, value);
   }
   if (database.vars.length > 0) {
     report.log(

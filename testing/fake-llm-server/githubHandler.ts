@@ -709,6 +709,12 @@ export function handleListDeployKeys(req: Request, res: Response) {
   if (!req.headers.authorization?.includes(mockAccessToken)) {
     return res.status(401).json({ message: "Bad credentials" });
   }
+  const known = mockRepos.some((r) => r.full_name === `${owner}/${repo}`);
+  if (!known) {
+    // As every other repository endpoint does. Without this a test against a
+    // deleted or inaccessible repository reads as a successful registration.
+    return res.status(404).json({ message: "Not Found" });
+  }
   return res.json(deployKeysByRepo.get(`${owner}/${repo}`) ?? []);
 }
 
@@ -716,6 +722,12 @@ export function handleCreateDeployKey(req: Request, res: Response) {
   const { owner, repo } = req.params;
   if (!req.headers.authorization?.includes(mockAccessToken)) {
     return res.status(401).json({ message: "Bad credentials" });
+  }
+  const known = mockRepos.some((r) => r.full_name === `${owner}/${repo}`);
+  if (!known) {
+    // As every other repository endpoint does. Without this a test against a
+    // deleted or inaccessible repository reads as a successful registration.
+    return res.status(404).json({ message: "Not Found" });
   }
   const fullName = `${owner}/${repo}`;
   const material = keyMaterial(String(req.body?.key ?? ""));

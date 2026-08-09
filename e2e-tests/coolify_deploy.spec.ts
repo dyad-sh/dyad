@@ -177,12 +177,24 @@ test("deploys, and reports the address the app is reachable at", async ({
 
   await po.page.getByTestId("coolify-deploy").click();
 
-  await expect(po.page.getByText("Deployed", { exact: false })).toBeVisible({
-    timeout: Timeout.EXTRA_LONG,
-  });
+  // The address, which is the claim in this test's name and the one thing the
+  // PR singles out about deploying without a domain: Coolify generates an
+  // sslip.io host and the panel has to offer it back.
+  const applications = await expect
+    .poll(async () => (await coolifyApplications(fakeLlmPort)).length, {
+      timeout: Timeout.EXTRA_LONG,
+    })
+    .toBe(1)
+    .then(() => coolifyApplications(fakeLlmPort));
 
-  const applications = await coolifyApplications(fakeLlmPort);
-  expect(applications).toHaveLength(1);
+  const address = String(applications[0].fqdn);
+  expect(address).toContain("sslip.io");
+  // The panel shows it as a link and repeats it in the deploy log, so first()
+  // rather than a locator that has to know which.
+  await expect(
+    po.page.getByText(address, { exact: false }).first(),
+  ).toBeVisible({ timeout: Timeout.EXTRA_LONG });
+
   // What Dyad claims about an app is the thing three rounds of review kept
   // getting wrong, so it is asserted against what the instance received.
   expect(applications[0].build_pack).toBe("railpack");

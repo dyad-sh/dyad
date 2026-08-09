@@ -19,6 +19,7 @@ interface FakeApplication {
   server_uuid: string;
   project_uuid: string;
   domains: string | null;
+  fqdn: string | null;
   build_pack: string;
   ports_exposes: string;
   start_command?: string;
@@ -144,19 +145,28 @@ export function registerFakeCoolify(app: Express): void {
       return;
     }
     const uuid = id("app");
-    const keyId = Number(req.body?.private_key_uuid ? nextId - 1 : 0) || null;
+    // Resolved, not guessed: the pipeline compares this against the key it
+    // registered to decide whether a stored application still clones with the
+    // right one. An id that never matches makes every redeploy look stale and
+    // hides the reuse path entirely.
+    const keyId =
+      state.keys.find((k) => k.uuid === req.body?.private_key_uuid)?.id ?? null;
+    const address = req.body?.domains
+      ? String(req.body.domains)
+      : req.body?.autogenerate_domain
+        ? `http://${uuid}.203.0.113.10.sslip.io`
+        : null;
     state.applications.set(uuid, {
       uuid,
       name: String(req.body?.name ?? ""),
       server_uuid: String(req.body?.server_uuid ?? ""),
       project_uuid: String(req.body?.project_uuid ?? ""),
       // Coolify generates an sslip.io address when asked to, which is what
-      // an app deployed without a domain gets.
-      domains: req.body?.domains
-        ? String(req.body.domains)
-        : req.body?.autogenerate_domain
-          ? `http://${uuid}.203.0.113.10.sslip.io`
-          : null,
+      // an app deployed without a domain gets. Reported as fqdn as well as
+      // domains, because fqdn is the field the deploy reads to learn where
+      // the app ended up — without it no address is ever recorded.
+      domains: address,
+      fqdn: address,
       build_pack: String(req.body?.build_pack ?? ""),
       ports_exposes: String(req.body?.ports_exposes ?? ""),
       start_command: req.body?.start_command,

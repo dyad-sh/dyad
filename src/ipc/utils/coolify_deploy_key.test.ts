@@ -4,12 +4,15 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 
-// ESM exports cannot be spied on, and the module reads homedir() at call time.
+// ESM exports cannot be spied on, and both paths are read at call time.
 const testHome = vi.hoisted(() => ({ dir: "" }));
 vi.mock("os", async (importOriginal) => {
   const actual = await importOriginal<typeof import("os")>();
   return { ...actual, homedir: () => testHome.dir || actual.homedir() };
 });
+vi.mock("@/paths/paths", () => ({
+  getUserDataPath: () => testHome.dir,
+}));
 import {
   coolifyKeyName,
   ensureDeployKey,
@@ -53,11 +56,12 @@ const hasSshSigning = (() => {
 })();
 
 /**
- * A throwaway home directory, so these never touch the real ~/.ssh.
+ * A throwaway directory standing in for both Dyad's userData and the home
+ * the migration reads from, so these never touch anything real.
  *
- * This is the one module in the feature that writes into the user's home, and
- * the half-written-keypair case it recovers from cannot be reproduced without
- * a real filesystem.
+ * This is the one module in the feature that writes keys to disk, and the
+ * half-written-keypair case it recovers from cannot be reproduced without a
+ * real filesystem.
  */
 let home: string;
 
@@ -71,7 +75,9 @@ afterEach(() => {
   fs.rmSync(home, { recursive: true, force: true });
 });
 
-const sshPath = (name: string) => path.join(home, ".ssh", name);
+const keyFile = (name: string) => path.join(home, "coolify_deploy_keys", name);
+/** Where an earlier version wrote them. */
+const legacyPath = (name: string) => path.join(home, ".ssh", name);
 
 describe("repoKeyName", () => {
   it("is stable per repository and safe as a filename", () => {
@@ -111,7 +117,7 @@ describe("generateDeployKeyPair", () => {
     "writes a private key that OpenSSH reads as the pair we generated",
     () => {
       const { publicKey, privateKey } = generateDeployKeyPair("dyad-deploy");
-      const keyPath = sshPath("interop");
+      const keyPath = keyFile("interop");
       fs.mkdirSync(path.dirname(keyPath), { recursive: true });
       fs.writeFileSync(keyPath, privateKey, { mode: 0o600 });
 
@@ -134,10 +140,10 @@ describe("generateDeployKeyPair", () => {
     "signs for the public key that goes to GitHub",
     () => {
       const { publicKey, privateKey } = generateDeployKeyPair("dyad-deploy");
-      const keyPath = sshPath("signing");
+      const keyPath = keyFile("signing");
       fs.mkdirSync(path.dirname(keyPath), { recursive: true });
       fs.writeFileSync(keyPath, privateKey, { mode: 0o600 });
-      const message = sshPath("message");
+      const message = keyFile("message");
       fs.writeFileSync(message, "deploy");
 
       execFileSync(
@@ -146,7 +152,7 @@ describe("generateDeployKeyPair", () => {
         { stdio: "pipe" },
       );
 
-      const allowed = sshPath("allowed_signers");
+      const allowed = keyFile("allowed_signers");
       fs.writeFileSync(allowed, `tester ${publicKey.trim()}\n`);
       expect(() =>
         execFileSync(
@@ -170,7 +176,7 @@ describe("generateDeployKeyPair", () => {
   );
 
   it.skipIf(!hasSshKeygen)("stores the comment where OpenSSH finds it", () => {
-    const keyPath = sshPath("commented");
+    const keyPath = keyFile("commented");
     fs.mkdirSync(path.dirname(keyPath), { recursive: true });
     fs.writeFileSync(keyPath, generateDeployKeyPair("dyad-deploy").privateKey, {
       mode: 0o600,
@@ -241,7 +247,7 @@ describe("publicKeyFromPrivate", () => {
 
   it.skipIf(!hasSshKeygen)("reads a key OpenSSH wrote", () => {
     // Nothing says the only keys on disk are ones we generated.
-    const keyPath = sshPath("foreign");
+    const keyPath = keyFile("foreign");
     fs.mkdirSync(path.dirname(keyPath), { recursive: true });
     execFileSync(
       "ssh-keygen",
@@ -255,6 +261,54 @@ describe("publicKeyFromPrivate", () => {
       line.trim().split(/\s+/).slice(0, 2).join(" ");
     expect(parsed).not.toBeNull();
     expect(material(parsed!)).toBe(material(onDisk));
+  });
+});
+
+describe("keys written by an earlier version", () => {
+  it("moves them out of ~/.ssh rather than generating a new pair", async () => {
+    // GitHub allows a deploy key on one repository, so a fresh public half is
+    // refused by the very key it would replace. Regenerating would strand the
+    // user on advice they cannot follow.
+    fs.mkdirSync(path.dirname(legacyPath("dyad_deploy_old")), {
+      recursive: true,
+    });
+    const pair = generateDeployKeyPair("dyad-deploy");
+    fs.writeFileSync(legacyPath("dyad_deploy_old"), pair.privateKey);
+    fs.writeFileSync(`${legacyPath("dyad_deploy_old")}.pub`, pair.publicKey);
+
+    const returned = await ensureDeployKey("dyad_deploy_old");
+
+    expect(returned.trim()).toBe(pair.publicKey.trim());
+    expect(fs.existsSync(keyFile("dyad_deploy_old"))).toBe(true);
+    // And the old location is left clean rather than holding a second copy.
+    expect(fs.existsSync(legacyPath("dyad_deploy_old"))).toBe(false);
+  });
+
+  it("rebuilds a missing public half after moving the private one", async () => {
+    fs.mkdirSync(path.dirname(legacyPath("dyad_deploy_halved")), {
+      recursive: true,
+    });
+    const pair = generateDeployKeyPair("dyad-deploy");
+    fs.writeFileSync(legacyPath("dyad_deploy_halved"), pair.privateKey);
+
+    const returned = await ensureDeployKey("dyad_deploy_halved");
+
+    expect(returned.trim()).toBe(pair.publicKey.trim());
+  });
+
+  it("leaves the old copy alone once one already exists in the new place", async () => {
+    // Nothing to migrate, and overwriting would replace a key GitHub and
+    // Coolify already know with an older one.
+    const current = await ensureDeployKey("dyad_deploy_both");
+    fs.mkdirSync(path.dirname(legacyPath("dyad_deploy_both")), {
+      recursive: true,
+    });
+    fs.writeFileSync(
+      legacyPath("dyad_deploy_both"),
+      generateDeployKeyPair("dyad-deploy").privateKey,
+    );
+
+    expect(await ensureDeployKey("dyad_deploy_both")).toBe(current);
   });
 });
 
@@ -277,8 +331,8 @@ describe("ensureDeployKey", () => {
   it("generates a usable pair and returns the public half", async () => {
     const publicKey = await ensureDeployKey("dyad_deploy_test_a");
     expect(publicKey.startsWith("ssh-ed25519 ")).toBe(true);
-    expect(fs.existsSync(sshPath("dyad_deploy_test_a"))).toBe(true);
-    expect(fs.existsSync(sshPath("dyad_deploy_test_a.pub"))).toBe(true);
+    expect(fs.existsSync(keyFile("dyad_deploy_test_a"))).toBe(true);
+    expect(fs.existsSync(keyFile("dyad_deploy_test_a.pub"))).toBe(true);
   });
 
   it("reuses an existing pair rather than rotating it", async () => {
@@ -293,15 +347,15 @@ describe("ensureDeployKey", () => {
     // stored, so rotating the pair would orphan a key still in use.
     const first = await ensureDeployKey("dyad_deploy_test_c");
     const privateBefore = fs.readFileSync(
-      sshPath("dyad_deploy_test_c"),
+      keyFile("dyad_deploy_test_c"),
       "utf8",
     );
-    fs.rmSync(sshPath("dyad_deploy_test_c.pub"));
+    fs.rmSync(keyFile("dyad_deploy_test_c.pub"));
 
     const recovered = await ensureDeployKey("dyad_deploy_test_c");
 
     expect(recovered).toBe(first);
-    expect(fs.readFileSync(sshPath("dyad_deploy_test_c"), "utf8")).toBe(
+    expect(fs.readFileSync(keyFile("dyad_deploy_test_c"), "utf8")).toBe(
       privateBefore,
     );
   });
@@ -310,12 +364,12 @@ describe("ensureDeployKey", () => {
     // A derive that fails must not take the private half with it.
     await ensureDeployKey("dyad_deploy_test_e");
     const privateBefore = fs.readFileSync(
-      sshPath("dyad_deploy_test_e"),
+      keyFile("dyad_deploy_test_e"),
       "utf8",
     );
-    fs.rmSync(sshPath("dyad_deploy_test_e.pub"));
+    fs.rmSync(keyFile("dyad_deploy_test_e.pub"));
     await ensureDeployKey("dyad_deploy_test_e");
-    expect(fs.readFileSync(sshPath("dyad_deploy_test_e"), "utf8")).toBe(
+    expect(fs.readFileSync(keyFile("dyad_deploy_test_e"), "utf8")).toBe(
       privateBefore,
     );
   });

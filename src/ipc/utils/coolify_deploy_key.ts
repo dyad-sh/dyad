@@ -4,6 +4,7 @@ import * as os from "os";
 import * as path from "path";
 import log from "electron-log";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { getUserDataPath } from "@/paths/paths";
 
 const logger = log.scope("coolify_deploy_key");
 
@@ -15,15 +16,61 @@ const logger = log.scope("coolify_deploy_key");
  * GitHub allows a deploy key on only one repository, so each repo gets its own.
  */
 
-/** Written into the key so a human reading ~/.ssh can see where it came from. */
+/** Written into the key so a human reading the directory sees where it came from. */
 const KEY_COMMENT = "dyad-deploy";
 
+/**
+ * Dyad's own directory, not ~/.ssh.
+ *
+ * These are keys Dyad generates and manages, not the user's. ~/.ssh is a
+ * directory Dyad treats as off-limits everywhere else — the sandbox's
+ * protected-path list and the MCP consent policy both name it — and writing
+ * an unencrypted private key into it puts Dyad's own files among identities
+ * the user maintains by hand.
+ */
 function keyDir(): string {
+  return path.join(getUserDataPath(), "coolify_deploy_keys");
+}
+
+/** Where earlier versions put them, kept only to move what is already there. */
+function legacyKeyDir(): string {
   return path.join(os.homedir(), ".ssh");
 }
 
 function keyFilePath(keyName: string): string {
   return path.join(keyDir(), keyName);
+}
+
+/**
+ * Moves a keypair written by an earlier version into Dyad's directory.
+ *
+ * Regenerating instead would strand the user: GitHub allows a deploy key on
+ * one repository, so the fresh public half is refused with "already in use"
+ * by the very key this is replacing, and the deploy stops with advice that
+ * cannot be followed.
+ */
+function migrateLegacyKey(keyName: string): void {
+  const target = keyFilePath(keyName);
+  const source = path.join(legacyKeyDir(), keyName);
+  if (fs.existsSync(target) || !fs.existsSync(source)) return;
+  try {
+    fs.mkdirSync(keyDir(), { recursive: true, mode: 0o700 });
+    fs.copyFileSync(source, target);
+    if (fs.existsSync(`${source}.pub`)) {
+      fs.copyFileSync(`${source}.pub`, `${target}.pub`);
+    }
+    // Copied rather than moved, then the original removed only once the copy
+    // is readable: a private half is not something to lose to a failed write.
+    if (fs.existsSync(target)) {
+      fs.rmSync(source, { force: true });
+      fs.rmSync(`${source}.pub`, { force: true });
+    }
+    logger.info(`Moved ${keyName} out of ~/.ssh into Dyad's own directory`);
+  } catch (err) {
+    // The key is still where it was, and the caller will read it from there
+    // on the next attempt or generate a new one if it is gone.
+    logger.warn(`Could not move ${keyName} out of ~/.ssh: ${String(err)}`);
+  }
 }
 
 export function repoKeyName(owner: string, repo: string): string {
@@ -231,6 +278,7 @@ export function publicKeyFromPrivate(pem: string): string | null {
  * and end up with one registering a pair the other has already replaced.
  */
 export async function ensureDeployKey(keyName: string): Promise<string> {
+  migrateLegacyKey(keyName);
   const keyPath = keyFilePath(keyName);
   const hasPrivate = fs.existsSync(keyPath);
   const hasPublic = fs.existsSync(`${keyPath}.pub`);

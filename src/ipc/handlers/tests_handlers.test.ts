@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { eq } from "drizzle-orm";
 
 import { DyadErrorKind } from "@/errors/dyad_error";
 import type { RemoveFileAndCommitResult } from "../services/git_service";
@@ -67,6 +68,8 @@ vi.mock("../services/git_service", () => ({
 }));
 
 const queueCloudSandboxSnapshotSyncMock = vi.hoisted(() => vi.fn());
+const prepareIsolatedTestDatabaseMock = vi.hoisted(() => vi.fn());
+const broadcastToRegisteredWindowsMock = vi.hoisted(() => vi.fn());
 // Partially mocked: this module is pulled in transitively by the runtime
 // service, so replacing it wholesale breaks whenever an unrelated export is
 // added. Only the snapshot sync needs to be stubbed out here.
@@ -78,9 +81,28 @@ vi.mock("../utils/cloud_sandbox_provider", async (importOriginal) => {
     queueCloudSandboxSnapshotSync: queueCloudSandboxSnapshotSyncMock,
   };
 });
+vi.mock("../services/isolated_test_db", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../services/isolated_test_db")>();
+  return {
+    ...actual,
+    prepareIsolatedTestDatabase: prepareIsolatedTestDatabaseMock,
+  };
+});
+vi.mock("@/ipc/utils/window_broadcast", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/ipc/utils/window_broadcast")>();
+  return {
+    ...actual,
+    broadcastToRegisteredWindows: broadcastToRegisteredWindowsMock,
+  };
+});
 
 // Imported after the mocks so the handler module picks them up.
-const { registerTestsHandlers } = await import("./tests_handlers");
+const { registerTestsHandlers, runAppTestsWithIsolation } =
+  await import("./tests_handlers");
+const { isAppPointedAtTestBranch, resetTestIsolationRecovery } =
+  await import("../services/test_isolation_recovery");
 
 describe("tests:delete", () => {
   let harness: HandlerTestHarness;
@@ -90,6 +112,9 @@ describe("tests:delete", () => {
     fs.mkdirSync(TEMP_BASE, { recursive: true });
     removeFileAndCommitMock.mockClear();
     queueCloudSandboxSnapshotSyncMock.mockClear();
+    prepareIsolatedTestDatabaseMock.mockReset();
+    broadcastToRegisteredWindowsMock.mockClear();
+    resetTestIsolationRecovery();
     harness = setupHandlerTestHarness();
     registerTestsHandlers();
   });
@@ -137,6 +162,29 @@ describe("tests:delete", () => {
       appId,
       deletedPaths: ["e2e-tests/signup.spec.ts"],
     });
+  });
+
+  it("marks an unrestored test-run environment for relaunch recovery", async () => {
+    const appId = seedApp("app");
+    harness.db
+      .update(apps)
+      .set({ testingEnabled: true })
+      .where(eq(apps.id, appId))
+      .run();
+    prepareIsolatedTestDatabaseMock.mockResolvedValue({
+      isolation: { mode: "neon-branch" },
+      infraError: { message: "Isolation setup stopped before running tests." },
+      teardown: vi.fn().mockResolvedValue({ envRestored: false }),
+    });
+
+    const result = await runAppTestsWithIsolation({
+      event: { sender: {} } as any,
+      appId,
+      source: "panel",
+    });
+
+    expect(result.infraError?.message).toMatch(/real database settings/i);
+    expect(isAppPointedAtTestBranch(appId)).toBe(true);
   });
 
   it("still reports success when the file isn't tracked by git", async () => {

@@ -81,6 +81,7 @@ import {
   resetRecordedTestDrafts,
   setRecordedTestDraft,
 } from "@/ipc/services/recorded_test_drafts";
+import { appOperationCoordinator } from "@/ipc/services/app_operation_coordinator";
 
 const SPEC_PATH = "e2e-tests/recorded-add-an-item.spec.ts";
 
@@ -585,6 +586,45 @@ describe("registerTestAssertionHandlers", () => {
           "proposal-2",
         ),
       ).toBe("approved");
+    });
+
+    it("finds the first spec by its durable draft marker after restart", async () => {
+      const { appId, chatId } = seed();
+      propose(appId, chatId, { proposalId: "proposal-1" });
+      propose(appId, chatId, { proposalId: "proposal-2" });
+
+      const first = await approve(appId, chatId, "proposal-1");
+      // Simulate a main-process restart: the chat and generated file survive,
+      // while the in-memory written-draft cache does not.
+      resetRecordedTestDrafts();
+      const second = await approve(appId, chatId, "proposal-2");
+
+      expect(readSpec().split("\n", 1)[0]).toBe(
+        '// dyad-recording-draft-id: "draft-test"',
+      );
+      expect(first.specPath).toBe(SPEC_PATH);
+      expect(second.specPath).toBe(SPEC_PATH);
+      expect(second.warning).toMatch(/already saved/i);
+      expect(specExists("e2e-tests/recorded-add-an-item-2.spec.ts")).toBe(
+        false,
+      );
+    });
+
+    it("does not access test files after app deletion closes admission", async () => {
+      const { appId, chatId } = seed();
+      propose(appId, chatId);
+      const deletion = appOperationCoordinator.beginAppDeletion(appId);
+      await deletion.drain();
+      try {
+        await expect(approve(appId, chatId)).rejects.toMatchObject({
+          kind: DyadErrorKind.Precondition,
+        });
+      } finally {
+        deletion.release();
+      }
+
+      expect(specExists()).toBe(false);
+      expect(mockGitAdd).not.toHaveBeenCalled();
     });
 
     it("writes one spec when two cards for a recording are approved at once", async () => {

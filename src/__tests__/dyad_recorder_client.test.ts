@@ -468,6 +468,30 @@ describe("dyad recorder client", () => {
     ]);
   });
 
+  it("uses the accessible text from every native label", () => {
+    const r = setup();
+    r.setHtml(
+      `<label for="email"><span aria-hidden="true">*</span>Email</label>` +
+        `<label for="email">address</label>` +
+        `<input id="email" />`,
+    );
+    r.activate();
+    r.typeInto(r.doc.querySelector("input"), "person@example.com");
+
+    expect(r.actions).toEqual([
+      {
+        kind: "fill",
+        locator: {
+          kind: "role",
+          value: "textbox",
+          name: "Email address",
+          exact: true,
+        },
+        value: "person@example.com",
+      },
+    ]);
+  });
+
   it("records a multi-select as a listbox with every chosen value", () => {
     const r = setup();
     r.setHtml(

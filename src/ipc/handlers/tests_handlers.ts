@@ -60,6 +60,7 @@ import { readTestScreenshotDataUrl } from "../utils/test_screenshot";
 import { isRecordingActive } from "../services/recording_registry";
 import { readSettings } from "@/main/settings";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
+import { markAppPointedAtTestBranch } from "@/ipc/services/test_isolation_recovery";
 
 const logger = log.scope("tests_handlers");
 
@@ -764,6 +765,11 @@ export async function runAppTestsWithIsolation({
               logger.error(
                 `Failed to tear down isolated test environment for app ${appId}: ${error}`,
               );
+            }
+            if (envRestoreFailed) {
+              // Test runs do not pass through app stop/restart handlers. Keep
+              // their failed restore visible to every later relaunch path.
+              markAppPointedAtTestBranch(appId);
             }
           }
         }

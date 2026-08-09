@@ -519,13 +519,26 @@
 
   function associatedLabelText(el) {
     if (!el || el.nodeType !== 1) return null;
-    if (el.id) {
-      const l = document.querySelector(`label[for="${cssEscape(el.id)}"]`);
-      if (l) return normalize(l.textContent);
+    // Native labelable controls expose every associated label in document
+    // order through `.labels`, including both `for=` and wrapping labels.
+    // Playwright concatenates those labels for the accessible name, so using
+    // only the first one can produce a unique-looking locator that never
+    // resolves on replay.
+    let labels = el.labels ? Array.from(el.labels) : [];
+    if (!labels.length) {
+      // Fallback for DOM implementations without `HTMLInputElement.labels`.
+      if (el.id) {
+        labels = Array.from(
+          document.querySelectorAll(`label[for="${cssEscape(el.id)}"]`),
+        );
+      }
+      const wrap = el.closest && el.closest("label");
+      if (wrap && !labels.includes(wrap)) labels.push(wrap);
     }
-    const wrap = el.closest && el.closest("label");
-    if (wrap) return normalize(wrap.textContent);
-    return null;
+    const parts = labels
+      .map((label) => normalize(accessibleTextContent(label)))
+      .filter(Boolean);
+    return parts.length ? normalize(parts.join(" ")) : null;
   }
 
   /**
@@ -571,7 +584,7 @@
         .split(/\s+/)
         .map((id) => {
           const ref = document.getElementById(id);
-          return ref ? normalize(ref.textContent) : "";
+          return ref ? normalize(accessibleTextContent(ref)) : "";
         })
         .filter(Boolean);
       if (parts.length) return normalize(parts.join(" "));

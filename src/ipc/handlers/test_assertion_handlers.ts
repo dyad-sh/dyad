@@ -60,6 +60,10 @@ import {
   buildAssertionCodePayload,
   TEST_ASSERTION_CODE_SYSTEM_PROMPT,
 } from "@/prompts/test_assertions_prompt";
+import {
+  appOperationCoordinator,
+  readAppResource,
+} from "../services/app_operation_coordinator";
 
 /**
  * Writing a recorded test to disk. Approving the assertion card is the only way
@@ -73,6 +77,8 @@ const logger = log.scope("test_assertion_handlers");
 const LLM_TIMEOUT_MS = 60_000;
 
 const FIXTURE_PATH = `${E2E_TEST_DIR}/fixtures/test-user.ts`;
+
+const RECORDED_DRAFT_MARKER_PREFIX = "// dyad-recording-draft-id: ";
 
 /** How many `recorded-<slug>-N.spec.ts` variants to try before giving up. */
 const MAX_SPEC_NAME_ATTEMPTS = 100;
@@ -119,6 +125,58 @@ async function fileExists(absolutePath: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+function recordedDraftMarker(draft: RecordedTestDraft): string {
+  // JSON encoding keeps even an unexpected newline or comment delimiter inside
+  // the comment. Draft ids are normally UUIDs, but this is a persistence marker
+  // in a user-owned source file, so do not rely on that upstream assumption.
+  return `${RECORDED_DRAFT_MARKER_PREFIX}${JSON.stringify(draft.draftId)}`;
+}
+
+/**
+ * Find the durable marker written into a generated spec. The in-memory map is
+ * still the hot path; this scan is the restart/eviction fallback that keeps a
+ * second persisted assertion card from writing a suffixed twin.
+ */
+async function findWrittenSpecForDraft(
+  appId: number,
+  appPath: string,
+  draft: RecordedTestDraft,
+): Promise<string | null> {
+  const remembered = getWrittenSpecForDraft(appId, draft);
+  if (remembered) return remembered;
+
+  let entries: fs.Dirent[];
+  try {
+    entries = await fs.promises.readdir(path.join(appPath, E2E_TEST_DIR), {
+      withFileTypes: true,
+    });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+
+  const marker = recordedDraftMarker(draft);
+  for (const entry of entries.sort((left, right) =>
+    left.name.localeCompare(right.name),
+  )) {
+    // Generated specs are flat in e2e-tests/. Skipping symlinks also prevents
+    // this duplicate guard from following a user-created link outside the app.
+    if (!entry.isFile() || !/^recorded-.+\.spec\.ts$/.test(entry.name)) {
+      continue;
+    }
+    const source = await fs.promises.readFile(
+      path.join(appPath, E2E_TEST_DIR, entry.name),
+      "utf-8",
+    );
+    if (source.split(/\r?\n/, 1)[0] !== marker) continue;
+
+    const relativePath = `${E2E_TEST_DIR}/${entry.name}`;
+    markRecordedDraftWritten(appId, draft, relativePath);
+    return relativePath;
+  }
+  return null;
 }
 
 /** Best-effort staging for the uncommitted-changes review flow. */
@@ -223,28 +281,30 @@ async function writeSpecToFreePath(
  */
 async function writeRecordedSpec({
   appId,
+  appPath,
   draft,
   bodyStatements,
 }: {
   appId: number;
+  appPath: string;
   draft: RecordedTestDraft;
   bodyStatements: string[];
 }): Promise<{ specPath: string }> {
-  const appPath = await getAppPath(appId);
   await ensureSignInFixture(appPath, draft);
 
   // The name comes from the user or, far more often, from the model that
   // proposed this test — both by way of the renderer, so a last-resort default
   // rather than an assumption that one arrived.
   const testName = normalizeTestName(draft.testName) || "recorded test";
+  const generatedSource = generateSpecSource({
+    testName,
+    includeSignIn: draftIncludesSignIn(draft),
+    bodyStatements,
+  });
   const { relativePath } = await writeSpecToFreePath(
     appPath,
     testName,
-    generateSpecSource({
-      testName,
-      includeSignIn: draftIncludesSignIn(draft),
-      bodyStatements,
-    }),
+    `${recordedDraftMarker(draft)}\n${generatedSource}`,
   );
   await stage(appPath, relativePath);
 
@@ -270,16 +330,27 @@ async function discardGeneratedSpec(
   specPath: string,
 ): Promise<void> {
   try {
-    const appPath = await getAppPath(appId);
-    await fs.promises.rm(path.join(appPath, specPath), { force: true });
-    // The write staged the file; leaving that entry behind would show the
-    // uncommitted-changes review a spec that no longer exists.
-    try {
-      await gitResetFile({ path: appPath, filepath: specPath });
-    } catch (error) {
-      logger.warn(`Removed ${specPath} but couldn't unstage it:`, error);
-    }
-    logger.warn(`Rolled back ${specPath}: the approval couldn't be persisted`);
+    await appOperationCoordinator.run(
+      {
+        appId,
+        operation: "rollback-recorded-test",
+        resources: [readAppResource("app-path"), "repository", "test-files"],
+      },
+      async () => {
+        const appPath = await getAppPath(appId);
+        await fs.promises.rm(path.join(appPath, specPath), { force: true });
+        // The write staged the file; leaving that entry behind would show the
+        // uncommitted-changes review a spec that no longer exists.
+        try {
+          await gitResetFile({ path: appPath, filepath: specPath });
+        } catch (error) {
+          logger.warn(`Removed ${specPath} but couldn't unstage it:`, error);
+        }
+        logger.warn(
+          `Rolled back ${specPath}: the approval couldn't be persisted`,
+        );
+      },
+    );
   } catch (error) {
     logger.error(
       `Couldn't roll back ${specPath} after a failed approval:`,
@@ -710,7 +781,20 @@ export function registerTestAssertionHandlers() {
         // same draft afresh, and each card carries its own copy of it — which is
         // what makes approving survive a restart, and also what leaves nothing
         // else to notice that the recording is already a file.
-        const alreadyWritten = getWrittenSpecForDraft(appId, stored.draft);
+        const alreadyWritten = await appOperationCoordinator.run(
+          {
+            appId,
+            operation: "find-recorded-test",
+            resources: [
+              readAppResource("app-path"),
+              readAppResource("test-files"),
+            ],
+          },
+          async () => {
+            const appPath = await getAppPath(appId);
+            return findWrittenSpecForDraft(appId, appPath, stored.draft);
+          },
+        );
         if (alreadyWritten) {
           await persistApproval({
             row,
@@ -775,18 +859,33 @@ export function registerTestAssertionHandlers() {
         // Synthesis above spent up to a minute in the model, so re-check under
         // the write lock: another card for this same recording may have been
         // approved while we waited.
-        const { specPath, wroteIt } = await withLock(
-          specWriteKey(appId),
-          async () => {
-            const raced = getWrittenSpecForDraft(appId, stored.draft);
-            if (raced) return { specPath: raced, wroteIt: false };
-            const written = await writeRecordedSpec({
-              appId,
-              draft: stored.draft,
-              bodyStatements: finalStatements,
-            });
-            return { specPath: written.specPath, wroteIt: true };
+        const { specPath, wroteIt } = await appOperationCoordinator.run(
+          {
+            appId,
+            operation: "write-recorded-test",
+            resources: [
+              readAppResource("app-path"),
+              "repository",
+              "test-files",
+            ],
           },
+          async () =>
+            withLock(specWriteKey(appId), async () => {
+              const appPath = await getAppPath(appId);
+              const raced = await findWrittenSpecForDraft(
+                appId,
+                appPath,
+                stored.draft,
+              );
+              if (raced) return { specPath: raced, wroteIt: false };
+              const written = await writeRecordedSpec({
+                appId,
+                appPath,
+                draft: stored.draft,
+                bodyStatements: finalStatements,
+              });
+              return { specPath: written.specPath, wroteIt: true };
+            }),
         );
 
         // Another card for this recording was approved while synthesis was in

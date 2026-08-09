@@ -16,7 +16,8 @@ import type { RecordedTestDraft } from "@/lib/test_recorder/draft";
 const draftsByAppId = new Map<number, RecordedTestDraft>();
 
 /**
- * Recordings that have already produced a spec file, keyed by `draftId`.
+ * In-process cache of recordings that have already produced a spec file,
+ * keyed by `draftId`.
  *
  * The two write paths can't see each other's parked draft: approving the
  * assertions card generates from the card's own copy (that copy is what makes
@@ -26,16 +27,16 @@ const draftsByAppId = new Map<number, RecordedTestDraft>();
  *
  * `draftId` alone identifies the recording — that is what keeps a deliberate
  * re-recording of the same flow, identical in every field but this one, a
- * recording of its own entitled to its own file. The outer map exists only so
- * the eviction bound below is per app: a shared budget would let a busy app
- * evict another's marker and quietly reintroduce the duplicate spec.
+ * recording of its own entitled to its own file. Generated specs also carry a
+ * durable draft-id header; the approval handler scans for it when this cache
+ * misses after a restart or eviction. The outer map exists only so this hot
+ * path's eviction bound is per app.
  */
 const writtenByAppId = new Map<number, Map<string, string>>();
 
 /**
- * How many written recordings to remember per app. Only the most recent matter —
- * a card can be approved long after its recording, but not after twenty more of
- * that app's own.
+ * How many written recordings to cache per app before falling back to the
+ * durable spec marker.
  */
 const MAX_REMEMBERED_WRITES = 20;
 

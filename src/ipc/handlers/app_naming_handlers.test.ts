@@ -11,6 +11,9 @@ import {
   setupHandlerTestHarness,
 } from "@/testing/handler_test_harness";
 import { configureTrustedRenderer } from "@/ipc/utils/renderer_security";
+import { activeRecordings } from "@/ipc/services/recording_registry";
+import { appOperationCoordinator } from "@/ipc/services/app_operation_coordinator";
+import { resetTestIsolationRecovery } from "@/ipc/services/test_isolation_recovery";
 
 // All app folders live under one throwaway base so the filesystem-probing
 // conflict checks (and actual folder moves) run against real directories.
@@ -149,6 +152,8 @@ describe("app naming handlers", () => {
     fs.rmSync(TEMP_BASE, { recursive: true, force: true });
     fs.mkdirSync(TEMP_BASE, { recursive: true });
     harness = setupHandlerTestHarness();
+    activeRecordings.clear();
+    resetTestIsolationRecovery();
     deletionOrder.length = 0;
     settleChatActorsForDeletionMock.mockClear();
     createFromTemplateMock.mockClear();
@@ -157,6 +162,7 @@ describe("app naming handlers", () => {
   });
 
   afterEach(() => {
+    activeRecordings.clear();
     harness.dispose();
     fs.rmSync(TEMP_BASE, { recursive: true, force: true });
   });
@@ -329,6 +335,42 @@ describe("app naming handlers", () => {
   });
 
   describe("delete-app", () => {
+    it("raises the operation fence before waiting for recording teardown", async () => {
+      const appId = seedAppWithFolder("Delete Me", "delete-me");
+      let observeStop!: () => void;
+      const stopObserved = new Promise<void>((resolve) => {
+        observeStop = resolve;
+      });
+      let finishTeardown!: (summary: { envRestored: boolean }) => void;
+      const done = new Promise<{ envRestored: boolean }>((resolve) => {
+        finishTeardown = resolve;
+      });
+      activeRecordings.set(appId, {
+        appId,
+        stop: () => observeStop(),
+        done,
+      });
+
+      const deletion = harness.invokeHandler("delete-app", { appId });
+      await stopObserved;
+
+      // The recording was admitted before deletion and is still tearing down,
+      // but no new operation may enter behind it while delete is queued.
+      await expect(
+        appOperationCoordinator.run(
+          {
+            appId,
+            operation: "late-recording-admission",
+            resources: ["runtime"],
+          },
+          async () => undefined,
+        ),
+      ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
+
+      finishTeardown({ envRestored: true });
+      await deletion;
+    });
+
     it("quiesces chat actors before deletion and disposes them after commit", async () => {
       const appId = seedAppWithFolder("Delete Me", "delete-me");
       harness.db.insert(chats).values({ appId }).run();

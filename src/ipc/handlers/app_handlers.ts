@@ -34,6 +34,7 @@ import {
 import {
   appOperationCoordinator,
   readAppResource,
+  type AppOperationDeletion,
 } from "../services/app_operation_coordinator";
 import { getFilesRecursively } from "../utils/file_utils";
 import {
@@ -161,6 +162,11 @@ import {
 } from "@/ipc/services/chat_actor_deletion_service";
 import { blockNewStreamsForApp } from "./chat_stream_handlers";
 import { beginAppChatDeletion } from "@/ipc/services/app_chat_creation_fence";
+import {
+  clearAppPointedAtTestBranch,
+  isAppPointedAtTestBranch,
+  markAppPointedAtTestBranch,
+} from "@/ipc/services/test_isolation_recovery";
 
 const logger = log.scope("app_handlers");
 const handle = createLoggedHandler(logger);
@@ -405,18 +411,6 @@ async function removeAppFiles(appId: number, appPath: string): Promise<void> {
 }
 
 /**
- * Apps whose isolation teardown couldn't put `.env.local` back, so they are
- * still pointed at the temporary Neon test branch.
- *
- * In memory on purpose: the durable marker is the row's `neonTestBranchId`,
- * which `reconcileOrphanTestBranches` acts on at the next launch. This set is
- * what makes the relaunch paths agree with each other *within* a session — the
- * failure is reported once, by whichever teardown hit it, and every later
- * attempt to bring the app up has to know about it.
- */
-const appsPointedAtTestBranch = new Set<number>();
-
-/**
  * Gate a relaunch on the app being back on its real database.
  *
  * Only Restart used to check this, so a user who hit the refusal could press
@@ -427,7 +421,7 @@ const appsPointedAtTestBranch = new Set<number>();
  * sweep performs — and only refuse when that fails too.
  */
 async function ensureAppOffTestBranch(appId: number): Promise<void> {
-  if (!appsPointedAtTestBranch.has(appId)) return;
+  if (!isAppPointedAtTestBranch(appId)) return;
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
   if (app) {
     let restored = false;
@@ -439,7 +433,7 @@ async function ensureAppOffTestBranch(appId: number): Promise<void> {
       );
     }
     if (restored) {
-      appsPointedAtTestBranch.delete(appId);
+      clearAppPointedAtTestBranch(appId);
       return;
     }
   }
@@ -453,58 +447,63 @@ async function deleteAppById(
   appId: number,
   options: DeleteAppByIdOptions = {},
 ): Promise<void> {
-  // A recording session holds this app's lock until it ends, so the deletion
-  // below would sit behind it for up to 30 minutes with the delete dialog
-  // spinning. The renderer's own recorder cleanup can't help: it runs only
-  // after this call returns. Same end-before-lock step as stop and restart;
-  // nothing here needs the dev server back, and the app is about to be gone.
-  const { envRestored } = await endRecordingForApp(appId, "app-stopped", {
-    skipRestart: true,
-  });
-  if (!envRestored) {
-    // The app directory is about to be removed, so a stale `.env.local` inside
-    // it goes with it — this is worth a log line for diagnosis, not a refusal.
-    logger.warn(
-      `App ${appId}: isolation teardown couldn't restore .env.local before deletion`,
-    );
-  }
-
-  // A teardown that couldn't restore the environment deliberately KEEPS the
-  // temporary Neon branch, because the app row still records its id and the
-  // startup sweep can reconcile it later. Deleting that row is what would
-  // strand it, so the id has to come off the row — that also covers a recording
-  // that ended long before this delete.
-  //
-  // Reported back by the exclusive path from the row it is about to delete,
-  // rather than snapshotted here: a recording or test run starting in between
-  // would persist a *different* branch id, and a snapshot would clean up the old
-  // one while the row carrying the new one goes away underneath it.
+  // Close coordinator admission before waiting for the global deletion queue
+  // or recorder teardown. Otherwise a recording can enter while this app's
+  // delete is queued behind another app, then hold the resources this deletion
+  // needs until the session is explicitly stopped or times out.
+  const appOperationDeletion = appOperationCoordinator.beginAppDeletion(appId);
   let deletedRow: typeof apps.$inferSelect | null = null;
-
-  const appRunDeletion = appRunActorService.beginAppDeletion(appId);
-  let appRunDeletionCommitted = false;
   try {
-    deletedRow = await appDeletionQueue.run(() =>
-      deleteAppByIdExclusive(appId, options, {
-        seal: () => appRunDeletion.seal(),
-        commit: () => {
-          appRunDeletion.commit();
-          appRunDeletionCommitted = true;
-        },
-      }),
-    );
-  } finally {
-    if (appRunDeletionCommitted) {
-      appRunDeletion.release();
-    } else {
-      appRunDeletion.abort();
+    // A recording session already admitted before the fence holds this app's
+    // resources until it ends. Stop that admitted owner before the exclusive
+    // path drains the coordinator; nothing here needs the dev server back.
+    const { envRestored } = await endRecordingForApp(appId, "app-stopped", {
+      skipRestart: true,
+    });
+    if (!envRestored) {
+      // The app directory is about to be removed, so a stale `.env.local`
+      // inside it goes with it — this is diagnosis, not a refusal.
+      logger.warn(
+        `App ${appId}: isolation teardown couldn't restore .env.local before deletion`,
+      );
     }
+
+    // A teardown that couldn't restore the environment deliberately KEEPS the
+    // temporary Neon branch, because the app row still records its id and the
+    // startup sweep can reconcile it later. Deleting that row is what would
+    // strand it, so the id has to come off the row — that also covers a
+    // recording that ended long before this delete.
+    //
+    // Reported back by the exclusive path from the row it is about to delete,
+    // rather than snapshotted here: the deletion fence above makes this the
+    // final branch id admitted work could have persisted.
+    const appRunDeletion = appRunActorService.beginAppDeletion(appId);
+    let appRunDeletionCommitted = false;
+    try {
+      deletedRow = await appDeletionQueue.run(() =>
+        deleteAppByIdExclusive(appId, options, appOperationDeletion, {
+          seal: () => appRunDeletion.seal(),
+          commit: () => {
+            appRunDeletion.commit();
+            appRunDeletionCommitted = true;
+          },
+        }),
+      );
+    } finally {
+      if (appRunDeletionCommitted) {
+        appRunDeletion.release();
+      } else {
+        appRunDeletion.abort();
+      }
+    }
+  } finally {
+    appOperationDeletion.release();
   }
 
   // Same timing as the branch cleanup below: a deletion that threw leaves a
   // live app whose `.env.local` may still be swapped, and dropping the mark
   // would let the next Run come up on the temporary branch unannounced.
-  appsPointedAtTestBranch.delete(appId);
+  clearAppPointedAtTestBranch(appId);
 
   // Only after the deletion has committed — the throw above skips this. Doing
   // it earlier means a deletion that then fails leaves a live app pointed at a
@@ -535,12 +534,12 @@ async function deleteAppById(
 async function deleteAppByIdExclusive(
   appId: number,
   options: DeleteAppByIdOptions = {},
+  appOperationDeletion: AppOperationDeletion,
   appRunDeletion: {
     seal(): Promise<void>;
     commit(): void;
   },
 ): Promise<typeof apps.$inferSelect | null> {
-  const appOperationDeletion = appOperationCoordinator.beginAppDeletion(appId);
   let versionPreviewDeletionStarted = false;
   let githubDeletionStarted = false;
   let releaseStreamAdmissionBlock: (() => void) | undefined;
@@ -713,11 +712,7 @@ async function deleteAppByIdExclusive(
             versionPreviewActorService.endAppDeletion(appId);
           }
         } finally {
-          try {
-            releaseStreamAdmissionBlock?.();
-          } finally {
-            appOperationDeletion.release();
-          }
+          releaseStreamAdmissionBlock?.();
         }
       }
     }
@@ -1108,7 +1103,7 @@ export function registerAppHandlers() {
       // This is the path that reaches Run: the app is down and the next thing
       // the user presses starts it again. Record it so that start has to deal
       // with the swapped env rather than silently coming up on isolated data.
-      appsPointedAtTestBranch.add(appId);
+      markAppPointedAtTestBranch(appId);
     }
     const snapshot = await appRunActorService.getRunState(appId);
     if (snapshot.type === "idle") return;
@@ -1228,7 +1223,7 @@ export function registerAppHandlers() {
       // Restarting now would bring the app up against the temporary test branch
       // the recording created, so the relaunch has to answer for it — as does
       // every later Run, which is why the mark outlives this call.
-      appsPointedAtTestBranch.add(params.appId);
+      markAppPointedAtTestBranch(params.appId);
     }
     await ensureAppOffTestBranch(params.appId);
     await appRunActorService.dispatchRestart(params.appId, {

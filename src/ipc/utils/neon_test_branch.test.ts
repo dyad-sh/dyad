@@ -70,6 +70,7 @@ import {
   createTempTestBranch,
   deleteTempTestBranch,
   reconcileOrphanTestBranches,
+  restoreAppFromTestBranch,
 } from "./neon_test_branch";
 import { appOperationCoordinator } from "../services/app_operation_coordinator";
 
@@ -288,6 +289,30 @@ describe("deleteTempTestBranch", () => {
     });
     await deleteTempTestBranch(makeApp({ neonTestBranchId: "test-br" }));
     expect(mocks.set).not.toHaveBeenCalledWith({ neonTestBranchId: null });
+  });
+});
+
+describe("restoreAppFromTestBranch", () => {
+  it("reports the env restored when branch cleanup persistence fails", async () => {
+    // The Neon API helper already absorbs API failures. Exercise the remaining
+    // throw path: Neon deleted the branch, but clearing its durable row marker
+    // failed. The env is still real and relaunch is safe.
+    mocks.where.mockRejectedValueOnce(new Error("db down"));
+
+    await expect(
+      restoreAppFromTestBranch(
+        makeApp({
+          neonTestBranchId: "leaked-br",
+        }),
+      ),
+    ).resolves.toBe(true);
+
+    expect(mocks.updateNeonEnvVars).toHaveBeenCalled();
+    expect(mocks.deleteProjectBranch).toHaveBeenCalledWith(
+      "proj-1",
+      "leaked-br",
+    );
+    expect(mocks.set).toHaveBeenCalledWith({ neonTestBranchId: null });
   });
 });
 

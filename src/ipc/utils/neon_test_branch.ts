@@ -434,7 +434,13 @@ export async function restoreAppFromTestBranch(
       }
       // Best-effort: the env is what the relaunch gate cares about, and a
       // branch that survives stays tracked for the next sweep.
-      await deleteTempTestBranch(appData);
+      try {
+        await deleteTempTestBranch(appData);
+      } catch (error) {
+        logger.warn(
+          `Restored the real env for app ${appData.id}, but couldn't delete temporary Neon branch ${appData.neonTestBranchId}: ${error}`,
+        );
+      }
       return true;
     },
   );

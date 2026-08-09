@@ -9893,3 +9893,132 @@ html.theme-switching * {
 :root:not([data-ui-theme="holographic"]) .chat-reasoning-truncated {
   color: color-mix(in oklab, var(--foreground) 62%, transparent);
 }
+
+/* ── Database query results ────────────────────────────────────────────────
+   A table rather than prose, because alignment is what makes rows readable.
+   The card scrolls inside itself so a wide result never widens the message
+   around it, and every returned row and column is present: dropping one to
+   make it fit would be quietly answering a different question. */
+
+.chat-agent-db-card {
+  margin: 0.75rem 0;
+  border: 1px solid rgb(34 211 238 / 0.18);
+  border-radius: 0.85rem;
+  background: rgb(2 12 20 / 0.55);
+  overflow: hidden;
+}
+
+.chat-agent-db-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid rgb(34 211 238 / 0.14);
+  background: rgb(34 211 238 / 0.06);
+  font-size: 0.75rem;
+}
+
+.chat-agent-db-title {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: rgb(224 247 255 / 0.95);
+  font-weight: 600;
+}
+
+.chat-agent-db-source {
+  color: rgb(224 247 255 / 0.45);
+}
+
+.chat-agent-db-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-left: auto;
+  color: rgb(224 247 255 / 0.5);
+  white-space: nowrap;
+}
+
+/* The table's own scroll container. Both axes, so neither a wide result nor a
+   tall one escapes the card. */
+.chat-agent-db-scroll {
+  overflow: auto;
+  max-height: 26rem;
+  overscroll-behavior: contain;
+}
+
+.chat-agent-db-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.chat-agent-db-table th,
+.chat-agent-db-table td {
+  padding: 0.4rem 0.7rem;
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid rgb(255 255 255 / 0.05);
+  /* Long values are clamped rather than allowed to stretch a column past
+     usefulness; the full text stays available on hover. */
+  max-width: 22rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The header stays put while the rows scroll under it, so a column is never
+   anonymous halfway down a long result. */
+.chat-agent-db-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: rgb(4 16 26);
+  color: rgb(103 232 249 / 0.9);
+  font-weight: 600;
+  font-size: 0.7rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  border-bottom: 1px solid rgb(34 211 238 / 0.2);
+}
+
+.chat-agent-db-table tbody tr:hover {
+  background: rgb(34 211 238 / 0.05);
+}
+
+.chat-agent-db-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.chat-agent-db-num {
+  text-align: right !important;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A null reads as a null rather than as an empty cell that might be a
+   rendering fault. */
+.chat-agent-db-null {
+  color: rgb(224 247 255 / 0.25);
+}
+
+.chat-agent-db-empty {
+  padding: 0.9rem 0.75rem;
+  font-size: 0.8rem;
+  color: rgb(224 247 255 / 0.5);
+}
+
+.chat-agent-db-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  width: 100%;
+  padding: 0.45rem;
+  border-top: 1px solid rgb(34 211 238 / 0.14);
+  background: rgb(34 211 238 / 0.05);
+  color: rgb(103 232 249 / 0.85);
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.chat-agent-db-more:hover {
+  background: rgb(34 211 238 / 0.12);
+}

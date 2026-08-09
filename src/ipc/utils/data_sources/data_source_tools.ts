@@ -15,6 +15,8 @@ import {
   type SchemaCatalogue,
 } from "@/lib/data_sources/query_plan";
 import { wrapUntrustedRows } from "@/lib/data_sources/postgrest_query";
+import { buildResultTable } from "@/lib/data_sources/result_table";
+import type { ChatAgentToolResult } from "@/components/chat-agent/types";
 import { decryptCredential, executePlan } from "./supabase_provider";
 
 /**
@@ -111,7 +113,14 @@ async function requireSelectedSource(
  *
  * `selectedIds` comes from what the user ticked, never from the model.
  */
-export function buildDataSourceToolSet(selectedIds: string[]): ToolSet {
+export type DataSourceToolResultCallback = (
+  result: ChatAgentToolResult,
+) => void;
+
+export function buildDataSourceToolSet(
+  selectedIds: string[],
+  onToolResult?: DataSourceToolResultCallback,
+): ToolSet {
   if (selectedIds.length === 0) return {};
 
   const tools: ToolSet = {};
@@ -341,6 +350,27 @@ export function buildDataSourceToolSet(selectedIds: string[]): ToolSet {
         projectUrl: row.projectUrl,
         key,
         plan: validation.plan,
+      });
+
+      // The rows go to the renderer as data so it can lay out a real table.
+      // The model still receives them as text, because it has to reason about
+      // the values; what it no longer has to do is retell them for display.
+      const table = buildResultTable(outcome.rows);
+      onToolResult?.({
+        serverName: row.name,
+        toolName: "query_data_source",
+        status: "completed",
+        result: `${outcome.rows.length} rows from ${validation.plan.table}`,
+        presentation: {
+          kind: "database-result",
+          sourceName: row.name,
+          table: validation.plan.table,
+          columns: table.columns,
+          rows: table.rows,
+          totalRows: outcome.totalRows,
+          executionMs: outcome.executionMs,
+          truncatedColumns: table.truncatedColumns,
+        },
       });
 
       if (outcome.rows.length === 0) {

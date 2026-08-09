@@ -16,10 +16,7 @@ import {
   uploadToBlob,
   verifyBlobToken,
 } from "../utils/vercel_blob";
-import {
-  mirrorLocalVaultToBlob,
-  scaffoldBlobVault,
-} from "../utils/blob_vault";
+import { mirrorLocalVaultToBlob, scaffoldBlobVault } from "../utils/blob_vault";
 import { isLocalVaultReady } from "../utils/storage_vault";
 
 const logger = log.scope("vercel_blob_handlers");

@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import type { ChatAgentToolPresentation } from "@/ipc/types/chat_agent";
 import { ipc } from "@/ipc/types";
+import { ChatAgentDatabaseResultCard } from "./ChatAgentDatabaseResultCard";
 import { ChatAgentMapCard } from "./ChatAgentMapCard";
 import { ChatAgentWeatherCard } from "./ChatAgentWeatherCard";
 
@@ -439,6 +440,10 @@ export function ChatAgentResearchResultCard({
         </footer>
       </section>
     );
+  }
+
+  if (presentation.kind === "database-result") {
+    return <ChatAgentDatabaseResultCard presentation={presentation} />;
   }
 
   if (presentation.kind === "weather-forecast") {

@@ -542,7 +542,13 @@ function runChatAgentStream(
       // in rather than read inside the tools, so the model cannot widen it.
       const dataSourceTools = isLovableWebDev
         ? {}
-        : buildDataSourceToolSet(dataSourceIds);
+        : buildDataSourceToolSet(dataSourceIds, (toolResult) => {
+            emittedToolResult = true;
+            safeSend(event.sender, "chat-agent:response:chunk", {
+              sessionId,
+              toolResult,
+            });
+          });
       const tools = instrumentToolActivity(event, sessionId, {
         ...researchTools,
         ...systemTools,

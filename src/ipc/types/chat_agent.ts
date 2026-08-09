@@ -194,7 +194,30 @@ const LovableProjectsPresentationSchema = z.object({
   ),
 });
 
+/**
+ * Rows returned from a connected database.
+ *
+ * Sent as columns and rows rather than as prose so the renderer can lay out a
+ * real table: a model retelling forty rows in a bulleted list loses the
+ * alignment that makes a table readable, and occasionally loses a row.
+ *
+ * Values arrive already stringified. Formatting a timestamp or a null is a
+ * presentation decision, and making it once here keeps every cell consistent.
+ */
+const DatabaseResultPresentationSchema = z.object({
+  kind: z.literal("database-result"),
+  sourceName: z.string(),
+  table: z.string(),
+  columns: z.array(z.string()),
+  rows: z.array(z.array(z.string())),
+  /** Rows matching the query, which may exceed the rows returned. */
+  totalRows: z.number().nullable(),
+  executionMs: z.number().optional(),
+  truncatedColumns: z.number().optional(),
+});
+
 export const ChatAgentToolPresentationSchema = z.discriminatedUnion("kind", [
+  DatabaseResultPresentationSchema,
   WebSearchPresentationSchema,
   CryptoMarketPresentationSchema,
   WeatherForecastPresentationSchema,

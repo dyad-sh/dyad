@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { coolifyInsecureWarning } from "./coolify_insecure_warning";
+import { coolifyInsecureWarning } from "./insecure_warning";
 
 const ask = (o: Partial<Parameters<typeof coolifyInsecureWarning>[0]>) =>
   coolifyInsecureWarning({

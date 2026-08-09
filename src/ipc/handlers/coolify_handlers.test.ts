@@ -46,13 +46,6 @@ vi.mock("../../db", () => ({
         },
       }),
     }),
-    update: () => ({
-      set: (patch: Record<string, unknown>) => {
-        updateSet(patch);
-        if (connection) Object.assign(connection, patch);
-        return { where: () => Promise.resolve() };
-      },
-    }),
     delete: () => ({
       where: () => {
         deleted();

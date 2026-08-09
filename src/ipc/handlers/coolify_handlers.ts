@@ -3,9 +3,14 @@ import { eq } from "drizzle-orm";
 import log from "electron-log";
 import * as dns from "node:dns/promises";
 import { db } from "../../db";
-import { apps, coolifyAppConnections } from "../../db/schema";
+import { apps } from "../../db/schema";
 import { readSettings, writeSettings } from "../../main/settings";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import {
+  getClient,
+  readConnectionState,
+  writeConnectionState,
+} from "@/coolify_deploy/store";
 import { createTypedHandler } from "./base";
 import { coolifyContracts, coolifyEvents } from "../types/coolify";
 import type { CoolifyConnection } from "../types/coolify";
@@ -20,8 +25,6 @@ import {
 } from "@/coolify_deploy/domain_check";
 import {
   applyCoolifyConnectionChange,
-  coolifyConnectionFromRow,
-  coolifyConnectionRow,
   type CoolifyConnectionState,
 } from "@/coolify_deploy/connection";
 import { CoolifyClient } from "../utils/coolify_client";
@@ -30,19 +33,6 @@ import { coolifyDeployRegistry } from "@/coolify_deploy/controller";
 import { selectCoolifyDeployCapabilities } from "@/coolify_deploy/capabilities";
 
 const logger = log.scope("coolify_handlers");
-
-function getClient(): CoolifyClient {
-  const settings = readSettings();
-  const token = settings.coolify?.accessToken?.value;
-  const instanceUrl = settings.coolify?.instanceUrl;
-  if (!token || !instanceUrl) {
-    throw new DyadError(
-      "Coolify is not connected. Add your instance URL and API token first.",
-      DyadErrorKind.Validation,
-    );
-  }
-  return new CoolifyClient({ instanceUrl, token });
-}
 
 async function getApp(appId: number) {
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
@@ -90,38 +80,6 @@ async function resolveBoth(
 }
 
 /** The app's stored connection, or nothing when it has none. */
-async function readConnectionState(
-  appId: number,
-): Promise<CoolifyConnectionState> {
-  const row = await db.query.coolifyAppConnections.findFirst({
-    where: eq(coolifyAppConnections.appId, appId),
-  });
-  return coolifyConnectionFromRow(row ?? null);
-}
-
-/**
- * Writes the state as a row, or removes the row when there should be none.
- *
- * The whole row goes every time, so no write can leave some fields describing
- * a connection that no longer exists.
- */
-async function writeConnectionState(
-  appId: number,
-  state: CoolifyConnectionState,
-): Promise<void> {
-  const row = coolifyConnectionRow(state);
-  if (!row) {
-    await db
-      .delete(coolifyAppConnections)
-      .where(eq(coolifyAppConnections.appId, appId));
-    return;
-  }
-  await db
-    .insert(coolifyAppConnections)
-    .values({ appId, ...row })
-    .onConflictDoUpdate({ target: coolifyAppConnections.appId, set: row });
-}
-
 function readConnection(
   state: CoolifyConnectionState,
 ): CoolifyConnection | null {
@@ -187,8 +145,14 @@ export function registerCoolifyHandlers() {
       await probe.listServers();
       const normalized = instanceUrl.replace(/\/+$/, "");
       const previous = readSettings().coolify?.instanceUrl;
+      // Spread, as clearToken does: a field added to CoolifySchema later
+      // should not be dropped by whichever of the two happens to run.
       writeSettings({
-        coolify: { instanceUrl: normalized, accessToken: { value: token } },
+        coolify: {
+          ...readSettings().coolify,
+          instanceUrl: normalized,
+          accessToken: { value: token },
+        },
       });
       // Nothing is cleared here. Server, project and application ids are
       // meaningless on another instance, but they are not meaningless — they
@@ -221,8 +185,9 @@ export function registerCoolifyHandlers() {
     // the one already running and lose a fight with it over the domain.
     //
     // The instance URL stays so that saveToken can still tell whether the next
-    // token points somewhere else; that is the case where the ids really are
-    // meaningless, and it clears them itself.
+    // token points somewhere else. Even then the rows are kept: those ids name
+    // applications still running on the old instance, and nothing in Dyad
+    // could reach them again once they were gone.
     coolifyDeployRegistry.cancelAll();
     // The address survives; only the token goes. Spread rather than replaced,
     // so a field added to CoolifySchema later is not silently dropped here.

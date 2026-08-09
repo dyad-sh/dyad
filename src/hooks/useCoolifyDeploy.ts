@@ -141,6 +141,8 @@ export function useCoolifyDeploy(appId: number | null) {
   return {
     status: status.data,
     isStatusLoading: status.isLoading,
+    statusError: status.error,
+    refetchStatus: status.refetch,
     discovery: discovery.data,
     discoveryError: discovery.error,
     isDiscovering: discovery.isFetching,

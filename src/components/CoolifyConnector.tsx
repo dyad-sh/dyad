@@ -75,6 +75,8 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
   const {
     status,
     isStatusLoading,
+    statusError,
+    refetchStatus,
     discovery,
     discoveryError,
     isDiscovering,
@@ -131,7 +133,33 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
       </div>
     );
   }
-  if (!status) return null;
+  if (!status) {
+    // Rendering nothing here left the tab blank with no message and no way
+    // back: the query does not retry, and nothing else surfaces its failure,
+    // so the panel stayed empty until a remount. The discovery query beside
+    // it has said so properly all along.
+    return (
+      <div
+        className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200"
+        data-testid="coolify-status-error"
+      >
+        <p className="font-medium">Could not read this app's Coolify setup</p>
+        <p className="mt-1">
+          {statusError
+            ? getErrorMessage(statusError)
+            : "No response from the app's settings."}
+        </p>
+        <Button
+          variant="outline"
+          size="sm"
+          className="mt-2"
+          onClick={() => refetchStatus()}
+        >
+          Try again
+        </Button>
+      </div>
+    );
+  }
 
   const can = selectCoolifyDeployCapabilities(snapshot);
   const hasGithubRepo = Boolean(app?.githubOrg && app?.githubRepo);

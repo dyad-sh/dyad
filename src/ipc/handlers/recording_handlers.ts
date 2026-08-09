@@ -207,7 +207,8 @@ export function registerRecordingHandlers() {
               // Re-read rather than trusting the check above: isolation setup takes
               // seconds, and if the preview stopped meanwhile, arming the recorder
               // would point it at nothing.
-              const proxyUrl = runningApps.get(appId)?.proxyUrl;
+              const runningApp = runningApps.get(appId);
+              const proxyUrl = runningApp?.proxyUrl;
               if (!proxyUrl) {
                 ready.resolve(
                   infraResult(
@@ -263,6 +264,7 @@ export function registerRecordingHandlers() {
                 sessionId,
                 isolation: prepared.isolation,
                 auth: toRecordingAuth(prepared.authSetup),
+                authBootstrapToken: runningApp?.authBootstrapToken,
                 warning,
               });
 

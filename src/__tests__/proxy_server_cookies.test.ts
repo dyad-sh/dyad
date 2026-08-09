@@ -72,6 +72,18 @@ function getSetCookie(port: number): Promise<string[]> {
   });
 }
 
+/** Issues a GET to the proxy and resolves with the decoded response body. */
+function getBody(port: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const req = http.get({ host: "localhost", port, path: "/" }, (res) => {
+      const chunks: Buffer[] = [];
+      res.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+      res.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    });
+    req.once("error", reject);
+  });
+}
+
 describe("proxy worker cookie rewriting", () => {
   const cleanup: Array<() => Promise<void>> = [];
 
@@ -213,5 +225,28 @@ describe("proxy worker cookie rewriting", () => {
     expect(cookie).toMatch(/;\s*SameSite=None/i);
     expect(cookie).not.toMatch(/Partitioned/i);
     expect(cookie).not.toMatch(/SameSite=Lax/i);
+  });
+
+  it("injects the proxy session capability into the auth bootstrap script", async () => {
+    const upstream = await startUpstream([], {
+      contentType: "text/html",
+      body: "<html><head></head><body>hi</body></html>",
+    });
+    cleanup.push(upstream.close);
+
+    const port = await findFreePort();
+    const authBootstrapToken = "00000000-0000-4000-8000-000000000001";
+    const { waitForStart } = startWorker({
+      targetOrigin: upstream.origin,
+      port,
+      fallbackPortStart: await findFreePort(),
+      maxPortAttempts: 20,
+      authBootstrapToken,
+    });
+
+    const body = await getBody(await waitForStart());
+
+    expect(body).toContain(`data-dyad-auth-token="${authBootstrapToken}"`);
+    expect(body).toContain('data.type === "dyad-auth-login"');
   });
 });

@@ -71,6 +71,7 @@ vi.mock("@/lib/toast", () => ({
 /** Where the previewed app is served from — and the only origin the hook trusts. */
 const PREVIEW_URL = "https://preview.test/";
 const PREVIEW_ORIGIN = "https://preview.test";
+const AUTH_BOOTSTRAP_TOKEN = "00000000-0000-4000-8000-000000000001";
 
 function makeWrapper() {
   const store = createStore();
@@ -777,6 +778,7 @@ describe("useTestRecorder", () => {
       appId: 1,
       sessionId: "session-1",
       isolation: { mode: "none" },
+      authBootstrapToken: AUTH_BOOTSTRAP_TOKEN,
       auth: {
         mode: "neon-better-auth",
         email: "t@dyad.test",
@@ -815,6 +817,7 @@ describe("useTestRecorder", () => {
       email: "t@dyad.test",
       password: "s3cret",
     });
+    expect(login.message.token).toBe(AUTH_BOOTSTRAP_TOKEN);
 
     await act(async () => {
       iframe.send({
@@ -897,6 +900,30 @@ describe("useTestRecorder", () => {
     expect(result.current.isRecording).toBe(true);
     expect(result.current.auth).toEqual({ mode: "none" });
     expect(result.current.warning).toMatch(/without authentication/i);
+  });
+
+  it("does not send credentials when the proxy capability is unavailable", async () => {
+    startRecordingMock.mockResolvedValue({
+      appId: 1,
+      sessionId: "session-1",
+      isolation: { mode: "none" },
+      auth: {
+        mode: "neon-better-auth",
+        email: "t@dyad.test",
+        password: "s3cret",
+      },
+    });
+    const iframe = makeIframe();
+    const { result } = mountRecorder({ iframe, appUrl: true });
+
+    await act(async () => {
+      await result.current.startRecording();
+    });
+
+    expect(findLogin(iframe)).toBeNull();
+    expect(result.current.isRecording).toBe(true);
+    expect(result.current.auth).toEqual({ mode: "none" });
+    expect(result.current.warning).toMatch(/secure preview sign-in/i);
   });
 
   it("ignores a sign-in result from an attempt that already timed out", async () => {

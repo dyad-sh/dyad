@@ -22,12 +22,14 @@ function setup({
   pending = null as Record<string, unknown> | null,
   preLocal = {} as Record<string, string>,
   pathname = "/",
+  authBootstrapToken = "proxy-session-token",
   fetchImpl,
 }: {
   readyState?: string;
   pending?: Record<string, unknown> | null;
   preLocal?: Record<string, string>;
   pathname?: string;
+  authBootstrapToken?: string;
   fetchImpl?: (...args: any[]) => Promise<any>;
 } = {}) {
   const posts: any[] = [];
@@ -77,6 +79,9 @@ function setup({
 
   const document = {
     readyState,
+    currentScript: {
+      dataset: { dyadAuthToken: authBootstrapToken },
+    },
     addEventListener: () => {},
   };
 
@@ -116,10 +121,14 @@ function setup({
      * that's what tells this document's marker apart from one an earlier,
      * abandoned attempt left behind.
      */
-    sendLogin: (auth: Record<string, unknown>, nonce = "attempt-1") =>
+    sendLogin: (
+      auth: Record<string, unknown>,
+      nonce = "attempt-1",
+      token = authBootstrapToken,
+    ) =>
       messageHandler?.({
         source: parent,
-        data: { type: "dyad-auth-login", auth, nonce },
+        data: { type: "dyad-auth-login", auth, nonce, token },
       }),
   };
 }
@@ -201,6 +210,17 @@ describe("dyad auth bootstrap", () => {
     expect(h.posts.some((p) => p.type === "dyad-auth-bootstrap-ready")).toBe(
       true,
     );
+  });
+
+  it("ignores login messages from a framing parent without the proxy capability", () => {
+    const h = setup();
+
+    h.sendLogin(SUPABASE_AUTH, "attacker-attempt", "attacker-token");
+
+    expect(h.fetchMock).not.toHaveBeenCalled();
+    expect(h.replace).not.toHaveBeenCalled();
+    expect(h.localStorage.getItem("sb-ref123-auth-token")).toBeNull();
+    expect(h.sessionStorage.getItem("__dyad_auth_pending__")).toBeNull();
   });
 
   it("reports failure (and does not navigate) when sign-in fails", async () => {

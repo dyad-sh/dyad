@@ -86,7 +86,10 @@ beforeEach(() => {
   vi.clearAllMocks();
   activeRecordings.clear();
   mocks.runningApps.clear();
-  mocks.runningApps.set(1, { proxyUrl: "http://localhost:42100" });
+  mocks.runningApps.set(1, {
+    proxyUrl: "http://localhost:42100",
+    authBootstrapToken: "00000000-0000-4000-8000-000000000001",
+  });
   mocks.findFirst.mockResolvedValue({ id: 1, testingEnabled: true });
   mocks.isTestRunActive.mockReturnValue(false);
   mocks.readSettings.mockReturnValue({ runtimeMode2: "host" });
@@ -112,6 +115,9 @@ describe("recording:start / recording:stop", () => {
       email: "t@dyad.test",
       password: "pw",
     });
+    expect(result.authBootstrapToken).toBe(
+      "00000000-0000-4000-8000-000000000001",
+    );
     expect(result.infraError).toBeUndefined();
     expect(mocks.clearStorageData).toHaveBeenCalledWith(
       expect.objectContaining({ origin: "http://localhost:42100" }),

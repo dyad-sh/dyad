@@ -17,6 +17,7 @@ const LISTEN_PORT = workerData.port;
 let rememberedOrigin = null; // e.g. "http://localhost:5173"
 let rememberedBaseUrl = null;
 const fixedHeaders = workerData?.fixedHeaders || {};
+const authBootstrapToken = workerData?.authBootstrapToken;
 
 /* ---------- pre-configure rememberedOrigin from workerData ------- */
 {
@@ -252,7 +253,16 @@ function injectHTML(buf) {
     );
   }
   if (dyadAuthBootstrapContent) {
-    scripts.push(`<script>${dyadAuthBootstrapContent}</script>`);
+    // The bootstrap reads this before any app script runs. Escaping keeps the
+    // worker boundary safe even if the token source ever changes from UUIDs.
+    const escapedAuthBootstrapToken = String(authBootstrapToken || "")
+      .replace(/&/g, "&amp;")
+      .replace(/"/g, "&quot;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+    scripts.push(
+      `<script data-dyad-auth-token="${escapedAuthBootstrapToken}">${dyadAuthBootstrapContent}</script>`,
+    );
   } else {
     scripts.push(
       '<script>console.warn("[proxy-worker] dyad auth bootstrap was not injected.");</script>',

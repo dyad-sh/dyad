@@ -115,6 +115,7 @@ export function useTestRecorder({
     appId: number;
     auth: RecordingAuth;
     nonce: string;
+    authBootstrapToken: string;
   } | null>(null);
   // Apps whose main-process session this hook started and hasn't stopped. The
   // session outlives the renderer's state (it holds an isolated database and the
@@ -355,6 +356,7 @@ export function useTestRecorder({
                 type: "dyad-auth-login",
                 auth: pending.auth,
                 nonce: pending.nonce,
+                token: pending.authBootstrapToken,
               },
               previewOrigin(),
             );
@@ -582,8 +584,21 @@ export function useTestRecorder({
   }, [patchState]);
 
   const authenticate = useCallback(
-    (targetAppId: number, auth: RecordingAuth) =>
-      new Promise<{ ok: boolean; error?: string }>((resolve) => {
+    (
+      targetAppId: number,
+      auth: RecordingAuth,
+      authBootstrapToken: string | undefined,
+    ) => {
+      // Never fall back to the old unauthenticated message shape. A missing
+      // capability means the proxy was not prepared to authenticate its
+      // framing parent, so the caller degrades to recording signed out.
+      if (!authBootstrapToken) {
+        return Promise.resolve({
+          ok: false,
+          error: "secure preview sign-in is unavailable",
+        });
+      }
+      return new Promise<{ ok: boolean; error?: string }>((resolve) => {
         let done = false;
         const finish = (ok: boolean, error?: string) => {
           if (done) return;
@@ -601,7 +616,12 @@ export function useTestRecorder({
         // triggers a resend, then force that load. Also post directly, for when
         // the current page is alive and listening.
         const nonce = crypto.randomUUID();
-        pendingAuthRef.current = { appId: targetAppId, auth, nonce };
+        pendingAuthRef.current = {
+          appId: targetAppId,
+          auth,
+          nonce,
+          authBootstrapToken,
+        };
         authReadyRef.current = (result) =>
           finish(Boolean(result.ok), result.error);
         reloadPreview();
@@ -613,9 +633,13 @@ export function useTestRecorder({
         // be relied on for that, since it is refused by this same check.
         const origin = previewOrigin();
         if (origin !== "*") {
-          postToIframe({ type: "dyad-auth-login", auth, nonce }, origin);
+          postToIframe(
+            { type: "dyad-auth-login", auth, nonce, token: authBootstrapToken },
+            origin,
+          );
         }
-      }),
+      });
+    },
     [postToIframe, previewOrigin, reloadPreview],
   );
 
@@ -634,7 +658,12 @@ export function useTestRecorder({
     // Safe to repeat: the bootstrap ignores a login for an attempt it is
     // already working on, and matches the nonce before settling either way.
     postToIframe(
-      { type: "dyad-auth-login", auth: pending.auth, nonce: pending.nonce },
+      {
+        type: "dyad-auth-login",
+        auth: pending.auth,
+        nonce: pending.nonce,
+        token: pending.authBootstrapToken,
+      },
       origin,
     );
   }, [appId, appUrl, postToIframe, previewOrigin]);
@@ -730,7 +759,11 @@ export function useTestRecorder({
           phase: "authenticating",
           progress: "Signing in the test user…",
         }));
-        const signIn = await authenticate(targetAppId, auth);
+        const signIn = await authenticate(
+          targetAppId,
+          auth,
+          result.authBootstrapToken,
+        );
         // Sign-in waits up to 30s — plenty of room for the selection to move on.
         if (isAbandoned()) {
           releaseSession(targetAppId);

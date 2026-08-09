@@ -36,6 +36,12 @@ export interface RunningAppInfo {
   lastViewedAt: number;
   /** Proxy URL for the running app, set when the proxy server starts */
   proxyUrl?: string;
+  /**
+   * Capability embedded in proxied HTML and returned only to the trusted
+   * renderer. Auth bootstrap messages must echo it before the preview will
+   * accept credentials from its framing parent.
+   */
+  authBootstrapToken?: string;
   /** Original localhost URL for the running app */
   originalUrl?: string;
   /** Proxy worker dedicated to this running app */

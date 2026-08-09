@@ -49,6 +49,11 @@ export const StartRecordingResultSchema = z.object({
   /** Auth to establish before recording (`{ mode: "none" }` when unavailable). */
   auth: RecordingAuthSchema,
   /**
+   * Per-proxy capability the renderer must echo with `dyad-auth-login`.
+   * Absent on setup failures, where no preview authentication is attempted.
+   */
+  authBootstrapToken: z.string().uuid().optional(),
+  /**
    * Names this session. `recording:ended` carries it back so a late ending from
    * a session the renderer has already replaced can be ignored instead of
    * tearing down its successor. Absent when the session never started.

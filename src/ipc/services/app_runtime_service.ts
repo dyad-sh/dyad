@@ -418,6 +418,7 @@ export async function ensureProxyForRunningApp({
     appInfo.proxyWorker &&
     appInfo.originalUrl === originalUrl &&
     appInfo.proxyAuthToken === proxyAuthToken &&
+    appInfo.authBootstrapToken &&
     appInfo.proxyUrl
   ) {
     emitProxyServerStarted({
@@ -443,9 +444,15 @@ export async function ensureProxyForRunningApp({
   // overlap), the proxy worker scans the fallback band upward rather than
   // killing whatever holds the port.
   const proxyPort = getAppProxyPort(appId);
+  // A framing page can reach the preview's postMessage listeners but cannot
+  // read this capability from the cross-origin document. The trusted renderer
+  // receives the same value through recording:start and must echo it before the
+  // injected bootstrap will accept credentials.
+  const authBootstrapToken = randomUUID();
 
   const proxyWorker = await startProxy(originalUrl, {
     port: proxyPort,
+    authBootstrapToken,
     onStarted: (proxyUrl) => {
       const latestAppInfo = runningApps.get(appId);
       if (
@@ -457,6 +464,7 @@ export async function ensureProxyForRunningApp({
         latestAppInfo.proxyUrl = proxyUrl;
         latestAppInfo.originalUrl = originalUrl;
         latestAppInfo.proxyAuthToken = proxyAuthToken;
+        latestAppInfo.authBootstrapToken = authBootstrapToken;
       }
       emitProxyServerStarted({
         appId,
@@ -493,6 +501,7 @@ export async function ensureProxyForRunningApp({
     latestAppInfo.proxyWorker = proxyWorker;
     latestAppInfo.originalUrl = originalUrl;
     latestAppInfo.proxyAuthToken = proxyAuthToken;
+    latestAppInfo.authBootstrapToken = authBootstrapToken;
   } else {
     await proxyWorker.terminate();
   }

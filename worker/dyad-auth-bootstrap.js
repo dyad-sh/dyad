@@ -14,7 +14,7 @@
  *   session into localStorage under `sb-<ref>-auth-token`, then reload.
  *
  * Plain, dependency-free IIFE JS. Protocol:
- *   down (from parent): { type: "dyad-auth-login", auth, nonce }
+ *   down (from parent): { type: "dyad-auth-login", auth, nonce, token }
  *   up   (to parent):   { type: "dyad-auth-bootstrap-ready", pendingNonce? }
  *                       { type: "dyad-auth-ready", ok: boolean, error?: string }
  *
@@ -25,6 +25,11 @@
  * wrote" from "one an earlier attempt abandoned".
  */
 (() => {
+  // A source check proves only which window sent the message, not that Dyad is
+  // the window framing this otherwise-framable origin. The proxy embeds a
+  // per-worker capability in this script tag; the trusted renderer learns the
+  // matching value from main-process IPC and echoes it with the credentials.
+  const authBootstrapToken = document.currentScript?.dataset.dyadAuthToken;
   const PENDING_KEY = "__dyad_auth_pending__";
   const HOME_SETTLE_DELAY_MS = 500;
   const MAX_HOME_REDIRECTS = 3;
@@ -259,20 +264,19 @@
     login(auth, nonce);
   }
 
-  // `e.source !== window.parent` is the whole guard on a message that drives
-  // sign-in — it POSTs credentials to the app's auth endpoint, and on the
-  // Supabase path fetches an attacker-suppliable `auth.projectUrl` and writes
-  // its answer into localStorage. That guard means something only inside a
-  // frame. The proxy injects this script into EVERY previewed document, and
-  // opening the preview URL top-level in a browser makes `window.parent ===
-  // window`, at which point any script already on the page satisfies it.
   const isFramed = window.parent !== window;
 
   window.addEventListener("message", (e) => {
     if (!isFramed) return;
     if (e.source !== window.parent) return;
     const data = e.data;
-    if (data && data.type === "dyad-auth-login" && data.auth) {
+    if (
+      data &&
+      data.type === "dyad-auth-login" &&
+      data.auth &&
+      authBootstrapToken &&
+      data.token === authBootstrapToken
+    ) {
       handleLogin(
         data.auth,
         typeof data.nonce === "string" ? data.nonce : null,

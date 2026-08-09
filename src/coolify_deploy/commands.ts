@@ -25,6 +25,7 @@ import {
   coolifyKeyName,
   ensureDeployKey,
   readPrivateKey,
+  deployKeyFilePath,
   readPublicKey,
   repoKeyName,
 } from "@/ipc/utils/coolify_deploy_key";
@@ -152,7 +153,6 @@ async function recordConnectionChange(
     );
 }
 
-/** The app's stored connection, or nothing when it has none. */
 /**
  * Puts Dyad's public key on the repository as a deploy key.
  *
@@ -172,14 +172,9 @@ async function ensureGithubDeployKey({
   signal: AbortSignal;
 }): Promise<string> {
   const keyName = repoKeyName(owner, repo);
-  await ensureDeployKey(keyName);
-  const publicKey = readPublicKey(keyName);
-  if (!publicKey) {
-    throw new DyadError(
-      `Could not read the deploy key for ${owner}/${repo}.`,
-      DyadErrorKind.External,
-    );
-  }
+  // Returns the public half and throws if it cannot be read, so there is no
+  // second read here and no branch for a null that cannot arrive.
+  const publicKey = await ensureDeployKey(keyName);
   const accessToken = readSettings().githubAccessToken?.value;
   if (!accessToken) {
     throw new DyadError(
@@ -262,7 +257,8 @@ async function ensureGithubDeployKey({
     throw new DyadError(
       `The deploy key for ${owner}/${repo} is already registered on a different ` +
         `repository, so GitHub will not accept it here. Remove it from the other ` +
-        `repository's deploy keys, or delete ~/.ssh/${keyName} to generate a new ` +
+        `repository's deploy keys, or delete ${deployKeyFilePath(keyName)} to ` +
+        `generate a new ` +
         `one — Dyad registers a regenerated key with Coolify under a new name.`,
       DyadErrorKind.Validation,
     );

@@ -45,13 +45,17 @@ const hasSshKeygen = (() => {
 const hasSshSigning = (() => {
   if (!hasSshKeygen) return false;
   try {
-    execFileSync("ssh-keygen", ["-Y", "sign"], { stdio: "ignore" });
+    // Piped, not ignored: ignoring leaves err.stderr null, and the check
+    // below would then read "" and call every build capable. Piping also
+    // keeps the child's complaint out of the test output.
+    execFileSync("ssh-keygen", ["-Y", "sign"], { stdio: "pipe" });
     return true;
   } catch (err) {
     const stderr = String((err as { stderr?: Buffer }).stderr ?? "");
     // Missing arguments means the subcommand exists; an unknown operation
-    // means it does not.
-    return !/unknown|invalid|unsupported/i.test(stderr);
+    // means it does not. GNU getopt says "unknown option", BSD and macOS say
+    // "illegal option".
+    return !/unknown|illegal|invalid|unsupported/i.test(stderr);
   }
 })();
 

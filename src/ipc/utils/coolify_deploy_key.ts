@@ -42,6 +42,16 @@ function keyFilePath(keyName: string): string {
 }
 
 /**
+ * Where a key sits, for an error that asks the user to delete it.
+ *
+ * Exported so no caller has to know the directory: the last one that did
+ * still named ~/.ssh long after the keys moved out of it.
+ */
+export function deployKeyFilePath(keyName: string): string {
+  return keyFilePath(keyName);
+}
+
+/**
  * Moves a keypair written by an earlier version into Dyad's directory.
  *
  * Regenerating instead would strand the user: GitHub allows a deploy key on

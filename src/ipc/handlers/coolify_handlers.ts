@@ -25,6 +25,7 @@ import {
 } from "@/coolify_deploy/domain_check";
 import {
   applyCoolifyConnectionChange,
+  isHostMove,
   type CoolifyConnectionState,
 } from "@/coolify_deploy/connection";
 import { CoolifyClient } from "../utils/coolify_client";
@@ -230,27 +231,24 @@ export function registerCoolifyHandlers() {
       }
       await getApp(appId);
       const current = await readConnectionState(appId);
-      // Coolify cannot move an application between a server, a project or an
-      // environment, so a change to any of the three releases it. Asked of
-      // those directly: keying it on the resulting kind was wrong twice — on
-      // the kind alone an ordinary domain edit looks like a move and throws
-      // away a failed deploy's account of itself, and on whether an
-      // application was released a move away from an app that never got one
-      // stops looking like a move at all.
-      const movedHost =
-        current.kind !== "none" &&
-        (current.serverUuid !== connection.serverUuid ||
-          current.projectUuid !== connection.projectUuid ||
-          current.environmentName !== connection.environmentName);
+      // Asked of the host directly rather than of the resulting kind, which
+      // was wrong twice: on the kind alone an ordinary domain edit looks like
+      // a move and throws away a failed deploy's account of itself, and on
+      // whether an application was released a move away from an app that
+      // never got one stops looking like a move at all.
+      const movedHost = isHostMove(current, connection);
       // Coolify cannot regenerate an address once one is set, so
       // updateApplication never sends an empty domains value and a cleared
       // domain would leave the record saying "none" while the instance kept
       // serving the old one. The form refuses this; so must the handler,
       // which a second window working from a stale status can still reach.
       //
-      // Not while moving: the application it had is released, so there is no
-      // longer one whose address this could disagree with.
-      if (!movedHost && current.kind !== "none" && current.domain && !domain) {
+      // Not while moving, and not before an application exists: in both
+      // cases there is nothing in Coolify whose address this could disagree
+      // with.
+      const hasApplication =
+        current.kind === "provisioned" || current.kind === "deployed";
+      if (!movedHost && hasApplication && current.domain && !domain) {
         throw new DyadError(
           "A domain cannot be removed from Dyad once it is set. Change it to " +
             "another domain here, or clear it in Coolify.",

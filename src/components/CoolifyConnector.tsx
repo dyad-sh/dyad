@@ -27,6 +27,7 @@ import { ipc } from "@/ipc/types";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useCoolifyDeploy } from "@/hooks/useCoolifyDeploy";
 import { selectCoolifyDeployCapabilities } from "@/coolify_deploy/capabilities";
+import { isHostMove } from "@/coolify_deploy/connection";
 import { getErrorMessage } from "@/lib/errors";
 import { COOLIFY_REQUIRED_SCOPES } from "@/shared/coolify_scopes";
 import { coolifyInsecureWarning } from "@/coolify_deploy/insecure_warning";
@@ -516,7 +517,23 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
           onClick={async () => {
             try {
               const trimmed = domain.trim();
-              if (!trimmed && status.connection?.domain) {
+              // Moving releases whatever exists in Coolify, so there is then
+              // nothing whose address a cleared domain could contradict. Asked
+              // with the same predicate the handler uses, which is how these
+              // two came to disagree in the first place.
+              const moving =
+                status.connection !== null &&
+                isHostMove(
+                  {
+                    kind: "configured",
+                    serverUuid: status.connection.serverUuid,
+                    projectUuid: status.connection.projectUuid,
+                    environmentName: status.connection.environmentName,
+                    domain: status.connection.domain,
+                  },
+                  { serverUuid, projectUuid, environmentName: "production" },
+                );
+              if (!moving && !trimmed && status.connection?.domain) {
                 // updateApplication deliberately never sends an empty domains
                 // value, because Coolify cannot generate a replacement
                 // address once one has been set.

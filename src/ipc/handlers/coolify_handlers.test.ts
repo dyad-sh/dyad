@@ -280,6 +280,29 @@ describe("clearing a domain", () => {
     ).rejects.toThrow(/cannot be removed/);
   });
 
+  it("is allowed before anything exists in Coolify to contradict", async () => {
+    // Configured but never deployed: no application, so nothing is serving
+    // the old address and clearing it contradicts nothing.
+    connection = {
+      ...CONNECTED,
+      applicationUuid: null,
+      appUrl: null,
+      lastDeployedAt: null,
+    };
+
+    await call("coolify:save-connection", {
+      appId: 1,
+      connection: {
+        serverUuid: "srv-1",
+        projectUuid: "prj-1",
+        environmentName: "production",
+        domain: null,
+      },
+    });
+
+    expect(connection?.domain).toBeNull();
+  });
+
   it("is allowed when the app is moving, which releases the application", async () => {
     // Nothing is left whose address this could disagree with.
     await call("coolify:save-connection", {

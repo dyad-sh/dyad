@@ -3,6 +3,7 @@ import {
   applyCoolifyConnectionChange,
   coolifyConnectionRow,
   coolifyConnectionFromRow,
+  isHostMove,
   type CoolifyConnectionChange,
   type CoolifyConnectionState,
 } from "./connection";
@@ -88,6 +89,39 @@ describe("the connection is total over state x change", () => {
         }
       }
     }
+  });
+});
+
+describe("isHostMove", () => {
+  it("is what the reducer, the handler and the form all ask", () => {
+    // One definition, because there were three, and the one the form was
+    // missing is how it came to refuse what the handler allowed.
+    const deployed = STATES[3];
+    const same = {
+      serverUuid: "srv-1",
+      projectUuid: "prj-1",
+      environmentName: "production",
+    };
+    expect(isHostMove(deployed, same)).toBe(false);
+    expect(isHostMove(deployed, { ...same, serverUuid: "srv-2" })).toBe(true);
+    expect(isHostMove(deployed, { ...same, projectUuid: "prj-2" })).toBe(true);
+    // Coolify cannot move an application between environments either.
+    expect(isHostMove(deployed, { ...same, environmentName: "staging" })).toBe(
+      true,
+    );
+  });
+
+  it("is never a move when there is nothing to move", () => {
+    expect(
+      isHostMove(
+        { kind: "none" },
+        {
+          serverUuid: "srv-1",
+          projectUuid: "prj-1",
+          environmentName: "production",
+        },
+      ),
+    ).toBe(false);
   });
 });
 

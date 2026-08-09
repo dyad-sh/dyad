@@ -58,6 +58,7 @@ import { socialMediaContracts } from "../types/social_media";
 import { helixContracts } from "../types/helix";
 import { vectorContracts, vectorEvents } from "../types/vector";
 import { storageContracts } from "../types/storage";
+import { dataSourceContracts } from "../types/data_source";
 import { jarvisContracts, jarvisEvents } from "../types/jarvis";
 
 // =============================================================================
@@ -135,6 +136,7 @@ export const VALID_INVOKE_CHANNELS = [
   ...getInvokeChannels(helixContracts),
   ...getInvokeChannels(vectorContracts),
   ...getInvokeChannels(storageContracts),
+  ...getInvokeChannels(dataSourceContracts),
   ...getInvokeChannels(jarvisContracts),
 
   // Test-only channels

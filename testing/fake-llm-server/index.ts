@@ -4,6 +4,7 @@ import type { AddressInfo } from "net";
 import cors from "cors";
 import crypto from "node:crypto";
 import { createChatCompletionHandler } from "./chatCompletionHandler";
+import { registerFakeCoolify } from "./coolify";
 import { createResponsesHandler } from "./responsesHandler";
 import { createAnthropicMessagesHandler } from "./anthropicMessagesHandler";
 import { fakeLlmLog } from "./log";
@@ -21,6 +22,10 @@ import {
   handleClearPushEvents,
   handleResetRepos,
   handleRepoCollaborators,
+  handleListDeployKeys,
+  handleCreateDeployKey,
+  handleSeedDeployKey,
+  handleClearDeployKeys,
 } from "./githubHandler";
 
 // Helper function to create OpenAI-like streaming response chunks
@@ -652,6 +657,10 @@ export function createFakeLlmApp(getPort: () => number) {
   app.post("/v1/responses", createResponsesHandler("."));
   app.post("/v1/messages", createAnthropicMessagesHandler("."));
 
+  // A Coolify instance. Nothing redirects to it: a test types its URL into
+  // the connection form, the way a user types their own instance's.
+  registerFakeCoolify(app);
+
   // GitHub API Mock Endpoints
   fakeLlmLog("Setting up GitHub mock endpoints");
 
@@ -679,6 +688,12 @@ export function createFakeLlmApp(getPort: () => number) {
     handleRepoCollaborators,
   );
   app.post("/github/api/orgs/:org/repos", handleOrgRepos);
+
+  // Deploy keys, which the Coolify pipeline registers before it builds.
+  app.get("/github/api/repos/:owner/:repo/keys", handleListDeployKeys);
+  app.post("/github/api/repos/:owner/:repo/keys", handleCreateDeployKey);
+  app.post("/github/api/test/seed-deploy-key", handleSeedDeployKey);
+  app.post("/github/api/test/clear-deploy-keys", handleClearDeployKeys);
 
   // GitHub test endpoints for verifying push operations
   app.get("/github/api/test/push-events", handleGetPushEvents);

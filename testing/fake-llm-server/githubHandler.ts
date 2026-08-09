@@ -684,3 +684,76 @@ export function handleGitPush(req: Request, res: Response, next?: Function) {
       }),
   );
 }
+
+/**
+ * Deploy keys on a repository.
+ *
+ * GitHub allows a given key on exactly one repository, which is the whole
+ * reason the deploy pipeline has an "already in use" branch — so this
+ * remembers key material across repositories rather than per repository.
+ */
+const deployKeysByRepo = new Map<
+  string,
+  Array<{ id: number; title: string; key: string; read_only: boolean }>
+>();
+const deployKeyOwner = new Map<string, string>();
+let nextDeployKeyId = 1;
+
+/** Material only: GitHub returns a key without its trailing comment. */
+function keyMaterial(key: string): string {
+  return key.trim().split(/\s+/).slice(0, 2).join(" ");
+}
+
+export function handleListDeployKeys(req: Request, res: Response) {
+  const { owner, repo } = req.params;
+  if (!req.headers.authorization?.includes(mockAccessToken)) {
+    return res.status(401).json({ message: "Bad credentials" });
+  }
+  return res.json(deployKeysByRepo.get(`${owner}/${repo}`) ?? []);
+}
+
+export function handleCreateDeployKey(req: Request, res: Response) {
+  const { owner, repo } = req.params;
+  if (!req.headers.authorization?.includes(mockAccessToken)) {
+    return res.status(401).json({ message: "Bad credentials" });
+  }
+  const fullName = `${owner}/${repo}`;
+  const material = keyMaterial(String(req.body?.key ?? ""));
+  const heldBy = deployKeyOwner.get(material);
+  if (heldBy && heldBy !== fullName) {
+    return res.status(422).json({
+      message: "Validation Failed",
+      errors: [{ message: "key is already in use" }],
+    });
+  }
+  const existing = deployKeysByRepo.get(fullName) ?? [];
+  if (existing.some((k) => keyMaterial(k.key) === material)) {
+    return res.status(422).json({
+      message: "Validation Failed",
+      errors: [{ message: "key is already in use" }],
+    });
+  }
+  const created = {
+    id: nextDeployKeyId++,
+    title: String(req.body?.title ?? ""),
+    key: String(req.body?.key ?? ""),
+    read_only: req.body?.read_only !== false,
+  };
+  deployKeysByRepo.set(fullName, [...existing, created]);
+  deployKeyOwner.set(material, fullName);
+  return res.status(201).json(created);
+}
+
+/** Lets a spec put a key on another repository, for the 422 branch. */
+export function handleSeedDeployKey(req: Request, res: Response) {
+  const fullName = String(req.body?.repo ?? "");
+  const material = keyMaterial(String(req.body?.key ?? ""));
+  deployKeyOwner.set(material, fullName);
+  return res.json({ ok: true });
+}
+
+export function handleClearDeployKeys(_req: Request, res: Response) {
+  deployKeysByRepo.clear();
+  deployKeyOwner.clear();
+  return res.json({ ok: true });
+}

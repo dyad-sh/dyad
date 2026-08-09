@@ -424,6 +424,17 @@
     return null;
   }
 
+  /** Controls whose meaningful action is captured by input/change, not click. */
+  function recordsWithoutClick(control) {
+    return (
+      isCheckboxOrRadio(control) ||
+      isValuePicker(control) ||
+      isFileInput(control) ||
+      control.tagName === "SELECT" ||
+      isEditable(control)
+    );
+  }
+
   function retarget(el) {
     if (!el || el.nodeType !== 1) return el;
     // Nearest-first, the way `closest` walked it — but asking `computeRole`
@@ -1045,13 +1056,7 @@
       notePasswordField(control);
       // Form controls are recorded from `change` (toggles, selects) or `input`
       // (text); skip the click so we don't double-record.
-      if (
-        isCheckboxOrRadio(control) ||
-        isValuePicker(control) ||
-        isFileInput(control) ||
-        control.tagName === "SELECT" ||
-        isEditable(control)
-      ) {
+      if (recordsWithoutClick(control)) {
         return;
       }
     }
@@ -1068,7 +1073,12 @@
 
   function onDblClick(e) {
     if (!active || !trustedOk(e) || isOverlayEvent(e)) return;
-    const target = retarget(deepTarget(e));
+    const raw = deepTarget(e);
+    const control = resolveControl(raw);
+    // Match the leading-click target for label-activated click controls so the
+    // renderer can collapse click + dblclick into one double-click action.
+    const target =
+      control && !recordsWithoutClick(control) ? control : retarget(raw);
     emit({ kind: "dblclick", locator: selectorFor(target) });
   }
 

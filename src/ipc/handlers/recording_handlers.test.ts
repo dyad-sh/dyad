@@ -50,7 +50,10 @@ vi.mock("electron-log", () => ({
 }));
 
 import { registerRecordingHandlers } from "./recording_handlers";
-import { activeRecordings } from "../services/recording_registry";
+import {
+  activeRecordings,
+  isRecordingActive,
+} from "../services/recording_registry";
 import {
   appOperationCoordinator,
   readAppResource,
@@ -133,6 +136,27 @@ describe("recording:discard-draft", () => {
 });
 
 describe("recording:start / recording:stop", () => {
+  it("publishes startup ownership before its first database await", async () => {
+    let resolveApp!: (app: { id: number; testingEnabled: boolean }) => void;
+    mocks.findFirst.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveApp = resolve;
+      }),
+    );
+    mocks.prepareIsolatedTestDatabase.mockResolvedValue(makePrepared());
+    const { event } = makeEvent();
+
+    const start = startHandler(event, { appId: 1 });
+    // This is what the test-run side consults while recording:start is still
+    // waiting for its app row/recovery work.
+    expect(isRecordingActive(1)).toBe(true);
+
+    resolveApp({ id: 1, testingEnabled: true });
+    await start;
+    await stopHandler(event, { appId: 1 });
+    expect(isRecordingActive(1)).toBe(false);
+  });
+
   it("refuses to snapshot an environment a prior recording did not restore", async () => {
     mocks.findFirst.mockResolvedValue({
       id: 1,

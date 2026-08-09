@@ -25,7 +25,7 @@ import {
 } from "../services/isolated_test_db";
 import {
   activeRecordings,
-  isRecordingActive,
+  reserveRecordingStart,
   type EndRecordingOptions,
   type RecordingEndReason,
   type RecordingEndSummary,
@@ -90,302 +90,316 @@ export function registerRecordingHandlers() {
     async (event, params): Promise<StartRecordingResult> => {
       const { appId } = params;
 
-      let app = await getApp(appId);
-      if (!app.testingEnabled) {
-        return infraResult(
-          appId,
-          "Testing isn't enabled for this app. Enable it in the Tests panel before recording.",
-        );
-      }
-      if (isRecordingActive(appId)) {
+      const releaseStartReservation = reserveRecordingStart(appId);
+      if (!releaseStartReservation) {
         return infraResult(
           appId,
           "A recording session is already in progress for this app.",
         );
       }
-      // Recording and a test run both restart the dev server and share the
-      // per-app Neon test-branch slot, so they must never overlap.
-      if (isTestRunActive(appId)) {
-        return infraResult(
-          appId,
-          "Stop the running tests before starting a recording session.",
-        );
-      }
-      if (!runningApps.get(appId)?.proxyUrl) {
-        return infraResult(
-          appId,
-          "Start the app before recording — the dev server isn't running.",
-        );
-      }
 
-      // A prior failed teardown leaves a raw durable marker while `.env.local`
-      // may still target that branch. Snapshotting it as the next recording's
-      // "real" env would make teardown restore a deleted database URL and then
-      // clear the replacement marker. Recover (or refuse) before isolation can
-      // take its snapshot.
-      if (app.neonTestBranchId) {
-        let restored = false;
-        try {
-          restored = await restoreAppFromTestBranch(app);
-        } catch (error) {
-          logger.error(
-            `App ${appId}: failed to recover the prior test branch before recording: ${error}`,
-          );
-        }
-        if (!restored) {
+      try {
+        let app = await getApp(appId);
+        if (!app.testingEnabled) {
           return infraResult(
             appId,
-            "Dyad couldn't restore this app's real database settings from the previous session. Retry after checking the Neon connection.",
+            "Testing isn't enabled for this app. Enable it in the Tests panel before recording.",
           );
         }
-        // Recovery may clear the marker or leave a cleanup-only marker. Give
-        // isolation the current row rather than the stale raw branch id.
-        app = await getApp(appId);
-      }
-
-      const sessionId = crypto.randomUUID();
-      const emit = (message: string) =>
-        safeSend(event.sender, "recording:setup-progress", { appId, message });
-
-      // A recording owns the same resources as a test run for its whole
-      // lifecycle (prepare → record → teardown): both swap `.env.local` and
-      // restart the dev server, so neither may interleave with the other or
-      // with startup reconciliation.
-      const recordingResources = [
-        readAppResource("app-path"),
-        "repository",
-        "provider",
-        "runtime",
-        "runtime-config",
-        "test-files",
-      ] as const;
-
-      if (appOperationCoordinator.isBusy(appId, recordingResources)) {
-        emit("Waiting for a previous app operation to finish…\n");
-      }
-
-      const runtimeMode = readSettings().runtimeMode2 ?? "host";
-
-      const ready = deferred<StartRecordingResult>();
-      const stopped = deferred<RecordingEndReason>();
-      const controller = new AbortController();
-      let settled = false;
-      // Set by whoever ends the session, read by teardown below.
-      let teardownOptions: TeardownOptions = {};
-      const stop = (
-        reason: RecordingEndReason,
-        options?: EndRecordingOptions,
-      ) => {
-        if (settled) return;
-        settled = true;
-        if (options?.skipRestart) {
-          teardownOptions = { ...teardownOptions, skipRestart: true };
-        }
-        controller.abort();
-        stopped.resolve(reason);
-      };
-
-      // Safety nets so the long-held resource claim can never leak if the
-      // renderer dies.
-      const onDestroyed = () => stop("app-stopped");
-      event.sender.once?.("destroyed", onDestroyed);
-      const sessionTimer = setTimeout(() => stop("timed-out"), MAX_SESSION_MS);
-      const clearRegistration = () => {
-        // Only retire our own entry: teardown can overlap another attempted
-        // registration, and its newer owner must survive.
-        if (activeRecordings.get(appId)?.stop === stop) {
-          activeRecordings.delete(appId);
-        }
-        clearTimeout(sessionTimer);
-        event.sender.removeListener?.("destroyed", onDestroyed);
-      };
-
-      // Hold the app's resources across the whole session. The handler resolves
-      // on `ready`; they are released only when the session is stopped.
-      // Filled in by the session's teardown and read by whoever ended it. A
-      // shared object rather than the callback's return value so the early
-      // setup-failure exits below don't each have to invent one.
-      const summary: RecordingEndSummary = { envRestored: true };
-      const done = appOperationCoordinator
-        .run(
-          {
+        // Recording and a test run both restart the dev server and share the
+        // per-app Neon test-branch slot, so they must never overlap.
+        if (isTestRunActive(appId)) {
+          return infraResult(
             appId,
-            operation: "start-recording",
-            resources: recordingResources,
-          },
-          async () => {
-            let prepared: PreparedIsolation | undefined;
-            let started = false;
-            let endReason: RecordingEndReason = "stopped";
-            let endMessage: string | undefined;
-            try {
-              prepared = await prepareIsolatedTestDatabase({
-                app,
-                // No `event`: the local `emit` already closes over `event.sender`,
-                // and the parameter doesn't exist on this function (the tests
-                // handler calls it the same way).
-                emit: (chunk) => emit(chunk),
-                runtimeMode,
-                signal: controller.signal,
-              });
+            "Stop the running tests before starting a recording session.",
+          );
+        }
+        if (!runningApps.get(appId)?.proxyUrl) {
+          return infraResult(
+            appId,
+            "Start the app before recording — the dev server isn't running.",
+          );
+        }
 
-              if (prepared.infraError) {
+        // A prior failed teardown leaves a raw durable marker while `.env.local`
+        // may still target that branch. Snapshotting it as the next recording's
+        // "real" env would make teardown restore a deleted database URL and then
+        // clear the replacement marker. Recover (or refuse) before isolation can
+        // take its snapshot.
+        if (app.neonTestBranchId) {
+          let restored = false;
+          try {
+            restored = await restoreAppFromTestBranch(app);
+          } catch (error) {
+            logger.error(
+              `App ${appId}: failed to recover the prior test branch before recording: ${error}`,
+            );
+          }
+          if (!restored) {
+            return infraResult(
+              appId,
+              "Dyad couldn't restore this app's real database settings from the previous session. Retry after checking the Neon connection.",
+            );
+          }
+          // Recovery may clear the marker or leave a cleanup-only marker. Give
+          // isolation the current row rather than the stale raw branch id.
+          app = await getApp(appId);
+        }
+
+        const sessionId = crypto.randomUUID();
+        const emit = (message: string) =>
+          safeSend(event.sender, "recording:setup-progress", {
+            appId,
+            message,
+          });
+
+        // A recording owns the same resources as a test run for its whole
+        // lifecycle (prepare → record → teardown): both swap `.env.local` and
+        // restart the dev server, so neither may interleave with the other or
+        // with startup reconciliation.
+        const recordingResources = [
+          readAppResource("app-path"),
+          "repository",
+          "provider",
+          "runtime",
+          "runtime-config",
+          "test-files",
+        ] as const;
+
+        if (appOperationCoordinator.isBusy(appId, recordingResources)) {
+          emit("Waiting for a previous app operation to finish…\n");
+        }
+
+        const runtimeMode = readSettings().runtimeMode2 ?? "host";
+
+        const ready = deferred<StartRecordingResult>();
+        const stopped = deferred<RecordingEndReason>();
+        const controller = new AbortController();
+        let settled = false;
+        // Set by whoever ends the session, read by teardown below.
+        let teardownOptions: TeardownOptions = {};
+        const stop = (
+          reason: RecordingEndReason,
+          options?: EndRecordingOptions,
+        ) => {
+          if (settled) return;
+          settled = true;
+          if (options?.skipRestart) {
+            teardownOptions = { ...teardownOptions, skipRestart: true };
+          }
+          controller.abort();
+          stopped.resolve(reason);
+        };
+
+        // Safety nets so the long-held resource claim can never leak if the
+        // renderer dies.
+        const onDestroyed = () => stop("app-stopped");
+        event.sender.once?.("destroyed", onDestroyed);
+        const sessionTimer = setTimeout(
+          () => stop("timed-out"),
+          MAX_SESSION_MS,
+        );
+        const clearRegistration = () => {
+          // Only retire our own entry: teardown can overlap another attempted
+          // registration, and its newer owner must survive.
+          if (activeRecordings.get(appId)?.stop === stop) {
+            activeRecordings.delete(appId);
+          }
+          clearTimeout(sessionTimer);
+          event.sender.removeListener?.("destroyed", onDestroyed);
+        };
+
+        // Hold the app's resources across the whole session. The handler resolves
+        // on `ready`; they are released only when the session is stopped.
+        // Filled in by the session's teardown and read by whoever ended it. A
+        // shared object rather than the callback's return value so the early
+        // setup-failure exits below don't each have to invent one.
+        const summary: RecordingEndSummary = { envRestored: true };
+        const done = appOperationCoordinator
+          .run(
+            {
+              appId,
+              operation: "start-recording",
+              resources: recordingResources,
+            },
+            async () => {
+              let prepared: PreparedIsolation | undefined;
+              let started = false;
+              let endReason: RecordingEndReason = "stopped";
+              let endMessage: string | undefined;
+              try {
+                prepared = await prepareIsolatedTestDatabase({
+                  app,
+                  // No `event`: the local `emit` already closes over `event.sender`,
+                  // and the parameter doesn't exist on this function (the tests
+                  // handler calls it the same way).
+                  emit: (chunk) => emit(chunk),
+                  runtimeMode,
+                  signal: controller.signal,
+                });
+
+                if (prepared.infraError) {
+                  ready.resolve({
+                    appId,
+                    isolation: prepared.isolation,
+                    auth: NO_AUTH,
+                    infraError: prepared.infraError,
+                  });
+                  return;
+                }
+
+                // Re-read rather than trusting the check above: isolation setup takes
+                // seconds, and if the preview stopped meanwhile, arming the recorder
+                // would point it at nothing.
+                const runningApp = runningApps.get(appId);
+                const proxyUrl = runningApp?.proxyUrl;
+                if (!proxyUrl) {
+                  ready.resolve(
+                    infraResult(
+                      appId,
+                      "The app stopped while the recording environment was being set up. Start it again and retry.",
+                    ),
+                  );
+                  return;
+                }
+
+                // Start from the same pristine, logged-out state the generated test
+                // replays from: the CoW branch copied the real users, so a stale
+                // cookie could still look valid.
+                //
+                // The preview shares the app's normal browser session, so this also
+                // signs the user out of their own preview and drops whatever it had in
+                // localStorage. Announced rather than done quietly — it is the one
+                // thing here that touches state the user didn't hand us.
+                //
+                // TODO: give the recorder its own `session.fromPartition()` so the
+                // user's preview session is left alone entirely. That reaches into the
+                // preview stack well outside this feature, so it lands separately.
+                let warning: string | undefined;
+                emit(
+                  "Clearing the preview's cookies and local storage so the recording starts signed out…\n",
+                );
+                try {
+                  const origin = new URL(proxyUrl).origin;
+                  await session.defaultSession.clearStorageData({
+                    origin,
+                    storages: [
+                      "cookies",
+                      "localstorage",
+                      "indexdb",
+                      "serviceworkers",
+                      "cachestorage",
+                    ],
+                  });
+                } catch (error) {
+                  logger.warn(
+                    `Couldn't clear preview storage for app ${appId}: ${error}`,
+                  );
+                  // Not fatal — the recording is still usable — but a leftover session
+                  // means what gets recorded may not be reproducible from a clean
+                  // start, and only the user can judge that.
+                  warning =
+                    "Couldn't clear the preview's stored session, so this recording may start already signed in. The generated test replays from a clean browser.";
+                }
+
+                started = true;
                 ready.resolve({
                   appId,
+                  sessionId,
                   isolation: prepared.isolation,
-                  auth: NO_AUTH,
-                  infraError: prepared.infraError,
+                  auth: toRecordingAuth(prepared.authSetup),
+                  authBootstrapToken: runningApp?.authBootstrapToken,
+                  warning,
                 });
-                return;
-              }
 
-              // Re-read rather than trusting the check above: isolation setup takes
-              // seconds, and if the preview stopped meanwhile, arming the recorder
-              // would point it at nothing.
-              const runningApp = runningApps.get(appId);
-              const proxyUrl = runningApp?.proxyUrl;
-              if (!proxyUrl) {
-                ready.resolve(
-                  infraResult(
-                    appId,
-                    "The app stopped while the recording environment was being set up. Start it again and retry.",
-                  ),
-                );
-                return;
-              }
-
-              // Start from the same pristine, logged-out state the generated test
-              // replays from: the CoW branch copied the real users, so a stale
-              // cookie could still look valid.
-              //
-              // The preview shares the app's normal browser session, so this also
-              // signs the user out of their own preview and drops whatever it had in
-              // localStorage. Announced rather than done quietly — it is the one
-              // thing here that touches state the user didn't hand us.
-              //
-              // TODO: give the recorder its own `session.fromPartition()` so the
-              // user's preview session is left alone entirely. That reaches into the
-              // preview stack well outside this feature, so it lands separately.
-              let warning: string | undefined;
-              emit(
-                "Clearing the preview's cookies and local storage so the recording starts signed out…\n",
-              );
-              try {
-                const origin = new URL(proxyUrl).origin;
-                await session.defaultSession.clearStorageData({
-                  origin,
-                  storages: [
-                    "cookies",
-                    "localstorage",
-                    "indexdb",
-                    "serviceworkers",
-                    "cachestorage",
-                  ],
-                });
+                // Hold the lock and isolation until the session is stopped.
+                endReason = await stopped.promise;
+                if (endReason === "timed-out") {
+                  endMessage =
+                    "Recording stopped after reaching the 30-minute session limit.";
+                }
               } catch (error) {
-                logger.warn(
-                  `Couldn't clear preview storage for app ${appId}: ${error}`,
+                const message =
+                  error instanceof Error ? error.message : String(error);
+                logger.error(
+                  `Recording session for app ${appId} failed: ${message}`,
                 );
-                // Not fatal — the recording is still usable — but a leftover session
-                // means what gets recorded may not be reproducible from a clean
-                // start, and only the user can judge that.
-                warning =
-                  "Couldn't clear the preview's stored session, so this recording may start already signed in. The generated test replays from a clean browser.";
-              }
-
-              started = true;
-              ready.resolve({
-                appId,
-                sessionId,
-                isolation: prepared.isolation,
-                auth: toRecordingAuth(prepared.authSetup),
-                authBootstrapToken: runningApp?.authBootstrapToken,
-                warning,
-              });
-
-              // Hold the lock and isolation until the session is stopped.
-              endReason = await stopped.promise;
-              if (endReason === "timed-out") {
-                endMessage =
-                  "Recording stopped after reaching the 30-minute session limit.";
-              }
-            } catch (error) {
-              const message =
-                error instanceof Error ? error.message : String(error);
-              logger.error(
-                `Recording session for app ${appId} failed: ${message}`,
-              );
-              endReason = "error";
-              endMessage = message;
-              // Resolve is idempotent: this only matters when setup failed before
-              // `ready` was resolved.
-              ready.resolve(
-                infraResult(appId, "Couldn't set up the recording session."),
-              );
-            } finally {
-              if (prepared) {
-                // Fail closed for the duration of the call: a teardown that THROWS
-                // has told us nothing about whether `.env.local` came back, and
-                // "unknown" has to fail the same way "no" does or the gate below is
-                // decorative (see `recording_registry`). Only a teardown that
-                // returns gets to say the environment is restored.
-                summary.envRestored = false;
-                try {
-                  summary.envRestored = (
-                    await prepared.teardown(teardownOptions)
-                  ).envRestored;
-                } catch (error) {
-                  logger.error(
-                    `Recording teardown failed for app ${appId}: ${error}`,
-                  );
+                endReason = "error";
+                endMessage = message;
+                // Resolve is idempotent: this only matters when setup failed before
+                // `ready` was resolved.
+                ready.resolve(
+                  infraResult(appId, "Couldn't set up the recording session."),
+                );
+              } finally {
+                if (prepared) {
+                  // Fail closed for the duration of the call: a teardown that THROWS
+                  // has told us nothing about whether `.env.local` came back, and
+                  // "unknown" has to fail the same way "no" does or the gate below is
+                  // decorative (see `recording_registry`). Only a teardown that
+                  // returns gets to say the environment is restored.
+                  summary.envRestored = false;
+                  try {
+                    summary.envRestored = (
+                      await prepared.teardown(teardownOptions)
+                    ).envRestored;
+                  } catch (error) {
+                    logger.error(
+                      `Recording teardown failed for app ${appId}: ${error}`,
+                    );
+                  }
+                }
+                if (!summary.envRestored) {
+                  // The app is still pointed at the temporary test branch. The
+                  // durable app-row branch id is the relaunch/startup recovery
+                  // gate. The recorder bar is the surface still listening, and
+                  // this reaches the user as an error toast.
+                  endReason = "error";
+                  endMessage =
+                    "Dyad couldn't restore your app's real database settings after recording. Restore .env.local before running the app again.";
+                }
+                clearRegistration();
+                if (started) {
+                  safeSend(event.sender, "recording:ended", {
+                    appId,
+                    sessionId,
+                    reason: endReason,
+                    message: endMessage,
+                  });
                 }
               }
-              if (!summary.envRestored) {
-                // The app is still pointed at the temporary test branch. The
-                // durable app-row branch id is the relaunch/startup recovery
-                // gate. The recorder bar is the surface still listening, and
-                // this reaches the user as an error toast.
-                endReason = "error";
-                endMessage =
-                  "Dyad couldn't restore your app's real database settings after recording. Restore .env.local before running the app again.";
-              }
-              clearRegistration();
-              if (started) {
-                safeSend(event.sender, "recording:ended", {
+            },
+          )
+          .then(
+            () => summary,
+            (error) => {
+              // A deletion fence rejects coordinator admission without invoking
+              // the callback above. Settle the IPC ask and retire the provisional
+              // registry/timer instead of leaving Record permanently spinning.
+              logger.warn(
+                `Recording admission was refused for app ${appId}: ${error}`,
+              );
+              settled = true;
+              controller.abort();
+              ready.resolve(
+                infraResult(
                   appId,
-                  sessionId,
-                  reason: endReason,
-                  message: endMessage,
-                });
-              }
-            }
-          },
-        )
-        .then(
-          () => summary,
-          (error) => {
-            // A deletion fence rejects coordinator admission without invoking
-            // the callback above. Settle the IPC ask and retire the provisional
-            // registry/timer instead of leaving Record permanently spinning.
-            logger.warn(
-              `Recording admission was refused for app ${appId}: ${error}`,
-            );
-            settled = true;
-            controller.abort();
-            ready.resolve(
-              infraResult(
-                appId,
-                "This app is temporarily unavailable. Wait for the current app operation to finish, then try recording again.",
-              ),
-            );
-            clearRegistration();
-            return summary;
-          },
-        );
+                  "This app is temporarily unavailable. Wait for the current app operation to finish, then try recording again.",
+                ),
+              );
+              clearRegistration();
+              return summary;
+            },
+          );
 
-      activeRecordings.set(appId, { appId, stop, done });
+        activeRecordings.set(appId, { appId, stop, done });
 
-      return ready.promise;
+        return ready.promise;
+      } finally {
+        // Successful setup has already published activeRecordings; every early
+        // return or throw must instead make the app immediately startable.
+        releaseStartReservation();
+      }
     },
   );
 

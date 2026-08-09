@@ -41,9 +41,29 @@ export interface EndRecordingOptions {
 }
 
 export const activeRecordings = new Map<number, ActiveRecording>();
+const startingRecordings = new Set<number>();
+
+/**
+ * Atomically reserve this app's recording start before the handler's first
+ * await. Test runs consult the same state through `isRecordingActive`, so they
+ * refuse immediately instead of queueing behind a setup that has not published
+ * its full ActiveRecording handle yet.
+ */
+export function reserveRecordingStart(appId: number): (() => void) | null {
+  if (activeRecordings.has(appId) || startingRecordings.has(appId)) {
+    return null;
+  }
+  startingRecordings.add(appId);
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    startingRecordings.delete(appId);
+  };
+}
 
 export function isRecordingActive(appId: number): boolean {
-  return activeRecordings.has(appId);
+  return activeRecordings.has(appId) || startingRecordings.has(appId);
 }
 
 /**

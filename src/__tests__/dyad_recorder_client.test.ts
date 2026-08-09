@@ -207,6 +207,27 @@ describe("dyad recorder client", () => {
     ]);
   });
 
+  it("retargets a double-clicked label to the same control locator", () => {
+    const r = setup();
+    r.setHtml(
+      `<label for="submit">Send order</label>` +
+        `<button id="submit" type="submit">Submit</button>`,
+    );
+    r.activate();
+    const label = r.doc.querySelector("label");
+    const button = r.doc.querySelector("button");
+
+    r.click(label);
+    r.click(button);
+    r.dblclick(label);
+
+    expect(r.actions.map((action: any) => action.kind)).toEqual([
+      "click",
+      "dblclick",
+    ]);
+    expect(r.actions[1].locator).toEqual(r.actions[0].locator);
+  });
+
   it("uses the spinbutton role for a number input", () => {
     const r = setup();
     r.setHtml(`<input type="number" aria-label="Quantity" />`);

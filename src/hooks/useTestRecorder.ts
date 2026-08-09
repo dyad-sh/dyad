@@ -1092,9 +1092,9 @@ export function useTestRecorder({
     // parked, silently refusing the next Record for the rest of the window.
     settleRecorderReady(targetAppId);
     postRecorderControl(targetAppId, "deactivate");
-    void ipc.recording
-      .discardRecordedTestDraft({ appId: targetAppId })
-      .catch(() => {});
+    // Cancelling this live session does not own any parked draft yet. Another
+    // window may still be reviewing an older draft for the same app; only the
+    // identity-scoped discardDraft path is allowed to remove that.
     // stopRecording resolves only once isolation teardown finishes, so hold a
     // visible "stopping" phase instead of leaving the bar up with no feedback.
     patchState(targetAppId, (prev) => ({ ...prev, phase: "stopping" }));

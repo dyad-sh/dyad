@@ -455,6 +455,7 @@ describe("useTestRecorder", () => {
       await started;
     });
     expect(result.current.phase).toBe("idle");
+    expect(discardDraftMock).not.toHaveBeenCalled();
 
     // The readiness wait only gives up after five seconds, and the parked
     // `beginRecording` is what holds this app's start entry. Leaving it there

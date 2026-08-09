@@ -76,7 +76,14 @@ async function addStartScriptIfMissing(
     return { wasAdded: false, backup: null };
   }
 
-  const packageJson = JSON.parse(contents);
+  let packageJson: { scripts?: Record<string, string> };
+  try {
+    packageJson = JSON.parse(contents);
+  } catch {
+    // A manifest that does not parse is not this step's to repair, and
+    // failing here would roll back a Nitro conversion over it.
+    return { wasAdded: false, backup: null };
+  }
   if (typeof packageJson.scripts?.start === "string") {
     return { wasAdded: false, backup: null };
   }
@@ -87,10 +94,14 @@ async function addStartScriptIfMissing(
   // Written back in the file's own style. Assuming two spaces would reformat
   // a manifest committed with tabs or four, turning a one-line addition into
   // a whole-file diff that churns every later merge.
+  const serialized =
+    JSON.stringify(packageJson, null, detectIndent(contents)) +
+    (contents.endsWith("\n") || contents.endsWith("\r\n") ? "\n" : "");
+  // A CRLF manifest rewritten with bare newlines is a whole-file diff, which
+  // is the thing preserving the indentation was meant to avoid.
   await fs.writeFile(
     filePath,
-    JSON.stringify(packageJson, null, detectIndent(contents)) +
-      (contents.endsWith("\n") ? "\n" : ""),
+    contents.includes("\r\n") ? serialized.replace(/\n/g, "\r\n") : serialized,
     "utf8",
   );
   return { wasAdded: true, backup: contents };

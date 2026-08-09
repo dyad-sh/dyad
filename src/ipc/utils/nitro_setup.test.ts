@@ -48,6 +48,52 @@ export default defineConfig({
     await fs.rm(appPath, { recursive: true, force: true });
   });
 
+  it("adds a start script in the manifest's own style", async () => {
+    // Tabs and CRLF, which is what a manifest committed from another editor
+    // looks like. Rewriting it as two-space LF turns a one-line addition into
+    // a whole-file diff that churns every later merge.
+    const manifest =
+      [
+        "{",
+        '\t"name": "demo",',
+        '\t"scripts": {',
+        '\t\t"build": "vite build"',
+        "\t}",
+        "}",
+      ].join("\r\n") + "\r\n";
+    await fs.writeFile(path.join(appPath, "package.json"), manifest, "utf8");
+
+    await ensureNitroOnViteApp(appPath);
+
+    const written = await fs.readFile(
+      path.join(appPath, "package.json"),
+      "utf8",
+    );
+    expect(JSON.parse(written).scripts.start).toBe(
+      "node .output/server/index.mjs",
+    );
+    expect(written).toContain("\r\n");
+    expect(written).toContain('\t"scripts"');
+    // No stray bare newlines left behind by the rewrite.
+    expect(written.replace(/\r\n/g, "")).not.toContain("\n");
+  });
+
+  it("leaves a manifest it cannot parse alone", async () => {
+    // Not this step's to repair, and throwing here would roll back the whole
+    // Nitro conversion over a file it did not write.
+    await fs.writeFile(
+      path.join(appPath, "package.json"),
+      "{ not json",
+      "utf8",
+    );
+
+    await expect(ensureNitroOnViteApp(appPath)).resolves.toBeTruthy();
+
+    expect(await fs.readFile(path.join(appPath, "package.json"), "utf8")).toBe(
+      "{ not json",
+    );
+  });
+
   it("installs jiti alongside nitro", async () => {
     await ensureNitroOnViteApp(appPath);
 

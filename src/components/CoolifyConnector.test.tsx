@@ -1,5 +1,13 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const toastMock = vi.hoisted(() => ({
+  warning: vi.fn(),
+  error: vi.fn(),
+  success: vi.fn(),
+}));
+vi.mock("sonner", () => ({ toast: toastMock }));
 
 /**
  * What the panel shows before it has an answer.
@@ -66,5 +74,86 @@ describe("before the status query has answered", () => {
 
     expect(screen.getByTestId("coolify-status-error")).toBeTruthy();
     expect(screen.getByText(/settings unreadable/)).toBeTruthy();
+  });
+});
+
+/**
+ * What the DNS warnings claim about the save that follows them.
+ *
+ * Every one of them ends "Saved anyway", so firing them before the save turns
+ * a refused save into two contradictory toasts — one saying it was kept, one
+ * saying it was not — with nothing to tell the user which is true.
+ */
+describe("warning about a domain while saving", () => {
+  const CONNECTION = {
+    instanceUrl: "https://coolify.test",
+    serverUuid: "srv-1",
+    projectUuid: "prj-1",
+    environmentName: "production",
+    domain: "app.example.com",
+  };
+
+  function setup(saveConnection: { mutateAsync: ReturnType<typeof vi.fn> }) {
+    deploy.value = {
+      status: {
+        hasToken: true,
+        instanceUrl: "https://coolify.test",
+        connection: CONNECTION,
+        appUrl: null,
+        lastDeployedAt: null,
+      },
+      discovery: { servers: [], projects: [] },
+      // The domain does not resolve to the server, which is the case the
+      // warnings exist for.
+      checkDomain: {
+        mutateAsync: vi.fn(async () => ({
+          verdict: "no-records",
+          hostname: "app.example.com",
+          expectedIp: "203.0.113.10",
+          actualIps: [],
+        })),
+        isPending: false,
+      },
+      saveConnection: { ...saveConnection, isPending: false },
+    };
+  }
+
+  beforeEach(() => {
+    toastMock.warning.mockClear();
+    toastMock.error.mockClear();
+  });
+
+  async function saveFrom(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    await user.click(screen.getByTestId("coolify-save-connection"));
+  }
+
+  it("stays silent about a domain on a connection that was not saved", async () => {
+    const mutateAsync = vi.fn(async () => {
+      throw new Error("This app is deploying.");
+    });
+    setup({ mutateAsync });
+    const user = userEvent.setup();
+    render(<CoolifyConnector appId={1} />);
+
+    await saveFrom(user);
+
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalled());
+    expect(mutateAsync).toHaveBeenCalled();
+    // The save was refused, so nothing may claim it was kept.
+    expect(toastMock.warning).not.toHaveBeenCalled();
+  });
+
+  it("warns about the domain once the connection is saved", async () => {
+    const mutateAsync = vi.fn(async () => ({}));
+    setup({ mutateAsync });
+    const user = userEvent.setup();
+    render(<CoolifyConnector appId={1} />);
+
+    await saveFrom(user);
+
+    await waitFor(() => expect(toastMock.warning).toHaveBeenCalled());
+    expect(toastMock.error).not.toHaveBeenCalled();
+    expect(toastMock.warning.mock.calls[0][0]).toContain("no DNS record");
   });
 });

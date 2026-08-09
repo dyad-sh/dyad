@@ -569,6 +569,14 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
               // twice — first missing the moving case, then missing the
               // never-provisioned one — so there is no copy. The catch below
               // surfaces the handler's message.
+              // Checked before saving, because a save that succeeds should not
+              // then be followed by a lookup the user waits on. Reported only
+              // after, because every one of these warnings says the connection
+              // was saved anyway — and the save can still be refused, by an
+              // invalid domain or by a deploy that started in another window.
+              // Announcing "saved anyway" and then "not saved" leaves the user
+              // to work out which of the two toasts to believe.
+              let warn: (() => void) | null = null;
               if (trimmed) {
                 // Advisory only: if the check itself fails, say so and still
                 // let the user save rather than trapping them behind it.
@@ -586,21 +594,24 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
                   const consequence =
                     "The app will still deploy, but HTTPS will not work.";
                   if (dns.verdict === "points-elsewhere") {
-                    toast.warning(
-                      `${dns.hostname} points at ${dns.actualIps.join(", ")}, not your server at ${dns.expectedIp}.`,
-                      {
-                        description: `${consequence} Saved anyway; point it at ${dns.expectedIp} and redeploy.`,
-                      },
-                    );
+                    warn = () =>
+                      toast.warning(
+                        `${dns.hostname} points at ${dns.actualIps.join(", ")}, not your server at ${dns.expectedIp}.`,
+                        {
+                          description: `${consequence} Saved anyway; point it at ${dns.expectedIp} and redeploy.`,
+                        },
+                      );
                   } else if (dns.verdict === "no-records") {
-                    toast.warning(`${dns.hostname} has no DNS record yet.`, {
-                      description: `${consequence} Saved anyway; point a DNS record at ${dns.expectedIp} and redeploy.`,
-                    });
+                    warn = () =>
+                      toast.warning(`${dns.hostname} has no DNS record yet.`, {
+                        description: `${consequence} Saved anyway; point a DNS record at ${dns.expectedIp} and redeploy.`,
+                      });
                   }
                 } catch {
-                  toast.warning(
-                    `Could not check where ${trimmed} points; saving anyway.`,
-                  );
+                  warn = () =>
+                    toast.warning(
+                      `Could not check where ${trimmed} points; saved anyway.`,
+                    );
                 }
               }
               await saveConnection.mutateAsync({
@@ -609,6 +620,7 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
                 environmentName: "production",
                 domain: trimmed || null,
               });
+              warn?.();
               // Only now: a failed save has to leave the form open with the
               // user's edits still in it.
               setIsEditingConnection(false);

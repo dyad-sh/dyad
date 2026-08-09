@@ -34,7 +34,7 @@ vi.mock("@/ipc/utils/git_utils", () => ({
   getGitUncommittedFiles: async () => git.uncommitted,
 }));
 
-// Real key handling writes a keypair into ~/.ssh, which a test must not do.
+// Real key handling writes a keypair to disk, which a test must not do.
 vi.mock("@/ipc/utils/coolify_deploy_key", () => ({
   repoKeyName: (owner: string, repo: string) => `dyad_${owner}_${repo}`,
   // Identity here: the fingerprint suffix is this module's own concern, and
@@ -281,8 +281,6 @@ beforeEach(() => {
   framework.type = "vite";
   framework.declaresStart = false;
   git.uncommitted = [];
-  git.hashes.HEAD = "abc";
-  git.hashes.remote = "abc";
   git.hashes = { HEAD: "abc", remote: "abc" };
   neon.branchTypes = [];
   neon.trustedDomains = [];

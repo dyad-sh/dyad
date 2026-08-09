@@ -40,9 +40,6 @@ export interface CoolifyDeployment {
   logs?: string;
 }
 
-export type CoolifyServer = CoolifyServerInfo;
-export type CoolifyProject = CoolifyProjectInfo;
-
 /** Carries the HTTP status so callers can branch on 404 and 409. */
 class CoolifyRequestError extends DyadError {
   readonly status: number;
@@ -70,9 +67,9 @@ export interface CoolifyBuildConfig {
   buildPack: "railpack";
   portsExposes: string;
   /**
-   * How to run the built app, for frameworks whose build output is not
-   * runnable through a package.json script. Omitted for static sites, which
-   * nginx serves with no process at all.
+   * What to run, for an app whose build output no package.json script names.
+   * Empty clears a command an earlier deploy set; omitted leaves whatever
+   * Coolify already has.
    */
   startCommand?: string;
 }
@@ -275,11 +272,11 @@ export class CoolifyClient {
   }
 
   /** Validates the token and returns the reachable servers. */
-  async listServers(): Promise<CoolifyServer[]> {
+  async listServers(): Promise<CoolifyServerInfo[]> {
     return this.requestList("/servers", CoolifyServerSchema, "servers");
   }
 
-  async listProjects(): Promise<CoolifyProject[]> {
+  async listProjects(): Promise<CoolifyProjectInfo[]> {
     return this.requestList("/projects", CoolifyProjectSchema, "projects");
   }
 

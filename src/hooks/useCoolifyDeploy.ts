@@ -88,10 +88,8 @@ export function useCoolifyDeploy(appId: number | null) {
       acknowledgedInsecure: boolean;
     }) => ipc.coolify.saveToken(input),
     onSuccess: async () => {
+      // Covers discovery too: coolify.all is a prefix of every key here.
       await refreshAllStatuses();
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.coolify.discoveryAll,
-      });
     },
   });
 

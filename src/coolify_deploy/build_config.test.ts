@@ -56,7 +56,7 @@ describe("buildConfigForFramework", () => {
   });
 
   it.each(["other", null] as const)(
-    "treats %s as a server, which fails visibly rather than serving nothing",
+    "leaves %s entirely to railpack",
     (framework) => {
       expect(buildConfigForFramework(framework).buildPack).toBe("railpack");
     },

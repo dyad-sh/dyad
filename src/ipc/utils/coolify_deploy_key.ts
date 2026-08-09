@@ -90,6 +90,11 @@ function readFields(buffer: Buffer, offset: number, count: number) {
   for (let i = 0; i < count; i++) {
     const length = buffer.readUInt32BE(offset);
     offset += 4;
+    // subarray clamps rather than throwing, so a truncated file would yield a
+    // short field and be read as a key rather than rejected as damaged.
+    if (offset + length > buffer.length) {
+      throw new Error("Key data ends mid-field");
+    }
     fields.push(buffer.subarray(offset, offset + length));
     offset += length;
   }
@@ -184,15 +189,31 @@ export function publicKeyFromPrivate(pem: string): string | null {
 
     // ciphername, kdfname, kdfoptions, then the number of keys.
     const header = readFields(body, magic.length, 3);
+    const cipher = header.fields[0]?.toString("utf8");
     const count = body.readUInt32BE(header.offset);
     if (count !== 1) return null;
-    const { fields } = readFields(body, header.offset + 4, 1);
+    const { fields, offset } = readFields(body, header.offset + 4, 1);
     const blob = fields[0];
     if (!blob?.length) return null;
 
     // The blob names its own type; anything else is a key we did not write.
     const { fields: parts } = readFields(blob, 0, 1);
     if (parts[0]?.toString("utf8") !== "ssh-ed25519") return null;
+
+    // The public blob is only the first half. A file truncated after it still
+    // reads as a key here, and the caller would write a .pub for a private
+    // half Coolify cannot clone with — so the rest is read too, which the
+    // bounds check in readFields turns into a rejection.
+    const { fields: secret } = readFields(body, offset, 1);
+    const section = secret[0];
+    if (!section?.length) return null;
+    // For an unencrypted key the section starts with the same random value
+    // twice, which is how OpenSSH itself tells intact from damaged. An
+    // encrypted one is unreadable here, and its length is all we can check.
+    if (cipher === "none") {
+      if (section.length < 8) return null;
+      if (!section.subarray(0, 4).equals(section.subarray(4, 8))) return null;
+    }
     return `ssh-ed25519 ${blob.toString("base64")} ${KEY_COMMENT}\n`;
   } catch {
     // A truncated or non-OpenSSH file lands here; the caller reports it as an

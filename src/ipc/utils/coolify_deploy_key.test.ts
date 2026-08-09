@@ -35,11 +35,29 @@ const hasSshKeygen = (() => {
 })();
 
 /**
+ * Whether that OpenSSH also has `-Y sign`, which older and cut-down builds do
+ * not. Probed separately: a test skipped for a missing subcommand is honest,
+ * where the same test failing would report a fault in our encoder.
+ */
+const hasSshSigning = (() => {
+  if (!hasSshKeygen) return false;
+  try {
+    execFileSync("ssh-keygen", ["-Y", "sign"], { stdio: "ignore" });
+    return true;
+  } catch (err) {
+    const stderr = String((err as { stderr?: Buffer }).stderr ?? "");
+    // Missing arguments means the subcommand exists; an unknown operation
+    // means it does not.
+    return !/unknown|invalid|unsupported/i.test(stderr);
+  }
+})();
+
+/**
  * A throwaway home directory, so these never touch the real ~/.ssh.
  *
- * This is the one module in the feature that spawns a process and writes into
- * the user's home, and the half-written-keypair case it recovers from cannot
- * be reproduced without a real filesystem.
+ * This is the one module in the feature that writes into the user's home, and
+ * the half-written-keypair case it recovers from cannot be reproduced without
+ * a real filesystem.
  */
 let home: string;
 
@@ -112,7 +130,7 @@ describe("generateDeployKeyPair", () => {
    * Signing does, and it checks the invariant the deploy actually depends on:
    * the private key handed to Coolify must be the one GitHub authorised.
    */
-  it.skipIf(!hasSshKeygen)(
+  it.skipIf(!hasSshSigning)(
     "signs for the public key that goes to GitHub",
     () => {
       const { publicKey, privateKey } = generateDeployKeyPair("dyad-deploy");
@@ -196,6 +214,28 @@ describe("publicKeyFromPrivate", () => {
     const truncated = [lines[0], lines[1]?.slice(0, 20), lines.at(-2)].join(
       "\n",
     );
+    expect(publicKeyFromPrivate(truncated)).toBeNull();
+  });
+
+  it("refuses a key truncated after its public half", () => {
+    // The public blob sits in the clear near the front, so it survives a
+    // truncation that destroys the private half. Accepting it would write a
+    // .pub for a key Coolify cannot clone with, and the deploy would fail
+    // inside the build as an unexplained missing repository.
+    const { privateKey } = generateDeployKeyPair("dyad-deploy");
+    const lines = privateKey.trim().split("\n");
+    const body = lines.slice(1, -1).join("");
+    const bytes = Buffer.from(body, "base64");
+    // Two thirds keeps the header and the public blob, losing the secret.
+    const cut = bytes.subarray(0, Math.floor(bytes.length * 0.66));
+    const truncated =
+      `-----BEGIN OPENSSH PRIVATE KEY-----\n` +
+      `${cut
+        .toString("base64")
+        .match(/.{1,70}/g)!
+        .join("\n")}\n` +
+      `-----END OPENSSH PRIVATE KEY-----\n`;
+
     expect(publicKeyFromPrivate(truncated)).toBeNull();
   });
 

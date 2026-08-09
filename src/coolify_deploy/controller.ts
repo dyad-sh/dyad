@@ -5,6 +5,7 @@ import {
   uuidIdSource,
   systemClock,
   type Clock,
+  type ClockHandle,
   type IdSource,
 } from "@/state_machines/clock";
 import { transition } from "./transition";
@@ -38,18 +39,24 @@ export interface CoolifyDeployRegistryDeps {
   runPipeline: RunDeployPipeline;
 }
 
-/** Resolves when the work settles, or when the bound elapses. */
-async function drain(work: Promise<void>): Promise<void> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
+/**
+ * Resolves when the work settles, or when the bound elapses.
+ *
+ * On the injected clock, not setTimeout: rules/state-machines.md requires it,
+ * and a real timer here means the bound cannot be driven by createFakeClock —
+ * a test covering it would have to wait out the wall-clock seconds.
+ */
+async function drain(clock: Clock, work: Promise<void>): Promise<void> {
+  let handle: ClockHandle | undefined;
   try {
     await Promise.race([
       work.catch(() => undefined),
       new Promise<void>((resolve) => {
-        timer = setTimeout(resolve, DRAIN_TIMEOUT_MS);
+        handle = clock.schedule(resolve, DRAIN_TIMEOUT_MS);
       }),
     ]);
   } finally {
-    if (timer) clearTimeout(timer);
+    if (handle !== undefined) clock.cancel(handle);
   }
 }
 
@@ -197,7 +204,10 @@ export class CoolifyDeployRegistry {
     // Aborting only makes them throw at their next checkpoint, so wait for
     // them to unwind before the caller deletes rows or closes the database.
     // One bound covers them all rather than one bound each.
-    await drain(Promise.all(pending.map((p) => p.done)).then(() => undefined));
+    await drain(
+      this.deps.clock,
+      Promise.all(pending.map((p) => p.done)).then(() => undefined),
+    );
   }
 
   /** Call when every app is going away, as a reset does. */

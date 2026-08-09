@@ -33,13 +33,20 @@ function pendingPipeline() {
   };
 }
 
-/** Each test owns its registry, so nothing leaks between them. */
+/**
+ * Each test owns its registry, so nothing leaks between them.
+ *
+ * The clock comes back with it: the drain bound is scheduled on the injected
+ * clock, so advancing global timers alone would leave it pending forever.
+ */
 function makeRegistry(runPipeline: RunDeployPipeline) {
-  return new CoolifyDeployRegistry({
-    clock: createFakeClock(),
+  const clock = createFakeClock();
+  const registry = new CoolifyDeployRegistry({
+    clock,
     ids: createSequentialIdSource(),
     runPipeline,
   });
+  return Object.assign(registry, { testClock: clock });
 }
 
 async function flush() {
@@ -248,8 +255,12 @@ describe("draining work the machine no longer points at", () => {
     registry.requestDeploy(1);
     await flush();
 
-    await expect(registry.disposeAll()).resolves.toBeUndefined();
-  }, 15_000);
+    // The bound is on the injected clock, so this asserts it in an instant
+    // rather than by waiting out five real seconds.
+    const settled = registry.disposeAll();
+    registry.testClock.advanceBy(DRAIN_TIMEOUT_MS);
+    await expect(settled).resolves.toBeUndefined();
+  });
 });
 
 describe("the registry's one book of work", () => {
@@ -270,8 +281,11 @@ describe("the registry's one book of work", () => {
       const all = registry.disposeAll().then(() => {
         finished = true;
       });
+      registry.testClock.advanceBy(DRAIN_TIMEOUT_MS - 1);
       await vi.advanceTimersByTimeAsync(DRAIN_TIMEOUT_MS - 1);
       expect(finished).toBe(false);
+
+      registry.testClock.advanceBy(1);
 
       await vi.advanceTimersByTimeAsync(1);
       await all;
@@ -315,8 +329,10 @@ describe("the registry's one book of work", () => {
       const disposal = registry.dispose(1).then(() => {
         finished = true;
       });
+      registry.testClock.advanceBy(DRAIN_TIMEOUT_MS - 1);
       await vi.advanceTimersByTimeAsync(DRAIN_TIMEOUT_MS - 1);
       expect(finished).toBe(false);
+      registry.testClock.advanceBy(1);
       await vi.advanceTimersByTimeAsync(1);
       await disposal;
     } finally {
@@ -370,8 +386,11 @@ describe("a pipeline that outlives the deploy replacing it", () => {
       const disposal = registry.dispose(1).then(() => {
         finished = true;
       });
+      registry.testClock.advanceBy(DRAIN_TIMEOUT_MS - 1);
       await vi.advanceTimersByTimeAsync(DRAIN_TIMEOUT_MS - 1);
       expect(finished).toBe(false);
+
+      registry.testClock.advanceBy(1);
 
       await vi.advanceTimersByTimeAsync(1);
       await disposal;

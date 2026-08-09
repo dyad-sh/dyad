@@ -20,11 +20,15 @@ import {
   getConfiguredChatAgentModel,
 } from "@/lib/chat_agent_model";
 import { SECTION_IDS } from "@/lib/settingsSearchIndex";
-import { chatAgentAttachmentsAtom } from "@/atoms/chatAgentAtoms";
+import {
+  chatAgentAttachmentsAtom,
+  chatAgentDataSourceIdsAtom,
+} from "@/atoms/chatAgentAtoms";
 import { ChatAgentAttachMenu } from "./ChatAgentAttachMenu";
 import { ChatAgentToolMenu } from "./ChatAgentToolMenu";
 import { ChatAgentAttachmentsList } from "./ChatAgentAttachmentsList";
 import { ChatAgentKnowledgeMenu } from "./ChatAgentKnowledgeMenu";
+import { ChatAgentDataSourceMenu } from "./ChatAgentDataSourceMenu";
 import { VoiceInputButton } from "@/components/chat/VoiceInputButton";
 import { showError as showErrorToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
@@ -79,6 +83,7 @@ export function ChatAgentComposer({
   const [localVectorCollectionIds, setLocalVectorCollectionIds] = useState<
     string[]
   >([]);
+  const [dataSourceIds, setDataSourceIds] = useAtom(chatAgentDataSourceIdsAtom);
   const vectorCollectionIds =
     selectedVectorCollectionIds ?? localVectorCollectionIds;
   const setVectorCollectionIds =
@@ -265,6 +270,11 @@ export function ChatAgentComposer({
                   selectedCollectionIds={vectorCollectionIds}
                   onChange={setVectorCollectionIds}
                 />
+                <ChatAgentDataSourceMenu
+                  disabled={disabled || isEnhancing}
+                  selectedDataSourceIds={dataSourceIds}
+                  onChange={setDataSourceIds}
+                />
               </>
             )}
             {exclusiveToolLabel && (
@@ -282,6 +292,16 @@ export function ChatAgentComposer({
               >
                 {vectorCollectionIds.length} knowledge{" "}
                 {vectorCollectionIds.length === 1 ? "space" : "spaces"}
+              </span>
+            )}
+            {!exclusiveToolLabel && dataSourceIds.length > 0 && (
+              <span
+                className="chat-agent-selected-tool-chip"
+                title="Connected data sources are enabled"
+                data-testid="chat-agent-data-source-chip"
+              >
+                {dataSourceIds.length} data{" "}
+                {dataSourceIds.length === 1 ? "source" : "sources"}
               </span>
             )}
             {!exclusiveToolLabel && selectedMcpActionLabels.length > 0 && (

@@ -9,6 +9,18 @@ import type {
 
 export const chatAgentAttachmentsAtom = atom<FileAttachment[]>([]);
 
+/**
+ * Data sources the agent may query.
+ *
+ * Stored rather than held in component state: a selection that vanishes when
+ * you switch tabs is a selection you have to keep remaking, and these are ids
+ * rather than secrets so persisting them costs nothing.
+ */
+export const chatAgentDataSourceIdsAtom = atomWithStorage<string[]>(
+  "chat-agent-data-source-ids",
+  [],
+);
+
 /** Maximum number of Chat Agent conversations kept in history. */
 export const MAX_CHAT_AGENT_HISTORY = 50;
 

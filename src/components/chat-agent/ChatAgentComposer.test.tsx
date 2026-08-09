@@ -47,6 +47,25 @@ vi.mock("./ChatAgentKnowledgeMenu", () => ({
     </button>
   ),
 }));
+// Stubbed for the same reason as the knowledge menu: it fetches through
+// react-query, and this suite renders the composer without a provider.
+vi.mock("./ChatAgentDataSourceMenu", () => ({
+  ChatAgentDataSourceMenu: ({
+    selectedDataSourceIds,
+    onChange,
+  }: {
+    selectedDataSourceIds: string[];
+    onChange: (ids: string[]) => void;
+  }) => (
+    <button
+      type="button"
+      data-testid="data-source-selection"
+      onClick={() => onChange([...selectedDataSourceIds, "source-1"])}
+    >
+      {selectedDataSourceIds.join(",")}
+    </button>
+  ),
+}));
 vi.mock("./ChatAgentAttachmentsList", () => ({
   ChatAgentAttachmentsList: () => null,
 }));

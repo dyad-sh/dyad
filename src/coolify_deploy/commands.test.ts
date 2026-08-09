@@ -1534,6 +1534,39 @@ describe("writing only to the server the deploy started against", () => {
     expect(row?.applicationUuid).toBeNull();
     expect(row?.appUrl).toBeNull();
   });
+
+  it("does not record the result when only the project changed", async () => {
+    // The same server is the case a server-only fence let through: disconnect
+    // mid-deploy, reconnect to another project on that same server, and the
+    // row matches again. What lands is an application belonging to the old
+    // project, hung on a connection naming the new one — and it resolves
+    // cleanly on the next deploy, so nothing ever surfaces the mismatch.
+    const app = await seedApp({ connection: { applicationUuid: null } });
+    happyPathRoutes();
+    const clock = createFakeClock();
+
+    sideEffects.set("POST /applications/private-deploy-key", async () => {
+      await harness.db
+        .update(coolifyAppConnections)
+        .set({ projectUuid: "project-other" })
+        .where(eq(coolifyAppConnections.appId, app.id));
+    });
+
+    await drive(
+      clock,
+      runDeployPipeline({
+        appId: app.id,
+        signal: new AbortController().signal,
+        report: recorder(),
+        clock,
+      }),
+    );
+
+    const row = await readApp(app.id);
+    expect(row?.projectUuid).toBe("project-other");
+    expect(row?.applicationUuid).toBeNull();
+    expect(row?.appUrl).toBeNull();
+  });
 });
 
 describe("replacing an application", () => {

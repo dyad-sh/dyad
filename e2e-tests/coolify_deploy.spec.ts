@@ -55,23 +55,37 @@ async function coolifyApplications(port: number) {
 }
 
 /**
+ * Connects GitHub from the Publish panel, which is where the Coolify tab is.
+ *
+ * Coolify deploys from a repository, so an app has to have one before any of
+ * this is reachable — and the panel carries its own GitHub section, so the
+ * whole flow stays on one screen rather than navigating to app details and
+ * back.
+ */
+async function connectGithubFromPublishPanel(po: any) {
+  await po.previewPanel.selectPreviewMode("publish");
+  await po.githubConnector.connect();
+  await po.githubConnector.createRepo(`coolify-e2e-${Date.now()}`);
+}
+
+/**
  * Gets as far as a saved connection: token, server and project chosen.
  *
- * The address is plain HTTP, which is what a stock Coolify serves until it
- * has a certificate — so this also walks the consent the connection form
- * asks for before it will send a token over an unencrypted link.
+ * No insecure-address consent here, and that is correct rather than a gap:
+ * the fake answers on loopback, which isSecureInstanceUrl treats as secure
+ * because nothing can sit between the app and 127.0.0.1. The consent path a
+ * real plain-HTTP instance triggers is covered by unit tests instead.
  */
 async function connectCoolify(po: any, fakeLlmPort: number) {
-  await po.selectPreviewMode("publish");
   await po.page.getByRole("tab", { name: "Your Own Server" }).click();
 
-  await po.page.getByLabel("Coolify address").fill(coolifyBase(fakeLlmPort));
-  await po.page.getByLabel("API token").fill("1|fake-coolify-token");
-  // Plain HTTP, so the form asks before sending a token over it.
-  await po.page.getByRole("checkbox").check();
+  await po.page
+    .getByTestId("coolify-instance-url")
+    .fill(coolifyBase(fakeLlmPort));
+  await po.page.getByTestId("coolify-token").fill("1|fake-coolify-token");
   await po.page.getByTestId("coolify-save-token").click();
 
-  await expect(po.page.getByLabel("Server")).toBeVisible({
+  await expect(po.page.getByTestId("coolify-server-select")).toBeVisible({
     timeout: Timeout.MEDIUM,
   });
 }
@@ -85,15 +99,13 @@ test("connects to an instance and saves where the app deploys", async ({
   await resetCoolify(fakeLlmPort);
   await po.setUp({ autoApprove: true });
   await po.sendPrompt("hi");
-  await po.appManagement.getTitleBarAppNameButton().click();
-  await po.githubConnector.connect();
-  await po.githubConnector.createRepo(`coolify-${testInfo.parallelIndex}`);
+  await connectGithubFromPublishPanel(po);
 
   await connectCoolify(po, fakeLlmPort);
 
-  await po.page.getByLabel("Server").click();
+  await po.page.getByTestId("coolify-server-select").click();
   await po.page.getByRole("option", { name: "production" }).click();
-  await po.page.getByLabel("Project").click();
+  await po.page.getByTestId("coolify-project-select").click();
   await po.page.getByRole("option", { name: "demo-project" }).click();
   await po.page.getByTestId("coolify-save-connection").click();
 
@@ -110,14 +122,12 @@ test("refuses to deploy an app whose server is on another instance", async ({
   await resetCoolify(fakeLlmPort);
   await po.setUp({ autoApprove: true });
   await po.sendPrompt("hi");
-  await po.appManagement.getTitleBarAppNameButton().click();
-  await po.githubConnector.connect();
-  await po.githubConnector.createRepo(`coolify-${testInfo.parallelIndex}`);
+  await connectGithubFromPublishPanel(po);
   await connectCoolify(po, fakeLlmPort);
 
-  await po.page.getByLabel("Server").click();
+  await po.page.getByTestId("coolify-server-select").click();
   await po.page.getByRole("option", { name: "production" }).click();
-  await po.page.getByLabel("Project").click();
+  await po.page.getByTestId("coolify-project-select").click();
   await po.page.getByRole("option", { name: "demo-project" }).click();
   await po.page.getByTestId("coolify-save-connection").click();
   await expect(po.page.getByTestId("coolify-deploy")).toBeEnabled({
@@ -130,7 +140,16 @@ test("refuses to deploy an app whose server is on another instance", async ({
   await resetCoolify(fakeLlmPort, {
     servers: [{ uuid: "srv-elsewhere", name: "other", ip: "203.0.113.99" }],
   });
-  await po.page.getByLabel("Refresh servers and projects").click();
+  // Discovery is cached per instance and the connected view has no control
+  // that re-asks, so this takes the route a user would: open the form, press
+  // refresh, and come back out without changing anything.
+  // Scoped to the connector: the chat transcript has its own Edit buttons.
+  const connector = po.page.getByTestId("coolify-connector");
+  await connector.getByRole("button", { name: "Edit" }).click();
+  await connector
+    .getByRole("button", { name: "Refresh servers and projects" })
+    .click();
+  await connector.getByRole("button", { name: "Cancel" }).click();
 
   await expect(
     po.page.getByText("This app belongs to a different Coolify."),
@@ -147,14 +166,12 @@ test("deploys, and reports the address the app is reachable at", async ({
   await resetCoolify(fakeLlmPort);
   await po.setUp({ autoApprove: true });
   await po.sendPrompt("hi");
-  await po.appManagement.getTitleBarAppNameButton().click();
-  await po.githubConnector.connect();
-  await po.githubConnector.createRepo(`coolify-${testInfo.parallelIndex}`);
+  await connectGithubFromPublishPanel(po);
   await connectCoolify(po, fakeLlmPort);
 
-  await po.page.getByLabel("Server").click();
+  await po.page.getByTestId("coolify-server-select").click();
   await po.page.getByRole("option", { name: "production" }).click();
-  await po.page.getByLabel("Project").click();
+  await po.page.getByTestId("coolify-project-select").click();
   await po.page.getByRole("option", { name: "demo-project" }).click();
   await po.page.getByTestId("coolify-save-connection").click();
 
@@ -180,14 +197,12 @@ test("shows the build log when the deployment fails", async ({
   await resetCoolify(fakeLlmPort, { deploymentScript: ["failed"] });
   await po.setUp({ autoApprove: true });
   await po.sendPrompt("hi");
-  await po.appManagement.getTitleBarAppNameButton().click();
-  await po.githubConnector.connect();
-  await po.githubConnector.createRepo(`coolify-${testInfo.parallelIndex}`);
+  await connectGithubFromPublishPanel(po);
   await connectCoolify(po, fakeLlmPort);
 
-  await po.page.getByLabel("Server").click();
+  await po.page.getByTestId("coolify-server-select").click();
   await po.page.getByRole("option", { name: "production" }).click();
-  await po.page.getByLabel("Project").click();
+  await po.page.getByTestId("coolify-project-select").click();
   await po.page.getByRole("option", { name: "demo-project" }).click();
   await po.page.getByTestId("coolify-save-connection").click();
 

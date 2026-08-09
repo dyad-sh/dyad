@@ -174,6 +174,7 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
           <Label htmlFor={instanceUrlId}>Coolify address</Label>
           <Input
             id={instanceUrlId}
+            data-testid="coolify-instance-url"
             placeholder="https://coolify.example.com"
             value={instanceUrl}
             onChange={(e) => setInstanceUrl(e.target.value)}
@@ -183,6 +184,7 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
           <Label htmlFor={tokenId}>API token</Label>
           <Input
             id={tokenId}
+            data-testid="coolify-token"
             type="password"
             value={token}
             onChange={(e) => setToken(e.target.value)}
@@ -424,7 +426,10 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
               value={serverUuid}
               onValueChange={(value) => setServerUuid(value ?? "")}
             >
-              <SelectTrigger id={serverSelectId}>
+              <SelectTrigger
+                id={serverSelectId}
+                data-testid="coolify-server-select"
+              >
                 {/* Base UI renders the raw value unless given a formatter. */}
                 <SelectValue>
                   {(value) =>
@@ -451,7 +456,10 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
               value={projectUuid}
               onValueChange={(value) => setProjectUuid(value ?? "")}
             >
-              <SelectTrigger id={projectSelectId}>
+              <SelectTrigger
+                id={projectSelectId}
+                data-testid="coolify-project-select"
+              >
                 <SelectValue>
                   {(value) =>
                     projects.find((p) => p.uuid === value)?.name ??

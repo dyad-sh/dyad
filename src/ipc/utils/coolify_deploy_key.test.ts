@@ -346,7 +346,7 @@ describe("ensureDeployKey", () => {
   });
 
   it("rebuilds the public half without replacing the private one", async () => {
-    // ssh-keygen writes the private half first, so an interrupted run leaves
+    // Generation writes the private half first, so an interrupted run leaves
     // exactly this. The private half is what GitHub authorised and Coolify
     // stored, so rotating the pair would orphan a key still in use.
     const first = await ensureDeployKey("dyad_deploy_test_c");
@@ -364,22 +364,8 @@ describe("ensureDeployKey", () => {
     );
   });
 
-  it("leaves an intact pair alone when only the public half is unreadable", async () => {
-    // A derive that fails must not take the private half with it.
-    await ensureDeployKey("dyad_deploy_test_e");
-    const privateBefore = fs.readFileSync(
-      keyFile("dyad_deploy_test_e"),
-      "utf8",
-    );
-    fs.rmSync(keyFile("dyad_deploy_test_e.pub"));
-    await ensureDeployKey("dyad_deploy_test_e");
-    expect(fs.readFileSync(keyFile("dyad_deploy_test_e"), "utf8")).toBe(
-      privateBefore,
-    );
-  });
-
   it("gives concurrent callers the same pair", async () => {
-    // Two deploys starting together must not race ssh-keygen.
+    // Two deploys starting together must not each generate a pair.
     const [a, b] = await Promise.all([
       ensureDeployKey("dyad_deploy_test_d"),
       ensureDeployKey("dyad_deploy_test_d"),

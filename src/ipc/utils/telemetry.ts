@@ -6,7 +6,10 @@ import {
 } from "@/errors/dyad_error";
 import { isGenericFetchFailedError } from "@/lib/posthogTelemetry";
 import { TelemetryEventPayload } from "@/ipc/types";
-import { COOLIFY_TRANSPORT_ERROR_NAME } from "@/ipc/utils/coolify_client";
+import {
+  COOLIFY_REQUEST_ERROR_NAME,
+  COOLIFY_TRANSPORT_ERROR_NAME,
+} from "@/ipc/utils/coolify_client";
 
 const logger = log.scope("telemetry");
 const FILTERED_EXCEPTION_MESSAGES = new Set([
@@ -76,7 +79,7 @@ export function shouldFilterTelemetryException(error: unknown): boolean {
   // rejecting a request rather than a fault here, and its message carries
   // whatever that machine chose to say — which can name a host, a path or a
   // connection string. The user still sees it; nothing reports it.
-  if (error instanceof Error && error.name === "CoolifyRequestError") {
+  if (error instanceof Error && error.name === COOLIFY_REQUEST_ERROR_NAME) {
     return true;
   }
 

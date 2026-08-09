@@ -96,7 +96,7 @@ async function addStartScriptIfMissing(
   // a whole-file diff that churns every later merge.
   const serialized =
     JSON.stringify(packageJson, null, detectIndent(contents)) +
-    (contents.endsWith("\n") || contents.endsWith("\r\n") ? "\n" : "");
+    (contents.endsWith("\n") ? "\n" : "");
   // A CRLF manifest rewritten with bare newlines is a whole-file diff, which
   // is the thing preserving the indentation was meant to avoid.
   await fs.writeFile(
@@ -112,7 +112,8 @@ export interface EnsureNitroResult {
   warningMessages: string[];
   /**
    * Best-effort rollback of everything this call materialized (AI_RULES patch,
-   * nitro.config.ts, server/, vite.config.ts changes). Safe to call even if
+   * nitro.config.ts, server/, vite.config.ts changes, the added `start`
+   * script). Safe to call even if
    * the call was a no-op — it only undoes what *this* invocation added.
    * Does not uninstall the `nitro` package.
    */
@@ -125,6 +126,7 @@ export interface EnsureNitroResult {
  *   - `server/routes/api/.gitkeep` to materialize the routes directory
  *   - Nitro plugin wired into `vite.config.ts`
  *   - `nitro` and `jiti` packages installed
+ *   - a `start` script naming the entry point Nitro builds
  *   - "Nitro Server Layer" section appended to `AI_RULES.md`
  *
  * Idempotent: skips file/section creation if already present. Rolls back its

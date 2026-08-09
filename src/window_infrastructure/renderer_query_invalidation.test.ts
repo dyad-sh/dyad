@@ -1,8 +1,20 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { queryKeys } from "@/lib/queryKeys";
-import type { WindowSessionId } from "./types";
+import { queryInvalidationScopeKey, type WindowSessionId } from "./types";
 import { RendererQueryInvalidationConsumer } from "./renderer_query_invalidation";
+
+describe("queryInvalidationScopeKey", () => {
+  it("tells two apps' coolify scopes apart", () => {
+    // The key is what dedupes scopes and matches them against the ones the
+    // origin window already handled. Keyed on the family alone, one app's
+    // deploy finishing would swallow another's invalidation.
+    expect(queryInvalidationScopeKey({ family: "coolify", appId: 1 })).not.toBe(
+      queryInvalidationScopeKey({ family: "coolify", appId: 2 }),
+    );
+    expect(queryInvalidationScopeKey({ family: "coolify" })).toBe("coolify:*");
+  });
+});
 
 describe("RendererQueryInvalidationConsumer", () => {
   it("dedupes epochs, defaults origin handling to empty, and recovers on gaps", () => {

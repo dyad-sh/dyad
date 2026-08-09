@@ -17,6 +17,9 @@ import {
  */
 export const COOLIFY_TRANSPORT_ERROR_NAME = "CoolifyTransportError";
 
+/** Marks a non-2xx from the instance, filtered by name for the same reason. */
+export const COOLIFY_REQUEST_ERROR_NAME = "CoolifyRequestError";
+
 export interface CoolifyClientOptions {
   instanceUrl: string;
   token: string;
@@ -46,7 +49,7 @@ class CoolifyRequestError extends DyadError {
 
   constructor(message: string, kind: DyadErrorKind, status: number) {
     super(message, kind);
-    this.name = "CoolifyRequestError";
+    this.name = COOLIFY_REQUEST_ERROR_NAME;
     this.status = status;
   }
 }

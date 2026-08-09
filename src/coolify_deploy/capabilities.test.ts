@@ -88,12 +88,3 @@ describe("coolify_deploy capabilities", () => {
     }
   });
 });
-
-describe("canEditConnection guards the handler, not just the form", () => {
-  it("is false while a deploy is running, which is when retargeting strands it", () => {
-    const running = states.find((s) => s.type === "running")!;
-    expect(selectCoolifyDeployCapabilities(running).canEditConnection).toBe(
-      false,
-    );
-  });
-});

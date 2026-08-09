@@ -11,7 +11,7 @@ import type { CoolifyBuildConfig } from "@/ipc/utils/coolify_client";
  * and it reads the app rather than a table, so it is right about apps nobody
  * here has heard of. Anything it can determine is better left to it.
  */
-export interface AppDeclarations {
+interface AppDeclarations {
   /**
    * Whether the app names its own entry point — a `start` script, a `main`
    * field, or a root index module. These are what the build pack looks for,
@@ -21,7 +21,7 @@ export interface AppDeclarations {
 }
 
 /** An app that says nothing about itself, which is the safe assumption. */
-export const NO_DECLARATIONS: AppDeclarations = { declaresStart: false };
+const NO_DECLARATIONS: AppDeclarations = { declaresStart: false };
 
 /**
  * The part of a build configuration Dyad supplies.

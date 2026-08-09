@@ -269,6 +269,7 @@ export function queryInvalidationScopeKey(
     case "branches":
     case "problems":
     case "uncommitted-files":
+    case "coolify":
       return `${scope.family}:${scope.appId ?? "*"}`;
     case "chat":
       return `${scope.family}:${scope.chatId}`;

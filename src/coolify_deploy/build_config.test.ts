@@ -55,13 +55,6 @@ describe("buildConfigForFramework", () => {
     });
   });
 
-  it.each(["other", null] as const)(
-    "leaves %s entirely to railpack",
-    (framework) => {
-      expect(buildConfigForFramework(framework).buildPack).toBe("railpack");
-    },
-  );
-
   // Driven off the constant rather than a hand-written list: a new framework
   // type then fails here until someone decides how Coolify should build it.
   describe.each([...APP_FRAMEWORK_TYPES, null])(

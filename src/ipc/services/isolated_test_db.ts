@@ -202,8 +202,18 @@ export async function prepareIsolatedTestDatabase({
       // `app` is stale, so persist and pass the branch we actually created.
       // This marker distinguishes safe cleanup residue from an env that may
       // still target the temporary branch across process restarts.
+      let cleanupApp: typeof app = { ...app, neonTestBranchId: branchId };
       try {
-        const cleanupApp = await markTestBranchCleanupOnly(app, branchId);
+        cleanupApp = await markTestBranchCleanupOnly(app, branchId);
+      } catch (error) {
+        // The environment is already safe. Keep cleanup best-effort with the
+        // raw branch id so a transient SQLite failure does not turn into a
+        // guaranteed Neon leak; a successful delete will clear the row marker.
+        logger.error(
+          `Failed to persist cleanup-only state for test branch ${branchId} on app ${app.id}: ${error}`,
+        );
+      }
+      try {
         await deleteTempTestBranch(cleanupApp);
       } catch (error) {
         logger.error(

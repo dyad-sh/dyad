@@ -385,6 +385,37 @@ describe("prepareIsolatedTestDatabase — Neon happy path", () => {
     }
   });
 
+  it("still deletes the raw branch when cleanup-only persistence fails", async () => {
+    mocks.createTempTestBranch.mockResolvedValue({
+      branchId: "test-br",
+      databaseUrl: "postgres://temp",
+      neonAuthBaseUrl: "https://auth",
+      cookieSecret: "secret",
+    });
+    mocks.markTestBranchCleanupOnly.mockRejectedValueOnce(
+      new Error("sqlite busy"),
+    );
+    mocks.runningApps.set(1, { proxyUrl: "http://localhost:42100" });
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("ok"));
+    try {
+      const prepared = await prepareIsolatedTestDatabase({
+        app: makeApp({ neonProjectId: "proj-1" }),
+        emit,
+        runtimeMode: "host",
+      });
+
+      await prepared.teardown();
+
+      expect(mocks.deleteTempTestBranch).toHaveBeenCalledWith(
+        expect.objectContaining({ neonTestBranchId: "test-br" }),
+      );
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it("keeps the branch tracked when restoring .env.local fails", async () => {
     mocks.readEnvFileIfExists.mockResolvedValue("POSTGRES_URL=real\n");
     mocks.createTempTestBranch.mockResolvedValue({

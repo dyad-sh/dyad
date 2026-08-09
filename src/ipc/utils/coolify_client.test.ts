@@ -116,9 +116,6 @@ describe("createApplicationFromPrivateRepo", () => {
       build: {
         buildPack: "railpack",
         portsExposes: "80",
-        isStatic: true,
-        isSpa: true,
-        publishDirectory: "/dist",
       },
       domains: "app.example.com",
     });
@@ -126,9 +123,6 @@ describe("createApplicationFromPrivateRepo", () => {
     expect(body).toMatchObject({
       build_pack: "railpack",
       ports_exposes: "80",
-      is_static: true,
-      is_spa: true,
-      publish_directory: "/dist",
       domains: "app.example.com",
       autogenerate_domain: false,
     });
@@ -286,6 +280,24 @@ describe("what a failure tells telemetry", () => {
     await expect(client().listServers()).rejects.toMatchObject({
       message: expect.not.stringContaining("coolify.internal.acme.com"),
     });
+  });
+
+  it("keeps a host named by a DNS failure out of telemetry", async () => {
+    // The address is deliberately left out of the message, but a connect
+    // failure puts it back: "getaddrinfo ENOTFOUND <their box>". The user
+    // needs to read that to fix a typo; nothing reports it.
+    const failing = vi.fn(async () => {
+      throw new Error("getaddrinfo ENOTFOUND coolify.internal.acme.com");
+    });
+    vi.stubGlobal("fetch", failing);
+
+    const err = await client()
+      .listServers()
+      .then(() => null)
+      .catch((e: unknown) => e as Error);
+
+    expect(err?.message).toContain("coolify.internal.acme.com");
+    expect(shouldFilterTelemetryException(err)).toBe(true);
   });
 
   it("tells the user why, and keeps that out of telemetry", async () => {

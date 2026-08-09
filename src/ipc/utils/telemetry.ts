@@ -6,6 +6,7 @@ import {
 } from "@/errors/dyad_error";
 import { isGenericFetchFailedError } from "@/lib/posthogTelemetry";
 import { TelemetryEventPayload } from "@/ipc/types";
+import { COOLIFY_TRANSPORT_ERROR_NAME } from "@/ipc/utils/coolify_client";
 
 const logger = log.scope("telemetry");
 const FILTERED_EXCEPTION_MESSAGES = new Set([
@@ -76,6 +77,13 @@ export function shouldFilterTelemetryException(error: unknown): boolean {
   // whatever that machine chose to say — which can name a host, a path or a
   // connection string. The user still sees it; nothing reports it.
   if (error instanceof Error && error.name === "CoolifyRequestError") {
+    return true;
+  }
+
+  // Same reasoning one layer down: a request that never reached the instance
+  // fails with the host in its message — "getaddrinfo ENOTFOUND <their box>" —
+  // and its kind is External, which is not otherwise filtered.
+  if (error instanceof Error && error.name === COOLIFY_TRANSPORT_ERROR_NAME) {
     return true;
   }
 

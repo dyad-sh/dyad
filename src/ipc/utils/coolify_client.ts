@@ -11,6 +11,12 @@ import {
   type CoolifyServerInfo,
 } from "@/ipc/types/coolify";
 
+/**
+ * Marks a failure to reach the instance at all, which telemetry filters by
+ * name: the message names a machine the user runs, not a first-party API.
+ */
+export const COOLIFY_TRANSPORT_ERROR_NAME = "CoolifyTransportError";
+
 export interface CoolifyClientOptions {
   instanceUrl: string;
   token: string;
@@ -55,24 +61,14 @@ export function isCoolifyStatus(error: unknown, status: number): boolean {
 /**
  * How an application should be built and served.
  *
- * A Vite app without a Nitro server layer compiles to static files with no
- * process to run, so a build pack alone has nothing to start and the container
- * exits. Those pair a build pack with `isStatic`, which serves the built output
- * with nginx — not Coolify's `static` build pack, which skips the build. See
- * buildConfigForFramework.
+ * Almost every field is left undefined: railpack reads the app and decides for
+ * itself, and a field Dyad does not send is one Coolify keeps as configured
+ * rather than having replaced on every deploy. See buildConfigForFramework for
+ * what is still worth saying.
  */
 export interface CoolifyBuildConfig {
-  buildPack: "nixpacks" | "railpack";
+  buildPack: "railpack";
   portsExposes: string;
-  /**
-   * Left undefined unless Dyad has something to say. An undefined field is
-   * not sent, so Coolify keeps whatever is already configured there rather
-   * than having it replaced on every deploy.
-   */
-  isStatic?: boolean;
-  /** Rewrites unknown paths to index.html so client-side routes resolve. */
-  isSpa?: boolean;
-  publishDirectory?: string;
   /**
    * How to run the built app, for frameworks whose build output is not
    * runnable through a package.json script. Omitted for static sites, which
@@ -163,17 +159,20 @@ export class CoolifyClient {
       : err instanceof Error
         ? err.message
         : String(err);
-    // The address stays out of the message. External errors are reported to
-    // telemetry with their message verbatim, and this one is a private
-    // machine the user runs — every other integration here talks to a
-    // first-party API, so the policy had never met a host worth protecting.
-    // It is logged locally instead, where diagnosing a typo still needs it.
+    // Keeping this.base out of the message is not enough on its own: a DNS or
+    // connect failure puts the host in `detail` too — "getaddrinfo ENOTFOUND
+    // coolify.internal.example.com" — and External is not a telemetry-filtered
+    // kind. So the message keeps everything that helps the user, and the name
+    // is what stops it being reported. The address is logged locally, where
+    // diagnosing a typo still needs it.
     logger.error(`Coolify unreachable at ${this.base}: ${detail}`);
-    return new DyadError(
+    const error = new DyadError(
       `Could not reach your Coolify instance: ${detail}. Check the address ` +
         `and that the instance is running.`,
       DyadErrorKind.External,
     );
+    error.name = COOLIFY_TRANSPORT_ERROR_NAME;
+    return error;
   }
 
   /** Bearer tokens are short; anything long means we are sending the wrong value. */
@@ -391,9 +390,6 @@ export class CoolifyClient {
       name: params.name,
       build_pack: params.build.buildPack,
       ports_exposes: params.build.portsExposes,
-      is_static: params.build.isStatic,
-      is_spa: params.build.isSpa,
-      publish_directory: params.build.publishDirectory,
       start_command: params.build.startCommand,
       domains: params.domains ?? undefined,
       // Without a domain Coolify generates an sslip.io address from the
@@ -437,13 +433,6 @@ export class CoolifyClient {
       // about is left out of the request entirely, so a setting the user or
       // the app put there survives a redeploy instead of being replaced by a
       // default Dyad invented.
-      if (patch.build.isStatic !== undefined) {
-        body.is_static = patch.build.isStatic;
-      }
-      if (patch.build.isSpa !== undefined) body.is_spa = patch.build.isSpa;
-      if (patch.build.publishDirectory !== undefined) {
-        body.publish_directory = patch.build.publishDirectory;
-      }
       if (patch.build.startCommand !== undefined) {
         body.start_command = patch.build.startCommand;
       }

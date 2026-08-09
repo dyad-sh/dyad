@@ -526,16 +526,6 @@ export const coolifyAppConnections = sqliteTable("coolify_app_connections", {
   lastDeployedAt: integer("last_deployed_at", { mode: "timestamp" }),
 });
 
-export const coolifyAppConnectionsRelations = relations(
-  coolifyAppConnections,
-  ({ one }) => ({
-    app: one(apps, {
-      fields: [coolifyAppConnections.appId],
-      references: [apps.id],
-    }),
-  }),
-);
-
 export const appsRelations = relations(apps, ({ many, one }) => ({
   chats: many(chats),
   versions: many(versions),
@@ -543,10 +533,6 @@ export const appsRelations = relations(apps, ({ many, one }) => ({
   collection: one(appCollections, {
     fields: [apps.collectionId],
     references: [appCollections.id],
-  }),
-  coolifyConnection: one(coolifyAppConnections, {
-    fields: [apps.id],
-    references: [coolifyAppConnections.appId],
   }),
 }));
 

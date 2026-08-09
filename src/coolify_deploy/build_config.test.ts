@@ -12,11 +12,6 @@ describe("buildConfigForFramework", () => {
     expect(buildConfigForFramework("vite")).toEqual({
       buildPack: "railpack",
       portsExposes: "3000",
-      // Undefined rather than false: a field Dyad has no opinion on is not
-      // sent, so Coolify keeps whatever is configured there.
-      isStatic: undefined,
-      isSpa: undefined,
-      publishDirectory: undefined,
       startCommand: undefined,
     });
   });
@@ -27,20 +22,27 @@ describe("buildConfigForFramework", () => {
     expect(buildConfigForFramework("vite-nitro")).toEqual({
       buildPack: "railpack",
       portsExposes: "3000",
-      isStatic: undefined,
-      isSpa: undefined,
-      publishDirectory: undefined,
       startCommand: "node .output/server/index.mjs",
     });
   });
 
   it("defers to the app when it names its own entry point", () => {
-    // The Nitro conversion writes a start script now. Sending a command over
-    // the top of it would override an app that knows its own build better —
-    // a moved Nitro output directory, a wrapper script.
+    // Empty, not absent. Coolify keeps a start command once given one and
+    // prefers it over the app's own script, so an app converted before it
+    // wrote a `start` script would go on running the value an earlier deploy
+    // left behind. Sending "" is what hands priority back to the app.
     expect(
       buildConfigForFramework("vite-nitro", { declaresStart: true })
         .startCommand,
+    ).toBe("");
+  });
+
+  it("leaves a start command alone for a framework Dyad never sets one for", () => {
+    // Next.js carries `next start`, so Dyad has never supplied a command for
+    // it — and a value the user set in Coolify is theirs, not a stale one of
+    // ours to clear.
+    expect(
+      buildConfigForFramework("nextjs", { declaresStart: true }).startCommand,
     ).toBeUndefined();
   });
 
@@ -49,9 +51,6 @@ describe("buildConfigForFramework", () => {
     expect(buildConfigForFramework("nextjs")).toEqual({
       buildPack: "railpack",
       portsExposes: "3000",
-      isStatic: undefined,
-      isSpa: undefined,
-      publishDirectory: undefined,
       startCommand: undefined,
     });
   });
@@ -65,14 +64,13 @@ describe("buildConfigForFramework", () => {
 
   // Driven off the constant rather than a hand-written list: a new framework
   // type then fails here until someone decides how Coolify should build it.
-  // vite-nitro shipped broken because the old list asserted nixpacks for it.
   describe.each([...APP_FRAMEWORK_TYPES, null])(
     "every framework type (%s)",
     (framework: AppFrameworkType | null) => {
       const config = buildConfigForFramework(framework);
 
-      it("produces a build pack the client can send", () => {
-        expect(["railpack", "nixpacks"]).toContain(config.buildPack);
+      it("builds with railpack", () => {
+        expect(config.buildPack).toBe("railpack");
       });
 
       it("always names a port", () => {
@@ -80,18 +78,14 @@ describe("buildConfigForFramework", () => {
         expect(config.portsExposes).toMatch(/^\d+$/);
       });
 
-      it("serves static output from a publish directory, or runs a process", () => {
-        // nginx needs somewhere to serve from; a server needs something to run.
-        if (config.isStatic) {
-          expect(config.publishDirectory).toBeTruthy();
-          expect(config.startCommand).toBeUndefined();
-        } else {
-          expect(config.publishDirectory).toBeUndefined();
-        }
-      });
-
-      it("only rewrites unknown paths when it is serving static files", () => {
-        if (config.isSpa) expect(config.isStatic).toBe(true);
+      it("claims nothing beyond the build pack, the port, and a start command", () => {
+        // Everything else is the build pack's to decide, and a field Dyad
+        // does not send is one Coolify keeps as already configured.
+        expect(Object.keys(config).sort()).toEqual([
+          "buildPack",
+          "portsExposes",
+          "startCommand",
+        ]);
       });
     },
   );

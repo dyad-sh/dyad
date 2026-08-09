@@ -1,14 +1,8 @@
-import type { AppFrameworkType } from "@/lib/framework_constants";
+import {
+  NITRO_START_COMMAND,
+  type AppFrameworkType,
+} from "@/lib/framework_constants";
 import type { CoolifyBuildConfig } from "@/ipc/utils/coolify_client";
-
-/**
- * Nitro's node-server preset writes its entry here and listens on 3000.
- *
- * Nothing runs it on its own: the scaffold has no `start` script, and its
- * `preview` script is `vite preview`, which serves static assets and would
- * answer none of the server routes.
- */
-const NITRO_START_COMMAND = "node .output/server/index.mjs";
 
 /**
  * What the app says about itself, read from its own files.
@@ -32,17 +26,12 @@ export const NO_DECLARATIONS: AppDeclarations = { declaresStart: false };
 /**
  * The part of a build configuration Dyad supplies.
  *
- * Every field is optional, because every field is a claim that overrides what
- * the build pack would have decided. A claim is worth making only where Dyad
- * knows something the build pack cannot read off the app, and each one should
- * be retired once that stops being true.
+ * One field, because there is one thing left worth saying. Anything Dyad adds
+ * here is a claim that overrides what the build pack would have decided, and
+ * is worth making only where Dyad knows something the build pack cannot read
+ * off the app.
  */
 interface FrameworkKnowledge {
-  /** Overrides the port below, for an app that cannot be told which to use. */
-  portsExposes?: string;
-  isStatic?: boolean;
-  isSpa?: boolean;
-  publishDirectory?: string;
   /**
    * Used only when the app declares no entry point of its own. An app that
    * names one is describing something Dyad cannot see — a changed Nitro
@@ -107,12 +96,17 @@ export function buildConfigForFramework(
 
   return {
     buildPack: "railpack",
-    portsExposes: known.portsExposes ?? DEFAULT_PORT,
-    isStatic: known.isStatic,
-    isSpa: known.isSpa,
-    publishDirectory: known.publishDirectory,
-    startCommand: declarations.declaresStart
-      ? undefined
-      : known.fallbackStartCommand,
+    portsExposes: DEFAULT_PORT,
+    // Absent where Dyad has never supplied one, so a value the user set in
+    // Coolify survives a redeploy. Where it has — an app converted before the
+    // conversion started writing a `start` script — the stored command is now
+    // stale, and Coolify prefers its own over the app's, so it is cleared
+    // rather than left: only then does the script the app carries take effect.
+    startCommand:
+      known.fallbackStartCommand === undefined
+        ? undefined
+        : declarations.declaresStart
+          ? ""
+          : known.fallbackStartCommand,
   };
 }

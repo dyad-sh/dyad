@@ -47,3 +47,12 @@ export function isNeonSupportedFramework({
       NEXTJS_CONFIG_FILES.includes(file) || VITE_CONFIG_FILES.includes(file),
   );
 }
+
+/**
+ * Where Nitro's node-server preset writes the entry point it builds.
+ *
+ * One copy: the conversion writes this into an app's `start` script, and the
+ * deploy sends the same value for apps converted before it did. Two copies
+ * could drift, and the two populations would then run different commands.
+ */
+export const NITRO_START_COMMAND = "node .output/server/index.mjs";

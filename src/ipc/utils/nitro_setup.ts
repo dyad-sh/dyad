@@ -13,14 +13,12 @@ import {
   ViteConfigBackup,
 } from "@/ipc/utils/vite_config_patcher";
 import { detectFrameworkType } from "@/ipc/utils/framework_utils";
+import { NITRO_START_COMMAND } from "@/lib/framework_constants";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("nitro_setup");
 
 const NITRO_DEPENDENCIES = ["nitro", "jiti"];
-
-/** Where Nitro's node-server preset writes the entry point it builds. */
-const NITRO_START_SCRIPT = "node .output/server/index.mjs";
 
 const NITRO_CONFIG_CONTENTS = `import { defineConfig } from "nitro";
 
@@ -41,6 +39,16 @@ async function writeNitroConfigIfMissing(
   }
   await fs.writeFile(filePath, NITRO_CONFIG_CONTENTS, "utf8");
   return { filePath, wasCreated: true };
+}
+
+/**
+ * The indentation a JSON file already uses, read off its first indented line.
+ * Falls back to two spaces, which is what package managers write.
+ */
+function detectIndent(contents: string): string | number {
+  const match = contents.match(/\n([ \t]+)"/);
+  if (!match?.[1]) return 2;
+  return match[1].startsWith("\t") ? "\t" : match[1].length;
 }
 
 /**
@@ -74,13 +82,15 @@ async function addStartScriptIfMissing(
   }
   packageJson.scripts = {
     ...packageJson.scripts,
-    start: NITRO_START_SCRIPT,
+    start: NITRO_START_COMMAND,
   };
-  // Two spaces and a trailing newline, which is what package managers write,
-  // so this does not show up as a whole-file diff.
+  // Written back in the file's own style. Assuming two spaces would reformat
+  // a manifest committed with tabs or four, turning a one-line addition into
+  // a whole-file diff that churns every later merge.
   await fs.writeFile(
     filePath,
-    `${JSON.stringify(packageJson, null, 2)}\n`,
+    JSON.stringify(packageJson, null, detectIndent(contents)) +
+      (contents.endsWith("\n") ? "\n" : ""),
     "utf8",
   );
   return { wasAdded: true, backup: contents };
@@ -173,12 +183,16 @@ export async function ensureNitroOnViteApp(
     );
 
     viteConfigBackup = await addNitroToViteConfig(appPath);
-    startScript = await addStartScriptIfMissing(appPath);
 
     const result = await installPackages({
       packages: NITRO_DEPENDENCIES,
       appPath,
     });
+    // After the install, because the backup taken here is what a rollback
+    // restores: taken earlier it would also revert the dependencies the
+    // install just wrote, leaving package.json without nitro while
+    // node_modules still has it.
+    startScript = await addStartScriptIfMissing(appPath);
 
     return {
       warningMessages: result.warningMessages,

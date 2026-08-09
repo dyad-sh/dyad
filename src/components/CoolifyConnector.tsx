@@ -126,14 +126,17 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
     setIsEditingConnection(false);
   }, [appId, status?.hasToken]);
 
-  if (appId === null || isStatusLoading) {
+  // A query react-query has paused — the renderer is offline — is pending
+  // with no data and no error, which is not a failure and must not read as
+  // one. It is waiting, so it shows as waiting.
+  if (appId === null || isStatusLoading || (!status && !statusError)) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Loader2 className="h-4 w-4 animate-spin" /> Loading...
       </div>
     );
   }
-  if (!status) {
+  if (statusError) {
     // Rendering nothing here left the tab blank with no message and no way
     // back: the query does not retry, and nothing else surfaces its failure,
     // so the panel stayed empty until a remount. The discovery query beside
@@ -144,11 +147,7 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
         data-testid="coolify-status-error"
       >
         <p className="font-medium">Could not read this app's Coolify setup</p>
-        <p className="mt-1">
-          {statusError
-            ? getErrorMessage(statusError)
-            : "No response from the app's settings."}
-        </p>
+        <p className="mt-1">{getErrorMessage(statusError)}</p>
         <Button
           variant="outline"
           size="sm"
@@ -160,6 +159,9 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
       </div>
     );
   }
+
+  // Unreachable: the two branches above cover every state without data.
+  if (!status) return null;
 
   const can = selectCoolifyDeployCapabilities(snapshot);
   const hasGithubRepo = Boolean(app?.githubOrg && app?.githubRepo);

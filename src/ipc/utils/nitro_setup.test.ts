@@ -79,13 +79,17 @@ export default defineConfig({
   });
 
   it("fails the conversion when the manifest cannot be read", async () => {
-    // This asserted the opposite until now, and only passed because it mocked
-    // installPackages away: that is what reads the manifest first, so a
-    // broken one stops the conversion there and never reaches the step that
-    // adds a start script.
-    installPackagesMock.mockRejectedValueOnce(
-      new Error("Invalid package.json"),
-    );
+    // An earlier version of this test asserted the opposite and passed only
+    // because it mocked installPackages away — installPackages is what reads
+    // the manifest first, so a broken one stops the conversion there.
+    //
+    // Which is what this asserts: the mock reads the file the way the real
+    // one does, so a manifest that parses gets past it and a broken one does
+    // not. Rejecting unconditionally would prove nothing about the manifest.
+    installPackagesMock.mockImplementation(async ({ appPath: dir }) => {
+      JSON.parse(await fs.readFile(path.join(dir, "package.json"), "utf8"));
+      return { warningMessages: [] };
+    });
     await fs.writeFile(
       path.join(appPath, "package.json"),
       "{ not json",
@@ -94,6 +98,7 @@ export default defineConfig({
 
     await expect(ensureNitroOnViteApp(appPath)).rejects.toThrow();
 
+    // Left as it was found, rather than rewritten by a step that never ran.
     expect(await fs.readFile(path.join(appPath, "package.json"), "utf8")).toBe(
       "{ not json",
     );

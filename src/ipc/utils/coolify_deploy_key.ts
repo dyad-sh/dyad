@@ -84,7 +84,7 @@ export function coolifyKeyName(keyName: string, publicKey: string): string {
   return `${keyName}_${fingerprint}`;
 }
 
-export function readPublicKey(keyName: string): string | null {
+function readPublicKey(keyName: string): string | null {
   try {
     return fs.readFileSync(`${keyFilePath(keyName)}.pub`, "utf8").trim();
   } catch {

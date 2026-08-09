@@ -4,12 +4,8 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 
-// ESM exports cannot be spied on, and both paths are read at call time.
+// ESM exports cannot be spied on, and the directory is read at call time.
 const testHome = vi.hoisted(() => ({ dir: "" }));
-vi.mock("os", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("os")>();
-  return { ...actual, homedir: () => testHome.dir || actual.homedir() };
-});
 vi.mock("@/paths/paths", () => ({
   getUserDataPath: () => testHome.dir,
 }));
@@ -60,8 +56,8 @@ const hasSshSigning = (() => {
 })();
 
 /**
- * A throwaway directory standing in for both Dyad's userData and the home
- * the migration reads from, so these never touch anything real.
+ * A throwaway directory standing in for Dyad's userData, so these never
+ * touch anything real.
  *
  * This is the one module in the feature that writes keys to disk, and the
  * half-written-keypair case it recovers from cannot be reproduced without a

@@ -660,6 +660,9 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
                   Disconnect this app from Coolify?
                 </AlertDialogTitle>
                 <AlertDialogDescription>
+                  {snapshot.type === "running"
+                    ? "This also abandons the deployment currently running. "
+                    : null}
                   The application keeps running on your server, but Dyad forgets
                   how to reach it. Connecting this app again builds a second one
                   beside it, and the two will compete for the same domain.

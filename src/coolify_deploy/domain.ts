@@ -26,6 +26,12 @@ export function normalizeCoolifyDomain(input: string): string | null {
   if (scheme !== "https:" && scheme !== "http:") return null;
   if (!url.hostname) return null;
 
+  // A path and a port are kept: Coolify accepts both, and neither affects
+  // the hostname the DNS pre-check resolves. Credentials are not — they are
+  // not part of an address, and storing them would put a password into the
+  // Coolify configuration and into this app's record.
+  if (url.username || url.password) return null;
+
   return url.toString().replace(/\/$/, "");
 }
 

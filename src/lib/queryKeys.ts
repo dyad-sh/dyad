@@ -326,7 +326,16 @@ export const queryKeys = {
     all: ["coolify"] as const,
     status: ({ appId }: { appId: number }) =>
       ["coolify", "status", appId] as const,
-    discovery: ["coolify", "discovery"] as const,
+    /**
+     * Keyed by instance, because servers and projects belong to one. A shared
+     * key served the previous instance's list from cache while a new one was
+     * still loading, and the connection form offered it — letting an app be
+     * pinned to a server that exists nowhere on the instance now configured.
+     */
+    discovery: (instanceUrl: string | null) =>
+      ["coolify", "discovery", instanceUrl ?? "none"] as const,
+    /** Every instance's list, for invalidating after a token change. */
+    discoveryAll: ["coolify", "discovery"] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────

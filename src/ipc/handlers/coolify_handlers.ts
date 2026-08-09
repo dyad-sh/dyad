@@ -230,6 +230,33 @@ export function registerCoolifyHandlers() {
       }
       await getApp(appId);
       const current = await readConnectionState(appId);
+      // Coolify cannot move an application between a server, a project or an
+      // environment, so a change to any of the three releases it. Asked of
+      // those directly: keying it on the resulting kind was wrong twice — on
+      // the kind alone an ordinary domain edit looks like a move and throws
+      // away a failed deploy's account of itself, and on whether an
+      // application was released a move away from an app that never got one
+      // stops looking like a move at all.
+      const movedHost =
+        current.kind !== "none" &&
+        (current.serverUuid !== connection.serverUuid ||
+          current.projectUuid !== connection.projectUuid ||
+          current.environmentName !== connection.environmentName);
+      // Coolify cannot regenerate an address once one is set, so
+      // updateApplication never sends an empty domains value and a cleared
+      // domain would leave the record saying "none" while the instance kept
+      // serving the old one. The form refuses this; so must the handler,
+      // which a second window working from a stale status can still reach.
+      //
+      // Not while moving: the application it had is released, so there is no
+      // longer one whose address this could disagree with.
+      if (!movedHost && current.kind !== "none" && current.domain && !domain) {
+        throw new DyadError(
+          "A domain cannot be removed from Dyad once it is set. Change it to " +
+            "another domain here, or clear it in Coolify.",
+          DyadErrorKind.Validation,
+        );
+      }
       const next = applyCoolifyConnectionChange(current, {
         type: "CONFIGURED",
         serverUuid: connection.serverUuid,
@@ -237,20 +264,8 @@ export function registerCoolifyHandlers() {
         environmentName: connection.environmentName,
         domain,
       });
-      // Coolify cannot move an application between hosts, so the reducer
-      // releases it and the app drops back to configured. Nothing has been
-      // deployed where it is going, so the machine's finished result would be
-      // shown against a place it never ran.
-      //
-      // Asked of the server and project directly. Keying it on the resulting
-      // kind was wrong twice: on the kind alone an ordinary domain edit looks
-      // like a move and throws away a failed deploy's account of itself, and
-      // on whether an application was released a move away from an app that
-      // never got one stops looking like a move at all.
-      const movedHost =
-        current.kind !== "none" &&
-        (current.serverUuid !== connection.serverUuid ||
-          current.projectUuid !== connection.projectUuid);
+      // Nothing has been deployed where it is going, so the machine's
+      // finished result would be shown against a place it never ran.
       if (movedHost) {
         coolifyDeployRegistry.cancelDeploy(appId);
       }

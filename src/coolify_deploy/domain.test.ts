@@ -44,6 +44,16 @@ describe("normalizeCoolifyDomain", () => {
   it("rejects a scheme Coolify does not support", () => {
     expect(normalizeCoolifyDomain("ftp://app.example.com")).toBeNull();
   });
+
+  it("refuses credentials, which are not part of an address", () => {
+    // A path and a port are Coolify's business and survive; a password is
+    // not, and storing one would put it in the app's record and in the
+    // Coolify configuration.
+    expect(
+      normalizeCoolifyDomain("https://user:pw@app.example.com"),
+    ).toBeNull();
+    expect(normalizeCoolifyDomain("https://user@app.example.com")).toBeNull();
+  });
 });
 
 describe("coolifyDomainHostname", () => {

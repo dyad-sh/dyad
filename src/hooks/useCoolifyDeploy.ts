@@ -25,7 +25,7 @@ export function useCoolifyDeploy(appId: number | null) {
   });
 
   const discovery = useQuery({
-    queryKey: queryKeys.coolify.discovery,
+    queryKey: queryKeys.coolify.discovery(status.data?.instanceUrl ?? null),
     queryFn: () => ipc.coolify.discover(),
     enabled: appId !== null && Boolean(status.data?.hasToken),
   });
@@ -90,7 +90,7 @@ export function useCoolifyDeploy(appId: number | null) {
     onSuccess: async () => {
       await refreshAllStatuses();
       await queryClient.invalidateQueries({
-        queryKey: queryKeys.coolify.discovery,
+        queryKey: queryKeys.coolify.discoveryAll,
       });
     },
   });
@@ -117,7 +117,7 @@ export function useCoolifyDeploy(appId: number | null) {
     mutationFn: (name: string) => ipc.coolify.createProject({ name }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: queryKeys.coolify.discovery,
+        queryKey: queryKeys.coolify.discoveryAll,
       });
     },
   });

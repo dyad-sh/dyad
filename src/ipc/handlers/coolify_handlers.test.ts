@@ -262,6 +262,41 @@ describe("moving an app to a different server or project", () => {
   });
 });
 
+describe("clearing a domain", () => {
+  it("is refused for an app that is staying put", () => {
+    // Coolify cannot regenerate an address once one is set, so the record
+    // would say "none" while the instance kept serving the old one. The form
+    // refuses it; a second window working from a stale status reaches here.
+    return expect(
+      call("coolify:save-connection", {
+        appId: 1,
+        connection: {
+          serverUuid: "srv-1",
+          projectUuid: "prj-1",
+          environmentName: "production",
+          domain: null,
+        },
+      }),
+    ).rejects.toThrow(/cannot be removed/);
+  });
+
+  it("is allowed when the app is moving, which releases the application", async () => {
+    // Nothing is left whose address this could disagree with.
+    await call("coolify:save-connection", {
+      appId: 1,
+      connection: {
+        serverUuid: "srv-2",
+        projectUuid: "prj-1",
+        environmentName: "production",
+        domain: null,
+      },
+    });
+
+    expect(connection?.domain).toBeNull();
+    expect(connection?.applicationUuid).toBeNull();
+  });
+});
+
 describe("moving an app that never got an application", () => {
   it("still clears the previous server's failed result", async () => {
     // A deploy can fail before the application is created — an unreachable

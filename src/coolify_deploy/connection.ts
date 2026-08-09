@@ -190,12 +190,17 @@ export function applyCoolifyConnectionChange(
         domain: change.domain,
       };
       if (state.kind === "none") return { kind: "configured", ...chosen };
+      // Environment counts with server and project: Coolify cannot move an
+      // application between any of the three, so a change to one releases it.
+      // Only ever "production" today, which is what makes this latent rather
+      // than broken — and what makes it worth fixing before it is not.
       const movedHost =
         state.serverUuid !== change.serverUuid ||
-        state.projectUuid !== change.projectUuid;
+        state.projectUuid !== change.projectUuid ||
+        state.environmentName !== change.environmentName;
       if (movedHost) return { kind: "configured", ...chosen };
-      // Same host: only the domain or environment changed, so whatever exists
-      // in Coolify is still the right application.
+      // Same host: only the domain changed, so whatever exists in Coolify is
+      // still the right application.
       if (state.kind === "configured") return { kind: "configured", ...chosen };
       if (state.kind === "provisioned") {
         return {

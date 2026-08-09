@@ -22,14 +22,16 @@ vi.mock("@/ipc/handlers/github_handlers", () => ({
 
 // Real git would shell out to dugite against a directory that does not exist.
 const git = vi.hoisted(() => ({
+  uncommitted: [] as string[],
   hashes: { HEAD: "abc", remote: "abc" } as Record<string, string>,
 }));
 vi.mock("@/ipc/utils/git_utils", () => ({
   getCurrentCommitHash: async ({ ref }: { ref: string }) =>
     ref === "HEAD" ? git.hashes.HEAD : git.hashes.remote,
+  getGitUncommittedFiles: async () => git.uncommitted,
 }));
 
-// Real key handling spawns ssh-keygen and writes to ~/.ssh.
+// Real key handling writes a keypair into ~/.ssh, which a test must not do.
 vi.mock("@/ipc/utils/coolify_deploy_key", () => ({
   repoKeyName: (owner: string, repo: string) => `dyad_${owner}_${repo}`,
   // Identity here: the fingerprint suffix is this module's own concern, and
@@ -275,6 +277,7 @@ beforeEach(() => {
   sideEffects = new Map();
   framework.type = "vite";
   framework.declaresStart = false;
+  git.uncommitted = [];
   git.hashes = { HEAD: "abc", remote: "abc" };
   neon.branchTypes = [];
   neon.trustedDomains = [];
@@ -776,6 +779,36 @@ describe("losing contact with Coolify", () => {
   });
 });
 
+describe("deploying to an instance the app does not belong to", () => {
+  it("refuses rather than treating the 404 as a deleted application", async () => {
+    // The application id is the one value a user cannot re-enter, and the
+    // application is still running on the instance they left. Recreating here
+    // would build a second one beside it and lose the handle to the first.
+    framework.type = "nextjs";
+    const app = await seedApp({ connection: { applicationUuid: APP_UUID } });
+    happyPathRoutes();
+    route(`GET /applications/${APP_UUID}`, {}, 404);
+    // The instance answers, but the server this app is pinned to is not on it.
+    route("GET /servers", [{ uuid: "srv-somewhere-else", name: "other" }]);
+    const clock = createFakeClock();
+
+    await expect(
+      drive(
+        clock,
+        runDeployPipeline({
+          appId: app.id,
+          signal: new AbortController().signal,
+          report: recorder(),
+          clock,
+        }),
+      ),
+    ).rejects.toThrow(/not on the Coolify instance/);
+
+    const row = await readApp(app.id);
+    expect(row?.applicationUuid).toBe(APP_UUID);
+  });
+});
+
 describe("recreating an application", () => {
   it("does not blank a newer deployment's uuid after being cancelled", async () => {
     const app = await seedApp({
@@ -1112,6 +1145,29 @@ describe("pre-deploy warnings", () => {
     );
 
     expect(report.text()).toMatch(/not on origin\/main/);
+  });
+
+  it("says when edits are only on disk, which no commit hash reveals", async () => {
+    // Deploying what is on GitHub is the intent, but uncommitted work does
+    // not move HEAD, so the push check above cannot see it. A user looking at
+    // edits Dyad just made would otherwise get a green deploy without them.
+    git.uncommitted = ["src/App.tsx", "src/main.tsx"];
+    const app = await seedApp();
+    happyPathRoutes();
+    const report = loggingRecorder();
+    const clock = createFakeClock();
+
+    await drive(
+      clock,
+      runDeployPipeline({
+        appId: app.id,
+        signal: new AbortController().signal,
+        report,
+        clock,
+      }),
+    );
+
+    expect(report.text()).toMatch(/2 uncommitted files/);
   });
 
   it("says nothing when the branch is pushed", async () => {

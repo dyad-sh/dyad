@@ -29,7 +29,7 @@ import { useCoolifyDeploy } from "@/hooks/useCoolifyDeploy";
 import { selectCoolifyDeployCapabilities } from "@/coolify_deploy/capabilities";
 import { getErrorMessage } from "@/lib/errors";
 import { COOLIFY_REQUIRED_SCOPES } from "@/shared/coolify_scopes";
-import { coolifyInsecureWarning } from "@/components/coolify_insecure_warning";
+import { coolifyInsecureWarning } from "@/coolify_deploy/insecure_warning";
 import { normalizeCoolifyDomain } from "@/coolify_deploy/domain";
 import {
   isSecureInstanceUrl,
@@ -700,7 +700,7 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
 
       <Button
         size="sm"
-        disabled={!can.canDeploy || !hasGithubRepo}
+        disabled={!can.canDeploy || !hasGithubRepo || belongsElsewhere}
         data-testid="coolify-deploy"
         onClick={async () => {
           try {

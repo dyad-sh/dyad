@@ -3,6 +3,7 @@ import log from "electron-log";
 import { db } from "@/db";
 import { apps, coolifyAppConnections } from "@/db/schema";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
+import { getClient, readConnectionState } from "./store";
 import { readSettings } from "@/main/settings";
 import { getDyadAppPath } from "@/paths/paths";
 import {
@@ -17,10 +18,8 @@ import {
 } from "@/ipc/utils/coolify_client";
 import {
   applyCoolifyConnectionChange,
-  coolifyConnectionFromRow,
   coolifyConnectionRow,
   type CoolifyConnectionChange,
-  type CoolifyConnectionState,
 } from "./connection";
 import {
   coolifyKeyName,
@@ -30,7 +29,10 @@ import {
   repoKeyName,
 } from "@/ipc/utils/coolify_deploy_key";
 import { getGitHubApiBase } from "@/ipc/handlers/github_handlers";
-import { getCurrentCommitHash } from "@/ipc/utils/git_utils";
+import {
+  getCurrentCommitHash,
+  getGitUncommittedFiles,
+} from "@/ipc/utils/git_utils";
 import {
   ensureNeonAuthTrustedDomain,
   getSelectedDeployBranchType,
@@ -59,19 +61,6 @@ export interface DeployResult {
   url: string | null;
 }
 
-function getClient(signal?: AbortSignal): CoolifyClient {
-  const settings = readSettings();
-  const token = settings.coolify?.accessToken?.value;
-  const instanceUrl = settings.coolify?.instanceUrl;
-  if (!token || !instanceUrl) {
-    throw new DyadError(
-      "Coolify is not connected. Add your instance URL and API token first.",
-      DyadErrorKind.Validation,
-    );
-  }
-  return new CoolifyClient({ instanceUrl, token, signal });
-}
-
 function throwIfAborted(signal: AbortSignal): void {
   if (signal.aborted) {
     throw new DyadError("Deployment cancelled.", DyadErrorKind.UserCancelled);
@@ -82,12 +71,6 @@ function githubSignal(signal: AbortSignal): AbortSignal {
   return AbortSignal.any([signal, AbortSignal.timeout(GITHUB_TIMEOUT_MS)]);
 }
 
-/**
- * Runs a GitHub call with the same error shape the Coolify client produces.
- *
- * Left bare, a timeout reaches the user as "signal timed out" — the whole
- * explanation for a failed deploy, with no mention of GitHub or the key.
- */
 /** Reads a body under the same classifier, since it can stall after headers. */
 async function githubBody(
   read: () => Promise<string>,
@@ -139,10 +122,9 @@ function sleep(clock: Clock, ms: number): Promise<void> {
  *
  * Read-modify-write rather than a partial update, so the record cannot end up
  * describing an application on one server and an address on another. What
- * makes that safe is the fence, not the absence of other writers: disconnect
- * and a token repoint can both land between the read and the write, and both
- * clear the server this was pinned to, so the write then matches no row at
- * all rather than putting a stale record back.
+ * makes that safe is the fence, not the absence of other writers: a disconnect
+ * landing between the read and the write deletes the row this was pinned to,
+ * so the write then matches nothing rather than putting a stale record back.
  */
 async function recordConnectionChange(
   appId: number,
@@ -171,15 +153,6 @@ async function recordConnectionChange(
 }
 
 /** The app's stored connection, or nothing when it has none. */
-async function readConnectionState(
-  appId: number,
-): Promise<CoolifyConnectionState> {
-  const row = await db.query.coolifyAppConnections.findFirst({
-    where: eq(coolifyAppConnections.appId, appId),
-  });
-  return coolifyConnectionFromRow(row ?? null);
-}
-
 /**
  * Puts Dyad's public key on the repository as a deploy key.
  *
@@ -260,9 +233,21 @@ async function ensureGithubDeployKey({
         DyadErrorKind.External,
       );
     }
-    const keys = JSON.parse(
-      await githubBody(() => listed.text(), signal),
-    ) as Array<{ key?: string }>;
+    const listedBody = await githubBody(() => listed.text(), signal);
+    let keys: Array<{ key?: string }>;
+    try {
+      keys = JSON.parse(listedBody) as Array<{ key?: string }>;
+    } catch {
+      // A proxy or a sign-in page answers 200 with HTML. Left bare that is a
+      // SyntaxError with no mention of GitHub or the deploy key, which is the
+      // whole explanation the user gets for a failed deploy.
+      throw new DyadError(
+        `GitHub returned something other than a key list for ${owner}/${repo}, ` +
+          `so Dyad could not tell whether the deploy key it holds is already ` +
+          `registered there. Try again in a moment.`,
+        DyadErrorKind.External,
+      );
+    }
     // GitHub returns the key without its trailing comment.
     const ours = publicKey.split(/\s+/).slice(0, 2).join(" ");
     if (keys.some((k) => (k.key ?? "").startsWith(ours))) {
@@ -295,6 +280,25 @@ async function ensureGithubDeployKey({
 }
 
 /**
+ * Whether the instance currently configured still knows the app's server.
+ *
+ * A failed lookup answers "yes": it is not evidence the app moved, and
+ * treating a network blip as one would refuse a deploy that would have
+ * worked.
+ */
+async function serverIsOnThisInstance(
+  client: CoolifyClient,
+  serverUuid: string,
+): Promise<boolean> {
+  try {
+    const servers = await client.listServers();
+    return servers.some((server) => server.uuid === serverUuid);
+  } catch {
+    return true;
+  }
+}
+
+/**
  * Returns a usable application uuid, recreating one that has been deleted in
  * Coolify. Without the not-found check a stale uuid is kept forever and every
  * later request targets a missing application, so retries cannot recover.
@@ -304,6 +308,7 @@ async function resolveApplication({
   savedUuid,
   privateKeyId,
   create,
+  expectedServerUuid,
   onPreviousGone,
   report,
   signal,
@@ -312,6 +317,8 @@ async function resolveApplication({
   savedUuid: string | null;
   privateKeyId: number | null;
   create: () => Promise<string>;
+  /** The server this app is pinned to, used to tell a 404 apart from a move. */
+  expectedServerUuid: string;
   /** Called once the saved application is no longer the one to deploy to. */
   onPreviousGone: () => Promise<void>;
   report: DeployReporter;
@@ -349,6 +356,21 @@ async function resolveApplication({
       }
     } catch (error) {
       if (!isCoolifyStatus(error, 404)) throw error;
+      // A 404 says the application is not on *this* instance, which is not
+      // the same as saying it was deleted. If the server it was pinned to is
+      // not here either, the token now points somewhere else and the
+      // application is still running where it always was — recreating would
+      // build a second one, and recording it as gone would throw away the one
+      // id that cannot be re-entered.
+      if (!(await serverIsOnThisInstance(client, expectedServerUuid))) {
+        throw new DyadError(
+          "This app deploys to a server that is not on the Coolify instance " +
+            "you are connected to now. Its application is still running where " +
+            "it was — connect back to that instance, or edit the connection " +
+            "to move this app here.",
+          DyadErrorKind.Precondition,
+        );
+      }
       report.log(
         "The application no longer exists in Coolify; recreating it.\n",
       );
@@ -395,6 +417,18 @@ async function warnIfBranchNotPushed({
         `Warning: this app has commits that are not on origin/${branch}. ` +
           `Coolify builds from GitHub, so those changes will not be deployed ` +
           `until they are pushed.\n`,
+      );
+    }
+    // Uncommitted work does not move HEAD, so the comparison above says
+    // nothing about it. Deploying what is on GitHub is the intent, but a user
+    // looking at edits Dyad has just made has no way to tell they are not in
+    // this build.
+    const uncommitted = await getGitUncommittedFiles({ path: appPath });
+    if (uncommitted.length > 0) {
+      report.log(
+        `Warning: this app has ${uncommitted.length} uncommitted ` +
+          `${uncommitted.length === 1 ? "file" : "files"}. Coolify builds ` +
+          `from GitHub, so those edits are not in this deployment.\n`,
       );
     }
   } catch {
@@ -536,11 +570,7 @@ export async function runDeployPipeline({
     detectFrameworkType(resolvedAppPath),
     { declaresStart: declaresStart(resolvedAppPath) },
   );
-  report.log(
-    build.portsExposes
-      ? `Building as ${build.buildPack} on port ${build.portsExposes}.\n`
-      : `Building as ${build.buildPack}, on the port Coolify picks.\n`,
-  );
+  report.log(`Building as ${build.buildPack} on port ${build.portsExposes}.\n`);
 
   const keyName = await ensureGithubDeployKey({
     owner: app.githubOrg,
@@ -573,6 +603,7 @@ export async function runDeployPipeline({
     client,
     signal,
     savedUuid: savedApplicationUuid,
+    expectedServerUuid: serverUuid,
     onPreviousGone: () =>
       recordConnectionChange(appId, serverUuid, { type: "APPLICATION_GONE" }),
     privateKeyId: key.id,

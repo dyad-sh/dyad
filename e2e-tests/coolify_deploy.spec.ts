@@ -220,8 +220,11 @@ test("shows the build log when the deployment fails", async ({
 
   await po.page.getByTestId("coolify-deploy").click();
 
-  // A failed build is only actionable if what the builder said comes back.
+  // A failed build is only actionable if what the builder said comes back —
+  // and readable. This passed before by substring-matching inside the JSON
+  // Coolify sends, so it also checks the wrapping is gone.
   await expect(po.page.getByText("npm ERR! build failed")).toBeVisible({
     timeout: Timeout.EXTRA_LONG,
   });
+  await expect(po.page.getByText('{"output"')).toHaveCount(0);
 });

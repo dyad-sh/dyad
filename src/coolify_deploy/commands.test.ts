@@ -191,6 +191,19 @@ function recorder(): DeployReporter & { deploymentUuid: string | null } {
   };
 }
 
+/** A reporter that keeps what was written, for asserting on the deploy log. */
+function loggingRecorder() {
+  let text = "";
+  return {
+    stage: () => {},
+    log: (chunk: string) => {
+      text += chunk;
+    },
+    deploymentStarted: () => {},
+    text: () => text,
+  };
+}
+
 /**
  * Advances the fake clock whenever the pipeline parks on a poll interval.
  *
@@ -592,12 +605,76 @@ describe("polling", () => {
     ).rejects.toThrow(/did not finish \(last status: failed\)/);
   });
 
+  it("shows the builder's output rather than the JSON it arrives in", async () => {
+    // Coolify sends the log as an encoded array, so piping it through put a
+    // blob of escaped newlines and quoting in front of the user — and the
+    // e2e assertion passed only by substring-matching inside it.
+    const app = await seedApp({ connection: { applicationUuid: APP_UUID } });
+    happyPathRoutes();
+    route("GET /deployments/dep-1", {
+      status: "failed",
+      logs: JSON.stringify([
+        { output: "npm ERR! build blew up" },
+        { output: "npm ERR! exit 1" },
+      ]),
+    });
+    const report = loggingRecorder();
+    const clock = createFakeClock();
+
+    await expect(
+      drive(
+        clock,
+        runDeployPipeline({
+          appId: app.id,
+          signal: new AbortController().signal,
+          report,
+          clock,
+        }),
+      ),
+    ).rejects.toThrow(/did not finish/);
+
+    const text = report.text();
+    expect(text).toContain("npm ERR! build blew up\nnpm ERR! exit 1");
+    // And none of the wrapping survives, which is what makes it readable.
+    expect(text).not.toContain('{"output"');
+    expect(text).not.toContain("\\n");
+  });
+
+  it("keeps a log that is not encoded that way", async () => {
+    // An instance reporting plain text should not lose its log to a parse
+    // that was only ever a best guess about the shape.
+    const app = await seedApp({ connection: { applicationUuid: APP_UUID } });
+    happyPathRoutes();
+    route("GET /deployments/dep-1", {
+      status: "failed",
+      logs: "plain text failure",
+    });
+    const report = loggingRecorder();
+    const clock = createFakeClock();
+
+    await expect(
+      drive(
+        clock,
+        runDeployPipeline({
+          appId: app.id,
+          signal: new AbortController().signal,
+          report,
+          clock,
+        }),
+      ),
+    ).rejects.toThrow(/did not finish/);
+
+    expect(report.text()).toContain("plain text failure");
+  });
+
   it("explains an out-of-memory kill rather than reporting a bare exit status", async () => {
     const app = await seedApp({ connection: { applicationUuid: APP_UUID } });
     happyPathRoutes();
     route("GET /deployments/dep-1", {
       status: "failed",
-      logs: "exit status -1",
+      // The shape Coolify sends. Matched against the plain text, not the
+      // JSON: the phrase surviving encoding was luck, not design.
+      logs: JSON.stringify([{ output: "exit status -1" }]),
     });
     const clock = createFakeClock();
 
@@ -1120,18 +1197,6 @@ describe("adopting a previous deployment", () => {
 });
 
 describe("pre-deploy warnings", () => {
-  function loggingRecorder() {
-    let text = "";
-    return {
-      stage: () => {},
-      log: (chunk: string) => {
-        text += chunk;
-      },
-      deploymentStarted: () => {},
-      text: () => text,
-    };
-  }
-
   it("warns when the branch has commits that are not on GitHub", async () => {
     // Coolify clones from GitHub, so unpushed work is silently not deployed.
     git.hashes = { HEAD: "local-newer", remote: "older" };

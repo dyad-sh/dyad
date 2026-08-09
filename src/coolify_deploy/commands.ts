@@ -280,6 +280,36 @@ async function ensureGithubDeployKey({
 }
 
 /**
+ * Coolify's deployment log as something a person can read.
+ *
+ * The field is a JSON array of entries, so piping it straight through shows
+ * the user a blob of escaped newlines and quoting rather than what the
+ * builder said — and the out-of-memory match below reads the same string, so
+ * it too was matching around JSON punctuation rather than log lines.
+ *
+ * Anything that is not that shape comes back untouched: an instance version
+ * that reports plain text should not lose its log to a parse failure.
+ */
+function readableDeploymentLog(logs: string): string {
+  try {
+    const parsed: unknown = JSON.parse(logs);
+    if (!Array.isArray(parsed)) return logs;
+    const lines = parsed
+      .map((entry) =>
+        typeof entry === "string"
+          ? entry
+          : typeof (entry as { output?: unknown })?.output === "string"
+            ? (entry as { output: string }).output
+            : null,
+      )
+      .filter((line): line is string => line !== null);
+    return lines.length > 0 ? lines.join("\n") : logs;
+  } catch {
+    return logs;
+  }
+}
+
+/**
  * Whether the instance currently configured still knows the app's server.
  *
  * A failed lookup answers "yes": it is not evidence the app moved, and
@@ -786,14 +816,17 @@ export async function runDeployPipeline({
         .catch(() => null);
       const logs = entry?.logs;
       if (logs) {
-        report.log(`\n--- deployment log ---\n${logs.slice(-4000)}\n`);
+        // Truncated after joining, so the cut lands on a line rather than in
+        // the middle of a JSON structure.
+        const readable = readableDeploymentLog(logs);
+        report.log(`\n--- deployment log ---\n${readable.slice(-4000)}\n`);
         detail = " Check the deployment log above.";
         // A build killed rather than failed is nearly always the server
         // running out of memory or disk, which the log reports only as a
         // negative exit status.
         if (
           /exit status -1|signal: killed|\bKilled\b|cannot allocate memory|no space left on device/i.test(
-            logs,
+            readable,
           )
         ) {
           detail +=

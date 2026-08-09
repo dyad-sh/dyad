@@ -388,29 +388,7 @@ export async function reconcileOrphanTestBranches(): Promise<void> {
     );
     for (const appData of rows) {
       try {
-        // Serialize against user-initiated test runs on the same app: both this
-        // sweep and a run swap .env.local and restart the dev server, so an
-        // interleaving could leave the run pointed at the real database. The run
-        // path acquires the same per-app lock.
-        await appOperationCoordinator.run(
-          {
-            appId: appData.id,
-            operation: "reconcile-neon-test-branch",
-            resources: [
-              readAppResource("app-path"),
-              "provider",
-              "runtime",
-              "runtime-config",
-            ],
-          },
-          async () => {
-            const restored = await restoreRealBranchEnvVars(appData);
-            if (!restored) {
-              return;
-            }
-            await deleteTempTestBranch(appData);
-          },
-        );
+        await restoreAppFromTestBranch(appData);
       } catch (error) {
         logger.warn(
           `Failed to reconcile orphaned test branch for app ${appData.id}: ${error}`,
@@ -420,4 +398,44 @@ export async function reconcileOrphanTestBranches(): Promise<void> {
   } catch (error) {
     logger.error(`Failed to reconcile orphaned test branches: ${error}`);
   }
+}
+
+/**
+ * Put one app's `.env.local` back on its real branch and drop the temporary
+ * test branch. Returns whether the app is off the test branch afterwards.
+ *
+ * A teardown that couldn't restore the env deliberately keeps the branch
+ * tracked, so this is the retry — used both by the startup sweep above and by
+ * the relaunch paths, which would otherwise have nothing to offer the user
+ * beyond "edit the file yourself".
+ */
+export async function restoreAppFromTestBranch(
+  appData: AppRow,
+): Promise<boolean> {
+  // Serialize against user-initiated test runs on the same app: both this and a
+  // run swap .env.local and restart the dev server, so an interleaving could
+  // leave the run pointed at the real database. The run path acquires the same
+  // per-app lock.
+  return appOperationCoordinator.run(
+    {
+      appId: appData.id,
+      operation: "reconcile-neon-test-branch",
+      resources: [
+        readAppResource("app-path"),
+        "provider",
+        "runtime",
+        "runtime-config",
+      ],
+    },
+    async () => {
+      const restored = await restoreRealBranchEnvVars(appData);
+      if (!restored) {
+        return false;
+      }
+      // Best-effort: the env is what the relaunch gate cares about, and a
+      // branch that survives stays tracked for the next sweep.
+      await deleteTempTestBranch(appData);
+      return true;
+    },
+  );
 }

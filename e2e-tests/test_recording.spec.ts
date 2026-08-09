@@ -26,7 +26,7 @@ testSkipIfWindows(
     await po.previewPanel.expectPreviewIframeIsVisible();
 
     // Start recording; the status bar appears once the session is armed.
-    await po.page.getByTestId("preview-record-button").click();
+    await po.previewPanel.startRecording();
     await expect(po.page.getByTestId("preview-recording-bar")).toBeVisible({
       timeout: Timeout.LONG,
     });
@@ -103,7 +103,7 @@ testSkipIfWindows(
     await expect(po.page.getByTestId("preview-record-button")).toBeVisible();
 
     await po.previewPanel.selectPreviewMode("tests");
-    await po.page.getByTestId("tests-record-button").click();
+    await po.previewPanel.startRecording("tests-record-button");
 
     // Recording runs in the preview, so the panel switches back to it.
     await expect(po.page.getByTestId("preview-recording-bar")).toBeVisible({
@@ -145,7 +145,7 @@ testSkipIfWindows(
     const frame = po.previewPanel.getPreviewIframeElement().contentFrame();
     await expect(frame.getByTestId("auth-state")).toHaveText("Signed out");
 
-    await po.page.getByTestId("preview-record-button").click();
+    await po.previewPanel.startRecording();
     await expect(po.page.getByTestId("preview-recording-bar")).toBeVisible({
       timeout: Timeout.EXTRA_LONG,
     });

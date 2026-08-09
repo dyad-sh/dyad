@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 
 import { ipc } from "@/ipc/types";
@@ -70,6 +70,12 @@ export function useTestRecorder({
   const recordingState = useAtomValue(currentRecordingStateAtom);
   const entries = useAtomValue(currentRecordedEntriesAtom);
   const startRequest = useAtomValue(recordingStartRequestAtom);
+
+  // A Record click waiting on the user's answer to the storage warning below.
+  const [pendingStart, setPendingStart] = useState<{
+    appId: number;
+    startPath?: string;
+  } | null>(null);
 
   const setStartRequest = useSetAtom(recordingStartRequestAtom);
   const setRecordingState = useSetAtom(setRecordingStateForAppAtom);
@@ -293,6 +299,22 @@ export function useTestRecorder({
     [],
   );
 
+  /**
+   * Settle a preview-readiness wait this app is still parked on.
+   *
+   * The no-auth counterpart to `settlePendingAuth`: `beginRecording` awaits
+   * `waitForRecorderReady`, which otherwise resolves only on its 5-second
+   * timeout. That await is what holds the app's entry in `startingAppsRef`, so
+   * a cancel mid-setup would put the bar back to idle while the next Record
+   * click is silently refused for the rest of the window.
+   */
+  const settleRecorderReady = useCallback((targetAppId: number) => {
+    const waiting = recorderReadyRef.current;
+    if (!waiting || waiting.appId !== targetAppId) return;
+    recorderReadyRef.current = null;
+    waiting.resolve();
+  }, []);
+
   // Handle messages coming up from the preview iframe.
   useEffect(() => {
     const handler = (e: MessageEvent) => {
@@ -315,11 +337,7 @@ export function useTestRecorder({
         }
         case "dyad-recorder-initialized": {
           // The document a start is waiting on has come up; let it arm.
-          const waiting = recorderReadyRef.current;
-          if (waiting && waiting.appId === currentAppId) {
-            recorderReadyRef.current = null;
-            waiting.resolve();
-          }
+          if (currentAppId != null) settleRecorderReady(currentAppId);
           // Re-arm after a dev-server restart / HMR reload swapped the iframe.
           if (phaseRef.current === "recording") {
             postToIframe({ type: "activate-dyad-recorder" });
@@ -362,7 +380,7 @@ export function useTestRecorder({
     };
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
-  }, [postToIframe, previewOrigin, record]);
+  }, [postToIframe, previewOrigin, record, settleRecorderReady]);
 
   // Reset the UI if a session ends outside our control (app stopped / crash /
   // session cap) — and only then. Failures are toasted: the recording bar
@@ -394,6 +412,9 @@ export function useTestRecorder({
         // sit on the 30-second timeout — that await is what holds the app's
         // entry in `startingAppsRef`, which refuses a fresh recording.
         settlePendingAuth(endedAppId, "the session ended");
+        // Same for a start parked on the preview reload: the document it is
+        // waiting for belongs to a session that no longer exists.
+        settleRecorderReady(endedAppId);
         const failureMessage =
           reason === "error" || reason === "timed-out"
             ? (message ?? "The recording session ended unexpectedly.")
@@ -416,7 +437,7 @@ export function useTestRecorder({
       },
     );
     return unsub;
-  }, [patchState, postToIframe, settlePendingAuth]);
+  }, [patchState, postToIframe, settlePendingAuth, settleRecorderReady]);
 
   /**
    * Ask the main process to end this app's session and reset the app's recorder
@@ -428,6 +449,10 @@ export function useTestRecorder({
     (targetAppId: number) => {
       sessionIdsRef.current.delete(targetAppId);
       settlePendingAuth(targetAppId, "the session ended");
+      // The no-auth branch parks on the preview reload instead of a sign-in.
+      // Both waits hold the app's `startingAppsRef` entry, so both have to be
+      // settled here or the next Record is refused until the wait times out.
+      settleRecorderReady(targetAppId);
       if (targetAppId === appIdRef.current) {
         postToIframe({ type: "deactivate-dyad-recorder" });
       }
@@ -435,7 +460,13 @@ export function useTestRecorder({
       clearEntries(targetAppId);
       patchState(targetAppId, { phase: "idle" });
     },
-    [clearEntries, patchState, postToIframe, settlePendingAuth],
+    [
+      clearEntries,
+      patchState,
+      postToIframe,
+      settlePendingAuth,
+      settleRecorderReady,
+    ],
   );
 
   /**
@@ -980,6 +1011,11 @@ export function useTestRecorder({
     // A sign-in may also be in flight; leaving it to time out would keep the
     // app's start entry parked for 30 seconds after the user asked to stop.
     settlePendingAuth(targetAppId, "the recording was cancelled");
+    // The no-auth path waits on the preview reload rather than a sign-in, and
+    // that wait only gives up after 5 seconds. Cancelling during setup would
+    // otherwise drop the bar back to idle while the app's start entry stayed
+    // parked, silently refusing the next Record for the rest of the window.
+    settleRecorderReady(targetAppId);
     postToIframe({ type: "deactivate-dyad-recorder" });
     void ipc.recording
       .discardRecordedTestDraft({ appId: targetAppId })
@@ -990,7 +1026,48 @@ export function useTestRecorder({
     await ipc.recording.stopRecording({ appId: targetAppId }).catch(() => {});
     clearEntries(targetAppId);
     patchState(targetAppId, { phase: "idle" });
-  }, [appId, clearEntries, patchState, postToIframe, settlePendingAuth]);
+  }, [
+    appId,
+    clearEntries,
+    patchState,
+    postToIframe,
+    settlePendingAuth,
+    settleRecorderReady,
+  ]);
+
+  /**
+   * Ask before starting, rather than starting and announcing it afterwards.
+   *
+   * Setup clears the preview's cookies and local storage so the recording
+   * begins from the signed-out state the generated spec replays from — which
+   * also throws away the user's own preview session and whatever the app kept
+   * locally, with no undo. That is state the user didn't hand us, so it takes a
+   * yes. Both entry points funnel through here (the preview's Record button
+   * directly, the Tests panel's via `startRequest`) so neither can skip it.
+   */
+  const requestStartRecording = useCallback(
+    (startPath?: string) => {
+      if (appId == null) return;
+      setPendingStart({ appId, startPath });
+    },
+    [appId],
+  );
+
+  const confirmStartRecording = useCallback(() => {
+    const pending = pendingStart;
+    setPendingStart(null);
+    // The selection can move while the dialog is up, and `startRecording` acts
+    // on whatever app is selected now — which would record the wrong one.
+    if (!pending || pending.appId !== appId) return;
+    void startRecording(pending.startPath);
+  }, [appId, pendingStart, startRecording]);
+
+  const dismissStartRecording = useCallback(() => setPendingStart(null), []);
+
+  // An unanswered ask belongs to the app it was made for.
+  useEffect(() => {
+    setPendingStart((prev) => (prev && prev.appId !== appId ? null : prev));
+  }, [appId]);
 
   // Honor a "record" click made outside the preview (the Tests panel), which
   // leaves the request behind for this hook to consume once it mounts.
@@ -1006,8 +1083,8 @@ export function useTestRecorder({
     }
     setStartRequest(null);
     if (isStale || phaseRef.current !== "idle") return;
-    void startRecording();
-  }, [appId, setStartRequest, startRecording, startRequest]);
+    requestStartRecording();
+  }, [appId, requestStartRecording, setStartRequest, startRequest]);
 
   // Numbered exactly as the assertion tool numbers them, so what the review
   // shows is what the model is asked about and what ends up in the file.
@@ -1042,6 +1119,11 @@ export function useTestRecorder({
       recordingState.phase === "finishing" ||
       recordingState.phase === "stopping",
     startRecording,
+    requestStartRecording,
+    confirmStartRecording,
+    dismissStartRecording,
+    /** The ask waiting on the user, or null when nothing is pending. */
+    pendingStart,
     stopAndReview,
     recordNavigation,
     recordHistoryMove,

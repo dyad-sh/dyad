@@ -177,6 +177,24 @@ function mountRecorder({
   return { store, Wrapper, result, unmount, rerender };
 }
 
+/**
+ * Answer the storage warning a parked record request raises.
+ *
+ * The Tests panel's Record button doesn't start a session directly — it leaves
+ * a request the hook turns into an ask, because setup clears the preview's
+ * cookies and local storage.
+ */
+async function confirmParkedStart(result: {
+  current: ReturnType<typeof useTestRecorder>;
+}) {
+  await waitFor(() => expect(result.current.pendingStart).not.toBeNull());
+  // Nothing may have been started before the user said yes.
+  expect(startRecordingMock).not.toHaveBeenCalled();
+  await act(async () => {
+    result.current.confirmStartRecording();
+  });
+}
+
 /** `mountRecorder` plus a started session — the preamble most tests need. */
 async function recordingSession(
   options: Parameters<typeof mountRecorder>[0] = {},
@@ -220,6 +238,8 @@ describe("useTestRecorder", () => {
       { wrapper: Wrapper },
     );
 
+    await confirmParkedStart(result);
+
     await waitFor(() => {
       expect(startRecordingMock).toHaveBeenCalledWith({ appId: 1 });
     });
@@ -228,6 +248,28 @@ describe("useTestRecorder", () => {
     await waitFor(() => {
       expect(result.current.isRecording).toBe(true);
     });
+  });
+
+  it("starts nothing when the storage warning is dismissed", async () => {
+    const { store, Wrapper } = makeWrapper();
+    store.set(selectedAppIdAtom, 1);
+    store.set(recordingStartRequestAtom, { appId: 1, requestedAt: Date.now() });
+
+    const { result } = renderHook(
+      () => useTestRecorder({ reloadPreview: () => {} }),
+      { wrapper: Wrapper },
+    );
+
+    await waitFor(() => expect(result.current.pendingStart).not.toBeNull());
+    act(() => {
+      result.current.dismissStartRecording();
+    });
+
+    // Declining has to leave the preview's cookies and local storage alone —
+    // clearing them is the first thing the session does.
+    expect(startRecordingMock).not.toHaveBeenCalled();
+    expect(result.current.pendingStart).toBeNull();
+    expect(result.current.phase).toBe("idle");
   });
 
   it("starts one session for a record request replayed by StrictMode", async () => {
@@ -242,6 +284,8 @@ describe("useTestRecorder", () => {
       () => useTestRecorder({ reloadPreview: () => {} }),
       { wrapper: Wrapper, reactStrictMode: true },
     );
+
+    await confirmParkedStart(result);
 
     await waitFor(() => {
       expect(result.current.isRecording).toBe(true);
@@ -351,6 +395,52 @@ describe("useTestRecorder", () => {
 
     expect(result.current.isRecording).toBe(true);
     expect(iframe.posted).toContainEqual({ type: "activate-dyad-recorder" });
+  });
+
+  it("frees the next start when a no-auth setup is cancelled mid-reload", async () => {
+    const iframe = makeIframe();
+    // The reload never announces, so the start parks on the readiness wait —
+    // the same place a preview that is slow to come up leaves it.
+    const { result } = mountRecorder({
+      iframe,
+      appUrl: true,
+      reloadPreview: () => {},
+    });
+
+    let started!: Promise<void>;
+    act(() => {
+      started = result.current.startRecording();
+    });
+    await waitFor(() => expect(startRecordingMock).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(result.current.isRecording).toBe(false);
+
+    await act(async () => {
+      await result.current.cancelRecording();
+      await started;
+    });
+    expect(result.current.phase).toBe("idle");
+
+    // The readiness wait only gives up after five seconds, and the parked
+    // `beginRecording` is what holds this app's start entry. Leaving it there
+    // made the bar look idle while the next Record click was silently dropped.
+    startRecordingMock.mockClear();
+    let restarted!: Promise<void>;
+    act(() => {
+      restarted = result.current.startRecording();
+    });
+    await waitFor(() =>
+      expect(startRecordingMock).toHaveBeenCalledWith({ appId: 1 }),
+    );
+
+    // This preview never announces either, so unwind rather than leaving the
+    // second start parked past the end of the test.
+    await act(async () => {
+      await result.current.cancelRecording();
+      await restarted;
+    });
   });
 
   it("keeps the review when the stop we asked for reports back late", async () => {
@@ -648,6 +738,8 @@ describe("useTestRecorder", () => {
       () => useTestRecorder({ reloadPreview: reloadAnnouncing(iframe) }),
       { wrapper: Wrapper, reactStrictMode: true },
     );
+
+    await confirmParkedStart(result);
 
     await waitFor(() => expect(releaseStart).toBeDefined());
     await act(async () => {

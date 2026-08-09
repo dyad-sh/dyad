@@ -127,7 +127,10 @@ import {
 } from "@/supabase_admin/supabase_utils";
 import { getVercelTeamSlug } from "../utils/vercel_utils";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
-import { deleteTempTestBranch } from "../utils/neon_test_branch";
+import {
+  deleteTempTestBranch,
+  restoreAppFromTestBranch,
+} from "../utils/neon_test_branch";
 import type { AppSearchResult } from "@/lib/schemas";
 
 import {
@@ -401,6 +404,51 @@ async function removeAppFiles(appId: number, appPath: string): Promise<void> {
   }
 }
 
+/**
+ * Apps whose isolation teardown couldn't put `.env.local` back, so they are
+ * still pointed at the temporary Neon test branch.
+ *
+ * In memory on purpose: the durable marker is the row's `neonTestBranchId`,
+ * which `reconcileOrphanTestBranches` acts on at the next launch. This set is
+ * what makes the relaunch paths agree with each other *within* a session — the
+ * failure is reported once, by whichever teardown hit it, and every later
+ * attempt to bring the app up has to know about it.
+ */
+const appsPointedAtTestBranch = new Set<number>();
+
+/**
+ * Gate a relaunch on the app being back on its real database.
+ *
+ * Only Restart used to check this, so a user who hit the refusal could press
+ * Run instead and bring the app up against the temporary test branch — the
+ * exact outcome the check exists to prevent. And refusing on its own was a dead
+ * end: Dyad wrote the swapped `.env.local` and offered no way to put the
+ * original back. So retry the restore first — the same recovery the startup
+ * sweep performs — and only refuse when that fails too.
+ */
+async function ensureAppOffTestBranch(appId: number): Promise<void> {
+  if (!appsPointedAtTestBranch.has(appId)) return;
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (app) {
+    let restored = false;
+    try {
+      restored = await restoreAppFromTestBranch(app);
+    } catch (error) {
+      logger.error(
+        `App ${appId}: retrying the .env.local restore before relaunch failed: ${error}`,
+      );
+    }
+    if (restored) {
+      appsPointedAtTestBranch.delete(appId);
+      return;
+    }
+  }
+  throw new DyadError(
+    "Dyad couldn't restore this app's real database settings after recording, so starting it now would run against the temporary test branch. Restore .env.local in your app folder, then try again.",
+    DyadErrorKind.Precondition,
+  );
+}
+
 async function deleteAppById(
   appId: number,
   options: DeleteAppByIdOptions = {},
@@ -452,6 +500,11 @@ async function deleteAppById(
       appRunDeletion.abort();
     }
   }
+
+  // Same timing as the branch cleanup below: a deletion that threw leaves a
+  // live app whose `.env.local` may still be swapped, and dropping the mark
+  // would let the next Run come up on the temporary branch unannounced.
+  appsPointedAtTestBranch.delete(appId);
 
   // Only after the deletion has committed — the throw above skips this. Doing
   // it earlier means a deletion that then fails leaves a live app pointed at a
@@ -1025,6 +1078,10 @@ export function registerAppHandlers() {
   });
 
   createTypedHandler(appContracts.runApp, async (_, params) => {
+    // Restart refuses to relaunch onto a `.env.local` isolation teardown
+    // couldn't restore; so must Run, or the refusal is trivially routed around
+    // by stopping the app and starting it again.
+    await ensureAppOffTestBranch(params.appId);
     await appRunActorService.dispatchStart(params.appId, {
       operationId: params.invocationRef?.operationId ?? randomUUID(),
       startedAt: Date.now(),
@@ -1048,6 +1105,10 @@ export function registerAppHandlers() {
       logger.error(
         `App ${appId}: isolation teardown couldn't restore .env.local while stopping; the app is still pointed at the temporary test branch`,
       );
+      // This is the path that reaches Run: the app is down and the next thing
+      // the user presses starts it again. Record it so that start has to deal
+      // with the swapped env rather than silently coming up on isolated data.
+      appsPointedAtTestBranch.add(appId);
     }
     const snapshot = await appRunActorService.getRunState(appId);
     if (snapshot.type === "idle") return;
@@ -1165,13 +1226,11 @@ export function registerAppHandlers() {
     );
     if (!envRestored) {
       // Restarting now would bring the app up against the temporary test branch
-      // the recording created. Better to say so than to serve isolated data
-      // under the user's own app.
-      throw new DyadError(
-        "Dyad couldn't restore this app's real database settings after recording. Restore .env.local, then restart.",
-        DyadErrorKind.Precondition,
-      );
+      // the recording created, so the relaunch has to answer for it — as does
+      // every later Run, which is why the mark outlives this call.
+      appsPointedAtTestBranch.add(params.appId);
     }
+    await ensureAppOffTestBranch(params.appId);
     await appRunActorService.dispatchRestart(params.appId, {
       operationId: params.invocationRef?.operationId ?? randomUUID(),
       startedAt: Date.now(),

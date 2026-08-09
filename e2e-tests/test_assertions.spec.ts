@@ -23,7 +23,7 @@ testSkipIfWindows(
     await po.previewPanel.expectPreviewIframeIsVisible();
 
     // Record a short flow.
-    await po.page.getByTestId("preview-record-button").click();
+    await po.previewPanel.startRecording();
     await expect(po.page.getByTestId("preview-recording-bar")).toBeVisible({
       timeout: Timeout.LONG,
     });
@@ -153,7 +153,7 @@ testSkipIfWindows(
     await po.clickRestart();
     await po.previewPanel.expectPreviewIframeIsVisible();
 
-    await po.page.getByTestId("preview-record-button").click();
+    await po.previewPanel.startRecording();
     await expect(po.page.getByTestId("preview-recording-bar")).toBeVisible({
       timeout: Timeout.LONG,
     });

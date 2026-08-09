@@ -91,6 +91,7 @@ import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { Annotator } from "@/pro/ui/components/Annotator/Annotator";
 import { VisualEditingToolbar } from "./VisualEditingToolbar";
 import { RecordingBanner, recordingStatusMessage } from "./RecordingBanner";
+import { RecordingStorageWarningDialog } from "./RecordingStorageWarningDialog";
 import { resolvePreviewBrowserUrl } from "./previewBrowserUrl";
 import { PreviewLoadingScreen } from "./PreviewLoadingScreen";
 import { useTranslation } from "react-i18next";
@@ -347,7 +348,8 @@ export const PreviewIframe = ({
     // link would hand back a path that reads as app-relative and replay as
     // `page.goto("/that/path")` against the app — a destination the user never
     // visited. Unknown or off-origin means no hint at all.
-    void recorder.startRecording(
+    // Asks first — setup clears the preview's cookies and local storage.
+    recorder.requestStartRecording(
       sameOriginStartPath(currentHistoryUrl, appUrl),
     );
   };
@@ -1700,6 +1702,14 @@ export const PreviewIframe = ({
           onGenerateAssertions={handleGenerateAssertions}
         />
       )}
+
+      <RecordingStorageWarningDialog
+        open={recorder.pendingStart !== null}
+        onOpenChange={(open) => {
+          if (!open) recorder.dismissStartRecording();
+        }}
+        onContinue={recorder.confirmStartRecording}
+      />
 
       <AgentModeRequiredDialog
         open={assertionsNeedAgentMode}

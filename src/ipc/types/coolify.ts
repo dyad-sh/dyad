@@ -183,6 +183,12 @@ export const coolifyContracts = {
     output: z.void(),
     // Reaches every app: without a token none of them reads as connected.
     invalidates: () => [{ family: "apps" }, { family: "coolify" }],
+    // The hook invalidates the coolify scope itself in onSuccess, so the
+    // window that acted would otherwise do it twice — and invalidateQueries
+    // cancels an in-flight refetch, making the second one a fresh round trip
+    // to the user's server. Only coolify is claimed: `apps` is not repeated
+    // locally, so suppressing it here would leave the acting window stale.
+    originHandles: () => [{ family: "coolify" }],
   }),
 
   discover: defineContract({
@@ -204,6 +210,9 @@ export const coolifyContracts = {
       { family: "app", appId: input.appId },
       { family: "coolify", appId: input.appId },
     ],
+    // Claimed for the same reason as saveToken: the hook already refreshes
+    // this app's status locally.
+    originHandles: (input) => [{ family: "coolify", appId: input.appId }],
   }),
 
   checkDomain: defineContract({
@@ -243,6 +252,12 @@ export const coolifyContracts = {
     output: z.void(),
     // Every app reads as disconnected without a token.
     invalidates: () => [{ family: "apps" }, { family: "coolify" }],
+    // The hook invalidates the coolify scope itself in onSuccess, so the
+    // window that acted would otherwise do it twice — and invalidateQueries
+    // cancels an in-flight refetch, making the second one a fresh round trip
+    // to the user's server. Only coolify is claimed: `apps` is not repeated
+    // locally, so suppressing it here would leave the acting window stale.
+    originHandles: () => [{ family: "coolify" }],
   }),
 
   createProject: defineContract({
@@ -252,6 +267,10 @@ export const coolifyContracts = {
     // that was sent would hide any normalisation it applied. The refreshed
     // project list is the authority on what it is actually called.
     output: z.object({ uuid: z.string() }),
+    // Otherwise a project made in one window never reaches another's picker,
+    // and the user cannot select what they just created.
+    invalidates: () => [{ family: "coolify" }],
+    originHandles: () => [{ family: "coolify" }],
   }),
 
   disconnect: defineContract({
@@ -263,6 +282,9 @@ export const coolifyContracts = {
       { family: "app", appId: input.appId },
       { family: "coolify", appId: input.appId },
     ],
+    // Claimed for the same reason as saveToken: the hook already refreshes
+    // this app's status locally.
+    originHandles: (input) => [{ family: "coolify", appId: input.appId }],
   }),
 } as const;
 

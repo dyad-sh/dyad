@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { queryKeys } from "@/lib/queryKeys";
+import { coolifyContracts } from "@/ipc/types/coolify";
 import { queryInvalidationScopeKey, type WindowSessionId } from "./types";
 import { RendererQueryInvalidationConsumer } from "./renderer_query_invalidation";
 
@@ -148,5 +149,60 @@ describe("RendererQueryInvalidationConsumer", () => {
     expect(invalidateQueries).toHaveBeenCalledWith({
       queryKey: queryKeys.uncommittedFiles.byApp({ appId: 7 }),
     });
+  });
+});
+
+/**
+ * What the Coolify contracts claim to have handled locally.
+ *
+ * The hook invalidates the coolify scope in each mutation's onSuccess, so
+ * without a claim the acting window does it twice — and invalidateQueries
+ * cancels the in-flight refetch, so the duplicate is a second round trip to
+ * the user's own server. Claiming too much is the opposite failure: `apps` is
+ * not repeated locally, so suppressing it would leave that window stale.
+ */
+describe("Coolify contracts and the window that acted", () => {
+  const handled = (channel: keyof typeof coolifyContracts, input: unknown) => {
+    const contract = coolifyContracts[channel] as {
+      originHandles?: (input: unknown) => Array<{ family: string }>;
+      invalidates?: (input: unknown) => Array<{ family: string }>;
+    };
+    return {
+      claims: (contract.originHandles?.(input) ?? []).map((s) => s.family),
+      publishes: (contract.invalidates?.(input) ?? []).map((s) => s.family),
+    };
+  };
+
+  it("claims the coolify scope it refreshes itself", () => {
+    for (const [channel, input] of [
+      ["saveToken", undefined],
+      ["clearToken", undefined],
+      ["saveConnection", { appId: 1 }],
+      ["disconnect", { appId: 1 }],
+      ["createProject", { name: "x" }],
+    ] as const) {
+      const { claims } = handled(channel, input);
+      expect(claims, `${channel} should claim coolify`).toContain("coolify");
+    }
+  });
+
+  it("never claims a scope it does not refresh itself", () => {
+    // The hook only ever invalidates coolify keys, so `apps` and `app` must
+    // still reach the acting window through the published invalidation.
+    for (const [channel, input] of [
+      ["saveToken", undefined],
+      ["clearToken", undefined],
+      ["saveConnection", { appId: 1 }],
+      ["disconnect", { appId: 1 }],
+    ] as const) {
+      const { claims } = handled(channel, input);
+      expect(claims, `${channel} must not claim apps`).not.toContain("apps");
+      expect(claims, `${channel} must not claim app`).not.toContain("app");
+    }
+  });
+
+  it("publishes project creation so other windows see the new project", () => {
+    const { publishes } = handled("createProject", { name: "x" });
+    expect(publishes).toContain("coolify");
   });
 });

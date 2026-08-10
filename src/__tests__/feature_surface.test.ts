@@ -20,7 +20,9 @@ import { isChatOwnedPath, screenForPath } from "@/lib/workspace_screens";
  */
 
 describe("settings sections", () => {
-  const assigned = new Set(SETTINGS_TABS.flatMap((tab) => tab.sectionIds));
+  const assigned = new Set<string>(
+    SETTINGS_TABS.flatMap((tab) => tab.sectionIds),
+  );
 
   it("every declared section is reachable from some tab", () => {
     // The failure this catches: a section quietly orphaned during a merge.
@@ -35,7 +37,7 @@ describe("settings sections", () => {
   });
 
   it("every tab points at sections that exist", () => {
-    const known = new Set(Object.values(SECTION_IDS));
+    const known = new Set<string>(Object.values(SECTION_IDS));
     for (const tab of SETTINGS_TABS) {
       for (const sectionId of tab.sectionIds) {
         expect(

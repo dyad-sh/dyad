@@ -7,7 +7,6 @@ import { SECTION_IDS, SETTING_IDS } from "@/lib/settingsSearchIndex";
 import { ProviderSettingsGrid } from "@/components/ProviderSettings";
 import { GitHubIntegration } from "@/components/GitHubIntegration";
 import { VercelIntegration } from "@/components/VercelIntegration";
-import { NeonIntegration } from "@/components/NeonIntegration";
 import { SupabaseConnectionSettings } from "@/components/settings/SupabaseConnectionSettings";
 import { AgentToolsSettings } from "@/components/settings/AgentToolsSettings";
 import { ToolsMcpSettings } from "@/components/settings/ToolsMcpSettings";
@@ -120,7 +119,12 @@ export function SettingsTabbedContent({
       className="w-full flex-col items-stretch gap-6 lg:flex-row lg:items-start"
     >
       {/* Vertical tab cards in front of the settings content */}
-      <TabsList className="grid h-auto w-full shrink-0 grid-cols-2 gap-2 rounded-none border-0 bg-transparent p-0 sm:grid-cols-3 lg:sticky lg:top-6 lg:flex lg:w-64 lg:flex-col">
+      {/* The rail sticks, so it needs a ceiling and a scrollbar of its own.
+          Sticky without a bounded height means a rail taller than the viewport
+          pins its top and carries its lower tabs off the bottom of the screen,
+          where they cannot be reached at all. `overscroll-contain` stops a
+          flick inside the rail from continuing into the page behind it. */}
+      <TabsList className="grid h-auto w-full shrink-0 grid-cols-2 gap-2 rounded-none border-0 bg-transparent p-0 sm:grid-cols-3 lg:sticky lg:top-6 lg:flex lg:max-h-[calc(100vh-7rem)] lg:w-64 lg:flex-col lg:overflow-y-auto lg:overscroll-contain lg:pr-1">
         {SETTINGS_TABS.map((tab) => (
           <TabsTrigger
             key={tab.id}
@@ -147,7 +151,9 @@ export function SettingsTabbedContent({
       </TabsList>
 
       {/* Settings content */}
-      <div className="min-w-0 flex-1">
+      {/* min-w-0 so a wide child (a table, a long token) cannot stretch this
+          column and push the rail out of the viewport. */}
+      <div className="min-w-0 flex-1 pb-16">
         <TabsContent
           value="ai"
           className="space-y-6 focus-visible:outline-none"
@@ -346,17 +352,6 @@ export function SettingsTabbedContent({
                   <div id={SETTING_IDS.supabase}>
                     <SupabaseConnectionSettings />
                   </div>
-                </div>
-              </IntegrationRow>
-
-              <IntegrationRow
-                value="neon"
-                title="Neon"
-                description="Serverless Postgres databases"
-                icon={Database}
-              >
-                <div id={SETTING_IDS.neon}>
-                  <NeonIntegration />
                 </div>
               </IntegrationRow>
 

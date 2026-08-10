@@ -1,5 +1,5 @@
 import fs from "fs";
-import { testSkipIfWindows } from "./helpers/test_helper";
+import { testSkipIfWindows, Timeout } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 
 testSkipIfWindows("bulk delete apps from gallery", async ({ po }) => {
@@ -22,6 +22,13 @@ testSkipIfWindows("bulk delete apps from gallery", async ({ po }) => {
     { appName: appName2, appPath: appPath2 },
     { appName: appName3, appPath: appPath3 },
   ] = appDetails;
+
+  // Each generated app starts its preview runtime in the background. Wait for
+  // the most recently started runtime before deleting apps so bulk deletion
+  // does not spend its assertion budget interrupting dependency installation.
+  await expect(po.previewPanel.getPreviewIframeElement()).toBeVisible({
+    timeout: Timeout.EXTRA_LONG,
+  });
 
   // Navigate to the gallery via "See more" on the home page.
   await po.navigation.goToAppsTab();

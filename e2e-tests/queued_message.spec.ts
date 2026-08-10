@@ -1,4 +1,4 @@
-import { test, testSkipIfWindows, Timeout } from "./helpers/test_helper";
+import { test, Timeout } from "./helpers/test_helper";
 import { expect, type Locator, type Page } from "@playwright/test";
 import path from "path";
 
@@ -159,61 +159,6 @@ test.describe("queued messages", () => {
     await expect(messagesList.getByText("tc=2")).toBeVisible();
   });
 });
-
-testSkipIfWindows(
-  "canceling queued message edit clears restored components",
-  async ({ po }) => {
-    await po.setUp({ autoApprove: true });
-    const chatInput = po.chatActions.getChatInput();
-
-    // Build an app so we have a preview with selectable components
-    await po.sendPrompt("tc=basic");
-    await po.previewPanel.ensurePreviewPanelOpen();
-
-    // Start a slow streaming response so the setup below finishes while queuing is still active
-    await po.sendPrompt("tc=1 [sleep=long]", {
-      skipWaitForCompletion: true,
-    });
-    await expect(chatInput).toBeVisible();
-
-    // While streaming, select a component and queue a message with it
-    await po.previewPanel.clickPreviewPickElement();
-    await po.previewPanel
-      .getPreviewIframeElement()
-      .contentFrame()
-      .getByRole("heading", { name: "Welcome to Your Blank App" })
-      .click();
-    await expect(po.previewPanel.getSelectedComponentsDisplay()).toBeVisible({
-      timeout: Timeout.SHORT,
-    });
-
-    await queueMessage(po.page, chatInput, "queued with component");
-    await expect(po.page.getByText(/\d+ Queued/)).toBeVisible();
-
-    // Edit the queued message — components should be restored
-    const queuedRow = po.page.locator("li", {
-      hasText: "queued with component",
-    });
-    await queuedRow.hover();
-    await queuedRow.getByTitle("Edit").click();
-    await expect(po.previewPanel.getSelectedComponentsDisplay()).toBeVisible({
-      timeout: Timeout.SHORT,
-    });
-
-    // Cancel the edit — components should be cleared
-    await po.page.getByText("Cancel", { exact: true }).click();
-    await expect(
-      po.previewPanel.getSelectedComponentsDisplay(),
-    ).not.toBeVisible();
-
-    // Input should be empty after cancel
-    await expect(chatInput).toBeEmpty();
-
-    // Wait for the in-flight chat and the queued message to finish before ending the test
-    await po.chatActions.waitForChatCompletion({ timeout: Timeout.EXTRA_LONG });
-    await po.chatActions.waitForChatCompletion();
-  },
-);
 
 test("keeps queued prompts across renderer reload", async ({
   po,

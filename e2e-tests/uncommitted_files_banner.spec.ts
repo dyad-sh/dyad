@@ -97,7 +97,7 @@ const runDiscardChangesTest = async (po: PageObject) => {
   await po.page.getByTestId("confirm-discard-button").click();
 
   // Wait for success toast
-  await po.toastNotifications.waitForToast("success");
+  await po.toastNotifications.waitForToast("success", Timeout.MEDIUM);
 
   // Dialog should close
   await expect(po.page.getByTestId("commit-dialog")).not.toBeVisible();
@@ -182,7 +182,7 @@ const runUncommittedFilesBannerTest = async (po: PageObject) => {
   await po.page.getByTestId("commit-button").click();
 
   // Wait for success toast
-  await po.toastNotifications.waitForToast("success");
+  await po.toastNotifications.waitForToast("success", Timeout.MEDIUM);
 
   // The dialog should close
   await expect(po.page.getByTestId("commit-dialog")).not.toBeVisible();

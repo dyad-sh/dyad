@@ -101,7 +101,7 @@ import { apps, coolifyAppConnections } from "@/db/schema";
 import { setupHandlerTestHarness } from "@/testing/handler_test_harness";
 import type { HandlerTestHarness } from "@/testing/handler_test_harness";
 import { createFakeClock, type FakeClock } from "@/state_machines/testing";
-import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 import { runDeployPipeline, type DeployReporter } from "./commands";
 
 const POLL_INTERVAL_MS = 5_000;
@@ -1566,6 +1566,119 @@ describe("writing only to the server the deploy started against", () => {
     expect(row?.projectUuid).toBe("project-other");
     expect(row?.applicationUuid).toBeNull();
     expect(row?.appUrl).toBeNull();
+  });
+});
+
+describe("failing after the old application is already gone", () => {
+  /** A saved application that clones with a key Coolify no longer has. */
+  async function seedStaleKeyApp() {
+    const app = await seedApp({
+      connection: { applicationUuid: "stale-uuid" },
+    });
+    happyPathRoutes();
+    route("GET /applications/stale-uuid", {
+      uuid: "stale-uuid",
+      private_key_id: 999,
+    });
+    route("DELETE /applications/stale-uuid", {});
+    return app;
+  }
+
+  it("says the app is down when the replacement cannot be created", async () => {
+    // Deleting is what takes the site offline, and it happens before Coolify
+    // has agreed to build a replacement. The failure on its own reads like
+    // nothing happened; what the user needs is that their app is not running.
+    const app = await seedStaleKeyApp();
+    route("POST /applications/private-deploy-key", { message: "boom" }, 500);
+    const report = loggingRecorder();
+    const clock = createFakeClock();
+
+    await expect(
+      drive(
+        clock,
+        runDeployPipeline({
+          appId: app.id,
+          signal: new AbortController().signal,
+          report,
+          clock,
+        }),
+      ),
+    ).rejects.toThrow();
+
+    expect(report.text()).toContain("is not running until a deploy succeeds");
+  });
+
+  it("hands the failure on exactly as it arrived", async () => {
+    // The regression this guards against is the log line being bought with a
+    // rethrow, which would flatten every failure here to one kind. Telemetry
+    // filters on kind — Auth is dropped, External is reported — so a wrapper
+    // would start sending the user's failed logins to the backend.
+    //
+    // Deliberately a 401 rather than a 500: a 500 is already External, so a
+    // wrapper that reports External would pass a test written against one
+    // while changing nothing it asserts. This fails unless the original
+    // error is what propagates.
+    const app = await seedStaleKeyApp();
+    route("POST /applications/private-deploy-key", { message: "nope" }, 401);
+    const clock = createFakeClock();
+
+    const error = await drive(
+      clock,
+      runDeployPipeline({
+        appId: app.id,
+        signal: new AbortController().signal,
+        report: recorder(),
+        clock,
+      }),
+    ).catch((e) => e);
+
+    expect(isDyadError(error)).toBe(true);
+    expect(error.kind).toBe(DyadErrorKind.Auth);
+  });
+
+  it("stays quiet when nothing was removed", async () => {
+    // The application was already gone from Coolify, so this deploy did not
+    // take anything down and must not claim it did.
+    const app = await seedApp({ connection: { applicationUuid: "gone-1" } });
+    happyPathRoutes();
+    route("GET /applications/gone-1", { message: "Not found." }, 404);
+    route("POST /applications/private-deploy-key", { message: "boom" }, 500);
+    const report = loggingRecorder();
+    const clock = createFakeClock();
+
+    await expect(
+      drive(
+        clock,
+        runDeployPipeline({
+          appId: app.id,
+          signal: new AbortController().signal,
+          report,
+          clock,
+        }),
+      ),
+    ).rejects.toThrow();
+
+    expect(report.text()).not.toContain("is not running until a deploy");
+  });
+
+  it("stays quiet when the replacement is created", async () => {
+    // The common case of this branch is an ordinary successful rotation, and
+    // a warning that the app is down would be false on every one of them.
+    const app = await seedStaleKeyApp();
+    const report = loggingRecorder();
+    const clock = createFakeClock();
+
+    await drive(
+      clock,
+      runDeployPipeline({
+        appId: app.id,
+        signal: new AbortController().signal,
+        report,
+        clock,
+      }),
+    );
+
+    expect(report.text()).not.toContain("is not running until a deploy");
   });
 });
 

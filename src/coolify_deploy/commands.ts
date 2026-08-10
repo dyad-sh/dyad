@@ -366,6 +366,10 @@ async function resolveApplication({
   report: DeployReporter;
   signal: AbortSignal;
 }): Promise<string> {
+  // Only when Coolify confirmed the removal. A request that failed or was
+  // cancelled says nothing either way, and the message below is worth having
+  // precisely because it is not a guess.
+  let removedPrevious = false;
   if (savedUuid) {
     try {
       const existing = await client.getApplication(savedUuid);
@@ -387,12 +391,24 @@ async function resolveApplication({
         // say so when it survives: it keeps running, keeps the domain, and
         // the log would otherwise describe a replacement rather than a second
         // application the user has to remove in Coolify themselves.
-        await client.deleteApplication(savedUuid).catch(() => {
+        try {
+          await client.deleteApplication(savedUuid);
+          removedPrevious = true;
+        } catch {
+          // A cancelled request is not a request that did not happen. The
+          // client cancels through the deploy's own signal, so a disconnect
+          // lands here having quite possibly already been processed, and the
+          // old wording told the user it had survived either way.
           report.log(
-            "Could not remove the old application; it is still on your " +
-              "server and may still hold the domain. Delete it in Coolify.\n",
+            signal.aborted
+              ? "The request to remove the old application was cancelled, so " +
+                  "it may or may not still be on your server. Check in " +
+                  "Coolify before deploying again.\n"
+              : "Could not remove the old application; it is still on your " +
+                  "server and may still hold the domain. Delete it in " +
+                  "Coolify.\n",
           );
-        });
+        }
       } else {
         return savedUuid;
       }
@@ -427,7 +443,23 @@ async function resolveApplication({
     // than written here, so this stays free of the database.
     await onPreviousGone();
   }
-  return create();
+  if (!removedPrevious) return create();
+  try {
+    // Awaited inside the try on purpose: returning the promise would settle
+    // it outside, where the catch below cannot see it fail.
+    return await create();
+  } catch (error) {
+    // Logged, never wrapped. The error keeps its own kind and message, so a
+    // cancellation is still UserCancelled and telemetry filters it exactly as
+    // it did before. All this adds is the fact the user cannot see from the
+    // failure alone: the application that was serving this app is gone, and
+    // the deploy log is where they are looking when it happens.
+    report.log(
+      "The previous application was removed before this failed, so the app " +
+        "is not running until a deploy succeeds.\n",
+    );
+    throw error;
+  }
 }
 
 /**

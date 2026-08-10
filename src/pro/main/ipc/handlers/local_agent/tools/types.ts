@@ -121,6 +121,14 @@ export interface AgentContext {
    * Call this once when the tool's XML output is complete.
    */
   onXmlComplete: (finalXml: string) => void;
+  /**
+   * Re-read this turn's assistant message from the DB and adopt it as the
+   * in-progress response. Only for a tool that blocks while something outside
+   * the stream rewrites a card it already committed (the assertion review
+   * card's approval latch): without this the turn's stale in-memory copy is
+   * written back over that rewrite by the next append.
+   */
+  resyncResponseFromDb?: () => Promise<void>;
   requireConsent: (params: {
     toolName: string;
     toolDescription?: string | null;

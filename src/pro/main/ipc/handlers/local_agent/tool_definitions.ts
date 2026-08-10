@@ -34,6 +34,7 @@ import { generateImageTool } from "./tools/generate_image";
 import { updateTodosTool } from "./tools/update_todos";
 import { runTypeChecksTool } from "./tools/run_type_checks";
 import { runTestsTool } from "./tools/run_tests";
+import { generateTestAssertionsTool } from "./tools/generate_test_assertions";
 import { rebuildAppTool, restartAppTool } from "./tools/app_lifecycle";
 import { grepTool } from "./tools/grep";
 import { codeSearchTool } from "./tools/code_search";
@@ -131,6 +132,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   updateTodosTool,
   runTypeChecksTool,
   runTestsTool,
+  generateTestAssertionsTool,
   restartAppTool,
   rebuildAppTool,
   readGuideTool,

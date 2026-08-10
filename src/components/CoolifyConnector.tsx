@@ -119,6 +119,10 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
     setServerUuid(connection?.serverUuid ?? "");
     setProjectUuid(connection?.projectUuid ?? "");
     setDomain(connection?.domain ?? "");
+    // This rewrites the address too, so the consent goes with it. Clearing it
+    // only on keystrokes left a tick given for a typed address sitting over the
+    // remembered one this puts back.
+    setAcknowledgedInsecure(false);
   }, [appId, status?.connection, status?.instanceUrl]);
 
   // Only on an app change. Keying this to the connection would close the form

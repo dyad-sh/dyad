@@ -107,6 +107,37 @@ describe("consent to an unencrypted address", () => {
     expect(screen.getByRole("checkbox")).toBeTruthy();
     expect(screen.queryByRole("checkbox", { checked: true })).toBeNull();
   });
+
+  it("does not survive the form being refilled from settings", async () => {
+    // Typing is not the only thing that writes the address: an effect refills
+    // it from settings, so switching apps puts the remembered one back. A tick
+    // given for the typed address would then be sitting over a different one.
+    deploy.value = {
+      status: {
+        hasToken: false,
+        tokenId: null,
+        instanceUrl: "http://remembered.local:8000",
+        connection: null,
+        appUrl: null,
+        lastDeployedAt: null,
+      },
+    };
+    const user = userEvent.setup();
+    const { rerender } = render(<CoolifyConnector appId={1} />);
+
+    const url = screen.getByTestId("coolify-instance-url");
+    await user.clear(url);
+    await user.type(url, "http://typed.local:8000");
+    await user.click(screen.getByRole("checkbox"));
+    expect(screen.getByRole("checkbox", { checked: true })).toBeTruthy();
+
+    rerender(<CoolifyConnector appId={2} />);
+
+    expect((url as HTMLInputElement).value).toBe(
+      "http://remembered.local:8000",
+    );
+    expect(screen.queryByRole("checkbox", { checked: true })).toBeNull();
+  });
 });
 
 /**

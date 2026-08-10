@@ -177,8 +177,16 @@ describe("naming the stored token", () => {
     };
     const status: any = await call("coolify:get-status", { appId: 1 });
 
+    // Not a substring check: "1|super-secret-value".slice(0, 12) contains no
+    // "super-secret" either, so that alone passes for an id that is simply the
+    // token truncated. What is asserted is that the id is a digest — hex, and
+    // not any leading run of the token.
+    const token = "1|super-secret-value";
+    expect(status.tokenId).toMatch(/^[0-9a-f]{12}$/);
+    for (let n = 1; n <= token.length; n++) {
+      expect(status.tokenId).not.toBe(token.slice(0, n));
+    }
     expect(JSON.stringify(status)).not.toContain("super-secret");
-    expect(status.tokenId).not.toContain("super-secret");
   });
 
   it("is absent when there is no token", async () => {

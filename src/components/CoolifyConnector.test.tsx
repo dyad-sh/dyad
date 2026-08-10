@@ -77,6 +77,38 @@ describe("before the status query has answered", () => {
   });
 });
 
+describe("consent to an unencrypted address", () => {
+  it("does not carry over to an address it was not given for", async () => {
+    // Ticked for one plain-HTTP host, then the host is edited. The token would
+    // otherwise be sent in the clear to a machine nobody agreed to.
+    deploy.value = {
+      status: {
+        hasToken: false,
+        tokenId: null,
+        instanceUrl: null,
+        connection: null,
+        appUrl: null,
+        lastDeployedAt: null,
+      },
+    };
+    const user = userEvent.setup();
+    render(<CoolifyConnector appId={1} />);
+
+    const url = screen.getByTestId("coolify-instance-url");
+    await user.type(url, "http://box.local:8000");
+    await user.click(screen.getByRole("checkbox"));
+    expect(screen.getByRole("checkbox", { checked: true })).toBeTruthy();
+
+    // Another plain-HTTP address, so the consent checkbox is still on screen
+    // and the assertion is about the tick rather than about the box vanishing.
+    await user.clear(url);
+    await user.type(url, "http://other.local:8000");
+
+    expect(screen.getByRole("checkbox")).toBeTruthy();
+    expect(screen.queryByRole("checkbox", { checked: true })).toBeNull();
+  });
+});
+
 /**
  * What the pickers say before the lists arrive.
  *

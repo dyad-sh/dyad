@@ -207,7 +207,13 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
             data-testid="coolify-instance-url"
             placeholder="https://coolify.example.com"
             value={instanceUrl}
-            onChange={(e) => setInstanceUrl(e.target.value)}
+            onChange={(e) => {
+              setInstanceUrl(e.target.value);
+              // The consent was given for the address that was on screen at
+              // the time. Carrying it over to a different host would send the
+              // token unencrypted to one nobody agreed to.
+              setAcknowledgedInsecure(false);
+            }}
           />
         </div>
         <div>

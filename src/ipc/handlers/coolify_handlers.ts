@@ -255,8 +255,9 @@ export function registerCoolifyHandlers() {
       // Coolify cannot regenerate an address once one is set, so
       // updateApplication never sends an empty domains value and a cleared
       // domain would leave the record saying "none" while the instance kept
-      // serving the old one. The form refuses this; so must the handler,
-      // which a second window working from a stale status can still reach.
+      // serving the old one. Refused here rather than in the form, which
+      // cannot tell whether an application exists: this is the only place
+      // that knows, so the user learns from the error rather than the button.
       //
       // Not while moving, and not before an application exists: in both
       // cases there is nothing in Coolify whose address this could disagree
@@ -350,6 +351,7 @@ export function registerCoolifyHandlers() {
   );
 
   createTypedHandler(coolifyContracts.disconnect, async (_, { appId }) => {
+    await getApp(appId);
     // Abandon anything running first, so it cannot write its result over the
     // cleared connection afterwards.
     coolifyDeployRegistry.cancelDeploy(appId);

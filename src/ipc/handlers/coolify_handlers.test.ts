@@ -118,6 +118,19 @@ beforeEach(() => {
   registerCoolifyHandlers();
 });
 
+describe("disconnecting an app that is not there", () => {
+  it("reports it missing rather than quietly doing nothing", async () => {
+    // Clearing a connection is a delete, and a delete for an app that does not
+    // exist matches no rows — so without the check this answered success for
+    // an app it had never heard of. Its three siblings all look first.
+    rows.length = 0;
+
+    await expect(call("coolify:disconnect", { appId: 1 })).rejects.toThrow(
+      /not found/i,
+    );
+  });
+});
+
 describe("naming the stored token", () => {
   /**
    * Servers and projects are cached per instance, and two tokens on one

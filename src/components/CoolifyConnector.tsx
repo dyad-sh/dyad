@@ -675,12 +675,23 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
   }
 
   // --- Step 3: deploy ---
-  const serverName =
-    discovery?.servers.find((s) => s.uuid === status.connection!.serverUuid)
-      ?.name ?? "server";
-  const projectName =
-    discovery?.projects.find((p) => p.uuid === status.connection!.projectUuid)
-      ?.name ?? "project";
+  // Names come from discovery, so there may be none to show. Said plainly
+  // rather than filled in with the words "server" and "project", which read as
+  // a configuration rather than as the absence of one.
+  const serverName = discovery?.servers.find(
+    (s) => s.uuid === status.connection!.serverUuid,
+  )?.name;
+  const projectName = discovery?.projects.find(
+    (p) => p.uuid === status.connection!.projectUuid,
+  )?.name;
+  const whereItDeploys =
+    serverName && projectName
+      ? `${serverName} / ${projectName}`
+      : discoveryError
+        ? "Can't reach your Coolify right now"
+        : isDiscoveryPending
+          ? "Loading..."
+          : `${serverName ?? "Unknown server"} / ${projectName ?? "Unknown project"}`;
 
   // Only once discovery has actually answered. A slow or failing lookup says
   // nothing about where this app belongs, and treating it as an answer would
@@ -706,9 +717,7 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
       )}
       <div className="flex items-center justify-between">
         <div className="text-sm">
-          <div className="font-medium">
-            {serverName} / {projectName}
-          </div>
+          <div className="font-medium">{whereItDeploys}</div>
           {status.appUrl ? (
             <ExternalLinkText url={status.appUrl} />
           ) : status.connection.domain ? (

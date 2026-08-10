@@ -44,8 +44,13 @@ vi.mock("@/hooks/useCoolifyDeploy", () => ({
   }),
 }));
 
+// Coolify deploys from GitHub, so a connected app always has a repository —
+// without one the Deploy button is disabled for that reason instead.
 vi.mock("@/hooks/useLoadApp", () => ({
-  useLoadApp: () => ({ app: { name: "demo" }, loading: false }),
+  useLoadApp: () => ({
+    app: { name: "demo", githubOrg: "acme", githubRepo: "demo" },
+    loading: false,
+  }),
 }));
 vi.mock("@/ipc/types", () => ({
   ipc: { system: { openExternalUrl: vi.fn() } },
@@ -212,6 +217,72 @@ describe("the server and project pickers while discovery is in flight", () => {
 
     expect(screen.queryByText("Loading servers...")).toBeNull();
     expect(screen.getByText("production")).toBeTruthy();
+  });
+});
+
+/**
+ * What the connected view says about where an app deploys.
+ *
+ * The names come from discovery, which talks to the user's own server, so
+ * there is often nothing to show. Filling the gap with the words "server" and
+ * "project" reads as a configuration rather than as the absence of one.
+ */
+describe("naming the target in the connected view", () => {
+  const CONNECTED = {
+    hasToken: true,
+    tokenId: "abc123",
+    instanceUrl: "https://coolify.test",
+    connection: {
+      instanceUrl: "https://coolify.test",
+      serverUuid: "srv-1",
+      projectUuid: "prj-1",
+      environmentName: "production",
+      domain: null,
+    },
+    appUrl: "https://demo.example.com",
+    lastDeployedAt: 1,
+  };
+
+  it("names the server and project once discovery has answered", () => {
+    deploy.value = {
+      status: CONNECTED,
+      discovery: {
+        servers: [{ uuid: "srv-1", name: "production-box" }],
+        projects: [{ uuid: "prj-1", name: "storefront" }],
+      },
+    };
+    render(<CoolifyConnector appId={1} />);
+
+    expect(screen.getByText("production-box / storefront")).toBeTruthy();
+  });
+
+  it("says the instance cannot be reached rather than inventing names", () => {
+    deploy.value = {
+      status: CONNECTED,
+      discovery: undefined,
+      discoveryError: new Error("getaddrinfo ENOTFOUND coolify.test"),
+    };
+    render(<CoolifyConnector appId={1} />);
+
+    expect(screen.getByText(/Can't reach your Coolify/)).toBeTruthy();
+    expect(screen.queryByText("server / project")).toBeNull();
+    // The deployment itself is fine, so its address still shows and Deploy is
+    // still offered — a name lookup failing is not the app being down.
+    expect(screen.getByText("https://demo.example.com")).toBeTruthy();
+    expect(
+      (screen.getByTestId("coolify-deploy") as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
+
+  it("waits rather than inventing names while discovery is pending", () => {
+    deploy.value = {
+      status: CONNECTED,
+      discovery: undefined,
+      isDiscoveryPending: true,
+    };
+    render(<CoolifyConnector appId={1} />);
+
+    expect(screen.queryByText("server / project")).toBeNull();
   });
 });
 

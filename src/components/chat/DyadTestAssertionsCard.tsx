@@ -460,11 +460,29 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
           <span
             className="ml-auto inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground"
             data-testid={
-              isApproved ? "dyad-test-assertions-approved-badge" : undefined
+              isApproved && !isApproving
+                ? "dyad-test-assertions-approved-badge"
+                : undefined
             }
           >
-            {isApproved && <Check size={12} strokeWidth={2.5} />}
-            {isApproved ? "Generated" : checkCountLabel}
+            {/* "Generated" only once it actually is. The approval latches
+                optimistically so the plan can't be edited or submitted twice
+                while the write is in flight, but claiming the file exists
+                before it does leaves a slow apply looking finished — and a
+                failed one silently reverting from a terminal state. */}
+            {isApproving ? (
+              <Loader2
+                size={12}
+                className="animate-spin motion-reduce:hidden"
+              />
+            ) : (
+              isApproved && <Check size={12} strokeWidth={2.5} />
+            )}
+            {isApproving
+              ? "Generating…"
+              : isApproved
+                ? "Generated"
+                : checkCountLabel}
           </span>
         </div>
         <span
@@ -713,7 +731,18 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
       )}
 
       <div className="flex flex-wrap items-center gap-2 border-t border-border/50 px-3.5 py-2.5">
-        {isApproved ? (
+        {isApproving ? (
+          // The approval is latched but the file isn't written yet. Its own row
+          // rather than the terminal one: there is nothing to open, and the
+          // wait is the whole state.
+          <span
+            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"
+            data-testid="dyad-test-assertions-generating-note"
+          >
+            <Loader2 size={12} className="animate-spin motion-reduce:hidden" />
+            Generating the test file…
+          </span>
+        ) : isApproved ? (
           <>
             <span className="text-xs text-muted-foreground">
               Test generated with {checkCountLabel}.

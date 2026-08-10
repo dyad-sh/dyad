@@ -62,15 +62,23 @@ const NAVIGATE_BASE = "http://dyad.invalid";
  * that normalizes off-origin.
  */
 function isAppRelativePath(value: string): boolean {
-  if (!value.startsWith("/")) return false;
+  // Decided on the string a URL parser will actually see. WHATWG URL deletes
+  // every tab, LF and CR from its input before parsing anything, so
+  // `"/\t/dyad.invalid/x"` is parsed as the authority-relative
+  // `"//dyad.invalid/x"` — reading the raw second character here would find the
+  // tab, pass the structural check below, and then resolve onto the sentinel
+  // base and compare equal. Playwright resolves the same string against the
+  // real preview and leaves the app.
+  const normalized = value.replace(/[\t\n\r]/g, "");
+  if (!normalized.startsWith("/")) return false;
   // An authority-relative path is off-origin by construction, and comparing
   // resolved origins can't see it: `//dyad.invalid/x` resolves *onto* the
   // sentinel base and compares equal, while Playwright would resolve it against
   // the real preview and leave the app. Both separators, since WHATWG URL
   // treats them alike for special schemes.
-  if (value[1] === "/" || value[1] === "\\") return false;
+  if (normalized[1] === "/" || normalized[1] === "\\") return false;
   try {
-    return new URL(value, NAVIGATE_BASE).origin === NAVIGATE_BASE;
+    return new URL(normalized, NAVIGATE_BASE).origin === NAVIGATE_BASE;
   } catch {
     return false;
   }

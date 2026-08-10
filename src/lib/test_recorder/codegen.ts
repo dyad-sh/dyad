@@ -106,7 +106,15 @@ export function recordedBodyStatements(draft: RecordedTestDraft): string[] {
   const statements: string[] = [];
   if (draftIncludesSignIn(draft)) statements.push(`await signIn(page);`);
   // The base URL is configured by Dyad's Playwright bootstrap.
-  statements.push(`await page.goto("/");`);
+  //
+  // Skipped when the recording already opens with a navigation — a session
+  // started from a route rather than the app root records that route as its
+  // first action, and emitting the root `goto` first would make replay load a
+  // page it immediately leaves. Behaviour-neutral, but it is a real round-trip
+  // and it reads as a mistake in the generated file.
+  if (draft.actions[0]?.kind !== "navigate") {
+    statements.push(`await page.goto("/");`);
+  }
   for (const action of draft.actions) {
     statements.push(actionToCodeLine(action));
   }
@@ -142,8 +150,30 @@ export function generateSpecSource({
   return lines.join("\n");
 }
 
-/** The test name is free text, and an over-long one would fail with ENAMETOOLONG. */
-const MAX_SLUG_LENGTH = 80;
+/**
+ * The test name is free text, and an over-long one would fail with
+ * ENAMETOOLONG. Counted in UTF-8 bytes, not characters, because that is what
+ * the 255-byte limit on ext4/APFS actually measures — 80 CJK characters are 240
+ * bytes, and the prefix and extension have to fit alongside them.
+ */
+const MAX_SLUG_BYTES = 80;
+
+/** Longest prefix of `value` that fits in `maxBytes` UTF-8 bytes. */
+function truncateToBytes(value: string, maxBytes: number): string {
+  const encoder = new TextEncoder();
+  if (encoder.encode(value).length <= maxBytes) return value;
+  let result = "";
+  let used = 0;
+  // By code point, so a truncation never splits a character (or a surrogate
+  // pair) into an invalid sequence.
+  for (const char of value) {
+    const size = encoder.encode(char).length;
+    if (used + size > maxBytes) break;
+    result += char;
+    used += size;
+  }
+  return result;
+}
 
 /**
  * Filename for a recorded test, e.g. `recorded-add-item.spec.ts`. `index` (2+)
@@ -151,11 +181,15 @@ const MAX_SLUG_LENGTH = 80;
  * whose names slugify the same, must never clobber an existing spec.
  */
 export function recordedSpecFileName(testName: string, index?: number): string {
+  // Unicode-aware: an `[a-z0-9]` class strips every character of a name written
+  // in Cyrillic, CJK, or anything accented, so every such flow slugified to the
+  // same empty string and landed on `recorded-test.spec.ts`, `-2`, `-3` — files
+  // nobody can tell apart. `index` kept them from clobbering each other; it
+  // could not make them legible.
   const slug =
-    testName
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .slice(0, MAX_SLUG_LENGTH)
-      .replace(/^-+|-+$/g, "") || "test";
+    truncateToBytes(
+      testName.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "-"),
+      MAX_SLUG_BYTES,
+    ).replace(/^-+|-+$/g, "") || "test";
   return `recorded-${slug}${index && index > 1 ? `-${index}` : ""}.spec.ts`;
 }

@@ -306,11 +306,22 @@ export async function createTempTestBranch(
 export async function deleteTempTestBranch(appData: AppRow): Promise<boolean> {
   const marker = appData.neonTestBranchId;
   const projectId = appData.neonProjectId;
-  if (!marker || !projectId) {
+  if (!marker) {
     // Nothing tracked, so nothing is stranded.
     return true;
   }
   const branchId = trackedBranchId(marker);
+  if (!projectId) {
+    // A branch IS tracked, but the row no longer names the project holding it —
+    // Neon was unlinked after the branch was created. Nothing here can address
+    // it. Reporting success would be a lie with consequences: the app-deletion
+    // path reads this to decide whether anything was left behind, and would drop
+    // the row — the last record of this branch — believing it was cleaned up.
+    logger.error(
+      `App ${appData.id} still tracks temporary Neon test branch ${branchId}, but the app is no longer linked to a Neon project; Dyad cannot delete it and it must be removed manually.`,
+    );
+    return false;
+  }
   // Only forget the branch once Neon confirms it's gone. Clearing the column on
   // a failed delete would orphan the branch in the user's account forever, since
   // the startup reconciliation sweep relies on this id to find it again.
@@ -322,6 +333,43 @@ export async function deleteTempTestBranch(appData: AppRow): Promise<boolean> {
       .where(eq(apps.id, appData.id));
   }
   return deleted;
+}
+
+/**
+ * The tail every "we're done with this temporary branch" path shares: persist
+ * the cleanup-only marker, then delete the branch on Neon. Best-effort
+ * throughout — never throws.
+ *
+ * Ordering matters and is the reason this is one function rather than two calls
+ * repeated at each site. The marker is written FIRST so a process that dies
+ * before the remote delete leaves a row saying "the env is real, only the
+ * branch is outstanding" — which is what lets Run proceed after a restart while
+ * the startup sweep keeps retrying. Marking after a failed delete would instead
+ * claim safety this never established. A failed mark is not fatal: the delete
+ * still goes out with the raw id, so a transient SQLite error doesn't turn into
+ * a guaranteed Neon leak.
+ */
+export async function markAndDeleteTempTestBranch(
+  appData: AppRow,
+  branchId: string,
+): Promise<void> {
+  // `deleteTempTestBranch` reads the marker off the row it is given, and the
+  // caller's copy is stale by now, so carry the branch we actually created.
+  let cleanupApp: AppRow = { ...appData, neonTestBranchId: branchId };
+  try {
+    cleanupApp = await markTestBranchCleanupOnly(appData, branchId);
+  } catch (error) {
+    logger.error(
+      `Failed to persist cleanup-only state for test branch ${trackedBranchId(branchId)} on app ${appData.id}: ${error}`,
+    );
+  }
+  try {
+    await deleteTempTestBranch(cleanupApp);
+  } catch (error) {
+    logger.error(
+      `Failed to delete temporary test branch ${trackedBranchId(branchId)} for app ${appData.id}: ${error}`,
+    );
+  }
 }
 
 async function deleteBranchBestEffort(
@@ -495,39 +543,20 @@ export async function restoreAppFromTestBranch(
       }
       if (!currentApp.neonTestBranchId) return true;
 
-      let cleanupApp = currentApp;
       if (!isTestBranchCleanupOnly(currentApp.neonTestBranchId)) {
         const restored = await restoreRealBranchEnvVars(currentApp);
         if (!restored) {
           return false;
         }
-
-        // Persist the safe state before the fallible remote deletion. If Neon
-        // is unavailable, a later Run/restart may proceed while the startup
-        // sweep keeps retrying branch cleanup.
-        try {
-          cleanupApp = await markTestBranchCleanupOnly(
-            currentApp,
-            currentApp.neonTestBranchId,
-          );
-        } catch (error) {
-          // The env is already real. Still attempt deletion with the raw id; a
-          // successful delete clears that stale marker, and relaunch is safe in
-          // this process regardless of the bookkeeping failure.
-          logger.warn(
-            `Restored the real env for app ${currentApp.id}, but couldn't persist its cleanup-only Neon state: ${error}`,
-          );
-        }
       }
-      // Best-effort: the env is what the relaunch gate cares about, and a
-      // branch that survives stays tracked for the next sweep.
-      try {
-        await deleteTempTestBranch(cleanupApp);
-      } catch (error) {
-        logger.warn(
-          `Restored the real env for app ${currentApp.id}, but couldn't delete temporary Neon branch ${trackedBranchId(currentApp.neonTestBranchId)}: ${error}`,
-        );
-      }
+      // Same mark-then-delete tail the isolation teardown runs, shared so the
+      // marker scheme and the ordering it depends on live in one place. The env
+      // is real by now either way, which is what the relaunch gate cares about;
+      // a branch that survives stays tracked for the next sweep.
+      await markAndDeleteTempTestBranch(
+        currentApp,
+        currentApp.neonTestBranchId,
+      );
       return true;
     },
   );

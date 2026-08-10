@@ -226,11 +226,20 @@ describe("registerTestAssertionHandlers", () => {
     return JSON.parse(json).items;
   }
 
-  /** Approve a card the way the renderer does: with its own stored plan. */
-  function approve(appId: number, chatId: number, proposalId = "proposal-1") {
-    const row = storedMessages().find((message) =>
+  /**
+   * The stored message carrying a given card. Found by its proposal id rather
+   * than by index: `storedMessages()` is an unordered select, so an index only
+   * happens to land on the right row.
+   */
+  function storedMessageFor(proposalId: string) {
+    return storedMessages().find((message) =>
       message.content.includes(`proposal-id="${proposalId}"`),
     )!;
+  }
+
+  /** Approve a card the way the renderer does: with its own stored plan. */
+  function approve(appId: number, chatId: number, proposalId = "proposal-1") {
+    const row = storedMessageFor(proposalId);
     return harness.invokeHandler<{
       specPath: string;
       appliedCount: number;
@@ -635,7 +644,7 @@ describe("registerTestAssertionHandlers", () => {
       // The second card settles instead of staying approvable forever.
       expect(
         readAssertionsTagAttribute(
-          storedMessages()[1].content,
+          storedMessageFor("proposal-2").content,
           "status",
           "proposal-2",
         ),

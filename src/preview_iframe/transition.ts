@@ -43,6 +43,9 @@ export function transition(
           history,
           position,
           currentUrl,
+          // A restored presentation is the user's own last selection, handed
+          // back to them.
+          currentUrlSource: currentUrl === null ? "none" : "dyad",
           preservedUrl: currentUrl,
           iframeEpoch:
             currentUrl === null ? state.iframeEpoch + 1 : state.iframeEpoch,
@@ -67,6 +70,8 @@ export function transition(
         history: [event.url],
         position: 0,
         currentUrl: event.url,
+        // The dev server's own address, not a route anyone chose.
+        currentUrlSource: "none",
         preservedUrl: event.url,
       });
     }
@@ -82,6 +87,7 @@ export function transition(
           history,
           position: history.length - 1,
           currentUrl: event.path,
+          currentUrlSource: "dyad",
           preservedUrl: event.path,
         },
         [navigateCommand(event.path)],
@@ -99,6 +105,7 @@ export function transition(
           history,
           position: history.length - 1,
           currentUrl: event.url,
+          currentUrlSource: "app",
           preservedUrl: event.url,
         });
       }
@@ -116,6 +123,7 @@ export function transition(
         history,
         position: history.length === 1 ? 0 : state.position,
         currentUrl: event.url,
+        currentUrlSource: "app",
         preservedUrl: event.url,
       });
     }
@@ -125,7 +133,13 @@ export function transition(
       const currentUrl = state.history[position];
       if (!currentUrl) return ignore(state, "history-boundary");
       return applied(
-        { ...state, position, currentUrl, preservedUrl: currentUrl },
+        {
+          ...state,
+          position,
+          currentUrl,
+          currentUrlSource: "dyad",
+          preservedUrl: currentUrl,
+        },
         [navigateCommand(currentUrl, "backward")],
       );
     }
@@ -137,7 +151,13 @@ export function transition(
       const currentUrl = state.history[position];
       if (!currentUrl) return ignore(state, "history-boundary");
       return applied(
-        { ...state, position, currentUrl, preservedUrl: currentUrl },
+        {
+          ...state,
+          position,
+          currentUrl,
+          currentUrlSource: "dyad",
+          preservedUrl: currentUrl,
+        },
         [navigateCommand(currentUrl, "forward")],
       );
     }
@@ -146,6 +166,7 @@ export function transition(
         state.history.length === 0 &&
         state.position === 0 &&
         state.currentUrl === null &&
+        state.currentUrlSource === "none" &&
         state.preservedUrl === null &&
         !state.selectorReady &&
         !state.picking
@@ -157,6 +178,9 @@ export function transition(
         history: [],
         position: 0,
         currentUrl: null,
+        // No route means nobody chose one; leaving the old provenance behind
+        // would let the recorder read a selection that no longer exists.
+        currentUrlSource: "none",
         preservedUrl: null,
         selectorReady: false,
         picking: false,

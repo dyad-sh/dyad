@@ -139,9 +139,12 @@ function ActiveRecordingBanner({
       // queued behind an active stream settles here straight away and its
       // callback is not carried through the queue, so it stops the spinner too —
       // the card still arrives when the queued turn runs.
+      // Scoped to the draft this turn was dispatched for, like the prompt
+      // above: a turn about a recording the user has since discarded and
+      // replaced must not stop the spinner belonging to its replacement.
       onSettled: () => {
         if (requestAppId != null)
-          recorder.clearAwaitingAssertions(requestAppId);
+          recorder.clearAwaitingAssertions(requestAppId, draft.draftId);
       },
     });
     showInfo("Sent to chat — asking the AI for assertions…");

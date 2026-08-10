@@ -12,7 +12,7 @@ Read this when spawning `worker_threads` or `utilityProcess` children, moving he
 
 ## utilityProcess conversion checklist
 
-- `ELECTRON_RUN_AS_NODE` fork is **not** available in this app: the `RunAsNode` fuse is disabled in `forge.config.ts`. Use `utilityProcess.fork` (available only after app ready).
+- `ELECTRON_RUN_AS_NODE` fork is **not** available to app code: the `RunAsNode` fuse is disabled in `forge.config.ts`. Use `utilityProcess.fork` (available only after app ready). The fuse is applied at package time, so the dev `node_modules/.bin/electron` binary still honors the env var — `rules/native-modules.md` uses that to run Vitest against Electron's ABI. That is a local test-runner recipe, not a pattern for anything the app spawns.
 - Worker entrypoints must be listed in the forge VitePlugin build config. It emits files such as `code_explorer_worker.js` next to `main.js`, and `path.join(__dirname, "<worker>.js")` resolves both in dev and inside `app.asar`.
 - Worker side: use `process.parentPort`; messages arrive as a `MessageEvent` — read `event.data`, not the raw argument. The `workers/` tsconfig has no Electron typings; declare a minimal local `UtilityProcessParentPort` interface instead of importing `electron`.
 - Send only after `spawn`: calling `child.postMessage()` before the `spawn` event relies on undocumented buffering. Construct the input and post it inside `child.on("spawn", ...)`.

@@ -1,8 +1,5 @@
 import type { LocatorDescriptor, RecordedAction, RecordedEntry } from "./types";
 
-/** Max gap for a click to be absorbed into a following double-click. */
-const DBLCLICK_MERGE_MS = 500;
-
 function sameLocator(a: LocatorDescriptor, b: LocatorDescriptor): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
@@ -23,14 +20,22 @@ export function collapseActions(entries: RecordedEntry[]): RecordedAction[] {
     // clicks composing it, but the recorder only reports the first of them (it
     // drops any click whose `detail` says it continues a gesture). So there is
     // exactly one click to absorb here — never two, and never a click the user
-    // made separately just beforehand.
+    // made separately just beforehand: that earlier click is not the immediately
+    // preceding entry, because this gesture's own leading click sits between
+    // them.
+    //
+    // That structural pairing is the whole correlation, and deliberately NOT a
+    // time window. `at` is stamped when the renderer receives the entry, on the
+    // far side of a postMessage hop — so a gesture the browser recognized as a
+    // double-click could arrive with the two entries more than any fixed
+    // interval apart, and the leading click would survive into the spec. Replay
+    // would then click, then double-click: three activations for the user's two.
     if (action.kind === "dblclick") {
       const last = out[out.length - 1];
       if (
         last &&
         last.action.kind === "click" &&
-        sameLocator(last.action.locator, action.locator) &&
-        entry.at - last.at <= DBLCLICK_MERGE_MS
+        sameLocator(last.action.locator, action.locator)
       ) {
         out.pop();
       }

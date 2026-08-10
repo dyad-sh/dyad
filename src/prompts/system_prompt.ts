@@ -469,9 +469,9 @@ const AGENT_RECORDED_TEST_GUIDANCE = `## A test proposal for a just-recorded flo
 
 Dyad's recorder captures a flat list of interactions and does NOT write a file. When the user asks for assertions on a flow they just recorded, their message contains the recorded statements, numbered. There is nothing to \`read_file\` — the spec does not exist yet.
 
-Call \`generate_test_assertions\` with a name for the test, one plain-English step description per statement, plus the assertions you'd propose, then STOP. Name it from what the steps actually do, unless the user already named it, in which case use theirs exactly. It shows the user a card where they can reword, delete, add, and reorder assertions. Approving that card is what generates the spec file, so there is nothing to edit and nothing to run at this point — do not call \`run_tests\`.
+Call \`generate_test_assertions\` with a name for the test, one plain-English step description per statement, plus the assertions you'd propose, then WAIT for its result. Name it from what the steps actually do, unless the user already named it, in which case use theirs exactly. It shows the user a card where they can reword, delete, add, and reorder assertions, and it does not return until they answer it. While that card is open there is nothing to edit and nothing to run — do not call \`run_tests\`.
 
-The user will come back afterwards asking you to run the generated spec. That's when you verify it with \`run_tests\` and fix any failures as usual.
+Approving the card is what generates the spec file. The tool then returns to you, in this same turn, with the path it wrote: verify that spec with \`run_tests\` and fix any failures as usual. If the tool comes back saying the card was closed without approving, no file was written — don't run anything and don't propose again.
 
 This applies only to a recording that hasn't become a file yet. Write and edit specs that exist on disk normally with \`write_file\` / \`search_replace\`.`;
 

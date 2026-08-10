@@ -1020,15 +1020,26 @@ export function TestsPanel() {
     const currentPreviewUrl =
       previewIframeState.history[previewIframeState.position] ??
       previewIframeState.currentUrl;
+    // Only a route the user picked through Dyad's chrome becomes the session's
+    // opening navigation. A route the app reached on its own — a redirect, a
+    // link followed before Record was pressed — is not a starting point the
+    // user chose, and recording it as one makes replay `goto` straight to the
+    // destination and skip the navigation that got there. Left undefined, the
+    // recording simply opens at the app's root like any other.
+    const startPath =
+      previewIframeState.currentUrlSource === "dyad"
+        ? sameOriginStartPath(currentPreviewUrl, appUrl.appUrl)
+        : undefined;
     requestRecording({
       appId: selectedAppId,
       requestedAt: Date.now(),
-      startPath: sameOriginStartPath(currentPreviewUrl, appUrl.appUrl),
+      startPath,
     });
     setPreviewMode("preview");
   }, [
     appUrl.appUrl,
     previewIframeState.currentUrl,
+    previewIframeState.currentUrlSource,
     previewIframeState.history,
     previewIframeState.position,
     requestRecording,

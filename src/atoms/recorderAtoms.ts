@@ -98,6 +98,28 @@ export const currentRecordedEntriesAtom = atom((get) => {
     : (get(recordedEntriesByAppIdAtom).get(appId) ?? []);
 });
 
+/**
+ * An idle state with nothing left to report — indistinguishable from the
+ * `EMPTY_RECORDING_STATE` this map falls back to when an app has no entry.
+ *
+ * An idle state carrying an error is NOT this: the error is the last thing the
+ * session had to say, and it outlives the session by design.
+ */
+function isDefaultIdle(state: RecordingState): boolean {
+  return (
+    state.phase === "idle" &&
+    !state.error &&
+    !state.warning &&
+    !state.progress &&
+    !state.draft &&
+    !state.awaitingAssertions &&
+    !state.limitReached &&
+    !state.isolation &&
+    !state.auth &&
+    state.startedAt === undefined
+  );
+}
+
 export const setRecordingStateForAppAtom = atom(
   null,
   (
@@ -115,6 +137,16 @@ export const setRecordingStateForAppAtom = atom(
       const current = prev.get(appId) ?? EMPTY_RECORDING_STATE;
       const nextState = typeof update === "function" ? update(current) : update;
       if (nextState === current) return prev;
+      // Settling back to a bare idle DROPS the key rather than storing a state
+      // that reads identically to having none. `clearRecorderForAppAtom` only
+      // runs on app deletion, so without this every app that has ever recorded
+      // leaves an entry behind for the life of the renderer.
+      if (isDefaultIdle(nextState)) {
+        if (!prev.has(appId)) return prev;
+        const next = new Map(prev);
+        next.delete(appId);
+        return next;
+      }
       const next = new Map(prev);
       next.set(appId, nextState);
       return next;

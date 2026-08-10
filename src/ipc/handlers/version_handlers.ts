@@ -1236,6 +1236,14 @@ export function registerVersionHandlers() {
         : false;
       const preserveDirtyTree = didCancelActor || didCancelTransport;
 
+      // Rechecked here, not only before phase 1: a recording that started while
+      // phase 1 ran (or during the stream cancellation above, which deliberately
+      // holds no lock) will already own the repository claim phase 3 needs, and
+      // the preflight refusal would have been bypassed. Without this the user
+      // gets the half-hour spinner the preflight exists to prevent, instead of
+      // the precondition error explaining why.
+      assertNoActiveRecording(appId, "restore this version");
+
       // Phase 3: perform the codebase revert and create the forked chat under
       // the lock. Holding it across the whole mutation serializes the revert
       // against other version/deletion operations. The stream admission block

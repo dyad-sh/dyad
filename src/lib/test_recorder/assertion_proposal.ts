@@ -13,12 +13,35 @@ import { RecordedTestDraftSchema } from "./draft";
 export const AssertionOriginSchema = z.enum(["model", "user"]);
 export type AssertionOrigin = z.infer<typeof AssertionOriginSchema>;
 
+/**
+ * Bounds on an approved plan, mirroring the ones `RecordedTestDraftSchema` and
+ * `RecordedActionSchema` already put on a recording.
+ *
+ * The plan arrives from the renderer and is both persisted verbatim into the
+ * chat message and fed to the assertion-code model, so an oversized one bloats
+ * chat history and a model request at once. Every limit here is far above any
+ * plan a user could assemble by hand.
+ */
+export const MAX_PLAN_ITEMS = 10_000;
+/** A UUID today; sized so a different id scheme doesn't have to revisit this. */
+export const MAX_ASSERTION_ID_LENGTH = 128;
+/**
+ * Step text falls back to the generated statement itself, and a `fill`
+ * statement carries up to `MAX_VALUE_LEN` (10,000) characters of recorded
+ * value — so this cannot be sized like the prose it usually is.
+ */
+export const MAX_STEP_TEXT_LENGTH = 20_000;
+/** One plain-English sentence, model- or user-authored. */
+export const MAX_ASSERTION_TEXT_LENGTH = 2_000;
+/** A Playwright `expect(...)` line, which may carry a long locator. */
+export const MAX_ASSERTION_CODE_LENGTH = 10_000;
+
 export const ProposedAssertionSchema = z.object({
   /** Stable client-side id; survives edits and reordering. */
-  id: z.string().min(1),
-  text: z.string(),
+  id: z.string().min(1).max(MAX_ASSERTION_ID_LENGTH),
+  text: z.string().max(MAX_ASSERTION_TEXT_LENGTH),
   /** Null for a user-authored assertion with no code yet. */
-  code: z.string().nullable(),
+  code: z.string().max(MAX_ASSERTION_CODE_LENGTH).nullable(),
   /**
    * `code` no longer corresponds to `text`. The apply handler re-synthesizes the
    * code for exactly these, leaving everything else deterministic.
@@ -33,7 +56,7 @@ export const AssertionPlanItemSchema = z.discriminatedUnion("kind", [
     kind: z.literal("step"),
     /** Index into `recordedBodyStatements(draft)` — the statement this row renders. */
     stepIndex: z.number().int().nonnegative(),
-    text: z.string(),
+    text: z.string().max(MAX_STEP_TEXT_LENGTH),
   }),
   ProposedAssertionSchema.extend({ kind: z.literal("assertion") }),
 ]);
@@ -50,7 +73,7 @@ export const AssertionProposalPayloadSchema = z.object({
   /** Null until the user approves — the name is only claimed at write time. */
   specPath: z.string().nullable(),
   /** Steps and assertions interleaved, in the order they will be written. */
-  items: z.array(AssertionPlanItemSchema),
+  items: z.array(AssertionPlanItemSchema).max(MAX_PLAN_ITEMS),
 });
 export type AssertionProposalPayload = z.infer<
   typeof AssertionProposalPayloadSchema

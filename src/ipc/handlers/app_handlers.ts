@@ -63,6 +63,7 @@ import {
   assertNoActiveRecording,
   endRecordingForApp,
 } from "../services/recording_registry";
+import { forgetAppRecordedDrafts } from "../services/recorded_test_drafts";
 import { getPtySessionManager } from "../utils/pty_session_manager";
 import { sameInvocationRef } from "@/state_machines/invocation_ref";
 import { userInputRegistry } from "@/user_input/main";
@@ -525,13 +526,22 @@ async function deleteAppById(
     appOperationDeletion.release();
   }
 
+  // The app row is gone, so nothing will ever ask for its parked draft or its
+  // remembered spec writes again. Past the throw above on purpose, same as the
+  // branch cleanup below: a deletion that failed leaves a live app whose
+  // recording the user can still save.
+  forgetAppRecordedDrafts(appId);
+
   // Only after the deletion has committed — the throw above skips this. Doing
   // it earlier means a deletion that then fails leaves a live app pointed at a
   // database that no longer exists, which is worse than the leak it prevents.
-  const strandedMarker =
-    deletedRow?.neonTestBranchId && deletedRow.neonProjectId
-      ? deletedRow.neonTestBranchId
-      : null;
+  // Keyed on the tracked branch alone, NOT on the project id also being
+  // present. An app unlinked from Neon after a recording still has a live
+  // branch in the user's account, and requiring the project id here treated
+  // exactly that case as "nothing to clean up" — the row went away and the
+  // branch became unreachable without a word. `deleteTempTestBranch` reports
+  // that state as a failure, which is what reaches the user below.
+  const strandedMarker = deletedRow?.neonTestBranchId ?? null;
   if (strandedMarker && deletedRow) {
     // The row is gone, so nothing can reconcile this later. Logged loudly
     // rather than failing a deletion that has already happened — and named by
@@ -548,7 +558,11 @@ async function deleteAppById(
       // a sweep that will find nothing now that the row is deleted. Treating
       // that as success is what loses the branch silently.
       if (!(await deleteTempTestBranch(deletedRow))) {
-        stranded("Neon rejected the delete");
+        stranded(
+          deletedRow.neonProjectId
+            ? "Neon rejected the delete"
+            : "the app was no longer linked to a Neon project, so Dyad could not address the branch",
+        );
       }
     } catch (error) {
       stranded(String(error));
@@ -892,6 +906,37 @@ export function registerAppHandlers() {
     // to 30 minutes with nothing explaining the wait.
     assertNoActiveRecording(appId, "duplicate this app");
 
+    // Refusing an active recording isn't enough: a session whose teardown
+    // FAILED leaves no active recording but a raw branch marker on the row and
+    // an `.env.local` that may still point at the temporary branch. Copying
+    // that produces an app with no marker of its own — nothing can reconcile
+    // it, and it talks to a database that gets deleted out from under it.
+    // Recover first, exactly as a recording start does; if that fails, refuse
+    // rather than duplicate an app into an unrecoverable state.
+    //
+    // Before coordinator admission because `restoreAppFromTestBranch` takes the
+    // same per-app claims this handler is about to hold. The recheck under
+    // those claims happens below, once the row can't move.
+    const appBeforeCopy = await db.query.apps.findFirst({
+      where: eq(apps.id, appId),
+    });
+    if (appBeforeCopy?.neonTestBranchId) {
+      let restored = false;
+      try {
+        restored = await restoreAppFromTestBranch(appBeforeCopy);
+      } catch (error) {
+        logger.error(
+          `App ${appId}: failed to recover a prior test branch before duplicating: ${error}`,
+        );
+      }
+      if (!restored) {
+        throw new DyadError(
+          "Dyad couldn't restore this app's real database settings from a previous test or recording session. Retry after checking the Neon connection.",
+          DyadErrorKind.Precondition,
+        );
+      }
+    }
+
     // 1. Check if an app with the new name already exists. The user typed
     // this name, so a conflict is a hard error; folder collisions below
     // auto-resolve with a suffix (two distinct names can share a slug).
@@ -928,6 +973,21 @@ export function registerAppHandlers() {
           throw new DyadError(
             "Original app not found.",
             DyadErrorKind.NotFound,
+          );
+        }
+
+        // The recovery above ran before admission, so a test run could have
+        // started and failed in the window since. A cleanup-only marker is
+        // fine — it means the env is real and only the remote branch is still
+        // pending deletion. A raw one means `.env.local` may still target the
+        // temporary branch, which is exactly what must not be copied.
+        if (
+          originalApp.neonTestBranchId &&
+          !isTestBranchCleanupOnly(originalApp.neonTestBranchId)
+        ) {
+          throw new DyadError(
+            "Dyad couldn't restore this app's real database settings from a previous test or recording session. Retry after checking the Neon connection.",
+            DyadErrorKind.Precondition,
           );
         }
 

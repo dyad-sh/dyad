@@ -1667,6 +1667,14 @@ export const PreviewIframe = ({
         />
         {!loading && appUrl && (
           <div
+            // Actually inert, not just dimmed and pointer-blocked. The overlay
+            // above covers the preview for the mouse, but a preview that
+            // already had focus goes on receiving KEYSTROKES through it — so
+            // typing during setup or teardown mutates the app outside the
+            // recorded session, against whichever database the swap has reached
+            // by then. `inert` also blurs whatever is focused inside, which is
+            // what stops the keystrokes already in flight.
+            inert={isRecorderSettingUp}
             className={cn(
               "w-full h-full",
               deviceMode !== "desktop" && "flex justify-center",

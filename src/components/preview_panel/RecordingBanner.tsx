@@ -67,11 +67,17 @@ export function RecordingBanner({
 
   // Each phase opens showing its details: a bar collapsed while recording still
   // opens on the review, the one part the user is asked to actually read.
+  //
+  // Keyed on the displayed draft as well as the phase. This bar is mounted once
+  // and re-pointed at whichever app is selected, so switching between two apps
+  // that both have parked reviews changes everything on screen without changing
+  // `phase` — leaving a Discard armed on the first app pointed at the second
+  // one's recording, one click from deleting it.
   useEffect(() => {
     setIsExpanded(true);
     // A confirm armed in one phase must not still be armed in the next.
     setConfirmingDiscard(false);
-  }, [recorder.phase]);
+  }, [recorder.phase, recorder.draft?.draftId]);
 
   const details: ReactNode = recorder.isRecording ? (
     <RecordingCodePreview steps={recorder.steps} />

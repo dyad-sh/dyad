@@ -1,5 +1,44 @@
-import { expect } from "@playwright/test";
+import { expect, type FrameLocator } from "@playwright/test";
 import { testSkipIfWindows, Timeout } from "./helpers/test_helper";
+import type { PageObject } from "./helpers/page-objects";
+
+/**
+ * Get to a stopped recording with one interaction in it — everything both tests
+ * below need before they diverge on what to do with the proposal.
+ *
+ * Not a `beforeEach`: `po` is a fixture the test body receives, and keeping this
+ * an explicit call leaves each test's first lines saying what it starts from.
+ */
+async function recordOneInteraction(
+  po: PageObject,
+  { testName }: { testName?: string } = {},
+): Promise<FrameLocator> {
+  await po.setUp({ autoApprove: true });
+  await po.importApp("recorder");
+
+  await po.previewPanel.selectPreviewMode("tests");
+  await po.previewPanel.clickEnableTesting();
+
+  await po.previewPanel.selectPreviewMode("preview");
+  await po.clickRestart();
+  await po.previewPanel.expectPreviewIframeIsVisible();
+
+  await po.previewPanel.startRecording();
+  await expect(po.page.getByTestId("preview-recording-bar")).toBeVisible({
+    timeout: Timeout.LONG,
+  });
+
+  const frame = po.previewPanel.getPreviewIframeElement().contentFrame();
+  await frame.getByRole("button", { name: "Increment" }).click();
+  await expect(
+    po.page.getByTestId("preview-recording-step-count"),
+  ).not.toHaveText("0 steps");
+
+  if (testName !== undefined) {
+    await po.page.getByTestId("preview-recording-name-input").fill(testName);
+  }
+  return frame;
+}
 
 // End-to-end coverage for the recorder's "Generate test proposal" flow. The fake
 // LLM server answers the agent turn with a generate_test_assertions tool call
@@ -12,32 +51,11 @@ import { testSkipIfWindows, Timeout } from "./helpers/test_helper";
 testSkipIfWindows(
   "proposes a name, steps and assertions, then generates the test file on approval",
   async ({ po }) => {
-    await po.setUp({ autoApprove: true });
-    await po.importApp("recorder");
-
-    await po.previewPanel.selectPreviewMode("tests");
-    await po.previewPanel.clickEnableTesting();
-
-    await po.previewPanel.selectPreviewMode("preview");
-    await po.clickRestart();
-    await po.previewPanel.expectPreviewIframeIsVisible();
-
-    // Record a short flow.
-    await po.previewPanel.startRecording();
-    await expect(po.page.getByTestId("preview-recording-bar")).toBeVisible({
-      timeout: Timeout.LONG,
-    });
-
-    const frame = po.previewPanel.getPreviewIframeElement().contentFrame();
-    await frame.getByRole("button", { name: "Increment" }).click();
-    await frame.getByLabel("Name").fill("Ada");
-
-    await expect(
-      po.page.getByTestId("preview-recording-step-count"),
-    ).not.toHaveText("0 steps");
-
     // Deliberately unnamed: naming a flow before performing it is guesswork, so
     // the AI names the test from what was actually recorded.
+    const frame = await recordOneInteraction(po);
+    await frame.getByLabel("Name").fill("Ada");
+
     await po.page.getByTestId("preview-recording-stop-button").click();
 
     // Stopping lists the steps and offers the proposal — no file yet.
@@ -143,30 +161,7 @@ testSkipIfWindows(
 testSkipIfWindows(
   "returns the recording bar to the review when the proposal turn ends without a test",
   async ({ po }) => {
-    await po.setUp({ autoApprove: true });
-    await po.importApp("recorder");
-
-    await po.previewPanel.selectPreviewMode("tests");
-    await po.previewPanel.clickEnableTesting();
-
-    await po.previewPanel.selectPreviewMode("preview");
-    await po.clickRestart();
-    await po.previewPanel.expectPreviewIframeIsVisible();
-
-    await po.previewPanel.startRecording();
-    await expect(po.page.getByTestId("preview-recording-bar")).toBeVisible({
-      timeout: Timeout.LONG,
-    });
-
-    const frame = po.previewPanel.getPreviewIframeElement().contentFrame();
-    await frame.getByRole("button", { name: "Increment" }).click();
-    await expect(
-      po.page.getByTestId("preview-recording-step-count"),
-    ).not.toHaveText("0 steps");
-
-    await po.page
-      .getByTestId("preview-recording-name-input")
-      .fill("abandoned flow");
+    await recordOneInteraction(po, { testName: "abandoned flow" });
     await po.page.getByTestId("preview-recording-stop-button").click();
 
     const status = po.page.getByTestId("preview-recording-review-status");

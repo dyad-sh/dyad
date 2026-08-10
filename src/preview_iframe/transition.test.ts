@@ -344,6 +344,40 @@ describe("preview iframe transition", () => {
     expect(selectIframeSrc(state, URL)).toBe(URL);
   });
 
+  it("distinguishes a route Dyad selected from one the app navigated to", () => {
+    // The recorder reads this to decide whether the current route is a starting
+    // point the user chose. An app-driven route is not, and recording it as the
+    // session's opening `goto` would replay straight past the navigation that
+    // reached it.
+    expect(INITIAL_PREVIEW_IFRAME_STATE.currentUrlSource).toBe("none");
+
+    const appRoot = transition(INITIAL_PREVIEW_IFRAME_STATE, {
+      type: "APP_URL_CHANGED",
+      url: URL,
+    }).state;
+    expect(appRoot.currentUrlSource).toBe("none");
+
+    const typedIn = transition(appRoot, {
+      type: "NAVIGATE",
+      path: `${URL}/settings`,
+    }).state;
+    expect(typedIn.currentUrlSource).toBe("dyad");
+
+    for (const kind of ["pushState", "replaceState"] as const) {
+      const redirected = transition(typedIn, {
+        type: "NAVIGATED_IN_APP",
+        kind,
+        url: `${URL}/login`,
+      }).state;
+      expect(redirected.currentUrlSource).toBe("app");
+
+      // Going back through Dyad's chrome makes it the user's choice again.
+      expect(
+        transition(redirected, { type: "GO_BACK" }).state.currentUrlSource,
+      ).toBe("dyad");
+    }
+  });
+
   it("derives browser navigation availability from history and position", () => {
     const state: PreviewIframeState = {
       ...INITIAL_PREVIEW_IFRAME_STATE,

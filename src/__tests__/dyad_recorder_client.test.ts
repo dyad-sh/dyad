@@ -639,6 +639,89 @@ describe("dyad recorder client", () => {
     ]);
   });
 
+  it("records a range pick as a single fill and drops its click", () => {
+    const r = setup();
+    r.setHtml(`<input aria-label="Volume" type="range" value="50" />`);
+    r.activate();
+    const range = r.doc.querySelector("input");
+
+    // The user drags the thumb: a click on the track, then `change` when the
+    // value commits. Only the value is replayable — Playwright sets these
+    // directly, and a recorded click on the track lands wherever the layout
+    // happens to put it at replay.
+    r.click(range);
+    range.value = "80";
+    r.change(range);
+    r.settleClick();
+
+    expect(r.actions).toEqual([
+      {
+        kind: "fill",
+        locator: {
+          kind: "role",
+          value: "slider",
+          name: "Volume",
+          exact: true,
+        },
+        value: "80",
+      },
+    ]);
+  });
+
+  it("records a colour pick as a single fill and drops its click", () => {
+    const r = setup();
+    r.setHtml(`<input aria-label="Tint" type="color" value="#000000" />`);
+    r.activate();
+    const picker = r.doc.querySelector("input");
+
+    r.click(picker);
+    picker.value = "#ff8800";
+    r.change(picker);
+    r.settleClick();
+
+    expect(r.actions.map((action: any) => action.kind)).toEqual(["fill"]);
+    expect(r.actions[0].value).toBe("#ff8800");
+  });
+
+  it("does not also record the arrow keys that drove a native control", () => {
+    const r = setup();
+    r.setHtml(
+      `<label for="colour">Colour</label>` +
+        `<select id="colour">` +
+        `<option value="red">Red</option><option value="blue">Blue</option>` +
+        `</select>` +
+        `<label for="vol">Volume</label><input id="vol" type="range" value="50" />`,
+    );
+    r.activate();
+    const select = r.doc.querySelector("select");
+    const range = r.doc.querySelector('input[type="range"]');
+
+    // Keyboard users change these without ever clicking. The keypress and the
+    // value action describe the SAME change, so recording both replays it
+    // twice and lands on a value the user never chose.
+    r.keydown(select, { key: "ArrowDown" });
+    select.value = "blue";
+    r.change(select);
+    r.keydown(range, { key: "ArrowRight" });
+    range.value = "51";
+    r.change(range);
+
+    expect(r.actions.map((action: any) => action.kind)).toEqual([
+      "select",
+      "fill",
+    ]);
+  });
+
+  it("still records arrow keys in a text field, which no change follows", () => {
+    const r = setup();
+    r.setHtml(`<input aria-label="Search" />`);
+    r.activate();
+
+    r.keydown(r.doc.querySelector("input"), { key: "ArrowLeft" });
+
+    expect(r.actions.map((action: any) => action.kind)).toEqual(["press"]);
+  });
+
   it("uses the accessible text from every native label", () => {
     const r = setup();
     r.setHtml(

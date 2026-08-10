@@ -25,6 +25,7 @@ import {
 } from "../services/isolated_test_db";
 import {
   activeRecordings,
+  endRecordingForApp,
   reserveRecordingStart,
   type EndRecordingOptions,
   type RecordingEndReason,
@@ -528,11 +529,13 @@ export function registerRecordingHandlers() {
   createTypedHandler(
     recordingContracts.stopRecording,
     async (_event, params) => {
-      const recording = activeRecordings.get(params.appId);
-      if (recording) {
-        recording.stop("stopped");
-        await recording.done.catch(() => {});
-      }
+      // Via the registry rather than `activeRecordings` directly: a start still
+      // inside its setup awaits owns no published session, so reading the map
+      // here would find nothing and report success while that start went on to
+      // clear preview storage, swap `.env.local`, and restart the dev server
+      // for a session the user has already cancelled. `endRecordingForApp` sets
+      // the reservation tombstone the start re-reads after each await.
+      await endRecordingForApp(params.appId, "stopped");
       return { ok: true as const };
     },
   );

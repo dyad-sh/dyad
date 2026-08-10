@@ -61,7 +61,15 @@ export function clearRecordedTestDraft(
   appId: number,
   onlyDraftId?: string,
 ): void {
-  if (onlyDraftId && draftsByAppId.get(appId)?.draftId !== onlyDraftId) return;
+  // `undefined` means "whatever is parked", but a *supplied* id always scopes
+  // the clear — including the empty string. Treating `""` as omitted would let
+  // a malformed or stale discard delete a newer recording it never named.
+  if (
+    onlyDraftId !== undefined &&
+    draftsByAppId.get(appId)?.draftId !== onlyDraftId
+  ) {
+    return;
+  }
   draftsByAppId.delete(appId);
 }
 
@@ -120,6 +128,20 @@ export function forgetRecordedDraftWrite(
   draft: RecordedTestDraft,
 ): void {
   writtenByAppId.get(appId)?.delete(draft.draftId);
+}
+
+/**
+ * Forget everything this module holds for an app that no longer exists.
+ *
+ * The parked draft is already cleared when a deletion ends the app's recording,
+ * but `writtenByAppId` is keyed by app and pruned only by its own per-app write
+ * bound — so without this every recorded-then-deleted app would leave its
+ * remembered spec paths behind for the life of the process. Small entries, but
+ * the point of the outer map is that this module's memory is bounded.
+ */
+export function forgetAppRecordedDrafts(appId: number): void {
+  draftsByAppId.delete(appId);
+  writtenByAppId.delete(appId);
 }
 
 /** Drop everything. For tests: these maps outlive a single handler harness. */

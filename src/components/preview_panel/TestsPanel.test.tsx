@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => ({
   /** Null stands in for a dev server that isn't up. */
   appUrl: "http://localhost:32100" as string | null,
   previewUrl: "http://localhost:32100/" as string | null,
+  previewUrlSource: "dyad" as "none" | "dyad" | "app",
 }));
 
 vi.mock("@/ipc/types", () => ({
@@ -73,6 +74,7 @@ vi.mock("@/preview_iframe/usePreviewIframe", () => ({
       history: mocks.previewUrl ? [mocks.previewUrl] : [],
       position: 0,
       currentUrl: mocks.previewUrl,
+      currentUrlSource: mocks.previewUrlSource,
     },
   }),
 }));
@@ -122,6 +124,7 @@ describe("TestsPanel", () => {
     vi.clearAllMocks();
     mocks.appUrl = "http://localhost:32100";
     mocks.previewUrl = "http://localhost:32100/";
+    mocks.previewUrlSource = "dyad";
     mocks.listAppTests.mockResolvedValue({
       specs: [
         {
@@ -274,6 +277,21 @@ describe("TestsPanel", () => {
     );
     // The recorder only exists in the preview, so the panel switches to it.
     expect(store.get(previewModeAtom)).toBe("preview");
+  });
+
+  it("sends no start path for a route the app navigated to itself", () => {
+    // A redirect or an in-app link is not a starting point the user chose.
+    // Recording it as one makes the generated spec `goto` straight to the
+    // destination, skipping the navigation that may be the thing under test.
+    mocks.previewUrl = "http://localhost:32100/login?next=%2Fsettings";
+    mocks.previewUrlSource = "app";
+    const { store } = renderPanel();
+    store.set(previewModeAtom, "tests");
+
+    fireEvent.click(screen.getByTestId("tests-record-button"));
+
+    expect(store.get(recordingStartRequestAtom)?.appId).toBe(1);
+    expect(store.get(recordingStartRequestAtom)?.startPath).toBeUndefined();
   });
 
   it("disables recording until the app is running", () => {

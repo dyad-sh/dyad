@@ -426,6 +426,28 @@
     return null;
   }
 
+  /**
+   * Controls that arrow keys DRIVE rather than merely move a caret within, so
+   * the keypress produces a `change` this recorder already captures as the
+   * value action.
+   *
+   * A `<select>` walks its options, a range slider steps, and arrows inside a
+   * radio group both move focus and check the radio they land on. Recording the
+   * press as well as the resulting `select`/`fill`/`check` makes replay perform
+   * the value change twice — once by keystroke, once by the value action — and
+   * land somewhere the user never went. Text fields are not here: arrows only
+   * move the caret, and no `change` follows.
+   */
+  function changesValueOnArrowKeys(control) {
+    if (!control || control.nodeType !== 1) return false;
+    return (
+      control.tagName === "SELECT" ||
+      isCheckboxOrRadio(control) ||
+      (control.tagName === "INPUT" &&
+        (control.getAttribute("type") || "").toLowerCase() === "range")
+    );
+  }
+
   /** Controls whose meaningful action is captured by input/change, not click. */
   function recordsWithoutClick(control) {
     return (
@@ -1061,7 +1083,14 @@
         if (t && (t.tagName === "TEXTAREA" || t.isContentEditable))
           return false;
         if (activatesOnEnter(t)) return false;
+        return true;
       }
+      // Arrows that drive a native control are already recorded as the value
+      // action the resulting `change` produces. Keeping the press too would
+      // replay the change twice.
+      const raw = deepTarget(e);
+      const control = resolveControl(raw) || raw;
+      if (changesValueOnArrowKeys(control)) return false;
       return true;
     }
     return false;

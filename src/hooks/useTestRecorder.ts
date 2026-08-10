@@ -1131,7 +1131,17 @@ export function useTestRecorder({
       const ourSessionFailed =
         failedSessionsRef.current.has(targetAppId) &&
         (failedSessionId === undefined || failedSessionId === ourSessionId);
-      if (ourSessionFailed) {
+      // The same re-check the pre-teardown guard makes, repeated on the far side
+      // of it. Teardown takes seconds, and an ending that isn't ours — the app
+      // stopped or restarted underneath this finish — retires the session id and
+      // puts the bar back to idle. Without this, the review reopens on top of
+      // that reset for a session that no longer exists, and its draft is left
+      // parked in main with nothing on screen to discard it. Unattributable when
+      // we never had a session id, so that case keeps the old behaviour.
+      const ourSessionGone =
+        ourSessionId !== undefined &&
+        sessionIdsRef.current.get(targetAppId) !== ourSessionId;
+      if (ourSessionFailed || ourSessionGone) {
         failedSessionsRef.current.delete(targetAppId);
         void ipc.recording
           .discardRecordedTestDraft({
@@ -1192,12 +1202,22 @@ export function useTestRecorder({
    * and a stopped chat would otherwise leave the bar spinning forever. Takes the
    * app the request was made for, since a turn can settle after the selection
    * has moved on.
+   *
+   * `onlyDraftId` scopes it to the recording the request was made about, the
+   * same guard the prompt itself carries. Discarding a review, recording again
+   * and asking a second time can leave the first turn still in flight; without
+   * this it settles onto the second one and stops a spinner describing a
+   * request that is genuinely still running.
    */
   const clearAwaitingAssertions = useCallback(
-    (targetAppId: number) => {
-      patchState(targetAppId, (prev) =>
-        prev.awaitingAssertions ? { ...prev, awaitingAssertions: false } : prev,
-      );
+    (targetAppId: number, onlyDraftId?: string) => {
+      patchState(targetAppId, (prev) => {
+        if (!prev.awaitingAssertions) return prev;
+        if (onlyDraftId !== undefined && prev.draft?.draftId !== onlyDraftId) {
+          return prev;
+        }
+        return { ...prev, awaitingAssertions: false };
+      });
     },
     [patchState],
   );

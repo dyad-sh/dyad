@@ -73,6 +73,7 @@ import {
   createTempTestBranch,
   deleteTempTestBranch,
   isTestBranchCleanupOnly,
+  markAndDeleteTempTestBranch,
   reconcileOrphanTestBranches,
   restoreAppFromTestBranch,
 } from "./neon_test_branch";
@@ -290,6 +291,19 @@ describe("deleteTempTestBranch", () => {
     expect(mocks.deleteProjectBranch).not.toHaveBeenCalled();
   });
 
+  it("reports failure when a branch is tracked but the project is not", async () => {
+    // Neon was unlinked after the branch was created, so nothing here can
+    // address it. Answering "true" would tell app deletion the branch was
+    // cleaned up, and it would drop the row that is the last record of it.
+    await expect(
+      deleteTempTestBranch(
+        makeApp({ neonTestBranchId: "test-br", neonProjectId: null }),
+      ),
+    ).resolves.toBe(false);
+    expect(mocks.deleteProjectBranch).not.toHaveBeenCalled();
+    expect(mocks.set).not.toHaveBeenCalledWith({ neonTestBranchId: null });
+  });
+
   it("clears the column when Neon reports the branch is already gone (404)", async () => {
     // A prior teardown deleted the branch but crashed before clearing the
     // column. Neon now 404s — treat that as success so we stop dead-ending on
@@ -326,6 +340,51 @@ describe("deleteTempTestBranch", () => {
     await expect(
       deleteTempTestBranch(makeApp({ neonTestBranchId: "test-br" })),
     ).resolves.toBe(false);
+  });
+});
+
+// The mark-then-delete tail both the isolation teardown and the recovery path
+// run. Shared so the marker scheme and — more importantly — the ordering it
+// depends on are written down once.
+describe("markAndDeleteTempTestBranch", () => {
+  it("persists the cleanup-only marker before deleting the branch", async () => {
+    // Ordering is the point: a crash between the two must leave a row saying
+    // the env is real and only the remote branch is outstanding, so a later Run
+    // proceeds while the startup sweep keeps retrying cleanup.
+    await markAndDeleteTempTestBranch(
+      makeApp({ neonTestBranchId: "test-br" }),
+      "test-br",
+    );
+    expect(mocks.set).toHaveBeenCalledWith({
+      neonTestBranchId: "dyad-cleanup-only:v1:test-br",
+    });
+    expect(mocks.deleteProjectBranch).toHaveBeenCalledWith("proj-1", "test-br");
+    const markedAt = mocks.set.mock.invocationCallOrder[0];
+    const deletedAt = mocks.deleteProjectBranch.mock.invocationCallOrder[0];
+    expect(markedAt).toBeLessThan(deletedAt);
+  });
+
+  it("still deletes with the raw id when persisting the marker fails", async () => {
+    // A transient SQLite failure must not turn best-effort cleanup into a
+    // guaranteed Neon leak.
+    mocks.where.mockRejectedValueOnce(new Error("sqlite busy"));
+    await markAndDeleteTempTestBranch(
+      makeApp({ neonTestBranchId: "test-br" }),
+      "test-br",
+    );
+    expect(mocks.deleteProjectBranch).toHaveBeenCalledWith("proj-1", "test-br");
+  });
+
+  it("does not throw when the remote delete fails", async () => {
+    mocks.deleteProjectBranch.mockRejectedValueOnce({
+      response: { status: 500 },
+    });
+    await expect(
+      markAndDeleteTempTestBranch(
+        makeApp({ neonTestBranchId: "test-br" }),
+        "test-br",
+      ),
+    ).resolves.toBeUndefined();
   });
 });
 

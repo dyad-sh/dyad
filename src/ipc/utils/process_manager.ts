@@ -10,6 +10,7 @@ import {
   unregisterRunningCloudSandbox,
 } from "./cloud_sandbox_provider";
 import { readSettings } from "../../main/settings";
+import { endRecordingForApp } from "../services/recording_registry";
 import type { AppRunInvocationRef } from "@/app_run/state";
 import type { AppRuntimeOutput } from "@/ipc/types/app_runtime";
 import { killProcessTreeSync } from "./kill_process_tree_sync";
@@ -219,6 +220,24 @@ export function removeAppIfCurrentProcess(
     runningApps.delete(appId);
     logger.info(
       `Removed app ${appId} (processId ${currentAppInfo.processId}) from running map. Current size: ${runningApps.size}`,
+    );
+    // The dev server went away on its own — a crash, or the user killing it
+    // outside Dyad. Stop/Restart/Delete end a recording explicitly, but this
+    // path had nothing watching it, so isolation and the session's whole-app
+    // claim would have been held until the 30-minute cap with no preview left
+    // to record. Deliberate restarts don't reach here: they delete the map
+    // entry first, so the guard above sends them to the branch below.
+    //
+    // `skipRestart` because there is no process to put back — teardown must
+    // restore `.env.local`, not resurrect an app the user didn't ask to start.
+    // Fire-and-forget: this is a lifecycle callback, and teardown reports its
+    // own failures to the recorder bar.
+    void endRecordingForApp(appId, "app-stopped", { skipRestart: true }).catch(
+      (error) => {
+        logger.error(
+          `Failed to end app ${appId}'s recording after its process exited: ${error}`,
+        );
+      },
     );
   } else {
     logger.info(

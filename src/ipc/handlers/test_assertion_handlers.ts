@@ -262,18 +262,31 @@ async function stage(appPath: string, relativePath: string): Promise<void> {
  * be decided by reading it here, and guessing wrong blocks the user behind an
  * error toast; a fixture that doesn't work fails when the test runs, which is
  * where the agent already fixes it.
+ *
+ * Returns what it changed, or null when it left the tree alone, so a failed
+ * approval can put the fixture back. An approval that rolls its spec back but
+ * keeps a created or backend-swapped `test-user.ts` staged leaves the user a
+ * change they never approved, for a test that doesn't exist.
  */
+interface SignInFixtureChange {
+  relativePath: string;
+  absolutePath: string;
+  /** The bytes that were there before, or null when we created the file. */
+  previousContent: string | null;
+}
+
 async function ensureSignInFixture(
   appPath: string,
   draft: RecordedTestDraft,
-): Promise<void> {
-  if (draft.authMode === "none") return;
+): Promise<SignInFixtureChange | null> {
+  if (draft.authMode === "none") return null;
   const relativePath = await assertMutationPathAllowed({
     appPath,
     relativePath: FIXTURE_PATH,
   });
   const absolutePath = path.join(appPath, relativePath);
 
+  let previousContent: string | null = null;
   if (await fileExists(absolutePath)) {
     const existing = await fs.promises.readFile(absolutePath, "utf-8");
     const existingMode = readFixtureMode(existing);
@@ -281,7 +294,8 @@ async function ensureSignInFixture(
       existingMode !== null &&
       existingMode !== draft.authMode &&
       existing === generateTestUserFixtureSource(existingMode);
-    if (!isStaleOurs) return;
+    if (!isStaleOurs) return null;
+    previousContent = existing;
     logger.info(
       `Regenerating ${relativePath}: was ${existingMode}, recording used ${draft.authMode}`,
     );
@@ -294,6 +308,48 @@ async function ensureSignInFixture(
     "utf-8",
   );
   await stage(appPath, relativePath);
+  return { relativePath, absolutePath, previousContent };
+}
+
+/**
+ * Undo an `ensureSignInFixture` write, for an approval that has been rolled
+ * back. Best-effort and never throws, for the same reason `discardGeneratedSpec`
+ * isn't fatal: this runs while a real error is already on its way to the user.
+ */
+async function revertSignInFixture(
+  appPath: string,
+  change: SignInFixtureChange,
+): Promise<void> {
+  try {
+    if (change.previousContent === null) {
+      // We created it, so the tree had no such file. Unstage as well, or the
+      // uncommitted-changes review lists a file that is no longer there.
+      await fs.promises.rm(change.absolutePath, { force: true });
+      try {
+        await gitResetFile({ path: appPath, filepath: change.relativePath });
+      } catch (error) {
+        logger.warn(
+          `Removed ${change.relativePath} but couldn't unstage it:`,
+          error,
+        );
+      }
+      return;
+    }
+    // We replaced our own stale fixture. Put the exact bytes back and stage
+    // that, which is a no-op in the index when they match HEAD and restores the
+    // prior staged state when they don't.
+    await fs.promises.writeFile(
+      change.absolutePath,
+      change.previousContent,
+      "utf-8",
+    );
+    await stage(appPath, change.relativePath);
+  } catch (error) {
+    logger.error(
+      `Couldn't restore ${change.relativePath} after a failed approval:`,
+      error,
+    );
+  }
 }
 
 /**
@@ -350,8 +406,8 @@ async function writeRecordedSpec({
   appPath: string;
   draft: RecordedTestDraft;
   bodyStatements: string[];
-}): Promise<{ specPath: string }> {
-  await ensureSignInFixture(appPath, draft);
+}): Promise<{ specPath: string; fixtureChange: SignInFixtureChange | null }> {
+  const fixtureChange = await ensureSignInFixture(appPath, draft);
 
   // The name comes from the user or, far more often, from the model that
   // proposed this test — both by way of the renderer, so a last-resort default
@@ -362,11 +418,20 @@ async function writeRecordedSpec({
     includeSignIn: draftIncludesSignIn(draft),
     bodyStatements,
   });
-  const { relativePath } = await writeSpecToFreePath(
-    appPath,
-    testName,
-    `${recordedDraftMarker(draft)}\n${generatedSource}`,
-  );
+  let relativePath: string;
+  try {
+    ({ relativePath } = await writeSpecToFreePath(
+      appPath,
+      testName,
+      `${recordedDraftMarker(draft)}\n${generatedSource}`,
+    ));
+  } catch (error) {
+    // The spec never landed, so the fixture written for it is a change the user
+    // never asked for. Undone here rather than by the caller, which has no
+    // successful write to roll back and so never learns one happened.
+    if (fixtureChange) await revertSignInFixture(appPath, fixtureChange);
+    throw error;
+  }
   await stage(appPath, relativePath);
 
   // The recording has produced its file. Remembered because a recording can
@@ -378,17 +443,22 @@ async function writeRecordedSpec({
   // a test that's already written. Scoped to this recording: a card approved
   // after a newer recording was parked must not discard that newer draft.
   clearRecordedTestDraft(appId, draft.draftId);
-  return { specPath: relativePath };
+  return { specPath: relativePath, fixtureChange };
 }
 
 /**
  * Roll back a spec this approval just wrote, because the approval itself couldn't
  * be recorded. Best-effort: leaving the file behind is a duplicate test, not data
  * loss, so a failure here is logged rather than raised over the original error.
+ *
+ * `fixtureChange` is the `test-user.ts` write the same approval made, if any. It
+ * goes back with the spec: on its own it is a staged auth fixture the user never
+ * asked for, supporting an import in a file that no longer exists.
  */
 async function discardGeneratedSpec(
   appId: number,
   specPath: string,
+  fixtureChange: SignInFixtureChange | null,
 ): Promise<void> {
   try {
     await appOperationCoordinator.run(
@@ -406,6 +476,9 @@ async function discardGeneratedSpec(
           await gitResetFile({ path: appPath, filepath: specPath });
         } catch (error) {
           logger.warn(`Removed ${specPath} but couldn't unstage it:`, error);
+        }
+        if (fixtureChange) {
+          await revertSignInFixture(appPath, fixtureChange);
         }
         logger.warn(
           `Rolled back ${specPath}: the approval couldn't be persisted`,
@@ -445,12 +518,21 @@ async function callStructuredModel<T>({
       reject(new Error("assertion model call timed out"));
     }, LLM_TIMEOUT_MS);
   });
+  // Observed from the moment it exists. The timer starts before the client is
+  // resolved below, so there is a window in which nothing is racing this
+  // promise; a rejection landing there would surface as an unhandled rejection
+  // rather than as this call timing out.
+  timeout.catch(() => {});
 
   try {
-    const { modelClient } = await getModelClient(
-      settings.selectedModel,
-      settings,
-    );
+    // Raced too, not just awaited: the timer is meant to bound the whole
+    // operation, and `getModelClient` can reach the provider registry. Without
+    // this the budget only ever covered the streaming half, and a slow client
+    // resolution aborted a stream that did not exist yet.
+    const { modelClient } = await Promise.race([
+      getModelClient(settings.selectedModel, settings),
+      timeout,
+    ]);
     const dyadRequestId = crypto.randomUUID();
 
     const stream = streamText({
@@ -931,34 +1013,45 @@ export function registerTestAssertionHandlers() {
         // Synthesis above spent up to a minute in the model, so re-check under
         // the write lock: another card for this same recording may have been
         // approved while we waited.
-        const { specPath, wroteIt } = await appOperationCoordinator.run(
-          {
-            appId,
-            operation: "write-recorded-test",
-            resources: [
-              readAppResource("app-path"),
-              "repository",
-              "test-files",
-            ],
-          },
-          async () =>
-            withLock(specWriteKey(appId), async () => {
-              const appPath = await getAppPath(appId);
-              const raced = await findWrittenSpecForDraft(
-                appId,
-                appPath,
-                stored.draft,
-              );
-              if (raced) return { specPath: raced, wroteIt: false };
-              const written = await writeRecordedSpec({
-                appId,
-                appPath,
-                draft: stored.draft,
-                bodyStatements: finalStatements,
-              });
-              return { specPath: written.specPath, wroteIt: true };
-            }),
-        );
+        const { specPath, wroteIt, fixtureChange } =
+          await appOperationCoordinator.run(
+            {
+              appId,
+              operation: "write-recorded-test",
+              resources: [
+                readAppResource("app-path"),
+                "repository",
+                "test-files",
+              ],
+            },
+            async () =>
+              withLock(specWriteKey(appId), async () => {
+                const appPath = await getAppPath(appId);
+                const raced = await findWrittenSpecForDraft(
+                  appId,
+                  appPath,
+                  stored.draft,
+                );
+                if (raced) {
+                  return {
+                    specPath: raced,
+                    wroteIt: false,
+                    fixtureChange: null,
+                  };
+                }
+                const written = await writeRecordedSpec({
+                  appId,
+                  appPath,
+                  draft: stored.draft,
+                  bodyStatements: finalStatements,
+                });
+                return {
+                  specPath: written.specPath,
+                  wroteIt: true,
+                  fixtureChange: written.fixtureChange,
+                };
+              }),
+          );
 
         // Another card for this recording was approved while synthesis was in
         // the model. That file carries its plan, not this one's, so reporting
@@ -1001,7 +1094,7 @@ export function registerTestAssertionHandlers() {
           // main process and would otherwise answer that there is no finished
           // recording waiting, about a recording that still exists.
           restoreRecordedTestDraft(appId, stored.draft);
-          await discardGeneratedSpec(appId, specPath);
+          await discardGeneratedSpec(appId, specPath, fixtureChange);
           throw error;
         }
 

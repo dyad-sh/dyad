@@ -60,7 +60,11 @@ vi.mock("@/preview_console/hooks", () => ({
 }));
 
 vi.mock("@/hooks/useAppRun", () => ({
-  usePreviewReloadToken: () => 0,
+  // Reads the hoisted value rather than returning a constant: a test that bumps
+  // the token needs the iframe key to actually change, or the remount it means
+  // to exercise never happens and everything it asserts afterwards passes on a
+  // component that was never re-created.
+  usePreviewReloadToken: () => mocks.previewReloadToken,
 }));
 
 vi.mock("@tanstack/react-query", () => ({
@@ -272,15 +276,24 @@ describe("PreviewPanel", () => {
     const { rerender } = render(<PreviewPanel />);
 
     expect(screen.getByTestId("preview-iframe").dataset.recorder).toBe("1");
+    expect(mocks.previewIframeMounted).toHaveBeenCalledTimes(1);
 
+    // A token-driven reload: the iframe is re-created, and the recorder that
+    // owns the live session must not go with it.
     mocks.previewReloadToken = 1;
     rerender(<PreviewPanel />);
 
+    expect(mocks.previewIframeUnmounted).toHaveBeenCalledTimes(1);
+    expect(mocks.previewIframeMounted).toHaveBeenCalledTimes(2);
     expect(screen.getByTestId("preview-iframe").dataset.recorder).toBe("1");
     expect(mocks.recorderMountCount).toBe(1);
 
+    // And the recorder's own reload, which is the other way the iframe is
+    // re-created — teardown reloads the preview to drop the test user's
+    // in-memory session.
     act(() => mocks.reloadRecorderPreview?.());
 
+    expect(mocks.previewIframeMounted).toHaveBeenCalledTimes(3);
     expect(screen.getByTestId("preview-iframe").dataset.recorder).toBe("1");
     expect(mocks.recorderMountCount).toBe(1);
   });

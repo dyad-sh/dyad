@@ -492,6 +492,16 @@ const server = http.createServer((clientReq, clientRes) => {
         delete hdrs["content-encoding"];
         // Also, remove ETag as content has changed
         delete hdrs["etag"];
+        // Never cache an injected document. The scripts above are stamped with
+        // this proxy instance's capability token, and a restart mints a new one
+        // — so a cached copy carries a token the proxy no longer honors, and
+        // recorder control and `dyad-auth-login` messages sent with it are
+        // rejected with nothing on screen explaining why. `last-modified` and
+        // `expires` go too: left behind they still permit heuristic freshness
+        // and conditional revalidation into the same stale document.
+        delete hdrs["last-modified"];
+        delete hdrs["expires"];
+        hdrs["cache-control"] = "no-store, must-revalidate";
         rewriteSetCookieHeaders(hdrs);
 
         clientRes.writeHead(upRes.statusCode, hdrs);

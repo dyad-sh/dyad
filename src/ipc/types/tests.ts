@@ -7,7 +7,13 @@ import {
 } from "../contracts/core";
 // Relative imports: this module is pulled into the preload bundle, which cannot
 // resolve the "@/" alias.
-import { AssertionPlanItemSchema } from "../../lib/test_recorder/assertion_proposal";
+import {
+  AssertionPlanItemSchema,
+  MAX_PLAN_ITEMS,
+} from "../../lib/test_recorder/assertion_proposal";
+
+/** A UUID today; sized so a different id scheme doesn't have to revisit this. */
+const MAX_PROPOSAL_ID_LENGTH = 128;
 
 // =============================================================================
 // E2E spec-file identity
@@ -301,9 +307,13 @@ export const MigrateLegacyTestsResultSchema = z.object({
 export const ApplyTestAssertionsParamsSchema = z.object({
   appId: z.number(),
   chatId: z.number(),
-  proposalId: z.string(),
-  /** The card's current plan, in the order the user approved. */
-  items: z.array(AssertionPlanItemSchema),
+  proposalId: z.string().max(MAX_PROPOSAL_ID_LENGTH),
+  /**
+   * The card's current plan, in the order the user approved. Bounded like every
+   * other recorder input: this is persisted verbatim into the chat message and
+   * fed to the assertion-code model, so an oversized plan costs twice.
+   */
+  items: z.array(AssertionPlanItemSchema).max(MAX_PLAN_ITEMS),
 });
 export type ApplyTestAssertionsParams = z.infer<
   typeof ApplyTestAssertionsParamsSchema
@@ -313,7 +323,7 @@ export type ApplyTestAssertionsParams = z.infer<
 export const DiscardTestAssertionsParamsSchema = z.object({
   appId: z.number(),
   chatId: z.number(),
-  proposalId: z.string(),
+  proposalId: z.string().max(MAX_PROPOSAL_ID_LENGTH),
 });
 export type DiscardTestAssertionsParams = z.infer<
   typeof DiscardTestAssertionsParamsSchema

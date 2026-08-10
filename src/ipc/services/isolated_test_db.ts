@@ -5,8 +5,7 @@ import { getDyadAppPath } from "../../paths/paths";
 import { apps } from "../../db/schema";
 import {
   createTempTestBranch,
-  deleteTempTestBranch,
-  markTestBranchCleanupOnly,
+  markAndDeleteTempTestBranch,
 } from "../utils/neon_test_branch";
 import { createNeonTestAccount } from "../utils/neon_test_account";
 import {
@@ -198,28 +197,12 @@ export async function prepareIsolatedTestDatabase({
     // deletion — the one case where that row is about to disappear — handles the
     // branch itself, after the deletion commits.
     if (branchId && envRestored) {
-      // deleteTempTestBranch reads neonTestBranchId off the row; our in-memory
-      // `app` is stale, so persist and pass the branch we actually created.
-      // This marker distinguishes safe cleanup residue from an env that may
-      // still target the temporary branch across process restarts.
-      let cleanupApp: typeof app = { ...app, neonTestBranchId: branchId };
-      try {
-        cleanupApp = await markTestBranchCleanupOnly(app, branchId);
-      } catch (error) {
-        // The environment is already safe. Keep cleanup best-effort with the
-        // raw branch id so a transient SQLite failure does not turn into a
-        // guaranteed Neon leak; a successful delete will clear the row marker.
-        logger.error(
-          `Failed to persist cleanup-only state for test branch ${branchId} on app ${app.id}: ${error}`,
-        );
-      }
-      try {
-        await deleteTempTestBranch(cleanupApp);
-      } catch (error) {
-        logger.error(
-          `Failed to delete isolated test branch ${branchId} for app ${app.id}: ${error}`,
-        );
-      }
+      // Shared with the recovery path in `neon_test_branch`: the cleanup-only
+      // marker is written before the fallible remote delete, so a crash in
+      // between leaves a row that says the env is real and only the branch is
+      // outstanding. Both callers must encode that ordering identically or
+      // teardown and recovery drift apart.
+      await markAndDeleteTempTestBranch(app, branchId);
     }
     return { envRestored };
   };

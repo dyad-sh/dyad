@@ -14,13 +14,20 @@ const SCAN_BUDGET_FACTOR = 8;
  *
  * Models routinely wrap JSON in prose or markdown fences even when told not to,
  * so every structured one-off call runs its text through this before
- * `JSON.parse`. Returns null when there's no parseable `{...}` span at all.
+ * `JSON.parse`.
  *
  * The widest span (first `{` to last `}`) is tried first, since that's what a
  * fenced object surrounded by prose looks like. When the prose itself contains
  * braces — "use `{foo}` here; result: {\"assertions\":[]}" — that span is
  * garbage, so fall back to scanning each `{` for the balanced object it opens
  * and returning the first one that actually parses.
+ *
+ * Returns null ONLY when the text holds no `{...}` span at all. A text that has
+ * braces but nothing parseable returns the widest span rather than null, on
+ * purpose: the caller's own `JSON.parse` then reports a SyntaxError naming the
+ * offending content, which is a better error than a bare "no JSON found". So a
+ * `if (!json)` guard means "the model wrote no object", not "the model wrote
+ * valid JSON" — callers must still handle a parse failure.
  */
 export function extractJson(text: string): string | null {
   const start = text.indexOf("{");

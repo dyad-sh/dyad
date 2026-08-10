@@ -25,9 +25,7 @@ function isWindowEndpoint(value: unknown): value is WindowEndpoint {
  * `src/main` and `src/testing` (see `state_machines/boundaries.test.ts`).
  */
 export function broadcastToAllWindows(channel: string, payload: unknown): void {
-  for (const endpoint of windowRegistry.liveEndpoints()) {
-    safeSend(endpoint as WebContents, channel, payload);
-  }
+  sendToLiveEndpoints(channel, payload);
 }
 
 export function broadcastToRegisteredWindows(
@@ -40,6 +38,16 @@ export function broadcastToRegisteredWindows(
     return;
   }
   windowRegistry.ensureRegistered(origin);
+  sendToLiveEndpoints(channel, payload);
+}
+
+/**
+ * The one place the fan-out is written: both exports above differ only in how
+ * they decide to broadcast, not in how they do it. Keeping the destroyed/crashed
+ * guard (`safeSend`) and the endpoint cast in a single place means a change to
+ * the send semantics can't reach one caller and miss the other.
+ */
+function sendToLiveEndpoints(channel: string, payload: unknown): void {
   for (const endpoint of windowRegistry.liveEndpoints()) {
     safeSend(endpoint as WebContents, channel, payload);
   }

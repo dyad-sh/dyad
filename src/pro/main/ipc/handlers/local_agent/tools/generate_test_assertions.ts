@@ -21,6 +21,8 @@ import {
   ASSERTION_PROPOSAL_VERSION,
   buildPlanItems,
   countAssertions,
+  MAX_ASSERTION_CODE_LENGTH,
+  MAX_ASSERTION_TEXT_LENGTH,
   type AssertionProposalPayload,
 } from "@/lib/test_recorder/assertion_proposal";
 import { buildAssertionsTagContent } from "@/lib/test_recorder/assertion_tag";
@@ -54,6 +56,10 @@ const generateTestAssertionsSchema = z.object({
         text: z
           .string()
           .min(1)
+          // Bounded to the same limit the plan the card renders enforces, so a
+          // runaway description is rejected here — with a retry the model can
+          // act on — rather than at payload validation, where the card is gone.
+          .max(MAX_ASSERTION_TEXT_LENGTH)
           .describe(
             'One short present-tense sentence describing what the user did: "Click the Increment button", \'Type "Ada" into the Name field\'. No Playwright, locators, or code.',
           ),
@@ -75,12 +81,14 @@ const generateTestAssertionsSchema = z.object({
         text: z
           .string()
           .min(1)
+          .max(MAX_ASSERTION_TEXT_LENGTH)
           .describe(
             'The assertion as one plain-English sentence: "The counter shows 1."',
           ),
         code: z
           .string()
           .min(1)
+          .max(MAX_ASSERTION_CODE_LENGTH)
           .describe(
             "The Playwright check: exactly ONE statement, on ONE line, starting with `await expect(` and ending with `;`. No comments, no test.step, no awaits other than the leading one.",
           ),

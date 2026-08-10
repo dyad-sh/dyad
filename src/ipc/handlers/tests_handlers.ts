@@ -57,7 +57,10 @@ import {
   type PreparedIsolation,
 } from "../services/isolated_test_db";
 import { readTestScreenshotDataUrl } from "../utils/test_screenshot";
-import { isRecordingActive } from "../services/recording_registry";
+import {
+  assertNoActiveRecording,
+  isRecordingActive,
+} from "../services/recording_registry";
 import { readSettings } from "@/main/settings";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
 
@@ -880,6 +883,11 @@ export function registerTestsHandlers() {
   );
 
   createTypedHandler(testsContracts.deleteAppTest, async (_event, params) => {
+    // A recording holds `repository`/`test-files` for its whole session, so
+    // without this the coordinator would queue the delete behind it — up to the
+    // 30-minute cap, with the Tests panel showing nothing but a spinner.
+    assertNoActiveRecording(params.appId, "delete a test");
+
     const app = await getApp(params.appId);
     const appPath = getDyadAppPath(app.path);
     // Only ever delete something that looks like one of the spec paths
@@ -980,6 +988,10 @@ export function registerTestsHandlers() {
   createTypedHandler(
     testsContracts.migrateLegacyTests,
     async (_event, params) => {
+      // Same claim conflict as `deleteAppTest`: refuse with a reason rather than
+      // queueing the migration behind the recording's `test-files` hold.
+      assertNoActiveRecording(params.appId, "migrate legacy tests");
+
       const app = await getApp(params.appId);
       const appPath = getDyadAppPath(app.path);
       // Serialize against test runs (same numeric appId lock) so a move can't

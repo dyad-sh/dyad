@@ -81,13 +81,65 @@ function describeStatement(statement: string): string {
   return "Perform the recorded step";
 }
 
+const REUSABLE_ACTIONS = ["click", "fill", "check", "dblclick"];
+
+/**
+ * The locator part of a statement, i.e. everything before its TERMINAL action
+ * call — `page.getByRole("button", { name: "Save" })` out of
+ * `await page.getByRole("button", { name: "Save" }).click();`.
+ *
+ * Found by scanning at paren depth 0 and outside string literals rather than by
+ * matching the first `.click(`-looking text in the line. A recorded element's
+ * own text can contain one — `getByRole("button", { name: "Save .click(" })` —
+ * and slicing there yields an unterminated expression, so the fixture emits
+ * assertion code that doesn't compile and the E2E fails somewhere else
+ * entirely. Codegen escapes every recorded value with `JSON.stringify`, so
+ * tracking string state is exact.
+ */
+function terminalActionLocator(statement: string): string | null {
+  const trimmed = statement.trim().replace(/;$/, "");
+  if (!trimmed.startsWith("await page.")) return null;
+  const body = trimmed.slice("await ".length);
+
+  let depth = 0;
+  let inString = false;
+  let lastActionStart = -1;
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i];
+    if (inString) {
+      if (ch === "\\") i++;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === "(") {
+      depth++;
+      continue;
+    }
+    if (ch === ")") {
+      depth--;
+      continue;
+    }
+    // Only a `.` at depth 0 separates the chain's own calls; anything deeper
+    // is inside an argument.
+    if (ch !== "." || depth !== 0) continue;
+    const action = REUSABLE_ACTIONS.find((name) =>
+      body.startsWith(`${name}(`, i + 1),
+    );
+    if (action) lastActionStart = i;
+  }
+
+  return lastActionStart > 0 ? body.slice(0, lastActionStart) : null;
+}
+
 /** The locator of the last statement we can reuse verbatim in an assertion. */
 function reusableLocator(statements: string[]): string | null {
   for (let i = statements.length - 1; i >= 0; i--) {
-    const locator = /^await (page\..*?)\.(click|fill|check|dblclick)\(/.exec(
-      statements[i],
-    );
-    if (locator) return locator[1];
+    const locator = terminalActionLocator(statements[i]);
+    if (locator) return locator;
   }
   return null;
 }
@@ -197,7 +249,23 @@ export function matchAssertionsAgentTurn(
 export function matchAssertionsResumedTurn(
   messageTexts: string[],
 ): string | null {
-  for (const text of messageTexts.map(toPlainText)) {
+  // Bounded to the CURRENT request, not the whole conversation. A chat can hold
+  // more than one recording: record, propose, approve, then record again and
+  // press "Generate test proposal" a second time. Scanning every message ever
+  // would find the first card's tool result and conclude this turn was already
+  // answered — so `matchAssertionsAgentTurn` would emit no tool call at all, the
+  // second card would never appear, and the recorder bar would spin on "Asking
+  // the AI for assertions…" until the test timed out. It would also overwrite a
+  // later code-synthesis response with this stale "Running …" text.
+  const texts = messageTexts.map(toPlainText);
+  let lastRequest = -1;
+  for (let i = texts.length - 1; i >= 0; i--) {
+    if (ASSERTIONS_REQUEST_RE.test(texts[i])) {
+      lastRequest = i;
+      break;
+    }
+  }
+  for (const text of lastRequest === -1 ? texts : texts.slice(lastRequest)) {
     const approved = APPROVED_RESULT_RE.exec(text);
     if (approved) return `Running ${approved[1]} to check the recorded flow.`;
     if (CLOSED_RESULT_RE.test(text)) {

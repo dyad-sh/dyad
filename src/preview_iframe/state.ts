@@ -8,10 +8,26 @@
  * Machine dependency graph: preview_iframe -> none.
  */
 
+/**
+ * Who put the preview on the route it is showing.
+ *
+ * "dyad" — the user chose it through Dyad's chrome (address bar, back/forward,
+ * a restored presentation). "app" — the previewed app navigated itself, e.g. a
+ * redirect or a click inside the page. "none" — nothing has navigated yet.
+ *
+ * The recorder is what needs the distinction. Starting a recording passes the
+ * current route as the session's opening `goto`, which is right for a route the
+ * user deliberately selected and wrong for one the app arrived at on its own:
+ * pinning the test to the *destination* of a redirect skips the redirect, which
+ * may be the behaviour under test.
+ */
+export type PreviewRouteSource = "none" | "dyad" | "app";
+
 export interface PreviewIframeState {
   readonly history: readonly string[];
   readonly position: number;
   readonly currentUrl: string | null;
+  readonly currentUrlSource: PreviewRouteSource;
   readonly preservedUrl: string | null;
   readonly iframeEpoch: number;
   readonly selectorReady: boolean;
@@ -30,6 +46,7 @@ export const INITIAL_PREVIEW_IFRAME_STATE: PreviewIframeState = {
   history: [],
   position: 0,
   currentUrl: null,
+  currentUrlSource: "none",
   preservedUrl: null,
   iframeEpoch: 0,
   selectorReady: false,

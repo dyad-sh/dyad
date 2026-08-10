@@ -42,7 +42,7 @@ function rows() {
 }
 
 describe("writing a connection", () => {
-  it("updates in place when the target is unchanged", async () => {
+  it("leaves one row carrying the new values when the target is unchanged", async () => {
     await writeConnectionState(appId, {
       kind: "configured",
       ...TARGET,

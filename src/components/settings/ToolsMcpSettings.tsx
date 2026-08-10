@@ -2,6 +2,13 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -519,6 +526,7 @@ export function ToolsMcpSettings() {
   const [url, setUrl] = useState("");
   const [headersText, setHeadersText] = useState("");
   const [importConfig, setImportConfig] = useState("");
+  const [addOpen, setAddOpen] = useState(false);
   const [enabled, setEnabled] = useState(true);
   const { lastDeepLink, clearLastDeepLink } = useDeepLink();
   const chatAgentMcpServerIds = settings?.chatAgentMcpServerIds ?? [];
@@ -603,6 +611,9 @@ export function ToolsMcpSettings() {
     setUrl("");
     setHeadersText("");
     setEnabled(true);
+    // Adding is finished, so the dialog closes onto the list where the new
+    // service now appears. Leaving a cleared form open reads as a failure.
+    setAddOpen(false);
   };
 
   const onImportConfig = async () => {
@@ -672,6 +683,7 @@ export function ToolsMcpSettings() {
       showSuccess(
         `Imported ${entries.length} MCP server${entries.length === 1 ? "" : "s"}`,
       );
+      setAddOpen(false);
     } catch (error) {
       showError(error instanceof Error ? error.message : "Invalid MCP JSON");
     }
@@ -798,120 +810,161 @@ export function ToolsMcpSettings() {
 
   return (
     <div className="space-y-6">
-      <div className="space-y-3">
+      {/* What you already have comes first. Adding is an action, so it lives
+          behind a button rather than greeting everyone with a JSON textarea
+          and a field called "Transport". */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <Label htmlFor="mcp-import-json">Import MCP config JSON</Label>
-          <Textarea
-            id="mcp-import-json"
-            value={importConfig}
-            onChange={(e) => setImportConfig(e.target.value)}
-            placeholder={
-              '{ "mcpServers": { "n8n-mcp": { "type": "http", "url": "https://...", "headers": { "Authorization": "Bearer ..." } } } }'
-            }
-            className="mt-1 min-h-24 font-mono text-xs"
-          />
-          <p className="mt-1 text-xs text-muted-foreground">
-            Paste an MCP JSON block to add n8n or other HTTP servers with their
-            headers.
-          </p>
+          <div className="text-sm font-medium">Connected services</div>
+          <div className="text-sm text-muted-foreground">
+            {servers.length === 0
+              ? "No services connected yet."
+              : `${servers.length} connected${
+                  servers.filter((server) => server.enabled).length !==
+                  servers.length
+                    ? `, ${servers.filter((server) => server.enabled).length} enabled`
+                    : ""
+                }.`}
+          </div>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          onClick={onImportConfig}
-          disabled={!importConfig.trim()}
-        >
+        <Button onClick={() => setAddOpen(true)} data-testid="mcp-add-open">
           <Plus size={14} />
-          Import Servers
+          Add service
         </Button>
       </div>
 
-      <div className="space-y-2">
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label>Name</Label>
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="My MCP Server"
-            />
-          </div>
-          <div>
-            <Label htmlFor="mcp-transport-select">Transport</Label>
-            <select
-              id="mcp-transport-select"
-              data-testid="mcp-transport-select"
-              value={transport}
-              onChange={(e) => setTransport(e.target.value as Transport)}
-              className="w-full h-9 rounded-md border bg-transparent px-3 text-sm"
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Add an MCP service</DialogTitle>
+            <DialogDescription>
+              Most services publish a config snippet. Paste it and everything is
+              filled in for you; the manual fields are there for the ones that
+              do not.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label htmlFor="mcp-import-json">Paste a config snippet</Label>
+              <Textarea
+                id="mcp-import-json"
+                value={importConfig}
+                onChange={(e) => setImportConfig(e.target.value)}
+                placeholder={
+                  '{ "mcpServers": { "n8n-mcp": { "type": "http", "url": "https://...", "headers": { "Authorization": "Bearer ..." } } } }'
+                }
+                className="mt-1 min-h-24 font-mono text-xs"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Paste an MCP JSON block to add n8n or other HTTP servers with
+                their headers.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onImportConfig}
+              disabled={!importConfig.trim()}
             >
-              <option value="stdio">stdio</option>
-              <option value="http">http</option>
-            </select>
+              <Plus size={14} />
+              Add from config
+            </Button>
           </div>
-          {transport === "stdio" && (
-            <>
+
+          {/* The manual path is second and visibly secondary: it is the
+              fallback for services that do not publish a snippet, not the
+              route most people should take. */}
+          <div className="space-y-2 border-t border-white/10 pt-4">
+            <div className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+              Or set it up manually
+            </div>
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label>Command</Label>
+                <Label>Name</Label>
                 <Input
-                  value={command}
-                  onChange={(e) => setCommand(e.target.value)}
-                  placeholder="node"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="My MCP Server"
                 />
               </div>
               <div>
-                <Label>Args</Label>
-                <Input
-                  value={args}
-                  onChange={(e) => setArgs(e.target.value)}
-                  placeholder="path/to/mcp-server.js --flag"
-                />
+                <Label htmlFor="mcp-transport-select">Transport</Label>
+                <select
+                  id="mcp-transport-select"
+                  data-testid="mcp-transport-select"
+                  value={transport}
+                  onChange={(e) => setTransport(e.target.value as Transport)}
+                  className="w-full h-9 rounded-md border bg-transparent px-3 text-sm"
+                >
+                  <option value="stdio">stdio</option>
+                  <option value="http">http</option>
+                </select>
               </div>
-            </>
-          )}
-          {transport === "http" && (
-            <>
-              <div className="col-span-2">
-                <Label>URL</Label>
-                <Input
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
-                  placeholder="https://example.com/mcp-server/http"
+              {transport === "stdio" && (
+                <>
+                  <div>
+                    <Label>Command</Label>
+                    <Input
+                      value={command}
+                      onChange={(e) => setCommand(e.target.value)}
+                      placeholder="node"
+                    />
+                  </div>
+                  <div>
+                    <Label>Args</Label>
+                    <Input
+                      value={args}
+                      onChange={(e) => setArgs(e.target.value)}
+                      placeholder="path/to/mcp-server.js --flag"
+                    />
+                  </div>
+                </>
+              )}
+              {transport === "http" && (
+                <>
+                  <div className="col-span-2">
+                    <Label>URL</Label>
+                    <Input
+                      value={url}
+                      onChange={(e) => setUrl(e.target.value)}
+                      placeholder="https://example.com/mcp-server/http"
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <Label>Headers / bearer token</Label>
+                    <Textarea
+                      value={headersText}
+                      onChange={(e) => setHeadersText(e.target.value)}
+                      placeholder={
+                        'Bearer ...\n\nor\n{ "Authorization": "Bearer ..." }'
+                      }
+                      className="mt-1 min-h-20 font-mono text-xs"
+                    />
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Paste a raw Bearer token, Key: Value header lines, or a
+                      JSON object.
+                    </p>
+                  </div>
+                </>
+              )}
+              <div className="flex items-center gap-2">
+                <Switch
+                  aria-label="Enabled"
+                  checked={enabled}
+                  onCheckedChange={setEnabled}
                 />
+                <Label>Enabled</Label>
               </div>
-              <div className="col-span-2">
-                <Label>Headers / bearer token</Label>
-                <Textarea
-                  value={headersText}
-                  onChange={(e) => setHeadersText(e.target.value)}
-                  placeholder={
-                    'Bearer ...\n\nor\n{ "Authorization": "Bearer ..." }'
-                  }
-                  className="mt-1 min-h-20 font-mono text-xs"
-                />
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Paste a raw Bearer token, Key: Value header lines, or a JSON
-                  object.
-                </p>
-              </div>
-            </>
-          )}
-          <div className="flex items-center gap-2">
-            <Switch
-              aria-label="Enabled"
-              checked={enabled}
-              onCheckedChange={setEnabled}
-            />
-            <Label>Enabled</Label>
+            </div>
+            <div>
+              <Button onClick={onCreate} disabled={!name.trim()}>
+                <Plus size={14} />
+                Add Server
+              </Button>
+            </div>
           </div>
-        </div>
-        <div>
-          <Button onClick={onCreate} disabled={!name.trim()}>
-            <Plus size={14} />
-            Add Server
-          </Button>
-        </div>
-      </div>
+        </DialogContent>
+      </Dialog>
 
       <div id={SETTING_IDS.chatAgentMcpServers} className="space-y-1">
         <div className="text-sm font-medium">Chat Agent access</div>

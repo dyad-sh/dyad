@@ -282,6 +282,10 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
   // --- Step 2: server, project, domain ---
   if (!status.connection || isEditingConnection) {
     const projects = discovery?.projects ?? [];
+    // Fetching with nothing to show yet. Not isDiscovering on its own, which
+    // is isFetching and so also covers background refetches over a list the
+    // user is already reading.
+    const awaitingDiscovery = isDiscovering && !discovery;
     // The only control that removes the stored instance URL and token. It used
     // to live solely inside the discovery-error card, so rotating a token or
     // moving to another instance meant first breaking discovery on purpose.
@@ -449,6 +453,15 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
             </div>
           )}
 
+        {/*
+         * An empty dropdown reads as "this instance has nothing", which is a
+         * different thing from "the list has not arrived" — and the list is
+         * fetched from the user's own server, so the wait is real. Gated on
+         * having no data rather than on isDiscovering alone: that is
+         * isFetching, true for background refetches too, and disabling a
+         * populated list under the user mid-edit would be worse than the
+         * problem being fixed.
+         */}
         <div className="grid grid-cols-2 gap-2">
           <div>
             <Label htmlFor={serverSelectId}>Server</Label>
@@ -472,11 +485,17 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                {(discovery?.servers ?? []).map((s) => (
-                  <SelectItem key={s.uuid} value={s.uuid}>
-                    {s.name}
-                  </SelectItem>
-                ))}
+                {awaitingDiscovery ? (
+                  <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                    Loading servers...
+                  </div>
+                ) : (
+                  (discovery?.servers ?? []).map((s) => (
+                    <SelectItem key={s.uuid} value={s.uuid}>
+                      {s.name}
+                    </SelectItem>
+                  ))
+                )}
               </SelectContent>
             </Select>
           </div>
@@ -498,11 +517,17 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                {projects.map((p) => (
-                  <SelectItem key={p.uuid} value={p.uuid}>
-                    {p.name}
-                  </SelectItem>
-                ))}
+                {awaitingDiscovery ? (
+                  <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                    Loading projects...
+                  </div>
+                ) : (
+                  projects.map((p) => (
+                    <SelectItem key={p.uuid} value={p.uuid}>
+                      {p.name}
+                    </SelectItem>
+                  ))
+                )}
               </SelectContent>
             </Select>
           </div>

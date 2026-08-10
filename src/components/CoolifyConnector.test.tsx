@@ -78,6 +78,59 @@ describe("before the status query has answered", () => {
 });
 
 /**
+ * What the pickers say before the lists arrive.
+ *
+ * Discovery goes to the user's own server, so the wait is real. An enabled
+ * select over an empty dropdown reads as "this instance has nothing to offer",
+ * which is a different claim from "the list has not arrived yet".
+ */
+describe("the server and project pickers while discovery is in flight", () => {
+  function setupDiscovery(value: Record<string, unknown>) {
+    deploy.value = {
+      status: {
+        hasToken: true,
+        tokenId: "abc123",
+        instanceUrl: "https://coolify.test",
+        connection: null,
+        appUrl: null,
+        lastDeployedAt: null,
+      },
+      ...value,
+    };
+  }
+
+  it("says the list is loading rather than showing an empty one", async () => {
+    setupDiscovery({ discovery: undefined, isDiscovering: true });
+    const user = userEvent.setup();
+    render(<CoolifyConnector appId={1} />);
+
+    await user.click(screen.getByTestId("coolify-server-select"));
+
+    expect(screen.getByText("Loading servers...")).toBeTruthy();
+  });
+
+  it("keeps showing a list it already has during a background refetch", async () => {
+    // isDiscovering is isFetching, so it is true for refetches over a list the
+    // user is already reading. Replacing that with a spinner would take the
+    // options away mid-edit, which is worse than the gap being closed.
+    setupDiscovery({
+      discovery: {
+        servers: [{ uuid: "srv-1", name: "production" }],
+        projects: [],
+      },
+      isDiscovering: true,
+    });
+    const user = userEvent.setup();
+    render(<CoolifyConnector appId={1} />);
+
+    await user.click(screen.getByTestId("coolify-server-select"));
+
+    expect(screen.queryByText("Loading servers...")).toBeNull();
+    expect(screen.getByText("production")).toBeTruthy();
+  });
+});
+
+/**
  * What the DNS warnings claim about the save that follows them.
  *
  * Every one of them ends "Saved anyway", so firing them before the save turns

@@ -169,6 +169,7 @@ pre-hydration atoms can erase unrelated restored entities.
 - When splitting large handlers behind service boundaries, leave the handler responsible for IPC registration and request orchestration while moving runtime/policy logic into `src/ipc/services/*`. Preserve any intentional module side effects in the extracted service, such as `fixPath()` for child process PATH setup.
 - Electron `net.request()` response typings do not expose every runtime stream event. If download code needs a `close` guard in addition to `aborted`/`error`, cast the response through `EventEmitter` instead of dropping the guard to appease `npm run ts`.
 - When combining a user-controlled signal with `AbortSignal.timeout()` via `AbortSignal.any()`, do not identify every fetch cancellation by matching `AbortError`: Node propagates the timeout signal's `TimeoutError` reason. Check the original controller's `signal.aborted` and the timeout signal's `aborted` state separately so user cancellation and timeout keep their intended error classifications.
+- A handler that registers `event.sender.once("destroyed", ...)` **after** its first `await` can miss the event entirely — it fires once, and a window that closed during the await is already gone. Registering earlier is often impossible (the cleanup closure does not exist yet), so also check the `event.sender.isDestroyed?.()` flag immediately after registering: it is state, not an event, and still reports an owner that left. This matters most for handlers that hold long-lived resources (`recording:start` holds the app's coordinator claims for 30 minutes); pair it with an `AbortSignal.aborted` check at the top of the coordinated callback so a session ended before admission never sets anything up.
 - For cancellable file persistence, passing an `AbortSignal` to `fs.promises.writeFile` is not sufficient because cancellation is best-effort and may leave a partial file. Write to a same-directory temporary path, remove it on failure or abort, check cancellation before and after an atomic rename, and remove the finalized path if cancellation raced the rename.
 
 ## React Query key factory
@@ -197,6 +198,12 @@ queryClient.invalidateQueries({ queryKey: queryKeys.apps.all });
 ```
 
 **Adding new keys:** Add entries to the appropriate domain in `queryKeys.ts`. Follow the existing pattern with `all` for the base key and factory functions using object parameters for parameterized keys.
+
+## Events and invoke replies are not ordered relative to each other
+
+An `invoke` reply and a `safeSend`/`webContents.send` event travel different Electron interfaces, so a renderer can observe them in either order even when main emits the event strictly before the handler returns. Never let an event handler reset state that an in-flight invoke's continuation is about to set — the reset can land last and wipe the result.
+
+Symptom: a flow works, then intermittently "does nothing", as if the successful path never ran. Fix by making the event handler ignore endings the renderer itself requested (e.g. `recording:ended` with `reason === "stopped"` in `useTestRecorder`), rather than relying on the ordering that happens to hold today.
 
 ## High-volume event batching
 
@@ -339,3 +346,4 @@ When creating hooks/components that call IPC handlers:
 - In packaged builds, TanStack Router history updates turn the loaded `index.html` URL into root-relative locations such as `file:///chat` (`file:///C:/chat` on Windows). IPC trust must require `senderFrame === sender.mainFrame`, `file:` with an empty host, the configured file-volume prefix, and an allowlisted renderer route; pinning only the built entry pathname breaks packaged IPC, while accepting arbitrary file paths is unsafe.
 - Electron's `setWindowOpenHandler` details do not identify the initiating frame. When preview iframes need popups, fail closed on missing or privileged request details and construct allowed HTTP(S) popups yourself after removing inherited `preload` and forcing sandboxed, Node-disabled web preferences; `about:blank` cannot be safely overridden this way.
 - Keep a strong `BrowserWindow` reference for every popup created through a custom `createWindow` callback until its `closed` event. A callback-local window can be garbage-collected and close an active OAuth or payment flow; remove the reference on close so the owner collection remains bounded.
+- Clearing browser storage for one preview cannot scope cookies to that preview. `session.clearStorageData({ origin: "http://localhost:<port>" })` matches cookies by **host**, because cookies have never been port-scoped, so it signs the user out of every other `localhost` preview in that session; `session.clearData({ origins })` is wider still — Electron's own typings note it deletes cookies at the **registrable domain** level. `localStorage`/IndexedDB/service workers really are origin-keyed and unaffected. There is no filter that narrows cookies; only a dedicated `session.fromPartition()` contains them. Until then, whatever consent dialog precedes the clear must say other previews are signed out too.

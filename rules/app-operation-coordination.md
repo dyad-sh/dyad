@@ -42,3 +42,25 @@ coordinator operation.
 Keep `withLock` for non-app string identities such as canonical file paths and
 token refreshes. Its string-only signature intentionally prevents the old
 global `withLock(appId, ...)` pattern from returning.
+
+## Sessions that hold claims for a user-controlled duration
+
+A recording session holds `repository`, `provider`, `runtime`, `runtime-config`
+and `test-files` until the user ends it (capped at 30 minutes), and the
+coordinator queues conflicting work with **no timeout** — read-vs-write counts
+as a conflict. So every handler taking one of those resources becomes an
+indefinite spinner with nothing on screen explaining it. Each such path must
+either end the session (`endRecordingForApp`, for Stop/Run/Restart/Delete, which
+own the app going away) or refuse with `assertNoActiveRecording(appId, action)`
+when the session is the thing the user is doing. Adding a resource to a
+long-lived operation means auditing every other handler that declares it.
+
+Reserve the session's app **before the handler's first await** and give the
+reservation a main-owned cancellation tombstone, not just a busy flag. Between
+the reservation and the published handle there is nothing for a concurrent
+teardown to stop, so it reports success while the reserved start goes on to swap
+`.env.local` and restart the dev server the caller was stopping. The start has to
+re-read the tombstone after every setup await, and release must be
+identity-checked so a cancelled attempt cannot retire its successor's
+reservation. Same rule as the main-owned tombstone in
+[rules/state-machines.md](state-machines.md), applied main-to-main.

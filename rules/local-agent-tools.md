@@ -32,6 +32,11 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 
 ## User-visible tool output
 
+- Treat model-generated code as untrusted executable input whenever its prompt
+  contains app-, tool-, or user-controlled text. Model provenance plus a
+  one-statement/shape check is not a security boundary: before writing or
+  running the result, either parse and allowlist a side-effect-free AST grammar
+  or show the exact generated code to the user for approval.
 - AI SDK tool input validation can fail before the tool's `execute` callback runs. The SDK marks the preceding `tool-call` as `invalid` but stringifies its exception before emitting `tool-error`, so correlate by call ID rather than testing the later error's class. Treat `tool-input-end` as provisional: do not persist `buildXml(..., true)` until the matching `tool-call` validates, or an invalid mutation can leave a false-success card. If the call owns an XML preview, clear it only after a persistent terminal status reaches the renderer; never clear a parallel call's preview or duplicate errors thrown by `execute`, which the tool wrapper already renders.
 - Registry-only npm spec validation must explicitly reject unscoped bare names ending in `.tgz`, `.tar`, or `.tar.gz`; npm interprets those as local file specs even though they pass a normal package-name regex. Scoped names with the same suffix remain registry package names.
 - If one tool call is implemented as multiple sequential state-changing commands, propagate completed groups and accumulated output when a later command fails. Callers must surface the partial result and count the completed mutation instead of reporting an all-or-nothing failure.

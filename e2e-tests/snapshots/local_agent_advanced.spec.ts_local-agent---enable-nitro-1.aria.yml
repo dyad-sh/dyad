@@ -19,7 +19,7 @@
 - text: Modified files (6)
 - button "A AI_RULES.md +51"
 - button "A nitro.config.ts +5"
-- button "M package.json +2"
+- button "M package.json +4 -1"
 - button "M pnpm-lock.yaml [[diff-stats]]"
 - button "A server/routes/api/.gitkeep"
 - button "M vite.config.ts +3 -1"

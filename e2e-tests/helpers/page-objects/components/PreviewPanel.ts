@@ -145,6 +145,20 @@ export class PreviewPanel {
     await this.locateDisableTestingButton().click();
   }
 
+  /**
+   * Press Record and accept the storage warning.
+   *
+   * Starting a recording clears the preview's cookies and local storage, so
+   * every entry point (this one and the Tests panel's) asks first. Takes the
+   * button so both can share the confirmation step.
+   */
+  async startRecording(testId = "preview-record-button") {
+    await this.page.getByTestId(testId).click();
+    await this.page
+      .getByTestId("recording-storage-warning-continue")
+      .click({ timeout: Timeout.MEDIUM });
+  }
+
   async clickRecheckProblems() {
     await this.page.getByTestId("recheck-button").click();
   }

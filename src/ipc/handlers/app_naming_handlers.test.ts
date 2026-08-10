@@ -11,6 +11,8 @@ import {
   setupHandlerTestHarness,
 } from "@/testing/handler_test_harness";
 import { configureTrustedRenderer } from "@/ipc/utils/renderer_security";
+import { activeRecordings } from "@/ipc/services/recording_registry";
+import { appOperationCoordinator } from "@/ipc/services/app_operation_coordinator";
 
 // All app folders live under one throwaway base so the filesystem-probing
 // conflict checks (and actual folder moves) run against real directories.
@@ -29,6 +31,7 @@ const createFromTemplateMock = vi.hoisted(() =>
 );
 const deletionOrder = vi.hoisted(() => [] as string[]);
 const settleChatActorsForDeletionMock = vi.hoisted(() => vi.fn());
+const restoreAppFromTestBranchMock = vi.hoisted(() => vi.fn());
 
 vi.mock("electron", () => ({
   ipcMain: {
@@ -108,6 +111,15 @@ vi.mock("@/ipc/handlers/chat_stream_handlers", async (importOriginal) => {
   };
 });
 
+vi.mock("@/ipc/utils/neon_test_branch", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/ipc/utils/neon_test_branch")>();
+  return {
+    ...actual,
+    restoreAppFromTestBranch: restoreAppFromTestBranchMock,
+  };
+});
+
 import { registerAppHandlers } from "./app_handlers";
 import { registerImportHandlers } from "./import_handlers";
 import { firstPromptCreationRegistry } from "../services/first_prompt_creation_service";
@@ -149,14 +161,18 @@ describe("app naming handlers", () => {
     fs.rmSync(TEMP_BASE, { recursive: true, force: true });
     fs.mkdirSync(TEMP_BASE, { recursive: true });
     harness = setupHandlerTestHarness();
+    activeRecordings.clear();
     deletionOrder.length = 0;
     settleChatActorsForDeletionMock.mockClear();
     createFromTemplateMock.mockClear();
+    restoreAppFromTestBranchMock.mockReset();
+    restoreAppFromTestBranchMock.mockResolvedValue(true);
     registerAppHandlers();
     registerImportHandlers();
   });
 
   afterEach(() => {
+    activeRecordings.clear();
     harness.dispose();
     fs.rmSync(TEMP_BASE, { recursive: true, force: true });
   });
@@ -326,9 +342,163 @@ describe("app naming handlers", () => {
         }),
       ).rejects.toMatchObject({ kind: DyadErrorKind.Conflict });
     });
+
+    it("waits for recording isolation to restore env before copying", async () => {
+      const sourceId = seedAppWithFolder("Source", "source");
+      const sourceEnv = path.join(TEMP_BASE, "source", ".env.local");
+      fs.writeFileSync(sourceEnv, "DATABASE_URL=real\n");
+
+      let releaseRecording!: () => void;
+      const recordingReleased = new Promise<void>((resolve) => {
+        releaseRecording = resolve;
+      });
+      let isolationStarted!: () => void;
+      const isolationReady = new Promise<void>((resolve) => {
+        isolationStarted = resolve;
+      });
+      const recording = appOperationCoordinator.run(
+        {
+          appId: sourceId,
+          operation: "test-recording",
+          resources: ["runtime-config"],
+        },
+        async () => {
+          fs.writeFileSync(sourceEnv, "DATABASE_URL=temporary\n");
+          isolationStarted();
+          await recordingReleased;
+          fs.writeFileSync(sourceEnv, "DATABASE_URL=real\n");
+        },
+      );
+      await isolationReady;
+
+      const copy = harness.invokeHandler<{ app: { path: string } }>(
+        "copy-app",
+        {
+          appId: sourceId,
+          newAppName: "Safe Copy",
+          withHistory: false,
+        },
+      );
+      await Promise.resolve();
+      expect(fs.existsSync(path.join(TEMP_BASE, "safe-copy"))).toBe(false);
+
+      releaseRecording();
+      await recording;
+      const result = await copy;
+      expect(
+        fs.readFileSync(path.join(TEMP_BASE, result.app.path, ".env.local"), {
+          encoding: "utf-8",
+        }),
+      ).toBe("DATABASE_URL=real\n");
+    });
+  });
+
+  describe("run-app", () => {
+    it("rehydrates the recovery gate from a persisted test branch", async () => {
+      const appId = seedAppWithFolder("Recover Me", "recover-me");
+      harness.db
+        .update(apps)
+        .set({ neonTestBranchId: "test-branch-from-prior-process" })
+        .where(eq(apps.id, appId))
+        .run();
+      restoreAppFromTestBranchMock.mockResolvedValueOnce(false);
+
+      // No in-memory mark exists: this models a fresh Dyad process whose
+      // startup recovery could not restore the durable branch marker.
+      await expect(
+        harness.invokeHandler("run-app", { appId }),
+      ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
+      expect(restoreAppFromTestBranchMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: appId,
+          neonTestBranchId: "test-branch-from-prior-process",
+        }),
+      );
+    });
+
+    it("ends an active recording before attempting durable recovery", async () => {
+      const appId = seedAppWithFolder("Recover Me", "recover-me");
+      harness.db
+        .update(apps)
+        .set({ neonTestBranchId: "test-branch" })
+        .where(eq(apps.id, appId))
+        .run();
+      restoreAppFromTestBranchMock.mockResolvedValueOnce(false);
+
+      let stopReason: string | undefined;
+      let finishRecording!: (summary: { envRestored: boolean }) => void;
+      const done = new Promise<{ envRestored: boolean }>((resolve) => {
+        finishRecording = resolve;
+      });
+      activeRecordings.set(appId, {
+        appId,
+        stop: (reason) => {
+          stopReason = reason;
+          finishRecording({ envRestored: false });
+        },
+        done,
+      });
+
+      await expect(
+        harness.invokeHandler("run-app", { appId }),
+      ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
+      expect(stopReason).toBe("app-stopped");
+      expect(restoreAppFromTestBranchMock).toHaveBeenCalled();
+    });
   });
 
   describe("delete-app", () => {
+    it("classifies a duplicate deletion as an expected precondition", async () => {
+      const appId = seedAppWithFolder("Delete Me", "delete-me");
+      const deletion = appOperationCoordinator.beginAppDeletion(appId);
+      try {
+        await expect(
+          harness.invokeHandler("delete-app", { appId }),
+        ).rejects.toMatchObject({
+          kind: DyadErrorKind.Precondition,
+          message: expect.stringMatching(/already being deleted/i),
+        });
+      } finally {
+        deletion.release();
+      }
+    });
+
+    it("raises the operation fence before waiting for recording teardown", async () => {
+      const appId = seedAppWithFolder("Delete Me", "delete-me");
+      let observeStop!: () => void;
+      const stopObserved = new Promise<void>((resolve) => {
+        observeStop = resolve;
+      });
+      let finishTeardown!: (summary: { envRestored: boolean }) => void;
+      const done = new Promise<{ envRestored: boolean }>((resolve) => {
+        finishTeardown = resolve;
+      });
+      activeRecordings.set(appId, {
+        appId,
+        stop: () => observeStop(),
+        done,
+      });
+
+      const deletion = harness.invokeHandler("delete-app", { appId });
+      await stopObserved;
+
+      // The recording was admitted before deletion and is still tearing down,
+      // but no new operation may enter behind it while delete is queued.
+      await expect(
+        appOperationCoordinator.run(
+          {
+            appId,
+            operation: "late-recording-admission",
+            resources: ["runtime"],
+          },
+          async () => undefined,
+        ),
+      ).rejects.toMatchObject({ kind: DyadErrorKind.Precondition });
+
+      finishTeardown({ envRestored: true });
+      await deletion;
+    });
+
     it("quiesces chat actors before deletion and disposes them after commit", async () => {
       const appId = seedAppWithFolder("Delete Me", "delete-me");
       harness.db.insert(chats).values({ appId }).run();

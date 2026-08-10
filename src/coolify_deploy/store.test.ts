@@ -101,6 +101,34 @@ describe("writing a connection", () => {
     expect(stored[0].environmentName).toBe("staging");
   });
 
+  it("reads the oldest of several rows, not an arbitrary one", async () => {
+    // A build that writes one target per app cannot produce this, but one that
+    // writes several can, and a user may come back to this version afterwards.
+    // Answering with the first still lets the app work; refusing would take the
+    // whole panel down over a row it did not expect.
+    //
+    // Written so the two candidate orders disagree: "staging" is inserted
+    // first but sorts after "production" in the index the lookup scans, so a
+    // read that leans on scan order returns the wrong one.
+    await harness.db.insert(coolifyAppConnections).values({
+      appId,
+      ...TARGET,
+      environmentName: "staging",
+      domain: "older.example.com",
+    });
+    await harness.db.insert(coolifyAppConnections).values({
+      appId,
+      ...TARGET,
+      environmentName: "production",
+      domain: "newer.example.com",
+    });
+
+    const state = await readConnectionState(appId);
+
+    expect(state.kind).toBe("configured");
+    expect(state.kind !== "none" && state.domain).toBe("older.example.com");
+  });
+
   it("removes the row entirely when disconnected", async () => {
     await writeConnectionState(appId, {
       kind: "configured",

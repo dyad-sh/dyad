@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { coolifyAppConnections } from "@/db/schema";
 import { CoolifyClient } from "@/ipc/utils/coolify_client";
@@ -38,12 +38,20 @@ export function getClient(signal?: AbortSignal): CoolifyClient {
   return new CoolifyClient({ instanceUrl, token, signal });
 }
 
-/** No row is no connection, which is what disconnecting leaves behind. */
+/**
+ * No row is no connection, which is what disconnecting leaves behind.
+ *
+ * Ordered because the table can hold more than one row per app, and everything
+ * above here reads a single connection. Oldest first, so which one that is
+ * stays the same between calls and between versions — a build that writes
+ * several still reads as its first to one that expects one.
+ */
 export async function readConnectionState(
   appId: number,
 ): Promise<CoolifyConnectionState> {
   const row = await db.query.coolifyAppConnections.findFirst({
     where: eq(coolifyAppConnections.appId, appId),
+    orderBy: asc(coolifyAppConnections.id),
   });
   return coolifyConnectionFromRow(row ?? null);
 }

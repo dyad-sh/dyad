@@ -316,6 +316,18 @@ This pattern provides a more reliable signal that the async operation has comple
 
 For streamed progress indicators that may complete quickly, allow the assertion to match either the transient in-progress text or the final completed text, then assert the final state after the operation completes.
 
+## `toBeDisabled()` passes for free — assert the enabled baseline too
+
+A control's `disabled` prop is usually an OR of several preconditions, so
+`toBeDisabled()` can pass for a reason that has nothing to do with the gate
+under test, and stays green if that gate is deleted. Real example: asserting the
+annotator button is disabled during a recording passed in the `recorder`
+fixture, but only because that minimal fixture never initializes the component
+selector and `!isComponentSelectorInitialized` is in the same list — the button
+is disabled for the whole test. Always assert `toBeEnabled()` in the state
+before the gate applies. If that baseline fails, the disabled assertion proves
+nothing and needs a different fixture (or no E2E at all).
+
 ## E2E test fixtures with .dyad directories
 
 When adding E2E test fixtures that need a `.dyad` directory for testing:

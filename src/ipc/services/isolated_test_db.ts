@@ -6,7 +6,9 @@ import { apps } from "../../db/schema";
 import {
   createTempTestBranch,
   deleteTempTestBranch,
+  markTestBranchCleanupOnly,
 } from "../utils/neon_test_branch";
+import { createNeonTestAccount } from "../utils/neon_test_account";
 import {
   checkRls,
   createTempTestUser,
@@ -14,6 +16,7 @@ import {
   type TempTestUser,
 } from "../utils/supabase_test_user";
 import { detectLegacyAppKey } from "../../supabase_admin/supabase_app_key";
+import { getPublishableKey } from "../../supabase_admin/supabase_context";
 import {
   getEnvFilePath,
   readEnvFileIfExists,
@@ -40,23 +43,64 @@ const SERVER_READY_POLL_MS = 500;
  * shows the message. `teardown` always restores the app to its real database,
  * and is safe to call exactly once whether preparation succeeded or failed.
  */
+/**
+ * Everything the preview recorder needs to establish an authenticated session
+ * in-iframe BEFORE recording, and that the generated `signIn` fixture mirrors at
+ * replay time. Absent when the app has no supported auth or provisioning failed
+ * (the flow then proceeds unauthenticated).
+ */
+export type IsolationAuthSetup =
+  | { mode: "neon-better-auth"; email: string; password: string }
+  | {
+      mode: "supabase-password";
+      email: string;
+      password: string;
+      projectUrl: string;
+      anonKey: string;
+    };
+
+export interface TeardownOptions {
+  /**
+   * Don't restart the dev server after restoring `.env.local`. For a caller
+   * that is about to stop or restart the app itself — otherwise the app is
+   * restarted twice, once here and once by them.
+   */
+  skipRestart?: boolean;
+}
+
+export interface TeardownResult {
+  /**
+   * False when `.env.local` couldn't be put back. The app is still pointed at
+   * the temporary test branch, so anything that would relaunch it has to say so
+   * rather than quietly starting the user's app against isolated data.
+   */
+  envRestored: boolean;
+}
+
 export interface PreparedIsolation {
   isolation: TestIsolation;
   infraError?: { message: string };
   /**
-   * Extra env vars to inject into the test runner (e.g. Supabase test-user
-   * credentials the generated test signs in with). Never contains privileged
-   * keys — the service_role key stays in the main process. Undefined for the
-   * Neon/no-DB paths.
+   * Extra env vars to inject into the test runner (e.g. the isolated test
+   * user's credentials the generated test signs in with). Never contains
+   * privileged keys — the service_role key stays in the main process. Set on the
+   * Supabase path and, when Neon Auth is provisioned, the Neon path too.
    */
   testCredentials?: Record<string, string>;
-  teardown: () => Promise<void>;
+  /**
+   * Credentials + endpoint the recorder uses to sign the preview in before
+   * recording. Undefined when the app has no supported auth or provisioning
+   * failed. Never contains privileged keys.
+   */
+  authSetup?: IsolationAuthSetup;
+  teardown: (options?: TeardownOptions) => Promise<TeardownResult>;
 }
 
 type EmitOutput = (chunk: string, phase: "setup" | "running") => void;
 
 const NOOP_TEARDOWN = async () => {
   // No isolation was set up, so there is nothing to restore.
+  return { envRestored: true };
 };
 
 /**
@@ -114,7 +158,9 @@ export async function prepareIsolatedTestDatabase({
 
   // Build a teardown that restores whatever we changed. Captured branchId/env
   // are read at call time so a partial failure still restores correctly.
-  const teardown = async () => {
+  const teardown = async (
+    options: TeardownOptions = {},
+  ): Promise<TeardownResult> => {
     let envRestored = true;
     // Only touch the env file / restart the dev server if we actually swapped
     // the env. If setup failed before the env swap (e.g. during branch
@@ -133,7 +179,7 @@ export async function prepareIsolatedTestDatabase({
           "setup",
         );
       }
-      if (envRestored) {
+      if (envRestored && !options.skipRestart) {
         try {
           await restartAppInPlace({ app, appPath });
         } catch (error) {
@@ -147,20 +193,35 @@ export async function prepareIsolatedTestDatabase({
         }
       }
     }
-    if (branchId) {
-      if (!envRestored) {
-        return;
-      }
+    // A failed restore keeps the branch on purpose: the app is still pointed at
+    // it, and the row's id is what the startup sweep reconciles from. App
+    // deletion — the one case where that row is about to disappear — handles the
+    // branch itself, after the deletion commits.
+    if (branchId && envRestored) {
       // deleteTempTestBranch reads neonTestBranchId off the row; our in-memory
-      // `app` is stale, so pass the branch we actually created.
+      // `app` is stale, so persist and pass the branch we actually created.
+      // This marker distinguishes safe cleanup residue from an env that may
+      // still target the temporary branch across process restarts.
+      let cleanupApp: typeof app = { ...app, neonTestBranchId: branchId };
       try {
-        await deleteTempTestBranch({ ...app, neonTestBranchId: branchId });
+        cleanupApp = await markTestBranchCleanupOnly(app, branchId);
+      } catch (error) {
+        // The environment is already safe. Keep cleanup best-effort with the
+        // raw branch id so a transient SQLite failure does not turn into a
+        // guaranteed Neon leak; a successful delete will clear the row marker.
+        logger.error(
+          `Failed to persist cleanup-only state for test branch ${branchId} on app ${app.id}: ${error}`,
+        );
+      }
+      try {
+        await deleteTempTestBranch(cleanupApp);
       } catch (error) {
         logger.error(
           `Failed to delete isolated test branch ${branchId} for app ${app.id}: ${error}`,
         );
       }
     }
+    return { envRestored };
   };
 
   try {
@@ -197,21 +258,74 @@ export async function prepareIsolatedTestDatabase({
     const processId = await restartAppInPlace({ app, appPath });
     await waitForServerReady(app.id, signal, processId);
 
+    // 5. If the app uses Neon Auth, provision a throwaway Better Auth account on
+    //    the branch so auth-gated recordings/tests can sign in. Best-effort: on
+    //    failure we run unauthenticated rather than dead-ending (non-auth flows
+    //    still work). No teardown needed — the account dies with the branch.
+    let testCredentials: Record<string, string> | undefined;
+    let authSetup: IsolationAuthSetup | undefined;
+    if (branch.neonAuthBaseUrl) {
+      try {
+        const account = await createNeonTestAccount({
+          neonAuthBaseUrl: branch.neonAuthBaseUrl,
+          appId: app.id,
+        });
+        testCredentials = {
+          DYAD_TEST_USER_EMAIL: account.email,
+          DYAD_TEST_USER_PASSWORD: account.password,
+        };
+        authSetup = {
+          mode: "neon-better-auth",
+          email: account.email,
+          password: account.password,
+        };
+      } catch (error) {
+        logger.warn(
+          `Couldn't provision a Neon test account for app ${app.id}; continuing unauthenticated: ${error}`,
+        );
+        emit(
+          "Couldn't create a test account for sign-in — continuing without authentication.\n",
+          "setup",
+        );
+      }
+    }
+
+    // Provisioning the account is another multi-second network round trip (and
+    // its own catch deliberately swallows failures), so a Stop pressed during it
+    // would otherwise be reported as a ready session. The catch below restores
+    // the real branch and reports the stopped result instead.
+    if (signal?.aborted) {
+      throw new Error("Test run stopped.");
+    }
+
     return {
       isolation: { mode: "neon-branch" },
+      testCredentials,
+      authSetup,
       teardown,
     };
   } catch (error) {
     // Dead-end: restore real data, never run against it. Guard the teardown so a
     // failure here (e.g. restoreEnvFile) can't replace the original error and
     // hide the real failure reason (e.g. "branch creation failed") from callers.
+    //
+    // Whether `.env.local` came back is the one part of this that outlives the
+    // error: setup may already have swapped it. Fail closed on a throw, then
+    // hand the caller a teardown that REPORTS that outcome instead of
+    // `NOOP_TEARDOWN` — a no-op answers "restored" and would let the app be
+    // relaunched against the temporary branch.
+    let envRestored = false;
     try {
-      await teardown();
+      envRestored = (await teardown()).envRestored;
     } catch (teardownError) {
       logger.error(
         `Teardown failed during error recovery for app ${app.id}: ${teardownError}`,
       );
     }
+    // Already torn down; this only carries the verdict to whoever asks later.
+    const settledTeardown = async (): Promise<TeardownResult> => ({
+      envRestored,
+    });
     // A user Stop surfaces here too (waitForServerReady & co. throw on abort).
     // That's a deliberate cancellation, not an infra failure — don't show the
     // misleading "couldn't set up" banner for it.
@@ -219,7 +333,7 @@ export async function prepareIsolatedTestDatabase({
       return {
         isolation: { mode: "none", reason: "Test run stopped." },
         infraError: { message: "Test run stopped." },
-        teardown: NOOP_TEARDOWN,
+        teardown: settledTeardown,
       };
     }
     const message = error instanceof Error ? error.message : String(error);
@@ -234,7 +348,7 @@ export async function prepareIsolatedTestDatabase({
       infraError: {
         message: `Couldn't set up an isolated test database, so the run was stopped. Your real data was not touched. Reason: ${message}`,
       },
-      teardown: NOOP_TEARDOWN,
+      teardown: settledTeardown,
     };
   }
 }
@@ -269,7 +383,9 @@ async function prepareSupabaseTestUserIsolation({
   }
 
   let testUser: TempTestUser | undefined;
-  const teardown = async () => {
+  // Nothing here touches `.env.local` — the Supabase path isolates by test user,
+  // not by swapping the app's database — so the environment is never at risk.
+  const teardown = async (): Promise<TeardownResult> => {
     if (testUser) {
       try {
         await deleteTempTestUser({
@@ -282,6 +398,7 @@ async function prepareSupabaseTestUserIsolation({
         );
       }
     }
+    return { envRestored: true };
   };
 
   try {
@@ -319,17 +436,56 @@ async function prepareSupabaseTestUserIsolation({
     }
     emit("Creating an isolated test user…\n", "setup");
     testUser = await createTempTestUser(app);
+
+    // Fetch the project's anon (publishable) key so the recorder and the
+    // generated `signIn` fixture can sign in via the password grant. Best-effort:
+    // without it, auth is unavailable and the flow proceeds unauthenticated.
+    let anonKey: string | undefined;
+    try {
+      anonKey = await getPublishableKey({ projectId, organizationSlug });
+    } catch (error) {
+      logger.warn(
+        `Couldn't fetch the Supabase anon key for app ${app.id}; continuing unauthenticated: ${error}`,
+      );
+      emit(
+        "Couldn't fetch the Supabase key for sign-in — continuing without authentication.\n",
+        "setup",
+      );
+    }
+
+    // The key fetch above is another multi-second network round trip. A Stop
+    // pressed during it must not resolve as "ready" once the request returns —
+    // the catch below is what tears the temporary user back down and reports the
+    // stopped result.
+    if (signal?.aborted) {
+      throw new Error("Test run stopped.");
+    }
+
+    const testCredentials: Record<string, string> = {
+      DYAD_TEST_USER_EMAIL: testUser.email,
+      DYAD_TEST_USER_PASSWORD: testUser.password,
+      DYAD_TEST_SUPABASE_URL: testUser.projectUrl,
+    };
+    let authSetup: IsolationAuthSetup | undefined;
+    if (anonKey) {
+      testCredentials.DYAD_TEST_SUPABASE_ANON_KEY = anonKey;
+      authSetup = {
+        mode: "supabase-password",
+        email: testUser.email,
+        password: testUser.password,
+        projectUrl: testUser.projectUrl,
+        anonKey,
+      };
+    }
+
     return {
       isolation: {
         mode: "supabase-test-user",
         reason: warning,
         canSwitchToPublishableKey: !!legacyKey,
       },
-      testCredentials: {
-        DYAD_TEST_USER_EMAIL: testUser.email,
-        DYAD_TEST_USER_PASSWORD: testUser.password,
-        DYAD_TEST_SUPABASE_URL: testUser.projectUrl,
-      },
+      testCredentials,
+      authSetup,
       teardown,
     };
   } catch (error) {

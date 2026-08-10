@@ -49,6 +49,8 @@ import { registerAppBlueprintHandlers } from "./handlers/app_blueprint_handlers"
 import { registerAppCollectionHandlers } from "./handlers/app_collection_handlers";
 import { registerTerminalHandlers } from "./handlers/terminal_handlers";
 import { registerTestsHandlers } from "./handlers/tests_handlers";
+import { registerTestAssertionHandlers } from "./handlers/test_assertion_handlers";
+import { registerRecordingHandlers } from "./handlers/recording_handlers";
 import { registerUserInputHandlers } from "./handlers/user_input_handlers";
 import { registerFirstPromptHandlers } from "./handlers/first_prompt_handlers";
 import { registerWindowInfrastructureHandlers } from "./handlers/window_infrastructure_handlers";
@@ -108,6 +110,8 @@ export function registerIpcHandlers() {
   registerAppCollectionHandlers();
   registerTerminalHandlers();
   registerTestsHandlers();
+  registerTestAssertionHandlers();
+  registerRecordingHandlers();
   registerUserInputHandlers();
   registerFirstPromptHandlers();
   registerWindowInfrastructureHandlers();

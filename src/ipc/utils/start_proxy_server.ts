@@ -18,6 +18,7 @@ export async function startProxy(
     onStarted?: (proxyUrl: string) => void;
     onError?: (error: DyadError) => void;
     fixedHeaders?: Record<string, string>;
+    authBootstrapToken: string;
   },
 ) {
   if (!/^https?:\/\//.test(targetOrigin))
@@ -25,7 +26,7 @@ export async function startProxy(
       "startProxy: targetOrigin must be absolute http/https URL",
       DyadErrorKind.Validation,
     );
-  const { port, onStarted, onError, fixedHeaders } = opts;
+  const { port, onStarted, onError, fixedHeaders, authBootstrapToken } = opts;
   const fallbackPortStart = getProxyFallbackPortStart();
   logger.info("Starting proxy on port", port);
 
@@ -38,6 +39,7 @@ export async function startProxy(
         fallbackPortStart,
         maxPortAttempts: PROXY_FALLBACK_MAX_ATTEMPTS,
         fixedHeaders,
+        authBootstrapToken,
       },
     },
   );

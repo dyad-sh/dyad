@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { eq } from "drizzle-orm";
 
 import { DyadErrorKind } from "@/errors/dyad_error";
 import type { RemoveFileAndCommitResult } from "../services/git_service";
@@ -67,6 +68,8 @@ vi.mock("../services/git_service", () => ({
 }));
 
 const queueCloudSandboxSnapshotSyncMock = vi.hoisted(() => vi.fn());
+const prepareIsolatedTestDatabaseMock = vi.hoisted(() => vi.fn());
+const broadcastToRegisteredWindowsMock = vi.hoisted(() => vi.fn());
 // Partially mocked: this module is pulled in transitively by the runtime
 // service, so replacing it wholesale breaks whenever an unrelated export is
 // added. Only the snapshot sync needs to be stubbed out here.
@@ -78,11 +81,28 @@ vi.mock("../utils/cloud_sandbox_provider", async (importOriginal) => {
     queueCloudSandboxSnapshotSync: queueCloudSandboxSnapshotSyncMock,
   };
 });
+vi.mock("../services/isolated_test_db", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../services/isolated_test_db")>();
+  return {
+    ...actual,
+    prepareIsolatedTestDatabase: prepareIsolatedTestDatabaseMock,
+  };
+});
+vi.mock("@/ipc/utils/window_broadcast", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/ipc/utils/window_broadcast")>();
+  return {
+    ...actual,
+    broadcastToRegisteredWindows: broadcastToRegisteredWindowsMock,
+  };
+});
 
 // Imported after the mocks so the handler module picks them up.
-const { registerTestsHandlers } = await import("./tests_handlers");
+const { registerTestsHandlers, runAppTestsWithIsolation } =
+  await import("./tests_handlers");
 
-describe("tests:delete", () => {
+describe("tests handlers", () => {
   let harness: HandlerTestHarness;
 
   beforeEach(() => {
@@ -90,6 +110,8 @@ describe("tests:delete", () => {
     fs.mkdirSync(TEMP_BASE, { recursive: true });
     removeFileAndCommitMock.mockClear();
     queueCloudSandboxSnapshotSyncMock.mockClear();
+    prepareIsolatedTestDatabaseMock.mockReset();
+    broadcastToRegisteredWindowsMock.mockClear();
     harness = setupHandlerTestHarness();
     registerTestsHandlers();
   });
@@ -113,147 +135,178 @@ describe("tests:delete", () => {
     return full;
   }
 
-  it("deletes the spec file and commits the removal on its own", async () => {
-    const appId = seedApp("app");
-    const specPath = writeSpec("app", "e2e-tests/signup.spec.ts");
+  describe("tests:run", () => {
+    it("reports an unrestored test-run environment", async () => {
+      const appId = seedApp("app");
+      harness.db
+        .update(apps)
+        .set({ testingEnabled: true })
+        .where(eq(apps.id, appId))
+        .run();
+      prepareIsolatedTestDatabaseMock.mockResolvedValue({
+        isolation: { mode: "neon-branch" },
+        infraError: {
+          message: "Isolation setup stopped before running tests.",
+        },
+        teardown: vi.fn().mockResolvedValue({ envRestored: false }),
+      });
 
-    const result = await harness.invokeHandler<{
-      file: string;
-      committed: boolean;
-    }>("tests:delete", { appId, testFile: "e2e-tests/signup.spec.ts" });
-
-    expect(result).toEqual({
-      file: "e2e-tests/signup.spec.ts",
-      committed: true,
-      uncommittedReason: null,
-    });
-    expect(fs.existsSync(specPath)).toBe(false);
-    expect(removeFileAndCommitMock).toHaveBeenCalledWith({
-      path: path.join(TEMP_BASE, "app"),
-      filepath: "e2e-tests/signup.spec.ts",
-      message: "delete test e2e-tests/signup.spec.ts",
-    });
-    expect(queueCloudSandboxSnapshotSyncMock).toHaveBeenCalledWith({
-      appId,
-      deletedPaths: ["e2e-tests/signup.spec.ts"],
-    });
-  });
-
-  it("still reports success when the file isn't tracked by git", async () => {
-    const appId = seedApp("app");
-    const specPath = writeSpec("app", "e2e-tests/nested/checkout.spec.ts");
-    // Git removed nothing, so the file is still on disk for the handler.
-    removeFileAndCommitMock.mockResolvedValueOnce({
-      commitHash: null,
-      uncommittedReason: "untracked",
-    });
-
-    const result = await harness.invokeHandler<{
-      file: string;
-      committed: boolean;
-    }>("tests:delete", {
-      appId,
-      testFile: "e2e-tests/nested/checkout.spec.ts",
-    });
-
-    // Nothing was committed, so the UI knows not to promise a recovery path
-    // that doesn't exist for untracked files.
-    expect(result).toEqual({
-      file: "e2e-tests/nested/checkout.spec.ts",
-      committed: false,
-      uncommittedReason: "untracked",
-    });
-    expect(fs.existsSync(specPath)).toBe(false);
-  });
-
-  it("reports a failed commit separately from an untracked file", async () => {
-    const appId = seedApp("app");
-    const specPath = writeSpec("app", "e2e-tests/signup.spec.ts");
-    // `git rm` succeeded (file gone, deletion staged) but the commit didn't.
-    removeFileAndCommitMock.mockImplementationOnce(async () => {
-      fs.rmSync(specPath);
-      return { commitHash: null, uncommittedReason: "commit-failed" as const };
-    });
-
-    const result = await harness.invokeHandler<{
-      file: string;
-      committed: boolean;
-    }>("tests:delete", { appId, testFile: "e2e-tests/signup.spec.ts" });
-
-    // The deletion is staged, so the UI can point at pending changes rather
-    // than calling it unrecoverable.
-    expect(result).toEqual({
-      file: "e2e-tests/signup.spec.ts",
-      committed: false,
-      uncommittedReason: "commit-failed",
-    });
-    expect(fs.existsSync(specPath)).toBe(false);
-  });
-
-  it("leaves a concurrently recreated file alone once git removed the original", async () => {
-    const appId = seedApp("app");
-    const specPath = writeSpec("app", "e2e-tests/signup.spec.ts");
-    // A save landing right after `git rm` recreates the path. The handler must
-    // not unlink it: that content was never confirmed for deletion.
-    removeFileAndCommitMock.mockImplementationOnce(async () => {
-      fs.rmSync(specPath);
-      fs.writeFileSync(specPath, "test('recreated', async () => {});\n");
-      return { commitHash: "commit-hash", uncommittedReason: null };
-    });
-
-    await harness.invokeHandler("tests:delete", {
-      appId,
-      testFile: "e2e-tests/signup.spec.ts",
-    });
-
-    expect(fs.readFileSync(specPath, "utf8")).toContain("recreated");
-  });
-
-  it.each([
-    ["a file outside e2e-tests/", "src/main.ts"],
-    ["a traversal path", "e2e-tests/../../secrets.spec.ts"],
-    ["a non-spec file inside e2e-tests/", "e2e-tests/helpers.ts"],
-    ["an absolute path", "/etc/passwd"],
-  ])("rejects %s", async (_label, testFile) => {
-    const appId = seedApp("app");
-    const outside = path.join(TEMP_BASE, "secrets.spec.ts");
-    fs.writeFileSync(outside, "secret");
-    const helper = writeSpec("app", "e2e-tests/helpers.ts");
-
-    await expect(
-      harness.invokeHandler("tests:delete", { appId, testFile }),
-    ).rejects.toMatchObject({ kind: DyadErrorKind.Validation });
-
-    expect(fs.existsSync(outside)).toBe(true);
-    expect(fs.existsSync(helper)).toBe(true);
-    expect(removeFileAndCommitMock).not.toHaveBeenCalled();
-  });
-
-  it("reports a missing spec as not found", async () => {
-    const appId = seedApp("app");
-
-    await expect(
-      harness.invokeHandler("tests:delete", {
+      const result = await runAppTestsWithIsolation({
+        event: { sender: {} } as any,
         appId,
-        testFile: "e2e-tests/gone.spec.ts",
-      }),
-    ).rejects.toMatchObject({ kind: DyadErrorKind.NotFound });
+        source: "panel",
+      });
 
-    expect(removeFileAndCommitMock).not.toHaveBeenCalled();
+      expect(result.infraError?.message).toMatch(/real database settings/i);
+    });
   });
 
-  it("doesn't delete another app's spec", async () => {
-    seedApp("app-a");
-    const otherAppId = seedApp("app-b");
-    const specA = writeSpec("app-a", "e2e-tests/signup.spec.ts");
+  describe("tests:delete", () => {
+    it("deletes the spec file and commits the removal on its own", async () => {
+      const appId = seedApp("app");
+      const specPath = writeSpec("app", "e2e-tests/signup.spec.ts");
 
-    await expect(
-      harness.invokeHandler("tests:delete", {
-        appId: otherAppId,
+      const result = await harness.invokeHandler<{
+        file: string;
+        committed: boolean;
+      }>("tests:delete", { appId, testFile: "e2e-tests/signup.spec.ts" });
+
+      expect(result).toEqual({
+        file: "e2e-tests/signup.spec.ts",
+        committed: true,
+        uncommittedReason: null,
+      });
+      expect(fs.existsSync(specPath)).toBe(false);
+      expect(removeFileAndCommitMock).toHaveBeenCalledWith({
+        path: path.join(TEMP_BASE, "app"),
+        filepath: "e2e-tests/signup.spec.ts",
+        message: "delete test e2e-tests/signup.spec.ts",
+      });
+      expect(queueCloudSandboxSnapshotSyncMock).toHaveBeenCalledWith({
+        appId,
+        deletedPaths: ["e2e-tests/signup.spec.ts"],
+      });
+    });
+
+    it("still reports success when the file isn't tracked by git", async () => {
+      const appId = seedApp("app");
+      const specPath = writeSpec("app", "e2e-tests/nested/checkout.spec.ts");
+      // Git removed nothing, so the file is still on disk for the handler.
+      removeFileAndCommitMock.mockResolvedValueOnce({
+        commitHash: null,
+        uncommittedReason: "untracked",
+      });
+
+      const result = await harness.invokeHandler<{
+        file: string;
+        committed: boolean;
+      }>("tests:delete", {
+        appId,
+        testFile: "e2e-tests/nested/checkout.spec.ts",
+      });
+
+      // Nothing was committed, so the UI knows not to promise a recovery path
+      // that doesn't exist for untracked files.
+      expect(result).toEqual({
+        file: "e2e-tests/nested/checkout.spec.ts",
+        committed: false,
+        uncommittedReason: "untracked",
+      });
+      expect(fs.existsSync(specPath)).toBe(false);
+    });
+
+    it("reports a failed commit separately from an untracked file", async () => {
+      const appId = seedApp("app");
+      const specPath = writeSpec("app", "e2e-tests/signup.spec.ts");
+      // `git rm` succeeded (file gone, deletion staged) but the commit didn't.
+      removeFileAndCommitMock.mockImplementationOnce(async () => {
+        fs.rmSync(specPath);
+        return {
+          commitHash: null,
+          uncommittedReason: "commit-failed" as const,
+        };
+      });
+
+      const result = await harness.invokeHandler<{
+        file: string;
+        committed: boolean;
+      }>("tests:delete", { appId, testFile: "e2e-tests/signup.spec.ts" });
+
+      // The deletion is staged, so the UI can point at pending changes rather
+      // than calling it unrecoverable.
+      expect(result).toEqual({
+        file: "e2e-tests/signup.spec.ts",
+        committed: false,
+        uncommittedReason: "commit-failed",
+      });
+      expect(fs.existsSync(specPath)).toBe(false);
+    });
+
+    it("leaves a concurrently recreated file alone once git removed the original", async () => {
+      const appId = seedApp("app");
+      const specPath = writeSpec("app", "e2e-tests/signup.spec.ts");
+      // A save landing right after `git rm` recreates the path. The handler must
+      // not unlink it: that content was never confirmed for deletion.
+      removeFileAndCommitMock.mockImplementationOnce(async () => {
+        fs.rmSync(specPath);
+        fs.writeFileSync(specPath, "test('recreated', async () => {});\n");
+        return { commitHash: "commit-hash", uncommittedReason: null };
+      });
+
+      await harness.invokeHandler("tests:delete", {
+        appId,
         testFile: "e2e-tests/signup.spec.ts",
-      }),
-    ).rejects.toMatchObject({ kind: DyadErrorKind.NotFound });
+      });
 
-    expect(fs.existsSync(specA)).toBe(true);
+      expect(fs.readFileSync(specPath, "utf8")).toContain("recreated");
+    });
+
+    it.each([
+      ["a file outside e2e-tests/", "src/main.ts"],
+      ["a traversal path", "e2e-tests/../../secrets.spec.ts"],
+      ["a non-spec file inside e2e-tests/", "e2e-tests/helpers.ts"],
+      ["an absolute path", "/etc/passwd"],
+    ])("rejects %s", async (_label, testFile) => {
+      const appId = seedApp("app");
+      const outside = path.join(TEMP_BASE, "secrets.spec.ts");
+      fs.writeFileSync(outside, "secret");
+      const helper = writeSpec("app", "e2e-tests/helpers.ts");
+
+      await expect(
+        harness.invokeHandler("tests:delete", { appId, testFile }),
+      ).rejects.toMatchObject({ kind: DyadErrorKind.Validation });
+
+      expect(fs.existsSync(outside)).toBe(true);
+      expect(fs.existsSync(helper)).toBe(true);
+      expect(removeFileAndCommitMock).not.toHaveBeenCalled();
+    });
+
+    it("reports a missing spec as not found", async () => {
+      const appId = seedApp("app");
+
+      await expect(
+        harness.invokeHandler("tests:delete", {
+          appId,
+          testFile: "e2e-tests/gone.spec.ts",
+        }),
+      ).rejects.toMatchObject({ kind: DyadErrorKind.NotFound });
+
+      expect(removeFileAndCommitMock).not.toHaveBeenCalled();
+    });
+
+    it("doesn't delete another app's spec", async () => {
+      seedApp("app-a");
+      const otherAppId = seedApp("app-b");
+      const specA = writeSpec("app-a", "e2e-tests/signup.spec.ts");
+
+      await expect(
+        harness.invokeHandler("tests:delete", {
+          appId: otherAppId,
+          testFile: "e2e-tests/signup.spec.ts",
+        }),
+      ).rejects.toMatchObject({ kind: DyadErrorKind.NotFound });
+
+      expect(fs.existsSync(specA)).toBe(true);
+    });
   });
 });

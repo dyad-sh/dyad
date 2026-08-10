@@ -69,6 +69,7 @@ import {
 } from "@/ipc/services/chat_actor_service";
 import type { RestoreRecovery } from "@/version_preview/state";
 import { readStoredReferencedAppIds } from "../utils/mention_apps";
+import { assertNoActiveRecording } from "../services/recording_registry";
 
 const logger = log.scope("version_handlers");
 
@@ -904,6 +905,10 @@ export function registerVersionHandlers() {
       currentChatMessageId,
       targetBranchName,
     } = params;
+    // A recording holds repository, provider and runtime-config for its whole
+    // session, so this would queue invisibly behind it for up to the 30-minute
+    // cap. It is also rewriting the tree the recording is capturing against.
+    assertNoActiveRecording(appId, "undo to a previous version");
     return appOperationCoordinator.run(
       {
         appId,
@@ -1051,6 +1056,13 @@ export function registerVersionHandlers() {
       restoreCodebase = true,
       targetBranchName,
     } = params;
+
+    // Before phase 1, which already takes a repository claim the recording holds
+    // for its whole session: the coordinator would queue this restore behind it
+    // with no timeout, leaving a spinner that can outlast the user's patience by
+    // half an hour. Refusing is also the right answer on its own terms — the
+    // recording is capturing the very tree this would rewrite.
+    assertNoActiveRecording(appId, "restore this version");
 
     // Phase 1: validate the request and resolve the restore target under the
     // app lock WITHOUT cancelling any streams. Chat/message deletion endpoints

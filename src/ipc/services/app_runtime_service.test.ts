@@ -913,7 +913,15 @@ describe("executeApp", () => {
       "http://localhost:32142",
       expect.objectContaining({
         port: 42142,
+        authBootstrapToken: expect.any(String),
       }),
+    );
+    const proxyOptions = startProxyMock.mock.calls[0][1];
+    expect(proxyOptions.authBootstrapToken).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+    expect(runningApps.get(42)?.authBootstrapToken).toBe(
+      proxyOptions.authBootstrapToken,
     );
     // We must never evict whatever already holds the deterministic proxy port —
     // the worker scans the fallback band instead.

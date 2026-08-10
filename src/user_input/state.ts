@@ -54,6 +54,13 @@ export type UserInputDescriptor =
       provider?: "supabase" | "neon";
       classifier: "none";
       followUpPrompt: string;
+    })
+  | (DescriptorBase & {
+      kind: "test-assertions";
+      appId: number;
+      proposalId: string;
+      testTitle: string;
+      classifier: "none";
     });
 
 export type NewUserInputDescriptor = UserInputDescriptor extends infer D
@@ -72,6 +79,13 @@ export type UserInputResponse =
       kind: "integration";
       provider: "supabase" | "neon" | null;
       completed: boolean;
+    }
+  // `specPath: null` is the discard: the user closed the plan without letting
+  // Dyad write the spec, so the agent is told the review ended empty-handed.
+  | {
+      kind: "test-assertions";
+      specPath: string | null;
+      appliedCount: number;
     };
 
 export type UserInputParkValue =

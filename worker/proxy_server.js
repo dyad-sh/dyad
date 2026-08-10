@@ -17,6 +17,7 @@ const LISTEN_PORT = workerData.port;
 let rememberedOrigin = null; // e.g. "http://localhost:5173"
 let rememberedBaseUrl = null;
 const fixedHeaders = workerData?.fixedHeaders || {};
+const authBootstrapToken = workerData?.authBootstrapToken;
 
 /* ---------- pre-configure rememberedOrigin from workerData ------- */
 {
@@ -41,6 +42,8 @@ const fixedHeaders = workerData?.fixedHeaders || {};
 let stacktraceJsContent = null;
 let dyadShimContent = null;
 let dyadComponentSelectorClientContent = null;
+let dyadRecorderClientContent = null;
+let dyadAuthBootstrapContent = null;
 let dyadScreenshotClientContent = null;
 let htmlToImageContent = null;
 let dyadVisualEditorClientContent = null;
@@ -107,6 +110,29 @@ try {
 } catch (error) {
   parentPort?.postMessage(
     `[proxy-worker] Failed to read dyad-component-selector-client.js: ${error.message}`,
+  );
+}
+
+try {
+  const dyadRecorderClientPath = path.join(
+    __dirname,
+    "dyad-recorder-client.js",
+  );
+  dyadRecorderClientContent = fs.readFileSync(dyadRecorderClientPath, "utf-8");
+  parentPort?.postMessage("[proxy-worker] dyad-recorder-client.js loaded.");
+} catch (error) {
+  parentPort?.postMessage(
+    `[proxy-worker] Failed to read dyad-recorder-client.js: ${error.message}`,
+  );
+}
+
+try {
+  const dyadAuthBootstrapPath = path.join(__dirname, "dyad-auth-bootstrap.js");
+  dyadAuthBootstrapContent = fs.readFileSync(dyadAuthBootstrapPath, "utf-8");
+  parentPort?.postMessage("[proxy-worker] dyad-auth-bootstrap.js loaded.");
+} catch (error) {
+  parentPort?.postMessage(
+    `[proxy-worker] Failed to read dyad-auth-bootstrap.js: ${error.message}`,
   );
 }
 
@@ -194,6 +220,14 @@ function injectHTML(buf) {
     txt.includes("window-error") && txt.includes("unhandled-rejection");
 
   const scripts = [];
+  // Both injected bridges read the same per-proxy capability before any app
+  // script runs. Escape at the HTML boundary even though today's token is a
+  // UUID so a future token-source change cannot create an attribute injection.
+  const escapedProxyToken = String(authBootstrapToken || "")
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 
   if (!legacyAppWithShim) {
     if (stacktraceJsContent) {
@@ -217,6 +251,24 @@ function injectHTML(buf) {
   } else {
     scripts.push(
       '<script>console.warn("[proxy-worker] dyad component selector client was not injected.");</script>',
+    );
+  }
+  if (dyadRecorderClientContent) {
+    scripts.push(
+      `<script data-dyad-recorder-token="${escapedProxyToken}">${dyadRecorderClientContent}</script>`,
+    );
+  } else {
+    scripts.push(
+      '<script>console.warn("[proxy-worker] dyad recorder client was not injected.");</script>',
+    );
+  }
+  if (dyadAuthBootstrapContent) {
+    scripts.push(
+      `<script data-dyad-auth-token="${escapedProxyToken}">${dyadAuthBootstrapContent}</script>`,
+    );
+  } else {
+    scripts.push(
+      '<script>console.warn("[proxy-worker] dyad auth bootstrap was not injected.");</script>',
     );
   }
   if (htmlToImageContent) {

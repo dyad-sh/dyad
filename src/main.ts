@@ -52,6 +52,10 @@ import {
   DYAD_SCREENSHOT_SUBDIR,
 } from "./ipc/utils/media_path_utils";
 import {
+  resolveVaultMediaPath,
+  VAULT_MEDIA_URL_HOST,
+} from "./ipc/utils/vault_media";
+import {
   stopAllAppsSync,
   stopAppGarbageCollection,
 } from "./ipc/utils/process_manager";
@@ -260,6 +264,25 @@ export async function onReady() {
   // Handle dyad-media:// protocol requests to serve persistent media and screenshot files.
   protocol.handle("dyad-media", async (request) => {
     const url = new URL(request.url);
+
+    // Format: dyad-media://vault/{vault-relative-path}
+    //   Serves images and videos out of the local file vault's Media folder.
+    //   resolveVaultMediaPath enforces containment within that folder.
+    if (url.hostname === VAULT_MEDIA_URL_HOST) {
+      const relativePath = decodeURIComponent(url.pathname.slice(1));
+      const resolvedVaultPath = resolveVaultMediaPath(relativePath);
+      if (!resolvedVaultPath) {
+        return new Response("Forbidden", { status: 403 });
+      }
+      try {
+        return await net.fetch(
+          require("node:url").pathToFileURL(resolvedVaultPath).href,
+        );
+      } catch {
+        return new Response("Not Found", { status: 404 });
+      }
+    }
+
     // Format: dyad-media://media/{app-path}/.dyad/{subdir}/{filename}
     //   where {subdir} is DYAD_MEDIA_SUBDIR or DYAD_SCREENSHOT_SUBDIR.
     //   Uses a fixed hostname to avoid URL hostname normalization (lowercasing).

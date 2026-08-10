@@ -4,8 +4,20 @@ import { db } from "../../db";
 import { apps } from "../../db/schema";
 import { getDyadAppPath } from "../../paths/paths";
 import { safeJoin } from "../utils/path_utils";
-import { getMimeType, MIME_TYPE_MAP } from "../utils/mime_utils";
+import {
+  getGalleryMimeType,
+  getMediaKind,
+  getMimeType,
+  MIME_TYPE_MAP,
+} from "../utils/mime_utils";
 import { DYAD_MEDIA_DIR_NAME } from "../utils/media_path_utils";
+import {
+  buildVaultMediaUrl,
+  getLocalVaultRoot,
+  listVaultMedia,
+} from "../utils/vault_media";
+import { buildDyadMediaUrl } from "@/lib/dyadMediaUrl";
+import type { LocalMediaItem } from "../types/media";
 import { INVALID_FILE_NAME_CHARS } from "../../shared/media_validation";
 import { ensureDyadGitignored } from "./gitignoreUtils";
 import { withLock } from "../utils/lock_utils";
@@ -59,6 +71,71 @@ async function getMediaFilesForApp(
   );
 
   return results.filter((f) => f !== null);
+}
+
+/**
+ * Turns `Media/Images/Generated/cat.png` into `Vault · Images/Generated` so the
+ * gallery can show where a file came from without printing an absolute path.
+ */
+function vaultSourceLabel(relativePath: string): string {
+  const segments = relativePath.split("/");
+  // Drop the leading "Media" folder and the file name itself.
+  const folders = segments.slice(1, -1);
+  return folders.length > 0 ? `Vault · ${folders.join("/")}` : "Vault";
+}
+
+async function collectVaultMediaItems(): Promise<LocalMediaItem[]> {
+  const files = await listVaultMedia();
+  return files.map((file) => ({
+    id: `vault:${file.relativePath}`,
+    fileName: file.fileName,
+    filePath: file.absolutePath,
+    url: buildVaultMediaUrl(file.relativePath),
+    kind: file.kind,
+    sizeBytes: file.sizeBytes,
+    mimeType: file.mimeType,
+    modifiedAt: file.modifiedAt,
+    source: "vault" as const,
+    sourceLabel: vaultSourceLabel(file.relativePath),
+  }));
+}
+
+async function collectAppMediaItems(): Promise<LocalMediaItem[]> {
+  const allApps = await db.select().from(apps);
+  const perApp = await Promise.all(
+    allApps.map(async (app) => {
+      const appPath = getDyadAppPath(app.path);
+      const files = await getMediaFilesForApp(app.id, app.name, appPath);
+      const items = await Promise.all(
+        files.map(async (file) => {
+          const kind = getMediaKind(path.extname(file.fileName));
+          if (!kind) return null;
+          let modifiedAt = 0;
+          try {
+            modifiedAt = (await fs.promises.stat(file.filePath)).mtimeMs;
+          } catch {
+            return null;
+          }
+          return {
+            id: `app:${app.id}:${file.fileName}`,
+            fileName: file.fileName,
+            filePath: file.filePath,
+            // `app.path` (not the resolved absolute path) is what the
+            // dyad-media:// handler re-resolves, matching the media thumbnails.
+            url: buildDyadMediaUrl(app.path, file.fileName),
+            kind,
+            sizeBytes: file.sizeBytes,
+            mimeType: getGalleryMimeType(path.extname(file.fileName)),
+            modifiedAt,
+            source: "app" as const,
+            sourceLabel: app.name,
+          } satisfies LocalMediaItem;
+        }),
+      );
+      return items.filter((item) => item !== null);
+    }),
+  );
+  return perApp.flat();
 }
 
 async function withMediaLock<T>(
@@ -175,6 +252,27 @@ export function registerMediaHandlers() {
     );
 
     return { apps: appResults.filter((r) => r !== null) };
+  });
+
+  createTypedHandler(mediaContracts.listLocalMedia, async () => {
+    // Vault and app folders are independent; a failure to read one should not
+    // blank out the other in the gallery.
+    const [vaultItems, appItems] = await Promise.all([
+      collectVaultMediaItems().catch((error) => {
+        logger.error("Failed to list vault media", error);
+        return [] as LocalMediaItem[];
+      }),
+      collectAppMediaItems().catch((error) => {
+        logger.error("Failed to list app media", error);
+        return [] as LocalMediaItem[];
+      }),
+    ]);
+
+    const items = [...vaultItems, ...appItems].sort(
+      (a, b) => b.modifiedAt - a.modifiedAt,
+    );
+
+    return { items, vaultPath: getLocalVaultRoot() };
   });
 
   createTypedHandler(mediaContracts.renameMediaFile, async (_, params) => {

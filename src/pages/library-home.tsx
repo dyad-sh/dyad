@@ -16,7 +16,7 @@ import {
   type FilterType,
 } from "@/components/LibraryFilterTabs";
 import { DyadAppMediaFolder } from "@/components/DyadAppMediaFolder";
-import { CloudMediaGallery } from "@/components/library/CloudMediaGallery";
+import { MediaGallery } from "@/components/library/MediaGallery";
 import { ImageGeneratorDialog } from "@/components/ImageGeneratorDialog";
 import { ImageGenerationProgressButton } from "@/components/ImageGenerationProgressButton";
 import { filterMediaAppsByQuery } from "@/lib/mediaUtils";
@@ -163,7 +163,7 @@ export default function LibraryHomePage() {
 
       {/* Grid */}
       {activeFilter === "images" || activeFilter === "videos" ? (
-        <CloudMediaGallery kind={activeFilter} searchQuery={searchQuery} />
+        <MediaGallery kind={activeFilter} searchQuery={searchQuery} />
       ) : isLoading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />

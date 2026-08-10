@@ -361,6 +361,7 @@ export type { TranscribeAudioParams, TranscribeAudioResult } from "./audio";
 // Media types
 export type {
   MediaFile,
+  LocalMediaItem,
   RenameMediaFileParams,
   DeleteMediaFileParams,
   MoveMediaFileParams,

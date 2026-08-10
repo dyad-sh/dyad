@@ -265,13 +265,30 @@ describe("naming the target in the connected view", () => {
     render(<CoolifyConnector appId={1} />);
 
     expect(screen.getByText(/Can't reach your Coolify/)).toBeTruthy();
-    expect(screen.queryByText("server / project")).toBeNull();
     // The deployment itself is fine, so its address still shows and Deploy is
     // still offered — a name lookup failing is not the app being down.
     expect(screen.getByText("https://demo.example.com")).toBeTruthy();
     expect(
       (screen.getByTestId("coolify-deploy") as HTMLButtonElement).disabled,
     ).toBe(false);
+  });
+
+  it("says which part it cannot name when the server is not on this instance", () => {
+    // Discovery answered, but the saved server is not in what came back — the
+    // case the "belongs to a different Coolify" banner is for. The header names
+    // the project it could resolve and marks the server unknown, so the two
+    // agree rather than the header inventing a name the banner contradicts.
+    deploy.value = {
+      status: CONNECTED,
+      discovery: {
+        servers: [{ uuid: "srv-elsewhere", name: "other-box" }],
+        projects: [{ uuid: "prj-1", name: "storefront" }],
+      },
+    };
+    render(<CoolifyConnector appId={1} />);
+
+    expect(screen.getByText("Unknown server / storefront")).toBeTruthy();
+    expect(screen.getByText(/belongs to a different Coolify/)).toBeTruthy();
   });
 
   it("waits rather than inventing names while discovery is pending", () => {
@@ -282,7 +299,7 @@ describe("naming the target in the connected view", () => {
     };
     render(<CoolifyConnector appId={1} />);
 
-    expect(screen.queryByText("server / project")).toBeNull();
+    expect(screen.getByText("Loading...")).toBeTruthy();
   });
 });
 

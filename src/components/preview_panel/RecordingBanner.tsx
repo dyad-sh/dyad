@@ -207,17 +207,38 @@ export function RecordingBanner({
             surface, and a modal over the preview for one button is heavier than
             the action deserves. */}
         {confirmingDiscard ? (
-          <button
-            onClick={() => void recorder.discardDraft()}
-            data-testid="preview-recording-discard-confirm-button"
-            className={cn(
-              SECONDARY_BUTTON_CLASSES,
-              "font-medium text-red-700 hover:bg-red-100 hover:text-red-800 dark:text-red-300 dark:hover:bg-red-900/40",
-            )}
+          // "Keep" holds the slot the X occupied, and Discard sits beside it,
+          // so the pointer that armed this is not already over the destructive
+          // button — an accidental double-click keeps the recording. Focus
+          // leaving the pair disarms it too: without an escape the confirm
+          // stayed armed for the rest of the review, since the phase-change
+          // effect that resets it never fires while reviewing.
+          <span
+            className="flex items-center gap-1"
+            onBlur={(e) => {
+              if (e.currentTarget.contains(e.relatedTarget)) return;
+              setConfirmingDiscard(false);
+            }}
           >
-            Discard {recorder.draftSteps.length} step
-            {recorder.draftSteps.length === 1 ? "" : "s"}?
-          </button>
+            <button
+              onClick={() => void recorder.discardDraft()}
+              data-testid="preview-recording-discard-confirm-button"
+              className={cn(
+                SECONDARY_BUTTON_CLASSES,
+                "font-medium text-red-700 hover:bg-red-100 hover:text-red-800 dark:text-red-300 dark:hover:bg-red-900/40",
+              )}
+            >
+              Discard {recorder.draftSteps.length} step
+              {recorder.draftSteps.length === 1 ? "" : "s"}?
+            </button>
+            <button
+              onClick={() => setConfirmingDiscard(false)}
+              data-testid="preview-recording-discard-cancel-button"
+              className={cn(SECONDARY_BUTTON_CLASSES, "font-medium")}
+            >
+              Keep
+            </button>
+          </span>
         ) : (
           <button
             onClick={() => setConfirmingDiscard(true)}

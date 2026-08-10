@@ -367,6 +367,22 @@ export const PreviewIframe = ({
     };
   }, []);
 
+  // Annotator mode and a live recording are mutually exclusive: the annotator
+  // replaces the preview with a screenshot, so nothing is being captured, and
+  // it hides the recording bar — which on this tab is the only place Stop,
+  // Cancel and Discard exist, while the main-process session goes on holding
+  // the app's lock and its isolated database to the 30-minute cap.
+  //
+  // The toolbar button is disabled for the ordinary path. This closes the race
+  // the disabled attribute can't: arming happens when the screenshot response
+  // arrives, and a recording can start while that request is in flight.
+  useEffect(() => {
+    if (recorder.phase === "idle") return;
+    pendingAnnotatorScreenshotRequestIdRef.current = null;
+    setAnnotatorMode(false);
+    setScreenshotDataUrl(null);
+  }, [recorder.phase, setAnnotatorMode]);
+
   const requestAnnotatorScreenshot = () => {
     if (!iframeRef.current?.contentWindow) {
       return;
@@ -983,6 +999,9 @@ export const PreviewIframe = ({
       setScreenshotDataUrl(null);
       return;
     }
+    // The button is disabled for this, but arming is asynchronous — the
+    // screenshot response is what sets annotator mode — so refuse here too.
+    if (recorder.phase !== "idle") return;
     if (iframeRef.current?.contentWindow) {
       requestAnnotatorScreenshot();
     }
@@ -1204,7 +1223,12 @@ export const PreviewIframe = ({
                       loading ||
                       !selectedAppId ||
                       isPicking ||
-                      !isComponentSelectorInitialized
+                      !isComponentSelectorInitialized ||
+                      // The mirror of the record button's `annotatorMode` gate.
+                      // Without it the annotator takes away the recording bar —
+                      // the session's only Stop — on the one tab the bar was
+                      // moved to PreviewPanel level to stay visible from.
+                      recorder.phase !== "idle"
                     }
                     data-testid="preview-annotator-button"
                   />
@@ -1213,7 +1237,11 @@ export const PreviewIframe = ({
                 <Pen size={16} />
               </TooltipTrigger>
               <TooltipContent>
-                {annotatorMode ? "Annotator mode active" : "Activate annotator"}
+                {recorder.phase !== "idle"
+                  ? "Finish the recording before using the annotator"
+                  : annotatorMode
+                    ? "Annotator mode active"
+                    : "Activate annotator"}
               </TooltipContent>
             </Tooltip>
             {canRecordTests && (

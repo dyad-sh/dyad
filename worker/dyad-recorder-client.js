@@ -594,25 +594,42 @@
     return out;
   }
 
+  /**
+   * The text `aria-labelledby` resolves to, or null when it names nothing.
+   *
+   * Ahead of `aria-label` wherever both are consulted: the accessible-name
+   * algorithm gives `aria-labelledby` precedence (accname step 2B before 2C),
+   * and Playwright implements it faithfully. Reading `aria-label` first on an
+   * element carrying both makes the uniqueness scan call
+   * `getByRole(..., { name: <aria-label>, exact: true })` unique while
+   * Playwright computes the referenced text as the name — so the locator
+   * matches nothing at replay. A labelledby that resolves to nothing falls
+   * through to `aria-label`, as the algorithm's own fallthrough does.
+   */
+  function labelledByText(el) {
+    const labelledby = el.getAttribute && el.getAttribute("aria-labelledby");
+    if (!labelledby) return null;
+    const parts = labelledby
+      .split(/\s+/)
+      .map((id) => {
+        const ref = document.getElementById(id);
+        // Explicit aria-labelledby references contribute even when the
+        // referenced node is visually hidden. Ordinary descendants and native
+        // labels still use the visibility filter in accessibleTextContent.
+        return ref ? normalize(accessibleTextContent(ref, true)) : "";
+      })
+      .filter(Boolean);
+    return parts.length ? normalize(parts.join(" ")) : null;
+  }
+
   function computeAccName(el) {
     if (!el || el.nodeType !== 1) return null;
+
+    const labelled = labelledByText(el);
+    if (labelled) return labelled;
+
     const aria = el.getAttribute && el.getAttribute("aria-label");
     if (aria && aria.trim()) return normalize(aria);
-
-    const labelledby = el.getAttribute && el.getAttribute("aria-labelledby");
-    if (labelledby) {
-      const parts = labelledby
-        .split(/\s+/)
-        .map((id) => {
-          const ref = document.getElementById(id);
-          // Explicit aria-labelledby references contribute even when the
-          // referenced node is visually hidden. Ordinary descendants and
-          // native labels still use the visibility filter above.
-          return ref ? normalize(accessibleTextContent(ref, true)) : "";
-        })
-        .filter(Boolean);
-      if (parts.length) return normalize(parts.join(" "));
-    }
 
     const fromLabel = associatedLabelText(el);
     if (fromLabel) return fromLabel;
@@ -637,6 +654,11 @@
   }
 
   function labelForGetByLabel(el) {
+    // Same precedence as computeAccName, for the same reason: Playwright's
+    // `getByLabel` reads aria-labelledby before aria-label too, so the other
+    // order produces a locator it will never match.
+    const labelled = labelledByText(el);
+    if (labelled) return labelled;
     const aria = el.getAttribute && el.getAttribute("aria-label");
     if (aria && aria.trim()) return normalize(aria);
     return associatedLabelText(el);
@@ -995,22 +1017,40 @@
     return false;
   }
 
+  /**
+   * Elements the browser itself acts on when Space is pressed, producing
+   * something the recorder already captures — a synthesized click, a toggle, a
+   * typed character, a native picker.
+   *
+   * The mirror of `activatesOnEnter`, and deliberately not the same list: an
+   * anchor activates on Enter but NOT on Space. So `<a role="button"
+   * tabindex="0">` is a custom control as far as Space is concerned, however
+   * native its tag — the required Space behaviour is entirely the page's own
+   * keydown handler, and a press left unrecorded there vanishes from replay
+   * with nothing else standing in for it.
+   */
+  function activatesOnSpace(el) {
+    if (!el || el.nodeType !== 1) return false;
+    // Space types a character, which the resulting `fill` carries.
+    if (el.isContentEditable || el.tagName === "TEXTAREA") return true;
+    // BUTTON/SUMMARY activate; SELECT opens its picker, and whatever is chosen
+    // arrives as a `select`. Every INPUT type either acts on Space (checkbox,
+    // radio, the button types, file) or types into it.
+    return ["BUTTON", "SUMMARY", "SELECT", "INPUT"].includes(el.tagName);
+  }
+
   function shouldRecordPress(e) {
     if (["Control", "Meta", "Alt", "Shift"].includes(e.key)) return false;
     const hasNonShiftModifier = e.ctrlKey || e.metaKey || e.altKey;
     if (hasNonShiftModifier) return true;
     if (e.key === " " || e.key === "Spacebar") {
       const t = deepTarget(e);
-      const customRole = t && computeRole(t);
-      // Browsers synthesize the useful click/change for native controls, but
+      // Browsers synthesize the useful click/change for the controls above, but
       // custom ARIA controls rely on the app's key handler. Record that Space
       // press or keyboard-only interactions disappear from replay entirely.
-      return Boolean(
-        t &&
-        !t.matches(INTERACTIVE_TAGS) &&
-        ["button", "checkbox", "radio", "switch", "menuitem"].includes(
-          customRole,
-        ),
+      if (!t || activatesOnSpace(t)) return false;
+      return ["button", "checkbox", "radio", "switch", "menuitem"].includes(
+        computeRole(t),
       );
     }
     if (NAV_KEYS.has(e.key)) {

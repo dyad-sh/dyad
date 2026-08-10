@@ -119,6 +119,53 @@ describe("RecordingBanner", () => {
     expect(recorder.discardDraft).toHaveBeenCalledTimes(1);
   });
 
+  it("lets an armed discard be backed out of", () => {
+    // The reviewing phase never changes, so the phase-change effect that resets
+    // the confirm never fires — armed used to mean armed for good, with the
+    // destructive button sitting in the slot the trigger occupied.
+    const recorder = makeRecorder("reviewing");
+    renderBanner(recorder);
+
+    fireEvent.click(screen.getByTestId("preview-recording-discard-button"));
+    fireEvent.click(
+      screen.getByTestId("preview-recording-discard-cancel-button"),
+    );
+
+    expect(recorder.discardDraft).not.toHaveBeenCalled();
+    // Back to the trigger, so the recording is still one deliberate pair of
+    // clicks away from being thrown out rather than one.
+    expect(screen.getByTestId("preview-recording-discard-button")).toBeTruthy();
+    expect(
+      screen.queryByTestId("preview-recording-discard-confirm-button"),
+    ).toBeNull();
+  });
+
+  it("disarms a discard when focus leaves the confirmation", () => {
+    const recorder = makeRecorder("reviewing");
+    renderBanner(recorder);
+
+    fireEvent.click(screen.getByTestId("preview-recording-discard-button"));
+    const confirm = screen.getByTestId(
+      "preview-recording-discard-confirm-button",
+    );
+    // Focus moving between Discard and Keep is not a cancel.
+    fireEvent.blur(confirm, {
+      relatedTarget: screen.getByTestId(
+        "preview-recording-discard-cancel-button",
+      ),
+    });
+    expect(
+      screen.queryByTestId("preview-recording-discard-confirm-button"),
+    ).not.toBeNull();
+
+    fireEvent.blur(confirm, { relatedTarget: null });
+
+    expect(recorder.discardDraft).not.toHaveBeenCalled();
+    expect(
+      screen.queryByTestId("preview-recording-discard-confirm-button"),
+    ).toBeNull();
+  });
+
   it("offers a way out of a setup that is taking too long", () => {
     // `startRecording` resolves only once it holds the app's lock, so this phase
     // can wait indefinitely behind another app operation — with the preview

@@ -384,6 +384,49 @@ describe("dyad recorder client", () => {
     ]);
   });
 
+  it("records Space on an anchor-based ARIA button", () => {
+    // An anchor is a native interactive tag, but it activates on Enter only —
+    // nothing synthesizes a click for Space. The app's own keydown handler is
+    // the whole interaction, so a press left unrecorded here means replay
+    // silently omits it.
+    const r = setup();
+    r.setHtml(`<a role="button" tabindex="0" aria-label="Save">Save</a>`);
+    r.activate();
+    r.keydown(r.doc.querySelector("a"), { key: " " });
+
+    expect(r.actions).toEqual([
+      {
+        kind: "press",
+        key: " ",
+        locator: {
+          kind: "role",
+          value: "button",
+          name: "Save",
+          exact: true,
+        },
+      },
+    ]);
+  });
+
+  it("still ignores Space on controls the browser acts on itself", () => {
+    // The other half of the same rule: these produce a click, a toggle or a
+    // typed character the recorder already captures, so recording the press
+    // too would replay the action twice.
+    const r = setup();
+    r.setHtml(
+      `<button aria-label="Go">Go</button>` +
+        `<input type="checkbox" aria-label="Subscribe" />` +
+        `<textarea aria-label="Notes"></textarea>` +
+        `<a href="/next" aria-label="Next">Next</a>`,
+    );
+    r.activate();
+    for (const selector of ["button", "input", "textarea", "a"] as const) {
+      r.keydown(r.doc.querySelector(selector), { key: " " });
+    }
+
+    expect(r.actions).toEqual([]);
+  });
+
   it("falls back to a body selector rather than an empty one", () => {
     const r = setup();
     r.setHtml(`<p>background</p>`);
@@ -618,6 +661,35 @@ describe("dyad recorder client", () => {
         value: "person@example.com",
       },
     ]);
+  });
+
+  it("prefers aria-labelledby over aria-label, as the name algorithm does", () => {
+    // Playwright implements accname faithfully, so on an element carrying both
+    // it computes the referenced text. Naming the locator from `aria-label`
+    // would look unique to the scan here and match nothing at replay.
+    const r = setup();
+    r.setHtml(
+      `<span id="real-name">Account email</span>` +
+        `<input aria-labelledby="real-name" aria-label="Email" />`,
+    );
+    r.activate();
+    r.typeInto(r.doc.querySelector("input"), "person@example.com");
+
+    expect(r.actions[0]?.locator).toEqual({
+      kind: "role",
+      value: "textbox",
+      name: "Account email",
+      exact: true,
+    });
+  });
+
+  it("falls back to aria-label when aria-labelledby names nothing", () => {
+    const r = setup();
+    r.setHtml(`<input aria-labelledby="missing" aria-label="Email" />`);
+    r.activate();
+    r.typeInto(r.doc.querySelector("input"), "person@example.com");
+
+    expect(r.actions[0]?.locator).toMatchObject({ name: "Email" });
   });
 
   it("uses text from a hidden aria-labelledby reference", () => {

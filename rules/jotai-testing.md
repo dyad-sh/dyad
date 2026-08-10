@@ -85,6 +85,8 @@ at the app-switch behavior.
 
 If a `renderHook` test starts failing with `No QueryClient set, use QueryClientProvider to set one`, check whether the hook now calls another hook such as `useSettings()` or `useAppVersion()` that uses TanStack Query internally. Either wrap the test in a `QueryClientProvider` or mock the indirect hook when the test is only exercising Jotai/event behavior.
 
+`useStreamChat()` has the same shape but a different error — `useChatStreamManager requires ChatStreamProvider`. Watch for it when **hoisting a component out of a tab/route switch**: `PreviewPanel.test.tsx` renders the panel bare and mocks each child, so anything newly rendered at panel level runs its hooks for real. Split the component in two — an outer one that reads only atoms and returns `null` when the feature is inactive, and an inner one holding the chat/query hooks — so the provider is only needed when the feature is actually on screen. Mock the new child in the parent's suite the way its siblings already are.
+
 ## Preview `postMessage` Tests Need an App URL
 
 Hooks that consume preview-iframe messages (e.g. `useTestRecorder`) validate `event.origin` against the running app's origin and **fail closed** when it isn't known. A `renderHook` test that only sets `previewIframeRefAtom` will therefore see every message silently dropped — with no error, because dropping a foreign message is the correct behavior.

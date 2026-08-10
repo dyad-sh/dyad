@@ -63,12 +63,23 @@ describe("discovery across a token change on one instance", () => {
    * dataless "none" placeholder from the first render, which says nothing
    * about where lists get stored.
    */
-  function discoveryKeys(client: QueryClient): string[][] {
+  function discoveryEntries(client: QueryClient) {
     return client
       .getQueryCache()
       .findAll({ queryKey: ["coolify", "discovery"] })
-      .filter((q) => q.state.data !== undefined)
-      .map((q) => q.queryKey as string[]);
+      .filter((q) => q.state.data !== undefined);
+  }
+
+  function discoveryKeys(client: QueryClient): string[][] {
+    return discoveryEntries(client).map((q) => q.queryKey as string[]);
+  }
+
+  /** Each entry's token slot paired with the server list it is holding. */
+  function discoveryContents(client: QueryClient): string[][] {
+    return discoveryEntries(client).map((q) => [
+      (q.queryKey as string[])[3],
+      (q.state.data as { servers: Array<{ name: string }> }).servers[0].name,
+    ]);
   }
 
   it("caches under a key that changes with the token", async () => {
@@ -107,6 +118,14 @@ describe("discovery across a token change on one instance", () => {
     expect(keys.map((k) => k[3]).sort()).toEqual([
       "fp-team-a-token",
       "fp-team-b-token",
+    ]);
+    // What each entry holds, not just how it is labelled. The old token's
+    // entry ends up with the new token's list: the key reads the token from
+    // status, which lags the token write, so the refetch invalidation triggers
+    // still runs under the old key. Pinned so a change to it is visible here.
+    expect(discoveryContents(client)).toEqual([
+      ["fp-team-a-token", "team-b-server"],
+      ["fp-team-b-token", "team-b-server"],
     ]);
   });
 });

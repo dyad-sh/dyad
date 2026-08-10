@@ -53,6 +53,10 @@ export async function readConnectionState(
  *
  * The whole row goes every time, so no write can leave some fields describing
  * a connection that no longer exists.
+ *
+ * A row is keyed by the target it deploys to, and an app gets one at a time.
+ * That rule lives here rather than in a unique index on app_id, so that
+ * allowing several later needs no change to the schema.
  */
 export async function writeConnectionState(
   appId: number,
@@ -65,8 +69,15 @@ export async function writeConnectionState(
       .where(eq(coolifyAppConnections.appId, appId));
     return;
   }
-  await db
-    .insert(coolifyAppConnections)
-    .values({ appId, ...row })
-    .onConflictDoUpdate({ target: coolifyAppConnections.appId, set: row });
+  // Replace rather than update: the row is rewritten whole anyway, and this
+  // way moving an app to another target needs no separate cleanup. In one
+  // transaction, so the app is never briefly connected to nothing.
+  db.transaction((tx) => {
+    tx.delete(coolifyAppConnections)
+      .where(eq(coolifyAppConnections.appId, appId))
+      .run();
+    tx.insert(coolifyAppConnections)
+      .values({ appId, ...row })
+      .run();
+  });
 }

@@ -503,28 +503,58 @@ export const security_fix_chats = sqliteTable(
  * mean nothing apart: a server without a project names nowhere, and an
  * application id without either belongs to no instance. The row existing is
  * what "connected" means, so disconnecting deletes it rather than nulling
- * seven fields and hoping every writer nulls the same seven.
+ * every field and hoping each writer nulls the same ones.
  *
- * The first three are NOT NULL for the same reason — the database will not
- * hold a half-configured connection. The rest fill in as a deploy progresses:
- * an application id once Coolify has one, an address and a time once it has
- * run. The API token is instance-wide and lives in settings, not here.
+ * One row is one deployment. The target columns are NOT NULL because the
+ * database will not hold a half-configured connection; the rest fill in as a
+ * deploy progresses. The API token is instance-wide and lives in settings.
  */
-export const coolifyAppConnections = sqliteTable("coolify_app_connections", {
-  appId: integer("app_id")
-    .primaryKey()
-    .references(() => apps.id, { onDelete: "cascade" }),
+export const coolifyAppConnections = sqliteTable(
+  "coolify_app_connections",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    appId: integer("app_id")
+      .notNull()
+      .references(() => apps.id, { onDelete: "cascade" }),
 
-  serverUuid: text("server_uuid").notNull(),
-  projectUuid: text("project_uuid").notNull(),
-  environmentName: text("environment_name").notNull().default("production"),
+    /**
+     * Where the deployment goes. Coolify addresses a resource by all three:
+     * the machine, the grouping, and the lane within it — an app can have a
+     * production and a staging copy in one project on one server.
+     *
+     * The Coolify instance is deliberately not here. Its only handle is the
+     * URL, which changes without the instance changing (http to https once a
+     * certificate lands, an IP becoming a domain), so keying on it would make
+     * every app look moved. These are UUIDs, so they do not collide across
+     * instances anyway.
+     */
+    serverUuid: text("server_uuid").notNull(),
+    projectUuid: text("project_uuid").notNull(),
+    environmentName: text("environment_name").notNull().default("production"),
 
-  applicationUuid: text("application_uuid"),
-  /** Blank means Coolify generates an sslip.io address from the server's IP. */
-  domain: text("domain"),
-  appUrl: text("app_url"),
-  lastDeployedAt: integer("last_deployed_at", { mode: "timestamp" }),
-});
+    applicationUuid: text("application_uuid"),
+    /**
+     * What the user asked for, not where the app ended up — that is app_url.
+     * Null means no custom domain, so the address is whatever the deploy is
+     * entitled to generate. Never write a generated address back here, or the
+     * user's "no preference" becomes a stored preference they cannot undo.
+     */
+    domain: text("domain"),
+    appUrl: text("app_url"),
+    lastDeployedAt: integer("last_deployed_at", { mode: "timestamp" }),
+  },
+  (table) => [
+    // One row per target rather than per app. Only one is written today, kept
+    // that way by the writer rather than by this index, because widening a
+    // unique index later is not something this schema's migrations do.
+    unique("coolify_app_connections_target_unique").on(
+      table.appId,
+      table.serverUuid,
+      table.projectUuid,
+      table.environmentName,
+    ),
+  ],
+);
 
 export const appsRelations = relations(apps, ({ many, one }) => ({
   chats: many(chats),

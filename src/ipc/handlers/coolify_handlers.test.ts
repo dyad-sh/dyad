@@ -39,10 +39,9 @@ vi.mock("../../db", () => ({
     },
     insert: () => ({
       values: (row: Record<string, unknown>) => ({
-        onConflictDoUpdate: ({ set }: { set: Record<string, unknown> }) => {
-          updateSet(set);
-          connection = { ...row, ...set };
-          return Promise.resolve();
+        run: () => {
+          updateSet(row);
+          connection = row;
         },
       }),
     }),
@@ -53,6 +52,22 @@ vi.mock("../../db", () => ({
         return Promise.resolve();
       },
     }),
+    // A connection is replaced, not patched: the row is deleted and written
+    // back inside one transaction. Applied in order here so the fake ends up
+    // holding what the real one would.
+    transaction: (fn: (tx: unknown) => void) => {
+      fn({
+        delete: () => ({ where: () => ({ run: () => (connection = null) }) }),
+        insert: () => ({
+          values: (row: Record<string, unknown>) => ({
+            run: () => {
+              updateSet(row);
+              connection = row;
+            },
+          }),
+        }),
+      });
+    },
   },
 }));
 

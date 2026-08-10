@@ -33,14 +33,17 @@ controls. Effort is applied at the recording proxy (`reasoning_effort` /
 low/medium/high, so these rows do **not** use a product-reachable configuration
 and are reported separately from the headline matrix.
 
-| Model         | Effort | Relay CRM | Deskhero | Portalis | Cost   | Wall-clock | Overall   |
-| ------------- | ------ | --------- | -------- | -------- | ------ | ---------- | --------- |
-| gpt-5.6-luna  | medium | 56.7%     | 59.1%    | 3.5%     | $3.18  | 27 min     | **39.8%** |
-| gpt-5.6-luna  | high   | 76.6%     | 68.8%    | 92.5%    | $6.51  | 61 min     | **79.3%** |
-| gpt-5.6-luna  | xhigh  | 41.1%     | 95.8%    | 0.0%     | $9.82  | 71 min     | **45.6%** |
-| gpt-5.6-terra | medium | 87.0%     | 87.1%    | 8.0%     | $6.13  | 25 min     | **60.7%** |
-| gpt-5.6-terra | high   | 85.5%     | 92.6%    | 8.1%     | $10.28 | 43 min     | **62.1%** |
-| gpt-5.6-terra | xhigh  | 84.9%     | 95.8%    | 13.8%    | $16.18 | 61 min     | **64.8%** |
+| Model                  | Effort | Relay CRM | Deskhero | Portalis | Cost   | Wall-clock | Overall   |
+| ---------------------- | ------ | --------- | -------- | -------- | ------ | ---------- | --------- |
+| gpt-5.6-luna           | medium | 56.7%     | 59.1%    | 3.5%     | $3.18  | 27 min     | **39.8%** |
+| gpt-5.6-luna           | high   | 76.6%     | 68.8%    | 92.5%    | $6.51  | 61 min     | **79.3%** |
+| gpt-5.6-luna           | xhigh  | 41.1%     | 95.8%    | 0.0%     | $9.82  | 71 min     | **45.6%** |
+| gpt-5.6-terra          | medium | 87.0%     | 87.1%    | 8.0%     | $6.13  | 25 min     | **60.7%** |
+| gpt-5.6-terra          | high   | 85.5%     | 92.6%    | 8.1%     | $10.28 | 43 min     | **62.1%** |
+| gpt-5.6-terra          | xhigh  | 84.9%     | 95.8%    | 13.8%    | $16.18 | 61 min     | **64.8%** |
+| deepseek-v4-flash-0731 | low    | 46.6%     | 78.6%    | 52.9%    | $0.45  | 88 min     | **59.4%** |
+| deepseek-v4-flash-0731 | high   | 56.9%     | 90.7%    | 48.1%    | $0.32  | 76 min     | **65.2%** |
+| deepseek-v4-flash-0731 | xhigh  | 60.9%     | 46.6%    | 7.5%     | $0.28  | 72 min     | **38.4%** |
 
 At N=1 a single build-breaking line moves an app column by 70+ points, which is
 larger than the entire effort effect — read a column as measuring reasoning only

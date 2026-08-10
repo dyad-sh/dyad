@@ -235,31 +235,48 @@ const failDetail = rows
 // ---- reasoning-effort sweep -----------------------------------------------
 // Effort cells are ordinary cells with an `-<effort>` id suffix, so they score
 // through the same scoreCell() as everything else. Emitted only when present.
-const EFFORT_MODELS = ["gpt-5.6-luna", "gpt-5.6-terra"];
-const EFFORTS = ["medium", "high", "xhigh"];
+// Each model sweeps the tiers that are real FOR IT. luna and terra were swept
+// against their product default (medium); deepseek has no medium run and its
+// `max` is not a distinct tier at all — measured as statistically identical to
+// a nonsense value the engine also accepts — so it sweeps low/high/xhigh.
+// Hard-coding one shared tier list would invent cells that were never run.
+const EFFORT_MODELS = [
+  { slug: "gpt-5.6-luna", tiers: ["medium", "high", "xhigh"] },
+  { slug: "gpt-5.6-terra", tiers: ["medium", "high", "xhigh"] },
+  {
+    slug: "deepseek_deepseek-v4-flash-0731",
+    label: "deepseek-v4-flash-0731",
+    tiers: ["low", "high", "xhigh"],
+  },
+];
+// A cell id carries no suffix only for a model's product default.
+const effortSuffix = (slug, tier) =>
+  tier === "medium" && !slug.startsWith("deepseek") ? "" : `-${tier}`;
 // Effort cells were only run for the apps that existed at the time; scope the
 // sweep's columns to the apps it actually covers rather than to every
 // registered app, or later apps show up as a wall of n/a.
 const effortApps = appNames.filter((a) =>
   EFFORT_MODELS.some((m) =>
-    EFFORTS.some((e) =>
+    m.tiers.some((e) =>
       fs.existsSync(
-        R("s-cell", `${m}-${a}${e === "medium" ? "" : `-${e}`}.summary.json`),
+        R("s-cell", `${m.slug}-${a}${effortSuffix(m.slug, e)}.summary.json`),
       ),
     ),
   ),
 );
 const effortRows = [];
 for (const m of EFFORT_MODELS) {
-  for (const e of EFFORTS) {
-    const suffix = e === "medium" ? "" : `-${e}`;
+  for (const e of m.tiers) {
+    const suffix = effortSuffix(m.slug, e);
     // Effort suffixes the WHOLE cell id (`<model>-<app>-<effort>`), matching
     // appbench_cell.eval.ts — it is not part of the model slug.
-    const cells = effortApps.map((a) => scoreCell(m, a, `${m}-${a}${suffix}`));
+    const cells = effortApps.map((a) =>
+      scoreCell(m.slug, a, `${m.slug}-${a}${suffix}`),
+    );
     if (cells.every((c) => c === null)) continue;
     const done = cells.filter((c) => c?.composite != null);
     effortRows.push({
-      model: m,
+      model: m.label ?? m.slug,
       effort: e,
       cells,
       overall: done.length

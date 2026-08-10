@@ -95,7 +95,7 @@ function makeWrapper() {
  * `source` is the iframe's contentWindow AND whose origin is the app's own, and
  * posts commands back through it, so the fake records what it was told.
  */
-function makeIframe() {
+function makeIframe({ autoFlush = true }: { autoFlush?: boolean } = {}) {
   const posted: any[] = [];
   // The target origin each message was posted with, positionally aligned with
   // `posted`. What `postMessage` is *told* matters as much as what it sends:
@@ -105,20 +105,36 @@ function makeIframe() {
     postMessage: (message: unknown, targetOrigin?: string) => {
       posted.push(message);
       postedOrigins.push(targetOrigin);
+      if (
+        autoFlush &&
+        typeof message === "object" &&
+        message !== null &&
+        "type" in message &&
+        message.type === "flush-dyad-recorder" &&
+        "requestId" in message
+      ) {
+        queueMicrotask(() =>
+          send({
+            type: "dyad-recorder-flushed",
+            requestId: message.requestId,
+          }),
+        );
+      }
     },
   };
+  function send(data: unknown, origin = PREVIEW_ORIGIN) {
+    const event = new MessageEvent("message", { data, origin });
+    // `source` is read-only on the prototype; shadow it on the instance.
+    Object.defineProperty(event, "source", { value: contentWindow });
+    window.dispatchEvent(event);
+  }
   return {
     posted,
     postedOrigins,
     contentWindow,
     el: { contentWindow } as unknown as HTMLIFrameElement,
     /** Deliver a message as if the preview had posted it up. */
-    send(data: unknown, origin = PREVIEW_ORIGIN) {
-      const event = new MessageEvent("message", { data, origin });
-      // `source` is read-only on the prototype; shadow it on the instance.
-      Object.defineProperty(event, "source", { value: contentWindow });
-      window.dispatchEvent(event);
-    },
+    send,
   };
 }
 
@@ -320,6 +336,54 @@ describe("useTestRecorder", () => {
     expect(result.current.draft?.testName).toBe("My Flow");
     // The review list is the spec body, numbered as the assertion pass sees it.
     expect(result.current.draftSteps).toEqual([`await page.goto("/");`]);
+  });
+
+  it("flushes an iframe action already queued when review is requested", async () => {
+    const iframe = makeIframe({ autoFlush: false });
+    const { result } = await recordingSession({ iframe, appUrl: true });
+
+    let stopping!: Promise<unknown>;
+    act(() => {
+      stopping = result.current.stopAndReview("last click");
+    });
+    const flush = iframe.posted.find(
+      (message) => message.type === "flush-dyad-recorder",
+    );
+    expect(flush).toEqual(
+      expect.objectContaining({ requestId: expect.any(String) }),
+    );
+    expect(saveDraftMock).not.toHaveBeenCalled();
+
+    act(() => {
+      // The action was posted before the iframe saw the flush, but reaches the
+      // renderer after Stop was clicked. The acknowledgement is its barrier.
+      iframe.send({
+        type: "dyad-recorder-action",
+        action: {
+          kind: "click",
+          locator: { kind: "role", value: "button", name: "Save" },
+        },
+      });
+      iframe.send({
+        type: "dyad-recorder-flushed",
+        requestId: flush.requestId,
+      });
+    });
+    await act(async () => {
+      await stopping;
+    });
+
+    expect(saveDraftMock).toHaveBeenCalledWith({
+      appId: 1,
+      draft: expect.objectContaining({
+        actions: expect.arrayContaining([
+          expect.objectContaining({
+            kind: "click",
+            locator: expect.objectContaining({ name: "Save" }),
+          }),
+        ]),
+      }),
+    });
   });
 
   it("closes the review once the assertions card has generated the spec", async () => {
@@ -1112,12 +1176,13 @@ describe("useTestRecorder", () => {
     // so the error lands first and the review would overwrite it — offering a
     // recording to approve with no sign the app is still on the test branch.
     const onEnded = onEndedMock.mock.calls.at(-1)![0];
-    act(() => {
+    stopRecordingMock.mockImplementationOnce(async () => {
       onEnded({
         appId: 1,
         reason: "error",
         message: "Dyad couldn't restore your app's real database settings",
       });
+      return { ok: true };
     });
 
     let draft: unknown;

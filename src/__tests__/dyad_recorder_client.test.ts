@@ -82,6 +82,15 @@ function setup({ allowUntrusted = true }: { allowUntrusted?: boolean } = {}) {
       source: parent,
       data: { type: "deactivate-dyad-recorder", token: RECORDER_TOKEN },
     });
+  const flush = (requestId: string) =>
+    messageHandler!({
+      source: parent,
+      data: {
+        type: "flush-dyad-recorder",
+        token: RECORDER_TOKEN,
+        requestId,
+      },
+    });
 
   const click = (el: AnyEl) =>
     el.dispatchEvent(
@@ -112,6 +121,7 @@ function setup({ allowUntrusted = true }: { allowUntrusted?: boolean } = {}) {
     setHtml,
     activate,
     deactivate,
+    flush,
     click,
     dblclick,
     typeInto,
@@ -164,6 +174,19 @@ describe("dyad recorder client", () => {
     expect(r.actions).toEqual([
       { kind: "click", locator },
       { kind: "dblclick", locator },
+    ]);
+  });
+
+  it("acknowledges a flush after actions already sent to the parent", () => {
+    const r = setup();
+    r.setHtml(`<button>Save</button>`);
+    r.activate();
+    r.click(r.doc.querySelector("button"));
+    r.flush("flush-1");
+
+    expect(r.messages.slice(-2)).toEqual([
+      expect.objectContaining({ type: "dyad-recorder-action" }),
+      { type: "dyad-recorder-flushed", requestId: "flush-1" },
     ]);
   });
 

@@ -359,7 +359,11 @@ export function registerRecordingHandlers() {
                     "Dyad couldn't restore your app's real database settings after recording. Restore .env.local before running the app again.";
                 }
                 clearRegistration();
-                if (started) {
+                // A setup failure normally has no live recorder to notify. The
+                // exception is failed teardown: even before capture started,
+                // the app may still point at its temporary database branch and
+                // the renderer must surface that recovery error.
+                if (started || !summary.envRestored) {
                   safeSend(event.sender, "recording:ended", {
                     appId,
                     sessionId,

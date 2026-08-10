@@ -20,8 +20,10 @@
  *
  * Protocol:
  *   down (from parent): { type: "activate-dyad-recorder" | "deactivate-dyad-recorder", token }
+ *                       { type: "flush-dyad-recorder", token, requestId }
  *   up   (to parent):   { type: "dyad-recorder-initialized" }
  *                       { type: "dyad-recorder-action", action: RecordedAction }
+ *                       { type: "dyad-recorder-flushed", requestId }
  *
  * Known limitation — the top-level preview document only. This script is
  * injected into nested frames too, but Dyad activates only the frame it embeds,
@@ -1258,6 +1260,15 @@
     const type = e.data.type;
     if (type === "activate-dyad-recorder") activate();
     else if (type === "deactivate-dyad-recorder") deactivate();
+    else if (
+      type === "flush-dyad-recorder" &&
+      typeof e.data.requestId === "string"
+    ) {
+      window.parent.postMessage(
+        { type: "dyad-recorder-flushed", requestId: e.data.requestId },
+        "*",
+      );
+    }
   });
 
   function init() {

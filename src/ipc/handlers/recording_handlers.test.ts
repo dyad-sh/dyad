@@ -327,6 +327,33 @@ describe("recording:start / recording:stop", () => {
     expect(activeRecordings.has(1)).toBe(false);
   });
 
+  it("reports a failed restore even when setup failed before recording", async () => {
+    mocks.prepareIsolatedTestDatabase.mockResolvedValue(
+      makePrepared({
+        isolation: { mode: "none" },
+        infraError: { message: "Couldn't set up an isolated test database." },
+        teardown: vi.fn().mockResolvedValue({ envRestored: false }),
+      }),
+    );
+    const { event } = makeEvent();
+
+    const result = await startHandler(event, { appId: 1 });
+
+    expect(result.infraError?.message).toMatch(/isolated test database/i);
+    await vi.waitFor(() =>
+      expect(mocks.safeSend).toHaveBeenCalledWith(
+        event.sender,
+        "recording:ended",
+        expect.objectContaining({
+          appId: 1,
+          reason: "error",
+          message: expect.stringMatching(/restore your app's real database/i),
+        }),
+      ),
+    );
+    expect(activeRecordings.has(1)).toBe(false);
+  });
+
   it("refuses when the preview stopped while isolation was being set up", async () => {
     const prepared = makePrepared();
     // A recording queued behind another app operation can reach this point long

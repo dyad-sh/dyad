@@ -378,6 +378,9 @@ export const DyadTestAssertionsCard: React.FC<DyadTestAssertionsCardProps> = ({
           // Leave the plan exactly as it was rather than answering the turn
           // against a card that still reads as approvable.
           console.warn("Couldn't record the discarded assertion plan", error);
+          const message =
+            error instanceof Error ? error.message : String(error);
+          showError(`Couldn't close the assertion plan: ${message}`);
           return;
         }
       }

@@ -30,6 +30,7 @@ const mocks = vi.hoisted(() => ({
   })),
   discardTestAssertions: vi.fn(async () => ({ ok: true as const })),
   syncChatFromDb: vi.fn(),
+  showError: vi.fn(),
 }));
 
 vi.mock("@/user_input/hooks", () => ({
@@ -82,7 +83,7 @@ vi.mock("@/ipc/types", () => ({
 vi.mock("@/lib/resyncChat", () => ({ syncChatFromDb: mocks.syncChatFromDb }));
 
 vi.mock("@/lib/toast", () => ({
-  showError: vi.fn(),
+  showError: mocks.showError,
   showSuccess: vi.fn(),
   showWarning: vi.fn(),
 }));
@@ -218,6 +219,9 @@ describe("DyadTestAssertionsCard", () => {
       expect(mocks.discardTestAssertions).toHaveBeenCalledTimes(1),
     );
     expect(mocks.respond).not.toHaveBeenCalled();
+    expect(mocks.showError).toHaveBeenCalledWith(
+      expect.stringMatching(/couldn't close.*db down/i),
+    );
     expect(
       screen.queryByTestId("dyad-test-assertions-discarded-note"),
     ).toBeNull();

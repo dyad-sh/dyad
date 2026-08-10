@@ -44,6 +44,12 @@ const AUTH_READY_TIMEOUT_MS = 30_000;
  */
 const RECORDER_READY_TIMEOUT_MS = 5_000;
 
+/**
+ * A flush is only a best-effort ordering barrier around an iframe that may be
+ * navigating or gone. Never let a dead preview make Stop hang indefinitely.
+ */
+const RECORDER_FLUSH_TIMEOUT_MS = 1_000;
+
 /** One `startRecording` in flight. Cancelled when the recorder walks away. */
 interface StartAttempt {
   cancelled: boolean;
@@ -104,6 +110,15 @@ export function useTestRecorder({
   const recorderReadyRef = useRef<{
     appId: number;
     resolve: () => void;
+  } | null>(null);
+  // The recorder posts an acknowledgement after it has received every action
+  // already queued ahead of the flush request. Keep the phase recording until
+  // that barrier settles so a final click from the iframe is not dropped while
+  // Stop is taking its draft snapshot.
+  const recorderFlushRef = useRef<{
+    appId: number;
+    requestId: string;
+    finish: () => void;
   } | null>(null);
   // The auth to (re)send while waiting for the in-iframe sign-in, so a bootstrap
   // that reloads mid-flow can be handed the credentials as soon as it announces
@@ -215,9 +230,17 @@ export function useTestRecorder({
       }
       const action = parseRecorderAction(candidate);
       if (!action) return "rejected";
+      const entry = { action, at: Date.now() };
+      // Jotai updates the canonical buffer synchronously, but React may not run
+      // the effect that mirrors it into this ref before a flush acknowledgement
+      // resumes stopAndReview. Mirror accepted entries here as well so the
+      // snapshot includes the action immediately preceding that acknowledgement.
+      if (entriesRef.current.length < MAX_RECORDED_ENTRIES) {
+        entriesRef.current = [...entriesRef.current, entry];
+      }
       appendEntry({
         appId: targetAppId,
-        entry: { action, at: Date.now() },
+        entry,
       });
       return "recorded";
     },
@@ -332,6 +355,48 @@ export function useTestRecorder({
     waiting.resolve();
   }, []);
 
+  /** Release a flush wait when the session or preview disappears underneath it. */
+  const settleRecorderFlush = useCallback((targetAppId: number) => {
+    const waiting = recorderFlushRef.current;
+    if (!waiting || waiting.appId !== targetAppId) return;
+    waiting.finish();
+  }, []);
+
+  /**
+   * Wait until the iframe has processed all recorder messages queued before
+   * this request. postMessage preserves ordering between the same two windows,
+   * so its acknowledgement is a barrier behind the final captured action.
+   */
+  const flushRecorder = useCallback(
+    (targetAppId: number) => {
+      const token = recorderTokensRef.current.get(targetAppId);
+      const origin = previewOrigin();
+      if (!iframeElRef.current?.contentWindow || !token || origin === "*") {
+        return Promise.resolve();
+      }
+
+      settleRecorderFlush(targetAppId);
+      return new Promise<void>((resolve) => {
+        const requestId = crypto.randomUUID();
+        let settled = false;
+        let timer: ReturnType<typeof setTimeout>;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          if (recorderFlushRef.current?.requestId === requestId) {
+            recorderFlushRef.current = null;
+          }
+          resolve();
+        };
+        timer = setTimeout(finish, RECORDER_FLUSH_TIMEOUT_MS);
+        recorderFlushRef.current = { appId: targetAppId, requestId, finish };
+        postToIframe({ type: "flush-dyad-recorder", token, requestId }, origin);
+      });
+    },
+    [postToIframe, previewOrigin, settleRecorderFlush],
+  );
+
   // Handle messages coming up from the preview iframe.
   useEffect(() => {
     const handler = (e: MessageEvent) => {
@@ -358,6 +423,17 @@ export function useTestRecorder({
           // Re-arm after a dev-server restart / HMR reload swapped the iframe.
           if (phaseRef.current === "recording" && currentAppId != null) {
             postRecorderControl(currentAppId, "activate");
+          }
+          break;
+        }
+        case "dyad-recorder-flushed": {
+          const waiting = recorderFlushRef.current;
+          if (
+            waiting &&
+            waiting.appId === currentAppId &&
+            data.requestId === waiting.requestId
+          ) {
+            waiting.finish();
           }
           break;
         }
@@ -439,6 +515,7 @@ export function useTestRecorder({
         // Same for a start parked on the preview reload: the document it is
         // waiting for belongs to a session that no longer exists.
         settleRecorderReady(endedAppId);
+        settleRecorderFlush(endedAppId);
         const failureMessage =
           reason === "error" || reason === "timed-out"
             ? (message ?? "The recording session ended unexpectedly.")
@@ -462,7 +539,13 @@ export function useTestRecorder({
       },
     );
     return unsub;
-  }, [patchState, postRecorderControl, settlePendingAuth, settleRecorderReady]);
+  }, [
+    patchState,
+    postRecorderControl,
+    settlePendingAuth,
+    settleRecorderFlush,
+    settleRecorderReady,
+  ]);
 
   /**
    * Ask the main process to end this app's session and reset the app's recorder
@@ -478,6 +561,7 @@ export function useTestRecorder({
       // Both waits hold the app's `startingAppsRef` entry, so both have to be
       // settled here or the next Record is refused until the wait times out.
       settleRecorderReady(targetAppId);
+      settleRecorderFlush(targetAppId);
       if (targetAppId === appIdRef.current) {
         postRecorderControl(targetAppId, "deactivate");
       }
@@ -491,6 +575,7 @@ export function useTestRecorder({
       patchState,
       postRecorderControl,
       settlePendingAuth,
+      settleRecorderFlush,
       settleRecorderReady,
     ],
   );
@@ -939,6 +1024,18 @@ export function useTestRecorder({
       // Read before anything can retire it: the failure check after teardown
       // needs to know which session this stop belongs to.
       const ourSessionId = sessionIdsRef.current.get(targetAppId);
+      await flushRecorder(targetAppId);
+      // A flush can overlap an app switch, unmount, cancel, or external ending.
+      // Each of those paths releases ownership; never save a draft for the
+      // session that replaced it or one the user already abandoned.
+      if (
+        appIdRef.current !== targetAppId ||
+        !ownedSessionsRef.current.has(targetAppId) ||
+        (ourSessionId !== undefined &&
+          sessionIdsRef.current.get(targetAppId) !== ourSessionId)
+      ) {
+        return null;
+      }
       // Finishing this session ourselves, so the unmount/app-switch safety net
       // must not also try to stop it.
       ownedSessionsRef.current.delete(targetAppId);
@@ -1029,7 +1126,7 @@ export function useTestRecorder({
       }));
       return draft;
     },
-    [appId, clearEntries, patchState, postToIframe],
+    [appId, clearEntries, flushRecorder, patchState, postRecorderControl],
   );
 
   /**

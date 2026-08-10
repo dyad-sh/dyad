@@ -65,6 +65,23 @@ export function clearRecordedTestDraft(
   draftsByAppId.delete(appId);
 }
 
+/**
+ * Put back a draft that `clearRecordedTestDraft` consumed for a write that has
+ * since been rolled back, so the recorder bar can still offer the recording it
+ * is on screen describing.
+ *
+ * A recording parked since then wins: it is what the bar is currently offering,
+ * and the newer one is what the user just made. Same reasoning as the scoped
+ * clear above, from the other direction.
+ */
+export function restoreRecordedTestDraft(
+  appId: number,
+  draft: RecordedTestDraft,
+): void {
+  if (draftsByAppId.has(appId)) return;
+  draftsByAppId.set(appId, draft);
+}
+
 /** Remember the spec file this recording produced. */
 export function markRecordedDraftWritten(
   appId: number,

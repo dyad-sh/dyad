@@ -59,7 +59,10 @@ import {
   registerCloudSandboxSyncUpdateListener,
 } from "../services/app_runtime_service";
 import { getIpcAppRuntimeOutput } from "../services/app_runtime_transport";
-import { endRecordingForApp } from "../services/recording_registry";
+import {
+  assertNoActiveRecording,
+  endRecordingForApp,
+} from "../services/recording_registry";
 import { getPtySessionManager } from "../utils/pty_session_manager";
 import { sameInvocationRef } from "@/state_machines/invocation_ref";
 import { userInputRegistry } from "@/user_input/main";
@@ -132,6 +135,7 @@ import {
   deleteTempTestBranch,
   isTestBranchCleanupOnly,
   restoreAppFromTestBranch,
+  trackedBranchId,
 } from "../utils/neon_test_branch";
 import type { AppSearchResult } from "@/lib/schemas";
 
@@ -524,18 +528,20 @@ async function deleteAppById(
   // Only after the deletion has committed — the throw above skips this. Doing
   // it earlier means a deletion that then fails leaves a live app pointed at a
   // database that no longer exists, which is worse than the leak it prevents.
-  const strandedTestBranch =
+  const strandedMarker =
     deletedRow?.neonTestBranchId && deletedRow.neonProjectId
-      ? deletedRow
+      ? deletedRow.neonTestBranchId
       : null;
-  if (strandedTestBranch) {
+  if (strandedMarker && deletedRow) {
     try {
-      await deleteTempTestBranch(strandedTestBranch);
+      await deleteTempTestBranch(deletedRow);
     } catch (error) {
       // The row is gone, so nothing can reconcile this later. Logged loudly
-      // rather than failing a deletion that has already happened.
+      // rather than failing a deletion that has already happened — and named by
+      // its branch id, since the stored value may be the cleanup-only marker
+      // wrapping one and nobody can find that in Neon.
       logger.error(
-        `App ${appId} was deleted but its temporary Neon branch ${strandedTestBranch.neonTestBranchId} could not be removed; it must be deleted manually: ${error}`,
+        `App ${appId} was deleted but its temporary Neon branch ${trackedBranchId(strandedMarker)} could not be removed; it must be deleted manually: ${error}`,
       );
     }
   }
@@ -870,6 +876,12 @@ export function registerAppHandlers() {
   createTypedHandler(appContracts.copyApp, async (_, params) => {
     const { appId, withHistory } = params;
     const newAppName = sanitizeAppDisplayName(params.newAppName);
+
+    // The copy waits on the app's runtime-config claim so a recording's isolated
+    // `.env.local` is never what gets copied. A recording holds that claim for
+    // its whole session, so without this the dialog would spin behind it for up
+    // to 30 minutes with nothing explaining the wait.
+    assertNoActiveRecording(appId, "duplicate this app");
 
     // 1. Check if an app with the new name already exists. The user typed
     // this name, so a conflict is a hard error; folder collisions below

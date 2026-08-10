@@ -1085,6 +1085,18 @@ export function useTestRecorder({
       // the review UI doesn't appear over a half-torn-down session.
       await ipc.recording.stopRecording({ appId: targetAppId }).catch(() => {});
       recorderTokensRef.current.delete(targetAppId);
+      // Teardown cleared the temporary test user's credentials out of the
+      // preview's storage, but the document loaded with them is still running
+      // and its auth client still holds the session in memory. Reload so the
+      // preview comes back as itself — signed out, and on the app's real
+      // database, which teardown has just pointed it back at.
+      //
+      // Only while this app is still the one on screen: teardown takes seconds,
+      // and the preview showing after a switch belongs to an app that was never
+      // recording.
+      if (appIdRef.current === targetAppId) {
+        reloadPreview();
+      }
 
       // That teardown may have failed — most consequentially by not restoring
       // `.env.local`, leaving the app on the temporary test branch. The user has
@@ -1133,7 +1145,14 @@ export function useTestRecorder({
       }));
       return draft;
     },
-    [appId, clearEntries, flushRecorder, patchState, postRecorderControl],
+    [
+      appId,
+      clearEntries,
+      flushRecorder,
+      patchState,
+      postRecorderControl,
+      reloadPreview,
+    ],
   );
 
   /**

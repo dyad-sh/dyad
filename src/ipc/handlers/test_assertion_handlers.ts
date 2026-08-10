@@ -25,6 +25,7 @@ import {
   forgetRecordedDraftWrite,
   getWrittenSpecForDraft,
   markRecordedDraftWritten,
+  restoreRecordedTestDraft,
 } from "../services/recorded_test_drafts";
 import { readSettings } from "@/main/settings";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
@@ -135,6 +136,34 @@ function recordedDraftMarker(draft: RecordedTestDraft): string {
 }
 
 /**
+ * Whether the file at `relativePath` is still this draft's generated spec.
+ *
+ * A read that fails for any reason other than "not there" answers yes: we
+ * cannot prove the spec is gone, and writing a duplicate on a transient error is
+ * worse than trusting a path that may since have moved.
+ */
+async function specCarriesDraftMarker(
+  appPath: string,
+  relativePath: string,
+  draft: RecordedTestDraft,
+): Promise<boolean> {
+  try {
+    const source = await fs.promises.readFile(
+      path.join(appPath, relativePath),
+      "utf-8",
+    );
+    return source.split(/\r?\n/, 1)[0] === recordedDraftMarker(draft);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    logger.warn(
+      `Couldn't re-check ${relativePath} for its recorded draft marker; keeping it:`,
+      error,
+    );
+    return true;
+  }
+}
+
+/**
  * Find the durable marker written into a generated spec. The in-memory map is
  * still the hot path; this scan is the restart/eviction fallback that keeps a
  * second persisted assertion card from writing a suffixed twin.
@@ -145,7 +174,21 @@ async function findWrittenSpecForDraft(
   draft: RecordedTestDraft,
 ): Promise<string | null> {
   const remembered = getWrittenSpecForDraft(appId, draft);
-  if (remembered) return remembered;
+  // Re-checked rather than trusted: the Tests panel can delete or rename a
+  // generated spec while another card for the same recording is still open, and
+  // answering "already saved" with that path leaves the card's Open button
+  // pointing at a file that isn't there. A stale entry is dropped so the scan
+  // below — and, finding nothing, the write — can proceed as if it never
+  // existed.
+  if (remembered) {
+    if (await specCarriesDraftMarker(appPath, remembered, draft)) {
+      return remembered;
+    }
+    logger.info(
+      `Forgetting ${remembered}: it no longer carries this recording's marker`,
+    );
+    forgetRecordedDraftWrite(appId, draft);
+  }
 
   let entries: fs.Dirent[];
   try {
@@ -940,6 +983,12 @@ export function registerTestAssertionHandlers() {
           // included — a retry that found the marker would approve against a
           // file this just deleted.
           forgetRecordedDraftWrite(appId, stored.draft);
+          // `writeRecordedSpec` also consumed the parked draft. Nothing was
+          // written in the end, and the recorder bar is still up offering
+          // "Generate test proposal" — a path that reads the parked draft in the
+          // main process and would otherwise answer that there is no finished
+          // recording waiting, about a recording that still exists.
+          restoreRecordedTestDraft(appId, stored.draft);
           await discardGeneratedSpec(appId, specPath);
           throw error;
         }

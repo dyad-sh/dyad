@@ -7,6 +7,8 @@
  * single per-app Neon test-branch slot) without an import cycle.
  */
 
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+
 export type RecordingEndReason =
   | "stopped"
   | "app-stopped"
@@ -64,6 +66,27 @@ export function reserveRecordingStart(appId: number): (() => void) | null {
 
 export function isRecordingActive(appId: number): boolean {
   return activeRecordings.has(appId) || startingRecordings.has(appId);
+}
+
+/**
+ * Refuse an app operation that would otherwise queue behind a recording.
+ *
+ * A session holds write claims on repository, provider, runtime, runtime-config
+ * and test-files for its whole lifetime, and the coordinator queues conflicting
+ * work with no timeout — so anything taking one of those claims can sit on a
+ * spinner for the rest of the 30-minute cap with nothing on screen saying why.
+ * Paths that can't simply end the session (the recording is the thing the user
+ * is doing) say so instead and let them decide.
+ *
+ * `action` names what was asked for, in the imperative, e.g. "duplicate this
+ * app".
+ */
+export function assertNoActiveRecording(appId: number, action: string): void {
+  if (!isRecordingActive(appId)) return;
+  throw new DyadError(
+    `Stop the recording session before you ${action} — it's holding this app while it records.`,
+    DyadErrorKind.Precondition,
+  );
 }
 
 /**

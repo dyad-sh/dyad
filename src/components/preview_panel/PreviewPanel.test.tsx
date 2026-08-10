@@ -172,6 +172,19 @@ vi.mock("./PreviewToolbar", () => ({
   PreviewToolbar: () => null,
 }));
 
+// The real host reaches for the chat stream to send the assertion request; this
+// suite is about the Node.js setup path and the iframe's remount identity.
+vi.mock("./RecordingBannerHost", () => ({
+  RecordingBannerHost: ({ recorder }: { recorder: { instanceId: number } }) => (
+    <div
+      data-testid="recording-banner-host"
+      data-recorder={recorder.instanceId}
+    >
+      Recording banner host
+    </div>
+  ),
+}));
+
 vi.mock("./PackageManagerWarningBanner", () => ({
   PackageManagerWarningBanner: () => null,
 }));

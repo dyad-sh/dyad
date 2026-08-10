@@ -1077,10 +1077,14 @@
     if (!active || !trustedOk(e) || isOverlayEvent(e)) return;
     const raw = deepTarget(e);
     const control = resolveControl(raw);
+    // Each click composing the gesture already fired `change` on these, so both
+    // are recorded (a double-clicked checkbox emits `check` then `uncheck`) and
+    // there is no leading `click` for `collapseActions` to absorb. Emitting the
+    // double-click as well would replay four activations for the user's two.
+    if (control && recordsWithoutClick(control)) return;
     // Match the leading-click target for label-activated click controls so the
     // renderer can collapse click + dblclick into one double-click action.
-    const target =
-      control && !recordsWithoutClick(control) ? control : retarget(raw);
+    const target = control || retarget(raw);
     emit({ kind: "dblclick", locator: selectorFor(target) });
   }
 

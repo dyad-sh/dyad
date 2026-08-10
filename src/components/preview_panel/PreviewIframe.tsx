@@ -46,8 +46,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useStreamChat } from "@/hooks/useStreamChat";
-import { useChatMode } from "@/hooks/useChatMode";
-import { AgentModeRequiredDialog } from "./AgentModeRequiredDialog";
 import {
   selectedComponentsPreviewAtom,
   visualEditingSelectedComponentAtom,
@@ -75,7 +73,7 @@ import { useSettings } from "@/hooks/useSettings";
 import { useShortcut } from "@/hooks/useShortcut";
 import { cn } from "@/lib/utils";
 import { normalizePath } from "../../../shared/normalizePath";
-import { showError, showInfo, showSuccess } from "@/lib/toast";
+import { showError, showSuccess } from "@/lib/toast";
 import type { TestRecorderController } from "@/hooks/useTestRecorder";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import type { DeviceMode } from "@/lib/schemas";
@@ -90,7 +88,7 @@ import { useAttachments } from "@/hooks/useAttachments";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { Annotator } from "@/pro/ui/components/Annotator/Annotator";
 import { VisualEditingToolbar } from "./VisualEditingToolbar";
-import { RecordingBanner, recordingStatusMessage } from "./RecordingBanner";
+import { recordingStatusMessage } from "./RecordingBanner";
 import { RecordingStorageWarningDialog } from "./RecordingStorageWarningDialog";
 import { resolvePreviewBrowserUrl } from "./previewBrowserUrl";
 import { PreviewLoadingScreen } from "./PreviewLoadingScreen";
@@ -220,42 +218,6 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
 const PREVIEW_TOOLBAR_BUTTON_CLASSES =
   "flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-40";
 
-/**
- * The prompt that starts the test proposal. The recording isn't a file yet, so
- * the statements travel in the message — the agent names the test, describes the
- * steps and proposes checks, and its `generate_test_assertions` tool validates
- * what it sends back against the draft Dyad parked when recording stopped.
- */
-function buildAssertionsPrompt(
-  testName: string | undefined,
-  recordingId: string,
-  steps: string[],
-): string {
-  return [
-    `Add assertions to the test I just recorded${testName ? `: "${testName}"` : ""}`,
-    "",
-    // Named in the prompt and echoed back through the tool, so a request that
-    // sat queued while a *newer* recording replaced this one is rejected
-    // instead of annotating the wrong flow.
-    `Recording id: ${recordingId}`,
-    "",
-    // The steps are all there is to name it from, which is why the naming
-    // happens here rather than being guessed before the flow was performed.
-    testName
-      ? `Use "${testName}" as the test name — I chose it.`
-      : "I didn't name it, so name it yourself from what the steps actually do.",
-    "",
-    "It isn't a file yet — here are its statements, numbered the way your generate_test_assertions tool counts them:",
-    ...steps.map((step, index) => `${index}: ${step}`),
-    "",
-    // The recorder bar and the assertion card both number these from 1, so a
-    // user who says "step 3" means the statement listed as 2 here.
-    'Note: I see these numbered from 1, not 0 — if I ask for a check after "step N", that\'s the statement you see as N-1.',
-    "",
-    "Call generate_test_assertions with that recording id, a test name, one plain-English step description per statement, plus the assertions you'd propose. There's nothing to read and nothing to run — I'll review the proposal, and Dyad generates the test file when I approve it.",
-  ].join("\n");
-}
-
 // Preview iframe component
 export const PreviewIframe = ({
   loading,
@@ -269,11 +231,7 @@ export const PreviewIframe = ({
   const { appUrl, originalUrl, mode } = useCurrentAppUrl(selectedAppId);
   const appRunManager = useAppRunRemoteManager();
   const selectedChatId = useAtomValue(selectedChatIdAtom);
-  // True while the Agent-mode confirmation for the assertion pass is open.
-  const [assertionsNeedAgentMode, setAssertionsNeedAgentMode] = useState(false);
   const { streamMessage } = useStreamChat();
-  const { effectiveMode } = useChatMode(selectedChatId);
-  const isAgentMode = effectiveMode === "local-agent";
   const {
     routes: availableRoutes,
     loading: routesLoading,
@@ -354,58 +312,6 @@ export const PreviewIframe = ({
     );
   };
 
-  // Hand the recorded steps to the agent for the test proposal. Its
-  // `generate_test_assertions` tool posts a reviewable card into the chat, and
-  // approving that card is what generates the spec — so nothing is written
-  // until the user has seen the name, the steps and the checks.
-  const doGenerateAssertions = () => {
-    const draft = recorder.draft;
-    if (!draft) return;
-    if (!selectedChatId) {
-      showInfo("Open a chat to generate a test from the recording.");
-      return;
-    }
-    const requestAppId = selectedAppId;
-    // Marked before the send: a submission that lands on the prompt queue
-    // settles synchronously, and the clear below must not be overwritten by a
-    // mark that runs after it.
-    //
-    // The review stays up until the user closes it. The request can fail, be
-    // cancelled, or finish without ever calling the tool, and this bar is the
-    // only UI that can ask again or discard the parked draft.
-    recorder.markAwaitingAssertions();
-    streamMessage({
-      prompt: buildAssertionsPrompt(
-        draft.testName,
-        draft.draftId,
-        recorder.draftSteps,
-      ),
-      chatId: selectedChatId,
-      requestedChatMode: "local-agent",
-      // Every way this turn can end arrives here: a card posted and answered, a
-      // reply that never called the tool, an error, or the user stopping the
-      // chat. Only the approval closes the bar on its own, so without this the
-      // "asking the AI" spinner outlives the request it describes. A submission
-      // queued behind an active stream settles here straight away and its
-      // callback is not carried through the queue, so it stops the spinner too —
-      // the card still arrives when the queued turn runs.
-      onSettled: () => {
-        if (requestAppId != null)
-          recorder.clearAwaitingAssertions(requestAppId);
-      },
-    });
-    showInfo("Sent to chat — asking the AI for assertions…");
-  };
-
-  // Confirm the switch to Agent mode first when the chat is in another mode,
-  // matching the Tests panel's "Generate test" / "Fix with AI" entry points.
-  const handleGenerateAssertions = () => {
-    if (isAgentMode) {
-      doGenerateAssertions();
-    } else {
-      setAssertionsNeedAgentMode(true);
-    }
-  };
   const previewToolbarRef = useRef<HTMLDivElement>(null);
   const [previewToolbarWidth, setPreviewToolbarWidth] = useState<number | null>(
     null,
@@ -1696,29 +1602,15 @@ export const PreviewIframe = ({
         </div>
       )}
 
-      {recorder.phase !== "idle" && !annotatorMode && (
-        <RecordingBanner
-          recorder={recorder}
-          onGenerateAssertions={handleGenerateAssertions}
-        />
-      )}
-
+      {/* The recording bar itself lives at PreviewPanel level, alongside the
+          hoisted recorder, so leaving this tab can't take the session's only
+          Stop control off screen. */}
       <RecordingStorageWarningDialog
         open={recorder.pendingStart !== null}
         onOpenChange={(open) => {
           if (!open) recorder.dismissStartRecording();
         }}
         onContinue={recorder.confirmStartRecording}
-      />
-
-      <AgentModeRequiredDialog
-        open={assertionsNeedAgentMode}
-        onOpenChange={setAssertionsNeedAgentMode}
-        action="assertions"
-        onContinue={() => {
-          doGenerateAssertions();
-          setAssertionsNeedAgentMode(false);
-        }}
       />
 
       <div className="relative flex-grow overflow-hidden">

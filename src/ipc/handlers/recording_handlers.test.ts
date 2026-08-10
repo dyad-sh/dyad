@@ -73,7 +73,7 @@ const startHandler = mocks.handlers.get("recording:start")!;
 const stopHandler = mocks.handlers.get("recording:stop")!;
 const discardDraftHandler = mocks.handlers.get("recording:discard-draft")!;
 
-function makeEvent() {
+function makeEvent(isDestroyed: () => boolean = () => false) {
   let destroyedHandler: (() => void) | undefined;
   return {
     event: {
@@ -82,6 +82,7 @@ function makeEvent() {
           if (name === "destroyed") destroyedHandler = handler;
         },
         removeListener: vi.fn(),
+        isDestroyed,
       },
     },
     triggerDestroyed: () => destroyedHandler?.(),
@@ -313,6 +314,58 @@ describe("recording:start / recording:stop", () => {
       event.sender,
       "recording:ended",
       expect.objectContaining({ appId: 1, reason: "stopped" }),
+    );
+  });
+
+  it("abandons a session whose window closed while setup was awaiting", async () => {
+    // `destroyed` fires while the handler is still awaiting the app lookup, so
+    // the listener registered afterwards never hears it. Left unnoticed the
+    // session would swap the app onto an isolated database and hold every claim
+    // until the 30-minute cap, with no recorder UI able to end it.
+    let windowClosed = false;
+    const { event } = makeEvent(() => windowClosed);
+    mocks.findFirst.mockImplementationOnce(async () => {
+      windowClosed = true;
+      return { id: 1, testingEnabled: true };
+    });
+    mocks.prepareIsolatedTestDatabase.mockResolvedValue(makePrepared());
+
+    const result = await startHandler(event, { appId: 1 });
+
+    expect(result.infraError?.message).toMatch(/ended before/i);
+    expect(mocks.prepareIsolatedTestDatabase).not.toHaveBeenCalled();
+    await activeRecordings.get(1)?.done;
+    expect(activeRecordings.has(1)).toBe(false);
+    expect(isRecordingActive(1)).toBe(false);
+  });
+
+  it("clears the preview's storage again when the session ends", async () => {
+    // The auth bootstrap seeded the temporary test user's session into the
+    // preview's storage. Deleting that user is a server-side change the issued
+    // token doesn't see, so the credential itself has to come back out.
+    const prepared = makePrepared({
+      authSetup: {
+        mode: "supabase-password",
+        email: "t@dyad.test",
+        password: "pw",
+        projectUrl: "https://ref.supabase.co",
+        anonKey: "anon",
+      },
+    });
+    mocks.prepareIsolatedTestDatabase.mockResolvedValue(prepared);
+    const { event } = makeEvent();
+
+    await startHandler(event, { appId: 1 });
+    expect(mocks.clearStorageData).toHaveBeenCalledTimes(1);
+
+    await stopHandler(event, { appId: 1 });
+
+    expect(mocks.clearStorageData).toHaveBeenCalledTimes(2);
+    expect(mocks.clearStorageData).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        origin: "http://localhost:42100",
+        storages: expect.arrayContaining(["localstorage", "cookies"]),
+      }),
     );
   });
 

@@ -78,6 +78,30 @@ function toRecordingAuth(setup: IsolationAuthSetup | undefined): RecordingAuth {
   return setup ?? NO_AUTH;
 }
 
+/**
+ * Drop everything the preview's browser session holds for the app's origin.
+ *
+ * Called at both ends of a recording. Setup uses it to start capture from the
+ * pristine, signed-out state the generated test replays from; teardown uses it
+ * to take the temporary identity back out. The auth bootstrap seeds that
+ * identity into storage the preview keeps — a Supabase session under
+ * `sb-<ref>-auth-token`, a Better Auth cookie — and deleting the test user is a
+ * server-side change an already-issued JWT does not see. Left behind, the
+ * preview goes on acting as a user Dyad has disowned, against the real project.
+ */
+async function clearPreviewStorage(origin: string): Promise<void> {
+  await session.defaultSession.clearStorageData({
+    origin,
+    storages: [
+      "cookies",
+      "localstorage",
+      "indexdb",
+      "serviceworkers",
+      "cachestorage",
+    ],
+  });
+}
+
 function infraResult(appId: number, message: string): StartRecordingResult {
   return {
     appId,
@@ -198,6 +222,16 @@ export function registerRecordingHandlers() {
         // renderer dies.
         const onDestroyed = () => stop("app-stopped");
         event.sender.once?.("destroyed", onDestroyed);
+        // `destroyed` fires once, and the app lookup and prior-branch recovery
+        // above are awaits the window can close during — in which case the
+        // listener just registered will never hear it. The flag is state rather
+        // than an event, so it still reports an owner that is already gone;
+        // without this the session would swap the app onto an isolated database
+        // and hold every claim until the 30-minute cap, with no recorder UI
+        // anywhere able to end it.
+        if (event.sender.isDestroyed?.()) {
+          stop("app-stopped");
+        }
         const sessionTimer = setTimeout(
           () => stop("timed-out"),
           MAX_SESSION_MS,
@@ -227,10 +261,27 @@ export function registerRecordingHandlers() {
             },
             async () => {
               let prepared: PreparedIsolation | undefined;
+              // Set once the preview's storage has been cleared for capture, so
+              // teardown knows where this session's credentials ended up.
+              let previewOrigin: string | undefined;
               let started = false;
               let endReason: RecordingEndReason = "stopped";
               let endMessage: string | undefined;
               try {
+                // The session was already ended before admission — the owning
+                // window closed, or Stop was pressed while this waited behind
+                // another app operation. Nothing has been swapped yet, so bail
+                // before isolation setup rather than preparing a temporary
+                // database for a session with no one left to record it.
+                if (controller.signal.aborted) {
+                  ready.resolve(
+                    infraResult(
+                      appId,
+                      "The recording session ended before its environment was ready.",
+                    ),
+                  );
+                  return;
+                }
                 // The request can wait behind rename, relocation, or provider
                 // work. Re-read only after app-path admission so isolation never
                 // snapshots or rewrites the app's former directory/provider.
@@ -309,16 +360,11 @@ export function registerRecordingHandlers() {
                 );
                 try {
                   const origin = new URL(proxyUrl).origin;
-                  await session.defaultSession.clearStorageData({
-                    origin,
-                    storages: [
-                      "cookies",
-                      "localstorage",
-                      "indexdb",
-                      "serviceworkers",
-                      "cachestorage",
-                    ],
-                  });
+                  await clearPreviewStorage(origin);
+                  // Remembered, not re-derived at teardown: the app may have
+                  // been stopped by then, and the credentials this recording is
+                  // about to seed live under this origin either way.
+                  previewOrigin = origin;
                 } catch (error) {
                   logger.warn(
                     `Couldn't clear preview storage for app ${appId}: ${error}`,
@@ -360,6 +406,18 @@ export function registerRecordingHandlers() {
                   infraResult(appId, "Couldn't set up the recording session."),
                 );
               } finally {
+                // Before isolation teardown, which is what deletes the test user
+                // this credential belongs to: whichever way that goes, the
+                // preview must not be left holding it.
+                if (previewOrigin) {
+                  try {
+                    await clearPreviewStorage(previewOrigin);
+                  } catch (error) {
+                    logger.error(
+                      `Couldn't clear the recording's preview session for app ${appId}; the preview may still hold the temporary test user's credentials: ${error}`,
+                    );
+                  }
+                }
                 if (prepared) {
                   // Fail closed for the duration of the call: a teardown that THROWS
                   // has told us nothing about whether `.env.local` came back, and

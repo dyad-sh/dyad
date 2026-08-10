@@ -755,6 +755,74 @@ describe("registerTestAssertionHandlers", () => {
       expect(getRecordedTestDraft(appId)).toEqual(newer);
     });
 
+    it("parks the recording again when the approval is rolled back", async () => {
+      const { appId, chatId } = seed();
+      propose(appId, chatId);
+      setRecordedTestDraft(appId, DRAFT);
+      // Latching the approval is what fails here: the spec was written, so the
+      // rollback has to undo the write AND everything the write consumed.
+      const updateSpy = vi
+        .spyOn(harness.db, "update")
+        .mockImplementationOnce(() => {
+          throw new Error("couldn't latch the approval");
+        });
+
+      try {
+        await expect(approve(appId, chatId)).rejects.toThrow(/couldn't latch/);
+      } finally {
+        updateSpy.mockRestore();
+      }
+
+      expect(specExists()).toBe(false);
+      // The recording still exists and nothing was written, so the recorder
+      // bar's "Generate test proposal" must still find it.
+      expect(getRecordedTestDraft(appId)).toEqual(DRAFT);
+    });
+
+    it("doesn't restore a rolled-back draft over a newer recording", async () => {
+      const { appId, chatId } = seed();
+      propose(appId, chatId);
+      setRecordedTestDraft(appId, DRAFT);
+      const newer: RecordedTestDraft = { ...DRAFT, draftId: "draft-newer" };
+      const updateSpy = vi
+        .spyOn(harness.db, "update")
+        .mockImplementationOnce(() => {
+          // Recorded while the approval was in flight — the bar is offering this
+          // one now, and the rollback must not displace it.
+          setRecordedTestDraft(appId, newer);
+          throw new Error("couldn't latch the approval");
+        });
+
+      try {
+        await expect(approve(appId, chatId)).rejects.toThrow(/couldn't latch/);
+      } finally {
+        updateSpy.mockRestore();
+      }
+
+      expect(getRecordedTestDraft(appId)).toEqual(newer);
+    });
+
+    it("rewrites a spec deleted out from under the remembered path", async () => {
+      const { appId, chatId } = seed();
+      propose(appId, chatId, { proposalId: "proposal-1" });
+      propose(appId, chatId, { proposalId: "proposal-2" });
+      await approve(appId, chatId, "proposal-1");
+
+      // Deleted through the Tests panel while the second card was still open.
+      // The cache still names it, but "already saved" would hand that card an
+      // Open button pointing at nothing.
+      fs.rmSync(path.join(tmpDir, SPEC_PATH));
+      const second = await approve(appId, chatId, "proposal-2");
+
+      expect(second.specPath).toBe(SPEC_PATH);
+      expect(second.warning ?? "").not.toMatch(/already saved/i);
+      expect(second.appliedCount).toBeGreaterThan(0);
+      expect(specExists()).toBe(true);
+      expect(readSpec().split("\n", 1)[0]).toBe(
+        '// dyad-recording-draft-id: "draft-test"',
+      );
+    });
+
     it("rejects a chat that belongs to a different app", async () => {
       const { appId, chatId } = seed();
       const { proposalId } = propose(appId, chatId);

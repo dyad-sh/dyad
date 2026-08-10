@@ -544,6 +544,28 @@ describe("dyad recorder client", () => {
     ]);
   });
 
+  it("leaves a double-clicked checkbox to its change events", () => {
+    const r = setup();
+    r.setHtml(`<input type="checkbox" aria-label="Subscribe" />`);
+    r.activate();
+    const checkbox = r.doc.querySelector('input[type="checkbox"]');
+
+    // Both clicks composing the gesture toggle the box, so the browser fires a
+    // `change` for each before the `dblclick` arrives.
+    checkbox.checked = true;
+    r.change(checkbox);
+    checkbox.checked = false;
+    r.change(checkbox);
+    r.dblclick(checkbox);
+
+    // No `dblclick`: replaying one on top of check + uncheck would activate the
+    // box four times where the user activated it twice.
+    expect(r.actions.map((action: any) => action.kind)).toEqual([
+      "check",
+      "uncheck",
+    ]);
+  });
+
   it("records a dropdown choice as a select with the chosen value", () => {
     const r = setup();
     r.setHtml(

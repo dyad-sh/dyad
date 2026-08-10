@@ -32,7 +32,15 @@ type AppRow = typeof apps.$inferSelect;
 // value, and every API boundary below strips it before addressing Neon.
 const CLEANUP_ONLY_BRANCH_PREFIX = "dyad-cleanup-only:v1:";
 
-function trackedBranchId(marker: string): string {
+/**
+ * The Neon branch id a `neonTestBranchId` value refers to.
+ *
+ * The accessor every reader outside this module has to go through: the column
+ * stores either a raw branch id or the cleanup-only marker wrapping one, and
+ * anything that addresses Neon — or names the branch to a user who may have to
+ * delete it by hand — means this, never the stored string.
+ */
+export function trackedBranchId(marker: string): string {
   return marker.startsWith(CLEANUP_ONLY_BRANCH_PREFIX)
     ? marker.slice(CLEANUP_ONLY_BRANCH_PREFIX.length)
     : marker;

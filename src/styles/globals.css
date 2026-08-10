@@ -10022,3 +10022,111 @@ html.theme-switching * {
 .chat-agent-db-more:hover {
   background: rgb(34 211 238 / 0.12);
 }
+
+/* ── Infrastructure monitor ───────────────────────────────────────────────
+   Rows are uniform whether or not anything recognised the service: an
+   unidentified row that looked different would read as a lesser row, and it
+   is often the one worth looking at. */
+
+.infra-stat {
+  border: 1px solid rgb(34 211 238 / 0.15);
+  border-radius: 0.75rem;
+  background: rgb(2 12 20 / 0.5);
+  padding: 0.7rem 0.85rem;
+}
+
+.infra-stat-value {
+  display: block;
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: rgb(224 247 255 / 0.95);
+  font-variant-numeric: tabular-nums;
+}
+
+.infra-stat-label {
+  display: block;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: rgb(224 247 255 / 0.4);
+}
+
+.infra-card {
+  border: 1px solid rgb(34 211 238 / 0.15);
+  border-radius: 0.9rem;
+  background: rgb(2 12 20 / 0.5);
+  overflow: hidden;
+}
+
+.infra-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.9rem;
+  border-bottom: 1px solid rgb(34 211 238 / 0.12);
+  background: rgb(34 211 238 / 0.05);
+  font-size: 0.78rem;
+  color: rgb(224 247 255 / 0.75);
+}
+
+.infra-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.5rem 0.9rem;
+  border-bottom: 1px solid rgb(255 255 255 / 0.04);
+  font-size: 0.8rem;
+}
+
+.infra-row:last-child {
+  border-bottom: none;
+}
+
+.infra-row:hover {
+  background: rgb(34 211 238 / 0.04);
+}
+
+.infra-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.infra-name {
+  display: block;
+  color: rgb(224 247 255 / 0.9);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.infra-facts {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.7rem;
+  color: rgb(224 247 255 / 0.4);
+}
+
+.infra-sources,
+.infra-latency,
+.infra-event-time {
+  font-size: 0.68rem;
+  color: rgb(224 247 255 / 0.35);
+  white-space: nowrap;
+}
+
+.infra-latency {
+  font-variant-numeric: tabular-nums;
+}
+
+.infra-event-time {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.infra-status {
+  font-size: 0.7rem;
+  white-space: nowrap;
+  min-width: 5rem;
+  text-align: right;
+}

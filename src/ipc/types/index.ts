@@ -44,6 +44,7 @@ export { agentOsContracts, agentOsChatStreamContract } from "./agent_os";
 export { vercelBlobContracts } from "./vercel_blob";
 export { storageContracts } from "./storage";
 export { dataSourceContracts } from "./data_source";
+export { infrastructureContracts } from "./infrastructure";
 export { cloudAppsContracts } from "./cloud_apps";
 export { videoGenerationContracts } from "./video_generation";
 export { ocrContracts } from "./ocr";
@@ -474,6 +475,7 @@ import { helixClient } from "./helix";
 import { openWorkerClient } from "./openworker";
 import { storageClient } from "./storage";
 import { dataSourceClient } from "./data_source";
+import { infrastructureClient } from "./infrastructure";
 import { vectorClient, vectorEventClient } from "./vector";
 
 /**
@@ -527,6 +529,7 @@ export const ipc = {
   vercelBlob: vercelBlobClient,
   storage: storageClient,
   dataSource: dataSourceClient,
+  infrastructure: infrastructureClient,
   cloudApps: cloudAppsClient,
   videoGeneration: videoGenerationClient,
   ocr: ocrClient,

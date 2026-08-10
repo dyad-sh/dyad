@@ -10,6 +10,7 @@ export type AppSidebarItemTitle =
   | "Agents"
   | "Dev Ops"
   | "Data Sources"
+  | "Infrastructure"
   | "Storage"
   | "Settings"
   | "Library"

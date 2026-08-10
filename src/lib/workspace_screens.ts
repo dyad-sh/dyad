@@ -1,4 +1,5 @@
 import {
+  Activity,
   DraftingCompass,
   Blocks,
   Briefcase,
@@ -60,6 +61,7 @@ const SCREENS: WorkspaceScreen[] = [
   { path: "/prompts", title: "Prompts", icon: Wrench },
   { path: "/vector", title: "Vector", icon: Database },
   { path: "/data-sources", title: "Data Sources", icon: Database },
+  { path: "/infrastructure", title: "Infrastructure", icon: Activity },
   { path: "/storage", title: "Storage", icon: HardDrive },
   { path: "/dev-ops", title: "DevOps", icon: Rocket },
   { path: "/meta-hd", title: "Meta HD", icon: Box },

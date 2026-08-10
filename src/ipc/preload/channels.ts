@@ -59,6 +59,7 @@ import { helixContracts } from "../types/helix";
 import { vectorContracts, vectorEvents } from "../types/vector";
 import { storageContracts } from "../types/storage";
 import { dataSourceContracts } from "../types/data_source";
+import { infrastructureContracts } from "../types/infrastructure";
 import { jarvisContracts, jarvisEvents } from "../types/jarvis";
 
 // =============================================================================
@@ -137,6 +138,7 @@ export const VALID_INVOKE_CHANNELS = [
   ...getInvokeChannels(vectorContracts),
   ...getInvokeChannels(storageContracts),
   ...getInvokeChannels(dataSourceContracts),
+  ...getInvokeChannels(infrastructureContracts),
   ...getInvokeChannels(jarvisContracts),
 
   // Test-only channels

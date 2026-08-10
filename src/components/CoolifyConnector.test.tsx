@@ -132,12 +132,33 @@ describe("the server and project pickers while discovery is in flight", () => {
   }
 
   it("says the list is loading rather than showing an empty one", async () => {
-    setupDiscovery({ discovery: undefined, isDiscovering: true });
+    setupDiscovery({
+      discovery: undefined,
+      isDiscovering: true,
+      isDiscoveryPending: true,
+    });
     const user = userEvent.setup();
     render(<CoolifyConnector appId={1} />);
 
     await user.click(screen.getByTestId("coolify-server-select"));
 
+    expect(screen.getByText("Loading servers...")).toBeTruthy();
+  });
+
+  it("waits rather than saying the instance has no servers, when offline", async () => {
+    // react-query pauses every query while the renderer is offline: pending,
+    // no data, no error, and isFetching false. Read as an answer, that becomes
+    // a claim about the user's own infrastructure that nothing checked.
+    setupDiscovery({
+      discovery: undefined,
+      isDiscovering: false,
+      isDiscoveryPending: true,
+    });
+    const user = userEvent.setup();
+    render(<CoolifyConnector appId={1} />);
+
+    expect(screen.queryByText(/has no servers Dyad can see/)).toBeNull();
+    await user.click(screen.getByTestId("coolify-server-select"));
     expect(screen.getByText("Loading servers...")).toBeTruthy();
   });
 
@@ -151,6 +172,7 @@ describe("the server and project pickers while discovery is in flight", () => {
         projects: [],
       },
       isDiscovering: true,
+      isDiscoveryPending: false,
     });
     const user = userEvent.setup();
     render(<CoolifyConnector appId={1} />);

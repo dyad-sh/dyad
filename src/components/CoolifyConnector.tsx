@@ -80,6 +80,7 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
     discovery,
     discoveryError,
     isDiscovering,
+    isDiscoveryPending,
     refetchDiscovery,
     snapshot,
     saveToken,
@@ -291,7 +292,7 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
     // Fetching with nothing to show yet. Not isDiscovering on its own, which
     // is isFetching and so also covers background refetches over a list the
     // user is already reading.
-    const awaitingDiscovery = isDiscovering && !discovery;
+    const awaitingDiscovery = isDiscoveryPending;
     // The only control that removes the stored instance URL and token. It used
     // to live solely inside the discovery-error card, so rotating a token or
     // moving to another instance meant first breaking discovery on purpose.
@@ -450,7 +451,7 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
           </Button>
         </div>
 
-        {!isDiscovering &&
+        {!isDiscoveryPending &&
           !discoveryError &&
           (discovery?.servers ?? []).length === 0 && (
             <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">

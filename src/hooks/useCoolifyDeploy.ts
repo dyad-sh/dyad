@@ -149,6 +149,12 @@ export function useCoolifyDeploy(appId: number | null) {
     discovery: discovery.data,
     discoveryError: discovery.error,
     isDiscovering: discovery.isFetching,
+    /**
+     * No list yet and none refused — still loading, or paused because the
+     * renderer is offline. isFetching is false while paused, so it cannot tell
+     * "waiting" from "answered with nothing".
+     */
+    isDiscoveryPending: discovery.isPending && !discovery.error,
     refetchDiscovery: discovery.refetch,
     snapshot,
     saveToken,

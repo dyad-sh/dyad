@@ -19,6 +19,8 @@ test("local-agent deploys affected Supabase functions using packaged dependency 
 }) => {
   await po.setUpDyadPro({ localAgent: true });
   await po.importApp("minimal");
+  await po.chatActions.waitForChatCompletion();
+  await po.chatActions.clickNewChat();
   await po.appManagement.ensurePnpmInstall();
 
   const appPath = await po.appManagement.getCurrentAppPath();

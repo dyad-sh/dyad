@@ -47,9 +47,18 @@ import type { Agent } from "./data";
 export function HermesAgentChat({
   agent,
   onBack,
+  isActive = true,
 }: {
   agent: Agent;
   onBack: () => void;
+  /**
+   * Whether this chat is the visible tab.
+   *
+   * Every agent's chat stays mounted and is hidden with CSS, so without this
+   * each one would keep an autofocusing editor alive and they would take the
+   * caret from each other on every keystroke.
+   */
+  isActive?: boolean;
 }) {
   const [historyByAgent, setHistoryByAgent] = useAtom(hermesAgentHistoryAtom);
   const initialConversation = historyByAgent[agent.id]?.[0];
@@ -461,6 +470,7 @@ export function HermesAgentChat({
                 isStreaming={isStreaming}
                 onStop={stopStreaming}
                 messageHistory={userMessageHistory}
+                autoFocus={isActive}
                 variant="empty"
                 modelLabelOverride={`${agent.name} · ${agent.model || "hermes"}`}
               />
@@ -539,6 +549,7 @@ export function HermesAgentChat({
                   isStreaming={isStreaming}
                   onStop={stopStreaming}
                   messageHistory={userMessageHistory}
+                  autoFocus={isActive}
                   modelLabelOverride={`${agent.name} · ${agent.model || "hermes"}`}
                 />
               </div>

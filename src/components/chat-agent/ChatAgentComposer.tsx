@@ -51,7 +51,17 @@ export function ChatAgentComposer({
   exclusiveToolLabel,
   selectedVectorCollectionIds,
   onVectorCollectionIdsChange,
+  autoFocus = true,
 }: {
+  /**
+   * Whether this composer should take focus.
+   *
+   * Must be false for any composer that is mounted but not visible. The input
+   * is a shared atom, so several mounted composers all re-render on every
+   * keystroke, and every one with autoFocus then races to take the caret back.
+   * That is what makes typing land one character at a time.
+   */
+  autoFocus?: boolean;
   onSubmit: (
     text: string,
     selectedMcpActions: ChatAgentMcpAction[],
@@ -234,7 +244,7 @@ export function ChatAgentComposer({
             disabled={disabled || isEnhancing}
             excludeCurrentApp={false}
             submitOnEnter
-            autoFocus
+            autoFocus={autoFocus}
             messageHistory={messageHistory}
           />
         </div>

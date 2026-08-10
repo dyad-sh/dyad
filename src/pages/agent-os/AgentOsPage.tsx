@@ -918,6 +918,7 @@ export default function AgentOsPage() {
             ) : (
               <HermesAgentChat
                 agent={agent}
+                isActive={activeTab === agent.id}
                 onBack={() => setActiveTab("dashboard")}
               />
             )}

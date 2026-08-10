@@ -158,6 +158,30 @@ function getRowOrThrow(id: string): AgentRow {
   return row;
 }
 
+/**
+ * Cleans up an endpoint before it is stored.
+ *
+ * People paste from documentation, and what comes across is often the label
+ * as well as the value: "URL https://…", "Endpoint: https://…", or the whole
+ * thing wrapped in angle brackets. Each of those saves happily and then fails
+ * at chat time with a message about the endpoint being missing, which is both
+ * true and unhelpful, because the field visibly contains one.
+ *
+ * So the label is stripped here rather than the user being asked to spot it.
+ */
+export function normaliseAgentEndpoint(raw: string): string {
+  return (
+    raw
+      .trim()
+      // A leading label, with or without a colon.
+      .replace(/^(url|endpoint|base\s*url|api)\s*:?\s+/i, "")
+      // Markdown or angle-bracket wrapping.
+      .replace(/^<+|>+$/g, "")
+      .replace(/^\[|\]$/g, "")
+      .trim()
+  );
+}
+
 export function registerAgentOsHandlers() {
   createTypedHandler(agentOsContracts.list, async () => {
     const rows = db.select().from(agentOsAgents).all();
@@ -178,7 +202,7 @@ export function registerAgentOsHandlers() {
         name,
         description: params.description?.trim() ?? "",
         type: params.type ?? "Custom",
-        endpoint: params.endpoint?.trim() ?? "",
+        endpoint: normaliseAgentEndpoint(params.endpoint ?? ""),
         imageBaseUrl: params.imageBaseUrl?.trim() ?? "",
         model: params.model?.trim() ?? "",
         apiKey: params.apiKey?.trim() ? params.apiKey.trim() : null,
@@ -204,7 +228,8 @@ export function registerAgentOsHandlers() {
     if (params.description !== undefined)
       update.description = params.description.trim();
     if (params.type !== undefined) update.type = params.type;
-    if (params.endpoint !== undefined) update.endpoint = params.endpoint.trim();
+    if (params.endpoint !== undefined)
+      update.endpoint = normaliseAgentEndpoint(params.endpoint);
     if (params.imageBaseUrl !== undefined)
       update.imageBaseUrl = params.imageBaseUrl.trim();
     if (params.model !== undefined) update.model = params.model.trim();

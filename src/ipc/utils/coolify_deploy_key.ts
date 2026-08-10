@@ -264,7 +264,13 @@ export async function ensureDeployKey(keyName: string): Promise<string> {
         `The deploy key at ${keyPath} could not be read, and its public half ` +
           `is missing. Delete it to have a new pair generated, then add the ` +
           `new key to the repository's deploy keys.`,
-        DyadErrorKind.External,
+        // Precondition, not External: a corrupt local file is user state the
+        // user is told how to fix, not a fault of Coolify's or GitHub's. The
+        // kind also decides telemetry, and this message carries the userData
+        // path — the OS username on macOS and Windows — plus the owner and
+        // repo in the filename. External is not filtered, so classifying it
+        // that way shipped all three to PostHog.
+        DyadErrorKind.Precondition,
       );
     }
     fs.writeFileSync(`${keyPath}.pub`, derived, { mode: 0o644 });
@@ -286,7 +292,8 @@ export async function ensureDeployKey(keyName: string): Promise<string> {
   if (!publicKey) {
     throw new DyadError(
       `Deploy key exists but ${keyPath}.pub is unreadable`,
-      DyadErrorKind.External,
+      // Same reason as above: the message embeds the userData path.
+      DyadErrorKind.Precondition,
     );
   }
   return publicKey;

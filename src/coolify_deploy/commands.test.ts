@@ -1309,6 +1309,32 @@ describe("pre-deploy warnings", () => {
     expect(report.text()).toMatch(/different Neon branch/);
   });
 
+  it("warns for an app connected before there was an active branch", async () => {
+    // neon_active_branch_id arrived in migration 0027 with no backfill, so
+    // every app connected before then has only a development branch — and the
+    // rest of the Neon code treats that as the effective one.
+    const app = await seedApp({
+      neonProjectId: "proj-1",
+      neonActiveBranchId: null,
+      neonDevelopmentBranchId: "br-dev",
+    });
+    happyPathRoutes();
+    const report = loggingRecorder();
+    const clock = createFakeClock();
+
+    await drive(
+      clock,
+      runDeployPipeline({
+        appId: app.id,
+        signal: new AbortController().signal,
+        report,
+        clock,
+      }),
+    );
+
+    expect(report.text()).toMatch(/different Neon branch/);
+  });
+
   it("says nothing when deploying the branch the app develops on", async () => {
     const app = await seedApp({
       neonProjectId: "proj-1",

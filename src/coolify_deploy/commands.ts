@@ -545,7 +545,7 @@ function warnIfBranchLacksSchema({
   deployedBranchId: string;
   report: DeployReporter;
 }): void {
-  const activeBranchId = app.neonActiveBranchId;
+  const activeBranchId = app.neonActiveBranchId ?? app.neonDevelopmentBranchId;
   if (!activeBranchId || activeBranchId === deployedBranchId) return;
   report.log(
     `Warning: deploying against a different Neon branch than this app has ` +

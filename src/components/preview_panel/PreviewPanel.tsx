@@ -39,11 +39,35 @@ import { useSettings } from "@/hooks/useSettings";
 import { showError } from "@/lib/toast";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { useLatestConsoleEntry } from "@/preview_console/hooks";
+import { useTestRecorder } from "@/hooks/useTestRecorder";
+import { RecordingBannerHost } from "./RecordingBannerHost";
 
 interface ConsoleHeaderProps {
   isOpen: boolean;
   onToggle: () => void;
   latestMessage?: string;
+}
+
+/**
+ * The recorder's state and IPC subscriptions, hoisted out of the preview tab.
+ *
+ * A recording session lives in the main process and holds the app's lock; the
+ * hook that can end it, and the `recording:*` subscriptions that keep the bar
+ * truthful, only exist while this is mounted. Mounted inside the preview tab it
+ * would be torn down by a trip to Code or Problems — stopping a recording in
+ * progress, and missing the `draft-consumed` event that retires a review.
+ */
+function useHoistedRecorder() {
+  // The recorder handshake must outlive PreviewIframe's keyed remount. Neon
+  // isolation restarts the dev server, which bumps reloadKey while
+  // startRecording is awaiting the iframe's authentication acknowledgement.
+  const [recorderReloadKey, setRecorderReloadKey] = useState(0);
+  const reloadPreview = useCallback(
+    () => setRecorderReloadKey((current) => current + 1),
+    [],
+  );
+  const recorder = useTestRecorder({ reloadPreview });
+  return { recorder, recorderReloadKey };
 }
 
 // Console header component
@@ -86,6 +110,9 @@ export function PreviewPanel() {
   const queryClient = useQueryClient();
   const key = usePreviewReloadToken(selectedAppId);
   const latestConsoleEntry = useLatestConsoleEntry(selectedAppId);
+  // Above the previewMode switch below, so a tab change doesn't end a recording
+  // or drop the events that keep the review bar honest.
+  const { recorder, recorderReloadKey } = useHoistedRecorder();
   const {
     data: nodeSystemInfo,
     isLoading: isCheckingNode,
@@ -172,6 +199,18 @@ export function PreviewPanel() {
             <div className="flex h-full flex-col">
               <PreviewToolbar />
               <PackageManagerWarningBanner />
+              {/* A session holds the app's lock and its isolated database no
+                  matter which tab is showing, and this bar is the only thing
+                  that says so and the only place it can be stopped — so it is
+                  mounted here, outside the tab switch, rather than inside one
+                  tab. The preview is the exception: PreviewIframe renders this
+                  same host under its browser header, so the bar sits below the
+                  preview toolbar instead of shoving it down. That branch only
+                  renders once Node is present, hence the second condition —
+                  otherwise the bar would vanish on the tab it started on. */}
+              {(previewMode !== "preview" || isNodeMissing) && (
+                <RecordingBannerHost recorder={recorder} />
+              )}
               <div className="flex-1 overflow-y-auto">
                 {isNodeMissing ? (
                   <PreviewNodeRequirement
@@ -222,8 +261,9 @@ export function PreviewPanel() {
                   />
                 ) : previewMode === "preview" ? (
                   <PreviewIframe
-                    key={`${selectedAppId}-${key}`}
+                    key={`${selectedAppId}-${key}:${recorderReloadKey}`}
                     loading={loading}
+                    recorder={recorder}
                   />
                 ) : previewMode === "code" ? (
                   <CodeView loading={loading} app={app ?? null} />

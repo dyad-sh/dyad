@@ -3,6 +3,7 @@ import {
   PREVIEW_ADDRESS_PATH_ERROR,
   formatPreviewAddressPath,
   normalizePreviewAddressPath,
+  sameOriginStartPath,
 } from "./previewAddressPath";
 
 describe("previewAddressPath", () => {
@@ -39,6 +40,49 @@ describe("previewAddressPath", () => {
 
   it("treats empty input as a no-op", () => {
     expect(normalizePreviewAddressPath("   ")).toEqual({ type: "empty" });
+  });
+
+  describe("sameOriginStartPath", () => {
+    const APP = "http://localhost:5173/";
+
+    it("returns the route while the preview is on the app's origin", () => {
+      expect(sameOriginStartPath("http://localhost:5173/about", APP)).toBe(
+        "/about",
+      );
+      expect(
+        sameOriginStartPath("http://localhost:5173/about?x=1#top", APP),
+      ).toBe("/about?x=1#top");
+    });
+
+    it("gives no hint once the preview has followed an off-origin link", () => {
+      // The regression this guard exists for: `formatPreviewAddressPath` strips
+      // the origin unconditionally, so without the check an external link would
+      // replay as `page.goto("/pricing")` against the app.
+      expect(
+        sameOriginStartPath("https://example.com/pricing", APP),
+      ).toBeUndefined();
+    });
+
+    it("treats a different port on the same host as off-origin", () => {
+      expect(
+        sameOriginStartPath("http://localhost:5174/about", APP),
+      ).toBeUndefined();
+    });
+
+    it("gives no hint when either URL is missing or unparseable", () => {
+      expect(sameOriginStartPath(null, APP)).toBeUndefined();
+      expect(
+        sameOriginStartPath("http://localhost:5173/about", null),
+      ).toBeUndefined();
+      expect(sameOriginStartPath("not a url", APP)).toBeUndefined();
+      expect(
+        sameOriginStartPath("http://localhost:5173/about", "not a url"),
+      ).toBeUndefined();
+    });
+
+    it("reports the app root as a route rather than as no hint", () => {
+      expect(sameOriginStartPath(APP, APP)).toBe("/");
+    });
   });
 
   it("rejects non-relative address bar input", () => {

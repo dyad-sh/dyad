@@ -30,6 +30,8 @@ import {
   Pen,
   MoreVertical,
   Trash2,
+  CircleDot,
+  Loader2,
 } from "lucide-react";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { CopyErrorMessage } from "@/components/CopyErrorMessage";
@@ -72,6 +74,8 @@ import { useShortcut } from "@/hooks/useShortcut";
 import { cn } from "@/lib/utils";
 import { normalizePath } from "../../../shared/normalizePath";
 import { showError, showSuccess } from "@/lib/toast";
+import type { TestRecorderController } from "@/hooks/useTestRecorder";
+import { useLoadApp } from "@/hooks/useLoadApp";
 import type { DeviceMode } from "@/lib/schemas";
 import {
   boundPreviewConsoleEntry,
@@ -84,12 +88,16 @@ import { useAttachments } from "@/hooks/useAttachments";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { Annotator } from "@/pro/ui/components/Annotator/Annotator";
 import { VisualEditingToolbar } from "./VisualEditingToolbar";
+import { recordingStatusMessage } from "./RecordingBanner";
+import { RecordingBannerHost } from "./RecordingBannerHost";
+import { RecordingStorageWarningDialog } from "./RecordingStorageWarningDialog";
 import { resolvePreviewBrowserUrl } from "./previewBrowserUrl";
 import { PreviewLoadingScreen } from "./PreviewLoadingScreen";
 import { useTranslation } from "react-i18next";
 import {
   formatPreviewAddressPath,
   normalizePreviewAddressPath,
+  sameOriginStartPath,
 } from "./previewAddressPath";
 import { getPreviewToolbarActionVisibility } from "./previewToolbarLayout";
 import { usePreviewIframe } from "@/preview_iframe/usePreviewIframe";
@@ -212,7 +220,13 @@ const PREVIEW_TOOLBAR_BUTTON_CLASSES =
   "flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-40";
 
 // Preview iframe component
-export const PreviewIframe = ({ loading }: { loading: boolean }) => {
+export const PreviewIframe = ({
+  loading,
+  recorder,
+}: {
+  loading: boolean;
+  recorder: TestRecorderController;
+}) => {
   const { t } = useTranslation("home");
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const { appUrl, originalUrl, mode } = useCurrentAppUrl(selectedAppId);
@@ -239,6 +253,13 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   );
   const setPreviewIframeRef = useSetAtom(previewIframeRefAtom);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const handleIframeRef = useCallback(
+    (iframe: HTMLIFrameElement | null) => {
+      iframeRef.current = iframe;
+      setPreviewIframeRef(iframe);
+    },
+    [setPreviewIframeRef],
+  );
   const componentMessageHandlerRef = useRef<(event: MessageEvent) => void>(
     () => undefined,
   );
@@ -270,6 +291,28 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const canGoBack = selectCanGoBack(iframeState);
   const canGoForward = selectCanGoForward(iframeState);
   const [annotatorMode, setAnnotatorMode] = useAtom(annotatorModeAtom);
+  const { app: loadedApp } = useLoadApp(selectedAppId);
+  // Recording is part of the testing feature, so the entry point only exists
+  // for apps that opted into testing (the Tests panel owns that opt-in).
+  const canRecordTests = !!loadedApp?.testingEnabled;
+
+  const handleRecordClick = () => {
+    if (recorder.phase !== "idle") return;
+    // The route the preview is on right now. An unauthenticated recording keeps
+    // it across the remount, while every generated spec opens with
+    // `page.goto("/")` — so the recorder needs to know when those differ.
+    //
+    // Only when the preview is still on the app. `formatPreviewAddressPath`
+    // strips the origin unconditionally, so a preview that followed an external
+    // link would hand back a path that reads as app-relative and replay as
+    // `page.goto("/that/path")` against the app — a destination the user never
+    // visited. Unknown or off-origin means no hint at all.
+    // Asks first — setup clears the preview's cookies and local storage.
+    recorder.requestStartRecording(
+      sameOriginStartPath(currentHistoryUrl, appUrl),
+    );
+  };
+
   const previewToolbarRef = useRef<HTMLDivElement>(null);
   const [previewToolbarWidth, setPreviewToolbarWidth] = useState<number | null>(
     null,
@@ -324,6 +367,22 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       setScreenshotDataUrl(null);
     };
   }, []);
+
+  // Annotator mode and a live recording are mutually exclusive: the annotator
+  // replaces the preview with a screenshot, so nothing is being captured, and
+  // it hides the recording bar — which on this tab is the only place Stop,
+  // Cancel and Discard exist, while the main-process session goes on holding
+  // the app's lock and its isolated database to the 30-minute cap.
+  //
+  // The toolbar button is disabled for the ordinary path. This closes the race
+  // the disabled attribute can't: arming happens when the screenshot response
+  // arrives, and a recording can start while that request is in flight.
+  useEffect(() => {
+    if (recorder.phase === "idle") return;
+    pendingAnnotatorScreenshotRequestIdRef.current = null;
+    setAnnotatorMode(false);
+    setScreenshotDataUrl(null);
+  }, [recorder.phase, setAnnotatorMode]);
 
   const requestAnnotatorScreenshot = () => {
     if (!iframeRef.current?.contentWindow) {
@@ -553,11 +612,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       setCurrentComponentCoordinates(null);
     };
   }, [selectedAppId]);
-
-  // Update iframe ref atom
-  useEffect(() => {
-    setPreviewIframeRef(iframeRef.current);
-  }, [iframeRef.current, setPreviewIframeRef]);
 
   // Send pro mode status to iframe
   useEffect(() => {
@@ -946,6 +1000,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       setScreenshotDataUrl(null);
       return;
     }
+    // The button is disabled for this, but arming is asynchronous — the
+    // screenshot response is what sets annotator mode — so refuse here too.
+    if (recorder.phase !== "idle") return;
     if (iframeRef.current?.contentWindow) {
       requestAnnotatorScreenshot();
     }
@@ -964,6 +1021,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const handleNavigateBack = () => {
     if (canGoBack && iframeRef.current?.contentWindow) {
       sendIframeEvent({ type: "GO_BACK" });
+      // Replayed as `page.goBack()`, not as a jump to where it landed: the
+      // history move is what the user performed, and what the test should check.
+      recorder.recordHistoryMove("back");
     }
   };
 
@@ -971,6 +1031,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const handleNavigateForward = () => {
     if (canGoForward && iframeRef.current?.contentWindow) {
       sendIframeEvent({ type: "GO_FORWARD" });
+      recorder.recordHistoryMove("forward");
     }
   };
 
@@ -1004,6 +1065,10 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     const newUrl = new URL(normalized.path, baseUrl).href;
 
     sendIframeEvent({ type: "NAVIGATE", path: newUrl });
+    // A jump the user made around the app, rather than through it: this is the
+    // one navigation a recording replays as `page.goto`. Routing the app does
+    // on its own belongs to the step that triggered it.
+    recorder.recordNavigation(normalized.path);
 
     return true;
   };
@@ -1077,6 +1142,11 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       restartApp({ recreateSandbox: true }),
     );
   };
+
+  // Isolation setup restarts the dev server and signs the test user in, so the
+  // preview is showing a page nothing the user does will survive. It reads as
+  // inert rather than covered — see RecordingSetupOverlay.
+  const isRecorderSettingUp = recorder.isBusy && !annotatorMode;
 
   const { showOpenBrowser } =
     getPreviewToolbarActionVisibility(previewToolbarWidth);
@@ -1154,7 +1224,12 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                       loading ||
                       !selectedAppId ||
                       isPicking ||
-                      !isComponentSelectorInitialized
+                      !isComponentSelectorInitialized ||
+                      // The mirror of the record button's `annotatorMode` gate.
+                      // Without it the annotator takes away the recording bar —
+                      // the session's only Stop — on the one tab the bar was
+                      // moved to PreviewPanel level to stay visible from.
+                      recorder.phase !== "idle"
                     }
                     data-testid="preview-annotator-button"
                   />
@@ -1163,9 +1238,73 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 <Pen size={16} />
               </TooltipTrigger>
               <TooltipContent>
-                {annotatorMode ? "Annotator mode active" : "Activate annotator"}
+                {recorder.phase !== "idle"
+                  ? "Finish the recording before using the annotator"
+                  : annotatorMode
+                    ? "Annotator mode active"
+                    : "Activate annotator"}
               </TooltipContent>
             </Tooltip>
+            {canRecordTests && (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      onClick={handleRecordClick}
+                      aria-label={
+                        recorder.isRecording
+                          ? "Recording — stop it from the recording bar below"
+                          : "Record test"
+                      }
+                      aria-pressed={recorder.phase !== "idle"}
+                      className={cn(
+                        PREVIEW_TOOLBAR_BUTTON_CLASSES,
+                        "rounded-none border-l border-border",
+                        recorder.phase !== "idle"
+                          ? "bg-purple-500 text-white hover:bg-purple-600 hover:text-white dark:bg-purple-600 dark:hover:bg-purple-700"
+                          : "text-purple-700 hover:bg-purple-100 hover:text-purple-800 dark:text-purple-300 dark:hover:bg-purple-900/50 dark:hover:text-purple-200",
+                      )}
+                      disabled={
+                        loading ||
+                        !selectedAppId ||
+                        !appUrl ||
+                        isPicking ||
+                        annotatorMode ||
+                        recorder.phase !== "idle"
+                      }
+                      data-testid="preview-record-button"
+                    />
+                  }
+                >
+                  {/* Never a Stop square: this button is disabled for every
+                      non-idle phase, and a stop glyph is the one affordance
+                      users are certain means "click to stop" — offering it on
+                      an inert control strands them, with only a tooltip a
+                      disabled button may never fire to explain it. A pulsing
+                      record dot says "recording, in progress" without
+                      promising an action that lives in the bar below. */}
+                  {recorder.isBusy ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : recorder.isRecording ? (
+                    <CircleDot size={16} className="animate-pulse" />
+                  ) : (
+                    <CircleDot size={16} />
+                  )}
+                </TooltipTrigger>
+                <TooltipContent>
+                  {recorder.phase === "idle"
+                    ? "Record a test"
+                    : recorder.isRecording
+                      ? "Recording — use the bar below to stop"
+                      : // `recordingStatusMessage` only speaks for the spinner
+                        // phases; reviewing/saved are waiting on the user, and
+                        // saying "Setting up…" there is just wrong.
+                        recorder.isBusy
+                        ? recordingStatusMessage(recorder)
+                        : "Finish the recorded test in the bar below first"}
+                </TooltipContent>
+              </Tooltip>
+            )}
           </div>
 
           {/* Browser navigation group */}
@@ -1492,6 +1631,20 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         </div>
       )}
 
+      {/* Under the browser header rather than above it: on this tab the bar
+          reads as part of the preview's chrome instead of shoving it down.
+          PreviewPanel mounts this same host on every other tab, so leaving here
+          can't take the session's only Stop control off screen. */}
+      <RecordingBannerHost recorder={recorder} />
+
+      <RecordingStorageWarningDialog
+        open={recorder.pendingStart !== null}
+        onOpenChange={(open) => {
+          if (!open) recorder.dismissStartRecording();
+        }}
+        onContinue={recorder.confirmStartRecording}
+      />
+
       <div className="relative flex-grow overflow-hidden">
         {!loading && (
           <ErrorBanner
@@ -1517,6 +1670,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
             className={cn(
               "w-full h-full",
               deviceMode !== "desktop" && "flex justify-center",
+              // Greyed out while the recorder sets up, the same way a cancelled
+              // chat message reads as inert.
+              isRecorderSettingUp && "opacity-50 transition-opacity",
             )}
           >
             {annotatorMode && screenshotDataUrl ? (
@@ -1546,7 +1702,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                   onLoad={() => {
                     onIframeLoaded();
                   }}
-                  ref={iframeRef}
+                  ref={handleIframeRef}
                   key={iframeState.iframeEpoch}
                   title={`Preview for App ${selectedAppId}`}
                   className="w-full h-full border-none bg-white dark:bg-gray-950"
@@ -1576,10 +1732,54 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
             )}
           </div>
         )}
+        {isRecorderSettingUp && <RecordingSetupOverlay recorder={recorder} />}
       </div>
     </div>
   );
 };
+
+/**
+ * Explains the preview — and swallows clicks — while a recording session is
+ * being set up or torn down. Anything the user does in that window is lost to
+ * the dev-server restart, and confusing besides.
+ *
+ * Nothing is laid over the app: the preview itself greys out, the way a
+ * cancelled chat message does. Dimming says "inert" without covering anything,
+ * so the page stays completely sharp — watching it reload into the isolated
+ * environment is most of the reassurance this wait has to offer. This layer is
+ * transparent and exists only to hold the message and eat pointer events.
+ *
+ * The message keeps a card of its own, which is the one place this departs
+ * from the cancelled-message pattern: a chat message controls what sits behind
+ * its label, and a preview does not — bare text lands on top of whatever the
+ * app happens to be rendering.
+ */
+function RecordingSetupOverlay({
+  recorder,
+}: {
+  recorder: TestRecorderController;
+}) {
+  return (
+    <div
+      className="absolute inset-0 z-20 flex items-center justify-center px-6 text-center"
+      data-testid="preview-recording-overlay"
+      role="status"
+      aria-live="polite"
+    >
+      <div className="flex max-w-sm flex-col items-center gap-2.5 rounded-xl border border-border bg-(--background-lightest) px-6 py-5 shadow-lg">
+        <Loader2 className="size-7 animate-spin text-purple-600 dark:text-purple-300" />
+        <p className="text-base font-medium text-foreground">
+          {recordingStatusMessage(recorder)}
+        </p>
+        <p className="text-sm text-muted-foreground">
+          {recorder.phase === "starting" || recorder.phase === "authenticating"
+            ? "Dyad is preparing an isolated environment for your recording — hold off on interacting with the preview until it's ready."
+            : "Hold off on interacting with the preview until this finishes."}
+        </p>
+      </div>
+    </div>
+  );
+}
 
 function parseComponentSelection(data: any): ComponentSelection | null {
   if (!data || data.type !== "dyad-component-selected") {

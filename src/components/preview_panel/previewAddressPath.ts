@@ -19,6 +19,29 @@ export function formatPreviewAddressPath(url: string | null | undefined) {
   }
 }
 
+/**
+ * The preview's current route, but only while it is still on the app's own
+ * origin — otherwise undefined. Used as the recorder's starting-route hint,
+ * where an off-origin path would generate a `page.goto` to somewhere the user
+ * never was.
+ */
+export function sameOriginStartPath(
+  currentHistoryUrl: string | null | undefined,
+  appUrl: string | null | undefined,
+): string | undefined {
+  if (!currentHistoryUrl || !appUrl) return undefined;
+  try {
+    if (new URL(currentHistoryUrl).origin !== new URL(appUrl).origin) {
+      return undefined;
+    }
+  } catch {
+    // An unparseable URL on either side means we can't prove same-origin, and
+    // guessing is what this guard exists to prevent.
+    return undefined;
+  }
+  return formatPreviewAddressPath(currentHistoryUrl) || undefined;
+}
+
 export function normalizePreviewAddressPath(
   value: string,
 ): PreviewAddressPathNormalizationResult {

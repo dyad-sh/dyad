@@ -11,6 +11,7 @@ import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
+import { recordingStartRequestAtom } from "@/atoms/recorderAtoms";
 import { selectedFileAtom, stagedDiffFileAtom } from "@/atoms/viewAtoms";
 import { TestsPanel } from "./TestsPanel";
 
@@ -20,6 +21,9 @@ const mocks = vi.hoisted(() => ({
   runAppTests: vi.fn(),
   stopAppTests: vi.fn(),
   getTestScreenshot: vi.fn(),
+  /** Null stands in for a dev server that isn't up. */
+  appUrl: "http://localhost:32100" as string | null,
+  previewUrl: "http://localhost:32100/" as string | null,
 }));
 
 vi.mock("@/ipc/types", () => ({
@@ -52,14 +56,24 @@ vi.mock("@/hooks/useRunApp", () => ({
   useRunApp: () => ({ runApp: vi.fn() }),
 }));
 
-// A running dev server, so the run controls aren't gated behind the
-// "Start the app" banner.
+// A running dev server by default, so the run controls aren't gated behind the
+// "Start the app" banner. Recording is gated on it too, so it's configurable.
 vi.mock("@/hooks/useAppRun", () => ({
   useCurrentAppUrl: () => ({
-    appUrl: "http://localhost:32100",
+    appUrl: mocks.appUrl,
     appId: 1,
-    originalUrl: "http://localhost:32100",
+    originalUrl: mocks.appUrl,
     mode: "host" as const,
+  }),
+}));
+
+vi.mock("@/preview_iframe/usePreviewIframe", () => ({
+  usePreviewIframeController: () => ({
+    state: {
+      history: mocks.previewUrl ? [mocks.previewUrl] : [],
+      position: 0,
+      currentUrl: mocks.previewUrl,
+    },
   }),
 }));
 
@@ -106,6 +120,8 @@ function renderPanel() {
 describe("TestsPanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.appUrl = "http://localhost:32100";
+    mocks.previewUrl = "http://localhost:32100/";
     mocks.listAppTests.mockResolvedValue({
       specs: [
         {
@@ -242,5 +258,33 @@ describe("TestsPanel", () => {
     });
     expect(mocks.deleteAppTest).not.toHaveBeenCalled();
     expect(screen.getByText("signup.spec.ts")).not.toBeNull();
+  });
+
+  // Recording runs in the preview, but this panel is where users look for it.
+  it("hands a record request to the preview recorder", () => {
+    mocks.previewUrl = "http://localhost:32100/settings?tab=profile#billing";
+    const { store } = renderPanel();
+    store.set(previewModeAtom, "tests");
+
+    fireEvent.click(screen.getByTestId("tests-record-button"));
+
+    expect(store.get(recordingStartRequestAtom)?.appId).toBe(1);
+    expect(store.get(recordingStartRequestAtom)?.startPath).toBe(
+      "/settings?tab=profile#billing",
+    );
+    // The recorder only exists in the preview, so the panel switches to it.
+    expect(store.get(previewModeAtom)).toBe("preview");
+  });
+
+  it("disables recording until the app is running", () => {
+    // Nothing to record against: the session arms the injected client inside a
+    // live preview.
+    mocks.appUrl = null;
+
+    renderPanel();
+
+    expect(
+      (screen.getByTestId("tests-record-button") as HTMLButtonElement).disabled,
+    ).toBe(true);
   });
 });

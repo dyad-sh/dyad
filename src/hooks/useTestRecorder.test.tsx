@@ -876,6 +876,45 @@ describe("useTestRecorder", () => {
     expect(result.current.phase).toBe("idle");
   });
 
+  it("reloads the preview when a session is cancelled", async () => {
+    // Teardown took the temporary test user out of the preview's storage and
+    // deleted the user, but the document loaded with it is still running and
+    // its auth client still holds the session in memory — against the real
+    // project. Only `stopAndReview` used to replace that document.
+    const iframe = makeIframe();
+    const reloadPreview = vi.fn(reloadAnnouncing(iframe));
+    const { result } = await recordingSession({
+      iframe,
+      appUrl: true,
+      reloadPreview,
+    });
+    const reloadsDuringSetup = reloadPreview.mock.calls.length;
+
+    await act(async () => {
+      await result.current.cancelRecording();
+    });
+
+    expect(stopRecordingMock).toHaveBeenCalledWith({ appId: 1 });
+    expect(reloadPreview.mock.calls.length).toBeGreaterThan(reloadsDuringSetup);
+    expect(result.current.phase).toBe("idle");
+  });
+
+  it("reloads the preview when a session ends outside our control", async () => {
+    // Same credential, same reason — and these endings leave the app running,
+    // so the document holding it can go on talking to Supabase directly.
+    const iframe = makeIframe();
+    const reloadPreview = vi.fn(reloadAnnouncing(iframe));
+    await recordingSession({ iframe, appUrl: true, reloadPreview });
+    const reloadsDuringSetup = reloadPreview.mock.calls.length;
+
+    const onEnded = onEndedMock.mock.calls.at(-1)![0];
+    act(() => {
+      onEnded({ appId: 1, reason: "timed-out", message: "session cap" });
+    });
+
+    expect(reloadPreview.mock.calls.length).toBeGreaterThan(reloadsDuringSetup);
+  });
+
   /** A start that comes back with credentials to establish before recording. */
   function authenticatedStart() {
     startRecordingMock.mockResolvedValue({

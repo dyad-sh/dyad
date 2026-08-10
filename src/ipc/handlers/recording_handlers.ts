@@ -88,6 +88,15 @@ function toRecordingAuth(setup: IsolationAuthSetup | undefined): RecordingAuth {
  * `sb-<ref>-auth-token`, a Better Auth cookie — and deleting the test user is a
  * server-side change an already-issued JWT does not see. Left behind, the
  * preview goes on acting as a user Dyad has disowned, against the real project.
+ *
+ * The `origin` filter is honest for localStorage/IndexedDB/service workers,
+ * which are genuinely origin-keyed, but NOT for cookies: cookies have never been
+ * port-scoped on the web, so clearing `http://localhost:<proxyPort>` clears
+ * cookies for every other `localhost` origin in this session too — other
+ * previews included. There is no API that narrows it, and `session.clearData`'s
+ * `origins` filter is wider still (Electron deletes cookies at the registrable
+ * domain there). Only the dedicated `session.fromPartition()` noted below would
+ * actually contain it; until then the confirmation dialog says so out loud.
  */
 async function clearPreviewStorage(origin: string): Promise<void> {
   await session.defaultSession.clearStorageData({
@@ -117,16 +126,30 @@ export function registerRecordingHandlers() {
     async (event, params): Promise<StartRecordingResult> => {
       const { appId } = params;
 
-      const releaseStartReservation = reserveRecordingStart(appId);
-      if (!releaseStartReservation) {
+      const startReservation = reserveRecordingStart(appId);
+      if (!startReservation) {
         return infraResult(
           appId,
           "A recording session is already in progress for this app.",
         );
       }
 
+      // Stop/Run/Restart/Delete end this app's recording, but until the session
+      // below is published there is nothing for them to stop — they mark the
+      // reservation instead. Checked after every await in that window: giving up
+      // late means preparing an isolated database for an app the user has
+      // already stopped, and then restarting it to serve one.
+      const cancelledDuringSetup = () =>
+        infraResult(
+          appId,
+          "The recording session ended before its environment was ready.",
+        );
+
       try {
         let app = await getApp(appId);
+        if (startReservation.cancelled) {
+          return cancelledDuringSetup();
+        }
         if (!app.testingEnabled) {
           return infraResult(
             appId,
@@ -171,6 +194,11 @@ export function registerRecordingHandlers() {
           // Recovery may clear the marker or leave a cleanup-only marker. Give
           // isolation the current row rather than the stale raw branch id.
           app = await getApp(appId);
+        }
+        // Recovery reaches Neon and can take seconds — the widest window in
+        // which Stop can arrive while this start is still invisible to it.
+        if (startReservation.cancelled) {
+          return cancelledDuringSetup();
         }
 
         const sessionId = crypto.randomUUID();
@@ -360,11 +388,15 @@ export function registerRecordingHandlers() {
                 );
                 try {
                   const origin = new URL(proxyUrl).origin;
-                  await clearPreviewStorage(origin);
-                  // Remembered, not re-derived at teardown: the app may have
-                  // been stopped by then, and the credentials this recording is
-                  // about to seed live under this origin either way.
+                  // Remembered before the clear, not after it and not
+                  // re-derived at teardown. After it, a clear that throws would
+                  // also disable the teardown clear — and this session goes on
+                  // to seed a temporary user's credentials under this origin
+                  // whether or not the setup clear worked, so the one at the
+                  // end is exactly the one that must still run. Re-deriving is
+                  // no good either: the app may have been stopped by then.
                   previewOrigin = origin;
+                  await clearPreviewStorage(origin);
                 } catch (error) {
                   logger.warn(
                     `Couldn't clear preview storage for app ${appId}: ${error}`,
@@ -488,7 +520,7 @@ export function registerRecordingHandlers() {
       } finally {
         // Successful setup has already published activeRecordings; every early
         // return or throw must instead make the app immediately startable.
-        releaseStartReservation();
+        startReservation.release();
       }
     },
   );

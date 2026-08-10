@@ -296,12 +296,19 @@ export async function createTempTestBranch(
 /**
  * Tear down the test branch for an app: best-effort delete on Neon and clear
  * the persisted `neonTestBranchId`. Safe to call when no branch is set.
+ *
+ * Resolves to whether the branch is gone from Neon — false when the delete
+ * failed and the id was deliberately left on the row for the startup sweep to
+ * retry. Most callers can ignore that, because that retry is the recovery. The
+ * app-deletion path cannot: it is removing the row the sweep would read, so a
+ * false here is the last moment anything can name the orphaned branch.
  */
-export async function deleteTempTestBranch(appData: AppRow): Promise<void> {
+export async function deleteTempTestBranch(appData: AppRow): Promise<boolean> {
   const marker = appData.neonTestBranchId;
   const projectId = appData.neonProjectId;
   if (!marker || !projectId) {
-    return;
+    // Nothing tracked, so nothing is stranded.
+    return true;
   }
   const branchId = trackedBranchId(marker);
   // Only forget the branch once Neon confirms it's gone. Clearing the column on
@@ -314,6 +321,7 @@ export async function deleteTempTestBranch(appData: AppRow): Promise<void> {
       .set({ neonTestBranchId: null })
       .where(eq(apps.id, appData.id));
   }
+  return deleted;
 }
 
 async function deleteBranchBestEffort(

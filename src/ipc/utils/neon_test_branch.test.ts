@@ -308,6 +308,25 @@ describe("deleteTempTestBranch", () => {
     await deleteTempTestBranch(makeApp({ neonTestBranchId: "test-br" }));
     expect(mocks.set).not.toHaveBeenCalledWith({ neonTestBranchId: null });
   });
+
+  it("reports whether the branch is actually gone", async () => {
+    // The delete is best-effort and resolves either way, so a caller that can't
+    // rely on the startup sweep to retry — app deletion removes the row the
+    // sweep reads — has no other way to tell a leak from a clean teardown.
+    await expect(
+      deleteTempTestBranch(makeApp({ neonTestBranchId: "test-br" })),
+    ).resolves.toBe(true);
+    await expect(
+      deleteTempTestBranch(makeApp({ neonTestBranchId: null })),
+    ).resolves.toBe(true);
+
+    mocks.deleteProjectBranch.mockRejectedValueOnce({
+      response: { status: 500 },
+    });
+    await expect(
+      deleteTempTestBranch(makeApp({ neonTestBranchId: "test-br" })),
+    ).resolves.toBe(false);
+  });
 });
 
 describe("restoreAppFromTestBranch", () => {

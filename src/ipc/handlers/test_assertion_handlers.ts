@@ -65,6 +65,7 @@ import {
   appOperationCoordinator,
   readAppResource,
 } from "../services/app_operation_coordinator";
+import { assertNoActiveRecording } from "../services/recording_registry";
 
 /**
  * Writing a recorded test to disk. Approving the assertion card is the only way
@@ -836,6 +837,17 @@ export function registerTestAssertionHandlers() {
         }
 
         assertStepsMatch(items, stored.items);
+
+        // Everything below takes app-path, test-files and repository through the
+        // coordinator, and a recording session holds all three as write claims
+        // for its whole lifetime — read-vs-write conflicts too, so approving
+        // during one queues with no timeout and the card sits on "Generating…"
+        // for up to the 30-minute session cap with nothing saying why. Refused
+        // here for the same reason duplicate/undo/restore refuse: the recording
+        // is what the user is doing, so only they can decide to end it. Checked
+        // after the idempotency latches above so a card that was already
+        // approved still returns its answer instead of failing.
+        assertNoActiveRecording(appId, "generate this test");
 
         // One recording can have more than one card: "Ask again" proposes the
         // same draft afresh, and each card carries its own copy of it — which is

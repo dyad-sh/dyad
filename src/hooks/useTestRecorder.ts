@@ -532,6 +532,14 @@ export function useTestRecorder({
         // bar left to explain it. (User-driven stops disarm it themselves.)
         if (endedAppId === appIdRef.current) {
           postRecorderControl(endedAppId, "deactivate");
+          // And that still-alive iframe is the problem: main cleared the
+          // temporary test user's credentials out of the preview's storage and
+          // deleted the user, but this document's auth client holds the session
+          // in memory, and a Supabase or Better Auth client talks to that
+          // service directly — it does not need the app's dev server to still
+          // be up. Every ending that reaches here (timed out, errored, app
+          // stopped or restarted) leaves that context behind, so replace it.
+          reloadPreview();
         }
         recorderTokensRef.current.delete(endedAppId);
         patchState(endedAppId, (prev) =>
@@ -549,6 +557,7 @@ export function useTestRecorder({
   }, [
     patchState,
     postRecorderControl,
+    reloadPreview,
     settlePendingAuth,
     settleRecorderFlush,
     settleRecorderReady,
@@ -796,8 +805,18 @@ export function useTestRecorder({
     return new Promise<void>((resolve) => {
       recorderReadyRef.current = { appId: targetAppId, resolve };
       setTimeout(() => {
-        if (recorderReadyRef.current?.resolve !== resolve) return;
-        recorderReadyRef.current = null;
+        // The slot is single-valued, so a start for another app can have
+        // replaced ours by now — but the timeout must still settle its OWN
+        // promise. `settleRecorderReady` and `endSession` both match on the
+        // slot's appId, so once displaced nothing else can reach this one:
+        // `beginRecording` would await it forever, never run its `finally`, and
+        // leave the app's `startingAppsRef` entry behind — silently refusing
+        // every later Record for this window's life. Resolving an already
+        // settled promise is a no-op, so this is safe unconditionally; only the
+        // slot itself is cleared conditionally.
+        if (recorderReadyRef.current?.resolve === resolve) {
+          recorderReadyRef.current = null;
+        }
         resolve();
       }, RECORDER_READY_TIMEOUT_MS);
     });
@@ -1223,6 +1242,15 @@ export function useTestRecorder({
     patchState(targetAppId, (prev) => ({ ...prev, phase: "stopping" }));
     await ipc.recording.stopRecording({ appId: targetAppId }).catch(() => {});
     recorderTokensRef.current.delete(targetAppId);
+    // Same reason `stopAndReview` reloads: teardown took the temporary test
+    // user's credentials out of the preview's storage and deleted the user, but
+    // the document loaded with them is still running and its auth client still
+    // holds the session in memory — against the real project, since the session
+    // it was issued for is gone. Cancelling is not a lesser teardown, so it
+    // can't skip this. Only while this app is still the one on screen.
+    if (appIdRef.current === targetAppId) {
+      reloadPreview();
+    }
     clearEntries(targetAppId);
     patchState(targetAppId, { phase: "idle" });
   }, [
@@ -1230,6 +1258,7 @@ export function useTestRecorder({
     clearEntries,
     patchState,
     postRecorderControl,
+    reloadPreview,
     settlePendingAuth,
     settleRecorderReady,
   ]);

@@ -533,16 +533,25 @@ async function deleteAppById(
       ? deletedRow.neonTestBranchId
       : null;
   if (strandedMarker && deletedRow) {
-    try {
-      await deleteTempTestBranch(deletedRow);
-    } catch (error) {
-      // The row is gone, so nothing can reconcile this later. Logged loudly
-      // rather than failing a deletion that has already happened — and named by
-      // its branch id, since the stored value may be the cleanup-only marker
-      // wrapping one and nobody can find that in Neon.
+    // The row is gone, so nothing can reconcile this later. Logged loudly
+    // rather than failing a deletion that has already happened — and named by
+    // its branch id, since the stored value may be the cleanup-only marker
+    // wrapping one and nobody can find that in Neon.
+    const stranded = (detail: string) =>
       logger.error(
-        `App ${appId} was deleted but its temporary Neon branch ${trackedBranchId(strandedMarker)} could not be removed; it must be deleted manually: ${error}`,
+        `App ${appId} was deleted but its temporary Neon branch ${trackedBranchId(strandedMarker)} could not be removed; it must be deleted manually: ${detail}`,
       );
+    try {
+      // Both outcomes matter here. A rejection is the rare one; the ordinary
+      // failure resolves false, because `deleteTempTestBranch` is best-effort
+      // and normally leaves the id on the row for the startup sweep to retry —
+      // a sweep that will find nothing now that the row is deleted. Treating
+      // that as success is what loses the branch silently.
+      if (!(await deleteTempTestBranch(deletedRow))) {
+        stranded("Neon rejected the delete");
+      }
+    } catch (error) {
+      stranded(String(error));
     }
   }
 }

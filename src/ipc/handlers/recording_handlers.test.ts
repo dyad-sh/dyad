@@ -52,6 +52,7 @@ vi.mock("electron-log", () => ({
 import { registerRecordingHandlers } from "./recording_handlers";
 import {
   activeRecordings,
+  endRecordingForApp,
   isRecordingActive,
 } from "../services/recording_registry";
 import {
@@ -156,6 +157,59 @@ describe("recording:start / recording:stop", () => {
     await start;
     await stopHandler(event, { appId: 1 });
     expect(isRecordingActive(1)).toBe(false);
+  });
+
+  it("gives up a reserved start that Stop cancelled before it published", async () => {
+    // Stop arrives while the start is still awaiting its app row. The app is
+    // only a reservation at that point, so there is no `stop` for
+    // `endRecordingForApp` to call — without the cancellation tombstone it
+    // reports success and this start goes on to swap the environment and
+    // restart, through isolation setup, the very app the user just stopped.
+    let resolveApp!: (app: { id: number; testingEnabled: boolean }) => void;
+    mocks.findFirst.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveApp = resolve;
+      }),
+    );
+    mocks.prepareIsolatedTestDatabase.mockResolvedValue(makePrepared());
+    const { event } = makeEvent();
+
+    const start = startHandler(event, { appId: 1 });
+    expect(isRecordingActive(1)).toBe(true);
+    const summary = await endRecordingForApp(1, "app-stopped", {
+      skipRestart: true,
+    });
+    resolveApp({ id: 1, testingEnabled: true });
+    const result = await start;
+
+    // Nothing was swapped, so there is nothing for the caller to refuse over.
+    expect(summary.envRestored).toBe(true);
+    expect(result.infraError?.message).toMatch(/ended before/i);
+    expect(mocks.prepareIsolatedTestDatabase).not.toHaveBeenCalled();
+    expect(isRecordingActive(1)).toBe(false);
+  });
+
+  it("lets the next start reserve after a cancelled one gave up", async () => {
+    // The tombstone belongs to the reservation it cancelled, not to the app.
+    mocks.prepareIsolatedTestDatabase.mockResolvedValue(makePrepared());
+    const { event } = makeEvent();
+    let resolveApp!: (app: { id: number; testingEnabled: boolean }) => void;
+    mocks.findFirst.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveApp = resolve;
+      }),
+    );
+
+    const cancelled = startHandler(event, { appId: 1 });
+    await endRecordingForApp(1, "app-stopped");
+    resolveApp({ id: 1, testingEnabled: true });
+    await cancelled;
+
+    const result = await startHandler(event, { appId: 1 });
+
+    expect(result.infraError).toBeUndefined();
+    expect(mocks.prepareIsolatedTestDatabase).toHaveBeenCalledTimes(1);
+    await stopHandler(event, { appId: 1 });
   });
 
   it("refuses to snapshot an environment a prior recording did not restore", async () => {
@@ -366,6 +420,27 @@ describe("recording:start / recording:stop", () => {
         origin: "http://localhost:42100",
         storages: expect.arrayContaining(["localstorage", "cookies"]),
       }),
+    );
+  });
+
+  it("still clears the preview at teardown when the setup clear failed", async () => {
+    // The setup clear is deliberately non-fatal — the recording is still usable
+    // — but the session goes on to seed the temporary test user's credentials
+    // under that origin either way. Forgetting the origin because the first
+    // clear threw is what leaves them in the preview after the user is deleted.
+    mocks.clearStorageData.mockRejectedValueOnce(new Error("clear failed"));
+    const prepared = makePrepared();
+    mocks.prepareIsolatedTestDatabase.mockResolvedValue(prepared);
+    const { event } = makeEvent();
+
+    const result = await startHandler(event, { appId: 1 });
+    expect(result.warning).toMatch(/stored session/i);
+
+    await stopHandler(event, { appId: 1 });
+
+    expect(mocks.clearStorageData).toHaveBeenCalledTimes(2);
+    expect(mocks.clearStorageData).toHaveBeenLastCalledWith(
+      expect.objectContaining({ origin: "http://localhost:42100" }),
     );
   });
 

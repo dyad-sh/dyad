@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { apps, chats, messages } from "@/db/schema";
 import { DyadErrorKind } from "@/errors/dyad_error";
+import { activeRecordings } from "@/ipc/services/recording_registry";
 import { generateTestUserFixtureSource } from "@/lib/test_recorder/fixture_templates";
 import {
   type HandlerTestHarness,
@@ -559,6 +560,59 @@ describe("registerTestAssertionHandlers", () => {
         false,
       );
       expect(mockGitAdd).not.toHaveBeenCalled();
+    });
+
+    it("refuses while a recording holds the app, and still answers an approved card", async () => {
+      // Approving takes app-path, test-files and repository through the
+      // coordinator, and a session holds all three for its whole lifetime — so
+      // this would otherwise queue with no timeout and leave the card on
+      // "Generating…" for up to the 30-minute cap with nothing saying why.
+      const { appId, chatId } = seed();
+      const { proposalId } = propose(appId, chatId);
+      const items = planFromMessage(storedMessages()[0].content);
+
+      activeRecordings.set(appId, {
+        appId,
+        stop: () => {},
+        done: Promise.resolve({ envRestored: true }),
+      });
+      try {
+        await expect(
+          harness.invokeHandler("tests:apply-assertions", {
+            appId,
+            chatId,
+            proposalId,
+            items,
+          }),
+        ).rejects.toThrow(/stop the recording session/i);
+        expect(specExists(SPEC_PATH)).toBe(false);
+      } finally {
+        activeRecordings.delete(appId);
+      }
+
+      const approved = await harness.invokeHandler<{ specPath: string }>(
+        "tests:apply-assertions",
+        { appId, chatId, proposalId, items },
+      );
+      expect(approved.specPath).toBe(SPEC_PATH);
+
+      // A card that is already a file answers the same way recording or not:
+      // the refusal sits after the idempotency latches, so a second click
+      // during a later session gets the answer rather than an error.
+      activeRecordings.set(appId, {
+        appId,
+        stop: () => {},
+        done: Promise.resolve({ envRestored: true }),
+      });
+      try {
+        const second = await harness.invokeHandler<{
+          specPath: string;
+          warning?: string;
+        }>("tests:apply-assertions", { appId, chatId, proposalId, items });
+        expect(second.warning).toMatch(/already generated/i);
+      } finally {
+        activeRecordings.delete(appId);
+      }
     });
 
     it("doesn't write a second spec for a recording proposed twice", async () => {

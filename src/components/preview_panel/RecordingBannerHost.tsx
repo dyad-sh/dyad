@@ -8,7 +8,8 @@ import { AgentModeRequiredDialog } from "./AgentModeRequiredDialog";
 import { useChatMode } from "@/hooks/useChatMode";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import type { TestRecorderController } from "@/hooks/useTestRecorder";
-import { showInfo } from "@/lib/toast";
+import { showError, showInfo } from "@/lib/toast";
+import { MAX_CHAT_PROMPT_CHARS } from "@/shared/chatAttachmentLimits";
 import { RecordingBanner } from "./RecordingBanner";
 
 /**
@@ -102,6 +103,23 @@ function ActiveRecordingBanner({
       return;
     }
     const requestAppId = selectedAppId;
+    const prompt = buildAssertionsPrompt(
+      draft.testName,
+      draft.draftId,
+      recorder.draftSteps,
+    );
+    // The recording travels in the message, so a long enough one can't be sent
+    // at all — 5,000 actions is the recorder's cap and a single `fill` carries
+    // up to 10,000 characters of value. `streamMessage` would refuse it anyway,
+    // but as "your message is too long" about a message the user never wrote.
+    // Say what is actually too big and what to do about it; the draft stays
+    // parked either way, so the bar's other actions still work.
+    if (prompt.length > MAX_CHAT_PROMPT_CHARS) {
+      showError(
+        "This recording is too large to send to the AI. Record a shorter flow, or discard this one and try again.",
+      );
+      return;
+    }
     // Marked before the send: a submission that lands on the prompt queue
     // settles synchronously, and the clear below must not be overwritten by a
     // mark that runs after it.
@@ -111,11 +129,7 @@ function ActiveRecordingBanner({
     // only UI that can ask again or discard the parked draft.
     recorder.markAwaitingAssertions();
     streamMessage({
-      prompt: buildAssertionsPrompt(
-        draft.testName,
-        draft.draftId,
-        recorder.draftSteps,
-      ),
+      prompt,
       chatId: selectedChatId,
       requestedChatMode: "local-agent",
       // Every way this turn can end arrives here: a card posted and answered, a

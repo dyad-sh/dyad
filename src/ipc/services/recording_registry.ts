@@ -43,24 +43,55 @@ export interface EndRecordingOptions {
 }
 
 export const activeRecordings = new Map<number, ActiveRecording>();
-const startingRecordings = new Set<number>();
+
+/**
+ * A start that has claimed this app but not yet published an `ActiveRecording`.
+ *
+ * `cancelled` is the main-owned tombstone the start re-reads after each of its
+ * setup awaits — see `reserveRecordingStart`.
+ */
+export interface RecordingStartReservation {
+  readonly cancelled: boolean;
+  /** Retire the reservation. Idempotent. */
+  release: () => void;
+}
+
+const startingRecordings = new Map<number, { cancelled: boolean }>();
 
 /**
  * Atomically reserve this app's recording start before the handler's first
  * await. Test runs consult the same state through `isRecordingActive`, so they
  * refuse immediately instead of queueing behind a setup that has not published
  * its full ActiveRecording handle yet.
+ *
+ * The returned reservation also carries the cancellation tombstone: a start
+ * still in this window owns no `stop`, so `endRecordingForApp` can't reach it
+ * and instead marks it cancelled. The start has to check `cancelled` after
+ * every await before it swaps the environment or publishes a session, or it
+ * would relaunch an app the user has just stopped.
  */
-export function reserveRecordingStart(appId: number): (() => void) | null {
+export function reserveRecordingStart(
+  appId: number,
+): RecordingStartReservation | null {
   if (activeRecordings.has(appId) || startingRecordings.has(appId)) {
     return null;
   }
-  startingRecordings.add(appId);
+  const state = { cancelled: false };
+  startingRecordings.set(appId, state);
   let released = false;
-  return () => {
-    if (released) return;
-    released = true;
-    startingRecordings.delete(appId);
+  return {
+    get cancelled() {
+      return state.cancelled;
+    },
+    release: () => {
+      if (released) return;
+      released = true;
+      // Only our own reservation: a release that overlaps the next attempt's
+      // reservation must not retire the newer one.
+      if (startingRecordings.get(appId) === state) {
+        startingRecordings.delete(appId);
+      }
+    },
   };
 }
 
@@ -103,8 +134,18 @@ export async function endRecordingForApp(
   reason: RecordingEndReason,
   options?: EndRecordingOptions,
 ): Promise<RecordingEndSummary> {
+  // A start that has reserved this app but not yet published its session is
+  // invisible to `activeRecordings`, so without this the caller would be told
+  // the app is free while that start went on to swap `.env.local` and restart
+  // the dev server it was in the middle of stopping. The reservation is
+  // main-owned state the start re-reads after each of its awaits; marking it is
+  // what makes the late completion give up instead of relaunching the app.
+  const starting = startingRecordings.get(appId);
+  if (starting) starting.cancelled = true;
+
   const recording = activeRecordings.get(appId);
-  // Nothing was ever swapped, so nothing needs restoring.
+  // Nothing was ever swapped, so nothing needs restoring — a cancelled
+  // reservation gives up before isolation setup.
   if (!recording) return { envRestored: true };
   recording.stop(reason, options);
   // A session that ended by throwing never reported on its own teardown, so

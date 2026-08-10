@@ -1661,6 +1661,39 @@ describe("failing after the old application is already gone", () => {
     expect(report.text()).not.toContain("is not running until a deploy");
   });
 
+  it("does not claim the old application survived a cancelled removal", async () => {
+    // The client cancels through the deploy's own signal, so a disconnect
+    // lands in the same catch as a refusal — but Coolify may well have
+    // processed the delete before the connection went away. Saying it is
+    // still on the server sends the user looking for something that may not
+    // be there, and away from an application that may be gone.
+    const app = await seedStaleKeyApp();
+    const controller = new AbortController();
+    sideEffects.set("DELETE /applications/stale-uuid", () => {
+      controller.abort();
+      throw new Error("connection closed");
+    });
+    const report = loggingRecorder();
+    const clock = createFakeClock();
+
+    await expect(
+      drive(
+        clock,
+        runDeployPipeline({
+          appId: app.id,
+          signal: controller.signal,
+          report,
+          clock,
+        }),
+      ),
+    ).rejects.toThrow();
+
+    expect(report.text()).toContain("may or may not still be on your server");
+    expect(report.text()).not.toContain("it is still on your server");
+    // Nothing was confirmed removed, so the down-message must not fire either.
+    expect(report.text()).not.toContain("is not running until a deploy");
+  });
+
   it("stays quiet when the replacement is created", async () => {
     // The common case of this branch is an ordinary successful rotation, and
     // a warning that the app is down would be false on every one of them.

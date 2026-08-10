@@ -2,6 +2,7 @@ import { BrowserWindow } from "electron";
 import { eq } from "drizzle-orm";
 import log from "electron-log";
 import * as dns from "node:dns/promises";
+import { createHash } from "node:crypto";
 import { db } from "../../db";
 import { apps } from "../../db/schema";
 import { readSettings, writeSettings } from "../../main/settings";
@@ -101,6 +102,18 @@ function readConnection(
   };
 }
 
+/**
+ * Names the stored token without disclosing it.
+ *
+ * The renderer caches an instance's servers and projects, and two tokens on
+ * one instance can see different teams — so the cache key needs to change when
+ * the token does. Truncated on purpose: this only ever has to differ between
+ * tokens, never to be checked against one.
+ */
+function tokenFingerprint(token: string): string {
+  return createHash("sha256").update(token).digest("hex").slice(0, 12);
+}
+
 export function registerCoolifyHandlers() {
   coolifyDeployRegistry.onSnapshot((appId, snapshot) => {
     for (const window of BrowserWindow.getAllWindows()) {
@@ -118,8 +131,10 @@ export function registerCoolifyHandlers() {
     const settings = readSettings();
     const state = await readConnectionState(appId);
     const deployed = state.kind === "deployed" ? state : null;
+    const token = settings.coolify?.accessToken?.value;
     return {
-      hasToken: Boolean(settings.coolify?.accessToken?.value),
+      hasToken: Boolean(token),
+      tokenId: token ? tokenFingerprint(token) : null,
       instanceUrl: settings.coolify?.instanceUrl ?? null,
       connection: readConnection(state),
       appUrl: deployed?.appUrl ?? null,

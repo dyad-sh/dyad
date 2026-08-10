@@ -327,13 +327,25 @@ export const queryKeys = {
     status: ({ appId }: { appId: number }) =>
       ["coolify", "status", appId] as const,
     /**
-     * Keyed by instance, because servers and projects belong to one. A shared
-     * key served the previous instance's list from cache while a new one was
-     * still loading, and the connection form offered it — letting an app be
-     * pinned to a server that exists nowhere on the instance now configured.
+     * Keyed by instance *and* token, because servers and projects belong to
+     * both. A shared key served the previous instance's list from cache while
+     * a new one was still loading, and the connection form offered it —
+     * letting an app be pinned to a server that exists nowhere on the instance
+     * now configured.
+     *
+     * The token belongs here for the same reason and was missed: two tokens on
+     * one instance can see different teams. Invalidating after a token change
+     * does not cover it, because invalidation is not removal — react-query
+     * keeps serving the old list for the whole refetch, and keeps it for good
+     * if that refetch fails. Keyed this way there is no entry to serve.
      */
-    discovery: (instanceUrl: string | null) =>
-      ["coolify", "discovery", instanceUrl ?? "none"] as const,
+    discovery: (instanceUrl: string | null, tokenId: string | null) =>
+      [
+        "coolify",
+        "discovery",
+        instanceUrl ?? "none",
+        tokenId ?? "none",
+      ] as const,
     /** Every instance's list, for invalidating after a token change. */
     discoveryAll: ["coolify", "discovery"] as const,
   },

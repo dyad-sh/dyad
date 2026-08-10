@@ -73,6 +73,14 @@ export type CoolifyConnection = z.infer<typeof CoolifyConnectionSchema>;
 
 export const CoolifyStatusSchema = z.object({
   hasToken: z.boolean(),
+  /**
+   * A stable, non-reversible name for whichever token is stored, or null.
+   *
+   * Servers and projects are cached per instance, and two tokens on the same
+   * instance can see entirely different teams — so the cache has to be able to
+   * tell that the token changed without ever being told what it is.
+   */
+  tokenId: z.string().nullable(),
   /** Remembered across a token clear, so re-entering a token does not retype it. */
   instanceUrl: z.string().nullable(),
   connection: CoolifyConnectionSchema.nullable(),

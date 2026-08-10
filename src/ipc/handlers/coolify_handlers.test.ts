@@ -118,6 +118,50 @@ beforeEach(() => {
   registerCoolifyHandlers();
 });
 
+describe("naming the stored token", () => {
+  /**
+   * Servers and projects are cached per instance, and two tokens on one
+   * instance can see different teams. The renderer therefore needs to know the
+   * token changed — without ever being handed the token.
+   */
+  it("changes when the token changes, on the same instance", async () => {
+    const first: any = await call("coolify:get-status", { appId: 1 });
+    settings.coolify = {
+      instanceUrl: "https://coolify.example.com",
+      accessToken: { value: "a-different-team-token" },
+    };
+    const second: any = await call("coolify:get-status", { appId: 1 });
+
+    expect(first.tokenId).toBeTruthy();
+    expect(second.tokenId).not.toBe(first.tokenId);
+  });
+
+  it("is the same for the same token, so the cache is not thrown away", async () => {
+    const first: any = await call("coolify:get-status", { appId: 1 });
+    const second: any = await call("coolify:get-status", { appId: 1 });
+    expect(second.tokenId).toBe(first.tokenId);
+  });
+
+  it("does not carry the token to the renderer", async () => {
+    settings.coolify = {
+      instanceUrl: "https://coolify.example.com",
+      accessToken: { value: "1|super-secret-value" },
+    };
+    const status: any = await call("coolify:get-status", { appId: 1 });
+
+    expect(JSON.stringify(status)).not.toContain("super-secret");
+    expect(status.tokenId).not.toContain("super-secret");
+  });
+
+  it("is absent when there is no token", async () => {
+    settings.coolify = { instanceUrl: "https://coolify.example.com" };
+    const status: any = await call("coolify:get-status", { appId: 1 });
+
+    expect(status.hasToken).toBe(false);
+    expect(status.tokenId).toBeNull();
+  });
+});
+
 describe("clearing the token", () => {
   it("keeps every app's application id and settings", async () => {
     await call("coolify:clear-token");

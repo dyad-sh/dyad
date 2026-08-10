@@ -25,7 +25,10 @@ export function useCoolifyDeploy(appId: number | null) {
   });
 
   const discovery = useQuery({
-    queryKey: queryKeys.coolify.discovery(status.data?.instanceUrl ?? null),
+    queryKey: queryKeys.coolify.discovery(
+      status.data?.instanceUrl ?? null,
+      status.data?.tokenId ?? null,
+    ),
     queryFn: () => ipc.coolify.discover(),
     enabled: appId !== null && Boolean(status.data?.hasToken),
   });

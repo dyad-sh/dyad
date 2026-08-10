@@ -1,13 +1,13 @@
+import { parse } from "@babel/parser";
+import type { Node } from "@babel/types";
+
 /**
  * Validation for the one-line Playwright assertions the model hands us. An
  * assertion is spliced into the generated spec verbatim, so both LLM passes are
- * gated on this being exactly one awaited `expect(...)` with a matcher chain.
- *
- * This is a SHAPE check, not a sandbox: it says nothing about what the
- * `expect(...)` argument contains, and a spec is ordinary TypeScript running
- * with Node's privileges. The trust boundary that matters is provenance, in
- * `test_assertion_handlers.ts` — assertion code only ever comes from the model
- * the user selected, never from the renderer (see `resolveAssertionCode`).
+ * gated on this being exactly one awaited, allowlisted Playwright assertion.
+ * The model sees app-controlled text and the generated spec runs with Node's
+ * privileges, so a shape-only `expect(anyExpression).matcher()` check is not a
+ * sufficient trust boundary: every executable AST node is constrained below.
  */
 
 /** The delimiter that closes each opener. */
@@ -175,6 +175,174 @@ function isSingleStatementLine(trimmed: string): boolean {
 /** `.identifier`, optionally applied as a call, e.g. `.not` or `.toHaveText(…)`. */
 const MEMBER_RE = /^\.\s*([A-Za-z_$][\w$]*)\s*/;
 
+/** Locator-building calls that only describe how Playwright should find UI. */
+const LOCATOR_METHODS = new Set([
+  "filter",
+  "first",
+  "frameLocator",
+  "getByAltText",
+  "getByLabel",
+  "getByPlaceholder",
+  "getByRole",
+  "getByTestId",
+  "getByText",
+  "getByTitle",
+  "last",
+  "locator",
+  "nth",
+]);
+
+/** Web-first Playwright matchers that do not execute user-authored callbacks. */
+const PLAYWRIGHT_MATCHERS = new Set([
+  "toBeAttached",
+  "toBeChecked",
+  "toBeDisabled",
+  "toBeEditable",
+  "toBeEmpty",
+  "toBeEnabled",
+  "toBeFocused",
+  "toBeHidden",
+  "toBeInViewport",
+  "toBeVisible",
+  "toContainClass",
+  "toContainText",
+  "toHaveAccessibleDescription",
+  "toHaveAccessibleName",
+  "toHaveAttribute",
+  "toHaveClass",
+  "toHaveCount",
+  "toHaveCSS",
+  "toHaveId",
+  "toHaveJSProperty",
+  "toHaveRole",
+  "toHaveText",
+  "toHaveTitle",
+  "toHaveURL",
+  "toHaveValue",
+  "toHaveValues",
+]);
+
+function memberName(node: Node): string | undefined {
+  if (
+    node.type !== "MemberExpression" ||
+    node.computed ||
+    node.property.type !== "Identifier"
+  ) {
+    return undefined;
+  }
+  return node.property.name;
+}
+
+/**
+ * Literal data accepted as locator/matcher arguments. No identifiers,
+ * functions, spreads, computed keys, templates, or calls: those are all places
+ * app-controlled prompt text could otherwise turn into executable Node code.
+ */
+function isSafeData(node: Node | null, allowLocator: boolean): boolean {
+  if (!node) return false;
+  switch (node.type) {
+    case "StringLiteral":
+    case "NumericLiteral":
+    case "BooleanLiteral":
+    case "NullLiteral":
+    case "RegExpLiteral":
+    case "BigIntLiteral":
+      return true;
+    case "UnaryExpression":
+      return (
+        (node.operator === "+" || node.operator === "-") &&
+        node.argument.type === "NumericLiteral"
+      );
+    case "ArrayExpression":
+      return node.elements.every(
+        (element) =>
+          element !== null &&
+          element.type !== "SpreadElement" &&
+          isSafeData(element, allowLocator),
+      );
+    case "ObjectExpression":
+      return node.properties.every(
+        (property) =>
+          property.type === "ObjectProperty" &&
+          !property.computed &&
+          !property.shorthand &&
+          (property.key.type === "Identifier" ||
+            property.key.type === "StringLiteral" ||
+            property.key.type === "NumericLiteral") &&
+          isSafeData(property.value, allowLocator),
+      );
+    default:
+      return allowLocator && isSafeLocator(node);
+  }
+}
+
+/** `page` or a chain of allowlisted locator-building calls rooted at `page`. */
+function isSafeLocator(node: Node): boolean {
+  if (node.type === "Identifier") return node.name === "page";
+  if (node.type !== "CallExpression") return false;
+  const method = memberName(node.callee);
+  if (!method || !LOCATOR_METHODS.has(method)) return false;
+  if (
+    node.callee.type !== "MemberExpression" ||
+    !isSafeLocator(node.callee.object)
+  ) {
+    return false;
+  }
+  return node.arguments.every(
+    (argument) =>
+      argument.type !== "SpreadElement" && isSafeData(argument, true),
+  );
+}
+
+function isExpectCall(node: Node): boolean {
+  return (
+    node.type === "CallExpression" &&
+    node.callee.type === "Identifier" &&
+    node.callee.name === "expect" &&
+    node.arguments.length === 1 &&
+    node.arguments[0].type !== "SpreadElement" &&
+    isSafeLocator(node.arguments[0])
+  );
+}
+
+/** Parse and allowlist the executable parts of the assertion. */
+function hasSafePlaywrightAst(code: string): boolean {
+  try {
+    const file = parse(code, {
+      sourceType: "module",
+      allowAwaitOutsideFunction: true,
+    });
+    if (file.program.body.length !== 1) return false;
+    const statement = file.program.body[0];
+    if (
+      statement.type !== "ExpressionStatement" ||
+      statement.expression.type !== "AwaitExpression" ||
+      statement.expression.argument.type !== "CallExpression"
+    ) {
+      return false;
+    }
+
+    const matcherCall = statement.expression.argument;
+    const matcher = memberName(matcherCall.callee);
+    if (!matcher || !PLAYWRIGHT_MATCHERS.has(matcher)) return false;
+    if (matcherCall.callee.type !== "MemberExpression") return false;
+
+    let receiver = matcherCall.callee.object;
+    if (memberName(receiver) === "not") {
+      if (receiver.type !== "MemberExpression") return false;
+      receiver = receiver.object;
+    }
+    if (!isExpectCall(receiver)) return false;
+
+    return matcherCall.arguments.every(
+      (argument) =>
+        argument.type !== "SpreadElement" && isSafeData(argument, false),
+    );
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Whether everything after the `expect(...)` group is modifiers (`.not`,
  * `.resolves`) followed by exactly one matcher call that ends the statement.
@@ -223,5 +391,8 @@ export function isSingleAssertionStatement(code: string): boolean {
   // Everything from `expect`'s `(` through its matching `)`.
   const expectArgs = scanLine(trimmed, head[0].length - 1);
   if (expectArgs.groupEnd === -1) return false;
-  return isMatcherChain(trimmed, expectArgs.groupEnd);
+  return (
+    isMatcherChain(trimmed, expectArgs.groupEnd) &&
+    hasSafePlaywrightAst(trimmed)
+  );
 }

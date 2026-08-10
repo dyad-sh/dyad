@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 
 import { ipc } from "@/ipc/types";
@@ -186,7 +193,7 @@ export function useTestRecorder({
   useEffect(() => {
     entriesRef.current = entries;
   }, [entries]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     appIdRef.current = appId;
     // Another app's preview must never be trusted on the strength of this one.
     lastPreviewOriginRef.current = null;

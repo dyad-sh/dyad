@@ -37,7 +37,10 @@ import {
 import { isTestRunActive } from "./tests_handlers";
 import { readSettings } from "@/main/settings";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { restoreAppFromTestBranch } from "../utils/neon_test_branch";
+import {
+  isTestBranchCleanupOnly,
+  restoreAppFromTestBranch,
+} from "../utils/neon_test_branch";
 
 const logger = log.scope("recording_handlers");
 
@@ -228,8 +231,33 @@ export function registerRecordingHandlers() {
               let endReason: RecordingEndReason = "stopped";
               let endMessage: string | undefined;
               try {
+                // The request can wait behind rename, relocation, or provider
+                // work. Re-read only after app-path admission so isolation never
+                // snapshots or rewrites the app's former directory/provider.
+                const admittedApp = await getApp(appId);
+                if (!admittedApp.testingEnabled) {
+                  ready.resolve(
+                    infraResult(
+                      appId,
+                      "Testing was disabled while the recording was waiting to start.",
+                    ),
+                  );
+                  return;
+                }
+                if (
+                  admittedApp.neonTestBranchId &&
+                  !isTestBranchCleanupOnly(admittedApp.neonTestBranchId)
+                ) {
+                  ready.resolve(
+                    infraResult(
+                      appId,
+                      "Dyad couldn't restore this app's real database settings from the previous operation. Retry after checking the Neon connection.",
+                    ),
+                  );
+                  return;
+                }
                 prepared = await prepareIsolatedTestDatabase({
-                  app,
+                  app: admittedApp,
                   // No `event`: the local `emit` already closes over `event.sender`,
                   // and the parameter doesn't exist on this function (the tests
                   // handler calls it the same way).

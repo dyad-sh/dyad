@@ -7,14 +7,17 @@ const mocks = vi.hoisted(() => {
   const selectWhere = vi.fn().mockResolvedValue([]);
   const from = vi.fn(() => ({ where: selectWhere }));
   const select = vi.fn(() => ({ from }));
+  const findFirst = vi.fn();
   return {
-    db: { update, select },
+    db: { update, select, query: { apps: { findFirst } } },
     update,
     set,
     where,
     select,
     from,
     selectWhere,
+    findFirst,
+    freshApps: new Map<number, any>(),
     createProjectBranch: vi.fn(),
     deleteProjectBranch: vi.fn().mockResolvedValue({ data: {} }),
     ensureNeonAuth: vi.fn().mockResolvedValue(undefined),
@@ -78,7 +81,7 @@ import { appOperationCoordinator } from "../services/app_operation_coordinator";
 type AppRow = any;
 
 function makeApp(overrides: Partial<AppRow> = {}): AppRow {
-  return {
+  const app = {
     id: 7,
     path: "/apps/7",
     neonProjectId: "proj-1",
@@ -88,12 +91,18 @@ function makeApp(overrides: Partial<AppRow> = {}): AppRow {
     neonTestBranchId: null,
     ...overrides,
   };
+  mocks.freshApps.set(app.id, app);
+  return app;
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.where.mockResolvedValue(undefined);
   mocks.selectWhere.mockResolvedValue([]);
+  mocks.freshApps.clear();
+  mocks.findFirst.mockImplementation(({ where }) =>
+    Promise.resolve(mocks.freshApps.get(where.b)),
+  );
   mocks.ensureNeonAuth.mockResolvedValue(undefined);
   mocks.getConnectionUri.mockResolvedValue("postgres://real");
   mocks.readEnvVarsOrEmpty.mockResolvedValue([]);
@@ -302,6 +311,35 @@ describe("deleteTempTestBranch", () => {
 });
 
 describe("restoreAppFromTestBranch", () => {
+  it("re-reads the app path and provider after coordinator admission", async () => {
+    const stale = makeApp({
+      path: "/apps/old",
+      neonProjectId: "old-project",
+      neonActiveBranchId: "old-real-branch",
+      neonTestBranchId: "old-test-branch",
+    });
+    makeApp({
+      path: "/apps/moved",
+      neonProjectId: "current-project",
+      neonActiveBranchId: "current-real-branch",
+      neonTestBranchId: "current-test-branch",
+    });
+
+    await expect(restoreAppFromTestBranch(stale)).resolves.toBe(true);
+
+    expect(mocks.getConnectionUri).toHaveBeenCalledWith({
+      projectId: "current-project",
+      branchId: "current-real-branch",
+    });
+    expect(mocks.updateNeonEnvVars).toHaveBeenCalledWith(
+      expect.objectContaining({ appPath: "/apps/moved" }),
+    );
+    expect(mocks.deleteProjectBranch).toHaveBeenCalledWith(
+      "current-project",
+      "current-test-branch",
+    );
+  });
+
   it("persists cleanup-only state before a fallible branch delete", async () => {
     mocks.deleteProjectBranch.mockRejectedValueOnce({
       response: { status: 500 },

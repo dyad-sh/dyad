@@ -804,6 +804,22 @@ describe("registerTestAssertionHandlers", () => {
           );
         },
       ],
+      [
+        "the synthesized assertion contains an executable expression",
+        /couldn't be turned into working code/i,
+        (id: string) => {
+          respondWith(
+            JSON.stringify({
+              assertions: [
+                {
+                  id,
+                  code: `await expect(process.exit()).toBeVisible();`,
+                },
+              ],
+            }),
+          );
+        },
+      ],
     ])(
       "skips an edited assertion when %s",
       async (_label, warning, arrange) => {

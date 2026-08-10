@@ -465,9 +465,23 @@ export async function restoreAppFromTestBranch(
       ],
     },
     async () => {
-      let cleanupApp = appData;
-      if (!isTestBranchCleanupOnly(appData.neonTestBranchId)) {
-        const restored = await restoreRealBranchEnvVars(appData);
+      // Rename, relocation, or provider reassociation may have completed while
+      // this operation waited for admission. Only the row read under app-path
+      // access is safe to use for filesystem and provider work.
+      const currentApp = await db.query.apps.findFirst({
+        where: eq(apps.id, appData.id),
+      });
+      if (!currentApp) {
+        logger.warn(
+          `Cannot restore test branch for app ${appData.id}: the app no longer exists.`,
+        );
+        return false;
+      }
+      if (!currentApp.neonTestBranchId) return true;
+
+      let cleanupApp = currentApp;
+      if (!isTestBranchCleanupOnly(currentApp.neonTestBranchId)) {
+        const restored = await restoreRealBranchEnvVars(currentApp);
         if (!restored) {
           return false;
         }
@@ -477,15 +491,15 @@ export async function restoreAppFromTestBranch(
         // sweep keeps retrying branch cleanup.
         try {
           cleanupApp = await markTestBranchCleanupOnly(
-            appData,
-            appData.neonTestBranchId!,
+            currentApp,
+            currentApp.neonTestBranchId,
           );
         } catch (error) {
           // The env is already real. Still attempt deletion with the raw id; a
           // successful delete clears that stale marker, and relaunch is safe in
           // this process regardless of the bookkeeping failure.
           logger.warn(
-            `Restored the real env for app ${appData.id}, but couldn't persist its cleanup-only Neon state: ${error}`,
+            `Restored the real env for app ${currentApp.id}, but couldn't persist its cleanup-only Neon state: ${error}`,
           );
         }
       }
@@ -495,7 +509,7 @@ export async function restoreAppFromTestBranch(
         await deleteTempTestBranch(cleanupApp);
       } catch (error) {
         logger.warn(
-          `Restored the real env for app ${appData.id}, but couldn't delete temporary Neon branch ${trackedBranchId(appData.neonTestBranchId!)}: ${error}`,
+          `Restored the real env for app ${currentApp.id}, but couldn't delete temporary Neon branch ${trackedBranchId(currentApp.neonTestBranchId)}: ${error}`,
         );
       }
       return true;

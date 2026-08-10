@@ -186,6 +186,11 @@ describe("recording:start / recording:stop", () => {
         id: 1,
         testingEnabled: true,
         neonTestBranchId: null,
+      })
+      .mockResolvedValueOnce({
+        id: 1,
+        testingEnabled: true,
+        neonTestBranchId: null,
       });
     mocks.prepareIsolatedTestDatabase.mockResolvedValue(makePrepared());
     const { event } = makeEvent();
@@ -195,6 +200,62 @@ describe("recording:start / recording:stop", () => {
     expect(mocks.prepareIsolatedTestDatabase).toHaveBeenCalledWith(
       expect.objectContaining({
         app: expect.objectContaining({ neonTestBranchId: null }),
+      }),
+    );
+    await stopHandler(event, { appId: 1 });
+  });
+
+  it("uses the app row read after coordinator admission for isolation", async () => {
+    let releaseRename!: () => void;
+    const rename = appOperationCoordinator.run(
+      {
+        appId: 1,
+        operation: "rename-app",
+        resources: ["app-path", "provider"],
+      },
+      () =>
+        new Promise<void>((resolve) => {
+          releaseRename = resolve;
+        }),
+    );
+    await vi.waitFor(() => expect(releaseRename).toEqual(expect.any(Function)));
+    mocks.findFirst
+      .mockResolvedValueOnce({
+        id: 1,
+        path: "/apps/old",
+        testingEnabled: true,
+        neonTestBranchId: null,
+      })
+      .mockResolvedValueOnce({
+        id: 1,
+        path: "/apps/moved",
+        testingEnabled: true,
+        supabaseProjectId: "new-provider",
+        neonTestBranchId: null,
+      });
+    mocks.prepareIsolatedTestDatabase.mockResolvedValue(makePrepared());
+    const { event } = makeEvent();
+
+    const start = startHandler(event, { appId: 1 });
+    await vi.waitFor(() =>
+      expect(mocks.safeSend).toHaveBeenCalledWith(
+        event.sender,
+        "recording:setup-progress",
+        expect.objectContaining({ message: expect.stringMatching(/waiting/i) }),
+      ),
+    );
+    expect(mocks.prepareIsolatedTestDatabase).not.toHaveBeenCalled();
+
+    releaseRename();
+    await rename;
+    await start;
+
+    expect(mocks.prepareIsolatedTestDatabase).toHaveBeenCalledWith(
+      expect.objectContaining({
+        app: expect.objectContaining({
+          path: "/apps/moved",
+          supabaseProjectId: "new-provider",
+        }),
       }),
     );
     await stopHandler(event, { appId: 1 });

@@ -94,19 +94,35 @@ describe("isSingleAssertionStatement", () => {
     ).toBe(false);
   });
 
-  it("reads a slash after a postfix operator as division, not a regex", () => {
-    // `+`/`-` open an expression, so a `/` after them is a regex — but doubled
-    // they are a postfix increment, which makes the slash division. Reading it
-    // as an unterminated regex would drop the assertion from the spec.
+  it("rejects executable expressions inside expect and matcher arguments", () => {
     expect(
       isSingleAssertionStatement(`await expect(a++ / 2).toBeGreaterThan(1);`),
+    ).toBe(false);
+    expect(
+      isSingleAssertionStatement(`await expect(process.exit()).toBeVisible();`),
+    ).toBe(false);
+    expect(
+      isSingleAssertionStatement(
+        `await expect(page.getByText(process.env.SECRET)).toBeVisible();`,
+      ),
+    ).toBe(false);
+    expect(
+      isSingleAssertionStatement(
+        `await expect(page.getByText("Save")).toHaveText(fs.rmSync("/tmp/x"));`,
+      ),
+    ).toBe(false);
+  });
+
+  it("accepts literal locator options and expected values", () => {
+    expect(
+      isSingleAssertionStatement(
+        `await expect(page.getByRole("button", { name: /save/i }).first()).toHaveText(["Save", "Saved"], { timeout: 1000 });`,
+      ),
     ).toBe(true);
     expect(
-      isSingleAssertionStatement(`await expect(a-- / 2).toBeGreaterThan(1);`),
-    ).toBe(true);
-    // Still a regex when the operator really is unary.
-    expect(
-      isSingleAssertionStatement(`await expect(page).toHaveURL(-/x/ ? 1 : 2);`),
+      isSingleAssertionStatement(
+        `await expect(page.locator("li").filter({ has: page.getByText("Done") }).nth(0)).not.toBeVisible();`,
+      ),
     ).toBe(true);
   });
 

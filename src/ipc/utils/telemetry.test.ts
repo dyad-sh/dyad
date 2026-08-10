@@ -1,8 +1,26 @@
 import type { BrowserWindow } from "electron";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const sent = vi.hoisted(() => ({
+  calls: [] as Array<Record<string, unknown>>,
+}));
+vi.mock("electron", () => ({
+  BrowserWindow: {
+    getAllWindows: () => [
+      {
+        webContents: {
+          send: (_channel: string, payload: { properties: unknown }) => {
+            sent.calls.push(payload.properties as Record<string, unknown>);
+          },
+        },
+      },
+    ],
+  },
+}));
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
   sendTelemetryEventToWindow,
+  sendTelemetryException,
   shouldFilterTelemetryException,
 } from "@/ipc/utils/telemetry";
 
@@ -88,5 +106,42 @@ describe("sendTelemetryEventToWindow", () => {
       eventName: "app:crash_detected",
       properties: { error: true },
     });
+  });
+});
+
+/**
+ * The exception payload carries four fields, and only the message is built
+ * from arbitrary strings. For a server the user runs, that message can hold
+ * the machine's address or whatever it chose to say back, so it is dropped
+ * rather than audited throw site by throw site.
+ */
+describe("exceptions from a self-hosted instance", () => {
+  beforeEach(() => {
+    sent.calls.length = 0;
+  });
+
+  it("reports the error without its message", () => {
+    sendTelemetryException(
+      new Error("getaddrinfo ENOTFOUND coolify.internal.example.com"),
+      { ipc_channel: "coolify:discover" },
+    );
+
+    expect(sent.calls).toHaveLength(1);
+    const payload = sent.calls[0];
+    expect(JSON.stringify(payload)).not.toContain("coolify.internal");
+    expect(payload.exception_message).toBeUndefined();
+    // Still identifiable: the name, the stack and the channel all survive.
+    expect(payload.exception_name).toBe("Error");
+    // The frames survive, so the throw site is still identifiable.
+    expect(String(payload.exception_stack_trace)).toContain("telemetry.test");
+    expect(payload.ipc_channel).toBe("coolify:discover");
+  });
+
+  it("keeps the message for every other channel", () => {
+    sendTelemetryException(new Error("something broke"), {
+      ipc_channel: "apps:list",
+    });
+
+    expect(sent.calls[0].exception_message).toBe("something broke");
   });
 });

@@ -132,20 +132,31 @@ export const collectUncommittedPaths = (
 };
 
 /**
- * Change marker that trails the file name, so the dot reads as belonging to the
- * name rather than sitting in a gutter column away from it. Matches the folder
- * rollup dot, which already trails its name.
+ * Change marker that trails the name, so the dot reads as belonging to the name
+ * rather than sitting in a gutter column away from it. A folder's rollup dot is
+ * drawn exactly like a file's: a dot that differed in size or color would read
+ * as a third state rather than as the same change seen from one level up. Only
+ * the label distinguishes them.
  *
  * Uses the native `title` rather than a Tooltip: tooltips open immediately on
  * hover, which flickers while moving the pointer down a dense tree.
  */
-const FileMarkerDot = ({ marker }: { marker: FileMarker }) => {
+const ChangeMarkerDot = ({
+  marker,
+  isDirectory,
+}: {
+  marker: FileMarker;
+  isDirectory: boolean;
+}) => {
   const { t } = useTranslation("home");
 
   if (!marker) return null;
 
-  const label =
-    marker === "unsaved"
+  const label = isDirectory
+    ? marker === "unsaved"
+      ? t("preview.folderHasUnsavedChanges")
+      : t("preview.folderHasUncommittedChanges")
+    : marker === "unsaved"
       ? t("preview.unsavedChanges")
       : t("preview.uncommittedChanges");
 
@@ -160,33 +171,6 @@ const FileMarkerDot = ({ marker }: { marker: FileMarker }) => {
       )}
     >
       <Circle size={8} fill="currentColor" />
-    </span>
-  );
-};
-
-/**
- * Rollup marker for a folder with changes buried inside it. Deliberately
- * smaller and muted next to FileMarkerDot: it points at a change somewhere
- * below rather than being one itself, so only its label names the state.
- */
-const FolderRollupDot = ({ marker }: { marker: FileMarker }) => {
-  const { t } = useTranslation("home");
-
-  if (!marker) return null;
-
-  const label =
-    marker === "unsaved"
-      ? t("preview.folderHasUnsavedChanges")
-      : t("preview.folderHasUncommittedChanges");
-
-  return (
-    <span
-      role="img"
-      aria-label={label}
-      title={label}
-      className="ml-1.5 flex flex-shrink-0 items-center text-muted-foreground/70"
-    >
-      <Circle size={6} fill="currentColor" />
     </span>
   );
 };
@@ -581,7 +565,7 @@ const SearchResultItem = ({
           >
             {path}
           </span>
-          <FileMarkerDot marker={marker} />
+          <ChangeMarkerDot marker={marker} isDirectory={false} />
         </span>
 
         {/* Mention button */}
@@ -689,11 +673,7 @@ const TreeNode = ({
           >
             {isSearchMode ? highlightMatch(node.name, searchQuery) : node.name}
           </span>
-          {node.isDirectory ? (
-            <FolderRollupDot marker={marker} />
-          ) : (
-            <FileMarkerDot marker={marker} />
-          )}
+          <ChangeMarkerDot marker={marker} isDirectory={node.isDirectory} />
         </span>
         {!node.isDirectory && <MentionFileButton filePath={node.path} />}
       </div>

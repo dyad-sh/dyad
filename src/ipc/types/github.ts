@@ -145,6 +145,14 @@ export const GitHubDeviceFlowErrorSchema = z.object({
 // GitHub Contracts
 // =============================================================================
 
+export const GitHubCommitSchema = z.object({
+  sha: z.string(),
+  message: z.string(),
+  authorName: z.string().nullable(),
+  date: z.string().nullable(),
+  url: z.string(),
+});
+
 export const githubContracts = {
   startFlow: defineContract({
     channel: "github:start-flow",
@@ -350,6 +358,51 @@ export const githubContracts = {
     output: z.void(),
   }),
 
+  /** Recent commits, optionally for one branch and one path. */
+  listCommits: defineContract({
+    channel: "github:list-commits",
+    input: z.object({
+      owner: z.string(),
+      repo: z.string(),
+      ref: z.string().optional(),
+      path: z.string().optional(),
+      limit: z.number().int().min(1).max(50).default(20),
+    }),
+    output: z.array(GitHubCommitSchema),
+  }),
+
+  /**
+   * Move a file. GitHub has no rename: this creates the new path and deletes
+   * the old one, which is why it lives in one handler rather than two calls
+   * from the renderer that could half-finish.
+   */
+  renameContent: defineContract({
+    channel: "github:rename-content",
+    input: z.object({
+      owner: z.string(),
+      repo: z.string(),
+      fromPath: z.string().min(1),
+      toPath: z.string().min(1),
+      message: z.string().min(1),
+      ref: z.string().optional(),
+    }),
+    output: z.object({ sha: z.string() }),
+  }),
+
+  /** Pick files from this machine and add them to a repository folder. */
+  uploadContent: defineContract({
+    channel: "github:upload-content",
+    input: z.object({
+      owner: z.string(),
+      repo: z.string(),
+      /** Destination folder, empty for the repository root. */
+      path: z.string().default(""),
+      message: z.string().min(1),
+      ref: z.string().optional(),
+    }),
+    output: z.object({ uploaded: z.array(z.string()) }),
+  }),
+
   listContents: defineContract({
     channel: "github:list-contents",
     input: z.object({
@@ -383,6 +436,8 @@ export const githubContracts = {
       content: z.string(),
       message: z.string().min(1),
       sha: z.string().optional(),
+      /** base64 for binary; utf-8 (the default) for text the editor produced. */
+      encoding: z.enum(["utf-8", "base64"]).default("utf-8"),
     }),
     output: z.object({ sha: z.string() }),
   }),

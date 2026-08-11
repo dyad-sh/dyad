@@ -5,10 +5,31 @@ import { defineContract, createClient } from "../contracts/core";
 // Vercel Schemas
 // =============================================================================
 
+/**
+ * Where a project's source lives, when Vercel says so.
+ *
+ * Vercel does not serve project files, so this is the honest substitute: the
+ * repository the deployments are built from, which the GitHub workspace can
+ * actually open.
+ */
+export const VercelProjectLinkSchema = z.object({
+  type: z.string(),
+  org: z.string().nullable(),
+  repo: z.string().nullable(),
+});
+
 export const VercelProjectSchema = z.object({
   id: z.string(),
   name: z.string(),
   framework: z.string().nullable().optional(),
+  link: VercelProjectLinkSchema.nullable().optional(),
+});
+
+export const VercelDomainSchema = z.object({
+  name: z.string(),
+  verified: z.boolean(),
+  /** Set when the domain points at a specific branch rather than production. */
+  gitBranch: z.string().nullable(),
 });
 
 export type VercelProject = z.infer<typeof VercelProjectSchema>;
@@ -147,6 +168,29 @@ export const vercelContracts = {
     channel: "vercel:connect-existing-project",
     input: ConnectToExistingVercelProjectParamsSchema,
     output: z.void(),
+  }),
+
+  /**
+   * Deployments for a Vercel project.
+   *
+   * getDeployments takes a local app id, so it only covers projects linked to
+   * something in this app. This one takes the Vercel project id, which is what
+   * the workspace has when browsing the account.
+   */
+  getProjectDeployments: defineContract({
+    channel: "vercel:get-project-deployments",
+    input: z.object({
+      projectId: z.string(),
+      limit: z.number().int().min(1).max(50).default(10),
+    }),
+    output: z.array(VercelDeploymentSchema),
+  }),
+
+  /** Domains attached to a project, as Vercel reports them. */
+  getProjectDomains: defineContract({
+    channel: "vercel:get-project-domains",
+    input: z.object({ projectId: z.string() }),
+    output: z.array(VercelDomainSchema),
   }),
 
   getDeployments: defineContract({

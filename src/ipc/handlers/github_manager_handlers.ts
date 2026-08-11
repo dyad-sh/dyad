@@ -1,3 +1,7 @@
+import fs from "node:fs";
+import nodePath from "node:path";
+import { BrowserWindow, dialog } from "electron";
+
 import { writeSettings } from "../../main/settings";
 import { db } from "../../db";
 import { apps } from "../../db/schema";
@@ -155,6 +159,168 @@ async function handleDeleteRepo({
   );
 }
 
+async function handleListCommits({
+  owner,
+  repo,
+  ref,
+  path,
+  limit,
+}: {
+  owner: string;
+  repo: string;
+  ref?: string;
+  path?: string;
+  limit: number;
+}) {
+  const url = new URL(
+    `${GITHUB_API_BASE}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/commits`,
+  );
+  url.searchParams.set("per_page", String(limit));
+  if (ref) url.searchParams.set("sha", ref);
+  if (path) url.searchParams.set("path", path);
+
+  const data = await githubApiJson<
+    Array<{
+      sha: string;
+      html_url: string;
+      commit: {
+        message: string;
+        author?: { name?: string; date?: string };
+      };
+    }>
+  >(url.toString().slice(GITHUB_API_BASE.length));
+
+  return data.map((entry) => ({
+    sha: entry.sha,
+    // The subject line only: a commit body would swamp a list.
+    message: entry.commit.message.split("\n")[0],
+    authorName: entry.commit.author?.name ?? null,
+    date: entry.commit.author?.date ?? null,
+    url: entry.html_url,
+  }));
+}
+
+/**
+ * Rename, which GitHub has no API for.
+ *
+ * Read, write the new path, then delete the old one. The order matters: if the
+ * delete fails the file exists at both paths, which is recoverable. Deleting
+ * first and then failing to write would lose it.
+ */
+async function handleRenameContent({
+  owner,
+  repo,
+  fromPath,
+  toPath,
+  message,
+  ref,
+}: {
+  owner: string;
+  repo: string;
+  fromPath: string;
+  toPath: string;
+  message: string;
+  ref?: string;
+}): Promise<{ sha: string }> {
+  if (fromPath === toPath) {
+    throw new DyadError(
+      "The new name is the same as the old one.",
+      DyadErrorKind.Validation,
+    );
+  }
+
+  const existing = await handleGetContent({ owner, repo, path: fromPath, ref });
+
+  const created = await handleUpsertContent({
+    owner,
+    repo,
+    path: toPath,
+    content: existing.content,
+    message,
+  });
+
+  try {
+    await handleDeleteContent({
+      owner,
+      repo,
+      path: fromPath,
+      message,
+      sha: existing.sha,
+    });
+  } catch (error) {
+    throw new DyadError(
+      `Copied to ${toPath}, but could not remove ${fromPath}. Both now exist. ${
+        error instanceof Error ? error.message : ""
+      }`.trim(),
+      DyadErrorKind.External,
+    );
+  }
+
+  return created;
+}
+
+/**
+ * Add files from this machine.
+ *
+ * The dialog and the reading both happen here, so file bytes are never carried
+ * across IPC twice, and binary content never passes through a utf-8 round trip.
+ */
+async function handleUploadContent({
+  owner,
+  repo,
+  path,
+  message,
+}: {
+  owner: string;
+  repo: string;
+  path: string;
+  message: string;
+}): Promise<{ uploaded: string[] }> {
+  const parent = BrowserWindow.getFocusedWindow();
+  const options = {
+    title: "Add files to the repository",
+    buttonLabel: "Upload",
+    properties: ["openFile", "multiSelections"] as Array<
+      "openFile" | "multiSelections"
+    >,
+  };
+  const result = parent
+    ? await dialog.showOpenDialog(parent, options)
+    : await dialog.showOpenDialog(options);
+  if (result.canceled || result.filePaths.length === 0) {
+    return { uploaded: [] };
+  }
+
+  const uploaded: string[] = [];
+  for (const filePath of result.filePaths) {
+    const name = nodePath.basename(filePath);
+    const target = path ? `${path}/${name}` : name;
+
+    // Overwriting is the caller's decision, so an existing file needs its sha
+    // rather than a blind PUT that GitHub would reject.
+    let existingSha: string | undefined;
+    try {
+      const current = await handleGetContent({ owner, repo, path: target });
+      existingSha = current.sha;
+    } catch {
+      // Absent, which is the normal case for an upload.
+    }
+
+    await handleUpsertContent({
+      owner,
+      repo,
+      path: target,
+      content: fs.readFileSync(filePath).toString("base64"),
+      encoding: "base64",
+      message,
+      sha: existingSha,
+    });
+    uploaded.push(target);
+  }
+
+  return { uploaded };
+}
+
 async function handleListContents({
   owner,
   repo,
@@ -276,6 +442,7 @@ async function handleUpsertContent({
   content,
   message,
   sha,
+  encoding = "utf-8",
 }: {
   owner: string;
   repo: string;
@@ -283,11 +450,16 @@ async function handleUpsertContent({
   content: string;
   message: string;
   sha?: string;
+  encoding?: "utf-8" | "base64";
 }): Promise<{ sha: string }> {
   const encodedPath = path.split("/").map(encodeURIComponent).join("/");
   const body: Record<string, string> = {
     message,
-    content: Buffer.from(content, "utf-8").toString("base64"),
+    // Already-encoded bytes pass straight through; text is encoded here.
+    content:
+      encoding === "base64"
+        ? content
+        : Buffer.from(content, "utf-8").toString("base64"),
   };
   if (sha) {
     body.sha = sha;
@@ -358,6 +530,18 @@ export function registerGithubManagerHandlers() {
 
   createTypedHandler(githubContracts.deleteContent, async (_event, params) => {
     return handleDeleteContent(params);
+  });
+
+  createTypedHandler(githubContracts.listCommits, async (_event, params) => {
+    return handleListCommits(params);
+  });
+
+  createTypedHandler(githubContracts.renameContent, async (_event, params) => {
+    return handleRenameContent(params);
+  });
+
+  createTypedHandler(githubContracts.uploadContent, async (_event, params) => {
+    return handleUploadContent(params);
   });
 
   logger.info("GitHub manager handlers registered");

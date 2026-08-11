@@ -9,7 +9,10 @@ import {
   Loader2,
   Plus,
   GitBranch,
+  History,
+  PenLine,
   RefreshCw,
+  Upload,
   Save,
   Search,
   Trash2,
@@ -78,6 +81,12 @@ export default function GitHubManagerPage() {
   const [deleteRepoTarget, setDeleteRepoTarget] =
     useState<GithubRepository | null>(null);
   const [newFileOpen, setNewFileOpen] = useState(false);
+  const [commitsOpen, setCommitsOpen] = useState(false);
+  const [renameTarget, setRenameTarget] = useState<{
+    path: string;
+    name: string;
+  } | null>(null);
+  const [renameValue, setRenameValue] = useState("");
   const [newFileName, setNewFileName] = useState("README.md");
 
   const owner = selectedRepo?.owner ?? "";
@@ -122,6 +131,68 @@ export default function GitHubManagerPage() {
   }, [repos, repoSearch]);
 
   const pathSegments = currentPath ? currentPath.split("/") : [];
+
+  const uploadMutation = useMutation({
+    mutationFn: () =>
+      ipc.github.uploadContent({
+        owner,
+        repo: repoName,
+        path: currentPath,
+        message: commitMessage.trim() || "Add files via Meta Human OS",
+        ref: branch || undefined,
+      }),
+    onSuccess: async ({ uploaded }) => {
+      // A cancelled dialog is not a failure, and not a success worth a toast.
+      if (uploaded.length === 0) return;
+      showSuccess(
+        uploaded.length === 1
+          ? `Uploaded ${uploaded[0]}`
+          : `Uploaded ${uploaded.length} files`,
+      );
+      await contentsQuery.refetch();
+    },
+    onError: (error: Error) => showError(error.message),
+  });
+
+  const renameMutation = useMutation({
+    mutationFn: ({ fromPath, toPath }: { fromPath: string; toPath: string }) =>
+      ipc.github.renameContent({
+        owner,
+        repo: repoName,
+        fromPath,
+        toPath,
+        message: commitMessage.trim() || `Rename ${fromPath} to ${toPath}`,
+        ref: branch || undefined,
+      }),
+    onSuccess: async () => {
+      showSuccess("File renamed");
+      setRenameTarget(null);
+      setSelectedFile(null);
+      await contentsQuery.refetch();
+    },
+    onError: (error: Error) => showError(error.message),
+  });
+
+  // Recent commits for the branch being browsed, and for the folder in view.
+  const commitsQuery = useQuery({
+    queryKey: [
+      "github",
+      "commits",
+      owner,
+      repoName,
+      branch,
+      currentPath,
+    ] as const,
+    queryFn: () =>
+      ipc.github.listCommits({
+        owner,
+        repo: repoName,
+        ref: branch || undefined,
+        path: currentPath || undefined,
+        limit: 20,
+      }),
+    enabled: isConnected && !!selectedRepo && commitsOpen,
+  });
 
   const createRepoMutation = useMutation({
     mutationFn: (name: string) =>
@@ -536,8 +607,71 @@ export default function GitHubManagerPage() {
                           <FilePlus className="size-3.5" />
                           New file
                         </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="manager-action-btn h-7 gap-1"
+                          onClick={() => uploadMutation.mutate()}
+                          disabled={uploadMutation.isPending}
+                          data-testid="github-upload"
+                        >
+                          <Upload className="size-3.5" />
+                          {uploadMutation.isPending ? "Uploading…" : "Upload"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="manager-action-btn h-7 gap-1"
+                          onClick={() => setCommitsOpen((open) => !open)}
+                          data-testid="github-commits-toggle"
+                        >
+                          <History className="size-3.5" />
+                          History
+                        </Button>
                       </div>
                     </div>
+
+                    {commitsOpen && (
+                      <div
+                        className="border-b border-cyan-500/10 bg-cyan-950/15 px-3 py-2"
+                        data-testid="github-commits"
+                      >
+                        <p className="mb-1.5 text-[10px] uppercase tracking-wider text-cyan-100/40">
+                          Recent commits
+                          {currentPath ? ` · ${currentPath}` : ""}
+                          {activeBranch ? ` · ${activeBranch}` : ""}
+                        </p>
+                        {commitsQuery.isLoading && (
+                          <p className="text-xs text-cyan-100/35">Loading…</p>
+                        )}
+                        {commitsQuery.data?.length === 0 && (
+                          <p className="text-xs text-cyan-100/35">
+                            No commits here.
+                          </p>
+                        )}
+                        <ul className="max-h-40 space-y-1 overflow-y-auto scrollbar-on-hover">
+                          {(commitsQuery.data ?? []).map((commit) => (
+                            <li
+                              key={commit.sha}
+                              className="flex items-baseline gap-2 text-xs"
+                            >
+                              <code className="shrink-0 font-mono text-[10px] text-cyan-300/60">
+                                {commit.sha.slice(0, 7)}
+                              </code>
+                              <span className="min-w-0 flex-1 truncate text-cyan-50/75">
+                                {commit.message}
+                              </span>
+                              <span className="shrink-0 text-[10px] text-cyan-100/30">
+                                {commit.authorName ?? ""}
+                                {commit.date
+                                  ? ` · ${new Date(commit.date).toLocaleDateString()}`
+                                  : ""}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
 
                     <div className="manager-main-split">
                       {/* File listing */}
@@ -593,6 +727,24 @@ export default function GitHubManagerPage() {
                               <div className="flex gap-1">
                                 <Button
                                   size="sm"
+                                  variant="outline"
+                                  className="manager-action-btn h-7 gap-1"
+                                  onClick={() => {
+                                    const name =
+                                      selectedFile.path.split("/").pop() ?? "";
+                                    setRenameTarget({
+                                      path: selectedFile.path,
+                                      name,
+                                    });
+                                    setRenameValue(name);
+                                  }}
+                                  data-testid="github-rename"
+                                >
+                                  <PenLine className="size-3.5" />
+                                  Rename
+                                </Button>
+                                <Button
+                                  size="sm"
                                   variant="destructive"
                                   className="h-7"
                                   onClick={() => deleteFileMutation.mutate()}
@@ -643,6 +795,67 @@ export default function GitHubManagerPage() {
           )}
         </div>
       </div>
+
+      <Dialog
+        open={renameTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setRenameTarget(null);
+        }}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Rename file</DialogTitle>
+            <DialogDescription>
+              {/* The exact path, since this writes a new file and removes the
+                  old one. */}
+              {renameTarget?.path} will be moved. Include folders to move it
+              somewhere else.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="rename-file">New name or path</Label>
+            <Input
+              id="rename-file"
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              data-testid="github-rename-input"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRenameTarget(null)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (!renameTarget) return;
+                const folder = renameTarget.path
+                  .split("/")
+                  .slice(0, -1)
+                  .join("/");
+                const next = renameValue.trim();
+                // A name stays put; a path with slashes moves the file.
+                const toPath = next.includes("/")
+                  ? next
+                  : folder
+                    ? `${folder}/${next}`
+                    : next;
+                renameMutation.mutate({
+                  fromPath: renameTarget.path,
+                  toPath,
+                });
+              }}
+              disabled={
+                !renameValue.trim() ||
+                renameValue.trim() === renameTarget?.name ||
+                renameMutation.isPending
+              }
+              data-testid="github-rename-confirm"
+            >
+              {renameMutation.isPending ? "Renaming…" : "Rename"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={createRepoOpen} onOpenChange={setCreateRepoOpen}>
         <DialogContent className="max-w-sm">

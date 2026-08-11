@@ -47,6 +47,12 @@ interface VercelProjectResponse {
   id: string;
   name: string;
   framework?: string | null;
+  link?: {
+    type?: string;
+    org?: string;
+    repo?: string;
+    repoOwner?: string;
+  } | null;
   targets?: {
     production?: {
       url?: string;
@@ -252,12 +258,86 @@ async function handleListVercelProjects(): Promise<VercelProject[]> {
       id: project.id,
       name: project.name,
       framework: project.framework || null,
+      // Only what Vercel returned. A project deployed from a template or the
+      // CLI has no link, and the UI says so rather than guessing an owner.
+      link: project.link
+        ? {
+            type: project.link.type ?? "git",
+            org: project.link.org ?? project.link.repoOwner ?? null,
+            repo: project.link.repo ?? null,
+          }
+        : null,
     }));
   } catch (err: any) {
     if (err instanceof DyadError) throw err;
     logger.error("[Vercel Handler] Failed to list projects:", err);
     throw new Error(err.message || "Failed to list Vercel projects.");
   }
+}
+
+/** Deployments for one project, newest first, as Vercel returns them. */
+async function handleGetProjectDeployments(projectId: string, limit: number) {
+  const token = getVercelToken();
+  const url = new URL(`${VERCEL_API_BASE}/v6/deployments`);
+  url.searchParams.set("projectId", projectId);
+  url.searchParams.set("limit", String(limit));
+
+  const response = await fetch(url.toString(), {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    throw new DyadError(
+      `Failed to fetch deployments: ${response.status} ${response.statusText}`,
+      DyadErrorKind.External,
+    );
+  }
+  const data = (await response.json()) as {
+    deployments?: Array<{
+      uid: string;
+      url: string;
+      state?: string;
+      readyState?: string;
+      created?: number;
+      createdAt?: number;
+      target?: string | null;
+    }>;
+  };
+  return (data.deployments ?? []).map((deployment) => ({
+    uid: deployment.uid,
+    url: deployment.url,
+    state: deployment.state ?? deployment.readyState ?? "UNKNOWN",
+    readyState: deployment.readyState ?? deployment.state ?? "UNKNOWN",
+    createdAt: deployment.createdAt ?? deployment.created ?? 0,
+    // Vercel leaves target null for previews rather than saying "preview".
+    target: deployment.target ?? "preview",
+  }));
+}
+
+/** Project domains, straight from Vercel. Nothing is inferred. */
+async function handleGetProjectDomains(projectId: string) {
+  const token = getVercelToken();
+  const response = await fetch(
+    `${VERCEL_API_BASE}/v9/projects/${encodeURIComponent(projectId)}/domains`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  if (!response.ok) {
+    throw new DyadError(
+      `Failed to fetch domains: ${response.status} ${response.statusText}`,
+      DyadErrorKind.External,
+    );
+  }
+  const data = (await response.json()) as {
+    domains?: Array<{
+      name: string;
+      verified?: boolean;
+      gitBranch?: string | null;
+    }>;
+  };
+  return (data.domains ?? []).map((domain) => ({
+    name: domain.name,
+    verified: Boolean(domain.verified),
+    gitBranch: domain.gitBranch ?? null,
+  }));
 }
 
 function getVercelToken(): string {
@@ -641,6 +721,14 @@ export function registerVercelHandlers() {
   createTypedHandler(vercelContracts.listProjects, async () => {
     return handleListVercelProjects();
   });
+
+  createTypedHandler(vercelContracts.getProjectDeployments, async (_, params) =>
+    handleGetProjectDeployments(params.projectId, params.limit),
+  );
+
+  createTypedHandler(vercelContracts.getProjectDomains, async (_, params) =>
+    handleGetProjectDomains(params.projectId),
+  );
 
   createTypedHandler(vercelContracts.createManagerProject, async (_, params) =>
     handleCreateManagerProject(params.name),

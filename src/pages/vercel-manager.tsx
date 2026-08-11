@@ -1,7 +1,10 @@
 import { useMemo, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import {
   ExternalLink,
+  Github,
+  Info,
   Folder,
   Loader2,
   Pencil,
@@ -32,6 +35,121 @@ import type { VercelProject } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
 import { showSuccess } from "@/lib/toast";
 
+/**
+ * What Vercel actually knows about a project.
+ *
+ * Deployments and domains are fetched only when opened. There is no file
+ * browser here because Vercel does not serve project files: where a project is
+ * built from a repository, the source line points at the GitHub workspace,
+ * which does have the files.
+ */
+function VercelProjectDetails({ project }: { project: VercelProject }) {
+  const deployments = useQuery({
+    queryKey: ["vercel", "deployments", project.id],
+    queryFn: () =>
+      ipc.vercel.getProjectDeployments({ projectId: project.id, limit: 10 }),
+  });
+  const domains = useQuery({
+    queryKey: ["vercel", "domains", project.id],
+    queryFn: () => ipc.vercel.getProjectDomains({ projectId: project.id }),
+  });
+
+  const source = project.link;
+
+  return (
+    <div className="mt-3 space-y-3 border-t border-cyan-500/10 pt-3 text-left">
+      <div>
+        <p className="mb-1 text-[10px] uppercase tracking-wider text-cyan-100/40">
+          Source
+        </p>
+        {source?.org && source.repo ? (
+          <Link
+            to="/devops/github"
+            className="inline-flex items-center gap-1.5 text-xs text-cyan-200/80 hover:text-cyan-100"
+          >
+            <Github className="size-3.5" />
+            {source.org}/{source.repo}
+          </Link>
+        ) : (
+          <p className="text-xs text-cyan-100/35">
+            No connected repository. Vercel does not serve project files, so
+            there is nothing to browse here.
+          </p>
+        )}
+      </div>
+
+      <div>
+        <p className="mb-1 text-[10px] uppercase tracking-wider text-cyan-100/40">
+          Deployments
+        </p>
+        {deployments.isLoading && (
+          <p className="text-xs text-cyan-100/35">Loading…</p>
+        )}
+        {deployments.data?.length === 0 && (
+          <p className="text-xs text-cyan-100/35">No deployments yet.</p>
+        )}
+        <ul className="space-y-1">
+          {(deployments.data ?? []).map((deployment) => (
+            <li
+              key={deployment.uid}
+              className="flex items-center gap-2 text-xs"
+            >
+              <span
+                className={cn(
+                  "size-1.5 shrink-0 rounded-full",
+                  deployment.readyState === "READY"
+                    ? "bg-emerald-400"
+                    : deployment.readyState === "ERROR"
+                      ? "bg-rose-400"
+                      : "bg-amber-400",
+                )}
+              />
+              <span className="min-w-0 flex-1 truncate text-cyan-50/70">
+                {deployment.url}
+              </span>
+              <span className="shrink-0 text-[10px] uppercase text-cyan-100/30">
+                {deployment.target}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div>
+        <p className="mb-1 text-[10px] uppercase tracking-wider text-cyan-100/40">
+          Domains
+        </p>
+        {domains.isLoading && (
+          <p className="text-xs text-cyan-100/35">Loading…</p>
+        )}
+        {domains.data?.length === 0 && (
+          <p className="text-xs text-cyan-100/35">No domains attached.</p>
+        )}
+        <ul className="space-y-1">
+          {(domains.data ?? []).map((domain) => (
+            <li key={domain.name} className="flex items-center gap-2 text-xs">
+              <span
+                className={cn(
+                  "size-1.5 shrink-0 rounded-full",
+                  domain.verified ? "bg-emerald-400" : "bg-amber-400",
+                )}
+              />
+              <span className="min-w-0 flex-1 truncate text-cyan-50/70">
+                {domain.name}
+              </span>
+              {domain.gitBranch && (
+                <span className="shrink-0 text-[10px] text-cyan-100/30">
+                  {domain.gitBranch}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
 export default function VercelManagerPage() {
   const queryClient = useQueryClient();
   const {
@@ -53,6 +171,7 @@ export default function VercelManagerPage() {
   } | null>(null);
   const [projectName, setProjectName] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<VercelProject | null>(null);
+  const [expandedProject, setExpandedProject] = useState<string | null>(null);
 
   const filteredProjects = useMemo(() => {
     const q = projectSearch.trim().toLowerCase();
@@ -330,7 +449,24 @@ export default function VercelManagerPage() {
                           >
                             <Trash2 className="size-3.5" />
                           </button>
+                          <button
+                            type="button"
+                            className="rounded-md p-1.5 text-cyan-100/45 transition-colors hover:bg-cyan-400/10 hover:text-cyan-100"
+                            aria-label={`Details for ${project.name}`}
+                            onClick={() =>
+                              setExpandedProject((current) =>
+                                current === project.id ? null : project.id,
+                              )
+                            }
+                            data-testid={`vercel-details-${project.id}`}
+                          >
+                            <Info className="size-3.5" />
+                          </button>
                         </div>
+
+                        {expandedProject === project.id && (
+                          <VercelProjectDetails project={project} />
+                        )}
                       </div>
                     </article>
                   ))}

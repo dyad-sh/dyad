@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, SendHorizontal, X } from "lucide-react";
+import { AlertTriangle, SendHorizontal, Settings2, X } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 import { useJarvisSession } from "@/hooks/useJarvisSession";
 import { useSettings } from "@/hooks/useSettings";
 import { JarvisOrb, jarvisStateLabel } from "./JarvisOrb";
@@ -124,6 +125,17 @@ export function JarvisWorkspace() {
         <span className="ml-auto truncate font-mono text-[10px] text-cyan-100/35">
           {modelLabel}
         </span>
+        {/* Voice, listening, permissions and ElevenLabs live here now rather
+            than in System, which is a list of technical destinations. */}
+        <Link
+          to="/jarvis/settings"
+          aria-label="Voice assistant settings"
+          title="Voice assistant settings"
+          className="shrink-0 rounded-md p-1 text-cyan-100/40 transition-colors hover:bg-cyan-400/10 hover:text-cyan-100"
+          data-testid="jarvis-open-settings"
+        >
+          <Settings2 className="size-3.5" />
+        </Link>
       </header>
 
       {session.error && (

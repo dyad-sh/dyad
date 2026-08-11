@@ -1,6 +1,5 @@
 import {
   Activity,
-  AudioLines,
   FlaskConical,
   Blocks,
   Boxes,
@@ -24,6 +23,9 @@ import type { SettingsTabId } from "./settingsTabs";
  * landing overview and the tests. A second copy anywhere would drift, and the
  * first symptom of drift is a destination nobody can reach.
  *
+ * JARVIS voice settings are not here: they live on the JARVIS screen, which is
+ * what they configure.
+ *
  * Every destination either renders an existing page or an existing settings
  * tab. Nothing here is new functionality: this is where things live, not what
  * they do.
@@ -39,7 +41,6 @@ export type SystemDestinationId =
   | "plugins"
   | "integrations"
   | "skills"
-  | "voice-assistant"
   | "security"
   | "advanced"
   | "appearance";
@@ -106,14 +107,6 @@ export const SYSTEM_DESTINATIONS: SystemDestination[] = [
     group: "Intelligence",
     icon: Cpu,
     renders: { kind: "settings-tab", tab: "modelRoles" },
-  },
-  {
-    id: "voice-assistant",
-    label: "Voice Assistant",
-    summary: "JARVIS voice, listening and permissions",
-    group: "Intelligence",
-    icon: AudioLines,
-    renders: { kind: "settings-tab", tab: "jarvis" },
   },
   {
     id: "data-sources",

@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -30,7 +32,6 @@ const REQUIRED = [
   "security",
   "appearance",
   "advanced",
-  "voice-assistant",
 ];
 
 describe("System destinations", () => {
@@ -74,12 +75,33 @@ describe("System destinations", () => {
       ),
     );
 
-    // No exceptions. /settings renders System now, so a tab System does not
-    // route to is a tab with no way in at all.
+    /**
+     * Tabs reached from the screen they configure rather than from System,
+     * with where to find each. Not an escape hatch: the assertion below still
+     * fails if a tab has no route at all, and this list has to name a real
+     * screen for anyone reading it to check.
+     */
+    const reachedElsewhere = new Map([["jarvis", "/jarvis/settings"]]);
+
     const stranded = SETTINGS_TABS.map((tab) => tab.id).filter(
-      (id) => !routed.has(id),
+      (id) => !routed.has(id) && !reachedElsewhere.has(id),
     );
     expect(stranded, "settings tabs not reachable from System").toEqual([]);
+
+    // And the screens that claim them exist.
+    const routesDir = path.join(process.cwd(), "src", "routes");
+    const routeFiles = fs
+      .readdirSync(routesDir, { withFileTypes: true })
+      // src/routes has a subdirectory in it.
+      .filter((entry) => entry.isFile())
+      .map((entry) => fs.readFileSync(path.join(routesDir, entry.name), "utf8"))
+      .join("\n");
+    for (const [tab, route] of reachedElsewhere) {
+      expect(
+        routeFiles,
+        `${tab} claims ${route}, which no route declares`,
+      ).toContain(`"${route}"`);
+    }
   });
 
   it("claims no tab twice", () => {

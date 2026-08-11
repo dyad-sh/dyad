@@ -44,11 +44,13 @@ import { infrastructureRoute } from "./routes/infrastructure";
 import { systemRoute } from "./routes/system";
 import { devOpsRoute } from "./routes/dev-ops";
 import { jarvisRoute } from "./routes/jarvis";
+import { jarvisSettingsRoute } from "./routes/jarvis-settings";
 import { knowledgeBaseRoute } from "./routes/knowledge-base";
 import { knowledgeCoreRoute } from "./routes/knowledge-core";
 
 const routeTree = rootRoute.addChildren([
   jarvisRoute,
+  jarvisSettingsRoute,
   knowledgeBaseRoute,
   knowledgeCoreRoute,
   chatAgentHomeRoute,

@@ -62,8 +62,6 @@ describe("app sidebar state", () => {
     // still light up an entry rather than leaving the rail looking inactive.
     for (const pathname of [
       "/system",
-      "/meta-hd",
-      "/vector",
       "/data-sources",
       "/infrastructure",
       // /settings renders System too.
@@ -71,6 +69,18 @@ describe("app sidebar state", () => {
     ]) {
       expect(isSidebarItemActive({ title: "System", pathname }), pathname).toBe(
         true,
+      );
+    }
+
+    // The drive and the vector store are Storage destinations, so they light
+    // Storage. System claiming them left it lit on pages it does not own.
+    for (const pathname of ["/meta-hd", "/vector"]) {
+      expect(
+        isSidebarItemActive({ title: "Storage", pathname }),
+        pathname,
+      ).toBe(true);
+      expect(isSidebarItemActive({ title: "System", pathname }), pathname).toBe(
+        false,
       );
     }
 

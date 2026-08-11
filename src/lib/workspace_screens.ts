@@ -1,4 +1,5 @@
 import {
+  AudioLines,
   Brain,
   CircuitBoard,
   FolderOpen,
@@ -64,6 +65,7 @@ const SCREENS: WorkspaceScreen[] = [
   { path: "/build/fabrication", title: "Fabrication", icon: Factory },
   // Renamed, not removed: the old path still opens Build.
   { path: "/engineering", title: "Build", icon: DraftingCompass },
+  { path: "/jarvis/settings", title: "Voice Assistant", icon: AudioLines },
   { path: "/jarvis", title: "JARVIS", icon: Sparkles },
   { path: "/knowledge-base", title: "Knowledge Base", icon: BookOpen },
   { path: "/library", title: "Library", icon: Library },

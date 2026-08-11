@@ -132,6 +132,10 @@ export function isSidebarItemActive({
     // light this entry.
     return (
       pathname.startsWith("/storage") ||
+      // The drive and the vector store are Storage destinations, so they light
+      // Storage rather than System, which used to claim them.
+      pathname.startsWith("/meta-hd") ||
+      pathname.startsWith("/vector") ||
       pathname.startsWith("/apps") ||
       pathname.startsWith("/hub") ||
       pathname.startsWith("/local-storage")
@@ -144,8 +148,6 @@ export function isSidebarItemActive({
       pathname.startsWith("/system") ||
       // /settings renders System too, so the one entry stays lit there.
       pathname.startsWith("/settings") ||
-      pathname.startsWith("/meta-hd") ||
-      pathname.startsWith("/vector") ||
       pathname.startsWith("/data-sources") ||
       pathname.startsWith("/infrastructure")
     );

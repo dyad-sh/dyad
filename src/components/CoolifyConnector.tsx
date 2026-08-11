@@ -293,6 +293,12 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
   // --- Step 2: server, project, domain ---
   if (!status.connection || isEditingConnection) {
     const projects = discovery?.projects ?? [];
+    // Kept from the saved connection rather than assumed. The form has no
+    // control for it, so sending a fixed value would read as a move away from
+    // whichever environment the app is actually in — and a move releases the
+    // application in Coolify. The literal is only the default for an app that
+    // has no connection yet.
+    const environmentName = status.connection?.environmentName ?? "production";
     // Fetching with nothing to show yet. Not isDiscovering on its own, which
     // is isFetching and so also covers background refetches over a list the
     // user is already reading.
@@ -403,7 +409,7 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
               environmentName: status.connection.environmentName,
               domain: status.connection.domain,
             },
-            { serverUuid, projectUuid, environmentName: "production" },
+            { serverUuid, projectUuid, environmentName },
           ) && (
             <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
               Moving this app leaves the application on its current server
@@ -653,7 +659,7 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
               await saveConnection.mutateAsync({
                 serverUuid,
                 projectUuid,
-                environmentName: "production",
+                environmentName,
                 domain: trimmed || null,
               });
               warn?.();

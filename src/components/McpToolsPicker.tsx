@@ -20,7 +20,14 @@ export function McpToolsPicker() {
   const [isOpen, setIsOpen] = useState(false);
   const { servers, toolsByServer, consentsMap, setToolConsent } = useMcp();
 
-  // Removed activation toggling – consent governs execution time behavior
+  /**
+   * Only the servers switched on in settings.
+   *
+   * The list used to show every configured server and badge the off ones
+   * "Disabled", which made the setting decorative: it changed a label here
+   * rather than what this menu offers. Off now means absent.
+   */
+  const availableServers = servers.filter((server) => server.enabled);
 
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
@@ -39,25 +46,26 @@ export function McpToolsPicker() {
           <div>
             <h3 className="font-medium">Tools (MCP)</h3>
             <p className="text-sm text-muted-foreground">
-              Enable tools from your configured MCP servers.
+              Tools from the MCP servers you have switched on.
             </p>
           </div>
-          {servers.length === 0 ? (
+          {availableServers.length === 0 ? (
             <div className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">
-              No MCP servers configured. Configure them in Settings → Tools
-              (MCP).
+              {/* Configured-but-all-off is a different problem from nothing
+                  configured, and needs a different sentence. */}
+              {servers.length === 0
+                ? "No MCP servers configured. Add one in Settings → MCP."
+                : "No MCP servers are switched on. Turn one on in Settings → MCP to use its tools here."}
             </div>
           ) : (
             <div className="space-y-3">
-              {servers.map((s) => (
+              {availableServers.map((s) => (
                 <div key={s.id} className="border rounded-md p-2">
                   <div className="flex items-center justify-between">
                     <div className="font-medium text-sm truncate">{s.name}</div>
-                    {s.enabled ? (
-                      <Badge variant="secondary">Enabled</Badge>
-                    ) : (
-                      <Badge variant="outline">Disabled</Badge>
-                    )}
+                    <Badge variant="secondary">
+                      {(toolsByServer[s.id] || []).length} tools
+                    </Badge>
                   </div>
                   <div className="mt-2 space-y-1">
                     {(toolsByServer[s.id] || []).map((t) => (

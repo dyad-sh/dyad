@@ -54,7 +54,7 @@ function wrapper(client: QueryClient) {
   };
 }
 
-describe("discovery across a token change on one instance", () => {
+describe("discovery is keyed by instance and token", () => {
   /**
    * The discovery keys that actually hold a list.
    *

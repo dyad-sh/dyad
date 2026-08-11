@@ -141,9 +141,18 @@ export default function AgentsPage() {
                       className="system-card"
                       data-testid={`agents-open-${destination.id}`}
                     >
-                      <span className="system-card-icon">
-                        <destination.icon className="size-4" />
-                      </span>
+                      {destination.image ? (
+                        <img
+                          src={destination.image}
+                          alt=""
+                          className="size-8 shrink-0 rounded-lg object-cover"
+                          draggable={false}
+                        />
+                      ) : (
+                        <span className="system-card-icon">
+                          <destination.icon className="size-4" />
+                        </span>
+                      )}
                       <span className="min-w-0 flex-1 text-left">
                         <span className="system-card-title">
                           {destination.label}

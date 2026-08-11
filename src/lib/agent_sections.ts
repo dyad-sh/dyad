@@ -1,5 +1,7 @@
 import { Boxes, Settings2, type LucideIcon } from "lucide-react";
 
+import settingsIcon from "@/assets/agents/settings.png";
+
 /**
  * The Agents section, as data.
  *
@@ -37,6 +39,8 @@ export type AgentDestination = {
   summary: string;
   group: Extract<AgentGroup, "Configuration">;
   icon: LucideIcon;
+  /** Artwork, where the destination has its own. The icon is the fallback. */
+  image?: string;
   /** The route it already had, unchanged. */
   route: string;
 };
@@ -48,6 +52,7 @@ export const AGENT_DESTINATIONS: AgentDestination[] = [
     summary: "Register agents and manage their connections",
     group: "Configuration",
     icon: Settings2,
+    image: settingsIcon,
     route: "/agent-os",
   },
 ];

@@ -34,6 +34,7 @@ vi.mock("@/ipc/types", () => ({
         lastDeployedAt: null,
       })),
       getDeploySnapshot: vi.fn(async () => ({ type: "idle" })),
+      saveToken: vi.fn(async () => undefined),
       discover: vi.fn(async () => {
         backend.discoverCalls++;
         if (backend.discoverFails) throw new Error("401 from the new token");
@@ -100,32 +101,31 @@ describe("discovery across a token change on one instance", () => {
       ["coolify", "discovery", "https://coolify.test", "fp-team-a-token"],
     ]);
 
-    // Same instance, a different team's token.
+    // Same instance, a different team's token, through the real mutation so
+    // whatever it does on success is what is under test.
     backend.token = "team-b-token";
     backend.servers = [{ uuid: "srv-b", name: "team-b-server" }];
     await act(async () => {
-      await client.invalidateQueries();
+      await result.current.saveToken.mutateAsync({
+        instanceUrl: "https://coolify.test",
+        token: "team-b-token",
+        acknowledgedInsecure: false,
+      });
     });
 
     await waitFor(() =>
       expect(result.current.discovery?.servers[0]?.name).toBe("team-b-server"),
     );
-    // Two entries, neither able to answer for the other. A key without the
-    // token collapses these into one, which is what let the old team's servers
-    // be offered to the new one.
-    const keys = discoveryKeys(client);
-    expect(keys).toHaveLength(2);
-    expect(keys.map((k) => k[3]).sort()).toEqual([
-      "fp-team-a-token",
-      "fp-team-b-token",
-    ]);
-    // What each entry holds, not just how it is labelled. The old token's
-    // entry ends up with the new token's list: the key reads the token from
-    // status, which lags the token write, so the refetch invalidation triggers
-    // still runs under the old key. Pinned so a change to it is visible here.
+
+    // One entry, for the token in use. The outgoing token keeps none: the key
+    // is read from status, which lags the write, so an entry left behind gets
+    // refilled with the incoming token's list and served to whoever switches
+    // back.
     expect(discoveryContents(client)).toEqual([
-      ["fp-team-a-token", "team-b-server"],
       ["fp-team-b-token", "team-b-server"],
     ]);
+    expect(discoveryKeys(client).map((k) => k[3])).not.toContain(
+      "fp-team-a-token",
+    );
   });
 });

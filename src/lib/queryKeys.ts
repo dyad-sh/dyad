@@ -330,10 +330,10 @@ export const queryKeys = {
      * Keyed by instance and token: servers and projects belong to both, and
      * two tokens on one instance can see different teams.
      *
-     * Known gap: the token here comes from the status query, which lags the
-     * token write. A refetch right after a token change therefore runs under
-     * the old token's key and fills it with the new token's list, which is
-     * then served if you switch back to that token within gcTime.
+     * The token here comes from the status query, which lags the write, so a
+     * refetch right after a change can still fill the outgoing token's entry
+     * with the incoming token's list. Changing a token drops these entries
+     * rather than marking them stale, so there is none left to serve.
      */
     discovery: (instanceUrl: string | null, tokenId: string | null) =>
       [

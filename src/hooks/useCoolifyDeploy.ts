@@ -84,6 +84,20 @@ export function useCoolifyDeploy(appId: number | null) {
     };
   }, [appId, refreshStatus]);
 
+  /**
+   * Drops every cached server and project list, rather than marking it stale.
+   *
+   * The key carries a token fingerprint read from the status query, and that
+   * lags the write — so a refetch triggered by the change still runs under the
+   * outgoing token's key while asking with the incoming one, leaving that
+   * entry holding the wrong team's list for anyone who switches back. Removing
+   * leaves nothing to serve; the lists are refetched, which the pickers
+   * already show as loading.
+   */
+  const forgetDiscovery = useCallback(() => {
+    queryClient.removeQueries({ queryKey: queryKeys.coolify.discoveryAll });
+  }, [queryClient]);
+
   const saveToken = useMutation({
     mutationFn: (input: {
       instanceUrl: string;
@@ -91,7 +105,7 @@ export function useCoolifyDeploy(appId: number | null) {
       acknowledgedInsecure: boolean;
     }) => ipc.coolify.saveToken(input),
     onSuccess: async () => {
-      // Covers discovery too: coolify.all is a prefix of every key here.
+      forgetDiscovery();
       await refreshAllStatuses();
     },
   });
@@ -100,6 +114,7 @@ export function useCoolifyDeploy(appId: number | null) {
     mutationFn: () => ipc.coolify.clearToken(),
     onSuccess: async () => {
       setSnapshot(IDLE);
+      forgetDiscovery();
       await refreshAllStatuses();
     },
   });

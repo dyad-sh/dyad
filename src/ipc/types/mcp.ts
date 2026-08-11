@@ -93,6 +93,14 @@ export const McpConnectionStatusSchema = z.object({
   ok: z.boolean(),
   toolCount: z.number().optional(),
   error: z.string().optional(),
+  /**
+   * Why it failed, when we can tell.
+   *
+   * "unauthorized" is worth separating from the rest: it is the one failure
+   * the user can act on, and without it a server that needs signing in looks
+   * exactly like a server with no tools.
+   */
+  reason: z.enum(["unauthorized", "unreachable", "unknown"]).optional(),
 });
 
 export type McpConnectionStatus = z.infer<typeof McpConnectionStatusSchema>;

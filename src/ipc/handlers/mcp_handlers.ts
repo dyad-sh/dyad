@@ -258,6 +258,48 @@ async function connectLovable() {
   }
 }
 
+/**
+ * What kind of failure this is.
+ *
+ * The transport reports an HTTP 401 as an Error whose message is "Unauthorized",
+ * so this reads the message rather than a status code it never receives.
+ */
+export function classifyMcpFailure(error: unknown): {
+  reason: "unauthorized" | "unreachable" | "unknown";
+  message: string;
+} {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/unauthori[sz]ed|\b401\b|\b403\b|forbidden/i.test(message)) {
+    return { reason: "unauthorized", message };
+  }
+  if (
+    /fetch failed|ENOTFOUND|ECONNREFUSED|ETIMEDOUT|timed? ?out|network/i.test(
+      message,
+    )
+  ) {
+    return { reason: "unreachable", message };
+  }
+  return { reason: "unknown", message };
+}
+
+/**
+ * One line per failure, and never a stack for a server that simply needs
+ * signing in. These run on a poll, so an error-level stack each time buries
+ * everything else in the log.
+ */
+function logMcpFailure(what: string, serverId: number, error: unknown) {
+  const { reason, message } = classifyMcpFailure(error);
+  if (reason === "unauthorized") {
+    logger.warn(`${what}: server ${serverId} needs authentication`);
+    return;
+  }
+  if (reason === "unreachable") {
+    logger.warn(`${what}: server ${serverId} unreachable (${message})`);
+    return;
+  }
+  logger.error(`${what}: server ${serverId}`, error);
+}
+
 export function registerMcpHandlers() {
   // CRUD for MCP servers
   createTypedHandler(mcpContracts.listServers, async () => {
@@ -373,7 +415,7 @@ export function registerMcpHandlers() {
       );
       return tools;
     } catch (e) {
-      logger.error("Failed to list tools", e);
+      logMcpFailure("Could not list tools", serverId, e);
       return [];
     }
   });
@@ -394,7 +436,7 @@ export function registerMcpHandlers() {
       } as any);
       return workflowsFromUnknown(result);
     } catch (e) {
-      logger.error("Failed to list workflows", e);
+      logMcpFailure("Could not list workflows", serverId, e);
       return [];
     }
   });
@@ -409,12 +451,16 @@ export function registerMcpHandlers() {
         toolCount: Object.keys(remoteTools).length,
       };
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      logger.error("Failed MCP connection check", error);
+      const { reason, message } = classifyMcpFailure(error);
+      logMcpFailure("Connection check failed", serverId, error);
       return {
         serverId,
         ok: false,
-        error: message,
+        reason,
+        error:
+          reason === "unauthorized"
+            ? "Authentication required. Sign in or add a token for this server."
+            : message,
       };
     }
   });

@@ -23,6 +23,7 @@ import { useSettings } from "@/hooks/useSettings";
 import { showError, showInfo, showSuccess } from "@/lib/toast";
 import {
   AlertCircle,
+  KeyRound,
   ChevronDown,
   CheckCircle2,
   Edit2,
@@ -164,6 +165,21 @@ function McpConnectionIndicator({
     );
   }
 
+  // Needing a sign-in is not the same as being broken, and it is the one of
+  // these the user can act on. Amber, and named for what to do about it.
+  if (status && !status.ok && status.reason === "unauthorized") {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-500"
+        title={status.error}
+        data-testid="mcp-status-unauthorized"
+      >
+        <KeyRound className="size-3" />
+        Sign-in required
+      </span>
+    );
+  }
+
   if (status && !status.ok) {
     return (
       <span
@@ -171,7 +187,7 @@ function McpConnectionIndicator({
         title={status.error}
       >
         <AlertCircle className="size-3" />
-        Error
+        {status.reason === "unreachable" ? "Unreachable" : "Error"}
       </span>
     );
   }

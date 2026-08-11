@@ -537,10 +537,10 @@ export function ToolsMcpSettings() {
   const [headersText, setHeadersText] = useState("");
   const [importConfig, setImportConfig] = useState("");
   const [mcpTab, setMcpTab] = useState<"servers" | "add">("servers");
-  // What the wrench in the chat bar will actually offer.
-  const enabledCount = servers.filter((server) => server.enabled).length;
   const [enabled, setEnabled] = useState(true);
   const { lastDeepLink, clearLastDeepLink } = useDeepLink();
+  // What the wrench in the chat bar will actually offer.
+  const enabledCount = servers.filter((server) => server.enabled).length;
   const chatAgentMcpServerIds = settings?.chatAgentMcpServerIds ?? [];
   const chatAgentMcpToolKeys = settings?.chatAgentMcpToolKeys ?? [];
   const chatAgentMcpWorkflowKeys = settings?.chatAgentMcpWorkflowKeys ?? [];

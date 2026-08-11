@@ -1,5 +1,8 @@
 import {
+  CircuitBoard,
+  Cog,
   Cpu,
+  Factory,
   Activity,
   DraftingCompass,
   Blocks,
@@ -52,7 +55,12 @@ const SCREENS: WorkspaceScreen[] = [
   { path: "/coder", title: "Coding Agents", icon: Terminal },
   { path: "/knowledge-core", title: "Knowledge Core", icon: Sparkles },
   { path: "/assembler3d", title: "Assembler", icon: Box },
-  { path: "/engineering", title: "Engineering", icon: DraftingCompass },
+  { path: "/build", title: "Build", icon: DraftingCompass },
+  { path: "/build/electronics", title: "Electronics", icon: CircuitBoard },
+  { path: "/build/mechanical", title: "Mechanical", icon: Cog },
+  { path: "/build/fabrication", title: "Fabrication", icon: Factory },
+  // Renamed, not removed: the old path still opens Build.
+  { path: "/engineering", title: "Build", icon: DraftingCompass },
   { path: "/jarvis", title: "JARVIS", icon: Sparkles },
   { path: "/knowledge-base", title: "Knowledge Base", icon: BookOpen },
   { path: "/library", title: "Library", icon: Library },

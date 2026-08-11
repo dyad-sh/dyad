@@ -5,7 +5,7 @@ export type AgentSidebarItemTitle = "Chat Agent" | "Coding Agent" | "Planner";
 export type AppSidebarItemTitle =
   | AgentSidebarItemTitle
   | "Knowledge Core"
-  | "Engineering"
+  | "Build"
   | "Knowledge Base"
   | "Agents"
   | "Dev Ops"
@@ -95,6 +95,11 @@ export function isSidebarItemActive({
   if (title in AGENT_ROUTES) {
     const route = AGENT_ROUTES[title as AgentSidebarItemTitle];
     return pathname === route || pathname.startsWith(`${route}/`);
+  }
+  if (title === "Build") {
+    // Engineering was renamed, and its path still resolves, so both light up
+    // the same entry.
+    return pathname.startsWith("/build") || pathname.startsWith("/engineering");
   }
   if (title === "Knowledge Core") {
     return pathname.startsWith("/knowledge-core");

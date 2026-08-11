@@ -58,10 +58,10 @@ const agentNavItems = [
 const mainNavItems = [
   { title: "Knowledge Core", to: "/knowledge-core", icon: Network },
   ...agentNavItems,
-  // Agents and Engineering sit directly under the coding agent, which is where
+  // Agents and Build sit directly under the coding agent, which is where
   // the build tools belong together.
   { title: "Agents", to: "/agents", icon: Bot },
-  { title: "Engineering", to: "/engineering", icon: DraftingCompass },
+  { title: "Build", to: "/build", icon: DraftingCompass },
   { title: "Dev Ops", to: "/dev-ops", icon: GitFork },
   { title: "Library", to: "/library", icon: BookOpen },
   { title: "Knowledge Base", to: "/knowledge-base", icon: Library },

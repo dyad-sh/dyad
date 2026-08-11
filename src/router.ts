@@ -28,6 +28,7 @@ import { promptsRoute } from "./routes/prompts";
 import { mediaRoute } from "./routes/media";
 import { agentOsRoute } from "./routes/agent-os";
 import { agentsSectionRoute } from "./routes/agents-section";
+import { buildCategoryRoutes, buildIndexRoute } from "./routes/build";
 import { metaHdRoute } from "./routes/meta-hd";
 import { vectorRoute } from "./routes/vector";
 import { storageRoute } from "./routes/storage";
@@ -55,6 +56,8 @@ const routeTree = rootRoute.addChildren([
   legacySocialMediaAgentRoute,
   agentOsRoute,
   agentsSectionRoute,
+  buildIndexRoute,
+  ...buildCategoryRoutes,
   storageRoute,
   dataSourcesRoute,
   infrastructureRoute,

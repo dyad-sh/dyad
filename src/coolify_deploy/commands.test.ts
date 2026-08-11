@@ -1531,11 +1531,11 @@ describe("writing only to the server the deploy started against", () => {
     happyPathRoutes();
     const clock = createFakeClock();
 
-    // Repointed while the application is being created, so the record that
-    // follows is fenced against a server the row no longer names. Hooked to
-    // the request rather than raced against the pipeline, or whether this
-    // lands first is a matter of how many microtasks the pipeline happens to
-    // take.
+    // Repointed while the application is being created, so the write that
+    // follows names a connection that is gone. Hooked to the request rather
+    // than raced against the pipeline, or whether this lands first is a matter
+    // of how many microtasks the pipeline happens to take.
+    //
     // Replaced rather than updated in place, which is what saving a connection
     // does: the row is deleted and written back, so it is a different row.
     sideEffects.set("POST /applications/private-deploy-key", async () => {
@@ -1608,11 +1608,10 @@ describe("writing only to the server the deploy started against", () => {
   });
 
   it("does not record the result when only the project changed", async () => {
-    // The same server is the case a server-only fence let through: disconnect
-    // mid-deploy, reconnect to another project on that same server, and the
-    // row matches again. What lands is an application belonging to the old
-    // project, hung on a connection naming the new one — and it resolves
-    // cleanly on the next deploy, so nothing ever surfaces the mismatch.
+    // Same server, different project: still somewhere else. Without this, what
+    // lands is an application belonging to the old project, hung on a
+    // connection naming the new one — and it resolves cleanly on the next
+    // deploy, so nothing ever surfaces the mismatch.
     const app = await seedApp({ connection: { applicationUuid: null } });
     happyPathRoutes();
     const clock = createFakeClock();

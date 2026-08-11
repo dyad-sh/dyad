@@ -118,7 +118,7 @@ function sleep(clock: Clock, ms: number): Promise<void> {
 }
 
 /**
- * Applies a change to the app's Coolify record, still fenced to one host.
+ * Applies a change to the app's Coolify record, fenced to one connection.
  *
  * Read-modify-write rather than a partial update, so the record cannot end up
  * describing an application on one server and an address on another. What

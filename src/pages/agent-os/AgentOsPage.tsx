@@ -644,7 +644,7 @@ export default function AgentOsPage() {
                   </div>
                 </section>
               ) : (
-                <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
                   {dashboardAgents.map((agent) => {
                     const isWebDev = agent.id === LOVABLE_WEB_DEV_AGENT_ID;
                     return (
@@ -661,10 +661,13 @@ export default function AgentOsPage() {
                         }}
                         className="group overflow-hidden rounded-2xl border border-cyan-400/15 bg-[rgba(6,18,34,0.78)] shadow-[0_0_28px_rgba(0,229,255,0.05)] transition hover:border-cyan-400/30 hover:shadow-[0_0_32px_rgba(0,229,255,0.1)]"
                       >
-                        <div className="h-20 border-b border-cyan-500/8 bg-cyan-950/20" />
-                        <div className="-mt-10 px-5 pb-5">
+                        <div className="h-14 border-b border-cyan-500/8 bg-cyan-950/20" />
+                        <div className="-mt-7 px-4 pb-4">
                           <div className="flex items-end justify-between gap-3">
-                            <AgentAvatar agent={agent} className="size-20" />
+                            <AgentAvatar
+                              agent={agent}
+                              className="size-14 text-base"
+                            />
                             <div className="mb-1 flex items-center gap-2">
                               <span
                                 className={cn(
@@ -712,14 +715,14 @@ export default function AgentOsPage() {
                             </div>
                           </div>
 
-                          <h2 className="mt-4 truncate font-jarvis-display text-lg font-semibold text-white">
+                          <h2 className="mt-3 truncate font-jarvis-display text-base font-semibold text-white">
                             {agent.name}
                           </h2>
-                          <p className="mt-1 line-clamp-2 min-h-10 text-sm leading-5 text-cyan-100/40">
+                          <p className="mt-1 line-clamp-2 min-h-8 text-xs leading-4 text-cyan-100/40">
                             {agent.description || "Personal Hermes assistant"}
                           </p>
 
-                          <div className="mt-4 space-y-2 rounded-xl border border-cyan-500/10 bg-cyan-950/20 p-3">
+                          <div className="mt-3 space-y-1.5 rounded-xl border border-cyan-500/10 bg-cyan-950/20 p-2.5">
                             <div className="flex min-w-0 items-center gap-2 text-xs">
                               <Server className="size-3.5 shrink-0 text-cyan-300/70" />
                               <span className="truncate font-mono text-cyan-100/50">
@@ -746,7 +749,7 @@ export default function AgentOsPage() {
 
                           <VoiceBrainToggle agent={agent} />
 
-                          <div className="mt-4 flex items-center gap-2 border-t border-cyan-500/10 pt-4">
+                          <div className="mt-3 flex items-center gap-2 border-t border-cyan-500/10 pt-3">
                             {isWebDev ? (
                               <>
                                 <Button

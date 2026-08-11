@@ -112,8 +112,13 @@ export function useChatAutoScroll({
     shouldFollowRef.current = true;
     setIsFollowing(true);
     setPendingCount(0);
+    // The guard belongs to the intent, not to the scroll. scrollToBottom sets
+    // it too, but only after it has found the element and returned early if
+    // there is none — which would leave the follow just resumed here exposed
+    // to the glide's own scroll events and cancelled by them.
+    beginProgrammaticScroll(800);
     scrollToBottom("smooth");
-  }, [scrollToBottom]);
+  }, [beginProgrammaticScroll, scrollToBottom]);
 
   useEffect(
     () => () => {

@@ -353,7 +353,7 @@ router.push('/auth/sign-in');
 **REMINDER: Always use the execute SQL tool for schema changes. NEVER write SQL migration files manually.**
 
 - Use \`<dyad-execute-sql>\` for schema changes.
-- Keep the app's queries, types, and schema files synchronized with the SQL you execute through Dyad.
+- Keep the app's queries, types, and schema files synchronized with the SQL you execute through Meta Human OS.
 - Prefer tagged \`sql\`...\`\` queries or Drizzle over string-built SQL.
 
 ## Authorization and RLS
@@ -506,7 +506,7 @@ When the task involves authentication, login, sign-up, user sessions, or auth UI
 **REMINDER: Always use the execute SQL tool for schema changes. NEVER write SQL migration files manually.**
 
 - Use \`<dyad-execute-sql>\` for schema changes.
-- Keep the app's queries, types, and schema files synchronized with the SQL you execute through Dyad.
+- Keep the app's queries, types, and schema files synchronized with the SQL you execute through Meta Human OS.
 - Prefer tagged \`sql\`...\`\` queries or Drizzle over string-built SQL.
 
 ## Authorization and RLS
@@ -972,7 +972,7 @@ router.push('/auth/sign-in');
 **REMINDER: Always use the execute SQL tool for schema changes. NEVER write SQL migration files manually.**
 
 - Use \`<dyad-execute-sql>\` for schema changes.
-- Keep the app's queries, types, and schema files synchronized with the SQL you execute through Dyad.
+- Keep the app's queries, types, and schema files synchronized with the SQL you execute through Meta Human OS.
 - Prefer tagged \`sql\`...\`\` queries or Drizzle over string-built SQL.
 
 ## Authorization and RLS
@@ -1622,7 +1622,7 @@ router.push('/auth/sign-in');
 **REMINDER: Always use the execute SQL tool for schema changes. NEVER write SQL migration files manually.**
 
 - Use \`<dyad-execute-sql>\` for schema changes.
-- Keep the app's queries, types, and schema files synchronized with the SQL you execute through Dyad.
+- Keep the app's queries, types, and schema files synchronized with the SQL you execute through Meta Human OS.
 - Prefer tagged \`sql\`...\`\` queries or Drizzle over string-built SQL.
 
 ## Authorization and RLS
@@ -2235,7 +2235,7 @@ If the project also has the generic \`/auth/:path\` catch-all rendering \`AuthVi
 **REMINDER: Always use the execute SQL tool for schema changes. NEVER write SQL migration files manually.**
 
 - Use \`<dyad-execute-sql>\` for schema changes.
-- Keep the app's queries, types, and schema files synchronized with the SQL you execute through Dyad.
+- Keep the app's queries, types, and schema files synchronized with the SQL you execute through Meta Human OS.
 - Prefer tagged \`sql\`...\`\` queries or Drizzle over string-built SQL.
 
 ## Authorization and RLS
@@ -2811,7 +2811,7 @@ If the project also has the generic \`/auth/:path\` catch-all rendering \`AuthVi
 **REMINDER: Always use the execute SQL tool for schema changes. NEVER write SQL migration files manually.**
 
 - Use \`<dyad-execute-sql>\` for schema changes.
-- Keep the app's queries, types, and schema files synchronized with the SQL you execute through Dyad.
+- Keep the app's queries, types, and schema files synchronized with the SQL you execute through Meta Human OS.
 - Prefer tagged \`sql\`...\`\` queries or Drizzle over string-built SQL.
 
 ## Authorization and RLS
@@ -3167,7 +3167,7 @@ If the project also has the generic \`/auth/:path\` catch-all rendering \`AuthVi
 **REMINDER: Always use the execute SQL tool for schema changes. NEVER write SQL migration files manually.**
 
 - Use \`<dyad-execute-sql>\` for schema changes.
-- Keep the app's queries, types, and schema files synchronized with the SQL you execute through Dyad.
+- Keep the app's queries, types, and schema files synchronized with the SQL you execute through Meta Human OS.
 - Prefer tagged \`sql\`...\`\` queries or Drizzle over string-built SQL.
 
 ## Authorization and RLS
@@ -3332,7 +3332,7 @@ When the task involves authentication, login, sign-up, user sessions, or auth UI
 **REMINDER: Always use the execute SQL tool for schema changes. NEVER write SQL migration files manually.**
 
 - Use \`<dyad-execute-sql>\` for schema changes.
-- Keep the app's queries, types, and schema files synchronized with the SQL you execute through Dyad.
+- Keep the app's queries, types, and schema files synchronized with the SQL you execute through Meta Human OS.
 - Prefer tagged \`sql\`...\`\` queries or Drizzle over string-built SQL.
 
 ## Authorization and RLS
@@ -3828,7 +3828,7 @@ If the project also has the generic \`/auth/:path\` catch-all rendering \`AuthVi
 **REMINDER: Always use the execute SQL tool for schema changes. NEVER write SQL migration files manually.**
 
 - Use \`<dyad-execute-sql>\` for schema changes.
-- Keep the app's queries, types, and schema files synchronized with the SQL you execute through Dyad.
+- Keep the app's queries, types, and schema files synchronized with the SQL you execute through Meta Human OS.
 - Prefer tagged \`sql\`...\`\` queries or Drizzle over string-built SQL.
 
 ## Authorization and RLS

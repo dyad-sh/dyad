@@ -39,10 +39,10 @@ import { hasEnabledDevOpsPlugins } from "@/lib/dev_ops_plugins";
 
 const mainNavItems = [
   { title: "Chat Agent", to: "/chat-agent", icon: MessageSquare },
-  // Memory sits under the chat agent: what it knows, next to the thing that
-  // uses it. The Knowledge Core and Knowledge Base live inside.
-  { title: "Memory", to: "/memory", icon: Brain },
   { title: "Planner", to: "/planner", icon: CalendarDays },
+  // Memory sits under the agents that use it. The Knowledge Core and
+  // Knowledge Base live inside.
+  { title: "Memory", to: "/memory", icon: Brain },
   // Agents and Build sit directly under the coding agent, which is where
   // the build tools belong together.
   { title: "Agents", to: "/agents", icon: Bot },

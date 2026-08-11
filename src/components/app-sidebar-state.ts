@@ -10,6 +10,7 @@ export type AppSidebarItemTitle =
   | "Agents"
   | "Dev Ops"
   | "System"
+  | "Storage"
   | "Settings"
   | "Library"
   | "Hub"
@@ -129,6 +130,9 @@ export function isSidebarItemActive({
       pathname.startsWith("/vercel")
     );
   }
+  if (title === "Storage") {
+    return pathname.startsWith("/storage");
+  }
   if (title === "System") {
     // Every technical destination lives under System now, including the ones
     // that kept their original routes so existing links keep working.
@@ -136,7 +140,6 @@ export function isSidebarItemActive({
       pathname.startsWith("/system") ||
       // /settings renders System too, so the one entry stays lit there.
       pathname.startsWith("/settings") ||
-      pathname.startsWith("/storage") ||
       pathname.startsWith("/meta-hd") ||
       pathname.startsWith("/vector") ||
       pathname.startsWith("/data-sources") ||

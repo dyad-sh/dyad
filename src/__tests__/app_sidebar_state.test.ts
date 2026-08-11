@@ -61,7 +61,6 @@ describe("app sidebar state", () => {
     // still light up an entry rather than leaving the rail looking inactive.
     for (const pathname of [
       "/system",
-      "/storage",
       "/meta-hd",
       "/vector",
       "/data-sources",
@@ -73,6 +72,14 @@ describe("app sidebar state", () => {
         true,
       );
     }
+
+    // Storage has its own rail entry, so it lights that one and not System.
+    expect(
+      isSidebarItemActive({ title: "Storage", pathname: "/storage" }),
+    ).toBe(true);
+    expect(isSidebarItemActive({ title: "System", pathname: "/storage" })).toBe(
+      false,
+    );
   });
 
   it("shows the selected app chat list only inside Apps with an app selected", () => {

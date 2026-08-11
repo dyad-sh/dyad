@@ -1,5 +1,6 @@
 import {
   Cpu,
+  HardDrive,
   DraftingCompass,
   type LucideIcon,
   MessageSquare,
@@ -64,6 +65,8 @@ const mainNavItems = [
   { title: "Library", to: "/library", icon: BookOpen },
   { title: "Knowledge Base", to: "/knowledge-base", icon: Library },
   { title: "My Apps", to: "/apps", icon: LayoutGrid },
+  // Storage keeps its own rail entry as well as its place under System.
+  { title: "Storage", to: "/storage", icon: HardDrive },
   { title: "Hub", to: "/hub", icon: Store },
 ] satisfies Array<{
   title: AppSidebarItemTitle;

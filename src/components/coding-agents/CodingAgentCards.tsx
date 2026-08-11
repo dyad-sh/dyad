@@ -131,7 +131,7 @@ export function CodingAgentRows() {
             <img
               src={agent.image}
               alt=""
-              className="size-8 shrink-0 rounded-lg object-cover"
+              className="size-10 shrink-0 rounded-lg object-cover"
               draggable={false}
             />
             <span className="min-w-0 flex-1 text-left">

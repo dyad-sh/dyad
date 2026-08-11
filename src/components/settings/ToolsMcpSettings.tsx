@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -22,6 +21,7 @@ import {
   CheckCircle2,
   Edit2,
   Loader2,
+  Plug,
   Plus,
   RefreshCw,
   Save,
@@ -35,6 +35,11 @@ import { SETTING_IDS } from "@/lib/settingsSearchIndex";
 import type { McpConnectionStatus } from "@/ipc/types";
 
 type KeyValue = { key: string; value: string };
+
+const cardClass =
+  "rounded-xl border border-cyan-500/15 bg-[rgba(8,18,36,0.72)] p-6 shadow-[0_0_24px_rgba(0,229,255,0.06)] backdrop-blur-md";
+const headingClass =
+  "font-jarvis-ui text-sm font-medium uppercase tracking-widest text-cyan-300/70";
 
 function parseJsonToArray(
   json?: Record<string, string> | string | null,
@@ -536,7 +541,6 @@ export function ToolsMcpSettings() {
   const [url, setUrl] = useState("");
   const [headersText, setHeadersText] = useState("");
   const [importConfig, setImportConfig] = useState("");
-  const [mcpTab, setMcpTab] = useState<"servers" | "add">("servers");
   const [enabled, setEnabled] = useState(true);
   const { lastDeepLink, clearLastDeepLink } = useDeepLink();
   // What the wrench in the chat bar will actually offer.
@@ -623,9 +627,11 @@ export function ToolsMcpSettings() {
     setUrl("");
     setHeadersText("");
     setEnabled(true);
-    // Adding is finished, so it returns to the list where the new service now
-    // appears. Leaving a cleared form open reads as a failure.
-    setMcpTab("servers");
+    // Adding is finished, so the page returns to the list where the new
+    // service now appears. A cleared form left in view reads as a failure.
+    document
+      .getElementById(SETTING_IDS.chatAgentMcpServers)
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   const onImportConfig = async () => {
@@ -695,7 +701,9 @@ export function ToolsMcpSettings() {
       showSuccess(
         `Imported ${entries.length} MCP server${entries.length === 1 ? "" : "s"}`,
       );
-      setMcpTab("servers");
+      document
+        .getElementById(SETTING_IDS.chatAgentMcpServers)
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
     } catch (error) {
       showError(error instanceof Error ? error.message : "Invalid MCP JSON");
     }
@@ -821,29 +829,17 @@ export function ToolsMcpSettings() {
   };
 
   return (
-    <Tabs
-      value={mcpTab}
-      onValueChange={(value) => setMcpTab(value as "servers" | "add")}
-      className="space-y-6"
-    >
-      {/* Two things, two tabs: what is connected, and adding one. They were a
-          list with a dialog bolted to it, which made adding feel like a
-          detour from reading. */}
-      <TabsList>
-        <TabsTrigger value="servers" data-testid="mcp-tab-servers">
-          Servers
-          {servers.length > 0 ? ` (${servers.length})` : ""}
-        </TabsTrigger>
-        <TabsTrigger value="add" data-testid="mcp-tab-add">
-          Add a server
-        </TabsTrigger>
-      </TabsList>
-
-      <TabsContent value="servers" className="space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="space-y-6">
+      {/* Two cards on one page, like the rest of settings: what is connected,
+          then adding one. Tabs made adding feel like somewhere else to go. */}
+      <div className={cardClass}>
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <div className="text-sm font-medium">Connected services</div>
-            <div className="text-sm text-muted-foreground">
+            <div className="flex items-center gap-2">
+              <Plug className="size-4 text-cyan-300/70" />
+              <h2 className={headingClass}>Connected services</h2>
+            </div>
+            <div className="mt-1 text-sm text-cyan-100/45">
               {servers.length === 0
                 ? "No services connected yet."
                 : `${enabledCount} of ${servers.length} available in the chat toolbar.`}
@@ -851,7 +847,11 @@ export function ToolsMcpSettings() {
           </div>
           <Button
             variant="outline"
-            onClick={() => setMcpTab("add")}
+            onClick={() =>
+              document
+                .getElementById("mcp-add-server")
+                ?.scrollIntoView({ behavior: "smooth", block: "start" })
+            }
             data-testid="mcp-add-open"
           >
             <Plus size={14} />
@@ -1256,17 +1256,18 @@ export function ToolsMcpSettings() {
             </div>
           )}
         </div>
-      </TabsContent>
+      </div>
 
-      <TabsContent value="add" className="space-y-4">
-        <div>
-          <div className="text-sm font-medium">Add an MCP service</div>
-          <div className="text-sm text-muted-foreground">
-            Most services publish a config snippet. Paste it and everything is
-            filled in for you; the manual fields are there for the ones that do
-            not.
-          </div>
+      <div className={cardClass} id="mcp-add-server">
+        <div className="mb-5 flex items-center gap-2">
+          <Plus className="size-4 text-cyan-300/70" />
+          <h2 className={headingClass}>Add a server</h2>
         </div>
+        <p className="mb-5 text-sm text-cyan-100/45">
+          Most services publish a config snippet. Paste it and everything is
+          filled in for you; the manual fields are there for the ones that do
+          not.
+        </p>
         <div className="space-y-3">
           <div>
             <Label htmlFor="mcp-import-json">Paste a config snippet</Label>
@@ -1387,7 +1388,7 @@ export function ToolsMcpSettings() {
             </Button>
           </div>
         </div>
-      </TabsContent>
-    </Tabs>
+      </div>
+    </div>
   );
 }

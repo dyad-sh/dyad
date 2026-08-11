@@ -5,20 +5,15 @@ const logger = log.scope("coolify_client");
 
 import { COOLIFY_REQUIRED_SCOPES } from "@/shared/coolify_scopes";
 import {
+  COOLIFY_REQUEST_ERROR_NAME,
+  COOLIFY_TRANSPORT_ERROR_NAME,
+} from "@/shared/coolify_error_names";
+import {
   CoolifyProjectSchema,
   CoolifyServerSchema,
   type CoolifyProjectInfo,
   type CoolifyServerInfo,
 } from "@/ipc/types/coolify";
-
-/**
- * Marks a failure to reach the instance at all, which telemetry filters by
- * name: the message names a machine the user runs, not a first-party API.
- */
-export const COOLIFY_TRANSPORT_ERROR_NAME = "CoolifyTransportError";
-
-/** Marks a non-2xx from the instance, filtered by name for the same reason. */
-export const COOLIFY_REQUEST_ERROR_NAME = "CoolifyRequestError";
 
 export interface CoolifyClientOptions {
   instanceUrl: string;

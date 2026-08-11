@@ -9,7 +9,7 @@ import { TelemetryEventPayload } from "@/ipc/types";
 import {
   COOLIFY_REQUEST_ERROR_NAME,
   COOLIFY_TRANSPORT_ERROR_NAME,
-} from "@/ipc/utils/coolify_client";
+} from "@/shared/coolify_error_names";
 
 const logger = log.scope("telemetry");
 const FILTERED_EXCEPTION_MESSAGES = new Set([

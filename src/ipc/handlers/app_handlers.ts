@@ -609,11 +609,13 @@ async function deleteAppByIdExclusive(
     githubDeletionStarted = true;
     coolifyDeployRegistry.beginAppDeletion(appId);
     coolifyDeletionStarted = true;
-    await coolifyDeployRegistry.dispose(appId);
     imageGenerationDeletion =
       imageGenerationActorService.beginAppDeletion(appId);
     releaseChatCreation = beginAppChatDeletion(appId);
 
+    // Below the fences, not among them: draining a running deploy waits, and
+    // every fence above has to be held before anything is allowed to wait.
+    await coolifyDeployRegistry.dispose(appId);
     await versionPreviewActorService.prepareAppDeletion(appId);
     await imageGenerationActorService.prepareAppDeletion(
       imageGenerationDeletion,

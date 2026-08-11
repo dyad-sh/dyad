@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
+import fs from "node:fs";
+import path from "node:path";
+
 import { SETTINGS_TABS } from "@/lib/settingsTabs";
 import { SECTION_IDS } from "@/lib/settingsSearchIndex";
-import { DESKTOP_APPS } from "@/lib/desktop/desktop_apps";
 import { isChatOwnedPath, screenForPath } from "@/lib/workspace_screens";
 
 /**
@@ -77,23 +79,36 @@ describe("settings sections", () => {
   });
 });
 
-describe("desktop apps", () => {
-  it("every app still resolves a component", () => {
-    for (const app of DESKTOP_APPS) {
-      expect(typeof app.component, `app "${app.title}" has no component`).toBe(
-        "function",
-      );
-    }
-  });
-
-  it("every app declares at least one route path", () => {
-    for (const app of DESKTOP_APPS) {
-      expect(
-        app.routePaths.length,
-        `app "${app.title}" is unreachable by route`,
-      ).toBeGreaterThan(0);
-    }
-  });
+describe("routes", () => {
+  /**
+   * Every route path the router declares, read from the route files.
+   *
+   * This list used to come from the desktop app registry, which is gone. The
+   * router is the better source anyway: it is the thing that decides what a
+   * path opens, so a route added without a screen is caught here rather than
+   * discovered as a blank tab.
+   */
+  const declaredRoutePaths = (): string[] => {
+    const dir = path.join(process.cwd(), "src", "routes");
+    const paths: string[] = [];
+    const walk = (current: string) => {
+      for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+        const full = path.join(current, entry.name);
+        if (entry.isDirectory()) {
+          walk(full);
+          continue;
+        }
+        if (!/\.tsx?$/.test(entry.name)) continue;
+        for (const match of fs
+          .readFileSync(full, "utf8")
+          .matchAll(/path:\s*"([^"]+)"/g)) {
+          paths.push(match[1]);
+        }
+      }
+    };
+    walk(dir);
+    return paths;
+  };
 
   /**
    * Old paths kept alive so existing links do not break.
@@ -104,26 +119,24 @@ describe("desktop apps", () => {
    */
   const LEGACY_ALIASES = new Set(["/social-media-agent"]);
 
-  it("every app route opens a known workspace screen", () => {
+  it("every route opens a known workspace screen", () => {
     // A route with no screen opens a blank tab, which is the failure mode
     // that already bit the Engineering page once.
-    for (const app of DESKTOP_APPS) {
-      for (const routePath of app.routePaths) {
-        // Chats own their tabs per conversation, so those routes deliberately
-        // have no screen entry. Asserting otherwise would be asserting the
-        // opposite of the design.
-        if (isChatOwnedPath(routePath)) continue;
-        if (LEGACY_ALIASES.has(routePath)) continue;
-        expect(
-          screenForPath(routePath),
-          `route "${routePath}" (${app.title}) has no workspace screen`,
-        ).toBeDefined();
-      }
-    }
-  });
+    const paths = declaredRoutePaths();
+    expect(paths.length, "no routes found to check").toBeGreaterThan(10);
 
-  it("has no duplicate app ids", () => {
-    const ids = DESKTOP_APPS.map((app) => app.id);
-    expect(new Set(ids).size, "duplicate desktop app id").toBe(ids.length);
+    for (const routePath of paths) {
+      // Parameterised routes resolve per instance, and chats own their tabs
+      // per conversation, so neither has a static screen entry. Asserting
+      // otherwise would be asserting the opposite of the design.
+      if (routePath.includes("$")) continue;
+      if (!routePath.startsWith("/")) continue;
+      if (isChatOwnedPath(routePath)) continue;
+      if (LEGACY_ALIASES.has(routePath)) continue;
+      expect(
+        screenForPath(routePath),
+        `route "${routePath}" has no workspace screen`,
+      ).toBeDefined();
+    }
   });
 });

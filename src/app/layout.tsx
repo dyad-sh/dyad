@@ -8,7 +8,7 @@ import { useEffect, type ReactNode } from "react";
 import { useRouterState } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 import { useRunApp, useAppOutputSubscription } from "@/hooks/useRunApp";
-import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
 import {
   appConsoleEntriesAtom,
   previewModeAtom,
@@ -30,8 +30,6 @@ import { useIsMac } from "@/hooks/useChatModeToggle";
 import { useStorageAutoSync } from "@/hooks/useStorageAutoSync";
 import { ipc } from "@/ipc/types";
 import { AgentWorkspaceTabs } from "@/components/AgentWorkspaceTabs";
-import { DesktopShell } from "@/components/desktop/DesktopShell";
-import { desktopModeAtom } from "@/atoms/desktopAtoms";
 
 /** Routes where the main panel scrolls (tall page content). */
 export function isScrollableMainRoute(pathname: string): boolean {
@@ -70,24 +68,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   // Subscribe to app output events once at the root level to avoid duplicates
   useAppOutputSubscription();
   const previewMode = useAtomValue(previewModeAtom);
-  const [desktopMode, setDesktopMode] = useAtom(desktopModeAtom);
 
-  // Cmd/Ctrl+Shift+D flips between Standard and Desktop Mode. Presentation
-  // only: nothing reloads and no feature state is touched.
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (
-        (event.metaKey || event.ctrlKey) &&
-        event.shiftKey &&
-        event.key.toLowerCase() === "d"
-      ) {
-        event.preventDefault();
-        setDesktopMode((mode) => !mode);
-      }
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [setDesktopMode]);
   const { settings } = useSettings();
   useStorageAutoSync(settings?.storage);
   const setSelectedComponentsPreview = useSetAtom(
@@ -201,16 +182,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
               <TitleBar />
               <div className="flex min-h-0 flex-1 overflow-hidden pt-[var(--layout-title-bar-offset)]">
-                {desktopMode && <DesktopShell />}
-                {/* Hidden rather than unmounted: an in-flight generation's
-                    stream handlers live in the mounted page, and switching
-                    modes must not kill them. */}
-                <div
-                  className={cn(
-                    "flex min-h-0 min-w-0 flex-1 overflow-hidden",
-                    desktopMode && "hidden",
-                  )}
-                >
+                <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
                   <AppSidebar />
                   <div
                     id="layout-main-content-container"

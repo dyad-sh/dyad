@@ -12,6 +12,7 @@ import {
 import { useHelix } from "@/hooks/useHelix";
 import { useOpenWorker } from "@/hooks/useOpenWorker";
 import { cn } from "@/lib/utils";
+import { ParticleBackground } from "@/components/home/ParticleBackground";
 
 /**
  * Coding Agent hangar — pick which coding agent to fly. Uses the shared
@@ -33,7 +34,8 @@ export default function CodingAgentsPage() {
   const helixHasKey = status?.hasGatewayKey ?? false;
 
   return (
-    <div className="settings-jarvis relative flex min-h-full w-full flex-col overflow-auto bg-background">
+    <div className="settings-jarvis home-jarvis relative flex min-h-full w-full flex-col overflow-auto bg-background">
+      <ParticleBackground className="z-0" />
       <main className="relative z-10 mx-auto flex w-full max-w-6xl flex-1 flex-col px-4 py-8 sm:px-6 lg:px-8">
         <header className="mb-8 max-w-2xl">
           <div className="mb-3 flex items-center gap-2.5">

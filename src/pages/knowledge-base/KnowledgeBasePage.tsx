@@ -29,6 +29,7 @@ import type {
 import { showError, showSuccess } from "@/lib/toast";
 import { knowledgeBaseProgressPercent } from "@/lib/knowledge_base_progress";
 import { cn } from "@/lib/utils";
+import { ParticleBackground } from "@/components/home/ParticleBackground";
 
 const KNOWLEDGE_BASE_QUERY_KEY = ["knowledge-base", "overview"] as const;
 
@@ -308,8 +309,9 @@ export default function KnowledgeBasePage() {
         : `${overview?.documentCount ?? 0} document${overview?.documentCount === 1 ? "" : "s"} searchable`;
 
   return (
-    <div className="jarvis-workspace font-jarvis-ui h-full overflow-y-auto">
-      <div className="mx-auto max-w-5xl px-6 pt-[calc(var(--layout-title-bar-offset)+1.25rem)] pb-10">
+    <div className="jarvis-workspace home-jarvis font-jarvis-ui relative h-full overflow-y-auto">
+      <ParticleBackground className="z-0" />
+      <div className="relative z-10 mx-auto max-w-5xl px-6 pt-[calc(var(--layout-title-bar-offset)+1.25rem)] pb-10">
         <header className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h1 className="font-jarvis-display text-xl text-cyan-50">

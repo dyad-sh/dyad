@@ -1,5 +1,5 @@
-import { LayoutDashboard, MessageSquare, Monitor, X } from "lucide-react";
-import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import { LayoutDashboard, MessageSquare, X } from "lucide-react";
+import { useAtom, useAtomValue } from "jotai";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   activeAgentWorkspaceTabAtom,
@@ -12,7 +12,6 @@ import { closeHermesWorkspaceTab } from "@/lib/hermes_workspace_tabs";
 import { closeChatAgentTab } from "@/lib/chat_agent_tabs";
 import { useScreenTabs } from "@/hooks/useScreenTabs";
 import { screenForPath } from "@/lib/workspace_screens";
-import { desktopModeAtom } from "@/atoms/desktopAtoms";
 import { cn } from "@/lib/utils";
 import { ChatTabs } from "@/components/chat/ChatTabs";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
@@ -59,7 +58,6 @@ export function AgentWorkspaceTabs() {
     activeScreen,
     close: closeScreen,
   } = useScreenTabs();
-  const setDesktopMode = useSetAtom(desktopModeAtom);
 
   const closeScreenAndLeave = (path: string) => {
     const fallback = closeScreen(path);
@@ -256,17 +254,6 @@ export function AgentWorkspaceTabs() {
       >
         <ChatTabs selectedChatId={selectedChatId} />
       </div>
-
-      <button
-        type="button"
-        onClick={() => setDesktopMode(true)}
-        className="mb-1 grid size-7 shrink-0 place-items-center rounded-lg text-muted-foreground transition hover:bg-muted/60 hover:text-foreground"
-        aria-label="Enter Desktop Mode"
-        title="Desktop Mode (⌘⇧D)"
-        data-testid="enter-desktop-mode"
-      >
-        <Monitor className="size-4" />
-      </button>
     </nav>
   );
 }

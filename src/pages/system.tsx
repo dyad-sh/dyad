@@ -20,6 +20,7 @@ import ConfirmationDialog from "@/components/ConfirmationDialog";
 import { showError, showSuccess } from "@/lib/toast";
 import InfrastructurePage from "./infrastructure";
 import DataSourcesPage from "./data-sources";
+import { ParticleBackground } from "@/components/home/ParticleBackground";
 
 /**
  * The System section.
@@ -184,7 +185,8 @@ export default function SystemPage({
   }
 
   return (
-    <div className="settings-jarvis relative flex min-h-full w-full flex-col overflow-auto bg-background">
+    <div className="settings-jarvis home-jarvis relative flex min-h-full w-full flex-col overflow-auto bg-background">
+      <ParticleBackground className="z-0" />
       <main className="relative z-10 mx-auto flex w-full max-w-5xl flex-1 flex-col px-4 py-8 sm:px-6 lg:px-8">
         <header className="mb-8">
           <div className="mb-3 flex items-center gap-2.5">

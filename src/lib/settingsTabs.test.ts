@@ -38,10 +38,12 @@ describe("settingsTabs", () => {
     expect(getTabIdForSection(SECTION_IDS.dangerZone)).toBe("general");
   });
 
-  it("labels System as the final settings tab", () => {
+  it("labels Appearance as the final settings tab", () => {
+    // Called System until System became the section that contains it, which
+    // would have read as System > System.
     expect(SETTINGS_TABS.at(-1)).toMatchObject({
       id: "general",
-      label: "System",
+      label: "Appearance",
       description: "Appearance, language and app info",
     });
   });

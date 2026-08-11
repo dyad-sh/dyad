@@ -1,14 +1,14 @@
 import {
-  Brain,
-  Cpu,
-  HardDrive,
-  DraftingCompass,
-  type LucideIcon,
-  MessageSquare,
   BookOpen,
   Bot,
+  Brain,
   CalendarDays,
-  GitFork,
+  Cpu,
+  DraftingCompass,
+  HardDrive,
+  type LucideIcon,
+  MessageSquare,
+  Workflow,
 } from "lucide-react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useSidebar } from "@/components/ui/sidebar";
@@ -38,6 +38,7 @@ import {
 const mainNavItems = [
   { title: "Chat Agent", to: "/chat-agent", icon: MessageSquare },
   { title: "Planner", to: "/planner", icon: CalendarDays },
+  { title: "Library", to: "/library", icon: BookOpen },
   // Memory sits under the agents that use it. The Knowledge Core and
   // Knowledge Base live inside.
   { title: "Memory", to: "/memory", icon: Brain },
@@ -45,8 +46,7 @@ const mainNavItems = [
   // the build tools belong together.
   { title: "Agents", to: "/agents", icon: Bot },
   { title: "Build", to: "/build", icon: DraftingCompass },
-  { title: "Dev Ops", to: "/devops", icon: GitFork },
-  { title: "Library", to: "/library", icon: BookOpen },
+  { title: "Dev Ops", to: "/devops", icon: Workflow },
   // Storage keeps its own rail entry as well as its place under System, and
   // the coding projects gallery now lives inside it.
   { title: "Storage", to: "/storage", icon: HardDrive },

@@ -52,8 +52,6 @@ export const BUILD_CATEGORIES: BuildCategory[] = [
   },
 ];
 
-export const DEFAULT_BUILD_CATEGORY: BuildCategoryId = "mechanical";
-
 export type BuildTool = {
   id: string;
   title: string;

@@ -284,11 +284,13 @@ async function runSpec(
   ctx.onXmlStream(
     `<dyad-status title="${escapeXmlAttr(`Running ${label}`)}"></dyad-status>`,
   );
-  // Honor the headed/parallel modes the user picked in the Tests panel (both
-  // persisted in user settings, default headless + serial). A narrowed (grep)
-  // run usually targets one/few tests, so only opt into parallel for whole-file
-  // runs — mirrors the panel's `parallel && !isSingleTest` guard.
+  // Honor the modes the user picked in the Tests panel. With the preview
+  // experiment enabled, headed mode drives Dyad's native preview view. A
+  // preview or narrowed run must stay serial.
   const settings = readSettings();
+  const preview =
+    (settings.enableTestRunInPreview ?? false) &&
+    (settings.testHeaded ?? false);
   return runAppTestsWithIsolation({
     event: ctx.event,
     appId: ctx.appId,
@@ -296,7 +298,8 @@ async function runSpec(
     grep,
     source: "agent",
     headed: settings.testHeaded ?? false,
-    parallel: (settings.testParallel ?? false) && !grep,
+    parallel: (settings.testParallel ?? false) && !grep && !preview,
+    preview,
     externalSignal: ctx.abortSignal,
     timeoutMs: RUN_TIMEOUT_MS,
   });

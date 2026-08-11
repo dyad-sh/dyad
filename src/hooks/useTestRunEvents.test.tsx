@@ -11,6 +11,8 @@ import {
 } from "@/atoms/testRuntimeAtoms";
 import { useTestRunEvents } from "@/hooks/useTestRunEvents";
 import { queryKeys } from "@/lib/queryKeys";
+import { previewModeAtom } from "@/atoms/appAtoms";
+import { previewNativeViewAtom } from "@/atoms/previewAtoms";
 
 const { outputListeners, runStateListeners, listAppTestsMock } = vi.hoisted(
   () => ({
@@ -88,6 +90,23 @@ describe("useTestRunEvents", () => {
 
     expect(store.get(testRunStateByAppIdAtom).get(1)?.phase).toBe("setup");
     expect(store.get(testRunStateByAppIdAtom).get(1)?.source).toBe("panel");
+  });
+
+  it("opens the native preview for an agent preview run", () => {
+    const { store, Wrapper } = makeWrapper();
+    renderHook(() => useTestRunEvents(), { wrapper: Wrapper });
+
+    act(() => {
+      emitRunState({
+        appId: 1,
+        source: "agent",
+        state: "started",
+        preview: true,
+      });
+    });
+
+    expect(store.get(previewNativeViewAtom)).toBe(true);
+    expect(store.get(previewModeAtom)).toBe("preview");
   });
 
   it("stores streamed output at root scope", async () => {

@@ -13,6 +13,8 @@ import {
 } from "@/atoms/testRuntimeAtoms";
 import { ipc } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
+import { previewModeAtom } from "@/atoms/appAtoms";
+import { previewNativeViewAtom } from "@/atoms/previewAtoms";
 
 const OUTPUT_FLUSH_INTERVAL_MS = 100;
 
@@ -41,6 +43,8 @@ export function useTestRunEvents() {
   const setRunState = useSetAtom(setTestRunStateForAppAtom);
   const setSpecs = useSetAtom(setTestSpecsForAppAtom);
   const store = useStore();
+  const setPreviewMode = useSetAtom(previewModeAtom);
+  const setPreviewNativeView = useSetAtom(previewNativeViewAtom);
   const queryClient = useQueryClient();
   const activeRunByAppId = useRef(
     new Map<
@@ -138,6 +142,10 @@ export function useTestRunEvents() {
           startedAt,
         });
         discardPendingOutput(appId);
+        if (payload.source === "agent" && payload.preview) {
+          setPreviewNativeView(true);
+          setPreviewMode("preview");
+        }
         applyStarted({
           appId,
           testFile,

@@ -157,25 +157,17 @@ describe("TestsPanel", () => {
     mocks.getAutomationStatus.mockResolvedValue({ cdpReady: true });
   });
 
-  describe("run in preview", () => {
+  describe("headed runs in preview", () => {
     const experimentOn = {
       enableTestRunInPreview: true,
     };
 
-    it("stays hidden until the experiment is on", async () => {
-      mocks.settings = {};
-      renderPanel();
-
-      expect(await screen.findByText("Run all")).toBeTruthy();
-      expect(screen.queryByTestId("tests-run-in-preview-button")).toBeNull();
-    });
-
-    it("runs in the preview and brings the native view forward", async () => {
-      mocks.settings = experimentOn;
+    it("runs headed mode in the preview and brings the native view forward", async () => {
+      mocks.settings = { ...experimentOn, testHeaded: true };
       mocks.runAppTests.mockResolvedValue({ appId: 1, results: [] });
       const { store } = renderPanel();
 
-      const button = await screen.findByTestId("tests-run-in-preview-button");
+      const button = await screen.findByText("Run all");
       await act(async () => {
         fireEvent.click(button);
       });
@@ -189,12 +181,12 @@ describe("TestsPanel", () => {
       });
     });
 
-    it("is disabled until Dyad has been restarted", async () => {
-      mocks.settings = experimentOn;
+    it("disables a headed run until Dyad has been restarted", async () => {
+      mocks.settings = { ...experimentOn, testHeaded: true };
       mocks.getAutomationStatus.mockResolvedValue({ cdpReady: false });
       renderPanel();
 
-      const button = await screen.findByTestId("tests-run-in-preview-button");
+      const button = await screen.findByText("Run all");
       await waitFor(() => {
         expect(button.getAttribute("disabled")).not.toBeNull();
       });
@@ -204,7 +196,7 @@ describe("TestsPanel", () => {
       expect(mocks.runAppTests).not.toHaveBeenCalled();
     });
 
-    it("leaves the ordinary Run all button alone", async () => {
+    it("leaves headless runs out of the preview", async () => {
       mocks.settings = experimentOn;
       mocks.runAppTests.mockResolvedValue({ appId: 1, results: [] });
       renderPanel();

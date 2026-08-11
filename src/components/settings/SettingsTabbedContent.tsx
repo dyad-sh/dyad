@@ -102,7 +102,8 @@ export function SettingsTabbedContent({
   appVersion,
   isResetting,
   onOpenResetDialog,
-}: SettingsTabbedContentProps) {
+  hideTabList = false,
+}: SettingsTabbedContentProps & { hideTabList?: boolean }) {
   const [activeTab, setActiveTab] = useAtom(activeSettingsTabAtom);
   const { settings, updateSettings } = useSettings();
 
@@ -124,7 +125,14 @@ export function SettingsTabbedContent({
           pins its top and carries its lower tabs off the bottom of the screen,
           where they cannot be reached at all. `overscroll-contain` stops a
           flick inside the rail from continuing into the page behind it. */}
-      <TabsList className="grid h-auto w-full shrink-0 grid-cols-2 gap-2 rounded-none border-0 bg-transparent p-0 sm:grid-cols-3 lg:sticky lg:top-6 lg:flex lg:max-h-[calc(100vh-7rem)] lg:w-64 lg:flex-col lg:overflow-y-auto lg:overscroll-contain lg:pr-1">
+      {/* Hidden when System renders its own secondary navigation, so the two
+          rails do not stack. The tabs themselves are untouched: the active one
+          still comes from the same atom. */}
+      <TabsList
+        hidden={hideTabList}
+        className="grid h-auto w-full shrink-0 grid-cols-2 gap-2 rounded-none border-0 bg-transparent p-0 sm:grid-cols-3 lg:sticky lg:top-6 lg:flex lg:max-h-[calc(100vh-7rem)] lg:w-64 lg:flex-col lg:overflow-y-auto lg:overscroll-contain lg:pr-1"
+        style={hideTabList ? { display: "none" } : undefined}
+      >
         {SETTINGS_TABS.map((tab) => (
           <TabsTrigger
             key={tab.id}

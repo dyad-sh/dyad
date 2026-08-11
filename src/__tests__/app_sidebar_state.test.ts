@@ -56,18 +56,23 @@ describe("app sidebar state", () => {
     ).toBe(true);
   });
 
-  it("keeps Storage selected across its landing page and workspaces", () => {
+  it("keeps System selected across every technical destination", () => {
+    // The old routes still exist so existing links keep working; each must
+    // still light up an entry rather than leaving the rail looking inactive.
+    for (const pathname of [
+      "/system",
+      "/storage",
+      "/meta-hd",
+      "/vector",
+      "/data-sources",
+      "/infrastructure",
+    ]) {
+      expect(isSidebarItemActive({ title: "System", pathname }), pathname).toBe(
+        true,
+      );
+    }
     expect(
-      isSidebarItemActive({ title: "Storage", pathname: "/storage" }),
-    ).toBe(true);
-    expect(
-      isSidebarItemActive({ title: "Storage", pathname: "/meta-hd" }),
-    ).toBe(true);
-    expect(isSidebarItemActive({ title: "Storage", pathname: "/vector" })).toBe(
-      true,
-    );
-    expect(
-      isSidebarItemActive({ title: "Storage", pathname: "/settings" }),
+      isSidebarItemActive({ title: "System", pathname: "/settings" }),
     ).toBe(false);
   });
 

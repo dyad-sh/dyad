@@ -10130,3 +10130,139 @@ html.theme-switching * {
   min-width: 5rem;
   text-align: right;
 }
+
+/* ── System section ───────────────────────────────────────────────────────
+   The existing visual language, applied to a denser index: same card border,
+   same cyan accent, same glow. Nothing here introduces a new treatment. */
+
+.system-group-label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgb(103 232 249 / 0.55);
+}
+
+.system-grid {
+  display: grid;
+  gap: 0.6rem;
+  grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
+}
+
+.system-card {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  width: 100%;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid rgb(34 211 238 / 0.15);
+  border-radius: 0.8rem;
+  background: rgb(2 12 20 / 0.5);
+  text-align: left;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+
+.system-card:hover {
+  border-color: rgb(34 211 238 / 0.4);
+  background: rgb(34 211 238 / 0.07);
+  box-shadow: 0 0 18px rgb(0 229 255 / 0.1);
+}
+
+.system-card-icon {
+  display: grid;
+  place-items: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  flex-shrink: 0;
+  border-radius: 0.6rem;
+  border: 1px solid rgb(34 211 238 / 0.2);
+  background: rgb(34 211 238 / 0.08);
+  color: rgb(103 232 249 / 0.85);
+}
+
+.system-card-title {
+  display: block;
+  font-size: 0.86rem;
+  font-weight: 500;
+  color: rgb(224 247 255 / 0.92);
+}
+
+.system-card-summary {
+  display: block;
+  font-size: 0.72rem;
+  color: rgb(224 247 255 / 0.4);
+}
+
+/* Only ever shows measured state, so it is styled as fact rather than badge. */
+.system-card-status {
+  font-size: 0.7rem;
+  white-space: nowrap;
+  color: rgb(103 232 249 / 0.7);
+}
+
+.system-subheader {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-shrink: 0;
+  padding: 0.55rem 1rem;
+  border-bottom: 1px solid rgb(34 211 238 / 0.12);
+  background: rgb(2 12 20 / 0.6);
+}
+
+.system-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.78rem;
+  color: rgb(103 232 249 / 0.8);
+}
+
+.system-back:hover {
+  color: rgb(165 243 252);
+}
+
+.system-crumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  color: rgb(224 247 255 / 0.55);
+}
+
+.system-crumb::before {
+  content: "/";
+  color: rgb(224 247 255 / 0.25);
+}
+
+.system-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  width: 13rem;
+  flex-shrink: 0;
+}
+
+.system-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.4rem 0.55rem;
+  border-radius: 0.55rem;
+  font-size: 0.8rem;
+  color: rgb(224 247 255 / 0.6);
+  text-align: left;
+}
+
+.system-nav-item:hover {
+  background: rgb(34 211 238 / 0.07);
+  color: rgb(224 247 255 / 0.9);
+}
+
+.system-nav-item--active {
+  background: rgb(34 211 238 / 0.13);
+  color: rgb(224 247 255 / 0.95);
+  box-shadow: inset 2px 0 0 rgb(34 211 238 / 0.7);
+}

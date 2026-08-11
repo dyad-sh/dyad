@@ -1,17 +1,14 @@
 import {
-  Activity,
-  Database,
+  Cpu,
   DraftingCompass,
   type LucideIcon,
   Code2,
   MessageSquare,
   Settings,
-  HelpCircle,
   Store,
   BookOpen,
   LayoutGrid,
   Bot,
-  HardDrive,
   Library,
   CalendarDays,
   GitFork,
@@ -19,7 +16,6 @@ import {
 } from "lucide-react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useSidebar } from "@/components/ui/sidebar";
-import { useState } from "react";
 import type { ComponentType } from "react";
 
 import {
@@ -38,7 +34,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { HelpDialog } from "./HelpDialog";
 import {
   type AppSidebarItemTitle,
   isSidebarItemActive,
@@ -71,9 +66,9 @@ const mainNavItems = [
   { title: "Dev Ops", to: "/dev-ops", icon: GitFork },
   { title: "Library", to: "/library", icon: BookOpen },
   { title: "Knowledge Base", to: "/knowledge-base", icon: Library },
-  { title: "Data Sources", to: "/data-sources", icon: Database },
-  { title: "Infrastructure", to: "/infrastructure", icon: Activity },
-  { title: "Storage", to: "/storage", icon: HardDrive },
+  // The technical destinations live inside System rather than each taking a
+  // slot in the rail. Their routes still exist, so old links keep working.
+  { title: "System", to: "/system", icon: Cpu },
   { title: "My Apps", to: "/apps", icon: LayoutGrid },
   { title: "Hub", to: "/hub", icon: Store },
 ] satisfies Array<{
@@ -156,7 +151,6 @@ function AppSidebarNavItem({
 export function AppSidebar() {
   const { state } = useSidebar();
   const isExpanded = state === "expanded";
-  const [isHelpDialogOpen, setIsHelpDialogOpen] = useState(false);
   const { settings } = useSettings();
   const showDevOps = hasEnabledDevOpsPlugins(settings);
 
@@ -199,18 +193,6 @@ export function AppSidebar() {
 
       <SidebarFooter className="mt-auto px-2 pb-3">
         <SidebarMenu className="gap-0.5">
-          <SidebarMenuItem>
-            <AppSidebarNavItem
-              icon={HelpCircle}
-              label="Help"
-              isExpanded={isExpanded}
-              onClick={() => setIsHelpDialogOpen(true)}
-            />
-            <HelpDialog
-              isOpen={isHelpDialogOpen}
-              onClose={() => setIsHelpDialogOpen(false)}
-            />
-          </SidebarMenuItem>
           <SidebarMenuItem>
             <AppSidebarNavItem
               icon={settingsNavItem.icon}

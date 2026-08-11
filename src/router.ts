@@ -32,6 +32,7 @@ import { vectorRoute } from "./routes/vector";
 import { storageRoute } from "./routes/storage";
 import { dataSourcesRoute } from "./routes/data-sources";
 import { infrastructureRoute } from "./routes/infrastructure";
+import { systemRoute } from "./routes/system";
 import { devOpsRoute } from "./routes/dev-ops";
 import { jarvisRoute } from "./routes/jarvis";
 import { knowledgeBaseRoute } from "./routes/knowledge-base";
@@ -55,6 +56,7 @@ const routeTree = rootRoute.addChildren([
   storageRoute,
   dataSourcesRoute,
   infrastructureRoute,
+  systemRoute,
   metaHdRoute,
   vectorRoute,
   devOpsRoute,

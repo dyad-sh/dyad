@@ -9,9 +9,7 @@ export type AppSidebarItemTitle =
   | "Knowledge Base"
   | "Agents"
   | "Dev Ops"
-  | "Data Sources"
-  | "Infrastructure"
-  | "Storage"
+  | "System"
   | "Settings"
   | "Library"
   | "Hub"
@@ -123,11 +121,16 @@ export function isSidebarItemActive({
       pathname.startsWith("/vercel")
     );
   }
-  if (title === "Storage") {
+  if (title === "System") {
+    // Every technical destination lives under System now, including the ones
+    // that kept their original routes so existing links keep working.
     return (
+      pathname.startsWith("/system") ||
       pathname.startsWith("/storage") ||
       pathname.startsWith("/meta-hd") ||
-      pathname.startsWith("/vector")
+      pathname.startsWith("/vector") ||
+      pathname.startsWith("/data-sources") ||
+      pathname.startsWith("/infrastructure")
     );
   }
   return pathname.startsWith("/hub");

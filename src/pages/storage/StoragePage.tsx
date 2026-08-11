@@ -6,6 +6,8 @@ import {
   DatabaseZap,
   HardDrive,
   LayoutGrid,
+  LayoutTemplate,
+  Store,
   ShieldCheck,
 } from "lucide-react";
 
@@ -21,6 +23,16 @@ const storageDestinations = [
     to: "/apps",
     icon: LayoutGrid,
     badgeIcon: Code2,
+  },
+  {
+    title: "Template Hub",
+    description:
+      "Official and community templates. Pick the default your new projects start from.",
+    detail: "Starting points for a build",
+    badge: "Templates",
+    to: "/hub",
+    icon: Store,
+    badgeIcon: LayoutTemplate,
   },
   {
     title: "Meta Drive HD",
@@ -62,8 +74,8 @@ export default function StoragePage() {
             Choose a storage workspace
           </h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-cyan-100/45">
-            Open your coding projects, your cloud drive, or the local vector
-            knowledge used by the app and its agents.
+            Open your coding projects and their templates, your cloud drive, or
+            the local vector knowledge used by the app and its agents.
           </p>
         </header>
 

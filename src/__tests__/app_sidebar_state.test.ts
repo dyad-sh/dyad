@@ -30,7 +30,8 @@ describe("app sidebar state", () => {
   });
 
   it("highlights My Apps nav item on the gallery route", () => {
-    expect(isSidebarItemActive({ title: "My Apps", pathname: "/apps" })).toBe(
+    // The gallery moved under Storage, so that is the entry it lights.
+    expect(isSidebarItemActive({ title: "Storage", pathname: "/apps" })).toBe(
       true,
     );
     expect(

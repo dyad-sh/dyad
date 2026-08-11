@@ -12,9 +12,7 @@ export type AppSidebarItemTitle =
   | "System"
   | "Storage"
   | "Settings"
-  | "Library"
-  | "Hub"
-  | "My Apps";
+  | "Library";
 
 const AGENT_ROUTES: Record<AgentSidebarItemTitle, string> = {
   "Chat Agent": "/chat-agent",
@@ -114,9 +112,6 @@ export function isSidebarItemActive({
   if (title === "Library") {
     return pathname.startsWith("/library");
   }
-  if (title === "My Apps") {
-    return pathname.startsWith("/apps");
-  }
   if (title === "Agents") {
     // The index and the dashboard it categorises. The coding routes are also
     // reachable from here, but they keep lighting up Coding Agent, which is
@@ -131,8 +126,13 @@ export function isSidebarItemActive({
     );
   }
   if (title === "Storage") {
-    // The projects gallery lives under Storage, so it lights this entry.
-    return pathname.startsWith("/storage") || pathname.startsWith("/apps");
+    // The projects gallery and the template hub live under Storage, so they
+    // light this entry.
+    return (
+      pathname.startsWith("/storage") ||
+      pathname.startsWith("/apps") ||
+      pathname.startsWith("/hub")
+    );
   }
   if (title === "System") {
     // Every technical destination lives under System now, including the ones
@@ -147,7 +147,7 @@ export function isSidebarItemActive({
       pathname.startsWith("/infrastructure")
     );
   }
-  return pathname.startsWith("/hub");
+  return false;
 }
 
 export function shouldShowSelectedAppChatList({

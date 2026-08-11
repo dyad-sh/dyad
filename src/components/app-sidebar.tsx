@@ -4,7 +4,6 @@ import {
   DraftingCompass,
   type LucideIcon,
   MessageSquare,
-  Store,
   BookOpen,
   Bot,
   Library,
@@ -66,7 +65,6 @@ const mainNavItems = [
   // Storage keeps its own rail entry as well as its place under System, and
   // the coding projects gallery now lives inside it.
   { title: "Storage", to: "/storage", icon: HardDrive },
-  { title: "Hub", to: "/hub", icon: Store },
 ] satisfies Array<{
   title: AppSidebarItemTitle;
   to: string;

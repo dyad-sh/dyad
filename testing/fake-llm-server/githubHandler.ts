@@ -696,7 +696,6 @@ const deployKeysByRepo = new Map<
   string,
   Array<{ id: number; title: string; key: string; read_only: boolean }>
 >();
-const deployKeyOwner = new Map<string, string>();
 let nextDeployKeyId = 1;
 
 /** Material only: GitHub returns a key without its trailing comment. */
@@ -731,13 +730,6 @@ export function handleCreateDeployKey(req: Request, res: Response) {
   }
   const fullName = `${owner}/${repo}`;
   const material = keyMaterial(String(req.body?.key ?? ""));
-  const heldBy = deployKeyOwner.get(material);
-  if (heldBy && heldBy !== fullName) {
-    return res.status(422).json({
-      message: "Validation Failed",
-      errors: [{ message: "key is already in use" }],
-    });
-  }
   const existing = deployKeysByRepo.get(fullName) ?? [];
   if (existing.some((k) => keyMaterial(k.key) === material)) {
     return res.status(422).json({
@@ -752,12 +744,10 @@ export function handleCreateDeployKey(req: Request, res: Response) {
     read_only: req.body?.read_only !== false,
   };
   deployKeysByRepo.set(fullName, [...existing, created]);
-  deployKeyOwner.set(material, fullName);
   return res.status(201).json(created);
 }
 
 export function handleClearDeployKeys(_req: Request, res: Response) {
   deployKeysByRepo.clear();
-  deployKeyOwner.clear();
   return res.json({ ok: true });
 }

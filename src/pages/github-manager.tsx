@@ -8,6 +8,7 @@ import {
   Github,
   Loader2,
   Plus,
+  GitBranch,
   RefreshCw,
   Save,
   Search,
@@ -60,6 +61,8 @@ export default function GitHubManagerPage() {
     null,
   );
   const [currentPath, setCurrentPath] = useState("");
+  /** Empty means the repository default branch. */
+  const [branch, setBranch] = useState("");
   const [selectedFile, setSelectedFile] = useState<{
     path: string;
     sha: string;
@@ -85,16 +88,28 @@ export default function GitHubManagerPage() {
       owner,
       repo: repoName,
       path: currentPath,
+      ref: branch,
     }),
     queryFn: () =>
       ipc.github.listContents({
         owner,
         repo: repoName,
         path: currentPath || undefined,
+        ref: branch || undefined,
       }),
     enabled: isConnected && !!selectedRepo,
     meta: { showErrorToast: true },
   });
+
+  // The repository's real branches. Nothing is listed that GitHub did not
+  // return, and the selector only appears once there is more than one.
+  const branchesQuery = useQuery({
+    queryKey: ["github", "branches", owner, repoName],
+    queryFn: () => ipc.github.getRepoBranches({ owner, repo: repoName }),
+    enabled: isConnected && !!selectedRepo,
+  });
+  const branches = branchesQuery.data ?? [];
+  const activeBranch = branch || selectedRepo?.default_branch || "";
 
   const filteredRepos = useMemo(() => {
     const q = repoSearch.trim().toLowerCase();
@@ -189,6 +204,7 @@ export default function GitHubManagerPage() {
     const { owner: o, repo: r } = parseRepo(selectedRepo);
     try {
       const file = await ipc.github.getContent({
+        ref: branch || undefined,
         owner: o,
         repo: r,
         path: entry.path,
@@ -478,7 +494,31 @@ export default function GitHubManagerPage() {
                           </span>
                         ))}
                       </nav>
-                      <div className="flex flex-wrap gap-1">
+                      <div className="flex flex-wrap items-center gap-1">
+                        {/* Only when there is a choice to make. */}
+                        {branches.length > 1 && (
+                          <label className="flex items-center gap-1.5 text-[11px] text-cyan-100/45">
+                            <GitBranch className="size-3.5 text-cyan-300/70" />
+                            <select
+                              value={activeBranch}
+                              onChange={(event) => {
+                                setBranch(event.target.value);
+                                // A path on one branch may not exist on
+                                // another, so browsing restarts at the root.
+                                setCurrentPath("");
+                                setSelectedFile(null);
+                              }}
+                              className="rounded-md border border-cyan-400/20 bg-cyan-950/30 px-1.5 py-1 text-[11px] text-cyan-100 outline-none focus:border-cyan-400/40"
+                              data-testid="github-branch-select"
+                            >
+                              {branches.map((item) => (
+                                <option key={item.name} value={item.name}>
+                                  {item.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        )}
                         <Button
                           size="sm"
                           variant="outline"

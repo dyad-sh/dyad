@@ -356,6 +356,8 @@ export const githubContracts = {
       owner: z.string(),
       repo: z.string(),
       path: z.string().optional(),
+      /** Branch, tag or commit. Omitted means the repository default. */
+      ref: z.string().optional(),
     }),
     output: z.array(GitHubContentEntrySchema),
   }),
@@ -366,6 +368,8 @@ export const githubContracts = {
       owner: z.string(),
       repo: z.string(),
       path: z.string().min(1),
+      /** Branch, tag or commit. Omitted means the repository default. */
+      ref: z.string().optional(),
     }),
     output: GitHubFileContentSchema,
   }),

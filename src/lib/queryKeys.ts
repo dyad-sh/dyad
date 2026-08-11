@@ -371,11 +371,14 @@ export const queryKeys = {
       owner,
       repo,
       path,
+      ref,
     }: {
       owner: string;
       repo: string;
       path: string;
-    }) => ["github", "contents", owner, repo, path] as const,
+      /** Included so a branch switch is a different cache entry. */
+      ref?: string;
+    }) => ["github", "contents", owner, repo, path, ref ?? ""] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────

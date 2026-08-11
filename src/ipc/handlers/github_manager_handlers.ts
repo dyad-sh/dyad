@@ -159,10 +159,12 @@ async function handleListContents({
   owner,
   repo,
   path = "",
+  ref,
 }: {
   owner: string;
   repo: string;
   path?: string;
+  ref?: string;
 }): Promise<
   Array<{
     name: string;
@@ -175,8 +177,9 @@ async function handleListContents({
   const encodedPath = path
     ? `/${path.split("/").map(encodeURIComponent).join("/")}`
     : "";
+  const query = ref ? `?ref=${encodeURIComponent(ref)}` : "";
   const res = await githubApiFetch(
-    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents${encodedPath}`,
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents${encodedPath}${query}`,
   );
 
   if (res.status === 404) {
@@ -231,10 +234,12 @@ async function handleGetContent({
   owner,
   repo,
   path,
+  ref,
 }: {
   owner: string;
   repo: string;
   path: string;
+  ref?: string;
 }): Promise<{ path: string; content: string; sha: string; encoding: "utf-8" }> {
   const encodedPath = path.split("/").map(encodeURIComponent).join("/");
   const data = await githubApiJson<{
@@ -243,7 +248,9 @@ async function handleGetContent({
     sha: string;
     encoding: string;
   }>(
-    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${encodedPath}`,
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${encodedPath}${
+      ref ? `?ref=${encodeURIComponent(ref)}` : ""
+    }`,
   );
 
   if (data.encoding !== "base64") {

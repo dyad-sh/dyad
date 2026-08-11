@@ -699,11 +699,10 @@ export function CoolifyConnector({ appId }: { appId: number | null }) {
           ? "Loading..."
           : `${serverName ?? "Unknown server"} / ${projectName ?? "Unknown project"}`;
 
-  // Only once discovery has actually answered. A slow or failing lookup says
-  // nothing about where this app belongs, and treating it as an answer would
-  // tell people their connection had moved every time the network hiccuped.
+  // Only against a list that arrived: a failed lookup says nothing about where
+  // the app belongs. A refetch over a list already on screen still has one, so
+  // it is not a reason to withdraw the answer.
   const belongsElsewhere =
-    !isDiscovering &&
     !discoveryError &&
     Boolean(discovery) &&
     !discovery!.servers.some((s) => s.uuid === status.connection!.serverUuid);

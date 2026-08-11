@@ -1,12 +1,9 @@
 import { Link } from "@tanstack/react-router";
-import {
-  ArrowRight,
-  Briefcase,
-  CheckCircle2,
-  Code2,
-  KeyRound,
-  Orbit,
-} from "lucide-react";
+import { ArrowRight, CheckCircle2, KeyRound } from "lucide-react";
+
+import buildStudioIcon from "@/assets/agents/build-studio.png";
+import helixIcon from "@/assets/agents/helix.png";
+import openWorkerIcon from "@/assets/agents/open-worker.png";
 
 import { useHelix } from "@/hooks/useHelix";
 import { useOpenWorker } from "@/hooks/useOpenWorker";
@@ -25,7 +22,7 @@ export const CODING_AGENTS = [
     description:
       "The native Meta Human OS coder. Chat-driven app building with live preview, versioning, and one-click publishing.",
     route: "/coder/studio",
-    icon: Code2,
+    image: buildStudioIcon,
     testId: "coding-agent-card-studio",
   },
   {
@@ -34,7 +31,7 @@ export const CODING_AGENTS = [
     description:
       "GPT-5.3 Codex through the Vercel AI Gateway with secure sandbox execution, file explorer, and live preview.",
     route: "/coder/helix",
-    icon: Orbit,
+    image: helixIcon,
     testId: "coding-agent-card-helix",
   },
   {
@@ -43,7 +40,7 @@ export const CODING_AGENTS = [
     description:
       "Gets everyday work done — documents, spreadsheets and reports — with 25+ tool connectors, running locally inside Meta Human OS.",
     route: "/coder/openworker",
-    icon: Briefcase,
+    image: openWorkerIcon,
     testId: "coding-agent-card-openworker",
   },
 ] as const;
@@ -131,9 +128,12 @@ export function CodingAgentRows() {
             className="system-card"
             data-testid={`agents-open-${agent.id}`}
           >
-            <span className="system-card-icon">
-              <agent.icon className="size-4" />
-            </span>
+            <img
+              src={agent.image}
+              alt=""
+              className="size-8 shrink-0 rounded-lg object-cover"
+              draggable={false}
+            />
             <span className="min-w-0 flex-1 text-left">
               <span className="system-card-title">{agent.title}</span>
               <span className="system-card-summary">
@@ -185,9 +185,12 @@ export function CodingAgentCards() {
         data-testid="coding-agent-card-studio"
       >
         <div className="relative z-10">
-          <div className="mb-5 grid size-12 place-items-center rounded-2xl border border-cyan-400/25 bg-cyan-500/10 text-cyan-200 shadow-[0_0_18px_rgba(0,229,255,0.25)]">
-            <Code2 className="size-5" />
-          </div>
+          <img
+            src={CODING_AGENTS[0].image}
+            alt=""
+            className="mb-5 size-14 rounded-2xl border border-cyan-400/25 object-cover shadow-[0_0_18px_rgba(0,229,255,0.25)]"
+            draggable={false}
+          />
           <h2 className="font-jarvis-display text-xl font-semibold tracking-tight text-white">
             Build Studio
           </h2>
@@ -209,9 +212,12 @@ export function CodingAgentCards() {
       >
         <div className="relative z-10">
           <div className="mb-5 flex items-start justify-between">
-            <div className="grid size-12 place-items-center rounded-2xl border border-emerald-400/25 bg-emerald-500/10 text-emerald-300 shadow-[0_0_18px_rgba(0,255,170,0.22)]">
-              <Orbit className="size-5" />
-            </div>
+            <img
+              src={CODING_AGENTS[1].image}
+              alt=""
+              className="size-14 rounded-2xl border border-emerald-400/25 object-cover shadow-[0_0_18px_rgba(0,255,170,0.22)]"
+              draggable={false}
+            />
             <span
               className={cn(
                 "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium",
@@ -272,9 +278,12 @@ export function CodingAgentCards() {
       >
         <div className="relative z-10">
           <div className="mb-5 flex items-start justify-between">
-            <div className="grid size-12 place-items-center rounded-2xl border border-violet-400/25 bg-violet-500/10 text-violet-300 shadow-[0_0_18px_rgba(167,139,250,0.22)]">
-              <Briefcase className="size-5" />
-            </div>
+            <img
+              src={CODING_AGENTS[2].image}
+              alt=""
+              className="size-14 rounded-2xl border border-violet-400/25 object-cover shadow-[0_0_18px_rgba(167,139,250,0.22)]"
+              draggable={false}
+            />
             <span
               className={cn(
                 "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium",

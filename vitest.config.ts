@@ -6,6 +6,7 @@ export default defineConfig({
   plugins: [react()],
   test: {
     environment: "happy-dom",
+    setupFiles: ["./src/__tests__/setup/silence_electron_log.ts"],
     include: ["src/**/*.{test,spec}.{ts,tsx}"],
     globals: true,
     onConsoleLog(log, _type) {

@@ -211,17 +211,23 @@ function RunButton({
   onRun,
   disabled,
   label,
+  title,
 }: {
   onRun: () => void;
   disabled: boolean;
   label: string;
+  /** Overrides the default hint, e.g. to say why the button is disabled. */
+  title?: string;
 }) {
   return (
     <button
       onClick={onRun}
       disabled={disabled}
       aria-label={label}
-      title="During database-isolated runs, other app operations may wait until the run finishes."
+      title={
+        title ??
+        "During database-isolated runs, other app operations may wait until the run finishes."
+      }
       className={cn(
         "flex items-center gap-1 text-xs px-2 py-1 rounded-md transition-all cursor-pointer",
         "text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700",
@@ -353,6 +359,8 @@ interface TestCaseRowProps {
   status: TestStatus;
   result: TestCaseResult | undefined;
   disabled: boolean;
+  /** Explains a disabled Run button; the default hint applies when unset. */
+  runTitle?: string;
   /** Last child under its file — draws an "└" elbow instead of "├". */
   isLast: boolean;
   onRun: () => void;
@@ -367,6 +375,7 @@ function TestCaseRow({
   status,
   result,
   disabled,
+  runTitle,
   isLast,
   onRun,
   onOpenInEditor,
@@ -445,6 +454,7 @@ function TestCaseRow({
         <RunButton
           onRun={onRun}
           disabled={disabled}
+          title={runTitle}
           label={`Run test: ${testCase.title}`}
         />
         <OpenInEditorButton
@@ -481,6 +491,8 @@ interface FileRowProps {
   status: TestStatus;
   result: RuntimeTestResult | undefined;
   disabled: boolean;
+  /** Explains a disabled Run button; the default hint applies when unset. */
+  runTitle?: string;
   /**
    * Deleting mutates the spec on disk, so it's blocked while a run is in
    * flight — separate from `disabled`, which also covers "dev server down"
@@ -503,6 +515,7 @@ function FileRow({
   status,
   result,
   disabled,
+  runTitle,
   deleteDisabled,
   onRunFile,
   onRunCase,
@@ -586,6 +599,7 @@ function FileRow({
         <RunButton
           onRun={onRunFile}
           disabled={disabled}
+          title={runTitle}
           label={`Run all tests in: ${fileName}`}
         />
         <OpenInEditorButton
@@ -609,6 +623,7 @@ function FileRow({
               status={caseStatus(testCase)}
               result={caseResult(testCase)}
               disabled={disabled}
+              runTitle={runTitle}
               isLast={index === tests.length - 1}
               onRun={() => onRunCase(testCase.line)}
               onOpenInEditor={() => onOpenInEditor(testCase.line)}
@@ -719,6 +734,21 @@ export function TestsPanel() {
     enabled: previewRunEnabled,
   });
   const canRunInPreview = previewRunEnabled && !!automationStatus?.cdpReady;
+  // The experiment only opens its CDP port at boot, so with it freshly enabled
+  // there is nothing for a preview run to drive. Headed runs are routed to the
+  // preview whenever the experiment is on, so EVERY entry point has to wait for
+  // the restart — a per-file or Retry run that slipped through would tear down
+  // the iframe preview for a native view and then dead-end on the same advice.
+  //
+  // Keyed on a definitive `false` rather than on `!canRunInPreview`: the status
+  // query can take seconds (it polls for Chromium's port file) and can fail
+  // outright, and neither is a reason to tell the user to restart — still less
+  // to leave every run button dead for the rest of the session.
+  const previewRestartRequired =
+    previewRunEnabled && headed && automationStatus?.cdpReady === false;
+  const runBlockedTitle = previewRestartRequired
+    ? "Restart Dyad to run headed tests in the preview panel."
+    : undefined;
   const specsQuery = useQuery({
     queryKey: queryKeys.tests.list({ appId: selectedAppId }),
     queryFn: async () => {
@@ -851,7 +881,12 @@ export function TestsPanel() {
       if (selectedAppId == null) return;
       const appId = selectedAppId;
       const isSingleTest = file != null && line != null;
-      const preview = previewRunEnabled && headed;
+      // `canRunInPreview`, not `previewRunEnabled`: the experiment only opens
+      // the CDP port at boot, so with it freshly enabled there's nothing to
+      // drive. Asking anyway would tear down the iframe preview for a native
+      // view and then fail the run with "restart Dyad". The Run-all button is
+      // disabled in that state; per-file and per-test runs reach here too.
+      const preview = canRunInPreview && headed;
       if (preview) {
         setPreviewNativeView(true);
         setPreviewMode("preview");
@@ -905,7 +940,7 @@ export function TestsPanel() {
       headed,
       parallel,
       slowMo,
-      previewRunEnabled,
+      canRunInPreview,
       setPreviewMode,
       setPreviewNativeView,
     ],
@@ -1287,7 +1322,10 @@ export function TestsPanel() {
             aria-pressed={headed}
             title={
               headed
-                ? previewRunEnabled
+                ? // Only promise the preview when it's actually available:
+                  // with the experiment on but no CDP port, the run opens a
+                  // separate window instead.
+                  canRunInPreview
                   ? "Headed: tests run visibly in the preview panel"
                   : "Headed: tests open a visible browser window"
                 : "Headless: tests run without a visible window"
@@ -1373,21 +1411,16 @@ export function TestsPanel() {
           specs.length > 0 && (
             <button
               onClick={() => runTests()}
-              disabled={
-                !devServerRunning ||
-                (previewRunEnabled && headed && !canRunInPreview)
-              }
+              disabled={!devServerRunning || previewRestartRequired}
               title={
-                previewRunEnabled && headed && !canRunInPreview
-                  ? "Restart Dyad to run headed tests in the preview panel."
-                  : "During database-isolated runs, other app operations may wait until the run finishes."
+                runBlockedTitle ??
+                "During database-isolated runs, other app operations may wait until the run finishes."
               }
               aria-label="Run all tests"
               className={cn(
                 "flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md cursor-pointer",
                 "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-900/60",
-                (!devServerRunning ||
-                  (previewRunEnabled && headed && !canRunInPreview)) &&
+                (!devServerRunning || previewRestartRequired) &&
                   "opacity-40 cursor-not-allowed",
               )}
             >
@@ -1535,10 +1568,13 @@ export function TestsPanel() {
               </span>
               <button
                 onClick={() => runTests()}
-                disabled={isRunning || !devServerRunning}
+                disabled={
+                  isRunning || !devServerRunning || previewRestartRequired
+                }
+                title={runBlockedTitle}
                 className={cn(
                   "shrink-0 px-2 py-1 rounded-md bg-amber-200 dark:bg-amber-800 hover:bg-amber-300 dark:hover:bg-amber-700 cursor-pointer text-xs font-medium",
-                  (isRunning || !devServerRunning) &&
+                  (isRunning || !devServerRunning || previewRestartRequired) &&
                     "opacity-40 cursor-not-allowed",
                 )}
               >
@@ -1648,7 +1684,10 @@ export function TestsPanel() {
                 tests={spec.tests}
                 status={fileStatus(spec.file)}
                 result={runState.results[spec.file]}
-                disabled={isRunning || !devServerRunning}
+                disabled={
+                  isRunning || !devServerRunning || previewRestartRequired
+                }
+                runTitle={runBlockedTitle}
                 deleteDisabled={isRunning || isDeleting}
                 onRunFile={() => runTests(spec.file)}
                 onRunCase={(line) => runTests(spec.file, line)}

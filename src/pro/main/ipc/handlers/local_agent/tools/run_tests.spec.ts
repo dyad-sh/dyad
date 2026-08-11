@@ -16,6 +16,9 @@ vi.mock("@/ipc/utils/test_screenshot", () => ({
 vi.mock("@/main/settings", () => ({
   readSettings: vi.fn(() => ({})),
 }));
+vi.mock("@/main/remote_debugging", () => ({
+  resolveRemoteDebuggingEndpoint: vi.fn(),
+}));
 
 import {
   runAppTestsWithIsolation,
@@ -25,6 +28,7 @@ import {
 } from "@/ipc/handlers/tests_handlers";
 import { readTestScreenshotDataUrl } from "@/ipc/utils/test_screenshot";
 import { readSettings } from "@/main/settings";
+import { resolveRemoteDebuggingEndpoint } from "@/main/remote_debugging";
 import { runTestsTool } from "./run_tests";
 
 const runner = vi.mocked(runAppTestsWithIsolation);
@@ -33,6 +37,7 @@ const screenshot = vi.mocked(readTestScreenshotDataUrl);
 const specLister = vi.mocked(listSpecFiles);
 const caseLister = vi.mocked(readSpecTestCases);
 const settingsReader = vi.mocked(readSettings);
+const cdpEndpoint = vi.mocked(resolveRemoteDebuggingEndpoint);
 
 function makeCtx(): AgentContext {
   return {
@@ -125,6 +130,12 @@ describe("runTestsTool", () => {
     // Default: headless + serial + full speed (the Tests panel's unset
     // defaults).
     settingsReader.mockReturnValue({} as ReturnType<typeof readSettings>);
+    // Dyad opened its CDP port at boot, so preview runs are possible.
+    cdpEndpoint.mockReset();
+    cdpEndpoint.mockResolvedValue({
+      port: 1234,
+      httpEndpoint: "http://127.0.0.1:1234",
+    });
   });
 
   it("is gated on testingEnabled", () => {
@@ -193,6 +204,23 @@ describe("runTestsTool", () => {
     await runTestsTool.execute({ testFile: "e2e-tests/a.spec.ts" }, makeCtx());
     expect(runner).toHaveBeenCalledWith(
       expect.objectContaining({ headed: true, parallel: false, preview: true }),
+    );
+  });
+
+  it("runs in a normal headed browser when the CDP port isn't open yet", async () => {
+    // The experiment only opens the port at boot, so a user who enables it
+    // mid-session has it on in settings with no endpoint behind it. Asking for
+    // a preview run there fails with "restart Dyad" — which an agent can't do,
+    // and which would meet every run_tests call for the rest of the session.
+    cdpEndpoint.mockResolvedValue(null);
+    settingsReader.mockReturnValue({
+      enableTestRunInPreview: true,
+      testHeaded: true,
+    } as ReturnType<typeof readSettings>);
+    runner.mockResolvedValue(passedResult);
+    await runTestsTool.execute({ testFile: "e2e-tests/a.spec.ts" }, makeCtx());
+    expect(runner).toHaveBeenCalledWith(
+      expect.objectContaining({ headed: true, preview: false }),
     );
   });
 

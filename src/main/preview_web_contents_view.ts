@@ -266,6 +266,21 @@ export function showPreviewView(
 
   const entry = entries.get(key) ?? createEntry(window, key);
 
+  if (entry.automationActive && entry.currentUrl !== url) {
+    // A test is driving this page. Navigating it away — the renderer does
+    // exactly that when the user switches apps mid-run — would leave the run
+    // typing into the wrong app instead of failing honestly. Automation owns
+    // the view until it ends, so nothing here applies: re-showing it would
+    // paint the run's page over the app the renderer is now laying out, and
+    // clearing `hiddenDuringAutomation` would strand the view past teardown.
+    // A later show() with a different URL still navigates, because currentUrl
+    // is deliberately left as it is.
+    logger.warn(
+      `Ignoring preview navigation to ${url} while tests are driving the view.`,
+    );
+    return;
+  }
+
   if (entry.hiddenDuringAutomation) {
     entry.hiddenDuringAutomation = false;
     try {
@@ -335,6 +350,16 @@ function withLiveContents(
 ): void {
   const entry = getEntry(window);
   if (!entry) return;
+  if (entry.automationActive) {
+    // Back/Forward/Reload stay on screen while a run drives the view, and one
+    // click would navigate the page out from under Playwright — a wall of
+    // "Target closed" failures blamed on the user's app. Same reasoning as the
+    // navigation guard in showPreviewView.
+    logger.warn(
+      "Ignoring preview navigation while tests are driving the view.",
+    );
+    return;
+  }
   const contents = entry.view.webContents;
   if (contents.isDestroyed()) return;
 
@@ -371,21 +396,38 @@ export interface PreviewViewStatus {
   automationActive: boolean;
 }
 
+/**
+ * The URL the view has actually committed to, rather than the one it was last
+ * asked for. `entry.currentUrl` is assigned synchronously before `loadURL` even
+ * starts, so a caller waiting for the page to be ready would otherwise be told
+ * yes while it is still on about:blank.
+ */
+function committedUrl(entry: PreviewViewEntry): string | null {
+  try {
+    return entry.view.webContents.getURL() || null;
+  } catch {
+    // Contents already gone; the requested URL is the best we can say.
+    return entry.currentUrl;
+  }
+}
+
 export function getPreviewViewStatus(window: BrowserWindow): PreviewViewStatus {
   const entry = getEntry(window);
   return {
     exists: !!entry,
-    currentUrl: entry?.currentUrl ?? null,
+    currentUrl: entry ? committedUrl(entry) : null,
     automationActive: !!entry?.automationActive,
   };
 }
 
 /**
- * Waits until this window's preview view is showing `url`.
+ * Waits until this window's preview view has loaded `url`.
  *
  * Matches on origin rather than the exact string: the isolated-test-database
  * path restarts the dev server before a run, which can churn the renderer's
- * URL (and trailing slashes differ between the two sides).
+ * URL (and trailing slashes differ between the two sides). Reads the committed
+ * URL, so a slow cold start can't report ready before there is a page for the
+ * run to attach to.
  */
 export async function waitForPreviewView(
   window: BrowserWindow,

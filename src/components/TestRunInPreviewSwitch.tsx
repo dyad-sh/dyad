@@ -21,12 +21,11 @@ export function TestRunInPreviewSwitch() {
         </Label>
       </div>
       <p className="text-[13px] leading-relaxed text-muted-foreground">
-        Adds a "Run in preview" action to the Tests panel that drives your app's
-        tests in a native browser view inside the preview panel, so you can
-        watch them run. The view lasts for the run only: component selection,
-        the visual editor, the annotator, and console capture are unavailable
-        while it is open. Dyad must be restarted for this setting to take
-        effect.
+        Sends the Tests panel's headed runs to a native browser view inside the
+        preview panel instead of a separate window, so you can watch them run in
+        place. The view lasts for the run only: component selection, the visual
+        editor, the annotator, and console capture are unavailable while it is
+        open. Dyad must be restarted for this setting to take effect.
       </p>
       <p className="text-[13px] leading-relaxed text-amber-700 dark:text-amber-500">
         While enabled, Dyad opens a debugging port on 127.0.0.1 that can control

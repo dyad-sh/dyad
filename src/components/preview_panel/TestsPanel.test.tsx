@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => ({
   previewUrl: "http://localhost:32100/" as string | null,
   previewUrlSource: "dyad" as "none" | "dyad" | "app",
   getAutomationStatus: vi.fn(),
+  updateSettings: vi.fn(),
   settings: {} as Record<string, unknown>,
 }));
 
@@ -56,7 +57,10 @@ vi.mock("@/hooks/useLoadApp", () => ({
 }));
 
 vi.mock("@/hooks/useSettings", () => ({
-  useSettings: () => ({ settings: mocks.settings, updateSettings: vi.fn() }),
+  useSettings: () => ({
+    settings: mocks.settings,
+    updateSettings: mocks.updateSettings,
+  }),
 }));
 
 vi.mock("@/hooks/useRunApp", () => ({
@@ -190,6 +194,26 @@ describe("TestsPanel", () => {
       expect(mocks.runAppTests).not.toHaveBeenCalled();
     });
 
+    it("disables the per-file and per-test runs too", async () => {
+      // Not just the Run-all button: a per-file run reaches the same code
+      // path, so it would tear down the iframe preview for a native view and
+      // then dead-end on the same "restart Dyad" error.
+      mocks.settings = { ...experimentOn, testHeaded: true };
+      mocks.getAutomationStatus.mockResolvedValue({ cdpReady: false });
+      renderPanel();
+
+      const fileRun = await screen.findByRole("button", {
+        name: `Run all tests in: signup.spec.ts`,
+      });
+      await waitFor(() => {
+        expect(fileRun.getAttribute("disabled")).not.toBeNull();
+      });
+      expect(fileRun.getAttribute("title")).toContain("Restart Dyad");
+
+      fireEvent.click(fileRun);
+      expect(mocks.runAppTests).not.toHaveBeenCalled();
+    });
+
     it("leaves headless runs out of the preview", async () => {
       mocks.settings = experimentOn;
       mocks.runAppTests.mockResolvedValue({ appId: 1, results: [] });
@@ -205,6 +229,41 @@ describe("TestsPanel", () => {
           expect.objectContaining({ preview: false }),
         );
       });
+    });
+  });
+
+  describe("slow motion", () => {
+    it("defaults to full speed and persists the choice", async () => {
+      renderPanel();
+
+      // Persisted rather than local state, so the agent's run_tests tool runs
+      // at the pace the user picked here too.
+      const toggle = await screen.findByRole("button", {
+        name: "Switch to slow motion",
+      });
+      fireEvent.click(toggle);
+
+      expect(mocks.updateSettings).toHaveBeenCalledWith({ testSlowMo: true });
+    });
+
+    it("sends the chosen pace with the run", async () => {
+      mocks.settings = { testSlowMo: true };
+      mocks.runAppTests.mockResolvedValue({ appId: 1, results: [] });
+      renderPanel();
+
+      const runAll = await screen.findByText("Run all");
+      await act(async () => {
+        fireEvent.click(runAll);
+      });
+
+      await waitFor(() => {
+        expect(mocks.runAppTests).toHaveBeenCalledWith(
+          expect.objectContaining({ slowMo: true }),
+        );
+      });
+      expect(
+        screen.getByRole("button", { name: "Switch to normal speed" }),
+      ).toBeTruthy();
     });
   });
 

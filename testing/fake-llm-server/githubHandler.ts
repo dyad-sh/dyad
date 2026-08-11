@@ -686,11 +686,10 @@ export function handleGitPush(req: Request, res: Response, next?: Function) {
 }
 
 /**
- * Deploy keys on a repository.
+ * Deploy keys, per repository.
  *
- * GitHub allows a given key on exactly one repository, which is the whole
- * reason the deploy pipeline has an "already in use" branch — so this
- * remembers key material across repositories rather than per repository.
+ * A re-POST of the same key answers 422 "already in use", which is the branch
+ * the deploy pipeline takes when it re-deploys an app it has already set up.
  */
 const deployKeysByRepo = new Map<
   string,

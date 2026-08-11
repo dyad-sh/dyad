@@ -76,6 +76,7 @@ import {
   settleAllSubagentsForReset,
   settleSubagentsForChatDeletion,
 } from "@/pro/main/ipc/handlers/local_agent/subagents/subagent_manager";
+import { deployKeyDirPath } from "@/ipc/utils/coolify_deploy_key";
 
 /**
  * Read screenshot entries for a single app directory, filtered by filename
@@ -1940,6 +1941,11 @@ export function registerAppHandlers() {
       }
       await clearLegacyWindowSessionPersistence(userDataPath);
       logger.log("Window session persistence deleted.");
+      // The private halves of the Coolify deploy keys. Nothing else deletes
+      // them: they are keyed by repository, not by app, so they outlive both
+      // the app that generated them and the settings holding the token.
+      await fsPromises.rm(deployKeyDirPath(), { recursive: true, force: true });
+      logger.log("Coolify deploy keys deleted.");
       // Reset base directory cache to default, because settings are gone anyway
       invalidateDyadAppsBaseDirectoryCache();
       logger.log("settings deleted.");

@@ -27,12 +27,12 @@ const KEY_COMMENT = "dyad-deploy";
  * an unencrypted private key into it puts Dyad's own files among identities
  * the user maintains by hand.
  */
-function keyDir(): string {
+export function deployKeyDirPath(): string {
   return path.join(getUserDataPath(), "coolify_deploy_keys");
 }
 
 function keyFilePath(keyName: string): string {
-  return path.join(keyDir(), keyName);
+  return path.join(deployKeyDirPath(), keyName);
 }
 
 /**
@@ -276,7 +276,7 @@ export async function ensureDeployKey(keyName: string): Promise<string> {
     fs.writeFileSync(`${keyPath}.pub`, derived, { mode: 0o644 });
     logger.info(`Rebuilt the public half of ${keyPath}`);
   } else if (!hasPrivate) {
-    fs.mkdirSync(keyDir(), { recursive: true, mode: 0o700 });
+    fs.mkdirSync(deployKeyDirPath(), { recursive: true, mode: 0o700 });
     // Nothing usable survives without the private half, so a stray public one
     // describes a pair that no longer exists.
     fs.rmSync(`${keyPath}.pub`, { force: true });

@@ -48,6 +48,16 @@ const POLL_TIMEOUT_MS = 15 * 60 * 1000;
 /** About a minute of unreachable instance before the deploy gives up. */
 const MAX_POLL_FAILURES = 12;
 const GITHUB_TIMEOUT_MS = 30_000;
+/** How often the log says a build is still going when nothing has changed. */
+const HEARTBEAT_MS = 30_000;
+
+function elapsedLabel(ms: number): string {
+  const seconds = Math.round(ms / 1000);
+  return seconds < 60
+    ? `${seconds}s`
+    : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+}
+
 const TERMINAL_STATUSES = ["finished", "failed", "error", "cancelled-by-user"];
 
 /** How the pipeline reports progress back to the machine. */
@@ -824,6 +834,8 @@ export async function runDeployPipeline({
   // unreachable should say so rather than look like a build that never ends.
   let consecutiveFailures = 0;
   let lastPollError: unknown = null;
+  let reportedStatus: string | null = null;
+  let lastHeartbeat = pollStart;
   while (clock.now() - pollStart < POLL_TIMEOUT_MS) {
     await sleep(clock, POLL_INTERVAL_MS);
     throwIfAborted(signal);
@@ -846,7 +858,18 @@ export async function runDeployPipeline({
     }
     consecutiveFailures = 0;
     status = entry.status ?? "unknown";
-    report.log(`  status: ${status}\n`);
+    // Say so when it changes, and otherwise that it is still going every so
+    // often, rather than a line every five seconds for the whole build.
+    if (status !== reportedStatus) {
+      report.log(`  status: ${status}\n`);
+      reportedStatus = status;
+      lastHeartbeat = clock.now();
+    } else if (clock.now() - lastHeartbeat >= HEARTBEAT_MS) {
+      report.log(
+        `  still ${status} (${elapsedLabel(clock.now() - pollStart)})\n`,
+      );
+      lastHeartbeat = clock.now();
+    }
     if (TERMINAL_STATUSES.includes(status)) break;
   }
 

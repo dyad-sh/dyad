@@ -667,6 +667,37 @@ describe("polling", () => {
     expect(report.text()).toContain("plain text failure");
   });
 
+  it("does not repeat a status that has not changed, but says it is alive", async () => {
+    // The loop polls every five seconds, and printing each answer put a line
+    // a second-and-change apart for the whole build.
+    const app = await seedApp({ connection: { applicationUuid: APP_UUID } });
+    happyPathRoutes();
+    routeSequence("GET /deployments/dep-1", [
+      ...Array.from({ length: 8 }, () => ({ status: "building" })),
+      { status: "finished" },
+    ]);
+    const report = loggingRecorder();
+    const clock = createFakeClock();
+
+    await drive(
+      clock,
+      runDeployPipeline({
+        appId: app.id,
+        signal: new AbortController().signal,
+        report,
+        clock,
+      }),
+    );
+
+    const text = report.text();
+    expect(text.match(/status: building/g)).toHaveLength(1);
+    expect(text).toContain("status: finished");
+    // Eight polls of "building" is forty seconds, so exactly one of these —
+    // enough that the log is visibly still moving, at a readable rate.
+    expect(text.match(/still building/g)).toHaveLength(1);
+    expect(text).toContain("still building (35s)");
+  });
+
   it("explains an out-of-memory kill rather than reporting a bare exit status", async () => {
     const app = await seedApp({ connection: { applicationUuid: APP_UUID } });
     happyPathRoutes();

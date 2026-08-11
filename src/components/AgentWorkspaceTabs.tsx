@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { ArrowLeft, LayoutDashboard, MessageSquare, X } from "lucide-react";
 import { useAtom, useAtomValue } from "jotai";
 import {
@@ -8,6 +9,7 @@ import {
 } from "@tanstack/react-router";
 import {
   activeAgentWorkspaceTabAtom,
+  hermesDashboardTabOpenAtom,
   agentWorkspaceTabsAtom,
   activeChatAgentTabAtom,
   chatAgentOpenTabsAtom,
@@ -70,6 +72,15 @@ export function AgentWorkspaceTabs() {
     close: closeScreen,
   } = useScreenTabs();
 
+  const [dashboardTabOpen, setDashboardTabOpen] = useAtom(
+    hermesDashboardTabOpenAtom,
+  );
+  // Visiting Agent OS reopens its own tab: a screen you are looking at should
+  // always have a tab, the same as every other screen in this bar.
+  useEffect(() => {
+    if (isAgentWorkspace) setDashboardTabOpen(true);
+  }, [isAgentWorkspace, setDashboardTabOpen]);
+
   const closeScreenAndLeave = (path: string) => {
     const fallback = closeScreen(path);
     // Closing the screen being viewed has to go somewhere; a browser moves to
@@ -108,6 +119,18 @@ export function AgentWorkspaceTabs() {
     setActiveTab(tabId);
   };
 
+  const closeDashboardTab = () => {
+    setDashboardTabOpen(false);
+    if (!isAgentWorkspace) return;
+    // Closing the tab you are on has to go somewhere. A neighbouring agent
+    // chat if there is one, and otherwise the section this screen lives in.
+    if (tabs.length > 0) {
+      setActiveTab(tabs[0].id);
+    } else {
+      void navigate({ to: "/agents" });
+    }
+  };
+
   const closeTab = (tabId: string) => {
     const ids = tabs.map((tab) => tab.id);
     const next = closeHermesWorkspaceTab(ids, tabId, activeTab);
@@ -133,20 +156,35 @@ export function AgentWorkspaceTabs() {
         <ArrowLeft className="size-4" />
       </button>
 
-      <Link
-        to="/agent-os"
-        onClick={() => activate("dashboard")}
-        className={cn(
-          "flex h-9 shrink-0 items-center gap-2 rounded-t-lg border border-b-0 px-3 text-xs font-medium transition-colors",
-          isAgentWorkspace && activeTab === "dashboard"
-            ? "border-border bg-muted text-foreground"
-            : "border-transparent text-muted-foreground hover:bg-muted/55 hover:text-foreground",
-        )}
-        data-testid="hermes-dashboard-tab"
-      >
-        <LayoutDashboard className="size-3.5" />
-        Dashboard
-      </Link>
+      {dashboardTabOpen && (
+        <div
+          className={cn(
+            "flex h-9 shrink-0 items-center rounded-t-lg border border-b-0 text-xs font-medium transition-colors",
+            isAgentWorkspace && activeTab === "dashboard"
+              ? "border-border bg-muted text-foreground"
+              : "border-transparent text-muted-foreground hover:bg-muted/55 hover:text-foreground",
+          )}
+        >
+          <Link
+            to="/agent-os"
+            onClick={() => activate("dashboard")}
+            className="flex h-full items-center gap-2 pl-3 pr-1"
+            data-testid="hermes-dashboard-tab"
+          >
+            <LayoutDashboard className="size-3.5" />
+            Dashboard
+          </Link>
+          <button
+            type="button"
+            onClick={closeDashboardTab}
+            className="mr-1 grid size-6 place-items-center rounded-md text-current opacity-50 transition hover:bg-foreground/8 hover:opacity-100"
+            aria-label="Close Dashboard"
+            data-testid="hermes-close-dashboard-tab"
+          >
+            <X className="size-3.5" />
+          </button>
+        </div>
+      )}
 
       {tabs.map((tab) => {
         const isActive = isAgentWorkspace && activeTab === tab.id;

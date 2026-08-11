@@ -103,6 +103,28 @@ describe("screen tabs", () => {
     expect(screen.queryByTestId("screen-tab-/coder/helix")).toBeNull();
   });
 
+  it("closes the Hermes Dashboard tab and leaves the workspace", async () => {
+    // It was the one tab in the bar with no close button.
+    pathname = "/agent-os";
+    const { rerender } = render(<AgentWorkspaceTabs />);
+    await screen.findByTestId("hermes-dashboard-tab");
+
+    await userEvent.click(screen.getByTestId("hermes-close-dashboard-tab"));
+
+    expect(navigate).toHaveBeenCalledWith({ to: "/agents" });
+
+    // navigate is mocked, so move the route the way the real one would.
+    pathname = "/agents";
+    rerender(<AgentWorkspaceTabs />);
+    expect(screen.queryByTestId("hermes-dashboard-tab")).toBeNull();
+
+    // Opening Agent OS again brings its tab back: a screen you are looking at
+    // always has a tab.
+    pathname = "/agent-os";
+    rerender(<AgentWorkspaceTabs />);
+    await screen.findByTestId("hermes-dashboard-tab");
+  });
+
   it("goes to chat when the last screen tab closes", async () => {
     render(<AgentWorkspaceTabs />);
     await screen.findByTestId("screen-tab-/settings");

@@ -81,6 +81,18 @@ export const agentWorkspaceTabsAtom = atomWithStorage<AgentWorkspaceTab[]>(
   [],
 );
 
+/**
+ * Whether the Hermes Dashboard tab is open.
+ *
+ * It behaves like the tabs beside it: closable, and persisted so it stays
+ * closed across a restart. Opening Agent OS again brings it back, because that
+ * is the screen it is the tab for.
+ */
+export const hermesDashboardTabOpenAtom = atomWithStorage<boolean>(
+  "hermes-dashboard-tab-open",
+  true,
+);
+
 /** Last selected Agent workspace tab, restored when returning to Agent OS. */
 export const activeAgentWorkspaceTabAtom = atomWithStorage<string>(
   "active-agent-workspace-tab",

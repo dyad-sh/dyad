@@ -122,7 +122,8 @@ describe("runTestsTool", () => {
     // the run proceed. Individual tests override this to exercise mismatches.
     specLister.mockResolvedValue(["e2e-tests/a.spec.ts"]);
     caseLister.mockResolvedValue([{ title: "does a thing", line: 3 }]);
-    // Default: headless + serial (the Tests panel's unset defaults).
+    // Default: headless + serial + full speed (the Tests panel's unset
+    // defaults).
     settingsReader.mockReturnValue({} as ReturnType<typeof readSettings>);
   });
 
@@ -135,27 +136,51 @@ describe("runTestsTool", () => {
     ).toBe(false);
   });
 
-  it("defaults to headless + serial when no Tests-panel mode is set", async () => {
+  it("defaults to headless + serial + full speed when no Tests-panel mode is set", async () => {
     runner.mockResolvedValue(passedResult);
     await runTestsTool.execute({ testFile: "e2e-tests/a.spec.ts" }, makeCtx());
     expect(runner).toHaveBeenCalledWith(
       expect.objectContaining({
         headed: false,
         parallel: false,
+        slowMo: false,
         preview: false,
       }),
     );
   });
 
-  it("forwards the Tests-panel headed/parallel modes to the runner", async () => {
+  it("forwards the Tests-panel headed/parallel/slow-motion modes to the runner", async () => {
     settingsReader.mockReturnValue({
       testHeaded: true,
       testParallel: true,
+      testSlowMo: true,
     } as ReturnType<typeof readSettings>);
     runner.mockResolvedValue(passedResult);
     await runTestsTool.execute({ testFile: "e2e-tests/a.spec.ts" }, makeCtx());
     expect(runner).toHaveBeenCalledWith(
-      expect.objectContaining({ headed: true, parallel: true, preview: false }),
+      expect.objectContaining({
+        headed: true,
+        parallel: true,
+        slowMo: true,
+        preview: false,
+      }),
+    );
+  });
+
+  it("keeps slow motion on for a grep-narrowed run (unlike parallel)", async () => {
+    // Narrowing forces serial, but pace is independent of how the run is
+    // sliced — a user watching a single test still wants to follow it.
+    settingsReader.mockReturnValue({
+      testSlowMo: true,
+      testParallel: true,
+    } as ReturnType<typeof readSettings>);
+    runner.mockResolvedValue(passedResult);
+    await runTestsTool.execute(
+      { testFile: "e2e-tests/a.spec.ts", grep: "does a thing" },
+      makeCtx(),
+    );
+    expect(runner).toHaveBeenCalledWith(
+      expect.objectContaining({ slowMo: true, parallel: false }),
     );
   });
 

@@ -25,6 +25,8 @@ import {
   Sparkles,
   Eye,
   EyeOff,
+  Gauge,
+  Snail,
   Zap,
   ShieldCheck,
   CircleDot,
@@ -702,6 +704,10 @@ export function TestsPanel() {
   // When enabled, a file's independent tests run concurrently instead of
   // serially (Playwright `--fully-parallel` with multiple workers).
   const parallel = settings?.testParallel ?? false;
+  // When enabled, Playwright pauses between actions so the run can be followed
+  // by eye — most useful alongside headed mode, where there's something to
+  // watch.
+  const slowMo = settings?.testSlowMo ?? false;
 
   const devServerRunning = appUrl.appUrl !== null;
   // Owns the run's whole lifecycle, teardown included. Gates every action that
@@ -885,6 +891,7 @@ export function TestsPanel() {
           // A single targeted test can't parallelize, so only opt in for
           // file/all runs. Preview runs share one page, so never.
           parallel: parallel && !isSingleTest && !preview,
+          slowMo,
           preview,
         });
         applyRunFinished({
@@ -919,6 +926,7 @@ export function TestsPanel() {
       setRunState,
       headed,
       parallel,
+      slowMo,
       previewRunEnabled,
       setPreviewMode,
       setPreviewNativeView,
@@ -1390,6 +1398,33 @@ export function TestsPanel() {
               Record
             </button>
           </span>
+        )}
+        {testingEnabled && specs.length > 0 && (
+          <button
+            onClick={() => updateSettings({ testSlowMo: !slowMo })}
+            disabled={isRunning}
+            aria-pressed={slowMo}
+            title={
+              slowMo
+                ? headed
+                  ? "Slow motion: tests pause between actions so you can follow along"
+                  : "Slow motion: tests pause between actions — turn on Headed to watch them"
+                : "Normal speed: tests run as fast as they can"
+            }
+            aria-label={
+              slowMo ? "Switch to normal speed" : "Switch to slow motion"
+            }
+            className={cn(
+              "flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md cursor-pointer transition-colors",
+              slowMo
+                ? "bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300 hover:bg-teal-200 dark:hover:bg-teal-900/60"
+                : "text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700",
+              isRunning && "opacity-40 cursor-not-allowed",
+            )}
+          >
+            {slowMo ? <Snail size={14} /> : <Gauge size={14} />}
+            {slowMo ? "Slow motion" : "Normal speed"}
+          </button>
         )}
         {isRunning ? (
           // During `cleaning-up` the tests are already gone and only the

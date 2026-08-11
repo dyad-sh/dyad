@@ -144,6 +144,11 @@ export const RunAppTestsParamsSchema = z.object({
    */
   parallel: z.boolean().optional(),
   /**
+   * When true, Playwright pauses between actions so a run can be followed by
+   * eye. Applies to browser runs and preview runs alike.
+   */
+  slowMo: z.boolean().optional(),
+  /**
    * Experimental: drive the app inside the preview panel's native
    * WebContentsView over CDP instead of launching a browser, so the user
    * watches the run in place. Forces serial execution and ignores `headed`.

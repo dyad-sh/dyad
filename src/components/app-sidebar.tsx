@@ -1,4 +1,5 @@
 import {
+  Brain,
   Cpu,
   HardDrive,
   DraftingCompass,
@@ -6,10 +7,8 @@ import {
   MessageSquare,
   BookOpen,
   Bot,
-  Library,
   CalendarDays,
   GitFork,
-  Network,
 } from "lucide-react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useSidebar } from "@/components/ui/sidebar";
@@ -38,30 +37,18 @@ import {
 import { useSettings } from "@/hooks/useSettings";
 import { hasEnabledDevOpsPlugins } from "@/lib/dev_ops_plugins";
 
-/**
- * The sidebar orb reads the route itself so it can show its active
- * (rotating ring) treatment without changing the shared nav item icon
- * contract, which the Lucide icons rely on.
- */
-const agentNavItems = [
-  { title: "Chat Agent", to: "/chat-agent", icon: MessageSquare },
-  { title: "Planner", to: "/planner", icon: CalendarDays },
-] as const satisfies ReadonlyArray<{
-  title: AppSidebarItemTitle;
-  to: string;
-  icon: LucideIcon;
-}>;
-
 const mainNavItems = [
-  { title: "Knowledge Core", to: "/knowledge-core", icon: Network },
-  ...agentNavItems,
+  { title: "Chat Agent", to: "/chat-agent", icon: MessageSquare },
+  // Memory sits under the chat agent: what it knows, next to the thing that
+  // uses it. The Knowledge Core and Knowledge Base live inside.
+  { title: "Memory", to: "/memory", icon: Brain },
+  { title: "Planner", to: "/planner", icon: CalendarDays },
   // Agents and Build sit directly under the coding agent, which is where
   // the build tools belong together.
   { title: "Agents", to: "/agents", icon: Bot },
   { title: "Build", to: "/build", icon: DraftingCompass },
   { title: "Dev Ops", to: "/dev-ops", icon: GitFork },
   { title: "Library", to: "/library", icon: BookOpen },
-  { title: "Knowledge Base", to: "/knowledge-base", icon: Library },
   // Storage keeps its own rail entry as well as its place under System, and
   // the coding projects gallery now lives inside it.
   { title: "Storage", to: "/storage", icon: HardDrive },

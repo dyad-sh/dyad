@@ -33,6 +33,7 @@ import { metaHdRoute } from "./routes/meta-hd";
 import { vectorRoute } from "./routes/vector";
 import { storageRoute } from "./routes/storage";
 import { localStorageRoute } from "./routes/local-storage";
+import { memoryRoute } from "./routes/memory";
 import { dataSourcesRoute } from "./routes/data-sources";
 import { infrastructureRoute } from "./routes/infrastructure";
 import { systemRoute } from "./routes/system";
@@ -61,6 +62,7 @@ const routeTree = rootRoute.addChildren([
   ...buildCategoryRoutes,
   storageRoute,
   localStorageRoute,
+  memoryRoute,
   dataSourcesRoute,
   infrastructureRoute,
   systemRoute,

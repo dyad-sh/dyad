@@ -4,9 +4,8 @@ export type AgentSidebarItemTitle = "Chat Agent" | "Coding Agent" | "Planner";
 
 export type AppSidebarItemTitle =
   | AgentSidebarItemTitle
-  | "Knowledge Core"
+  | "Memory"
   | "Build"
-  | "Knowledge Base"
   | "Agents"
   | "Dev Ops"
   | "System"
@@ -100,11 +99,13 @@ export function isSidebarItemActive({
     // the same entry.
     return pathname.startsWith("/build") || pathname.startsWith("/engineering");
   }
-  if (title === "Knowledge Core") {
-    return pathname.startsWith("/knowledge-core");
-  }
-  if (title === "Knowledge Base") {
-    return pathname.startsWith("/knowledge-base");
+  if (title === "Memory") {
+    // Both knowledge screens live under Memory, so they light this entry.
+    return (
+      pathname.startsWith("/memory") ||
+      pathname.startsWith("/knowledge-core") ||
+      pathname.startsWith("/knowledge-base")
+    );
   }
   if (title === "Settings") {
     return pathname.startsWith("/settings");

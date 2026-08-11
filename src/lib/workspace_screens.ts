@@ -1,4 +1,5 @@
 import {
+  Brain,
   CircuitBoard,
   FolderOpen,
   Cog,
@@ -54,6 +55,7 @@ const SCREENS: WorkspaceScreen[] = [
   { path: "/coder/helix", title: "Helix", icon: Orbit },
   { path: "/coder/openworker", title: "OpenWorker", icon: Briefcase },
   { path: "/coder", title: "Coding Agents", icon: Terminal },
+  { path: "/memory", title: "Memory", icon: Brain },
   { path: "/knowledge-core", title: "Knowledge Core", icon: Sparkles },
   { path: "/assembler3d", title: "Assembler", icon: Box },
   { path: "/build", title: "Build", icon: DraftingCompass },

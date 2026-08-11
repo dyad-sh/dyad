@@ -1944,8 +1944,19 @@ export function registerAppHandlers() {
       // The private halves of the Coolify deploy keys. Nothing else deletes
       // them: they are keyed by repository, not by app, so they outlive both
       // the app that generated them and the settings holding the token.
-      await fsPromises.rm(deployKeyDirPath(), { recursive: true, force: true });
-      logger.log("Coolify deploy keys deleted.");
+      //
+      // Best-effort. Past the commit above, a throw runs neither branch of the
+      // finally, so the app-run fence stays held until a restart — too much to
+      // pay for a key file the filesystem happened not to release.
+      try {
+        await fsPromises.rm(deployKeyDirPath(), {
+          recursive: true,
+          force: true,
+        });
+        logger.log("Coolify deploy keys deleted.");
+      } catch (error) {
+        logger.warn("Could not delete the Coolify deploy keys:", error);
+      }
       // Reset base directory cache to default, because settings are gone anyway
       invalidateDyadAppsBaseDirectoryCache();
       logger.log("settings deleted.");

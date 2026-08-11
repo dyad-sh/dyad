@@ -1,6 +1,11 @@
-import { LayoutDashboard, MessageSquare, X } from "lucide-react";
+import { ArrowLeft, LayoutDashboard, MessageSquare, X } from "lucide-react";
 import { useAtom, useAtomValue } from "jotai";
-import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import {
+  Link,
+  useNavigate,
+  useRouter,
+  useRouterState,
+} from "@tanstack/react-router";
 import {
   activeAgentWorkspaceTabAtom,
   agentWorkspaceTabsAtom,
@@ -41,7 +46,13 @@ export function AgentWorkspaceTabs() {
     select: (state) => state.location.pathname,
   });
   const navigate = useNavigate();
+  const router = useRouter();
   const isAgentWorkspace = pathname.startsWith("/agent-os");
+
+  // Section indexes navigate away to screens that own their own routes, which
+  // left no way back to the index you came from. One control in the bar covers
+  // every screen, rather than each one growing its own breadcrumb.
+  const canGoBack = router.history.canGoBack();
 
   // Chat Agent conversations live in this same bar rather than a second one
   // stacked inside the page.
@@ -110,6 +121,18 @@ export function AgentWorkspaceTabs() {
       className="no-app-region-drag flex h-11 shrink-0 items-end gap-1 overflow-x-auto border-b border-border/70 bg-background/92 px-3 pt-1.5 backdrop-blur-xl scrollbar-on-hover"
       data-testid="agent-workspace-tabs"
     >
+      <button
+        type="button"
+        onClick={() => router.history.back()}
+        disabled={!canGoBack}
+        className="mb-1 grid size-7 shrink-0 place-items-center rounded-lg text-muted-foreground transition hover:bg-muted/60 hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
+        aria-label="Go back"
+        title="Go back"
+        data-testid="workspace-go-back"
+      >
+        <ArrowLeft className="size-4" />
+      </button>
+
       <Link
         to="/agent-os"
         onClick={() => activate("dashboard")}

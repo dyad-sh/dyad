@@ -28,6 +28,9 @@ vi.mock("@tanstack/react-router", async (importOriginal) => ({
     </a>
   ),
   useNavigate: () => navigate,
+  // The bar's back control reads history; the suite renders it without a
+  // RouterProvider.
+  useRouter: () => ({ history: { canGoBack: () => false, back: () => {} } }),
   useRouterState: ({ select }: any) => select({ location: { pathname } }),
 }));
 

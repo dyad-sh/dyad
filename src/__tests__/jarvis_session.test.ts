@@ -114,7 +114,7 @@ const baseSettings = (overrides: Partial<UserSettings> = {}) =>
     releaseChannel: "stable",
     chatAgentModel: { name: "test-model", provider: "openai" },
     jarvis: {
-      greeting: "JARVIS online.",
+      greeting: "Meta Human OS online.",
       inactivityTimeoutSeconds: 0,
       ...(overrides as any).jarvis,
     },
@@ -166,7 +166,7 @@ describe("JarvisSession", () => {
     const greeting = payloads("jarvis:event:committed-transcript")[0];
     expect(greeting).toMatchObject({
       role: "assistant",
-      text: "JARVIS online.",
+      text: "Meta Human OS online.",
     });
   });
 
@@ -380,7 +380,9 @@ describe("JarvisSession", () => {
     );
 
     const activity = payloads("jarvis:event:activity");
-    expect(activity.map((event) => event.title)).toContain("JARVIS online");
+    expect(activity.map((event) => event.title)).toContain(
+      "Meta Human OS online",
+    );
     expect(activity.map((event) => event.title)).toContain(
       "Model: openai/test-model",
     );

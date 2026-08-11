@@ -115,7 +115,9 @@ export function JarvisWorkspace() {
       data-state={session.state}
     >
       <header className="flex shrink-0 items-center gap-3 px-6 pt-[calc(var(--layout-title-bar-offset)+0.75rem)] pb-3">
-        <h1 className="font-jarvis-display text-sm text-cyan-100/90">JARVIS</h1>
+        <h1 className="font-jarvis-display text-sm text-cyan-100/90">
+          Meta Human OS
+        </h1>
         <span
           className="rounded-full border border-cyan-400/20 px-2 py-0.5 text-[10px] tracking-widest text-cyan-300/70 uppercase"
           aria-live="polite"
@@ -208,8 +210,8 @@ export function JarvisWorkspace() {
                   submitDraft();
                 }
               }}
-              placeholder="Type to JARVIS…"
-              aria-label="Send a message to JARVIS"
+              placeholder="Type to Meta Human OS…"
+              aria-label="Send a message to Meta Human OS"
               disabled={!session.isActive}
               className="min-w-0 flex-1 rounded-lg border border-cyan-400/20 bg-transparent px-3 py-2 text-sm text-cyan-50 placeholder:text-cyan-100/30 focus-visible:border-cyan-400/50 focus-visible:ring-1 focus-visible:ring-cyan-400/40 focus-visible:outline-none disabled:opacity-40"
             />
@@ -232,8 +234,8 @@ export function JarvisWorkspace() {
               cards={cards}
               emptyHint={
                 session.isActive
-                  ? "Ask JARVIS a question. Answers, images and tool results appear here."
-                  : "Start a session to talk with JARVIS."
+                  ? "Ask Meta Human OS a question. Answers, images and tool results appear here."
+                  : "Start a session to talk with Meta Human OS."
               }
             />
           </div>

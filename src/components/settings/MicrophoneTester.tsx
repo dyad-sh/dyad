@@ -59,7 +59,7 @@ export function MicrophoneTester({
     setError(null);
     setPeak(0);
     try {
-      // Match the live session: no processing, so the meter shows what JARVIS
+      // Match the live session: no processing, so the meter shows what Meta Human OS
       // would actually receive.
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {

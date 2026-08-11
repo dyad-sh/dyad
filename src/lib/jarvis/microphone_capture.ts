@@ -1,5 +1,5 @@
 /**
- * Microphone capture + local voice activity detection for JARVIS.
+ * Microphone capture + local voice activity detection for Meta Human OS.
  *
  * Produces 16 kHz mono PCM16 frames for the main process (which owns the
  * ElevenLabs credentials) and a smoothed amplitude signal that drives the

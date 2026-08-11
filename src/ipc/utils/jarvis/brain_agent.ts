@@ -6,7 +6,7 @@ import { agentOsAgents } from "../../../db/schema";
 import type { UserSettings } from "@/lib/schemas";
 
 /**
- * Resolves the Agent OS agent selected as the JARVIS voice brain.
+ * Resolves the Agent OS agent selected as the Meta Human OS voice brain.
  *
  * Agents registered on the Agents page expose an OpenAI-compatible endpoint,
  * so the brain is just a model client pointed at that endpoint — the same

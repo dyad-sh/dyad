@@ -26,7 +26,7 @@ function requireSession(sender: WebContents, sessionId: string): JarvisSession {
   const session = sessionsByWindow.get(sender.id);
   if (!session || session.sessionId !== sessionId) {
     throw new DyadError(
-      "No active JARVIS session for this window.",
+      "No active Meta Human OS session for this window.",
       DyadErrorKind.Precondition,
     );
   }
@@ -69,7 +69,7 @@ export function registerJarvisHandlers() {
     const existing = sessionsByWindow.get(windowId);
     if (existing) {
       logger.info(
-        `Replacing existing JARVIS session ${existing.sessionId} in window ${windowId}`,
+        `Replacing existing Meta Human OS session ${existing.sessionId} in window ${windowId}`,
       );
       existing.stop("Replaced by a new session");
       sessionsByWindow.delete(windowId);

@@ -37,7 +37,7 @@ import {
 const logger = log.scope("jarvis-session");
 
 export const JARVIS_SYSTEM_PROMPT = [
-  "You are JARVIS, the application's live voice interface and orchestration assistant.",
+  "You are Meta Human OS, the application's live voice interface and orchestration assistant.",
   "Communicate naturally, calmly and efficiently. Keep spoken responses concise unless the user requests detail — answers are read aloud, so avoid markdown, bullet lists, code blocks and URLs; describe them in plain speech instead.",
   "You can navigate the application and perform actions only through the tools made available to you. Never claim that an action succeeded until its tool returns success.",
   "Ask for confirmation before sensitive or destructive actions.",
@@ -46,7 +46,7 @@ export const JARVIS_SYSTEM_PROMPT = [
   "Prefer taking the requested action over explaining how the user could do it manually.",
 ].join(" ");
 
-export const DEFAULT_GREETING = "JARVIS online. How can I assist?";
+export const DEFAULT_GREETING = "Meta Human OS online. How can I assist?";
 
 const END_SESSION_PHRASES = ["end session", "go offline", "goodbye jarvis"];
 
@@ -195,7 +195,7 @@ export class JarvisSession {
     try {
       return resolveBrainAgent(this.settings);
     } catch (error) {
-      logger.warn("Could not resolve the JARVIS brain agent", error);
+      logger.warn("Could not resolve the Meta Human OS brain agent", error);
       return null;
     }
   }
@@ -254,7 +254,7 @@ export class JarvisSession {
     });
     this.activity({
       type: "session",
-      title: "JARVIS online",
+      title: "Meta Human OS online",
       summary: this.realtime
         ? "Realtime voice session established"
         : this.stt
@@ -569,7 +569,7 @@ export class JarvisSession {
     const outputFormat = jarvis?.outputFormat || DEFAULT_OUTPUT_FORMAT;
     if (!outputFormat.startsWith("pcm_")) {
       logger.warn(
-        `Unsupported JARVIS output format ${outputFormat}; using ${DEFAULT_OUTPUT_FORMAT}`,
+        `Unsupported Meta Human OS output format ${outputFormat}; using ${DEFAULT_OUTPUT_FORMAT}`,
       );
     }
     return async (callbacks) =>
@@ -694,7 +694,7 @@ export class JarvisSession {
         }
         return;
       }
-      logger.error("JARVIS LLM turn failed", error);
+      logger.error("Meta Human OS LLM turn failed", error);
       this.activity({
         ...generatingActivity,
         status: "failed",

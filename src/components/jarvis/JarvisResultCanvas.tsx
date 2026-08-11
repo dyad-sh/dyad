@@ -13,7 +13,7 @@ import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /**
- * A structured result produced by JARVIS. Result cards keep the workspace
+ * A structured result produced by Meta Human OS. Result cards keep the workspace
  * readable — answers, images and tool outcomes each get their own shape
  * rather than a wall of chat bubbles.
  */

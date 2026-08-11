@@ -388,7 +388,7 @@ export type SocialMediaConnections = z.infer<
 >;
 
 /**
- * How JARVIS picks the LLM that powers voice conversations.
+ * How Meta Human OS picks the LLM that powers voice conversations.
  * "agent" routes to a registered Hermes/Agent OS endpoint.
  */
 export const JarvisModelModeSchema = z.enum([
@@ -414,7 +414,7 @@ export const JarvisPermissionsSchema = z.object({
 export type JarvisPermissions = z.infer<typeof JarvisPermissionsSchema>;
 
 /**
- * Settings for the JARVIS live voice assistant.
+ * Settings for the Meta Human OS live voice assistant.
  * ElevenLabs provides STT/TTS only; reasoning uses the app's own models.
  */
 /**
@@ -466,7 +466,7 @@ export const JarvisSettingsSchema = z.object({
   voiceModel: LargeLanguageModelSchema.optional(),
   /**
    * Agent OS agent id used as the voice brain. Set from the Agents page.
-   * When present, JARVIS reasons through that agent's endpoint.
+   * When present, Meta Human OS reasons through that agent's endpoint.
    */
   brainAgentId: z.string().optional(),
   preferLocalModels: z.boolean().optional(),
@@ -584,7 +584,7 @@ const BaseUserSettingsFields = {
   researchPlugins: ResearchPluginsSchema.optional(),
   chatAgentSystemAccess: ChatAgentSystemAccessSchema.optional(),
   socialMedia: SocialMediaConnectionsSchema.optional(),
-  /** JARVIS live voice assistant configuration. */
+  /** Meta Human OS live voice assistant configuration. */
   jarvis: JarvisSettingsSchema.optional(),
   /** Vercel AI Gateway API key, used by the Helix coding agent. */
   vercelAiGatewayApiKey: SecretSchema.optional(),

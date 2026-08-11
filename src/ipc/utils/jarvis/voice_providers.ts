@@ -1,5 +1,5 @@
 /**
- * Provider-agnostic interfaces for the JARVIS voice pipeline, plus mock
+ * Provider-agnostic interfaces for the Meta Human OS voice pipeline, plus mock
  * implementations used by tests and by mock sessions (no ElevenLabs credits).
  *
  * Keeping the wire protocols behind these interfaces lets ElevenLabs be

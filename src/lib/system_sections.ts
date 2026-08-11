@@ -23,7 +23,7 @@ import type { SettingsTabId } from "./settingsTabs";
  * landing overview and the tests. A second copy anywhere would drift, and the
  * first symptom of drift is a destination nobody can reach.
  *
- * JARVIS voice settings are not here: they live on the JARVIS screen, which is
+ * Meta Human OS voice settings are not here: they live on the Meta Human OS screen, which is
  * what they configure.
  *
  * Every destination either renders an existing page or an existing settings

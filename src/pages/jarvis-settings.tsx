@@ -9,7 +9,7 @@ import { SettingsDraftProvider } from "@/contexts/SettingsDraftContext";
 import { useAppVersion } from "@/hooks/useAppVersion";
 
 /**
- * JARVIS voice settings, on the JARVIS screen rather than in System.
+ * Meta Human OS voice settings, on the Meta Human OS screen rather than in System.
  *
  * The same tab the settings rail has always rendered, with the rail hidden.
  * Nothing about the controls changed; what changed is that they now sit with
@@ -34,7 +34,7 @@ export default function JarvisSettingsPage() {
           data-testid="jarvis-settings-back"
         >
           <ChevronLeft className="size-4" />
-          JARVIS
+          Meta Human OS
         </button>
         <span className="system-crumb">
           <AudioLines className="size-3.5" />

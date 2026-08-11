@@ -1,5 +1,5 @@
 /**
- * JARVIS session state machine.
+ * Meta Human OS session state machine.
  *
  * Pure, dependency-free logic shared by the main-process session manager
  * (the authoritative copy) and the renderer (which mirrors state via IPC

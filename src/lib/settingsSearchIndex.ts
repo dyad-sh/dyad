@@ -104,14 +104,15 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
   {
     id: "setting-jarvis-elevenlabs-key",
     label: "ElevenLabs API key",
-    description: "Credential for JARVIS speech-to-text and text-to-speech",
+    description:
+      "Credential for Meta Human OS speech-to-text and text-to-speech",
     keywords: ["elevenlabs", "voice", "jarvis", "api key", "speech", "tts"],
     sectionId: SECTION_IDS.jarvis,
     sectionLabel: "Voice Assistant",
   },
   {
     id: "setting-jarvis-voice",
-    label: "JARVIS voice",
+    label: "Meta Human OS voice",
     description: "Voice ID, speed, stability and similarity for spoken replies",
     keywords: ["voice", "jarvis", "speed", "stability", "similarity", "speak"],
     sectionId: SECTION_IDS.jarvis,
@@ -119,7 +120,7 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
   },
   {
     id: "setting-jarvis-model",
-    label: "JARVIS model",
+    label: "Meta Human OS model",
     description: "Which connected model powers voice conversations",
     keywords: ["jarvis", "model", "voice model", "routing", "local model"],
     sectionId: SECTION_IDS.jarvis,

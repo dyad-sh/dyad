@@ -8,7 +8,7 @@ import {
 import { JARVIS_STATES } from "../../shared/jarvis/state_machine";
 
 // =============================================================================
-// JARVIS Schemas
+// Meta Human OS Schemas
 // =============================================================================
 
 export const JarvisStateSchema = z.enum(JARVIS_STATES);

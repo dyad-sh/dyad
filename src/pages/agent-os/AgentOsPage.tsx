@@ -379,7 +379,7 @@ function HermesAgentForm({
 }
 
 /**
- * Makes this agent the brain behind the JARVIS voice assistant. Exactly one
+ * Makes this agent the brain behind the Meta Human OS voice assistant. Exactly one
  * agent holds the role, so switching it on here takes it off whichever agent
  * had it. ElevenLabs still supplies only the audio pipeline and voice — this
  * chooses what actually thinks.
@@ -388,21 +388,21 @@ function VoiceBrainToggle({ agent }: { agent: Agent }) {
   const { settings, updateSettings } = useSettings();
   const isBrain = settings?.jarvis?.brainAgentId === agent.id;
   const hasHttpEndpoint = /^https?:\/\//i.test(agent.endpoint?.trim() ?? "");
-  // JARVIS streams chat completions, so an MCP-only agent (no
+  // Meta Human OS streams chat completions, so an MCP-only agent (no
   // /chat/completions API) cannot serve as the brain.
   const isChatCapable = agent.type !== "MCP";
   const canSelect = hasHttpEndpoint && isChatCapable && agent.enabled;
   const toggleId = `voice-brain-${agent.id}`;
 
   const hint = !isChatCapable
-    ? "MCP-only agents cannot drive JARVIS"
+    ? "MCP-only agents cannot drive Meta Human OS"
     : !hasHttpEndpoint
-      ? "Needs an HTTP endpoint to drive JARVIS"
+      ? "Needs an HTTP endpoint to drive Meta Human OS"
       : !agent.enabled
-        ? "Enable this agent to let it drive JARVIS"
+        ? "Enable this agent to let it drive Meta Human OS"
         : isBrain
-          ? "Answers every JARVIS voice turn"
-          : "Use as the JARVIS voice brain";
+          ? "Answers every Meta Human OS voice turn"
+          : "Use as the Meta Human OS voice brain";
 
   return (
     <div
@@ -420,7 +420,7 @@ function VoiceBrainToggle({ agent }: { agent: Agent }) {
           )}
         >
           <AudioLines className="size-3.5 shrink-0" />
-          JARVIS voice brain
+          Meta Human OS voice brain
         </label>
         <p className="mt-0.5 text-[11px] leading-4 text-cyan-100/40">{hint}</p>
       </div>
@@ -428,7 +428,7 @@ function VoiceBrainToggle({ agent }: { agent: Agent }) {
         id={toggleId}
         checked={isBrain}
         disabled={!canSelect}
-        aria-label={`Use ${agent.name} as the JARVIS voice brain`}
+        aria-label={`Use ${agent.name} as the Meta Human OS voice brain`}
         data-testid={`agent-os-voice-brain-${agent.id}`}
         onCheckedChange={(checked) => {
           // Only the fields being changed: a whole-object write from here

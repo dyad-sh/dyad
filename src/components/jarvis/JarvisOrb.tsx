@@ -22,7 +22,7 @@ export function jarvisStateLabel(state: JarvisState): string {
 }
 
 /**
- * The JARVIS orb. Ring treatment encodes the session state; the core scales
+ * The Meta Human OS orb. Ring treatment encodes the session state; the core scales
  * with live audio amplitude (mic level while listening, output level while
  * speaking).
  */
@@ -56,7 +56,7 @@ export function JarvisOrb({
         } as React.CSSProperties
       }
       role="img"
-      aria-label={`JARVIS status: ${STATE_LABELS[state]}`}
+      aria-label={`Meta Human OS status: ${STATE_LABELS[state]}`}
     >
       {/* Outer rings — the state signature. */}
       {(state === "listening" ||

@@ -37,7 +37,7 @@ export interface JarvisSessionSnapshot {
 const MAX_ACTIVITY_EVENTS = 200;
 
 /**
- * Owns the renderer half of a JARVIS voice session: microphone capture,
+ * Owns the renderer half of a Meta Human OS voice session: microphone capture,
  * TTS playback, and the event stream from the main process. The main process
  * remains the authority on session state — this mirrors it.
  */
@@ -199,7 +199,7 @@ export function useJarvisSession() {
         setError(
           startError instanceof Error
             ? startError.message
-            : "Could not start the JARVIS session.",
+            : "Could not start the Meta Human OS session.",
         );
         teardownAudio();
         setIsStarting(false);

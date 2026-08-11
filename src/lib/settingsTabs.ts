@@ -63,7 +63,7 @@ export const SETTINGS_TABS: SettingsTabDefinition[] = [
   {
     id: "jarvis",
     label: "Voice Assistant",
-    description: "JARVIS voice, listening and permissions",
+    description: "Meta Human OS voice, listening and permissions",
     icon: AudioLines,
     sectionIds: [SECTION_IDS.jarvis],
   },

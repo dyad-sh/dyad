@@ -97,7 +97,7 @@ export function JarvisControlBar({
     <div
       className="jarvis-panel flex items-center gap-1.5 rounded-xl px-2 py-1.5"
       role="toolbar"
-      aria-label="JARVIS controls"
+      aria-label="Meta Human OS controls"
     >
       <ControlButton
         icon={isMuted ? MicOff : Mic}

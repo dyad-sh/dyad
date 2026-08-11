@@ -5,7 +5,7 @@ import type { JarvisTranscriptEntry } from "@/hooks/useJarvisSession";
 
 const ROLE_LABELS: Record<JarvisTranscriptEntry["role"], string> = {
   user: "You",
-  assistant: "JARVIS",
+  assistant: "Meta Human OS",
   tool: "Tool",
   system: "System",
 };

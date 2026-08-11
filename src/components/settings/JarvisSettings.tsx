@@ -145,7 +145,7 @@ export function JarvisSettings() {
       <div className={cardClass}>
         <div className="mb-5 flex items-center gap-2">
           <AudioLines className="size-4 text-cyan-300/70" />
-          <h2 className={headingClass}>JARVIS</h2>
+          <h2 className={headingClass}>Meta Human OS</h2>
         </div>
         <p className="mb-5 text-sm text-cyan-100/45">
           A continuous, interruptible voice conversation. ElevenLabs handles
@@ -156,7 +156,7 @@ export function JarvisSettings() {
         <div className="space-y-3">
           <ToggleRow
             title="Start listening when opened"
-            description="Open the microphone as soon as the JARVIS workspace appears."
+            description="Open the microphone as soon as the Meta Human OS workspace appears."
             checked={jarvis?.startListeningOnOpen ?? true}
             onCheckedChange={(value) => patch({ startListeningOnOpen: value })}
           />
@@ -196,7 +196,7 @@ export function JarvisSettings() {
             <Input
               id="jarvis-greeting"
               value={jarvis?.greeting ?? ""}
-              placeholder="JARVIS online. How can I assist?"
+              placeholder="Meta Human OS online. How can I assist?"
               onChange={(event) => patch({ greeting: event.target.value })}
               className="w-64 shrink-0"
             />
@@ -408,7 +408,7 @@ export function JarvisSettings() {
           />
           <ToggleRow
             title="Allow interruptions"
-            description="Speaking over JARVIS stops playback and starts a new turn."
+            description="Speaking over Meta Human OS stops playback and starts a new turn."
             checked={jarvis?.allowInterruptions ?? true}
             onCheckedChange={(value) => patch({ allowInterruptions: value })}
           />
@@ -456,8 +456,9 @@ export function JarvisSettings() {
           <h2 className={headingClass}>Intelligence</h2>
         </div>
         <p className="mb-4 text-sm text-cyan-100/45">
-          JARVIS reasons with the models configured in this app. ElevenLabs
-          provides the audio pipeline and voice only — never a language model.
+          Meta Human OS reasons with the models configured in this app.
+          ElevenLabs provides the audio pipeline and voice only — never a
+          language model.
         </p>
 
         {jarvis?.brainAgentId && (

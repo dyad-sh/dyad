@@ -3,7 +3,7 @@ import log from "electron-log";
 import { db } from "@/db";
 import { apps, coolifyAppConnections } from "@/db/schema";
 import { DyadError, DyadErrorKind, isDyadError } from "@/errors/dyad_error";
-import { getClient, readConnectionState } from "./store";
+import { getClient, readConnection, readConnectionState } from "./store";
 import { readSettings } from "@/main/settings";
 import { getDyadAppPath } from "@/paths/paths";
 import {
@@ -20,7 +20,6 @@ import {
   applyCoolifyConnectionChange,
   coolifyConnectionRow,
   type CoolifyConnectionChange,
-  type CoolifyConnectionHost,
 } from "./connection";
 import {
   coolifyKeyName,
@@ -127,18 +126,17 @@ function sleep(clock: Clock, ms: number): Promise<void> {
  * landing between the read and the write deletes the row this was pinned to,
  * so the write then matches nothing rather than putting a stale record back.
  *
- * Fenced on the whole host rather than the server alone. A server-only fence
- * held only while the row stayed deleted: disconnecting mid-deploy and
- * reconnecting to a different project on that same server produced a row this
- * still matched, and the read-modify-write then hung the old project's
- * application id on the new connection. Nothing announces that — the next
- * deploy finds the id perfectly resolvable on this instance and builds into a
- * project the panel does not show. The tuple here is the one `isHostMove`
- * compares, so both agree on what counts as somewhere else.
+ * Fenced on the row the deploy started against, by id. Naming the host instead
+ * described where it deploys rather than which connection it is, and those
+ * differ the moment one is replaced by another to the same place: disconnect
+ * mid-deploy, reconnect to the same server and project, and a write meant for
+ * the connection that was abandoned lands on its replacement — hanging the old
+ * application and address on it. Nothing announces that, and a later deploy
+ * adopts the old application and leaves whatever domain it holds in place.
  */
 async function recordConnectionChange(
   appId: number,
-  host: CoolifyConnectionHost,
+  connectionId: number,
   change: CoolifyConnectionChange,
 ): Promise<void> {
   const next = applyCoolifyConnectionChange(
@@ -147,7 +145,7 @@ async function recordConnectionChange(
   );
   const row = coolifyConnectionRow(next);
   if (!row) return;
-  // The whole row every time, fenced to the host this deploy started on. A
+  // The whole row every time, fenced to the row this deploy started on. A
   // deploy can run for fifteen minutes, and an app disconnected or pointed at
   // a different Coolify meanwhile matches nothing here rather than receiving
   // an application id and URL that exist only on the instance it left.
@@ -156,10 +154,8 @@ async function recordConnectionChange(
     .set(row)
     .where(
       and(
+        eq(coolifyAppConnections.id, connectionId),
         eq(coolifyAppConnections.appId, appId),
-        eq(coolifyAppConnections.serverUuid, host.serverUuid),
-        eq(coolifyAppConnections.projectUuid, host.projectUuid),
-        eq(coolifyAppConnections.environmentName, host.environmentName),
       ),
     );
 }
@@ -634,8 +630,12 @@ export async function runDeployPipeline({
     throw new DyadError(`App ${appId} not found`, DyadErrorKind.NotFound);
   }
   const settings = readSettings();
-  const connection = await readConnectionState(appId);
-  if (!settings.coolify?.instanceUrl || connection.kind === "none") {
+  const { state: connection, id: connectionId } = await readConnection(appId);
+  if (
+    !settings.coolify?.instanceUrl ||
+    connection.kind === "none" ||
+    connectionId === null
+  ) {
     throw new DyadError(
       "Connect a Coolify server for this app first.",
       DyadErrorKind.Validation,
@@ -683,13 +683,6 @@ export async function runDeployPipeline({
 
   const gitRepository = `git@github.com:${app.githubOrg}/${app.githubRepo}.git`;
   const gitBranch = app.githubBranch ?? "main";
-  // Captured at the start: every write below is fenced against this exact
-  // host, so a repoint mid-deploy leaves the stale result unwritten.
-  const host: CoolifyConnectionHost = {
-    serverUuid: connection.serverUuid,
-    projectUuid: connection.projectUuid,
-    environmentName: connection.environmentName,
-  };
   const serverUuid = connection.serverUuid;
 
   report.stage("configuring");
@@ -702,7 +695,7 @@ export async function runDeployPipeline({
     savedUuid: savedApplicationUuid,
     expectedServerUuid: serverUuid,
     onPreviousGone: () =>
-      recordConnectionChange(appId, host, { type: "APPLICATION_GONE" }),
+      recordConnectionChange(appId, connectionId, { type: "APPLICATION_GONE" }),
     privateKeyId: key.id,
     report,
     create: async () => {
@@ -728,7 +721,7 @@ export async function runDeployPipeline({
     // only record of something that exists, and the next deploy would build a
     // second one beside it. The write is still fenced, so a connection that
     // was cleared meanwhile matches no row rather than being resurrected.
-    await recordConnectionChange(appId, host, {
+    await recordConnectionChange(appId, connectionId, {
       type: "APPLICATION_RESOLVED",
       applicationUuid,
     });
@@ -934,7 +927,7 @@ export async function runDeployPipeline({
   }
 
   throwIfAborted(signal);
-  await recordConnectionChange(appId, host, {
+  await recordConnectionChange(appId, connectionId, {
     type: "DEPLOY_SUCCEEDED",
     appUrl: url,
     at: new Date(clock.now()),

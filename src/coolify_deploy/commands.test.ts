@@ -1536,11 +1536,18 @@ describe("writing only to the server the deploy started against", () => {
     // the request rather than raced against the pipeline, or whether this
     // lands first is a matter of how many microtasks the pipeline happens to
     // take.
+    // Replaced rather than updated in place, which is what saving a connection
+    // does: the row is deleted and written back, so it is a different row.
     sideEffects.set("POST /applications/private-deploy-key", async () => {
       await harness.db
-        .update(coolifyAppConnections)
-        .set({ serverUuid: "srv-other" })
+        .delete(coolifyAppConnections)
         .where(eq(coolifyAppConnections.appId, app.id));
+      await harness.db.insert(coolifyAppConnections).values({
+        appId: app.id,
+        serverUuid: "srv-other",
+        projectUuid: "project-1",
+        environmentName: "production",
+      });
     });
 
     await drive(
@@ -1561,6 +1568,45 @@ describe("writing only to the server the deploy started against", () => {
     expect(row?.appUrl).toBeNull();
   });
 
+  it("does not record the result on a connection made after this one went", async () => {
+    // Disconnect cancels the deploy and deletes the row, but the pipeline is
+    // still unwinding. Reconnecting to the very same server, project and
+    // environment gives a row every host column matches — so a fence naming
+    // where it deploys, rather than which connection it is, hands the
+    // abandoned application and address to its replacement.
+    const app = await seedApp({ connection: { applicationUuid: null } });
+    happyPathRoutes();
+    const clock = createFakeClock();
+
+    sideEffects.set("POST /applications/private-deploy-key", async () => {
+      await harness.db
+        .delete(coolifyAppConnections)
+        .where(eq(coolifyAppConnections.appId, app.id));
+      await harness.db.insert(coolifyAppConnections).values({
+        appId: app.id,
+        serverUuid: "server-1",
+        projectUuid: "project-1",
+        environmentName: "production",
+        domain: null,
+      });
+    });
+
+    await drive(
+      clock,
+      runDeployPipeline({
+        appId: app.id,
+        signal: new AbortController().signal,
+        report: recorder(),
+        clock,
+      }),
+    );
+
+    const row = await readApp(app.id);
+    expect(row?.serverUuid).toBe("server-1");
+    expect(row?.applicationUuid).toBeNull();
+    expect(row?.appUrl).toBeNull();
+  });
+
   it("does not record the result when only the project changed", async () => {
     // The same server is the case a server-only fence let through: disconnect
     // mid-deploy, reconnect to another project on that same server, and the
@@ -1573,9 +1619,14 @@ describe("writing only to the server the deploy started against", () => {
 
     sideEffects.set("POST /applications/private-deploy-key", async () => {
       await harness.db
-        .update(coolifyAppConnections)
-        .set({ projectUuid: "project-other" })
+        .delete(coolifyAppConnections)
         .where(eq(coolifyAppConnections.appId, app.id));
+      await harness.db.insert(coolifyAppConnections).values({
+        appId: app.id,
+        serverUuid: "server-1",
+        projectUuid: "project-other",
+        environmentName: "production",
+      });
     });
 
     await drive(

@@ -49,11 +49,26 @@ export function getClient(signal?: AbortSignal): CoolifyClient {
 export async function readConnectionState(
   appId: number,
 ): Promise<CoolifyConnectionState> {
+  return (await readConnection(appId)).state;
+}
+
+/**
+ * The same read, keeping the row's id.
+ *
+ * A deploy holds onto it so its late writes can name the row they started
+ * against. The host cannot do that job: disconnecting and reconnecting to the
+ * same server, project and environment produces a row those columns match
+ * exactly, and a write meant for the connection that was abandoned then lands
+ * on its replacement.
+ */
+export async function readConnection(
+  appId: number,
+): Promise<{ state: CoolifyConnectionState; id: number | null }> {
   const row = await db.query.coolifyAppConnections.findFirst({
     where: eq(coolifyAppConnections.appId, appId),
     orderBy: asc(coolifyAppConnections.id),
   });
-  return coolifyConnectionFromRow(row ?? null);
+  return { state: coolifyConnectionFromRow(row ?? null), id: row?.id ?? null };
 }
 
 /**

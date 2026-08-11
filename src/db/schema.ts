@@ -495,7 +495,6 @@ export const security_fix_chats = sqliteTable(
   ],
 );
 
-// Define relations
 /**
  * Where an app deploys to on a Coolify instance.
  *
@@ -556,6 +555,7 @@ export const coolifyAppConnections = sqliteTable(
   ],
 );
 
+// Define relations
 export const appsRelations = relations(apps, ({ many, one }) => ({
   chats: many(chats),
   versions: many(versions),

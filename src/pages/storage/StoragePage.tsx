@@ -4,6 +4,7 @@ import {
   Cloud,
   Code2,
   DatabaseZap,
+  FolderOpen,
   HardDrive,
   LayoutGrid,
   LayoutTemplate,
@@ -33,6 +34,16 @@ const storageDestinations = [
     to: "/hub",
     icon: Store,
     badgeIcon: LayoutTemplate,
+  },
+  {
+    title: "Local Storage",
+    description:
+      "Browse the file vault connected to this machine: conversations, notes, media and everything the app writes locally.",
+    detail: "Connected file vault",
+    badge: "Local",
+    to: "/local-storage",
+    icon: FolderOpen,
+    badgeIcon: ShieldCheck,
   },
   {
     title: "Meta Drive HD",

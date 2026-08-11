@@ -37,6 +37,24 @@ export const StorageSyncResultSchema = z.object({
   syncedAt: z.number(),
 });
 
+export const VaultEntrySchema = z.object({
+  name: z.string(),
+  /** Vault-relative, forward slashes, so the renderer can ask for it back. */
+  path: z.string(),
+  kind: z.enum(["directory", "file"]),
+  /** Null for directories, where a size would be misleading. */
+  sizeBytes: z.number().nullable(),
+  modifiedAt: z.number().nullable(),
+});
+
+export const VaultListingSchema = z.object({
+  /** Null when no vault is connected, which the page shows rather than fails. */
+  vaultPath: z.string().nullable(),
+  path: z.string(),
+  parent: z.string().nullable(),
+  entries: z.array(VaultEntrySchema),
+});
+
 export const storageContracts = {
   chooseVault: defineContract({
     channel: "storage:choose-vault",
@@ -63,6 +81,18 @@ export const storageContracts = {
     channel: "storage:status",
     input: z.object({ localVaultPath: z.string().optional() }),
     output: StorageStatusSchema,
+  }),
+  /** One folder of the connected local vault. Read only. */
+  listVaultDirectory: defineContract({
+    channel: "storage:list-vault-directory",
+    input: z.object({ path: z.string().default("") }),
+    output: VaultListingSchema,
+  }),
+  /** Show a vault file or folder in the system file browser. */
+  revealVaultEntry: defineContract({
+    channel: "storage:reveal-vault-entry",
+    input: z.object({ path: z.string() }),
+    output: z.void(),
   }),
   sync: defineContract({
     channel: "storage:sync",

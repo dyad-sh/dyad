@@ -1,5 +1,6 @@
 import {
   CircuitBoard,
+  FolderOpen,
   Cog,
   Cpu,
   Factory,
@@ -74,6 +75,7 @@ const SCREENS: WorkspaceScreen[] = [
   { path: "/infrastructure", title: "Infrastructure", icon: Activity },
   { path: "/system", title: "System", icon: Cpu },
   { path: "/storage", title: "Storage", icon: HardDrive },
+  { path: "/local-storage", title: "File Vault", icon: FolderOpen },
   { path: "/dev-ops", title: "DevOps", icon: Rocket },
   { path: "/meta-hd", title: "Meta HD", icon: Box },
   { path: "/github", title: "GitHub", icon: Github },

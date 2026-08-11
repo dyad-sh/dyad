@@ -23,6 +23,11 @@ import {
   restoreSecretsFromVault,
   syncSecretsToVault,
 } from "../utils/vault_secrets_sync";
+import {
+  VaultPathError,
+  resolveInsideVault,
+  vaultParentPath,
+} from "@/lib/vault_paths";
 
 export function registerStorageHandlers() {
   createTypedHandler(storageContracts.chooseVault, async () => {
@@ -104,6 +109,102 @@ export function registerStorageHandlers() {
       cloudConnected: isBlobConnected(),
       lastSyncedAt: readSettings().storage?.lastSyncedAt,
     }),
+  );
+
+  createTypedHandler(
+    storageContracts.listVaultDirectory,
+    async (_, { path: requested }) => {
+      const vaultPath = readSettings().storage?.localVaultPath ?? "";
+      if (!vaultPath || !isLocalVaultReady(vaultPath)) {
+        // Not an error: the page shows "no vault connected" and offers to
+        // connect one, which is more use than a thrown message.
+        return { vaultPath: null, path: "", parent: null, entries: [] };
+      }
+
+      let absolute: string;
+      try {
+        absolute = resolveInsideVault(vaultPath, requested);
+      } catch (error) {
+        throw new DyadError(
+          error instanceof VaultPathError
+            ? error.message
+            : "Could not open that folder.",
+          DyadErrorKind.Validation,
+        );
+      }
+
+      let dirents: fs.Dirent[];
+      try {
+        dirents = fs.readdirSync(absolute, { withFileTypes: true });
+      } catch {
+        throw new DyadError(
+          "Could not read that folder.",
+          DyadErrorKind.External,
+        );
+      }
+
+      const entries = dirents
+        // Dotfiles are the vault's own machinery (.obsidian, .meta-human) and
+        // the secrets file. Browsing is not the place to hand those out.
+        .filter((entry) => !entry.name.startsWith("."))
+        .map((entry) => {
+          const childRelative = requested
+            ? `${requested}/${entry.name}`
+            : entry.name;
+          const isDirectory = entry.isDirectory();
+          let sizeBytes: number | null = null;
+          let modifiedAt: number | null = null;
+          try {
+            const stats = fs.statSync(nodePath.join(absolute, entry.name));
+            modifiedAt = stats.mtimeMs;
+            if (!isDirectory) sizeBytes = stats.size;
+          } catch {
+            // A file that vanished between listing and stat is still worth
+            // showing; it simply has no size.
+          }
+          return {
+            name: entry.name,
+            path: childRelative,
+            kind: isDirectory ? ("directory" as const) : ("file" as const),
+            sizeBytes,
+            modifiedAt,
+          };
+        })
+        // Folders first, then alphabetical, the way a file manager sorts.
+        .sort((a, b) =>
+          a.kind === b.kind
+            ? a.name.localeCompare(b.name)
+            : a.kind === "directory"
+              ? -1
+              : 1,
+        );
+
+      return {
+        vaultPath,
+        path: requested,
+        parent: vaultParentPath(requested),
+        entries,
+      };
+    },
+  );
+
+  createTypedHandler(
+    storageContracts.revealVaultEntry,
+    async (_, { path: requested }) => {
+      const vaultPath = readSettings().storage?.localVaultPath ?? "";
+      let absolute: string;
+      try {
+        absolute = resolveInsideVault(vaultPath, requested);
+      } catch (error) {
+        throw new DyadError(
+          error instanceof VaultPathError
+            ? error.message
+            : "Could not open that item.",
+          DyadErrorKind.Validation,
+        );
+      }
+      shell.showItemInFolder(absolute);
+    },
   );
 
   createTypedHandler(storageContracts.sync, async (_, input) => {

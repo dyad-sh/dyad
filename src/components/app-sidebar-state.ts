@@ -131,7 +131,8 @@ export function isSidebarItemActive({
     return (
       pathname.startsWith("/storage") ||
       pathname.startsWith("/apps") ||
-      pathname.startsWith("/hub")
+      pathname.startsWith("/hub") ||
+      pathname.startsWith("/local-storage")
     );
   }
   if (title === "System") {
